@@ -129,6 +129,14 @@ def _ensure_columns(c):
     cols = {r["name"] for r in c.execute("PRAGMA table_info(chat_messages)").fetchall()}
     if "client_msg_id" not in cols:
         c.execute("ALTER TABLE chat_messages ADD COLUMN client_msg_id TEXT")
+    if "voice_transcript" not in cols:
+        c.execute("ALTER TABLE chat_messages ADD COLUMN voice_transcript TEXT")
+    if "voice_transcript_lang" not in cols:
+        c.execute("ALTER TABLE chat_messages ADD COLUMN voice_transcript_lang TEXT")
+    if "voice_transcript_provider" not in cols:
+        c.execute("ALTER TABLE chat_messages ADD COLUMN voice_transcript_provider TEXT")
+    if "voice_transcribed_at" not in cols:
+        c.execute("ALTER TABLE chat_messages ADD COLUMN voice_transcribed_at TEXT")
     # Уникальность в рамках отправителя (client id генерируется на устройстве).
     # Partial index — NULL-значения (старые сообщения) не конфликтуют.
     c.execute(
@@ -248,6 +256,30 @@ def _get_or_create_room(user1: str, user2: str, cargo_id: str = None, trip_id: s
 _init()
 
 
+def _normalize_lang_code(value: str | None) -> str | None:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return None
+    alias = {
+        "cn": "zh",
+        "zh-cn": "zh",
+        "zh-hans": "zh",
+        "kz": "kk",
+        "kk-kz": "kk",
+    }
+    if raw in alias:
+        return alias[raw]
+    base = raw.split("-", 1)[0]
+    return alias.get(base, base)
+
+
+def _ensure_translation_schema():
+    schema = Path(__file__).resolve().parent.parent / "database" / "translations_schema.sql"
+    if schema.exists():
+        with get_conn() as c:
+            c.executescript(schema.read_text(encoding="utf-8"))
+
+
 class SendMessageIn(BaseModel):
     # Variant B: предпочтительно слать room_id (каноническая комната). to_user_id
     # оставлен опциональным для поддержки/легаси (получатель = собеседник).
@@ -352,7 +384,7 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
             if ex:
                 return {"ok": True, "room_id": room_id, "deduped": True}
         try:
-            c.execute(
+            cursor = c.execute(
                 "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration, client_msg_id) VALUES (?,?,?,?,?,?,?)",
                 (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration, body.client_msg_id),
             )
@@ -398,7 +430,19 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     if recipient_id == VOLODYA_ID and ENABLE_DEMO_CHAT:
         _volodya_reply(room_id, body.text or "", user)
 
-    return {"ok": True, "room_id": room_id}
+    # Return the authoritative row identity so the client can reconcile its
+    # optimistic bubble with the committed server message before the next poll.
+    with get_conn() as c:
+        created = c.execute(
+            "SELECT id, created_at FROM chat_messages WHERE room_id = ? AND sender_id = ? AND client_msg_id = ?",
+            (room_id, user["id"], body.client_msg_id),
+        ).fetchone() if body.client_msg_id else None
+    return {
+        "ok": True,
+        "room_id": room_id,
+        "message_id": created["id"] if created else None,
+        "created_at": created["created_at"] if created else None,
+    }
 
 
 @chat_router.get("/rooms")
@@ -846,16 +890,18 @@ class TranslateIn(BaseModel):
     message_id: int
     target_lang: str
 
+
+class TranscribeIn(BaseModel):
+    message_id: int
+    target_lang: Optional[str] = None
+
 @chat_router.post("/translate")
 def translate_message(body: TranslateIn, user=Depends(require_level(1))):
     """Перевести сообщение чата. Кэшируется."""
     from services.translate_service import translate_text
 
-    # Инициализация таблицы переводов
-    schema = Path(__file__).resolve().parent.parent / "database" / "translations_schema.sql"
-    if schema.exists():
-        with get_conn() as c:
-            c.executescript(schema.read_text(encoding="utf-8"))
+    _ensure_translation_schema()
+    target_lang = _normalize_lang_code(body.target_lang) or "en"
 
     with get_conn() as c:
         # Проверяем что сообщение существует и юзер имеет доступ
@@ -865,35 +911,116 @@ def translate_message(body: TranslateIn, user=Depends(require_level(1))):
         room = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (msg["room_id"],)).fetchone()
         if not room or user["id"] not in (room["participant_1"], room["participant_2"]):
             raise HTTPException(status_code=403)
+        source_text = (msg["voice_transcript"] or "") if msg["is_voice"] else (msg["text"] or "")
+        source_lang = _normalize_lang_code(msg["voice_transcript_lang"]) if msg["is_voice"] else None
 
         # Проверяем кэш
         cached = c.execute(
             "SELECT translated_text, provider FROM chat_translations WHERE message_id = ? AND target_lang = ?",
-            (body.message_id, body.target_lang),
+            (body.message_id, target_lang),
         ).fetchone()
         if cached:
             return {
                 "translated_text": cached["translated_text"],
-                "original_text": msg["text"],
-                "target_lang": body.target_lang,
+                "original_text": source_text,
+                "target_lang": target_lang,
                 "provider": cached["provider"],
                 "cached": True,
             }
 
     # Переводим
-    result = translate_text(msg["text"] or "", body.target_lang)
+    result = translate_text(source_text, target_lang, source_lang=source_lang)
 
     # Сохраняем в кэш
     with get_conn() as c:
         c.execute(
             "INSERT OR REPLACE INTO chat_translations (message_id, target_lang, translated_text, provider) VALUES (?,?,?,?)",
-            (body.message_id, body.target_lang, result["translated_text"], result["provider"]),
+            (body.message_id, target_lang, result["translated_text"], result["provider"]),
         )
 
     return {
         "translated_text": result["translated_text"],
-        "original_text": msg["text"],
-        "target_lang": body.target_lang,
+        "original_text": source_text,
+        "target_lang": target_lang,
         "provider": result["provider"],
         "cached": False,
+    }
+
+
+@chat_router.post("/transcribe")
+def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
+    """Распознать голосовое сообщение в текст и при необходимости перевести."""
+    from services.speech_to_text_service import SpeechToTextError, transcribe_audio_ref
+    from services.translate_service import translate_text
+
+    _ensure_translation_schema()
+    target_lang = _normalize_lang_code(body.target_lang)
+
+    with get_conn() as c:
+        msg = c.execute("SELECT * FROM chat_messages WHERE id = ?", (body.message_id,)).fetchone()
+        if not msg:
+            raise HTTPException(status_code=404, detail="Сообщение не найдено")
+        if not msg["is_voice"]:
+            raise HTTPException(status_code=400, detail="Это не голосовое сообщение")
+        room = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (msg["room_id"],)).fetchone()
+        if not room or user["id"] not in (room["participant_1"], room["participant_2"]):
+            raise HTTPException(status_code=403)
+        transcript_text = (msg["voice_transcript"] or "").strip()
+        transcript_lang = _normalize_lang_code(msg["voice_transcript_lang"]) or None
+        transcript_provider = msg["voice_transcript_provider"] or None
+        transcript_cached = bool(transcript_text)
+        cached_translation = None
+        if target_lang:
+            cached_translation = c.execute(
+                "SELECT translated_text, provider FROM chat_translations WHERE message_id = ? AND target_lang = ?",
+                (body.message_id, target_lang),
+            ).fetchone()
+
+    if not transcript_text:
+        try:
+            guessed_name = Path(str(msg["photo_url"] or "")).name or f"voice-{body.message_id}.m4a"
+            transcript = transcribe_audio_ref(msg["photo_url"], filename=guessed_name)
+        except SpeechToTextError as exc:
+            status = 503 if exc.retryable else 422
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+        transcript_text = str(transcript.get("transcript_text") or "").strip()
+        if not transcript_text:
+            raise HTTPException(status_code=422, detail="Не удалось распознать речь в голосовом")
+        transcript_lang = _normalize_lang_code(transcript.get("source_lang")) or "auto"
+        transcript_provider = transcript.get("provider") or "unknown"
+        with get_conn() as c:
+            c.execute(
+                "UPDATE chat_messages SET voice_transcript = ?, voice_transcript_lang = ?, "
+                "voice_transcript_provider = ?, voice_transcribed_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (transcript_text, transcript_lang, transcript_provider, body.message_id),
+            )
+
+    translated_text = None
+    translation_provider = None
+    translation_cached = False
+    if target_lang:
+        if cached_translation:
+            translated_text = cached_translation["translated_text"]
+            translation_provider = cached_translation["provider"]
+            translation_cached = True
+        elif target_lang != transcript_lang:
+            result = translate_text(transcript_text, target_lang, transcript_lang)
+            translated_text = result["translated_text"]
+            translation_provider = result["provider"]
+            with get_conn() as c:
+                c.execute(
+                    "INSERT OR REPLACE INTO chat_translations (message_id, target_lang, translated_text, provider) VALUES (?,?,?,?)",
+                    (body.message_id, target_lang, translated_text, translation_provider),
+                )
+
+    return {
+        "message_id": body.message_id,
+        "transcript_text": transcript_text,
+        "source_lang": transcript_lang,
+        "provider": transcript_provider,
+        "cached": transcript_cached,
+        "translated_text": translated_text,
+        "target_lang": target_lang,
+        "translation_provider": translation_provider,
+        "translation_cached": translation_cached,
     }

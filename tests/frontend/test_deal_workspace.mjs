@@ -26,7 +26,7 @@ test('accepted deal chat is routed into the canonical gated workspace', () => {
   assert.doesNotMatch(chatRouter, /from '\.\/DealWorkspaceScreenV2'/);
   assert.match(routeHost, /DealLocationPermissionGate/);
   assert.match(routeHost, /DealWorkspaceScreenV2/);
-  assert.match(chatRouter, /<ChatScreen/);
+  assert.doesNotMatch(chatRouter, /<ChatScreen/);
 });
 
 test('active cargo and trip details route into the same canonical gated workspace', () => {
@@ -116,17 +116,17 @@ test('distance and ETA remain real Yandex route properties and fail closed', () 
   assert.match(workspace, /routeSummary\.durationText/);
   assert.match(workspace, /routeSummary\.isRemaining/);
   assert.match(webMap, /multiRoute\.getActiveRoute/);
-  assert.match(webMap, /get\?\.\('distance'\)/);
-  assert.match(webMap, /get\?\.\('duration'\)/);
+  assert.match(webMap, /get\?\.\(["']distance["']\)/);
+  assert.match(webMap, /get\?\.\(["']duration["']\)/);
   assert.match(webMap, /\[livePoint, destination\]/);
   assert.match(webMap, /emitSummary\(null\)/);
 });
 
 test('live map only exists for active working trip states', () => {
-  assert.match(workspace, /const LIVE_TRACKING_STATUSES = \['in_progress', 'at_border'\]/);
-  assert.match(workspace, /const MAP_WORK_STATUSES = \['accepted', 'in_progress', 'at_border'\]/);
-  assert.match(workspace, /visibleDealStatus !== 'delivered'/);
-  assert.match(workspace, /visibleDealStatus !== 'received'/);
+  assert.match(workspace, /const LIVE_TRACKING_STATUSES = \[["']in_progress["'], ["']at_border["']\]/);
+  assert.match(workspace, /const MAP_WORK_STATUSES = \[["']accepted["'], ["']in_progress["'], ["']at_border["']\]/);
+  assert.match(workspace, /visibleDealStatus !== ["']delivered["']/);
+  assert.match(workspace, /visibleDealStatus !== ["']received["']/);
   assert.match(workspace, /testID="deal-inactive-map-summary"/);
 });
 

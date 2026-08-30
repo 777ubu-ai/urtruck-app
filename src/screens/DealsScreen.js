@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -21,21 +21,24 @@ import { formatPrice } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
 import { countryFlag } from '../utils/countryFlags';
 import { accentFor } from '../components/deal/DealRoom';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { isBidActionable } from '../utils/dealsUnread';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
 
+const ACCENT = "#34936B";
+const ACCENT_SOFT = '#EAF5EF';
 const PAGE_BG = '#F7F9F7';
 const SURFACE = '#FFFFFF';
-const TEXT = '#17221E';
-const TEXT_SECONDARY = '#606B66';
-const TEXT_MUTED = '#808A85';
-const BORDER = '#E5EAE7';
-const ACCENT = '#34936B';
-const ACCENT_SOFT = '#EAF5EF';
-const WAITING = '#617067';
-const INFO = '#3478D4';
-const ARCHIVE = '#7C8B82';
-const CANCELLED = '#A45A5A';
+const BORDER = '#E0E6E2';
+const BORDER_STRONG = '#BFDCCF';
+const TEXT = '#18231E';
+const TEXT_SECONDARY = '#526057';
+const TEXT_MUTED = '#758078';
+const TEXT_DIM = '#98A19B';
+const WAITING = "#617067";
+const INFO = "#3478D4";
+const ARCHIVE = "#7C8B82";
+const CANCELLED = "#A45A5A";
 
 const dealsPalette = (theme, isDark) => ({
   pageBg: theme.bg,
@@ -59,8 +62,8 @@ const dealsPalette = (theme, isDark) => ({
 // Only true terminal deal states belong in Archive.
 const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation', 'delivered', 'received']);
 const ARCHIVE_DEAL_STATUSES = new Set(['completed', 'cancelled', 'rejected', 'expired']);
-const OPEN_BID_STATUSES = new Set(['pending', 'countered']);
-const CLOSED_BID_STATUSES = new Set(['rejected', 'cancelled', 'expired']);
+const OPEN_BID_STATUSES = new Set(["pending", "countered"]);
+const CLOSED_BID_STATUSES = new Set(["rejected", "cancelled", "expired"]);
 
 const COPY = {
   RU: {
@@ -113,21 +116,37 @@ const COPY = {
   },
 };
 
+const normalizeNotifPath = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  let path = raw;
+  try {
+    const parsed = new URL(raw);
+    path = `${parsed.pathname || ""}${parsed.search || ""}`;
+  } catch {
+    // relative notification path
+  }
+  const clean = path.split("#", 1)[0].split("?", 1)[0];
+  if (!clean) return "";
+  return clean.startsWith("/") ? (clean.replace(/\/+$/, "") || "/") : `/${clean.replace(/\/+$/, "")}`;
+};
+
 const parseServerDate = (raw) => {
   if (!raw) return null;
-  const normalized = String(raw).replace(' ', 'T');
+  const normalized = String(raw).replace(" ", "T");
   const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
   const date = new Date(hasTimezone ? normalized : `${normalized}Z`);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
 const dealStatus = (status, t) => {
-  if (status === 'accepted') return { label: t('status_accepted'), color: ACCENT };
-  if (status === 'in_progress' || status === 'at_border') {
-    return { label: t('status_in_progress'), color: ACCENT };
+  if (status === "accepted")
+    return { label: t("status_accepted"), color: ACCENT };
+  if (status === "in_progress" || status === "at_border") {
+    return { label: t("status_in_progress"), color: ACCENT };
   }
-  if (status === 'awaiting_confirmation' || status === 'delivered') {
-    return { label: t('status_awaiting_receipt'), color: INFO };
+  if (status === "awaiting_confirmation" || status === "delivered") {
+    return { label: t("status_awaiting_receipt"), color: INFO };
   }
   if (status === 'received') {
     return { label: t('status_received'), color: ACCENT };
@@ -135,14 +154,15 @@ const dealStatus = (status, t) => {
   if (status === 'completed') {
     return { label: t('status_completed'), color: ARCHIVE };
   }
-  if (status === 'cancelled' || status === 'rejected') {
-    return { label: t('status_cancelled'), color: CANCELLED };
+  if (status === "cancelled" || status === "rejected") {
+    return { label: t("status_cancelled"), color: CANCELLED };
   }
-  if (status === 'expired') return { label: formatStatus(status), color: ARCHIVE };
+  if (status === "expired")
+    return { label: formatStatus(status), color: ARCHIVE };
   return { label: formatStatus(status), color: ARCHIVE };
 };
 
-function TabChip({ label, count, active, onPress, testID, icon = null, colors }) {
+function TabChip({ label, count, attentionCount = 0, active, onPress, testID, icon = null, colors }) {
   return (
     <TouchableOpacity
       testID={testID}
@@ -180,6 +200,13 @@ function TabChip({ label, count, active, onPress, testID, icon = null, colors })
           {count > 99 ? '99+' : count}
         </Text>
       </View>
+      {attentionCount > 0 ? (
+        <View style={styles.tabAttentionBadge} testID={`${testID}-attention`}>
+          <Text style={styles.tabAttentionText}>
+            {attentionCount > 99 ? '99+' : attentionCount}
+          </Text>
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -248,14 +275,14 @@ export default function DealsScreen({ navigation, route }) {
   const roleAccent = accentFor(role) || ACCENT;
   const copy = COPY[lang] || COPY.EN;
 
-  const [dealTab, setDealTab] = useState('offers');
-  const [query, setQuery] = useState('');
+  const [dealTab, setDealTab] = useState("offers");
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [allDeals, setAllDeals] = useState([]);
   const [incomingBids, setIncomingBids] = useState([]);
   const [myBids, setMyBids] = useState([]);
+  const [unreadNotifPaths, setUnreadNotifPaths] = useState([]);
 
   const load = useCallback(async () => {
     setLoadError(false);
@@ -265,44 +292,66 @@ export default function DealsScreen({ navigation, route }) {
       setAllDeals(dashboard.my_deals || []);
       setIncomingBids(dashboard.incoming_bids || []);
       setMyBids(dashboard.my_bids || []);
+      const unreadPaths = (notifData?.notifications || [])
+        .filter((item) => !item?.is_read)
+        .map((item) => normalizeNotifPath(item?.url))
+        .filter(Boolean);
+      setUnreadNotifPaths(unreadPaths);
     } catch (error) {
       setLoadError(true);
-      console.warn('deals load failed', error?.message || error);
+      console.warn("deals load failed", error?.message || error);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
-  useFocusEffect(useCallback(() => {
-    load();
-    const interval = setInterval(load, 10000);
-    return () => clearInterval(interval);
-  }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      const interval = setInterval(load, 10000);
+      return () => clearInterval(interval);
+    }, [load]),
+  );
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    load();
-  };
+  const { refreshing, onRefresh } = useSafeRefresh(load);
 
-  const relTime = useCallback((raw) => {
-    const date = parseServerDate(raw);
-    if (!date) return '';
-    const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
-    if (minutes < 1) return t('time_now');
-    if (minutes < 60) return `${minutes} ${t('time_min')}`;
-    const hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours} ${t('time_hour')}`;
-    if (Math.round(hours / 24) === 1) return t('time_yesterday');
-    const locale = lang === 'ZH' ? 'zh-CN' : lang === 'EN' ? 'en-GB' : lang === 'KK' ? 'kk-KZ' : 'ru-RU';
-    return date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
-  }, [t, lang]);
+  const relTime = useCallback(
+    (raw) => {
+      const date = parseServerDate(raw);
+      if (!date) return "";
+      const minutes = Math.max(
+        0,
+        Math.round((Date.now() - date.getTime()) / 60000),
+      );
+      if (minutes < 1) return t("time_now");
+      if (minutes < 60) return `${minutes} ${t("time_min")}`;
+      const hours = Math.round(minutes / 60);
+      if (hours < 24) return `${hours} ${t("time_hour")}`;
+      if (Math.round(hours / 24) === 1) return t("time_yesterday");
+      const locale =
+        lang === "ZH"
+          ? "zh-CN"
+          : lang === "EN"
+            ? "en-GB"
+            : lang === "KK"
+              ? "kk-KZ"
+              : "ru-RU";
+      return date.toLocaleDateString(locale, {
+        day: "2-digit",
+        month: "2-digit",
+      });
+    },
+    [t, lang],
+  );
 
-  const endpoint = useCallback((country, city) => {
-    const flag = countryFlag(country);
-    const place = localizePlace(city || '—', lang);
-    return [flag, place].filter(Boolean).join(' ');
-  }, [lang]);
+  const endpoint = useCallback(
+    (country, city) => {
+      const flag = countryFlag(country);
+      const place = localizePlace(city || "—", lang);
+      return [flag, place].filter(Boolean).join(" ");
+    },
+    [lang],
+  );
 
   const routeFor = useCallback((item, kind) => {
     if (kind === 'bid') {
@@ -311,10 +360,13 @@ export default function DealsScreen({ navigation, route }) {
     return `${endpoint(item.from_country, item.from_city)} → ${endpoint(item.to_country, item.to_city)}`;
   }, [endpoint, role]);
 
-  const priceText = useCallback((amount, currency = 'USD') => {
-    if (amount === null || amount === undefined || amount === '') return '';
-    return formatPrice(amount, currency || 'USD', t);
-  }, [t]);
+  const priceText = useCallback(
+    (amount, currency = "USD") => {
+      if (amount === null || amount === undefined || amount === "") return "";
+      return formatPrice(amount, currency || "USD", t);
+    },
+    [t],
+  );
 
   const offersData = useMemo(() => {
     if (role === 'client') {
@@ -329,9 +381,14 @@ export default function DealsScreen({ navigation, route }) {
     }
 
     return [
-      ...myBids.filter((bid) => OPEN_BID_STATUSES.has(bid.status) && isBidFresh(bid)),
+      ...myBids.filter(
+        (bid) => OPEN_BID_STATUSES.has(bid.status) && isBidFresh(bid),
+      ),
       ...incomingBids
-        .filter((bid) => bid.trip_id && OPEN_BID_STATUSES.has(bid.status) && isBidFresh(bid))
+        .filter(
+          (bid) =>
+            bid.trip_id && OPEN_BID_STATUSES.has(bid.status) && isBidFresh(bid),
+        )
         .map((bid) => ({ ...bid, _incoming: true })),
     ].sort((a, b) => {
       const ta = parseServerDate(a.updated_at || a.created_at)?.getTime() || 0;
@@ -341,14 +398,19 @@ export default function DealsScreen({ navigation, route }) {
   }, [role, myBids, incomingBids]);
 
   const closedBidsData = useMemo(() => {
-    const rows = role === 'client'
-      ? incomingBids.filter((bid) => bid.cargo_id && CLOSED_BID_STATUSES.has(bid.status))
-      : [
-          ...myBids.filter((bid) => CLOSED_BID_STATUSES.has(bid.status)),
-          ...incomingBids
-            .filter((bid) => bid.trip_id && CLOSED_BID_STATUSES.has(bid.status))
-            .map((bid) => ({ ...bid, _incoming: true })),
-        ];
+    const rows =
+      role === "client"
+        ? incomingBids.filter(
+            (bid) => bid.cargo_id && CLOSED_BID_STATUSES.has(bid.status),
+          )
+        : [
+            ...myBids.filter((bid) => CLOSED_BID_STATUSES.has(bid.status)),
+            ...incomingBids
+              .filter(
+                (bid) => bid.trip_id && CLOSED_BID_STATUSES.has(bid.status),
+              )
+              .map((bid) => ({ ...bid, _incoming: true })),
+          ];
     return rows.sort((a, b) => {
       const ta = parseServerDate(a.updated_at || a.created_at)?.getTime() || 0;
       const tb = parseServerDate(b.updated_at || b.created_at)?.getTime() || 0;
@@ -356,25 +418,37 @@ export default function DealsScreen({ navigation, route }) {
     });
   }, [role, myBids, incomingBids]);
 
-  const activeDeals = useMemo(() => (
-    allDeals
-      .filter((deal) => ACTIVE_STATUSES.has(deal.status))
-      .sort((a, b) => {
-        const ta = parseServerDate(a.last_message_at || a.updated_at || a.created_at)?.getTime() || 0;
-        const tb = parseServerDate(b.last_message_at || b.updated_at || b.created_at)?.getTime() || 0;
-        return tb - ta;
-      })
-  ), [allDeals]);
+  const activeDeals = useMemo(
+    () =>
+      allDeals
+        .filter((deal) => ACTIVE_STATUSES.has(deal.status))
+        .sort((a, b) => {
+          const ta =
+            parseServerDate(
+              a.last_message_at || a.updated_at || a.created_at,
+            )?.getTime() || 0;
+          const tb =
+            parseServerDate(
+              b.last_message_at || b.updated_at || b.created_at,
+            )?.getTime() || 0;
+          return tb - ta;
+        }),
+    [allDeals],
+  );
 
-  const archivedDeals = useMemo(() => (
-    allDeals
-      .filter((deal) => ARCHIVE_DEAL_STATUSES.has(deal.status))
-      .sort((a, b) => {
-        const ta = parseServerDate(a.updated_at || a.created_at)?.getTime() || 0;
-        const tb = parseServerDate(b.updated_at || b.created_at)?.getTime() || 0;
-        return tb - ta;
-      })
-  ), [allDeals]);
+  const archivedDeals = useMemo(
+    () =>
+      allDeals
+        .filter((deal) => ARCHIVE_DEAL_STATUSES.has(deal.status))
+        .sort((a, b) => {
+          const ta =
+            parseServerDate(a.updated_at || a.created_at)?.getTime() || 0;
+          const tb =
+            parseServerDate(b.updated_at || b.created_at)?.getTime() || 0;
+          return tb - ta;
+        }),
+    [allDeals],
+  );
 
   const offerCount = offersData.length;
 
@@ -384,40 +458,54 @@ export default function DealsScreen({ navigation, route }) {
     ), 0)
   ), [offersData]);
 
-  const activeAttentionCount = useMemo(() => (
-    activeDeals.reduce(
-      (sum, item) => sum + (item.unread_count || 0) + ((
-        item.tracking_action_required || (role === 'client' && (item.status === 'delivered' || item.status === 'awaiting_confirmation'))
-      ) ? 1 : 0),
-      0,
-    )
-  ), [activeDeals, role]);
+  const activeAttentionCount = useMemo(
+    () =>
+      activeDeals.reduce(
+        (sum, item) =>
+          sum +
+          (item.unread_count || 0) +
+          (unreadNotifPaths.includes(`/deals/${item.id}`) ||
+          (item.cargo_id && unreadNotifPaths.includes(`/cargos/${item.cargo_id}`)) ||
+          (item.trip_id && unreadNotifPaths.includes(`/trips/${item.trip_id}`))
+            ? 1
+            : 0) +
+          (item.tracking_action_required ||
+          (role === "client" &&
+            (item.status === "delivered" ||
+              item.status === "awaiting_confirmation"))
+            ? 1
+            : 0),
+        0,
+      ),
+    [activeDeals, role, unreadNotifPaths],
+  );
 
   const baseItems = useMemo(() => {
-    if (dealTab === 'offers') {
+    if (dealTab === "offers") {
       return offersData.map((item) => ({
         kind: 'bid',
         data: item,
         sortAt: item.updated_at || item.created_at || '',
       }));
     }
-    if (dealTab === 'active') {
+    if (dealTab === "active") {
       return activeDeals.map((item) => ({
-        kind: 'deal',
+        kind: "deal",
         data: item,
-        sortAt: item.last_message_at || item.updated_at || item.created_at || '',
+        sortAt:
+          item.last_message_at || item.updated_at || item.created_at || "",
       }));
     }
     return [
       ...archivedDeals.map((item) => ({
-        kind: 'deal',
+        kind: "deal",
         data: item,
-        sortAt: item.updated_at || item.created_at || '',
+        sortAt: item.updated_at || item.created_at || "",
       })),
       ...closedBidsData.map((item) => ({
-        kind: 'bid',
+        kind: "bid",
         data: item,
-        sortAt: item.updated_at || item.created_at || '',
+        sortAt: item.updated_at || item.created_at || "",
       })),
     ].sort((a, b) => {
       const ta = parseServerDate(a.sortAt)?.getTime() || 0;
@@ -443,40 +531,55 @@ export default function DealsScreen({ navigation, route }) {
         item.trip_from,
         item.trip_to,
         item.last_message,
-      ].filter(Boolean).join(' ').toLowerCase();
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
       return haystack.includes(needle);
     });
   }, [baseItems, query]);
 
-  const openBid = useCallback((bid) => {
-    if (bid.cargo_id) {
-      navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role });
-      return;
-    }
-    if (bid.trip_id) {
-      navigation.navigate('TripDetail', { tripId: bid.trip_id, bidId: bid.id, role });
-    }
-  }, [navigation, role]);
+  const openBid = useCallback(
+    (bid) => {
+      if (bid.cargo_id) {
+        navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role });
+        return;
+      }
+      if (bid.trip_id) {
+        navigation.navigate("TripDetail", {
+          tripId: bid.trip_id,
+          bidId: bid.id,
+          role,
+        });
+      }
+    },
+    [navigation, role],
+  );
 
-  const openDeal = useCallback((deal) => {
-    const partnerName = role === 'client'
-      ? (deal.driver_name || t('role_driver'))
-      : (deal.shipper_name || t('role_client'));
-    navigation.navigate('Chat', {
-      dealId: deal.id,
-      roomId: deal.chat_room_id || null,
-      partner: {
-        id: role === 'client' ? deal.driver_id : deal.shipper_id,
-        name: partnerName,
-      },
-      role,
-    });
-  }, [navigation, role, t]);
+  const openDeal = useCallback(
+    (deal) => {
+      const partnerName =
+        role === "client"
+          ? deal.driver_name || t("role_driver")
+          : deal.shipper_name || t("role_client");
+      navigation.navigate("Chat", {
+        dealId: deal.id,
+        roomId: deal.chat_room_id || null,
+        partner: {
+          id: role === "client" ? deal.driver_id : deal.shipper_id,
+          name: partnerName,
+        },
+        role,
+      });
+    },
+    [navigation, role, t],
+  );
 
-  const renderItem = useCallback(({ item }) => {
-    const { kind, data } = item;
+  const renderItem = useCallback(
+    ({ item }) => {
+      const { kind, data } = item;
 
-    if (kind === 'bid') {
+      if (kind === 'bid') {
       const isCountered = data.status === 'countered';
       const isClosed = CLOSED_BID_STATUSES.has(data.status);
       const statusLabel = data.status === 'expired'
@@ -516,42 +619,43 @@ export default function DealsScreen({ navigation, route }) {
           colors={palette}
         />
       );
-    }
+      }
+      const status = dealStatus(data.status, t);
+      const partnerName = role === 'client'
+        ? (data.driver_name || t('role_driver'))
+        : (data.shipper_name || t('role_client'));
+      const needsReceiptConfirmation = role === 'client' && (data.status === 'delivered' || data.status === 'awaiting_confirmation');
+      const trackingActionRequired = !!data.tracking_action_required;
+      const statusLabel = needsReceiptConfirmation
+        ? t('confirm_delivery')
+        : trackingActionRequired
+          ? t('tracking_action_required')
+          : status.label;
+      const statusColor = (needsReceiptConfirmation || trackingActionRequired) ? INFO : status.color;
+      const meta = [partnerName, data.last_message].filter(Boolean).join(' · ');
+      const attentionRequired = needsReceiptConfirmation || trackingActionRequired ||
+        unreadNotifPaths.includes(`/deals/${data.id}`) ||
+        (data.cargo_id && unreadNotifPaths.includes(`/cargos/${data.cargo_id}`)) ||
+        (data.trip_id && unreadNotifPaths.includes(`/trips/${data.trip_id}`));
+      const unread = (data.unread_count || 0) + (attentionRequired ? 1 : 0);
 
-    const status = dealStatus(data.status, t);
-    const partnerName = role === 'client'
-      ? (data.driver_name || t('role_driver'))
-      : (data.shipper_name || t('role_client'));
-    const needsReceiptConfirmation = role === 'client' && (data.status === 'delivered' || data.status === 'awaiting_confirmation');
-    const trackingActionRequired = !!data.tracking_action_required;
-    const statusLabel = needsReceiptConfirmation
-      ? t('confirm_delivery')
-      : trackingActionRequired
-        ? t('tracking_action_required')
-        : status.label;
-    const statusColor = (needsReceiptConfirmation || trackingActionRequired) ? INFO : status.color;
-    const meta = [partnerName, data.last_message].filter(Boolean).join(' · ');
-    const attentionRequired = needsReceiptConfirmation || trackingActionRequired;
-    const unread = (data.unread_count || 0) + (attentionRequired ? 1 : 0);
-
-    return (
-      <CompactDealCard
-        testID="deals-deal-card"
-        routeLabel={routeFor(data, 'deal')}
-        price={priceText(data.amount, data.currency || 'USD')}
-        statusLabel={statusLabel}
-        statusColor={statusColor}
-        time={relTime(data.last_message_at || data.updated_at || data.created_at)}
-        meta={meta}
-        unread={unread}
-        dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
-        onPress={() => openDeal(data)}
-        colors={palette}
-      />
-    );
-  }, [
+      return (
+        <CompactDealCard
+          testID="deals-deal-card"
+          routeLabel={routeFor(data, 'deal')}
+          price={priceText(data.amount, data.currency || 'USD')}
+          statusLabel={statusLabel}
+          statusColor={statusColor}
+          time={relTime(data.last_message_at || data.updated_at || data.created_at)}
+          meta={meta}
+          unread={unread}
+          dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
+          onPress={() => openDeal(data)}
+          colors={palette}
+        />
+      );
+    }, [
     lang,
-    navigation,
     openBid,
     openDeal,
     priceText,
@@ -560,6 +664,7 @@ export default function DealsScreen({ navigation, route }) {
     routeFor,
     t,
     palette,
+    unreadNotifPaths,
   ]);
 
   const emptyText = dealTab === 'active'
@@ -593,6 +698,7 @@ export default function DealsScreen({ navigation, route }) {
           testID="deals-tab-offers"
           label={copy.tabOffersLabel}
           count={offerCount}
+          attentionCount={offerAttentionCount}
           active={dealTab === 'offers'}
           onPress={() => setDealTab('offers')}
           colors={palette}
@@ -601,6 +707,7 @@ export default function DealsScreen({ navigation, route }) {
           testID="deals-tab-active"
           label={copy.tabActiveLabel}
           count={activeDeals.length}
+          attentionCount={activeAttentionCount}
           active={dealTab === 'active'}
           onPress={() => setDealTab('active')}
           colors={palette}
@@ -682,13 +789,13 @@ export default function DealsScreen({ navigation, route }) {
           ListHeaderComponent={listHeader}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
-          refreshControl={(
+          refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
               tintColor={roleAccent}
             />
-          )}
+          }
           ListEmptyComponent={(
             <Text style={[styles.emptyText, { color: palette.textMuted }]}>
               {query ? t('chat_no_results') : emptyText}
@@ -751,7 +858,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   tabChipActive: {
-    borderColor: '#A6D2BE',
+    borderColor: BORDER_STRONG,
     backgroundColor: ACCENT_SOFT,
   },
   tabChipLabelRow: {
@@ -790,13 +897,31 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
-  tabCountActive: { color: '#6B8C7C' },
-  attentionA11y: {
+  tabAttentionBadge: {
     position: 'absolute',
+    top: 4,
+    right: 6,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: '#D64545',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabAttentionText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  attentionA11y: {
+    position: "absolute",
     width: 1,
     height: 1,
     opacity: 0,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   attentionA11yText: { fontSize: 1 },
   scrollHeader: {
@@ -812,10 +937,10 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     backgroundColor: SURFACE,
     paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    shadowColor: '#14211C',
+    shadowColor: "#14211C",
     shadowOpacity: 0.02,
     shadowRadius: 7,
     shadowOffset: { width: 0, height: 2 },
@@ -830,8 +955,8 @@ const styles = StyleSheet.create({
   clearSearch: {
     width: 32,
     height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   listContent: {
     paddingTop: 0,
@@ -847,7 +972,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
     backgroundColor: SURFACE,
-    shadowColor: '#15211C',
+    shadowColor: "#15211C",
     shadowOpacity: 0.03,
     shadowRadius: 9,
     shadowOffset: { width: 0, height: 2 },
@@ -855,8 +980,8 @@ const styles = StyleSheet.create({
   },
   cardTop: {
     minHeight: 23,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   route: {
@@ -865,35 +990,35 @@ const styles = StyleSheet.create({
     color: TEXT,
     fontSize: 15,
     lineHeight: 20,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: -0.18,
   },
   price: {
-    maxWidth: '37%',
+    maxWidth: "37%",
     flexShrink: 0,
     color: TEXT,
     fontSize: 15,
     lineHeight: 20,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-    textAlign: 'right',
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
+    textAlign: "right",
   },
   cardMiddle: {
     marginTop: 7,
     minHeight: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 8,
   },
   statusPill: {
-    maxWidth: '72%',
+    maxWidth: "72%",
     minHeight: 24,
     paddingHorizontal: 9,
     paddingVertical: 3,
     borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 5,
   },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
@@ -901,33 +1026,36 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   cardRightMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
     gap: 6,
+    minWidth: 54,
+    flexShrink: 0,
   },
   time: {
-    color: TEXT_MUTED,
+    color: TEXT_DIM,
     fontSize: 11,
     lineHeight: 16,
-    fontVariant: ['tabular-nums'],
+    fontVariant: ["tabular-nums"],
+    textAlign: "right",
   },
   unreadBadge: {
     minWidth: 21,
     height: 21,
     paddingHorizontal: 5,
     borderRadius: 11,
-    backgroundColor: '#D64545',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#D64545",
+    alignItems: "center",
+    justifyContent: "center",
   },
   unreadText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   meta: {
     marginTop: 6,
@@ -939,21 +1067,21 @@ const styles = StyleSheet.create({
     marginTop: 58,
     paddingHorizontal: 24,
     color: TEXT_MUTED,
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 14,
     lineHeight: 20,
   },
   errorState: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 24,
     gap: 10,
   },
   errorText: {
     color: TEXT_MUTED,
     fontSize: 14,
-    textAlign: 'center',
+    textAlign: "center",
   },
   retryBtn: {
     minHeight: 44,
@@ -961,12 +1089,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     borderRadius: 22,
     backgroundColor: ACCENT_SOFT,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   retryText: {
     color: ACCENT,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: "800",
   },
 });

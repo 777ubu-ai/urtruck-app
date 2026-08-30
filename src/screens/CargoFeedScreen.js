@@ -28,6 +28,7 @@ import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 
 const ACCENT = '#34936B';
 const ACCENT_SOFT = '#EAF5EF';
@@ -262,7 +263,6 @@ export default function CargoFeedScreen({ navigation }) {
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
   const [pageLimit, setPageLimit] = useState(50);
   const [dirFrom, setDirFrom] = useState('');
@@ -308,7 +308,6 @@ export default function CargoFeedScreen({ navigation }) {
       setError(true);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [dirFrom, dirTo, filterType, pageLimit, myUserId]);
 
@@ -393,11 +392,9 @@ export default function CargoFeedScreen({ navigation }) {
     setSavedOnly((value) => !value);
   };
 
-  const onRefresh = () => {
-    if (refreshing) return;
-    setRefreshing(true);
-    Promise.allSettled([load(), loadSaved()]).finally(() => setRefreshing(false));
-  };
+  const { refreshing, onRefresh } = useSafeRefresh(
+    useCallback(() => Promise.allSettled([load(), loadSaved()]), [load, loadSaved]),
+  );
 
   const filterPill = (key, label, icon, active) => (
     <TouchableOpacity

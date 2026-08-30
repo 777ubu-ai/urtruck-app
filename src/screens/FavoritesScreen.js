@@ -15,6 +15,7 @@ import { useToast } from '../components/Toast';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Feather from '@expo/vector-icons/Feather';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 
 export default function FavoritesScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -31,6 +32,10 @@ export default function FavoritesScreen({ navigation, route }) {
     setItems(Array.isArray(result?.favorites) ? result.favorites : []);
     setLoading(false);
   }, []);
+
+  const { refreshing, onRefresh } = useSafeRefresh(
+    useCallback(() => load({ showLoading: false }), [load]),
+  );
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -148,7 +153,7 @@ export default function FavoritesScreen({ navigation, route }) {
           keyExtractor={(item) => `${item.item_type || 'driver'}_${item.id || item.item_id}`}
           renderItem={renderItem}
           contentContainerStyle={{ padding: 16, paddingTop: 8 }}
-          refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={v1.textMuted} />}
+          refreshControl={<RefreshControl refreshing={refreshing || refreshingList} onRefresh={onRefresh} tintColor={v1.textMuted} />}
           ListEmptyComponent={
             <View style={styles.center} testID="favorites-empty">
               <Feather name="bookmark" size={40} color={v1.textMuted} style={{ marginBottom: 10 }} />

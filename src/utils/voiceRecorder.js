@@ -200,6 +200,10 @@ export const voice = {
 
     try {
       if (_sound) {
+        if (_playResolve) {
+          try { _playResolve(false); } catch {}
+          _playResolve = null;
+        }
         await _sound.unloadAsync();
         _sound = null;
       }
@@ -242,7 +246,6 @@ export const voice = {
           durationMillis: status.durationMillis || _state.durationMillis || 0,
         });
       });
-      return true;
     } catch (e) {
       console.warn('[voice] play failed:', e);
       _resetState();
@@ -327,7 +330,7 @@ export const voice = {
     });
   },
 
-  _playWeb(uri) {
+  _playWeb(uri, rate = 1) {
     return new Promise((resolve) => {
       if (_webAudio && _playingUri === uri && !_webAudio.paused && !_webAudio.ended) {
         resolve(true);

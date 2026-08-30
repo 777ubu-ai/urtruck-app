@@ -39,6 +39,12 @@
         <data android:scheme="urtruck"/>
         <data android:scheme="com.urtruck.app"/>
       </intent-filter>
+      <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="https" android:host="urtruck.kz" android:pathPrefix="/notifications"/>
+      </intent-filter>
     </activity>
   </application>
 </manifest>

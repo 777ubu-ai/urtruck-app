@@ -1,0 +1,14 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "ABR4N7KYY5.com.urtruck.app",
+        "paths": [
+          "/notifications",
+          "/notifications/*"
+        ]
+      }
+    ]
+  }
+}

@@ -376,6 +376,7 @@ export default function FeedScreen({ navigation }) {
         ]}
         testID="feed-route-selector"
       >
+
         <TouchableOpacity
           style={styles.routeHalf}
           onPress={() => setShowDirFromPicker(true)}

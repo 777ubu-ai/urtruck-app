@@ -93,11 +93,21 @@ export const chatAPI = {
 
   async rooms() {
     const r = await authedFetch(`${BASE}/rooms`, { headers: await headers() });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body?.detail || `rooms failed ${r.status}`);
+    }
     return r.json();
   },
 
   async messages(roomId, limit = 100) {
     const r = await authedFetch(`${BASE}/messages/${roomId}?limit=${limit}`, { headers: await headers() });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      const error = new Error(body?.detail || `messages failed ${r.status}`);
+      error.status = r.status;
+      throw error;
+    }
     return r.json();
   },
 
@@ -114,6 +124,15 @@ export const chatAPI = {
   async translate(messageId, targetLang) {
     const r = await authedFetch(`${BASE}/translate`, {
       method: 'POST', headers: await headers(),
+      body: JSON.stringify({ message_id: messageId, target_lang: targetLang }),
+    });
+    return r.json();
+  },
+
+  async transcribe(messageId, targetLang = null) {
+    const r = await authedFetch(`${BASE}/transcribe`, {
+      method: 'POST',
+      headers: await headers(),
       body: JSON.stringify({ message_id: messageId, target_lang: targetLang }),
     });
     return r.json();

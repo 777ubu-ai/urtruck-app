@@ -10,6 +10,22 @@ from api.verification_gate import require_level
 
 notif_router = APIRouter()
 
+# Deal status, bid and tracking events are stored here as the durable source of
+# unread/app-icon badge truth. The public Notifications screen filters these
+# types client-side so they do not become a second visible deal center.
+DEAL_NOTIFICATION_TYPES = {
+    "bid",
+    "bid_created",
+    "bid_accepted",
+    "bid_cancelled",
+    "bid_rejected",
+    "bid_countered",
+    "deal_created",
+    "deal_status",
+    "trip_status",
+    "tracking",
+}
+
 
 def _init():
     schema = Path(__file__).resolve().parent.parent / "database" / "notifications_schema.sql"
@@ -109,7 +125,8 @@ def mark_notifications_read_by_urls(user_id: str, urls) -> int:
 def list_notifications(limit: int = 50, user=Depends(require_level(1))):
     with get_conn() as c:
         rows = c.execute(
-            "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+            "SELECT * FROM notifications WHERE user_id = ? "
+            "ORDER BY created_at DESC LIMIT ?",
             (user["id"], limit),
         ).fetchall()
     return {"notifications": [dict(r) for r in rows]}

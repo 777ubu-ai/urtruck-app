@@ -1,42 +1,65 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Image, AppState, Linking, Alert, Modal, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
-import Feather from '@expo/vector-icons/Feather';
-import * as ImagePicker from 'expo-image-picker';
-import { useI18n } from '../utils/useI18n';
-import { getLanguage, formatStatus } from '../utils/i18n';
-import { useTheme } from '../utils/ThemeContext';
-import { useToast } from '../components/Toast';
-import { compressImage } from '../utils/imageCompress';
-import { prettifyPartnerName, partnerInitial } from '../utils/displayName';
-import { chatAPI } from '../utils/chatAPI';
-import { marketAPI } from '../utils/marketAPI';
-import { formatPrice } from '../utils/normalizers';
-import { SERVER_URL } from '../config/env';
-import { notifyChatRead } from '../utils/unreadEvents';
-import { refreshAppIconBadge } from '../utils/appBadge';
-import { useMountedRef } from '../hooks/useMountedRef';
-import { enqueueOutbox, flushOutbox } from '../utils/outbox';
-import { setActiveRoom } from '../utils/activeRoom';  // QA-аудит P2-2
-import { useAuth } from '../utils/AuthContext';
-import { voice } from '../utils/voiceRecorder';
-import QuickPhrases from '../components/QuickPhrases';
-import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
-import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
-import { DealRoomCard, SystemEventRow, DealQuickActions } from '../components/deal/DealRoom';
-import BargainCard from '../components/deal/BargainCard';
-import BidModal from '../components/BidModal';
-import DealAttachments from '../components/deal/DealAttachments';
-import TruckMap from '../components/TruckMap';
-import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
-import { ensureBackgroundLocationPermission, getCurrentLocationPayload } from '../utils/backgroundLocation';
-import { parseRouteCities } from '../utils/geo';
-import AppConfirmModal from '../components/ui/AppConfirmModal';
+import React, { useState, useRef, useEffect } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Image,
+  AppState,
+  Linking,
+  Alert,
+  Modal,
+  Pressable,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
+import Feather from "@expo/vector-icons/Feather";
+import * as ImagePicker from "expo-image-picker";
+import { useI18n } from "../utils/useI18n";
+import { getLanguage, formatStatus } from "../utils/i18n";
+import { useTheme } from "../utils/ThemeContext";
+import { useToast } from "../components/Toast";
+import { compressImage } from "../utils/imageCompress";
+import { prettifyPartnerName, partnerInitial } from "../utils/displayName";
+import { chatAPI } from "../utils/chatAPI";
+import { marketAPI } from "../utils/marketAPI";
+import { formatPrice } from "../utils/normalizers";
+import { SERVER_URL } from "../config/env";
+import { notifyChatRead, notifyNotifRead } from "../utils/unreadEvents";
+import { refreshAppIconBadge } from "../utils/appBadge";
+import { useMountedRef } from "../hooks/useMountedRef";
+import { enqueueOutbox, flushOutbox } from "../utils/outbox";
+import { setActiveRoom } from "../utils/activeRoom"; // QA-аудит P2-2
+import { useAuth } from "../utils/AuthContext";
+import { voice } from "../utils/voiceRecorder";
+import VoiceMessageBubble from "../components/chat/VoiceMessageBubble";
+import QuickPhrases from "../components/QuickPhrases";
+import { v1Colors, useV1Colors, v1Radius } from "../theme/designV1";
+import BrandBarWithShare from "../components/ui/v1/BrandBarWithShare";
+import {
+  DealRoomCard,
+  SystemEventRow,
+  DealQuickActions,
+} from "../components/deal/DealRoom";
+import BargainCard from "../components/deal/BargainCard";
+import BidModal from "../components/BidModal";
+import DealAttachments from "../components/deal/DealAttachments";
+import TruckMap from "../components/TruckMap";
+import { pickDealStatus, userFacingDealStatus } from "../utils/dealStatusOrder";
+import {
+  ensureBackgroundLocationPermission,
+  getCurrentLocationPayload,
+} from "../utils/backgroundLocation";
+import { parseRouteCities } from "../utils/geo";
+import AppConfirmModal from "../components/ui/AppConfirmModal";
 
 // HOT-006: реальная запись/воспроизведение для web (PWA deploy).
 // На нативе (Expo Go) expo-av не установлен — тост "скоро".
-const IS_WEB = Platform.OS === 'web';
+const IS_WEB = Platform.OS === "web";
 
 // Вложения (фото/голос) сервер отдаёт как ХОСТ-ОТНОСИТЕЛЬНЫЙ подписанный путь
 // (`/security/storage/...?exp=&sig=`). В вебе браузер сам достраивает адрес от
@@ -45,31 +68,35 @@ const IS_WEB = Platform.OS === 'web';
 // SERVER_URL === '' на вебе (сохраняем относительный путь), 'https://urtruck.kz'
 // на нативе. Та же причина ломала воспроизведение голосовых на iOS.
 const resolveAttachment = (u) =>
-  (u && typeof u === 'string' && u.startsWith('/')) ? `${SERVER_URL}${u}` : u;
+  u && typeof u === "string" && u.startsWith("/") ? `${SERVER_URL}${u}` : u;
 
 // Server audit messages are stored once in the shared deal timeline.  Keep the
 // stored event immutable, but render known system events in the viewer's
 // language instead of showing Russian text to a Chinese or English driver.
 const SYSTEM_TEXT_KEYS = {
-  '🚛 Рейс начался': 'system_trip_started',
-  '🛂 На границе': 'system_trip_at_border',
-  '🛂 Груз на границе': 'system_trip_at_border',
-  '✅ Доставлен': 'system_trip_delivered',
-  '✅ Груз доставлен': 'system_trip_delivered',
-  '❌ Отменено': 'system_deal_cancelled',
-  '❌ Сделка отменена': 'system_deal_cancelled',
-  '📍 Грузоотправитель запросил GPS-отслеживание. Водитель должен подтвердить его в приложении.': 'system_tracking_requested',
-  '✅ Водитель разрешил GPS-отслеживание. Местоположение будет видно только участникам этой сделки.': 'system_tracking_approved',
-  'ℹ️ Водитель не разрешил GPS-отслеживание по этой сделке.': 'system_tracking_declined',
-  '🔒 Водитель отменил GPS-отслеживание до забора груза.': 'system_tracking_stopped',
+  "🚛 Рейс начался": "system_trip_started",
+  "🛂 На границе": "system_trip_at_border",
+  "🛂 Груз на границе": "system_trip_at_border",
+  "✅ Доставлен": "system_trip_delivered",
+  "✅ Груз доставлен": "system_trip_delivered",
+  "❌ Отменено": "system_deal_cancelled",
+  "❌ Сделка отменена": "system_deal_cancelled",
+  "📍 Грузоотправитель запросил GPS-отслеживание. Водитель должен подтвердить его в приложении.":
+    "system_tracking_requested",
+  "✅ Водитель разрешил GPS-отслеживание. Местоположение будет видно только участникам этой сделки.":
+    "system_tracking_approved",
+  "ℹ️ Водитель не разрешил GPS-отслеживание по этой сделке.":
+    "system_tracking_declined",
+  "🔒 Водитель отменил GPS-отслеживание до забора груза.":
+    "system_tracking_stopped",
 };
 
 const localizeSystemMessage = (text, translate) => {
-  const raw = String(text || '');
+  const raw = String(text || "");
   const key = SYSTEM_TEXT_KEYS[raw];
   if (/^🤝\s*Сделка создана(?:\s*·\s*(.+))?$/.test(raw)) {
     const amount = raw.match(/^🤝\s*Сделка создана(?:\s*·\s*(.+))?$/)?.[1];
-    return `🤝 ${translate('deal_created')}${amount ? ` · ${amount}` : ''}`;
+    return `🤝 ${translate('deal_created')}${amount ? ` · ${amount}` : ""}`;
   }
   return key ? translate(key) : text;
 };
@@ -83,151 +110,528 @@ const CHAT_PHOTO_ENABLED = true;
 // send с photoUrl=ключ), получатель играет по подписанному URL. Финальная
 // проверка записи/воспроизведения — на реальном устройстве.
 const CHAT_VOICE_ENABLED = true;
-const TRACKING_STATUSES = ['in_progress', 'at_border', 'delivered'];
+const TRACKING_STATUSES = ["in_progress", "at_border", "delivered"];
 const DRIVER_ROUTE_STATUSES = ['accepted', 'in_progress', 'at_border', 'delivered'];
 
 export default function ChatScreen({ navigation, route }) {
   const v1 = useV1Colors();
-  const s = React.useMemo(() => StyleSheet.create({
-
-  container: { flex: 1 },
-  // Partner strip below the brand bar (avatar + name + online dot)
-  partnerStrip: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 10,
-    borderBottomWidth: 1, borderBottomColor: v1.border,
-    backgroundColor: v1.bgDeep,
-  },
-  partnerAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  partnerAvatarIcon: { color: v1.text, fontSize: 16, fontWeight: '900' },
-  partnerName: { color: v1.text, fontSize: 15, fontWeight: '800' },
-  online: { fontSize: 11, fontWeight: '700' },
-  // System banner above the first message
-  msgList: { padding: 14, paddingBottom: 20 },
-  // PR4 Accept bid confirm-бар (inline, без модалки — работает и на web)
-  acceptConfirm: { backgroundColor: v1.surface, borderWidth: 1, borderColor: v1Colors.driver, borderRadius: 12, padding: 12, marginBottom: 8, gap: 6 },
-  acceptConfirmTitle: { color: v1.text, fontSize: 14, fontWeight: '900' },
-  acceptConfirmText: { color: v1.textMuted, fontSize: 12 },
-  acceptConfirmRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  acceptCancelBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: v1.border, alignItems: 'center' },
-  acceptCancelTxt: { color: v1.textMuted, fontSize: 12, fontWeight: '800' },
-  acceptOkBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: v1Colors.driver, alignItems: 'center' },
-  acceptOkTxt: { color: '#0C0A09', fontSize: 12, fontWeight: '900' },
-  // Компактный статус перевозки (05.08.2026) — заменяет горизонтальную шкалу.
-  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  statusRowLabel: { color: v1.textMuted, fontSize: 12, fontWeight: '600', flex: 1, minWidth: 0 },
-  statusRowValue: { fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'right' },
-  dealNextBtn: { borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', minHeight: 48, marginBottom: 8 },
-  dealNextBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  driverRouteBtn: { borderRadius: 12, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', minHeight: 46, marginBottom: 8, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface },
-  driverRouteBtnText: { color: v1.text, fontSize: 14, fontWeight: '800' },
-  dealCancelBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, backgroundColor: 'rgba(239,68,68,0.10)' },
-  dealCancelBtnText: { color: '#EF4444', fontSize: 13, fontWeight: '700' },
-  dealTrackBtn: { borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface },
-  dealTrackBtnText: { color: v1.text, fontSize: 13, fontWeight: '700' },
-  dealMapCard: { height: 205, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: v1.border, backgroundColor: '#EAF1ED', marginBottom: 8 },
-  dealMapEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, gap: 7 },
-  dealMapEmptyTitle: { color: v1.text, fontSize: 15, fontWeight: '900', textAlign: 'center' },
-  dealMapEmptyDesc: { color: v1.textMuted, fontSize: 12, lineHeight: 17, textAlign: 'center' },
-  dealMapOverlayTop: { display: 'none', position: 'absolute', top: 10, left: 10, right: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  dealMapPill: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '64%', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: v1.border },
-  dealMapPillText: { color: v1.text, fontSize: 12, fontWeight: '900' },
-  dealMapOpenPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: v1.border },
-  dealMapOpenText: { color: v1.text, fontSize: 12, fontWeight: '800' },
-  dealMapFooter: { display: 'none', position: 'absolute', left: 10, right: 10, bottom: 10, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: v1.border },
-  dealMapFooterText: { color: v1.textMuted, fontSize: 11, fontWeight: '700' },
-  trackingCard: { borderRadius: 12, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surface, padding: 12, marginBottom: 8, gap: 8 },
-  trackingTitle: { color: v1.text, fontSize: 13, fontWeight: '900' },
-  trackingHint: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
-  trackingRow: { flexDirection: 'row', gap: 8 },
-  trackingAllow: { flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: v1Colors.driver },
-  trackingDecline: { flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: v1.border },
-  trackingAllowText: { color: '#0C0A09', fontSize: 13, fontWeight: '900' },
-  trackingDeclineText: { color: v1.text, fontSize: 13, fontWeight: '800' },
-  msgRow: { marginBottom: 10 },
-  msgRowMe: { alignItems: 'flex-end' },
-  senderLabel: { fontSize: 11, marginBottom: 3, marginLeft: 6, color: v1.textMuted },
-  // B2B deal chat: компактнее и спокойнее (не consumer/WhatsApp). Меньше
-  // padding/radius/maxWidth; outgoing — спокойный изумруд (не ядовитый #168759).
-  bubble: { maxWidth: '72%', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 12 },
-  bubbleMe: { backgroundColor: '#15512F', borderBottomRightRadius: 4 },
-  bubbleThem: {
-    borderBottomLeftRadius: 4,
-    backgroundColor: v1.surface,
-    borderWidth: 1, borderColor: v1.border,
-  },
-  msgText: { fontSize: 14, lineHeight: 19 },
-  msgTextMe: { color: '#EAFBF1' },
-  translated: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
-  translatedText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontStyle: 'italic' },
-  msgTime: { color: v1.textMuted, fontSize: 11, textAlign: 'right', marginTop: 3 },
-  msgTimeMe: { color: 'rgba(234,251,241,0.55)' },
-  systemMsgRow: { alignItems: 'center', marginVertical: 6 },
-  systemMsgPill: {
-    backgroundColor: 'rgba(124,139,130,0.14)', borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 6, maxWidth: '80%',
-  },
-  systemMsgText: { color: '#617067', fontSize: 13, fontWeight: '600', textAlign: 'center' },
-  // Плашка «идёт запись» над инпутом: красная точка + таймер + подсказка.
-  recBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 14, paddingVertical: 8,
-    backgroundColor: 'rgba(239,68,68,0.12)',
-    borderTopWidth: 1, borderTopColor: '#EF4444',
-  },
-  recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' },
-  recText: { color: '#EF4444', fontSize: 13, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  recHint: { color: v1.textMuted, fontSize: 12, flex: 1, textAlign: 'right' },
-  // Input bar
-  inputRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 10, paddingVertical: 10, gap: 6,
-    borderTopWidth: 1, borderTopColor: v1.border,
-    backgroundColor: v1.bgDeep,
-  },
-  iconBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    borderWidth: 1, borderColor: v1.border,
-    backgroundColor: v1.surface,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  iconBtnText: { fontSize: 16, color: v1.text },
-  input: {
-    flex: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 14, borderWidth: 1, borderColor: v1.border,
-    backgroundColor: v1.surface, color: v1.text,
-  },
-  sendBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  // WeChat-панель вложений: сетка плиток под строкой ввода.
-  attachPanel: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 6,
-    paddingHorizontal: 12, paddingTop: 14, paddingBottom: 20,
-    borderTopWidth: 1, borderTopColor: v1.border, backgroundColor: v1.bgDeep,
-  },
-  attachTile: { width: '25%', alignItems: 'center', gap: 7, marginBottom: 8 },
-  attachIconBox: {
-    width: 54, height: 54, borderRadius: 16,
-    backgroundColor: v1.surface, borderWidth: 1, borderColor: v1.border,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  attachLabel: { fontSize: 11, color: v1.textMuted, fontWeight: '600' },
-  photoMsg: { width: 200, height: 150, borderRadius: 12 },
-  photoFailed: { width: 200, height: 150, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: v1.surface, borderWidth: 1, borderColor: v1.border },
-  photoFailedText: { color: v1.textMuted, fontSize: 12, fontWeight: '700' },
-  // C2: fullscreen-viewer вложения
-  fullBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
-  fullImage: { width: '100%', height: '100%' },
-  fullClose: { position: 'absolute', top: 48, right: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
-  fullSave: { position: 'absolute', bottom: 44, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 24 },
-  fullSaveTxt: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  voiceBubble: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 180 },
-  waveform: { flexDirection: 'row', alignItems: 'center', gap: 2, flex: 1 },
-  wavebar: { width: 2, borderRadius: 1 },
-  voiceTime: { fontSize: 11, minWidth: 30 },
-
-  }), [v1]);
-  const { partner, role, cargoId, tripId, roomId: initialRoomId, dealId: dealIdParam, bidId } = route.params || {};
-  const isShipperSide = role === 'client' || role === 'shipper';
+  const s = React.useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1 },
+        // Partner strip below the brand bar (avatar + name + online dot)
+        partnerStrip: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+          paddingHorizontal: 16,
+          paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: v1.border,
+          backgroundColor: v1.bgDeep,
+        },
+        partnerAvatar: {
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          alignItems: "center",
+          justifyContent: "center",
+          borderWidth: 1,
+        },
+        partnerAvatarIcon: { color: v1.text, fontSize: 16, fontWeight: "900" },
+        partnerName: { color: v1.text, fontSize: 15, fontWeight: "800" },
+        online: { fontSize: 11, fontWeight: "700" },
+        // System banner above the first message
+        msgList: { padding: 14, paddingBottom: 20 },
+        // PR4 Accept bid confirm-бар (inline, без модалки — работает и на web)
+        acceptConfirm: {
+          backgroundColor: v1.surface,
+          borderWidth: 1,
+          borderColor: v1Colors.driver,
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 8,
+          gap: 6,
+        },
+        acceptConfirmTitle: { color: v1.text, fontSize: 14, fontWeight: "900" },
+        acceptConfirmText: { color: v1.textMuted, fontSize: 12 },
+        acceptConfirmRow: { flexDirection: "row", gap: 8, marginTop: 4 },
+        acceptCancelBtn: {
+          flex: 1,
+          paddingVertical: 9,
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: v1.border,
+          alignItems: "center",
+        },
+        acceptCancelTxt: {
+          color: v1.textMuted,
+          fontSize: 12,
+          fontWeight: "800",
+        },
+        acceptOkBtn: {
+          flex: 1,
+          paddingVertical: 9,
+          borderRadius: 10,
+          backgroundColor: v1Colors.driver,
+          alignItems: "center",
+        },
+        acceptOkTxt: { color: "#0C0A09", fontSize: 12, fontWeight: "900" },
+        // Компактный статус перевозки (05.08.2026) — заменяет горизонтальную шкалу.
+        statusRow: {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 8,
+        },
+        statusRowLabel: {
+          color: v1.textMuted,
+          fontSize: 12,
+          fontWeight: "600",
+          flex: 1,
+          minWidth: 0,
+        },
+        statusRowValue: {
+          fontSize: 13,
+          fontWeight: "800",
+          flexShrink: 1,
+          textAlign: "right",
+        },
+        dealNextBtn: {
+          borderRadius: 12,
+          paddingVertical: 12,
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: 48,
+          marginBottom: 8,
+        },
+        dealNextBtnText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
+        driverRouteBtn: {
+          borderRadius: 12,
+          paddingVertical: 11,
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: 46,
+          marginBottom: 8,
+          borderWidth: 1,
+          borderColor: v1.border,
+          backgroundColor: v1.surface,
+        },
+        driverRouteBtnText: { color: v1.text, fontSize: 14, fontWeight: "800" },
+        dealCancelBtn: {
+          borderRadius: 12,
+          paddingVertical: 10,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 8,
+          backgroundColor: "rgba(239,68,68,0.10)",
+        },
+        dealCancelBtnText: {
+          color: "#EF4444",
+          fontSize: 13,
+          fontWeight: "700",
+        },
+        dealTrackBtn: {
+          borderRadius: 12,
+          paddingVertical: 10,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 8,
+          borderWidth: 1,
+          borderColor: v1.border,
+          backgroundColor: v1.surface,
+        },
+        dealTrackBtnText: { color: v1.text, fontSize: 13, fontWeight: "700" },
+        dealMapCard: {
+          height: 205,
+          borderRadius: 16,
+          overflow: "hidden",
+          borderWidth: 1,
+          borderColor: v1.border,
+          backgroundColor: "#EAF1ED",
+          marginBottom: 8,
+        },
+        dealMapEmpty: {
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: 18,
+          gap: 7,
+        },
+        dealMapEmptyTitle: {
+          color: v1.text,
+          fontSize: 15,
+          fontWeight: "900",
+          textAlign: "center",
+        },
+        dealMapEmptyDesc: {
+          color: v1.textMuted,
+          fontSize: 12,
+          lineHeight: 17,
+          textAlign: "center",
+        },
+        dealMapOverlayTop: {
+          display: "none",
+          position: "absolute",
+          top: 10,
+          left: 10,
+          right: 10,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        },
+        dealMapPill: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          maxWidth: "64%",
+          paddingHorizontal: 10,
+          paddingVertical: 7,
+          borderRadius: 999,
+          backgroundColor: "rgba(255,255,255,0.94)",
+          borderWidth: 1,
+          borderColor: v1.border,
+        },
+        dealMapPillText: { color: v1.text, fontSize: 12, fontWeight: "900" },
+        dealMapOpenPill: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 4,
+          paddingHorizontal: 10,
+          paddingVertical: 7,
+          borderRadius: 999,
+          backgroundColor: "rgba(255,255,255,0.94)",
+          borderWidth: 1,
+          borderColor: v1.border,
+        },
+        dealMapOpenText: { color: v1.text, fontSize: 12, fontWeight: "800" },
+        dealMapFooter: {
+          display: "none",
+          position: "absolute",
+          left: 10,
+          right: 10,
+          bottom: 10,
+          paddingHorizontal: 10,
+          paddingVertical: 8,
+          borderRadius: 12,
+          backgroundColor: "rgba(255,255,255,0.94)",
+          borderWidth: 1,
+          borderColor: v1.border,
+        },
+        dealMapFooterText: {
+          color: v1.textMuted,
+          fontSize: 11,
+          fontWeight: "700",
+        },
+        trackingCard: {
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: v1.border,
+          backgroundColor: v1.surface,
+          padding: 12,
+          marginBottom: 8,
+          gap: 8,
+        },
+        trackingTitle: { color: v1.text, fontSize: 13, fontWeight: "900" },
+        trackingHint: { color: v1.textMuted, fontSize: 12, lineHeight: 17 },
+        trackingRow: { flexDirection: "row", gap: 8 },
+        trackingAllow: {
+          flex: 1,
+          minHeight: 42,
+          borderRadius: 10,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: v1Colors.driver,
+        },
+        trackingDecline: {
+          flex: 1,
+          minHeight: 42,
+          borderRadius: 10,
+          alignItems: "center",
+          justifyContent: "center",
+          borderWidth: 1,
+          borderColor: v1.border,
+        },
+        trackingAllowText: {
+          color: "#0C0A09",
+          fontSize: 13,
+          fontWeight: "900",
+        },
+        trackingDeclineText: {
+          color: v1.text,
+          fontSize: 13,
+          fontWeight: "800",
+        },
+        msgRow: { marginBottom: 10 },
+        msgRowMe: { alignItems: "flex-end" },
+        senderLabel: {
+          fontSize: 11,
+          marginBottom: 3,
+          marginLeft: 6,
+          color: v1.textMuted,
+        },
+        // B2B deal chat: компактнее и спокойнее (не consumer/WhatsApp). Меньше
+        // padding/radius/maxWidth; outgoing — спокойный изумруд (не ядовитый #168759).
+        bubble: {
+          maxWidth: "72%",
+          paddingHorizontal: 11,
+          paddingVertical: 7,
+          borderRadius: 12,
+        },
+        bubbleMe: { backgroundColor: "#D9FDD3", borderBottomRightRadius: 4 },
+        bubbleThem: {
+          borderBottomLeftRadius: 4,
+          backgroundColor: "#FFFFFF",
+          borderWidth: 1,
+          borderColor: "rgba(17,27,33,0.08)",
+        },
+        msgText: { fontSize: 14, lineHeight: 19 },
+        msgTextMe: { color: "#111B21" },
+        translated: {
+          marginTop: 6,
+          paddingTop: 6,
+          borderTopWidth: 1,
+          borderTopColor: "rgba(255,255,255,0.1)",
+        },
+        translatedText: {
+          color: "rgba(17,27,33,0.58)",
+          fontSize: 11,
+          fontStyle: "italic",
+        },
+        assistLabel: {
+          fontSize: 10,
+          fontWeight: "800",
+          marginBottom: 3,
+          textTransform: "uppercase",
+        },
+        assistText: { fontSize: 12, lineHeight: 17 },
+        msgTime: {
+          color: v1.textMuted,
+          fontSize: 11,
+          textAlign: "right",
+          marginTop: 3,
+        },
+        msgTimeMe: { color: "rgba(17,27,33,0.58)" },
+        msgBodyRow: {
+          flexDirection: "row",
+          alignItems: "flex-end",
+          justifyContent: "flex-end",
+        },
+        msgFooter: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 3,
+          marginLeft: 5,
+          paddingBottom: 1,
+        },
+        msgStatus: { fontSize: 10.5, color: "rgba(17,27,33,0.58)" },
+        systemMsgRow: { alignItems: "center", marginVertical: 6 },
+        systemMsgPill: {
+          backgroundColor: "rgba(124,139,130,0.14)",
+          borderRadius: 12,
+          paddingHorizontal: 14,
+          paddingVertical: 6,
+          maxWidth: "80%",
+        },
+        systemMsgText: {
+          color: "#617067",
+          fontSize: 13,
+          fontWeight: "600",
+          textAlign: "center",
+        },
+        // Плашка «идёт запись» над инпутом: красная точка + таймер + подсказка.
+        recBanner: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          paddingHorizontal: 14,
+          paddingVertical: 8,
+          backgroundColor: "rgba(239,68,68,0.12)",
+          borderTopWidth: 1,
+          borderTopColor: "#EF4444",
+        },
+        recDot: {
+          width: 10,
+          height: 10,
+          borderRadius: 5,
+          backgroundColor: "#EF4444",
+        },
+        recText: {
+          color: "#EF4444",
+          fontSize: 13,
+          fontWeight: "900",
+          fontVariant: ["tabular-nums"],
+        },
+        recHint: {
+          color: v1.textMuted,
+          fontSize: 12,
+          flex: 1,
+          textAlign: "right",
+        },
+        // Input bar
+        inputRow: {
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 10,
+          paddingVertical: 10,
+          gap: 6,
+          borderTopWidth: 1,
+          borderTopColor: v1.border,
+          backgroundColor: v1.bgDeep,
+        },
+        iconBtn: {
+          width: 40,
+          height: 40,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: v1.border,
+          backgroundColor: v1.surface,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        iconBtnText: { fontSize: 16, color: v1.text },
+        input: {
+          flex: 1,
+          borderRadius: 12,
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          fontSize: 14,
+          borderWidth: 1,
+          borderColor: v1.border,
+          backgroundColor: v1.surface,
+          color: v1.text,
+        },
+        sendBtn: {
+          width: 40,
+          height: 40,
+          borderRadius: 12,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        // WeChat-панель вложений: сетка плиток под строкой ввода.
+        attachPanel: {
+          flexDirection: "row",
+          flexWrap: "wrap",
+          gap: 6,
+          paddingHorizontal: 12,
+          paddingTop: 14,
+          paddingBottom: 20,
+          borderTopWidth: 1,
+          borderTopColor: v1.border,
+          backgroundColor: v1.bgDeep,
+        },
+        attachTile: {
+          width: "25%",
+          alignItems: "center",
+          gap: 7,
+          marginBottom: 8,
+        },
+        attachIconBox: {
+          width: 54,
+          height: 54,
+          borderRadius: 16,
+          backgroundColor: v1.surface,
+          borderWidth: 1,
+          borderColor: v1.border,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        attachLabel: { fontSize: 11, color: v1.textMuted, fontWeight: "600" },
+        photoMsg: { width: 200, height: 150, borderRadius: 12 },
+        photoMetaOverlay: {
+          position: "absolute",
+          right: 10,
+          bottom: 8,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 3,
+          backgroundColor: "rgba(255,255,255,0.74)",
+          borderRadius: 999,
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+        },
+        photoFailed: {
+          width: 200,
+          height: 150,
+          borderRadius: 12,
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 7,
+          backgroundColor: v1.surface,
+          borderWidth: 1,
+          borderColor: v1.border,
+        },
+        photoFailedText: {
+          color: v1.textMuted,
+          fontSize: 12,
+          fontWeight: "700",
+        },
+        // C2: fullscreen-viewer вложения
+        fullBackdrop: {
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.92)",
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        fullImage: { width: "100%", height: "100%" },
+        fullClose: {
+          position: "absolute",
+          top: 48,
+          right: 20,
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: "rgba(0,0,0,0.5)",
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        fullSave: {
+          position: "absolute",
+          bottom: 44,
+          alignSelf: "center",
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          backgroundColor: "rgba(0,0,0,0.6)",
+          paddingHorizontal: 20,
+          paddingVertical: 12,
+          borderRadius: 24,
+        },
+        fullSaveTxt: { color: "#fff", fontSize: 15, fontWeight: "800" },
+        voiceBubble: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          minWidth: 180,
+        },
+        waveform: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 2,
+          flex: 1,
+        },
+        wavebar: { width: 2, borderRadius: 1 },
+        voiceTime: { fontSize: 11, minWidth: 30 },
+        assistBtn: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 4,
+          marginTop: 6,
+        },
+      }),
+    [v1],
+  );
+  const {
+    partner,
+    role,
+    cargoId,
+    tripId,
+    roomId: initialRoomId,
+    dealId: dealIdParam,
+    bidId,
+  } = route.params || {};
+  const isShipperSide = role === "client" || role === "shipper";
   // dealId — состояние: если чат открыт из «Чаты»/ставки (только roomId, без
   // dealId), достаём deal_id из комнаты, чтобы подгрузить сделку → появляются
   // маршрут в шапке и карточка сделки при ЛЮБОМ входе.
@@ -237,10 +641,10 @@ export default function ChatScreen({ navigation, route }) {
   const { toast } = useToast();
   const { session } = useAuth();
   const myId = session?.user?.id;
-  const mounted = useMountedRef();  // QA-аудит P1-8
+  const mounted = useMountedRef(); // QA-аудит P1-8
   const [messages, setMessages] = useState([]);
   const [roomId, setRoomId] = useState(initialRoomId || null);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [showPhrases, setShowPhrases] = useState(false);
   // WeChat-стиль: панель вложений снизу, открывается по «+». Главная строка
   // ввода остаётся чистой ([+] · поле · 🎤 · отправить).
@@ -257,21 +661,26 @@ export default function ChatScreen({ navigation, route }) {
   const saveFullImage = async () => {
     if (!fullImage) return;
     try {
-      if (Platform.OS === 'web') {
-        if (typeof window !== 'undefined') window.open(fullImage, '_blank');
+      if (Platform.OS === "web") {
+        if (typeof window !== "undefined") window.open(fullImage, "_blank");
         else await Linking.openURL(fullImage);
       } else {
-        const { Share } = require('react-native');
+        const { Share } = require("react-native");
         await Share.share({ url: fullImage, message: fullImage });
       }
     } catch {
-      Linking.openURL(fullImage).catch(() => toast(t('send_error'), 'error'));
+      Linking.openURL(fullImage).catch(() => toast(t("send_error"), "error"));
     }
   };
   // Часть 2 (торг в чате): BidModal + refreshKey для BargainCard. Кнопка 💰 в
   // инпут-баре и чипы в карточке торга шлют действия через существующие
   // эндпоинты; bargainRefresh инкрементим, чтобы карточка перечитала статус.
-  const [bidModal, setBidModal] = useState({ visible: false, mode: 'create', bidId: null, amount: null });
+  const [bidModal, setBidModal] = useState({
+    visible: false,
+    mode: "create",
+    bidId: null,
+    amount: null,
+  });
   const [bargainRefresh, setBargainRefresh] = useState(0);
   // UX 26.07: тик-триггер «Документ» из «+»-меню → DealAttachments.onAttach().
   const [attachDocTick, setAttachDocTick] = useState(0);
@@ -279,7 +688,10 @@ export default function ChatScreen({ navigation, route }) {
   // непонятно, идёт запись или нет (жалоба владельца).
   const [recordSecs, setRecordSecs] = useState(0);
   useEffect(() => {
-    if (!recording) { setRecordSecs(0); return; }
+    if (!recording) {
+      setRecordSecs(0);
+      return;
+    }
     const iv = setInterval(() => setRecordSecs((n) => n + 1), 1000);
     return () => clearInterval(iv);
   }, [recording]);
@@ -292,11 +704,13 @@ export default function ChatScreen({ navigation, route }) {
     const now = Date.now();
     if (roomId && v && now - lastTypingPing.current > 2500) {
       lastTypingPing.current = now;
-      chatAPI.typing(roomId);   // fire-and-forget
+      chatAPI.typing(roomId); // fire-and-forget
     }
   };
   const [translations, setTranslations] = useState({});
   const [translating, setTranslating] = useState(null);
+  const [voiceTranscripts, setVoiceTranscripts] = useState({});
+  const [voiceTranscribing, setVoiceTranscribing] = useState(null);
   // Авто-перевод всей ленты (ключевая фича Китай↔СНГ): при включении все
   // входящие сообщения переводятся на язык интерфейса автоматически.
   const [autoTranslate, setAutoTranslate] = useState(false);
@@ -305,7 +719,10 @@ export default function ChatScreen({ navigation, route }) {
   const [deal, setDeal] = useState(null);
   const [dealEvents, setDealEvents] = useState([]);
   const [trackingLoading, setTrackingLoading] = useState(false);
-  const [dealLocation, setDealLocation] = useState({ loading: false, loc: null });
+  const [dealLocation, setDealLocation] = useState({
+    loading: false,
+    loc: null,
+  });
   // issue #4: когда в Chat пришёл только roomId (из карточки заказа/ставки),
   // partner в route может быть пустым → заголовок показывал «Собеседник».
   // Подтягиваем реального собеседника из enriched /chat/rooms по roomId.
@@ -323,13 +740,21 @@ export default function ChatScreen({ navigation, route }) {
   // иначе дотягиваем с самого груза.
   const [listingCurrency, setListingCurrency] = useState(null);
   useEffect(() => {
-    if (deal?.currency) { setListingCurrency(deal.currency); return; }
+    if (deal?.currency) {
+      setListingCurrency(deal.currency);
+      return;
+    }
     if (!bargainCargoId) return;
     let alive = true;
-    marketAPI.getCargo(bargainCargoId)
-      .then((c) => { if (alive && c?.currency) setListingCurrency(c.currency); })
+    marketAPI
+      .getCargo(bargainCargoId)
+      .then((c) => {
+        if (alive && c?.currency) setListingCurrency(c.currency);
+      })
       .catch(() => {});
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [deal?.currency, bargainCargoId]);
   const flatListRef = useRef(null);
   // A signed Supabase/local URL may be reissued on every history poll. Keep
@@ -341,20 +766,25 @@ export default function ChatScreen({ navigation, route }) {
   const mediaStreamRef = useRef(null);
   const mediaChunksRef = useRef([]);
   const recordStartRef = useRef(0);
+  const voiceTransitionRef = useRef(false);
+  const [playingVoiceId, setPlayingVoiceId] = useState(null);
 
   // G-1: время серверных сообщений приходит как naive-UTC (SQLite/FastAPI без
   // таймзоны). Раньше пузырь показывал сырой UTC-срез без сдвига → не совпадало
   // с локальным временем. Помечаем как UTC и форматируем в локальное HH:MM,
   // фолбэк на старый срез при невалидной дате.
   const fmtMsgTime = (raw) => {
-    if (!raw) return '';
+    if (!raw) return "";
     let s = String(raw);
-    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s) && !/[zZ]|[+\-]\d{2}:?\d{2}$/.test(s)) {
-      s = s.replace(' ', 'T') + 'Z';
+    if (
+      /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s) &&
+      !/[zZ]|[+\-]\d{2}:?\d{2}$/.test(s)
+    ) {
+      s = s.replace(" ", "T") + "Z";
     }
     const d = new Date(s);
     if (isNaN(d.getTime())) return String(raw).slice(11, 16);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
   // Загрузка истории чата
@@ -362,38 +792,49 @@ export default function ChatScreen({ navigation, route }) {
     if (!rid) return;
     try {
       const md = await chatAPI.messages(rid);
-      if (!mounted.current) return;  // QA-аудит P1-8: чат закрыт во время poll
+      if (!mounted.current) return; // QA-аудит P1-8: чат закрыт во время poll
       // «Печатает…»: сервер отдаёт живость typing-пинга партнёра.
       setPartnerTyping(!!md.partner_typing);
       setPartnerOnline(!!md.partner_online);
-      const mapped = (md.messages || []).map(m => {
+      const mapped = (md.messages || []).map((m) => {
         // Источник истины — серверный признак m.mine (сравнение sender_id с uid
         // на бэке). Локальный myId может быть фейковым ('u_<ts>') до синка
         // AuthContext → раньше своё сообщение показывалось как чужое
         // («отправляю — копируется мне»). Серверный mine этот баг убирает.
         // Фолбэк на старую эвристику — только если mine не пришёл (старый бэк).
         const fromMe =
-          (typeof m.mine === 'boolean')
+          typeof m.mine === "boolean"
             ? m.mine
-            : ((myId && m.sender_id === myId) ||
-               (partner?.id && m.sender_id !== partner.id));
-        const isSystemMsg = m.sender_id === 'system';
-        const attachmentKind = m.is_voice ? 'voice' : 'photo';
+            : (myId && m.sender_id === myId) ||
+              (partner?.id && m.sender_id !== partner.id);
+        const isSystemMsg = m.sender_id === "system";
+        const attachmentKind = m.is_voice ? "voice" : "photo";
         const attachmentCacheKey = `${attachmentKind}:${m.id}`;
         const issuedAttachmentUrl = resolveAttachment(m.photo_url);
         let stableAttachmentUrl = issuedAttachmentUrl;
         if (issuedAttachmentUrl) {
-          stableAttachmentUrl = attachmentUrlCache.current.get(attachmentCacheKey) || issuedAttachmentUrl;
-          attachmentUrlCache.current.set(attachmentCacheKey, stableAttachmentUrl);
+          stableAttachmentUrl =
+            attachmentUrlCache.current.get(attachmentCacheKey) ||
+            issuedAttachmentUrl;
+          attachmentUrlCache.current.set(
+            attachmentCacheKey,
+            stableAttachmentUrl,
+          );
         }
         return {
-          id: String(m.id), from: isSystemMsg ? 'system' : (fromMe ? 'me' : 'them'),
+          id: String(m.id),
+          from: isSystemMsg ? "system" : fromMe ? "me" : "them",
           // Голосовое хранит аудио-ключ в том же поле photo_url (подписанном
           // сервером) — не путать с фото: isPhoto только когда НЕ voice.
           text: isSystemMsg ? localizeSystemMessage(m.text, t) : m.text,
-          isPhoto: !!m.photo_url && !m.is_voice, photoUri: stableAttachmentUrl,
-          isVoice: !!m.is_voice, voiceUrl: m.is_voice ? stableAttachmentUrl : undefined,
+          isPhoto: !!m.photo_url && !m.is_voice,
+          photoUri: stableAttachmentUrl,
+          isVoice: !!m.is_voice,
+          voiceUrl: m.is_voice ? stableAttachmentUrl : undefined,
           duration: m.voice_duration || 0,
+          transcript: m.voice_transcript || "",
+          transcriptLang: m.voice_transcript_lang || null,
+          transcriptProvider: m.voice_transcript_provider || null,
           time: fmtMsgTime(m.created_at),
           is_read: !!m.is_read,
           // P3/merge: серверный client_msg_id для точного сопоставления
@@ -416,26 +857,31 @@ export default function ChatScreen({ navigation, route }) {
       // Решение: optimistic-помеченные местные сообщения сохраняем
       // пока не появятся в server response. Дедуп по тексту+времени
       // для миграции старых optimistic к серверному ID.
-      setMessages(prev => {
+      setMessages((prev) => {
         if (!Array.isArray(mapped) || mapped.length === 0) {
           return prev; // не сбрасываем на пустой server response
         }
-        const serverIds = new Set(mapped.map(m => m.id));
+        const serverIds = new Set(mapped.map((m) => m.id));
         // Локальные сообщения которых нет в server — сохраняем (только
         // optimistic, отмечены _optimistic=true в sendMessage).
-        const localOnly = prev.filter(m => {
+        const localOnly = prev.filter((m) => {
           if (!m._optimistic) return false;
           if (serverIds.has(m.id)) return false;
           // Сопоставление optimistic → server: сначала по client_msg_id
           // (устойчиво; локальный id пузыря === clientMsgId), иначе фолбэк
           // по тексту. Это чинит схлопывание двух одинаковых сообщений
           // («ок»/«ок») в одно между поллами.
-          const ackedByServer = mapped.some(srv =>
-            (srv.clientMsgId && srv.clientMsgId === m.id) ||
-            // фолбэк по тексту — ТОЛЬКО когда у серверного сообщения нет
-            // clientMsgId (старый бэк) и текст непустой. Иначе два одинаковых
-            // «ок» ложно схлопываются, а фото/голос (text='') матчатся зря.
-            (!srv.clientMsgId && srv.from === 'me' && m.text && m.text.trim() !== '' && srv.text === m.text)
+          const ackedByServer = mapped.some(
+            (srv) =>
+              (srv.clientMsgId && srv.clientMsgId === m.id) ||
+              // фолбэк по тексту — ТОЛЬКО когда у серверного сообщения нет
+              // clientMsgId (старый бэк) и текст непустой. Иначе два одинаковых
+              // «ок» ложно схлопываются, а фото/голос (text='') матчатся зря.
+              (!srv.clientMsgId &&
+                srv.from === "me" &&
+                m.text &&
+                m.text.trim() !== "" &&
+                srv.text === m.text),
           );
           return !ackedByServer;
         });
@@ -451,33 +897,113 @@ export default function ChatScreen({ navigation, route }) {
     }
     if (!partner?.id && !cargoId && !tripId) return;
     let alive = true;
-    chatAPI.rooms().then(d => {
-      const rooms = d.rooms || [];
-      let room = null;
-      if (partner?.id) {
-        room = rooms.find(r => r.participant_1 === partner.id || r.participant_2 === partner.id);
-      }
-      // Фолбэк: вход из карточки заказа/ставки БЕЗ roomId и БЕЗ partner —
-      // резолвим комнату по cargo_id/trip_id. Без этого первое сообщение и
-      // история не грузились (roomId оставался null, поллинг не стартовал).
-      if (!room && (cargoId || tripId)) {
-        room = rooms.find(r => (cargoId && r.cargo_id === cargoId) || (tripId && r.trip_id === tripId));
-      }
-      if (alive && room) {
-        setRoomId(room.id);
-        loadMessages(room.id);
-      }
-    }).catch(() => {});
-    return () => { alive = false; };
+    chatAPI
+      .rooms()
+      .then((d) => {
+        const rooms = d.rooms || [];
+        let room = null;
+        if (partner?.id) {
+          room = rooms.find(
+            (r) =>
+              r.participant_1 === partner.id || r.participant_2 === partner.id,
+          );
+        }
+        // Фолбэк: вход из карточки заказа/ставки БЕЗ roomId и БЕЗ partner —
+        // резолвим комнату по cargo_id/trip_id. Без этого первое сообщение и
+        // история не грузились (roomId оставался null, поллинг не стартовал).
+        if (!room && (cargoId || tripId)) {
+          room = rooms.find(
+            (r) =>
+              (cargoId && r.cargo_id === cargoId) ||
+              (tripId && r.trip_id === tripId),
+          );
+        }
+        if (alive && room) {
+          setRoomId(room.id);
+          loadMessages(room.id);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, [partner?.id, initialRoomId, cargoId, tripId]);
 
   // Авто-перевод: когда включён, переводим все входящие сообщения без
   // перевода на язык интерфейса. Кэш (наш стейт + серверный) не даёт
   // переводить одно и то же дважды; при новом сообщении переводится только оно.
   useEffect(() => {
+    setVoiceTranscripts((prev) => {
+      let changed = false;
+      let next = prev;
+      for (const message of messages) {
+        if (!message?.isVoice || !message?.transcript) continue;
+        const current = next[message.id];
+        if (
+          current?.transcriptText === message.transcript &&
+          current?.sourceLang === message.transcriptLang &&
+          current?.provider === message.transcriptProvider
+        ) {
+          continue;
+        }
+        if (!changed) next = { ...prev };
+        next[message.id] = {
+          visible: current?.visible ?? false,
+          transcriptText: message.transcript,
+          sourceLang: message.transcriptLang || current?.sourceLang || null,
+          provider: message.transcriptProvider || current?.provider || null,
+          translatedText: current?.translatedText || null,
+          translationProvider: current?.translationProvider || null,
+        };
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [messages]);
+
+  const toggleVoiceTranscript = async (item) => {
+    const current = voiceTranscripts[item.id];
+    if (current?.transcriptText) {
+      setVoiceTranscripts((prev) => ({
+        ...prev,
+        [item.id]: { ...current, visible: !current.visible },
+      }));
+      return;
+    }
+    setVoiceTranscribing(item.id);
+    try {
+      const result = await chatAPI.transcribe(
+        item.id,
+        getLanguage().toLowerCase(),
+      );
+      if (!result?.transcript_text) {
+        toast(t("voice_transcription_unavailable"), "info");
+        return;
+      }
+      setVoiceTranscripts((prev) => ({
+        ...prev,
+        [item.id]: {
+          visible: true,
+          transcriptText: result.transcript_text,
+          sourceLang: result.source_lang || null,
+          provider: result.provider || null,
+          translatedText: result.translated_text || null,
+          translationProvider: result.translation_provider || null,
+        },
+      }));
+    } catch {
+      toast(t("voice_transcription_unavailable"), "info");
+    } finally {
+      setVoiceTranscribing(null);
+    }
+  };
+
+  useEffect(() => {
     if (!autoTranslate) return;
     const lng = getLanguage().toLowerCase();
-    const pending = messages.filter(m => m && m.id && m.from !== 'me' && m.text && !translations[m.id]);
+    const pending = messages.filter(
+      (m) => m && m.id && m.from !== "me" && m.text && !translations[m.id],
+    );
     if (pending.length === 0) return;
     let cancelled = false;
     (async () => {
@@ -486,12 +1012,25 @@ export default function ChatScreen({ navigation, route }) {
         try {
           const r = await chatAPI.translate(m.id, lng);
           if (!cancelled && r?.translated_text) {
-            setTranslations(prev => prev[m.id] ? prev : ({ ...prev, [m.id]: { text: r.translated_text, provider: r.provider, showOriginal: false } }));
+            setTranslations((prev) =>
+              prev[m.id]
+                ? prev
+                : {
+                    ...prev,
+                    [m.id]: {
+                      text: r.translated_text,
+                      provider: r.provider,
+                      showOriginal: false,
+                    },
+                  },
+            );
           }
         } catch {}
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [autoTranslate, messages]);
 
   // Polling каждые 3 сек — подтягиваем ответы (Support/Володя/живые).
@@ -500,13 +1039,28 @@ export default function ChatScreen({ navigation, route }) {
   useEffect(() => {
     if (!roomId) return;
     let iv = null;
-    const start = () => { if (!iv) iv = setInterval(() => loadMessages(roomId), 3000); };
-    const stop = () => { if (iv) { clearInterval(iv); iv = null; } };
+    const start = () => {
+      if (!iv) iv = setInterval(() => loadMessages(roomId), 3000);
+    };
+    const stop = () => {
+      if (iv) {
+        clearInterval(iv);
+        iv = null;
+      }
+    };
     start();
-    const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') { loadMessages(roomId); start(); } else { stop(); }
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") {
+        loadMessages(roomId);
+        start();
+      } else {
+        stop();
+      }
     });
-    return () => { stop(); sub?.remove?.(); };
+    return () => {
+      stop();
+      sub?.remove?.();
+    };
   }, [roomId]);
 
   // QA-аудит P2-2: помечаем комнату активной, пока экран в фокусе — чтобы
@@ -516,9 +1070,16 @@ export default function ChatScreen({ navigation, route }) {
     setActiveRoom(roomId);
     // Variant B: при возврате на экран — перезагружаем историю (свежие
     // сообщения собеседника видны сразу, не дожидаясь 3-сек поллинга).
-    const unsubF = navigation.addListener('focus', () => { setActiveRoom(roomId); if (roomId) loadMessages(roomId); });
-    const unsubB = navigation.addListener('blur', () => setActiveRoom(null));
-    return () => { unsubF(); unsubB(); setActiveRoom(null); };
+    const unsubF = navigation.addListener("focus", () => {
+      setActiveRoom(roomId);
+      if (roomId) loadMessages(roomId);
+    });
+    const unsubB = navigation.addListener("blur", () => setActiveRoom(null));
+    return () => {
+      unsubF();
+      unsubB();
+      setActiveRoom(null);
+    };
   }, [navigation, roomId]);
 
   // QA-аудит P1-3: прогон офлайн-очереди — при входе в чат и при возврате
@@ -528,12 +1089,17 @@ export default function ChatScreen({ navigation, route }) {
     const doFlush = async () => {
       try {
         // Блок 2 (P1-5): отправляем только очередь ТЕКУЩЕГО юзера.
-        const sent = await flushOutbox((p) => chatAPI.send(p), session?.user?.id);
+        const sent = await flushOutbox(
+          (p) => chatAPI.send(p),
+          session?.user?.id,
+        );
         if (sent > 0 && mounted.current && roomId) loadMessages(roomId);
       } catch {}
     };
     doFlush();
-    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') doFlush(); });
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") doFlush();
+    });
     return () => sub?.remove?.();
   }, [roomId, session?.user?.id]);
 
@@ -541,20 +1107,26 @@ export default function ChatScreen({ navigation, route }) {
   // rooms по roomId, если из route пришёл пустой/технический partner.
   useEffect(() => {
     if (!roomId) return;
-    chatAPI.rooms().then((d) => {
-      const room = (d.rooms || []).find((r) => r.id === roomId);
-      if (!room) return;
-      // Variant B: берём ТОЛЬКО partner_id (другой участник из бэка). Не
-      // падаем на participant_1/2 вслепую — это мог быть сам пользователь.
-      setResolvedPartner((prev) => ({
-        id: prev?.id || room.partner_id || null,
-        name: (prev?.name && String(prev.name).trim()) ? prev.name : room.partner_name,
-        role: prev?.role || room.partner_role,
-      }));
-      // Часть 2: дорезолвить листинг для карточки торга (если пришли из «Чаты»).
-      if (room.cargo_id) setResolvedCargoId((prev) => prev || room.cargo_id);
-      if (room.trip_id) setResolvedTripId((prev) => prev || room.trip_id);
-    }).catch(() => {});
+    chatAPI
+      .rooms()
+      .then((d) => {
+        const room = (d.rooms || []).find((r) => r.id === roomId);
+        if (!room) return;
+        // Variant B: берём ТОЛЬКО partner_id (другой участник из бэка). Не
+        // падаем на participant_1/2 вслепую — это мог быть сам пользователь.
+        setResolvedPartner((prev) => ({
+          id: prev?.id || room.partner_id || null,
+          name:
+            prev?.name && String(prev.name).trim()
+              ? prev.name
+              : room.partner_name,
+          role: prev?.role || room.partner_role,
+        }));
+        // Часть 2: дорезолвить листинг для карточки торга (если пришли из «Чаты»).
+        if (room.cargo_id) setResolvedCargoId((prev) => prev || room.cargo_id);
+        if (room.trip_id) setResolvedTripId((prev) => prev || room.trip_id);
+      })
+      .catch(() => {});
   }, [roomId]);
 
   // PR-C2 (Task 2 unified badge): notify BottomNav когда чат открылся
@@ -567,7 +1139,10 @@ export default function ChatScreen({ navigation, route }) {
     // BUG-003: пересчитываем app-icon badge прямо отсюда — BottomNav
     // размонтирован (мы поверх табов), его syncAppIconBadge не сработает.
     refreshAppIconBadge();
-    return () => { notifyChatRead(); refreshAppIconBadge(); };
+    return () => {
+      notifyChatRead();
+      refreshAppIconBadge();
+    };
   }, [roomId]);
 
   // Deal Room: загрузка карточки сделки + immutable timeline по dealId.
@@ -591,12 +1166,13 @@ export default function ChatScreen({ navigation, route }) {
   const refreshDeal = () => {
     if (!dealId) return;
     const seq = ++dealFetchSeq.current;
-    marketAPI.getDeal(dealId)
+    marketAPI
+      .getDeal(dealId)
       .then((srv) => {
-        if (!srv || typeof srv !== 'object') return;
+        if (!srv || typeof srv !== "object") return;
         if (seq !== dealFetchSeq.current) return; // ответ устарел
         setDeal((prev) => ({
-          status: pickDealStatus(prev?.status, srv.status || 'accepted'),
+          status: pickDealStatus(prev?.status, srv.status || "accepted"),
           from_city: prev?.from_city || srv.from_city,
           to_city: prev?.to_city || srv.to_city,
           from_country: prev?.from_country || srv.from_country,
@@ -608,7 +1184,8 @@ export default function ChatScreen({ navigation, route }) {
           amount: prev?.amount != null ? prev.amount : srv.amount,
           currency: prev?.currency || srv.currency,
           plate: prev?.plate || srv.plate,
-          counterparty_phone: srv.counterparty_phone || prev?.counterparty_phone,
+          counterparty_phone:
+            srv.counterparty_phone || prev?.counterparty_phone,
           counterparty_name: srv.counterparty_name || prev?.counterparty_name,
           // 2026-08-19 (P1 re-review, независимый merge-block): вес груза/
           // грузоподъёмность рейса — для TrackTruck → TruckMap.roadRoute()
@@ -617,6 +1194,11 @@ export default function ChatScreen({ navigation, route }) {
           cargo_weight_tons: prev?.cargo_weight_tons ?? srv.cargo_weight_tons,
           trip_capacity_tons: prev?.trip_capacity_tons ?? srv.trip_capacity_tons,
         }));
+        // GET /market/deals/{id} на бэке гасит deal/cargo/trip notifications
+        // для этой сделки. Сразу пересинхронизируем UI-бейджи, иначе красный
+        // индикатор может висеть до следующего polling.
+        notifyNotifRead();
+        refreshAppIconBadge();
       })
       .catch(() => {});
   };
@@ -624,12 +1206,18 @@ export default function ChatScreen({ navigation, route }) {
     if (!dealId) return;
     const p = route.params || {};
     setDeal({
-      status: p.dealStatus, from_city: p.fromCity, to_city: p.toCity,
-      cargo_desc: p.cargoDesc, cargo_id: p.cargoId, amount: p.amount, plate: p.plate,
+      status: p.dealStatus,
+      from_city: p.fromCity,
+      to_city: p.toCity,
+      cargo_desc: p.cargoDesc,
+      cargo_id: p.cargoId,
+      amount: p.amount,
+      plate: p.plate,
     });
     refreshDeal();
-    chatAPI.dealTimeline(dealId)
-      .then(r => setDealEvents(Array.isArray(r?.events) ? r.events : []))
+    chatAPI
+      .dealTimeline(dealId)
+      .then((r) => setDealEvents(Array.isArray(r?.events) ? r.events : []))
       .catch(() => {});
     // Периодический refetch (как в CargoDetail/TripDetail) — вторая сторона
     // могла продвинуть статус (Начать/На границе/Доставлено), пока этот
@@ -644,12 +1232,17 @@ export default function ChatScreen({ navigation, route }) {
   useEffect(() => {
     if (roomId || !dealId) return;
     let cancelled = false;
-    chatAPI.rooms().then((d) => {
-      if (cancelled) return;
-      const room = (d?.rooms || []).find((r) => r.deal_id === dealId);
-      if (room?.id) setRoomId(room.id);
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    chatAPI
+      .rooms()
+      .then((d) => {
+        if (cancelled) return;
+        const room = (d?.rooms || []).find((r) => r.deal_id === dealId);
+        if (room?.id) setRoomId(room.id);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [dealId, roomId]);
 
   // Обратный резолв: пришли только с roomId (вход из «Чаты»/ставки) — находим
@@ -657,38 +1250,61 @@ export default function ChatScreen({ navigation, route }) {
   useEffect(() => {
     if (!roomId || dealId) return;
     let cancelled = false;
-    chatAPI.rooms().then((d) => {
-      if (cancelled) return;
-      const room = (d?.rooms || []).find((r) => r.id === roomId);
-      if (room?.deal_id) setDealId(room.deal_id);
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    chatAPI
+      .rooms()
+      .then((d) => {
+        if (cancelled) return;
+        const room = (d?.rooms || []).find((r) => r.id === roomId);
+        if (room?.deal_id) setDealId(room.deal_id);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [roomId, dealId]);
 
   // Live GPS polling is intentionally owned by TrackTruckScreen only.
 
   const onCallSupport = async () => {
     try {
-      await chatAPI.supportEscalate({ conversationId: roomId || null, reason: 'chat_cta' });
-      toast(t('chat_support_pending'), 'success');
-    } catch { /* без фейков — просто не падаем */ }
+      await chatAPI.supportEscalate({
+        conversationId: roomId || null,
+        reason: "chat_cta",
+      });
+      toast(t("chat_support_pending"), "success");
+    } catch {
+      /* без фейков — просто не падаем */
+    }
   };
 
   // Часть 2 — открытие BidModal из инпут-бара (💰) или чипа «Своя цена».
   // mode: 'create' — новая ставка (из инпута); 'counter'/'edit' — из чипа.
-  const openBidModal = (mode = 'create', targetBidId = null, amount = null) => {
-    setBidModal({ visible: true, mode, bidId: targetBidId || bidId || null, amount });
+  const openBidModal = (mode = "create", targetBidId = null, amount = null) => {
+    setBidModal({
+      visible: true,
+      mode,
+      bidId: targetBidId || bidId || null,
+      amount,
+    });
   };
   // Момент сделки — компактное серое системное сообщение (WhatsApp-упрощение
   // 04.08.2026: раньше был отдельный крупный зелёный баннер, дублирующий
   // статус/цену, уже видные в закреплённой карточке сделки сверху).
   const onBargainDeal = (amount) => {
-    const amountText = amount != null ? formatPrice(amount, deal?.currency || 'USD', t) : '';
-    setMessages((prev) => [...prev, {
-      id: 'deal_' + Date.now().toString(36),
-      from: 'system', text: `🤝 ${t('deal_done')}${amountText ? ' ' + amountText : ''}`,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    }]);
+    const amountText =
+      amount != null ? formatPrice(amount, deal?.currency || "USD", t) : "";
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: "deal_" + Date.now().toString(36),
+        from: "system",
+        text: `🤝 ${t("deal_done")}${amountText ? " " + amountText : ""}`,
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      },
+    ]);
     setBargainRefresh((n) => n + 1);
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 120);
   };
@@ -698,28 +1314,46 @@ export default function ChatScreen({ navigation, route }) {
   // deal.bid_accepted). После успеха — обновляем deal-статус и timeline.
   const [acceptConfirm, setAcceptConfirm] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
-  const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
-    new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
-  ), [t]);
+  const askConfirm = React.useCallback(
+    (title, message = "", confirmLabel = t("confirm"), destructive = false) =>
+      new Promise((resolve) =>
+        setConfirmDialog({
+          title,
+          message,
+          confirmLabel,
+          destructive,
+          resolve,
+        }),
+      ),
+    [t],
+  );
   const settleConfirm = React.useCallback((answer) => {
-    setConfirmDialog((current) => { current?.resolve?.(answer); return null; });
+    setConfirmDialog((current) => {
+      current?.resolve?.(answer);
+      return null;
+    });
   }, []);
   const [accepting, setAccepting] = useState(false);
-  const canAcceptBid = !!bidId && deal && deal.status !== 'accepted' && deal.status !== 'confirmed';
+  const canAcceptBid =
+    !!bidId &&
+    deal &&
+    deal.status !== "accepted" &&
+    deal.status !== "confirmed";
   const doAcceptBid = async () => {
     setAccepting(true);
     try {
       await chatAPI.acceptBid(bidId);
-      toast(t('accept_bid_success'), 'success');
-      setDeal((d) => (d ? { ...d, status: 'accepted' } : d));
+      toast(t("accept_bid_success"), "success");
+      setDeal((d) => (d ? { ...d, status: "accepted" } : d));
       setAcceptConfirm(false);
       if (dealId) {
-        chatAPI.dealTimeline(dealId)
+        chatAPI
+          .dealTimeline(dealId)
           .then((r) => setDealEvents(Array.isArray(r?.events) ? r.events : []))
           .catch(() => {});
       }
     } catch (e) {
-      toast(t('accept_bid_failed'), 'error');
+      toast(t("accept_bid_failed"), "error");
     } finally {
       setAccepting(false);
     }
@@ -746,19 +1380,21 @@ export default function ChatScreen({ navigation, route }) {
         // перекрывал шапку/карточку, не добавляя новой информации. Отмену
         // сделки (более редкое, необратимое действие) по-прежнему
         // подтверждаем явно.
-        if (newStatus === 'cancelled') toast(t('deal_cancelled_toast'), 'success');
+        if (newStatus === "cancelled")
+          toast(t("deal_cancelled_toast"), "success");
       } else {
         // 409 и другие отказы: сервер уже знает реальный статус — не
         // оставляем устаревшую кнопку, сразу перечитываем сделку.
-        toast(r.detail || t('update_failed'), 'error');
+        toast(r.detail || t("update_failed"), "error");
       }
     } catch {
-      toast(t('no_connection'), 'error');
+      toast(t("no_connection"), "error");
     }
     // И на успехе, и на отказе — единственная правда приходит с сервера.
     refreshDeal();
     if (dealId) {
-      chatAPI.dealTimeline(dealId)
+      chatAPI
+        .dealTimeline(dealId)
         .then((r2) => setDealEvents(Array.isArray(r2?.events) ? r2.events : []))
         .catch(() => {});
     }
@@ -775,7 +1411,7 @@ export default function ChatScreen({ navigation, route }) {
     const permission = await ensureBackgroundLocationPermission();
     setTrackingLoading(false);
     if (!permission.ok) {
-      toast(t('track_permission_needed'), 'error');
+      toast(t("track_permission_needed"), "error");
       return;
     }
     const result = await changeDealStatus('in_progress');
@@ -827,19 +1463,41 @@ export default function ChatScreen({ navigation, route }) {
     const toId = recipientId();
     // Variant B: достаточно roomId (бэк возьмёт получателя из участников).
     // Без roomId нужен хотя бы собеседник (поддержка/общий чат).
-    if (!roomId && !toId) { toast(t('chat_send_failed'), 'error'); return; }
+    if (!roomId && !toId) {
+      toast(t("chat_send_failed"), "error");
+      return;
+    }
     // QA-аудит P1-3: clientId = идемпотентный ключ (backend дедупит по
     // client_msg_id) и id optimistic-пузыря. PR-C2 (P0-4): optimistic
     // insert с `_optimistic: true` — defensive merge в loadMessages
     // сохраняет его пока сервер не подтвердит.
-    const clientId = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-    const payload = { roomId, toUserId: toId, text: msg, cargoId, tripId, clientMsgId: clientId };
-    setMessages(prev => [...prev, {
-      id: clientId, from: 'me', text: msg,
-      time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
-      _optimistic: true,
-    }]);
-    setInput('');
+    const clientId =
+      "c_" +
+      Date.now().toString(36) +
+      "_" +
+      Math.random().toString(36).slice(2, 8);
+    const payload = {
+      roomId,
+      toUserId: toId,
+      text: msg,
+      cargoId,
+      tripId,
+      clientMsgId: clientId,
+    };
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: clientId,
+        from: "me",
+        text: msg,
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        _optimistic: true,
+      },
+    ]);
+    setInput("");
     setShowPhrases(false);
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
@@ -853,9 +1511,9 @@ export default function ChatScreen({ navigation, route }) {
     } catch (e) {
       if (e?.isNetwork) {
         await enqueueOutbox({ clientId, payload }, session?.user?.id);
-        toast(t('chat_queued'), 'info', 2500);
+        toast(t("chat_queued"), "info", 2500);
       } else {
-        toast(t('chat_send_failed'), 'error');
+        toast(t("chat_send_failed"), "error");
       }
     }
   };
@@ -868,29 +1526,40 @@ export default function ChatScreen({ navigation, route }) {
   const sendLocation = async () => {
     try {
       let latitude, longitude;
-      if (Platform.OS === 'web') {
+      if (Platform.OS === "web") {
         const pos = await new Promise((res, rej) =>
-          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
+          navigator.geolocation.getCurrentPosition(res, rej, {
+            timeout: 10000,
+          }),
+        );
         ({ latitude, longitude } = pos.coords);
       } else {
-        const Location = require('expo-location');
+        const Location = require("expo-location");
         const perm = await Location.requestForegroundPermissionsAsync();
-        if (perm.status !== 'granted') { toast(t('location_denied'), 'error'); return; }
+        if (perm.status !== "granted") {
+          toast(t("location_denied"), "error");
+          return;
+        }
         const pos = await Location.getCurrentPositionAsync({});
         ({ latitude, longitude } = pos.coords);
       }
       const link = `https://yandex.ru/maps/?pt=${longitude},${latitude}&z=15&l=map`;
-      sendMessage(`📍 ${t('chat_location_msg')}: ${link}`);
-    } catch { toast(t('location_denied'), 'error'); }
+      sendMessage(`📍 ${t("chat_location_msg")}: ${link}`);
+    } catch {
+      toast(t("location_denied"), "error");
+    }
   };
 
   const sendPhoto = () => {
-    if (Platform.OS === 'web') { pickAndSend(false); return; }
-    Alert.alert(t('add_photo'), '', [
-      { text: '📷 ' + t('camera'), onPress: () => pickAndSend(true) },
-      { text: '🖼 ' + t('gallery'), onPress: () => pickAndSend(false) },
-      { text: '📍 ' + t('attach_location'), onPress: () => sendLocation() },
-      { text: t('cancel'), style: 'cancel' },
+    if (Platform.OS === "web") {
+      pickAndSend(false);
+      return;
+    }
+    Alert.alert(t("add_photo"), "", [
+      { text: "📷 " + t("camera"), onPress: () => pickAndSend(true) },
+      { text: "🖼 " + t("gallery"), onPress: () => pickAndSend(false) },
+      { text: "📍 " + t("attach_location"), onPress: () => sendLocation() },
+      { text: t("cancel"), style: "cancel" },
     ]);
   };
 
@@ -898,32 +1567,62 @@ export default function ChatScreen({ navigation, route }) {
     try {
       if (fromCamera) {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') { toast(t('photo_permission'), 'warn'); return; }
+        if (status !== "granted") {
+          toast(t("photo_permission"), "warn");
+          return;
+        }
       } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') { toast(t('photo_permission'), 'warn'); return; }
+        const { status } =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          toast(t("photo_permission"), "warn");
+          return;
+        }
       }
       const r = fromCamera
         ? await ImagePicker.launchCameraAsync({ quality: 0.7 })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            quality: 0.7,
+          });
       if (r.canceled || !r.assets?.[0]) return;
       const uri = r.assets[0].uri;
       let photoUri = uri;
-      try { photoUri = await compressImage(uri, { maxSide: 800, quality: 0.7 }); } catch { /* fallback: оригинал */ }
+      try {
+        photoUri = await compressImage(uri, { maxSide: 800, quality: 0.7 });
+      } catch {
+        /* fallback: оригинал */
+      }
       const toId = recipientId();
       // P1-1 fix: как и текст — достаточно roomId (бэк возьмёт получателя из
       // участников). Без roomId нужен собеседник.
-      if (!roomId && !toId) { toast(t('chat_send_failed'), 'error'); return; }
+      if (!roomId && !toId) {
+        toast(t("chat_send_failed"), "error");
+        return;
+      }
       // P1-1 fix: помечаем пузырь _optimistic + clientId, чтобы loadMessages
       // не выкинул фото до подтверждения сервером (раньше без флага исчезало
       // через 3 c). client_msg_id → идемпотентность (нет дублей при ретапе).
-      const clientId = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-      setMessages(prev => [...prev, {
-        id: clientId, from: 'me',
-        text: '', isPhoto: true, photoUri,
-        time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
-        _optimistic: true,
-      }]);
+      const clientId =
+        "c_" +
+        Date.now().toString(36) +
+        "_" +
+        Math.random().toString(36).slice(2, 8);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: clientId,
+          from: "me",
+          text: "",
+          isPhoto: true,
+          photoUri,
+          time: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          _optimistic: true,
+        },
+      ]);
       // 4.3: сначала грузим фото в storage → ключ, затем шлём сообщение с
       // ключом (раньше слали локальный uri устройства — не резолвился у
       // получателя). Сервер подпишет ключ на чтении, фото видно обеим сторонам.
@@ -932,49 +1631,78 @@ export default function ChatScreen({ navigation, route }) {
       try {
         const up = await chatAPI.uploadChatPhoto(photoUri);
         const key = up?.photo_key;
-        if (!key) throw new Error('no_key');
-        const r = await chatAPI.send({ roomId, toUserId: toId, photoUrl: key, cargoId, tripId, clientMsgId: clientId });
+        if (!key) throw new Error("no_key");
+        const r = await chatAPI.send({
+          roomId,
+          toUserId: toId,
+          photoUrl: key,
+          cargoId,
+          tripId,
+          clientMsgId: clientId,
+        });
         if (r.room_id) setRoomId(r.room_id);
-        toast('📷 ' + t('photo_sent'), 'success', 1500);
+        toast("📷 " + t("photo_sent"), "success", 1500);
       } catch {
-        toast(t('chat_send_failed'), 'error');
+        toast(t("chat_send_failed"), "error");
       }
     } catch (e) {
-      toast(t('photo_failed'), 'error');
+      toast(t("photo_failed"), "error");
     }
   };
 
   // HOT-006: единая запись/воспроизведение через voiceRecorder.
   // Web — MediaRecorder API; Native — expo-av (установлен ^16.0.8).
   const appendVoiceMessage = async (uri, duration) => {
-    const mm = String(Math.floor(duration / 60)).padStart(1, '0');
-    const ss = String(duration % 60).padStart(2, '0');
+    const mm = String(Math.floor(duration / 60)).padStart(1, "0");
+    const ss = String(duration % 60).padStart(2, "0");
     const toId = recipientId();
-    if (!roomId && !toId) { toast(t('chat_send_failed'), 'error'); return; }
+    if (!roomId && !toId) {
+      toast(t("chat_send_failed"), "error");
+      return;
+    }
     // P1-1 fix: _optimistic + clientId + roomId (как у текста/фото).
-    const clientId = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-    setMessages(prev => [...prev, {
-      id: clientId, from: 'me',
-      text: `🎤 ${mm}:${ss}`,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isVoice: true, playing: false, voiceUrl: uri, duration, _optimistic: true,
-    }]);
+    const clientId =
+      "c_" +
+      Date.now().toString(36) +
+      "_" +
+      Math.random().toString(36).slice(2, 8);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: clientId,
+        from: "me",
+        text: `🎤 ${mm}:${ss}`,
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        isVoice: true,
+        playing: false,
+        voiceUrl: uri,
+        duration,
+        _optimistic: true,
+      },
+    ]);
     // Аудио сначала грузим в storage (как фото) → ключ → сообщение с ключом.
     // Раньше файл вообще не выгружался и получатель звук не получал.
     try {
       const up = await chatAPI.uploadChatVoice(uri);
       const key = up?.voice_key;
-      if (!key) throw new Error('no_key');
+      if (!key) throw new Error("no_key");
       const r = await chatAPI.send({
-        roomId, toUserId: toId,
-        text: `🎤 ${t('chat_voice_message')} (${duration}${t('unit_sec_short')})`,
-        photoUrl: key,                     // аудио-ключ в общем поле вложения
-        isVoice: true, voiceDuration: duration,
-        cargoId, tripId, clientMsgId: clientId,
+        roomId,
+        toUserId: toId,
+        text: `🎤 ${t("chat_voice_message")} (${duration}${t("unit_sec_short")})`,
+        photoUrl: key, // аудио-ключ в общем поле вложения
+        isVoice: true,
+        voiceDuration: duration,
+        cargoId,
+        tripId,
+        clientMsgId: clientId,
       });
       if (r?.room_id) setRoomId(r.room_id);
     } catch {
-      toast(t('chat_send_failed'), 'error');
+      toast(t("chat_send_failed"), "error");
     }
   };
 
@@ -982,7 +1710,7 @@ export default function ChatScreen({ navigation, route }) {
     try {
       const ok = await voice.startRecording();
       if (!ok) {
-        toast(t('voice_permission'), 'warn');
+        toast(t("voice_permission"), "warn");
         return;
       }
       recordStartRef.current = Date.now();
@@ -990,8 +1718,8 @@ export default function ChatScreen({ navigation, route }) {
       // Тост убран (26.07): индикатор записи один — красная плашка с
       // таймером над строкой ввода. Два индикатора путали.
     } catch (e) {
-      console.warn('[voice] start failed:', e);
-      toast(t('voice_permission'), 'warn');
+      console.warn("[voice] start failed:", e);
+      toast(t("voice_permission"), "warn");
       setRecording(false);
     }
   };
@@ -1001,15 +1729,16 @@ export default function ChatScreen({ navigation, route }) {
     try {
       const result = await voice.stopRecording();
       if (!result?.uri) {
-        toast(t('voice_record_fail'), 'warn');
+        toast(t("voice_record_fail"), "warn");
         return;
       }
-      const duration = result.duration ||
+      const duration =
+        result.duration ||
         Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
       appendVoiceMessage(result.uri, duration);
     } catch (e) {
-      console.warn('[voice] stop failed:', e);
-      toast(t('voice_record_fail'), 'warn');
+      console.warn("[voice] stop failed:", e);
+      toast(t("voice_record_fail"), "warn");
     }
   };
 
@@ -1019,28 +1748,57 @@ export default function ChatScreen({ navigation, route }) {
   };
 
   const playVoice = async (id) => {
-    const msg = messages.find(m => m.id === id);
+    const msg = messages.find((m) => m.id === id);
     if (!msg?.voiceUrl) return;
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, playing: true } : m));
+    if (voiceTransitionRef.current) return;
+    if (playingVoiceId === id) {
+      voiceTransitionRef.current = true;
+      try {
+        await voice.stop();
+      } finally {
+        setPlayingVoiceId(null);
+        setMessages((prev) => prev.map((m) => ({ ...m, playing: false })));
+        voiceTransitionRef.current = false;
+      }
+      return;
+    }
+    voiceTransitionRef.current = true;
+    setPlayingVoiceId(id);
+    setMessages((prev) => prev.map((m) => ({ ...m, playing: m.id === id })));
     try {
       const ok = await voice.play(msg.voiceUrl);
-      if (!ok) toast(t('voice_play_fail'), 'warn');
+      if (!ok) toast(t("voice_play_fail"), "warn");
     } catch (e) {
-      console.warn('[voice] play failed:', e);
-      toast(t('voice_play_fail'), 'warn');
+      console.warn("[voice] play failed:", e);
+      toast(t("voice_play_fail"), "warn");
     } finally {
-      setMessages(prev => prev.map(m => m.id === id ? { ...m, playing: false } : m));
+      setPlayingVoiceId((current) => (current === id ? null : current));
+      setMessages((prev) => prev.map((m) => ({ ...m, playing: false })));
+      voiceTransitionRef.current = false;
     }
   };
 
   // Cleanup при размонтировании — отпускаем микрофон / звук
-  useEffect(() => () => {
-    try { voice.stop?.(); } catch {}
-  }, []);
+  useEffect(
+    () => () => {
+      try {
+        voice.stop?.();
+      } catch {}
+      voiceTransitionRef.current = false;
+    },
+    [],
+  );
 
   const renderMessage = ({ item }) => {
-    const isMe = item.from === 'me';
-    if (item.from === 'system') {
+    const isMe = item.from === "me";
+    // WhatsApp-like footer: время и статусы держим внутри пузыря, а не под ним.
+    const statusIcon = isMe ? (item.is_read ? "✓✓" : "✓") : "";
+    const statusColor = isMe
+      ? item.is_read
+        ? "#168759"
+        : "rgba(17,27,33,0.38)"
+      : "";
+    if (item.from === "system") {
       return (
         <View style={s.systemMsgRow}>
           <View style={s.systemMsgPill}>
@@ -1053,149 +1811,385 @@ export default function ChatScreen({ navigation, route }) {
       return (
         <View style={[s.msgRow, isMe && s.msgRowMe]}>
           {!isMe && partner?.name ? (
-            <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text>
+            <Text style={[s.senderLabel, { color: theme.textMuted }]}>
+              {partner.name}
+            </Text>
           ) : null}
-          <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem, { padding: 4 }]}>
+          <View
+            style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem, { padding: 4 }]}
+          >
             {/* C2: тап открывает фото на весь экран (fullscreen-viewer ниже). */}
             {failedPhotos[item.id] ? (
               <TouchableOpacity
                 style={s.photoFailed}
                 onPress={() => {
                   attachmentUrlCache.current.delete(`photo:${item.id}`);
-                  setFailedPhotos((prev) => { const next = { ...prev }; delete next[item.id]; return next; });
+                  setFailedPhotos((prev) => {
+                    const next = { ...prev };
+                    delete next[item.id];
+                    return next;
+                  });
                   loadMessages(roomId);
                 }}
                 testID="chat-photo-retry"
               >
                 <Feather name="image" size={24} color={v1.textMuted} />
-                <Text style={s.photoFailedText}>{t('chat_photo_retry')}</Text>
+                <Text style={s.photoFailedText}>{t("chat_photo_retry")}</Text>
               </TouchableOpacity>
             ) : (
-              <Pressable onPress={() => item.photoUri && setFullImage(item.photoUri)} testID="chat-photo-msg">
+              <Pressable
+                onPress={() => item.photoUri && setFullImage(item.photoUri)}
+                testID="chat-photo-msg"
+              >
                 <Image
                   source={{ uri: item.photoUri }}
                   style={s.photoMsg}
-                  onError={() => setFailedPhotos((prev) => ({ ...prev, [item.id]: true }))}
+                  onError={() =>
+                    setFailedPhotos((prev) => ({ ...prev, [item.id]: true }))
+                  }
                 />
               </Pressable>
             )}
-            <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: v1.textMuted }, { marginTop: 4, marginRight: 4 }]}>{item.time}</Text>
+            <View style={s.photoMetaOverlay}>
+              <Text
+                style={[
+                  s.msgTime,
+                  isMe ? s.msgTimeMe : { color: v1.textMuted },
+                ]}
+              >
+                {item.time}
+              </Text>
+              {statusIcon ? (
+                <Text
+                  style={{ fontSize: 11, color: statusColor, marginLeft: 2 }}
+                >
+                  {statusIcon}
+                </Text>
+              ) : null}
+            </View>
           </View>
         </View>
       );
     }
     if (item.isVoice) {
+      const voiceBubble = (
+        <VoiceMessageBubble
+          item={item}
+          mine={isMe}
+          colors={theme}
+          t={t}
+          transcript={voiceTranscripts[item.id]}
+          transcribing={voiceTranscribing === item.id}
+          onToggleTranscript={() => toggleVoiceTranscript(item)}
+        />
+      );
+      return (
+        <View style={[s.msgRow, isMe && s.msgRowMe]}>
+          {!isMe && partner?.name ? <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text> : null}
+          <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem]}>
+            {voiceBubble}
+            <View style={s.msgFooter}>
+              <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: v1.textMuted }]}>{item.time}</Text>
+            </View>
+          </View>
+        </View>
+      );
+      const voiceMeta = voiceTranscripts[item.id];
+      const voiceExpanded = !!voiceMeta?.visible;
+      const voiceActionLabel =
+        voiceTranscribing === item.id
+          ? "..."
+          : voiceExpanded
+            ? t("voice_hide_text")
+            : voiceMeta?.transcriptText
+              ? t("voice_show_text")
+              : t("voice_to_text");
       return (
         <View style={[s.msgRow, isMe && s.msgRowMe]}>
           {!isMe && partner?.name ? (
-            <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text>
-          ) : null}
-          <TouchableOpacity
-            style={[s.bubble, s.voiceBubble, isMe ? s.bubbleMe : s.bubbleThem]}
-            onPress={() => playVoice(item.id)}
-          >
-            <Feather name={item.playing ? 'pause' : 'play'} size={20} color={isMe ? '#fff' : theme.text} />
-            <View style={s.waveform}>
-              {[...Array(15)].map((_, i) => (
-                <View key={i} style={[s.wavebar, { height: 4 + (i % 4) * 4, backgroundColor: isMe ? '#fff' : (theme.textMuted) }]} />
-              ))}
-            </View>
-            <Text style={[s.voiceTime, isMe && { color: '#fff' }, !isMe && { color: theme.text }]}>
-              {item.playing
-                ? t('voicePlaying')
-                : `${Math.floor((item.duration || 0) / 60)}:${String((item.duration || 0) % 60).padStart(2, '0')}`}
+            <Text style={[s.senderLabel, { color: theme.textMuted }]}>
+              {partner.name}
             </Text>
-          </TouchableOpacity>
+          ) : null}
+          <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem]}>
+            <TouchableOpacity
+              style={s.voiceBubble}
+              onPress={() => playVoice(item.id)}
+            >
+              <Feather
+                name={item.playing ? "pause" : "play"}
+                size={20}
+                color={isMe ? "#fff" : theme.text}
+              />
+              <View style={s.waveform}>
+                {[...Array(15)].map((_, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      s.wavebar,
+                      {
+                        height: 4 + (i % 4) * 4,
+                        backgroundColor: isMe ? "#fff" : theme.textMuted,
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+              <Text
+                style={[
+                  s.voiceTime,
+                  isMe && { color: "#fff" },
+                  !isMe && { color: theme.text },
+                ]}
+              >
+                {item.playing
+                  ? t("voicePlaying")
+                  : `${Math.floor((item.duration || 0) / 60)}:${String((item.duration || 0) % 60).padStart(2, "0")}`}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.assistBtn}
+              onPress={() => toggleVoiceTranscript(item)}
+              disabled={voiceTranscribing === item.id}
+            >
+              {voiceTranscribing !== item.id ? (
+                <Feather
+                  name="align-left"
+                  size={12}
+                  color={isMe ? "rgba(255,255,255,0.5)" : theme.textMuted}
+                />
+              ) : null}
+              <Text
+                style={{
+                  color: isMe ? "rgba(255,255,255,0.5)" : theme.textMuted,
+                  fontSize: 11,
+                }}
+              >
+                {voiceActionLabel}
+              </Text>
+            </TouchableOpacity>
+            {voiceExpanded && voiceMeta?.transcriptText ? (
+              <View
+                style={[s.translated, !isMe && { borderTopColor: v1.border }]}
+              >
+                <Text
+                  style={[
+                    s.assistLabel,
+                    {
+                      color: isMe ? "rgba(255,255,255,0.72)" : theme.textMuted,
+                    },
+                  ]}
+                >
+                  {t("voice_original_label")}
+                </Text>
+                <Text
+                  style={[s.assistText, { color: isMe ? "#EAFBF1" : v1.text }]}
+                >
+                  {voiceMeta.transcriptText}
+                </Text>
+                {voiceMeta.translatedText ? (
+                  <>
+                    <Text
+                      style={[
+                        s.assistLabel,
+                        {
+                          color: isMe
+                            ? "rgba(255,255,255,0.72)"
+                            : theme.textMuted,
+                          marginTop: 8,
+                        },
+                      ]}
+                    >
+                      {t("voice_translation_label")}
+                    </Text>
+                    <Text
+                      style={[
+                        s.assistText,
+                        { color: isMe ? "#EAFBF1" : v1.text },
+                      ]}
+                    >
+                      {voiceMeta.translatedText}
+                    </Text>
+                  </>
+                ) : null}
+              </View>
+            ) : null}
+            <View style={s.msgFooter}>
+              <Text
+                style={[
+                  s.msgTime,
+                  isMe ? s.msgTimeMe : { color: v1.textMuted },
+                ]}
+              >
+                {item.time}
+              </Text>
+            </View>
+          </View>
         </View>
       );
     }
     // P1-12: одна галочка = sent на сервер, две = прочитано партнёром.
     // Без push-receipt у нас нет промежуточного «delivered», поэтому
     // не имитируем WhatsApp. Read — emerald (бренд), sent — приглушённый.
-    const statusIcon = isMe ? (item.is_read ? '✓✓' : '✓') : '';
-    const statusColor = isMe ? (item.is_read ? '#168759' : 'rgba(255,255,255,0.4)') : '';
-
     const tr = translations[item.id];
     const showingTranslation = tr && !tr.showOriginal;
 
     return (
       <View style={[s.msgRow, isMe && s.msgRowMe]}>
         {!isMe && partner?.name ? (
-          <Text style={[s.senderLabel, { color: theme.textMuted }]}>{partner.name}</Text>
+          <Text style={[s.senderLabel, { color: theme.textMuted }]}>
+            {partner.name}
+          </Text>
         ) : null}
         <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem]}>
-          <Text style={[s.msgText, isMe ? s.msgTextMe : { color: v1.text }]}>
-            {showingTranslation ? tr.text : item.text}
-          </Text>
+          <View style={s.msgBodyRow}>
+            <Text style={[s.msgText, isMe ? s.msgTextMe : { color: v1.text }]}>
+              {showingTranslation ? tr.text : item.text}
+            </Text>
+            <View style={s.msgFooter}>
+              <Text
+                style={[
+                  s.msgTime,
+                  isMe ? s.msgTimeMe : { color: v1.textMuted },
+                ]}
+              >
+                {item.time}
+              </Text>
+              {statusIcon ? (
+                <Text
+                  style={{ fontSize: 11, color: statusColor, marginLeft: 2 }}
+                >
+                  {statusIcon}
+                </Text>
+              ) : null}
+            </View>
+          </View>
           {!isMe && item.id && (
             <TouchableOpacity
               style={{ marginTop: 4 }}
               onPress={async () => {
                 if (tr) {
-                  setTranslations(prev => ({ ...prev, [item.id]: { ...tr, showOriginal: !tr.showOriginal } }));
+                  setTranslations((prev) => ({
+                    ...prev,
+                    [item.id]: { ...tr, showOriginal: !tr.showOriginal },
+                  }));
                   return;
                 }
                 setTranslating(item.id);
                 try {
-                  const r = await chatAPI.translate(item.id, getLanguage().toLowerCase());
+                  const r = await chatAPI.translate(
+                    item.id,
+                    getLanguage().toLowerCase(),
+                  );
                   if (r.translated_text) {
-                    setTranslations(prev => ({ ...prev, [item.id]: { text: r.translated_text, provider: r.provider, showOriginal: false } }));
+                    setTranslations((prev) => ({
+                      ...prev,
+                      [item.id]: {
+                        text: r.translated_text,
+                        provider: r.provider,
+                        showOriginal: false,
+                      },
+                    }));
                   } else {
-                    toast(t('translation_unavailable'), 'info');
+                    toast(t("translation_unavailable"), "info");
                   }
                 } catch {
-                  toast(t('translation_unavailable'), 'info');
+                  toast(t("translation_unavailable"), "info");
                 }
                 setTranslating(null);
               }}
               disabled={translating === item.id}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+              >
                 {!tr && translating !== item.id ? (
-                  <Feather name="globe" size={12} color={isMe ? 'rgba(255,255,255,0.5)' : theme.textMuted} />
+                  <Feather
+                    name="globe"
+                    size={12}
+                    color={isMe ? "rgba(255,255,255,0.5)" : theme.textMuted}
+                  />
                 ) : null}
-                <Text style={{ color: isMe ? 'rgba(255,255,255,0.5)' : theme.textMuted, fontSize: 11 }}>
-                  {translating === item.id ? '...' : tr ? (tr.showOriginal ? t('hide_original') : t('show_original')) : t('translate')}
+                <Text
+                  style={{
+                    color: isMe ? "rgba(255,255,255,0.5)" : theme.textMuted,
+                    fontSize: 11,
+                  }}
+                >
+                  {translating === item.id
+                    ? "..."
+                    : tr
+                      ? tr.showOriginal
+                        ? t("hide_original")
+                        : t("show_original")
+                      : t("translate")}
                 </Text>
               </View>
             </TouchableOpacity>
           )}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 3 }}>
-            <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: v1.textMuted }]}>{item.time}</Text>
-            {statusIcon ? <Text style={{ fontSize: 11, color: statusColor }}>{statusIcon}</Text> : null}
-          </View>
         </View>
       </View>
     );
   };
 
-  // v1: emerald accent regardless of role for the chat header (it's a
-  // 1:1 conversation, no role-driven asymmetry to encode visually).
-  const v1Accent = v1AccentFor(role === 'client' || role === 'shipper' ? 'client' : 'driver');
+  // Chat must look identical for driver and shipper: one shared green accent.
+  const v1Accent = {
+    main: v1Colors.driver,
+    deep: v1Colors.driverDeep,
+    glow: v1Colors.driverGlow,
+    soft: v1Colors.driverSoft,
+    onAccent: v1Colors.driverOnAccent,
+  };
   const mapPreviewLoc = dealLocation.loc;
-  const mapPreviewLat = mapPreviewLoc ? Number(mapPreviewLoc.lat ?? mapPreviewLoc.latitude) : null;
-  const mapPreviewLng = mapPreviewLoc ? Number(mapPreviewLoc.lng ?? mapPreviewLoc.longitude) : null;
+  const mapPreviewLat = mapPreviewLoc
+    ? Number(mapPreviewLoc.lat ?? mapPreviewLoc.latitude)
+    : null;
+  const mapPreviewLng = mapPreviewLoc
+    ? Number(mapPreviewLoc.lng ?? mapPreviewLoc.longitude)
+    : null;
   const hasMapPreviewPoint =
-    mapPreviewLat != null && mapPreviewLng != null &&
-    !Number.isNaN(mapPreviewLat) && !Number.isNaN(mapPreviewLng);
+    mapPreviewLat != null &&
+    mapPreviewLng != null &&
+    !Number.isNaN(mapPreviewLat) &&
+    !Number.isNaN(mapPreviewLng);
   const mapUpdatedText = (() => {
-    if (!mapPreviewLoc?.updated_at) return t('tracking_live_here');
-    const ts = Date.parse(String(mapPreviewLoc.updated_at).replace(' ', 'T') + (String(mapPreviewLoc.updated_at).endsWith('Z') ? '' : 'Z'));
-    if (Number.isNaN(ts)) return t('tracking_live_here');
+    if (!mapPreviewLoc?.updated_at) return t("tracking_live_here");
+    const ts = Date.parse(
+      String(mapPreviewLoc.updated_at).replace(" ", "T") +
+        (String(mapPreviewLoc.updated_at).endsWith("Z") ? "" : "Z"),
+    );
+    if (Number.isNaN(ts)) return t("tracking_live_here");
     const min = Math.max(0, Math.round((Date.now() - ts) / 60000));
-    if (min === 0) return t('track_updated_now');
-    return `${t('track_updated')} ${min} ${t('track_min')} ${t('track_ago')}`;
+    if (min === 0) return t("track_updated_now");
+    return `${t("track_updated")} ${min} ${t("track_min")} ${t("track_ago")}`;
   })();
-  const dealRoutePoints = parseRouteCities([deal?.from_city, deal?.to_city].filter(Boolean).join(' → '));
-  const mapLanguage = String(getLanguage() || 'ru').toLowerCase();
-  const plannedMapCopy = mapLanguage.startsWith('zh')
-    ? { title: '计划路线', hint: '行程开始后，车辆位置会自动显示', live: '车辆位置' }
-    : mapLanguage.startsWith('en')
-      ? { title: 'Planned route', hint: 'Truck location will appear automatically after trip start', live: 'Truck location' }
-      : { title: 'Плановый маршрут', hint: 'После начала рейса машина появится автоматически', live: 'Машина на маршруте' };
+  const dealRoutePoints = parseRouteCities(
+    [deal?.from_city, deal?.to_city].filter(Boolean).join(" → "),
+  );
+  const mapLanguage = String(getLanguage() || "ru").toLowerCase();
+  const plannedMapCopy = mapLanguage.startsWith("zh")
+    ? {
+        title: "计划路线",
+        hint: "行程开始后，车辆位置会自动显示",
+        live: "车辆位置",
+      }
+    : mapLanguage.startsWith("en")
+      ? {
+          title: "Planned route",
+          hint: "Truck location will appear automatically after trip start",
+          live: "Truck location",
+        }
+      : {
+          title: "Плановый маршрут",
+          hint: "После начала рейса машина появится автоматически",
+          live: "Машина на маршруте",
+        };
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top', 'bottom']}>
+    <SafeAreaView
+      style={[s.container, { backgroundColor: v1.bg }]}
+      edges={["top", "bottom"]}
+    >
       {/* PR-C2 (chat keyboard P0): раньше KeyboardAvoidingView оборачивал
           ТОЛЬКО inputRow → на iOS клавиатура поднималась поверх FlatList
           и закрывала последние сообщения вместе с input'ом. Юзер не видел
@@ -1205,306 +2199,547 @@ export default function ChatScreen({ navigation, route }) {
           padding не считается. */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-      <BrandBarWithShare
-        onBack={() => navigation.goBack()}
-        accent={v1Accent.main}
-      />
-      <View style={s.partnerStrip}>
-        <View style={[s.partnerAvatar, { backgroundColor: v1Accent.soft, borderColor: v1Accent.main }]}>
-          {/* Stage DS-1: первая буква от prettified имени, "?" для tech-leak. */}
-          <Text style={s.partnerAvatarIcon}>{partnerInitial(prettifyPartnerName(resolvedPartner?.name, resolvedPartner?.id, t))}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          {/* Stage DS-1: prettifyPartnerName подменяет guest_/d3/d4 на "Собеседник". */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={s.partnerName} numberOfLines={1} testID="chat-partner-name">{prettifyPartnerName(resolvedPartner?.name, resolvedPartner?.id, t)}</Text>
-            {partnerOnline ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' }} />
-                <Text style={{ color: '#168759', fontSize: 11, fontWeight: '700' }}>{t('chat_online')}</Text>
-              </View>
-            ) : null}
+        <BrandBarWithShare
+          onBack={() => navigation.goBack()}
+          accent={v1Accent.main}
+        />
+        <View style={s.partnerStrip}>
+          <View
+            style={[
+              s.partnerAvatar,
+              { backgroundColor: v1Accent.soft, borderColor: v1Accent.main },
+            ]}
+          >
+            {/* Stage DS-1: первая буква от prettified имени, "?" для tech-leak. */}
+            <Text style={s.partnerAvatarIcon}>
+              {partnerInitial(
+                prettifyPartnerName(
+                  resolvedPartner?.name,
+                  resolvedPartner?.id,
+                  t,
+                ),
+              )}
+            </Text>
           </View>
-          {/* Маршрут/груз сделки теперь показывает только закреплённая
+          <View style={{ flex: 1 }}>
+            {/* Stage DS-1: prettifyPartnerName подменяет guest_/d3/d4 на "Собеседник". */}
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              <Text
+                style={s.partnerName}
+                numberOfLines={1}
+                testID="chat-partner-name"
+              >
+                {prettifyPartnerName(
+                  resolvedPartner?.name,
+                  resolvedPartner?.id,
+                  t,
+                )}
+              </Text>
+              {partnerOnline ? (
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                >
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: "#168759",
+                    }}
+                  />
+                  <Text
+                    style={{
+                      color: "#168759",
+                      fontSize: 11,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {t("chat_online")}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            {/* Маршрут/груз сделки теперь показывает только закреплённая
               карточка (DealRoomCard) ниже — вторая строка шапки не дублирует
               её, а несёт то, чего там нет: «печатает…» или роль собеседника
               (WhatsApp-упрощение 04.08.2026). */}
-          {partnerTyping
-            ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            {partnerTyping ? (
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+              >
                 <Feather name="edit-3" size={12} color="#168759" />
-                <Text style={[s.online, { color: '#168759' }]}>{t('chat_typing')}</Text>
+                <Text style={[s.online, { color: "#168759" }]}>
+                  {t("chat_typing")}
+                </Text>
               </View>
-            : ((resolvedPartner?.role === 'driver' || resolvedPartner?.role === 'client')
-                ? <Text style={[s.online, { color: '#A8A29E' }]}>{t(resolvedPartner.role)}</Text>
-                : null)}
+            ) : resolvedPartner?.role === "driver" ||
+              resolvedPartner?.role === "client" ? (
+              <Text style={[s.online, { color: "#A8A29E" }]}>
+                {t(resolvedPartner.role)}
+              </Text>
+            ) : null}
+          </View>
         </View>
-      </View>
 
-      {/* Персистентный баннер сделки — всегда виден над списком сообщений */}
-      {(bargainCargoId || bargainTripId) ? (
-        <BargainCard
-          cargoId={bargainCargoId}
-          tripId={bargainTripId}
-          myUserId={myId}
-          refreshKey={bargainRefresh}
-          onOpenModal={openBidModal}
-          onDeal={onBargainDeal}
-        />
-      ) : null}
-      {dealId ? (
-        <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
-          <DealRoomCard deal={deal} role={role} />
-          {/* Статус перевозки (05.08.2026, п.9 ТЗ): вместо горизонтальной
+        {/* Персистентный баннер сделки — всегда виден над списком сообщений */}
+        {bargainCargoId || bargainTripId ? (
+          <BargainCard
+            cargoId={bargainCargoId}
+            tripId={bargainTripId}
+            myUserId={myId}
+            refreshKey={bargainRefresh}
+            onOpenModal={openBidModal}
+            onDeal={onBargainDeal}
+          />
+        ) : null}
+        {dealId ? (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
+            <DealRoomCard deal={deal} role="driver" />
+            {/* Статус перевозки (05.08.2026, п.9 ТЗ): вместо горизонтальной
               шкалы Принят/В работе/На границе/Завершён — компактный текст
               «Текущий статус / Следующий шаг» + ОДНА кнопка следующего
               действия. Кнопки — единственное место действия теперь здесь
               (не в CargoDetail/TripDetail/Мои рейсы). */}
-          {deal?.status && deal.status !== 'cancelled' ? (
-            <View style={s.statusRow} testID="chat-deal-status-compact">
-              <Text style={s.statusRowLabel}>{t('trip_current_status')}</Text>
-              <Text style={[s.statusRowValue, { color: v1Accent.main }]} numberOfLines={1}>{formatStatus(userFacingDealStatus(deal.status))}</Text>
-            </View>
-          ) : null}
-          {(() => {
-            // RC1: строгая ролевая FSM. Водитель начинает рейс и отмечает
-            // фактическую доставку; грузоотправитель может только подтвердить
-            // получение ПОСЛЕ статуса delivered. Никаких переходов
-            // in_progress -> delivered со стороны грузоотправителя.
-            if (!deal?.status || deal.status === 'cancelled' || deal.status === 'completed') return null;
-            let action = null;
-            if (role === 'driver') {
-              if (deal.status === 'accepted') {
-                action = { key: 'in_progress', icon: 'truck', label: t('start_delivery') };
-              } else if (deal.status === 'in_progress' && deal.is_international === true) {
-                action = { key: 'at_border', icon: 'map-pin', label: t('mark_at_border') };
-              } else if (deal.status === 'in_progress' && deal.is_international == null) {
-                action = { key: 'clarify_route', icon: 'alert-circle', label: t('deal_clarify_route'), disabled: true };
-              } else if (deal.status === 'in_progress' || deal.status === 'at_border') {
-                action = { key: 'delivered', icon: 'package', label: t('mark_arrived') };
-              }
-            } else if (isShipperSide && deal.status === 'delivered') {
-              action = { key: 'completed', icon: 'check-circle', label: t('confirm_delivery') };
-            }
-            if (!action) return null;
-            return (
-              <TouchableOpacity
-                testID={
-                  action.key === 'in_progress'
-                    ? 'deal-action-start-delivery'
-                    : action.key === 'at_border'
-                      ? 'deal-action-mark-at-border'
-                    : action.key === 'clarify_route'
-                      ? 'deal-action-clarify-route'
-                    : action.key === 'delivered'
-                      ? 'deal-action-mark-arrived'
-                      : 'deal-action-confirm-receipt'
+            {deal?.status && deal.status !== "cancelled" ? (
+              <View style={s.statusRow} testID="chat-deal-status-compact">
+                <Text style={s.statusRowLabel}>{t("trip_current_status")}</Text>
+                <Text
+                  style={[s.statusRowValue, { color: v1Accent.main }]}
+                  numberOfLines={1}
+                >
+                  {formatStatus(userFacingDealStatus(deal.status))}
+                </Text>
+              </View>
+            ) : null}
+            {(() => {
+              // RC1: строгая ролевая FSM. Водитель начинает рейс и отмечает
+              // фактическую доставку; грузоотправитель может только подтвердить
+              // получение ПОСЛЕ статуса delivered. Никаких переходов
+              // in_progress -> delivered со стороны грузоотправителя.
+              if (
+                !deal?.status ||
+                deal.status === "cancelled" ||
+                deal.status === "completed"
+              )
+                return null;
+              let action = null;
+              if (role === "driver") {
+                if (deal.status === "accepted") {
+                  action = { key: 'in_progress', icon: 'truck', label: t('start_delivery') };
+                } else if (
+                  deal.status === "in_progress" &&
+                  deal.is_international === true
+                ) {
+                  action = { key: 'at_border', icon: "map-pin", label: t("mark_at_border") };
+                } else if (
+                  deal.status === "in_progress" &&
+                  deal.is_international == null
+                ) {
+                  action = {
+                    key: "clarify_route",
+                    icon: "alert-circle",
+                    label: t("deal_clarify_route"),
+                    disabled: true,
+                  };
+                } else if (
+                  deal.status === "in_progress" ||
+                  deal.status === "at_border"
+                ) {
+                  action = { key: 'delivered', icon: "package", label: t("mark_arrived") };
                 }
-                style={[s.dealNextBtn, { backgroundColor: action.disabled ? v1.border : v1Accent.main, opacity: statusLoading || trackingLoading ? 0.6 : 1 }]}
-                disabled={statusLoading || trackingLoading || action.disabled}
-                onPress={async () => {
-                  if (action.key === 'in_progress') {
-                    await startTrip();
-                    return;
+              } else if (isShipperSide && deal.status === 'delivered') {
+                action = { key: 'completed', icon: "check-circle", label: t("confirm_delivery") };
+              }
+              if (!action) return null;
+              return (
+                <TouchableOpacity
+                  testID={
+                    action.key === "in_progress"
+                      ? "deal-action-start-delivery"
+                      : action.key === "at_border"
+                        ? "deal-action-mark-at-border"
+                        : action.key === "clarify_route"
+                          ? "deal-action-clarify-route"
+                          : action.key === "delivered"
+                            ? "deal-action-mark-arrived"
+                            : "deal-action-confirm-receipt"
                   }
-                  let ok = true;
-                  if (action.key === 'delivered' || action.key === 'completed') {
-                    const message = action.key === 'delivered'
-                      ? t('confirm_mark_delivered')
-                      : t('confirm_receipt');
-                    ok = await askConfirm(action.label, message, action.label);
-                  }
-                  if (ok) changeDealStatus(action.key);
-                }}
+                  style={[
+                    s.dealNextBtn,
+                    {
+                      backgroundColor: action.disabled
+                        ? v1.border
+                        : v1Accent.main,
+                      opacity: statusLoading || trackingLoading ? 0.6 : 1,
+                    },
+                  ]}
+                  disabled={statusLoading || trackingLoading || action.disabled}
+                  onPress={async () => {
+                    if (action.key === "in_progress") {
+                      await startTrip();
+                      return;
+                    }
+                    let ok = true;
+                    if (
+                      action.key === "delivered" ||
+                      action.key === "completed"
+                    ) {
+                      const message =
+                        action.key === "delivered"
+                          ? t("confirm_mark_delivered")
+                          : t("confirm_receipt");
+                      ok = await askConfirm(
+                        action.label,
+                        message,
+                        action.label,
+                      );
+                    }
+                    if (ok) changeDealStatus(action.key);
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Feather
+                      name={action.icon}
+                      size={16}
+                      color={action.disabled ? v1.textMuted : "#FFFFFF"}
+                    />
+                    <Text
+                      style={[
+                        s.dealNextBtnText,
+                        action.disabled && { color: v1.textMuted },
+                      ]}
+                    >
+                      {statusLoading || trackingLoading ? "…" : action.label}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })()}
+            {role === "driver" &&
+            DRIVER_ROUTE_STATUSES.includes(deal?.status) ? (
+              <TouchableOpacity
+                testID="deal-open-driver-route"
+                style={s.driverRouteBtn}
+                onPress={openDealMap}
+                accessibilityLabel={t('open_route_btn')}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Feather name={action.icon} size={16} color={action.disabled ? v1.textMuted : '#FFFFFF'} />
-                  <Text style={[s.dealNextBtnText, action.disabled && { color: v1.textMuted }]}>{statusLoading || trackingLoading ? '…' : action.label}</Text>
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                >
+                  <Feather name="navigation" size={15} color={v1.text} />
+                  <Text style={s.driverRouteBtnText}>
+                    {t('open_route_btn')}
+                  </Text>
                 </View>
               </TouchableOpacity>
-            );
-          })()}
-          {role === 'driver' && DRIVER_ROUTE_STATUSES.includes(deal?.status) ? (
-            <TouchableOpacity
-              testID="deal-open-driver-route"
-              style={s.driverRouteBtn}
-              onPress={openDealMap}
-              accessibilityLabel={t('open_route_btn')}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="navigation" size={15} color={v1.text} />
-                <Text style={s.driverRouteBtnText}>{t('open_route_btn')}</Text>
-              </View>
-            </TouchableOpacity>
-          ) : null}
-          {deal?.status === 'accepted' ? (
-            <TouchableOpacity
-              testID="deal-cancel-btn"
-              style={[s.dealCancelBtn, { opacity: statusLoading ? 0.6 : 1 }]}
-              disabled={statusLoading}
-              onPress={async () => {
-                const ok = await askConfirm(t('cancel_deal_confirm'), '', t('cancel_deal'), true);
-                if (ok) changeDealStatus('cancelled');
-              }}
-            >
-              <Text style={s.dealCancelBtnText}>⊘ {t('cancel_deal')}</Text>
-            </TouchableOpacity>
-          ) : null}
-          {dealId && ['accepted', 'in_progress', 'at_border', 'delivered'].includes(deal?.status) && isShipperSide ? (
-            <TouchableOpacity
-              testID="deal-track-truck"
-              style={s.driverRouteBtn}
-              onPress={openDealMap}
-              accessibilityLabel={t('track_truck_btn')}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="map" size={15} color={v1.text} />
-                <Text style={s.driverRouteBtnText}>{t('track_truck_btn')}</Text>
-              </View>
-            </TouchableOpacity>
-          ) : null}
-          {dealEvents.length > 0 ? (
-            <View testID="deal-timeline">
-              {dealEvents
-                .slice(-4)
-                .map((ev) => (
+            ) : null}
+            {deal?.status === "accepted" ? (
+              <TouchableOpacity
+                testID="deal-cancel-btn"
+                style={[s.dealCancelBtn, { opacity: statusLoading ? 0.6 : 1 }]}
+                disabled={statusLoading}
+                onPress={async () => {
+                  const ok = await askConfirm(
+                    t("cancel_deal_confirm"),
+                    "",
+                    t("cancel_deal"),
+                    true,
+                  );
+                  if (ok) changeDealStatus("cancelled");
+                }}
+              >
+                <Text style={s.dealCancelBtnText}>⊘ {t("cancel_deal")}</Text>
+              </TouchableOpacity>
+            ) : null}
+            {dealId &&
+            ["accepted", "in_progress", "at_border", "delivered"].includes(
+              deal?.status,
+            ) &&
+            isShipperSide ? (
+              <TouchableOpacity
+                testID="deal-track-truck"
+                style={s.driverRouteBtn}
+                onPress={openDealMap}
+                accessibilityLabel={t("track_truck_btn")}
+              >
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                >
+                  <Feather name="map" size={15} color={v1.text} />
+                  <Text style={s.driverRouteBtnText}>
+                    {t("track_truck_btn")}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
+            {dealEvents.length > 0 ? (
+              <View testID="deal-timeline">
+                {dealEvents.slice(-4).map((ev) => (
                   <SystemEventRow key={ev.id || ev.event_type} ev={ev} />
                 ))}
-            </View>
-          ) : null}
-          <DealAttachments conversationId={roomId} role={role} compact attachTrigger={attachDocTick} />
-          {acceptConfirm ? (
-            <View style={s.acceptConfirm} testID="accept-bid-confirm">
-              <Text style={s.acceptConfirmTitle}>{t('accept_bid_confirm_title')}</Text>
-              <Text style={s.acceptConfirmText}>
-                {t('accept_bid_confirm_text')} {deal?.amount != null ? formatPrice(deal.amount, deal.currency || 'USD', t) : ''}
-              </Text>
-              <View style={s.acceptConfirmRow}>
-                <TouchableOpacity onPress={() => setAcceptConfirm(false)} style={s.acceptCancelBtn} disabled={accepting}>
-                  <Text style={s.acceptCancelTxt}>{t('cancel')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={doAcceptBid} style={s.acceptOkBtn} disabled={accepting} testID="accept-bid-ok">
-                  <Text style={s.acceptOkTxt}>{accepting ? '…' : t('action_accept_bid')}</Text>
-                </TouchableOpacity>
               </View>
-            </View>
-          ) : null}
-          {canAcceptBid ? (
-            <DealQuickActions
+            ) : null}
+            <DealAttachments
+              conversationId={roomId}
               role={role}
-              onAcceptBid={() => setAcceptConfirm(true)}
+              compact
+              attachTrigger={attachDocTick}
             />
-          ) : null}
-        </View>
-      ) : null}
+            {acceptConfirm ? (
+              <View style={s.acceptConfirm} testID="accept-bid-confirm">
+                <Text style={s.acceptConfirmTitle}>
+                  {t("accept_bid_confirm_title")}
+                </Text>
+                <Text style={s.acceptConfirmText}>
+                  {t("accept_bid_confirm_text")}{" "}
+                  {deal?.amount != null
+                    ? formatPrice(deal.amount, deal.currency || "USD", t)
+                    : ""}
+                </Text>
+                <View style={s.acceptConfirmRow}>
+                  <TouchableOpacity
+                    onPress={() => setAcceptConfirm(false)}
+                    style={s.acceptCancelBtn}
+                    disabled={accepting}
+                  >
+                    <Text style={s.acceptCancelTxt}>{t("cancel")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={doAcceptBid}
+                    style={s.acceptOkBtn}
+                    disabled={accepting}
+                    testID="accept-bid-ok"
+                  >
+                    <Text style={s.acceptOkTxt}>
+                      {accepting ? "…" : t("action_accept_bid")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+            {canAcceptBid ? (
+              <DealQuickActions
+                role={role}
+                onAcceptBid={() => setAcceptConfirm(true)}
+              />
+            ) : null}
+          </View>
+        ) : null}
 
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={i => i.id}
-        renderItem={renderMessage}
-        contentContainerStyle={s.msgList}
-        keyboardShouldPersistTaps="handled"
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-      />
-      {showPhrases && <QuickPhrases onSelect={(m) => { setShowPhrases(false); sendMessage(m); }} role={role} dealStatus={deal?.status} />}
-      {/* Плашка записи: пульсирующая точка + таймер + подсказка. Без неё
-          не видно, что запись идёт (жалоба владельца 26.07). */}
-      {recording ? (
-        <View style={s.recBanner} testID="voice-rec-banner">
-          <View style={s.recDot} />
-          <Text style={s.recText}>
-            {t('voice_recording_live')} 0:{String(recordSecs % 60).padStart(2, '0')}
-          </Text>
-          <Text style={s.recHint}>{t('voice_recording_stop_hint')}</Text>
-        </View>
-      ) : null}
-      {/* Чистая строка ввода (WeChat-стиль): [+] · поле · 🎤 · отправить.
-          Все вложения — под «+» в панели ниже, чтобы главный экран был чистым. */}
-      <View style={s.inputRow}>
-        <TouchableOpacity
-          onPress={() => { setShowPhrases(false); setShowAttach((v) => !v); }}
-          style={[s.iconBtn, showAttach && { borderColor: v1Accent.main, transform: [{ rotate: '45deg' }] }]}
-          testID="chat-attach-btn"
-          accessibilityLabel={t('chat_attach')}
-        >
-          <Feather name="plus" size={20} color={showAttach ? v1Accent.main : v1.text} />
-        </TouchableOpacity>
-        <TextInput
-          style={s.input}
-          value={input}
-          onChangeText={onInputChange}
-          onFocus={() => setShowAttach(false)}
-          placeholder={t('message')}
-          placeholderTextColor={v1.placeholder}
-          onSubmitEditing={() => sendMessage()}
-          returnKeyType="send"
-          testID="chat-input"
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(i) => i.id}
+          renderItem={renderMessage}
+          contentContainerStyle={s.msgList}
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() =>
+            flatListRef.current?.scrollToEnd({ animated: true })
+          }
         />
-        {/* WhatsApp-style: одна кнопка справа, а не две рядом — микрофон,
+        {showPhrases && (
+          <QuickPhrases
+            onSelect={(m) => {
+              setShowPhrases(false);
+              sendMessage(m);
+            }}
+            role={role}
+            dealStatus={deal?.status}
+          />
+        )}
+        {/* Плашка записи: пульсирующая точка + таймер + подсказка. Без неё
+          не видно, что запись идёт (жалоба владельца 26.07). */}
+        {recording ? (
+          <View style={s.recBanner} testID="voice-rec-banner">
+            <View style={s.recDot} />
+            <Text style={s.recText}>
+              {t("voice_recording_live")} 0:
+              {String(recordSecs % 60).padStart(2, "0")}
+            </Text>
+            <Text style={s.recHint}>{t("voice_recording_stop_hint")}</Text>
+          </View>
+        ) : null}
+        {/* Чистая строка ввода (WeChat-стиль): [+] · поле · 🎤 · отправить.
+          Все вложения — под «+» в панели ниже, чтобы главный экран был чистым. */}
+        <View style={s.inputRow}>
+          <TouchableOpacity
+            onPress={() => {
+              setShowPhrases(false);
+              setShowAttach((v) => !v);
+            }}
+            style={[
+              s.iconBtn,
+              showAttach && {
+                borderColor: v1Accent.main,
+                transform: [{ rotate: "45deg" }],
+              },
+            ]}
+            testID="chat-attach-btn"
+            accessibilityLabel={t("chat_attach")}
+          >
+            <Feather
+              name="plus"
+              size={20}
+              color={showAttach ? v1Accent.main : v1.text}
+            />
+          </TouchableOpacity>
+          <TextInput
+            style={s.input}
+            value={input}
+            onChangeText={onInputChange}
+            onFocus={() => setShowAttach(false)}
+            placeholder={t("message")}
+            placeholderTextColor={v1.placeholder}
+            onSubmitEditing={() => sendMessage()}
+            returnKeyType="send"
+            testID="chat-input"
+          />
+          {/* WhatsApp-style: одна кнопка справа, а не две рядом — микрофон,
             пока поле пустое, отправка, как только появился текст
             (04.08.2026, п.5 ТЗ). Во время записи всегда виден стоп. */}
-        {CHAT_VOICE_ENABLED && (!input.trim() || recording) ? (
-          <TouchableOpacity
-            onPress={toggleVoice}
-            style={[s.sendBtn, { backgroundColor: recording ? v1Colors.error : v1Accent.main }]}
-            testID="chat-voice-btn"
-          >
-            <Feather name={recording ? 'square' : 'mic'} size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            onPress={() => sendMessage()}
-            style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
-            testID="chat-send-btn"
-            accessibilityLabel="Send"
-          >
-            <FontAwesome5 name="paper-plane" size={16} color="#FFFFFF" solid />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Панель вложений (WeChat-сетка): открывается по «+». Тап по плитке
-          закрывает панель и запускает действие. */}
-      {showAttach && (
-        <View style={s.attachPanel} testID="chat-attach-panel">
-          {[
-            CHAT_PHOTO_ENABLED ? { key: 'gallery', icon: 'image', label: t('gallery'), on: () => pickAndSend(false) } : null,
-            CHAT_PHOTO_ENABLED ? { key: 'camera', icon: 'camera', label: t('camera'), on: () => pickAndSend(true) } : null,
-            { key: 'loc', icon: 'map-pin', label: t('attach_location'), on: () => sendLocation() },
-            { key: 'price', icon: 'dollar-sign', label: t('propose_price'), on: () => openBidModal('create') },
-            // UX 26.07: «Документ» и «Поддержка» переехали сюда из шапки комнаты.
-            dealId ? { key: 'doc', icon: 'file-text', label: t('chat_quick_action_send_document'), on: () => setAttachDocTick((n) => n + 1) } : null,
-            { key: 'support', icon: 'life-buoy', label: t('chat_quick_action_call_support'), on: () => onCallSupport() },
-            { key: 'phrases', icon: 'zap', label: t('quick_phrases'), on: () => setShowPhrases(true) },
-            // Автоперевод переехал сюда из шапки (там остался только телефон).
-            { key: 'translate', icon: 'globe', label: autoTranslate ? t('autotranslate_on') : t('translate'), on: () => {
-              const next = !autoTranslate;
-              setAutoTranslate(next);
-              toast(next ? '🌐 ' + t('autotranslate_on') : t('autotranslate_off'), 'info', 1800);
-            } },
-          ].filter(Boolean).map((it) => (
+          {CHAT_VOICE_ENABLED && (!input.trim() || recording) ? (
             <TouchableOpacity
-              key={it.key}
-              style={s.attachTile}
-              testID={`chat-attach-${it.key}`}
-              onPress={() => { setShowAttach(false); it.on(); }}
+              onPress={toggleVoice}
+              style={[
+                s.sendBtn,
+                { backgroundColor: recording ? v1Colors.error : v1Accent.main },
+              ]}
+              testID="chat-voice-btn"
             >
-              <View style={s.attachIconBox}><Feather name={it.icon} size={22} color={v1.text} /></View>
-              <Text style={s.attachLabel} numberOfLines={1}>{it.label}</Text>
+              <Feather
+                name={recording ? "square" : "mic"}
+                size={18}
+                color="#FFFFFF"
+              />
             </TouchableOpacity>
-          ))}
+          ) : (
+            <TouchableOpacity
+              onPress={() => sendMessage()}
+              style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
+              testID="chat-send-btn"
+              accessibilityLabel="Send"
+            >
+              <FontAwesome5
+                name="paper-plane"
+                size={16}
+                color="#FFFFFF"
+                solid
+              />
+            </TouchableOpacity>
+          )}
         </View>
-      )}
+
+        {/* Панель вложений (WeChat-сетка): открывается по «+». Тап по плитке
+          закрывает панель и запускает действие. */}
+        {showAttach && (
+          <View style={s.attachPanel} testID="chat-attach-panel">
+            {[
+              CHAT_PHOTO_ENABLED
+                ? {
+                    key: "gallery",
+                    icon: "image",
+                    label: t("gallery"),
+                    on: () => pickAndSend(false),
+                  }
+                : null,
+              CHAT_PHOTO_ENABLED
+                ? {
+                    key: "camera",
+                    icon: "camera",
+                    label: t("camera"),
+                    on: () => pickAndSend(true),
+                  }
+                : null,
+              {
+                key: "loc",
+                icon: "map-pin",
+                label: t("attach_location"),
+                on: () => sendLocation(),
+              },
+              {
+                key: "price",
+                icon: "dollar-sign",
+                label: t("propose_price"),
+                on: () => openBidModal("create"),
+              },
+              // UX 26.07: «Документ» и «Поддержка» переехали сюда из шапки комнаты.
+              dealId
+                ? {
+                    key: "doc",
+                    icon: "file-text",
+                    label: t("chat_quick_action_send_document"),
+                    on: () => setAttachDocTick((n) => n + 1),
+                  }
+                : null,
+              {
+                key: "support",
+                icon: "life-buoy",
+                label: t("chat_quick_action_call_support"),
+                on: () => onCallSupport(),
+              },
+              {
+                key: "phrases",
+                icon: "zap",
+                label: t("quick_phrases"),
+                on: () => setShowPhrases(true),
+              },
+              // Автоперевод переехал сюда из шапки (там остался только телефон).
+              {
+                key: "translate",
+                icon: "globe",
+                label: autoTranslate ? t("autotranslate_on") : t("translate"),
+                on: () => {
+                  const next = !autoTranslate;
+                  setAutoTranslate(next);
+                  toast(
+                    next
+                      ? "🌐 " + t("autotranslate_on")
+                      : t("autotranslate_off"),
+                    "info",
+                    1800,
+                  );
+                },
+              },
+            ]
+              .filter(Boolean)
+              .map((it) => (
+                <TouchableOpacity
+                  key={it.key}
+                  style={s.attachTile}
+                  testID={`chat-attach-${it.key}`}
+                  onPress={() => {
+                    setShowAttach(false);
+                    it.on();
+                  }}
+                >
+                  <View style={s.attachIconBox}>
+                    <Feather name={it.icon} size={22} color={v1.text} />
+                  </View>
+                  <Text style={s.attachLabel} numberOfLines={1}>
+                    {it.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+          </View>
+        )}
       </KeyboardAvoidingView>
 
       <AppConfirmModal
         visible={!!confirmDialog}
         title={confirmDialog?.title}
         message={confirmDialog?.message}
-        cancelLabel={t('cancel')}
-        confirmLabel={confirmDialog?.confirmLabel || t('confirm')}
+        cancelLabel={t("cancel")}
+        confirmLabel={confirmDialog?.confirmLabel || t("confirm")}
         destructive={!!confirmDialog?.destructive}
         onCancel={() => settleConfirm(false)}
         onConfirm={() => settleConfirm(true)}
@@ -1514,12 +2749,30 @@ export default function ChatScreen({ navigation, route }) {
       {/* C2: fullscreen-просмотр вложения-фото. Тап по фото открывает; тап по
           фону или крестику — закрывает. Подписанный URL уже абсолютный
           (resolveAttachment применён при маппинге сообщений). */}
-      <Modal visible={!!fullImage} transparent animationType="fade" onRequestClose={() => setFullImage(null)}>
-        <Pressable style={s.fullBackdrop} onPress={() => setFullImage(null)} testID="chat-photo-fullscreen">
+      <Modal
+        visible={!!fullImage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFullImage(null)}
+      >
+        <Pressable
+          style={s.fullBackdrop}
+          onPress={() => setFullImage(null)}
+          testID="chat-photo-fullscreen"
+        >
           {fullImage ? (
-            <Image source={{ uri: fullImage }} style={s.fullImage} resizeMode="contain" />
+            <Image
+              source={{ uri: fullImage }}
+              style={s.fullImage}
+              resizeMode="contain"
+            />
           ) : null}
-          <TouchableOpacity style={s.fullClose} onPress={() => setFullImage(null)} testID="chat-photo-close" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <TouchableOpacity
+            style={s.fullClose}
+            onPress={() => setFullImage(null)}
+            testID="chat-photo-close"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
             <Feather name="x" size={26} color="#fff" />
           </TouchableOpacity>
           {/* Сохранить/поделиться фото (жалоба владельца: некуда сохранить).
@@ -1529,10 +2782,13 @@ export default function ChatScreen({ navigation, route }) {
             style={s.fullSave}
             testID="chat-photo-save"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            onPress={(e) => { e.stopPropagation && e.stopPropagation(); saveFullImage(); }}
+            onPress={(e) => {
+              e.stopPropagation && e.stopPropagation();
+              saveFullImage();
+            }}
           >
             <Feather name="download" size={18} color="#fff" />
-            <Text style={s.fullSaveTxt}>{t('save')}</Text>
+            <Text style={s.fullSaveTxt}>{t("save")}</Text>
           </TouchableOpacity>
         </Pressable>
       </Modal>
@@ -1551,7 +2807,7 @@ export default function ChatScreen({ navigation, route }) {
         tripId={bargainTripId}
         bidId={bidModal.bidId}
         initialAmount={bidModal.amount}
-        currency={listingCurrency || 'USD'}
+        currency={listingCurrency || "USD"}
       />
     </SafeAreaView>
   );

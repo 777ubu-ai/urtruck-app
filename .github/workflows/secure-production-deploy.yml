@@ -127,7 +127,7 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/deploy-ssh.sh ssh "rm -rf '$REMOTE_DIR/_expo'"
-          bash scripts/deploy-ssh.sh scp -C -r dist/* "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
+          bash scripts/deploy-ssh.sh scp -C -r dist/. "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
           bash scripts/deploy-ssh.sh ssh "chmod -R 755 '$REMOTE_DIR'; test -s '$REMOTE_DIR/index.html'; test -s '$REMOTE_DIR/build-info.json'; grep -q 'api-maps.yandex.ru/2.1/' '$REMOTE_DIR/index.html'; echo FRONTEND_FILES=ok"
 
       - name: Bootstrap secure server-only environment

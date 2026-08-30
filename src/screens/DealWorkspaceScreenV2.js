@@ -856,6 +856,26 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     try { await voice.stopRecording(); } catch {}
   }, []);
 
+  const appendOptimisticVoice = React.useCallback((uri, duration) => {
+    const clientId = newClientId('voice');
+    setMessages((items) => [...items, {
+      id: clientId,
+      clientMsgId: clientId,
+      mine: true,
+      text: `🎤 ${ui.voiceMessage}`,
+      voice: true,
+      mediaUrl: uri,
+      voiceDuration: duration,
+      time: nowTime(),
+      optimistic: true,
+      sendStatus: 'uploading',
+    }]);
+    nearBottomRef.current = true;
+    setShowJumpLatest(false);
+    setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 60);
+    return clientId;
+  }, [ui.voiceMessage]);
+
   const toggleVoice = React.useCallback(async () => {
     if (!recording) {
       try {
@@ -879,6 +899,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     const clientId = newClientId('voice');
     const voiceItem = {
       id: clientId,
+      clientMsgId: clientId,
       mine: true,
       text: '',
       voice: true,
@@ -892,6 +913,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       voiceMime: result.blob?.type || null,
     };
     setMessages((items) => [...items, voiceItem]);
+    // Upload-first voice path keeps the bubble visible immediately:
+    // const clientId = appendOptimisticVoice(result.uri, duration)
     nearBottomRef.current = true;
     setShowJumpLatest(false);
     setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 40);
@@ -1066,16 +1089,26 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           ) : null}
           <Text style={[s.messageTime, { color: item.mine ? 'rgba(255,255,255,0.68)' : colors.textMuted }]}>{item.time}</Text>
         </View>
-        {item.sendStatus === 'failed' ? (
+        {item.sendStatus === 'failed' && !item.voice ? (
           <TouchableOpacity
-            onPress={item.voice ? undefined : () => retryFailedText(item)}
-            disabled={!!item.voice}
+            onPress={() => retryFailedText(item)}
             style={s.errorRow}
             testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
           >
             <Feather name="alert-circle" size={12} color="#EF4444" />
             <Text style={s.errorText} numberOfLines={2}>
-              {item.sendError || t('chat_send_failed')}{item.voice ? '' : ` · ${t('chat_attach_retry')}`}
+              {item.sendError || t('chat_send_failed')} · {t('chat_attach_retry')}
+            </Text>
+          </TouchableOpacity>
+        ) : item.sendStatus === 'failed' && item.voice ? (
+          <TouchableOpacity
+            disabled
+            style={s.errorRow}
+            testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
+          >
+            <Feather name="alert-circle" size={12} color="#EF4444" />
+            <Text style={s.errorText} numberOfLines={2}>
+              {item.sendError || t('voice_error_send')}
             </Text>
           </TouchableOpacity>
         ) : null}
@@ -1289,14 +1322,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   ]}
                   testID="deal-chat-composer"
                 >
-                  <TouchableOpacity
-                    style={[s.composerCircle, recording && s.composerCircleDisabled]}
-                    onPress={toggleVoice}
-                    disabled={recording}
-                    testID="deal-chat-voice"
-                  >
-                    <Feather name="volume-2" size={22} color={recording ? '#8A8A8A' : '#202020'} />
-                  </TouchableOpacity>
+                  {!recording ? (
+                    <TouchableOpacity
+                      style={s.composerCircle}
+                      onPress={sendCameraPhoto}
+                      testID="deal-chat-camera"
+                    >
+                      <Feather name="camera" size={22} color="#202020" />
+                    </TouchableOpacity>
+                  ) : null}
                   <View style={s.inputShell}>
                     <TextInput
                       ref={inputRef}
@@ -1329,9 +1363,20 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       <Feather name="smile" size={26} color="#202020" />
                     </TouchableOpacity>
                   ) : null}
-                  {input.trim() ? (
-                    <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
-                  ) : (
+                  {!recording ? (
+                    input.trim() ? (
+                      <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={s.composerCircle}
+                        onPress={toggleVoice}
+                        testID="deal-chat-voice"
+                      >
+                        <Feather name="volume-2" size={22} color="#202020" />
+                      </TouchableOpacity>
+                    )
+                  ) : null}
+                  {!recording ? (
                     <TouchableOpacity
                       style={s.composerCircle}
                       onPress={toggleAttachMenu}
@@ -1339,7 +1384,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     >
                       <Feather name="plus" size={27} color="#202020" />
                     </TouchableOpacity>
-                  )}
+                  ) : null}
                 </View>
 
                 {emojiOpen ? (

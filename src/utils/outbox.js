@@ -98,7 +98,7 @@ function isPermanentError(error) {
 export async function flushOutbox(sendFn, activeUserId, opts = {}) {
   const { onDrop } = opts;
   let arr = await _load();
-  if (!arr.length) return 0;
+  if (!arr.length || !activeUserId) return 0;
   let sent = 0;
   const drop = async (item, error) => {
     arr = arr.filter((x) => x.clientId !== item.clientId);
@@ -106,7 +106,7 @@ export async function flushOutbox(sendFn, activeUserId, opts = {}) {
     if (onDrop) { try { onDrop(item, error); } catch {} }
   };
   for (const item of [...arr]) {
-    if (item.userId && activeUserId && item.userId !== activeUserId) continue;
+    if (item.userId && item.userId !== activeUserId) continue;
     try {
       await sendFn(item.payload);          // success или deduped (backend) — оба ок
       arr = arr.filter((x) => x.clientId !== item.clientId);

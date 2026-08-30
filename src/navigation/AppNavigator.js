@@ -185,7 +185,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Favorites" component={FavoritesScreen} />
         <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
-        <Stack.Screen name="Chat" component={ChatScreenV2} />
+        <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
         <Stack.Screen name="ChatsList" component={ChatsListScreen} />
         <Stack.Screen name="MyTripsList" component={MyTripsScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
@@ -246,7 +246,7 @@ export default function AppNavigator() {
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
         </>
       ) : (
         // Полностью в приложении
@@ -257,7 +257,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
           <Stack.Screen name="Favorites" component={FavoritesScreen} />
           <Stack.Screen name="ChatsList" component={ChatsListScreen} />

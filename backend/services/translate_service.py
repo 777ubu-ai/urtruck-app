@@ -7,9 +7,18 @@ import os
 import json
 
 LANG_NAMES = {
-    "ru": "Russian", "en": "English", "kz": "Kazakh", "cn": "Chinese",
-    "uz": "Uzbek", "kg": "Kyrgyz", "de": "German", "fr": "French",
-    "tj": "Tajik", "ge": "Georgian", "tm": "Turkmen",
+    "ru": "Russian", "en": "English", "kk": "Kazakh", "kz": "Kazakh",
+    "zh": "Chinese", "cn": "Chinese", "uz": "Uzbek", "kg": "Kyrgyz",
+    "ky": "Kyrgyz", "de": "German", "fr": "French", "tj": "Tajik",
+    "ge": "Georgian", "tm": "Turkmen",
+}
+
+LANG_ALIAS = {
+    "cn": "zh",
+    "zh-cn": "zh",
+    "zh-hans": "zh",
+    "kz": "kk",
+    "kk-kz": "kk",
 }
 
 SYSTEM_PROMPT = (
@@ -29,6 +38,16 @@ def _get_api_key():
     return os.environ.get("OPENAI_API_KEY", "")
 
 
+def _normalize_lang_code(value: str | None) -> str | None:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return None
+    if raw in LANG_ALIAS:
+        return LANG_ALIAS[raw]
+    base = raw.split("-", 1)[0]
+    return LANG_ALIAS.get(base, base)
+
+
 def get_info():
     """Debug info — НЕ раскрывает ключ. QA-находка: endpoint публичный,
     поэтому префикс ключа наружу не отдаём вовсе (только факт наличия)."""
@@ -42,6 +61,10 @@ def get_info():
 def translate_text(text: str, target_lang: str, source_lang: str = None) -> dict:
     if not text or not text.strip():
         return {"translated_text": text, "provider": "skip", "source_lang": source_lang}
+    target_lang = _normalize_lang_code(target_lang) or "en"
+    source_lang = _normalize_lang_code(source_lang) or source_lang
+    if source_lang and target_lang == source_lang:
+        return {"translated_text": text, "provider": "skip_same_lang", "source_lang": source_lang}
 
     provider = _get_provider()
     api_key = _get_api_key()

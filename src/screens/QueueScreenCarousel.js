@@ -20,6 +20,7 @@ import { useV1Colors } from '../theme/designV1';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { API_BASE } from '../config/env';
 import { storage } from '../utils/storage';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 
 const BASE = `${API_BASE}/borders`;
 const LEGACY_PLATE_KEY = 'ur_queue_plate';
@@ -244,7 +245,6 @@ export default function QueueScreen({ navigation, route }) {
   const [lookup, setLookup] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const countryName = useCallback((code, withFlag = true) => {
@@ -366,11 +366,9 @@ export default function QueueScreen({ navigation, route }) {
     return favorites.map((id) => map.get(String(id))).filter(Boolean).slice(0, 6);
   }, [favorites, allCrossings]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await Promise.all([loadHome({ spin: false }), refreshVehicles()]);
-    setRefreshing(false);
-  }, [loadHome, refreshVehicles]);
+  const { refreshing, onRefresh } = useSafeRefresh(
+    useCallback(() => Promise.all([loadHome({ spin: false }), refreshVehicles()]), [loadHome, refreshVehicles]),
+  );
 
   const toggleFavorite = useCallback((crossing) => {
     if (!crossing) return;

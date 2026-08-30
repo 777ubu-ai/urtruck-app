@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Platform, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
@@ -15,6 +15,7 @@ import EditCargoModal from '../components/EditCargoModal';
 import { colors, spacing, radius, typography } from '../theme/theme';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import { useMountedRef } from '../hooks/useMountedRef';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import FadeInUp from '../components/ui/FadeInUp';
 import Feather from '@expo/vector-icons/Feather';
 import { countryFlag } from '../utils/countryFlags';
@@ -127,6 +128,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const mounted = useMountedRef();  // QA-аудит P1-8
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(!justCreatedTrip && !justCreatedCargo);
+  const [refreshingList, setRefreshingList] = useState(false);
   const [editCargo, setEditCargo] = useState(null);  // задача A: правка своего груза
   // Название сохранено ради минимального диффа — общий «id занятой операции»
   // (republish/продление); ставки (bid) переехали в «Сделки».
@@ -189,8 +191,9 @@ export default function MyTripsScreen({ navigation, route }) {
     setConfirmDialog((current) => { current?.resolve?.(answer); return null; });
   };
 
-  const load = async () => {
-    setLoading(true);
+  const load = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) setLoading(true);
+    else setRefreshingList(true);
     try {
       const token = await require('../utils/storage').storage.get('ur_reg_token');
       if (!token) {
@@ -211,8 +214,15 @@ export default function MyTripsScreen({ navigation, route }) {
         setData(d);
       }
     } catch (e) { console.warn('[MyTrips] load error:', e.message); }
-    if (mounted.current) setLoading(false);
-  };
+    if (mounted.current) {
+      if (showLoading) setLoading(false);
+      else setRefreshingList(false);
+    }
+  }, [isDriver, mounted]);
+
+  const { refreshing, onRefresh } = useSafeRefresh(
+    useCallback(() => load({ showLoading: false }), [load]),
+  );
 
   useEffect(() => {
     if (justCreatedTrip) {
@@ -222,19 +232,19 @@ export default function MyTripsScreen({ navigation, route }) {
       setData({ my_trips: [], my_cargos: [justCreatedCargo], my_bids: [], incoming_bids: [], my_deals: [] });
       setLoading(false);
       // Фоном подтягиваем серверные данные, чтобы список стал полным.
-      load();
+      load({ showLoading: false });
     } else {
       load();
     }
-  }, []);
+  }, [justCreatedCargo, justCreatedTrip, load, isDriver]);
 
   // 27.07: перечитываем список при каждом возврате на экран — иначе статус
   // сделки (Везут/Доставлено), изменённый второй стороной, не обновлялся до
   // ручного pull-to-refresh.
   useEffect(() => {
-    const unsub = navigation.addListener('focus', () => { load(); });
+    const unsub = navigation.addListener('focus', () => { load({ showLoading: false }); });
     return unsub;
-  }, [navigation]);
+  }, [navigation, load]);
 
   let myItemsRaw = isDriver ? (data?.my_trips || []) : (data?.my_cargos || []);
   if (justCreatedTrip && isDriver && !myItemsRaw.find(i => i.id === justCreatedTrip.id)) {
@@ -610,18 +620,7 @@ export default function MyTripsScreen({ navigation, route }) {
 
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      {/* Stage 16: brand bar — UrTruck wordmark + bell only.
-          Stripped the green FTL pill (same change in BrandHeader /
-          BrandBarWithShare / FeedScreen). */}
-      <View style={s.brandBar}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={[s.backIcon, { color: v1Accent.main }]}>‹</Text>
-        </TouchableOpacity>
-        <View style={s.brandRow}>
-          <Text style={s.brandText}>UrTruck</Text>
-        </View>
-        {/* ☰ (top-right) → профиль и меню. Колокольчик уехал вниз в
-            таб-бар как вкладка «Сделки» (единый инбокс живой работы). */}
+      <View style={[s.brandBar, { justifyContent: 'flex-end' }]} testID="mywork-minimal-header">
         <TouchableOpacity
           onPress={() => navigation.navigate('Profile', { role })}
           style={s.menuBtn}
@@ -633,54 +632,45 @@ export default function MyTripsScreen({ navigation, route }) {
         </TouchableOpacity>
       </View>
 
-      <View style={s.titleBlock}>
-        <Text style={s.titleHero}>{isDriver ? t('my_trips_title') : t('my_cargos_title')}</Text>
-        <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
-      </View>
-
-      {/* §2.2.2: кнопка размещения живёт ВНУТРИ «моего меню», а не отдельной
-          вкладкой. Driver: «Разместить рейс» (через verification-gate).
-          Client (26.07.2026): «Разместить груз» — центральная «+»-вкладка
-          из таб-бара убрана, размещение в одном месте с моими грузами. */}
-      <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
-        <TouchableOpacity
-          testID={isDriver ? 'mytrips-publish-route' : 'mytrips-place-cargo'}
-          onPress={isDriver ? onPublishRoute : () => navigation.navigate('CreateCargo', { role })}
-          activeOpacity={0.75}
-          style={[s.publishRouteBtn, { borderColor: v1Accent.main }]}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Feather name="plus" size={14} color={v1Accent.main} />
-            <Text style={[s.publishRouteText, { color: v1Accent.main }]}>{isDriver ? t('publish_route') : t('place_cargo')}</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      <View style={{ paddingHorizontal: 16 }}>
-        {/* Решение владельца 05.08.2026: один основной раздел (листинги),
-            вкладок для переключения больше нет — SegmentTabs с одной вечно
-            активной кнопкой был бы лишним элементом. Архив — единственный
-            вторичный toggle, доступен обеим ролям. */}
-        {(
-          <TouchableOpacity
-            testID="my-work-archive-toggle"
-            onPress={() => setTab(tab === 'archive' ? (isDriver ? 'routes' : 'searching') : 'archive')}
-            style={s.archiveToggle}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={[s.archiveToggleText, { color: tab === 'archive' ? v1Accent.main : v1.textMuted }]}>
-              {tab === 'archive' ? `‹ ${t('back_to_active')}` : `${t('tab_archive')} (${(isDriver ? driverArchive : clientArchive).length}) ›`}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
       <FlatList
         data={listData}
         keyExtractor={(i, idx) => (i._kind ? i._kind + ':' : '') + (i.id ?? idx)}
         renderItem={listRender}
+        ListHeaderComponent={(
+          <>
+            <View style={s.titleBlock}>
+              <Text style={s.titleHero}>{isDriver ? t('my_trips_title') : t('my_cargos_title')}</Text>
+              <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
+            </View>
+            <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+              <TouchableOpacity
+                testID={isDriver ? 'mytrips-publish-route' : 'mytrips-place-cargo'}
+                onPress={isDriver ? onPublishRoute : () => navigation.navigate('CreateCargo', { role })}
+                activeOpacity={0.75}
+                style={[s.publishRouteBtn, { borderColor: v1Accent.main }]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name="plus" size={14} color={v1Accent.main} />
+                  <Text style={[s.publishRouteText, { color: v1Accent.main }]}>{isDriver ? t('publish_route') : t('place_cargo')}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+            <View style={{ paddingHorizontal: 16 }}>
+              <TouchableOpacity
+                testID="my-work-archive-toggle"
+                onPress={() => setTab(tab === 'archive' ? (isDriver ? 'routes' : 'searching') : 'archive')}
+                style={s.archiveToggle}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[s.archiveToggleText, { color: tab === 'archive' ? v1Accent.main : v1.textMuted }]}>
+                  {tab === 'archive' ? `‹ ${t('back_to_active')}` : `${t('tab_archive')} (${(isDriver ? driverArchive : clientArchive).length}) ›`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+        refreshControl={<RefreshControl refreshing={refreshing || refreshingList} onRefresh={onRefresh} />}
         ListEmptyComponent={renderEmpty()}
       />
 

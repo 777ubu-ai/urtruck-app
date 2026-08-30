@@ -1,7 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import ChatScreen from './ChatScreen';
 import DealWorkspaceRoute from '../components/deal/DealWorkspaceRoute';
 import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
@@ -104,7 +103,14 @@ export default function ChatScreenV2(props) {
     return <DealWorkspaceRoute {...props} route={nextRoute} />;
   }
 
-  return <ChatScreen {...props} />;
+  return <DealWorkspaceRoute {...props} route={{
+    ...route,
+    params: {
+      ...params,
+      dealId: resolvedDealId || null,
+      partner: resolvedPartner || params.partner || null,
+    },
+  }} />;
 }
 
 const s = StyleSheet.create({

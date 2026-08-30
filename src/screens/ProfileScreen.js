@@ -21,10 +21,10 @@ import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { localizePlace } from '../utils/places';
 
 const LANGS = [
-  { code: 'RU', flag: '🇷🇺', name: 'Русский' },
-  { code: 'EN', flag: '🇬🇧', name: 'English' },
-  { code: 'KK', flag: '🇰🇿', name: 'Қазақша' },
-  { code: 'ZH', flag: '🇨🇳', name: '中文' },
+  { code: 'RU', flag: '🇷🇺' },
+  { code: 'EN', flag: '🇬🇧' },
+  { code: 'KK', flag: '🇰🇿' },
+  { code: 'ZH', flag: '🇨🇳' },
 ];
 
 const QA_HOOK_ALLOWED = (() => {
@@ -126,7 +126,6 @@ export default function ProfileScreen({ navigation, route }) {
   useFocusEffect(useCallback(() => {
     fetchProfile();
   }, [fetchProfile]));
-
   // Notifications are not a second navigation hub anymore. Deal events and
   // their unread state live in the dedicated Deals area, so Profile must not
   // duplicate the same feed or badge.
@@ -276,6 +275,13 @@ export default function ProfileScreen({ navigation, route }) {
                   <Text style={[s.menuLabel, { color: theme.text }]}>{item.label}</Text>
                   {item.sub ? <Text style={[s.menuSub, { color: theme.textMuted }]}>{item.sub}</Text> : null}
                 </View>
+                {item.badgeCount > 0 ? (
+                  <View style={s.menuUnreadBadge} testID={`${item.testID}-badge`}>
+                    <Text style={s.menuUnreadText}>
+                      {item.badgeCount > 9 ? '9+' : item.badgeCount}
+                    </Text>
+                  </View>
+                ) : null}
                 <Feather name="chevron-right" size={18} color={theme.textMuted} />
               </TouchableOpacity>
             </React.Fragment>

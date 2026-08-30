@@ -1,5 +1,8 @@
 name: UrTruck TestFlight RC
 
+# Push to this release branch is the canonical trigger for an exact
+# TestFlight candidate build and upload.
+# RC refresh 2026-08-26: voice optimistic-send + chat UX fixes.
 on:
   workflow_dispatch:
   push:
@@ -86,6 +89,8 @@ jobs:
       - name: Build production iOS RC in EAS
         id: build
         shell: bash
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
         run: |
           set -euo pipefail
           npx eas-cli@latest build --platform ios --profile production --clear-cache --non-interactive --wait --json > eas-build.json
