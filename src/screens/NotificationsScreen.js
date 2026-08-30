@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useToast } from '../components/Toast';
@@ -11,6 +11,7 @@ import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { useAuth } from '../utils/AuthContext';
 import { useI18n } from '../utils/useI18n';
 import { getLanguage } from '../utils/i18n';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { localizeSystemMessage } from '../utils/places';
 import Feather from '@expo/vector-icons/Feather';
 

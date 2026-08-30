@@ -21,10 +21,20 @@ import { formatPrice } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
 import { countryFlag } from '../utils/countryFlags';
 import { accentFor } from '../components/deal/DealRoom';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { isBidActionable } from '../utils/dealsUnread';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
 
 const ACCENT = "#34936B";
+const ACCENT_SOFT = '#EAF5EF';
+const PAGE_BG = '#F7F9F7';
+const SURFACE = '#FFFFFF';
+const BORDER = '#E0E6E2';
+const BORDER_STRONG = '#BFDCCF';
+const TEXT = '#18231E';
+const TEXT_SECONDARY = '#526057';
+const TEXT_MUTED = '#758078';
+const TEXT_DIM = '#98A19B';
 const WAITING = "#617067";
 const INFO = "#3478D4";
 const ARCHIVE = "#7C8B82";
@@ -264,7 +274,6 @@ export default function DealsScreen({ navigation, route }) {
   const role = route?.params?.role || 'client';
   const roleAccent = accentFor(role) || ACCENT;
   const copy = COPY[lang] || COPY.EN;
-  const s = useMemo(() => createStyles(colors), [colors]);
 
   const [dealTab, setDealTab] = useState("offers");
   const [query, setQuery] = useState("");
@@ -849,8 +858,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   tabChipActive: {
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.driverSoft,
+    borderColor: BORDER_STRONG,
+    backgroundColor: ACCENT_SOFT,
   },
   tabChipLabelRow: {
     width: '100%',
@@ -925,8 +934,8 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -939,7 +948,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    color: colors.text,
+    color: TEXT,
     fontSize: 14,
     paddingVertical: 0,
   },
@@ -961,8 +970,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 17,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
     shadowColor: "#15211C",
     shadowOpacity: 0.03,
     shadowRadius: 9,
@@ -978,7 +987,7 @@ const styles = StyleSheet.create({
   route: {
     flex: 1,
     minWidth: 0,
-    color: colors.text,
+    color: TEXT,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "700",
@@ -987,7 +996,7 @@ const styles = StyleSheet.create({
   price: {
     maxWidth: "37%",
     flexShrink: 0,
-    color: colors.text,
+    color: TEXT,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "800",
@@ -1028,7 +1037,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   time: {
-    color: colors.textDim,
+    color: TEXT_DIM,
     fontSize: 11,
     lineHeight: 16,
     fontVariant: ["tabular-nums"],
@@ -1050,14 +1059,14 @@ const styles = StyleSheet.create({
   },
   meta: {
     marginTop: 6,
-    color: colors.textMuted,
+    color: TEXT_MUTED,
     fontSize: 12,
     lineHeight: 16,
   },
   emptyText: {
     marginTop: 58,
     paddingHorizontal: 24,
-    color: colors.textMuted,
+    color: TEXT_MUTED,
     textAlign: "center",
     fontSize: 14,
     lineHeight: 20,
@@ -1070,7 +1079,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   errorText: {
-    color: colors.textMuted,
+    color: TEXT_MUTED,
     fontSize: 14,
     textAlign: "center",
   },
@@ -1079,12 +1088,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingHorizontal: 22,
     borderRadius: 22,
-    backgroundColor: colors.driverSoft,
+    backgroundColor: ACCENT_SOFT,
     alignItems: "center",
     justifyContent: "center",
   },
   retryText: {
-    color: colors.driver,
+    color: ACCENT,
     fontSize: 14,
     fontWeight: "800",
   },
