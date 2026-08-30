@@ -10,6 +10,23 @@ from api.verification_gate import require_level
 
 notif_router = APIRouter()
 
+# Deal status, bid and tracking events are shown in the deal room timeline.
+# They must not also appear as a second, separate notification feed for either
+# participant (driver or shipper). Keep non-deal notifications such as
+# registration and product reminders available for the remaining API users.
+DEAL_NOTIFICATION_TYPES = {
+    "bid",
+    "bid_created",
+    "bid_accepted",
+    "bid_cancelled",
+    "bid_rejected",
+    "bid_countered",
+    "deal_created",
+    "deal_status",
+    "trip_status",
+    "tracking",
+}
+
 
 def _init():
     schema = Path(__file__).resolve().parent.parent / "database" / "notifications_schema.sql"
@@ -108,9 +125,12 @@ def mark_notifications_read_by_urls(user_id: str, urls) -> int:
 @notif_router.get("")
 def list_notifications(limit: int = 50, user=Depends(require_level(1))):
     with get_conn() as c:
+        placeholders = ",".join("?" for _ in DEAL_NOTIFICATION_TYPES)
         rows = c.execute(
-            "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
-            (user["id"], limit),
+            f"SELECT * FROM notifications WHERE user_id = ? "
+            f"AND (type IS NULL OR type NOT IN ({placeholders})) "
+            "ORDER BY created_at DESC LIMIT ?",
+            (user["id"], *sorted(DEAL_NOTIFICATION_TYPES), limit),
         ).fetchall()
     return {"notifications": [dict(r) for r in rows]}
 
@@ -118,9 +138,11 @@ def list_notifications(limit: int = 50, user=Depends(require_level(1))):
 @notif_router.get("/unread")
 def unread_count(user=Depends(require_level(1))):
     with get_conn() as c:
+        placeholders = ",".join("?" for _ in DEAL_NOTIFICATION_TYPES)
         row = c.execute(
-            "SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0",
-            (user["id"],),
+            f"SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0 "
+            f"AND (type IS NULL OR type NOT IN ({placeholders}))",
+            (user["id"], *sorted(DEAL_NOTIFICATION_TYPES)),
         ).fetchone()
     return {"unread": row["cnt"] if row else 0}
 

@@ -7,6 +7,12 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 const app = read('App.js');
 const push = read('src/utils/push.js');
 const notifications = read('src/screens/NotificationsScreen.js');
+const appJson = JSON.parse(read('app.json'));
+const aasa = JSON.parse(read('web/apple-app-site-association'));
+const wellKnownAasa = JSON.parse(read('web/.well-known/apple-app-site-association'));
+const assetlinks = JSON.parse(read('web/.well-known/assetlinks.json'));
+const secureDeploy = read('.github/workflows/secure-production-deploy.yml');
+const deployScript = read('deploy.sh');
 
 test('native push tap routing keeps canonical deep-links for cargo, trip, deal, chat, profile and notifications', () => {
   assert.match(app, /if \(kind === 'cargos' && id\)/);
@@ -53,4 +59,41 @@ test('auth and notification cold-start deeplinks are queued until nav and auth a
   assert.match(app, /if \(pendingUrlRef\.current && navReadyRef\.current && authedForDeepLink\)/);
   assert.match(app, /Notifications\.getLastNotificationResponseAsync/);
   assert.match(app, /Notifications\.addNotificationResponseReceivedListener/);
+});
+
+test('custom-scheme and universal-link notification entrypoints are parsed as Notifications', () => {
+  assert.match(app, /parsed\.protocol === 'urtruck:' \|\| parsed\.protocol === 'com\.urtruck\.app:'/);
+  assert.match(app, /const hostPart = parsed\.hostname \? `\/\$\{parsed\.hostname\}` : ''/);
+  assert.match(app, /else if \(kind === 'notifications'\)/);
+  assert.match(app, /navigate\('Notifications'\)/);
+  assert.match(notifications, /parsed\.protocol === "urtruck:" \|\| parsed\.protocol === "com\.urtruck\.app:"/);
+});
+
+test('native app listens to general url entrypoints in addition to push taps', () => {
+  assert.match(app, /Linking\.getInitialURL\(\)/);
+  assert.match(app, /Linking\.addEventListener\('url', \(\{ url \}\) =>/);
+  assert.match(app, /if \(url\) routeFromUrl\(url\);/);
+});
+
+test('ios and android release configs declare urtruck notifications app-link entrypoints', () => {
+  assert.deepEqual(appJson.expo.ios.associatedDomains, ['applinks:urtruck.kz']);
+  assert.equal(appJson.expo.android.intentFilters[0].data[0].scheme, 'https');
+  assert.equal(appJson.expo.android.intentFilters[0].data[0].host, 'urtruck.kz');
+  assert.equal(appJson.expo.android.intentFilters[0].data[0].pathPrefix, '/notifications');
+});
+
+test('release web bundle ships apple-app-site-association and assetlinks for notifications entrypoint', () => {
+  const applePaths = aasa.applinks.details[0].paths;
+  assert.ok(applePaths.includes('/notifications'));
+  assert.ok(applePaths.includes('/notifications/*'));
+  assert.deepEqual(aasa, wellKnownAasa);
+  assert.equal(aasa.applinks.details[0].appID, 'ABR4N7KYY5.com.urtruck.app');
+  assert.equal(assetlinks[0].target.package_name, 'com.urtruck.app');
+  assert.match(assetlinks[0].target.sha256_cert_fingerprints[0], /^[A-F0-9:]{95}$/);
+});
+
+test('deploy paths keep .well-known release files instead of dropping hidden entries', () => {
+  assert.match(secureDeploy, /scp -C -r dist\/\. "\$SERVER_USER@\$SERVER_HOST:\$REMOTE_DIR\/"/);
+  assert.match(deployScript, /scp -i ~\/\.ssh\/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist\/\. "\$\{SERVER\}:\$\{REMOTE_DIR\}\/"/);
+  assert.match(deployScript, /scp -i ~\/\.ssh\/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist\/\. "\$\{SERVER\}:\$\{VERSIONS_DIR\}\/v\$NEW_VERSION\/"/);
 });

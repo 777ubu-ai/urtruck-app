@@ -8,7 +8,6 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors } from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
-import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import { getProfile, saveProfile } from '../utils/store';
 import { storage } from '../utils/storage';
 import { regAPI } from '../utils/registration';
@@ -96,7 +95,6 @@ export default function ProfileScreen({ navigation, route }) {
   const tonUnit = uiLang === 'ZH' ? '吨' : uiLang === 'EN' ? 't' : 'т';
   const cubicMeterUnit = uiLang === 'ZH' ? '立方米' : 'м³';
   const { session, signOut, verificationLevel } = useAuth();
-  const unreadNotifications = useUnreadNotifications(!!session?.user?.id);
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
   const [confirmDialog, setConfirmDialog] = useState(null);
@@ -177,7 +175,6 @@ export default function ProfileScreen({ navigation, route }) {
   // IA Phase 2: Chats — отдельная вкладка/путь (через сделку), НЕ дублируется
   // generic-рядом в Профиле. «Update app» убран из Профиля (см. ниже).
   const menuItems = [
-    { icon: 'bell', label: t('menu_notifications'), screen: 'Notifications', testID: 'profile-notifications', badgeCount: unreadNotifications },
     ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
     { icon: 'star',          label: t('myReviews'),     screen: 'Reviews', testID: 'profile-my-reviews' },
     { icon: 'heart',         label: t('favorites_title'), screen: 'Favorites', testID: 'profile-favorites' },

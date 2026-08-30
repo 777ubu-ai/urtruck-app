@@ -25,6 +25,7 @@ import {
   createBooking,
   fetchScoreboard,
 } from '../utils/cgrAPI';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 
 // PR-C2 (Task 4) → Stream A (день 7-10):
 // Info-page для CarGoRuqsat — государственной системы электронной очереди
@@ -47,7 +48,6 @@ export default function CargoRuqsatInfoScreen({ navigation, route }) {
   const [scoreboard, setScoreboard] = useState(null);
   const [scoreboardError, setScoreboardError] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
   const [bookingNumber, setBookingNumber] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -62,7 +62,6 @@ export default function CargoRuqsatInfoScreen({ navigation, route }) {
       setScoreboard(null);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
@@ -70,10 +69,7 @@ export default function CargoRuqsatInfoScreen({ navigation, route }) {
     loadScoreboard();
   }, [loadScoreboard]);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadScoreboard();
-  }, [loadScoreboard]);
+  const { refreshing, onRefresh } = useSafeRefresh(loadScoreboard);
 
   const onSubmitBooking = useCallback(async () => {
     const n = bookingNumber.trim();

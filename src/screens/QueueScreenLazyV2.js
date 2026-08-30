@@ -269,12 +269,12 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: v1.bg }]} edges={['top']} testID="border-screen-v2">
       <View style={[s.topBar, { borderBottomColor: theme.border, backgroundColor: v1.bg }]}> 
-        <View style={{ width: 42 }} />
-        <Text style={[s.topTitle, { color: theme.text }]} testID="queue-title">{L.title}</Text>
+        <View style={{ flex: 1 }} />
         <HeaderMenuButton navigation={navigation} role={role} />
       </View>
 
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+        <Text style={[s.topTitle, s.scrollTitle, { color: theme.text }]} testID="queue-title">{L.title}</Text>
         <Text style={[s.subtitle, { color: theme.textMuted }]}>{L.subtitle}</Text>
         <Text style={[s.label, { color: theme.text }]}>{L.where}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} testID="border-country-filter">
@@ -390,6 +390,7 @@ const s = StyleSheet.create({
   safe: { flex: 1 },
   topBar: { height: 56, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
   topTitle: { fontSize: 20, fontWeight: '800' },
+  scrollTitle: { marginBottom: 8 },
   content: { paddingHorizontal: 18, paddingTop: 15 },
   subtitle: { fontSize: 14, lineHeight: 20, marginBottom: 18 },
   label: { fontSize: 15, fontWeight: '800', marginBottom: 9 },

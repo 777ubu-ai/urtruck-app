@@ -35,7 +35,7 @@ const distanceTextFromMeters = (value, t) => {
   if (!Number.isFinite(meters) || meters <= 0) return null;
   const km = meters / 1000;
   const rounded = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
-  return `${String(rounded).replace(".", ",")} ${t("km_short")}`;
+  return `${String(rounded).replace(".", ",")} ${t('km_short')}`;
 };
 
 const durationTextFromSeconds = (value, t) => {
@@ -45,9 +45,9 @@ const durationTextFromSeconds = (value, t) => {
   const days = Math.floor(totalMinutes / 1440);
   const hours = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
-  const d = t("track_day");
-  const h = t("track_hour");
-  const m = t("track_min");
+  const d = t('track_day');
+  const h = t('track_hour');
+  const m = t('track_min');
   if (days > 0)
     return hours > 0 ? `${days} ${d} ${hours} ${h}` : `${days} ${d}`;
   if (hours > 0)
@@ -206,10 +206,10 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
             {
               hintContent:
                 index === 0
-                  ? t("map_point_start")
-                  : index === plannedPoints.length - 1
-                    ? t("map_point_destination")
-                    : t("map_point_waypoint"),
+                      ? t('map_point_start')
+                      : index === plannedPoints.length - 1
+                        ? t('map_point_destination')
+                        : t('map_point_waypoint'),
             },
             { preset: "islands#greenCircleDotIcon" },
           ),
@@ -221,7 +221,7 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
             livePoint,
             {
               iconContent: "🚚",
-              hintContent: t("track_truck_marker"),
+              hintContent: t('track_truck_marker'),
             },
             { preset: "islands#greenStretchyIcon", zIndex: 1000 },
           ),
@@ -239,13 +239,12 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
     const geometry = (serverRoute?.geometry || []).map(asPoint).filter(Boolean);
     if (geometry.length >= 2) {
       map.geoObjects.add(
-        new api.Polyline(
-          geometry,
+        new api.Polyline(geometry,
           {},
           {
             strokeColor: "#168759",
             strokeWidth: 6,
-            strokeStyle: "solid",
+            strokeStyle: 'solid',
             opacity: 0.96,
           },
         ),
@@ -260,7 +259,7 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
           durationText,
           blocked: false,
           isRemaining: Boolean(livePoint),
-          provider: serverRoute?.provider || "server-road",
+            provider: serverRoute?.provider || "server-road",
         });
       }
       return () => {
@@ -305,7 +304,7 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
         {
           boundsAutoApply: true,
           wayPointVisible: true,
-          routeActiveStrokeColor: "#168759",
+          routeActiveStrokeColor: '#168759',
           routeActiveStrokeWidth: 6,
           routeStrokeColor: "#9DB9AC",
           routeStrokeWidth: 4,
@@ -366,7 +365,7 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
           style={s.loading}
           testID="truck-map-yandex-loading"
         >
-          <Text style={s.loadingText}>{t("map_loading")}</Text>
+          <Text style={s.loadingText}>{t('map_loading')}</Text>
         </View>
       ) : null}
       {status === "error" ? (
@@ -375,8 +374,8 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
           style={s.loading}
           testID="truck-map-yandex-error"
         >
-          <Text style={s.errorTitle}>{t("map_unavailable_title")}</Text>
-          <Text style={s.loadingText}>{t("map_reconnecting")}</Text>
+          <Text style={s.errorTitle}>{t('map_unavailable_title')}</Text>
+          <Text style={s.loadingText}>{t('map_reconnecting')}</Text>
         </View>
       ) : null}
       {fallbackActive ? (
@@ -386,7 +385,7 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
           testID="truck-map-road-route-unavailable"
         >
           <Text style={s.routeStateText}>
-            {t("map_road_route_unavailable")}
+            {t('map_road_route_unavailable')}
           </Text>
         </View>
       ) : null}
@@ -422,9 +421,9 @@ export default function TruckMap({
 }) {
   const { t } = useI18n();
   // Badge copy falls back to the localized default when the caller omits it.
-  const badgePlannedTitle = plannedTitle ?? t("planned_route_title");
-  const badgePlannedHint = plannedHint ?? t("tracking_starts_after_start");
-  const badgeLiveTitle = liveTitle ?? t("live_route_title");
+  const badgePlannedTitle = plannedTitle ?? t('planned_route_title');
+  const badgePlannedHint = plannedHint ?? t('tracking_starts_after_start');
+  const badgeLiveTitle = liveTitle ?? t('live_route_title');
   const livePoint = asPoint([lat, lng]);
   const plannedPoints = React.useMemo(
     () => (routePoints || []).map(asPoint).filter(Boolean),
@@ -487,8 +486,8 @@ export default function TruckMap({
         />
       ) : (
         <View style={s.loading} testID="truck-map-yandex-not-configured">
-          <Text style={s.errorTitle}>{t("map_not_configured_title")}</Text>
-          <Text style={s.loadingText}>{t("map_not_configured_hint")}</Text>
+          <Text style={s.errorTitle}>{t('map_not_configured_title')}</Text>
+          <Text style={s.loadingText}>{t('map_not_configured_hint')}</Text>
         </View>
       )}
       {serverLoading ? (
@@ -497,7 +496,7 @@ export default function TruckMap({
           style={s.routeState}
           testID="truck-map-road-routing-loading"
         >
-          <Text style={s.routeStateText}>{t("map_building_route")}</Text>
+          <Text style={s.routeStateText}>{t('map_building_route')}</Text>
         </View>
       ) : null}
       {showBadge ? (

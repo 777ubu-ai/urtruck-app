@@ -452,11 +452,9 @@ export default function TripDetail({ navigation, route }) {
           )}
           {chatRoomId && (
             <View style={{ marginTop: 10, gap: 8 }}>
-              {/* «Написать сообщение» — главное действие по сделке
-                  (05.08.2026, п.5/17 ТЗ): большая ролевая кнопка вместо
-                  мелкой ссылки «Чат по заказу». Звонок — secondary, видна
-                  только когда backend уже отдал counterparty_phone (гейт по
-                  участию в сделке = только post-accept). */}
+              {/* «Написать сообщение» — единственное действие связи по сделке.
+                  Прямой звонок убран: он уводил пользователя из UrTruck в
+                  системный телефон/WhatsApp и ломал рабочий сценарий чата. */}
               <PrimaryCTA
                 testID="deal-order-chat"
                 role={isDriverSide ? 'driver' : 'client'}
@@ -465,15 +463,6 @@ export default function TripDetail({ navigation, route }) {
                 onPress={() => navigation.navigate('Chat', { roomId: chatRoomId, role, tripId: (trip && trip.id) || tripId, partner: driverId ? { id: driverId } : undefined })}
                 style={{ height: 54 }}
               />
-              {counterpartyPhone ? (
-                <SecondaryButton
-                  testID="deal-order-call"
-                  role={isDriverSide ? 'driver' : 'client'}
-                  icon="📞"
-                  label={t('call_partner')}
-                  onPress={() => openContactPartner(counterpartyPhone, t)}
-                />
-              ) : null}
             </View>
           )}
         </View>

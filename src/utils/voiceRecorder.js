@@ -8,6 +8,7 @@ let _recording = null;
 let _sound = null;
 let _playResolve = null;
 let _playToken = 0;
+let _webAudio = null;
 
 export const voice = {
   // ─── Запись ───
@@ -57,7 +58,7 @@ export const voice = {
   },
 
   // ─── Воспроизведение ───
-  async play(uri) {
+  async play(uri, rate = 1) {
     const token = ++_playToken;
     try {
       if (_sound) {
@@ -69,7 +70,7 @@ export const voice = {
         _sound = null;
       }
       if (Platform.OS === 'web') {
-        return this._playWeb(uri);
+      return this._playWeb(uri, rate);
       }
       const { Audio } = require('expo-av');
       // C1 (device-баг): голосовое не проигрывалось у получателя на iOS.
@@ -86,6 +87,7 @@ export const voice = {
       _sound = sound;
       return await new Promise(async (resolve) => {
         _playResolve = resolve;
+        try { await sound.setRateAsync(rate, true); } catch {}
         sound.setOnPlaybackStatusUpdate((status) => {
           if (token !== _playToken) return;
           if (status.didJustFinish) {
@@ -122,6 +124,17 @@ export const voice = {
       await _sound.unloadAsync().catch(() => {});
       _sound = null;
     }
+    if (_webAudio) {
+      _webAudio.pause();
+      _webAudio.currentTime = 0;
+      _webAudio = null;
+    }
+  },
+
+  async setRate(rate) {
+    const safeRate = Math.max(0.5, Math.min(2, Number(rate) || 1));
+    if (_sound) await _sound.setRateAsync(safeRate, true).catch(() => {});
+    if (_webAudio) _webAudio.playbackRate = safeRate;
   },
 
   // ─── Web fallback (MediaRecorder) ───
@@ -176,12 +189,14 @@ export const voice = {
     });
   },
 
-  _playWeb(uri) {
+  _playWeb(uri, rate = 1) {
     return new Promise((resolve) => {
       const audio = new Audio(uri);
-      audio.onended = () => resolve(true);
+      _webAudio = audio;
+      audio.playbackRate = rate;
+      audio.onended = () => { if (_webAudio === audio) _webAudio = null; resolve(true); };
       audio.onerror = (e) => { console.warn('[voice] web play error:', e); resolve(false); };
-      audio.play().catch(() => resolve(false));
+      audio.play().catch(() => { if (_webAudio === audio) _webAudio = null; resolve(false); });
     });
   },
 };

@@ -22,6 +22,7 @@ import FilterChips from '../components/ui/v1/FilterChips';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import PressableScale from '../components/PressableScale';
 import { useMountedRef } from '../hooks/useMountedRef';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
@@ -82,6 +83,11 @@ export default function FeedScreen({ navigation, route }) {
   const s = React.useMemo(() => StyleSheet.create({
 
   container: { flex: 1 },
+  // Минимальная закреплённая шапка: при прокрутке ленты остаётся только ☰.
+  topBar: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6,
+  },
   // v1 brand bar (UrTruck + FTL pill + bell). Replaces the old `header`
   // gradient title, which combined too many call-sites and mixed brand
   // hierarchy with action CTA.
@@ -226,7 +232,6 @@ export default function FeedScreen({ navigation, route }) {
   // (без append-логики — refetch заменяет данные, проще и без дублей).
   const [pageLimit, setPageLimit] = useState(50);
   const [sortBy, setSortBy] = useState('newest');
-  const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // Избранные перевозчики (клиент) — id водителей. Быстрое сохранение из ленты.
   const [favIds, setFavIds] = useState(() => new Set());
@@ -501,14 +506,7 @@ export default function FeedScreen({ navigation, route }) {
     return () => clearTimeout(timer);
   }, [search, isDriver]);
 
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    // Тост «🔄 Обновлено» убран (решение владельца 14.06) — RefreshControl и так
-    // показывает спиннер; всплывающий баннер выглядел как ошибка/лишний шум.
-    loadFromServer().finally(() => {
-      setRefreshing(false);
-    });
-  }, [isDriver]);
+  const { refreshing, onRefresh } = useSafeRefresh(loadFromServer);
 
   useEffect(() => {
     const unsub = subscribe(() => setTick(x => x + 1));
@@ -761,93 +759,13 @@ export default function FeedScreen({ navigation, route }) {
     { key: 'price', label: t('filter_price'),     active: sortBy !== 'newest',        onPress: () => setActiveFilter('price') },
   ];
 
-  return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
-      {/* Stage 16: brand bar simplified — UrTruck wordmark + bell only.
-          The green "FTL" pill that used to sit next to the wordmark
-          was the third bright emerald spot on a header that already
-          carries the bell badge ring; cutting it removes one of the
-          competing accents from the screen. */}
-      <View style={s.brandBar}>
-        {/* Stage 50: language switcher показывается ТОЛЬКО гостю —
-            зарегистрированный пользователь меняет язык в Profile.
-            Раньше pill был в шапке всегда и путал на рабочих экранах
-            (мешал бизнес-действиям с грузом). */}
-        {isGuest ? (
-          <LanguageSwitcher testID="feed-lang-switch" compact />
-        ) : (
-          <View style={{ width: 40 }} />
-        )}
-        <View style={s.brandRow}>
-          <Text style={[s.brandText, { color: v1.text }]}>UrTruck</Text>
-        </View>
-        {isGuest ? (
-          // Гость не имеет профиля; placeholder чтобы заголовок
-          // остался по центру.
-          <View style={{ width: 40 }} />
-        ) : (
-          // ☰ (top-right) → профиль и меню (как в inDrive / Yandex Go).
-          // Колокольчик уехал вниз в таб-бар как вкладка «Дела».
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Profile', { role })}
-            style={s.menuBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            testID="feed-menu-btn"
-            accessibilityLabel={t('tab_profile')}
-          >
-            <Feather name="menu" size={24} color={v1.text} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* RC2 fix (14 May): гостевой toggle Грузы/Рейсы убран. Гость
-          видит ленту по дефолтной роли (driver = lookup cargos), без
-          segmented control. Переключение роли — через регистрацию
-          из RoleScreen. */}
-
-      {/* Title row — заголовок и подзаголовок. */}
-      <View style={s.titleRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={[s.titleHero, { color: v1.text }]}>{isDriver ? t('cargos') : t('trucks')}</Text>
-          <Text style={[s.titleHeroSub, { color: v1.textMuted }]}>{isDriver ? t('feed_driver_subtitle') : t('feed_client_subtitle')}</Text>
-        </View>
-        {/* Переключатель вида ленты: компактный список ↔ крупные карточки.
-            Иконка меняется на противоположный режим (подсказка «что будет»). */}
-        <TouchableOpacity
-          onPress={toggleCompact}
-          style={s.viewToggle}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          testID="feed-view-toggle"
-          accessibilityLabel={compact ? t('feed_view_large') : t('feed_view_compact')}
-        >
-          {/* Иконка подсказывает, КУДА переключимся: в компактном режиме
-              показываем «крупные карточки» (grid), в крупном — «список»
-              (list). Пустой квадрат был непонятен. */}
-          <Feather name={compact ? 'grid' : 'list'} size={20} color={v1.textMuted} />
-        </TouchableOpacity>
-        {/* Для КЛИЕНТА публикация груза — главное действие, а безымянный
-            «+» в таббаре не находится. Показываем явную кнопку «+Груз».
-            У водителя лента = основная работа (берёт грузы), поэтому CTA
-            публикации рейса ему на ленту не выносим (остаётся «+» в баре). */}
-        {!isDriver ? (
-          <PressableScale
-            style={[s.titleCta, { backgroundColor: 'transparent', borderWidth: 1, borderColor: accentColor }]}
-            onPress={() => navigation.navigate('CreateCargo', { role })}
-            testID="publish-cargo-button"
-            accessibilityRole="button"
-            accessibilityLabel={t('postCargo')}
-          >
-            <Text style={[s.titleCtaText, { color: accentColor }]}>+ {t('postCargo')}</Text>
-          </PressableScale>
-        ) : null}
-      </View>
-
-      {/* inDrive-стиль: крупный селектор «Откуда → Куда» — главный способ
-          фильтра. Тап открывает шторку направления. Значения локализуются. */}
+  const feedControls = (
+    <>
       <View
         style={[s.routeSelector, { backgroundColor: v1.surface, borderColor: (dirFrom || dirTo) ? accentColor : v1.border }]}
         testID="feed-route-selector"
       >
+
         <TouchableOpacity
           style={s.routeSelHalf}
           onPress={() => setShowDirFromPicker(true)}
@@ -953,6 +871,24 @@ export default function FeedScreen({ navigation, route }) {
           )}
         </ScrollView>
       )}
+    </>
+  );
+
+  return (
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
+      <View style={s.topBar} testID="feed-minimal-header">
+        {isGuest ? <LanguageSwitcher testID="feed-lang-switch" compact /> : <View style={{ width: 40 }} />}
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Profile', { role })}
+          style={s.menuBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          testID="feed-menu-btn"
+          accessibilityLabel={t('tab_profile')}
+        >
+          <Feather name="menu" size={24} color={v1.text} />
+        </TouchableOpacity>
+      </View>
 
       {/* Полноэкранный выбор города «Откуда/Куда» для фильтра ленты —
           тот же LocationPickerModal, что и на создании груза: поиск,
@@ -1088,14 +1024,10 @@ export default function FeedScreen({ navigation, route }) {
         </View>
       </BottomSheet>
 
-      {initialLoading ? (
-        <View style={{ padding: 16 }}>
-          {[0,1,2,3,4].map(i => <SkeletonCard key={i} />)}
-        </View>
-      ) : (
-        <FlatList
+      <FlatList
           ref={listRef}
-          data={filteredData}
+          data={initialLoading ? [] : filteredData}
+          ListHeaderComponent={<View style={{ marginHorizontal: -16 }}>{feedControls}</View>}
           keyExtractor={(i, idx) => {
             // Клиентская лента склеивает trips + drivers — у них могут совпасть
             // числовые id из разных таблиц. Неймспейсим, чтобы не было дубль-ключей.
@@ -1123,7 +1055,11 @@ export default function FeedScreen({ navigation, route }) {
               </View>
             ) : null
           }
-          ListEmptyComponent={
+          ListEmptyComponent={initialLoading ? (
+            <View style={{ padding: 16 }}>
+              {[0,1,2,3,4].map(i => <SkeletonCard key={i} />)}
+            </View>
+          ) : (
             <View style={{ padding: 40, alignItems: 'center' }}>
               <Text style={{ fontSize: 48, marginBottom: 10 }}>{loadError ? '⚠️' : '🔍'}</Text>
               <Text style={{ color: v1.textMuted, fontSize: 14, textAlign: 'center' }}>
@@ -1135,15 +1071,14 @@ export default function FeedScreen({ navigation, route }) {
               {loadError && (
                 <TouchableOpacity
                   style={[s.refreshBtn, { backgroundColor: accentColor }]}
-                  onPress={() => { setRefreshing(true); loadFromServer().finally(() => setRefreshing(false)); }}
+                  onPress={onRefresh}
                 >
                   <Text style={{ color: '#0A0A0A', fontWeight: '800', fontSize: 14 }}>{t('refresh')}</Text>
                 </TouchableOpacity>
               )}
             </View>
-          }
+          )}
         />
-      )}
 
       {Gate}
     </SafeAreaView>

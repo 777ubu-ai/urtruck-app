@@ -119,6 +119,15 @@ export const chatAPI = {
     return r.json();
   },
 
+  async transcribe(messageId, targetLang = null) {
+    const r = await authedFetch(`${BASE}/transcribe`, {
+      method: 'POST',
+      headers: await headers(),
+      body: JSON.stringify({ message_id: messageId, target_lang: targetLang }),
+    });
+    return r.json();
+  },
+
   async conversations() {
     const r = await authedFetch(`${BASE}/conversations`, { headers: await headers() });
     return r.json();

@@ -17,12 +17,15 @@ import { formatStatus } from "../utils/i18n";
 import { useV1Colors } from "../theme/designV1";
 import HeaderMenuButton from "../components/ui/v1/HeaderMenuButton";
 import { marketAPI } from "../utils/marketAPI";
+import { useAuth } from "../utils/AuthContext";
+import { notificationsAPI } from "../utils/notificationsAPI";
 import { formatPrice } from "../utils/normalizers";
 import { localizeCargoName, localizePlace } from "../utils/places";
 import { countryFlag } from "../utils/countryFlags";
 import { accentFor } from "../components/deal/DealRoom";
 import { isBidActionable } from "../utils/dealsUnread";
 import { formatBidRemaining, isBidFresh } from "../utils/bidExpiry";
+import { useSafeRefresh } from "../hooks/useSafeRefresh";
 
 const ACCENT = "#34936B";
 const WAITING = "#617067";
@@ -89,6 +92,21 @@ const COPY = {
   },
 };
 
+const normalizeNotifPath = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  let path = raw;
+  try {
+    const parsed = new URL(raw);
+    path = `${parsed.pathname || ""}${parsed.search || ""}`;
+  } catch {
+    // relative notification path
+  }
+  const clean = path.split("#", 1)[0].split("?", 1)[0];
+  if (!clean) return "";
+  return clean.startsWith("/") ? (clean.replace(/\/+$/, "") || "/") : `/${clean.replace(/\/+$/, "")}`;
+};
+
 const parseServerDate = (raw) => {
   if (!raw) return null;
   const normalized = String(raw).replace(" ", "T");
@@ -131,6 +149,7 @@ function TabChip({
   icon = null,
   activeColor = ACCENT,
   inactiveColor = WAITING,
+  styles,
 }) {
   return (
     <TouchableOpacity
@@ -139,21 +158,25 @@ function TabChip({
       accessibilityState={{ selected: active }}
       activeOpacity={0.72}
       onPress={onPress}
-      style={[s.tabChip, compact && s.archiveChip, active && s.tabChipActive]}
+      style={[
+        styles.tabChip,
+        compact && styles.archiveChip,
+        active && styles.tabChipActive,
+      ]}
     >
       {icon ? (
         <Feather name={icon} size={15} color={active ? activeColor : inactiveColor} />
       ) : null}
       <Text
-        style={[s.tabChipText, active && s.tabChipTextActive]}
+        style={[styles.tabChipText, active && styles.tabChipTextActive]}
         numberOfLines={1}
       >
         {label}
       </Text>
-      <Text style={[s.tabCount, active && s.tabCountActive]}>{count}</Text>
+      <Text style={[styles.tabCount, active && styles.tabCountActive]}>{count}</Text>
       {attentionCount > 0 ? (
-        <View style={s.tabAttentionBadge} testID={`${testID}-attention`}>
-          <Text style={s.tabAttentionText}>
+        <View style={styles.tabAttentionBadge} testID={`${testID}-attention`}>
+          <Text style={styles.tabAttentionText}>
             {attentionCount > 9 ? "9+" : attentionCount}
           </Text>
         </View>
@@ -173,48 +196,49 @@ function CompactDealCard({
   dimmed = false,
   onPress,
   testID,
+  styles,
 }) {
   return (
     <TouchableOpacity
       testID={testID}
       activeOpacity={0.72}
       onPress={onPress}
-      style={[s.card, dimmed && s.cardDimmed]}
+      style={[styles.card, dimmed && styles.cardDimmed]}
     >
-      <View style={s.cardTop}>
-        <Text style={s.route} numberOfLines={1}>
+      <View style={styles.cardTop}>
+        <Text style={styles.route} numberOfLines={1}>
           {routeLabel}
         </Text>
         {price ? (
-          <Text style={s.price} numberOfLines={1}>
+          <Text style={styles.price} numberOfLines={1}>
             {price}
           </Text>
         ) : null}
         <Feather name="chevron-right" size={17} color="#A0A9A4" />
       </View>
 
-      <View style={s.cardMiddle}>
-        <View style={[s.statusPill, { backgroundColor: `${statusColor}12` }]}>
-          <View style={[s.statusDot, { backgroundColor: statusColor }]} />
+      <View style={styles.cardMiddle}>
+        <View style={[styles.statusPill, { backgroundColor: `${statusColor}12` }]}>
+          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
           <Text
-            style={[s.statusText, { color: statusColor }]}
+            style={[styles.statusText, { color: statusColor }]}
             numberOfLines={1}
           >
             {statusLabel}
           </Text>
         </View>
-        <View style={s.cardRightMeta}>
-          {time ? <Text style={s.time}>{time}</Text> : null}
+        <View style={styles.cardRightMeta}>
+          {time ? <Text style={styles.time}>{time}</Text> : null}
           {unread > 0 ? (
-            <View style={s.unreadBadge} testID="deals-card-unread">
-              <Text style={s.unreadText}>{unread > 9 ? "9+" : unread}</Text>
+            <View style={styles.unreadBadge} testID="deals-card-unread">
+              <Text style={styles.unreadText}>{unread > 9 ? "9+" : unread}</Text>
             </View>
           ) : null}
         </View>
       </View>
 
       {meta ? (
-        <Text style={s.meta} numberOfLines={1}>
+        <Text style={styles.meta} numberOfLines={1}>
           {meta}
         </Text>
       ) : null}
@@ -225,7 +249,8 @@ function CompactDealCard({
 export default function DealsScreen({ navigation, route }) {
   const { t, lang } = useI18n();
   const colors = useV1Colors();
-  const role = route?.params?.role || "client";
+  const { session } = useAuth();
+  const role = route?.params?.role || session?.user?.role || "client";
   const roleAccent = accentFor(role) || ACCENT;
   const copy = COPY[lang] || COPY.EN;
   const s = useMemo(() => createStyles(colors), [colors]);
@@ -233,28 +258,35 @@ export default function DealsScreen({ navigation, route }) {
   const [dealTab, setDealTab] = useState("offers");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [myCargos, setMyCargos] = useState([]);
   const [allDeals, setAllDeals] = useState([]);
   const [incomingBids, setIncomingBids] = useState([]);
   const [myBids, setMyBids] = useState([]);
+  const [unreadNotifPaths, setUnreadNotifPaths] = useState([]);
 
   const load = useCallback(async () => {
     setLoadError(false);
     try {
-      const dashboard = await marketAPI.myDashboard();
+      const [dashboard, notifData] = await Promise.all([
+        marketAPI.myDashboard({ force: true }),
+        notificationsAPI.list(100).catch(() => ({ notifications: [] })),
+      ]);
       if (!dashboard) throw new Error("empty_dashboard");
       setMyCargos(dashboard.my_cargos || []);
       setAllDeals(dashboard.my_deals || []);
       setIncomingBids(dashboard.incoming_bids || []);
       setMyBids(dashboard.my_bids || []);
+      const unreadPaths = (notifData?.notifications || [])
+        .filter((item) => !item?.is_read)
+        .map((item) => normalizeNotifPath(item?.url))
+        .filter(Boolean);
+      setUnreadNotifPaths(unreadPaths);
     } catch (error) {
       setLoadError(true);
       console.warn("deals load failed", error?.message || error);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
@@ -266,10 +298,7 @@ export default function DealsScreen({ navigation, route }) {
     }, [load]),
   );
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    load();
-  };
+  const { refreshing, onRefresh } = useSafeRefresh(load);
 
   const relTime = useCallback(
     (raw) => {
@@ -433,15 +462,21 @@ export default function DealsScreen({ navigation, route }) {
         (sum, item) =>
           sum +
           (role === "client"
-            ? (item.active_bids_count || 0) > 0
+            ? (item.active_bids_count || 0) > 0 ||
+              unreadNotifPaths.includes(`/cargos/${item.id}`)
               ? 1
               : 0
-            : isBidActionable(item, { asOwner: !!item._incoming })
+            : isBidActionable(item, { asOwner: !!item._incoming }) ||
+              unreadNotifPaths.includes(
+                item._incoming
+                  ? `/trips/${item.trip_id}`
+                  : `/cargos/${item.cargo_id}`,
+              )
               ? 1
               : 0),
         0,
       ),
-    [role, offersData],
+    [role, offersData, unreadNotifPaths],
   );
 
   const activeAttentionCount = useMemo(
@@ -450,6 +485,11 @@ export default function DealsScreen({ navigation, route }) {
         (sum, item) =>
           sum +
           (item.unread_count || 0) +
+          (unreadNotifPaths.includes(`/deals/${item.id}`) ||
+          (item.cargo_id && unreadNotifPaths.includes(`/cargos/${item.cargo_id}`)) ||
+          (item.trip_id && unreadNotifPaths.includes(`/trips/${item.trip_id}`))
+            ? 1
+            : 0) +
           (item.tracking_action_required ||
           (role === "client" &&
             (item.status === "delivered" ||
@@ -458,7 +498,7 @@ export default function DealsScreen({ navigation, route }) {
             : 0),
         0,
       ),
-    [activeDeals, role],
+    [activeDeals, role, unreadNotifPaths],
   );
 
   const baseItems = useMemo(() => {
@@ -572,6 +612,7 @@ export default function DealsScreen({ navigation, route }) {
           : "";
         return (
           <CompactDealCard
+            styles={s}
             testID="deals-cargo-offer"
             routeLabel={routeFor(data, "offer")}
             price={fromPrice}
@@ -579,7 +620,7 @@ export default function DealsScreen({ navigation, route }) {
             statusColor={WAITING}
             time={relTime(data.latest_bid_at || data.created_at)}
             meta={meta}
-            unread={count > 0 ? 1 : 0}
+            unread={count > 0 || unreadNotifPaths.includes(`/cargos/${data.id}`) ? 1 : 0}
             onPress={() =>
               navigation.navigate("CargoDetail", { cargoId: data.id, role })
             }
@@ -613,6 +654,7 @@ export default function DealsScreen({ navigation, route }) {
           : formatBidRemaining(data, lang);
         return (
           <CompactDealCard
+            styles={s}
             testID="deals-driver-bid"
             routeLabel={routeFor(data, "bid")}
             price={price}
@@ -621,7 +663,13 @@ export default function DealsScreen({ navigation, route }) {
             time={cardTime}
             dimmed={isClosed}
             unread={
-              !isClosed && isBidActionable(data, { asOwner: !!data._incoming })
+              !isClosed &&
+              (isBidActionable(data, { asOwner: !!data._incoming }) ||
+                unreadNotifPaths.includes(
+                  data._incoming
+                    ? `/trips/${data.trip_id}`
+                    : `/cargos/${data.cargo_id}`,
+                ))
                 ? 1
                 : 0
             }
@@ -651,11 +699,16 @@ export default function DealsScreen({ navigation, route }) {
           : status.color;
       const meta = [partnerName, data.last_message].filter(Boolean).join(" · ");
       const attentionRequired =
-        needsReceiptConfirmation || trackingActionRequired;
+        needsReceiptConfirmation ||
+        trackingActionRequired ||
+        unreadNotifPaths.includes(`/deals/${data.id}`) ||
+        (data.cargo_id && unreadNotifPaths.includes(`/cargos/${data.cargo_id}`)) ||
+        (data.trip_id && unreadNotifPaths.includes(`/trips/${data.trip_id}`));
       const unread = (data.unread_count || 0) + (attentionRequired ? 1 : 0);
 
       return (
         <CompactDealCard
+          styles={s}
           testID="deals-deal-card"
           routeLabel={routeFor(data, "deal")}
           price={priceText(data.amount, data.currency || "USD")}
@@ -681,6 +734,7 @@ export default function DealsScreen({ navigation, route }) {
       role,
       routeFor,
       t,
+      unreadNotifPaths,
     ],
   );
 
@@ -693,6 +747,47 @@ export default function DealsScreen({ navigation, route }) {
 
   const searchHeader = (
     <View style={s.scrollHeader} testID="deals-scroll-header">
+      <View style={s.tabsRow} testID="deals-primary-tabs">
+        <TabChip
+          styles={s}
+          testID="deals-tab-offers"
+          label={t("deals_tab_offers")}
+          count={offerCount}
+          attentionCount={offerAttentionCount}
+          active={dealTab === "offers"}
+          onPress={() => setDealTab("offers")}
+          activeColor={colors.driver}
+          inactiveColor={colors.textDim}
+        />
+        <TabChip
+          styles={s}
+          testID="deals-tab-active"
+          label={t("deals_tab_active")}
+          count={activeDeals.length}
+          attentionCount={activeAttentionCount}
+          active={dealTab === "active"}
+          onPress={() => setDealTab("active")}
+          activeColor={colors.driver}
+          inactiveColor={colors.textDim}
+        />
+        <TabChip
+          styles={s}
+          testID="deals-tab-archive"
+          label={copy.archive}
+          count={archivedDeals.length + closedBidsData.length}
+          active={dealTab === "archive"}
+          onPress={() => setDealTab("archive")}
+          compact
+          icon="archive"
+          activeColor={colors.driver}
+          inactiveColor={colors.textDim}
+        />
+      </View>
+      {offerAttentionCount > 0 || activeAttentionCount > 0 ? (
+        <View style={s.attentionA11y} testID="deals-attention-summary">
+          <Text style={s.attentionA11yText}>{offerAttentionCount + activeAttentionCount}</Text>
+        </View>
+      ) : null}
       <View style={s.search}>
         <Feather name="search" size={17} color={colors.textDim} />
         <TextInput
@@ -729,47 +824,6 @@ export default function DealsScreen({ navigation, route }) {
           />
         </View>
 
-        <View style={s.tabsRow} testID="deals-primary-tabs">
-          <TabChip
-            testID="deals-tab-offers"
-            label={t("deals_tab_offers")}
-            count={offerCount}
-            attentionCount={offerAttentionCount}
-            active={dealTab === "offers"}
-            onPress={() => setDealTab("offers")}
-            activeColor={colors.driver}
-            inactiveColor={colors.textDim}
-          />
-          <TabChip
-            testID="deals-tab-active"
-            label={t("deals_tab_active")}
-            count={activeDeals.length}
-            attentionCount={activeAttentionCount}
-            active={dealTab === "active"}
-            onPress={() => setDealTab("active")}
-            activeColor={colors.driver}
-            inactiveColor={colors.textDim}
-          />
-          <TabChip
-            testID="deals-tab-archive"
-            label={copy.archive}
-            count={archivedDeals.length + closedBidsData.length}
-            active={dealTab === "archive"}
-            onPress={() => setDealTab("archive")}
-            compact
-            icon="archive"
-            activeColor={colors.driver}
-            inactiveColor={colors.textDim}
-          />
-        </View>
-
-        {offerAttentionCount > 0 || activeAttentionCount > 0 ? (
-          <View style={s.attentionA11y} testID="deals-attention-summary">
-            <Text style={s.attentionA11yText}>
-              {offerAttentionCount + activeAttentionCount}
-            </Text>
-          </View>
-        ) : null}
       </View>
 
       {loading ? (

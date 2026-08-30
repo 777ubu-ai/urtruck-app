@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -6,6 +6,7 @@ import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { API_BASE } from '../config/env';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 
 const BASE = API_BASE;
 
@@ -19,16 +20,23 @@ export default function StatsScreen({ navigation }) {
   const { theme } = useTheme();
   const [leaders, setLeaders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshingList, setRefreshingList] = useState(false);
 
-  const fetchLeaders = async () => {
-    setLoading(true);
+  const fetchLeaders = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) setLoading(true);
+    else setRefreshingList(true);
     try {
       const r = await fetch(`${BASE}/leaderboard?limit=20`);
       const data = await r.json();
       setLeaders(data.leaderboard || []);
     } catch {}
-    setLoading(false);
-  };
+    if (showLoading) setLoading(false);
+    else setRefreshingList(false);
+  }, []);
+
+  const { refreshing, onRefresh } = useSafeRefresh(
+    useCallback(() => fetchLeaders({ showLoading: false }), [fetchLeaders]),
+  );
 
   useEffect(() => { fetchLeaders(); }, []);
 
@@ -44,7 +52,7 @@ export default function StatsScreen({ navigation }) {
 
       <ScrollView
         contentContainerStyle={{ padding: 16 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchLeaders} />}
+        refreshControl={<RefreshControl refreshing={refreshing || refreshingList} onRefresh={onRefresh} />}
       >
         {leaders.length === 0 && !loading && (
           <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>

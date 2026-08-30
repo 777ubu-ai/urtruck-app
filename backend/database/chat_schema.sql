@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   photo_url TEXT,
   is_voice INTEGER DEFAULT 0,
   voice_duration INTEGER,
+  voice_transcript TEXT,
+  voice_transcript_lang TEXT,
+  voice_transcript_provider TEXT,
+  voice_transcribed_at TEXT,
   is_read INTEGER DEFAULT 0,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );

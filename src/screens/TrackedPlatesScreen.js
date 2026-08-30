@@ -8,6 +8,7 @@ import { useI18n } from '../utils/useI18n';
 import { useV1Colors } from '../theme/designV1';
 import { API_BASE } from '../config/env';
 import { storage } from '../utils/storage';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 
 const BASE = `${API_BASE}/borders`;
 
@@ -29,14 +30,20 @@ export default function TrackedPlatesScreen({ navigation }) {
   const [token, setToken] = useState(undefined);   // undefined=loading, null=guest
   const [items, setItems] = useState([]);          // [{plate, status, checkpoint, queue_datetime, is_late, updated_at}]
   const [loading, setLoading] = useState(true);
+  const [refreshingList, setRefreshingList] = useState(false);
   const [newPlate, setNewPlate] = useState('');
   const [adding, setAdding] = useState(false);
 
   // Тянем список watch'ей + свежий статус каждого номера (пункт пропуска,
   // время) — /watch хранит только last_status, поэтому обогащаем из /lookup.
   const load = useCallback(async (tok, { silent = false } = {}) => {
-    if (!tok) { setLoading(false); return; }
+    if (!tok) {
+      if (silent) setRefreshingList(false);
+      else setLoading(false);
+      return;
+    }
     if (!silent) setLoading(true);
+    else setRefreshingList(true);
     try {
       const r = await fetch(`${BASE}/watch`, { headers: { Authorization: `Bearer ${tok}` } });
       const d = await r.json();
@@ -62,8 +69,13 @@ export default function TrackedPlatesScreen({ navigation }) {
       /* сеть недоступна — оставляем что было */
     } finally {
       if (!silent) setLoading(false);
+      else setRefreshingList(false);
     }
   }, []);
+
+  const { refreshing, onRefresh } = useSafeRefresh(
+    useCallback(() => load(token, { silent: true }), [load, token]),
+  );
 
   useEffect(() => {
     (async () => {
@@ -141,7 +153,7 @@ export default function TrackedPlatesScreen({ navigation }) {
       {Header}
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingTop: 4, paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(token)} tintColor={driver} />}
+        refreshControl={<RefreshControl refreshing={refreshing || refreshingList} onRefresh={onRefresh} tintColor={driver} />}
       >
         <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('tracked_subtitle')}</Text>
         <View style={[s.live, { borderColor: driver + '48', backgroundColor: driver + '1A' }]}>

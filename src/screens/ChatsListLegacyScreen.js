@@ -28,6 +28,7 @@ import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 import { isBidActionable } from '../utils/dealsUnread';
 import { userFacingDealStatus } from '../utils/dealStatusOrder';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 
 const ROLE_LABEL = { driver: 'role_driver', client: 'role_client', support: 'role_support' };
 const ACTIVE_STATUSES = new Set(['accepted', 'in_progress', 'at_border', 'awaiting_confirmation']);
@@ -62,7 +63,6 @@ export default function ChatsListScreen({ navigation, route }) {
   // ═══ Общее состояние ═══
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
   // Решение владельца (05.08.2026, п.3): максимум 2 компактных фильтра —
   // Все / Непрочитанные. Шторка с кузовом/датой убрана целиком.
@@ -130,7 +130,6 @@ export default function ChatsListScreen({ navigation, route }) {
       console.warn('chats load failed', e);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [dealsMode, role]);
 
@@ -139,7 +138,7 @@ export default function ChatsListScreen({ navigation, route }) {
     const iv = setInterval(load, 10000);
     return () => clearInterval(iv);
   }, [load]));
-  const onRefresh = () => { setRefreshing(true); load(); };
+  const { refreshing, onRefresh } = useSafeRefresh(load);
 
   // ═══ DEALS MODE — данные для вкладок ═══
 

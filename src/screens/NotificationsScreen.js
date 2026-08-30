@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -24,12 +24,25 @@ import { getLanguage } from "../utils/i18n";
 import { localizeSystemMessage } from "../utils/places";
 import { notifyNotifRead } from "../utils/unreadEvents";
 import { refreshAppIconBadge } from "../utils/appBadge";
+import { useSafeRefresh } from "../hooks/useSafeRefresh";
 import Feather from "@expo/vector-icons/Feather";
 
 // issue #7: localized time вместо сырого UTC-слайса "2026-06-11T08:30".
 // Backend хранит UTC; добавляем Z (если нет TZ), чтобы toLocaleString
 // показал локальное время устройства в формате локали пользователя.
 const NOTIF_LOCALE = { RU: "ru-RU", KK: "kk-KZ", ZH: "zh-CN", EN: "en-US" };
+const DEAL_NOTIFICATION_TYPES = new Set([
+  "bid",
+  "bid_created",
+  "bid_accepted",
+  "bid_cancelled",
+  "bid_rejected",
+  "bid_countered",
+  "deal_created",
+  "deal_status",
+  "trip_status",
+  "tracking",
+]);
 function formatNotifTime(raw) {
   if (!raw) return "";
   let str = String(raw).trim();
@@ -66,9 +79,19 @@ function formatNotifTime(raw) {
 // mark-read only").
 function parseNotifUrl(url) {
   if (!url || typeof url !== "string") return null;
-  // Drop leading '/' и optional scheme. Backend никогда не шлёт http(s),
-  // но на всякий случай отрезаем.
-  const cleaned = url.replace(/^https?:\/\/[^/]+/i, "").replace(/^\/+/, "");
+  let cleaned = url.trim();
+  try {
+    const parsed = new URL(cleaned);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      cleaned = `${parsed.pathname || ""}${parsed.search || ""}`;
+    } else if (parsed.protocol === "urtruck:" || parsed.protocol === "com.urtruck.app:") {
+      const hostPart = parsed.hostname ? `/${parsed.hostname}` : "";
+      cleaned = `${hostPart}${parsed.pathname || ""}${parsed.search || ""}`;
+    }
+  } catch {
+    // relative/local notification path
+  }
+  cleaned = cleaned.replace(/^\/+/, "");
   if (!cleaned) return null;
   const [pathPart, queryPart = ""] = cleaned.split("?");
   const segments = pathPart.split("/").filter(Boolean);
@@ -144,14 +167,25 @@ export default function NotificationsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const accent = v1AccentFor(role);
 
-  const load = async () => {
-    setLoading(true);
+  const load = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) setLoading(true);
     try {
       const d = await notificationsAPI.list(50);
-      setItems(d.notifications || []);
+      // Deal/bid/tracking events belong to the deal-room timeline. Filter on
+      // the client as well as the API so old backend deployments and cached
+      // rows cannot bring the duplicate deal feed back to either role.
+      setItems(
+        (d.notifications || []).filter(
+          (item) => !DEAL_NOTIFICATION_TYPES.has(String(item?.type || "")),
+        ),
+      );
     } catch {}
-    setLoading(false);
-  };
+    if (showLoading) setLoading(false);
+  }, []);
+
+  const { refreshing, onRefresh } = useSafeRefresh(
+    useCallback(() => load({ showLoading: false }), [load]),
+  );
 
   useEffect(() => {
     load();
@@ -293,13 +327,13 @@ export default function NotificationsScreen({ navigation }) {
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl
-            refreshing={loading}
-            onRefresh={load}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
             tintColor={accent.main}
           />
         }
         ListEmptyComponent={
-          !loading ? (
+          !loading && !refreshing ? (
             <View style={{ alignItems: "center", paddingVertical: 60 }}>
               <Feather
                 name="bell"

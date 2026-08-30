@@ -39,8 +39,20 @@ cp web/legal/*.html dist/legal/
 echo "2. Пост-обработка index.html + PWA + SW..."
 cp sw-template.js dist/sw.js
 
+# The web map intentionally renders only when the Yandex JS API is injected.
+# Keep manual deploys consistent with the GitHub release workflow; without
+# the public browser key the app must show an explicit unavailable state.
+if [ -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}" ]; then
+  node scripts/injectYandexMaps.mjs
+else
+  echo "  ⚠ Yandex JS API key не задан: карта будет показана как недоступная"
+fi
+
+export URTRUCK_BUILD_VERSION="$NEW_VERSION"
+
 python3 <<'PY'
-import re, json
+import os, re, json
+version = os.environ["URTRUCK_BUILD_VERSION"]
 with open('dist/index.html', 'r', encoding='utf-8') as f:
     html = f.read()
 
@@ -80,7 +92,7 @@ html = re.sub(r'<meta charset="utf-8" />.*?<title>UrTruck</title>', new_head, ht
 
 loading_html = '''<div id="root"><div style="display:flex;flex:1;height:100vh;align-items:center;justify-content:center;background:#0A1628;flex-direction:column;gap:16px"><div style="color:#378ADD;font-size:46px;font-weight:900;letter-spacing:-1.5px;font-family:-apple-system,BlinkMacSystemFont,sans-serif">UrTruck</div><div style="color:#FFFFFF;font-size:12px;font-weight:700;letter-spacing:3px">INTERNATIONAL LOGISTICS</div></div></div><style>@keyframes truck{from{transform:translateX(-300px);opacity:0}to{transform:translateX(0);opacity:1}}</style><script>
 (async()=>{
-  const V='v9-market';
+  const V='v__VERSION__-market';
   const cur=localStorage.getItem('ur_sw_v');
   if(cur!==V){
     if('caches' in window){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}
@@ -91,7 +103,7 @@ loading_html = '''<div id="root"><div style="display:flex;flex:1;height:100vh;al
   }
   if('serviceWorker' in navigator){
     try{
-      const reg=await navigator.serviceWorker.register('/sw.js?v=9');
+      const reg=await navigator.serviceWorker.register('/sw.js?v=__VERSION__');
       if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'})}
       reg.addEventListener('updatefound',()=>{
         const nw=reg.installing;
@@ -105,7 +117,7 @@ loading_html = '''<div id="root"><div style="display:flex;flex:1;height:100vh;al
     }catch(e){}
   }
 })();
-</script>'''
+</script>'''.replace('__VERSION__', version)
 html = html.replace('<div id="root"></div>', loading_html)
 
 with open('dist/index.html', 'w', encoding='utf-8') as f:
@@ -136,11 +148,11 @@ PY
 echo "3. Загрузка на сервер (current + v$NEW_VERSION)..."
 # Используем rsync (или scp с ssh-ключом)
 rsync -avz --delete -e "ssh -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no" dist/ "${SERVER}:${REMOTE_DIR}/" 2>/dev/null || \
-  scp -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist/* "${SERVER}:${REMOTE_DIR}/"
+  scp -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist/. "${SERVER}:${REMOTE_DIR}/"
 # Версионированная копия
 ssh -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$SERVER" "mkdir -p $VERSIONS_DIR/v$NEW_VERSION" 2>/dev/null || true
 rsync -avz -e "ssh -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no" dist/ "${SERVER}:${VERSIONS_DIR}/v$NEW_VERSION/" 2>/dev/null || \
-  scp -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist/* "${SERVER}:${VERSIONS_DIR}/v$NEW_VERSION/"
+  scp -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist/. "${SERVER}:${VERSIONS_DIR}/v$NEW_VERSION/"
 
 echo "4. Установка прав + очистка старых версий..."
 ssh -i ~/.ssh/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$SERVER" "chmod -R 755 $REMOTE_DIR $VERSIONS_DIR && cd $VERSIONS_DIR && ls -dt v* | tail -n +11 | xargs rm -rf 2>/dev/null; echo 'Versions:' && ls -d v* | sort -V | tail -5" 2>/dev/null || true

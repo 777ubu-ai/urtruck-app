@@ -1,14 +1,15 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import ChatScreen from './ChatScreen';
 import DealWorkspaceRoute from '../components/deal/DealWorkspaceRoute';
 import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
 import { useV1Colors } from '../theme/designV1';
 
-// Accepted deal rooms use the canonical gated workspace route. Support/general/
-// pre-deal conversations keep the mature legacy ChatScreen.
+// Every in-app Chat route uses the canonical deal workspace. Keeping a
+// fallback to the legacy ChatScreen made the same conversation render with
+// different voice controls, composer and map behavior depending on how it was
+// opened.
 export default function ChatScreenV2(props) {
   const { route } = props;
   const params = route?.params || {};
@@ -73,7 +74,14 @@ export default function ChatScreenV2(props) {
     return <DealWorkspaceRoute {...props} route={nextRoute} />;
   }
 
-  return <ChatScreen {...props} />;
+  return <DealWorkspaceRoute {...props} route={{
+    ...route,
+    params: {
+      ...params,
+      dealId: resolvedDealId || null,
+      partner: resolvedPartner || params.partner || null,
+    },
+  }} />;
 }
 
 const s = StyleSheet.create({

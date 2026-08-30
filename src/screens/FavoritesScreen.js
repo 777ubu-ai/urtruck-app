@@ -22,6 +22,7 @@ import { useToast } from '../components/Toast';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Feather from '@expo/vector-icons/Feather';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import { useSafeRefresh } from '../hooks/useSafeRefresh';
 
 export default function FavoritesScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -30,16 +31,23 @@ export default function FavoritesScreen({ navigation, route }) {
   const role = route?.params?.role;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshingList, setRefreshingList] = useState(false);
   const [removingId, setRemovingId] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) setLoading(true);
+    else setRefreshingList(true);
     // Без item_type — backend /api/v1/favorites отдаёт ВСЕ сохранённые
     // карточки (и водителей, и грузы) одним списком, отсортированным по дате.
     const r = await marketAPI.favList('');
     setItems(Array.isArray(r?.favorites) ? r.favorites : []);
-    setLoading(false);
+    if (showLoading) setLoading(false);
+    else setRefreshingList(false);
   }, []);
+
+  const { refreshing, onRefresh } = useSafeRefresh(
+    useCallback(() => load({ showLoading: false }), [load]),
+  );
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -135,7 +143,7 @@ export default function FavoritesScreen({ navigation, route }) {
           keyExtractor={(it) => `${it.item_type || 'driver'}_${it.id || it.item_id}`}
           renderItem={renderItem}
           contentContainerStyle={{ padding: 16, paddingTop: 8 }}
-          refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={v1.textMuted} />}
+          refreshControl={<RefreshControl refreshing={refreshing || refreshingList} onRefresh={onRefresh} tintColor={v1.textMuted} />}
           ListEmptyComponent={
             <View style={s.center} testID="favorites-empty">
               <Text style={{ fontSize: 40, marginBottom: 10 }}>🤍</Text>
