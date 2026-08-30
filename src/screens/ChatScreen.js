@@ -96,7 +96,7 @@ const localizeSystemMessage = (text, translate) => {
   const key = SYSTEM_TEXT_KEYS[raw];
   if (/^🤝\s*Сделка создана(?:\s*·\s*(.+))?$/.test(raw)) {
     const amount = raw.match(/^🤝\s*Сделка создана(?:\s*·\s*(.+))?$/)?.[1];
-    return `🤝 ${translate("deal_created")}${amount ? ` · ${amount}` : ""}`;
+    return `🤝 ${translate('deal_created')}${amount ? ` · ${amount}` : ""}`;
   }
   return key ? translate(key) : text;
 };

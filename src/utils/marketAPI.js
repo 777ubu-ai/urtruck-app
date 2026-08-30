@@ -50,11 +50,11 @@ function normalizeDetail(d, status) {
 export const marketAPI = {
   // ─── Сохранённые маршруты (подписка «грузы по моему маршруту») ───
   // Эндпоинт вне /market: /api/v1/searches.
-  async saveRoute({ from_city, to_city, truck_type = null }) {
+  async saveRoute({ from_city, to_city, truck_type = null, min_price = null, max_price = null, notify = true }) {
     try {
       const r = await authedFetch(`${API_BASE}/searches`, {
         method: 'POST', headers: await headers(),
-        body: JSON.stringify({ from_city, to_city, truck_type, notify: true }),
+        body: JSON.stringify({ from_city, to_city, truck_type, min_price, max_price, notify }),
       });
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };

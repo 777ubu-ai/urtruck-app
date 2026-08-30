@@ -644,7 +644,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           mine,
           system,
           text: system
-            ? localizeSystemMessage(message.text || "", lang)
+            ? localizeSystemMessage(message.text || '', lang)
             : message.text || "",
           photo: !!message.photo_url && !isVoice,
           voice: isVoice,
@@ -956,7 +956,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       toast(t("track_permission_needed"), "error");
       return;
     }
-    const result = await changeDealStatus("in_progress");
+    const result = await changeDealStatus('in_progress');
     if (result?.ok) {
       const point = await getCurrentLocationPayload();
       if (point) {
@@ -1777,9 +1777,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     </Text>
                   </View>
                 </View>
-                {!item.mine && !item.system ? (
+                {!item.system ? (
                   <TouchableOpacity
-                    style={s.translateBtn}
+                    style={[
+                      s.translateBtn,
+                      item.mine ? s.translateBtnMine : s.translateBtnThem,
+                    ]}
                     disabled={translating === item.id}
                     onPress={async () => {
                       const current = translations[item.id];
@@ -1818,6 +1821,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       }
                     }}
                     testID="deal-chat-message-translate"
+                    accessibilityLabel={t("translate")}
                   >
                     <Feather
                       name="globe"
@@ -2873,7 +2877,13 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     marginTop: 6,
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
+  translateBtnMine: { backgroundColor: "rgba(17,27,33,0.08)" },
+  translateBtnThem: { backgroundColor: "#F3F6F4" },
   translateText: { fontSize: 11, fontWeight: "700" },
   transcriptBlock: { marginTop: 6, paddingTop: 6, borderTopWidth: 1 },
   transcriptBlockMine: { borderTopColor: "rgba(255,255,255,0.16)" },
