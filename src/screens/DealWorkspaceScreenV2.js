@@ -1091,18 +1091,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     });
   }, [toast, t]);
 
-  const shareDeal = React.useCallback(async () => {
-    setAttachOpen(false);
-    try {
-      await Share.share({ message: routeLabel });
-    } catch {}
-  }, [routeLabel]);
-
-  const shareContact = React.useCallback(() => {
-    setAttachOpen(false);
-    sendRawText(`${t("contact_section")}: ${partnerName || "—"}`);
-  }, [partnerName, sendRawText, t]);
-
   const sendLocation = React.useCallback(async () => {
     setAttachOpen(false);
     if (locationSending) return;
@@ -1873,6 +1861,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     deal?.counterparty_name,
     isDriver ? cargo?.owner_name : trip?.driver_display_name,
   );
+
+  const shareDeal = React.useCallback(async () => {
+    setAttachOpen(false);
+    try {
+      await Share.share({ message: routeLabel });
+    } catch {}
+  }, [routeLabel]);
+
+  const shareContact = React.useCallback(() => {
+    setAttachOpen(false);
+    sendRawText(`${t("contact_section")}: ${partnerName || "—"}`);
+  }, [partnerName, sendRawText, t]);
 
   const rawCargoName = text(deal?.cargo_desc, cargo?.cargo_desc);
   const rawTruckType = text(
