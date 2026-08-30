@@ -621,11 +621,6 @@ export default function MyTripsScreen({ navigation, route }) {
         renderItem={listRender}
         ListHeaderComponent={(
           <>
-            <View style={s.brandBar}>
-              <View style={s.backBtn} />
-              <View style={s.brandRow}><Text style={s.brandText}>UrTruck</Text></View>
-              <View style={s.menuBtn} />
-            </View>
             <View style={s.titleBlock}>
               <Text style={s.titleHero}>{isDriver ? t('my_trips_title') : t('my_cargos_title')}</Text>
               <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
