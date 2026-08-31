@@ -17,6 +17,7 @@ import { useTheme } from '../utils/ThemeContext';
 import { formatStatus } from '../utils/i18n';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import { marketAPI } from '../utils/marketAPI';
+import { notificationsAPI } from '../utils/notificationsAPI';
 import { formatPrice } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
 import { countryFlag } from '../utils/countryFlags';
@@ -287,7 +288,10 @@ export default function DealsScreen({ navigation, route }) {
   const load = useCallback(async () => {
     setLoadError(false);
     try {
-      const dashboard = await marketAPI.myDashboard();
+      const [dashboard, notifData] = await Promise.all([
+        marketAPI.myDashboard({ force: true }),
+        notificationsAPI.list(50).catch(() => null),
+      ]);
       if (!dashboard) throw new Error('empty_dashboard');
       setAllDeals(dashboard.my_deals || []);
       setIncomingBids(dashboard.incoming_bids || []);
@@ -604,6 +608,9 @@ export default function DealsScreen({ navigation, route }) {
       const offerRoute = routeFor(data, 'bid');
       const offerCargo = data.cargo_desc ? localizeCargoName(data.cargo_desc, lang) : '';
       const offerMeta = [offerRoute, offerCargo].filter(Boolean).join(' · ');
+      const unread = dealTab === 'archive' || isClosed
+        ? 0
+        : isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0;
       return (
         <CompactDealCard
           testID="deals-driver-bid"
@@ -614,7 +621,7 @@ export default function DealsScreen({ navigation, route }) {
           time={isIncomingCargoOffer ? relTime(data.updated_at || data.created_at) : cardTime}
           meta={isIncomingCargoOffer ? offerMeta : undefined}
           dimmed={isClosed}
-          unread={!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0}
+          unread={unread}
           onPress={() => openBid(data)}
           colors={palette}
         />
@@ -637,7 +644,8 @@ export default function DealsScreen({ navigation, route }) {
         unreadNotifPaths.includes(`/deals/${data.id}`) ||
         (data.cargo_id && unreadNotifPaths.includes(`/cargos/${data.cargo_id}`)) ||
         (data.trip_id && unreadNotifPaths.includes(`/trips/${data.trip_id}`));
-      const unread = (data.unread_count || 0) + (attentionRequired ? 1 : 0);
+      const isArchived = ARCHIVE_DEAL_STATUSES.has(data.status);
+      const unread = isArchived ? 0 : (data.unread_count || 0) + (attentionRequired ? 1 : 0);
 
       return (
         <CompactDealCard
@@ -649,7 +657,7 @@ export default function DealsScreen({ navigation, route }) {
           time={relTime(data.last_message_at || data.updated_at || data.created_at)}
           meta={meta}
           unread={unread}
-          dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
+          dimmed={isArchived}
           onPress={() => openDeal(data)}
           colors={palette}
         />

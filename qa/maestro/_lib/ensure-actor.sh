@@ -20,21 +20,21 @@
 #     a guardrail, not a real authorization boundary — the backend already
 #     refuses without the token — but it stops a fat-finger from running
 #     QA flows against production.
-#   - The token printed here is the session token for a STABLE QA actor
-#     (serik/boris/auditor). Never print QA_AGENT_TOKEN itself.
+#   - The token printed here is the session token for a STABLE QA actor.
+#     Never print QA_AGENT_TOKEN itself.
 
 set -euo pipefail
 
 ACTOR="${1:-}"
 if [[ -z "${ACTOR}" ]]; then
-  echo "usage: $0 <serik|boris|auditor>" >&2
+  echo "usage: $0 <serik|boris|fedya|armando|berik|auditor>" >&2
   exit 2
 fi
 
 case "${ACTOR}" in
-  serik|boris|auditor) ;;
+  serik|boris|fedya|armando|berik|auditor) ;;
   *)
-    echo "ensure-actor: unknown actor '${ACTOR}' (expected serik|boris|auditor)" >&2
+    echo "ensure-actor: unknown actor '${ACTOR}' (expected serik|boris|fedya|armando|berik|auditor)" >&2
     exit 2
     ;;
 esac

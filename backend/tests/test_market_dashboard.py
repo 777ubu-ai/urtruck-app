@@ -20,7 +20,8 @@ import sys
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_mydash.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if os.environ.get("URTRUCK_PYTEST_SHARED_DB") != "1":
+    Path(TEST_DB).unlink(missing_ok=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -71,6 +72,24 @@ DRIVER_ID = "test-driver-dash"
 def as_user(uid):
     _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1})
 
+def _complete_min_bargain(bid_id: str, final_amount: int = 3600):
+    as_user(CLIENT_ID)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": final_amount + 200})
+    assert r.status_code == 200, r.text
+    as_user(DRIVER_ID)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    assert r.status_code == 200, r.text
+    r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": final_amount + 100})
+    assert r.status_code == 200, r.text
+    as_user(CLIENT_ID)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": final_amount + 50})
+    assert r.status_code == 200, r.text
+    as_user(DRIVER_ID)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    assert r.status_code == 200, r.text
+    r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": final_amount})
+    assert r.status_code == 200, r.text
+
 def _seed_deal_with_message(text: str | None):
     """Создаёт cargo(client) → bid(driver) → accept → deal + chat_room.
     Если text задан — вставляет сообщение; иначе комната остаётся без нашего
@@ -85,6 +104,7 @@ def _seed_deal_with_message(text: str | None):
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 3500})
     assert r.status_code in (200, 201), r.text
     bid_id = r.json()["id"]
+    _complete_min_bargain(bid_id)
     as_user(CLIENT_ID)
     r = client.post(f"/api/v1/market/bids/{bid_id}/accept")
     assert r.status_code in (200, 201), r.text

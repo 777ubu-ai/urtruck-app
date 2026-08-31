@@ -10,11 +10,9 @@
 // зарегистрирован и в гостевом стеке (показывает приглашение зарегистрироваться).
 
 import React from "react";
-import { TouchableOpacity, StyleSheet, View, Text } from "react-native";
+import { TouchableOpacity, StyleSheet } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 import { useV1Colors } from "../../../theme/designV1";
-import { useAuth } from "../../../utils/AuthContext";
-import { useUnreadNotifications } from "../../../utils/useUnreadNotifications";
 
 export default function HeaderMenuButton({
   navigation,
@@ -23,10 +21,6 @@ export default function HeaderMenuButton({
   testID = "header-menu-btn",
 }) {
   const colors = useV1Colors();
-  const { hasToken } = useAuth();
-  const unread = useUnreadNotifications(hasToken);
-  const visible = Number(unread) > 0;
-  const label = Number(unread) > 9 ? "9+" : String(unread);
   return (
     <TouchableOpacity
       onPress={() =>
@@ -36,24 +30,9 @@ export default function HeaderMenuButton({
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       testID={testID}
       accessibilityRole="button"
-      accessibilityLabel={
-        visible
-          ? `Профиль и меню, ${unread} непрочитанных уведомлений`
-          : "Профиль и меню"
-      }
+      accessibilityLabel="Профиль и меню"
     >
       <Feather name="menu" size={24} color={color || colors.text} />
-      {visible ? (
-        <View
-          style={[
-            s.badge,
-            { backgroundColor: colors.error, borderColor: colors.bg },
-          ]}
-          testID="header-menu-unread-badge"
-        >
-          <Text style={s.badgeText}>{label}</Text>
-        </View>
-      ) : null}
     </TouchableOpacity>
   );
 }
@@ -66,17 +45,4 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  badge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-  },
-  badgeText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
 });

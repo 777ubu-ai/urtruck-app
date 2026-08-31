@@ -16,7 +16,8 @@ import sys
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_deal_weight.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if os.environ.get("URTRUCK_PYTEST_SHARED_DB") != "1":
+    Path(TEST_DB).unlink(missing_ok=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -74,6 +75,25 @@ def expect(cond, msg):
     print(f"  ok: {msg}")
 
 
+def complete_min_bargain(owner_id: str, driver_id: str, bid_id: str, final_amount: int = 2600):
+    as_user(owner_id)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": final_amount + 200})
+    expect(r.status_code == 200, f"first owner counter 200 (got {r.status_code} {r.text})")
+    as_user(driver_id)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    expect(r.status_code == 200, f"driver declines first counter 200 (got {r.status_code} {r.text})")
+    r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": final_amount + 100})
+    expect(r.status_code == 200, f"driver second offer 200 (got {r.status_code} {r.text})")
+    as_user(owner_id)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": final_amount + 50})
+    expect(r.status_code == 200, f"second owner counter 200 (got {r.status_code} {r.text})")
+    as_user(driver_id)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    expect(r.status_code == 200, f"driver declines second counter 200 (got {r.status_code} {r.text})")
+    r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": final_amount})
+    expect(r.status_code == 200, f"driver final offer 200 (got {r.status_code} {r.text})")
+
+
 def test_cargo_backed_deal_exposes_cargo_weight_tons():
     print("\n=== test_cargo_backed_deal_exposes_cargo_weight_tons ===")
     owner_id, driver_id = "owner-weight-1", "driver-weight-1"
@@ -89,6 +109,7 @@ def test_cargo_backed_deal_exposes_cargo_weight_tons():
 
     as_user(driver_id)
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2500}).json()["id"]
+    complete_min_bargain(owner_id, driver_id, bid_id)
     as_user(owner_id)
     r = client.post(f"/api/v1/market/bids/{bid_id}/accept")
     expect(r.status_code == 200, f"accept bid 200 (got {r.status_code} {r.text})")

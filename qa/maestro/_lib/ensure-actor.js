@@ -6,7 +6,7 @@
 //
 // Required env (Maestro forwards anything prefixed with MAESTRO_):
 //   MAESTRO_QA_AGENT_TOKEN — secret shared with backend ($QA_AGENT_TOKEN)
-//   MAESTRO_ACTOR          — serik | boris | auditor
+//   MAESTRO_ACTOR          — serik | boris | fedya | armando | berik | auditor
 //
 // Optional env:
 //   MAESTRO_BACKEND_BASE   — defaults to http://127.0.0.1:8001/api/v1
@@ -20,8 +20,8 @@
 //   throws — flow stops; Maestro shows the message in the report.
 
 var actor = MAESTRO_ACTOR;
-if (!actor) throw 'ensure-actor: MAESTRO_ACTOR env var is required (serik|boris|auditor)';
-if (actor !== 'serik' && actor !== 'boris' && actor !== 'auditor') {
+if (!actor) throw 'ensure-actor: MAESTRO_ACTOR env var is required (serik|boris|fedya|armando|berik|auditor)';
+if (actor !== 'serik' && actor !== 'boris' && actor !== 'fedya' && actor !== 'armando' && actor !== 'berik' && actor !== 'auditor') {
   throw 'ensure-actor: unknown actor ' + actor;
 }
 
@@ -56,4 +56,4 @@ if (!data || !data.token) {
 }
 
 output.token = data.token;
-output.role = data.role || (actor === 'serik' ? 'driver' : actor === 'boris' ? 'client' : 'auditor');
+output.role = data.role || ((actor === 'serik' || actor === 'armando' || actor === 'berik') ? 'driver' : (actor === 'boris' || actor === 'fedya') ? 'client' : 'auditor');

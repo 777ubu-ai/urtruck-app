@@ -6,6 +6,11 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      application_id:
+        description: Android applicationId to build
+        required: false
+        default: com.urtruck.app
   push:
     branches: [main, "claude/**"]
 
@@ -73,6 +78,7 @@ jobs:
         # корень репо — ДО prebuild.
         env:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+          URTRUCK_APPLICATION_ID: ${{ github.event.inputs.application_id || 'com.urtruck.app' }}
         run: |
           set -euo pipefail
           if [ -z "${ANDROID_GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
@@ -81,6 +87,19 @@ jobs:
           fi
           echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > google-services.json
           python3 scripts/verify_android_firebase_config.py --check-source google-services.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('google-services.json', 'utf8'));
+          const expected = process.env.URTRUCK_APPLICATION_ID || 'com.urtruck.app';
+          const packages = (config.client || [])
+            .map((client) => client.client_info?.android_client_info?.package_name)
+            .filter(Boolean);
+          if (!packages.includes(expected)) {
+            console.error(`::error::google-services.json не содержит Android client package '${expected}'. Найдены: ${packages.join(', ') || '(none)'}`);
+            process.exit(1);
+          }
+          console.log(`[firebase] package '${expected}' найден в google-services.json`);
+          NODE
 
       - name: Expo prebuild (Android, non-interactive)
         run: npx expo prebuild --platform android --clean --no-install --non-interactive
@@ -90,6 +109,23 @@ jobs:
 
       - name: Verify Google Services Gradle plugin wired after prebuild
         run: python3 scripts/verify_android_firebase_config.py --check-plugin android
+
+      - name: Apply requested Android applicationId
+        env:
+          URTRUCK_APPLICATION_ID: ${{ github.event.inputs.application_id || 'com.urtruck.app' }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("android/app/build.gradle")
+          src = path.read_text()
+          old = "applicationId 'com.urtruck.app'"
+          new = "applicationId (project.hasProperty('URTRUCK_APPLICATION_ID') ? URTRUCK_APPLICATION_ID : 'com.urtruck.app')"
+          if old in src:
+              path.write_text(src.replace(old, new))
+          elif new not in src:
+              raise SystemExit("Could not locate applicationId line in android/app/build.gradle")
+          PY
 
       - name: Target API 36 (Google Play требование с 31.08.2026)
         run: |
@@ -102,6 +138,8 @@ jobs:
           ls -la android/gradle/wrapper/ 2>/dev/null || true
 
       - name: Build Release APK with Gradle
+        env:
+          ORG_GRADLE_PROJECT_URTRUCK_APPLICATION_ID: ${{ github.event.inputs.application_id || 'com.urtruck.app' }}
         run: |
           cd android
           chmod +x gradlew

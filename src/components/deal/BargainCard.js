@@ -83,21 +83,30 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
 
   // Текущая «на столе» сумма: у countered это counter_amount, иначе amount.
   const current = bid.status === 'countered' && bid.counter_amount ? bid.counter_amount : bid.amount;
+  const minActions = Number(bid.bargain_min_actions || 5);
+  const priceActions = Number(bid.bargain_price_actions || 0);
+  const gateRequired = bid.bargain_gate_required === true;
+  const canOwnerAccept = bid.bargain_can_accept !== false;
+  const canBidderAcceptCounter = bid.bargain_counter_can_accept !== false
+    && (!gateRequired || priceActions >= Math.max(1, minActions - 1));
+  const depthLabel = t('bargain_depth_progress')
+    .replace('{done}', String(Math.min(priceActions, minActions)))
+    .replace('{min}', String(minActions));
   const statusLabel =
     bid.status === 'countered' ? t('bargain_countered')
     : bid.status === 'pending' ? (isOwner ? (t('bargain_incoming') || t('bargain_pending')) : t('bargain_pending'))
     : bid.status;
 
   const s = styles(v1);
-  const Chip = ({ label, onPress, primary, danger, tid }) => (
+  const Chip = ({ label, onPress, primary, danger, disabled, tid }) => (
     <TouchableOpacity
-      style={[s.chip, primary && s.chipPrimary, danger && s.chipDanger]}
+      style={[s.chip, primary && s.chipPrimary, danger && s.chipDanger, disabled && s.chipDisabled]}
       onPress={onPress}
-      disabled={busy}
+      disabled={busy || disabled}
       testID={tid}
       activeOpacity={0.8}
     >
-      <Text style={[s.chipText, primary && s.chipTextPrimary, danger && s.chipTextDanger]}>{label}</Text>
+      <Text style={[s.chipText, primary && s.chipTextPrimary, danger && s.chipTextDanger, disabled && s.chipTextDisabled]}>{label}</Text>
     </TouchableOpacity>
   );
 
@@ -123,7 +132,7 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
               onPress={() => act(() => marketAPI.counterBid(bid.id, { amount: Math.max(1, current - 200) }), t('bargain_counter_sent'))} />
             <Chip label={t('bargain_own_price')} tid="bargain-own"
               onPress={() => onOpenModal && onOpenModal('counter', bid.id, current)} />
-            <Chip label={t('accept')} primary tid="bargain-accept"
+            <Chip label={canOwnerAccept ? t('accept') : depthLabel} primary disabled={!canOwnerAccept} tid="bargain-accept"
               onPress={() => act(() => marketAPI.acceptBid(bid.id), null, true, bid.amount)} />
             <Chip label={t('reject')} danger tid="bargain-reject"
               onPress={() => act(() => marketAPI.rejectBid(bid.id), t('bid_rejected'))} />
@@ -131,7 +140,7 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
         ) : null}
         {!isOwner && bid.status === 'countered' ? (
           <>
-            <Chip label={t('bargain_accept_counter')} primary tid="bargain-accept-counter"
+            <Chip label={canBidderAcceptCounter ? t('bargain_accept_counter') : depthLabel} primary disabled={!canBidderAcceptCounter} tid="bargain-accept-counter"
               onPress={() => act(() => marketAPI.acceptCounterBid(bid.id), null, true, bid.counter_amount)} />
             {/* Контр-назад (пинг-понг): updateBid на countered даёт 409 (pending-
                 гейт), поэтому сначала снимаем контр (→pending), затем правим цену. */}
@@ -167,8 +176,10 @@ const styles = (v1) => StyleSheet.create({
   chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.bgDeep },
   chipPrimary: { backgroundColor: v1.driver, borderColor: v1.driver },
   chipDanger: { borderColor: '#EF4444' },
+  chipDisabled: { opacity: 0.55 },
   chipText: { color: v1.text, fontSize: 13, fontWeight: '800' },
   chipTextPrimary: { color: '#0C0A09' },
   chipTextDanger: { color: '#EF4444' },
+  chipTextDisabled: { color: v1.textMuted },
   waiting: { color: v1.textMuted, fontSize: 12, fontStyle: 'italic' },
 });

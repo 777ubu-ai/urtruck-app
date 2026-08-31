@@ -35,6 +35,10 @@ export default function VoiceMessageBubble({
   textColor = '#14221C',
   mutedColor = '#617067',
   accentColor = '#168759',
+  t = (key) => key,
+  transcript,
+  transcribing = false,
+  onToggleTranscript,
   onError,
   testID = 'voice-bubble',
 }) {
@@ -88,6 +92,15 @@ export default function VoiceMessageBubble({
   const fillColor = mine ? '#FFFFFF' : accentColor;
   const iconColor = mine ? '#FFFFFF' : accentColor;
   const timeColor = mine ? 'rgba(255,255,255,0.85)' : mutedColor;
+  const transcriptVisible = !!transcript?.visible && !!transcript?.transcriptText;
+  const transcriptAction = transcribing
+    ? '...'
+    : transcriptVisible
+      ? t('voice_hide_text')
+      : transcript?.transcriptText
+        ? t('voice_show_text')
+        : t('voice_to_text');
+  const showTranscriptAction = typeof onToggleTranscript === 'function';
 
   return (
     <View style={s.wrap} testID={testID}>
@@ -135,6 +148,34 @@ export default function VoiceMessageBubble({
           <Text style={[s.rateText, { color: iconColor }]}>{(state.rate || 1)}x</Text>
         </TouchableOpacity>
       ) : null}
+      {showTranscriptAction ? (
+        <TouchableOpacity
+          onPress={onToggleTranscript}
+          disabled={transcribing}
+          style={s.transcriptBtn}
+          accessibilityRole="button"
+          testID="voice-transcript-toggle"
+        >
+          {transcribing ? (
+            <ActivityIndicator size="small" color={timeColor} />
+          ) : (
+            <Feather name="align-left" size={12} color={timeColor} />
+          )}
+          <Text style={[s.transcriptBtnText, { color: timeColor }]}>{transcriptAction}</Text>
+        </TouchableOpacity>
+      ) : null}
+      {transcriptVisible ? (
+        <View style={[s.transcriptBox, { borderTopColor: onSurface }]} testID="voice-transcript">
+          <Text style={[s.transcriptLabel, { color: timeColor }]}>{t('voice_original_label')}</Text>
+          <Text style={[s.transcriptText, { color: textColor }]}>{transcript.transcriptText}</Text>
+          {transcript.translatedText ? (
+            <>
+              <Text style={[s.transcriptLabel, { color: timeColor, marginTop: 8 }]}>{t('voice_translation_label')}</Text>
+              <Text style={[s.transcriptText, { color: textColor }]}>{transcript.translatedText}</Text>
+            </>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -158,4 +199,9 @@ const s = StyleSheet.create({
     borderRadius: 9, borderWidth: 1,
   },
   rateText: { fontSize: 10.5, fontWeight: '900' },
+  transcriptBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7, minHeight: 22 },
+  transcriptBtnText: { fontSize: 11, fontWeight: '800' },
+  transcriptBox: { marginTop: 7, paddingTop: 8, borderTopWidth: 1 },
+  transcriptLabel: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase', marginBottom: 4 },
+  transcriptText: { fontSize: 13, lineHeight: 19, fontWeight: '500' },
 });

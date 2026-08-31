@@ -16,16 +16,21 @@ import os
 
 # До любого импорта config/db/chat — единый DB_PATH на все test modules.
 os.environ["DB_PATH"] = "/tmp/urtruck_tests_badge_suite.db"
+os.environ["URTRUCK_PYTEST_SHARED_DB"] = "1"
 os.environ.setdefault("FILE_SIGNING_KEY", "test-file-signing-key-32-bytes-minimum")
 os.environ.setdefault("CGR_IIN_SALT", "pytest-harness-salt-not-a-secret")
 
 from pathlib import Path
 import pytest
 
+# Сбрасываем shared DB до collection, пока test modules ещё не открыли
+# SQLite/WAL connection. Удаление внутри fixture после import модулей давало
+# `attempt to write a readonly database` в standalone-тестах с module-level init.
+Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_full_schema():
-    Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
     from database import db as dbm
     from database import registration_dal
     from database import cgr_dal

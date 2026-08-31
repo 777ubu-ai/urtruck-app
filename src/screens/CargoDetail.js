@@ -263,6 +263,11 @@ export default function CargoDetail({ navigation, route }) {
           counterAmount: b.counter_amount,
           counterMessage: b.counter_message,
           counterBy: b.counter_by,
+          bargainPriceActions: Number(b.bargain_price_actions || 0),
+          bargainMinActions: Number(b.bargain_min_actions || 5),
+          bargainGateRequired: b.bargain_gate_required === true,
+          bargainCanAccept: b.bargain_can_accept !== false,
+          bargainCounterCanAccept: b.bargain_counter_can_accept !== false,
         }));
         setBids(mapped);
         // Часть 1: count/is_owner с бэка. count = все предложения (видно всем),
@@ -298,6 +303,18 @@ export default function CargoDetail({ navigation, route }) {
   };
 
   const acceptCounter = async (bid) => {
+    const gateRequired = bid?.bargainGateRequired === true;
+    const canAcceptCounter = bid?.bargainCounterCanAccept !== false
+      && (!gateRequired || (bid?.bargainPriceActions || 0) >= Math.max(1, (bid?.bargainMinActions || 5) - 1));
+    if (!canAcceptCounter) {
+      toast(
+        t('bargain_depth_progress')
+          .replace('{done}', String(Math.min(bid?.bargainPriceActions || 0, bid?.bargainMinActions || 5)))
+          .replace('{min}', String(bid?.bargainMinActions || 5)),
+        'info',
+      );
+      return;
+    }
     try {
       const r = await marketAPI.acceptCounterBid(bid.id);
       if (r.ok) {
@@ -417,6 +434,15 @@ export default function CargoDetail({ navigation, route }) {
   // Моя активная (pending/countered) ставка на чужой груз — используется
   // для плашки «Моя ставка $X · Ожидает ответа», симметрично TripDetail.
   const myPendingBid = bids.find(b => b.isMine && (b.status === 'pending' || b.status === 'countered'));
+  const myBidCanAcceptCounter = myPendingBid
+    ? myPendingBid.bargainCounterCanAccept !== false
+      && (myPendingBid.bargainGateRequired !== true || (myPendingBid.bargainPriceActions || 0) >= Math.max(1, (myPendingBid.bargainMinActions || 5) - 1))
+    : false;
+  const myBidDepthLabel = myPendingBid
+    ? t('bargain_depth_progress')
+      .replace('{done}', String(Math.min(myPendingBid.bargainPriceActions || 0, myPendingBid.bargainMinActions || 5)))
+      .replace('{min}', String(myPendingBid.bargainMinActions || 5))
+    : '';
   const priceDisplay = acceptedBid ? formatPrice(acceptedBid.amount, c.currency) : view.price;
   const myBidStatusLabel = React.useMemo(() => {
     if (!myPendingBid) return '';
@@ -567,6 +593,12 @@ export default function CargoDetail({ navigation, route }) {
           const isCancelled = b.status === 'cancelled';
           const isCountered = b.status === 'countered';
           const isActive = b.status === 'pending' || isCountered;
+          const bargainDepthLabel = t('bargain_depth_progress')
+            .replace('{done}', String(Math.min(b.bargainPriceActions || 0, b.bargainMinActions || 5)))
+            .replace('{min}', String(b.bargainMinActions || 5));
+          const canAcceptBid = b.bargainCanAccept !== false;
+          const canAcceptCounter = b.bargainCounterCanAccept !== false
+            && (b.bargainGateRequired !== true || (b.bargainPriceActions || 0) >= Math.max(1, (b.bargainMinActions || 5) - 1));
           return (
             <View key={b.id} style={[s.bidCard, {
               backgroundColor: theme.card,
@@ -641,10 +673,10 @@ export default function CargoDetail({ navigation, route }) {
                       testID="bid-accept"
                       role="client"
                       icon="✓"
-                      label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
+                      label={canAcceptBid ? `${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}` : bargainDepthLabel}
                       numberOfLines={2}
                       loading={accepting === b.id}
-                      disabled={!!accepting || !!rejecting}
+                      disabled={!!accepting || !!rejecting || !canAcceptBid}
                       success={dealStatus === 'accepted' && dealId != null}
                       onPress={async () => {
                         const sum = formatPrice(b.amount, c.currency);
@@ -717,10 +749,10 @@ export default function CargoDetail({ navigation, route }) {
                         testID="bid-accept"
                         role="client"
                         icon="✓"
-                        label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
+                        label={canAcceptBid ? `${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}` : bargainDepthLabel}
                         numberOfLines={2}
                         loading={accepting === b.id}
-                        disabled={!!accepting || !!rejecting}
+                        disabled={!!accepting || !!rejecting || !canAcceptBid}
                         onPress={async () => {
                           // Confirm сначала — под капотом два вызова, дороже отменить нельзя.
                           const sum = formatPrice(b.amount, c.currency);
@@ -778,8 +810,9 @@ export default function CargoDetail({ navigation, route }) {
                       testID="bid-accept-counter"
                       role="driver"
                       icon="✓"
-                      label={`${t('accept_counter')} ${formatPrice(b.counterAmount, c.currency || 'USD', t)}`}
+                      label={canAcceptCounter ? `${t('accept_counter')} ${formatPrice(b.counterAmount, c.currency || 'USD', t)}` : bargainDepthLabel}
                       numberOfLines={2}
+                      disabled={!canAcceptCounter}
                       onPress={() => acceptCounter(b)}
                     />
                     <DestructiveButton
@@ -869,8 +902,9 @@ export default function CargoDetail({ navigation, route }) {
                     testID="cargo-counter-accept"
                     role="driver"
                     icon="✓"
-                    label={`${t('accept_counter')} ${formatPrice(myPendingBid.counterAmount, c.currency, t)}`}
+                    label={myBidCanAcceptCounter ? `${t('accept_counter')} ${formatPrice(myPendingBid.counterAmount, c.currency, t)}` : myBidDepthLabel}
                     numberOfLines={2}
+                    disabled={!myBidCanAcceptCounter}
                     onPress={() => acceptCounter(myPendingBid)}
                   />
                   <DestructiveButton

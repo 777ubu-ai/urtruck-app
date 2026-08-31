@@ -10,7 +10,6 @@ import { useI18n } from '../../../utils/useI18n';
 import { chatAPI } from '../../../utils/chatAPI';
 import { marketAPI } from '../../../utils/marketAPI';
 import { subscribeChatRead } from '../../../utils/unreadEvents';
-import { useUnreadNotifications } from '../../../utils/useUnreadNotifications';
 import { computeDealsUnread } from '../../../utils/dealsUnread';
 import { colors as v2 } from '../../../theme/designSystemV2';
 
@@ -50,17 +49,13 @@ export default function BottomNav({ state, navigation }) {
   const [chatUnread, setChatUnread] = useState(0);
   const [dealsUnread, setDealsUnread] = useState(0);
   const pollTimer = useRef(null);
-  const notifUnread = useUnreadNotifications(hasToken);
   const chatUnreadRef = useRef(0);
-  const notifUnreadRef = useRef(0);
-  const syncIcon = () => syncAppIconBadge((chatUnreadRef.current || 0) + (notifUnreadRef.current || 0));
 
   useEffect(() => {
     let mounted = true;
     if (!hasToken) {
       chatUnreadRef.current = 0;
       setChatUnread(0);
-      syncIcon();
       return undefined;
     }
 
@@ -70,7 +65,6 @@ export default function BottomNav({ state, navigation }) {
         const count = Number(result?.unread ?? result?.count ?? result?.total ?? 0) || 0;
         chatUnreadRef.current = count;
         if (mounted) setChatUnread(count);
-        syncIcon();
       } catch {
         // Keep the previous value on temporary network errors.
       }
@@ -92,14 +86,10 @@ export default function BottomNav({ state, navigation }) {
   }, [hasToken]);
 
   useEffect(() => {
-    notifUnreadRef.current = Number(notifUnread) || 0;
-    syncIcon();
-  }, [notifUnread]);
-
-  useEffect(() => {
     let mounted = true;
     if (!hasToken) {
       setDealsUnread(0);
+      syncAppIconBadge(0);
       return undefined;
     }
 
@@ -108,6 +98,7 @@ export default function BottomNav({ state, navigation }) {
         const dashboard = await marketAPI.myDashboard();
         const next = computeDealsUnread(dashboard);
         if (mounted) setDealsUnread(next);
+        syncAppIconBadge(next);
         // Deliberately no foreground toast/banner here. The Deals badge is the
         // in-app signal. System push remains responsible for background/closed
         // app delivery and deep-link routing.
@@ -144,7 +135,9 @@ export default function BottomNav({ state, navigation }) {
     if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name, route.params);
   };
 
-  const bottomPad = Math.max(insets.bottom, 6);
+  const bottomPad = Platform.OS === 'android'
+    ? Math.max(insets.bottom, 28)
+    : Math.max(insets.bottom, 6);
   const barBg = isDark ? '#111827' : '#FFFFFF';
   const barBorder = isDark ? 'rgba(255,255,255,0.08)' : '#E5ECE8';
 
@@ -205,7 +198,7 @@ const PILL_H = 34;
 const LABEL_H = 13;
 
 const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: 12, paddingTop: 4, backgroundColor: 'transparent' },
+  wrap: { paddingHorizontal: 12, paddingTop: 4, minHeight: 86, backgroundColor: 'transparent' },
   bar: {
     flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
     paddingHorizontal: 7, paddingTop: 7, paddingBottom: 5, borderRadius: 24, borderWidth: 1,

@@ -10,11 +10,13 @@ exits with non-zero on any assertion failure.
 import contextvars
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 # Use an isolated DB. Caller can override via DB_PATH env var.
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_bid.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if os.environ.get("URTRUCK_PYTEST_SHARED_DB") != "1":
+    Path(TEST_DB).unlink(missing_ok=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -65,6 +67,19 @@ if _notif_schema_path.exists():
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
 client = TestClient(app)
+
+
+@contextmanager
+def bargain_gate(enabled: bool):
+    prev = os.environ.get("URTRUCK_QA_BARGAIN_DEPTH_GATE")
+    os.environ["URTRUCK_QA_BARGAIN_DEPTH_GATE"] = "1" if enabled else "0"
+    try:
+        yield
+    finally:
+        if prev is None:
+            os.environ.pop("URTRUCK_QA_BARGAIN_DEPTH_GATE", None)
+        else:
+            os.environ["URTRUCK_QA_BARGAIN_DEPTH_GATE"] = prev
 
 
 def as_user(uid: str, full_name: str = "Test User", phone: str = "+70000000000"):
@@ -367,6 +382,26 @@ def _new_pending_bid(owner: str, driver: str, amount: int = 1000):
     return cargo_id, bid_id
 
 
+def complete_min_bargain(owner: str, driver: str, bid_id: str, *, final_pending_amount: int = 1100):
+    """Доводит ветку до 5 ценовых действий: bid → counter → update → counter → update."""
+    as_user(owner)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": final_pending_amount + 200})
+    expect(r.status_code == 200, f"first counter 200 (got {r.status_code} {r.text})")
+    as_user(driver)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    expect(r.status_code == 200, f"first decline 200 (got {r.status_code} {r.text})")
+    r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": final_pending_amount + 100, "message": "driver second price"})
+    expect(r.status_code == 200, f"driver update 200 (got {r.status_code} {r.text})")
+    as_user(owner)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": final_pending_amount + 50})
+    expect(r.status_code == 200, f"second counter 200 (got {r.status_code} {r.text})")
+    as_user(driver)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    expect(r.status_code == 200, f"second decline 200 (got {r.status_code} {r.text})")
+    r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": final_pending_amount, "message": "final driver price"})
+    expect(r.status_code == 200, f"final driver update 200 (got {r.status_code} {r.text})")
+
+
 def test_counter_owner_sends_counter():
     print("\n=== test_counter_owner_sends_counter ===")
     cargo_id, bid_id = _new_pending_bid("co-owner-1", "co-driver-1", 1000)
@@ -413,6 +448,14 @@ def test_counter_accept_creates_deal_and_chat():
     as_user("co-owner-5")
     client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 1300})
 
+    as_user("co-driver-5")
+    with bargain_gate(True):
+        r = client.post(f"/api/v1/market/bids/{bid_id}/counter/accept")
+    expect(r.status_code == 409, f"early counter/accept blocked by bargain depth (got {r.status_code})")
+    client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": 1400, "message": "second driver price"})
+    as_user("co-owner-5")
+    client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 1300})
     as_user("co-driver-5")
     r = client.post(f"/api/v1/market/bids/{bid_id}/counter/accept")
     expect(r.status_code == 200, f"counter/accept 200 (got {r.status_code} {r.text})")
@@ -483,6 +526,34 @@ def test_owner_cannot_directly_accept_countered():
     expect(r.status_code == 409, f"owner accept countered → 409 (got {r.status_code})")
 
 
+def test_owner_cannot_accept_before_min_bargain_depth():
+    print("\n=== test_owner_cannot_accept_before_min_bargain_depth ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-depth", "co-driver-depth", 1500)
+    as_user("co-owner-depth")
+    with bargain_gate(True):
+        r = client.post(f"/api/v1/market/bids/{bid_id}/accept")
+    expect(r.status_code == 409, f"early direct accept → 409 (got {r.status_code})")
+    expect("минимум 5" in r.text, "response explains minimum 5 price actions")
+
+
+def test_owner_can_accept_first_bid_when_bargain_gate_disabled():
+    print("\n=== test_owner_can_accept_first_bid_when_bargain_gate_disabled ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-depth-prod", "co-driver-depth-prod", 1500)
+    as_user("co-owner-depth-prod")
+    with bargain_gate(False):
+        r = client.post(f"/api/v1/market/bids/{bid_id}/accept")
+    expect(r.status_code == 200, f"production direct accept first bid → 200 (got {r.status_code} {r.text})")
+
+
+def test_owner_can_accept_after_min_bargain_depth():
+    print("\n=== test_owner_can_accept_after_min_bargain_depth ===")
+    cargo_id, bid_id = _new_pending_bid("co-owner-depth-ok", "co-driver-depth-ok", 1500)
+    complete_min_bargain("co-owner-depth-ok", "co-driver-depth-ok", bid_id, final_pending_amount=1250)
+    as_user("co-owner-depth-ok")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/accept")
+    expect(r.status_code == 200, f"direct accept after 5 price actions → 200 (got {r.status_code} {r.text})")
+
+
 def test_chat_from_pending_bid_is_blocked():
     """A working chat room must not exist until the bid is accepted."""
     print("\n=== test_chat_from_pending_bid_is_blocked ===")
@@ -549,6 +620,9 @@ if __name__ == "__main__":
     test_cancel_works_for_countered()
     test_reject_works_for_countered()
     test_owner_cannot_directly_accept_countered()
+    test_owner_cannot_accept_before_min_bargain_depth()
+    test_owner_can_accept_first_bid_when_bargain_gate_disabled()
+    test_owner_can_accept_after_min_bargain_depth()
     test_chat_from_pending_bid()
     test_chat_blocked_when_bid_not_active()
     # PR-B: notification url + InApp для trip + eager chat + amount validate
@@ -641,6 +715,7 @@ def test_pr_b_accept_bid_creates_accepted_notif_with_order_url():
     cargo_id = seed_cargo(owner_id=owner, price=5000)
     as_user(driver)
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 4800}).json()["id"]
+    complete_min_bargain(owner, driver, bid_id, final_pending_amount=4700)
 
     as_user(owner)
     r = client.post(f"/api/v1/market/bids/{bid_id}/accept")

@@ -265,6 +265,13 @@ test('voice bubble has WhatsApp-grade controls: pause, seek, rate, live progress
   assert.match(bubble, /voice\.subscribe\?\./, 'бабл обязан подписываться на состояние плеера');
   // Активен только тот бабл, чей трек играет — иначе все показывали бы pause.
   assert.match(bubble, /state\.uri === uri/);
+  // Транскрипция не должна исчезать при улучшении плеера: кнопка и текст
+  // живут в том же voice bubble, включая комнату сделки.
+  assert.match(bubble, /testID="voice-transcript-toggle"/);
+  assert.match(bubble, /testID="voice-transcript"/);
+  assert.match(bubble, /t\('voice_to_text'\)/);
+  assert.match(bubble, /t\('voice_original_label'\)/);
+  assert.match(bubble, /t\('voice_translation_label'\)/);
 });
 
 test('voice upload failures distinguish too-large, storage-rejected/unreachable, and generic causes, not one flat message', () => {

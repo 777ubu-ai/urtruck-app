@@ -47,7 +47,8 @@ export function computeDealsUnread(dashboard) {
   if (!dashboard) return 0;
   let total = 0;
   for (const d of dashboard.my_deals || []) {
-    if (ACTIVE_DEAL_STATUSES.has(d.status)) total += d.unread_count || 0;
+    if (!ACTIVE_DEAL_STATUSES.has(d.status)) continue;
+    total += d.unread_count || 0;
     // System messages do not increment chat unread. A pending GPS request is
     // still an action the driver must see in the Deals badge.
     if (d.tracking_action_required) total += 1;

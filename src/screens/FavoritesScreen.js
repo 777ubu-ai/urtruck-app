@@ -26,11 +26,14 @@ export default function FavoritesScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [removingKey, setRemovingKey] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const result = await marketAPI.favList('');
-    setItems(Array.isArray(result?.favorites) ? result.favorites : []);
-    setLoading(false);
+  const load = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) setLoading(true);
+    try {
+      const result = await marketAPI.favList('');
+      setItems(Array.isArray(result?.favorites) ? result.favorites : []);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
   }, []);
 
   const { refreshing, onRefresh } = useSafeRefresh(
@@ -153,7 +156,7 @@ export default function FavoritesScreen({ navigation, route }) {
           keyExtractor={(item) => `${item.item_type || 'driver'}_${item.id || item.item_id}`}
           renderItem={renderItem}
           contentContainerStyle={{ padding: 16, paddingTop: 8 }}
-          refreshControl={<RefreshControl refreshing={refreshing || refreshingList} onRefresh={onRefresh} tintColor={v1.textMuted} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={v1.textMuted} />}
           ListEmptyComponent={
             <View style={styles.center} testID="favorites-empty">
               <Feather name="bookmark" size={40} color={v1.textMuted} style={{ marginBottom: 10 }} />

@@ -68,7 +68,8 @@ from pathlib import Path
 import pytest
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_live_lifecycle.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if os.environ.get("URTRUCK_PYTEST_SHARED_DB") != "1":
+    Path(TEST_DB).unlink(missing_ok=True)
 
 from database import db as dbm
 from database import registration_dal
@@ -175,6 +176,25 @@ def get_incoming_bids(owner_id):
         return [dict(r) for r in rows]
 
 
+def complete_min_bargain(shipper: str, driver: str, bid_id: str, final_amount: int = 1150):
+    as_user(shipper, "Shipper QA")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": final_amount + 200})
+    assert r.status_code == 200, r.text
+    as_user(driver, "Driver QA")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    assert r.status_code == 200, r.text
+    r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": final_amount + 100, "message": "second offer"})
+    assert r.status_code == 200, r.text
+    as_user(shipper, "Shipper QA")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": final_amount + 50})
+    assert r.status_code == 200, r.text
+    as_user(driver, "Driver QA")
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    assert r.status_code == 200, r.text
+    r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": final_amount, "message": "final offer"})
+    assert r.status_code == 200, r.text
+
+
 def run_full_lifecycle(run_label):
     """The full scenario. Called once per pytest run (own process, own DB) —
     see the module docstring for why running the WHOLE FILE twice (not this
@@ -203,6 +223,7 @@ def run_full_lifecycle(run_label):
     assert badge_shipper_after_bid >= 1, f"shipper badge must reflect the new bid, got {badge_shipper_after_bid}"
 
     # ── 4. Shipper accepts -> deal created ───────────────────────────────
+    complete_min_bargain(shipper, driver, bid_id)
     as_user(shipper, "Shipper QA")
     accept_res = client.post(f"/api/v1/market/bids/{bid_id}/accept")
     assert accept_res.status_code == 200, accept_res.text
@@ -338,4 +359,3 @@ def test_re_fetching_a_completed_deal_after_a_delay_shows_unchanged_persisted_st
     assert row and row["status"] == "received", (
         f"deal status must still read 'received' after a fresh re-fetch, got {dict(row) if row else None}"
     )
-

@@ -50,6 +50,9 @@ QA_TAG_PREFIX = "[ar-"
 QA_ACTORS = {
     "serik":   {"id": "agent-serik",   "phone": "agent-serik",   "full_name": "Serik (driver agent)",     "role": "driver"},
     "boris":   {"id": "agent-boris",   "phone": "agent-boris",   "full_name": "Boris (shipper agent)",    "role": "client"},
+    "fedya":   {"id": "agent-fedya",   "phone": "agent-fedya",   "full_name": "Fedya (shipper agent)",    "role": "client"},
+    "armando": {"id": "agent-armando", "phone": "agent-armando", "full_name": "Armando (driver agent)",   "role": "driver"},
+    "berik":   {"id": "agent-berik",   "phone": "agent-berik",   "full_name": "Berik (driver agent)",     "role": "driver"},
     "auditor": {"id": "agent-auditor", "phone": "agent-auditor", "full_name": "Auditor (supervisor agent)", "role": "auditor"},
 }
 

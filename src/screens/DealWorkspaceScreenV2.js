@@ -269,6 +269,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [locationSending, setLocationSending] = React.useState(false);
   const [translations, setTranslations] = React.useState({});
   const [translating, setTranslating] = React.useState(null);
+  const [voiceTranscripts, setVoiceTranscripts] = React.useState({});
+  const [voiceTranscribing, setVoiceTranscribing] = React.useState(null);
   const [autoTranslate, setAutoTranslate] = React.useState(false);
 
   const listRef = React.useRef(null);
@@ -435,6 +437,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           voice: isVoice,
           mediaUrl,
           voiceDuration: Number(message.voice_duration || 0),
+          transcript: message.voice_transcript || '',
+          transcriptLang: message.voice_transcript_lang || null,
+          transcriptProvider: message.voice_transcript_provider || null,
           time: fmtMessageTime(message.created_at),
           createdAt: message.created_at,
           read: !!message.is_read,
@@ -498,6 +503,69 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     const appState = AppState.addEventListener('change', (state) => { if (state === 'active') loadMessages(); });
     return () => { clearInterval(timer); appState?.remove?.(); setActiveRoom(null); };
   }, [roomId, loadMessages]);
+
+  React.useEffect(() => {
+    setVoiceTranscripts((prev) => {
+      let changed = false;
+      let next = prev;
+      for (const message of messages) {
+        if (!message?.voice || !message?.transcript) continue;
+        const current = next[message.id];
+        if (
+          current?.transcriptText === message.transcript &&
+          current?.sourceLang === message.transcriptLang &&
+          current?.provider === message.transcriptProvider
+        ) {
+          continue;
+        }
+        if (!changed) next = { ...prev };
+        next[message.id] = {
+          visible: current?.visible ?? false,
+          transcriptText: message.transcript,
+          sourceLang: message.transcriptLang || current?.sourceLang || null,
+          provider: message.transcriptProvider || current?.provider || null,
+          translatedText: current?.translatedText || null,
+          translationProvider: current?.translationProvider || null,
+        };
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [messages]);
+
+  const toggleVoiceTranscript = React.useCallback(async (item) => {
+    const current = voiceTranscripts[item.id];
+    if (current?.transcriptText) {
+      setVoiceTranscripts((prev) => ({
+        ...prev,
+        [item.id]: { ...current, visible: !current.visible },
+      }));
+      return;
+    }
+    setVoiceTranscribing(item.id);
+    try {
+      const result = await chatAPI.transcribe(item.id, getLanguage().toLowerCase());
+      if (!result?.transcript_text) {
+        toast(t('voice_transcription_unavailable'), 'info');
+        return;
+      }
+      setVoiceTranscripts((prev) => ({
+        ...prev,
+        [item.id]: {
+          visible: true,
+          transcriptText: result.transcript_text,
+          sourceLang: result.source_lang || null,
+          provider: result.provider || null,
+          translatedText: result.translated_text || null,
+          translationProvider: result.translation_provider || null,
+        },
+      }));
+    } catch {
+      toast(t('voice_transcription_unavailable'), 'info');
+    } finally {
+      setVoiceTranscribing(null);
+    }
+  }, [t, toast, voiceTranscripts]);
 
   // P0 30.08.2026: комната сделки — единственный реальный чат обеих ролей
   // (CLAUDE.md: переписка живёт внутри «Сделок»), но она только КЛАЛА
@@ -1042,6 +1110,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               sending={item.sendStatus === 'sending'}
               textColor={item.mine ? '#FFFFFF' : colors.text}
               mutedColor={item.mine ? 'rgba(255,255,255,0.85)' : colors.textMuted}
+              t={t}
+              transcript={voiceTranscripts[item.id]}
+              transcribing={voiceTranscribing === item.id}
+              onToggleTranscript={() => toggleVoiceTranscript(item)}
               onError={() => toast(t('voice_play_fail'), 'error')}
               testID="deal-chat-voice-bubble"
             />
@@ -1114,7 +1186,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         ) : null}
       </View>
     );
-  }, [colors, translations, translating, t, toast, retryDocument, retryFailedText]);
+  }, [colors, translations, translating, t, toast, retryDocument, retryFailedText, toggleVoiceTranscript, voiceTranscribing, voiceTranscripts]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
@@ -1588,7 +1660,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
 const s = StyleSheet.create({
   safe: { flex: 1 },
-  compactHeader: { minHeight: 118, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 9, borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 20 },
+  compactHeader: { height: 118, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 9, borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 20 },
   backButton: { width: 42, height: 46, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   headerText: { flex: 1, minWidth: 0, paddingRight: 8 },
   headerActions: { flexDirection: 'row', gap: 8, marginTop: 4 },

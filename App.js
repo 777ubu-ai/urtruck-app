@@ -157,6 +157,35 @@ function navigateFromUrl(navRef, url, role) {
   }
 }
 
+async function isQa2RuntimePackage() {
+  if (Platform.OS !== 'android') return false;
+  try {
+    const Application = require('expo-application');
+    return Application?.applicationId === 'com.urtruck.app.qa2';
+  } catch {
+    return false;
+  }
+}
+
+function parseQaAuthUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  try {
+    const parsed = new URL(url.trim());
+    const isUrtruckScheme = (
+      parsed.protocol === 'urtruck:'
+      || parsed.protocol === 'com.urtruck.app:'
+      || parsed.protocol === 'com.urtruck.app.qa2:'
+    );
+    const isQaAuth = parsed.hostname === 'qa-auth' || parsed.pathname === '/qa-auth';
+    const token = parsed.searchParams.get('token');
+    if (!isUrtruckScheme || !isQaAuth || !token) return null;
+    const role = parsed.searchParams.get('role') || null;
+    return { token, role };
+  } catch {
+    return null;
+  }
+}
+
 // Welcome-splash показывает НАТИВНЫЙ splash (app.json → splash.image), он сам
 // уходит, когда отрисован первый кадр JS. JS-оверлей убран (баг: всплывал ПОВЕРХ
 // уже загруженной ленты → «двоение UrTruck», как и в предыдущий раз 14.06).
@@ -170,7 +199,7 @@ function AppInner() {
   const navRef = useRef();
   const navReadyRef = useRef(false);
   const pendingUrlRef = useRef(null);
-  const { session, hasToken } = useAuth();
+  const { session, hasToken, signIn, setRole, refreshLevel } = useAuth();
   const { theme, isDark } = useTheme();
 
   // Фон САМОГО навигатора (не только сцены). Без theme у NavigationContainer
@@ -190,6 +219,23 @@ function AppInner() {
   // когда всё будет готово (см. useEffect ниже и onReady у контейнера).
   const routeFromUrl = (url) => {
     if (!url) return;
+    const qaAuth = parseQaAuthUrl(url);
+    if (qaAuth) {
+      isQa2RuntimePackage().then(async (allowed) => {
+        if (!allowed) return;
+        try {
+          await signIn('qa-actor', 3, qaAuth.token);
+          const me = await refreshLevel().catch(() => null);
+          const role = me?.role && me.role !== 'guest' ? me.role : qaAuth.role;
+          if (role) setRole(role);
+          const pushResult = await push.autoRegister?.().catch((e) => ({ ok: false, reason: e?.message || 'error' }));
+          console.warn('[qa-auth] login applied', { role: role || null, push: pushResult?.ok ? 'ok' : (pushResult?.reason || 'failed') });
+        } catch (e) {
+          console.warn('[qa-auth] login failed:', e?.message);
+        }
+      }).catch(() => {});
+      return;
+    }
     const parsed = parseNotifUrl(url);
     const needsAuth = parsed && ['chats', 'chat', 'deals', 'cargos', 'trips', 'profile', 'notifications'].includes(parsed.kind);
     if (!navReadyRef.current || !navRef.current || (needsAuth && !authedForDeepLink)) {
