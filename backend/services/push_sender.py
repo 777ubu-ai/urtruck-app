@@ -46,6 +46,15 @@ FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "")
 FCM_MOCK = not FCM_SERVER_KEY
 
 
+def _mask_token(token: str) -> str:
+    if not token:
+        return ""
+    token = str(token)
+    if len(token) <= 12:
+        return token[:4] + "..."
+    return f"{token[:10]}...{token[-6:]}"
+
+
 # ───────────────────────── Storage helpers ─────────────────────────
 def _web_subs(user_id: str) -> list[dict]:
     # P0-1/P1-3/P1-4: только active=1 — деактивированные (logout, отписка,
@@ -233,6 +242,81 @@ def _send_expo(tokens: list[str], title: str, body: str, data: dict, badge: Opti
         return 0
 
 
+def _send_expo_detailed(tokens: list[str], title: str, body: str, data: dict, badge: Optional[int] = None) -> dict:
+    """QA diagnostics variant of _send_expo.
+
+    Returns masked token metadata + Expo tickets so release QA can separate
+    backend/event bugs from Expo/Firebase/Android delivery bugs without
+    exposing raw push tokens.
+    """
+    if not tokens:
+        return {"sent": 0, "tickets": [], "error": None}
+    msg_base = {
+        "title": title,
+        "body": body,
+        "data": data,
+        "sound": "default",
+        "priority": "high",
+        "channelId": NATIVE_PUSH_CHANNEL_ID,
+    }
+    if badge is not None:
+        msg_base["badge"] = int(badge)
+    messages = [{**msg_base, "to": t} for t in tokens]
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if EXPO_TOKEN:
+        headers["Authorization"] = f"Bearer {EXPO_TOKEN}"
+
+    try:
+        r = httpx.post(EXPO_ENDPOINT, headers=headers, json=messages, timeout=10.0)
+    except Exception as e:
+        return {"sent": 0, "tickets": [], "error": f"expo_push_exception: {e}"}
+
+    if r.status_code >= 400:
+        return {"sent": 0, "tickets": [], "error": f"expo_http_{r.status_code}: {r.text[:300]}"}
+
+    try:
+        payload = r.json()
+    except Exception as e:
+        return {"sent": 0, "tickets": [], "error": f"expo_bad_json: {e}"}
+
+    raw_tickets = payload.get("data", [])
+    tickets = []
+    sent = 0
+    for i, ticket in enumerate(raw_tickets):
+        token = tokens[i] if i < len(tokens) else ""
+        item = {
+            "token_masked": _mask_token(token),
+            "status": ticket.get("status") if isinstance(ticket, dict) else None,
+            "id": ticket.get("id") if isinstance(ticket, dict) else None,
+            "message": ticket.get("message") if isinstance(ticket, dict) else None,
+            "details": ticket.get("details") if isinstance(ticket, dict) else None,
+        }
+        if item["status"] == "ok":
+            sent += 1
+        tickets.append(item)
+    return {"sent": sent, "tickets": tickets, "error": None}
+
+
+def expo_receipts(ticket_ids: list[str]) -> dict:
+    """Fetch Expo delivery receipts for ticket IDs returned by diagnostics."""
+    ids = [str(x).strip() for x in (ticket_ids or []) if str(x).strip()]
+    if not ids:
+        return {"receipts": {}, "error": None}
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if EXPO_TOKEN:
+        headers["Authorization"] = f"Bearer {EXPO_TOKEN}"
+    try:
+        r = httpx.post("https://exp.host/--/api/v2/push/getReceipts", headers=headers, json={"ids": ids}, timeout=10.0)
+    except Exception as e:
+        return {"receipts": {}, "error": f"expo_receipt_exception: {e}"}
+    if r.status_code >= 400:
+        return {"receipts": {}, "error": f"expo_receipt_http_{r.status_code}: {r.text[:300]}"}
+    try:
+        return {"receipts": r.json().get("data", {}), "error": None}
+    except Exception as e:
+        return {"receipts": {}, "error": f"expo_receipt_bad_json: {e}"}
+
+
 def _send_fcm(tokens: list[str], title: str, body: str, data: dict) -> int:
     """Отправка через FCM HTTP v1 (прямое Firebase).
     Сейчас stub — включается только если FCM_SERVER_KEY задан.
@@ -272,6 +356,49 @@ def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optiona
     if FCM_MOCK and PUSH_MOCK_WEB and not expo_tokens and not fcm_tokens:
         print(f"[PUSH·NATIVE MOCK] {user_id}: {title} · {body}")
     return sent
+
+
+def native_token_diagnostics(user_id: str) -> dict:
+    """Masked active native tokens for a user. QA-only callers must guard this."""
+    tokens = _native_tokens(user_id)
+    return {
+        "user_id": user_id,
+        "count": len(tokens),
+        "tokens": [
+            {
+                "token_masked": _mask_token(t.get("token")),
+                "provider": t.get("provider"),
+                "platform": t.get("platform"),
+            }
+            for t in tokens
+        ],
+    }
+
+
+def send_native_debug(user_id: str, title: str, body: str, data: Optional[dict] = None, url: str = "/", kind: str = "qa_push_test") -> dict:
+    """Direct provider test for one user's active native tokens.
+
+    This bypasses marketplace/chat event creation but keeps the same Expo
+    payload contract used by normal push sends. It is intentionally separate
+    from send() so existing business call-sites keep their current behavior.
+    """
+    if not user_id:
+        return {"user_id": user_id, "tokens": 0, "sent": 0, "tickets": [], "error": "missing_user_id"}
+    data = {**(data or {}), "kind": kind, "url": url}
+    tokens = _native_tokens(user_id)
+    expo_tokens = [t["token"] for t in tokens if t["provider"] == "expo"]
+    fcm_tokens = [t["token"] for t in tokens if t["provider"] == "fcm"]
+    badge = _compute_recipient_badge(user_id)
+    expo_result = _send_expo_detailed(expo_tokens, title, body, data, badge=badge)
+    return {
+        "user_id": user_id,
+        "tokens": len(tokens),
+        "expo_tokens": len(expo_tokens),
+        "fcm_tokens": len(fcm_tokens),
+        "sent": expo_result.get("sent", 0),
+        "tickets": expo_result.get("tickets", []),
+        "error": expo_result.get("error"),
+    }
 
 
 def _compute_recipient_badge(user_id: str) -> int:

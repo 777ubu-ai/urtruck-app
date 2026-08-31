@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional, List
 
@@ -85,6 +86,30 @@ class EnsureActorIn(BaseModel):
     role: Optional[str] = None          # "driver" | "shipper" | "auditor"
 
 
+class QaPushTokensIn(BaseModel):
+    actor: Optional[str] = None
+    user_id: Optional[str] = None
+
+
+class QaDirectPushIn(BaseModel):
+    actor: Optional[str] = None
+    user_id: Optional[str] = None
+    title: str = "UrTruck QA"
+    body: str = "Тестовое push-уведомление"
+    url: str = "/notifications"
+    kind: str = "qa_push_test"
+    receipt_wait_seconds: float = 0
+
+
+def _qa_push_user_id(actor: Optional[str], user_id: Optional[str]) -> str:
+    if user_id:
+        return user_id
+    spec = QA_ACTORS.get(actor or "")
+    if not spec:
+        raise HTTPException(status_code=400, detail="Specify user_id or known QA actor")
+    return spec["id"]
+
+
 @qa_router.post("/ensure-actor")
 def ensure_actor(body: EnsureActorIn, x_qa_agent_token: Optional[str] = Header(None)):
     """Mint (or reuse) a stable session token for a QA actor.
@@ -132,6 +157,48 @@ def ensure_actor(body: EnsureActorIn, x_qa_agent_token: Optional[str] = Header(N
         "token": token,
         "verification_level": 3,
     }
+
+
+@qa_router.post("/push/native-tokens")
+def qa_push_native_tokens(body: QaPushTokensIn, x_qa_agent_token: Optional[str] = Header(None)):
+    """QA-only masked diagnostics for active native push tokens.
+
+    Raw tokens are never returned. This is enough to prove whether a concrete
+    QA actor has any active Android/iOS token linked before running physical
+    push checks.
+    """
+    _require_agent_token(x_qa_agent_token)
+    from services import push_sender
+    uid = _qa_push_user_id(body.actor, body.user_id)
+    return push_sender.native_token_diagnostics(uid)
+
+
+@qa_router.post("/push/test-direct")
+def qa_push_test_direct(body: QaDirectPushIn, x_qa_agent_token: Optional[str] = Header(None)):
+    """QA-only direct provider test for native push delivery.
+
+    It bypasses UrTruck business events and sends to the actor's registered
+    native token through the same Expo provider. If this returns an Expo
+    credential/token error, the bug is below the marketplace/chat pipeline.
+    If this succeeds but a normal event does not, the bug is in event routing.
+    """
+    _require_agent_token(x_qa_agent_token)
+    from services import push_sender
+    uid = _qa_push_user_id(body.actor, body.user_id)
+    result = push_sender.send_native_debug(
+        uid,
+        body.title,
+        body.body,
+        data={"type": "qa_push_test", "recipient_id": uid},
+        url=body.url,
+        kind=body.kind,
+    )
+    wait = max(0.0, min(float(body.receipt_wait_seconds or 0), 5.0))
+    ticket_ids = [t.get("id") for t in result.get("tickets", []) if t.get("id")]
+    if wait and ticket_ids:
+        time.sleep(wait)
+        result["receipts"] = push_sender.expo_receipts(ticket_ids)
+    return result
 
 
 class CleanupIn(BaseModel):
