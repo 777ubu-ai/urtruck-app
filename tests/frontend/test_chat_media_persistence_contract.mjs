@@ -117,18 +117,26 @@ test('voice recording shows a live indicator, timer, waveform, and send/cancel c
 });
 
 test('voice send renders an optimistic bubble immediately before upload and reuses its clientMsgId', () => {
+  // reconcile 01.09.2026 (§3): upload+send вынесены в переиспользуемую
+  // sendVoiceMessage() (нужна retryFailedVoice — тот же путь для первой
+  // попытки и повтора, без дублирования кода/сообщений). Инвариант тот же
+  // (bubble появляется ДО сетевой работы), просто разнесён по двум функциям.
   const fn = workspace.match(/const toggleVoice = React\.useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[/);
   assert.ok(fn, 'toggleVoice definition not found');
   const body = fn[1];
   const optimisticIndex = body.indexOf("setMessages((items) => [...items, voiceItem])");
-  const uploadIndex = body.indexOf('chatAPI.uploadChatVoice');
+  const sendCallIndex = body.indexOf('await sendVoiceMessage(clientId,');
   assert.ok(optimisticIndex >= 0, 'voice optimistic bubble must be appended before network work');
-  assert.ok(uploadIndex > optimisticIndex, 'voice upload must happen after the local bubble is visible');
+  assert.ok(sendCallIndex > optimisticIndex, 'upload/send must be triggered after the local bubble is visible');
   assert.match(body, /const clientId = newClientId\('voice'\)/);
   assert.match(body, /sendStatus: 'sending'/);
   assert.match(body, /clientMsgId: clientId/);
+
+  const sendFn = workspace.match(/const sendVoiceMessage = React\.useCallback\(async \(clientId, \{[\s\S]*?\n  \}, \[/);
+  assert.ok(sendFn, 'sendVoiceMessage definition not found');
+  assert.match(sendFn[0], /clientMsgId: clientId/);
+  assert.match(sendFn[0], /sendStatus: 'failed', sendError: message/);
   assert.match(workspace, /server\.clientMsgId === item\.id/);
-  assert.match(body, /sendStatus: 'failed', sendError: message/);
   assert.match(workspace, /testID=\{item\.voice \? 'deal-chat-voice-error' : 'deal-chat-message-retry'\}/);
 });
 
@@ -198,8 +206,8 @@ test('web voice upload sends a real Blob/File in FormData, never an empty/placeh
   // DealWorkspaceScreenV2 must actually pass the recorder's real blob/type
   // through, not just the uri — otherwise the FormData contract above is
   // dead code that nothing ever exercises.
-  assert.match(workspace, /blob: result\.blob \|\| null,/);
-  assert.match(workspace, /type: result\.blob\?\.type \|\| null,/);
+  assert.match(workspace, /voiceBlob: result\.blob \|\| null, voiceMime: result\.blob\?\.type \|\| null/);
+  assert.match(workspace, /upload = await chatAPI\.uploadChatVoice\(voiceUri, \{ blob: voiceBlob \|\| null, type: voiceMime \|\| null \}\)/);
 });
 
 test('voiceRecorder produces a real, non-empty web Blob before upload is attempted', () => {
@@ -282,8 +290,8 @@ test('voice bubble has WhatsApp-grade controls: pause, seek, rate, live progress
 });
 
 test('voice upload failures distinguish too-large, storage-rejected/unreachable, and generic causes, not one flat message', () => {
-  const fn = workspace.match(/upload = await chatAPI\.uploadChatVoice\(result\.uri, \{[\s\S]*?\n    \} catch \(error\) \{([\s\S]*?)\n    \}/);
-  assert.ok(fn, 'toggleVoice upload catch block not found');
+  const fn = workspace.match(/upload = await chatAPI\.uploadChatVoice\(voiceUri, \{[\s\S]*?\n    \} catch \(error\) \{([\s\S]*?)\n    \}/);
+  assert.ok(fn, 'sendVoiceMessage upload catch block not found');
   assert.match(fn[1], /error\?\.status === 413 \? 'doc_error_too_large'/);
   assert.match(fn[1], /error\?\.status >= 500 \? 'doc_error_server'/);
   assert.match(fn[1], /'voice_error_upload'/);

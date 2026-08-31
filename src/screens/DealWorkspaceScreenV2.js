@@ -944,6 +944,62 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     return clientId;
   }, [ui.voiceMessage]);
 
+  // §3 (reconcile 01.09.2026): вынесено из toggleVoice, чтобы retryFailedVoice
+  // мог повторить ИМЕННО ту же попытку (тот же clientId/client_msg_id) без
+  // создания второго пузыря и без дублирующего сообщения на сервере —
+  // backend дедупит по (sender_id, client_msg_id), так что даже гонка двух
+  // почти одновременных попыток с одним clientId не даёт дубль.
+  const sendVoiceMessage = React.useCallback(async (clientId, { voiceUri, voiceBlob, voiceMime, duration }) => {
+    const failVoice = (message) => {
+      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'failed', sendError: message } : m)));
+    };
+    let upload;
+    try {
+      upload = await chatAPI.uploadChatVoice(voiceUri, { blob: voiceBlob || null, type: voiceMime || null });
+    } catch (error) {
+      const key = error?.isNetwork ? null
+        : error?.status === 413 ? 'doc_error_too_large'
+          : error?.status >= 500 ? 'doc_error_server'
+            : 'voice_error_upload';
+      const message = key ? t(key) : t('no_connection');
+      failVoice(message);
+      toast(message, 'error');
+      return;
+    }
+    if (!upload?.voice_key) {
+      const message = t('voice_error_upload');
+      failVoice(message);
+      toast(message, 'error');
+      return;
+    }
+    try {
+      await chatAPI.send({
+        roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
+        isVoice: true, voiceDuration: duration,
+        cargoId: deal?.cargo_id || params.cargoId || null, tripId: deal?.trip_id || params.tripId || null,
+        clientMsgId: clientId,
+      });
+      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'sent' } : m)));
+      setTimeout(loadMessages, 120);
+    } catch {
+      const message = t('voice_error_send');
+      failVoice(message);
+      toast(message, 'error');
+    }
+  }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
+
+  // §3: подтверждённый баг — retry-кнопка у упавшего voice-сообщения была
+  // disabled без onPress. Теперь повторяет ИМЕННО ту же отправку (тот же
+  // clientId), а не создаёт новую запись — старый локальный файл (voiceUri/
+  // voiceBlob) у нас уже есть в самом item, перезаписывать нечего.
+  const retryFailedVoice = React.useCallback((item) => {
+    if (!item?.id) return;
+    setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, sendStatus: 'sending', sendError: null } : m)));
+    sendVoiceMessage(item.id, {
+      voiceUri: item.voiceUri, voiceBlob: item.voiceBlob, voiceMime: item.voiceMime, duration: item.voiceDuration,
+    });
+  }, [sendVoiceMessage]);
+
   const toggleVoice = React.useCallback(async () => {
     if (!recording) {
       try {
@@ -987,52 +1043,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setShowJumpLatest(false);
     setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 40);
 
-    const failVoice = (message) => {
-      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'failed', sendError: message } : m)));
-    };
-
-    let upload;
-    try {
-      upload = await chatAPI.uploadChatVoice(result.uri, {
-        blob: result.blob || null,
-        type: result.blob?.type || null,
-      });
-    } catch (error) {
-      // Mirror uploadDocument's precise-cause mapping (P0 2026-08-21): the
-      // backend now distinguishes "storage unreachable" (503) from "storage
-      // rejected the file" (502) instead of one flat error, and 413 is real
-      // (voice/backend.py enforces a 10MB cap) — surface all of it instead of
-      // one generic message regardless of cause.
-      const key = error?.isNetwork ? null
-        : error?.status === 413 ? 'doc_error_too_large'
-          : error?.status >= 500 ? 'doc_error_server'
-            : 'voice_error_upload';
-      const message = key ? t(key) : t('no_connection');
-      failVoice(message);
-      toast(message, 'error');
-      return;
-    }
-    if (!upload?.voice_key) {
-      const message = t('voice_error_upload');
-      failVoice(message);
-      toast(message, 'error');
-      return;
-    }
-    try {
-      await chatAPI.send({
-        roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
-        isVoice: true, voiceDuration: duration,
-        cargoId: deal?.cargo_id || params.cargoId || null, tripId: deal?.trip_id || params.tripId || null,
-        clientMsgId: clientId,
-      });
-      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'sent' } : m)));
-      setTimeout(loadMessages, 120);
-    } catch {
-      const message = t('voice_error_send');
-      failVoice(message);
-      toast(message, 'error');
-    }
-  }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
+    await sendVoiceMessage(clientId, { voiceUri: result.uri, voiceBlob: result.blob || null, voiceMime: result.blob?.type || null, duration });
+  }, [recording, sendVoiceMessage]);
 
   const toggleAttachMenu = React.useCallback(() => {
     setCallMenuOpen(false);
@@ -1175,19 +1187,19 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           </TouchableOpacity>
         ) : item.sendStatus === 'failed' && item.voice ? (
           <TouchableOpacity
-            disabled
+            onPress={() => retryFailedVoice(item)}
             style={s.errorRow}
-            testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
+            testID="deal-chat-voice-error"
           >
             <Feather name="alert-circle" size={12} color="#EF4444" />
             <Text style={s.errorText} numberOfLines={2}>
-              {item.sendError || t('voice_error_send')}
+              {item.sendError || t('voice_error_send')} · {t('chat_attach_retry')}
             </Text>
           </TouchableOpacity>
         ) : null}
       </View>
     );
-  }, [colors, translations, translating, t, toast, retryDocument, retryFailedText, toggleVoiceTranscript, voiceTranscribing, voiceTranscripts]);
+  }, [colors, translations, translating, t, toast, retryDocument, retryFailedText, retryFailedVoice, toggleVoiceTranscript, voiceTranscribing, voiceTranscripts]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
