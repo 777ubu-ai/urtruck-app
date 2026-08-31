@@ -20,12 +20,13 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { isSocialAuthCallback, takeBufferedSocialCallbackUrl } from '../../utils/socialAuth';
-import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight, radius, typography } from '../../theme/brandV2';
 
 const QA_HOOK_ALLOWED = (() => {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
@@ -122,7 +123,7 @@ const QaLoginHook = ({ s }) => {
         value={token}
         onChangeText={setToken}
         placeholder="paste actor token"
-        placeholderTextColor={brand.textSecondary}
+        placeholderTextColor={brandLight.textSecondary}
         autoCapitalize="none"
         autoCorrect={false}
         secureTextEntry={false}
@@ -144,7 +145,13 @@ const QaLoginHook = ({ s }) => {
 };
 
 export default function OnboardingV2Screen({ navigation }) {
-  const _b = useBrand();
+  // §4 (reconcile 01.09.2026): владелец утвердил правило — первые три
+  // onboarding-слайда ВСЕГДА Light, независимо от ThemeContext.isDark
+  // (системная тёмная тема ИЛИ ранее выбранный Dark в профиле). Раньше
+  // здесь стоял реактивный theme-хук, который переключал на brandDark вслед за
+  // системной/сохранённой темой. brandLight — фиксированный импорт, не
+  // хук, поэтому isDark физически не может на него повлиять.
+  const _b = brandLight;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
   const { toast } = useToast();
@@ -210,6 +217,12 @@ export default function OnboardingV2Screen({ navigation }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
+      {/* §4: белый/light фон требует тёмных иконок статус-бара — глобальный
+          <StatusBar style="light"/> в App.js рассчитан на тёмные экраны и
+          здесь был бы невидим (белое на белом). Локальный StatusBar
+          перекрывает глобальный, пока этот экран смонтирован, и корректно
+          возвращает прежний при уходе с онбординга. */}
+      <StatusBar style="dark" />
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -258,8 +271,8 @@ export default function OnboardingV2Screen({ navigation }) {
             style={[
               s.dot,
               i === idx
-                ? { backgroundColor: brand.primary, width: 22, height: 6, borderRadius: 3 }
-                : { backgroundColor: brand.borderStrong },
+                ? { backgroundColor: _b.primary, width: 22, height: 6, borderRadius: 3 }
+                : { backgroundColor: _b.borderStrong },
             ]}
           />
         ))}
@@ -273,7 +286,7 @@ export default function OnboardingV2Screen({ navigation }) {
           testID="onb-v2-cta-phone"
           style={({ pressed }) => [
             s.ctaPrimary,
-            { backgroundColor: brand.primary },
+            { backgroundColor: _b.primary },
             pressed && { opacity: 0.85 },
           ]}
         >
@@ -287,9 +300,9 @@ export default function OnboardingV2Screen({ navigation }) {
           testID="onb-v2-cta-guest"
           style={({ pressed }) => [s.ctaOutline, pressed && { opacity: 0.85 }]}
         >
-          <Feather name="package" size={18} color={brand.textPrimary} />
+          <Feather name="package" size={18} color={_b.textPrimary} />
           <Text style={s.ctaOutlineText}>{t('onb_v2_cta_guest')}</Text>
-          <Feather name="arrow-right" size={18} color={brand.textPrimary} />
+          <Feather name="arrow-right" size={18} color={_b.textPrimary} />
         </Pressable>
 
         <Text style={s.consent}>

@@ -145,4 +145,5 @@ export const brand = new Proxy({}, {
   get: (_t, prop) => (_isDark ? brandDark : brandLight)[prop],
 });
 
+export { brandLight };
 export default { brand, brandLight, brandDark, useBrand, radius, space, typography };
