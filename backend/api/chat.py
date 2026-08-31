@@ -137,6 +137,12 @@ def _ensure_columns(c):
         c.execute("ALTER TABLE chat_messages ADD COLUMN voice_transcript_provider TEXT")
     if "voice_transcribed_at" not in cols:
         c.execute("ALTER TABLE chat_messages ADD COLUMN voice_transcribed_at TEXT")
+    if "sender_lang" not in cols:
+        # release/reconcile-20260901 §2: язык приложения отправителя на
+        # момент отправки (body.lang, тот же, что уже слался и раньше, но
+        # раньше нигде не сохранялся) — используется как sender locale hint
+        # для распознавания голосовых (см. transcribe_message()).
+        c.execute("ALTER TABLE chat_messages ADD COLUMN sender_lang TEXT")
     # Уникальность в рамках отправителя (client id генерируется на устройстве).
     # Partial index — NULL-значения (старые сообщения) не конфликтуют.
     c.execute(
@@ -385,8 +391,8 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
                 return {"ok": True, "room_id": room_id, "deduped": True}
         try:
             cursor = c.execute(
-                "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration, client_msg_id) VALUES (?,?,?,?,?,?,?)",
-                (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration, body.client_msg_id),
+                "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration, client_msg_id, sender_lang) VALUES (?,?,?,?,?,?,?,?)",
+                (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration, body.client_msg_id, body.lang),
             )
         except sqlite3.IntegrityError:
             # Гонка двух одновременных ретраев с одним client_msg_id —
@@ -894,6 +900,10 @@ class TranslateIn(BaseModel):
 class TranscribeIn(BaseModel):
     message_id: int
     target_lang: Optional[str] = None
+    # release/reconcile-20260901 §2: явный хинт языка распознавания —
+    # высший приоритет. Опционален: если фронт не передаёт, используем
+    # sender_lang сообщения (см. transcribe_message()).
+    source_lang: Optional[str] = None
 
 @chat_router.post("/translate")
 def translate_message(body: TranslateIn, user=Depends(require_level(1))):
@@ -977,9 +987,16 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
             ).fetchone()
 
     if not transcript_text:
+        # release/reconcile-20260901 §2: sender locale hint. Приоритет:
+        # явный body.source_lang (клиент может явно указать) → язык
+        # приложения отправителя на момент отправки (chat_messages.sender_lang,
+        # RU-отправитель → prefer ru, ZH-отправитель → prefer zh) → None
+        # (пусто передаётся дальше как есть — provider делает auto-detect,
+        # ничего не ломаем для неизвестного/отсутствующего языка).
+        language_hint = _normalize_lang_code(body.source_lang) or _normalize_lang_code(msg["sender_lang"])
         try:
             guessed_name = Path(str(msg["photo_url"] or "")).name or f"voice-{body.message_id}.m4a"
-            transcript = transcribe_audio_ref(msg["photo_url"], filename=guessed_name)
+            transcript = transcribe_audio_ref(msg["photo_url"], filename=guessed_name, language=language_hint)
         except SpeechToTextError as exc:
             status = 503 if exc.retryable else 422
             raise HTTPException(status_code=status, detail=str(exc)) from exc

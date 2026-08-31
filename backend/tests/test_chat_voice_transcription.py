@@ -137,3 +137,114 @@ def test_transcribe_voice_message_caches_transcript_and_translation(monkeypatch,
     assert row["voice_transcript"].startswith("司机现在什么意思")
     assert row["voice_transcript_lang"] == "zh"
     assert row["voice_transcript_provider"] == "openai"
+
+
+# ── release/reconcile-20260901 §2: sender locale hint ──────────────────
+#
+# Приоритет: explicit body.source_lang → sender_lang сообщения (язык
+# приложения отправителя на момент отправки) → None (auto-detect, ничего
+# не ломаем для неизвестного языка).
+
+def _send_voice(room_id, sender_id, *, lang=None):
+    from api import chat as chat_module_local
+    return chat_module_local.send_message(
+        SendMessageIn(
+            room_id=room_id, text="🎤 Voice", photo_url="voice/x.m4a", is_voice=True,
+            voice_duration=3, client_msg_id="cm_" + uuid.uuid4().hex[:8], lang=lang,
+        ),
+        user=_user(sender_id),
+    )
+
+
+def _latest_message_id(room_id):
+    with get_conn() as c:
+        row = c.execute("SELECT id FROM chat_messages WHERE room_id = ? ORDER BY id DESC LIMIT 1", (room_id,)).fetchone()
+    return row["id"]
+
+
+def test_ru_sender_prefers_ru_language_hint(monkeypatch):
+    owner_id = "own_" + uuid.uuid4().hex[:6]
+    driver_id = "drv_" + uuid.uuid4().hex[:6]
+    _mk_users(owner_id, driver_id)
+    room_id = get_or_create_deal_room("cg_" + uuid.uuid4().hex[:6], owner_id, driver_id)
+    _mk_deal("cg_ru", owner_id, driver_id, room_id)
+
+    monkeypatch.setattr(chat_module, "send_to_user", lambda *a, **k: 0)
+    _send_voice(room_id, driver_id, lang="RU")
+    message_id = _latest_message_id(room_id)
+
+    seen = {}
+    def fake_transcribe(audio_ref, *, filename=None, language=None):
+        seen["language"] = language
+        return {"transcript_text": "привет", "source_lang": "ru", "provider": "openai"}
+    monkeypatch.setattr("services.speech_to_text_service.transcribe_audio_ref", fake_transcribe)
+
+    transcribe_message(TranscribeIn(message_id=message_id), user=_user(owner_id))
+    assert seen["language"] == "ru", "RU-отправитель обязан давать language hint = ru"
+
+
+def test_zh_sender_prefers_zh_language_hint(monkeypatch):
+    owner_id = "own_" + uuid.uuid4().hex[:6]
+    driver_id = "drv_" + uuid.uuid4().hex[:6]
+    _mk_users(owner_id, driver_id)
+    room_id = get_or_create_deal_room("cg_" + uuid.uuid4().hex[:6], owner_id, driver_id)
+    _mk_deal("cg_zh", owner_id, driver_id, room_id)
+
+    monkeypatch.setattr(chat_module, "send_to_user", lambda *a, **k: 0)
+    _send_voice(room_id, driver_id, lang="ZH")
+    message_id = _latest_message_id(room_id)
+
+    seen = {}
+    def fake_transcribe(audio_ref, *, filename=None, language=None):
+        seen["language"] = language
+        return {"transcript_text": "你好", "source_lang": "zh", "provider": "openai"}
+    monkeypatch.setattr("services.speech_to_text_service.transcribe_audio_ref", fake_transcribe)
+
+    transcribe_message(TranscribeIn(message_id=message_id), user=_user(owner_id))
+    assert seen["language"] == "zh", "ZH-отправитель обязан давать language hint = zh"
+
+
+def test_explicit_source_lang_wins_over_sender_lang(monkeypatch):
+    owner_id = "own_" + uuid.uuid4().hex[:6]
+    driver_id = "drv_" + uuid.uuid4().hex[:6]
+    _mk_users(owner_id, driver_id)
+    room_id = get_or_create_deal_room("cg_" + uuid.uuid4().hex[:6], owner_id, driver_id)
+    _mk_deal("cg_prio", owner_id, driver_id, room_id)
+
+    monkeypatch.setattr(chat_module, "send_to_user", lambda *a, **k: 0)
+    _send_voice(room_id, driver_id, lang="RU")  # sender_lang = ru
+    message_id = _latest_message_id(room_id)
+
+    seen = {}
+    def fake_transcribe(audio_ref, *, filename=None, language=None):
+        seen["language"] = language
+        return {"transcript_text": "hello", "source_lang": "en", "provider": "openai"}
+    monkeypatch.setattr("services.speech_to_text_service.transcribe_audio_ref", fake_transcribe)
+
+    # Явный source_lang="en" обязан победить sender_lang="ru".
+    transcribe_message(TranscribeIn(message_id=message_id, source_lang="en"), user=_user(owner_id))
+    assert seen["language"] == "en", "явный body.source_lang имеет приоритет над sender_lang"
+
+
+def test_unknown_sender_lang_falls_back_to_auto_detect(monkeypatch):
+    """Не ломать auto-detect: если у отправителя нет lang и нет явного
+    source_lang, language передаётся как None — provider сам детектит."""
+    owner_id = "own_" + uuid.uuid4().hex[:6]
+    driver_id = "drv_" + uuid.uuid4().hex[:6]
+    _mk_users(owner_id, driver_id)
+    room_id = get_or_create_deal_room("cg_" + uuid.uuid4().hex[:6], owner_id, driver_id)
+    _mk_deal("cg_auto", owner_id, driver_id, room_id)
+
+    monkeypatch.setattr(chat_module, "send_to_user", lambda *a, **k: 0)
+    _send_voice(room_id, driver_id, lang=None)  # старый клиент/неизвестно
+    message_id = _latest_message_id(room_id)
+
+    seen = {}
+    def fake_transcribe(audio_ref, *, filename=None, language=None):
+        seen["language"] = language
+        return {"transcript_text": "bonjour", "source_lang": "fr", "provider": "openai"}
+    monkeypatch.setattr("services.speech_to_text_service.transcribe_audio_ref", fake_transcribe)
+
+    result = transcribe_message(TranscribeIn(message_id=message_id), user=_user(owner_id))
+    assert seen["language"] is None, "без хинтов language обязан остаться None — не угадываем"
+    assert result["source_lang"] == "fr", "auto-detect результат провайдера не должен ломаться"
