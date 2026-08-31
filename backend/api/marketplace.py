@@ -5,6 +5,7 @@
 import sys
 import json
 import re
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -305,18 +306,27 @@ def _init():
     # SQLite doesn't support `ALTER TABLE ADD COLUMN IF NOT EXISTS`, so we
     # check pragma_table_info and only add when missing.
     with get_conn() as c:
-        cols = {r["name"] for r in c.execute("PRAGMA table_info(bids)").fetchall()}
-        if "updated_at" not in cols:
-            c.execute("ALTER TABLE bids ADD COLUMN updated_at TEXT")
+        def add_column_if_missing(table: str, column: str, ddl_type: str) -> bool:
+            current = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
+            if column in current:
+                return False
+            try:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
+                return True
+            except Exception as e:
+                if "duplicate column name" in str(e).lower():
+                    return False
+                raise
+
+        if add_column_if_missing("bids", "updated_at", "TEXT"):
             c.execute("UPDATE bids SET updated_at = created_at WHERE updated_at IS NULL")
         for col, ddl in [
-            ("counter_amount",  "ALTER TABLE bids ADD COLUMN counter_amount INTEGER"),
-            ("counter_message", "ALTER TABLE bids ADD COLUMN counter_message TEXT"),
-            ("counter_by",      "ALTER TABLE bids ADD COLUMN counter_by TEXT"),
-            ("counter_at",      "ALTER TABLE bids ADD COLUMN counter_at TEXT"),
+            ("counter_amount",  "INTEGER"),
+            ("counter_message", "TEXT"),
+            ("counter_by",      "TEXT"),
+            ("counter_at",      "TEXT"),
         ]:
-            if col not in cols:
-                c.execute(ddl)
+            add_column_if_missing("bids", col, ddl)
         # Currency on trips/cargos: USD by default, never NULL.
         # Stage 8: add structured route columns on top of the legacy
         # from_city/to_city strings so the registry-aware picker can
@@ -332,24 +342,18 @@ def _init():
             ("to_point_name",    "TEXT"),
         ]
         for table in ("trips", "cargos"):
-            tcols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
-            if "currency" not in tcols:
-                c.execute(f"ALTER TABLE {table} ADD COLUMN currency TEXT DEFAULT 'USD'")
+            if add_column_if_missing(table, "currency", "TEXT DEFAULT 'USD'"):
                 c.execute(f"UPDATE {table} SET currency = 'USD' WHERE currency IS NULL")
             for col, ddl_type in ROUTE_COLS:
-                if col not in tcols:
-                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl_type}")
+                add_column_if_missing(table, col, ddl_type)
             # PR2 (03.08): published_at — момент публикации, обновляется при
             # republish. Идемпотентно: добавляем колонку и backfill'им только
             # NULL-строки (безопасно перезапускать на каждом старте сервера).
-            if "published_at" not in tcols:
-                c.execute(f"ALTER TABLE {table} ADD COLUMN published_at TEXT")
+            add_column_if_missing(table, "published_at", "TEXT")
             c.execute(f"UPDATE {table} SET published_at = created_at WHERE published_at IS NULL")
         # 3.8: тип оплаты груза (cash|cashless|any) — важный параметр решения
         # водителя. Колонка на cargos; NULL = не указан.
-        ccols = {r["name"] for r in c.execute("PRAGMA table_info(cargos)").fetchall()}
-        if "payment_type" not in ccols:
-            c.execute("ALTER TABLE cargos ADD COLUMN payment_type TEXT")
+        add_column_if_missing("cargos", "payment_type", "TEXT")
         # Задача B: живая гео-позиция машины по сделке (последняя точка).
         c.execute("""
             CREATE TABLE IF NOT EXISTS deal_locations (
@@ -1343,6 +1347,12 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
 # фронтового CURRENCY_SYMBOLS (src/utils/normalizers.js) — чтобы пуш про ставку
 # показывал «420000 ₸», а не хардкод «$420000». Сумма ставки = валюта груза/рейса.
 _CURRENCY_SYMBOLS = {"USD": "$", "KZT": "₸", "RUB": "₽", "CNY": "¥", "UZS": "сўм"}
+BARGAIN_PRICE_ACTION_KINDS = ("proposed", "updated", "countered")
+BARGAIN_MIN_PRICE_ACTIONS = 5
+
+
+def _bargain_depth_gate_enabled() -> bool:
+    return str(os.getenv("URTRUCK_QA_BARGAIN_DEPTH_GATE", "")).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _money(amount, currency):
@@ -1377,6 +1387,49 @@ def _record_price_event(c, bid_id, actor_id, actor_role, amount, kind, comment=N
     except Exception as e:
         print(f"[price_event] write failed (continuing): {e}", flush=True)
         return None
+
+
+def _bid_price_action_count(c, bid_id: str) -> int:
+    row = c.execute(
+        f"SELECT COUNT(*) AS cnt FROM price_events WHERE bid_id = ? "
+        f"AND kind IN ({','.join('?' for _ in BARGAIN_PRICE_ACTION_KINDS)}) "
+        "AND amount IS NOT NULL",
+        (bid_id, *BARGAIN_PRICE_ACTION_KINDS),
+    ).fetchone()
+    return int(row["cnt"] if row else 0)
+
+
+def _enrich_bargain_depth(c, bid: dict) -> dict:
+    actions = _bid_price_action_count(c, bid["id"])
+    gate_enabled = _bargain_depth_gate_enabled()
+    bid["bargain_price_actions"] = actions
+    bid["bargain_min_actions"] = BARGAIN_MIN_PRICE_ACTIONS
+    bid["bargain_gate_required"] = gate_enabled
+    bid["bargain_can_accept"] = (not gate_enabled) or actions >= BARGAIN_MIN_PRICE_ACTIONS
+    bid["bargain_counter_can_accept"] = (
+        (not gate_enabled)
+        or actions >= max(1, BARGAIN_MIN_PRICE_ACTIONS - 1)
+    )
+    return bid
+
+
+def _ensure_bargain_depth(c, bid: dict, required_actions: int = BARGAIN_MIN_PRICE_ACTIONS) -> None:
+    if not _bargain_depth_gate_enabled():
+        return
+    actions = _bid_price_action_count(c, bid["id"])
+    if actions < required_actions:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "bargain_depth_required",
+                "message": (
+                    f"Торг ещё недостаточный: нужно минимум {BARGAIN_MIN_PRICE_ACTIONS} "
+                    f"ценовых действий, сейчас {actions}"
+                ),
+                "price_actions": actions,
+                "min_price_actions": BARGAIN_MIN_PRICE_ACTIONS,
+            },
+        )
 
 
 @mp_router.post("/bids")
@@ -1530,7 +1583,7 @@ def list_bids(
             WHERE {' AND '.join(where)}
             ORDER BY b.created_at DESC LIMIT 100
         """, params).fetchall()
-    bids = [dict(r) for r in rows]
+        bids = [_enrich_bargain_depth(c, dict(r)) for r in rows]
     # Часть 1: сырой список ДО dirty-фильтра — из него честно считаем число
     # предложений и находим собственную ставку вызывающего (dirty-фильтр по
     # prefix 'agent-'/'guest-' иначе прячет и его собственную ставку в QA).
@@ -2209,6 +2262,8 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
                 status_code=409,
                 detail=f"Ставку нельзя принять в статусе {bid['status']}",
             )
+        _ensure_bid_accept_owner(c, bid, user["id"])
+        _ensure_bargain_depth(c, bid)
         result = _finalize_accept_inline(c, user, bid, bid["amount"])
         # Часть 3: событие — владелец принял ставку (actor=owner).
         _record_price_event(c, bid_id, user["id"], "owner", bid["amount"], "accepted", None)
@@ -2262,6 +2317,12 @@ def _cargo_or_trip_owner_id(c, bid: dict):
         if row:
             return row["driver_id"]
     return None
+
+
+def _ensure_bid_accept_owner(c, bid: dict, user_id: str) -> None:
+    owner_id = _cargo_or_trip_owner_id(c, bid)
+    if not owner_id or owner_id != user_id:
+        raise HTTPException(status_code=403)
 
 
 @mp_router.patch("/bids/{bid_id}")
@@ -2523,6 +2584,10 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
         if not counter:
             # Defensive: status='countered' without amount means data corruption.
             raise HTTPException(status_code=409, detail="Контр-оффер без суммы")
+        # При counter/accept само согласие биддера становится финальным пятым
+        # ценовым действием. До него на ветке уже должны быть: первая ставка,
+        # первый counter, ответ биддера, второй counter.
+        _ensure_bargain_depth(c, bid, BARGAIN_MIN_PRICE_ACTIONS - 1)
 
         # The owner is the user we authorise the accept *as* — load from bid context.
         owner_id = _cargo_or_trip_owner_id(c, bid)

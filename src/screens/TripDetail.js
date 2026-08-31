@@ -242,6 +242,11 @@ export default function TripDetail({ navigation, route }) {
         isMine: b.bidder_id === myUserId,
         counterAmount: b.counter_amount,
         counterMessage: b.counter_message,
+        bargainPriceActions: Number(b.bargain_price_actions || 0),
+        bargainMinActions: Number(b.bargain_min_actions || 5),
+        bargainGateRequired: b.bargain_gate_required === true,
+        bargainCanAccept: b.bargain_can_accept !== false,
+        bargainCounterCanAccept: b.bargain_counter_can_accept !== false,
         time: b.created_at?.slice(11, 16) || '•',
       }));
       setBids(mapped);
@@ -256,6 +261,11 @@ export default function TripDetail({ navigation, route }) {
         id: raw.id, amount: raw.amount, currency: raw.currency,
         message: raw.message, status: raw.status,
         counterAmount: raw.counter_amount, counterMessage: raw.counter_message,
+        bargainPriceActions: Number(raw.bargain_price_actions || 0),
+        bargainMinActions: Number(raw.bargain_min_actions || 5),
+        bargainGateRequired: raw.bargain_gate_required === true,
+        bargainCanAccept: raw.bargain_can_accept !== false,
+        bargainCounterCanAccept: raw.bargain_counter_can_accept !== false,
       } : (mapped.find(b => b.isMine && (b.status === 'pending' || b.status === 'countered')) || null);
       setMyActiveBid(mine);
     }).catch(() => {});
@@ -299,13 +309,22 @@ export default function TripDetail({ navigation, route }) {
       default:          return t('my_bid_status_pending');
     }
   }, [myActiveBid, t]);
+  const myBidCanAcceptCounter = myActiveBid
+    ? myActiveBid.bargainCounterCanAccept !== false
+      && (myActiveBid.bargainGateRequired !== true || (myActiveBid.bargainPriceActions || 0) >= Math.max(1, (myActiveBid.bargainMinActions || 5) - 1))
+    : false;
+  const myBidDepthLabel = myActiveBid
+    ? t('bargain_depth_progress')
+      .replace('{done}', String(Math.min(myActiveBid.bargainPriceActions || 0, myActiveBid.bargainMinActions || 5)))
+      .replace('{min}', String(myActiveBid.bargainMinActions || 5))
+    : '';
 
   // Встречка водителя: клиент отвечает ПРЯМО со страницы рейса — принять
   // за сумму встречки (создаёт сделку) или отклонить. Раньше клиент видел
   // только текст «встречная цена» без суммы и без кнопок — петля торга
   // рвалась, надо было идти искать чат.
   const acceptCounter = React.useCallback(async () => {
-    if (!myActiveBid || counterActing) return;
+    if (!myActiveBid || counterActing || !myBidCanAcceptCounter) return;
     const sum = formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency);
     const msg = t('accept_bid_confirm').replace('{sum}', sum);
     const ok = await askConfirm(t('accept_counter'), msg, t('accept_counter'));
@@ -327,7 +346,7 @@ export default function TripDetail({ navigation, route }) {
       toast(t('no_connection'), 'error');
     }
     setCounterActing(false);
-  }, [myActiveBid, counterActing, trip.currency, refreshAll, toast, t]);
+  }, [myActiveBid, myBidCanAcceptCounter, counterActing, trip.currency, refreshAll, toast, t]);
 
   const declineCounter = React.useCallback(async () => {
     if (!myActiveBid || counterActing) return;
@@ -672,6 +691,10 @@ export default function TripDetail({ navigation, route }) {
         {(isOwner || isListingOwner) ? bids.map(b => {
           const hasAccepted = bids.some(x => x.status === 'accepted');
           const isCountered = b.status === 'countered';
+          const bargainDepthLabel = t('bargain_depth_progress')
+            .replace('{done}', String(Math.min(b.bargainPriceActions || 0, b.bargainMinActions || 5)))
+            .replace('{min}', String(b.bargainMinActions || 5));
+          const canAcceptBid = b.bargainCanAccept !== false;
           return (
             <View key={b.id} style={[s.ownerBidCard, {
               backgroundColor: v1.card,
@@ -715,9 +738,9 @@ export default function TripDetail({ navigation, route }) {
                     testID="trip-bid-accept"
                     role="driver"
                     icon="✓"
-                    label={t('accept_bid_btn')}
+                    label={canAcceptBid ? t('accept_bid_btn') : bargainDepthLabel}
                     loading={accepting === b.id}
-                    disabled={!!accepting || !!rejecting}
+                    disabled={!!accepting || !!rejecting || !canAcceptBid}
                     onPress={() => acceptClientBid(b)}
                   />
                   <SecondaryButton
@@ -936,10 +959,10 @@ export default function TripDetail({ navigation, route }) {
                   testID="trip-counter-accept"
                   role="client"
                   icon="✓"
-                  label={`${t('accept_counter')} ${formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency)}`}
+                  label={myBidCanAcceptCounter ? `${t('accept_counter')} ${formatPrice(myActiveBid.counterAmount, myActiveBid.currency || trip.currency)}` : myBidDepthLabel}
                   numberOfLines={2}
                   loading={counterActing}
-                  disabled={counterActing}
+                  disabled={counterActing || !myBidCanAcceptCounter}
                   onPress={acceptCounter}
                 />
                 <DestructiveButton

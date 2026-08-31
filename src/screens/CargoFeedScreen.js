@@ -393,7 +393,10 @@ export default function CargoFeedScreen({ navigation }) {
   };
 
   const { refreshing, onRefresh } = useSafeRefresh(
-    useCallback(() => Promise.allSettled([load(), loadSaved()]), [load, loadSaved]),
+    useCallback(() => Promise.all([
+      load().catch(() => null),
+      loadSaved().catch(() => null),
+    ]), [load, loadSaved]),
   );
 
   const filterPill = (key, label, icon, active) => (

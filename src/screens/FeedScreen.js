@@ -336,10 +336,17 @@ export default function FeedScreen({ navigation }) {
     setSavedOnly((value) => !value);
   };
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     if (refreshing) return;
     setRefreshing(true);
-    Promise.allSettled([load(), loadSaved()]).finally(() => setRefreshing(false));
+    try {
+      await Promise.all([
+        load().catch(() => null),
+        loadSaved().catch(() => null),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const filterPill = (key, label, icon, active) => (

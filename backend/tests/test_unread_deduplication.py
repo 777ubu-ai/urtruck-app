@@ -10,7 +10,8 @@ import sys
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_unread_dedup.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if os.environ.get("URTRUCK_PYTEST_SHARED_DB") != "1":
+    Path(TEST_DB).unlink(missing_ok=True)
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -144,7 +145,28 @@ def create_bid(cargo_id: str, amount: int) -> str:
     return response.json()["id"]
 
 
-def accept_bid(bid_id: str):
+def complete_min_bargain(bid_id: str, final_amount: int = 2900):
+    as_user(CLIENT_ID)
+    response = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": final_amount + 200})
+    assert response.status_code == 200, response.text
+    as_user(DRIVER_ID)
+    response = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    assert response.status_code == 200, response.text
+    response = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": final_amount + 100})
+    assert response.status_code == 200, response.text
+    as_user(CLIENT_ID)
+    response = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": final_amount + 50})
+    assert response.status_code == 200, response.text
+    as_user(DRIVER_ID)
+    response = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    assert response.status_code == 200, response.text
+    response = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": final_amount})
+    assert response.status_code == 200, response.text
+
+
+def accept_bid(bid_id: str, *, complete_bargain: bool = True):
+    if complete_bargain:
+        complete_min_bargain(bid_id)
     as_user(CLIENT_ID)
     response = client.post(f"/api/v1/market/bids/{bid_id}/accept")
     assert response.status_code == 200, response.text
@@ -168,8 +190,9 @@ def test_one_chat_message_gives_plus_one():
 def test_bid_accepted_gives_plus_one_not_two():
     cargo_id = create_cargo("unread accepted bid", 4000)
     bid_id = create_bid(cargo_id, 3500)
+    complete_min_bargain(bid_id)
     before = badge(DRIVER_ID)
-    accept_bid(bid_id)
+    accept_bid(bid_id, complete_bargain=False)
     assert badge(DRIVER_ID) - before == 1
 
 
@@ -178,6 +201,14 @@ def test_counter_accept_gives_plus_one_not_two():
     bid_id = create_bid(cargo_id, 4500)
     as_user(CLIENT_ID)
     counter = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 4800})
+    assert counter.status_code == 200, counter.text
+    as_user(DRIVER_ID)
+    response = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    assert response.status_code == 200, response.text
+    response = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": 4700})
+    assert response.status_code == 200, response.text
+    as_user(CLIENT_ID)
+    counter = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 4650})
     assert counter.status_code == 200, counter.text
 
     before = badge(DRIVER_ID)

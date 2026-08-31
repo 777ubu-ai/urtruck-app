@@ -272,6 +272,13 @@ test('voice bubble has WhatsApp-grade controls: pause, seek, rate, live progress
   assert.match(bubble, /const OUTGOING_VOICE_TRACK = 'rgba\(17,24,39,0\.26\)'/);
   assert.match(bubble, /const iconColor = mine \? OUTGOING_VOICE_TEXT : accentColor/);
   assert.match(bubble, /const timeColor = mine \? OUTGOING_VOICE_TEXT : mutedColor/);
+  // Транскрипция не должна исчезать при улучшении плеера: кнопка и текст
+  // живут в том же voice bubble, включая комнату сделки.
+  assert.match(bubble, /testID="voice-transcript-toggle"/);
+  assert.match(bubble, /testID="voice-transcript"/);
+  assert.match(bubble, /t\('voice_to_text'\)/);
+  assert.match(bubble, /t\('voice_original_label'\)/);
+  assert.match(bubble, /t\('voice_translation_label'\)/);
 });
 
 test('voice upload failures distinguish too-large, storage-rejected/unreachable, and generic causes, not one flat message', () => {

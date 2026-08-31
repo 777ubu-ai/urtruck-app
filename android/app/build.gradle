@@ -88,7 +88,7 @@ android {
 
     namespace 'com.urtruck.app'
     defaultConfig {
-        applicationId 'com.urtruck.app'
+        applicationId (project.hasProperty('URTRUCK_APPLICATION_ID') ? URTRUCK_APPLICATION_ID : 'com.urtruck.app')
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI (deploy-play.yml) передаёт свой versionCode через -PURTRUCK_VERSION_CODE,

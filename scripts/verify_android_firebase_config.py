@@ -51,7 +51,11 @@ import sys
 # to go unnoticed for as long as it did.
 KNOWN_BAD_PROJECT_IDS = {"bizchat-4d11d"}
 
-EXPECTED_PACKAGE = "com.urtruck.app"
+DEFAULT_EXPECTED_PACKAGE = "com.urtruck.app"
+
+
+def expected_package():
+    return os.getenv("URTRUCK_APPLICATION_ID") or DEFAULT_EXPECTED_PACKAGE
 
 
 def fail(message):
@@ -70,7 +74,7 @@ def check_source(path):
             f"register for FCM without it. Populate the "
             f"ANDROID_GOOGLE_SERVICES_JSON_BASE64 repository secret with the "
             f"real UrTruck Firebase Android app's google-services.json "
-            f"(base64-encoded), for package {EXPECTED_PACKAGE}."
+            f"(base64-encoded), for package {expected_package()}."
         )
 
     try:
@@ -103,15 +107,16 @@ def check_source(path):
         c.get("client_info", {}).get("android_client_info", {}).get("package_name")
         for c in clients
     }
-    if EXPECTED_PACKAGE not in package_names:
+    expected = expected_package()
+    if expected not in package_names:
         fail(
             f"Android Firebase config at {path} (project '{project_id}') does "
-            f"not list package '{EXPECTED_PACKAGE}' among its Android clients "
+            f"not list package '{expected}' among its Android clients "
             f"(found: {sorted(p for p in package_names if p)}). Wrong Firebase "
             f"Android app."
         )
 
-    ok(f"source config valid — project_id='{project_id}', package matches {EXPECTED_PACKAGE}")
+    ok(f"source config valid — project_id='{project_id}', package matches {expected}")
 
 
 def check_plugin(android_dir):

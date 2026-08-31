@@ -10,14 +10,26 @@ const feed = fs.readFileSync('src/screens/FeedScreen.js', 'utf8');
 const locationPicker = fs.readFileSync('src/components/LocationPickerModal.js', 'utf8');
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 const push = fs.readFileSync('src/utils/push.js', 'utf8');
+const appBadge = fs.readFileSync('src/utils/appBadge.js', 'utf8');
+const dealsScreen = fs.readFileSync('src/screens/DealsScreen.js', 'utf8');
 
 test('foreground deal activity uses the Deals badge without a duplicate top banner', () => {
   assert.match(bottomNav, /computeDealsUnread/);
   assert.match(bottomNav, /setDealsUnread\(next\)/);
+  assert.match(bottomNav, /syncAppIconBadge\(next\)/);
   assert.match(bottomNav, /bottom-nav-deals-badge/);
   assert.doesNotMatch(bottomNav, /useToast/);
   assert.doesNotMatch(bottomNav, /новое событие/);
   assert.doesNotMatch(bottomNav, /actionLabel:\s*t\('open_action'\)/);
+});
+
+test('archived deals never render unread badges and app icon badge uses active Deals attention only', () => {
+  assert.match(dealsScreen, /const isArchived = ARCHIVE_DEAL_STATUSES\.has\(data\.status\)/);
+  assert.match(dealsScreen, /const unread = isArchived \? 0 :/);
+  assert.match(dealsScreen, /const unread = dealTab === 'archive' \|\| isClosed[\s\S]*\? 0[\s\S]*isBidActionable/);
+  assert.match(appBadge, /computeDealsUnread\(dashboard\)/);
+  assert.doesNotMatch(appBadge, /chatAPI\.unread\(/);
+  assert.doesNotMatch(appBadge, /notificationsAPI\.unread\(/);
 });
 
 test('native push remains configured to show banners and play the default sound', () => {
@@ -52,6 +64,7 @@ test('deal header uses map and status buttons, not the old call button', () => {
   assert.match(workspace, /borderRadius: 16/);
   assert.match(workspace, /borderColor: '#202020'/);
   assert.match(workspace, /statusActionIcon/);
+  assert.match(workspace, /compactHeader:\s*\{\s*height:\s*118/);
 });
 
 test('status history opens from the status card and keeps the next status action at the bottom', () => {

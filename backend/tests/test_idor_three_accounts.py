@@ -41,6 +41,8 @@ verification_gate.require_level = _fake_require_level
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from database import registration_dal
+registration_dal.init_registration_schema()
 from api.marketplace import mp_router
 from api.chat import chat_router
 from database.db import get_conn, new_id
@@ -76,6 +78,27 @@ def _seed_cargo(owner_id):
     return cargo_id
 
 
+def _complete_min_bargain():
+    """Доводит общую IDOR-ставку до минимальных 5 ценовых действий."""
+    bid_id = STATE["bid_id"]
+    _as(A)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 1000})
+    assert r.status_code == 200, r.text
+    _as(B)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    assert r.status_code == 200, r.text
+    r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": 950, "message": "second price"})
+    assert r.status_code == 200, r.text
+    _as(A)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 980})
+    assert r.status_code == 200, r.text
+    _as(B)
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/decline")
+    assert r.status_code == 200, r.text
+    r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": 970, "message": "final price"})
+    assert r.status_code == 200, r.text
+
+
 def test_00_setup_cargo_and_bid():
     STATE["cargo_id"] = _seed_cargo(A)
     _as(B)
@@ -108,6 +131,7 @@ def test_03_stranger_cannot_reject_foreign_bid():
 
 
 def test_04_owner_accepts_creates_exactly_one_deal():
+    _complete_min_bargain()
     _as(A)
     r = client.post(f"/api/v1/market/bids/{STATE['bid_id']}/accept")
     assert r.status_code == 200, r.text
