@@ -47,7 +47,10 @@ test('deal header uses map and status buttons, not the old call button', () => {
   assert.doesNotMatch(workspace, /testID="deal-map-card-open"/);
   assert.doesNotMatch(workspace, /testID="deal-status-compact-open"/);
   assert.match(workspace, /headerIconBtn: \{/);
-  assert.match(workspace, /backgroundColor: '#168759'/);
+  assert.match(workspace, /backgroundColor: '#F7F7F7'/);
+  assert.match(workspace, /width: 32/);
+  assert.match(workspace, /borderRadius: 16/);
+  assert.match(workspace, /borderColor: '#202020'/);
   assert.match(workspace, /statusActionIcon/);
 });
 
