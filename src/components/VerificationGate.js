@@ -57,7 +57,21 @@ export function useVerificationGate() {
     // экран для выбора. Action='driver' оставляет совместимость
     // со старыми callsite.
     const inferredRole = roleHint || (action === 'driver' ? 'driver' : null);
-    const target = inferredRole ? 'Reg' : pickTarget(verificationLevel, required);
+    // §8 (reconcile 01.09.2026): подтверждённая находка — при наличии
+    // roleHint (обычный случай: тап по действию в ленте/карточке груза/
+    // отклик водителя) экран шёл ПРЯМО в 'Reg' (PremiumRegisterScreen —
+    // ЧИСТЫЙ phone/SMS, явно "НЕТ Apple/Google" по её собственному
+    // докстрингу), в обход канонического 'PhoneV2' (Google+Apple+Email —
+    // единственный утверждённый способ входа, phone там больше не таб).
+    // Т.е. случайное действие в ленте было АЛЬТЕРНАТИВНЫМ, необсуждаемым
+    // входом в legacy phone/SMS для НАСТОЯЩЕГО гостя. Существующие
+    // аккаунты не ломаем: правило применяется только когда
+    // verificationLevel < 1 (identity ещё не установлена вообще) — для
+    // уже частично верифицированных пользователей (level ≥ 1) ветка 'Reg'
+    // не менялась.
+    const target = inferredRole
+      ? (verificationLevel < 1 ? 'PhoneV2' : 'Reg')
+      : pickTarget(verificationLevel, required);
     setPending(null);
     resolve(false);
     setTimeout(() => {
