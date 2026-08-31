@@ -17,6 +17,9 @@ import { Feather } from '@expo/vector-icons';
 import { voice } from '../utils/voiceRecorder';
 
 const RATES = [1, 1.5, 2];
+const OUTGOING_VOICE_TEXT = '#111827';
+const OUTGOING_VOICE_MUTED = '#374151';
+const OUTGOING_VOICE_TRACK = 'rgba(17,24,39,0.26)';
 
 const fmt = (ms) => {
   const total = Math.max(0, Math.round((ms || 0) / 1000));
@@ -84,10 +87,11 @@ export default function VoiceMessageBubble({
     voice.setRate?.(RATES[(idx + 1) % RATES.length]);
   }, [state.rate]);
 
-  const onSurface = mine ? 'rgba(255,255,255,0.32)' : 'rgba(22,135,89,0.18)';
-  const fillColor = mine ? '#FFFFFF' : accentColor;
-  const iconColor = mine ? '#FFFFFF' : accentColor;
-  const timeColor = mine ? 'rgba(255,255,255,0.85)' : mutedColor;
+  const onSurface = mine ? OUTGOING_VOICE_TRACK : 'rgba(22,135,89,0.18)';
+  const fillColor = mine ? OUTGOING_VOICE_TEXT : accentColor;
+  const iconColor = mine ? OUTGOING_VOICE_TEXT : accentColor;
+  const timeColor = mine ? OUTGOING_VOICE_TEXT : mutedColor;
+  const rateColor = mine ? OUTGOING_VOICE_MUTED : iconColor;
 
   return (
     <View style={s.wrap} testID={testID}>
@@ -132,7 +136,7 @@ export default function VoiceMessageBubble({
           accessibilityRole="button"
           testID="voice-rate-btn"
         >
-          <Text style={[s.rateText, { color: iconColor }]}>{(state.rate || 1)}x</Text>
+          <Text style={[s.rateText, { color: rateColor }]}>{(state.rate || 1)}x</Text>
         </TouchableOpacity>
       ) : null}
     </View>
