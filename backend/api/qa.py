@@ -94,6 +94,7 @@ class QaPushTokensIn(BaseModel):
 class QaDirectPushIn(BaseModel):
     actor: Optional[str] = None
     user_id: Optional[str] = None
+    provider: Optional[str] = None           # expo | fcm | apns | native | dual
     title: str = "UrTruck QA"
     body: str = "Тестовое push-уведомление"
     url: str = "/notifications"
@@ -192,6 +193,7 @@ def qa_push_test_direct(body: QaDirectPushIn, x_qa_agent_token: Optional[str] = 
         data={"type": "qa_push_test", "recipient_id": uid},
         url=body.url,
         kind=body.kind,
+        provider=body.provider,
     )
     wait = max(0.0, min(float(body.receipt_wait_seconds or 0), 5.0))
     ticket_ids = [t.get("id") for t in result.get("tickets", []) if t.get("id")]

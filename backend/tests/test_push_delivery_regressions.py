@@ -53,3 +53,41 @@ def test_direct_push_diagnostics_return_expo_tickets_and_receipts():
     assert 'https://exp.host/--/api/v2/push/getReceipts' in sender
     assert 'def send_native_debug(' in sender
     assert '"tickets": expo_result.get("tickets", [])' in sender
+
+
+def test_native_gateway_contract_is_present():
+    gateway = (ROOT / 'backend/services/push_gateway.py').read_text(encoding='utf-8')
+    sender = (ROOT / 'backend/services/push_sender.py').read_text(encoding='utf-8')
+    schema = (ROOT / 'backend/database/push_schema.sql').read_text(encoding='utf-8')
+
+    assert 'PUSH_PROVIDER_MODE' in gateway
+    assert 'class PushProvider' in gateway
+    assert 'class FCMProvider' in gateway
+    assert 'class APNsProvider' in gateway
+    assert 'class ExpoProvider' in gateway
+    assert 'def enqueue_event(' in gateway
+    assert 'def send_to_devices(' in gateway
+    assert 'CREATE TABLE IF NOT EXISTS push_devices' in schema
+    assert 'CREATE TABLE IF NOT EXISTS push_outbox' in schema
+    assert 'CREATE TABLE IF NOT EXISTS push_delivery_log' in schema
+    assert 'push_gateway.send_to_devices(' in sender
+
+
+def test_mobile_registers_native_device_push_token_for_fcm_apns():
+    src = (ROOT / 'src/utils/push.js').read_text(encoding='utf-8')
+
+    assert 'Notifications.getDevicePushTokenAsync()' in src
+    assert "provider: 'expo'" in src
+    assert "Platform.OS === 'android' ? 'fcm' : 'apns'" in src
+    assert 'app_id: appId' in src
+    assert 'locale,' in src
+    assert 'os_version: Device.osVersion' in src
+
+
+def test_qa_direct_push_can_select_provider():
+    qa = (ROOT / 'backend/api/qa.py').read_text(encoding='utf-8')
+    sender = (ROOT / 'backend/services/push_sender.py').read_text(encoding='utf-8')
+
+    assert 'provider: Optional[str] = None' in qa
+    assert 'provider=body.provider' in qa
+    assert 'provider: Optional[str] = None' in sender
