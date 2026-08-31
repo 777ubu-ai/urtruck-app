@@ -57,7 +57,7 @@ export default function ProfileScreen({ navigation, route }) {
   const isDriver = role === 'driver';
   const accent = isDriver ? '#168759' : '#FF8400';
   const onAccent = '#0C0A09';
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, themeMode, setThemeMode } = useTheme();
   const v1 = useV1Colors();
   const theme = {
     ...v1,
@@ -289,14 +289,23 @@ export default function ProfileScreen({ navigation, route }) {
         </View>
 
         <View style={[s.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={s.settingsRow}>
-            <Text style={[s.settingLabel, { color: theme.text }]}>{t('theme_label')}</Text>
+          <View style={[s.settingsRow, { flexDirection: 'column', alignItems: 'stretch' }]}>
+            <Text style={[s.settingLabel, { color: theme.text, marginBottom: 8 }]}>{t('theme_label')}</Text>
+            {/* §5 (reconcile 01.09.2026): явный 3-позиционный выбор
+                Light/Dark/System — themeMode — единственный source of
+                truth (ThemeContext.js), эти кнопки просто его выставляют.
+                Три кнопки (было две) не помещаются в одну строку рядом с
+                лейблом на узких экранах (320px) — колонка вместо строки,
+                как уже сделано для языкового пикера ниже. */}
             <View style={{ flexDirection: 'row', gap: 6 }}>
-              <TouchableOpacity testID="theme-toggle-light" accessibilityRole="button" accessibilityState={{ selected: !isDark }} accessibilityLabel={t('theme_light')} style={[s.themeBtn, { backgroundColor: isDark ? 'transparent' : accent, borderColor: isDark ? theme.border : accent }]} onPress={() => { if (isDark) toggleTheme(); }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Feather name="sun" size={13} color={isDark ? theme.textMuted : onAccent} /><Text style={[s.themeBtnText, { color: isDark ? theme.textMuted : onAccent }]}>{t('theme_light')}</Text></View>
+              <TouchableOpacity testID="theme-toggle-light" accessibilityRole="button" accessibilityState={{ selected: themeMode === 'light' }} accessibilityLabel={t('theme_light')} style={[s.themeBtn, { backgroundColor: themeMode === 'light' ? accent : 'transparent', borderColor: themeMode === 'light' ? accent : theme.border }]} onPress={() => setThemeMode('light')}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Feather name="sun" size={13} color={themeMode === 'light' ? onAccent : theme.textMuted} /><Text style={[s.themeBtnText, { color: themeMode === 'light' ? onAccent : theme.textMuted }]}>{t('theme_light')}</Text></View>
               </TouchableOpacity>
-              <TouchableOpacity testID="theme-toggle-dark" accessibilityRole="button" accessibilityState={{ selected: isDark }} accessibilityLabel={t('theme_dark')} style={[s.themeBtn, { backgroundColor: isDark ? accent : 'transparent', borderColor: isDark ? accent : theme.border }]} onPress={() => { if (!isDark) toggleTheme(); }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Feather name="moon" size={13} color={isDark ? onAccent : theme.textMuted} /><Text style={[s.themeBtnText, { color: isDark ? onAccent : theme.textMuted }]}>{t('theme_dark')}</Text></View>
+              <TouchableOpacity testID="theme-toggle-dark" accessibilityRole="button" accessibilityState={{ selected: themeMode === 'dark' }} accessibilityLabel={t('theme_dark')} style={[s.themeBtn, { backgroundColor: themeMode === 'dark' ? accent : 'transparent', borderColor: themeMode === 'dark' ? accent : theme.border }]} onPress={() => setThemeMode('dark')}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Feather name="moon" size={13} color={themeMode === 'dark' ? onAccent : theme.textMuted} /><Text style={[s.themeBtnText, { color: themeMode === 'dark' ? onAccent : theme.textMuted }]}>{t('theme_dark')}</Text></View>
+              </TouchableOpacity>
+              <TouchableOpacity testID="theme-toggle-system" accessibilityRole="button" accessibilityState={{ selected: themeMode === 'system' }} accessibilityLabel={t('theme_system')} style={[s.themeBtn, { backgroundColor: themeMode === 'system' ? accent : 'transparent', borderColor: themeMode === 'system' ? accent : theme.border }]} onPress={() => setThemeMode('system')}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Feather name="smartphone" size={13} color={themeMode === 'system' ? onAccent : theme.textMuted} /><Text style={[s.themeBtnText, { color: themeMode === 'system' ? onAccent : theme.textMuted }]}>{t('theme_system')}</Text></View>
               </TouchableOpacity>
             </View>
           </View>
@@ -400,7 +409,7 @@ const s = StyleSheet.create({
   settingsCard: { borderRadius: 10, padding: 12, borderWidth: 1, marginBottom: 12 },
   settingsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   settingLabel: { fontSize: 13, fontWeight: '600' },
-  themeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
+  themeBtn: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
   themeBtnText: { fontSize: 12, fontWeight: '700' },
   langGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   langCard: { width: '23.5%', minWidth: 68, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 10, borderWidth: 1, alignItems: 'center', gap: 3 },

@@ -8,6 +8,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const DESIGN_V1 = path.join(ROOT, 'src', 'theme', 'designV1.js');
 const THEME_CONTEXT = path.join(ROOT, 'src', 'utils', 'ThemeContext.js');
+const THEME_RESOLVE = path.join(ROOT, 'src', 'utils', 'themeResolve.js');
 
 const FRAME_COMPONENTS = [
   'Screen.js', 'BottomNav.js', 'BottomSheet.js',
@@ -34,14 +35,27 @@ const contextSrc = fs.readFileSync(THEME_CONTEXT, 'utf8');
 if (/const\s+isDark\s*=\s*false\s*;/.test(contextSrc)) {
   failures.push('ThemeContext hardcodes `isDark = false` — dark toggle is disabled');
 }
-if (!/themeMode\s*===\s*['"]dark['"]/.test(contextSrc)) {
-  failures.push('ThemeContext does not resolve explicit dark mode');
+// reconcile 01.09.2026 (§5): единственный резолвер теперь — resolveTheme()
+// в themeResolve.js; ThemeContext.js его вызывает, а не дублирует логику
+// инлайн. Смоук проверяет ОБЕ половины контракта: (а) ThemeContext реально
+// зовёт resolveTheme, не второй независимый резолвер; (б) themeResolve.js
+// сам умеет explicit dark и system-follow.
+if (!/import\s*\{\s*resolveTheme\s*\}\s*from\s*['"]\.\/themeResolve['"]/.test(contextSrc)) {
+  failures.push('ThemeContext does not import the single resolveTheme() source of truth');
 }
-if (!/themeMode\s*===\s*['"]auto['"][\s\S]*systemDark/.test(contextSrc)) {
-  failures.push('ThemeContext does not resolve system theme while in auto mode');
+if (!/resolveTheme\(themeMode,\s*systemDark\)/.test(contextSrc)) {
+  failures.push('ThemeContext does not call resolveTheme() to derive isDark');
 }
-if (!/storage\.set\(KEY,\s*mode\)/.test(contextSrc)) {
+if (!/storage\.set\(KEY,\s*normalized\)/.test(contextSrc)) {
   failures.push('ThemeContext does not persist the selected theme');
+}
+
+const resolveSrc = fs.readFileSync(THEME_RESOLVE, 'utf8');
+if (!/themeMode\s*===\s*['"]dark['"]/.test(resolveSrc)) {
+  failures.push('themeResolve.js does not resolve explicit dark mode');
+}
+if (!/systemDark\s*\?\s*['"]dark['"]\s*:\s*['"]light['"]/.test(resolveSrc)) {
+  failures.push('themeResolve.js does not fall back to systemDark for system/auto mode');
 }
 
 // 2. Tokens — both variants and render-time hooks must exist.

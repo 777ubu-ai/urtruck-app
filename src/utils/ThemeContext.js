@@ -2,16 +2,29 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Appearance, Platform } from 'react-native';
 import { darkTheme, lightTheme } from './theme';
 import { storage } from './storage';
+import { resolveTheme } from './themeResolve';
 
+// reconcile 01.09.2026 (§5): единственный резолвер темы — resolveTheme()
+// (уже существовал, юнит-тестировался в tests/unit/themeResolve.test.mjs,
+// но ThemeContext.js держал СВОЮ отдельную инлайн-копию той же логики,
+// поэтому в проекте фактически жили два независимых резолвера. Теперь
+// ThemeContext — единственный потребитель resolveTheme(), второго не
+// создаём. Канонический themeMode — 'system' (совпадает с CLAUDE.md и
+// UI-меткой «Система»); legacy 'auto' (старые установленные клиенты)
+// принимается на чтении и нормализуется в 'system' — resolveTheme() и так
+// трактует любое не-light/dark значение как «следовать системе», так что
+// старый persisted 'auto' продолжает работать корректно даже без миграции.
 const ThemeContext = createContext({
   theme: lightTheme,
   isDark: false,
-  themeMode: 'auto',  // 'auto' | 'light' | 'dark'
+  themeMode: 'system',  // 'system' | 'light' | 'dark'
   setThemeMode: () => {},
   toggleTheme: () => {},
 });
 
 const KEY = 'ur_theme';
+const VALID_MODES = new Set(['light', 'dark', 'system', 'auto']);
+const normalizeMode = (mode) => (mode === 'auto' ? 'system' : mode);
 
 function detectSystemDark() {
   try {
@@ -28,10 +41,10 @@ function initialThemeMode() {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     try {
       const saved = window.localStorage.getItem(KEY);
-      if (saved === 'light' || saved === 'dark' || saved === 'auto') return saved;
+      if (VALID_MODES.has(saved)) return normalizeMode(saved);
     } catch {}
   }
-  return 'auto';
+  return 'system';
 }
 
 export const ThemeProvider = ({ children }) => {
@@ -42,8 +55,8 @@ export const ThemeProvider = ({ children }) => {
     let mounted = true;
     (async () => {
       const saved = await storage.get(KEY);
-      if (mounted && (saved === 'light' || saved === 'dark' || saved === 'auto')) {
-        setThemeModeState(saved);
+      if (mounted && VALID_MODES.has(saved)) {
+        setThemeModeState(normalizeMode(saved));
       }
     })();
 
@@ -57,15 +70,18 @@ export const ThemeProvider = ({ children }) => {
   }, []);
 
   const setThemeMode = (mode) => {
-    if (mode !== 'light' && mode !== 'dark' && mode !== 'auto') return;
-    setThemeModeState(mode);
-    storage.set(KEY, mode);
+    if (!VALID_MODES.has(mode)) return;
+    const normalized = normalizeMode(mode);
+    setThemeModeState(normalized);
+    storage.set(KEY, normalized);
   };
 
   // The redesign keeps LIGHT as the default visual language, but the user's
   // explicit theme choice must work. Manual light/dark wins over the OS;
-  // system changes are followed only while themeMode === 'auto'.
-  const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemDark);
+  // system changes are followed only while themeMode === 'system'.
+  // §5: единственный резолвер — resolveTheme() (themeResolve.js), больше не
+  // дублируем эту же логику инлайн здесь.
+  const isDark = resolveTheme(themeMode, systemDark) === 'dark';
 
   const toggleTheme = () => setThemeMode(isDark ? 'light' : 'dark');
 
