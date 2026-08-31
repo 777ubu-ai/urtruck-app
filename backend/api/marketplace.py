@@ -2,10 +2,11 @@
 
 Это ЯДРО приложения. Без этого юзеры не видят друг друга.
 """
+import os
 import sys
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -19,6 +20,103 @@ from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
 from services.geo_normalize import normalize_country, is_international_route
+
+
+# ─────────────────────────────────────────────────────────────────
+# Bid expiration (P1 фикс 26.08.2026, отдельный focused PR).
+#
+# Ставки водителей не должны жить бесконечно и не должны приниматься
+# по истечении срока. Реализация:
+#   1) Каждая новая ставка (и каждый counter-offer) получает expires_at
+#      в момент записи (см. create_bid, update_bid, counter_bid).
+#   2) Явного cron не заводим: sweep-подход всегда риск состояний гонки
+#      с текущими INSERT/UPDATE и требует отдельного worker/health check.
+#      Вместо него — атомарная lazy-expiration: любой code-path, который
+#      трогает ставку (accept, list, load), проверяет expires_at и
+#      переводит pending/countered → 'expired' В ТОЙ ЖЕ транзакции,
+#      что и продолжение работы. accept_bid никогда не может принять
+#      ставку, срок которой уже вышел на момент нажатия кнопки — гонка
+#      «ставка стала expired между list и accept» ловится тем же
+#      _maybe_expire_bid, вызванным ВНУТРИ той же транзакции accept.
+#   3) TTL по умолчанию — 48 часов, но параметризован через env
+#      BID_TTL_HOURS. Для тестов и для будущего продуктового решения
+#      (например «12 часов на грузы Китай→СНГ, 72 часа на СНГ→СНГ»)
+#      достаточно поменять переменную, не трогая схему.
+# ─────────────────────────────────────────────────────────────────
+def _bid_ttl_hours() -> int:
+    """TTL ставки в часах. Читаем env на каждый вызов (не кэшируем модулем)
+    чтобы тесты могли переопределить BID_TTL_HOURS через monkeypatch без
+    перезагрузки модуля. Некорректное значение → возврат к 48."""
+    raw = os.getenv("BID_TTL_HOURS", "48")
+    try:
+        v = int(raw)
+        return v if v > 0 else 48
+    except (TypeError, ValueError):
+        return 48
+
+
+def _bid_expires_at_iso(base: Optional[datetime] = None) -> str:
+    """ISO-строка момента истечения новой ставки. base=now по умолчанию.
+    Хранится в UTC-naive (без 'Z'/'+00:00') — совпадает с форматом
+    остальных TEXT-timestamp в bids (created_at/updated_at)."""
+    ref = base or datetime.utcnow()
+    return (ref + timedelta(hours=_bid_ttl_hours())).isoformat(timespec="seconds")
+
+
+def _is_expired_iso(expires_at: Optional[str], now: Optional[datetime] = None) -> bool:
+    """True, если ISO-момент expires_at уже в прошлом. None/пустая строка/
+    неразборный формат трактуются как ЖИВАЯ ставка (fail-open) — legacy-
+    ставки, созданные до этого фикса, не будут одномоментно выключены."""
+    if not expires_at:
+        return False
+    try:
+        # Строки без tz считаем UTC — так пишет datetime.utcnow().isoformat()
+        # и так же читает fromisoformat (naive-vs-aware — обе стороны naive).
+        exp = datetime.fromisoformat(str(expires_at).replace("Z", ""))
+    except (TypeError, ValueError):
+        return False
+    ref = now or datetime.utcnow()
+    return exp <= ref
+
+
+def _maybe_expire_bid(c, bid: dict) -> dict:
+    """Ленивая экспирация. Если bid.status in ('pending','countered')
+    И expires_at уже в прошлом — перевести статус в 'expired' и вернуть
+    обновлённый dict. Иначе — вернуть исходный dict без записи. НЕ пишет
+    price_events / notifications — это не пользовательский event, а тихий
+    cleanup. Frontend увидит статус через ближайший list_bids/get_bid.
+
+    Важное свойство durability: статус-транзиция коммитится СРАЗУ, отдельно
+    от возможной HTTPException выше по стеку. accept_bid, где мы читаем
+    ставку и потом raise 409 при status=='expired', иначе откатывал бы эту
+    транзицию (SQLite не commit'ит при exception). Отдельный commit гарантия:
+    если owner пытается принять expired-ставку и мы вернули 409 — в БД
+    ставка уже помечена expired, повтор запроса не вернёт её в pending.
+    """
+    if not isinstance(bid, dict):
+        return bid
+    if bid.get("status") not in ("pending", "countered"):
+        return bid
+    if not _is_expired_iso(bid.get("expires_at")):
+        return bid
+    try:
+        c.execute(
+            "UPDATE bids SET status = 'expired', updated_at = ? "
+            "WHERE id = ? AND status IN ('pending','countered')",
+            (datetime.utcnow().isoformat(timespec="seconds"), bid["id"]),
+        )
+        # Явный commit: см. docstring выше. Без него expire-транзиция
+        # теряется, когда caller делает raise HTTPException.
+        try:
+            c.commit()
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"[bid-expire] update failed for {bid.get('id')}: {e}", flush=True)
+        return bid
+    out = dict(bid)
+    out["status"] = "expired"
+    return out
 
 
 def _sign_cargo_photos(photos):
@@ -314,6 +412,13 @@ def _init():
             ("counter_message", "ALTER TABLE bids ADD COLUMN counter_message TEXT"),
             ("counter_by",      "ALTER TABLE bids ADD COLUMN counter_by TEXT"),
             ("counter_at",      "ALTER TABLE bids ADD COLUMN counter_at TEXT"),
+            # Bid expiration (26.08.2026). Legacy-строки создаются без
+            # expires_at (NULL) и НЕ трактуются как expired — см.
+            # _is_expired_iso: пустое значение = живая ставка (fail-open),
+            # чтобы одномоментное включение фикса не гасило существующие
+            # активные ставки на проде. Все НОВЫЕ ставки идут с
+            # expires_at = created_at + BID_TTL_HOURS.
+            ("expires_at",      "ALTER TABLE bids ADD COLUMN expires_at TEXT"),
         ]:
             if col not in cols:
                 c.execute(ddl)
@@ -1449,11 +1554,15 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
                 "existing_message": dup["message"],
             })
 
+        # Bid expiration: свежая ставка живёт BID_TTL_HOURS. См.
+        # _maybe_expire_bid — accept_bid / list_bids / _load_bid_or_404
+        # переведут её в 'expired', как только время истечёт.
+        expires_at_iso = _bid_expires_at_iso()
         c.execute("""
-            INSERT INTO bids (id, cargo_id, trip_id, bidder_id, bidder_name, bidder_phone, amount, message)
-            VALUES (?,?,?,?,?,?,?,?)
+            INSERT INTO bids (id, cargo_id, trip_id, bidder_id, bidder_name, bidder_phone, amount, message, expires_at)
+            VALUES (?,?,?,?,?,?,?,?,?)
         """, (bid_id, body.cargo_id, body.trip_id, user["id"],
-              user.get("full_name"), user.get("phone"), body.amount, body.message))
+              user.get("full_name"), user.get("phone"), body.amount, body.message, expires_at_iso))
         # Часть 3: событие цены — предложение (автор ставки = bidder).
         _record_price_event(c, bid_id, user["id"], "bidder", body.amount, "proposed", body.message)
 
@@ -1530,7 +1639,12 @@ def list_bids(
             WHERE {' AND '.join(where)}
             ORDER BY b.created_at DESC LIMIT 100
         """, params).fetchall()
-    bids = [dict(r) for r in rows]
+        bids = [dict(r) for r in rows]
+        # Bid expiration (26.08.2026): ленивая экспирация в той же транзакции.
+        # UI получает уже актуальный статус — не увидит «pending» у ставки,
+        # срок которой уже вышел на момент запроса. Легаси-строки без
+        # expires_at пропускаются (fail-open).
+        bids = [_maybe_expire_bid(c, b) for b in bids]
     # Часть 1: сырой список ДО dirty-фильтра — из него честно считаем число
     # предложений и находим собственную ставку вызывающего (dirty-фильтр по
     # prefix 'agent-'/'guest-' иначе прячет и его собственную ставку в QA).
@@ -2197,6 +2311,22 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
 def accept_bid(bid_id: str, user=Depends(require_level(1))):
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
+        # Bid expiration (26.08.2026): проверяем ДО status-check и в той же
+        # транзакции. Гонка «ставка стала expired между list и accept» ловится
+        # здесь: если expires_at уже в прошлом, _maybe_expire_bid переведёт
+        # status в 'expired' и следующий if сработает как «нельзя в статусе
+        # expired» с корректным контрактом «ставка истекла». Fail-open для
+        # legacy-ставок без expires_at.
+        bid = _maybe_expire_bid(c, bid)
+        if bid["status"] == "expired":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "bid_expired",
+                    "message": "Ставка истекла и больше не может быть принята",
+                    "expires_at": bid.get("expires_at"),
+                },
+            )
         # Owner cannot accept a bid that is currently countered — driver must
         # accept the counter first.
         if bid["status"] == "countered":
@@ -2274,6 +2404,19 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
 
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
+        # Bid expiration (26.08.2026): нельзя редактировать expired-ставку.
+        # Свежий amount фактически создаёт «новую» ставку — если хочется
+        # оживить истёкшую, надо создать новую (POST /bids), а не UPDATE.
+        bid = _maybe_expire_bid(c, bid)
+        if bid["status"] == "expired":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "bid_expired",
+                    "message": "Ставка истекла — создайте новое предложение",
+                    "expires_at": bid.get("expires_at"),
+                },
+            )
         if bid["bidder_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Можно редактировать только свою ставку")
         if bid["status"] != "pending":
@@ -2291,9 +2434,14 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
             )
         new_message = body.message if body.message is not None else bid.get("message")
 
+        # Правка ставки = свежий срок жизни. Bidder изменил предложение —
+        # оно живёт снова BID_TTL_HOURS от МОМЕНТА правки, а не от исходной
+        # ставки. Иначе биддер, поправивший цену в последнюю минуту, тут же
+        # получил бы expired без шанса на accept.
+        refreshed_expires_at = _bid_expires_at_iso()
         c.execute(
-            "UPDATE bids SET amount = ?, message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (new_amount, new_message, bid_id),
+            "UPDATE bids SET amount = ?, message = ?, updated_at = CURRENT_TIMESTAMP, expires_at = ? WHERE id = ?",
+            (new_amount, new_message, refreshed_expires_at, bid_id),
         )
         # Часть 3: событие — bidder изменил свою ставку.
         _record_price_event(c, bid_id, user["id"], "bidder", new_amount, "updated", new_message)
@@ -2464,17 +2612,35 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
         raise HTTPException(status_code=400, detail="amount должен быть > 0")
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
+        # Bid expiration (26.08.2026): ленивая экспирация + отказ. Нельзя
+        # выставить контр-оффер на ставку, срок которой уже вышел.
+        bid = _maybe_expire_bid(c, bid)
+        if bid["status"] == "expired":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "bid_expired",
+                    "message": "Ставка истекла, контр-оффер невозможен",
+                    "expires_at": bid.get("expires_at"),
+                },
+            )
         owner_id = _cargo_or_trip_owner_id(c, bid)
         if not owner_id or owner_id != user["id"]:
             raise HTTPException(status_code=403, detail="Только владелец груза/рейса может отправить контр-оффер")
         if bid["status"] != "pending":
             raise HTTPException(status_code=409, detail=f"Контр-оффер нельзя отправить в статусе {bid['status']}")
 
+        # Свежий контр = новый TTL: срок отсчитываем от МОМЕНТА встречной
+        # цены, а не от первоначальной ставки. Иначе owner мог бы прислать
+        # counter в последнюю минуту жизни исходной ставки, и биддер терял
+        # шанс отреагировать вовремя.
+        counter_expires_at = _bid_expires_at_iso()
         c.execute(
             "UPDATE bids SET status = 'countered', counter_amount = ?, counter_message = ?, "
-            "counter_by = 'owner', counter_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP "
+            "counter_by = 'owner', counter_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, "
+            "expires_at = ? "
             "WHERE id = ?",
-            (body.amount, body.message, bid_id),
+            (body.amount, body.message, counter_expires_at, bid_id),
         )
         # Часть 3: событие — владелец прислал контр (actor=owner).
         _record_price_event(c, bid_id, user["id"], "owner", body.amount, "countered", body.message)
