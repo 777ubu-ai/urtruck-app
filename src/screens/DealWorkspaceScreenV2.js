@@ -1226,10 +1226,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       <View style={s.headerText}>
         <View style={s.routeHeaderRow}>
           <Text style={[s.routeTitle, { color: colors.text }]} numberOfLines={1}>{routeLabel}</Text>
-          <View style={s.statusPill}>
-            <View style={s.statusDot} />
-            <Text style={s.statusPillText} numberOfLines={1}>{statusLabel}</Text>
-          </View>
         </View>
         {cargoMeta ? <Text style={[s.metaPrimary, { color: colors.text }]} numberOfLines={1}>{cargoMeta}</Text> : null}
         {scheduleMeta ? <Text style={[s.metaSecondary, { color: colors.textMuted }]} numberOfLines={1}>{scheduleMeta}</Text> : null}
@@ -1242,7 +1238,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           testID="deal-header-map"
           accessibilityLabel={t('deal_map_card_title')}
         >
-          <Feather name="map" size={22} color="#FFFFFF" />
+          <Feather name="map" size={17} color="#111827" />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setStatusModalOpen(true)}
@@ -1250,7 +1246,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           testID="deal-status-open"
           accessibilityLabel={ui.statuses}
         >
-          <Feather name={statusActionIcon} size={22} color="#FFFFFF" />
+          <Feather name={statusActionIcon} size={17} color="#111827" />
         </TouchableOpacity>
       </View>
     </View>
@@ -1316,75 +1312,82 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
                 <View
                   style={[
-                    s.composer,
-                    composerFocused && s.composerFocused,
-                    { borderTopColor: colors.border, paddingBottom: attachOpen || emojiOpen ? 9 : Math.max(insets.bottom, 8) },
+                    s.composerDock,
+                    { borderTopColor: colors.border, paddingBottom: attachOpen || emojiOpen ? 6 : Math.max(insets.bottom, 8) },
                   ]}
-                  testID="deal-chat-composer"
+                  testID="deal-chat-composer-dock"
                 >
-                  {!recording ? (
-                    <TouchableOpacity
-                      style={s.composerCircle}
-                      onPress={sendCameraPhoto}
-                      testID="deal-chat-camera"
-                    >
-                      <Feather name="camera" size={22} color="#202020" />
-                    </TouchableOpacity>
-                  ) : null}
-                  <View style={s.inputShell}>
-                    <TextInput
-                      ref={inputRef}
-                      value={input}
-                      onChangeText={(value) => {
-                        setInput(value);
-                        if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
-                        if (roomId) chatAPI.typing(roomId);
-                      }}
-                      onFocus={onComposerFocus}
-                      onBlur={onComposerBlur}
-                      onContentSizeChange={(event) => {
-                        const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
-                        setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
-                      }}
-                      multiline
-                      scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
-                      style={[s.input, { height: inputHeight, color: colors.text }]}
-                      placeholder=""
-                      placeholderTextColor="transparent"
-                      testID="deal-chat-input"
-                    />
-                  </View>
-                  {!composerFocused ? (
-                    <TouchableOpacity
-                      style={s.composerCircle}
-                      onPress={toggleEmojiMenu}
-                      testID="deal-chat-emoji"
-                    >
-                      <Feather name="smile" size={26} color="#202020" />
-                    </TouchableOpacity>
-                  ) : null}
-                  {!recording ? (
-                    input.trim() ? (
-                      <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
-                    ) : (
+                  <View
+                    style={[
+                      s.composer,
+                      composerFocused && s.composerFocused,
+                    ]}
+                    testID="deal-chat-composer"
+                  >
+                    {!recording ? (
                       <TouchableOpacity
                         style={s.composerCircle}
-                        onPress={toggleVoice}
-                        testID="deal-chat-voice"
+                        onPress={sendCameraPhoto}
+                        testID="deal-chat-camera"
                       >
-                        <Feather name="volume-2" size={22} color="#202020" />
+                        <Feather name="camera" size={22} color="#202020" />
                       </TouchableOpacity>
-                    )
-                  ) : null}
-                  {!recording ? (
-                    <TouchableOpacity
-                      style={s.composerCircle}
-                      onPress={toggleAttachMenu}
-                      testID="deal-chat-attach"
-                    >
-                      <Feather name="plus" size={27} color="#202020" />
-                    </TouchableOpacity>
-                  ) : null}
+                    ) : null}
+                    <View style={s.inputShell}>
+                      <TextInput
+                        ref={inputRef}
+                        value={input}
+                        onChangeText={(value) => {
+                          setInput(value);
+                          if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+                          if (roomId) chatAPI.typing(roomId);
+                        }}
+                        onFocus={onComposerFocus}
+                        onBlur={onComposerBlur}
+                        onContentSizeChange={(event) => {
+                          const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
+                          setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
+                        }}
+                        multiline
+                        scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
+                        style={[s.input, { height: inputHeight, color: colors.text }]}
+                        placeholder=""
+                        placeholderTextColor="transparent"
+                        testID="deal-chat-input"
+                      />
+                    </View>
+                    {!composerFocused ? (
+                      <TouchableOpacity
+                        style={s.composerCircle}
+                        onPress={toggleEmojiMenu}
+                        testID="deal-chat-emoji"
+                      >
+                        <Feather name="smile" size={26} color="#202020" />
+                      </TouchableOpacity>
+                    ) : null}
+                    {!recording ? (
+                      input.trim() ? (
+                        <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={s.composerCircle}
+                          onPress={toggleVoice}
+                          testID="deal-chat-voice"
+                        >
+                          <Feather name="volume-2" size={22} color="#202020" />
+                        </TouchableOpacity>
+                      )
+                    ) : null}
+                    {!recording ? (
+                      <TouchableOpacity
+                        style={s.composerCircle}
+                        onPress={toggleAttachMenu}
+                        testID="deal-chat-attach"
+                      >
+                        <Feather name="plus" size={27} color="#202020" />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                 </View>
 
                 {emojiOpen ? (
@@ -1588,31 +1591,25 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
 const s = StyleSheet.create({
   safe: { flex: 1 },
-  compactHeader: { minHeight: 118, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 9, borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 20 },
-  backButton: { width: 42, height: 46, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
-  headerText: { flex: 1, minWidth: 0, paddingRight: 8 },
-  headerActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  compactHeader: { minHeight: 96, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 8, paddingTop: 6, paddingBottom: 7, borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 20 },
+  backButton: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center', marginTop: 3 },
+  headerText: { flex: 1, minWidth: 0, paddingRight: 6 },
+  headerActions: { flexDirection: 'row', gap: 5, marginTop: 3 },
   headerIconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#168759',
-    shadowColor: '#0B2418',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    backgroundColor: '#F7F7F7',
+    borderWidth: 1.5,
+    borderColor: '#202020',
   },
-  routeHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
-  routeTitle: { flex: 1, fontSize: 19, fontWeight: '900', letterSpacing: -0.35 },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: '#E9F6EF' },
-  statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#168759' },
-  statusPillText: { color: '#168759', fontSize: 11.5, fontWeight: '800', maxWidth: 104 },
-  metaPrimary: { fontSize: 12.7, fontWeight: '800', marginTop: 1 },
-  metaSecondary: { fontSize: 11.5, fontWeight: '650', marginTop: 3 },
-  partnerText: { fontSize: 11.5, fontWeight: '650', marginTop: 3 },
+  routeHeaderRow: { flexDirection: 'row', alignItems: 'center', minHeight: 25 },
+  routeTitle: { flex: 1, fontSize: 14.5, fontWeight: '900', letterSpacing: -0.05 },
+  metaPrimary: { fontSize: 11.7, fontWeight: '800', marginTop: 1 },
+  metaSecondary: { fontSize: 10.8, fontWeight: '650', marginTop: 2 },
+  partnerText: { fontSize: 10.8, fontWeight: '650', marginTop: 2 },
 
   chatFullscreen: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 9 },
@@ -1671,11 +1668,12 @@ const s = StyleSheet.create({
   emojiItem: { width: '12.5%', height: 42, alignItems: 'center', justifyContent: 'center' },
   emojiText: { fontSize: 26, lineHeight: 32 },
 
-  composer: { minHeight: 52, flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10, paddingTop: 6, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
-  composerFocused: { backgroundColor: '#F5F5F5' },
+  composerDock: { paddingHorizontal: 8, paddingTop: 5, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
+  composer: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 30, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDE8E2', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  composerFocused: { backgroundColor: '#FFFFFF' },
   composerCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
   composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
-  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 16, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
+  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
   input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
   sendButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#168759' },
