@@ -265,6 +265,13 @@ test('voice bubble has WhatsApp-grade controls: pause, seek, rate, live progress
   assert.match(bubble, /voice\.subscribe\?\./, 'бабл обязан подписываться на состояние плеера');
   // Активен только тот бабл, чей трек играет — иначе все показывали бы pause.
   assert.match(bubble, /state\.uri === uri/);
+  // На исходящем зелёном пузыре WhatsApp-стиля белые элементы теряются на
+  // реальном телефоне; контраст должен быть тёмным.
+  assert.match(bubble, /const OUTGOING_VOICE_TEXT = '#111827'/);
+  assert.match(bubble, /const OUTGOING_VOICE_MUTED = '#374151'/);
+  assert.match(bubble, /const OUTGOING_VOICE_TRACK = 'rgba\(17,24,39,0\.26\)'/);
+  assert.match(bubble, /const iconColor = mine \? OUTGOING_VOICE_TEXT : accentColor/);
+  assert.match(bubble, /const timeColor = mine \? OUTGOING_VOICE_TEXT : mutedColor/);
 });
 
 test('voice upload failures distinguish too-large, storage-rejected/unreachable, and generic causes, not one flat message', () => {
