@@ -88,10 +88,10 @@ export default function VoiceMessageBubble({
     voice.setRate?.(RATES[(idx + 1) % RATES.length]);
   }, [state.rate]);
 
-  const onSurface = mine ? 'rgba(255,255,255,0.32)' : 'rgba(22,135,89,0.18)';
-  const fillColor = mine ? '#FFFFFF' : accentColor;
-  const iconColor = mine ? '#FFFFFF' : accentColor;
-  const timeColor = mine ? 'rgba(255,255,255,0.85)' : mutedColor;
+  const onSurface = mine ? 'rgba(17,27,33,0.18)' : 'rgba(17,27,33,0.14)';
+  const fillColor = accentColor;
+  const iconColor = accentColor;
+  const timeColor = mutedColor;
   const transcriptVisible = !!transcript?.visible && !!transcript?.transcriptText;
   const transcriptAction = transcribing
     ? '...'
