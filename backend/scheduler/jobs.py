@@ -12,6 +12,7 @@ from database import db
 from parsers import telegram_parser
 from scoring.engine import calculate_score
 from scheduler.backup_job import run_backup
+from services.gps_watchdog import gps_watchdog_job
 from datetime import datetime
 
 
@@ -363,9 +364,14 @@ def start_scheduler():
     # «Пока нет предложений» (18ч без ставок) — проверяем каждые 3 часа,
     # дедуп по data_json удерживает один пуш на публикацию.
     sched.add_job(no_bids_notify_job, IntervalTrigger(hours=3), id="no_bids_notify")
+    # GPS watchdog: активные рейсы проверяются каждую минуту — порог "потери
+    # сигнала" (GPS_LOST_THRESHOLD_SECONDS, дефолт 180с) достаточно короткий,
+    # чтобы минутный интервал давал своевременное обнаружение, не заваливая
+    # БД частыми select'ами.
+    sched.add_job(gps_watchdog_job, IntervalTrigger(minutes=1), id="gps_watchdog")
     sched.start()
     _scheduler = sched
-    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h")
+    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, GPS watchdog 1m")
     return sched
 
 
