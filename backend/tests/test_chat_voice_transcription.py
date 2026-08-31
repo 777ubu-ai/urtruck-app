@@ -1,6 +1,23 @@
-"""Проверка распознавания и перевода голосового сообщения в общем чате."""
+"""Проверка распознавания и перевода голосового сообщения в общем чате.
+
+Самодостаточно: своя БД, уникальные id (тот же паттерн, что test_unread_badge.py
+и остальные изолированно-запускаемые файлы — reconciliation 01.09.2026:
+файл падал даже в одиночном прогоне с `no such table: drivers_registration`,
+потому что `import api.chat` при коллекции модуля запускает chat.py's
+module-level `_init()` ДО того, как схема была создана — этот файл единственный
+из всех не делал DB_PATH/init_db() перед импортом api.chat.)
+"""
+import os
 import uuid
 from pathlib import Path
+
+os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_chat_voice_transcription.db")
+Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
+
+from database import db as dbm
+from database import registration_dal
+dbm.init_db()
+registration_dal.init_registration_schema()
 
 from database.db import get_conn
 from api.chat import (

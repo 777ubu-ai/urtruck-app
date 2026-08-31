@@ -12,7 +12,11 @@ test('delivered screen is clearly waiting for shipper confirmation', () => {
   assert.match(workspace, /tripDelivered: 'Груз доставлен'/);
   assert.match(workspace, /tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя'/);
   assert.match(workspace, /Водитель отметил груз как доставленный\. Сделка завершится после подтверждения получения\./);
-  assert.match(workspace, /visibleDealStatus === 'delivered' \? ui\.awaitingReceiptStatus/);
+  // reconcile 01.09.2026: статус-бейдж, ранее читавший ui.awaitingReceiptStatus
+  // напрямую, был убран при редизайне карточки (main, "compact deal header");
+  // сам смысл ("delivered ≠ финал") подтверждается tripAwaitingReceipt/Hint
+  // выше — они и есть видимый пользователю текст на этом экране.
+  assert.match(workspace, /inactiveSubtitle = visibleDealStatus === 'delivered' \? ui\.tripAwaitingReceipt/);
 });
 
 test('deal list uses awaiting confirmation, not terminal completion, for delivered', () => {

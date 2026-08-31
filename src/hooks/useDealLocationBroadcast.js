@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Platform, AppState } from 'react-native';
 import { marketAPI } from '../utils/marketAPI';
 import { setActiveDealIds, startBackgroundTracking, stopBackgroundTracking } from '../utils/backgroundLocation';
+import { enqueueGpsPoint, flushGpsOutbox } from '../utils/gpsOutbox';
 
 const INTERVAL_MS = 25000;
 
@@ -78,6 +79,10 @@ export function useDealLocationBroadcast(activeDealIds) {
     let timer = null;
     let mounted = true;
 
+    // P1 (reconciliation §9): точка больше не «выстрелил и забыл». При
+    // сбое (сеть пропала — типично на границе) она уходит в durable
+    // локальную очередь вместо безвозвратной потери; flush ниже разгружает
+    // очередь при первой возможности, сохраняя порядок FIFO.
     const push = async () => {
       if (!granted || !Location || !idsRef.current.length) return;
       try {
@@ -88,8 +93,12 @@ export function useDealLocationBroadcast(activeDealIds) {
           heading: c.heading != null && c.heading >= 0 ? c.heading : null,
           speed: c.speed != null && c.speed >= 0 ? c.speed : null,
         };
-        for (const id of idsRef.current) marketAPI.sendDealLocation(id, payload);
+        for (const id of idsRef.current) {
+          const result = await marketAPI.sendDealLocation(id, payload);
+          if (!result?.ok) await enqueueGpsPoint(id, payload);
+        }
       } catch {}
+      flushGpsOutbox((dealId, p) => marketAPI.sendDealLocation(dealId, p)).catch(() => {});
     };
 
     (async () => {

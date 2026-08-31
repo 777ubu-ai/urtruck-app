@@ -5,6 +5,7 @@ import { clearSocialAuthSession } from './socialAuth';
 import { subscribeAuthExpired, setAuthExpirySuppressed } from './authEvents';
 import { push } from './push';
 import { clearOutbox } from './outbox';
+import { clearGpsOutbox } from './gpsOutbox';
 import { clearQueue } from './offlineQueue';
 
 // Уровни доверия (lazy registration)
@@ -177,6 +178,7 @@ export const AuthProvider = ({ children }) => {
         storage.remove('ur_queue_plate'),
         storage.removeByPrefix('ur_draft_'),
         clearOutbox(),
+        clearGpsOutbox(),
         clearQueue(),
       ]);
     } catch {}

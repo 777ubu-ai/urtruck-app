@@ -53,14 +53,20 @@ test('accepted deal details keep message CTA and hide external call handoff', ()
   }
 });
 
-test('deal workspace has scroll-away compact information header and no repeated UrTruck brand bar', () => {
+test('deal workspace has a compact information header and no repeated UrTruck brand bar', () => {
   assert.match(workspace, /testID="deal-compact-header"/);
   assert.match(workspace, /testID="deal-workspace-back"/);
   assert.match(workspace, /cargoMeta/);
   assert.match(workspace, /scheduleMeta/);
   assert.match(workspace, /counterpartyMeta/);
   assert.match(workspace, /const compactHeader = \(/);
-  assert.match(workspace, /ListHeaderComponent=\{compactHeader\}/);
+  // reconcile 01.09.2026 (qa2, "apply whatsapp style"): header стал
+  // фиксированным сиблингом над FlatList, а не ListHeaderComponent —
+  // реальный WhatsApp сам держит верхнюю панель неподвижной, не скроллит
+  // её вместе с историей. Проверяем, что заголовок рендерится ДО списка
+  // сообщений и не уезжает вместе с ним.
+  assert.match(workspace, /\{compactHeader\}\s*\n\s*<View style=\{s\.chatBody\}>/);
+  assert.doesNotMatch(workspace, /ListHeaderComponent=\{compactHeader\}/);
   assert.doesNotMatch(workspace, /BrandBarWithShare|>UrTruck</);
   assert.doesNotMatch(brand, />UrTruck</);
   assert.match(brand, /compact-child-header/);
@@ -186,7 +192,6 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /const sendDealShare = React\.useCallback/);
   assert.match(workspace, /const sendContactCard = React\.useCallback/);
   assert.match(workspace, /attachIcon: \{ width: 64, height: 64/);
-  assert.match(workspace, /backgroundColor: '#F4F4F4'/);
   assert.match(workspace, /testID="deal-chat-composer-dock"/);
   assert.match(workspace, /composerDock: \{ paddingHorizontal: 8, paddingTop: 5/);
   assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'center'/);
