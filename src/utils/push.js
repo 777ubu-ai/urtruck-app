@@ -288,13 +288,23 @@ export const push = {
         Constants?.manifest?.extra?.eas?.projectId ||
         null;
       appVersion = Constants?.expoConfig?.version || Constants?.manifest?.version || null;
-      appId =
-        Constants?.expoConfig?.android?.package ||
-        Constants?.expoConfig?.ios?.bundleIdentifier ||
-        Constants?.manifest?.android?.package ||
-        Constants?.manifest?.ios?.bundleIdentifier ||
-        null;
+      appId = null;
     } catch { projectId = null; }
+    try {
+      const Application = require('expo-application');
+      appId = Application?.applicationId || null;
+    } catch {}
+    if (!appId) {
+      try {
+        const Constants = require('expo-constants').default;
+        appId =
+          Constants?.expoConfig?.android?.package ||
+          Constants?.expoConfig?.ios?.bundleIdentifier ||
+          Constants?.manifest?.android?.package ||
+          Constants?.manifest?.ios?.bundleIdentifier ||
+          null;
+      } catch {}
+    }
     try {
       const Localization = require('expo-localization');
       locale = Localization?.getLocales?.()?.[0]?.languageTag || null;
