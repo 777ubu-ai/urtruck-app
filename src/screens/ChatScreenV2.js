@@ -13,43 +13,58 @@ export default function ChatScreenV2(props) {
   const { route, navigation } = props;
   const params = route?.params || {};
   const colors = useV1Colors();
-  const [resolvedDealId, setResolvedDealId] = React.useState(params.dealId || null);
+  const [resolvedDealId, setResolvedDealId] = React.useState(null);
+  const [resolvedRoomId, setResolvedRoomId] = React.useState(null);
   const [resolvedPartner, setResolvedPartner] = React.useState(params.partner || null);
-  const [checked, setChecked] = React.useState(Boolean(params.dealId && params.partner));
+  const [verifiedDealAccess, setVerifiedDealAccess] = React.useState(false);
+  const [checked, setChecked] = React.useState(false);
   const [blockedPartnerEntry, setBlockedPartnerEntry] = React.useState(false);
 
   React.useEffect(() => {
-    const roomId = params.roomId;
+    const roomId = params.roomId || null;
     const partnerId = params.partner?.id || null;
+    const requestedDealId = params.dealId || null;
 
-    // A direct route with an explicit deal is already canonical. A route with
-    // neither a room nor a concrete partner is a support/general conversation
-    // and may keep using the legacy ChatScreen below.
-    if (!roomId && !partnerId) {
-      setResolvedDealId(params.dealId || null);
+    // No deal/room/partner context means this route has nothing private to
+    // resolve. Preserve the legacy/general-chat fallback behavior.
+    if (!requestedDealId && !roomId && !partnerId) {
+      setResolvedDealId(null);
+      setResolvedRoomId(null);
       setResolvedPartner(params.partner || null);
+      setVerifiedDealAccess(false);
       setBlockedPartnerEntry(false);
       setChecked(true);
       return undefined;
     }
 
     let cancelled = false;
+    setChecked(false);
+    setVerifiedDealAccess(false);
+
     (async () => {
       try {
+        // SECURITY: chatAPI.rooms() is scoped by the current authenticated
+        // user. A deal deeplink is trusted only when that exact deal has a
+        // room in the CURRENT user's room list. This gives shipper/winner the
+        // same positive path as normal Deals UI while the losing bidder has no
+        // matching room and therefore never reaches the workspace.
         const data = await chatAPI.rooms();
         if (cancelled) return;
         const rooms = Array.isArray(data?.rooms) ? data.rooms : [];
 
-        // DriverDetail historically opened Chat with { partner } only. That
-        // bypassed room/deal resolution and always fell through to the old
-        // ChatScreen even when this driver was already the accepted carrier.
-        // Resolve a deal-linked room by partner id so every accepted-deal
-        // entry point converges on DealWorkspaceRoute.
-        const room = roomId
-          ? rooms.find((item) => String(item.id) === String(roomId))
-          : rooms.find((item) => item.deal_id && String(item.partner_id) === String(partnerId));
+        let room = null;
+        if (roomId) {
+          room = rooms.find((item) => String(item.id) === String(roomId)) || null;
+        } else if (requestedDealId) {
+          room = rooms.find((item) => String(item.deal_id) === String(requestedDealId)) || null;
+        } else if (partnerId) {
+          room = rooms.find((item) => item.deal_id && String(item.partner_id) === String(partnerId)) || null;
+        }
 
-        const nextDealId = params.dealId || room?.deal_id || null;
+        const nextDealId = room?.deal_id || null;
+        const exactRequestedDeal = !requestedDealId || String(nextDealId) === String(requestedDealId);
+        const accessVerified = Boolean(room?.deal_id && exactRequestedDeal);
+
         let nextPartner = params.partner || null;
         if (room?.partner_id) {
           const profile = await getDealCounterpartyProfile(room.partner_id).catch(() => null);
@@ -63,14 +78,25 @@ export default function ChatScreenV2(props) {
           };
         }
 
-        // Profile/contact is not a support chat. If there is no deal-linked
-        // room, fail closed and return the user to Deals instead of exposing
-        // the legacy pre-deal messenger. This matches the product rule that
-        // chat exists only after an accepted offer.
-        const partnerOnlyWithoutDeal = Boolean(partnerId && !roomId && !nextDealId);
-        setBlockedPartnerEntry(partnerOnlyWithoutDeal);
-        setResolvedDealId(nextDealId);
+        const explicitDealDenied = Boolean(requestedDealId && !accessVerified);
+        const partnerOnlyWithoutDeal = Boolean(partnerId && !roomId && !requestedDealId && !nextDealId);
+        const directRoomDenied = Boolean(roomId && !room?.deal_id);
+        const blocked = explicitDealDenied || partnerOnlyWithoutDeal || directRoomDenied;
+
+        setBlockedPartnerEntry(blocked);
+        setResolvedDealId(accessVerified ? nextDealId : null);
+        setResolvedRoomId(accessVerified ? room?.id || null : null);
         setResolvedPartner(nextPartner);
+        setVerifiedDealAccess(accessVerified);
+      } catch {
+        // Network/server failure is also fail-closed. Do not optimistically
+        // expose deal UI when membership cannot be proven.
+        if (!cancelled) {
+          setBlockedPartnerEntry(true);
+          setResolvedDealId(null);
+          setResolvedRoomId(null);
+          setVerifiedDealAccess(false);
+        }
       } finally {
         if (!cancelled) setChecked(true);
       }
@@ -85,19 +111,21 @@ export default function ChatScreenV2(props) {
 
   if (!checked || blockedPartnerEntry) {
     return (
-      <SafeAreaView style={[s.loading, { backgroundColor: colors.bg }]} edges={['top']}>
+      <SafeAreaView style={[s.loading, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-access-guard">
         <ActivityIndicator color="#168759" />
       </SafeAreaView>
     );
   }
 
-  if (resolvedDealId) {
+  if (resolvedDealId && verifiedDealAccess) {
     const nextRoute = {
       ...route,
       params: {
         ...params,
         dealId: resolvedDealId,
+        roomId: resolvedRoomId || params.roomId || null,
         partner: resolvedPartner || params.partner || null,
+        verifiedDealAccess: true,
       },
     };
     return <DealWorkspaceRoute {...props} route={nextRoute} />;
@@ -107,8 +135,10 @@ export default function ChatScreenV2(props) {
     ...route,
     params: {
       ...params,
-      dealId: resolvedDealId || null,
+      dealId: null,
+      roomId: null,
       partner: resolvedPartner || params.partner || null,
+      verifiedDealAccess: false,
     },
   }} />;
 }
