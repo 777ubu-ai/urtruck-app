@@ -27,7 +27,7 @@ test('archived deals never render unread badges and app icon badge uses active D
   assert.match(dealsScreen, /const isArchived = ARCHIVE_DEAL_STATUSES\.has\(data\.status\)/);
   assert.match(dealsScreen, /const unread = isArchived \? 0 :/);
   assert.match(dealsScreen, /const unread = dealTab === 'archive' \|\| isClosed[\s\S]*\? 0[\s\S]*isBidActionable/);
-  assert.match(appBadge, /computeDealsUnread\(dashboard\)/);
+  assert.match(appBadge, /computeDealsUnread\(dashboard, \{ role \}\)/);
   assert.doesNotMatch(appBadge, /chatAPI\.unread\(/);
   assert.doesNotMatch(appBadge, /notificationsAPI\.unread\(/);
 });

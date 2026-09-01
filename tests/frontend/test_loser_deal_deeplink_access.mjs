@@ -34,11 +34,15 @@ test('current-user dashboard gives positive access only to listed deal ids', () 
   assert.equal(findDealInDashboard(dashboard, 'loser-foreign-deal'), null);
 });
 
-test('membership request uses authenticated /market/my, not optimistic deal params', () => {
-  assert.match(membership, /MARKET_BASE}\/my/);
+test('membership request uses authenticated participant-gated GET /deals/{id}, not optimistic deal params', () => {
+  // P0 2026-09-01: оракул членства — лёгкий точечный endpoint (сервер сам
+  // отвечает 200/403/404), тяжёлый /market/my из probe исключён — он не
+  // укладывался в 20-секундный authedFetch-таймаут на cold-start deeplink.
+  assert.match(membership, /MARKET_BASE}\/deals\/\$\{encodeURIComponent\(dealId\)\}/);
+  assert.doesNotMatch(membership, /MARKET_BASE}\/my/);
   assert.match(membership, /Authorization/);
-  assert.match(membership, /findDealInDashboard\(data, dealId\)/);
-  assert.match(membership, /allowed: Boolean\(deal\)/);
+  assert.match(membership, /allowed: false, status: response\.status/);
+  assert.match(membership, /allowed: true, status: response\.status/);
 });
 
 test('canonical deal route waits for auth and verifies membership before workspace render', () => {
