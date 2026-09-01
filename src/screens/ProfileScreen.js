@@ -42,8 +42,9 @@ const APP_VERSION_LABEL = (() => {
     const Constants = require('expo-constants').default;
     const ver = Constants?.nativeAppVersion || Constants?.expoConfig?.version || '1.0.4';
     const build = Constants?.nativeBuildVersion
-      || Constants?.expoConfig?.ios?.buildNumber
-      || Constants?.expoConfig?.android?.versionCode
+      || (Platform.OS === 'ios'
+        ? Constants?.expoConfig?.ios?.buildNumber
+        : Constants?.expoConfig?.android?.versionCode)
       || '';
     const commit = process.env.EXPO_PUBLIC_BUILD_COMMIT;
     return `v${ver}${build ? ` (${build})` : ''}${commit ? ` · Build: ${commit}` : ''}`;
