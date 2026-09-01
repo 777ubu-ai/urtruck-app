@@ -5,45 +5,79 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import DealLocationPermissionGate from './DealLocationPermissionGate';
 import DealWorkspaceScreenV2 from '../../screens/DealWorkspaceScreenV2';
 import { marketAPI } from '../../utils/marketAPI';
+import { chatAPI } from '../../utils/chatAPI';
 import { DEAL_ACCESS, classifyDealAccess } from '../../utils/dealAccess';
 import { useV1Colors } from '../../theme/designV1';
 import { useI18n } from '../../utils/useI18n';
+import { useAuth } from '../../utils/AuthContext';
 
 // Canonical route-level host for every accepted-deal workspace entry point.
-// SECURITY INVARIANT: a dealId coming from navigation, push or deeplink is only
-// an identifier. Before mounting GPS disclosure, map, chat or composer we must
-// ask the backend for that deal using the current authenticated user. The
-// backend is authoritative and returns 403 for a non-participant.
+// SECURITY INVARIANT: navigation params, push payloads and deeplinks carry only
+// identifiers. They are never proof that the current user belongs to a deal.
+// Before mounting GPS disclosure, map, chat, documents or composer we resolve a
+// room through the CURRENT user's room list (when needed) and then ask the
+// backend for the deal. GET /market/deals/{id} is authoritative and returns 403
+// for a non-participant.
 export default function DealWorkspaceRoute(props) {
   const params = props?.route?.params || {};
   const navigation = props?.navigation;
-  const dealId = params.dealId || null;
+  const requestedDealId = params.dealId || null;
+  const requestedRoomId = params.roomId || null;
   const colors = useV1Colors();
   const { t } = useI18n();
+  const { session } = useAuth();
+  const userId = session?.user?.id || null;
   const [attempt, setAttempt] = React.useState(0);
-  const [access, setAccess] = React.useState(dealId ? 'checking' : DEAL_ACCESS.ALLOWED);
+  const [access, setAccess] = React.useState('checking');
+  const [verifiedDealId, setVerifiedDealId] = React.useState(null);
 
   React.useEffect(() => {
-    if (!dealId) {
-      setAccess(DEAL_ACCESS.ALLOWED);
-      return undefined;
-    }
-
     let cancelled = false;
     setAccess('checking');
+    setVerifiedDealId(null);
 
     (async () => {
       try {
-        const result = await marketAPI.getDeal(dealId);
+        let candidateDealId = requestedDealId;
+
+        // A direct room deeplink is also untrusted. It is accepted only if the
+        // room is present in chatAPI.rooms() for the CURRENT session and is
+        // linked to a deal. An arbitrary/foreign room id therefore never gets
+        // as far as the workspace renderer.
+        if (!candidateDealId && requestedRoomId) {
+          const roomData = await chatAPI.rooms();
+          if (cancelled) return;
+          const rooms = Array.isArray(roomData?.rooms) ? roomData.rooms : [];
+          const room = rooms.find((item) => String(item.id) === String(requestedRoomId));
+          if (!room?.deal_id) {
+            setAccess(DEAL_ACCESS.DENIED);
+            return;
+          }
+          candidateDealId = room.deal_id;
+        }
+
+        // DealWorkspaceRoute is for accepted-deal workspaces only. Without a
+        // verified deal context, fail closed instead of rendering an empty
+        // composer that could disclose or imply private deal access.
+        if (!candidateDealId) {
+          setAccess(DEAL_ACCESS.DENIED);
+          return;
+        }
+
+        const result = await marketAPI.getDeal(candidateDealId);
         if (cancelled) return;
-        setAccess(classifyDealAccess(result));
+        const classified = classifyDealAccess(result);
+        if (classified === DEAL_ACCESS.ALLOWED) {
+          setVerifiedDealId(candidateDealId);
+        }
+        setAccess(classified);
       } catch {
         if (!cancelled) setAccess(DEAL_ACCESS.UNAVAILABLE);
       }
     })();
 
     return () => { cancelled = true; };
-  }, [dealId, attempt]);
+  }, [requestedDealId, requestedRoomId, userId, attempt]);
 
   React.useEffect(() => {
     if (access !== DEAL_ACCESS.DENIED) return undefined;
@@ -57,7 +91,7 @@ export default function DealWorkspaceRoute(props) {
   // unavailable, do not mount DealLocationPermissionGate/DealWorkspace at all.
   // This prevents a loser/non-participant from seeing route, partner, map,
   // statuses, documents or composer even for a single optimistic frame.
-  if (dealId && access !== DEAL_ACCESS.ALLOWED) {
+  if (access !== DEAL_ACCESS.ALLOWED || !verifiedDealId) {
     const unavailable = access === DEAL_ACCESS.UNAVAILABLE;
     return (
       <SafeAreaView style={[s.guard, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-access-guard">
@@ -78,9 +112,18 @@ export default function DealWorkspaceRoute(props) {
     );
   }
 
+  // roomId-only entry points are normalized to the verified deal id so the
+  // workspace and its downstream APIs all operate on the same authorized deal.
+  const verifiedRoute = requestedDealId === verifiedDealId
+    ? props.route
+    : {
+        ...props.route,
+        params: { ...params, dealId: verifiedDealId },
+      };
+
   return (
     <DealLocationPermissionGate role={params.role}>
-      <DealWorkspaceScreenV2 {...props} />
+      <DealWorkspaceScreenV2 {...props} route={verifiedRoute} />
     </DealLocationPermissionGate>
   );
 }
