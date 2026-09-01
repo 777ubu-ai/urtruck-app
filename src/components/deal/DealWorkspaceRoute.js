@@ -70,7 +70,7 @@ export default function DealWorkspaceRoute(props) {
               onPress={() => setAttempt((value) => value + 1)}
               testID="deal-access-retry"
             >
-              <Text style={s.retryText}>{t('retry')}</Text>
+              <Text style={s.retryText}>{t('chat_attach_retry')}</Text>
             </TouchableOpacity>
           </>
         ) : null}
