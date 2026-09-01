@@ -4,9 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import DealLocationPermissionGate from './DealLocationPermissionGate';
 import DealWorkspaceScreenV2 from '../../screens/DealWorkspaceScreenV2';
-import { marketAPI } from '../../utils/marketAPI';
 import { chatAPI } from '../../utils/chatAPI';
-import { DEAL_ACCESS, classifyDealAccess } from '../../utils/dealAccess';
+import { DEAL_ACCESS } from '../../utils/dealAccess';
+import { verifyDealMembership } from '../../utils/dealMembership';
 import { useV1Colors } from '../../theme/designV1';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
@@ -15,9 +15,9 @@ import { useAuth } from '../../utils/AuthContext';
 // SECURITY INVARIANT: navigation params, push payloads and deeplinks carry only
 // identifiers. They are never proof that the current user belongs to a deal.
 // Before mounting GPS disclosure, map, chat, documents or composer we resolve a
-// room through the CURRENT user's room list (when needed) and then ask the
-// backend for the deal. GET /market/deals/{id} is authoritative and returns 403
-// for a non-participant.
+// room through the CURRENT user's room list (when needed) and verify the deal
+// against `/market/my`, the authenticated server-side source that also powers
+// the normal Deals UI.
 export default function DealWorkspaceRoute(props) {
   const params = props?.route?.params || {};
   const navigation = props?.navigation;
@@ -25,13 +25,29 @@ export default function DealWorkspaceRoute(props) {
   const requestedRoomId = params.roomId || null;
   const colors = useV1Colors();
   const { t } = useI18n();
-  const { session } = useAuth();
+  const { session, hasToken, loading: authLoading } = useAuth();
   const userId = session?.user?.id || null;
   const [attempt, setAttempt] = React.useState(0);
   const [access, setAccess] = React.useState('checking');
   const [verifiedDealId, setVerifiedDealId] = React.useState(null);
 
   React.useEffect(() => {
+    // A cold-start deeplink can mount before AuthContext has restored the
+    // persisted token/session. Stay fail-closed but do not fire a premature
+    // authorization request that can turn a valid participant into a false
+    // DENIED/UNAVAILABLE result.
+    if (authLoading) {
+      setAccess('checking');
+      setVerifiedDealId(null);
+      return undefined;
+    }
+
+    if (!hasToken) {
+      setAccess(DEAL_ACCESS.DENIED);
+      setVerifiedDealId(null);
+      return undefined;
+    }
+
     let cancelled = false;
     setAccess('checking');
     setVerifiedDealId(null);
@@ -64,20 +80,28 @@ export default function DealWorkspaceRoute(props) {
           return;
         }
 
-        const result = await marketAPI.getDeal(candidateDealId);
+        const membership = await verifyDealMembership(candidateDealId);
         if (cancelled) return;
-        const classified = classifyDealAccess(result);
-        if (classified === DEAL_ACCESS.ALLOWED) {
+
+        if (membership.ok && membership.allowed) {
           setVerifiedDealId(candidateDealId);
+          setAccess(DEAL_ACCESS.ALLOWED);
+          return;
         }
-        setAccess(classified);
+
+        if (membership.ok || [401, 403, 404].includes(Number(membership.status))) {
+          setAccess(DEAL_ACCESS.DENIED);
+          return;
+        }
+
+        setAccess(DEAL_ACCESS.UNAVAILABLE);
       } catch {
         if (!cancelled) setAccess(DEAL_ACCESS.UNAVAILABLE);
       }
     })();
 
     return () => { cancelled = true; };
-  }, [requestedDealId, requestedRoomId, userId, attempt]);
+  }, [requestedDealId, requestedRoomId, userId, hasToken, authLoading, attempt]);
 
   React.useEffect(() => {
     if (access !== DEAL_ACCESS.DENIED) return undefined;
@@ -87,7 +111,7 @@ export default function DealWorkspaceRoute(props) {
     return () => clearTimeout(timer);
   }, [access, navigation, params.role]);
 
-  // Fail closed: while membership is unverified, denied, or temporarily
+  // Fail closed: while auth/membership is unverified, denied, or temporarily
   // unavailable, do not mount DealLocationPermissionGate/DealWorkspace at all.
   // This prevents a loser/non-participant from seeing route, partner, map,
   // statuses, documents or composer even for a single optimistic frame.
