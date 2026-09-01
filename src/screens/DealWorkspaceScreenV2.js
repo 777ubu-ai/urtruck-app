@@ -1210,6 +1210,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const trip = context.trip || {};
   const routeLabel = `${localizePlace(from, language)} → ${localizePlace(to, language)}`;
   const visibleDealStatus = userFacingDealStatus(deal?.status || 'accepted');
+  const statusLabel = formatStatus(visibleDealStatus);
   const statusActionIcon =
     visibleDealStatus === 'in_progress' ? 'truck'
       : visibleDealStatus === 'at_border' ? 'map-pin'

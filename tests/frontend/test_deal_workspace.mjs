@@ -254,6 +254,7 @@ test('chat history scroll does not yank user from old messages when new messages
 
 test('statuses render a detailed vertical timeline instead of compact system chips', () => {
   assert.match(workspace, /<DealStatusTimeline/);
+  assert.match(workspace, /const statusLabel = formatStatus\(visibleDealStatus\)/);
   assert.match(workspace, /testID="deal-status-panel"/);
   assert.match(timeline, /testID="deal-status-timeline"/);
   assert.match(timeline, /location_name/);
