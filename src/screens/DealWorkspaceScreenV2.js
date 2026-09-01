@@ -404,6 +404,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     } catch { /* no fake timeline */ }
   }, [dealId]);
   React.useEffect(() => { refreshTimeline(); }, [refreshTimeline]);
+  React.useEffect(() => {
+    if (!statusModalOpen) return undefined;
+    refreshDeal();
+    refreshTimeline();
+    const timer = setInterval(() => {
+      refreshDeal();
+      refreshTimeline();
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [statusModalOpen, refreshDeal, refreshTimeline]);
 
   // Documents render as ordinary bubbles in the same list as text/photo/voice
   // (PR #255 review item 5: "не отдельной нижней панелью, а как обычное
