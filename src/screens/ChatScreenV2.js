@@ -43,23 +43,55 @@ export default function ChatScreenV2(props) {
 
     (async () => {
       try {
-        // SECURITY: an explicit deal deeplink is authorized by the exact same
-        // server-backed source used by DealsScreen. `/market/my` only returns
-        // deals where the authenticated user is shipper or driver. This avoids
-        // a second, divergent room-list membership model: if the normal Deals
-        // UI can open this deal, the deeplink sees the same my_deals row; a
-        // losing bidder never receives that row and therefore fails closed.
+        // SECURITY: explicit deal deeplinks are authorized only by server-side
+        // membership. First share the same cached/in-flight dashboard request
+        // as DealsScreen/BottomNav. Do NOT force a second heavy /market/my call:
+        // physical Android tests showed that the forced request could exceed
+        // authedFetch's 20s timeout and abort while the normal Deals UI worked.
         if (requestedDealId) {
-          const dashboard = await marketAPI.myDashboard({ force: true });
-          if (cancelled) return;
+          let deal = null;
+          let dashboardUnavailable = false;
 
-          if (dashboard?.serverError || dashboard?.authRequired || dashboard?.skipped) {
-            setBlockedPartnerEntry(true);
-            return;
+          try {
+            const dashboard = await marketAPI.myDashboard();
+            if (cancelled) return;
+            dashboardUnavailable = Boolean(
+              dashboard?.serverError || dashboard?.authRequired || dashboard?.skipped
+            );
+            if (!dashboardUnavailable) {
+              deal = (Array.isArray(dashboard?.my_deals) ? dashboard.my_deals : [])
+                .find((item) => String(item?.id || '') === String(requestedDealId)) || null;
+            }
+          } catch (error) {
+            dashboardUnavailable = true;
+            console.warn('[deal-deeplink-access] dashboard unavailable', error?.message || 'error');
           }
 
-          const deal = (Array.isArray(dashboard?.my_deals) ? dashboard.my_deals : [])
-            .find((item) => String(item?.id || '') === String(requestedDealId)) || null;
+          if (cancelled) return;
+
+          // Confirm missing/stale/aborted dashboard state against the lightweight
+          // single-deal endpoint. Backend GET /market/deals/{id} performs the
+          // participant check itself: participant => 200; loser => 403;
+          // nonexistent deal => 404. Route params alone never grant access.
+          if (!deal) {
+            try {
+              const direct = await marketAPI.getDeal(requestedDealId);
+              if (cancelled) return;
+              if (direct && direct.ok !== false && String(direct.id || '') === String(requestedDealId)) {
+                deal = direct;
+              } else if (direct?.ok === false && [401, 403, 404].includes(Number(direct.status))) {
+                setBlockedPartnerEntry(true);
+                return;
+              } else if (dashboardUnavailable) {
+                setBlockedPartnerEntry(true);
+                return;
+              }
+            } catch (error) {
+              console.warn('[deal-deeplink-access] direct deal fallback failed', error?.message || 'error');
+              setBlockedPartnerEntry(true);
+              return;
+            }
+          }
 
           if (!deal) {
             setBlockedPartnerEntry(true);
