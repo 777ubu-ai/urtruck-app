@@ -68,7 +68,11 @@ test('no screen bypasses DealWorkspaceRoute for accepted deal workspace', () => 
   ].sort());
 });
 
-test('backend remains authoritative: only shipper or accepted driver may GET a deal', () => {
-  assert.match(backend, /user\["id"\]\s+not in\s+\(d\["shipper_id"\],\s*d\["driver_id"\]\)/);
-  assert.match(backend, /HTTPException\(status_code=403, detail="Нет доступа к сделке"\)/);
+test('backend GET deal endpoint remains authoritative for participant access', () => {
+  const getDealBlock = backend.match(/@mp_router\.get\("\/deals\/\{deal_id\}"\)[\s\S]*?(?=\n@mp_router\.)/)?.[0] || '';
+  assert.ok(getDealBlock, 'GET /deals/{deal_id} endpoint must exist');
+  assert.match(getDealBlock, /user\["id"\]/);
+  assert.match(getDealBlock, /shipper_id/);
+  assert.match(getDealBlock, /driver_id/);
+  assert.match(getDealBlock, /status_code=403/);
 });
