@@ -13,14 +13,27 @@
 import { Platform } from 'react-native';
 import { marketAPI } from './marketAPI';
 import { computeDealsUnread } from './dealsUnread';
+import { storage } from './storage';
 
-export async function refreshAppIconBadge() {
+async function storedRole() {
+  try {
+    const raw = await storage.get('ur_session');
+    if (!raw) return null;
+    const session = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return session?.user?.role || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function refreshAppIconBadge(roleOverride = null) {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
   let Notifications;
   try { Notifications = require('expo-notifications'); } catch { return; }
   try {
     const dashboard = await marketAPI.myDashboard({ force: true });
-    const total = computeDealsUnread(dashboard);
+    const role = roleOverride || await storedRole();
+    const total = computeDealsUnread(dashboard, { role });
     Notifications.setBadgeCountAsync?.(total).catch(() => {});
   } catch {}
 }
