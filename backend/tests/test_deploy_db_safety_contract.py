@@ -37,4 +37,6 @@ def test_backend_deploy_restart_does_not_match_its_own_ssh_shell():
     deploy = (ROOT / "scripts/deploy-backend-safe.sh").read_text(encoding="utf-8")
 
     assert "pgrep -af 'uvicorn.*main:app.*--port" not in deploy
-    assert "awk '/[p]ython -m uvicorn main:app/ && /--port ${PORT}/" in deploy
+    assert "Stop only the actual listener on :${PORT}" in deploy
+    assert "ss -ltnp 'sport = :${PORT}'" in deploy
+    assert "grep -o 'pid=[0-9]*'" in deploy

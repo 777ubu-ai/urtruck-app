@@ -128,7 +128,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
     cd '${REMOTE_BACKEND}'
     echo '  pwd      :' \$(pwd)
     echo '  python   :' \$(venv/bin/python --version 2>&1 || echo 'venv missing')
-    echo '  uvicorn  :' \$(ps -eo pid=,args= | awk '/[p]ython -m uvicorn main:app/ && /--port ${PORT}/ {n++} END {print n+0}') ' process(es)'
+    echo '  listener :' \$(ss -ltnp 'sport = :${PORT}' 2>/dev/null | grep -c LISTEN || true) ' process(es)'
     ss -ltn 'sport = :${PORT}' || true
   "
   c_yellow "DRY-RUN COMPLETE. No files copied, no service restarted."
@@ -190,14 +190,16 @@ ssh "${SSH_OPTS[@]}" "${REMOTE}" "
   set -e
   cd '${REMOTE_BACKEND}'
 
-  # Find every uvicorn watching :${PORT}.
-  PIDS=\$(ps -eo pid=,args= | awk '/[p]ython -m uvicorn main:app/ && /--port ${PORT}/ {print \$1}' || true)
+  # Stop only the actual listener on :${PORT}. Process-name matching can catch
+  # the SSH shell that is running this script because the command text contains
+  # the same words; listener PID parsing avoids killing our own deploy session.
+  PIDS=\$(ss -ltnp 'sport = :${PORT}' 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u || true)
   if [[ -n \"\$PIDS\" ]]; then
     echo '  stopping existing uvicorn pids:' \$PIDS
     kill -TERM \$PIDS || true
     sleep 3
     # Anything still alive — force.
-    PIDS_LEFT=\$(ps -eo pid=,args= | awk '/[p]ython -m uvicorn main:app/ && /--port ${PORT}/ {print \$1}' || true)
+    PIDS_LEFT=\$(ss -ltnp 'sport = :${PORT}' 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u || true)
     if [[ -n \"\$PIDS_LEFT\" ]]; then
       echo '  force-killing leftover pids:' \$PIDS_LEFT
       kill -KILL \$PIDS_LEFT || true
@@ -210,15 +212,20 @@ ssh "${SSH_OPTS[@]}" "${REMOTE}" "
     > uvicorn.log 2>&1 &
   disown || true
 
-  # Verify exactly one process and one listener.
+  # Verify exactly one listener.
   sleep 4
-  RUNNING=\$(ps -eo pid=,args= | awk '/[p]ython -m uvicorn main:app/ && /--port ${PORT}/ {n++} END {print n+0}')
-  echo '  uvicorn process count:' \$RUNNING
+  RUNNING=\$(ss -ltnp 'sport = :${PORT}' 2>/dev/null | grep -c LISTEN || true)
+  echo '  uvicorn listener count:' \$RUNNING
+  if [[ \"\$RUNNING\" -lt 1 ]]; then
+    echo '  no listener on :${PORT}'
+    tail -80 uvicorn.log || true
+    exit 1
+  fi
   if [[ \"\$RUNNING\" -gt 1 ]]; then
-    # Keep the one listening on :${PORT}, kill others.
+    # Keep the first listener pid, kill other port listeners.
     LISTENER=\$(ss -ltnp 2>/dev/null | awk -v p=':${PORT}' \$0~p'{print \$NF}' | grep -oP 'pid=\K[0-9]+' | head -1)
     echo '  listener pid:' \$LISTENER
-    for pid in \$(ps -eo pid=,args= | awk '/[p]ython -m uvicorn main:app/ && /--port ${PORT}/ {print \$1}'); do
+    for pid in \$(ss -ltnp 'sport = :${PORT}' 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u); do
       if [[ \"\$pid\" != \"\$LISTENER\" ]]; then
         echo '  killing duplicate' \$pid
         kill -KILL \$pid || true
