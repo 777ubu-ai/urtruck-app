@@ -248,7 +248,7 @@ export default function CargoDetail({ navigation, route }) {
     if (!cid) return;
     marketAPI.listBids({ cargoId: cid })
       .then(d => {
-        const mapped = (d.bids || []).map(b => ({
+        const mapBid = (b) => ({
           id: b.id, bidderId: b.bidder_id,
           name: b.bidder_name || b.bidder_phone || t('driver'),
           // Реальные данные оферента с бэка (list_bids обогащает) —
@@ -268,7 +268,11 @@ export default function CargoDetail({ navigation, route }) {
           bargainGateRequired: b.bargain_gate_required === true,
           bargainCanAccept: b.bargain_can_accept !== false,
           bargainCounterCanAccept: b.bargain_counter_can_accept !== false,
-        }));
+        });
+        const mapped = (d.bids || []).map(mapBid);
+        if (d.my_bid && !mapped.some((b) => b.id === d.my_bid.id)) {
+          mapped.push(mapBid(d.my_bid));
+        }
         setBids(mapped);
         // Часть 1: count/is_owner с бэка. count = все предложения (видно всем),
         // даже если чужие суммы не пришли (конфиденциальность на сервере).
