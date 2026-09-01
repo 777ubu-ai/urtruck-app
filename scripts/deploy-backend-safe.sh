@@ -212,9 +212,16 @@ ssh "${SSH_OPTS[@]}" "${REMOTE}" "
     > uvicorn.log 2>&1 &
   disown || true
 
-  # Verify exactly one listener.
-  sleep 4
-  RUNNING=\$(ss -ltnp 'sport = :${PORT}' 2>/dev/null | grep -c LISTEN || true)
+  # Verify exactly one listener. Startup imports OCR/face/Sentry modules, so
+  # a fixed 4s sleep produced false deploy failures on a healthy backend.
+  RUNNING=0
+  for _ in \$(seq 1 45); do
+    RUNNING=\$(ss -ltnp 'sport = :${PORT}' 2>/dev/null | grep -c LISTEN || true)
+    if [[ \"\$RUNNING\" -gt 0 ]]; then
+      break
+    fi
+    sleep 1
+  done
   echo '  uvicorn listener count:' \$RUNNING
   if [[ \"\$RUNNING\" -lt 1 ]]; then
     echo '  no listener on :${PORT}'

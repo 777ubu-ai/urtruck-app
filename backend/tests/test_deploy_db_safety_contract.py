@@ -40,3 +40,5 @@ def test_backend_deploy_restart_does_not_match_its_own_ssh_shell():
     assert "Stop only the actual listener on :${PORT}" in deploy
     assert "ss -ltnp 'sport = :${PORT}'" in deploy
     assert "grep -o 'pid=[0-9]*'" in deploy
+    assert "seq 1 45" in deploy
+    assert "fixed 4s sleep produced false deploy failures" in deploy
