@@ -47,6 +47,7 @@ import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
+const CLOSED_CARGO_STATUSES_FOR_BIDS = new Set(['taken', 'booked', 'completed', 'cancelled', 'unpublished', 'expired']);
 
 // HOT-003: скрываем техмусор из description (остатки init_db, стектрейсы и т.п.)
 const TRASH_RE = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
@@ -448,6 +449,9 @@ export default function CargoDetail({ navigation, route }) {
       .replace('{min}', String(myPendingBid.bargainMinActions || 5))
     : '';
   const priceDisplay = acceptedBid ? formatPrice(acceptedBid.amount, c.currency) : view.price;
+  const cargoClosedForNewBids = CLOSED_CARGO_STATUSES_FOR_BIDS.has(String(c.status || '').toLowerCase());
+  const canCreateBid = !c.isMine && !dealStatus && !acceptedBid && !myPendingBid && !cargoClosedForNewBids;
+  const bidModalVisible = bidModal && (bidModalMode !== 'create' || canCreateBid);
   const myBidStatusLabel = React.useMemo(() => {
     if (!myPendingBid) return '';
     switch (myPendingBid.status) {
@@ -1072,12 +1076,13 @@ export default function CargoDetail({ navigation, route }) {
       {/* Sticky CTA — только «Предложить цену». Свободный чат до сделки убран
           (решение владельца 03.08): переговоры ведутся через ставку/контрпредложение,
           чат создаётся автоматически после accept. */}
-      {!c.isMine && !dealStatus && !myPendingBid ? (
+      {canCreateBid ? (
         <StickyCTABar
           accent={v1Accent.main}
           primary={{
             label: t('suggestPrice'),
             onPress: async () => {
+              if (!canCreateBid) return;
               const ok = await requireLevel(LEVELS.PHONE, 'bid');
               if (ok) setBidModal(true);
             },
@@ -1086,7 +1091,7 @@ export default function CargoDetail({ navigation, route }) {
         />
       ) : null}
       <BidModal
-        visible={bidModal}
+        visible={bidModalVisible}
         onClose={() => { setBidModal(false); setBidModalMode('create'); setEditingBid(null); }}
         onSubmit={handleBid}
         mode={bidModalMode}

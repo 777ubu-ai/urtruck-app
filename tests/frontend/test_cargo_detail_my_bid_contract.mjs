@@ -11,3 +11,14 @@ test('CargoDetail renders server my_bid even when dirty-filter removed it from b
   assert.match(cargoDetail, /mapped\.push\(mapBid\(d\.my_bid\)\);/);
 });
 
+test('CargoDetail does not offer a new bid on a closed or already accepted cargo', () => {
+  assert.match(cargoDetail, /CLOSED_CARGO_STATUSES_FOR_BIDS = new Set\(\[/);
+  for (const status of ['taken', 'booked', 'completed', 'cancelled', 'unpublished', 'expired']) {
+    assert.match(cargoDetail, new RegExp(`['"]${status}['"]`));
+  }
+  assert.match(cargoDetail, /const cargoClosedForNewBids = CLOSED_CARGO_STATUSES_FOR_BIDS\.has/);
+  assert.match(cargoDetail, /const canCreateBid = !c\.isMine && !dealStatus && !acceptedBid && !myPendingBid && !cargoClosedForNewBids;/);
+  assert.match(cargoDetail, /\{canCreateBid \? \(\s*<StickyCTABar/);
+  assert.match(cargoDetail, /const bidModalVisible = bidModal && \(bidModalMode !== 'create' \|\| canCreateBid\);/);
+  assert.match(cargoDetail, /visible=\{bidModalVisible\}/);
+});
