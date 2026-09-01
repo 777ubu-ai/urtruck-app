@@ -18,10 +18,6 @@ fail() {
   exit 1
 }
 
-need_sqlite() {
-  command -v sqlite3 >/dev/null 2>&1 || fail "sqlite3 is required for deploy DB safety"
-}
-
 read_env_db_path() {
   if [[ -f "${REMOTE_BACKEND}/.env" ]]; then
     python3 - "$REMOTE_BACKEND/.env" <<'PY'
@@ -39,6 +35,36 @@ for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
         break
 PY
   fi
+}
+
+sqlite_scalar() {
+  local db_path="$1"
+  local sql="$2"
+  python3 - "$db_path" "$sql" <<'PY'
+import sqlite3
+import sys
+
+db_path, sql = sys.argv[1], sys.argv[2]
+with sqlite3.connect(db_path, timeout=10.0) as conn:
+    row = conn.execute(sql).fetchone()
+print("" if row is None else row[0])
+PY
+}
+
+backup_db() {
+  local src="$1"
+  local dst="$2"
+  mkdir -p "$(dirname "$dst")"
+  python3 - "$src" "$dst" <<'PY'
+import sqlite3
+import sys
+
+src, dst = sys.argv[1], sys.argv[2]
+with sqlite3.connect(src, timeout=10.0) as source:
+    with sqlite3.connect(dst, timeout=10.0) as target:
+        source.backup(target)
+PY
+  chmod 600 "$dst"
 }
 
 write_env_db_path() {
@@ -108,8 +134,7 @@ ensure_runtime_db() {
 
   if [[ ! -f "$db_path" && -f "$old_path" ]]; then
     echo "DB_SAFETY: copying existing release-tree DB to runtime dir" >&2
-    sqlite3 "$old_path" ".timeout 10000" ".backup '$db_path'"
-    chmod 600 "$db_path"
+    backup_db "$old_path" "$db_path"
   fi
 
   if [[ ! -f "$db_path" ]]; then
@@ -123,7 +148,7 @@ ensure_runtime_db() {
 integrity_check() {
   local db_path="$1"
   local result
-  result="$(sqlite3 "$db_path" "PRAGMA integrity_check;")"
+  result="$(sqlite_scalar "$db_path" "PRAGMA integrity_check;")"
   [[ "$result" == "ok" ]] || fail "sqlite integrity_check failed: $result"
 }
 
@@ -133,9 +158,9 @@ snapshot_counts() {
   : > "$out"
   for table in "${TABLES[@]}"; do
     local exists count
-    exists="$(sqlite3 "$db_path" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='${table}';")"
+    exists="$(sqlite_scalar "$db_path" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='${table}';")"
     if [[ "$exists" == "1" ]]; then
-      count="$(sqlite3 "$db_path" "SELECT COUNT(*) FROM ${table};")"
+      count="$(sqlite_scalar "$db_path" "SELECT COUNT(*) FROM ${table};")"
     else
       count="MISSING"
     fi
@@ -155,7 +180,6 @@ compare_counts() {
   fi
 }
 
-need_sqlite
 case "$PHASE" in
   pre)
     db_path="$(ensure_runtime_db)"
@@ -164,7 +188,7 @@ case "$PHASE" in
     snapshot_counts "$db_path" "$SNAPSHOT_FILE"
     backup_dir="${REMOTE_BACKEND}/backups/db-safety-$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$backup_dir"
-    sqlite3 "$db_path" ".timeout 10000" ".backup '${backup_dir}/security.db'"
+    backup_db "$db_path" "${backup_dir}/security.db"
     integrity_check "${backup_dir}/security.db"
     cp "$SNAPSHOT_FILE" "${backup_dir}/counts.before"
     echo "DB_SAFETY_PRE=ok"

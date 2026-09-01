@@ -16,7 +16,7 @@ def test_backend_deploy_keeps_runtime_db_outside_release_tree():
 
     assert "is_under_backend" in helper
     assert "configured DB_PATH is inside release tree" in helper
-    assert "sqlite3 \"$old_path\" \".timeout 10000\" \".backup '$db_path'\"" in helper
+    assert "backup_db \"$old_path\" \"$db_path\"" in helper
     assert "write_env_db_path \"$db_path\"" in helper
 
 
@@ -26,6 +26,7 @@ def test_backend_deploy_checks_integrity_and_counts_before_after():
     for table in ("drivers_registration", "cargos", "deals", "push_tokens_native", "push_devices"):
         assert table in helper
     assert "PRAGMA integrity_check;" in helper
+    assert "import sqlite3" in helper
     assert "snapshot_counts \"$db_path\" \"$SNAPSHOT_FILE\"" in helper
     assert "snapshot_counts \"$db_path\" \"$after_file\"" in helper
     assert "compare_counts \"$SNAPSHOT_FILE\" \"$after_file\"" in helper
