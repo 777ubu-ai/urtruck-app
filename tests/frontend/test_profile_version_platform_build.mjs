@@ -4,11 +4,13 @@ import test from 'node:test';
 
 const src = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
 
-test('Profile version label uses platform-specific build fallback', () => {
-  assert.match(src, /Platform\.OS === 'ios'\s*\?\s*Constants\?\.expoConfig\?\.ios\?\.buildNumber\s*:\s*Constants\?\.expoConfig\?\.android\?\.versionCode/s);
+test('Profile version label prefers native build version over Expo config', () => {
+  assert.match(src, /Application\?\.nativeApplicationVersion/);
+  assert.match(src, /Application\?\.nativeBuildVersion\s*\|\|\s*Constants\?\.nativeBuildVersion/s);
+  assert.match(src, /Platform\.OS === 'ios'\s*\?\s*Constants\?\.expoConfig\?\.ios\?\.buildNumber\s*:\s*''/s);
   assert.doesNotMatch(
     src,
-    /Constants\?\.nativeBuildVersion\s*\|\|\s*Constants\?\.expoConfig\?\.ios\?\.buildNumber\s*\|\|\s*Constants\?\.expoConfig\?\.android\?\.versionCode/,
-    'Android must not show the iOS buildNumber when nativeBuildVersion is absent'
+    /Constants\?\.expoConfig\?\.android\?\.versionCode/,
+    'Android must not show the static app.json versionCode when Gradle overrides versionCode'
   );
 });

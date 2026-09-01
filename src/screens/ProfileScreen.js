@@ -40,11 +40,17 @@ const QA_HOOK_ALLOWED = (() => {
 const APP_VERSION_LABEL = (() => {
   try {
     const Constants = require('expo-constants').default;
-    const ver = Constants?.nativeAppVersion || Constants?.expoConfig?.version || '1.0.4';
-    const build = Constants?.nativeBuildVersion
-      || (Platform.OS === 'ios'
-        ? Constants?.expoConfig?.ios?.buildNumber
-        : Constants?.expoConfig?.android?.versionCode)
+    let Application = null;
+    try {
+      Application = require('expo-application');
+    } catch {}
+    const ver = Application?.nativeApplicationVersion
+      || Constants?.nativeAppVersion
+      || Constants?.expoConfig?.version
+      || '1.0.4';
+    const build = Application?.nativeBuildVersion
+      || Constants?.nativeBuildVersion
+      || (Platform.OS === 'ios' ? Constants?.expoConfig?.ios?.buildNumber : '')
       || '';
     const commit = process.env.EXPO_PUBLIC_BUILD_COMMIT;
     return `v${ver}${build ? ` (${build})` : ''}${commit ? ` · Build: ${commit}` : ''}`;
