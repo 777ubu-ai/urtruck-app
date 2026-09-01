@@ -4,7 +4,9 @@
 # WHAT IT DOES
 #   1. Local preflight (repo layout, py_compile of marketplace.py & main.py)
 #   2. Verifies SSH connectivity
-#   3. Snapshots remote backend code into a timestamped backup folder
+#   3. Moves/keeps runtime SQLite outside the replaceable release tree, then
+#      takes an automatic DB backup + integrity_check + table counts snapshot
+#   4. Snapshots remote backend code into a timestamped backup folder
 #   4. rsync's local backend/ → remote, excluding venv/ __pycache__ *.db etc.
 #   5. Remote py_compile of main.py + api/marketplace.py
 #   6. Stops every existing uvicorn ":8001" process gracefully (SIGTERM, then
@@ -29,6 +31,8 @@
 #   SSH_HOST=185.22.65.11
 #   SSH_KEY=$HOME/.ssh/urtruck
 #   REMOTE_BACKEND=/home/ubuntu/urtruck/backend
+#   REMOTE_RUNTIME=/home/ubuntu/urtruck/runtime
+#   REMOTE_DB_PATH=/home/ubuntu/urtruck/runtime/security.db
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -36,8 +40,11 @@ SSH_USER=${SSH_USER:-ubuntu}
 SSH_HOST=${SSH_HOST:-185.22.65.11}
 SSH_KEY=${SSH_KEY:-$HOME/.ssh/urtruck}
 REMOTE_BACKEND=${REMOTE_BACKEND:-/home/ubuntu/urtruck/backend}
+REMOTE_RUNTIME=${REMOTE_RUNTIME:-/home/ubuntu/urtruck/runtime}
+REMOTE_DB_PATH=${REMOTE_DB_PATH:-}
 PORT=${PORT:-8001}
 TS="$(date +%Y%m%d_%H%M%S)"
+DB_COUNTS_SNAPSHOT="/tmp/urtruck-db-counts-${TS}.before"
 
 DRY_RUN=0
 if [[ "${1:-}" == "--dry-run" ]]; then DRY_RUN=1; fi
@@ -63,6 +70,10 @@ if [[ ! -d backend ]]; then
 fi
 if [[ ! -f "${SSH_KEY}" ]]; then
   c_red "SSH key not found: ${SSH_KEY}"
+  exit 1
+fi
+if [[ ! -f scripts/remote_backend_db_safety.sh ]]; then
+  c_red "missing scripts/remote_backend_db_safety.sh"
   exit 1
 fi
 
@@ -124,8 +135,18 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   exit 0
 fi
 
-# ── 5. real backup on remote ───────────────────────────────────────────────
-c_blue "[3/8] remote backup → backups/deploy-backend-${TS}"
+# ── 5. DB safety preflight ─────────────────────────────────────────────────
+c_blue "[3/9] production DB safety preflight"
+scp -q -i "${SSH_KEY}" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \
+  scripts/remote_backend_db_safety.sh "${REMOTE}:/tmp/urtruck_db_safety_${TS}.sh"
+ssh "${SSH_OPTS[@]}" "${REMOTE}" "
+  set -e
+  chmod 700 /tmp/urtruck_db_safety_${TS}.sh
+  bash /tmp/urtruck_db_safety_${TS}.sh pre '${REMOTE_BACKEND}' '${REMOTE_RUNTIME}' '${DB_COUNTS_SNAPSHOT}' '${REMOTE_DB_PATH}'
+"
+
+# ── 6. real code backup on remote ──────────────────────────────────────────
+c_blue "[4/9] remote code backup → backups/deploy-backend-${TS}"
 ssh "${SSH_OPTS[@]}" "${REMOTE}" "
   set -e
   cd '${REMOTE_BACKEND}'
@@ -139,14 +160,14 @@ ssh "${SSH_OPTS[@]}" "${REMOTE}" "
   ls -la \"\$BK\"
 "
 
-# ── 6. rsync ───────────────────────────────────────────────────────────────
-c_blue "[4/8] rsync backend/ → ${REMOTE}:${REMOTE_BACKEND}/"
+# ── 7. rsync ───────────────────────────────────────────────────────────────
+c_blue "[5/9] rsync backend/ → ${REMOTE}:${REMOTE_BACKEND}/"
 rsync -avz "${RSYNC_EXCLUDES[@]}" \
   -e "ssh ${SSH_OPTS[*]}" \
   backend/ "${REMOTE}:${REMOTE_BACKEND}/"
 
-# ── 7. remote syntax check ─────────────────────────────────────────────────
-c_blue "[5/8] remote py_compile"
+# ── 8. remote syntax check ─────────────────────────────────────────────────
+c_blue "[6/9] remote py_compile"
 ssh "${SSH_OPTS[@]}" "${REMOTE}" "
   set -e
   cd '${REMOTE_BACKEND}'
@@ -163,8 +184,8 @@ ssh "${SSH_OPTS[@]}" "${REMOTE}" "
   echo '  ✓ remote syntax OK'
 "
 
-# ── 8. uvicorn safe restart ────────────────────────────────────────────────
-c_blue "[6/8] uvicorn restart (kill duplicates → start one)"
+# ── 9. uvicorn safe restart ────────────────────────────────────────────────
+c_blue "[7/9] uvicorn restart (kill duplicates → start one)"
 ssh "${SSH_OPTS[@]}" "${REMOTE}" "
   set -e
   cd '${REMOTE_BACKEND}'
@@ -206,8 +227,16 @@ ssh "${SSH_OPTS[@]}" "${REMOTE}" "
   fi
 "
 
-# ── 9. API verification ────────────────────────────────────────────────────
-c_blue "[7/8] API verification"
+# ── 10. DB safety post-check ───────────────────────────────────────────────
+c_blue "[8/9] production DB safety post-check"
+ssh "${SSH_OPTS[@]}" "${REMOTE}" "
+  set -e
+  bash /tmp/urtruck_db_safety_${TS}.sh post '${REMOTE_BACKEND}' '${REMOTE_RUNTIME}' '${DB_COUNTS_SNAPSHOT}' '${REMOTE_DB_PATH}'
+  rm -f /tmp/urtruck_db_safety_${TS}.sh
+"
+
+# ── 11. API verification ───────────────────────────────────────────────────
+c_blue "[9/9] API verification"
 ssh "${SSH_OPTS[@]}" "${REMOTE}" "
   set -e
   echo -n '  /api/version       : '
@@ -224,8 +253,8 @@ if ! ssh "${SSH_OPTS[@]}" "${REMOTE}" "curl -fsS http://127.0.0.1:${PORT}/api/ve
   exit 1
 fi
 
-# ── 10. endpoint sanity (warn-only) ────────────────────────────────────────
-c_blue "[8/8] endpoint sanity grep (warn-only)"
+# ── 12. endpoint sanity (warn-only) ────────────────────────────────────────
+c_blue "[extra] endpoint sanity grep (warn-only)"
 ssh "${SSH_OPTS[@]}" "${REMOTE}" "
   set +e
   cd '${REMOTE_BACKEND}'

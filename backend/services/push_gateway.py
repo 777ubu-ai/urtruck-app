@@ -516,9 +516,22 @@ def info() -> dict[str, Any]:
             counts["outbox_dead"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'dead'").fetchone()[0])
     except Exception:
         pass
+    fcm_project_id = FCM_PROJECT_ID or (_service_account_info() or {}).get("project_id")
+    fcm_configured = bool(fcm_project_id and _service_account_info())
+    apns_configured = bool(APNS_KEY_ID and APNS_TEAM_ID and APNS_AUTH_KEY_P8 and APNS_BUNDLE_ID)
     return {
         "mode": PUSH_PROVIDER_MODE,
-        "fcm": {"configured": bool((FCM_PROJECT_ID or (_service_account_info() or {}).get("project_id")) and _service_account_info())},
-        "apns": {"configured": bool(APNS_KEY_ID and APNS_TEAM_ID and APNS_AUTH_KEY_P8 and APNS_BUNDLE_ID), "sandbox": APNS_USE_SANDBOX},
+        "gateway_provider": "native_fcm_apns",
+        "fcm": {
+            "configured": fcm_configured,
+            "live": fcm_configured,
+            "project_id": fcm_project_id or None,
+        },
+        "apns": {
+            "configured": apns_configured,
+            "live": apns_configured,
+            "sandbox": APNS_USE_SANDBOX,
+        },
+        "expo_fallback": PUSH_PROVIDER_MODE in ("expo", "dual"),
         "registry": counts,
     }

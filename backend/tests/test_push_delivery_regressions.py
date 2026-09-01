@@ -73,6 +73,23 @@ def test_native_gateway_contract_is_present():
     assert 'push_gateway.send_to_devices(' in sender
 
 
+def test_push_info_reports_native_gateway_live_state_not_legacy_mock_label():
+    sender = (ROOT / 'backend/services/push_sender.py').read_text(encoding='utf-8')
+    gateway = (ROOT / 'backend/services/push_gateway.py').read_text(encoding='utf-8')
+
+    assert '"gateway_provider"' in sender
+    assert '"fcm_configured"' in sender
+    assert '"fcm_live"' in sender
+    assert '"expo_fallback"' in sender
+    assert '"legacy_fcm_http_key_configured"' in sender
+    assert '"used_for_business_events": False' in sender
+    assert '"fcm": {"mode": "MOCK" if FCM_MOCK else "REAL"}' not in sender
+
+    assert '"gateway_provider": "native_fcm_apns"' in gateway
+    assert '"live": fcm_configured' in gateway
+    assert '"project_id": fcm_project_id or None' in gateway
+
+
 def test_mobile_registers_native_device_push_token_for_fcm_apns():
     src = (ROOT / 'src/utils/push.js').read_text(encoding='utf-8')
 

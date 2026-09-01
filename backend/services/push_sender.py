@@ -46,6 +46,7 @@ EXPO_TOKEN = os.getenv("EXPO_ACCESS_TOKEN", "")
 NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
 
 FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "")
+LEGACY_FCM_HTTP_KEY_CONFIGURED = bool(FCM_SERVER_KEY)
 FCM_MOCK = not FCM_SERVER_KEY
 
 
@@ -581,13 +582,25 @@ def info() -> dict:
             ).fetchone()[0])
     except Exception as e:
         log.warning("push diagnostics count failed: %s", e)
+    gateway = push_gateway.info()
+    fcm_gateway = gateway.get("fcm") or {}
     return {
         "web": {"mode": "MOCK" if PUSH_MOCK_WEB else "REAL", "vapid_public": bool(VAPID_PUBLIC),
                 "subject": VAPID_SUBJECT},
         "native": {
             "expo": {"endpoint": EXPO_ENDPOINT, "access_token_set": bool(EXPO_TOKEN)},
-            "fcm": {"mode": "MOCK" if FCM_MOCK else "REAL"},
-            "gateway": push_gateway.info(),
+            "gateway_provider": gateway.get("gateway_provider") or "native_fcm_apns",
+            "fcm_configured": bool(fcm_gateway.get("configured")),
+            "fcm_live": bool(fcm_gateway.get("live")),
+            "fcm_project_id": fcm_gateway.get("project_id"),
+            "expo_fallback": bool(gateway.get("expo_fallback")),
+            "legacy_fcm_http_key_configured": LEGACY_FCM_HTTP_KEY_CONFIGURED,
+            "legacy_fcm_http": {
+                "configured": LEGACY_FCM_HTTP_KEY_CONFIGURED,
+                "deprecated": True,
+                "used_for_business_events": False,
+            },
+            "gateway": gateway,
         },
         "registrations": counts,
     }
