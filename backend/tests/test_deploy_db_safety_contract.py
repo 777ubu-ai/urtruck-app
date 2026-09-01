@@ -31,3 +31,10 @@ def test_backend_deploy_checks_integrity_and_counts_before_after():
     assert "snapshot_counts \"$db_path\" \"$after_file\"" in helper
     assert "compare_counts \"$SNAPSHOT_FILE\" \"$after_file\"" in helper
     assert "runtime table counts changed during deploy" in helper
+
+
+def test_backend_deploy_restart_does_not_match_its_own_ssh_shell():
+    deploy = (ROOT / "scripts/deploy-backend-safe.sh").read_text(encoding="utf-8")
+
+    assert "pgrep -af 'uvicorn.*main:app.*--port" not in deploy
+    assert "awk '/[p]ython -m uvicorn main:app/ && /--port ${PORT}/" in deploy
