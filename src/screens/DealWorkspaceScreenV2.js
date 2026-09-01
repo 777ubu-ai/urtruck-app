@@ -1653,7 +1653,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 data={[{ id: 'timeline' }]}
                 keyExtractor={(item) => item.id}
                 renderItem={() => <DealStatusTimeline events={timeline} fallbackStatus={statusLabel} />}
+                style={s.statusTimelineList}
                 contentContainerStyle={{ paddingBottom: 12 }}
+                showsVerticalScrollIndicator
               />
               {nextAction ? (
                 <TouchableOpacity
@@ -1839,8 +1841,9 @@ const s = StyleSheet.create({
   comingSoonPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(124,139,130,0.14)' },
   comingSoonText: { fontSize: 10, fontWeight: '800', color: '#7C8B82' },
 
-  statusModalCard: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 14, paddingTop: 14 },
+  statusModalCard: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 12 },
   statusModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  statusTimelineList: { flexGrow: 0, flexShrink: 1 },
   statusNextBtn: { minHeight: 50, borderRadius: 16, backgroundColor: '#168759', marginHorizontal: 2, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   statusNextText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
   cancelLink: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, marginTop: 4, marginBottom: 8 },

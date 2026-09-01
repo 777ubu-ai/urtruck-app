@@ -265,6 +265,19 @@ test('statuses render a detailed vertical timeline instead of compact system chi
   assert.doesNotMatch(workspace, /<SystemEventRow/);
 });
 
+test('status timeline scroll cannot push the next FSM action below the modal', () => {
+  const panel = workspace.match(/testID="deal-status-panel"([\s\S]*?)<AppConfirmModal/);
+  assert.ok(panel, 'deal status panel markup not found');
+  assert.match(panel[1], /style=\{s\.statusTimelineList\}/);
+  assert.match(panel[1], /showsVerticalScrollIndicator/);
+  assert.match(workspace, /statusTimelineList: \{ flexGrow: 0, flexShrink: 1 \}/);
+  assert.match(workspace, /statusModalCard: \{[^}]*paddingBottom: 12/);
+  assert.ok(
+    panel[1].indexOf('style={s.statusTimelineList}') < panel[1].indexOf('testID={nextActionTestId'),
+    'timeline must render before the sticky next action button'
+  );
+});
+
 test('deal status actions use the shared canonical role FSM and GPS starts with trip', () => {
   assert.match(workspace, /getAvailableDealActions/);
   assert.match(actionResolver, /current === 'accepted'/);
