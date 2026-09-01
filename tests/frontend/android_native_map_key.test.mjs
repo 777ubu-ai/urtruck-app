@@ -20,6 +20,8 @@ test('native Yandex map updates geo objects without recreating WebView', () => {
   const map = read('src/components/TruckMap.native.js');
 
   assert.match(map, /process\.env\.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY/);
+  assert.match(map, /const DEFAULT_YANDEX_MAPS_JS_API_KEY = '.+'/);
+  assert.match(map, /process\.env\.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY \|\| DEFAULT_YANDEX_MAPS_JS_API_KEY/);
   assert.match(map, /window\.urtruckUpdateMap/);
   assert.match(map, /injectJavaScript/);
   assert.match(map, /testID="truck-map-yandex-webview"/);

@@ -9,8 +9,15 @@ import { useI18n } from '../utils/useI18n';
 // Native screens render the route inside UrTruck. Viewing a planned/live map
 // never requests the driver's GPS permission and never opens an external maps
 // app. Active-trip permission is owned exclusively by the Start trip action.
-// The browser key is injected by CI and is not stored in source.
-const YANDEX_MAPS_JS_API_KEY = String(process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY || '').trim();
+// CI normally injects the browser key, but several Android QA2 bundles were
+// shipped with an empty `apikey=` inside the embedded WebView HTML even though
+// the provider is public and already used by urtruck.kz. Keep a runtime
+// fallback here so the real in-app map still opens on Android instead of
+// collapsing into "Карта недоступна".
+const DEFAULT_YANDEX_MAPS_JS_API_KEY = '892f2a31-524c-45fb-8404-d8c9fc9f3cb8';
+const YANDEX_MAPS_JS_API_KEY = String(
+  process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY || DEFAULT_YANDEX_MAPS_JS_API_KEY,
+).trim();
 
 const buildYandexMapHtml = (apiKey) => `<!doctype html><html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
