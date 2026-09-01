@@ -22,3 +22,12 @@ test('composer: collapsed-режим полностью убран из чата
   assert.match(src, /testID="deal-chat-composer"/);
   assert.match(src, /testID="deal-chat-input"/);
 });
+
+test('composer: поле ввода визуально видно даже когда оно пустое', () => {
+  assert.doesNotMatch(src, /placeholder=""/);
+  assert.doesNotMatch(src, /placeholderTextColor="transparent"/);
+  assert.match(src, /placeholder=\{isDriver \? ui\.writeShipper : ui\.write\}/);
+  assert.match(src, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 74, minWidth: 96/);
+  assert.match(src, /inputShell: \{[\s\S]*borderWidth: 1/);
+  assert.match(src, /inputShell: \{[\s\S]*borderColor: '#DDE8E2'/);
+});

@@ -197,8 +197,9 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'center'/);
   assert.match(workspace, /borderRadius: 30/);
   assert.match(workspace, /shadowOpacity: 0\.1/);
-  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999/);
-  assert.match(workspace, /placeholder=""/);
+  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 74, minWidth: 96, borderRadius: 999/);
+  assert.match(workspace, /placeholder=\{isDriver \? ui\.writeShipper : ui\.write\}/);
+  assert.match(workspace, /placeholderTextColor="#8A9490"/);
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
 });
 

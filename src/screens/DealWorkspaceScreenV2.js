@@ -1439,8 +1439,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         multiline
                         scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
                         style={[s.input, { height: inputHeight, color: colors.text }]}
-                        placeholder=""
-                        placeholderTextColor="transparent"
+                        placeholder={isDriver ? ui.writeShipper : ui.write}
+                        placeholderTextColor="#8A9490"
                         testID="deal-chat-input"
                       />
                     </View>
@@ -1785,7 +1785,7 @@ const s = StyleSheet.create({
   composerFocused: { backgroundColor: '#FFFFFF' },
   composerCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
   composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
-  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
+  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, minWidth: 96, borderRadius: 999, backgroundColor: '#F7FAF8', borderWidth: 1, borderColor: '#DDE8E2', justifyContent: 'center', position: 'relative' },
   input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
   sendButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#168759' },
