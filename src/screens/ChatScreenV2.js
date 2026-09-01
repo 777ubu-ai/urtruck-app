@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DealWorkspaceRoute from '../components/deal/DealWorkspaceRoute';
 import { chatAPI } from '../utils/chatAPI';
+import { marketAPI } from '../utils/marketAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
 import { useV1Colors } from '../theme/designV1';
 
@@ -25,8 +26,6 @@ export default function ChatScreenV2(props) {
     const partnerId = params.partner?.id || null;
     const requestedDealId = params.dealId || null;
 
-    // No deal/room/partner context means this route has nothing private to
-    // resolve. Preserve the legacy/general-chat fallback behavior.
     if (!requestedDealId && !roomId && !partnerId) {
       setResolvedDealId(null);
       setResolvedRoomId(null);
@@ -40,14 +39,43 @@ export default function ChatScreenV2(props) {
     let cancelled = false;
     setChecked(false);
     setVerifiedDealAccess(false);
+    setBlockedPartnerEntry(false);
 
     (async () => {
       try {
-        // SECURITY: chatAPI.rooms() is scoped by the current authenticated
-        // user. A deal deeplink is trusted only when that exact deal has a
-        // room in the CURRENT user's room list. This gives shipper/winner the
-        // same positive path as normal Deals UI while the losing bidder has no
-        // matching room and therefore never reaches the workspace.
+        // SECURITY: an explicit deal deeplink is authorized by the exact same
+        // server-backed source used by DealsScreen. `/market/my` only returns
+        // deals where the authenticated user is shipper or driver. This avoids
+        // a second, divergent room-list membership model: if the normal Deals
+        // UI can open this deal, the deeplink sees the same my_deals row; a
+        // losing bidder never receives that row and therefore fails closed.
+        if (requestedDealId) {
+          const dashboard = await marketAPI.myDashboard({ force: true });
+          if (cancelled) return;
+
+          if (dashboard?.serverError || dashboard?.authRequired || dashboard?.skipped) {
+            setBlockedPartnerEntry(true);
+            return;
+          }
+
+          const deal = (Array.isArray(dashboard?.my_deals) ? dashboard.my_deals : [])
+            .find((item) => String(item?.id || '') === String(requestedDealId)) || null;
+
+          if (!deal) {
+            setBlockedPartnerEntry(true);
+            return;
+          }
+
+          setResolvedDealId(deal.id);
+          setResolvedRoomId(deal.chat_room_id || roomId || null);
+          setResolvedPartner(params.partner || null);
+          setVerifiedDealAccess(true);
+          return;
+        }
+
+        // roomId / partner-only entry points still resolve through the current
+        // user's chat-room list. These paths never treat route params alone as
+        // proof of access.
         const data = await chatAPI.rooms();
         if (cancelled) return;
         const rooms = Array.isArray(data?.rooms) ? data.rooms : [];
@@ -55,15 +83,12 @@ export default function ChatScreenV2(props) {
         let room = null;
         if (roomId) {
           room = rooms.find((item) => String(item.id) === String(roomId)) || null;
-        } else if (requestedDealId) {
-          room = rooms.find((item) => String(item.deal_id) === String(requestedDealId)) || null;
         } else if (partnerId) {
           room = rooms.find((item) => item.deal_id && String(item.partner_id) === String(partnerId)) || null;
         }
 
         const nextDealId = room?.deal_id || null;
-        const exactRequestedDeal = !requestedDealId || String(nextDealId) === String(requestedDealId);
-        const accessVerified = Boolean(room?.deal_id && exactRequestedDeal);
+        const accessVerified = Boolean(room?.deal_id);
 
         let nextPartner = params.partner || null;
         if (room?.partner_id) {
@@ -78,10 +103,9 @@ export default function ChatScreenV2(props) {
           };
         }
 
-        const explicitDealDenied = Boolean(requestedDealId && !accessVerified);
-        const partnerOnlyWithoutDeal = Boolean(partnerId && !roomId && !requestedDealId && !nextDealId);
+        const partnerOnlyWithoutDeal = Boolean(partnerId && !roomId && !nextDealId);
         const directRoomDenied = Boolean(roomId && !room?.deal_id);
-        const blocked = explicitDealDenied || partnerOnlyWithoutDeal || directRoomDenied;
+        const blocked = partnerOnlyWithoutDeal || directRoomDenied;
 
         setBlockedPartnerEntry(blocked);
         setResolvedDealId(accessVerified ? nextDealId : null);
@@ -89,8 +113,6 @@ export default function ChatScreenV2(props) {
         setResolvedPartner(nextPartner);
         setVerifiedDealAccess(accessVerified);
       } catch {
-        // Network/server failure is also fail-closed. Do not optimistically
-        // expose deal UI when membership cannot be proven.
         if (!cancelled) {
           setBlockedPartnerEntry(true);
           setResolvedDealId(null);
