@@ -42,10 +42,14 @@ while IFS= read -r test_file; do
   count=$((count + 1))
   stem="$(basename "$test_file" .py)"
   db_path="$LOG_DIR/db-${count}.db"
+  storage_root="$LOG_DIR/storage-${count}"
   rm -f "$db_path" "$db_path-wal" "$db_path-shm"
+  rm -rf "$storage_root"
 
   if grep -Eq '^def test_' "$test_file"; then
-    if DB_PATH="$db_path" PYTHONPATH="$ROOT:$BACKEND" \
+    if ENV=test APP_ENV=test URTRUCK_ENV=test \
+        STORAGE_PROVIDER=local STORAGE_LOCAL_ROOT="$storage_root" \
+        DB_PATH="$db_path" PYTHONPATH="$ROOT:$BACKEND" \
         python3 -m pytest "$test_file" -q --disable-warnings --maxfail=25 \
         > "$LOG_DIR/${stem}.log" 2>&1; then
       rc=0
@@ -53,7 +57,9 @@ while IFS= read -r test_file; do
       rc=$?
     fi
   else
-    if DB_PATH="$db_path" PYTHONPATH="$ROOT:$BACKEND" \
+    if ENV=test APP_ENV=test URTRUCK_ENV=test \
+        STORAGE_PROVIDER=local STORAGE_LOCAL_ROOT="$storage_root" \
+        DB_PATH="$db_path" PYTHONPATH="$ROOT:$BACKEND" \
         python3 "$test_file" > "$LOG_DIR/${stem}.log" 2>&1; then
       rc=0
     else
