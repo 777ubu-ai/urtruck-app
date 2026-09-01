@@ -18,4 +18,9 @@ export const Linking = {
   __resetOpenSettingsCalls: () => { openSettingsCalls = 0; },
 };
 
-export default { Platform, Linking };
+// i18n.js читает системную локаль через NativeModules (I18nManager /
+// SettingsManager) — под plain Node достаточно пустого объекта: i18n сам
+// падает обратно на дефолтную локаль, когда нативных модулей нет.
+export const NativeModules = {};
+
+export default { Platform, Linking, NativeModules };

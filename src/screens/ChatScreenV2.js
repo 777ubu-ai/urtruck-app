@@ -1,188 +1,155 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DealWorkspaceRoute from '../components/deal/DealWorkspaceRoute';
-import { chatAPI } from '../utils/chatAPI';
-import { marketAPI } from '../utils/marketAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
+import { DEAL_ACCESS } from '../utils/dealAccess';
+import { DEAL_LINK_VERIFYING, resolveDealLinkAccess } from '../utils/dealLinkGuard';
+import { useAuth } from '../utils/AuthContext';
+import { useI18n } from '../utils/useI18n';
 import { useV1Colors } from '../theme/designV1';
 
 // Accepted deal rooms use the canonical gated workspace route. Support/general
 // conversations may keep the mature legacy ChatScreen, but a partner/profile
 // entry must never create or expose a pre-deal chat.
+//
+// P0 2026-09-01: guard доступа переведён на КОНЕЧНЫЕ состояния (см. подробный
+// разбор первопричины в src/utils/dealLinkGuard.js). Явный dealId проверяется
+// ПЕРВЫМ же запросом через лёгкий участник-gated GET /market/deals/{id};
+// тяжёлый /market/my из deeplink-пути исключён. Никакого вечного спиннера:
+//   checking    → спиннер (deal-access-guard);
+//   allowed     → workspace (verifiedDealAccess: true);
+//   denied      → «Нет доступа к этой сделке» + «К сделкам» (fail closed);
+//   unavailable → «Не удалось проверить доступ» + «Повторить» (retryable).
 export default function ChatScreenV2(props) {
   const { route, navigation } = props;
   const params = route?.params || {};
   const colors = useV1Colors();
-  const [resolvedDealId, setResolvedDealId] = React.useState(null);
-  const [resolvedRoomId, setResolvedRoomId] = React.useState(null);
+  const { t } = useI18n();
+  // Auth-gate без setTimeout-костылей: пока AuthContext поднимает сессию из
+  // storage — держим checking и НЕ шлём запросы; без токена — fail closed.
+  const { hasToken, loading: authLoading } = useAuth();
+
+  const requestedDealId = params.dealId || null;
+  const requestedRoomId = params.roomId || null;
+  const partnerId = params.partner?.id || null;
+  const hasEntryIds = Boolean(requestedDealId || requestedRoomId || partnerId);
+
+  const [attempt, setAttempt] = React.useState(0);
+  const [guard, setGuard] = React.useState({ state: DEAL_LINK_VERIFYING });
   const [resolvedPartner, setResolvedPartner] = React.useState(params.partner || null);
-  const [verifiedDealAccess, setVerifiedDealAccess] = React.useState(false);
-  const [checked, setChecked] = React.useState(false);
-  const [blockedPartnerEntry, setBlockedPartnerEntry] = React.useState(false);
 
   React.useEffect(() => {
-    const roomId = params.roomId || null;
-    const partnerId = params.partner?.id || null;
-    const requestedDealId = params.dealId || null;
-
-    if (!requestedDealId && !roomId && !partnerId) {
-      setResolvedDealId(null);
-      setResolvedRoomId(null);
-      setResolvedPartner(params.partner || null);
-      setVerifiedDealAccess(false);
-      setBlockedPartnerEntry(false);
-      setChecked(true);
+    if (!hasEntryIds) return undefined;
+    if (authLoading) {
+      setGuard({ state: DEAL_LINK_VERIFYING });
+      return undefined;
+    }
+    if (!hasToken) {
+      setGuard({ state: DEAL_ACCESS.DENIED, source: 'auth' });
       return undefined;
     }
 
     let cancelled = false;
-    setChecked(false);
-    setVerifiedDealAccess(false);
-    setBlockedPartnerEntry(false);
+    setGuard({ state: DEAL_LINK_VERIFYING });
 
     (async () => {
-      try {
-        // SECURITY: explicit deal deeplinks are authorized only by server-side
-        // membership. First share the same cached/in-flight dashboard request
-        // as DealsScreen/BottomNav. Do NOT force a second heavy /market/my call:
-        // physical Android tests showed that the forced request could exceed
-        // authedFetch's 20s timeout and abort while the normal Deals UI worked.
-        if (requestedDealId) {
-          let deal = null;
-          let dashboardUnavailable = false;
+      const decision = await resolveDealLinkAccess({
+        dealId: requestedDealId,
+        roomId: requestedRoomId,
+        partnerId,
+      });
+      if (cancelled) return;
 
-          try {
-            const dashboard = await marketAPI.myDashboard();
-            if (cancelled) return;
-            dashboardUnavailable = Boolean(
-              dashboard?.serverError || dashboard?.authRequired || dashboard?.skipped
-            );
-            if (!dashboardUnavailable) {
-              deal = (Array.isArray(dashboard?.my_deals) ? dashboard.my_deals : [])
-                .find((item) => String(item?.id || '') === String(requestedDealId)) || null;
-            }
-          } catch (error) {
-            dashboardUnavailable = true;
-            console.warn('[deal-deeplink-access] dashboard unavailable', error?.message || 'error');
-          }
+      // Диагностика P0: только идентификаторы/тайминги/решение. Токены,
+      // auth-заголовки, телефоны — НИКОГДА не логируем.
+      console.log('[deal-deeplink]', JSON.stringify({
+        dealId: requestedDealId,
+        roomId: requestedRoomId,
+        partnerEntry: Boolean(partnerId),
+        source: decision.source || null,
+        decision: decision.state,
+        status: decision.status ?? null,
+        error: decision.error || null,
+        durationMs: decision.durationMs,
+        authReady: !authLoading,
+        hasToken,
+      }));
 
-          if (cancelled) return;
-
-          // Confirm missing/stale/aborted dashboard state against the lightweight
-          // single-deal endpoint. Backend GET /market/deals/{id} performs the
-          // participant check itself: participant => 200; loser => 403;
-          // nonexistent deal => 404. Route params alone never grant access.
-          if (!deal) {
-            try {
-              const direct = await marketAPI.getDeal(requestedDealId);
-              if (cancelled) return;
-              if (direct && direct.ok !== false && String(direct.id || '') === String(requestedDealId)) {
-                deal = direct;
-              } else if (direct?.ok === false && [401, 403, 404].includes(Number(direct.status))) {
-                setBlockedPartnerEntry(true);
-                return;
-              } else if (dashboardUnavailable) {
-                setBlockedPartnerEntry(true);
-                return;
-              }
-            } catch (error) {
-              console.warn('[deal-deeplink-access] direct deal fallback failed', error?.message || 'error');
-              setBlockedPartnerEntry(true);
-              return;
-            }
-          }
-
-          if (!deal) {
-            setBlockedPartnerEntry(true);
-            return;
-          }
-
-          setResolvedDealId(deal.id);
-          setResolvedRoomId(deal.chat_room_id || roomId || null);
-          setResolvedPartner(params.partner || null);
-          setVerifiedDealAccess(true);
-          return;
-        }
-
-        // roomId / partner-only entry points still resolve through the current
-        // user's chat-room list. These paths never treat route params alone as
-        // proof of access.
-        const data = await chatAPI.rooms();
+      // Обогащение шапки именем/профилем контрагента — только для rooms-входа
+      // (как раньше); для direct-deal партнёр приходит параметрами навигации.
+      const room = decision.room || null;
+      if (decision.state === DEAL_ACCESS.ALLOWED && room?.deal_id && room?.partner_id) {
+        const profile = await getDealCounterpartyProfile(room.partner_id).catch(() => null);
         if (cancelled) return;
-        const rooms = Array.isArray(data?.rooms) ? data.rooms : [];
-
-        let room = null;
-        if (roomId) {
-          room = rooms.find((item) => String(item.id) === String(roomId)) || null;
-        } else if (partnerId) {
-          room = rooms.find((item) => item.deal_id && String(item.partner_id) === String(partnerId)) || null;
-        }
-
-        const nextDealId = room?.deal_id || null;
-        const accessVerified = Boolean(room?.deal_id);
-
-        let nextPartner = params.partner || null;
-        if (room?.partner_id) {
-          const profile = await getDealCounterpartyProfile(room.partner_id).catch(() => null);
-          if (cancelled) return;
-          nextPartner = {
-            ...(nextPartner || {}),
-            id: room.partner_id,
-            role: room.partner_role || profile?.role || nextPartner?.role || null,
-            name: compactCounterpartyName(profile, room.partner_name || nextPartner?.name || ''),
-            profile,
-          };
-        }
-
-        const partnerOnlyWithoutDeal = Boolean(partnerId && !roomId && !nextDealId);
-        const directRoomDenied = Boolean(roomId && !room?.deal_id);
-        const blocked = partnerOnlyWithoutDeal || directRoomDenied;
-
-        setBlockedPartnerEntry(blocked);
-        setResolvedDealId(accessVerified ? nextDealId : null);
-        setResolvedRoomId(accessVerified ? room?.id || null : null);
-        setResolvedPartner(nextPartner);
-        setVerifiedDealAccess(accessVerified);
-      } catch {
-        if (!cancelled) {
-          setBlockedPartnerEntry(true);
-          setResolvedDealId(null);
-          setResolvedRoomId(null);
-          setVerifiedDealAccess(false);
-        }
-      } finally {
-        if (!cancelled) setChecked(true);
+        setResolvedPartner((prev) => ({
+          ...(prev || {}),
+          id: room.partner_id,
+          role: room.partner_role || profile?.role || prev?.role || null,
+          name: compactCounterpartyName(profile, room.partner_name || prev?.name || ''),
+          profile,
+        }));
       }
+
+      setGuard(decision);
     })();
+
     return () => { cancelled = true; };
-  }, [params.dealId, params.roomId, params.partner, params.partner?.id]);
+  }, [hasEntryIds, requestedDealId, requestedRoomId, partnerId, hasToken, authLoading, attempt]);
 
-  React.useEffect(() => {
-    if (!blockedPartnerEntry) return;
-    navigation.navigate('Deals', { role: params.role });
-  }, [blockedPartnerEntry, navigation, params.role]);
+  // Вход без идентификаторов (support/general) — прежний fallback-рендер ниже.
+  if (hasEntryIds) {
+    if (guard.state === DEAL_LINK_VERIFYING) {
+      return (
+        <SafeAreaView style={[s.guard, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-access-guard">
+          <ActivityIndicator color="#168759" />
+        </SafeAreaView>
+      );
+    }
 
-  if (!checked || blockedPartnerEntry) {
-    return (
-      <SafeAreaView style={[s.loading, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-access-guard">
-        <ActivityIndicator color="#168759" />
-      </SafeAreaView>
-    );
-  }
+    if (guard.state === DEAL_ACCESS.DENIED) {
+      return (
+        <SafeAreaView style={[s.guard, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-access-denied">
+          <Text style={[s.guardTitle, { color: colors.text }]}>{t('deal_access_denied_title')}</Text>
+          <TouchableOpacity
+            style={s.guardBtn}
+            onPress={() => navigation.navigate('Deals', { role: params.role })}
+            testID="deal-access-go-deals"
+          >
+            <Text style={s.guardBtnText}>{t('deal_access_go_deals')}</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      );
+    }
 
-  if (resolvedDealId && verifiedDealAccess) {
-    const nextRoute = {
-      ...route,
-      params: {
-        ...params,
-        dealId: resolvedDealId,
-        roomId: resolvedRoomId || params.roomId || null,
-        partner: resolvedPartner || params.partner || null,
-        verifiedDealAccess: true,
-      },
-    };
-    return <DealWorkspaceRoute {...props} route={nextRoute} />;
+    if (guard.state === DEAL_ACCESS.UNAVAILABLE) {
+      return (
+        <SafeAreaView style={[s.guard, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-access-unavailable">
+          <Text style={[s.guardTitle, { color: colors.text }]}>{t('deal_access_check_failed')}</Text>
+          <TouchableOpacity
+            style={s.guardBtn}
+            onPress={() => setAttempt((value) => value + 1)}
+            testID="deal-access-retry"
+          >
+            <Text style={s.guardBtnText}>{t('chat_attach_retry')}</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      );
+    }
+
+    if (guard.state === DEAL_ACCESS.ALLOWED && guard.dealId) {
+      const nextRoute = {
+        ...route,
+        params: {
+          ...params,
+          dealId: guard.dealId,
+          roomId: guard.roomId || params.roomId || null,
+          partner: resolvedPartner || params.partner || null,
+          verifiedDealAccess: true,
+        },
+      };
+      return <DealWorkspaceRoute {...props} route={nextRoute} />;
+    }
   }
 
   return <DealWorkspaceRoute {...props} route={{
@@ -198,5 +165,8 @@ export default function ChatScreenV2(props) {
 }
 
 const s = StyleSheet.create({
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  guard: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
+  guardTitle: { fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  guardBtn: { minHeight: 44, paddingHorizontal: 22, borderRadius: 22, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
+  guardBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 });
