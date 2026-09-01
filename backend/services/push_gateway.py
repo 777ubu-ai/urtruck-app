@@ -21,7 +21,7 @@ import httpx
 from database.db import get_conn
 
 PUSH_PROVIDER_MODE = (os.getenv("PUSH_PROVIDER_MODE") or "expo").strip().lower()
-NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
+NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v3"
 
 FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "")
 FCM_SERVICE_ACCOUNT_JSON = os.getenv("FCM_SERVICE_ACCOUNT_JSON", "")

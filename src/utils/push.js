@@ -9,7 +9,7 @@ const BASE = `${API_BASE}/push`;
 const TOKEN_KEY = 'ur_reg_token';
 const PUSH_ASKED = 'ur_push_asked';
 const NATIVE_TOKEN_KEY = 'ur_push_native_token';
-export const NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2';
+export const NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v3';
 // P0-1 (аудит push-безопасности): технический идентификатор устройства —
 // НЕ секрет, НЕ user_id, НЕ сам push-токен. Генерируется один раз и живёт
 // в storage постоянно (переживает logout/login — это "глобальная" настройка

@@ -19,7 +19,7 @@ test('authenticated web UI has explicit push permission CTA', () => {
 });
 
 test('native Android notifications use a dedicated audible channel', () => {
-  assert.match(push, /NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2'/);
+  assert.match(push, /NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v3'/);
   assert.match(push, /setNotificationChannelAsync\(NATIVE_PUSH_CHANNEL_ID/);
   assert.match(push, /importance:\s*Notifications\.AndroidImportance\.MAX/);
   assert.match(push, /sound:\s*'default'/);

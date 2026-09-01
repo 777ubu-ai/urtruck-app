@@ -25,7 +25,7 @@ def test_push_info_has_safe_registration_counts():
 
 def test_expo_push_uses_dedicated_audible_android_channel():
     src = (ROOT / 'backend/services/push_sender.py').read_text(encoding='utf-8')
-    assert 'NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"' in src
+    assert 'NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v3"' in src
     assert '"sound": "default"' in src
     assert '"priority": "high"' in src
     assert '"channelId": NATIVE_PUSH_CHANNEL_ID' in src
@@ -71,6 +71,7 @@ def test_native_gateway_contract_is_present():
     assert 'CREATE TABLE IF NOT EXISTS push_outbox' in schema
     assert 'CREATE TABLE IF NOT EXISTS push_delivery_log' in schema
     assert 'push_gateway.send_to_devices(' in sender
+    assert 'NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v3"' in gateway
 
 
 def test_push_info_reports_native_gateway_live_state_not_legacy_mock_label():
@@ -93,6 +94,7 @@ def test_push_info_reports_native_gateway_live_state_not_legacy_mock_label():
 def test_mobile_registers_native_device_push_token_for_fcm_apns():
     src = (ROOT / 'src/utils/push.js').read_text(encoding='utf-8')
 
+    assert "NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v3'" in src
     assert 'Notifications.getDevicePushTokenAsync()' in src
     assert "provider: 'expo'" in src
     assert "Platform.OS === 'android' ? 'fcm' : 'apns'" in src

@@ -43,7 +43,7 @@ PUSH_MOCK_WEB = not (VAPID_PUBLIC and VAPID_PRIVATE)
 
 EXPO_ENDPOINT = "https://exp.host/--/api/v2/push/send"
 EXPO_TOKEN = os.getenv("EXPO_ACCESS_TOKEN", "")
-NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
+NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v3"
 
 FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "")
 LEGACY_FCM_HTTP_KEY_CONFIGURED = bool(FCM_SERVER_KEY)
