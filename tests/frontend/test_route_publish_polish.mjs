@@ -33,6 +33,13 @@ test('publish currency fields show one clear code, not duplicated symbol plus co
   assert.doesNotMatch(createTrip, /\{c\.l\} \{c\.k\}/);
 });
 
+test('cargo weight and volume placeholders are examples, not fake filled values', () => {
+  assert.match(createCargo, /const examplePlaceholder = \(value, fallback\)/);
+  assert.match(createCargo, /placeholder=\{examplePlaceholder\(t\('weight_placeholder'\), '22'\)\}/);
+  assert.match(createCargo, /placeholder=\{examplePlaceholder\(t\('volume_placeholder'\), '110'\)\}/);
+  assert.doesNotMatch(createCargo, /placeholder=\{t\('weight_placeholder'\) \|\| 'Например: 31\.5'\}/);
+});
+
 test('China-to-Kazakhstan border crossings are displayed in logistics direction', () => {
   assert.match(geography, /'Хоргос → Нур Жолы'/);
   assert.match(geography, /'Дулаты → Калжат'/);

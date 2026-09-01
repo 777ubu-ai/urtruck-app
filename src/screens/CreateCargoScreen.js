@@ -104,6 +104,12 @@ export default function CreateCargoScreen({ navigation, route }) {
   const { t, lang } = useI18n();
   const { toast } = useToast();
   const { session } = useAuth();
+  const examplePrefix = lang === 'ZH' ? '例如' : lang === 'EN' ? 'e.g.' : lang === 'KK' ? 'мыс.' : 'Например:';
+  const examplePlaceholder = (value, fallback) => {
+    const raw = String(value || fallback || '').trim();
+    if (!raw) return '';
+    return /^\d/.test(raw) ? `${examplePrefix} ${raw}` : raw;
+  };
 
   const displayRoutePoint = (raw, point) => {
     const canonical = point?.name || cleanPlaceName(raw || '');
@@ -381,7 +387,7 @@ export default function CreateCargoScreen({ navigation, route }) {
             value={tons}
             onChangeText={(v) => { setTons(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
             keyboardType="decimal-pad"
-            placeholder={t('weight_placeholder') || 'Например: 31.5'}
+            placeholder={examplePlaceholder(t('weight_placeholder'), '22')}
             testID="cargo-weight-field"
           />
         </View>
@@ -391,7 +397,7 @@ export default function CreateCargoScreen({ navigation, route }) {
             value={m3}
             onChangeText={(v) => { setM3(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
             keyboardType="decimal-pad"
-            placeholder={t('volume_placeholder') || 'Например: 110'}
+            placeholder={examplePlaceholder(t('volume_placeholder'), '110')}
             testID="cargo-volume-field"
           />
         </View>
