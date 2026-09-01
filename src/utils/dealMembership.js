@@ -10,6 +10,12 @@ async function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+export function findDealInDashboard(dashboard, dealId) {
+  if (!dealId) return null;
+  const deals = Array.isArray(dashboard?.my_deals) ? dashboard.my_deals : [];
+  return deals.find((item) => String(item?.id || '') === String(dealId)) || null;
+}
+
 // Security gate for deeplink/push/navigation deal entry.
 // `/market/my` is already scoped by the authenticated backend user and is the
 // same source that powers Deals. A navigation-supplied dealId is allowed only
@@ -36,8 +42,7 @@ export async function verifyDealMembership(dealId) {
       };
     }
 
-    const deal = (Array.isArray(data?.my_deals) ? data.my_deals : [])
-      .find((item) => String(item?.id || '') === String(dealId)) || null;
+    const deal = findDealInDashboard(data, dealId);
 
     return {
       ok: true,
