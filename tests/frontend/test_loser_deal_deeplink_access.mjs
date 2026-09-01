@@ -21,15 +21,24 @@ test('deal access classification is fail-closed for non-participants and errors'
 });
 
 test('canonical deal route verifies backend membership before workspace render', () => {
-  assert.match(route, /marketAPI\.getDeal\(dealId\)/);
+  assert.match(route, /marketAPI\.getDeal\(candidateDealId\)/);
   assert.match(route, /classifyDealAccess\(result\)/);
-  assert.match(route, /if \(dealId && access !== DEAL_ACCESS\.ALLOWED\)/);
+  assert.match(route, /if \(access !== DEAL_ACCESS\.ALLOWED \|\| !verifiedDealId\)/);
   assert.match(route, /testID="deal-access-guard"/);
   assert.match(route, /navigation\?\.navigate\?\.\('Deals', \{ role: params\.role \}\)/);
+  assert.match(route, /\[requestedDealId, requestedRoomId, userId, attempt\]/);
 
-  const guardIndex = route.indexOf("if (dealId && access !== DEAL_ACCESS.ALLOWED)");
+  const guardIndex = route.indexOf('if (access !== DEAL_ACCESS.ALLOWED || !verifiedDealId)');
   const renderIndex = route.lastIndexOf('<DealLocationPermissionGate');
   assert.ok(guardIndex >= 0 && renderIndex > guardIndex, 'guard must execute before gated workspace render');
+});
+
+test('direct room deeplink must resolve through current user rooms and then verified deal', () => {
+  assert.match(route, /chatAPI\.rooms\(\)/);
+  assert.match(route, /String\(item\.id\) === String\(requestedRoomId\)/);
+  assert.match(route, /if \(!room\?\.deal_id\)/);
+  assert.match(route, /setAccess\(DEAL_ACCESS\.DENIED\)/);
+  assert.match(route, /params: \{ \.\.\.params, dealId: verifiedDealId \}/);
 });
 
 test('deeplink entry screens converge on canonical guarded route', () => {
