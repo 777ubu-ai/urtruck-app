@@ -96,7 +96,7 @@ export default function BottomNav({ state, navigation }) {
     const fetchDealsUnread = async () => {
       try {
         const dashboard = await marketAPI.myDashboard();
-        const next = computeDealsUnread(dashboard);
+        const next = computeDealsUnread(dashboard, { role });
         if (mounted) setDealsUnread(next);
         syncAppIconBadge(next);
         // Deliberately no foreground toast/banner here. The Deals badge is the
@@ -120,7 +120,7 @@ export default function BottomNav({ state, navigation }) {
       appStateSub?.remove?.();
       readSub?.();
     };
-  }, [hasToken]);
+  }, [hasToken, role]);
 
   const labelOf = (name) => {
     if (name === 'Feed') return isDriver ? t('tab_feed') : t('tab_feed_client');
