@@ -228,6 +228,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
+  const isCompactComposer = window.width < 390;
   const params = route?.params || {};
 
   const [dealId, setDealId] = React.useState(params.dealId || null);
@@ -1444,7 +1445,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         testID="deal-chat-input"
                       />
                     </View>
-                    {!composerFocused ? (
+                    {!composerFocused && !isCompactComposer ? (
                       <TouchableOpacity
                         style={s.composerCircle}
                         onPress={toggleEmojiMenu}

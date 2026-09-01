@@ -208,7 +208,8 @@ test('composer stays visible while scrolling and avoids duplicate emoji while ty
   assert.doesNotMatch(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
   assert.doesNotMatch(workspace, /testID="deal-chat-composer-collapsed"/);
   assert.doesNotMatch(workspace, /composerCollapsedHandle/);
-  assert.match(workspace, /\{!composerFocused \? \(/);
+  assert.match(workspace, /const isCompactComposer = window\.width < 390/);
+  assert.match(workspace, /\{!composerFocused && !isCompactComposer \? \(/);
   assert.match(workspace, /testID="deal-chat-attach-collapse"/);
   assert.match(workspace, /attachHandle/);
   assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);

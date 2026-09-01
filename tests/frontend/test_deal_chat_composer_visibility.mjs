@@ -27,6 +27,8 @@ test('composer: поле ввода визуально видно даже ко�
   assert.doesNotMatch(src, /placeholder=""/);
   assert.doesNotMatch(src, /placeholderTextColor="transparent"/);
   assert.match(src, /placeholder=\{isDriver \? ui\.writeShipper : ui\.write\}/);
+  assert.match(src, /const isCompactComposer = window\.width < 390/);
+  assert.match(src, /!\s*composerFocused && !isCompactComposer \? \(/);
   assert.match(src, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 74, minWidth: 96/);
   assert.match(src, /inputShell: \{[\s\S]*borderWidth: 1/);
   assert.match(src, /inputShell: \{[\s\S]*borderColor: '#DDE8E2'/);
