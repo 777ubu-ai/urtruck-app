@@ -25,6 +25,10 @@ const DISCOUNT_DELTAS = {
   RUB: [5000, 10000, 20000],
   KZT: [10000, 25000, 50000],
 };
+const SUFFIX_CURRENCY_CODES = new Set(['UZS', 'KGS']);
+
+const digitsOnly = (value) => String(value || '').replace(/[^\d]/g, '');
+const groupDigits = (value) => digitsOnly(value).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
 /**
  * BidModal supports four modes:
@@ -115,10 +119,11 @@ export default function BidModal({
   // тонких +200/+400 которые были бы абсурдом на тенге.
   const cur = (currency || 'USD').toUpperCase();
   const curSym = CURRENCY_SYMBOLS[cur] || '$';
+  const isSuffixCurrency = SUFFIX_CURRENCY_CODES.has(cur);
   const fmtMoney = (n) => {
     if (n == null || Number.isNaN(Number(n))) return '';
     const grouped = String(Math.round(Number(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-    return cur === 'UZS' ? `${grouped} ${curSym}` : `${curSym}${grouped}`;
+    return isSuffixCurrency ? `${grouped} ${curSym}` : `${curSym}${grouped}`;
   };
   const hasBasePrice = Number(currentPrice) > 0;
   const createDeltas = CURRENCY_DELTAS[cur] || CURRENCY_DELTAS.USD;
@@ -130,7 +135,7 @@ export default function BidModal({
 
   const handleSubmit = async () => {
     if (!bid || loading) return;
-    const amountInt = parseInt(bid, 10);
+    const amountInt = parseInt(digitsOnly(bid), 10);
     if (!Number.isFinite(amountInt) || amountInt <= 0) {
       setError(t('bid_amount_invalid'));
       return;
@@ -268,16 +273,17 @@ export default function BidModal({
           </View>
 
           <View style={[s.inputWrap, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[s.dollar, { color: theme.textMuted }]}>{curSym}</Text>
+            {!isSuffixCurrency ? <Text style={[s.currencyPrefix, { color: theme.textMuted }]}>{curSym}</Text> : null}
             <TextInput
               testID="bid-amount-input"
               style={[s.input, { color: theme.text }]}
-              value={bid}
-              onChangeText={setBid}
+              value={groupDigits(bid)}
+              onChangeText={(value) => setBid(digitsOnly(value))}
               placeholder={t('ownPrice')}
               placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
             />
+            {isSuffixCurrency ? <Text style={[s.currencySuffix, { color: theme.textMuted }]}>{curSym}</Text> : null}
           </View>
 
           <TextInput
@@ -327,7 +333,8 @@ const s = StyleSheet.create({
   quickBtnText: { fontSize: 15, fontWeight: '700' },
   quickBtnTextActive: { color: '#168759' },
   inputWrap: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, marginBottom: 10, paddingHorizontal: 14 },
-  dollar: { fontSize: 18, fontWeight: '700', marginRight: 4 },
+  currencyPrefix: { fontSize: 18, fontWeight: '700', marginRight: 0 },
+  currencySuffix: { fontSize: 18, fontWeight: '700', marginLeft: 6 },
   input: { flex: 1, fontSize: 18, fontWeight: '700', paddingVertical: 16 },
   messageInput: { borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 14, marginBottom: 14 },
   errorText: { color: '#EF4444', fontSize: 13, textAlign: 'center', marginBottom: 10 },

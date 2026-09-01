@@ -17,6 +17,40 @@ let dashboardCache = null;
 let dashboardCacheAt = 0;
 let dashboardInFlight = null;
 
+const nowMs = () => {
+  try {
+    if (globalThis?.performance?.now) return globalThis.performance.now();
+  } catch {}
+  return Date.now();
+};
+
+function safeResponseForLog(value) {
+  if (value == null) return null;
+  if (typeof value === 'string') return value.slice(0, 500);
+  try {
+    return JSON.parse(JSON.stringify(value, (key, val) => {
+      const k = String(key || '').toLowerCase();
+      if (k.includes('token') || k === 'authorization' || k.includes('secret')) return '[redacted]';
+      return val;
+    }));
+  } catch {
+    return String(value).slice(0, 500);
+  }
+}
+
+function logHttpDiagnostic(operation, endpoint, startedAt, detail = {}) {
+  try {
+    // QA device gate: enough to diagnose iOS networking without leaking secrets.
+    console.warn(`[marketAPI:${operation}]`, {
+      endpoint,
+      status: detail.status ?? null,
+      error_class: detail.errorClass ?? null,
+      response: safeResponseForLog(detail.response),
+      request_ms: Math.round(nowMs() - startedAt),
+    });
+  } catch {}
+}
+
 async function headers() {
   const token = await storage.get(TOKEN_KEY);
   return {
@@ -338,22 +372,42 @@ export const marketAPI = {
 
   // ─── Bids ───
   async createBid(data) {
-    const r = await authedFetch(`${BASE}/bids`, {
-      method: 'POST', headers: await headers(),
-      body: JSON.stringify(data),
-    });
-    const d = await r.json();
-    if (!r.ok) {
-      // Особый случай: у автора уже есть активная ставка. Бэк возвращает
-      // объект с existing_bid_id/existing_amount/existing_message — прокидываем
-      // как detailObj, чтобы модалка сама переключилась в режим edit.
-      const raw = d && d.detail;
-      if (r.status === 409 && raw && typeof raw === 'object' && raw.error === 'duplicate_bid') {
-        return { ok: false, status: 409, detail: raw.message, detailObj: raw };
+    const endpoint = `${BASE}/bids`;
+    const startedAt = nowMs();
+    try {
+      const r = await authedFetch(endpoint, {
+        method: 'POST', headers: await headers(),
+        body: JSON.stringify(data),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        logHttpDiagnostic('createBid', endpoint, startedAt, {
+          status: r.status,
+          errorClass: 'http_error',
+          response: d,
+        });
+        // Особый случай: у автора уже есть активная ставка. Бэк возвращает
+        // объект с existing_bid_id/existing_amount/existing_message — прокидываем
+        // как detailObj, чтобы модалка сама переключилась в режим edit.
+        const raw = d && d.detail;
+        if (r.status === 409 && raw && typeof raw === 'object' && raw.error === 'duplicate_bid') {
+          return { ok: false, status: 409, detail: raw.message, detailObj: raw };
+        }
+        return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
       }
-      return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+      logHttpDiagnostic('createBid', endpoint, startedAt, {
+        status: r.status,
+        errorClass: null,
+        response: { ok: true, id: d?.id ?? null },
+      });
+      return d;
+    } catch (e) {
+      logHttpDiagnostic('createBid', endpoint, startedAt, {
+        errorClass: e?.name || 'network_error',
+        response: { message: e?.message || 'network_error' },
+      });
+      throw e;
     }
-    return d;
   },
 
   async listBids({ cargoId, tripId } = {}) {
