@@ -7,7 +7,7 @@ deeplink urtruck://deals/{id} (см. src/utils/dealLinkGuard.js — тяжёлы
 Armando и shipper Fedya должны получать 200, проигравший торг Berik — 403,
 посторонний — 403, несуществующая сделка — 404.
 
-Матрица (5 кейсов):
+Матрица (5 кейсов + регистр + инвариант дашборда):
   1. shipper (грузовладелец сделки)      → 200, body.id == deal_id
   2. winner driver (победивший торг)     → 200, body.id == deal_id
   3. loser driver (его bid отклонён)     → 403 (в deals-строке его нет)
@@ -163,6 +163,49 @@ def test_unknown_deal_gets_404():
     expect(r.status_code == 404, f"unknown 404 (got {r.status_code} {r.text[:200]})")
 
 
+def test_uppercase_deeplink_id_resolves_for_participant():
+    """P0 (физически подтверждено 2026-09-01): deeplink с UUID в ВЕРХНЕМ
+    регистре давал 404 всем — участникам и проигравшему. deals.id —
+    TEXT PRIMARY KEY без COLLATE NOCASE, SQLite сравнивает побайтово, а
+    бэкенд пишет str(uuid.uuid4()) строчными. Теперь lookup регистро-
+    устойчив, а ответ несёт КАНОНИЧЕСКИЙ id из БД."""
+    print("\n=== 6. participant + UPPERCASE id → 200 канонический id ===")
+    as_user(WINNER)
+    r = client.get(f"/api/v1/market/deals/{DEAL_ID.upper()}")
+    expect(r.status_code == 200, f"UPPERCASE участник 200 (got {r.status_code} {r.text[:200]})")
+    expect(r.json().get("id") == DEAL_ID,
+           f"вернулся канонический id из БД, а не строка из URL (got {r.json().get('id')})")
+
+
+def test_uppercase_deeplink_id_still_denies_non_participant():
+    """Регистро-устойчивость НЕ ослабляет доступ: найденная строка всё так
+    же проходит participant-проверку. Раньше проигравший получал 404
+    (строка не найдена), теперь — честный 403."""
+    print("\n=== 7. loser + UPPERCASE id → 403, НЕ 404 и НЕ 200 ===")
+    as_user(LOSER)
+    r = client.get(f"/api/v1/market/deals/{DEAL_ID.upper()}")
+    expect(r.status_code == 403, f"UPPERCASE проигравший 403 (got {r.status_code} {r.text[:200]})")
+
+
+def test_every_dashboard_deal_is_fetchable_by_participant():
+    """Инвариант консистентности (§6): любая сделка, которую /market/my
+    отдал текущему пользователю, обязана открываться через
+    GET /market/deals/{id} — иначе «Сделки → В работе» открывается, а
+    deeplink/карточка ловят 404 (ровно тот production-симптом)."""
+    print("\n=== 8. инвариант: все сделки из /market/my открываются по id ===")
+    for actor in (SHIPPER, WINNER):
+        as_user(actor)
+        dash = client.get("/api/v1/market/my")
+        expect(dash.status_code == 200, f"{actor}: /market/my 200 (got {dash.status_code})")
+        deals = dash.json().get("my_deals") or []
+        expect(len(deals) >= 1, f"{actor}: дашборд отдал хотя бы одну сделку (got {len(deals)})")
+        for deal in deals:
+            one = client.get(f"/api/v1/market/deals/{deal['id']}")
+            expect(one.status_code == 200,
+                   f"{actor}: сделка {deal['id'][:8]}… из дашборда открывается (got {one.status_code})")
+            expect(one.json().get("id") == deal["id"], f"{actor}: id совпадает с дашбордом")
+
+
 if __name__ == "__main__":
     print(f"Using DB: {TEST_DB}")
     test_shipper_gets_200()
@@ -170,4 +213,7 @@ if __name__ == "__main__":
     test_loser_driver_gets_403()
     test_unrelated_user_gets_403()
     test_unknown_deal_gets_404()
+    test_uppercase_deeplink_id_resolves_for_participant()
+    test_uppercase_deeplink_id_still_denies_non_participant()
+    test_every_dashboard_deal_is_fetchable_by_participant()
     print("\nAll deal access matrix tests passed.")

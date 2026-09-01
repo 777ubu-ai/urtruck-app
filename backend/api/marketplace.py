@@ -2731,6 +2731,33 @@ def list_deals(user=Depends(require_level(1))):
     return {"deals": [dict(r) for r in rows]}
 
 
+def _find_deal_row(c, deal_id: str):
+    """Найти строку сделки по id из URL-пути, устойчиво к регистру UUID.
+
+    P0 2026-09-01 (доказано физически): прямой deeplink
+    urtruck://deals/{id} с id в ВЕРХНЕМ регистре давал 404
+    «Сделка не найдена» ВСЕМ — и участникам, и проигравшему торг, — хотя
+    та же сделка открывалась через «Сделки → В работе». Причина: бэкенд
+    генерирует id как str(uuid.uuid4()) (строчными, RFC 4122), колонка
+    deals.id объявлена TEXT PRIMARY KEY без COLLATE NOCASE, а SQLite
+    сравнивает TEXT побайтово. Любая ссылка, где UUID пришёл в другом
+    регистре (ручной adb-deeplink, скопированный из отчёта id, внешняя
+    система), не находила строку — и participant-проверка вообще не
+    успевала выполниться, поэтому даже НЕучастник получал 404 вместо 403.
+    По RFC 4122 hex-цифры UUID регистро-независимы, поэтому нормализация
+    здесь — исправление сравнения, а не ослабление доступа.
+
+    Сначала точное совпадение (использует PK-индекс — быстрый путь для
+    99,9% запросов), и только при промахе — регистро-независимый проход.
+    Проверка участника выполняется вызывающим кодом на НАЙДЕННОЙ строке
+    ровно как раньше: участник → 200, чужой → 403.
+    """
+    row = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+    if row:
+        return row
+    return c.execute("SELECT * FROM deals WHERE id = ? COLLATE NOCASE", (deal_id,)).fetchone()
+
+
 @mp_router.get("/deals/{deal_id}")
 def get_deal(deal_id: str, user=Depends(require_level(1))):
     """Return a deal + the cargo/trip context the chat-room UI needs.
@@ -2743,12 +2770,16 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
     on every Deal Room open."""
     uid = user["id"]
     with get_conn() as c:
-        row = c.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        row = _find_deal_row(c, deal_id)
         if not row:
             raise HTTPException(status_code=404, detail="Сделка не найдена")
         d = dict(row)
         if uid not in (d["shipper_id"], d["driver_id"]):
             raise HTTPException(status_code=403)
+        # Дальше работаем с КАНОНИЧЕСКИМ id из БД (а не с тем, что пришёл в
+        # пути): фронт берёт deal.id из этого ответа и все последующие
+        # вызовы (tracking/status/location) уходят уже с ним.
+        deal_id = d["id"]
         # Cargo enrichment — cargo_desc + currency for the "Ставка" line.
         # 2026-08-19 (P1, независимый release review): + вес груза
         # (weight_tons) — единственная реальная величина массы, которую

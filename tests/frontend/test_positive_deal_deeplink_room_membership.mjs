@@ -27,7 +27,9 @@ test('direct dealId использует лёгкий участник-gated get
 });
 
 test('решение конечное и fail-closed: allowed только при совпадении id, отказ 401/403/404 → denied, транзиент → unavailable', () => {
-  assert.match(guard, /String\(direct\?\.id \|\| ''\) !== String\(dealId\)/);
+  // регистро-независимо (RFC 4122) — иначе UPPERCASE-deeplink уходил бы в
+  // UNAVAILABLE уже ПОСЛЕ успешной серверной проверки доступа
+  assert.match(guard, /String\(direct\?\.id \|\| ''\)\.toLowerCase\(\) !== String\(dealId\)\.toLowerCase\(\)/);
   assert.match(guard, /DEAL_ACCESS\.UNAVAILABLE, source: 'direct-deal'/);
   assert.match(chat, /guard\.state === DEAL_ACCESS\.ALLOWED && guard\.dealId/);
   assert.match(chat, /verifiedDealAccess: true/);

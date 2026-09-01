@@ -49,7 +49,8 @@ export async function verifyDealMembership(dealId) {
       return { ok: false, allowed: false, status: response.status, deal: null };
     }
 
-    if (String(data?.id || '') !== String(dealId)) {
+    // Регистро-независимо (RFC 4122): сервер отдаёт канонический id из БД.
+    if (String(data?.id || '').toLowerCase() !== String(dealId).toLowerCase()) {
       // 200 с чужим телом — аномалия транспорта/прокси: fail closed, retryable.
       return { ok: false, allowed: false, status: response.status, deal: null };
     }

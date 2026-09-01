@@ -40,6 +40,21 @@ test('CASE 1: участник по dealId → ALLOWED одним лёгким �
   assert.deepEqual(calls, [['getDeal', DEAL_ID]], 'ровно один лёгкий запрос; rooms/дашборд не трогаем');
 });
 
+// CASE 1b — физический дефект 2026-09-01: deeplink несёт UUID в ВЕРХНЕМ
+// регистре, сервер (после регистро-устойчивого lookup) отдаёт КАНОНИЧЕСКИЙ
+// строчный id. Строгое сравнение id уводило бы участника в UNAVAILABLE уже
+// ПОСЛЕ успешной серверной проверки — оба сравнения регистро-независимы.
+test('CASE 1b: UPPERCASE deeplink + канонический lowercase ответ → ALLOWED с каноническим id', async () => {
+  const canonical = DEAL_ID.toLowerCase();
+  const api = {
+    getDeal: async () => ({ id: canonical, chat_room_id: 'room-77' }),
+    rooms: async () => ({ rooms: [] }),
+  };
+  const r = await resolveDealLinkAccess({ dealId: DEAL_ID.toUpperCase(), api });
+  assert.equal(r.state, DEAL_ACCESS.ALLOWED);
+  assert.equal(r.dealId, canonical, 'дальше в workspace уходит канонический id сервера, не строка из URL');
+});
+
 // CASE 2 — проигравший торг (Berik): сервер 403 → конечный DENIED.
 test('CASE 2: проигравший по deeplink → DENIED (403), не спиннер и не throw', async () => {
   const api = { getDeal: async () => ({ ok: false, status: 403, detail: 'forbidden' }), rooms: async () => ({ rooms: [] }) };
@@ -128,7 +143,7 @@ test('CASE 7: roomId/partner входы — свой room → ALLOWED, чужо�
 
 // Fail closed: 200, но тело — ДРУГАЯ сделка (аномалия прокси/транспорта).
 test('200 с чужим id → UNAVAILABLE (никогда не ALLOWED)', async () => {
-  const api = { getDeal: async () => ({ id: 'another-deal', chat_room_id: 'x' }), rooms: async () => ({ rooms: [] }) };
+  const api = { getDeal: async () => ({ id: 'another-deal-entirely', chat_room_id: 'x' }), rooms: async () => ({ rooms: [] }) };
   const r = await resolveDealLinkAccess({ dealId: DEAL_ID, api });
   assert.equal(r.state, DEAL_ACCESS.UNAVAILABLE);
 });

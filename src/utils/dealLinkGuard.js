@@ -53,7 +53,11 @@ export async function resolveDealLinkAccess({ dealId = null, roomId = null, part
       const direct = await deps.getDeal(dealId);
       const state = classifyDealAccess(direct);
       if (state === DEAL_ACCESS.ALLOWED) {
-        if (String(direct?.id || '') !== String(dealId)) {
+        // Сравнение регистро-независимое: по RFC 4122 hex-цифры UUID
+        // регистро-независимы, а сервер возвращает КАНОНИЧЕСКИЙ id из БД
+        // (строчными). Строгое сравнение уводило бы UPPERCASE-deeplink в
+        // UNAVAILABLE уже ПОСЛЕ успешной серверной проверки доступа.
+        if (String(direct?.id || '').toLowerCase() !== String(dealId).toLowerCase()) {
           // 200, но сервер вернул ДРУГУЮ сделку — аномалия, fail closed
           // в retryable (не открывать workspace, не хоронить доступ навсегда).
           return done({ state: DEAL_ACCESS.UNAVAILABLE, source: 'direct-deal', status: 0 });
