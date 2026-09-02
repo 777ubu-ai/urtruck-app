@@ -328,11 +328,6 @@ export default function ProfileScreen({ navigation, route }) {
               ))}
             </View>
           </View>
-
-          <TouchableOpacity style={[s.pushBtn, { backgroundColor: theme.bg, borderColor: theme.border }]} onPress={() => navigation.navigate('PushFilter', { role })} testID="profile-push-filter" accessibilityLabel={t('pushFilter')}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Feather name="bell" size={14} color={theme.text} /><Text style={[s.settingLabel, { color: theme.text }]}>{t('pushFilter')}</Text></View>
-            <Text style={[s.configureBtn, { color: accent }]}>{t('configure')} →</Text>
-          </TouchableOpacity>
         </View>
 
         {Platform.OS === 'web' ? (
@@ -421,8 +416,6 @@ const s = StyleSheet.create({
   langGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   langCard: { width: '23.5%', minWidth: 68, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 10, borderWidth: 1, alignItems: 'center', gap: 3 },
   langCardText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
-  pushBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 12 },
-  configureBtn: { fontSize: 12, fontWeight: '700' },
   versionRow: { alignItems: 'center', paddingVertical: 10, marginBottom: 6 },
   versionText: { fontSize: 11, fontWeight: '500' },
   logoutBtn: { paddingVertical: 16, alignItems: 'center', marginTop: 8 },
