@@ -300,7 +300,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   React.useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; try { voice.stop?.(); } catch {} };
+    return () => {
+      mounted.current = false;
+      // Остановить активную запись (recording session) — voice.stopRecording()
+      // корректно разгружает expo-av Recording. Результат не отправляем (discard).
+      try { voice.stopRecording?.(); } catch {}
+      // Остановить активное воспроизведение (playback) — отдельно от записи.
+      try { voice.stop?.(); } catch {}
+    };
   }, []);
 
   // Section 2: focusing the composer must close every overlay that could
@@ -343,7 +350,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       if (viewMode === VIEW_MAP) { setViewMode(VIEW_CHAT); return true; }
       if (attachOpen) { setAttachOpen(false); return true; }
       if (emojiOpen) { setEmojiOpen(false); return true; }
-      if (recording) { setRecording(false); try { voice.stop?.(); } catch {} return true; }
+      if (recording) { setRecording(false); try { voice.stopRecording?.(); } catch {} return true; }
       // No internal overlay open — let React Navigation handle goBack()
       return false;
     };

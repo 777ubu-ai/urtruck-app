@@ -137,5 +137,72 @@ console.log('\n=== 8. Only one goBack() call — the header back button ===');
   );
 }
 
+console.log('\n=== 9. Back during recording → voice.stopRecording(), not voice.stop() ===');
+{
+  // The BackHandler must call voice.stopRecording (recording session cleanup),
+  // NOT voice.stop (playback cleanup) when recording is active.
+  const bh = src.indexOf("BackHandler.addEventListener('hardwareBackPress'");
+  const effStart = bh >= 0 ? src.lastIndexOf('React.useEffect(', bh) : -1;
+  const effEnd = bh >= 0 ? src.indexOf(']);', bh) : -1;
+  const block = effStart >= 0 && effEnd >= 0 ? src.slice(effStart, effEnd) : '';
+  expect(
+    block.includes('recording') && block.includes('voice.stopRecording'),
+    'BackHandler calls voice.stopRecording() when recording is active',
+  );
+  // Must NOT call voice.stop() (playback) in the recording branch
+  const recordingBranch = block.match(/if\s*\(\s*recording\s*\)\s*\{([^}]+)\}/);
+  const branchBody = recordingBranch ? recordingBranch[1] : '';
+  expect(
+    branchBody.includes('stopRecording') && !branchBody.includes('voice.stop()'),
+    'Recording branch uses stopRecording, not playback stop()',
+  );
+}
+
+console.log('\n=== 10. Unmount during recording → voice.stopRecording() ===');
+{
+  // The mount/unmount useEffect must call both:
+  //   voice.stopRecording() — for an active recording session
+  //   voice.stop() — for active playback
+  const mountEffect = src.match(/React\.useEffect\(\(\)\s*=>\s*\{\s*mounted\.current\s*=\s*true;[\s\S]*?\},\s*\[\s*\]\)/);
+  const mountBlock = mountEffect ? mountEffect[0] : '';
+  expect(
+    mountBlock.includes('voice.stopRecording'),
+    'Unmount cleanup calls voice.stopRecording() for active recording',
+  );
+  expect(
+    mountBlock.includes('voice.stop'),
+    'Unmount cleanup calls voice.stop() for active playback',
+  );
+  // Both must be present — recording and playback are independent cleanup
+  const hasStopRecording = (mountBlock.match(/voice\.stopRecording/g) || []).length;
+  const hasStop = (mountBlock.match(/voice\.stop[^R]/g) || []).length;
+  expect(
+    hasStopRecording >= 1 && hasStop >= 1,
+    `Unmount has both stopRecording (${hasStopRecording}) and stop (${hasStop}) calls`,
+  );
+}
+
+console.log('\n=== 11. Playback cleanup not broken — voice.stop() still in module ===');
+{
+  const voiceSrc = fs.readFileSync(path.join(ROOT, 'src/utils/voiceRecorder.js'), 'utf-8');
+  // voice.stop() must be an async method that stops playback
+  expect(
+    /async\s+stop\s*\(\s*\)/.test(voiceSrc),
+    'voiceRecorder exports async stop() for playback cleanup',
+  );
+  // voice.stopRecording() must be an async method that stops recording
+  expect(
+    /async\s+stopRecording\s*\(\s*\)/.test(voiceSrc),
+    'voiceRecorder exports async stopRecording() for recording cleanup',
+  );
+  // stop() must NOT touch _recording — it's playback only
+  const stopBody = voiceSrc.match(/async\s+stop\s*\(\s*\)\s*\{([\s\S]*?)\n\s{2}\}/);
+  const stopCode = stopBody ? stopBody[1] : '';
+  expect(
+    !stopCode.includes('_recording'),
+    'voice.stop() does not touch _recording (playback only)',
+  );
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
