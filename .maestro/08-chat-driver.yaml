@@ -68,11 +68,11 @@ env:
           id: "chat-input"
       - tapOn:
           id: "chat-input"
-      - inputText: "Принял груз"
+      - inputText: "Принял-груз"
       - hideKeyboard
       - tapOn:
           id: "chat-send-btn"
       - waitForAnimationToEnd:
           timeout: 3000
       - takeScreenshot: 02_driver_reply_sent
-      - assertVisible: "Принял груз"
+      - assertVisible: "Принял-груз"

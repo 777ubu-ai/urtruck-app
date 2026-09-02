@@ -23,10 +23,10 @@ env:
     visible: { id: "chat-input" }
     timeout: 8000
 - tapOn: { id: "chat-input" }
-- inputText: "QA self msg badge-no-self"
+- inputText: "QA-self-msg-badge-no-self"
 - tapOn: { id: "chat-send-btn" }
 - waitForAnimationToEnd
-- assertVisible: "QA self msg badge-no-self"
+- assertVisible: "QA-self-msg-badge-no-self"
 - back
 - waitForAnimationToEnd
 # H6: своё сообщение НЕ создаёт unread-бейдж отправителю

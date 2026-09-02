@@ -35,11 +35,11 @@ env:
 - assertVisible: "QA driver msg MAESTRO"
 # Шаг 9: owner отвечает через UI
 - tapOn: { id: "chat-input" }
-- inputText: "QA owner reply MAESTRO"
+- inputText: "QA-owner-reply-MAESTRO"
 - tapOn: { id: "chat-send-btn" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: "QA owner reply MAESTRO"
+    visible: "QA-owner-reply-MAESTRO"
     timeout: 10000
-- assertVisible: "QA owner reply MAESTRO"
+- assertVisible: "QA-owner-reply-MAESTRO"
 - takeScreenshot: CH3_owner_reply_sent

@@ -47,12 +47,12 @@ env:
 # Отправка после смены языка работает.
 - tapOn:
     id: "chat-input"
-- inputText: "lang-switch smoke EN"
+- inputText: "lang-switch-smoke-EN"
 - tapOn:
     id: "chat-send-btn"
 - waitForAnimationToEnd
 - assertVisible:
-    text: "lang-switch smoke EN"
+    text: "lang-switch-smoke-EN"
 - takeScreenshot: audit_langchat_04_sent_EN
 # ── Возврат RU для следующих флоу ──
 - tapOn:

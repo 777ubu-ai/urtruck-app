@@ -52,7 +52,7 @@ env:
           id: "chat-input"
       - tapOn:
           id: "chat-input"
-      - inputText: "Ночной тест от QA"
+      - inputText: "Ночной-тест-от-QA"
       - hideKeyboard
       - tapOn:
           id: "chat-send-btn"
@@ -60,4 +60,4 @@ env:
           timeout: 3000
       - takeScreenshot: 02_message_sent
       # Optimistic UI должно показать сообщение
-      - assertVisible: "Ночной тест от QA"
+      - assertVisible: "Ночной-тест-от-QA"

@@ -27,12 +27,12 @@ env:
 - takeScreenshot: audit_chat_02_room_open
 - tapOn:
     id: "chat-input"
-- inputText: "QA-audit persist 20260611"
+- inputText: "QA-audit-persist-20260611"
 - tapOn:
     id: "chat-send-btn"
 - waitForAnimationToEnd
 - assertVisible:
-    text: "QA-audit persist 20260611"
+    text: "QA-audit-persist-20260611"
 - takeScreenshot: audit_chat_03_sent
 # ── Рестарт (killed state) ──
 - stopApp
@@ -47,10 +47,10 @@ env:
 # Сообщение пережило рестарт = дошло до сервера (не только optimistic).
 - extendedWaitUntil:
     visible:
-      text: "QA-audit persist 20260611"
+      text: "QA-audit-persist-20260611"
     timeout: 10000
 - assertVisible:
-    text: "QA-audit persist 20260611"
+    text: "QA-audit-persist-20260611"
 # Заголовок — реальное имя (дотянуто из /chat/rooms), не плейсхолдер.
 - assertNotVisible:
     text: "Собеседник"
