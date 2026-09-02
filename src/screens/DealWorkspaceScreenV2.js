@@ -1175,7 +1175,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   }}
                   testID="deal-chat-message-translate"
                 >
-                  <Feather name="globe" size={11} color="#667781" />
+                  <Feather name="globe" size={12} color="#168759" />
                   <Text style={s.translateText}>
                     {translating === item.id ? '...' : translations[item.id] ? (translations[item.id].showOriginal ? t('hide_original') : t('show_original')) : t('translate')}
                   </Text>
@@ -1354,7 +1354,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']} testID="deal-workspace-screen">
-      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+      <KeyboardAvoidingView
+        // P0 2026-09-02 §10 — физически подтверждено: composer
+        // оставался под клавиатурой на Android. Причина: behavior=undefined
+        // для Android означает «ничего не делать». Меняем на 'height'
+        // (то же, что в ChatScreen, PR-C2 canon).
+        style={s.safe}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
         {viewMode === VIEW_CHAT ? (
           <View style={s.chatFullscreen} testID="deal-chat-fullscreen">
             {dealLoading && !dealId ? (
@@ -1713,11 +1721,14 @@ const s = StyleSheet.create({
   metaSecondary: { fontSize: 10.8, fontWeight: '650', marginTop: 2 },
   partnerText: { fontSize: 10.8, fontWeight: '650', marginTop: 2 },
 
-  chatFullscreen: { flex: 1, backgroundColor: '#F4EFE7' },
+  // P0 2026-09-02 §5 — WhatsApp canonical chat bg (утверждено владельцем):
+  // #EFEAE2, а не #F4EFE7. Изменение цветов чата запрещено без
+  // отдельного решения — freeze см. docs/product/CHAT_CANON.md.
+  chatFullscreen: { flex: 1, backgroundColor: '#EFEAE2' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 9 },
   loadingText: { fontSize: 13, fontWeight: '700' },
 
-  chatBody: { flex: 1, position: 'relative', backgroundColor: '#F4EFE7' },
+  chatBody: { flex: 1, position: 'relative', backgroundColor: '#EFEAE2' },
   messageList: { flex: 1 },
   messageContent: { paddingHorizontal: 14, paddingTop: 18, paddingBottom: 14 },
   messageRow: { marginBottom: 10, paddingHorizontal: 4 },
@@ -1743,7 +1754,8 @@ const s = StyleSheet.create({
   photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
   voiceRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 8 },
   translateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  translateText: { color: '#667781', fontSize: 11, fontWeight: '700' },
+  translateText: { // P0 2026-09-02 §6: физически подтверждено — слишком тусклый цвет делал кнопку невидимой на белом bubble. Меняем на brand green + подчёркивание — WhatsApp-like assistive link.
+    color: '#168759', fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' },
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
   jumpLatest: { position: 'absolute', right: 14, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#168759', paddingHorizontal: 11, height: 34, borderRadius: 17, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, elevation: 3 },
   jumpLatestText: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' },

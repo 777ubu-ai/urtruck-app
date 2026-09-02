@@ -26,7 +26,10 @@ test('foreground deal activity uses the Deals badge without a duplicate top bann
 test('archived deals never render unread badges and app icon badge uses active Deals attention only', () => {
   assert.match(dealsScreen, /const isArchived = ARCHIVE_DEAL_STATUSES\.has\(data\.status\)/);
   assert.match(dealsScreen, /const unread = isArchived \? 0 :/);
-  assert.match(dealsScreen, /const unread = dealTab === 'archive' \|\| isClosed[\s\S]*\? 0[\s\S]*isBidActionable/);
+  // P0 2026-09-02 §2/§3 — переписан под unified inbox: dealTab больше не
+  // разделяет archive/active/offers, closedBid/archived карточки dimmed'ятся
+  // прямо в списке. Инвариант остался: archive-строка = unread 0.
+  assert.match(dealsScreen, /const unread = isClosed[\s\S]{0,150}?\? 0[\s\S]{0,100}?isBidActionable/);
   assert.match(appBadge, /computeDealsUnread\(dashboard, \{ role \}\)/);
   assert.doesNotMatch(appBadge, /chatAPI\.unread\(/);
   assert.doesNotMatch(appBadge, /notificationsAPI\.unread\(/);

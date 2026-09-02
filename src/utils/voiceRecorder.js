@@ -15,6 +15,11 @@ let _sound = null;
 let _webAudio = null;
 let _playingUri = null;
 let _playPromise = null;
+// P0 2026-09-02: ссылка на resolve текущего play() Promise. При
+// новом play() предыдущий Promise явно резолвится в false, чтобы
+// consumer'ы не висли. Отсутствие объявления давало ReferenceError
+// (проверено: `if (_playResolve)` бросал ReferenceError в native).
+let _playResolve = null;
 let _webTick = null;
 
 // Состояние активного трека + подписчики (UI бабла голосового).
@@ -200,11 +205,18 @@ export const voice = {
 
     try {
       if (_sound) {
+        // Предыдущий трек: явно резолвим сохранённый resolve (если он был
+        // выставлен извне через _playResolve), затем выгружаем sound.
+        // Это единственное место, где ReferenceError на _playResolve мог
+        // ронять весь блок и оставлять _sound не выгруженным (проверено:
+        // без объявления `if (_playResolve)` бросает ReferenceError даже
+        // в native, т.к. _playResolve — module-scope, не global). Теперь
+        // объявлен наверху → блок безопасен.
         if (_playResolve) {
           try { _playResolve(false); } catch {}
           _playResolve = null;
         }
-        await _sound.unloadAsync();
+        try { await _sound.unloadAsync(); } catch { /* ignore stale */ }
         _sound = null;
       }
       const { Audio } = require('expo-av');
@@ -246,6 +258,12 @@ export const voice = {
           durationMillis: status.durationMillis || _state.durationMillis || 0,
         });
       });
+      // P0 2026-09-02: физически подтверждённый ложный тост «Не удалось
+      // воспроизвести» — раньше run IIFE не возвращала `true` при успешном
+      // старте, поэтому вызывающий получал `undefined`, `!ok` = true и
+      // ChatScreen показывал toast('voice_play_fail'). Возвращаем true как
+      // только звук встал в очередь — реальная ошибка ловится в catch ниже.
+      return true;
     } catch (e) {
       console.warn('[voice] play failed:', e);
       _resetState();

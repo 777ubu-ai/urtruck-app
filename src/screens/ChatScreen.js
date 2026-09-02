@@ -2111,9 +2111,16 @@ export default function ChatScreen({ navigation, route }) {
                   />
                 ) : null}
                 <Text
+                  // P0 2026-09-02 §6: физически подтверждено — кнопка была
+                  // почти невидима на белом bubble. Меняем муравьинный muted
+                  // на accent-green (v1Colors.driver, 4.52:1 vs белый = WCAG
+                  // AA) + подчёркивание. isMe оставляем светлой (белый
+                  // bubble = зелёный CTA, ~5:1).
                   style={{
-                    color: isMe ? "rgba(255,255,255,0.5)" : theme.textMuted,
-                    fontSize: 11,
+                    color: isMe ? "rgba(255,255,255,0.72)" : "#168759",
+                    fontSize: 12,
+                    fontWeight: "600",
+                    textDecorationLine: "underline",
                   }}
                 >
                   {translating === item.id

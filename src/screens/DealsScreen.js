@@ -69,9 +69,12 @@ const CLOSED_BID_STATUSES = new Set(["rejected", "cancelled", "expired"]);
 const COPY = {
   RU: {
     archive: 'Архив',
-    tabOffersLabel: 'Предложения',
-    tabActiveLabel: 'В работе',
-    tabArchiveLabel: 'Архив',
+    // P0 2026-09-02 §2-§3 — вернули unified inbox (0b2c11e canon).
+    // PR #243 e036e53 «WhatsApp-style floating deal inbox» вернул старые
+    // 3 вкладки под маркетинговым названием — регрессия. Теперь единый
+    // inbox с фильтром Все/Непрочитанные, статус на карточке.
+    tabAllLabel: 'Все',
+    tabUnreadLabel: 'Непрочитанные',
     search: 'Поиск: водитель, маршрут, груз',
     loadError: 'Не удалось загрузить сделки',
     retry: 'Повторить',
@@ -81,9 +84,8 @@ const COPY = {
   },
   EN: {
     archive: 'Archive',
-    tabOffersLabel: 'Offers',
-    tabActiveLabel: 'In work',
-    tabArchiveLabel: 'Archive',
+    tabAllLabel: 'All',
+    tabUnreadLabel: 'Unread',
     search: 'Search: driver, route, cargo',
     loadError: 'Could not load deals',
     retry: 'Retry',
@@ -93,9 +95,8 @@ const COPY = {
   },
   ZH: {
     archive: '归档',
-    tabOffersLabel: '报价',
-    tabActiveLabel: '进行中',
-    tabArchiveLabel: '归档',
+    tabAllLabel: '全部',
+    tabUnreadLabel: '未读',
     search: '搜索：司机、路线、货物',
     loadError: '无法加载交易',
     retry: '重试',
@@ -105,9 +106,8 @@ const COPY = {
   },
   KK: {
     archive: 'Мұрағат',
-    tabOffersLabel: 'Ұсыныстар',
-    tabActiveLabel: 'Жұмыста',
-    tabArchiveLabel: 'Мұрағат',
+    tabAllLabel: 'Барлығы',
+    tabUnreadLabel: 'Оқылмаған',
     search: 'Іздеу: жүргізуші, бағыт, жүк',
     loadError: 'Мәмілелерді жүктеу мүмкін болмады',
     retry: 'Қайталау',
@@ -276,7 +276,7 @@ export default function DealsScreen({ navigation, route }) {
   const roleAccent = accentFor(role) || ACCENT;
   const copy = COPY[lang] || COPY.EN;
 
-  const [dealTab, setDealTab] = useState("offers");
+  const [dealTab, setDealTab] = useState("all");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -484,38 +484,57 @@ export default function DealsScreen({ navigation, route }) {
     [activeDeals, role, unreadNotifPaths],
   );
 
+  // P0 2026-09-02 §2-§3 — единый inbox: все предложения + активные +
+  // архивные + закрытые в ОДНОМ списке, отсортированные по свежести
+  // (last_message_at → updated_at → created_at). Статус остаётся свойством
+  // карточки. Фильтр `all` показывает всё, `unread` — только с unread > 0
+  // или attention-flag.
   const baseItems = useMemo(() => {
-    if (dealTab === "offers") {
-      return offersData.map((item) => ({
+    const merged = [
+      ...offersData.map((item) => ({
         kind: 'bid',
         data: item,
         sortAt: item.updated_at || item.created_at || '',
-      }));
-    }
-    if (dealTab === "active") {
-      return activeDeals.map((item) => ({
-        kind: "deal",
+        isOpenBid: true,
+      })),
+      ...activeDeals.map((item) => ({
+        kind: 'deal',
         data: item,
-        sortAt:
-          item.last_message_at || item.updated_at || item.created_at || "",
-      }));
-    }
-    return [
+        sortAt: item.last_message_at || item.updated_at || item.created_at || '',
+        isActive: true,
+      })),
       ...archivedDeals.map((item) => ({
-        kind: "deal",
+        kind: 'deal',
         data: item,
-        sortAt: item.updated_at || item.created_at || "",
+        sortAt: item.updated_at || item.created_at || '',
+        isArchive: true,
       })),
       ...closedBidsData.map((item) => ({
-        kind: "bid",
+        kind: 'bid',
         data: item,
-        sortAt: item.updated_at || item.created_at || "",
+        sortAt: item.updated_at || item.created_at || '',
+        isClosedBid: true,
       })),
     ].sort((a, b) => {
       const ta = parseServerDate(a.sortAt)?.getTime() || 0;
       const tb = parseServerDate(b.sortAt)?.getTime() || 0;
       return tb - ta;
     });
+
+    if (dealTab === 'unread') {
+      return merged.filter(({ data, isOpenBid }) => {
+        // Открытая ставка = требует внимания; сделка с unread_count > 0 —
+        // тоже; иначе не показываем в «Непрочитанные».
+        if (isOpenBid) return true;
+        const unread = Number(data?.unread_count || 0);
+        if (unread > 0) return true;
+        // attention-flag от tracking permission request
+        if (data?.tracking_action_required) return true;
+        return false;
+      });
+    }
+    // 'all' — по умолчанию весь inbox
+    return merged;
   }, [dealTab, role, offersData, activeDeals, archivedDeals, closedBidsData]);
 
   const visibleItems = useMemo(() => {
@@ -608,7 +627,7 @@ export default function DealsScreen({ navigation, route }) {
       const offerRoute = routeFor(data, 'bid');
       const offerCargo = data.cargo_desc ? localizeCargoName(data.cargo_desc, lang) : '';
       const offerMeta = [offerRoute, offerCargo].filter(Boolean).join(' · ');
-      const unread = dealTab === 'archive' || isClosed
+      const unread = isClosed  // §2 unified: archive стал свойством карточки (dimmed), не отдельной вкладкой
         ? 0
         : isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0;
       return (
@@ -675,11 +694,8 @@ export default function DealsScreen({ navigation, route }) {
     unreadNotifPaths,
   ]);
 
-  const emptyText = dealTab === 'active'
-    ? copy.activeEmpty
-    : dealTab === 'archive'
-      ? copy.archiveEmpty
-      : copy.offersEmpty;
+  // §2 unified: единое empty state для «Все» и «Непрочитанные»
+  const emptyText = dealTab === 'unread' ? copy.offersEmpty : copy.activeEmpty;
 
   const listHeader = (
     <View
@@ -702,31 +718,26 @@ export default function DealsScreen({ navigation, route }) {
       </View>
 
       <View style={styles.tabsRow} testID="deals-primary-tabs">
+        {/* P0 2026-09-02 §2-§3 — вернули unified inbox (0b2c11e canon).
+              PR #243 (e036e53 «WhatsApp-style floating deal inbox») вернул
+              3 старые вкладки под маркетинговым названием — регрессия.
+              Теперь максимум 2 фильтра, статус на карточке. */}
         <TabChip
-          testID="deals-tab-offers"
-          label={copy.tabOffersLabel}
-          count={offerCount}
-          attentionCount={offerAttentionCount}
-          active={dealTab === 'offers'}
-          onPress={() => setDealTab('offers')}
+          testID="deals-tab-all"
+          label={copy.tabAllLabel}
+          count={offerCount + activeDeals.length + archivedDeals.length + closedBidsData.length}
+          attentionCount={offerAttentionCount + activeAttentionCount}
+          active={dealTab === 'all'}
+          onPress={() => setDealTab('all')}
           colors={palette}
         />
         <TabChip
-          testID="deals-tab-active"
-          label={copy.tabActiveLabel}
-          count={activeDeals.length}
-          attentionCount={activeAttentionCount}
-          active={dealTab === 'active'}
-          onPress={() => setDealTab('active')}
-          colors={palette}
-        />
-        <TabChip
-          testID="deals-tab-archive"
-          label={copy.tabArchiveLabel}
-          count={archivedDeals.length + closedBidsData.length}
-          active={dealTab === 'archive'}
-          onPress={() => setDealTab('archive')}
-          icon="archive"
+          testID="deals-tab-unread"
+          label={copy.tabUnreadLabel}
+          count={offerCount + activeAttentionCount}
+          attentionCount={offerAttentionCount + activeAttentionCount}
+          active={dealTab === 'unread'}
+          onPress={() => setDealTab('unread')}
           colors={palette}
         />
       </View>

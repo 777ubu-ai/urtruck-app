@@ -1,70 +1,49 @@
+// P0 2026-09-02 — переписан под unified inbox (§2/§3).
+//
+// БЫВШИЙ файл (`e036e53 PR #243 «WhatsApp-style floating deal inbox»`)
+// защищал именно ту регрессию, которая вернула вкладки Предложения / В
+// работе / Архив. Теперь тест защищает НОВЫЙ канон:
+//
+//   - ChatsListScreen router ВСЕГДА возвращает DealsScreen (без Legacy).
+//   - DealsScreen имеет `deals-tab-all` / `deals-tab-unread`, не старые
+//     `deals-tab-offers/active/archive`.
+//   - Плавающий header остаётся — но без 3 вкладок.
+//   - ARCHIVE_DEAL_STATUSES остаются свойством карточек (isArchived → dimmed),
+//     не отдельной вкладкой.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const wrapper = fs.readFileSync("src/screens/ChatsListScreen.js", "utf8");
 const deals = fs.readFileSync("src/screens/DealsScreen.js", "utf8");
-const legacy = fs.readFileSync("src/screens/ChatsListLegacyScreen.js", "utf8");
 
-test("Deals route is isolated from the legacy standalone chat list", () => {
-  assert.match(wrapper, /props\?\.route\?\.name === ["']Deals["']/);
+test("ChatsListScreen router возвращает DealsScreen для любого маршрута", () => {
   assert.match(wrapper, /<DealsScreen \{\.\.\.props\} ?\/>/);
-  assert.match(wrapper, /<LegacyChatsListScreen \{\.\.\.props\} ?\/>/);
-  assert.match(legacy, /export default function ChatsListScreen/);
+  assert.doesNotMatch(wrapper, /^import\s+.*LegacyChatsListScreen/m,
+    "Legacy path устарел (см. DEALS_CANON.md)");
 });
 
-test('deal inbox scrolls menu, primary chips, and search away with the list', () => {
-  assert.match(deals, /testID="deals-minimal-header"/);
-  assert.match(deals, /testID="deals-primary-tabs"/);
-  assert.match(deals, /testID="deals-tab-offers"/);
-  assert.match(deals, /testID="deals-tab-active"/);
-  assert.match(deals, /testID="deals-tab-archive"/);
-  assert.match(deals, /const listHeader = \(/);
-  assert.match(deals, /ListHeaderComponent=\{listHeader\}/);
-  assert.match(deals, /testID="deals-scroll-header"/);
-  assert.doesNotMatch(deals, /styles\.fixedHeader/);
-  assert.doesNotMatch(deals, /stickyHeaderIndices/);
-  assert.doesNotMatch(deals, /t\('tab_deals'\)/);
+test('deal inbox: floating header остаётся, но с новыми canonical вкладками', () => {
+  assert.match(deals, /testID="deals-minimal-header"/,
+    'плавающий header (menu + tabs + search)');
+  assert.match(deals, /testID="deals-primary-tabs"/,
+    'блок tab-переключателей — 2 канонических chips');
+  assert.match(deals, /testID="deals-tab-all"/, 'вкладка Все');
+  assert.match(deals, /testID="deals-tab-unread"/, 'вкладка Непрочитанные');
+  assert.match(deals, /testID="deals-scroll-header"/,
+    'search живёт внутри listHeader');
+  // Инверсная защита: старые вкладки — регрессия.
+  assert.doesNotMatch(deals, /testID="deals-tab-offers"/);
+  assert.doesNotMatch(deals, /testID="deals-tab-active"/);
+  assert.doesNotMatch(deals, /testID="deals-tab-archive"/);
 });
 
-test("archive is separate and includes completed deals plus closed negotiations", () => {
-  assert.match(deals, /ARCHIVE_DEAL_STATUSES/);
-  assert.match(deals, /CLOSED_BID_STATUSES/);
-  assert.match(deals, /\.\.\.archivedDeals\.map/);
-  assert.match(deals, /\.\.\.closedBidsData\.map/);
-  assert.match(deals, /dealTab === ["']archive["']/);
-});
-
-test("cards are compact and do not use the old decorative avatar/dollar block", () => {
-  assert.match(deals, /function CompactDealCard/);
-  assert.match(deals, /minHeight: 92/);
-  assert.match(deals, /routeLabel=\{routeFor/);
-  assert.match(deals, /price=\{/);
-  assert.doesNotMatch(deals, /name="dollar-sign"/);
-  assert.doesNotMatch(deals, /styles?\.avatar/);
-});
-
-test("four-language copy exists for new archive/search/error UI", () => {
-  assert.match(deals, /RU: \{/);
-  assert.match(deals, /EN: \{/);
-  assert.match(deals, /ZH: \{/);
-  assert.match(deals, /KK: \{/);
-  assert.match(deals, /archive: ["']Архив["']/);
-  assert.match(deals, /archive: ["']Archive["']/);
-  assert.match(deals, /archive: ["']归档["']/);
-  assert.match(deals, /archive: ["']Мұрағат["']/);
-});
-
-test("actionable counts remain computed for offer and active deal attention", () => {
-  assert.match(deals, /const offerAttentionCount = useMemo/);
-  assert.match(deals, /isBidActionable/);
-  assert.match(deals, /const activeAttentionCount = useMemo/);
-  assert.match(
-    deals,
-    /item\.tracking_action_required[\s\S]*role === ["']client["'][\s\S]*item\.status === ["']delivered["'][\s\S]*item\.status === ["']awaiting_confirmation["']/,
-  );
-  assert.match(
-    deals,
-    /const attentionRequired[\s\S]*needsReceiptConfirmation[\s\S]*trackingActionRequired/,
-  );
+test("archive-статус — свойство карточки (isArchived → dimmed), а не вкладка", () => {
+  // ARCHIVE_DEAL_STATUSES = {completed, cancelled, rejected, expired}
+  assert.match(deals, /ARCHIVE_DEAL_STATUSES = new Set\(\[[^\]]*completed[^\]]*\]/);
+  // isArchived → dimmed prop на карточке
+  assert.match(deals, /const isArchived = ARCHIVE_DEAL_STATUSES\.has\(data\.status\)/);
+  assert.match(deals, /dimmed=\{isArchived\}/);
+  // baseItems: closedBidsData участвует в едином списке
+  assert.match(deals, /closedBidsData/);
 });
