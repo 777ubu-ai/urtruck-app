@@ -23,10 +23,12 @@ import { useToast } from '../components/Toast';
 import { useVerificationGate } from '../components/VerificationGate';
 import { SkeletonCard } from '../components/Skeleton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
+import BellBadge from '../components/ui/v1/BellBadge';
 import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
+import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 
 const ACCENT = '#34936B';
 const ACCENT_SOFT = '#EAF5EF';
@@ -151,6 +153,7 @@ export default function FeedScreen({ navigation }) {
   const myUserId = session?.user?.id;
   const role = 'client';
   const copy = COPY[lang] || COPY.RU;
+  const notifUnread = useUnreadNotifications(!!myUserId);
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -479,6 +482,11 @@ export default function FeedScreen({ navigation }) {
         style={[styles.topBar, { backgroundColor: colors.pageBg }]}
         testID="trip-feed-minimal-header"
       >
+        <BellBadge
+          count={notifUnread}
+          onPress={() => navigation.navigate('Notifications')}
+          testID="feed-notifications-btn"
+        />
         <TouchableOpacity
           onPress={() => navigation.navigate('Profile', { role })}
           style={styles.menuBtn}
@@ -701,8 +709,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 2,
     paddingBottom: 2,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: PAGE_BG,
   },
   menuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
