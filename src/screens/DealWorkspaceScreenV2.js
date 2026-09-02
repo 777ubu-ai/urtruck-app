@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   AppState,
+  BackHandler,
   FlatList,
   Image,
   Keyboard,
@@ -327,6 +328,28 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     inputRef.current?.blur?.();
     Keyboard.dismiss();
   }, [input, recording]);
+
+  // P1 2026-09-02 — Android hardware back button: close internal overlays
+  // (map, attach menu, emoji) BEFORE letting React Navigation pop the screen.
+  // Without this, pressing Back while the map is visible pops the entire Chat
+  // screen instead of returning to chat view — the physically-reproduced
+  // Xiaomi P1 bug where dealId/roomId context is lost and the user lands on a
+  // different room or exits the app entirely.
+  // Modal-based overlays (statusModal, callMenu, fullImage, confirmDialog)
+  // already handle onRequestClose and are NOT duplicated here.
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    const handler = () => {
+      if (viewMode === VIEW_MAP) { setViewMode(VIEW_CHAT); return true; }
+      if (attachOpen) { setAttachOpen(false); return true; }
+      if (emojiOpen) { setEmojiOpen(false); return true; }
+      if (recording) { setRecording(false); try { voice.stop?.(); } catch {} return true; }
+      // No internal overlay open — let React Navigation handle goBack()
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', handler);
+    return () => sub.remove();
+  }, [viewMode, attachOpen, emojiOpen, recording]);
 
   React.useEffect(() => {
     if (!recording) { setRecordSecs(0); return undefined; }
