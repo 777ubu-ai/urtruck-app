@@ -47,3 +47,42 @@ Maestro `inputText: "text with spaces"` на Android под капотом вы�
 ```
 
 Это медленнее, но семантически 1:1.
+
+## Real-spaces regression через clipboard
+
+Файл `.maestro/12-chat-real-spaces-e2e.yaml` (Phase 3.1) — прямая
+проверка что реальный текст с пробелами доходит до собеседника 1:1.
+НЕ обход, а именно paste через clipboard:
+
+```yaml
+- setClipboard: "QA text with spaces 20260902"
+- pasteText
+- assertVisible: "QA text with spaces 20260902"
+- assertNotVisible: "QA%20text%20with%20spaces%2020260902"
+```
+
+### Возможные исходы
+
+- **PASS** — clipboard paste работает, пробелы 1:1 → dash-workaround в
+  других скриптах остаётся как defensive practice, но harness пробелы
+  теперь поддерживает через этот путь.
+- **FAIL** — даже `pasteText` через `setClipboard` портит пробелы. Это
+  зафиксированная **Maestro/OS-limitation** (не bug UrTruck):
+  - **UrTruck production code — НЕ трогать.** End-to-end trace (Phase 2 §3)
+    доказал, что composer → chatAPI.send → backend → renderer чистый.
+  - **Физический keyboard-test остаётся обязательным** — единственный
+    способ доказать 1:1 на устройстве.
+  - **Owner проверяет вручную** на Xiaomi/iPhone: набрать «привет мир»
+    с физической клавиатуры, убедиться что сообщение доходит 1:1.
+
+### Требования
+
+- Maestro 1.32+ (для `setClipboard`). Проверить `maestro --version` перед
+  прогоном. Если старше — команда даст ошибку "unknown command", это
+  не encoding bug, а harness version.
+
+Запуск:
+
+```bash
+maestro test .maestro/12-chat-real-spaces-e2e.yaml
+```

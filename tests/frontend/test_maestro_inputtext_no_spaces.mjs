@@ -64,3 +64,30 @@ test('README-inputtext-spaces.md существует и упомянут в hel
   const readme = readFileSync('qa/maestro/_lib/README-inputtext-spaces.md', 'utf8');
   assert.match(readme, /root cause|%20|inputText/i);
 });
+
+// §A Phase 3.1: real-spaces E2E контракт — проверяем что специальный
+// clipboard-based тест 12-chat-real-spaces-e2e.yaml существует и содержит
+// нужные assertions. Он ИСКЛЮЧЕНИЕ из no-spaces правила: пробелы попадают
+// через setClipboard/pasteText, а не через inputText.
+test('.maestro/12-chat-real-spaces-e2e.yaml контракт: setClipboard + pasteText + exact assertVisible', () => {
+  const p = '.maestro/12-chat-real-spaces-e2e.yaml';
+  const src = readFileSync(p, 'utf8');
+  assert.match(src, /^\s*-\s*setClipboard:\s*"QA text with spaces 20260902"/m,
+    'setClipboard с настоящими пробелами');
+  assert.match(src, /^\s*-\s*pasteText\s*$/m,
+    'pasteText action');
+  assert.match(src, /^\s*-\s*assertVisible:\s*"QA text with spaces 20260902"/m,
+    'exact assertVisible с пробелами');
+  assert.match(src, /^\s*-\s*assertNotVisible:\s*"QA%20text%20with%20spaces%2020260902"/m,
+    'inverse assertion: %20-encoded НЕ должен появляться');
+});
+
+test('README-inputtext-spaces.md документирует harness limitation и требование physical keyboard test', () => {
+  const readme = readFileSync('qa/maestro/_lib/README-inputtext-spaces.md', 'utf8');
+  assert.match(readme, /Maestro\/OS-limitation/,
+    'harness limitation задокументирован');
+  assert.match(readme, /Физический keyboard-test остаётся обязательным/,
+    'physical keyboard остаётся обязательным');
+  assert.match(readme, /12-chat-real-spaces-e2e\.yaml/,
+    'ссылка на E2E тест');
+});

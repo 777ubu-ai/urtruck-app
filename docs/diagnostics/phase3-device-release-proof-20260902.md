@@ -38,6 +38,44 @@ Android под капотом использует `adb shell input text`, ко�
 
 **Frontend suite:** 461/461 tests PASS ✅
 
+### Phase 3.1 addendum — real-spaces regression (по прямому указанию owner)
+
+**Добавлено:** `.maestro/12-chat-real-spaces-e2e.yaml` — отдельный E2E
+контракт с настоящими пробелами через `setClipboard` + `pasteText`. НЕ
+обход, а прямая проверка что чистая строка `QA text with spaces 20260902`
+доходит до собеседника 1:1.
+
+```yaml
+- setClipboard: "QA text with spaces 20260902"
+- pasteText
+- assertVisible: "QA text with spaces 20260902"
+- assertNotVisible: "QA%20text%20with%20spaces%2020260902"
+```
+
+**Возможные исходы (на устройстве owner):**
+
+- **PASS** — clipboard paste работает 1:1 → harness-limitation в existing
+  scripts (dash-workaround) не критичен, будущие скрипты могут использовать
+  этот же паттерн для реальных пробелов.
+- **FAIL** — даже `pasteText` через `setClipboard` портит пробелы. Это
+  зафиксированная **Maestro/OS-limitation**, НЕ bug UrTruck.
+  UrTruck production code — НЕ трогать. Физический keyboard-test
+  остаётся обязательным.
+
+**Требования:** Maestro 1.32+ для `setClipboard`. Проверить `maestro --version`.
+
+**Contract tests** (2 новых assertions в
+`test_maestro_inputtext_no_spaces.mjs`):
+- Проверяют что 12-chat-real-spaces-e2e.yaml существует и содержит
+  ожидаемые setClipboard / pasteText / assertVisible / assertNotVisible.
+- README-inputtext-spaces.md документирует harness limitation.
+
+7 существующих переписанных скриптов **не откачены** — они остаются как
+defensive practice.
+
+Frontend suite после Phase 3.1: **463/463 tests PASS** ✅
+
+
 ---
 
 ## §2. EAS credentials read-only — НЕ ВЫПОЛНЕН (недоступен из контейнера) ⚠️

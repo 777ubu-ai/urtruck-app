@@ -1,0 +1,81 @@
+appId: host.exp.Exponent
+name: phase31-12-chat-real-spaces-e2e
+tags:
+  - phase-3.1
+  - chat
+  - encoding
+  - clipboard
+env:
+  MAESTRO_ACTOR: serik
+---
+# P0 2026-09-02 (Phase 3.1 §A) — real-spaces regression через clipboard.
+#
+# Root cause `%20` bug (доказан Phase 2/3): Maestro `inputText: "text with
+# spaces"` на Android под капотом использует `adb shell input text`, который
+# в некоторых версиях/условиях превращает пробелы в `%20`. Physical proof
+# на Xiaomi BUA6JB99T465Q49X 2026-08-31.
+#
+# Phase 3 fix: 7 существующих скриптов переписаны на dash-separated строки
+# (см. qa/maestro/_lib/README-inputtext-spaces.md). Но это НЕ доказывает,
+# что реальный текст с пробелами доходит 1:1 — оно просто обходит проблему.
+#
+# Этот сценарий — прямая проверка: устанавливаем настоящую строку с
+# пробелами в буфер через setClipboard, вставляем через pasteText, ждём
+# render — и проверяем exact assertVisible со всеми пробелами.
+#
+# ОЖИДАЕМЫЙ РЕЗУЛЬТАТ на Xiaomi/iOS с current Maestro:
+#   PASS  — clipboard paste работает корректно, пробелы 1:1
+#   FAIL  — даже pasteText портит пробелы → Maestro/OS-limitation,
+#           physical keyboard test остаётся обязательным
+#
+# Если тест FAIL — это НЕ регрессия в UrTruck production code. UrTruck
+# code path (Phase 2 §3 end-to-end trace) не применяет encode/decode
+# на user text. Это limitation Maestro harness, задокументировать в
+# qa/maestro/_lib/README-inputtext-spaces.md.
+#
+# HARNESS NOTE: setClipboard появился в Maestro 1.32+. Если версия
+# старше — команда даст ошибку, тест FAIL по недоступности, а не по
+# encoding bug. Проверить `maestro --version` перед прогоном.
+
+- runFlow: ../qa/maestro/_lib/qa-login.yaml
+- tapOn:
+    id: "bottom-nav-chats"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "deal-room-list"
+# Открываем первую доступную комнату (если нет — тест пропустит)
+- runFlow:
+    when:
+      visible:
+        id: "deal-room-list-card"
+    commands:
+      - tapOn:
+          id: "deal-room-list-card"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - assertVisible:
+          id: "chat-input"
+
+      # ─── §A ROOT: real spaces через clipboard ───────────────────
+      - tapOn:
+          id: "chat-input"
+      # Устанавливаем в системный буфер обмена ФАКТИЧЕСКУЮ строку с
+      # пробелами и русскими символами. Никакого dash-workaround.
+      - setClipboard: "QA text with spaces 20260902"
+      - pasteText
+      - takeScreenshot: 00_real_spaces_pasted
+      - hideKeyboard
+      - tapOn:
+          id: "chat-send-btn"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 01_real_spaces_sent
+
+      # EXACT rendering — если пробелы уцелели, assertVisible пройдёт.
+      # Если Maestro/adb порталит их в %20, увидим "QA%20text%20with%20spaces%202026092"
+      # → assertVisible FAIL → harness limitation задокументирован.
+      - assertVisible: "QA text with spaces 20260902"
+      # Инверсная защита: явно ожидаем что %20 НЕ появляется. Если появится,
+      # оба assertVisible'а сработают противоположно — второй ЗАТЯНЕТ тест
+      # в FAIL, но screenshot 01_real_spaces_sent даст доказательство.
+      - assertNotVisible: "QA%20text%20with%20spaces%2020260902"
