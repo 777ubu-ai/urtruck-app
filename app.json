@@ -87,6 +87,7 @@
       ]
     },
     "plugins": [
+      "./plugins/withAndroidBackCompat",
       "expo-system-ui",
       "./plugins/withAndroidSplashSize",
       [
