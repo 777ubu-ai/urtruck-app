@@ -365,3 +365,138 @@ def qa_cleanup_info(x_qa_cleanup_token: Optional[str] = Header(None)):
         "tag_prefix": QA_TAG_PREFIX,
         "endpoint": "/api/v1/qa/cleanup",
     }
+
+
+# ─── QA deal cleanup — P0 2026-09-02 ───────────────────────────────────
+# Обычный /cleanup НАМЕРЕННО не трогает deals — потому что deals создаются
+# после accept bid (graduated pipeline). Но QA-акторы оставляют десятки
+# тестовых сделок, которые потом показываются реальному пользователю через
+# /market/my (47 active + 26 archive). Этот endpoint отменяет ТОЛЬКО
+# сделки, где ОБА участника — QA-акторы (agent-*).
+
+# Все известные QA-акторы (включая удалённых из QA_ACTORS — их сделки
+# всё ещё в БД и нуждаются в зачистке)
+_ALL_QA_ACTOR_IDS = {
+    "agent-serik", "agent-boris", "agent-auditor",
+    # Удалены из QA_ACTORS, но сделки остались:
+    "agent-fedya", "agent-armando", "agent-berik",
+}
+QA_ACTOR_IDS = frozenset(_ALL_QA_ACTOR_IDS | {a["id"] for a in QA_ACTORS.values()})
+
+
+class DealCleanupIn(BaseModel):
+    confirm: bool = False           # обязателен для мутирующего вызова
+    dry_run: bool = True            # по умолчанию dry-run
+    include_chat: bool = True       # зачистить чат-комнаты/сообщения тоже
+    actor_ids: Optional[List[str]] = None  # ограничить конкретными actor id
+
+
+@qa_router.post("/cleanup/deals")
+def qa_cleanup_deals(body: DealCleanupIn, x_qa_cleanup_token: Optional[str] = Header(None)):
+    """Безопасная зачистка QA-сделок. Требования:
+    1. Оба участника (shipper_id И driver_id) — QA-акторы (agent-*).
+    2. dry_run=true по умолчанию — только отчёт, без мутаций.
+    3. confirm=true обязателен для мутации.
+    4. Бэкап полных строк сделок в ответе (backup поле).
+    5. Также чистит chat_rooms + chat_messages если include_chat=true.
+    """
+    _require_token(x_qa_cleanup_token)
+    if not body.dry_run and not body.confirm:
+        raise HTTPException(status_code=400, detail="Мутирующий вызов требует confirm=true (или используйте dry_run=true)")
+
+    target_ids = frozenset(body.actor_ids) if body.actor_ids else QA_ACTOR_IDS
+
+    with get_conn() as c:
+        # Находим ВСЕ сделки, где оба участника — QA-акторы
+        deals_raw = c.execute(
+            "SELECT * FROM deals WHERE shipper_id IN ({ph}) AND driver_id IN ({ph2})".format(
+                ph=",".join("?" * len(target_ids)),
+                ph2=",".join("?" * len(target_ids)),
+            ),
+            list(target_ids) + list(target_ids),
+        ).fetchall()
+        deals = [dict(r) for r in deals_raw]
+
+        # Разбивка по статусу для отчёта
+        by_status = {}
+        for d in deals:
+            s = d.get("status", "unknown")
+            by_status[s] = by_status.get(s, 0) + 1
+
+        # Комнаты чата, привязанные к QA-сделкам
+        chat_room_ids = [d["chat_room_id"] for d in deals if d.get("chat_room_id")]
+        chat_messages_count = 0
+        if chat_room_ids:
+            ph = ",".join("?" * len(chat_room_ids))
+            row = c.execute(f"SELECT COUNT(*) FROM chat_messages WHERE room_id IN ({ph})", chat_room_ids).fetchone()
+            chat_messages_count = int(row[0]) if row else 0
+
+        result = {
+            "dry_run": body.dry_run,
+            "qa_actor_ids": sorted(target_ids),
+            "deals_found": len(deals),
+            "by_status": by_status,
+            "already_cancelled": by_status.get("cancelled", 0),
+            "to_cancel": sum(v for k, v in by_status.items() if k != "cancelled"),
+            "chat_rooms": len(chat_room_ids),
+            "chat_messages": chat_messages_count,
+            "backup": deals,  # полная резервная копия данных
+        }
+
+        if body.dry_run:
+            return result
+
+        # ── Мутация: отмена сделок ──
+        deal_ids = [d["id"] for d in deals if d.get("status") != "cancelled"]
+        if deal_ids:
+            ph = ",".join("?" * len(deal_ids))
+            c.execute(
+                f"UPDATE deals SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP "
+                f"WHERE id IN ({ph})",
+                deal_ids,
+            )
+            result["deals_cancelled"] = len(deal_ids)
+
+        # ── Зачистка чата (soft: удаляем сообщения и комнаты) ──
+        if body.include_chat and chat_room_ids:
+            ph = ",".join("?" * len(chat_room_ids))
+            c.execute(f"DELETE FROM chat_messages WHERE room_id IN ({ph})", chat_room_ids)
+            c.execute(f"DELETE FROM chat_rooms WHERE id IN ({ph})", chat_room_ids)
+            result["chat_rooms_deleted"] = len(chat_room_ids)
+            result["chat_messages_deleted"] = chat_messages_count
+
+        result["applied"] = True
+
+    return result
+
+
+@qa_router.get("/cleanup/deals/preview")
+def qa_cleanup_deals_preview(x_qa_cleanup_token: Optional[str] = Header(None)):
+    """Быстрый просмотр: сколько QA-сделок в БД и какие у них статусы.
+    Не мутирует, не требует confirm."""
+    _require_token(x_qa_cleanup_token)
+
+    with get_conn() as c:
+        deals = c.execute(
+            "SELECT d.id, d.shipper_id, d.driver_id, d.status, d.amount, "
+            "d.from_city, d.to_city, d.created_at, d.chat_room_id "
+            "FROM deals d "
+            "WHERE d.shipper_id IN ({ph}) AND d.driver_id IN ({ph2})".format(
+                ph=",".join("?" * len(QA_ACTOR_IDS)),
+                ph2=",".join("?" * len(QA_ACTOR_IDS)),
+            ),
+            list(QA_ACTOR_IDS) + list(QA_ACTOR_IDS),
+        ).fetchall()
+        deals = [dict(r) for r in deals]
+
+        by_status = {}
+        for d in deals:
+            s = d.get("status", "unknown")
+            by_status[s] = by_status.get(s, 0) + 1
+
+    return {
+        "qa_actor_ids": sorted(QA_ACTOR_IDS),
+        "total": len(deals),
+        "by_status": by_status,
+        "deals": deals,
+    }
