@@ -10,6 +10,8 @@
  *   android:enableOnBackInvokedCallback="false"
  * на <application> — это официальный временный compatibility path.
  *
+ * Dual protection: tracked manifest + config plugin.
+ *
  * Тесты:
  *   1. Plugin файл существует и экспортирует функцию
  *   2. Plugin подключён в app.json → plugins[]
@@ -17,6 +19,8 @@
  *   4. Plugin устанавливает enableOnBackInvokedCallback строго "false"
  *   5. Plugin не трогает другие атрибуты <application>
  *   6. Plugin идемпотентен (повторный вызов не ломает)
+ *   7. Документация в плагине
+ *   8. Tracked AndroidManifest.xml содержит enableOnBackInvokedCallback="false"
  *
  * Run: node tests/frontend/test_android_back_compat_plugin.mjs
  */
@@ -186,6 +190,41 @@ console.log('\n=== 7. Комментарий-документация в пла�
   expect(
     pluginSrc.includes('SDK 54') || pluginSrc.includes('RN 0.81') || pluginSrc.includes('Expo SDK 54'),
     'Плагин указывает когда его можно убрать (SDK 54+ / RN 0.81+)'
+  );
+}
+
+console.log('\n=== 8. Tracked AndroidManifest.xml содержит enableOnBackInvokedCallback="false" ===');
+{
+  const MANIFEST_PATH = path.join(ROOT, 'android/app/src/main/AndroidManifest.xml');
+  expect(
+    fs.existsSync(MANIFEST_PATH),
+    'android/app/src/main/AndroidManifest.xml существует (tracked)'
+  );
+
+  const manifest = fs.readFileSync(MANIFEST_PATH, 'utf-8');
+
+  // Атрибут должен быть на теге <application>
+  const appTagMatch = manifest.match(/<application\s[^>]*>/);
+  expect(!!appTagMatch, '<application> тег найден в tracked manifest');
+
+  if (appTagMatch) {
+    const appTag = appTagMatch[0];
+    expect(
+      appTag.includes('android:enableOnBackInvokedCallback="false"'),
+      'Tracked manifest: <application> содержит android:enableOnBackInvokedCallback="false"'
+    );
+
+    // Не должно быть "true"
+    expect(
+      !appTag.includes('android:enableOnBackInvokedCallback="true"'),
+      'Tracked manifest: значение НЕ "true"'
+    );
+  }
+
+  // Dual protection: и plugin (app.json), и tracked manifest — оба содержат fix
+  expect(
+    !!pluginEntry && appTagMatch?.[0]?.includes('enableOnBackInvokedCallback="false"'),
+    'Dual protection: app.json plugin + tracked manifest оба содержат fix'
   );
 }
 
