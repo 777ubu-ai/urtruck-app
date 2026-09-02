@@ -1821,7 +1821,7 @@ const s = StyleSheet.create({
   recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   recordSendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
-  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, backgroundColor: '#F7FAF8', borderTopWidth: StyleSheet.hairlineWidth },
+  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, backgroundColor: '#EFEAE2', borderTopWidth: StyleSheet.hairlineWidth },
   attachHandleHit: { position: 'absolute', top: 0, left: 0, right: 0, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   attachHandle: { width: 48, height: 5, borderRadius: 3, backgroundColor: '#D5D8DA' },
   attachItem: { width: '25%', alignItems: 'center', gap: 11, marginBottom: 24 },
@@ -1831,12 +1831,17 @@ const s = StyleSheet.create({
   attachPagerDotActive: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7A7A7A' },
   attachPagerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E0E0E0' },
 
-  emojiMenu: { backgroundColor: '#F7FAF8', borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 12 },
+  // P0 2026-09-02 (owner fix) — composerDock/attachMenu/emojiMenu раньше
+  // были светлее чата (#F3F3F3 / #F7FAF8), из-за чего под composer'ом и
+  // открытым attach-меню была видна граница цвета. Приведены к тому же
+  // '#EFEAE2', что и chatBody/chatFullscreen (см. §5 canon выше) — фон
+  // теперь единый от шапки до нижнего safe-area.
+  emojiMenu: { backgroundColor: '#EFEAE2', borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 12 },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
   emojiItem: { width: '12.5%', height: 42, alignItems: 'center', justifyContent: 'center' },
   emojiText: { fontSize: 26, lineHeight: 32 },
 
-  composerDock: { paddingHorizontal: 8, paddingTop: 5, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
+  composerDock: { paddingHorizontal: 8, paddingTop: 5, backgroundColor: '#EFEAE2', borderTopWidth: StyleSheet.hairlineWidth },
   composer: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 30, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDE8E2', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   composerFocused: { backgroundColor: '#FFFFFF' },
   composerCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
