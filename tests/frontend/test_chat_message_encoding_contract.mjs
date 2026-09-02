@@ -51,3 +51,17 @@ test('во ВСЁМ src нет encodeURI(text) или escape(text) на поль
   assert.doesNotMatch(combined, /encodeURI\s*\(\s*(?:m\.text|message\.text|msg\.text|input|body\.text)/);
   assert.doesNotMatch(combined, /\bescape\s*\(\s*(?:m\.text|message\.text|msg\.text|input|body\.text)/);
 });
+
+// P0 2026-09-02 (Phase 2) — root cause `%20` в QA-сообщениях:
+// Maestro `inputText` + Android adb space escape bug. Реальный пользователь
+// набирающий с физической клавиатуры iPhone/Android НЕ увидит %20 — bug
+// проявляется только для QA-агентов, использующих Maestro на Android.
+//
+// UrTruck code path (composer → chatAPI.send → backend → renderer) чист:
+// end-to-end trace показал что encodeURIComponent/decodeURIComponent на
+// user text отсутствует нигде. Contract tests выше это защищают.
+//
+// Fix уровня harness: mesostro-скрипты со строками содержащими пробелы
+// должны переходить на pasteText (через clipboard) или использовать
+// safe helper из qa/maestro/_lib. Отдельный refactor — outside этой
+// сессии recovery-audit. Здесь — контракт только для UrTruck-кода.

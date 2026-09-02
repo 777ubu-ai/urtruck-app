@@ -10,7 +10,9 @@ release, а force-push заблокирован политикой сессии)
 ## Git
 
 - **Starting SHA:** `17d9167` (release/store-rc-20260901)
-- **Final SHA:** `70941af` (тот же content, что и `claude/youthful-cerf-barf3` предыдущей сессии, но на актуальной release базе)
+- **Final SHA (Phase 1 end):** `70941af`
+- **After Phase 1 report doc commit:** `6fadea8` (родитель `70941af`)
+- **Phase 2 in progress on top of `6fadea8`**
 - **Clean tree?** yes
 - **Пути коммитов (top-down):**
   - `70941af` — P0/P1 iOS push chain диагностика + QA deal cleanup endpoint

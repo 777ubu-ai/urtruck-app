@@ -123,7 +123,21 @@ def _seed_deal():
     return deal_id
 
 
-DEAL_ID = _seed_deal()
+# P0 2026-09-02 (Phase 2): раньше `DEAL_ID = _seed_deal()` на module scope
+# выполнялся во время pytest collection, ДО session-scoped fixture в
+# conftest → тесты падали "no such table: cargos" на полном suite.
+# Переносим seed в module-scoped pytest fixture (запускается ПОСЛЕ conftest
+# _ensure_full_schema). DEAL_ID остаётся module global — тесты обращаются
+# к нему как обычно.
+DEAL_ID = None  # заполнится _seed_matrix fixture
+
+import pytest as _pytest
+
+@_pytest.fixture(scope="module", autouse=True)
+def _seed_matrix():
+    global DEAL_ID
+    DEAL_ID = _seed_deal()
+    yield
 
 
 def test_shipper_gets_200():

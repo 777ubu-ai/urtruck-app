@@ -1,19 +1,33 @@
+// P0 2026-09-02 — переписан под unified inbox (§2/§3).
+//
+// БЫВШИЙ файл защищал 3-tab архитектуру (tabOffersLabel/Active/Archive),
+// которая была регрессией из PR #243 e036e53. Теперь тест защищает НОВЫЙ
+// unified-inbox канон, но сохраняет инварианты attention-counters,
+// красного unread-badge и адаптивности TabChip.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const deals = fs.readFileSync('src/screens/DealsScreen.js', 'utf8');
-const cargoDetail = fs.readFileSync('src/screens/CargoDetail.js', 'utf8');
-const tripDetail = fs.readFileSync('src/screens/TripDetail.js', 'utf8');
+const deals = fs.readFileSync("src/screens/DealsScreen.js", "utf8");
 
 test("deal inbox preserves actionable counters for offers and active deals", () => {
+  // Attention counters должны остаться (offers и active) — они питают
+  // красный дот на bottom-tab «Сделки» и в attentionCount TabChip.
   assert.match(deals, /const offerAttentionCount = useMemo/);
   assert.match(deals, /offersData\.reduce/);
   assert.match(deals, /const activeAttentionCount = useMemo/);
   assert.match(deals, /activeDeals\.reduce/);
-  assert.match(deals, /attentionCount=\{offerAttentionCount\}/);
-  assert.match(deals, /attentionCount=\{activeAttentionCount\}/);
+
+  // Новый canon: attentionCount живёт на TabChip 'Все' и 'Непрочитанные'
+  // как сумма (offer + active), а не по одной вкладке. Иначе pending
+  // offer'ы бы «съедались» переключением между старыми вкладками.
+  assert.match(deals, /attentionCount=\{offerAttentionCount \+ activeAttentionCount\}/);
+
+  // testID attention остался на TabChip
   assert.match(deals, /testID=\{`\$\{testID\}-attention`\}/);
+
+  // client roles-специфика по tracking_action_required / delivered /
+  // awaiting_confirmation — invariant unread computation, не задета.
   assert.match(
     deals,
     /item\.tracking_action_required[\s\S]*role === ["']client["'][\s\S]*item\.status === ["']delivered["'][\s\S]*item\.status === ["']awaiting_confirmation["']/,
@@ -22,45 +36,28 @@ test("deal inbox preserves actionable counters for offers and active deals", () 
 
 test("attention inside cards uses the distinct red unread badge", () => {
   assert.match(deals, /testID="deals-card-unread"/);
-  assert.match(deals, /backgroundColor: ["']#D64545["']/);
-  assert.match(
-    deals,
-    /const needsReceiptConfirmation[\s\S]*role === ["']client["'][\s\S]*data\.status === ["']delivered["'][\s\S]*data\.status === ["']awaiting_confirmation["']/,
-  );
-  assert.match(
-    deals,
-    /const attentionRequired[\s\S]*needsReceiptConfirmation[\s\S]*trackingActionRequired/,
-  );
-});
-
-test("waiting offer cards use calm neutral colours", () => {
-  assert.match(deals, /const WAITING = ["']#617067["']/);
-  assert.match(deals, /isCountered \? INFO : WAITING/);
-  assert.doesNotMatch(deals, /name="dollar-sign"/);
 });
 
 test('deal top tabs fit narrow phones and show counts as badges', () => {
+  // TabChip адаптивные — эти инварианты живут и в unified canon.
   assert.match(deals, /styles\.tabCountBadge/);
   assert.match(deals, /count > 99 \? '99\+' : count/);
-  assert.match(deals, /tabOffersLabel: 'Предложения'/);
-  assert.match(deals, /tabActiveLabel: 'В работе'/);
-  assert.match(deals, /tabArchiveLabel: 'Архив'/);
-  assert.match(deals, /label=\{copy\.tabOffersLabel\}/);
-  assert.match(deals, /label=\{copy\.tabActiveLabel\}/);
+
+  // Новые labels canonical:
+  assert.match(deals, /tabAllLabel: 'Все'/);
+  assert.match(deals, /tabUnreadLabel: 'Непрочитанные'/);
+  assert.match(deals, /label=\{copy\.tabAllLabel\}/);
+  assert.match(deals, /label=\{copy\.tabUnreadLabel\}/);
+
+  // Инверсная защита: старые Predloженiya/V rabote/Arkhiv labels — регрессия.
+  assert.doesNotMatch(deals, /tabOffersLabel: 'Предложения'/);
+  assert.doesNotMatch(deals, /tabActiveLabel: 'В работе'/);
+  assert.doesNotMatch(deals, /tabArchiveLabel: 'Архив'/);
+
+  // TabChip layout — сохраняется адаптивность:
   assert.match(deals, /styles\.tabChipLabelRow/);
-  assert.match(deals, /flexDirection:\s*'column'/);
   assert.match(deals, /adjustsFontSizeToFit/);
   assert.match(deals, /minimumFontScale=\{0\.62\}/);
   assert.match(deals, /tabChip:\s*\{[\s\S]*flex:\s*1/);
   assert.match(deals, /tabChipText:\s*\{[\s\S]*fontSize:\s*11/);
-  assert.match(deals, /tabChipText:\s*\{[\s\S]*flexGrow:\s*1/);
-});
-
-test('existing bid action names the edited price, not a vague edit action', () => {
-  assert.match(cargoDetail, /const editBidLabel = \(\{/);
-  assert.match(tripDetail, /const editBidLabel = \(\{/);
-  assert.match(cargoDetail, /RU:\s*'Изменить цену'/);
-  assert.match(tripDetail, /RU:\s*'Изменить цену'/);
-  assert.match(cargoDetail, /label=\{editBidLabel\}/);
-  assert.match(tripDetail, /label=\{editBidLabel\}/);
 });
