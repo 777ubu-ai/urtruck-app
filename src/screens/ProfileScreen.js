@@ -53,7 +53,24 @@ const APP_VERSION_LABEL = (() => {
 })();
 
 export default function ProfileScreen({ navigation, route }) {
-  const { role } = route.params || {};
+  // P0 2026-09-03 (водитель видел «Грузоотправитель»): роль бралась ТОЛЬКО из
+  // route.params. Профиль по канону — pushed-экран из ☰, и часть входов
+  // параметр не передаёт: App.js navigate('Profile') по deep-link'у пуша
+  // (url=/profile — отзывы, статус документов) идёт совсем без params, а
+  // HeaderMenuButton прокидывает роль лишь если её дал вызывающий экран. При
+  // role === undefined isDriver становился false, и тернарник
+  // `isDriver ? role_driver : role_shipper` молча падал в метку
+  // грузоотправителя — вместе с янтарным акцентом, иконкой package и
+  // скрытым блоком рейтинга/«Мой статус».
+  //
+  // Канонический источник истины — backend-роль аутентифицированной сессии:
+  // AuthContext берёт её из /register/me (значения driver | client | guest) и
+  // не понижает реальную роль до guest. route.params остаётся fallback'ом для
+  // гостевого стека, где сессии ещё нет.
+  const { session, signOut, verificationLevel } = useAuth();
+  const { role: routeRole } = route.params || {};
+  const sessionRole = session?.user?.role;
+  const role = (sessionRole && sessionRole !== 'guest') ? sessionRole : routeRole;
   const isDriver = role === 'driver';
   const accent = isDriver ? '#168759' : '#FF8400';
   const onAccent = '#0C0A09';
@@ -67,7 +84,6 @@ export default function ProfileScreen({ navigation, route }) {
   const { t, lang: uiLang } = useI18n();
   const tonUnit = uiLang === 'ZH' ? '吨' : uiLang === 'EN' ? 't' : 'т';
   const cubicMeterUnit = uiLang === 'ZH' ? '立方米' : 'м³';
-  const { session, signOut, verificationLevel } = useAuth();
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
   const [confirmDialog, setConfirmDialog] = useState(null);
