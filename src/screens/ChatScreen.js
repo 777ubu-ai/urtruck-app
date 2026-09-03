@@ -1778,9 +1778,21 @@ export default function ChatScreen({ navigation, route }) {
     }
   };
 
-  // Cleanup при размонтировании — отпускаем микрофон / звук
+  // Cleanup при размонтировании — отпускаем микрофон / звук.
+  //
+  // P0 2026-09-03: здесь вызывался только voice.stop() — это playback.
+  // Активная ЗАПИСЬ при уходе с экрана оставалась висеть в модуле
+  // (`_recording` != null), а expo-av допускает лишь один подготовленный
+  // Recording одновременно (Recording.js: 'Only one Recording object can be
+  // prepared at a given time'). Из-за этого следующий startRecording() в
+  // этой же сессии приложения падал, и голосовые переставали работать
+  // ВЕЗДЕ, включая комнату сделки. Порядок важен: сначала снимаем запись,
+  // потом воспроизведение.
   useEffect(
     () => () => {
+      try {
+        voice.stopRecording?.();
+      } catch {}
       try {
         voice.stop?.();
       } catch {}

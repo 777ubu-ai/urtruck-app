@@ -208,10 +208,18 @@ test('voiceRecorder produces a real, non-empty web Blob before upload is attempt
   // stop() unless timesliced + explicitly flushed — both guards must exist.
   assert.match(recorder, /this\._webRecorder\.start\(400\)/);
   assert.match(recorder, /requestData\(\)/);
-  // A genuinely empty recording must fail loudly client-side (surfaces as
-  // voice_error_record), not silently upload a 0-byte file the backend
-  // would then reject anyway.
-  assert.match(recorder, /if \(!blob \|\| blob\.size === 0\) \{ resolve\(null\); return; \}/);
+  // A genuinely empty recording must fail loudly client-side, not silently
+  // upload a 0-byte file the backend would then reject anyway.
+  //
+  // P0 2026-09-03: the rejection now carries a machine-readable reason
+  // ({uri: null, error: 'empty_recording'}) instead of a bare `null`. The
+  // `!result?.uri` contract callers rely on is unchanged — the caller can
+  // additionally tell an empty recording apart from a failed stop, which a
+  // flat null made impossible without a device logcat.
+  assert.match(
+    recorder,
+    /if \(!blob \|\| blob\.size === 0\) \{ resolve\(\{ uri: null, error: 'empty_recording' \}\); return; \}/,
+  );
 });
 
 test('voice playback is single-instance so repeated taps do not create echo', () => {

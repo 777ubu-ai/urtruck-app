@@ -373,6 +373,13 @@ export default function DealWorkspaceScreen({ navigation, route }) {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      // P0 2026-09-03: снимаем и ЗАПИСЬ, и воспроизведение. Раньше был
+      // только voice.stop() (playback) — висящий expo-av Recording после
+      // ухода с экрана ломал все последующие записи в сессии (expo-av
+      // допускает только один подготовленный Recording одновременно).
+      try {
+        voice.stopRecording?.();
+      } catch {}
       try {
         voice.stop?.();
       } catch {}

@@ -64,22 +64,53 @@ export const voice = {
     }
   },
 
+  // P0 2026-09-03 (диагностируемость): раньше ЛЮБОЙ отказ схлопывался в
+  // `null`, вызывающий код видел только `!result?.uri` и показывал один
+  // генерик-тост. Физически это выглядело как «нажал стоп — бабл не
+  // появился», и первопричину нельзя было отличить от других без logcat.
+  // Теперь отказ возвращает { uri: null, error, message } — контракт
+  // `!result?.uri` для существующих вызывающих сохранён, но причина
+  // доступна и её можно показать/залогировать/протестировать.
   async stopRecording() {
     if (Platform.OS === 'web') {
       return this._stopWeb();
     }
-    if (!_recording) return null;
+    // Активной записи нет. Основной сценарий: её уже разгрузил чужой
+    // cleanup (уход с экрана / повторный релиз кнопки), поэтому это НЕ
+    // «ошибка микрофона» и должно отличаться в UI.
+    if (!_recording) {
+      console.warn('[voice] stop: no active recording');
+      return { uri: null, error: 'no_active_recording' };
+    }
+    const rec = _recording;
+    // Ссылку снимаем СРАЗУ: expo-av допускает только один подготовленный
+    // Recording одновременно (Recording.js: 'Only one Recording object can
+    // be prepared at a given time'), и висящий объект после сбоя stop()
+    // отравлял все последующие записи в сессии приложения.
+    _recording = null;
     try {
-      await _recording.stopAndUnloadAsync();
-      const uri = _recording.getURI();
-      const status = await _recording.getStatusAsync();
-      const duration = Math.round((status.durationMillis || 0) / 1000);
-      _recording = null;
-      return { uri, duration };
+      // stopAndUnloadAsync() сам возвращает финальный статус с
+      // durationMillis — берём его, а getStatusAsync() оставляем
+      // резервом (после unload он не бросает, отдаёт _finalDurationMillis).
+      const stopStatus = await rec.stopAndUnloadAsync();
+      const uri = rec.getURI();
+      let durationMillis = stopStatus?.durationMillis;
+      if (!durationMillis) {
+        try {
+          const status = await rec.getStatusAsync();
+          durationMillis = status?.durationMillis || 0;
+        } catch { durationMillis = 0; }
+      }
+      if (!uri) {
+        console.warn('[voice] stop: no uri after unload');
+        return { uri: null, error: 'no_uri' };
+      }
+      return { uri, duration: Math.round((durationMillis || 0) / 1000) };
     } catch (e) {
+      // Реальный кейс Android: слишком короткая запись — нативный
+      // stopAudioRecording() отклоняется, и stopAndUnloadAsync() реджектит.
       console.warn('[voice] stop failed:', e);
-      _recording = null;
-      return null;
+      return { uri: null, error: 'stop_failed', message: String(e?.message || e) };
     }
   },
 
@@ -200,10 +231,15 @@ export const voice = {
 
     try {
       if (_sound) {
-        if (_playResolve) {
-          try { _playResolve(false); } catch {}
-          _playResolve = null;
-        }
+        // P0 2026-09-03: здесь стоял `if (_playResolve) { _playResolve(false) }`,
+        // но переменная `_playResolve` НИКОГДА не объявлялась. Модуль — ES
+        // module (всегда strict mode), поэтому чтение необъявленной
+        // переменной бросает ReferenceError. Это происходило на КАЖДОМ
+        // втором воспроизведении (когда `_sound` уже установлен), ошибка
+        // глушилась внешним catch → `[voice] play failed` + return false:
+        // плеер молча умирал после первого голосового.
+        // Дедупликация параллельных play() и так делается через _playPromise
+        // выше, отдельный resolve-хук не нужен — блок удалён целиком.
         await _sound.unloadAsync();
         _sound = null;
       }
@@ -309,7 +345,7 @@ export const voice = {
 
   _stopWeb() {
     return new Promise((resolve) => {
-      if (!this._webRecorder) { resolve(null); return; }
+      if (!this._webRecorder) { resolve({ uri: null, error: 'no_active_recording' }); return; }
       this._webRecorder.onstop = () => {
         const blob = new Blob(this._webChunks, { type: this._webRecorder.mimeType });
         const duration = Math.round((Date.now() - (this._startTime || Date.now())) / 1000);
@@ -318,7 +354,7 @@ export const voice = {
         this._webChunks = [];
         // Пустая запись (0 байт) → не создаём битый blob-URL. Так получатель
         // не получает «пустое» голосовое, а отправитель видит понятную ошибку.
-        if (!blob || blob.size === 0) { resolve(null); return; }
+        if (!blob || blob.size === 0) { resolve({ uri: null, error: 'empty_recording' }); return; }
         const uri = URL.createObjectURL(blob);
         resolve({ uri, duration, blob });
       };

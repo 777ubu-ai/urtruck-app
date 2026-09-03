@@ -989,11 +989,23 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       return;
     }
     setRecording(false);
+    const elapsedMs = Math.max(0, Date.now() - (recordStartRef.current || Date.now()));
     let result;
     try {
       result = await voice.stopRecording();
     } catch { toast(t('voice_error_record'), 'error'); return; }
-    if (!result?.uri) { toast(t('voice_error_record'), 'error'); return; }
+    // P0 2026-09-03: stopRecording() теперь возвращает { uri: null, error }
+    // вместо голого null. Физический баг «нажал стоп — бабл не появился»
+    // невозможно было отличить от других причин, потому что все они давали
+    // один тост. Показываем причину: слишком короткая запись — самый частый
+    // реальный кейс на Android (нативный stop отклоняется на <1с).
+    if (!result?.uri) {
+      const tooShort = elapsedMs < 1000 || result?.error === 'empty_recording';
+      const key = tooShort ? 'voice_error_too_short' : 'voice_error_record';
+      console.warn('[voice] send aborted:', result?.error || 'unknown', result?.message || '', `elapsed=${elapsedMs}ms`);
+      toast(t(key), 'error');
+      return;
+    }
     const duration = result.duration || Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
     const clientId = newClientId('voice');
     const voiceItem = {
