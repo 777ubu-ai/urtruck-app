@@ -16,10 +16,9 @@ PROVIDER = os.getenv("STORAGE_PROVIDER", "local")
 _RUNTIME_ENV = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower()
 _PROD = _RUNTIME_ENV == "production"
 
-_env = os.getenv("ENV", os.getenv("APP_ENV", "production")).strip().lower()
 _default_root = (
     Path(tempfile.gettempdir()) / "urtruck-storage"
-    if _env in {"test", "testing", "dev", "development", "local", "ci"}
+    if _RUNTIME_ENV in {"test", "testing", "dev", "development", "local", "ci"}
     else Path("/home/ubuntu/urtruck-security/storage")
 )
 LOCAL_ROOT = Path(os.getenv("STORAGE_LOCAL_ROOT", str(_default_root))).expanduser()

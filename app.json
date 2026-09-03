@@ -5,6 +5,7 @@
     "version": "1.0.7",
     "orientation": "portrait",
     "scheme": "urtruck",
+    "userInterfaceStyle": "automatic",
     "platforms": [
       "ios",
       "android",
@@ -47,6 +48,7 @@
     },
     "android": {
       "package": "com.urtruck.app",
+      "userInterfaceStyle": "automatic",
       "softwareKeyboardLayoutMode": "resize",
       "versionCode": 9,
       "googleServicesFile": "./google-services.json",
@@ -85,6 +87,8 @@
       ]
     },
     "plugins": [
+      "expo-system-ui",
+      "./plugins/withAndroidSplashSize",
       [
         "expo-av",
         {

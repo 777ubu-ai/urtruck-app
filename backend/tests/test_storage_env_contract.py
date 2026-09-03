@@ -18,8 +18,29 @@ def test_storage_default_root_uses_approved_runtime_env_aliases(monkeypatch):
     assert storage._PROD is False
 
 
+def test_urtruck_env_development_uses_local_tmp_root(monkeypatch):
+    storage = _reload_storage(monkeypatch, URTRUCK_ENV="development")
+
+    assert storage.LOCAL_ROOT == Path(tempfile.gettempdir()) / "urtruck-storage"
+    assert storage._PROD is False
+
+
+def test_urtruck_env_test_uses_local_tmp_root(monkeypatch):
+    storage = _reload_storage(monkeypatch, URTRUCK_ENV="test")
+
+    assert storage.LOCAL_ROOT == Path(tempfile.gettempdir()) / "urtruck-storage"
+    assert storage._PROD is False
+
+
+def test_urtruck_env_production_uses_production_root(monkeypatch):
+    storage = _reload_storage(monkeypatch, URTRUCK_ENV="production")
+
+    assert storage.LOCAL_ROOT == Path("/home/ubuntu/urtruck-security/storage")
+    assert storage._PROD is True
+
+
 def test_app_env_alone_is_risk_only_not_production_guard_source(monkeypatch):
     storage = _reload_storage(monkeypatch, APP_ENV="development")
 
-    assert storage.LOCAL_ROOT == Path(tempfile.gettempdir()) / "urtruck-storage"
+    assert storage.LOCAL_ROOT == Path("/home/ubuntu/urtruck-security/storage")
     assert storage._PROD is True
