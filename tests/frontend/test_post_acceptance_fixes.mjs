@@ -6,6 +6,9 @@ const app = fs.readFileSync('App.js', 'utf8');
 const feed = fs.readFileSync('src/screens/FeedScreen.js', 'utf8');
 const myTrips = fs.readFileSync('src/screens/MyTripsScreen.js', 'utf8');
 const deals = fs.readFileSync('src/screens/DealsScreen.js', 'utf8');
+const cargoFeed = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
+const dealWorkspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
+const notifications = fs.readFileSync('src/screens/NotificationsScreen.js', 'utf8');
 const bell = fs.readFileSync('src/components/ui/v1/NotificationBellButton.js', 'utf8');
 const profile = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
 const onboarding = fs.readFileSync('src/screens/onboarding/OnboardingV2Screen.js', 'utf8');
@@ -32,12 +35,31 @@ test('status bar follows the resolved app theme', () => {
 
 test('main headers expose notifications with the canonical attention counter', () => {
   assert.match(feed, /testID="feed-notification-bell-btn"/);
+  assert.match(feed, /justifyContent: 'space-between'/);
   assert.match(myTrips, /testID="mywork-notification-bell-btn"/);
+  assert.match(myTrips, /justifyContent: 'space-between'/);
   assert.match(deals, /testID="deals-notification-bell-btn"/);
+  assert.match(deals, /justifyContent: 'space-between'/);
+  assert.match(cargoFeed, /testID="cargo-feed-notification-bell-btn"/);
   assert.match(bell, /notificationsAPI\.attention\(\)/);
   assert.match(bell, /total_attention/);
   assert.match(bell, /count > 0 \?/);
   assert.doesNotMatch(bell, /notificationsAPI\.unread\(\)/);
+});
+
+test('deal chat uses one approved beige background through body and menus', () => {
+  assert.match(dealWorkspace, /const DEAL_CHAT_BG = '#EFEAE2'/);
+  assert.match(dealWorkspace, /safe: \{ flex: 1, backgroundColor: DEAL_CHAT_BG \}/);
+  assert.match(dealWorkspace, /chatFullscreen: \{ flex: 1, backgroundColor: DEAL_CHAT_BG \}/);
+  assert.match(dealWorkspace, /chatBody: \{ flex: 1, position: 'relative', backgroundColor: DEAL_CHAT_BG \}/);
+  assert.match(dealWorkspace, /attachMenu: .*backgroundColor: DEAL_CHAT_BG/);
+  assert.match(dealWorkspace, /emojiMenu: \{ backgroundColor: DEAL_CHAT_BG/);
+});
+
+test('notifications screen links to the existing PushFilter screen', () => {
+  assert.match(notifications, /navigation\.navigate\('PushFilter', \{ role \}\)/);
+  assert.match(notifications, /testID="notifications-push-filter"/);
+  assert.match(notifications, /t\('pushFilter'\)/);
 });
 
 test('shipper machine cards render route country flags through the canonical helper', () => {
@@ -72,8 +94,10 @@ test('startup and auth flow is light-only while the main app keeps resolved them
   assert.match(premiumLogin, /const c = v1Colors/);
   assert.match(premiumRegister, /const c = v1Colors/);
   assert.doesNotMatch(onboarding, /<StatusBar style="dark" backgroundColor=\{brandLight\.bg\}/);
-  assert.match(app, /testID="android-startup-splash"/);
-  assert.match(app, /STARTUP_SPLASH_IMAGE/);
+  assert.doesNotMatch(app, /AndroidStartupSplash/);
+  assert.doesNotMatch(app, /testID="android-startup-splash"/);
+  assert.doesNotMatch(app, /STARTUP_SPLASH_IMAGE/);
+  assert.doesNotMatch(app, /showStartupSplash/);
 });
 
 test('android system theme is enabled through Expo native configuration', () => {

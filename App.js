@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, AppState, ImageBackground, Linking, StyleSheet, View } from 'react-native';
+import { Platform, AppState, Linking } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
@@ -33,7 +33,6 @@ import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import * as Sentry from '@sentry/react-native';
 
-const STARTUP_SPLASH_IMAGE = require('./assets/splash/urtruck-splash.png');
 const AUTH_LIGHT_ROUTES = new Set([
   'OnboardingV2',
   'PhoneV2',
@@ -209,18 +208,6 @@ function parseQaAuthUrl(url) {
   }
 }
 
-function AndroidStartupSplash() {
-  return (
-    <View style={appStyles.startupSplashRoot} testID="android-startup-splash">
-      <ImageBackground
-        source={STARTUP_SPLASH_IMAGE}
-        resizeMode="cover"
-        style={appStyles.startupSplashImage}
-      />
-    </View>
-  );
-}
-
 // AppInner живёт ПОД AuthProvider — поэтому знает состояние сессии и может
 // (а) откладывать deep-link до готовности навигатора и авторизованного стека,
 // (б) прогонять офлайн-очередь чата глобально, (в) пере-регистрировать push
@@ -231,7 +218,6 @@ function AppInner() {
   const pendingUrlRef = useRef(null);
   const { session, hasToken, signIn, setRole, refreshLevel } = useAuth();
   const { theme, isDark } = useTheme();
-  const [showStartupSplash, setShowStartupSplash] = useState(Platform.OS === 'android');
   const [currentRouteName, setCurrentRouteName] = useState(null);
 
   // Авторизован ли для «глубоких» экранов (Chat/ChatsList/CargoDetail…) —
@@ -247,12 +233,6 @@ function AppInner() {
   const base = authLightRoute ? DefaultTheme : (isDark ? DarkTheme : DefaultTheme);
   const navBackground = authLightRoute ? AUTH_LIGHT_BG : theme.bg;
   const navTheme = { ...base, colors: { ...base.colors, background: navBackground, card: navBackground } };
-
-  useEffect(() => {
-    if (!showStartupSplash) return undefined;
-    const timer = setTimeout(() => setShowStartupSplash(false), 2200);
-    return () => clearTimeout(timer);
-  }, [showStartupSplash]);
 
   // P5: единая точка навигации по url из пуша. Если навигатор не готов или
   // пользователь ещё не в авторизованном стеке — откладываем url и повторим,
@@ -396,42 +376,26 @@ function AppInner() {
       <ToastProvider>
         <OfflineBanner />
         <PushPermissionBanner enabled={hasToken} />
-        {showStartupSplash ? (
-          <AndroidStartupSplash />
-        ) : (
-          <NavigationContainer
-            ref={navRef}
-            theme={navTheme}
-            onReady={() => {
-              navReadyRef.current = true;
-              setCurrentRouteName(getActiveRouteName(navRef.current?.getRootState?.()) || 'OnboardingV2');
-              if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current);
-            }}
-            onStateChange={(state) => setCurrentRouteName(getActiveRouteName(state))}
-          >
-            <StatusBar
-              style={authLightRoute ? 'dark' : (isDark ? 'light' : 'dark')}
-              backgroundColor={navBackground}
-            />
-            <AppNavigator />
-          </NavigationContainer>
-        )}
+        <NavigationContainer
+          ref={navRef}
+          theme={navTheme}
+          onReady={() => {
+            navReadyRef.current = true;
+            setCurrentRouteName(getActiveRouteName(navRef.current?.getRootState?.()) || 'OnboardingV2');
+            if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current);
+          }}
+          onStateChange={(state) => setCurrentRouteName(getActiveRouteName(state))}
+        >
+          <StatusBar
+            style={authLightRoute ? 'dark' : (isDark ? 'light' : 'dark')}
+            backgroundColor={navBackground}
+          />
+          <AppNavigator />
+        </NavigationContainer>
       </ToastProvider>
     </SafeAreaProvider>
   );
 }
-
-const appStyles = StyleSheet.create({
-  startupSplashRoot: {
-    flex: 1,
-    backgroundColor: '#F4EFE7',
-  },
-  startupSplashImage: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-});
 
 function App() {
   return (

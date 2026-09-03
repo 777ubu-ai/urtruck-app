@@ -94,6 +94,9 @@ export default function NotificationsScreen({ navigation }) {
   const s = React.useMemo(() => StyleSheet.create({
     titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
     titleHero: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
+    titleActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    filterBtn: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderRadius: 18, borderWidth: 1 },
+    filterText: { fontSize: 12, fontWeight: '800' },
     markAll: { fontSize: 12, fontWeight: '800' },
     card: {
       flexDirection: 'row', alignItems: 'flex-start', gap: 12,
@@ -209,13 +212,25 @@ export default function NotificationsScreen({ navigation }) {
       />
       <View style={s.titleRow}>
         <Text style={s.titleHero}>{t('menu_notifications')}</Text>
-        {items.some(i => !i.is_read) ? (
-          <TouchableOpacity onPress={markAllRead}>
-            <Text style={[s.markAll, { color: accent.main }]}>
-              {t("notifications_mark_all_read")}
-            </Text>
+        <View style={s.titleActions}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('PushFilter', { role })}
+            style={[s.filterBtn, { borderColor: v1.border, backgroundColor: v1.surface }]}
+            testID="notifications-push-filter"
+            accessibilityRole="button"
+            accessibilityLabel={t('pushFilter')}
+          >
+            <Feather name="sliders" size={14} color={accent.main} />
+            <Text style={[s.filterText, { color: accent.main }]}>{t('pushFilter')}</Text>
           </TouchableOpacity>
-        ) : null}
+          {items.some(i => !i.is_read) ? (
+            <TouchableOpacity onPress={markAllRead}>
+              <Text style={[s.markAll, { color: accent.main }]}>
+                {t("notifications_mark_all_read")}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       <FlatList

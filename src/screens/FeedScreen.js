@@ -721,7 +721,7 @@ const styles = StyleSheet.create({
     paddingTop: 2,
     paddingBottom: 2,
     alignItems: 'flex-end',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 2,
     backgroundColor: PAGE_BG,
   },

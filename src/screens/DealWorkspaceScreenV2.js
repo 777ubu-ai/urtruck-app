@@ -58,6 +58,7 @@ const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected', 'expired'];
 const COMPOSER_INPUT_MIN_HEIGHT = 32;
 const COMPOSER_INPUT_MAX_HEIGHT = 74;
 const COMPOSER_INPUT_VERTICAL_PADDING = 8;
+const DEAL_CHAT_BG = '#EFEAE2';
 
 // WhatsApp-style chat is the default view; the trip map is a deliberate,
 // button-triggered secondary view (PR #255 review: "map-first бардак" was the
@@ -1662,7 +1663,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4EFE7' },
+  safe: { flex: 1, backgroundColor: DEAL_CHAT_BG },
   compactHeader: {
     minHeight: 92,
     flexDirection: 'row',
@@ -1694,11 +1695,11 @@ const s = StyleSheet.create({
   metaSecondary: { fontSize: 11.5, fontWeight: '650', marginTop: 3 },
   partnerText: { color: '#667781', fontSize: 13.5, lineHeight: 18, fontWeight: '650', marginTop: 3 },
 
-  chatFullscreen: { flex: 1, backgroundColor: '#F4EFE7' },
+  chatFullscreen: { flex: 1, backgroundColor: DEAL_CHAT_BG },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 9 },
   loadingText: { fontSize: 13, fontWeight: '700' },
 
-  chatBody: { flex: 1, position: 'relative', backgroundColor: '#F4EFE7' },
+  chatBody: { flex: 1, position: 'relative', backgroundColor: DEAL_CHAT_BG },
   messageList: { flex: 1 },
   messageContent: { paddingHorizontal: 14, paddingTop: 18, paddingBottom: 14 },
   messageRow: { marginBottom: 10, paddingHorizontal: 4 },
@@ -1760,7 +1761,7 @@ const s = StyleSheet.create({
   recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   recordSendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
-  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, backgroundColor: '#F7FAF8', borderTopWidth: StyleSheet.hairlineWidth },
+  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, backgroundColor: DEAL_CHAT_BG, borderTopWidth: StyleSheet.hairlineWidth },
   attachHandleHit: { position: 'absolute', top: 0, left: 0, right: 0, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   attachHandle: { width: 48, height: 5, borderRadius: 3, backgroundColor: '#D5D8DA' },
   attachItem: { width: '25%', alignItems: 'center', gap: 11, marginBottom: 24 },
@@ -1770,7 +1771,7 @@ const s = StyleSheet.create({
   attachPagerDotActive: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7A7A7A' },
   attachPagerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E0E0E0' },
 
-  emojiMenu: { backgroundColor: '#F7FAF8', borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 12 },
+  emojiMenu: { backgroundColor: DEAL_CHAT_BG, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 12 },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
   emojiItem: { width: '12.5%', height: 42, alignItems: 'center', justifyContent: 'center' },
   emojiText: { fontSize: 26, lineHeight: 32 },

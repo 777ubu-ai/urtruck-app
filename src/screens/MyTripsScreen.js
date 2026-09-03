@@ -621,7 +621,7 @@ export default function MyTripsScreen({ navigation, route }) {
 
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      <View style={[s.brandBar, { justifyContent: 'flex-end' }]} testID="mywork-minimal-header">
+      <View style={[s.brandBar, { justifyContent: 'space-between' }]} testID="mywork-minimal-header">
         <NotificationBellButton
           navigation={navigation}
           color={v1.text}
