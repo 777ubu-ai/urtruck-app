@@ -72,7 +72,24 @@ test('custom-scheme and universal-link notification entrypoints are parsed as No
 test('native app listens to general url entrypoints in addition to push taps', () => {
   assert.match(app, /Linking\.getInitialURL\(\)/);
   assert.match(app, /Linking\.addEventListener\('url', \(\{ url \}\) =>/);
-  assert.match(app, /if \(url\) routeFromUrl\(url\);/);
+  assert.match(app, /if \(url\) routeFromUrlRef\.current\(url\);/);
+});
+
+test('P0 2026-09-03: Linking.getInitialURL() is consumed exactly once per process, not re-fetched on auth transitions', () => {
+  // Root cause of the "cold start → Граница → спонтанный прыжок в чат
+  // сделки" bug: getInitialURL() returns the SAME url on every call for
+  // the process lifetime (RN/platform contract, it is not consumed by the
+  // OS). The effect must run with [] deps so it fires exactly once; a ref
+  // wrapper supplies the freshest routeFromUrl/authedForDeepLink closure
+  // without re-triggering the effect (and therefore without re-fetching
+  // getInitialURL) when auth state changes later in the session.
+  assert.match(app, /const routeFromUrlRef = useRef\(routeFromUrl\);/);
+  assert.match(app, /routeFromUrlRef\.current = routeFromUrl;/);
+  const effectBlock = app.match(
+    /Linking\.getInitialURL\(\)[\s\S]{0,600}?\n {2}\}, (\[[^\]]*\]\);)/,
+  );
+  assert.ok(effectBlock, 'getInitialURL effect not found');
+  assert.equal(effectBlock[1], '[]);', 'getInitialURL effect must run exactly once ([] deps), not on every authedForDeepLink change');
 });
 
 test('ios and android release configs declare urtruck notifications app-link entrypoints', () => {

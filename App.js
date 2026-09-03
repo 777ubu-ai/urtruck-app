@@ -271,22 +271,39 @@ function AppInner() {
   // https://urtruck.kz/notifications и другие поддержанные url должны
   // открывать те же экраны, что и tap по push. Unknown/social-auth urls
   // спокойно игнорируются parseNotifUrl/navigateFromUrl.
+  //
+  // P0 2026-09-03 (root cause найден статическим анализом + прежним
+  // физическим наблюдением «[deal-deeplink] cold start → Граница →
+  // спонтанный прыжок в чат сделки»): Linking.getInitialURL() по контракту
+  // RN/платформы возвращает ОДИН И ТОТ ЖЕ url при каждом вызове в течение
+  // жизни процесса — он не консьюмится сам. Раньше эффект зависел от
+  // [authedForDeepLink], который меняется асинхронно во время буутстрапа
+  // (session/role подгружаются, могут временно обнулиться и
+  // восстановиться) → эффект пересоздавался → getInitialURL() вызывался
+  // повторно → тот же исходный deep-link прогонялся через routeFromUrl()
+  // ещё раз, уже посреди сессии, без единого действия пользователя.
+  // Фикс: getInitialURL() вызывается РОВНО ОДИН РАЗ за жизнь процесса
+  // ([] deps); свежий authedForDeepLink достаётся через ref-обёртку, а не
+  // через пересоздание эффекта. Отложенный deep-link по-прежнему
+  // consume-once обрабатывается pendingUrlRef (эффект выше).
+  const routeFromUrlRef = useRef(routeFromUrl);
+  routeFromUrlRef.current = routeFromUrl;
   useEffect(() => {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
     let active = true;
     Linking.getInitialURL()
       .then((url) => {
-        if (active && url) routeFromUrl(url);
+        if (active && url) routeFromUrlRef.current(url);
       })
       .catch(() => {});
     const sub = Linking.addEventListener('url', ({ url }) => {
-      if (url) routeFromUrl(url);
+      if (url) routeFromUrlRef.current(url);
     });
     return () => {
       active = false;
       sub?.remove?.();
     };
-  }, [authedForDeepLink]);
+  }, []);
 
   // Native (iOS/Android) — tap по пушу в фоне/закрытом приложении + cold start.
   useEffect(() => {
