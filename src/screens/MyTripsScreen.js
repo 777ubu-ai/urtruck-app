@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Pla
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
+import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { regAPI } from '../utils/registration';
@@ -103,6 +104,16 @@ export default function MyTripsScreen({ navigation, route }) {
   }), [v1]);
   const { role } = route.params || {};
   const isDriver = role === 'driver';
+  // P0 (2026-09-03): единый источник истины auth state — раньше этот экран
+  // на каждом focus (переключение вкладок / background→foreground /
+  // force-stop→reopen) заново читал storage.get('ur_reg_token') напрямую,
+  // в обход AuthContext. Любой транзиентный сбой/задержка SecureStore
+  // (typical сразу после resume) storage.js молча превращает в null
+  // (см. catch { return null; } в storage.get) — экран принимал это за
+  // «разлогинен» и показывал gate_login, хотя AuthContext/AppNavigator уже
+  // считали сессию валидной. hasToken меняется только на явных signIn/
+  // signOut/expiry-событиях (стабильно), поэтому больше не мигает.
+  const { hasToken } = useAuth();
   const accent = isDriver ? '#168759' : '#FF8400';
   const { t, lang } = useI18n();
   const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
@@ -196,8 +207,7 @@ export default function MyTripsScreen({ navigation, route }) {
     if (showLoading) setLoading(true);
     else setRefreshingList(true);
     try {
-      const token = await require('../utils/storage').storage.get('ur_reg_token');
-      if (!token) {
+      if (!hasToken) {
         if (isDriver) {
           const trips = await marketAPI.listTrips({});
           if (!mounted.current) return;  // QA-аудит P1-8: экран размонтирован
@@ -212,14 +222,18 @@ export default function MyTripsScreen({ navigation, route }) {
           try { const trips = await marketAPI.listTrips({}); d = { ...d, my_trips: (trips.trips || []) }; } catch {}
         }
         if (!mounted.current) return;
-        setData(d);
+        // hasToken (AuthContext) уже подтвердил, что пользователь залогинен —
+        // не даём внутреннему authRequired из myDashboard() (у него свой,
+        // независимый storage-read в headers()) перекрыть канонический
+        // источник истины ложным logout-состоянием.
+        setData({ ...d, authRequired: false });
       }
     } catch (e) { console.warn('[MyTrips] load error:', e.message); }
     if (mounted.current) {
       if (showLoading) setLoading(false);
       else setRefreshingList(false);
     }
-  }, [isDriver, mounted]);
+  }, [isDriver, mounted, hasToken]);
 
   const { refreshing, onRefresh } = useSafeRefresh(
     useCallback(() => load({ showLoading: false }), [load]),
