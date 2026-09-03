@@ -1472,6 +1472,26 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       </TouchableOpacity>
                     ) : null}
                     <View style={s.inputShell}>
+                      {/* P0 (owner fix) — TextInput'овский нативный
+                          placeholder на Android в multiline-режиме
+                          переносился на 2 строки и обрезался нижней
+                          границей поля (numberOfLines/ellipsizeMode на
+                          placeholder, а также динамический multiline={!!input}
+                          — оба варианта физически проверены и не сработали:
+                          Android EditText игнорирует их для hint-текста).
+                          Рисуем плейсхолдер САМИ обычным <Text
+                          numberOfLines={1}> поверх поля — для Text
+                          numberOfLines гарантированно однострочный + троеточие. */}
+                      {!input ? (
+                        <Text
+                          style={[s.input, s.inputPlaceholder]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                          pointerEvents="none"
+                        >
+                          {isDriver ? ui.writeShipper : ui.write}
+                        </Text>
+                      ) : null}
                       <TextInput
                         ref={inputRef}
                         value={input}
@@ -1489,8 +1509,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         multiline
                         scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
                         style={[s.input, { height: inputHeight, color: colors.text }]}
-                        placeholder={isDriver ? ui.writeShipper : ui.write}
-                        placeholderTextColor="#8A9490"
                         testID="deal-chat-input"
                       />
                     </View>
@@ -1846,8 +1864,13 @@ const s = StyleSheet.create({
   composerFocused: { backgroundColor: '#FFFFFF' },
   composerCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
   composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
-  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, minWidth: 96, borderRadius: 999, backgroundColor: '#F7FAF8', borderWidth: 1, borderColor: '#DDE8E2', justifyContent: 'center', position: 'relative' },
+  // P0 (owner fix) — inputShell раньше рисовал собственную капсулу
+  // (#F7FAF8 + border) ВНУТРИ уже белой капсулы `composer` — двойная рамка.
+  // Убрали фон/бордер: TextInput сидит прямо на белом поле composer, одно
+  // чистое поле.
+  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, minWidth: 96, justifyContent: 'center', position: 'relative' },
   input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  inputPlaceholder: { position: 'absolute', top: 0, left: 0, right: 0, height: 32, color: '#8A9490', paddingTop: 6 },
   sendButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#168759' },
 

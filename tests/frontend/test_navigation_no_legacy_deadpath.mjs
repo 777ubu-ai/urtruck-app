@@ -25,10 +25,13 @@ test('Stack route "ChatsList" остался — deep-link и standalone раб�
   assert.match(nav, /Stack\.Screen\s+name="ChatsList"\s+component=\{ChatsListScreen\}/);
 });
 
-test('ChatsListScreen роутер всегда возвращает DealsScreen (безусловно, для любого route.name)', () => {
-  assert.match(router, /return <DealsScreen \{\.\.\.props\} ?\/>/);
-  // Никаких условных ветвлений route.name === 'Deals'
-  assert.doesNotMatch(router, /route\.name\s*===\s*['"]Deals['"]\s*\?/);
+test('ChatsListScreen роутер: route.name === "Deals" → DealsScreen, иначе → LegacyChatsListScreen', () => {
+  // P0 2026-09-03 (owner-verified fix): владелец физически проверил на
+  // Android 15/16 и вернул условное ветвление — DealsScreen ТОЛЬКО для
+  // bottom-tab "Deals" (3 канонические вкладки), LegacyChatsListScreen —
+  // для остальных route.name (standalone ChatsList/deep link, "Все/
+  // Непрочитанные", отдельный утверждённый экран). См. DEALS_CANON.md.
+  assert.match(router, /route\??\.name\s*===\s*['"]Deals['"][\s\S]{0,80}?<DealsScreen \{\.\.\.props\} ?\/>[\s\S]{0,80}?<LegacyChatsListScreen/);
 });
 
 test('navigate("Chat", ...) — отдельный экран ChatScreenV2, не ChatsList', () => {

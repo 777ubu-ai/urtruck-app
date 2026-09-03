@@ -101,6 +101,13 @@ export default function MyTripsScreen({ navigation, route }) {
 
   }), [v1]);
   const { role } = route.params || {};
+  // P0 (owner fix) — MyTripsList — отдельный Stack.Screen БЕЗ BottomNav
+  // (deep link / прямой stack-вход, не через таб MyWork). Раньше пользователь
+  // упирался в тупик: ни таббара, ни Back. Показываем явную стрелку Back
+  // только в этом случае — на табе MyWork (route.name === 'MyWork') её как
+  // не было, так и нет (там таббар остаётся видимым и достаточен).
+  const isStackScreen = route?.name === 'MyTripsList';
+  const showBackButton = isStackScreen && navigation.canGoBack?.();
   const isDriver = role === 'driver';
   const accent = isDriver ? '#168759' : '#FF8400';
   const { t, lang } = useI18n();
@@ -620,7 +627,18 @@ export default function MyTripsScreen({ navigation, route }) {
 
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      <View style={[s.brandBar, { justifyContent: 'flex-end' }]} testID="mywork-minimal-header">
+      <View style={[s.brandBar, { justifyContent: showBackButton ? 'space-between' : 'flex-end' }]} testID="mywork-minimal-header">
+        {showBackButton ? (
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={s.menuBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            testID="mywork-back-btn"
+            accessibilityLabel={t('back')}
+          >
+            <Feather name="chevron-left" size={28} color={v1.text} />
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           onPress={() => navigation.navigate('Profile', { role })}
           style={s.menuBtn}

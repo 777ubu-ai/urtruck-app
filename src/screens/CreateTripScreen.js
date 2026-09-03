@@ -178,8 +178,16 @@ export default function CreateTripScreen({ navigation, route }) {
       const r = await marketAPI.createTrip(payload);
       if (r.ok || r.id) {
         toast('✓ ' + t('trip_published'), 'success', 4000);
-        const justCreated = { id: r.id, ...payload, status: 'active', created_at: new Date().toISOString() };
-        navigation.replace('MyTripsList', { role, initialTab: 'my', justCreatedTrip: justCreated });
+        // P0 (owner fix) — было navigation.replace('MyTripsList', ...):
+        // отдельный Stack.Screen без BottomNav — гарантированный тупик.
+        // popToTop() возвращает к уже смонтированному Main→MyWork (tab),
+        // не создаёт дублей в стеке; MyTripsScreen сам обновит список по
+        // фокус-листенеру. Физически подтверждено: BottomNav может не
+        // перерисоваться на самом первом кадре после этого перехода
+        // (известная особенность, не устранена в рамках этой сессии), но
+        // системный Back с этого кадра ВСЕГДА ведёт на рабочий Main→MyWork
+        // с таббаром — тупика (ни таббара, ни Back) больше нет.
+        navigation.popToTop();
       } else {
         toast(r.detail || t('send_error'), 'error');
       }

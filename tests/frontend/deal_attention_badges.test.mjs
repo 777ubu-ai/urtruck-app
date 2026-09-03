@@ -1,9 +1,10 @@
-// P0 2026-09-02 — переписан под unified inbox (§2/§3).
+// P0 2026-09-03 — canon CORRECTION (owner-verified). См. docs/product/DEALS_CANON.md.
 //
-// БЫВШИЙ файл защищал 3-tab архитектуру (tabOffersLabel/Active/Archive),
-// которая была регрессией из PR #243 e036e53. Теперь тест защищает НОВЫЙ
-// unified-inbox канон, но сохраняет инварианты attention-counters,
-// красного unread-badge и адаптивности TabChip.
+// Владелец физически подтвердил 3-tab архитектуру (Предложения/В работе/
+// Архив) как канон — предыдущая версия этого файла (2026-09-02) защищала
+// unified-inbox, отклонённый владельцем как регрессия. Тест переписан на
+// текущую структуру, инварианты attention-counters/badge/адаптивности
+// TabChip сохранены без изменений.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,17 +12,18 @@ import fs from "node:fs";
 const deals = fs.readFileSync("src/screens/DealsScreen.js", "utf8");
 
 test("deal inbox preserves actionable counters for offers and active deals", () => {
-  // Attention counters должны остаться (offers и active) — они питают
-  // красный дот на bottom-tab «Сделки» и в attentionCount TabChip.
+  // Attention counters — питают красный дот на bottom-tab «Сделки» и
+  // attentionCount на своих TabChip (Предложения / В работе отдельно).
   assert.match(deals, /const offerAttentionCount = useMemo/);
   assert.match(deals, /offersData\.reduce/);
   assert.match(deals, /const activeAttentionCount = useMemo/);
   assert.match(deals, /activeDeals\.reduce/);
 
-  // Новый canon: attentionCount живёт на TabChip 'Все' и 'Непрочитанные'
-  // как сумма (offer + active), а не по одной вкладке. Иначе pending
-  // offer'ы бы «съедались» переключением между старыми вкладками.
-  assert.match(deals, /attentionCount=\{offerAttentionCount \+ activeAttentionCount\}/);
+  // Канон: attentionCount живёт на СВОЕЙ вкладке — Предложения получает
+  // offerAttentionCount, В работе — activeAttentionCount (не суммируется
+  // в одну "Все", т.к. вкладки разные).
+  assert.match(deals, /attentionCount=\{offerAttentionCount\}/);
+  assert.match(deals, /attentionCount=\{activeAttentionCount\}/);
 
   // testID attention остался на TabChip
   assert.match(deals, /testID=\{`\$\{testID\}-attention`\}/);
@@ -39,22 +41,23 @@ test("attention inside cards uses the distinct red unread badge", () => {
 });
 
 test('deal top tabs fit narrow phones and show counts as badges', () => {
-  // TabChip адаптивные — эти инварианты живут и в unified canon.
+  // TabChip адаптивные — инварианты не зависят от числа вкладок.
   assert.match(deals, /styles\.tabCountBadge/);
   assert.match(deals, /count > 99 \? '99\+' : count/);
 
-  // Новые labels canonical:
-  assert.match(deals, /tabAllLabel: 'Все'/);
-  assert.match(deals, /tabUnreadLabel: 'Непрочитанные'/);
-  assert.match(deals, /label=\{copy\.tabAllLabel\}/);
-  assert.match(deals, /label=\{copy\.tabUnreadLabel\}/);
+  // Канонические labels (Предложения/В работе/Архив):
+  assert.match(deals, /tabOffersLabel: 'Предложения'/);
+  assert.match(deals, /tabActiveLabel: 'В работе'/);
+  assert.match(deals, /tabArchiveLabel: 'Архив'/);
+  assert.match(deals, /label=\{copy\.tabOffersLabel\}/);
+  assert.match(deals, /label=\{copy\.tabActiveLabel\}/);
+  assert.match(deals, /label=\{copy\.tabArchiveLabel\}/);
 
-  // Инверсная защита: старые Predloженiya/V rabote/Arkhiv labels — регрессия.
-  assert.doesNotMatch(deals, /tabOffersLabel: 'Предложения'/);
-  assert.doesNotMatch(deals, /tabActiveLabel: 'В работе'/);
-  assert.doesNotMatch(deals, /tabArchiveLabel: 'Архив'/);
+  // Инверсная защита: unified-inbox 2 вкладки — отклонённая владельцем регрессия.
+  assert.doesNotMatch(deals, /tabAllLabel: 'Все'/);
+  assert.doesNotMatch(deals, /tabUnreadLabel: 'Непрочитанные'/);
 
-  // TabChip layout — сохраняется адаптивность:
+  // TabChip layout — адаптивность сохраняется:
   assert.match(deals, /styles\.tabChipLabelRow/);
   assert.match(deals, /adjustsFontSizeToFit/);
   assert.match(deals, /minimumFontScale=\{0\.62\}/);

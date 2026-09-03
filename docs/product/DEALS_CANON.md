@@ -1,50 +1,52 @@
-# DEALS canon (P0 freeze 2026-09-02)
+# DEALS canon (P0 freeze 2026-09-03 — CORRECTED)
 
-**Владелец подтвердил** после регрессии PR #243 (e036e53) «WhatsApp-style
-floating deal inbox», которая тайно вернула старые вкладки «Предложения /
-В работе / Архив».
+**Владелец физически проверил** на Android 15 (4PYDDI4DHIXS5DD6) и
+Android 16 (BUA6JB99T465Q49X) и явно назвал unified-inbox (`Все` /
+`Непрочитанные` внутри Deals) регрессией — приказал вернуть 3 вкладки.
+
+> Эта версия отменяет предыдущий freeze от 2026-09-02 (коммит `1063c6b5`),
+> который сам объявил 3-вкладочный экран регрессией со ссылкой на
+> «подтверждение владельца» без живого диалога в моменте. Текущая прямая
+> команда владельца (2026-09-02, вечер) имеет приоритет над git history:
+> «Git history не имеет права автоматически отменять более новую
+> продуктовую договорённость».
 
 ## Канон
 
-- `Deals` = ЕДИНЫЙ inbox — один общий список.
-- Наверху экрана:
-  - поиск;
-  - **максимум** 2 фильтра: `Все` / `Непрочитанные`.
-- Далее единый список по свежести (last_message_at → updated_at → created_at)
-  с приоритетом attention (unread_count, tracking_action_required).
-- Каждая карточка самостоятельно показывает свой статус:
-  - Предложение;
-  - Принят;
-  - В пути;
-  - Граница;
-  - Ожидает подтверждения;
-  - Доставлен;
-  - Завершён;
-  - Отменён;
-  - Истёк.
-- Архивные (`ARCHIVE_DEAL_STATUSES`) остаются в общем списке визуально
-  приглушёнными (`dimmed`), а не выносятся во вкладку.
-- Один и тот же экран для web / iOS / Android / bottom tab / deep link /
-  push navigation. Никаких Legacy-веток.
+- `Deals` (bottom-tab) = **Предложения / В работе / Архив** — три вкладки
+  со счётчиками (`deals-tab-offers` / `deals-tab-active` / `deals-tab-archive`).
+- `dealTab` по умолчанию — `'offers'`.
+- `Все` / `Непрочитанные` — ТОЛЬКО для отдельного, НЕ-Deals экрана списка
+  чатов (`ChatsListLegacyScreen`, `route.name !== 'Deals'`, deep link /
+  standalone `ChatsList` route). Это отдельный утверждённый фильтр
+  сообщений, не подмена основного Deals UI.
+- `ChatsListScreen.js` — роутер: `route.name === 'Deals' ? DealsScreen :
+  ChatsListLegacyScreen`. Оба компонента живы и подключены.
 
 ## Запрещённые regressions
 
-- Возврат вкладок `deals-tab-active` / `deals-tab-archive` / `deals-tab-offers`.
-- Возврат подписей `tabActiveLabel` / `tabArchiveLabel` / `tabOffersLabel`
-  в `COPY`.
-- Возврат `dealTab === 'active'` / `'archive'` / `'offers'` в UI-логике.
-- Подключение `ChatsListLegacyScreen.js` из `ChatsListScreen.js` роутера.
+- Полная замена 3 вкладок Deals (`deals-tab-offers/active/archive`) на
+  `Все`/`Непрочитанные` внутри самого Deals-экрана.
+- Удаление условного роутинга в `ChatsListScreen.js` (принудительный
+  единый компонент для всех `route.name`).
+- Изменение дефолта `dealTab` с `'offers'` на что-либо другое без
+  отдельного разрешения владельца.
 
 CI-инвариант — `tests/frontend/test_deals_unified_inbox_contract.mjs`.
 
-## История регрессии
+## История (для контекста, НЕ источник истины)
 
 | SHA | Дата | Смысл |
 |---|---|---|
-| `0b2c11e` | 2026-08-04 | refactor: replace deal tabs with unified inbox — **правильный канон** |
-| `d730aaa` | 2026-08-04 | fix: remove deal duplication from work screens |
-| `e036e53` | 2026-08-19 | feat(deals): WhatsApp-style floating deal inbox — **тайно вернул 3 вкладки** |
-| `379f7b1` | 2026-08-19 | Merge PR #243 — регрессия слита в main |
+| `0b2c11e` | 2026-08-04 | refactor: replace deal tabs with unified inbox |
+| `e036e53` | 2026-08-19 | feat(deals): WhatsApp-style floating deal inbox — вернул 3 вкладки |
+| `1063c6b5` | 2026-09-02 | recovery-audit — откатил обратно на unified inbox, сославшись на неподтверждённое «владелец подтвердил» |
+| `731ac1ba` | 2026-09-02 | **owner-verified fix** — физически проверено на 2 Android, откат к 3 вкладкам по прямой команде |
 
-Любая новая модификация экрана `Deals` проходит через
-`tests/frontend/test_deals_unified_inbox_contract.mjs` и review этого файла.
+Git history above — это хронология, не источник истины. Источник истины —
+текущая прямая команда владельца (см. заголовок файла) и
+`tests/frontend/test_deals_unified_inbox_contract.mjs`.
+
+Любая новая модификация экрана `Deals` проходит через этот тест и review
+этого файла. Изменение канона обратно на unified-inbox требует отдельного
+явного разрешения владельца в моменте, а не ссылки на старый git-коммит.

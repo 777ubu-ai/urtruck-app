@@ -197,9 +197,20 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'center'/);
   assert.match(workspace, /borderRadius: 30/);
   assert.match(workspace, /shadowOpacity: 0\.1/);
-  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 74, minWidth: 96, borderRadius: 999/);
-  assert.match(workspace, /placeholder=\{isDriver \? ui\.writeShipper : ui\.write\}/);
-  assert.match(workspace, /placeholderTextColor="#8A9490"/);
+  // P0 2026-09-03 (owner fix, физически подтверждено Android 15/16):
+  // inputShell раньше рисовал свою капсулу (border/bg) ПОВЕРХ уже белой
+  // капсулы composer — двойная рамка. Убраны background/border/borderRadius
+  // у inputShell; родной TextInput placeholder заменён на кастомный
+  // <Text numberOfLines={1}> (native placeholder игнорировал numberOfLines
+  // в multiline-режиме на Android — перенос на 2 строки).
+  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 74, minWidth: 96, justifyContent: 'center', position: 'relative' \}/);
+  assert.doesNotMatch(workspace, /inputShell: \{[^}]*borderRadius: 999/,
+    'двойная рамка (inputShell borderRadius/border) — исправленная регрессия');
+  assert.doesNotMatch(workspace, /placeholder=\{isDriver \? ui\.writeShipper : ui\.write\}/,
+    'нативный TextInput placeholder убран — переехал в кастомный Text overlay');
+  assert.match(workspace, /\{isDriver \? ui\.writeShipper : ui\.write\}\s*<\/Text>/,
+    'кастомный placeholder Text должен использовать те же тексты');
+  assert.match(workspace, /color: '#8A9490'/, 'цвет плейсхолдера сохранён');
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
 });
 

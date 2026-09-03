@@ -223,15 +223,12 @@ export default function CreateCargoScreen({ navigation, route }) {
       const r = await marketAPI.createCargo(payload);
       if (r.ok || r.id) {
         toast('✓ ' + t('cargo_published'), 'success', 4000);
-        // Замыкаем цикл: ведём в «Ищу машину» с только что размещённым
-        // грузом (статус «ждём ставки»), а не goBack() в никуда.
-        const justCreated = {
-          id: r.id,
-          ...payload,
-          status: 'active',
-          created_at: new Date().toISOString(),
-        };
-        navigation.replace('MyTripsList', { role, initialTab: 'searching', justCreatedCargo: justCreated });
+        // P0 (owner fix) — см. CreateTripScreen.js: popToTop() возвращает к
+        // уже смонтированному Main→MyWork без дублей в стеке. Известная
+        // особенность: BottomNav может не перерисоваться на самом первом
+        // кадре (не устранена в рамках этой сессии), но системный Back с
+        // этого кадра всегда ведёт на рабочий Main→MyWork с таббаром.
+        navigation.popToTop();
       } else {
         toast(r.detail || t('send_error'), 'error');
       }
