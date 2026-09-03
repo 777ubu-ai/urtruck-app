@@ -13,6 +13,7 @@ const wellKnownAasa = JSON.parse(read('web/.well-known/apple-app-site-associatio
 const assetlinks = JSON.parse(read('web/.well-known/assetlinks.json'));
 const secureDeploy = read('.github/workflows/secure-production-deploy.yml');
 const deployScript = read('deploy.sh');
+const androidManifest = read('android/app/src/main/AndroidManifest.xml');
 
 test('native push tap routing keeps canonical deep-links for cargo, trip, deal, chat, profile and notifications', () => {
   assert.match(app, /if \(kind === 'cargos' && id\)/);
@@ -90,6 +91,21 @@ test('P0 2026-09-03: Linking.getInitialURL() is consumed exactly once per proces
   );
   assert.ok(effectBlock, 'getInitialURL effect not found');
   assert.equal(effectBlock[1], '[]);', 'getInitialURL effect must run exactly once ([] deps), not on every authedForDeepLink change');
+});
+
+test('P0 2026-09-03: AndroidManifest has exactly one /notifications intent-filter, not a hand-written duplicate of the app.json-generated one', () => {
+  // expo prebuild генерирует intent-filter из expo.android.intentFilters
+  // в app.json (маркер data-generated="true"). Ранее в трекаемом манифесте
+  // рядом жил ещё и рукописный дубликат с идентичным match (scheme=https,
+  // host=urtruck.kz, pathPrefix=/notifications) — мёртвый лишний узел,
+  // не дедуплицируемый prebuild'ом. Дубликат не вызывал двойную навигацию
+  // (Android доставляет один Intent независимо от числа matching filters,
+  // первопричина спонтанной навигации — отдельный JS-баг в App.js), но
+  // оставлять две декларации одного и того же app-link неверно.
+  const notifFilterMatches = androidManifest.match(/pathPrefix="\/notifications"/g) || [];
+  assert.equal(notifFilterMatches.length, 1, 'ровно один intent-filter на /notifications, без рукописного дубликата');
+  assert.match(androidManifest, /data-generated="true"[\s\S]{0,200}?pathPrefix="\/notifications"/);
+  assert.match(androidManifest, /enableOnBackInvokedCallback="false"/);
 });
 
 test('ios and android release configs declare urtruck notifications app-link entrypoints', () => {
