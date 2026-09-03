@@ -21,7 +21,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
-import { useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight, radius, typography } from '../../theme/brandV2';
 
 const COPY = {
   RU: {
@@ -204,8 +204,8 @@ function ProfileField({
 }
 
 export default function ProfileV2Screen({ navigation, route }) {
-  const colors = useBrand();
-  const s = useMemo(() => makeStyles(colors), [colors]);
+  const colors = brandLight;
+  const s = useMemo(() => makeStyles(colors), []);
   const { t, lang } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const { session, setRole } = useAuth();

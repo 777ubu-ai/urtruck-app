@@ -9,6 +9,11 @@ const deals = fs.readFileSync('src/screens/DealsScreen.js', 'utf8');
 const bell = fs.readFileSync('src/components/ui/v1/NotificationBellButton.js', 'utf8');
 const profile = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
 const onboarding = fs.readFileSync('src/screens/onboarding/OnboardingV2Screen.js', 'utf8');
+const phoneV2 = fs.readFileSync('src/screens/onboarding/PhoneV2Screen.js', 'utf8');
+const roleV2 = fs.readFileSync('src/screens/onboarding/RoleScreenV2.js', 'utf8');
+const profileV2 = fs.readFileSync('src/screens/onboarding/ProfileV2Screen.js', 'utf8');
+const premiumLogin = fs.readFileSync('src/screens/registration/PremiumLoginScreen.js', 'utf8');
+const premiumRegister = fs.readFileSync('src/screens/registration/PremiumRegisterScreen.js', 'utf8');
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 const nativeMap = fs.readFileSync('src/components/TruckMap.native.js', 'utf8');
 const webMap = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
@@ -19,7 +24,9 @@ const mainActivity = fs.readFileSync('android/app/src/main/java/com/urtruck/app/
 const splashPlugin = fs.readFileSync('plugins/withAndroidSplashSize.js', 'utf8');
 
 test('status bar follows the resolved app theme', () => {
-  assert.match(app, /<StatusBar style=\{isDark \? 'light' : 'dark'\} backgroundColor=\{theme\.bg\}/);
+  assert.match(app, /style=\{authLightRoute \? 'dark' : \(isDark \? 'light' : 'dark'\)\}/);
+  assert.match(app, /backgroundColor=\{navBackground\}/);
+  assert.match(app, /const navBackground = authLightRoute \? AUTH_LIGHT_BG : theme\.bg/);
   assert.doesNotMatch(app, /<StatusBar style="light" \/>/);
 });
 
@@ -50,10 +57,20 @@ test('profile theme picker keeps system mode as an explicit localized option', (
   assert.match(i18n, /theme_system: 'Match device'/);
 });
 
-test('onboarding remains theme-aware while Android startup splash stays isolated', () => {
-  assert.match(onboarding, /useBrand\(\)/);
-  assert.match(onboarding, /makeStyles\(_b\)/);
-  assert.doesNotMatch(onboarding, /makeStyles\(brandLight\)/);
+test('startup and auth flow is light-only while the main app keeps resolved theme support', () => {
+  assert.match(app, /AUTH_LIGHT_ROUTES/);
+  assert.match(app, /AUTH_LIGHT_BG = '#FFFFFF'/);
+  assert.match(app, /const authLightRoute = !authedForDeepLink && AUTH_LIGHT_ROUTES\.has/);
+  assert.match(app, /const base = authLightRoute \? DefaultTheme : \(isDark \? DarkTheme : DefaultTheme\)/);
+  assert.match(app, /const navBackground = authLightRoute \? AUTH_LIGHT_BG : theme\.bg/);
+  assert.match(app, /card: navBackground/);
+  assert.match(onboarding, /makeStyles\(brandLight\)/);
+  assert.doesNotMatch(onboarding, /useBrand\(\)/);
+  assert.match(phoneV2, /brandLight as brand/);
+  assert.match(roleV2, /const colors = brandLight/);
+  assert.match(profileV2, /const colors = brandLight/);
+  assert.match(premiumLogin, /const c = v1Colors/);
+  assert.match(premiumRegister, /const c = v1Colors/);
   assert.doesNotMatch(onboarding, /<StatusBar style="dark" backgroundColor=\{brandLight\.bg\}/);
   assert.match(app, /testID="android-startup-splash"/);
   assert.match(app, /STARTUP_SPLASH_IMAGE/);

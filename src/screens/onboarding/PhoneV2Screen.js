@@ -46,7 +46,7 @@ import {
   startSocialAuth,
   takeBufferedSocialCallbackUrl,
 } from '../../utils/socialAuth';
-import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight as brand, radius, typography } from '../../theme/brandV2';
 import { WEB_URL } from '../../config/env';
 
 const LEGAL_BASE = WEB_URL || 'https://urtruck.kz';
@@ -128,8 +128,7 @@ const socialErrorKey = (err, provider) => {
 };
 
 export default function PhoneV2Screen({ navigation, route }) {
-  const _b = useBrand();
-  const s = React.useMemo(() => makeStyles(_b), [_b]);
+  const s = React.useMemo(() => makeStyles(brand), []);
   const { t, lang } = useI18n();
   const { toast } = useToast();
   const { signIn, setRole, refreshLevel } = useAuth();

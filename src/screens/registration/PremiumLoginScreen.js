@@ -30,7 +30,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../utils/useI18n';
-import { useV1Colors } from '../../theme/designV1';
+import { v1Colors } from '../../theme/designV1';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import { formatCooldown } from '../../utils/formatCooldown';
@@ -39,8 +39,8 @@ import { formatPhoneForDisplay, toAsciiDigits } from '../../utils/phone';
 const ACCENT = { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF' };
 
 export default function PremiumLoginScreen({ navigation }) {
-  const c = useV1Colors();
-  const s = React.useMemo(() => makeStyles(c), [c]);
+  const c = v1Colors;
+  const s = React.useMemo(() => makeStyles(c), []);
   const { t } = useI18n();
   const { toast } = useToast();
   const accent = { main: c.driver, deep: c.driverDeep, soft: c.driverSoft, glow: c.driverGlow, onAccent: c.driverOnAccent };

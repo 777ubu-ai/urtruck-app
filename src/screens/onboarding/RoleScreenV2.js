@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
-import { useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight, radius, typography } from '../../theme/brandV2';
 
 function StepIndicator({ s }) {
   return (
@@ -72,8 +72,8 @@ function RoleCard({
 }
 
 export default function RoleScreenV2({ navigation, route }) {
-  const colors = useBrand();
-  const s = React.useMemo(() => makeStyles(colors), [colors]);
+  const colors = brandLight;
+  const s = React.useMemo(() => makeStyles(colors), []);
   const { t } = useI18n();
   const signupIdentity = route?.params?.phone || '';
   const [selected, setSelected] = useState(null);

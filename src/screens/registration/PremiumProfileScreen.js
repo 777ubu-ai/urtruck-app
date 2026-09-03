@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
-import { useV1Colors } from '../../theme/designV1';
+import { v1Colors } from '../../theme/designV1';
 import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
 import { saveProfile } from '../../utils/store';
@@ -52,8 +52,8 @@ const COPY = {
 const digits = (value) => String(value || '').replace(/\D/g, '');
 
 export default function PremiumProfileScreen({ navigation, route }) {
-  const c = useV1Colors();
-  const s = React.useMemo(() => makeStyles(c), [c]);
+  const c = v1Colors;
+  const s = React.useMemo(() => makeStyles(c), []);
   const { t, lang } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const { session, setRole, refreshLevel } = useAuth();

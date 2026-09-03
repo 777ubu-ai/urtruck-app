@@ -23,7 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
-import { useV1Colors } from '../../theme/designV1';
+import { v1Colors } from '../../theme/designV1';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
@@ -47,8 +47,8 @@ const maskPhone = (raw) => {
 };
 
 export default function PremiumOtpScreen({ navigation, route }) {
-  const c = useV1Colors();
-  const s = React.useMemo(() => makeStyles(c), [c]);
+  const c = v1Colors;
+  const s = React.useMemo(() => makeStyles(c), []);
   const { t } = useI18n();
   const { toast } = useToast();
   const { signIn, setRole, refreshLevel } = useAuth();

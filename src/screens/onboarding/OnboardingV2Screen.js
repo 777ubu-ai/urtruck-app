@@ -25,7 +25,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { isSocialAuthCallback, takeBufferedSocialCallbackUrl } from '../../utils/socialAuth';
-import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight, radius, typography } from '../../theme/brandV2';
 
 const QA_HOOK_ALLOWED = (() => {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
@@ -122,7 +122,7 @@ const QaLoginHook = ({ s }) => {
         value={token}
         onChangeText={setToken}
         placeholder="paste actor token"
-        placeholderTextColor={brand.textSecondary}
+        placeholderTextColor={brandLight.textSecondary}
         autoCapitalize="none"
         autoCorrect={false}
         secureTextEntry={false}
@@ -144,8 +144,7 @@ const QaLoginHook = ({ s }) => {
 };
 
 export default function OnboardingV2Screen({ navigation }) {
-  const _b = useBrand();
-  const s = React.useMemo(() => makeStyles(_b), [_b]);
+  const s = React.useMemo(() => makeStyles(brandLight), []);
   const { t } = useI18n();
   const { toast } = useToast();
   const { ensureGuest } = useAuth();
@@ -258,8 +257,8 @@ export default function OnboardingV2Screen({ navigation }) {
             style={[
               s.dot,
               i === idx
-                ? { backgroundColor: brand.primary, width: 22, height: 6, borderRadius: 3 }
-                : { backgroundColor: brand.borderStrong },
+                ? { backgroundColor: brandLight.primary, width: 22, height: 6, borderRadius: 3 }
+                : { backgroundColor: brandLight.borderStrong },
             ]}
           />
         ))}
@@ -273,7 +272,7 @@ export default function OnboardingV2Screen({ navigation }) {
           testID="onb-v2-cta-phone"
           style={({ pressed }) => [
             s.ctaPrimary,
-            { backgroundColor: brand.primary },
+            { backgroundColor: brandLight.primary },
             pressed && { opacity: 0.85 },
           ]}
         >
@@ -287,9 +286,9 @@ export default function OnboardingV2Screen({ navigation }) {
           testID="onb-v2-cta-guest"
           style={({ pressed }) => [s.ctaOutline, pressed && { opacity: 0.85 }]}
         >
-          <Feather name="package" size={18} color={brand.textPrimary} />
+          <Feather name="package" size={18} color={brandLight.textPrimary} />
           <Text style={s.ctaOutlineText}>{t('onb_v2_cta_guest')}</Text>
-          <Feather name="arrow-right" size={18} color={brand.textPrimary} />
+          <Feather name="arrow-right" size={18} color={brandLight.textPrimary} />
         </Pressable>
 
         <Text style={s.consent}>

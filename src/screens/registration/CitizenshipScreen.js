@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
-import { useV1Colors } from '../../theme/designV1';
+import { v1Colors } from '../../theme/designV1';
 import { regAPI } from '../../utils/registration';
 
 const TOTAL_STEPS = 4;
@@ -25,7 +25,7 @@ const COUNTRIES = [
 export default function CitizenshipScreen({ navigation }) {
   const { t } = useI18n();
   const { theme } = useTheme();
-  const v1 = useV1Colors();
+  const v1 = v1Colors;
   const accent = '#168759';               // роль водителя — изумрудный неон
   const [selected, setSelected] = useState(null);
   const [saving, setSaving] = useState(false);

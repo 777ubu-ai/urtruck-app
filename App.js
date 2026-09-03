@@ -34,6 +34,27 @@ import { push } from './src/utils/push';
 import * as Sentry from '@sentry/react-native';
 
 const STARTUP_SPLASH_IMAGE = require('./assets/splash/urtruck-splash.png');
+const AUTH_LIGHT_ROUTES = new Set([
+  'OnboardingV2',
+  'PhoneV2',
+  'CountryPicker',
+  'OtpV2',
+  'RoleV2',
+  'ProfileV2',
+  'Role',
+  'Auth',
+  'Login',
+  'Reg',
+  'RegOtp',
+  'RegProfile',
+]);
+const AUTH_LIGHT_BG = '#FFFFFF';
+
+function getActiveRouteName(state) {
+  if (!state || !state.routes || state.index == null) return null;
+  const route = state.routes[state.index];
+  return route?.state ? getActiveRouteName(route.state) : route?.name || null;
+}
 
 // Глобально убираем браузерную синюю обводку фокуса (outline) с полей ввода и
 // нажимаемых элементов на web/PWA. react-native-web рендерит TextInput как
@@ -211,18 +232,21 @@ function AppInner() {
   const { session, hasToken, signIn, setRole, refreshLevel } = useAuth();
   const { theme, isDark } = useTheme();
   const [showStartupSplash, setShowStartupSplash] = useState(Platform.OS === 'android');
-
-  // Фон САМОГО навигатора (не только сцены). Без theme у NavigationContainer
-  // берётся DefaultTheme с БЕЛЫМ фоном — и он просвечивал снизу, под прозрачным
-  // плавающим таб-баром (белая полоса в зоне home-indicator на тёмной теме).
-  // Привязываем фон навигатора к текущей теме → полоса совпадает с фоном экрана.
-  const base = isDark ? DarkTheme : DefaultTheme;
-  const navTheme = { ...base, colors: { ...base.colors, background: theme.bg } };
+  const [currentRouteName, setCurrentRouteName] = useState(null);
 
   // Авторизован ли для «глубоких» экранов (Chat/ChatsList/CargoDetail…) —
   // они существуют только в полном стеке (session + роль). До этого маршрут
   // отсутствует, navigate падал и тап по пушу «терялся».
   const authedForDeepLink = !!(session && session.user && session.user.role);
+
+  // Фон САМОГО навигатора (не только сцены). Без theme у NavigationContainer
+  // берётся DefaultTheme с БЕЛЫМ фоном — и он просвечивал снизу, под прозрачным
+  // плавающим таб-баром (белая полоса в зоне home-indicator на тёмной теме).
+  // Привязываем фон навигатора к текущей теме → полоса совпадает с фоном экрана.
+  const authLightRoute = !authedForDeepLink && AUTH_LIGHT_ROUTES.has(currentRouteName || 'OnboardingV2');
+  const base = authLightRoute ? DefaultTheme : (isDark ? DarkTheme : DefaultTheme);
+  const navBackground = authLightRoute ? AUTH_LIGHT_BG : theme.bg;
+  const navTheme = { ...base, colors: { ...base.colors, background: navBackground, card: navBackground } };
 
   useEffect(() => {
     if (!showStartupSplash) return undefined;
@@ -378,9 +402,17 @@ function AppInner() {
           <NavigationContainer
             ref={navRef}
             theme={navTheme}
-            onReady={() => { navReadyRef.current = true; if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current); }}
+            onReady={() => {
+              navReadyRef.current = true;
+              setCurrentRouteName(getActiveRouteName(navRef.current?.getRootState?.()) || 'OnboardingV2');
+              if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current);
+            }}
+            onStateChange={(state) => setCurrentRouteName(getActiveRouteName(state))}
           >
-            <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.bg} />
+            <StatusBar
+              style={authLightRoute ? 'dark' : (isDark ? 'light' : 'dark')}
+              backgroundColor={navBackground}
+            />
             <AppNavigator />
           </NavigationContainer>
         )}

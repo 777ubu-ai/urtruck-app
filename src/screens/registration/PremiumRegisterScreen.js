@@ -23,7 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
-import { useV1Colors } from '../../theme/designV1';
+import { v1Colors } from '../../theme/designV1';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import ConsentRow from '../../components/ConsentRow';
@@ -36,8 +36,8 @@ const ACCENT = {
 };
 
 export default function PremiumRegisterScreen({ navigation, route }) {
-  const c = useV1Colors();
-  const s = React.useMemo(() => makeStyles(c), [c]);
+  const c = v1Colors;
+  const s = React.useMemo(() => makeStyles(c), []);
   const { t } = useI18n();
   const { toast } = useToast();
   const role = route?.params?.role === 'client' ? 'client' : 'driver';
