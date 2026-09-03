@@ -153,8 +153,20 @@ export const marketAPI = {
     }
   },
 
+  // P0 2026-09-03 (BID unread не гаснет): здесь НЕ передавались headers.
+  // `authedFetch` — вопреки имени — это drop-in замена fetch (таймаут +
+  // side-effect на 401, см. utils/authEvents.js), токен она НЕ подставляет.
+  // Запрос уходил анонимно, а backend GET /cargos/{id} — optional-auth:
+  // он отдавал карточку, но блок гашения уведомлений
+  //   if caller and caller.get("id"): mark_notifications_read_by_urls(...)
+  // (api/marketplace.py) молча пропускался → уведомление о новой ставке
+  // (url=/cargos/{id}?bid={bid_id}) навсегда оставалось непрочитанным.
+  // У ACCEPT дефект был замаскирован: там уже есть сделка, и экран
+  // дополнительно грузит строго-авторизованный GET /deals/{id}, который
+  // гасит и /cargos/{id}. headers() добавляет Authorization только когда
+  // токен есть — гостевой просмотр карточек не меняется.
   async getCargo(id) {
-    const r = await authedFetch(`${BASE}/cargos/${id}`);
+    const r = await authedFetch(`${BASE}/cargos/${id}`, { headers: await headers() });
     return r.json();
   },
 
@@ -275,8 +287,12 @@ export const marketAPI = {
     }
   },
 
+  // Симметрично getCargo (P0 2026-09-03): ставка по рейсу шлёт
+  // url=/trips/{id}?bid={bid_id}, а GET /trips/{id} гасит уведомления тем же
+  // условным блоком `if caller and caller.get("id")`. Без Authorization
+  // водительский BID-бейдж не гас точно так же.
   async getTrip(id) {
-    const r = await authedFetch(`${BASE}/trips/${id}`);
+    const r = await authedFetch(`${BASE}/trips/${id}`, { headers: await headers() });
     return r.json();
   },
 

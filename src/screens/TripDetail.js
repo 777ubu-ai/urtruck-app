@@ -32,6 +32,7 @@ import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { reviewsAPI } from '../utils/reviews';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
+import { notifyNotifRead } from '../utils/unreadEvents';
 
 export default function TripDetail({ navigation, route }) {
   const v1 = useV1Colors();
@@ -275,7 +276,13 @@ export default function TripDetail({ navigation, route }) {
     if (!tid) return;
     // Свежий рейс с сервера — актуальная цена/статус + driver_rating/
     // driver_verified для карточки водителя (get_trip обогащает).
-    marketAPI.getTrip(tid).then(d => { if (d && !d.detail) setServerTrip(d); }).catch(() => {});
+    // P0 2026-09-03: симметрично CargoDetail — GET /trips/{id} гасит на
+    // сервере уведомления с url=/trips/{id}[?bid=...], а notifyNotifRead()
+    // синхронизирует колокол/бейдж мгновенно, без ожидания 12-сек поллинга.
+    marketAPI.getTrip(tid).then(d => {
+      if (d && !d.detail) setServerTrip(d);
+      notifyNotifRead();
+    }).catch(() => {});
     loadBids();
     const seq = ++dealFetchSeq.current;
     // dealId (state) — авторитетнее routeDealId: если сделка создана уже

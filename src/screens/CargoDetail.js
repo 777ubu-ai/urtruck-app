@@ -45,6 +45,7 @@ import SecondaryButton from '../components/ui/actions/SecondaryButton';
 import DestructiveButton from '../components/ui/actions/DestructiveButton';
 import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
+import { notifyNotifRead } from '../utils/unreadEvents';
 
 const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
@@ -378,7 +379,17 @@ export default function CargoDetail({ navigation, route }) {
   // экрана + лёгкий поллинг раз в 15с, пока экран открыт (как в чате/сделках).
   const refreshDeal = useCallback(() => {
     if (!cid) return;
-    marketAPI.getCargo(cid).then(d => { if (d && d.id) setFullCargo(d); }).catch(() => {});
+    // P0 2026-09-03: GET /cargos/{id} на сервере гасит уведомления, которые
+    // вели именно сюда (в т.ч. «новая ставка», url=/cargos/{id}?bid=...).
+    // notifyNotifRead() заставляет useUnreadNotifications перечитать счётчик
+    // сразу, иначе колокол/бейдж висел бы до следующего 12-сек поллинга —
+    // ACCEPT/CHAT гаснут мгновенно именно потому, что их экраны это событие
+    // эмитят (NotificationsScreen, ChatScreen). Само гашение делает сервер;
+    // событие лишь синхронизирует UI.
+    marketAPI.getCargo(cid).then(d => {
+      if (d && d.id) setFullCargo(d);
+      notifyNotifRead();
+    }).catch(() => {});
     loadBids();
     const seq = ++dealFetchSeq.current;
     // dealId (state) авторитетнее routeDealId — тот навсегда фиксирован
