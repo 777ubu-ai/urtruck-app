@@ -20,13 +20,12 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { isSocialAuthCallback, takeBufferedSocialCallbackUrl } from '../../utils/socialAuth';
-import { brandLight, radius, typography } from '../../theme/brandV2';
+import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
 const QA_HOOK_ALLOWED = (() => {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
@@ -123,7 +122,7 @@ const QaLoginHook = ({ s }) => {
         value={token}
         onChangeText={setToken}
         placeholder="paste actor token"
-        placeholderTextColor={brandLight.textSecondary}
+        placeholderTextColor={brand.textSecondary}
         autoCapitalize="none"
         autoCorrect={false}
         secureTextEntry={false}
@@ -145,7 +144,8 @@ const QaLoginHook = ({ s }) => {
 };
 
 export default function OnboardingV2Screen({ navigation }) {
-  const s = React.useMemo(() => makeStyles(brandLight), []);
+  const _b = useBrand();
+  const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
   const { toast } = useToast();
   const { ensureGuest } = useAuth();
@@ -210,7 +210,6 @@ export default function OnboardingV2Screen({ navigation }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-      <StatusBar style="dark" backgroundColor={brandLight.bg} />
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -259,8 +258,8 @@ export default function OnboardingV2Screen({ navigation }) {
             style={[
               s.dot,
               i === idx
-                ? { backgroundColor: brandLight.primary, width: 22, height: 6, borderRadius: 3 }
-                : { backgroundColor: brandLight.borderStrong },
+                ? { backgroundColor: brand.primary, width: 22, height: 6, borderRadius: 3 }
+                : { backgroundColor: brand.borderStrong },
             ]}
           />
         ))}
@@ -274,7 +273,7 @@ export default function OnboardingV2Screen({ navigation }) {
           testID="onb-v2-cta-phone"
           style={({ pressed }) => [
             s.ctaPrimary,
-            { backgroundColor: brandLight.primary },
+            { backgroundColor: brand.primary },
             pressed && { opacity: 0.85 },
           ]}
         >
@@ -288,9 +287,9 @@ export default function OnboardingV2Screen({ navigation }) {
           testID="onb-v2-cta-guest"
           style={({ pressed }) => [s.ctaOutline, pressed && { opacity: 0.85 }]}
         >
-          <Feather name="package" size={18} color={brandLight.textPrimary} />
+          <Feather name="package" size={18} color={brand.textPrimary} />
           <Text style={s.ctaOutlineText}>{t('onb_v2_cta_guest')}</Text>
-          <Feather name="arrow-right" size={18} color={brandLight.textPrimary} />
+          <Feather name="arrow-right" size={18} color={brand.textPrimary} />
         </Pressable>
 
         <Text style={s.consent}>

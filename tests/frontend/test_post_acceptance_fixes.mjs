@@ -8,6 +8,7 @@ const myTrips = fs.readFileSync('src/screens/MyTripsScreen.js', 'utf8');
 const deals = fs.readFileSync('src/screens/DealsScreen.js', 'utf8');
 const bell = fs.readFileSync('src/components/ui/v1/NotificationBellButton.js', 'utf8');
 const profile = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
+const onboarding = fs.readFileSync('src/screens/onboarding/OnboardingV2Screen.js', 'utf8');
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 const nativeMap = fs.readFileSync('src/components/TruckMap.native.js', 'utf8');
 const webMap = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
@@ -43,6 +44,15 @@ test('profile theme picker keeps system mode as an explicit localized option', (
   assert.match(i18n, /theme_system: 'Как на устройстве'/);
   assert.match(i18n, /theme_system: '跟随设备'/);
   assert.match(i18n, /theme_system: 'Match device'/);
+});
+
+test('onboarding remains theme-aware while Android startup splash stays isolated', () => {
+  assert.match(onboarding, /useBrand\(\)/);
+  assert.match(onboarding, /makeStyles\(_b\)/);
+  assert.doesNotMatch(onboarding, /makeStyles\(brandLight\)/);
+  assert.doesNotMatch(onboarding, /<StatusBar style="dark" backgroundColor=\{brandLight\.bg\}/);
+  assert.match(app, /testID="android-startup-splash"/);
+  assert.match(app, /STARTUP_SPLASH_IMAGE/);
 });
 
 test('route maps do not draw straight-line fallback routes when road geometry is unavailable', () => {
