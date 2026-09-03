@@ -19,9 +19,11 @@ import { useAuth, LEVELS } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay } from '../utils/normalizers';
 import { localizePlace } from '../utils/places';
+import { countryFlag } from '../utils/countryFlags';
 import { useToast } from '../components/Toast';
 import { useVerificationGate } from '../components/VerificationGate';
 import { SkeletonCard } from '../components/Skeleton';
+import NotificationBellButton from '../components/ui/v1/NotificationBellButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
@@ -85,6 +87,8 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }
   const specs = [display.truckType, display.availableM3, display.capacityTons]
     .filter((value) => value && value !== notSpecified)
     .join(' · ');
+  const fromFlag = countryFlag(item.fromCountry);
+  const toFlag = countryFlag(item.toCountry);
 
   return (
     <TouchableOpacity
@@ -103,9 +107,17 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }
     >
       <View style={styles.greenRail} />
       <View style={styles.cardBody}>
-        <Text style={[styles.route, { color: colors.text }]} numberOfLines={2}>
-          {display.from} → {display.to}
-        </Text>
+        <View style={styles.routeLine}>
+          <View style={styles.routePoint}>
+            {fromFlag ? <Text style={styles.routeFlag}>{fromFlag}</Text> : null}
+            <Text style={[styles.route, { color: colors.text }]} numberOfLines={1}>{display.from}</Text>
+          </View>
+          <Feather name="arrow-right" size={16} color={colors.text} style={styles.routeArrow} />
+          <View style={styles.routePoint}>
+            {toFlag ? <Text style={styles.routeFlag}>{toFlag}</Text> : null}
+            <Text style={[styles.route, { color: colors.text }]} numberOfLines={1}>{display.to}</Text>
+          </View>
+        </View>
         <Text style={[styles.meta, { color: colors.textMuted }]} numberOfLines={1}>
           {[item.departure ? `${copy.departure}: ${display.departure}` : null, specs || null]
             .filter(Boolean)
@@ -441,6 +453,7 @@ export default function FeedScreen({ navigation }) {
         showsHorizontalScrollIndicator={false}
         style={styles.filtersScroll}
         contentContainerStyle={styles.filters}
+        keyboardShouldPersistTaps="handled"
       >
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
@@ -479,6 +492,11 @@ export default function FeedScreen({ navigation }) {
         style={[styles.topBar, { backgroundColor: colors.pageBg }]}
         testID="trip-feed-minimal-header"
       >
+        <NotificationBellButton
+          navigation={navigation}
+          color={colors.text}
+          testID="feed-notification-bell-btn"
+        />
         <TouchableOpacity
           onPress={() => navigation.navigate('Profile', { role })}
           style={styles.menuBtn}
@@ -697,12 +715,14 @@ export default function FeedScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: PAGE_BG },
   topBar: {
+    flexDirection: 'row',
     minHeight: 42,
     paddingHorizontal: 18,
     paddingTop: 2,
     paddingBottom: 2,
     alignItems: 'flex-end',
     justifyContent: 'center',
+    gap: 2,
     backgroundColor: PAGE_BG,
   },
   menuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
@@ -731,13 +751,15 @@ const styles = StyleSheet.create({
   routeLabel: { fontSize: 11.5, lineHeight: 15, fontWeight: '600' },
   routeValue: { fontSize: 15, lineHeight: 19, fontWeight: '700' },
   filtersScroll: { flexGrow: 0, minHeight: 50, maxHeight: 50 },
-  filters: { paddingHorizontal: 18, paddingVertical: 4, gap: 7, alignItems: 'center' },
+  filters: { paddingLeft: 18, paddingRight: 28, paddingVertical: 4, gap: 7, alignItems: 'center' },
   filterPill: {
     height: 40,
+    minWidth: 44,
     paddingHorizontal: 12,
     borderRadius: 20,
     borderWidth: 1,
     flexDirection: 'row',
+    flexShrink: 0,
     alignItems: 'center',
     gap: 7,
     shadowOpacity: 0.025,
@@ -745,7 +767,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  filterPillText: { fontSize: 13, fontWeight: '600' },
+  filterPillText: { fontSize: 13, fontWeight: '600', flexShrink: 0 },
   favoritesCount: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
   list: { flex: 1 },
   listContent: { paddingTop: 0, paddingBottom: 28 },
@@ -767,19 +789,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   greenRail: { width: 4, backgroundColor: '#3A9972' },
-  cardBody: { flex: 1, paddingLeft: 12, paddingRight: 145, paddingTop: 12, paddingBottom: 10 },
-  route: { fontSize: 15.5, lineHeight: 20, fontWeight: '700', letterSpacing: -0.1 },
+  cardBody: { flex: 1, paddingLeft: 12, paddingRight: 150, paddingTop: 12, paddingBottom: 10 },
+  routeLine: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 },
+  routePoint: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0, flexShrink: 1 },
+  routeFlag: { fontSize: 16, lineHeight: 18, flexShrink: 0 },
+  routeArrow: { flexShrink: 0 },
+  route: { fontSize: 15.5, lineHeight: 20, fontWeight: '700', letterSpacing: -0.1, flexShrink: 1 },
   meta: { fontSize: 12, lineHeight: 16, fontWeight: '500', marginTop: 7 },
   priceWrap: { position: 'absolute', right: 58, bottom: 12, alignItems: 'flex-end', maxWidth: 130 },
   price: { fontSize: 16.5, lineHeight: 20, fontWeight: '800' },
   perTrip: { fontSize: 11.5, lineHeight: 15, marginTop: 1 },
   bookmarkBtn: {
     position: 'absolute',
-    right: 9,
-    bottom: 6,
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    right: 8,
+    bottom: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },

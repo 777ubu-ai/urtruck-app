@@ -57,7 +57,7 @@ export default function ProfileScreen({ navigation, route }) {
   const isDriver = role === 'driver';
   const accent = isDriver ? '#168759' : '#FF8400';
   const onAccent = '#0C0A09';
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, themeMode, setThemeMode } = useTheme();
   const v1 = useV1Colors();
   const theme = {
     ...v1,
@@ -291,12 +291,15 @@ export default function ProfileScreen({ navigation, route }) {
         <View style={[s.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={s.settingsRow}>
             <Text style={[s.settingLabel, { color: theme.text }]}>{t('theme_label')}</Text>
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              <TouchableOpacity testID="theme-toggle-light" accessibilityRole="button" accessibilityState={{ selected: !isDark }} accessibilityLabel={t('theme_light')} style={[s.themeBtn, { backgroundColor: isDark ? 'transparent' : accent, borderColor: isDark ? theme.border : accent }]} onPress={() => { if (isDark) toggleTheme(); }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Feather name="sun" size={13} color={isDark ? theme.textMuted : onAccent} /><Text style={[s.themeBtnText, { color: isDark ? theme.textMuted : onAccent }]}>{t('theme_light')}</Text></View>
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <TouchableOpacity testID="theme-toggle-light" accessibilityRole="button" accessibilityState={{ selected: themeMode === 'light' }} accessibilityLabel={t('theme_light')} style={[s.themeBtn, { backgroundColor: themeMode === 'light' ? accent : 'transparent', borderColor: themeMode === 'light' ? accent : theme.border }]} onPress={() => setThemeMode('light')}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Feather name="sun" size={13} color={themeMode === 'light' ? onAccent : theme.textMuted} /><Text style={[s.themeBtnText, { color: themeMode === 'light' ? onAccent : theme.textMuted }]}>{t('theme_light')}</Text></View>
               </TouchableOpacity>
-              <TouchableOpacity testID="theme-toggle-dark" accessibilityRole="button" accessibilityState={{ selected: isDark }} accessibilityLabel={t('theme_dark')} style={[s.themeBtn, { backgroundColor: isDark ? accent : 'transparent', borderColor: isDark ? accent : theme.border }]} onPress={() => { if (!isDark) toggleTheme(); }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Feather name="moon" size={13} color={isDark ? onAccent : theme.textMuted} /><Text style={[s.themeBtnText, { color: isDark ? onAccent : theme.textMuted }]}>{t('theme_dark')}</Text></View>
+              <TouchableOpacity testID="theme-toggle-dark" accessibilityRole="button" accessibilityState={{ selected: themeMode === 'dark' }} accessibilityLabel={t('theme_dark')} style={[s.themeBtn, { backgroundColor: themeMode === 'dark' ? accent : 'transparent', borderColor: themeMode === 'dark' ? accent : theme.border }]} onPress={() => setThemeMode('dark')}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Feather name="moon" size={13} color={themeMode === 'dark' ? onAccent : theme.textMuted} /><Text style={[s.themeBtnText, { color: themeMode === 'dark' ? onAccent : theme.textMuted }]}>{t('theme_dark')}</Text></View>
+              </TouchableOpacity>
+              <TouchableOpacity testID="theme-toggle-system" accessibilityRole="button" accessibilityState={{ selected: themeMode === 'auto' }} accessibilityLabel={t('theme_system')} style={[s.themeBtn, { backgroundColor: themeMode === 'auto' ? accent : 'transparent', borderColor: themeMode === 'auto' ? accent : theme.border }]} onPress={() => setThemeMode('auto')}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Feather name="smartphone" size={13} color={themeMode === 'auto' ? onAccent : theme.textMuted} /><Text style={[s.themeBtnText, { color: themeMode === 'auto' ? onAccent : theme.textMuted }]}>{t('theme_system')}</Text></View>
               </TouchableOpacity>
             </View>
           </View>

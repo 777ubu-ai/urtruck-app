@@ -88,6 +88,7 @@ export default function TruckMap({
   const effectiveKey = routeKey(effectivePairs);
   const vehicleKey = vehicle ? JSON.stringify(vehicle) : '';
   const [serverRoute, setServerRoute] = React.useState(null);
+  const [routeUnavailable, setRouteUnavailable] = React.useState(false);
   const webViewRef = React.useRef(null);
   // P0-hotfix 28.08.2026 (TestFlight build 17, §5): раньше ЛЮБАЯ причина —
   // отсутствующий ключ, обрыв сети, HTTP-ошибка, поломка Yandex JS API —
@@ -104,14 +105,23 @@ export default function TruckMap({
     let cancelled = false;
     if (externalRoute || effectivePairs.length < 2) {
       setServerRoute(null);
+      setRouteUnavailable(false);
       return () => { cancelled = true; };
     }
+    setRouteUnavailable(false);
     routingAPI.roadRoute(effectivePairs, vehicle).then((result) => {
       if (cancelled) return;
       if (result?.ok && Array.isArray(result.geometry) && result.geometry.length >= 2) {
         setServerRoute({ ...result, routeKey: effectiveKey });
+        setRouteUnavailable(false);
       } else {
         setServerRoute(null);
+        setRouteUnavailable(true);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setServerRoute(null);
+        setRouteUnavailable(true);
       }
     });
     return () => { cancelled = true; };
@@ -122,7 +132,7 @@ export default function TruckMap({
     () => (resolvedRoute?.geometry || []).map(asPoint).filter(Boolean),
     [resolvedRoute?.routeKey],
   );
-  const road = roadGeometry.length >= 2 ? roadGeometry : planned;
+  const road = roadGeometry.length >= 2 ? roadGeometry : [];
 
   React.useEffect(() => {
     const distanceText = distanceTextFromMeters(resolvedRoute?.distance_m, t);
@@ -200,6 +210,11 @@ export default function TruckMap({
         onHttpError={(event) => { const detail = `HTTP ${event.nativeEvent?.statusCode || 'error'}`; console.error('[TruckMap/Yandex]', detail, event.nativeEvent?.url); setMapError(detail); setMapStatus('network_error'); }}
         testID="truck-map-yandex-webview" /> : null}
       {mapStatus === 'loading' && !hasNothingToShow ? <View style={s.mapOverlay} pointerEvents="none"><Text style={s.mapFallbackText}>{t('map_loading')}</Text></View> : null}
+      {routeUnavailable && mapStatus === 'ready' ? (
+        <View style={s.routeState} pointerEvents="none" testID="truck-map-road-route-unavailable">
+          <Text style={s.routeStateText}>{t('map_road_route_unavailable')}</Text>
+        </View>
+      ) : null}
       {!hasNothingToShow && (mapStatus === 'provider_not_configured' || mapStatus === 'network_error' || mapStatus === 'unknown_error') ? (
         <View style={s.mapFallback} testID={`truck-map-native-unavailable-${mapStatus}`}>
           <Text style={s.mapFallbackText}>
@@ -222,4 +237,17 @@ const s = StyleSheet.create({
   mapOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF3F0' },
   mapFallbackText: { color: '#617067', fontSize: 15, fontWeight: '700', textAlign: 'center' },
   mapDebugError: { marginTop: 8, color: '#9B2C2C', fontSize: 11, textAlign: 'center' },
+  routeState: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    maxWidth: '82%',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderWidth: 1,
+    borderColor: '#DDE5E0',
+  },
+  routeStateText: { color: '#3F4E46', fontSize: 11.5, fontWeight: '800' },
 });

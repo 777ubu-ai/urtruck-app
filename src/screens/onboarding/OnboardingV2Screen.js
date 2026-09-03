@@ -20,12 +20,13 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { isSocialAuthCallback, takeBufferedSocialCallbackUrl } from '../../utils/socialAuth';
-import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight, radius, typography } from '../../theme/brandV2';
 
 const QA_HOOK_ALLOWED = (() => {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
@@ -122,7 +123,7 @@ const QaLoginHook = ({ s }) => {
         value={token}
         onChangeText={setToken}
         placeholder="paste actor token"
-        placeholderTextColor={brand.textSecondary}
+        placeholderTextColor={brandLight.textSecondary}
         autoCapitalize="none"
         autoCorrect={false}
         secureTextEntry={false}
@@ -144,8 +145,7 @@ const QaLoginHook = ({ s }) => {
 };
 
 export default function OnboardingV2Screen({ navigation }) {
-  const _b = useBrand();
-  const s = React.useMemo(() => makeStyles(_b), [_b]);
+  const s = React.useMemo(() => makeStyles(brandLight), []);
   const { t } = useI18n();
   const { toast } = useToast();
   const { ensureGuest } = useAuth();
@@ -210,6 +210,7 @@ export default function OnboardingV2Screen({ navigation }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
+      <StatusBar style="dark" backgroundColor={brandLight.bg} />
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -258,8 +259,8 @@ export default function OnboardingV2Screen({ navigation }) {
             style={[
               s.dot,
               i === idx
-                ? { backgroundColor: brand.primary, width: 22, height: 6, borderRadius: 3 }
-                : { backgroundColor: brand.borderStrong },
+                ? { backgroundColor: brandLight.primary, width: 22, height: 6, borderRadius: 3 }
+                : { backgroundColor: brandLight.borderStrong },
             ]}
           />
         ))}
@@ -273,7 +274,7 @@ export default function OnboardingV2Screen({ navigation }) {
           testID="onb-v2-cta-phone"
           style={({ pressed }) => [
             s.ctaPrimary,
-            { backgroundColor: brand.primary },
+            { backgroundColor: brandLight.primary },
             pressed && { opacity: 0.85 },
           ]}
         >
@@ -287,9 +288,9 @@ export default function OnboardingV2Screen({ navigation }) {
           testID="onb-v2-cta-guest"
           style={({ pressed }) => [s.ctaOutline, pressed && { opacity: 0.85 }]}
         >
-          <Feather name="package" size={18} color={brand.textPrimary} />
+          <Feather name="package" size={18} color={brandLight.textPrimary} />
           <Text style={s.ctaOutlineText}>{t('onb_v2_cta_guest')}</Text>
-          <Feather name="arrow-right" size={18} color={brand.textPrimary} />
+          <Feather name="arrow-right" size={18} color={brandLight.textPrimary} />
         </Pressable>
 
         <Text style={s.consent}>
@@ -305,25 +306,28 @@ export default function OnboardingV2Screen({ navigation }) {
   );
 }
 
-const makeStyles = (brand) => StyleSheet.create({
-  safe: { flex: 1, backgroundColor: brand.bg },
+const makeStyles = (brand = brandLight) => {
+  const palette = brand || brandLight;
+  return StyleSheet.create({
+  safe: { flex: 1, backgroundColor: palette.bg },
   slide: { flex: 1, paddingHorizontal: 0, paddingTop: 6, alignItems: 'stretch' },
   captionBlock: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 4, alignItems: 'center' },
-  title: { ...typography.h1, color: brand.textPrimary, textAlign: 'center', marginBottom: 6 },
-  subtitle: { ...typography.body, color: brand.textSecondary, textAlign: 'center', paddingHorizontal: 4 },
+  title: { ...typography.h1, color: palette.textPrimary, textAlign: 'center', marginBottom: 6 },
+  subtitle: { ...typography.body, color: palette.textSecondary, textAlign: 'center', paddingHorizontal: 4 },
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 10, zIndex: 5, elevation: 5 },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  ctaWrap: { paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10, backgroundColor: brand.bg, zIndex: 10, elevation: 10 },
+  ctaWrap: { paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10, backgroundColor: palette.bg, zIndex: 10, elevation: 10 },
   ctaPrimary: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24 },
-  ctaPrimaryText: { ...typography.button, color: brand.textOnPrimary, flex: 1, textAlign: 'center' },
-  ctaOutline: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, marginTop: 8, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface },
-  ctaOutlineText: { ...typography.button, color: brand.textPrimary, flex: 1, textAlign: 'center', fontWeight: '700' },
-  consent: { fontSize: 12, color: brand.textSecondary, textAlign: 'center', marginTop: 8 },
-  consentLink: { color: brand.textPrimary, textDecorationLine: 'underline', fontWeight: '600' },
-  qaBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: brand.borderStrong, gap: 6 },
-  qaLabel: { fontSize: 11, color: brand.textSecondary, textAlign: 'center', fontWeight: '600' },
-  qaInput: { height: 36, borderRadius: radius.md, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface, paddingHorizontal: 10, color: brand.textPrimary, fontSize: 12 },
-  qaSubmit: { height: 36, borderRadius: radius.md, backgroundColor: brand.borderStrong, alignItems: 'center', justifyContent: 'center' },
-  qaSubmitText: { color: brand.textPrimary, fontSize: 12, fontWeight: '700' },
+  ctaPrimaryText: { ...typography.button, color: palette.textOnPrimary, flex: 1, textAlign: 'center' },
+  ctaOutline: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, marginTop: 8, borderWidth: 1, borderColor: palette.borderStrong, backgroundColor: palette.surface },
+  ctaOutlineText: { ...typography.button, color: palette.textPrimary, flex: 1, textAlign: 'center', fontWeight: '700' },
+  consent: { fontSize: 12, color: palette.textSecondary, textAlign: 'center', marginTop: 8 },
+  consentLink: { color: palette.textPrimary, textDecorationLine: 'underline', fontWeight: '600' },
+  qaBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: palette.borderStrong, gap: 6 },
+  qaLabel: { fontSize: 11, color: palette.textSecondary, textAlign: 'center', fontWeight: '600' },
+  qaInput: { height: 36, borderRadius: radius.md, borderWidth: 1, borderColor: palette.borderStrong, backgroundColor: palette.surface, paddingHorizontal: 10, color: palette.textPrimary, fontSize: 12 },
+  qaSubmit: { height: 36, borderRadius: radius.md, backgroundColor: palette.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  qaSubmitText: { color: palette.textPrimary, fontSize: 12, fontWeight: '700' },
   qaErr: { fontSize: 11, color: '#EF4444', textAlign: 'center' },
-});
+  });
+};

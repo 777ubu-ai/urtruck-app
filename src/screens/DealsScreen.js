@@ -16,6 +16,7 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { formatStatus } from '../utils/i18n';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
+import NotificationBellButton from '../components/ui/v1/NotificationBellButton';
 import { marketAPI } from '../utils/marketAPI';
 import { notificationsAPI } from '../utils/notificationsAPI';
 import { formatPrice } from '../utils/normalizers';
@@ -694,6 +695,10 @@ export default function DealsScreen({ navigation, route }) {
       testID="deals-minimal-header"
     >
       <View style={styles.menuRow}>
+        <NotificationBellButton
+          navigation={navigation}
+          testID="deals-notification-bell-btn"
+        />
         <HeaderMenuButton
           navigation={navigation}
           role={role}
@@ -829,6 +834,8 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   menuRow: {
+    flexDirection: 'row',
+    gap: 2,
     minHeight: 38,
     paddingHorizontal: 18,
     paddingTop: 0,

@@ -1,7 +1,46 @@
 pluginManagement {
-    includeBuild(new File(["node", "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().toString())
+    def resolveNodePackageJson = { List<String> command, String label ->
+        def proc = command.execute(null, rootDir)
+        def output = new StringBuffer()
+        def error = new StringBuffer()
+        proc.consumeProcessOutput(output, error)
+        proc.waitFor()
+        def path = output.toString().trim()
+        if (proc.exitValue() != 0 || !path) {
+            throw new GradleException("${label} dependencies are missing. Run npm ci first.")
+        }
+        def file = new File(path)
+        if (!file.isFile()) {
+            throw new GradleException("${label} dependency path is invalid: ${path}. Run npm ci first.")
+        }
+        return file
+    }
+    settings.ext.resolveReactNativeGradlePluginDir = {
+        resolveNodePackageJson(
+            ["node", "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })"],
+            "React Native"
+        ).getParentFile()
+    }
+    includeBuild(settings.ext.resolveReactNativeGradlePluginDir().toString())
 }
 plugins { id("com.facebook.react.settings") }
+
+def resolveNodePackageJson = { List<String> command, String label ->
+  def proc = command.execute(null, rootDir)
+  def output = new StringBuffer()
+  def error = new StringBuffer()
+  proc.consumeProcessOutput(output, error)
+  proc.waitFor()
+  def path = output.toString().trim()
+  if (proc.exitValue() != 0 || !path) {
+    throw new GradleException("${label} dependencies are missing. Run npm ci first.")
+  }
+  def file = new File(path)
+  if (!file.isFile()) {
+    throw new GradleException("${label} dependency path is invalid: ${path}. Run npm ci first.")
+  }
+  return file
+}
 
 extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
   if (System.getenv('EXPO_USE_COMMUNITY_AUTOLINKING') == '1') {
@@ -17,6 +56,10 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
       '--platform',
       'android'
     ].toList()
+    resolveNodePackageJson(
+      ['node', '--print', 'require.resolve(\'expo-modules-autolinking/package.json\', { paths: [require.resolve(\'expo/package.json\')] })'],
+      'Expo'
+    )
     ex.autolinkLibrariesFromCommand(command)
   }
 }
@@ -26,13 +69,13 @@ rootProject.name = 'UrTruck'
 dependencyResolutionManagement {
   versionCatalogs {
     reactAndroidLibs {
-      from(files(new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim(), "../gradle/libs.versions.toml")))
+      from(files(new File(resolveNodePackageJson(["node", "--print", "require.resolve('react-native/package.json')"], "React Native"), "../gradle/libs.versions.toml")))
     }
   }
 }
 
-apply from: new File(["node", "--print", "require.resolve('expo/package.json')"].execute(null, rootDir).text.trim(), "../scripts/autolinking.gradle");
+apply from: new File(resolveNodePackageJson(["node", "--print", "require.resolve('expo/package.json')"], "Expo"), "../scripts/autolinking.gradle");
 useExpoModules()
 
 include ':app'
-includeBuild(new File(["node", "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile())
+includeBuild(settings.ext.resolveReactNativeGradlePluginDir())

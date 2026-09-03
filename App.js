@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, AppState, Linking } from 'react-native';
+import { Platform, AppState, ImageBackground, Linking, StyleSheet, View } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
@@ -32,6 +32,8 @@ if (Platform.OS !== 'web') {
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import * as Sentry from '@sentry/react-native';
+
+const STARTUP_SPLASH_IMAGE = require('./assets/splash/urtruck-splash.png');
 
 // Глобально убираем браузерную синюю обводку фокуса (outline) с полей ввода и
 // нажимаемых элементов на web/PWA. react-native-web рендерит TextInput как
@@ -186,10 +188,17 @@ function parseQaAuthUrl(url) {
   }
 }
 
-// Welcome-splash показывает НАТИВНЫЙ splash (app.json → splash.image), он сам
-// уходит, когда отрисован первый кадр JS. JS-оверлей убран (баг: всплывал ПОВЕРХ
-// уже загруженной ленты → «двоение UrTruck», как и в предыдущий раз 14.06).
-// Нативного splash достаточно во всех прод-сборках.
+function AndroidStartupSplash() {
+  return (
+    <View style={appStyles.startupSplashRoot} testID="android-startup-splash">
+      <ImageBackground
+        source={STARTUP_SPLASH_IMAGE}
+        resizeMode="cover"
+        style={appStyles.startupSplashImage}
+      />
+    </View>
+  );
+}
 
 // AppInner живёт ПОД AuthProvider — поэтому знает состояние сессии и может
 // (а) откладывать deep-link до готовности навигатора и авторизованного стека,
@@ -201,6 +210,7 @@ function AppInner() {
   const pendingUrlRef = useRef(null);
   const { session, hasToken, signIn, setRole, refreshLevel } = useAuth();
   const { theme, isDark } = useTheme();
+  const [showStartupSplash, setShowStartupSplash] = useState(Platform.OS === 'android');
 
   // Фон САМОГО навигатора (не только сцены). Без theme у NavigationContainer
   // берётся DefaultTheme с БЕЛЫМ фоном — и он просвечивал снизу, под прозрачным
@@ -213,6 +223,12 @@ function AppInner() {
   // они существуют только в полном стеке (session + роль). До этого маршрут
   // отсутствует, navigate падал и тап по пушу «терялся».
   const authedForDeepLink = !!(session && session.user && session.user.role);
+
+  useEffect(() => {
+    if (!showStartupSplash) return undefined;
+    const timer = setTimeout(() => setShowStartupSplash(false), 2200);
+    return () => clearTimeout(timer);
+  }, [showStartupSplash]);
 
   // P5: единая точка навигации по url из пуша. Если навигатор не готов или
   // пользователь ещё не в авторизованном стеке — откладываем url и повторим,
@@ -356,18 +372,34 @@ function AppInner() {
       <ToastProvider>
         <OfflineBanner />
         <PushPermissionBanner enabled={hasToken} />
-        <NavigationContainer
-          ref={navRef}
-          theme={navTheme}
-          onReady={() => { navReadyRef.current = true; if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current); }}
-        >
-          <StatusBar style="light" />
-          <AppNavigator />
-        </NavigationContainer>
+        {showStartupSplash ? (
+          <AndroidStartupSplash />
+        ) : (
+          <NavigationContainer
+            ref={navRef}
+            theme={navTheme}
+            onReady={() => { navReadyRef.current = true; if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current); }}
+          >
+            <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.bg} />
+            <AppNavigator />
+          </NavigationContainer>
+        )}
       </ToastProvider>
     </SafeAreaProvider>
   );
 }
+
+const appStyles = StyleSheet.create({
+  startupSplashRoot: {
+    flex: 1,
+    backgroundColor: '#F4EFE7',
+  },
+  startupSplashImage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+});
 
 function App() {
   return (

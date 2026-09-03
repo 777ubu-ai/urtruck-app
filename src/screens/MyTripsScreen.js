@@ -12,6 +12,7 @@ import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import { localizePlace, localizeCargoName } from '../utils/places';
 import EmptyState from '../components/ui/EmptyState';
 import EditCargoModal from '../components/EditCargoModal';
+import NotificationBellButton from '../components/ui/v1/NotificationBellButton';
 import { colors, spacing, radius, typography } from '../theme/theme';
 import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import { useMountedRef } from '../hooks/useMountedRef';
@@ -621,6 +622,11 @@ export default function MyTripsScreen({ navigation, route }) {
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       <View style={[s.brandBar, { justifyContent: 'flex-end' }]} testID="mywork-minimal-header">
+        <NotificationBellButton
+          navigation={navigation}
+          color={v1.text}
+          testID="mywork-notification-bell-btn"
+        />
         <TouchableOpacity
           onPress={() => navigation.navigate('Profile', { role })}
           style={s.menuBtn}

@@ -72,7 +72,6 @@ function StaticRouteFallback({ livePoint, plannedPoints, reason }) {
   const safePoints = points.length >= 2 ? points : (points.length === 1 ? points : [[43.2389, 76.8897], [55.7558, 37.6173]]);
   return (
     <View style={s.staticMap} testID="truck-map-static-fallback">
-      <View style={s.staticRouteLine} />
       <View style={s.staticPointsRow}>
         {safePoints.slice(0, 4).map((point, index) => (
           <View
@@ -296,9 +295,9 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
       };
     }
 
-    // 2) JS MultiRoute remains a compatibility fallback. If it fails, the
-    // direction line is deliberately gray/dashed and explicitly labelled —
-    // never presented as a real road route.
+    // 2) JS MultiRoute remains a compatibility fallback. If neither backend
+    // nor provider route is available, show markers and a blocker only. A
+    // straight origin/destination line is not a valid truck route.
     const addDirectionFallback = () => {
       emitSummary(null);
       setFallbackActive(true);
@@ -308,18 +307,6 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
         routingPoints.length < 2
       )
         return;
-      map.geoObjects.add(
-        new api.Polyline(
-          routingPoints,
-          {},
-          {
-            strokeColor: '#6B7B73',
-            strokeWidth: 3,
-            strokeStyle: 'dash',
-            opacity: 0.58,
-          },
-        ),
-      );
       addMarkers();
       fitBounds();
     };
@@ -563,7 +550,6 @@ const s = StyleSheet.create({
   loadingText: { color: '#617067', fontSize: 12, fontWeight: '700', textAlign: 'center' },
   errorTitle: { color: '#14221C', fontSize: 14, fontWeight: '900', textAlign: 'center', marginBottom: 6 },
   staticMap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', paddingHorizontal: 22, backgroundColor: '#EAF1ED' },
-  staticRouteLine: { position: 'absolute', left: 42, right: 42, top: '50%', height: 4, borderRadius: 2, backgroundColor: '#9DB9AC' },
   staticPointsRow: { minHeight: 92, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   staticPoint: { minWidth: 54, minHeight: 54, borderRadius: 27, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#9DB9AC' },
   staticPointStart: { borderColor: '#168759' },
