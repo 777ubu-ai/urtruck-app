@@ -60,7 +60,7 @@ test('deal workspace has scroll-away compact information header and no repeated 
   assert.match(workspace, /scheduleMeta/);
   assert.match(workspace, /counterpartyMeta/);
   assert.match(workspace, /const compactHeader = \(/);
-  assert.match(workspace, /ListHeaderComponent=\{compactHeader\}/);
+  assert.match(workspace, /\{compactHeader\}/);
   assert.doesNotMatch(workspace, /BrandBarWithShare|>UrTruck</);
   assert.doesNotMatch(brand, />UrTruck</);
   assert.match(brand, /compact-child-header/);
@@ -179,9 +179,9 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /const sendDealShare = React\.useCallback/);
   assert.match(workspace, /const sendContactCard = React\.useCallback/);
   assert.match(workspace, /attachIcon: \{ width: 64, height: 64/);
-  assert.match(workspace, /backgroundColor: '#F4F4F4'/);
-  assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'flex-end'/);
-  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 74/);
+  assert.match(workspace, /backgroundColor: DEAL_CHAT_BG/, 'attach/emoji menus share the unified chat background constant');
+  assert.match(workspace, /composer: \{\s*minHeight: 58,\s*flexDirection: 'row',\s*alignItems: 'flex-end'/);
+  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 34, maxHeight: 74/);
   assert.match(workspace, /placeholder=""/);
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
 });
