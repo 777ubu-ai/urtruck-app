@@ -205,4 +205,38 @@ dependencies {
 // Firebase-less local development.
 if (file("google-services.json").exists()) {
     apply plugin: "com.google.gms.google-services"
+} else {
+    // P0 fix (03.09.2026): раньше отсутствие google-services.json просто
+    // пропускало плагин — И ДЛЯ RELEASE ТОЖЕ. Физически доказанный итог:
+    // локальная `./gradlew assembleRelease` (в т.ч. QA2-сборка на Mac, где
+    // файл лежит в .gitignore и его нет после свежего clone) молча
+    // выпускала APK БЕЗ Firebase runtime-конфига. FirebaseApp не мог
+    // инициализироваться, getDevicePushTokenAsync() не выдавал FCM-токен,
+    // и Android system push физически не приходил — при том что backend
+    // здоров (/push/info: fcm_live=true, project urtruck-e722b) и in-app
+    // уведомления работают через REST, что и маскировало дефект.
+    //
+    // Гард verify_android_firebase_config.py вызывался ТОЛЬКО из двух
+    // CI-воркфлоу (build-android-apk.yml, deploy-play.yml), поэтому
+    // локальный путь сборки оставался незащищённым. Теперь release-сборка
+    // падает ЗАКРЫТО прямо в Gradle. Debug-сборка по-прежнему собирается
+    // без Firebase (сознательно — см. комментарий выше про контрибьютора
+    // без файла).
+    gradle.taskGraph.whenReady { graph ->
+        def needsFirebase = graph.allTasks.any { t ->
+            t.project == project && t.name ==~ /^(assemble|bundle).*Release$/
+        }
+        if (needsFirebase) {
+            throw new GradleException(
+                "google-services.json отсутствует — release-сборка остановлена.\n" +
+                "Такой APK/AAB НЕ МОЖЕТ получать Android push (FCM): плагин\n" +
+                "com.google.gms.google-services не подключён, google_app_id и\n" +
+                "gcm_defaultSenderId в билд не попадут.\n" +
+                "Положите google-services.json в android/app/ (файл в .gitignore,\n" +
+                "запросите у владельца) и проверьте его:\n" +
+                "  python3 scripts/verify_android_firebase_config.py --check-source android/app/google-services.json\n" +
+                "Подробности: docs/release/android-firebase-config.md"
+            )
+        }
+    }
 }

@@ -121,7 +121,26 @@ test('Android location foreground service starts only while app is visible', () 
 });
 
 test('Android config declares background location and keeps location foreground service', () => {
-  assert.equal(app.android.versionCode, 9);
+  // versionCode раньше был прибит к конкретному числу (9) и ломал этот тест
+  // на КАЖДОМ релизном бампе — что и произошло на 8363ea79 (9 → 10), хотя к
+  // background location это отношения не имеет. Проверяем то, что реально
+  // является контрактом: код монотонно не ниже релиза, в котором появился
+  // background location, и совпадает с дефолтом в build.gradle (расхождение
+  // отправило бы в стор не тот versionCode).
+  assert.ok(
+    Number.isInteger(app.android.versionCode) && app.android.versionCode >= 9,
+    `versionCode должен быть целым >= 9, получено ${app.android.versionCode}`,
+  );
+  const appBuildGradle = fs.readFileSync('android/app/build.gradle', 'utf8');
+  const gradleVersionCode = appBuildGradle.match(
+    /versionCode \(project\.hasProperty\('URTRUCK_VERSION_CODE'\) \? URTRUCK_VERSION_CODE\.toInteger\(\) : (\d+)\)/,
+  );
+  assert.ok(gradleVersionCode, 'versionCode-дефолт не найден в android/app/build.gradle');
+  assert.equal(
+    Number(gradleVersionCode[1]),
+    app.android.versionCode,
+    'versionCode в app.json и android/app/build.gradle разошёлся',
+  );
   assert.ok(app.android.permissions.includes('android.permission.ACCESS_FINE_LOCATION'));
   assert.ok(app.android.permissions.includes('android.permission.ACCESS_COARSE_LOCATION'));
   assert.ok(app.android.permissions.includes('android.permission.FOREGROUND_SERVICE'));
