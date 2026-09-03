@@ -50,7 +50,7 @@
       "package": "com.urtruck.app",
       "userInterfaceStyle": "automatic",
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 10,
+      "versionCode": 210488243,
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
         {
@@ -88,6 +88,7 @@
     },
     "plugins": [
       "./plugins/withAndroidBackCompat",
+      "./plugins/withAndroidDefaultNotificationChannel",
       "expo-system-ui",
       "./plugins/withAndroidSplashSize",
       [

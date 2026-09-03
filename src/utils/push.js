@@ -211,6 +211,47 @@ export const push = {
     return Platform.OS === 'ios' || Platform.OS === 'android';
   },
 
+  /**
+   * P2 2026-09-03: создать канонический Android-канал КАК МОЖНО РАНЬШЕ.
+   *
+   * Физический QA показал в NotificationRecord канал
+   * `fcm_fallback_notification_channel` вместо `urtruck_messages_v2`.
+   * Firebase SDK создаёт этот служебный fallback, когда канал из
+   * android.notification.channel_id на устройстве ещё НЕ существует
+   * (вторая половина фикса — meta-data
+   * com.google.firebase.messaging.default_notification_channel_id, см.
+   * plugins/withAndroidDefaultNotificationChannel.js).
+   *
+   * Раньше канал создавался ТОЛЬКО внутри registerNative() и притом ПОСЛЕ
+   * четырёх early-return, включая `if (status !== 'granted') return` — то
+   * есть до выдачи permission канала не существовало вовсе, и первый пуш
+   * после установки гарантированно попадал в fallback.
+   *
+   * Создание канала не требует POST_NOTIFICATIONS и идемпотентно
+   * (setNotificationChannelAsync — upsert), поэтому вызывать безопасно на
+   * старте приложения и повторно.
+   */
+  async ensureAndroidChannel() {
+    if (Platform.OS !== 'android') return false;
+    try {
+      const Notifications = require('expo-notifications');
+      await Notifications.setNotificationChannelAsync(NATIVE_PUSH_CHANNEL_ID, {
+        name: 'UrTruck сообщения',
+        importance: Notifications.AndroidImportance.MAX,
+        sound: 'default',
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#378ADD',
+      });
+      return true;
+    } catch (e) {
+      // Канал — не критичный путь: без него пуш всё равно доставится
+      // (Firebase подставит канал из meta-data манифеста), поэтому не
+      // роняем регистрацию, а только логируем.
+      console.warn('[push] ensureAndroidChannel failed:', e?.message || String(e));
+      return false;
+    }
+  },
+
   async registerNative() {
     if (!this.isNative()) return { ok: false, reason: 'web' };
     let Notifications, Device;
@@ -220,6 +261,13 @@ export const push = {
     } catch {
       return { ok: false, reason: 'expo-notifications-not-installed' };
     }
+
+    // P2 2026-09-03: канал создаём ПЕРВЫМ делом — до emulator-проверки и до
+    // permission-гейта. Раньше он создавался ниже, после
+    // `if (status !== 'granted') return`, поэтому до выдачи разрешения канала
+    // не существовало и Firebase уводил уведомления в
+    // fcm_fallback_notification_channel.
+    await this.ensureAndroidChannel();
 
     // Emulator/simulator — чаще всего не даёт токен
     if (!Device.isDevice) return { ok: false, reason: 'emulator' };
@@ -259,16 +307,10 @@ export const push = {
     await storage.set(PUSH_ASKED, '1');
     if (status !== 'granted') return { ok: false, reason: 'denied' };
 
-    // Android channel
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync(NATIVE_PUSH_CHANNEL_ID, {
-        name: 'UrTruck сообщения',
-        importance: Notifications.AndroidImportance.MAX,
-        sound: 'default',
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#378ADD',
-      });
-    }
+    // Android channel уже создан выше через ensureAndroidChannel() —
+    // ДО permission-гейта (P2 2026-09-03). Повторный вызов здесь не нужен:
+    // setNotificationChannelAsync идемпотентен, а единственная точка
+    // создания не даёт разъехаться importance/sound между копиями.
 
     // Expo Push Token
     // PR-C2 (P0-1 push permissions): на Expo SDK 49+ getExpoPushTokenAsync
