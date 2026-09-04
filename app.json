@@ -136,7 +136,8 @@
           "isAndroidForegroundServiceEnabled": true,
           "isAndroidBackgroundLocationEnabled": true
         }
-      ]
+      ],
+      "react-native-iap"
     ],
     "extra": {
       "eas": {

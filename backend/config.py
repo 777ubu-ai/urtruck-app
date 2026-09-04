@@ -106,3 +106,20 @@ COLOR_THRESHOLDS = {
     "red": 1,       # 1-39
     "black": 0,     # 0 (бан)
 }
+
+# Подписка на контакты (доступ к телефону контрагента сделки) — монетизация
+# через Google Play Billing. ВЫКЛЮЧЕНА по умолчанию: пока флаг false, контакт
+# отдаётся всем без ограничений — как сейчас на проде. Владелец должен явно
+# включить (CONTACTS_MONETIZATION_ENABLED=true в серверном .env), см. CLAUDE.md
+# "не включать монетизацию без согласования".
+CONTACTS_MONETIZATION_ENABLED = os.getenv("CONTACTS_MONETIZATION_ENABLED", "false").lower() in ("1", "true", "yes")
+FREE_CONTACT_LIMIT = int(os.getenv("FREE_CONTACT_LIMIT", "3"))        # бесплатных раскрытий контакта в календарный месяц
+PREMIUM_CONTACT_LIMIT = int(os.getenv("PREMIUM_CONTACT_LIMIT", "0"))  # 0 = безлимит для подписчиков
+
+# Google Play Billing — верификация покупок подписки (Android Publisher API).
+# GOOGLE_PLAY_PACKAGE_NAME должен совпадать с app.json → android.package.
+# GOOGLE_PLAY_SERVICE_ACCOUNT_JSON пуст по умолчанию → MOCK-режим верификации
+# (см. services/google_play_service.py) — на проде обязателен реальный ключ.
+GOOGLE_PLAY_PACKAGE_NAME = os.getenv("GOOGLE_PLAY_PACKAGE_NAME", "com.urtruck.app")
+GOOGLE_PLAY_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON", "")
+GOOGLE_PLAY_CONTACTS_PRODUCT_ID = os.getenv("GOOGLE_PLAY_CONTACTS_PRODUCT_ID", "contacts_premium_monthly")
