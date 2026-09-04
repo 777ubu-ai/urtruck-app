@@ -113,7 +113,10 @@ def test_email_shipper_with_name_country_phone_company_ok():
         "role": "client",
         "name": "ООО Ромашка",
         "country": "Китай",
-        "phone": "+77011234567",
+        # Номер модуль-специфичный: drivers_registration.phone — UNIQUE
+        # (продуктовый инвариант). Общий номер с другим тест-модулем на общей
+        # БД давал UNIQUE constraint failed у того, кто запускался вторым.
+        "phone": "+77015550101",
         "company_name": "ООО Ромашка",
     })
     assert r.status_code == 200, r.text
@@ -121,7 +124,7 @@ def test_email_shipper_with_name_country_phone_company_ok():
     assert d["role"] == "client"
     assert d["country"] == "Китай"
     assert d.get("company_name") == "ООО Ромашка"
-    assert "".join(ch for ch in d["phone"] if ch.isdigit()).endswith("77011234567")
+    assert "".join(ch for ch in d["phone"] if ch.isdigit()).endswith("77015550101")
 
 
 def test_email_driver_with_phone_ok():

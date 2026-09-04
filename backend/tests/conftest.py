@@ -17,6 +17,26 @@ import os
 # До любого импорта config/db/chat — единый DB_PATH на все test modules.
 os.environ["DB_PATH"] = "/tmp/urtruck_tests_badge_suite.db"
 os.environ["URTRUCK_PYTEST_SHARED_DB"] = "1"
+
+# DB_PATH защищаем от перезаписи тест-модулями.
+#
+# tests/test_deal_attachment_upload.py:7 делает ЖЁСТКОЕ
+# `os.environ["DB_PATH"] = "/tmp/urtruck_test_deal_attachment_upload.db"`
+# (не setdefault) на уровне модуля, то есть во время коллекции переключает
+# путь БД для всего процесса. Локализовано бинарным поиском: именно этот
+# модуль в паре с test_prerelease_hardening воспроизводит
+# «PRAGMA table_info(deals) пуст» → пустой INSERT → `near ")": syntax error`
+# и «UNIQUE-индекс не создан». Остальные модули используют setdefault и
+# безвредны. Присваивание DB_PATH теперь молча игнорируется — сюит всегда
+# работает на одной общей БД.
+class _PinnedEnviron(type(os.environ)):
+    def __setitem__(self, key, value):
+        if key == "DB_PATH":
+            return
+        super().__setitem__(key, value)
+
+
+os.environ.__class__ = _PinnedEnviron
 os.environ.setdefault("FILE_SIGNING_KEY", "test-file-signing-key-32-bytes-minimum")
 os.environ.setdefault("CGR_IIN_SALT", "pytest-harness-salt-not-a-secret")
 
@@ -148,7 +168,7 @@ def _bind_module_test_user(request):
             setattr(module, name, original)
 
 
-def _init_all_shared_schemas():
+def _init_all_shared_schemas(seed_catalogue=True):
     """Идемпотентно создаёт ВСЕ общие схемы на текущем DB_PATH.
 
     Вынесено из session-фикстуры, потому что вызывать это нужно дважды:
@@ -164,7 +184,11 @@ def _init_all_shared_schemas():
     # CGR tables are part of the production startup schema and must be restored
     # here as well after the harness removes the DB following test collection.
     cgr_dal.init_cgr_schema()
-    cgr_dal.seed_border_checkpoints_from_legacy()
+    # Пере-сеивание каталога делаем только на старте сюита: модули вроде
+    # test_border_dashboard добавляют СВОИ тестовые checkpoint'ы поверх
+    # каталога, и повторный seed перед их тестами стирал бы эти данные.
+    if seed_catalogue:
+        cgr_dal.seed_border_checkpoints_from_legacy()
 
     import api.chat as chat
     chat._init()
@@ -188,6 +212,29 @@ def _init_all_shared_schemas():
         from database.db import get_conn
         with get_conn() as c:
             c.executescript(_deal_room_schema.read_text(encoding="utf-8"))
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Схемы создаются ДО КОЛЛЕКЦИИ, а не только в session-фикстуре.
+#
+# ROOT CAUSE блокера test_chat_voice_transcription.py (падал и в полном
+# прогоне, и ИЗОЛИРОВАННО — то есть это не «harness-only»):
+#   tests/test_chat_voice_transcription.py:6 на уровне модуля делает
+#   `from api.chat import (...)`. Импорт api.chat исполняет module-level
+#   _init() (api/chat.py:256) → _ensure_special_users() (:156) →
+#   `SELECT 1 FROM drivers_registration` (:39). Эта таблица создаётся
+#   registration_dal.init_registration_schema(), который раньше вызывался
+#   ТОЛЬКО из session-фикстуры — а она работает ПОСЛЕ коллекции. Плюс сам
+#   conftest перед коллекцией удаляет файл БД. Итог: на коллекции таблицы
+#   нет и модуль падает с sqlite3.OperationalError ещё до первого теста.
+#
+# Другие модули это не ловили лишь потому, что часть из них сама зовёт
+# init_registration_schema() на уровне модуля и по алфавиту идёт раньше —
+# то есть результат зависел от порядка импорта.
+#
+# Инициализация идемпотентна, поэтому безопасно выполнить её и здесь, и в
+# session-фикстуре, и в module-фикстуре восстановления.
+_init_all_shared_schemas()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -217,10 +264,10 @@ def _restore_shared_schema_after_module():
     # может стоять как раньше, так и позже проверяющего — «только после» не
     # даёт независимости от порядка коллекции.
     _cleanup_cross_module_data_pollution()
-    _init_all_shared_schemas()
+    _init_all_shared_schemas(seed_catalogue=False)
     yield
     _cleanup_cross_module_data_pollution()
-    _init_all_shared_schemas()
+    _init_all_shared_schemas(seed_catalogue=False)
 
 
 def _cleanup_cross_module_data_pollution():
