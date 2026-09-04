@@ -6,6 +6,7 @@ import { useTheme } from '../utils/ThemeContext';
 import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useToast } from '../components/Toast';
 import { getPushSettings, setPushSettings } from '../utils/store';
+import { localizePlace } from '../utils/places';
 import { marketAPI } from '../utils/marketAPI';
 import Feather from '@expo/vector-icons/Feather';
 
@@ -26,7 +27,7 @@ export default function PushFilterScreen({ navigation, route }) {
   // 5.4: driver-акцент = бренд-зелёный #168759 (был индиго #4F46E5 —
   // рассинхрон с ролью). Клиент — янтарный.
   const accent = role === 'driver' ? '#168759' : '#FF8400';
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
   const initial = getPushSettings();
@@ -209,7 +210,11 @@ export default function PushFilterScreen({ navigation, route }) {
             <View key={item.id} style={[s.savedRoute, { borderColor: theme.border, backgroundColor: theme.bg }]}>
               <View style={{ flex: 1 }}>
                 <Text style={[s.savedRouteText, { color: theme.text }]} numberOfLines={1}>
-                  {item.from_city || '—'} → {item.to_city || '—'}
+                  {/* §5: сохранённые маршруты фильтра — тоже system UI,
+                      поэтому известные города идут через канонический
+                      localizePlace (в ZH: 阿拉木图→莫斯科). Поля ввода выше
+                      НЕ локализуются: там пользователь печатает сам. */}
+                  {localizePlace(item.from_city, lang) || '—'} → {localizePlace(item.to_city, lang) || '—'}
                 </Text>
                 <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>
                   {[item.truck_type, item.min_price ? `${item.min_price} USD+` : null].filter(Boolean).join(' · ') || label('push_any_cargo', 'Любой груз')}

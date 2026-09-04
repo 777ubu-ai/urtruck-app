@@ -1035,6 +1035,8 @@ const translations = {
     // Chat
     online: 'Онлайн',
     yesterday: 'Вчера',
+    chat_day_today: 'Сегодня',
+    chat_day_yesterday: 'Вчера',
     chatOpened: 'Чат открыт',
     translation: 'Перевод',
     message: 'Сообщение...',
@@ -2376,6 +2378,8 @@ const translations = {
     rejected: 'Қабылданбаған',
     online: 'Желіде',
     yesterday: 'Кеше',
+    chat_day_today: 'Бүгін',
+    chat_day_yesterday: 'Кеше',
     chatOpened: 'Чат ашық',
     translation: 'Аударма',
     message: 'Хабар...',
@@ -4215,6 +4219,8 @@ const translations = {
     rejected: '已拒绝',
     online: '在线',
     yesterday: '昨天',
+    chat_day_today: '今天',
+    chat_day_yesterday: '昨天',
     chatOpened: '聊天已开启',
     translation: '翻译',
     message: '消息...',
@@ -6528,7 +6534,7 @@ const translations = {
     openContact: 'Open contact', contactOpened: 'Contact opened',
     freeForEarly: 'Free for early users',
     verified: 'Verified', pending: 'Pending', rejected: 'Rejected',
-    online: 'Online', yesterday: 'Yesterday', chatOpened: 'Chat opened', translation: 'Translation', message: 'Message...',
+    online: 'Online', yesterday: 'Yesterday', chat_day_today: 'Today', chat_day_yesterday: 'Yesterday', chatOpened: 'Chat opened', translation: 'Translation', message: 'Message...',
     myTrips: 'My trips', inTransit: 'In transit', completed: 'Completed',
     current: 'Current', update: 'Update', tripDone: 'Trip completed!', leaveReview: 'Leave review...',
     st1: 'Departed', st2: 'Loading', st3: 'Border crossing', st4: 'Customs · Inspection', st5: 'Border passed', st6: 'Arrived · Unloading',
@@ -7650,7 +7656,9 @@ function detectSystemLang() {
   listeners.forEach(cb => cb(currentLang));
 })();
 
-const HTML_LANG = { RU: 'ru', KK: 'kk', ZH: 'zh-CN', EN: 'en' };
+// Канонический маппинг «код языка UrTruck → BCP-47 локаль». Экспортируется,
+// чтобы Intl-форматтеры (даты в чате и т.п.) не заводили свою копию карты.
+export const HTML_LANG = { RU: 'ru', KK: 'kk', ZH: 'zh-CN', EN: 'en' };
 
 const syncDocumentLanguage = (lang) => {
   // The browser translator was appearing above the Chinese UI because the

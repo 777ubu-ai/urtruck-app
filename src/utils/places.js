@@ -250,6 +250,20 @@ const CARGO_KK = {
 };
 
 const SYSTEM_MESSAGE_DICT = {
+  // §5: заголовки маркетплейса, которые backend формирует по-русски и
+  // дописывает сумму (см. api/marketplace.py). Без них в китайском
+  // интерфейсе оставалось «Ставка»/«Заказ».
+  '💰 Ставка': { zh: '💰 报价', en: '💰 Bid', kk: '💰 Баға ұсынысы' },
+  '📦 Заказ': { zh: '📦 订单', en: '📦 Order', kk: '📦 Тапсырыс' },
+  '✅ Ставка принята!': { zh: '✅ 报价已接受！', en: '✅ Bid accepted!', kk: '✅ Баға ұсынысы қабылданды!' },
+  '❌ Ставка отклонена': { zh: '❌ 报价被拒绝', en: '❌ Bid rejected', kk: '❌ Баға ұсынысы қабылданбады' },
+  '❌ Ставка не выбрана': { zh: '❌ 未选择报价', en: '❌ Bid not selected', kk: '❌ Баға ұсынысы таңдалмады' },
+  '↩️ Ставка отозвана': { zh: '↩️ 报价已撤回', en: '↩️ Bid withdrawn', kk: '↩️ Баға ұсынысы қайтарылды' },
+  '💰 Скидка': { zh: '💰 折扣', en: '💰 Discount', kk: '💰 Жеңілдік' },
+  '📋 Груз снят с публикации': { zh: '📋 货物已下架', en: '📋 Cargo unpublished', kk: '📋 Жүк жарияланымнан алынды' },
+  '📋 Рейс снят с публикации': { zh: '📋 运输已下架', en: '📋 Trip unpublished', kk: '📋 Рейс жарияланымнан алынды' },
+  '📦 Груз принят': { zh: '📦 货物已接收', en: '📦 Cargo accepted', kk: '📦 Жүк қабылданды' },
+  '❌ Контр-оффер отклонён': { zh: '❌ 反报价被拒绝', en: '❌ Counter-offer declined', kk: '❌ Қарсы ұсыныс қабылданбады' },
   '🤝 Сделка создана': { zh: '🤝 交易已创建', en: '🤝 Deal created', kk: '🤝 Мәміле құрылды' },
   '🚛 Рейс начался': { zh: '🚛 运输已开始', en: '🚛 Trip started', kk: '🚛 Рейс басталды' },
   '🛂 На границе': { zh: '🛂 在边境', en: '🛂 At the border', kk: '🛂 Шекарада' },
@@ -408,6 +422,54 @@ export function localizeCargoName(raw, lang) {
   return raw;
 }
 
+// §5/§15: локализация ИЗВЕСТНЫХ городов внутри произвольного system-текста.
+//
+// Физически подтверждено (ZH-интерфейс Boris, 04.09.2026): тело уведомления
+// приходит с сервера как «1000 USD · Almaty→Moscow» — город слит с суммой и
+// разделителем, поэтому localizePlace() его не находил (там сопоставление
+// целой строки/сегментов по стрелке) и маршрут оставался не по-китайски.
+//
+// Здесь заменяются ТОЛЬКО точные вхождения ключей словаря DICT, по границам
+// (не внутри других слов). Произвольный user-generated текст не переводится:
+// незнакомая строка остаётся как есть — это прямое требование канона.
+// Длинные ключи идут первыми, иначе «Хоргос» перебил бы
+// «Хоргос (Хуэйэрго)».
+// Ищем и русские ключи словаря, и их латинские (en) варианты: production
+// хранит точки маршрута как есть, поэтому уведомление могло прийти и как
+// «Алматы→Москва», и как «Almaty→Moscow» — в китайском интерфейсе обе формы
+// обязаны стать 阿拉木图→莫斯科. Пары [искомый текст → ключ словаря].
+const PLACE_SEARCH_TERMS = (() => {
+  const terms = [];
+  for (const key of Object.keys(DICT)) {
+    terms.push([key, key]);
+    const en = DICT[key]?.en;
+    if (en && en !== key) terms.push([en, key]);
+  }
+  // Длинные варианты первыми: иначе «Хоргос» перебил бы
+  // «Хоргос (Хуэйэрго)», а «Astana» — «Nur-Sultan».
+  return terms.sort((a, b) => b[0].length - a[0].length);
+})();
+
+const escapeRe = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export function localizeKnownPlacesInText(raw, lang) {
+  const l = String(lang || '').toLowerCase();
+  if (!raw || l === 'ru') return raw;
+  if (l !== 'zh' && l !== 'en' && l !== 'kk') return raw;
+  let out = String(raw);
+  for (const [term, key] of PLACE_SEARCH_TERMS) {
+    if (!out.includes(term)) continue;
+    const translated = translatedPlace(key, l);
+    if (!translated || translated === term) continue;
+    // (^|[^\p{L}]) — не начало другого слова; смотрим и латиницу, и кириллицу.
+    out = out.replace(
+      new RegExp(`(^|[^\\p{L}])${escapeRe(term)}(?=$|[^\\p{L}])`, 'gu'),
+      (_m, before) => `${before}${translated}`,
+    );
+  }
+  return out;
+}
+
 export function localizeSystemMessage(raw, lang) {
   if (!raw) return raw;
   const l = String(lang || '').toLowerCase();
@@ -417,13 +479,20 @@ export function localizeSystemMessage(raw, lang) {
   if (direct && direct[l]) return direct[l];
 
   // Some old rows append an amount after the system phrase.
+  // §5: сервер формирует заголовки вида «💰 Ставка 1000 USD» и
+  // «📦 Заказ 1000 USD» — БЕЗ разделителя « ·», поэтому прежнее условие
+  // (только `${prefix} ·`) их не ловило и в китайском интерфейсе
+  // оставалось русское «Ставка». Теперь принимается и обычный пробел.
   for (const [prefix, variants] of Object.entries(SYSTEM_MESSAGE_DICT)) {
-    if (value.startsWith(`${prefix} ·`) && variants[l]) {
-      return `${variants[l]}${value.slice(prefix.length)}`;
+    if (!variants[l]) continue;
+    if (value.startsWith(`${prefix} ·`) || value.startsWith(`${prefix} `)) {
+      return `${variants[l]}${localizeKnownPlacesInText(value.slice(prefix.length), l)}`;
     }
   }
-  // Never machine-translate arbitrary participant text here.
-  return raw;
+  // Незнакомая фраза машинно не переводится, но известные города в ней
+  // локализуются — так тело «1000 USD · Almaty→Moscow» становится
+  // «1000 USD · 阿拉木图→莫斯科», а свободный текст участника не страдает.
+  return localizeKnownPlacesInText(raw, l);
 }
 
 export const hasPlaceTranslation = (raw, lang = 'ZH') => {
