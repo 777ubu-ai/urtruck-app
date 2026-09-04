@@ -93,7 +93,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI (deploy-play.yml) передаёт свой versionCode через -PURTRUCK_VERSION_CODE,
         // чтобы каждая автозаливка в Google Play имела уникальный монотонный код.
-        versionCode (project.hasProperty('URTRUCK_VERSION_CODE') ? URTRUCK_VERSION_CODE.toInteger() : 210488246)
+        versionCode (project.hasProperty('URTRUCK_VERSION_CODE') ? URTRUCK_VERSION_CODE.toInteger() : 210488251)
         versionName "1.0.7"
     }
     signingConfigs {
