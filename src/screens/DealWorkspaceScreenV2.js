@@ -1240,6 +1240,19 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const trip = context.trip || {};
   const routeLabel = `${localizePlace(from, language)} → ${localizePlace(to, language)}`;
   const visibleDealStatus = userFacingDealStatus(deal?.status || 'accepted');
+  // P1-DEAL-STATUS-001 (nightly 04.09.2026, repro 2/2): коммит 16b7e06b
+  // убрал статус-пилюлю из шапки и ВМЕСТЕ с ней удалил это определение,
+  // хотя статус-модалка «Статусы и история» продолжала ссылаться на
+  // statusLabel в renderItem (fallbackStatus таймлайна). Свободная
+  // переменная в замыкании резолвится Hermes'ом только при рендере
+  // модалки → детерминированный ReferenceError «Property 'statusLabel'
+  // doesn't exist» ровно при её открытии, ни один статический тест этого
+  // не видел. DealStatusTimeline ждёт ЛОКАЛИЗОВАННУЮ строку (рендерит её
+  // как есть при пустом таймлайне), поэтому именно formatStatus(...), а
+  // для delivered — утверждённая копия «Ожидает подтверждения»
+  // (см. tests/frontend/test_delivery_confirmation_copy.mjs — этот тест
+  // был красным с 16b7e06b и оказался настоящей канарейкой регрессии).
+  const statusLabel = visibleDealStatus === 'delivered' ? ui.awaitingReceiptStatus : formatStatus(visibleDealStatus);
   const statusActionIcon =
     visibleDealStatus === 'in_progress' ? 'truck'
       : visibleDealStatus === 'at_border' ? 'map-pin'
