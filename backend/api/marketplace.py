@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Header, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, List
 
 from database.db import get_conn, new_id
@@ -19,6 +19,14 @@ from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
 from services.geo_normalize import normalize_country, is_international_route
+
+
+def _reject_negative_price(value):
+    if value is None:
+        return value
+    if value < 0:
+        raise ValueError("price_must_not_be_negative")
+    return value
 
 
 def _sign_cargo_photos(photos):
@@ -438,6 +446,11 @@ class CargoIn(BaseModel):
     to_point_type: Optional[str] = None
     to_point_name: Optional[str] = None
 
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, value):
+        return _reject_negative_price(value)
+
     def __init__(self, **data):
         if 'cargo_desc' in data and data['cargo_desc']:
             data['cargo_desc'] = data['cargo_desc'].strip()[:500]
@@ -469,6 +482,11 @@ class TripIn(BaseModel):
     to_point_type: Optional[str] = None
     to_point_name: Optional[str] = None
 
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, value):
+        return _reject_negative_price(value)
+
 
 class TripPatchIn(BaseModel):
     """Partial update of an own active trip — every field is optional;
@@ -489,6 +507,11 @@ class TripPatchIn(BaseModel):
     to_country: Optional[str] = None
     to_point_type: Optional[str] = None
     to_point_name: Optional[str] = None
+
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, value):
+        return _reject_negative_price(value)
 
 
 class BidIn(BaseModel):
@@ -770,6 +793,11 @@ class CargoPatchIn(BaseModel):
     currency: Optional[str] = None
     pickup_date: Optional[str] = None
     payment_type: Optional[str] = None
+
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, value):
+        return _reject_negative_price(value)
 
 
 @mp_router.patch("/cargos/{cargo_id}")
