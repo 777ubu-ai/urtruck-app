@@ -325,16 +325,77 @@ function translatedPlace(key, lang) {
   return DICT[key]?.[lang] || key;
 }
 
+// P1-A (final gate 04.09.2026): ЕДИНЫЙ индекс всех известных форм названия
+// → канонический ключ DICT.
+//
+// Физически подтверждено: Boris в китайском интерфейсе видел «Almaty /
+// Moscow» вместо «阿拉木图 / 莫斯科». Причина — DICT индексирован ТОЛЬКО
+// русскими ключами, а production хранит точки маршрута как есть, в том числе
+// латиницей. localizePlace() искал `DICT[key]` по сырой строке, поэтому
+// 'Almaty' не находился и возвращался без изменений — на КАЖДОМ экране
+// (карточка груза, деталь, список сделок, шапка Deal Room/чата, TripDetail,
+// сводка карты). Резолвер уведомлений это уже умел, а экранный — нет.
+//
+// Индекс собирается один раз из самого словаря (русский ключ + его en-форма
+// + ZH-форма, чтобы уже локализованное значение не ломалось) плюс несколько
+// реальных транслитераций, которые встречаются в данных. Сопоставление
+// регистронезависимое и по нормализованной строке — это НЕ машинный перевод:
+// незнакомая строка по-прежнему возвращается как есть.
+const ALIAS_OVERRIDES = {
+  // Встречающиеся в данных написания без начальной K / иные транслитерации.
+  'Horgos': 'Хоргос',
+  'Khorgos': 'Хоргос',
+  'Nur-Sultan': 'Нур-Султан',
+  'Nur Sultan': 'Нур-Султан',
+  'Almata': 'Алматы',
+  'Alma-Ata': 'Алматы',
+  'Saint-Petersburg': 'Санкт-Петербург',
+  'St. Petersburg': 'Санкт-Петербург',
+  'Rostov-on-don': 'Ростов-на-Дону',
+};
+
+const normalizeAlias = (value) => String(value || '').trim().toLowerCase();
+
+const PLACE_KEY_BY_ALIAS = (() => {
+  const index = new Map();
+  const put = (alias, key) => {
+    const norm = normalizeAlias(alias);
+    // Первый победитель: длинные/точные ключи словаря важнее алиасов.
+    if (norm && !index.has(norm)) index.set(norm, key);
+  };
+  for (const key of Object.keys(DICT)) {
+    put(key, key);
+    const entry = DICT[key];
+    if (entry?.en) put(entry.en, key);
+    if (entry?.zh) put(entry.zh, key);
+  }
+  for (const key of Object.keys(KK_PLACE_DICT)) put(KK_PLACE_DICT[key], key);
+  for (const [alias, key] of Object.entries(ALIAS_OVERRIDES)) {
+    if (DICT[key]) put(alias, key);
+  }
+  return index;
+})();
+
+// Канонический ключ словаря для ЛЮБОЙ известной формы названия.
+export function canonicalPlaceKey(raw) {
+  return PLACE_KEY_BY_ALIAS.get(normalizeAlias(raw)) || null;
+}
+
+function localizeSegment(part, lang) {
+  const trimmed = part.trim();
+  if (!trimmed) return part;
+  const key = canonicalPlaceKey(trimmed);
+  if (!key) return part;
+  return part.replace(trimmed, translatedPlace(key, lang));
+}
+
 function localizeHead(head, lang) {
-  const key = head.trim();
-  const full = DICT[key];
-  if (full) return head.replace(key, translatedPlace(key, lang));
+  // Целая строка — известное место (в любой форме).
+  const whole = canonicalPlaceKey(head);
+  if (whole) return head.replace(head.trim(), translatedPlace(whole, lang));
+  // Строка-маршрут «A → B»: локализуем каждый сегмент отдельно.
   if (ARROW_RE.test(head)) {
-    return head.split(ARROW_RE).map((part) => {
-      const k = part.trim();
-      const e = k && DICT[k];
-      return e ? part.replace(k, translatedPlace(k, lang)) : part;
-    }).join('');
+    return head.split(ARROW_RE).map((part) => localizeSegment(part, lang)).join('');
   }
   return head;
 }
