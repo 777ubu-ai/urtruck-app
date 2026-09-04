@@ -26,6 +26,10 @@ SUMMARY_JSON="$ARTIFACT_DIR/summary.json"
 SUMMARY_MD="$ARTIFACT_DIR/SUMMARY.md"
 CHECKPOINT_ROOT="$ARTIFACT_DIR/checkpoints"
 PREFLIGHT_TARGET_ID="${PREFLIGHT_TARGET_ID:-onb-v2-cta-phone}"
+PREFLIGHT_STABLE_PROBES="${PREFLIGHT_STABLE_PROBES:-3}"
+PREFLIGHT_MAX_ATTEMPTS="${PREFLIGHT_MAX_ATTEMPTS:-6}"
+PREFLIGHT_RECURRENCE_COUNT=0
+PREFLIGHT_CLEAN_FOREGROUND="NO"
 
 mkdir -p "$ARTIFACT_DIR" "$CHECKPOINT_ROOT"
 : > "$MITM_EVENTS_JSONL"
@@ -137,6 +141,16 @@ ui_has_preflight_target() {
   ui_contains "$PREFLIGHT_TARGET_ID" "$dump_file"
 }
 
+current_focus_is_clean_app() {
+  local focus_file="$1"
+  grep -Eq "mCurrentFocus=Window\\{[^}]* $PACKAGE/" "$focus_file"
+}
+
+current_focus_has_system_anr() {
+  local focus_file="$1"
+  grep -Eq "Application Not Responding: com\\.google\\.android\\.apps\\.nexuslauncher|Application Not Responding:" "$focus_file"
+}
+
 cleanup() {
   set +e
   if [[ -n "${LOGCAT_PID:-}" ]]; then
@@ -209,6 +223,7 @@ dismiss_system_anr_if_present() {
     return 1
   fi
 
+  PREFLIGHT_RECURRENCE_COUNT=$((PREFLIGHT_RECURRENCE_COUNT + 1))
   log "Detected system ANR dialog before reviewer flow"
   if tap_ui_text "$dump_file" "Wait"; then
     sleep 2
@@ -223,11 +238,51 @@ dismiss_system_anr_if_present() {
   return 1
 }
 
+wait_for_clean_preflight_window() {
+  local attempt="$1"
+  local probe=1
+  local stable_hits=0
+  local dir
+  local focus_file
+  local dump_file
+
+  while [[ "$probe" -le "$PREFLIGHT_STABLE_PROBES" ]]; do
+    dir="$CHECKPOINT_ROOT/preflight_stable_attempt_${attempt}_probe_${probe}"
+    capture_checkpoint "preflight_stable_attempt_${attempt}_probe_${probe}"
+    focus_file="$dir/foreground-state.txt"
+    dump_file="$dir/ui.xml"
+
+    if current_focus_has_system_anr "$focus_file" || detect_system_anr_dialog "$dump_file"; then
+      dismiss_system_anr_if_present "preflight_recurrent_anr_attempt_${attempt}_probe_${probe}" || true
+      return 1
+    fi
+
+    if current_focus_is_clean_app "$focus_file" && ui_has_preflight_target "$dump_file"; then
+      stable_hits=$((stable_hits + 1))
+    else
+      return 1
+    fi
+
+    probe=$((probe + 1))
+    if [[ "$probe" -le "$PREFLIGHT_STABLE_PROBES" ]]; then
+      sleep 1
+    fi
+  done
+
+  if [[ "$stable_hits" -eq "$PREFLIGHT_STABLE_PROBES" ]]; then
+    PREFLIGHT_CLEAN_FOREGROUND="YES"
+    capture_checkpoint "preflight_ready"
+    return 0
+  fi
+
+  return 1
+}
+
 ensure_preflight_ready() {
   local attempt
   local dump_file
 
-  for attempt in 1 2 3; do
+  for attempt in $(seq 1 "$PREFLIGHT_MAX_ATTEMPTS"); do
     capture_checkpoint "preflight_attempt_${attempt}"
     dump_file="$CHECKPOINT_ROOT/preflight_attempt_${attempt}/ui.xml"
 
@@ -237,8 +292,7 @@ ensure_preflight_ready() {
       dump_file="$CHECKPOINT_ROOT/preflight_post_anr_attempt_${attempt}/ui.xml"
     fi
 
-    if ui_has_preflight_target "$dump_file"; then
-      capture_checkpoint "preflight_ready"
+    if wait_for_clean_preflight_window "$attempt"; then
       return 0
     fi
 
@@ -363,6 +417,8 @@ summarize() {
   local preflight_failed_xml="$CHECKPOINT_ROOT/preflight_failed/ui.xml"
   local preflight_anr="NO"
   local preflight_target_visible="NO"
+  local clean_foreground_before_maestro="${PREFLIGHT_CLEAN_FOREGROUND:-NO}"
+  local anr_recurrence_count="${PREFLIGHT_RECURRENCE_COUNT:-0}"
   local pre_xml="$CHECKPOINT_ROOT/pre_tap/ui.xml"
   local post_xml="$CHECKPOINT_ROOT/tplus_350ms/ui.xml"
   local late_xml="$CHECKPOINT_ROOT/tplus_2500ms/ui.xml"
@@ -408,7 +464,10 @@ PY
     navigation_fired="YES"
   fi
 
-  if [[ "$preflight_anr" == "YES" && "$preflight_target_visible" != "YES" ]]; then
+  if [[ "$clean_foreground_before_maestro" != "YES" ]]; then
+    first_breakpoint="clean foreground before Maestro"
+    klass="ENVIRONMENT"
+  elif [[ "$preflight_anr" == "YES" && "$preflight_target_visible" != "YES" ]]; then
     first_breakpoint="system ANR dialog"
     klass="ENVIRONMENT"
   elif [[ "$preflight_target_visible" != "YES" ]]; then
@@ -449,6 +508,8 @@ PY
 {
   "CI adb stable": "$adb_stable",
   "exact APK hash": "$apk_hash",
+  "clean foreground before Maestro": "$clean_foreground_before_maestro",
+  "ANR recurrence count": "$anr_recurrence_count",
   "tap handled": "$tap_handled",
   "email/send called": "$email_send_called",
   "HTTP result": "$http_result",
@@ -471,6 +532,8 @@ EOF
   cat > "$SUMMARY_MD" <<EOF
 CI adb stable = $adb_stable
 exact APK hash = $apk_hash
+clean foreground before Maestro = $clean_foreground_before_maestro
+ANR recurrence count = $anr_recurrence_count
 tap handled = $tap_handled
 email/send called = $email_send_called
 HTTP result = $http_result
@@ -511,7 +574,10 @@ verify_install_and_launch
 start_logcat
 
 capture_checkpoint "pre_install_launch"
-ensure_preflight_ready
+if ! ensure_preflight_ready; then
+  summarize "$ADB_STABLE" "$APK_HASH"
+  exit 1
+fi
 
 log "Running reviewer login Maestro flow"
 std_buf_cmd=(stdbuf -oL -eL maestro test "$FLOW_PATH" --device "$SERIAL" --format NOOP)
