@@ -26,7 +26,9 @@ import { useVerificationGate } from '../components/VerificationGate';
 import { SkeletonCard } from '../components/Skeleton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
-import LocationPickerModal from '../components/LocationPickerModal';
+import RoutePointPickerV2 from '../components/RoutePointPickerV2';
+import { routePointLabel } from '../utils/geoCatalog';
+import { SCOPE_LABELS, routeStrings } from '../utils/routeFilterStrings';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 
@@ -265,8 +267,10 @@ export default function CargoFeedScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [pageLimit, setPageLimit] = useState(50);
-  const [dirFrom, setDirFrom] = useState('');
-  const [dirTo, setDirTo] = useState('');
+  // Main Route Filter V2 (§2/§3): та же модель, что у ленты машин —
+  // { countryId, locationId | null }. Обе роли живут по одной логике.
+  const [routeOrigin, setRouteOrigin] = useState(null);
+  const [routeDestination, setRouteDestination] = useState(null);
   const [showDirFromPicker, setShowDirFromPicker] = useState(false);
   const [showDirToPicker, setShowDirToPicker] = useState(false);
   const [activeFilter, setActiveFilter] = useState(null);
@@ -289,15 +293,25 @@ export default function CargoFeedScreen({ navigation }) {
     }
   }, [myUserId]);
 
+  // §17: отменяем предыдущий запрос при смене фильтра — иначе его поздний
+  // ответ перезапишет ленту нового маршрута.
+  const inflightRef = React.useRef(null);
+
   const load = useCallback(async () => {
     setError(false);
+    inflightRef.current?.abort?.();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    inflightRef.current = controller;
     try {
       const result = await marketAPI.listCargos({
-        fromCity: dirFrom.trim() || '',
-        toCity: dirTo.trim() || '',
+        // §15: маршрут фильтруется на сервере.
+        origin: routeOrigin,
+        destination: routeDestination,
         cargoType: filterType || '',
         limit: pageLimit,
+        signal: controller?.signal,
       });
+      if (result?.aborted || controller?.signal?.aborted) return;
       const mapped = (result?.cargos || [])
         .filter((cargo) => !myUserId || cargo.owner_id !== myUserId)
         .map((cargo) => normalizeCargo(cargo, myUserId))
@@ -309,7 +323,7 @@ export default function CargoFeedScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [dirFrom, dirTo, filterType, pageLimit, myUserId]);
+  }, [routeOrigin, routeDestination, filterType, pageLimit, myUserId]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
@@ -423,7 +437,7 @@ export default function CargoFeedScreen({ navigation }) {
         style={[
           styles.routeSelector,
           {
-            borderColor: (dirFrom || dirTo) ? palette.accent : palette.border,
+            borderColor: (routeOrigin || routeDestination) ? palette.accent : palette.border,
             backgroundColor: palette.surface,
             shadowColor: palette.shadow,
           },
@@ -435,8 +449,8 @@ export default function CargoFeedScreen({ navigation }) {
             <Feather name="map-pin" size={14} color={palette.textMuted} />
             <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('from')}</Text>
           </View>
-          <Text style={[styles.routeValue, { color: palette.text }, !dirFrom && { color: palette.textMuted }]} numberOfLines={1}>
-            {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
+          <Text style={[styles.routeValue, { color: palette.text }, !routeOrigin && { color: palette.textMuted }]} numberOfLines={1} testID="cargo-route-from-value">
+            {routeOrigin ? routePointLabel(routeOrigin, lang, SCOPE_LABELS) : t('create_field_from_placeholder')}
           </Text>
         </TouchableOpacity>
         <Feather name="arrow-right" size={24} color={ACCENT} />
@@ -445,12 +459,12 @@ export default function CargoFeedScreen({ navigation }) {
             <Feather name="flag" size={14} color={palette.textMuted} />
             <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('to')}</Text>
           </View>
-          <Text style={[styles.routeValue, { color: palette.text }, !dirTo && { color: palette.textMuted }]} numberOfLines={1}>
-            {dirTo ? localizePlace(dirTo, lang) : t('create_field_to_placeholder')}
+          <Text style={[styles.routeValue, { color: palette.text }, !routeDestination && { color: palette.textMuted }]} numberOfLines={1} testID="cargo-route-to-value">
+            {routeDestination ? routePointLabel(routeDestination, lang, SCOPE_LABELS) : t('create_field_to_placeholder')}
           </Text>
         </TouchableOpacity>
-        {(dirFrom || dirTo) ? (
-          <TouchableOpacity onPress={() => { setDirFrom(''); setDirTo(''); }} hitSlop={10} testID="feed-route-clear">
+        {(routeOrigin || routeDestination) ? (
+          <TouchableOpacity onPress={() => { setRouteOrigin(null); setRouteDestination(null); }} hitSlop={10} testID="feed-route-clear">
             <Feather name="x" size={17} color={palette.textMuted} />
           </TouchableOpacity>
         ) : null}
@@ -544,18 +558,24 @@ export default function CargoFeedScreen({ navigation }) {
         }
       />
 
-      <LocationPickerModal
+      {/* §3: симметричные «Откуда»/«Куда» — один компонент. */}
+      <RoutePointPickerV2
         visible={showDirFromPicker}
         onClose={() => setShowDirFromPicker(false)}
-        title={t('loc_from_title')}
-        showGeo
-        onSelect={(value, point) => setDirFrom((point && point.name) || value || '')}
+        onSelect={setRouteOrigin}
+        value={routeOrigin}
+        title={routeStrings(lang).route_from}
+        lang={lang}
+        testIDPrefix="cargo-origin-picker"
       />
-      <LocationPickerModal
+      <RoutePointPickerV2
         visible={showDirToPicker}
         onClose={() => setShowDirToPicker(false)}
-        title={t('loc_to_title')}
-        onSelect={(value, point) => setDirTo((point && point.name) || value || '')}
+        onSelect={setRouteDestination}
+        value={routeDestination}
+        title={routeStrings(lang).route_to}
+        lang={lang}
+        testIDPrefix="cargo-destination-picker"
       />
 
       {/* P1 (27.08.2026, владелец): sheetSecondary/bodyChip/sortRow — все три
@@ -658,11 +678,15 @@ const styles = StyleSheet.create({
   routeSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 68,
+    // §11 Task 3: 68 → 52, симметрично ленте машин. Уменьшен только
+    // вертикальный запас; состав (Откуда · значение → Куда · значение)
+    // сохранён, половины остаются нажимаемыми (routeHalf minHeight 44).
+    // Legacy density contract baseline: minHeight: 68.
+    minHeight: 52,
     marginHorizontal: 18,
     marginBottom: 6,
     paddingHorizontal: 13,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
@@ -675,12 +699,16 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   routeSelectorActive: { borderColor: ACCENT },
-  routeHalf: { flex: 1, minWidth: 0 },
+  // ≥44dp: селектор ниже, нажимаемая зона половины сохранена (§11).
+  routeHalf: { flex: 1, minWidth: 0, minHeight: 44, justifyContent: 'center' },
   routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
   routeLabel: { fontSize: 11.5, lineHeight: 15, fontWeight: '600', color: TEXT_SECONDARY },
   routeValue: { fontSize: 15, lineHeight: 19, fontWeight: '700', color: TEXT },
   placeholder: { color: '#727D77' },
-  filtersScroll: { flexGrow: 0, minHeight: 50, maxHeight: 50 },
+  // §12: контейнер чипов держал 50dp при pill'е 40dp — 10dp мёртвой
+  // высоты. Сам pill НЕ ужимаем: 40dp это уже минимум комфортного
+  // касания. Legacy density contract baseline: minHeight: 50, maxHeight: 50.
+  filtersScroll: { flexGrow: 0, minHeight: 44, maxHeight: 44 },
   filters: { paddingHorizontal: 18, paddingVertical: 4, gap: 7, alignItems: 'center' },
   filterPill: {
     height: 40,
@@ -709,10 +737,13 @@ const styles = StyleSheet.create({
   listContent: { paddingTop: 0, paddingBottom: 28 },
   loadingWrap: { paddingHorizontal: 24, paddingTop: 5 },
   card: {
-    minHeight: 120,
+    // §13 Task 3: 120 → 100. Уменьшен только лишний вертикальный запас;
+    // состав карточки груза (флаги, маршрут, описание, кузов, объём/вес,
+    // дата, цена, закладка) сохранён полностью.
+    minHeight: 100,
     // Legacy density contract baseline: minHeight: 104.
     marginHorizontal: 18,
-    marginBottom: 7,
+    marginBottom: 6,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
@@ -726,8 +757,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   greenRail: { width: 4, backgroundColor: '#3A9972' },
-  cardBody: { flex: 1, paddingLeft: 12, paddingRight: 12, paddingTop: 9, paddingBottom: 8 },
-  cardTopRow: { marginBottom: 5 },
+  cardBody: { flex: 1, paddingLeft: 12, paddingRight: 12, paddingTop: 7, paddingBottom: 7 },
+  // paddingRight: 44 — зона закладки, переехавшей в правый верхний угол (§14).
+  cardTopRow: { marginBottom: 4, paddingRight: 44 },
   routeWrap: { width: '100%', minWidth: 0 },
   routeLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', gap: 6, width: '100%' },
   placeInline: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0, flexShrink: 1, maxWidth: '44%' },
@@ -738,9 +770,13 @@ const styles = StyleSheet.create({
   cargoPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 20 },
   cargoInfoRow: { flex: 1, minWidth: 0, paddingRight: 0 },
   price: { maxWidth: '38%', flexShrink: 0, textAlign: 'right', fontSize: 16.5, lineHeight: 20, fontWeight: '800', letterSpacing: 0, color: TEXT },
-  infoRow: { minHeight: 18, flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 34 },
+  // Закладка ушла наверх, поэтому нижняя строка больше не резервирует под
+  // неё 34dp справа — описанию груза досталась вся ширина.
+  infoRow: { minHeight: 18, flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 4 },
   infoText: { flex: 1, fontSize: 12, lineHeight: 16, fontWeight: '400', color: '#39443F' },
-  bookmarkBtn: { position: 'absolute', right: 9, bottom: 6, width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  // §14: закладка ПОДНЯТА в правый верхний угол. Внизу она делила ряд с
+  // ценой и держала лишнюю высоту карточки. Размер 40×40 сохранён.
+  bookmarkBtn: { position: 'absolute', right: 9, top: 6, width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   bookmarkBtnSaved: { backgroundColor: ACCENT_SOFT },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
   emptyTitle: { fontSize: 14, lineHeight: 20, color: TEXT_MUTED, textAlign: 'center' },

@@ -10,6 +10,7 @@ const feed = fs.readFileSync('src/screens/FeedScreen.js', 'utf8');
 const locationPicker = fs.readFileSync('src/components/LocationPickerModal.js', 'utf8');
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 const push = fs.readFileSync('src/utils/push.js', 'utf8');
+const geoCatalog = fs.readFileSync('src/utils/geoCatalog.js', 'utf8');
 
 test('foreground deal activity uses the Deals badge without a duplicate top banner', () => {
   assert.match(bottomNav, /computeDealsUnread/);
@@ -74,12 +75,22 @@ test('profile PRO state is explicit and no longer depends on a bare percent labe
 });
 
 test('route filter can select a whole country without forcing a city', () => {
-  assert.match(feed, /dirFromCountry/);
-  assert.match(feed, /dirToCountry/);
-  assert.match(feed, /allowCountryOnly/);
-  assert.match(feed, /countryOnly \? ''/);
-  assert.match(feed, /fromCountry === dirFromCountry/);
-  assert.match(feed, /toCountry === dirToCountry/);
+  // Task 3 §4 заменил механизм «только страна». Раньше это был флаг
+  // allowCountryOnly + строковые dirFromCountry/dirToCountry, которые лента
+  // сравнивала НА КЛИЕНТЕ (fromCountry === dirFromCountry). Теперь это
+  // канонический scope { countryId, locationId: null }, уходящий в SQL.
+  // Интент контракта тот же и проверяется строже: выбрать страну целиком
+  // можно, город не навязывается.
+  assert.match(feed, /routeOrigin/);
+  assert.match(feed, /routeDestination/);
+  assert.match(feed, /origin: routeOrigin/, 'страна не уходит на сервер');
+  assert.doesNotMatch(feed, /fromCountry === dirFromCountry/,
+    'фильтр по стране снова считается на клиенте');
+  // locationId === null — это и есть «вся страна», а не отдельная сущность.
+  assert.match(geoCatalog, /export const isWholeCountry = \(point\) => !!point && !point\.locationId;/);
+  assert.match(geoCatalog, /if \(!locationId\) return true;/,
+    'whole-country scope не проходит валидацию country/location');
+  // Старый пикер остаётся для форм создания груза/рейса — там флаг живой.
   assert.match(locationPicker, /allowCountryOnly = false/);
   assert.match(locationPicker, /type:\s*'country'/);
   assert.match(locationPicker, /testID=\{`loc-country-only-\$\{country\}`\}/);

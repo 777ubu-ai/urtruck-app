@@ -47,6 +47,22 @@ function normalizeDetail(d, status) {
   return String(d);
 }
 
+// Main Route Filter V2 (§15): маршрутный scope в query-параметры.
+// Пустая локация НЕ отправляется вовсе — сервер трактует «страна задана,
+// локация отсутствует» как WHOLE COUNTRY (§4). Отправлять location_id=''
+// нельзя: бэкенд обязан отличать «вся страна» от «локация не указана».
+const appendRouteScope = (params, origin, destination) => {
+  if (origin && origin.countryId) {
+    params.set('origin_country_id', origin.countryId);
+    if (origin.locationId) params.set('origin_location_id', origin.locationId);
+  }
+  if (destination && destination.countryId) {
+    params.set('destination_country_id', destination.countryId);
+    if (destination.locationId) params.set('destination_location_id', destination.locationId);
+  }
+  return params;
+};
+
 export const marketAPI = {
   // ─── Сохранённые маршруты (подписка «грузы по моему маршруту») ───
   // Эндпоинт вне /market: /api/v1/searches.
@@ -140,15 +156,28 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listCargos({ status = 'active', fromCity = '', toCity = '', cargoType = '', limit = 50, offset = 0 } = {}) {
+  async listCargos({
+    status = 'active', fromCity = '', toCity = '', cargoType = '',
+    // Main Route Filter V2 (§15): маршрут уходит на сервер как
+    // country_id + (location_id | null). null-локация = «вся страна» (§4).
+    origin = null, destination = null,
+    limit = 50, offset = 0, signal,
+  } = {}) {
     // Never inject demo data on failure — empty list + serverError flag so
     // FeedScreen renders the proper empty state instead of stale fallback.
     try {
       const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, cargo_type: cargoType, limit, offset });
-      const r = await authedFetch(`${BASE}/cargos?${params}`);
+      appendRouteScope(params, origin, destination);
+      const r = await authedFetch(`${BASE}/cargos?${params}`, { signal });
       if (!r.ok) return { cargos: [], total: 0, serverError: true, status: r.status };
       return r.json();
     } catch (e) {
+      // §17: отменённый запрос — это НЕ ошибка сервера. Если пометить его
+      // serverError, лента мигнёт «Не удалось загрузить» при каждой смене
+      // фильтра, пока летит предыдущий запрос.
+      if (e && (e.name === 'AbortError' || e.code === 20)) {
+        return { cargos: [], total: 0, aborted: true };
+      }
       return { cargos: [], total: 0, serverError: true };
     }
   },
@@ -264,13 +293,21 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listTrips({ status = 'active', fromCity = '', toCity = '', truckType = '', limit = 50 } = {}) {
+  async listTrips({
+    status = 'active', fromCity = '', toCity = '', truckType = '',
+    origin = null, destination = null,
+    limit = 50, offset = 0, signal,
+  } = {}) {
     try {
-      const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, truck_type: truckType, limit });
-      const r = await authedFetch(`${BASE}/trips?${params}`);
+      const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, truck_type: truckType, limit, offset });
+      appendRouteScope(params, origin, destination);
+      const r = await authedFetch(`${BASE}/trips?${params}`, { signal });
       if (!r.ok) return { trips: [], total: 0, serverError: true, status: r.status };
       return r.json();
     } catch (e) {
+      if (e && (e.name === 'AbortError' || e.code === 20)) {
+        return { trips: [], total: 0, aborted: true };
+      }
       return { trips: [], total: 0, serverError: true };
     }
   },

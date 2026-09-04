@@ -36,7 +36,11 @@ test('favorites quick filter uses the same saved cargo ids as card bookmarks', (
 });
 
 test('cargo cards stay compact so collapsing the controls actually increases visible work', () => {
-  assert.match(src, /minHeight: 120/);
+  // Task 3 §13 уменьшил карточку груза 120 → 100. Интент этого контракта
+  // («карточка остаётся компактной, поэтому сворачиваниеконтролов реально
+  // добавляет видимой работы») не нарушен — 100 компактнее 120; устарело
+  // именно зафиксированное число.
+  assert.match(src, /minHeight: 100/);
   assert.match(src, /fontSize: 16, lineHeight: 20/);
   assert.doesNotMatch(src, /cardExpanded/);
 });

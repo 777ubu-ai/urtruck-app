@@ -6,10 +6,15 @@ const cargoFeed = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
 const bottomNav = fs.readFileSync('src/components/ui/v1/BottomNav.js', 'utf8');
 
 test('cargo feed keeps the first screen dense enough for narrow mobile browsers', () => {
-  assert.match(cargoFeed, /routeSelector:\s*\{[\s\S]*minHeight:\s*68/);
-  assert.match(cargoFeed, /filtersScroll:\s*\{ flexGrow:\s*0,\s*minHeight:\s*50,\s*maxHeight:\s*50 \}/);
+  // Task 3 §11/§12 сжали маршрутный селектор 68 → 52 и контейнер чипов
+  // 50 → 44. Сам filterPill остался 40dp — touch target не ужимался.
+  // Значения проверяем ЯКОРНО (\{[^}]*), а не через жадный [\s\S]*:
+  // жадная версия находила число в комментарии-бейзлайне ниже по файлу и
+  // поэтому не могла поймать реальную регрессию плотности.
+  assert.match(cargoFeed, /routeSelector:\s*\{[^}]*minHeight:\s*52/);
+  assert.match(cargoFeed, /filtersScroll:\s*\{ flexGrow:\s*0,\s*minHeight:\s*44,\s*maxHeight:\s*44 \}/);
   assert.match(cargoFeed, /filterPill:\s*\{[\s\S]*height:\s*40/);
-  assert.match(cargoFeed, /card:\s*\{[\s\S]*minHeight:\s*104/);
+  assert.match(cargoFeed, /card:\s*\{[^}]*minHeight:\s*100/);
   assert.match(cargoFeed, /routeCity:\s*\{[\s\S]*fontSize:\s*15/);
   assert.match(cargoFeed, /price:\s*\{[\s\S]*fontSize:\s*16\.5/);
 });

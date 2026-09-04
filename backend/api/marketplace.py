@@ -14,6 +14,7 @@ from pydantic import BaseModel, field_validator
 from typing import Optional, List
 
 from database.db import get_conn, new_id
+from services import geo_catalog
 from api.verification_gate import require_level, get_user, _extract_driver
 from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
@@ -147,6 +148,19 @@ _COUNTRY_ALIASES = {
     "PAK": "PK", "MNG": "MN", "GEO": "GE", "AZE": "AZ", "ARM": "AM",
     "TKM": "TM", "UKR": "UA",
 }
+
+def _route_location_ids(country, point_name, city):
+    """country + (point_name | from_city) → location_id из каталога.
+
+    Возвращает None, когда точку опознать не удалось: NULL здесь означает
+    «локация неизвестна», и такое объявление просто не попадёт в фильтр по
+    конкретному городу, но останется видимым в scope «вся страна» (§4).
+    Угадывать по подстроке нельзя — ложный location_id тихо увёл бы груз в
+    чужой город.
+    """
+    return (geo_catalog.resolve_location_id(country, point_name)
+            or geo_catalog.resolve_location_id(country, city))
+
 
 def _norm_route_triple(country, point_type, point_name):
     """Normalise the structured route triple. Country is an ISO-2 code
@@ -347,12 +361,41 @@ def _init():
             for col, ddl_type in ROUTE_COLS:
                 if col not in tcols:
                     c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl_type}")
+            # Main Route Filter V2 (§5/§15): стабильные location_id из
+            # нормализованного каталога. Без них маршрутный фильтр может
+            # сравнивать только свободный текст через LIKE '%…%' — на
+            # 10 000+ объявлений это full scan и ложные совпадения
+            # («Хоргос» матчит и город, и КПП, и терминал).
+            # NULL в location_id — легальное состояние: это WHOLE COUNTRY
+            # scope (§4), а не «данные потеряны».
+            for col in ("from_location_id", "to_location_id"):
+                if col not in tcols:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} TEXT")
             # PR2 (03.08): published_at — момент публикации, обновляется при
             # republish. Идемпотентно: добавляем колонку и backfill'им только
             # NULL-строки (безопасно перезапускать на каждом старте сервера).
             if "published_at" not in tcols:
                 c.execute(f"ALTER TABLE {table} ADD COLUMN published_at TEXT")
             c.execute(f"UPDATE {table} SET published_at = created_at WHERE published_at IS NULL")
+            # ISO-2 код страны нормализуем В ДАННЫХ, а не в запросе.
+            # Раньше фильтр сравнивал UPPER(from_country) = ?, и вызов
+            # функции по колонке делал составной маршрутный индекс
+            # неприменимым: EXPLAIN QUERY PLAN показывал idx_*_status +
+            # TEMP B-TREE FOR ORDER BY, то есть скан по статусу и сортировку
+            # в памяти на всей выборке. На 10 000 объявлениях это ровно тот
+            # режим, который §15/§18 запрещают.
+            for col in ("from_country", "to_country"):
+                c.execute(
+                    f"UPDATE {table} SET {col} = UPPER({col}) "
+                    f"WHERE {col} IS NOT NULL AND {col} <> UPPER({col})"
+                )
+            # Индекс маршрутного фильтра создаём ПОСЛЕ published_at: на
+            # свежей БД колонки ещё нет, и CREATE INDEX падал бы на старте.
+            c.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{table}_route_scope "
+                f"ON {table}(status, from_country, from_location_id, "
+                f"to_country, to_location_id, published_at)"
+            )
         # 3.8: тип оплаты груза (cash|cashless|any) — важный параметр решения
         # водителя. Колонка на cargos; NULL = не указан.
         ccols = {r["name"] for r in c.execute("PRAGMA table_info(cargos)").fetchall()}
@@ -562,15 +605,16 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
             INSERT INTO cargos (id, owner_id, owner_phone, owner_name,
               from_city, to_city, cargo_desc, cargo_type,
               weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
-              from_country, from_point_type, from_point_name,
-              to_country, to_point_type, to_point_name, published_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+              from_country, from_point_type, from_point_name, from_location_id,
+              to_country, to_point_type, to_point_name, to_location_id, published_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         """, (cid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.cargo_desc, body.cargo_type,
               body.weight_tons, body.volume_m3, body.price, currency, pay,
               body.pickup_date,
               json.dumps(body.photos or [], ensure_ascii=False),
-              fc, fpt, fpn, tc, tpt, tpn))
+              fc, fpt, fpn, _route_location_ids(fc, fpn, body.from_city),
+              tc, tpt, tpn, _route_location_ids(tc, tpn, body.to_city)))
 
     # Push подписчикам маршрута
     try:
@@ -580,6 +624,89 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
         pass
 
     return {"id": cid, "ok": True}
+
+
+
+# ── Main Route Filter V2: общие хелперы маршрутного фильтра ────────────────
+
+def _route_scope_where(where: list, params: list,
+                       origin_country_id: str, origin_location_id: str,
+                       destination_country_id: str, destination_location_id: str) -> None:
+    """Добавить в WHERE канонический маршрутный scope (§4/§15/§21).
+
+    Симметрично для origin и destination:
+      country задан, location пуст → WHOLE COUNTRY: сравниваем только страну;
+      заданы оба                   → сравниваем location_id (индексированное
+                                     равенство, не LIKE).
+
+    §21: пара country/location валидируется ДО SQL. Несовпадение
+    («Germany + Almaty») — это 400, а не пустая лента: молча вернуть 0
+    результатов означало бы скрыть ошибку клиента.
+    """
+    try:
+        o_country, o_location = geo_catalog.validate_scope(
+            origin_country_id, origin_location_id, field="origin")
+        d_country, d_location = geo_catalog.validate_scope(
+            destination_country_id, destination_location_id, field="destination")
+    except geo_catalog.RouteScopeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Равенство БЕЗ UPPER() по колонке — иначе составной индекс
+    # idx_*_route_scope не применяется (см. нормализацию в _init).
+    if o_country:
+        where.append("from_country = ?")
+        params.append(o_country)
+    if o_location:
+        where.append("from_location_id = ?")
+        params.append(o_location)
+    if d_country:
+        where.append("to_country = ?")
+        params.append(d_country)
+    if d_location:
+        where.append("to_location_id = ?")
+        params.append(d_location)
+
+
+def _page_fill(select_sql: str, params: list, offset: int, limit: int,
+               shape, keep):
+    """Собрать РОВНО `limit` прошедших гигиену записей, начиная с `offset`.
+
+    Возвращает (rows, scanned, exhausted):
+      rows     — отданные записи (не больше limit);
+      scanned  — сколько строк БД потреблено; offset + scanned = next_offset;
+      exhausted — источник закончился (страниц больше нет).
+
+    Зачем батчи: гигиена публичной ленты (`_public_cargo_ok`) не выражается в
+    SQL. Если брать ровно `limit` строк и часть выбрасывать, то на 10 000
+    объявлениях страница произвольно «усыхает», а следующий offset,
+    посчитанный клиентом как offset+limit, ПЕРЕПРЫГИВАЕТ выброшенные строки
+    вместе с годными — записи молча исчезают из ленты.
+    """
+    rows: list = []
+    scanned = 0
+    exhausted = False
+    # Батч с запасом: при типичной ленте гигиена режет единицы процентов,
+    # так что обычно хватает одного запроса. Потолок на итерации не даёт
+    # выродиться в полный скан таблицы, если отбраковано почти всё.
+    batch = max(limit * 2, 20)
+    with get_conn() as c:
+        for _ in range(12):
+            fetched = c.execute(select_sql, (*params, batch, offset + scanned)).fetchall()
+            if not fetched:
+                exhausted = True
+                break
+            for raw in fetched:
+                scanned += 1
+                d = shape(raw)
+                if not keep(d):
+                    continue
+                rows.append(d)
+                if len(rows) >= limit:
+                    return rows, scanned, False
+            if len(fetched) < batch:
+                exhausted = True
+                break
+    return rows, scanned, exhausted
 
 
 @mp_router.get("/cargos")
@@ -595,11 +722,22 @@ def list_cargos(
     to_country: str = "",
     from_point_type: str = "",
     to_point_type: str = "",
+    # Main Route Filter V2 (§15): канонический маршрутный scope.
+    #   *_country_id  задан, *_location_id пуст → WHOLE COUNTRY (§4)
+    #   оба заданы                             → конкретная локация
+    # Фильтрация идёт в SQL по индексированному равенству, а не выкачиванием
+    # ленты на телефон.
+    origin_country_id: str = "",
+    origin_location_id: str = "",
+    destination_country_id: str = "",
+    destination_location_id: str = "",
     show_demo: bool = False,
     limit: int = 50,
     offset: int = 0,
 ):
     """Публичный список грузов. Demo-контент скрыт по умолчанию."""
+    limit = max(1, min(int(limit or 50), 100))
+    offset = max(0, int(offset or 0))
     where = ["status = ?"]
     params = [status]
     if from_city:
@@ -623,24 +761,23 @@ def list_cargos(
     if to_point_type:
         where.append("to_point_type = ?")
         params.append(to_point_type.lower())
+    _route_scope_where(where, params,
+                       origin_country_id, origin_location_id,
+                       destination_country_id, destination_location_id)
 
     where_sql = " AND ".join(where)
-    with get_conn() as c:
-        rows = c.execute(f"""
+    select_sql = f"""
             SELECT id, owner_id, from_city, to_city, cargo_desc, cargo_type,
                    weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
                    bids_count, status, created_at, published_at,
-                   from_country, from_point_type, from_point_name,
-                   to_country, to_point_type, to_point_name
+                   from_country, from_point_type, from_point_name, from_location_id,
+                   to_country, to_point_type, to_point_name, to_location_id
             FROM cargos WHERE {where_sql}
             ORDER BY published_at DESC LIMIT ? OFFSET ?
-        """, (*params, limit, offset)).fetchall()
-        total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql}", params).fetchone()[0]
+    """
 
-    result = []
-    today = datetime.utcnow().date()
-    for r in rows:
-        d = dict(r)
+    def _shape(row):
+        d = dict(row)
         try:
             d["photos"] = _sign_cargo_photos(json.loads(d.get("photos") or "[]"))
         except Exception:
@@ -651,13 +788,36 @@ def list_cargos(
             d["photos"] = []
         # НЕ отдаём owner_phone — контакт закрыт гейтом
         d.pop("owner_phone", None)
-        # Public-feed hygiene (skipped only when caller explicitly asks for it,
-        # e.g. an admin tool passing show_demo=true)
-        if not show_demo and not _public_cargo_ok(d, today=today):
-            continue
-        result.append(d)
-    # Recompute total to match what the caller actually sees
-    return {"cargos": result, "total": len(result)}
+        return d
+
+    today = datetime.utcnow().date()
+    # Public-feed hygiene (skipped only when caller explicitly asks for it,
+    # e.g. an admin tool passing show_demo=true). Гигиена не выражается в SQL
+    # (грязные токены в тексте), поэтому страницу ДОБИРАЕМ батчами до
+    # запрошенного размера. Раньше метод брал ровно `limit` строк, часть
+    # выбрасывал в Python и возвращал total=len(result): страница «усыхала»,
+    # total врал, а offset-пагинация на следующей странице пропускала записи.
+    keep = (lambda d: True) if show_demo else (lambda d: _public_cargo_ok(d, today=today))
+    result, scanned, exhausted = _page_fill(select_sql, params, offset, limit, _shape, keep)
+
+    with get_conn() as c:
+        total_matching = c.execute(
+            f"SELECT COUNT(*) FROM cargos WHERE {where_sql}", params
+        ).fetchone()[0]
+
+    return {
+        "cargos": result,
+        # Обратная совместимость: старые клиенты читают `total` как «сколько
+        # пришло в этом ответе».
+        "total": len(result),
+        # Сколько записей удовлетворяет фильтру в БД (до гигиены) — верхняя
+        # оценка для «найдено N».
+        "total_matching": total_matching,
+        # §17: следующий offset. Клиент НЕ считает его сам как offset+limit —
+        # из-за гигиены страница может занимать больше строк, чем отдала.
+        "next_offset": offset + scanned,
+        "has_more": not exhausted,
+    }
 
 
 @mp_router.post("/cargos/photo")
@@ -1135,14 +1295,15 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
               from_city, to_city, transit, truck_type,
               capacity_tons, available_m3, price, currency, departure, arrival,
-              from_country, from_point_type, from_point_name,
-              to_country, to_point_type, to_point_name, published_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+              from_country, from_point_type, from_point_name, from_location_id,
+              to_country, to_point_type, to_point_name, to_location_id, published_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         """, (tid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.transit, body.truck_type,
               body.capacity_tons, body.available_m3, body.price, currency,
               body.departure, body.arrival,
-              fc, fpt, fpn, tc, tpt, tpn))
+              fc, fpt, fpn, _route_location_ids(fc, fpn, body.from_city),
+              tc, tpt, tpn, _route_location_ids(tc, tpn, body.to_city)))
     return {"id": tid, "ok": True}
 
 
@@ -1236,10 +1397,18 @@ def list_trips(
     to_country: str = "",
     from_point_type: str = "",
     to_point_type: str = "",
+    # Main Route Filter V2 (§2/§15): та же модель, что и у грузов —
+    # driver→Loads и shipper→Trucks фильтруются одинаково.
+    origin_country_id: str = "",
+    origin_location_id: str = "",
+    destination_country_id: str = "",
+    destination_location_id: str = "",
     show_demo: bool = False,
     limit: int = 50,
     offset: int = 0,
 ):
+    limit = max(1, min(int(limit or 50), 100))
+    offset = max(0, int(offset or 0))
     where = ["status = ?"]
     params = [status]
     if from_city:
@@ -1263,35 +1432,40 @@ def list_trips(
     if to_point_type:
         where.append("to_point_type = ?")
         params.append(to_point_type.lower())
+    _route_scope_where(where, params,
+                       origin_country_id, origin_location_id,
+                       destination_country_id, destination_location_id)
 
     where_sql = " AND ".join(where)
-    with get_conn() as c:
-        rows = c.execute(f"""
+    select_sql = f"""
             SELECT id, driver_id, driver_name, from_city, to_city, transit,
                    truck_type, capacity_tons, available_m3, price, currency,
                    departure, arrival, status, created_at, published_at,
-                   from_country, from_point_type, from_point_name,
-                   to_country, to_point_type, to_point_name
+                   from_country, from_point_type, from_point_name, from_location_id,
+                   to_country, to_point_type, to_point_name, to_location_id
             FROM trips WHERE {where_sql}
             ORDER BY published_at DESC LIMIT ? OFFSET ?
-        """, (*params, limit, offset)).fetchall()
+    """
 
-    trips = [dict(r) for r in rows]
-    if not show_demo:
-        trips = [
-            t for t in trips
-            if not _is_dirty_text(t.get("driver_name"), t.get("from_city"),
-                                  t.get("to_city"), t.get("truck_type"))
-        ]
+    _today = datetime.utcnow().date()
+
+    def _trip_public_ok(t):
+        if _is_dirty_text(t.get("driver_name"), t.get("from_city"),
+                          t.get("to_city"), t.get("truck_type")):
+            return False
         # Скрываем просроченные рейсы из ПУБЛИЧНОЙ ленты (Модель А: живёт
         # 3 дня — departure + 2). Owner-side /my сюда не проходит — там рейсы
         # остаются с пометкой «Срок истёк».
-        _today = datetime.utcnow().date()
-        trips = [
-            t for t in trips
-            if not ((_dep := _parse_iso_date(t.get("departure")))
-                    and _dep < (_today - timedelta(days=2)))
-        ]
+        dep = _parse_iso_date(t.get("departure"))
+        return not (dep and dep < (_today - timedelta(days=2)))
+
+    keep = (lambda t: True) if show_demo else _trip_public_ok
+    # Та же добивка страницы, что и у грузов: гигиена не выражается в SQL,
+    # а «усохшая» страница ломает offset-пагинацию на 10 000 рейсах.
+    trips, _scanned, _exhausted = _page_fill(select_sql, params, offset, limit,
+                                             dict, keep)
+    _next_offset = offset + _scanned
+    _has_more = not _exhausted
     # Обогащаем каждый рейс РЕАЛЬНЫМИ данными водителя (статус верификации +
     # рейтинг/число отзывов), чтобы фронт не выдумывал «★5.0 · Проверен».
     # Обогащение не должно ронять ленту — при любом сбое отдаём дефолты.
@@ -1315,7 +1489,14 @@ def list_trips(
             t.setdefault("driver_verified", False)
             t.setdefault("driver_rating", 0)
             t.setdefault("driver_reviews_count", 0)
-    return {"trips": trips, "total": len(trips)}
+    return {
+        "trips": trips,
+        "total": len(trips),
+        # §17: next_offset считает сервер — клиент не может вывести его как
+        # offset+limit, потому что часть строк отсеяна гигиеной.
+        "next_offset": _next_offset,
+        "has_more": _has_more,
+    }
 
 
 @mp_router.get("/trips/{trip_id}")
