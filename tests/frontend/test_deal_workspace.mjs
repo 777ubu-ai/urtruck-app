@@ -60,7 +60,7 @@ test('deal workspace has scroll-away compact information header and no repeated 
   assert.match(workspace, /scheduleMeta/);
   assert.match(workspace, /counterpartyMeta/);
   assert.match(workspace, /const compactHeader = \(/);
-  assert.match(workspace, /ListHeaderComponent=\{compactHeader\}/);
+  assert.match(workspace, /\{compactHeader\}/);
   assert.doesNotMatch(workspace, /BrandBarWithShare|>UrTruck</);
   assert.doesNotMatch(brand, />UrTruck</);
   assert.match(brand, /compact-child-header/);
@@ -154,7 +154,7 @@ test('chat has no permanent second tab — status/history lives behind one icon-
 test('composer uses the approved WeChat-like bottom bar and attachment menu', () => {
   assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
-  assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 32/);
+  assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 44/);
   assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 74/);
   assert.match(workspace, /Math\.min\(COMPOSER_INPUT_MAX_HEIGHT/);
   assert.match(workspace, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
@@ -179,11 +179,28 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /const sendDealShare = React\.useCallback/);
   assert.match(workspace, /const sendContactCard = React\.useCallback/);
   assert.match(workspace, /attachIcon: \{ width: 64, height: 64/);
-  assert.match(workspace, /backgroundColor: '#F4F4F4'/);
-  assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'flex-end'/);
-  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 74/);
+  assert.match(workspace, /backgroundColor: '#F7F9F7'/);
+  assert.match(workspace, /composer: \{\s*minHeight: 54,[\s\S]*?alignItems: 'center'/);
+  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 44, maxHeight: 78/);
+  assert.match(workspace, /input: \{ minHeight: 44, maxHeight: 74/);
+  assert.match(workspace, /inputEmoji: \{ position: 'absolute', right: 3, top: 2, width: 40, height: 40/);
+  assert.match(workspace, /sendButton: \{ width: 46, height: 46, borderRadius: 23/);
+  assert.match(workspace, /sendButtonDisabled/);
+  assert.match(workspace, /<Feather name="mic" size=\{27\}/);
+  assert.match(workspace, /<FontAwesome5 name="paper-plane" size=\{23\}/);
   assert.match(workspace, /placeholder=""/);
+  assert.doesNotMatch(workspace, /testID="deal-chat-camera"/);
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
+
+  const attachIndex = workspace.indexOf('testID="deal-chat-attach"');
+  const inputIndex = workspace.indexOf('testID="deal-chat-input"');
+  const emojiIndex = workspace.indexOf('testID="deal-chat-emoji"');
+  const voiceIndex = workspace.indexOf('testID="deal-chat-voice"');
+  const sendIndex = workspace.indexOf('testID="deal-chat-send"');
+  assert.ok(attachIndex > 0 && inputIndex > attachIndex, 'composer must start with plus then input');
+  assert.ok(emojiIndex > inputIndex, 'emoji must live after the text input inside the input shell');
+  assert.ok(voiceIndex > emojiIndex, 'mic must follow input+emoji');
+  assert.ok(sendIndex > voiceIndex, 'send must be the rightmost composer action');
 });
 
 test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
@@ -191,7 +208,7 @@ test('composer stays visible while scrolling and avoids duplicate emoji while ty
   assert.doesNotMatch(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
   assert.doesNotMatch(workspace, /testID="deal-chat-composer-collapsed"/);
   assert.doesNotMatch(workspace, /composerCollapsedHandle/);
-  assert.match(workspace, /\{!composerFocused \? \(/);
+  assert.equal((workspace.match(/testID="deal-chat-emoji"/g) || []).length, 1, 'composer must render a single emoji button');
   assert.match(workspace, /testID="deal-chat-attach-collapse"/);
   assert.match(workspace, /attachHandle/);
   assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);

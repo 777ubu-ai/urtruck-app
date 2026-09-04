@@ -40,6 +40,7 @@ export default function VoiceMessageBubble({
   transcribing = false,
   onToggleTranscript,
   onError,
+  sentTime = '',
   testID = 'voice-bubble',
 }) {
   const [state, setState] = React.useState(() => voice.getState?.() || {
@@ -116,7 +117,7 @@ export default function VoiceMessageBubble({
         >
           {sending
             ? <ActivityIndicator size="small" color={iconColor} />
-            : <Feather name={isPlaying ? 'pause' : 'play'} size={15} color={iconColor} />}
+            : <Feather name={isPlaying ? 'pause' : 'play'} size={23} color={iconColor} />}
         </TouchableOpacity>
 
         <Pressable
@@ -176,32 +177,34 @@ export default function VoiceMessageBubble({
           ) : null}
         </View>
       ) : null}
+      {!!sentTime && <Text style={[s.sentTime, { color: timeColor }]}>{sentTime}</Text>}
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { minWidth: 172 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 30 },
+  wrap: { minWidth: 230, maxWidth: '100%', minHeight: 68, paddingRight: 4, paddingBottom: 14 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 42 },
   playBtn: {
-    width: 30, height: 30, borderRadius: 15, borderWidth: 1,
+    width: 40, height: 40, borderRadius: 20, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
   // Полоса прогресса: увеличенная зона нажатия (44px по гайдлайнам), сама
   // полоса тонкая — визуально как в WhatsApp.
-  trackHit: { flex: 1, minWidth: 64, height: 26, justifyContent: 'center' },
+  trackHit: { flex: 1, minWidth: 96, height: 28, justifyContent: 'center' },
   track: { height: 4, borderRadius: 2, overflow: 'visible', position: 'relative' },
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 2 },
   knob: { position: 'absolute', top: -3.5, width: 11, height: 11, borderRadius: 5.5, marginLeft: -5.5 },
-  time: { fontSize: 11, fontWeight: '700', minWidth: 34, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  time: { fontSize: 11.5, fontWeight: '400', minWidth: 34, textAlign: 'right', fontVariant: ['tabular-nums'] },
   ratePill: {
     alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: 7, paddingVertical: 2,
     borderRadius: 9, borderWidth: 1,
   },
   rateText: { fontSize: 10.5, fontWeight: '900' },
-  transcriptBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7, minHeight: 22 },
-  transcriptBtnText: { fontSize: 11, fontWeight: '800' },
+  transcriptBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2, minHeight: 22 },
+  transcriptBtnText: { fontSize: 11.5, fontWeight: '600' },
   transcriptBox: { marginTop: 7, paddingTop: 8, borderTopWidth: 1 },
   transcriptLabel: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase', marginBottom: 4 },
   transcriptText: { fontSize: 13, lineHeight: 19, fontWeight: '500' },
+  sentTime: { position: 'absolute', right: 0, bottom: 0, fontSize: 11.5, fontWeight: '400' },
 });

@@ -27,7 +27,7 @@ import { SkeletonCard } from '../components/Skeleton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import RoutePointPickerV2 from '../components/RoutePointPickerV2';
-import { routePointLabel } from '../utils/geoCatalog';
+import { locationName, routePointLabel } from '../utils/geoCatalog';
 import { SCOPE_LABELS, routeStrings } from '../utils/routeFilterStrings';
 import {
   FEED_KEYS, canRestoreFeed, readFeedSnapshot, writeFeedSnapshot,
@@ -111,6 +111,28 @@ const cleanRoutePlace = (value, countryCode) => {
   }
   return text;
 };
+
+const foldRouteText = (value) => String(value || '')
+  .toLowerCase()
+  .replace(/ё/g, 'е')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const routePointMatchesItem = (point, city, countryCode) => {
+  if (!point?.countryId) return true;
+  if (countryCode && String(countryCode).toUpperCase() !== point.countryId) return false;
+  if (!point.locationId) return true;
+  const actual = foldRouteText(city);
+  const expectedNames = ['ru', 'en', 'zh', 'kk']
+    .map((locale) => foldRouteText(locationName(point.locationId, locale)))
+    .filter(Boolean);
+  return expectedNames.includes(actual);
+};
+
+const cargoMatchesRouteFilter = (cargo, origin, destination) => (
+  routePointMatchesItem(origin, cargo.from, cargo.fromCountry)
+  && routePointMatchesItem(destination, cargo.to, cargo.toCountry)
+);
 
 const toIso = (value) => {
   const s = String(value || '').trim();
@@ -320,7 +342,8 @@ export default function CargoFeedScreen({ navigation }) {
       const mapped = (result?.cargos || [])
         .filter((cargo) => !myUserId || cargo.owner_id !== myUserId)
         .map((cargo) => normalizeCargo(cargo, myUserId))
-        .filter((cargo) => cargo.from && cargo.to);
+        .filter((cargo) => cargo.from && cargo.to)
+        .filter((cargo) => cargoMatchesRouteFilter(cargo, routeOrigin, routeDestination));
       setItems(mapped);
     } catch (e) {
       console.warn('[CargoFeed] load failed:', e);

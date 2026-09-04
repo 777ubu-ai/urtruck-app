@@ -7,7 +7,9 @@ const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8'
 const timeline = fs.readFileSync('src/components/deal/DealStatusTimeline.js', 'utf8');
 const profile = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
 const feed = fs.readFileSync('src/screens/FeedScreen.js', 'utf8');
-const locationPicker = fs.readFileSync('src/components/LocationPickerModal.js', 'utf8');
+const marketApi = fs.readFileSync('src/utils/marketAPI.js', 'utf8');
+const routePointPicker = fs.readFileSync('src/components/RoutePointPickerV2.js', 'utf8');
+const geoCatalog = fs.readFileSync('src/utils/geoCatalog.js', 'utf8');
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 const push = fs.readFileSync('src/utils/push.js', 'utf8');
 const appBadge = fs.readFileSync('src/utils/appBadge.js', 'utf8');
@@ -61,7 +63,7 @@ test('deal header uses map and status buttons, not the old call button', () => {
   assert.match(workspace, /headerIconBtn: \{/);
   assert.match(workspace, /backgroundColor: '#168759'/);
   assert.match(workspace, /statusActionIcon/);
-  assert.match(workspace, /compactHeader:\s*\{\s*height:\s*118/);
+  assert.match(workspace, /compactHeader:\s*\{\s*minHeight:\s*92/);
 });
 
 test('status history opens from the status card and keeps the next status action at the bottom', () => {
@@ -84,14 +86,26 @@ test('profile PRO state is explicit and no longer depends on a bare percent labe
 });
 
 test('route filter can select a whole country without forcing a city', () => {
-  assert.match(feed, /dirFromCountry/);
-  assert.match(feed, /dirToCountry/);
-  assert.match(feed, /allowCountryOnly/);
-  assert.match(feed, /countryOnly \? ''/);
-  assert.match(feed, /fromCountry === dirFromCountry/);
-  assert.match(feed, /toCountry === dirToCountry/);
-  assert.match(locationPicker, /allowCountryOnly = false/);
-  assert.match(locationPicker, /type:\s*'country'/);
-  assert.match(locationPicker, /testID=\{`loc-country-only-\$\{country\}`\}/);
+  assert.match(feed, /routeOrigin/);
+  assert.match(feed, /routeDestination/);
+  assert.match(feed, /RoutePointPickerV2/);
+  assert.match(feed, /routePointLabel/);
+  assert.match(feed, /routeFilterParams/);
+  assert.match(feed, /origin: routeOrigin/);
+  assert.match(feed, /destination: routeDestination/);
+  assert.match(feed, /origin_\/destination_country_id \+ _location_id/);
+  assert.match(marketApi, /import \{ routeFilterParams \} from '\.\/geoCatalog'/);
+  assert.match(marketApi, /origin = null/);
+  assert.match(marketApi, /destination = null/);
+  assert.match(marketApi, /\.\.\.routeFilterParams\(origin, destination\)/);
+  assert.match(geoCatalog, /origin_country_id/);
+  assert.match(geoCatalog, /destination_location_id/);
+  assert.doesNotMatch(feed, /fromCountry === dirFromCountry/);
+  assert.doesNotMatch(feed, /toCountry === dirToCountry/);
+  assert.match(routePointPicker, /kind: 'whole'/);
+  assert.match(routePointPicker, /locationId: null/);
+  assert.match(routePointPicker, /country-\$\{item\.countryId\}/);
+  assert.match(geoCatalog, /location_id/);
+  assert.match(geoCatalog, /country_id/);
   assert.match(i18n, /loc_whole_country:\s*'Вся страна'/);
 });

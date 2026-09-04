@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
+import { routeFilterParams } from './geoCatalog';
 
 const BASE = `${API_BASE}/market`;
 
@@ -140,12 +141,30 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listCargos({ status = 'active', fromCity = '', toCity = '', cargoType = '', limit = 50, offset = 0 } = {}) {
+  async listCargos({
+    status = 'active',
+    fromCity = '',
+    toCity = '',
+    cargoType = '',
+    origin = null,
+    destination = null,
+    limit = 50,
+    offset = 0,
+    signal,
+  } = {}) {
     // Never inject demo data on failure — empty list + serverError flag so
     // FeedScreen renders the proper empty state instead of stale fallback.
     try {
-      const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, cargo_type: cargoType, limit, offset });
-      const r = await authedFetch(`${BASE}/cargos?${params}`);
+      const params = new URLSearchParams({
+        status,
+        from_city: fromCity,
+        to_city: toCity,
+        cargo_type: cargoType,
+        limit,
+        offset,
+        ...routeFilterParams(origin, destination),
+      });
+      const r = await authedFetch(`${BASE}/cargos?${params}`, signal ? { signal } : undefined);
       if (!r.ok) return { cargos: [], total: 0, serverError: true, status: r.status };
       return r.json();
     } catch (e) {
@@ -264,10 +283,28 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listTrips({ status = 'active', fromCity = '', toCity = '', truckType = '', limit = 50 } = {}) {
+  async listTrips({
+    status = 'active',
+    fromCity = '',
+    toCity = '',
+    truckType = '',
+    origin = null,
+    destination = null,
+    limit = 50,
+    offset = 0,
+    signal,
+  } = {}) {
     try {
-      const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, truck_type: truckType, limit });
-      const r = await authedFetch(`${BASE}/trips?${params}`);
+      const params = new URLSearchParams({
+        status,
+        from_city: fromCity,
+        to_city: toCity,
+        truck_type: truckType,
+        limit,
+        offset,
+        ...routeFilterParams(origin, destination),
+      });
+      const r = await authedFetch(`${BASE}/trips?${params}`, signal ? { signal } : undefined);
       if (!r.ok) return { trips: [], total: 0, serverError: true, status: r.status };
       return r.json();
     } catch (e) {

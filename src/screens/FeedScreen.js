@@ -25,7 +25,7 @@ import NotificationBellButton from '../components/ui/v1/NotificationBellButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import RoutePointPickerV2 from '../components/RoutePointPickerV2';
-import { routePointLabel, routeFilterParams } from '../utils/geoCatalog';
+import { locationName, routeFilterParams, routePointLabel } from '../utils/geoCatalog';
 import { SCOPE_LABELS, routeStrings } from '../utils/routeFilterStrings';
 import {
   FEED_KEYS, canRestoreFeed, readFeedSnapshot, writeFeedSnapshot,
@@ -68,6 +68,28 @@ const toIso = (value) => {
     ? `${match[3]}-${String(match[2]).padStart(2, '0')}-${String(match[1]).padStart(2, '0')}`
     : '';
 };
+
+const foldRouteText = (value) => String(value || '')
+  .toLowerCase()
+  .replace(/ё/g, 'е')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const routePointMatchesItem = (point, city, countryCode) => {
+  if (!point?.countryId) return true;
+  if (countryCode && String(countryCode).toUpperCase() !== point.countryId) return false;
+  if (!point.locationId) return true;
+  const actual = foldRouteText(city);
+  const expectedNames = ['ru', 'en', 'zh', 'kk']
+    .map((locale) => foldRouteText(locationName(point.locationId, locale)))
+    .filter(Boolean);
+  return expectedNames.includes(actual);
+};
+
+const tripMatchesRouteFilter = (trip, origin, destination) => (
+  routePointMatchesItem(origin, trip.from, trip.fromCountry)
+  && routePointMatchesItem(destination, trip.to, trip.toCountry)
+);
 
 const feedPalette = (theme, isDark) => ({
   pageBg: theme.bg || PAGE_BG,
@@ -246,7 +268,8 @@ export default function FeedScreen({ navigation }) {
             toCountry: String(raw.to_country || '').trim().toUpperCase(),
           };
         })
-        .filter((trip) => trip?.id && trip.from && trip.to);
+        .filter((trip) => trip?.id && trip.from && trip.to)
+        .filter((trip) => tripMatchesRouteFilter(trip, routeOrigin, routeDestination));
       setItems(mapped);
     } catch (err) {
       console.warn('[FeedScreen] load trips failed:', err);
