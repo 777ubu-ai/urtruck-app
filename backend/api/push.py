@@ -100,6 +100,80 @@ def _migrate_ownership_columns():
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_audit_token ON push_token_audit(token_masked)")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS push_devices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
+                device_id TEXT,
+                platform TEXT,
+                app_id TEXT,
+                push_provider TEXT NOT NULL,
+                push_token TEXT NOT NULL,
+                locale TEXT,
+                app_version TEXT,
+                os_version TEXT,
+                device_model TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                token_updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                last_success_at TEXT,
+                last_failure_at TEXT,
+                failure_count INTEGER NOT NULL DEFAULT 0,
+                invalidated_at TEXT,
+                invalidated_reason TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(push_provider, push_token)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_user ON push_devices(user_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_device ON push_devices(device_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_provider ON push_devices(push_provider, platform)")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS push_outbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                recipient_user_id TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                priority TEXT NOT NULL DEFAULT 'normal',
+                status TEXT NOT NULL DEFAULT 'pending',
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                next_attempt_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                sent_at TEXT,
+                failed_at TEXT,
+                last_error TEXT,
+                UNIQUE(event_id, recipient_user_id)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_status_next ON push_outbox(status, next_attempt_at)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_event_type ON push_outbox(event_type)")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS push_delivery_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT,
+                recipient_user_id TEXT,
+                device_registry_id INTEGER,
+                device_id TEXT,
+                provider TEXT NOT NULL,
+                attempt INTEGER NOT NULL DEFAULT 1,
+                provider_message_id TEXT,
+                status TEXT NOT NULL,
+                provider_response TEXT,
+                sent_at TEXT,
+                delivered_at TEXT,
+                error_code TEXT,
+                token_masked TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        c.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_push_delivery_dedupe
+            ON push_delivery_log(event_id, device_registry_id)
+            WHERE event_id IS NOT NULL AND status = 'sent'
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_push_delivery_event ON push_delivery_log(event_id)")
         # PR#187 reconciliation: на legacy-БД (без event_key) добавляем колонку
         # ПЕРЕД созданием уникального индекса — иначе индекс по несуществующей
         # колонке падает. Тот же порядок, что и в notifications._migrate_event_key.
@@ -228,12 +302,89 @@ def _reassign_device_if_needed(c, device_id: Optional[str], new_user_id: Optiona
                 (r["ident"],),
             )
             _audit(c, table, r["ident"], device_id, r["user_id"], new_user_id, "reassigned")
+    rows = c.execute(
+        "SELECT push_token AS ident, user_id FROM push_devices "
+        "WHERE device_id = ? AND user_id IS NOT NULL AND user_id != ? AND enabled = 1",
+        (device_id, new_user_id),
+    ).fetchall()
+    for r in rows:
+        c.execute(
+            "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = 'device_reassigned', updated_at = CURRENT_TIMESTAMP WHERE push_token = ?",
+            (r["ident"],),
+        )
+        _audit(c, "push_devices", r["ident"], device_id, r["user_id"], new_user_id, "reassigned")
 
 
 _CONFLICT_DETAIL = {
     "error": "TOKEN_OWNERSHIP_CONFLICT",
     "message": "Этот push-токен/подписка уже привязаны к другому пользователю",
 }
+
+
+def _provider_name(data) -> str:
+    provider = (data.provider or "expo").strip().lower()
+    if provider not in ("expo", "fcm", "apns"):
+        raise HTTPException(status_code=400, detail="provider must be expo, fcm or apns")
+    return provider
+
+
+def _upsert_push_device(c, data, user_id: Optional[str], device_id: Optional[str], token: str):
+    provider = _provider_name(data)
+    row = c.execute(
+        "SELECT * FROM push_devices WHERE push_provider = ? AND push_token = ?",
+        (provider, token),
+    ).fetchone()
+    if row is not None:
+        owner = row["user_id"]
+        enabled = row["enabled"] if row["enabled"] is not None else 1
+        same_device = bool(device_id and row["device_id"] and device_id == row["device_id"])
+        if user_id is None and owner is not None:
+            _audit(c, "push_devices", token, device_id, owner, user_id, "conflict_rejected")
+            raise HTTPException(status_code=409, detail=_CONFLICT_DETAIL)
+        if owner and user_id and owner != user_id and enabled and not same_device:
+            _audit(c, "push_devices", token, device_id, owner, user_id, "conflict_rejected")
+            raise HTTPException(status_code=409, detail=_CONFLICT_DETAIL)
+        if owner and user_id and owner != user_id:
+            _audit(c, "push_devices", token, device_id, owner, user_id, "reassigned")
+    elif user_id is not None:
+        _audit(c, "push_devices", token, device_id, None, user_id, "claimed")
+
+    c.execute(
+        """
+        INSERT INTO push_devices(
+          user_id, device_id, platform, app_id, push_provider, push_token,
+          locale, app_version, os_version, device_model
+        ) VALUES(?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(push_provider, push_token) DO UPDATE SET
+          user_id = COALESCE(excluded.user_id, user_id),
+          device_id = COALESCE(excluded.device_id, device_id),
+          platform = COALESCE(excluded.platform, platform),
+          app_id = COALESCE(excluded.app_id, app_id),
+          locale = COALESCE(excluded.locale, locale),
+          app_version = COALESCE(excluded.app_version, app_version),
+          os_version = COALESCE(excluded.os_version, os_version),
+          device_model = COALESCE(excluded.device_model, device_model),
+          enabled = 1,
+          invalidated_at = NULL,
+          invalidated_reason = NULL,
+          last_seen_at = CURRENT_TIMESTAMP,
+          token_updated_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            user_id,
+            device_id,
+            data.platform,
+            data.app_id,
+            provider,
+            token,
+            data.locale,
+            data.app_version,
+            data.os_version,
+            data.device_name,
+        ),
+    )
 
 
 class SubscribeIn(BaseModel):
@@ -252,6 +403,9 @@ class NativeTokenIn(BaseModel):
     device_name: Optional[str] = None
     device_id: Optional[str] = None         # UUID, генерируется клиентом один раз (P0-1)
     app_version: Optional[str] = None
+    app_id: Optional[str] = None
+    locale: Optional[str] = None
+    os_version: Optional[str] = None
 
 
 @push_router.get("/public-key")
@@ -387,6 +541,7 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
     if not tok or len(tok) < 8:
         raise HTTPException(status_code=400, detail="Некорректный push-токен")
     data.token = tok
+    data.provider = _provider_name(data)
     user_id = _optional_user_id(authorization)
     device_id = _clean_device_id(data.device_id)
 
@@ -428,6 +583,7 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
         # в новой регистрации (пре-мёрдж ревью, P1-блокер).
         if decision == "reassign":
             _reassign_device_if_needed(c, device_id, user_id)
+        _upsert_push_device(c, data, user_id, device_id, tok)
         c.commit()
     return {"ok": True, "user_id": user_id}
 
@@ -463,6 +619,12 @@ def unregister_native(body: dict, authorization: Optional[str] = Header(None)):
             "invalidated_reason = ? WHERE token = ?",
             (body.get("reason", "user_unregistered"), token),
         )
+        c.execute(
+            "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE push_token = ? "
+            "AND (user_id IS NULL OR user_id = ?)",
+            (body.get("reason", "user_unregistered"), token, user_id),
+        )
         _audit(c, "push_tokens_native", token, row["device_id"] if "device_id" in row.keys() else None,
                owner, owner, "deactivated")
         c.commit()
@@ -488,6 +650,12 @@ def deactivate_user_push(user_id: str, device_id: Optional[str] = None, reason: 
                 "invalidated_reason = ? WHERE user_id = ? AND device_id = ? AND (active = 1 OR active IS NULL)",
                 (reason, user_id, device_id),
             ).rowcount
+            devices = c.execute(
+                "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
+                "invalidated_reason = ?, updated_at = CURRENT_TIMESTAMP "
+                "WHERE user_id = ? AND device_id = ? AND enabled = 1",
+                (reason, user_id, device_id),
+            ).rowcount
         else:
             web = c.execute(
                 "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
@@ -499,10 +667,16 @@ def deactivate_user_push(user_id: str, device_id: Optional[str] = None, reason: 
                 "invalidated_reason = ? WHERE user_id = ? AND (active = 1 OR active IS NULL)",
                 (reason, user_id),
             ).rowcount
-        if web or native:
+            devices = c.execute(
+                "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
+                "invalidated_reason = ?, updated_at = CURRENT_TIMESTAMP "
+                "WHERE user_id = ? AND enabled = 1",
+                (reason, user_id),
+            ).rowcount
+        if web or native or devices:
             _audit(c, "push_subscriptions+native", f"user:{user_id}", device_id, user_id, None, "deactivated")
         c.commit()
-    return {"web": web, "native": native}
+    return {"web": web, "native": native, "devices": devices}
 
 
 @push_router.post("/logout-cleanup")
