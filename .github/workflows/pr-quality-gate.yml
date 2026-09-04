@@ -68,11 +68,12 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Frontend ownership and currency tests
-        run: |
-          node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_storage_remove_by_prefix.mjs
-          node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_outbox_user_ownership.mjs
-          node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_currency_normalization.mjs
+      # Канонический прогон ВСЕГО frontend release-сюита. Раннер сам
+      # подключает tests/frontend/loader.mjs ко всем тестам и исключает сам
+      # харнесс из знаменателя — именно отсутствие того и другого давало
+      # ложные «78 / 85, 7 FAIL» на релизном gate 04.09.2026.
+      - name: Frontend release suite (all contracts)
+        run: npm run test:frontend
       - name: Social auth and keyboard-safe onboarding contract
         run: |
           node --test tests/frontend/test_social_auth_onboarding.mjs

@@ -112,8 +112,23 @@ test('voice recording shows a live indicator, timer, waveform, and send/cancel c
   assert.match(workspace, /recordSecs % 60/);
   assert.match(workspace, /recordWaveBar/);
   assert.match(workspace, /const cancelRecording = React\.useCallback/);
-  assert.match(workspace, /!\s*recording \? \(\s*<TouchableOpacity[\s\S]*testID="deal-chat-camera"/);
-  assert.match(workspace, /!\s*recording \? \(\s*input\.trim\(\) \? \(\s*<TouchableOpacity[\s\S]*testID="deal-chat-send"[\s\S]*\)\s*:\s*\(\s*<TouchableOpacity[\s\S]*testID="deal-chat-voice"/);
+  // Физически принятый composer fix (02d9da3c) сделал нижнюю строку
+  // компактным accessory-баром над клавиатурой: отдельная кнопка камеры из
+  // composer убрана, камера живёт в attach-меню
+  // (testID deal-chat-attach-camera → sendCameraPhoto). Функция не потеряна,
+  // изменилось только размещение — поэтому проверяем именно это, а UI под
+  // старый ассерт не откатываем.
+  assert.doesNotMatch(workspace, /testID="deal-chat-camera"/,
+    'кнопка камеры больше не живёт прямо в composer');
+  assert.match(workspace, /testID: 'deal-chat-attach-camera'/,
+    'камера доступна из attach-меню');
+  assert.match(workspace, /const sendCameraPhoto = React\.useCallback/,
+    'обработчик камеры сохранён');
+  // Composer по-прежнему переключает send/voice по наличию текста.
+  assert.match(workspace, /!\s*recording \?/, 'composer скрывает свои контролы во время записи');
+  assert.match(workspace, /input\.trim\(\)/, 'send/voice переключаются по наличию текста');
+  assert.match(workspace, /testID="deal-chat-send"/);
+  assert.match(workspace, /testID="deal-chat-voice"/);
 });
 
 test('voice send renders an optimistic bubble immediately before upload and reuses its clientMsgId', () => {
