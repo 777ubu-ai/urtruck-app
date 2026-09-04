@@ -520,8 +520,14 @@ export default function CargoDetail({ navigation, route }) {
               items.push([t('volume'), view.volume]);
               items.push([t('truckType'), view.cargoType]);
               items.push([t('pickupDate'), c.pickupDate ? formatDateForDisplay(c.pickupDate) : dash]);
+              // §16: на этом экране НЕТ карты с серверной дорожной
+              // геометрией, поэтому routeStats() (Haversine × 1.25) —
+              // единственный доступный ориентир. Но он приблизительный, а
+              // на экранах с картой каноническим считается дорожное
+              // distance_m. Чтобы два значения нигде не читались как
+              // противоречие, здесь оценка явно помечена «~».
               if (stats) {
-                items.push([t('distance'), `${stats.km} ${t('km_short')}`]);
+                items.push([t('distance'), `~${stats.km} ${t('km_short')}`]);
                 items.push([t('delivery_time'), `~${stats.days} ${t('days_short')}`]);
               }
               return items.map(([l, v]) => (

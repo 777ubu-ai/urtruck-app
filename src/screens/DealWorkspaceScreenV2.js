@@ -31,7 +31,7 @@ import { chatAPI, documentKindFromFile } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { parseRouteCities } from '../utils/geo';
 import { localizeCargoName, localizePlace, localizeSystemMessage } from '../utils/places';
-import { getLanguage, formatStatus, formatTruckType } from '../utils/i18n';
+import { getLanguage, formatStatus, formatTruckType, HTML_LANG } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
@@ -45,13 +45,15 @@ import {
   requestForegroundLocationPermission,
 } from '../utils/backgroundLocation';
 import { compressImage } from '../utils/imageCompress';
-import { voice } from '../utils/voiceRecorder';
+import { voice, MAX_VOICE_DURATION_SEC } from '../utils/voiceRecorder';
 import VoiceMessageBubble from '../components/VoiceMessageBubble';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
 import { SERVER_URL } from '../config/env';
+import useChatKeyboardInset from '../hooks/useChatKeyboardInset';
+import { withDateSeparators } from '../utils/chatDateSeparators';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
@@ -60,6 +62,14 @@ const COMPOSER_INPUT_MIN_HEIGHT = 32;
 const COMPOSER_INPUT_MAX_HEIGHT = 74;
 const COMPOSER_INPUT_VERTICAL_PADDING = 8;
 const DEAL_CHAT_BG = '#EFEAE2';
+
+// §6: нижняя полоса карты принадлежит провайдеру — Яндекс рисует там
+// обязательную атрибуцию («Яндекс Карты» / «Условия использования»).
+// Плавающая карточка метрик стояла на bottom: 12 и физически ложилась
+// поверх неё: выглядело как сырой встроенный виджет, а юридически
+// перекрывать attribution нельзя. Резервируем эту зону — атрибуция
+// остаётся видимой и читаемой, метрики поднимаются над ней.
+const MAP_ATTRIBUTION_SAFE_ZONE = 34;
 
 // WhatsApp-style chat is the default view; the trip map is a deliberate,
 // button-triggered secondary view (PR #255 review: "map-first бардак" was the
@@ -229,6 +239,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { session } = useAuth();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
+  // §6: единый контракт «клавиатура ↔ composer» (см. hooks/useChatKeyboardInset).
+  const { bottomInset: composerBottomInset, isKeyboardVisible } = useChatKeyboardInset();
   const window = useWindowDimensions();
   const params = route?.params || {};
 
@@ -279,6 +291,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const inputRef = React.useRef(null);
   const mounted = React.useRef(true);
   const recordStartRef = React.useRef(0);
+  // §10: гарантия «exactly one» — ручной Send и авто-финализация на 60-й
+  // секунде не могут отправить одну запись дважды.
+  const voiceFinalizingRef = React.useRef(false);
   const nearBottomRef = React.useRef(true);
   const lastCountRef = React.useRef(0);
   // A signed attachment URL may be reissued on every 3s poll. Keep the first
@@ -351,18 +366,34 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       if (attachOpen) { setAttachOpen(false); return true; }
       if (emojiOpen) { setEmojiOpen(false); return true; }
       if (recording) { setRecording(false); try { voice.stopRecording?.(); } catch {} return true; }
+      // §6/§7 канон: Back сначала закрывает клавиатуру, и только ВТОРОЙ Back
+      // выходит из чата. Без этой ветки первый Back уводил с экрана прямо
+      // с открытой клавиатурой — пользователь терял контекст комнаты.
+      if (isKeyboardVisible) { Keyboard.dismiss(); return true; }
       // No internal overlay open — let React Navigation handle goBack()
       return false;
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', handler);
     return () => sub.remove();
-  }, [viewMode, attachOpen, emojiOpen, recording]);
+  }, [viewMode, attachOpen, emojiOpen, recording, isKeyboardVisible]);
 
   React.useEffect(() => {
     if (!recording) { setRecordSecs(0); return undefined; }
-    const timer = setInterval(() => setRecordSecs(Math.max(0, Math.floor((Date.now() - recordStartRef.current) / 1000))), 500);
+    // §8: на MAX_VOICE_DURATION_SEC запись САМА финализируется и уходит —
+    // пользователь не жмёт Send второй раз и не теряет минутную речь на
+    // серверном лимите (раньше длинное голосовое падало в 413 «слишком
+    // большой файл»). Следующее голосовое начинается только по явному
+    // нажатию mic — автоматически новую запись не стартуем.
+    const timer = setInterval(() => {
+      const elapsed = Math.max(0, Math.floor((Date.now() - recordStartRef.current) / 1000));
+      setRecordSecs(elapsed);
+      if (elapsed >= MAX_VOICE_DURATION_SEC) {
+        clearInterval(timer);
+        finalizeVoice();
+      }
+    }, 500);
     return () => clearInterval(timer);
-  }, [recording]);
+  }, [recording, finalizeVoice]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -455,9 +486,26 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         const cacheKey = `${isVoice ? 'voice' : 'photo'}:${message.id}`;
         const issuedUrl = resolveAttachment(message.photo_url);
         let mediaUrl = issuedUrl;
+        // §2 (physically confirmed «Не удалось воспроизвести» / 播放失败 на
+        // старых голосовых): анти-мигание кэшировало ПЕРВЫЙ выданный URL и
+        // перебивало им каждый свежий (`cache.get() || issuedUrl`). Для ФОТО
+        // это безвредно — URL потребляется сразу при рендере, картинка уже
+        // загружена (контракт PR #255). Для ГОЛОСА URL потребляется ПОЗЖЕ, в
+        // момент тапа: подписанная ссылка (file_signing.sign, ttl 24ч) к тому
+        // времени могла устареть/истечь, и Audio.Sound.createAsync падал →
+        // voice.toggle() возвращал false → тост об ошибке.
+        // Мигания у голоса быть не может (нет <Image>), плюс сама подпись уже
+        // стабильна внутри 15-минутного окна на бэкенде
+        // (tests/test_signed_url_stability.py), поэтому голос всегда берёт
+        // СВЕЖИЙ URL, а кэш остаётся только страховкой на случай пустого
+        // ответа. Фото сохраняет прежнее поведение.
         if (issuedUrl) {
-          mediaUrl = attachmentUrlCache.current.get(cacheKey) || issuedUrl;
+          mediaUrl = isVoice
+            ? issuedUrl
+            : (attachmentUrlCache.current.get(cacheKey) || issuedUrl);
           attachmentUrlCache.current.set(cacheKey, mediaUrl);
+        } else if (isVoice) {
+          mediaUrl = attachmentUrlCache.current.get(cacheKey) || null;
         }
         return {
           id: String(message.id),
@@ -975,19 +1023,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     return clientId;
   }, [ui.voiceMessage]);
 
-  const toggleVoice = React.useCallback(async () => {
-    if (!recording) {
-      try {
-        setAttachOpen(false);
-        setCallMenuOpen(false);
-        setEmojiOpen(false);
-        const ok = await voice.startRecording();
-        if (!ok) { toast(t('voice_error_record'), 'error'); return; }
-        recordStartRef.current = Date.now();
-        setRecording(true);
-      } catch { toast(t('voice_permission'), 'warn'); }
-      return;
-    }
+  const sendRecordedVoice = React.useCallback(async () => {
     setRecording(false);
     const elapsedMs = Math.max(0, Date.now() - (recordStartRef.current || Date.now()));
     let result;
@@ -1077,6 +1113,41 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     }
   }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
 
+  // §8/§10: отправка голосового вынесена в ОДНУ функцию, которую вызывают
+  // и кнопка Send, и 60-секундная авто-финализация. Один код-путь =
+  // невозможно получить разное поведение у ручной и автоматической отправки.
+  //
+  // voiceFinalizingRef — защита от двойного вызова (§10: «если
+  // auto-finalize callback вызывается дважды: backend message exactly one»).
+  // Ситуация реальна: пользователь жмёт Send ровно в тот момент, когда
+  // таймер добежал до 60 секунд.
+  const finalizeVoice = React.useCallback(async () => {
+    if (voiceFinalizingRef.current) return;
+    voiceFinalizingRef.current = true;
+    try {
+      await sendRecordedVoice();
+    } finally {
+      voiceFinalizingRef.current = false;
+    }
+  }, [sendRecordedVoice]);
+
+  const toggleVoice = React.useCallback(async () => {
+    if (!recording) {
+      try {
+        setAttachOpen(false);
+        setCallMenuOpen(false);
+        setEmojiOpen(false);
+        const ok = await voice.startRecording();
+        if (!ok) { toast(t('voice_error_record'), 'error'); return; }
+        recordStartRef.current = Date.now();
+        setRecording(true);
+      } catch { toast(t('voice_permission'), 'warn'); }
+      return;
+    }
+    await finalizeVoice();
+  }, [recording, finalizeVoice, toast, t]);
+
+
   const toggleAttachMenu = React.useCallback(() => {
     setCallMenuOpen(false);
     setEmojiOpen(false);
@@ -1096,7 +1167,29 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setInput((value) => `${value}${emoji}`);
   }, []);
 
+  // §4: список с разделителями дней. Пересчитывается только при смене
+  // сообщений или языка — сам список сообщений не мутируется.
+  const messagesWithDays = React.useMemo(
+    () => withDateSeparators(messages, {
+      locale: HTML_LANG[lang] || 'en',
+      t,
+      parseDate: parseServerDate,
+    }),
+    [messages, lang, t],
+  );
+
   const renderMessage = React.useCallback(({ item }) => {
+    // §4: компактный центрированный разделитель календарного дня.
+    // Вставляется чистой функцией withDateSeparators (единый source of
+    // truth), поэтому дублей при подгрузке старой истории быть не может.
+    if (item.daySeparator) return (
+      <View style={s.daySeparatorRow} testID={`deal-chat-day-separator-${item.dayKey}`}>
+        <View style={[s.daySeparatorPill, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[s.daySeparatorText, { color: colors.textMuted }]}>{item.label}</Text>
+        </View>
+      </View>
+    );
+
     if (item.system) return (
       <View style={s.systemRow}><Text style={[s.systemText, { color: colors.textMuted }]}>{item.text}</Text></View>
     );
@@ -1400,7 +1493,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 <View style={s.chatBody}>
                   <FlatList
                     ref={listRef}
-                    data={messages}
+                    data={messagesWithDays}
                     renderItem={renderMessage}
                     keyExtractor={(item) => item.id}
                     style={s.messageList}
@@ -1432,7 +1525,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         <View key={i} style={[s.recordWaveBar, { height: 5 + (i % 4) * 4 }]} />
                       ))}
                     </View>
-                    <Text style={s.recordText}>{ui.recording} 0:{String(recordSecs % 60).padStart(2, '0')}</Text>
+                    {/* §8/§10: реальный M:SS (раньше минуты были захардкожены
+                        как «0:», и на 60-й секунде счётчик показывал 0:00), плюс
+                        спокойный остаток в последние 5 секунд — подсказка, а не
+                        красная ошибка. */}
+                    <Text style={s.recordText} testID="deal-chat-record-timer">
+                      {ui.recording} {Math.floor(recordSecs / 60)}:{String(recordSecs % 60).padStart(2, '0')}
+                      {MAX_VOICE_DURATION_SEC - recordSecs <= 5 && MAX_VOICE_DURATION_SEC - recordSecs > 0
+                        ? ` · ${MAX_VOICE_DURATION_SEC - recordSecs}`
+                        : ''}
+                    </Text>
                     <TouchableOpacity onPress={cancelRecording} style={s.recordCancelBtn} testID="deal-chat-recording-cancel" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Feather name="trash-2" size={15} color="#B91C1C" />
                     </TouchableOpacity>
@@ -1442,13 +1544,22 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   </View>
                 ) : null}
 
+                {/* §6 (Android 15/16): отступ снизу берётся из канонического
+                    useChatKeyboardInset — при открытой клавиатуре это её
+                    высота (composer встаёт прямо над ней), при закрытой —
+                    безопасный инсет навбара. Раньше здесь стоял статический
+                    Math.max(insets.bottom + 8, 12), из-за чего на targetSdk 36
+                    (edge-to-edge, adjustResize больше не ресайзит окно)
+                    composer оставался ПОД клавиатурой, а рядом появлялся
+                    двойной отступ. Когда открыто attach/emoji-меню, оно само
+                    держит нижний инсет — composer тогда берёт минимум. */}
                 <View
                   style={[
                     s.composer,
                     composerFocused && s.composerFocused,
                     {
-                      paddingBottom: attachOpen || emojiOpen ? 10 : 10,
-                      marginBottom: attachOpen || emojiOpen ? 8 : Math.max(insets.bottom + 8, 12),
+                      paddingBottom: 10,
+                      marginBottom: attachOpen || emojiOpen ? 8 : composerBottomInset,
                     },
                   ]}
                   testID="deal-chat-composer"
@@ -1596,7 +1707,19 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               ) : null}
 
               {showLiveMap && routeSummary ? (
-                <View style={[s.metricsCard, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="deal-route-metrics" pointerEvents="none">
+                <View
+                  style={[
+                    s.metricsCard,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                      // Метрики НЕ заходят в зону атрибуции провайдера.
+                      bottom: MAP_ATTRIBUTION_SAFE_ZONE + Math.max(insets.bottom, 0),
+                    },
+                  ]}
+                  testID="deal-route-metrics"
+                  pointerEvents="none"
+                >
                   <View style={s.metricCell}>
                     <Text style={[s.metricLabel, { color: colors.textMuted }]}>{routeSummary.isRemaining ? ui.remaining : ui.distance}</Text>
                     <Text style={[s.metricValue, { color: colors.text }]} numberOfLines={1}>{routeSummary.distanceText}</Text>
@@ -1775,6 +1898,11 @@ const s = StyleSheet.create({
   bubbleThem: { backgroundColor: '#FFFFFF', borderBottomLeftRadius: 5 },
   messageText: { color: '#111B21', fontSize: 15.5, lineHeight: 21 },
   messageTime: { color: '#667781', fontSize: 11, marginTop: 3, textAlign: 'right' },
+  daySeparatorRow: { alignItems: 'center', marginVertical: 10 },
+  daySeparatorPill: {
+    paddingHorizontal: 11, paddingVertical: 4, borderRadius: 11, borderWidth: StyleSheet.hairlineWidth,
+  },
+  daySeparatorText: { fontSize: 11, fontWeight: '800' },
   systemRow: { alignItems: 'center', marginVertical: 5 },
   systemText: { fontSize: 12.5, fontWeight: '650', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#E6EAE7', borderRadius: 999 },
   photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
@@ -1863,7 +1991,7 @@ const s = StyleSheet.create({
   updatedText: { fontSize: 11.5, fontWeight: '800' },
   mapCollapse: { position: 'absolute', right: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 13, borderRadius: 20, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3, zIndex: 8 },
   mapCollapseText: { fontSize: 12.5, fontWeight: '800' },
-  metricsCard: { position: 'absolute', left: 12, right: 12, bottom: 12, minHeight: 68, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 4 },
+  metricsCard: { position: 'absolute', left: 12, right: 12, minHeight: 68, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 4 },
   metricCell: { flex: 1, minWidth: 0 },
   metricLabel: { fontSize: 10.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.35, marginBottom: 3 },
   metricValue: { fontSize: 18, fontWeight: '900' },

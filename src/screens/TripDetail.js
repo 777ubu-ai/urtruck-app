@@ -569,11 +569,18 @@ export default function TripDetail({ navigation, route }) {
             <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.to, lang)}</Text>
           </View>
 
+          {/* §16 source of truth расстояния: на этом же экране ниже стоит
+              <RouteMap>, который показывает РЕАЛЬНОЕ дорожное расстояние из
+              серверной геометрии (distance_m). Здесь раньше рядом жила
+              legacy-оценка routeStats() — Haversine × 1.25 (utils/geo.js) —
+              и пользователь физически видел два разных числа для одного
+              маршрута (например 4935 км и 5148 км, расхождение ровно ~4%,
+              как и даёт коэффициент 1.25 против настоящей дороги).
+              Каноническим оставлено дорожное значение на карте; здесь
+              дублирующее число убрано. Оценка времени в днях — другая
+              семантика (не расстояние) и остаётся, уже помеченная «~». */}
           {stats && (
             <View style={s.statsRow}>
-              <View style={[s.statPill, { backgroundColor: theme.border }]}>
-                <Text style={[s.statText, { color: theme.text }]}>📏 {stats.km} {t('km_short')}</Text>
-              </View>
               <View style={[s.statPill, { backgroundColor: theme.border }]}>
                 <Text style={[s.statText, { color: theme.text }]}>⏱ ~{stats.days} {t('days_short')}</Text>
               </View>
