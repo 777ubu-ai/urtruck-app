@@ -2733,8 +2733,24 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
         other_id = d["driver_id"] if uid == d["shipper_id"] else d["shipper_id"]
         if other_id:
             cp_name, cp_phone = _party_contact(c, other_id, d)
+            # Лимит подписки на раскрытие контактов (2026-09-04). Проверяем
+            # ТОЛЬКО когда реально есть что показать (cp_phone) — иначе
+            # платного гейта без пользы для юзера не создаём. Идёт ПОСЛЕ
+            # уже отработавшего fail-closed 403 выше — саму авторизацию
+            # (кто вообще видит эту сделку) не трогаем, только урезаем то,
+            # что уже разрешено показать. can_reveal_contact() всегда
+            # allowed=True, пока config.CONTACTS_MONETIZATION_ENABLED=False
+            # (дефолт) — на текущем проде поведение не меняется.
             if cp_phone:
-                d["counterparty_phone"] = cp_phone
+                from database import subscription_dal as _sub_dal
+                gate = _sub_dal.can_reveal_contact(uid, deal_id)
+                d["contacts_used_this_period"] = gate["used"]
+                d["contacts_limit"] = gate["limit"]
+                if gate["allowed"]:
+                    d["counterparty_phone"] = cp_phone
+                    _sub_dal.record_reveal(uid, deal_id)
+                else:
+                    d["contact_locked"] = True
             if cp_name:
                 d["counterparty_name"] = cp_name
     # Блок 5 аудита (P1-2): пользователь реально открыл сделку — гасим

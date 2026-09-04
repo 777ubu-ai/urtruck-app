@@ -111,6 +111,7 @@ from api.saved_searches import ss_router
 from api.marketplace import mp_router
 from api.chat import chat_router
 from api.deal_room import deal_room_router
+from api.payments import payments_router
 from api.notifications import notif_router
 from api.profile import profile_router
 from api.auth_otp import auth_otp_router
@@ -179,6 +180,9 @@ app.include_router(chat_router, prefix="/api/v1/chat")
 # Deal Room foundation — новые endpoints (/chat/conversations, /deals/{id}/timeline,
 # /support/escalate) под /api/v1. Старые /chat/rooms, /chat/messages не трогаются.
 app.include_router(deal_room_router, prefix="/api/v1")
+# Подписка на разблокировку контактов (Google Play Billing) — /verify,
+# /subscription/status, вебхук /google/rtdn. См. api/payments.py.
+app.include_router(payments_router, prefix="/api/v1/payments")
 app.include_router(notif_router, prefix="/api/v1/notifications")
 app.include_router(profile_router, prefix="/api/v1/users")
 app.include_router(auth_otp_router, prefix="/api/auth")
@@ -257,6 +261,16 @@ def startup():
         print(f"[startup] Deal Room schema applied, participants backfilled: +{bf}", flush=True)
     except Exception as e:
         print(f"[startup] Deal Room schema init failed (continuing): {e}", flush=True)
+
+    # Подписка на контакты (Google Play Billing) — новая изолированная схема,
+    # никак не пересекается с существующими таблицами. try/except как у
+    # остальных модулей выше: сбой не должен ронять весь boot.
+    try:
+        from database import subscription_dal
+        subscription_dal.init_payments_schema()
+        print("[startup] Payments schema applied", flush=True)
+    except Exception as e:
+        print(f"[startup] Payments schema init failed (continuing): {e}", flush=True)
     # PR-D1 (build 18): идемпотентная миграция PRO-колонок водителя.
     # _ensure_columns делает ALTER TABLE add-if-missing для 9 колонок
     # (city, about, legal_form, china_experience_years, favorite_borders,
