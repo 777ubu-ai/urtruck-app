@@ -11,7 +11,33 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Header, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+
+# P1-CARGO-VALIDATION-001 (nightly 04.09.2026): POST /market/cargos принял
+# price = -100 и создал ACTIVE cargo. Server — источник истины валидации,
+# независимо от клиента (frontend-проверка — только UX-слой). Единый
+# источник (§16): один валидатор, подключаемый во ВСЕ схемы с ценой
+# (create/edit cargo и trip), чтобы нельзя было закрыть один POST и
+# оставить PATCH дырой.
+#
+# Текущий продуктовый контракт цены (§15):
+#   * тип — целое (int), валюта отдельным полем (USD по умолчанию);
+#   * price < 0 — структурно недопустима, ОТВЕРГАЕТСЯ (это и есть дефект);
+#   * price == 0 — исторический дефолт схемы и семантика «договорная»;
+#     на сервере СОХРАНЯЕТСЯ (не ломаем legacy-записи и рейсы). UI при
+#     публикации груза отдельно требует > 0 (EditCargoModal) — это UX-слой.
+#
+# pydantic сам отвергает non-int / NaN / Infinity / нецелые float для
+# int-поля (→ 422 ещё до тела эндпоинта: cargo не создаётся, partial-записи
+# нет, push/notification не шлётся). Валидатор добавляет отсечение
+# отрицательных значений поверх этого.
+def _reject_negative_price(value):
+    if value is None:
+        return value
+    if value < 0:
+        raise ValueError("price_must_not_be_negative")
+    return value
 from typing import Optional, List
 
 from database.db import get_conn, new_id
@@ -442,6 +468,11 @@ class CargoIn(BaseModel):
     to_point_type: Optional[str] = None
     to_point_name: Optional[str] = None
 
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, v):
+        return _reject_negative_price(v)
+
     def __init__(self, **data):
         if 'cargo_desc' in data and data['cargo_desc']:
             data['cargo_desc'] = data['cargo_desc'].strip()[:500]
@@ -473,6 +504,11 @@ class TripIn(BaseModel):
     to_point_type: Optional[str] = None
     to_point_name: Optional[str] = None
 
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, v):
+        return _reject_negative_price(v)
+
 
 class TripPatchIn(BaseModel):
     """Partial update of an own active trip — every field is optional;
@@ -493,6 +529,11 @@ class TripPatchIn(BaseModel):
     to_country: Optional[str] = None
     to_point_type: Optional[str] = None
     to_point_name: Optional[str] = None
+
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, v):
+        return _reject_negative_price(v)
 
 
 class BidIn(BaseModel):
@@ -774,6 +815,11 @@ class CargoPatchIn(BaseModel):
     currency: Optional[str] = None
     pickup_date: Optional[str] = None
     payment_type: Optional[str] = None
+
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, v):
+        return _reject_negative_price(v)
 
 
 @mp_router.patch("/cargos/{cargo_id}")

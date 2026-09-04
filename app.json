@@ -50,7 +50,7 @@
       "package": "com.urtruck.app",
       "userInterfaceStyle": "automatic",
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 210488243,
+      "versionCode": 210488244,
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
         {
