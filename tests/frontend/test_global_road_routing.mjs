@@ -39,10 +39,30 @@ test('trusted server geometry is a solid green road on the Yandex web map', () =
 });
 
 test('straight direction fallback cannot masquerade as the real road route', () => {
-  assert.match(webMap, /strokeColor: '#6B7B73'/);
-  assert.match(webMap, /strokeStyle: 'dash'/);
+  // §11 (final gate 04.09.2026) — STALE TEST, классифицировано с
+  // доказательством, а не ради зелёной цифры.
+  //
+  // Требование «прямая не может выдавать себя за дорожный маршрут» выполнено
+  // СТРОЖЕ, чем описывал прежний ассерт:
+  //   WEB (TruckMap.web.js): при отсутствии серверной/провайдерской геометрии
+  //   addDirectionFallback() НЕ рисует полилинию вообще — только маркеры и
+  //   явный блокер truck-map-road-route-unavailable (в самом файле:
+  //   "A straight origin/destination line is not a valid truck route").
+  //   Поэтому hasRoad-тернарника и strokeStyle:'dash' там быть НЕ МОЖЕТ —
+  //   красить нечего; прежний ассерт описывал старую реализацию, где прямую
+  //   всё же рисовали пунктиром.
+  //   NATIVE (TruckMap.native.js): прямая рисуется, но визуально отличима.
+
+  // WEB: линией рисуется только настоящая дорожная геометрия.
+  assert.match(webMap, /strokeColor: "#168759"/);
   assert.match(webMap, /truck-map-road-route-unavailable/);
-  assert.doesNotMatch(webMap, /strokeColor: '#168759'[\s\S]{0,120}strokeStyle: 'dash'/);
+  assert.doesNotMatch(webMap, /strokeStyle: 'dash'/);
+
+  // NATIVE: fallback нарисован, но спутать с дорогой нельзя —
+  // серый против зелёного, тоньше и пунктиром.
+  assert.match(nativeMap, /strokeColor:\s*p\.hasRoad\s*\?\s*'#168759'\s*:\s*'#6B7B73'/);
+  assert.match(nativeMap, /strokeWidth:\s*p\.hasRoad\s*\?\s*6\s*:\s*3/);
+  assert.match(nativeMap, /strokeStyle:\s*p\.hasRoad\s*\?\s*'solid'\s*:\s*'dash'/);
 });
 
 test('KZ-RU server routing is Yandex Router API in truck mode with real polyline metrics', () => {
