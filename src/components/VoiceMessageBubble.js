@@ -62,16 +62,34 @@ export default function VoiceMessageBubble({
   const positionMs = isActive ? (state.positionMillis || 0) : 0;
   const progress = durationMs > 0 ? Math.min(1, Math.max(0, positionMs / durationMs)) : 0;
 
+  // §2: отказ воспроизведения обязан быть ВОССТАНАВЛИВАЕМЫМ, а не разовым
+  // тостом. Физически подтверждено «Не удалось воспроизвести» / 播放失败 на
+  // старых голосовых: подписанная ссылка потребляется только в момент тапа,
+  // и к этому времени она могла устареть. Экран теперь выдаёт голосу свежий
+  // URL на каждом поллинге, а здесь остаётся видимый retry — чтобы даже при
+  // сетевом сбое пользователь мог повторить, а не остался с ошибкой.
+  const [playError, setPlayError] = React.useState(false);
+
   const onToggle = React.useCallback(async () => {
     if (!uri || busy) return;
     setBusy(true);
     try {
       const ok = await voice.toggle(uri);
-      if (!ok && !isActive) onError?.();
+      if (!ok && !isActive) {
+        setPlayError(true);
+        onError?.();
+      } else {
+        setPlayError(false);
+      }
     } finally {
       setBusy(false);
     }
   }, [uri, busy, isActive, onError]);
+
+  // Успешный старт воспроизведения снимает состояние ошибки.
+  React.useEffect(() => {
+    if (isPlaying && playError) setPlayError(false);
+  }, [isPlaying, playError]);
 
   // Перемотка: тап по полосе. locationX — позиция внутри самой полосы,
   // работает одинаково в native и react-native-web.
@@ -102,8 +120,12 @@ export default function VoiceMessageBubble({
         : t('voice_to_text');
   const showTranscriptAction = typeof onToggleTranscript === 'function';
 
+  // Ширина по длительности: показываем известную длину (метаданные или
+  // реальная из плеера), чтобы короткое голосовое было компактным.
+  const knownDurationSec = Math.round((durationMs || 0) / 1000) || fallbackDurationSec || 0;
+
   return (
-    <View style={s.wrap} testID={testID}>
+    <View style={[s.wrap, { minWidth: voiceBubbleMinWidth(knownDurationSec) }]} testID={testID}>
       <View style={s.row}>
         <TouchableOpacity
           onPress={onToggle}
@@ -138,31 +160,51 @@ export default function VoiceMessageBubble({
         </Text>
       </View>
 
-      {isActive ? (
-        <TouchableOpacity
-          onPress={onCycleRate}
-          style={[s.ratePill, { borderColor: onSurface }]}
-          accessibilityRole="button"
-          testID="voice-rate-btn"
-        >
-          <Text style={[s.rateText, { color: iconColor }]}>{(state.rate || 1)}x</Text>
-        </TouchableOpacity>
-      ) : null}
-      {showTranscriptAction ? (
-        <TouchableOpacity
-          onPress={onToggleTranscript}
-          disabled={transcribing}
-          style={s.transcriptBtn}
-          accessibilityRole="button"
-          testID="voice-transcript-toggle"
-        >
-          {transcribing ? (
-            <ActivityIndicator size="small" color={timeColor} />
-          ) : (
-            <Feather name="align-left" size={12} color={timeColor} />
-          )}
-          <Text style={[s.transcriptBtnText, { color: timeColor }]}>{transcriptAction}</Text>
-        </TouchableOpacity>
+      {/* §3 компактность: скорость и «В текст / 转文字» раньше шли ДВУМЯ
+          отдельными строками с marginTop 6 и 7 — это давало лишний
+          вертикальный вес и пустое место. Теперь оба вторичных действия
+          живут в ОДНОМ ряду, и ряд рендерится только когда есть что
+          показать. */}
+      {isActive || showTranscriptAction || playError ? (
+        <View style={s.secondaryRow}>
+          {isActive ? (
+            <TouchableOpacity
+              onPress={onCycleRate}
+              style={[s.ratePill, { borderColor: onSurface }]}
+              accessibilityRole="button"
+              testID="voice-rate-btn"
+            >
+              <Text style={[s.rateText, { color: iconColor }]}>{(state.rate || 1)}x</Text>
+            </TouchableOpacity>
+          ) : null}
+          {showTranscriptAction ? (
+            <TouchableOpacity
+              onPress={onToggleTranscript}
+              disabled={transcribing}
+              style={s.transcriptBtn}
+              accessibilityRole="button"
+              testID="voice-transcript-toggle"
+            >
+              {transcribing ? (
+                <ActivityIndicator size="small" color={timeColor} />
+              ) : (
+                <Feather name="align-left" size={12} color={timeColor} />
+              )}
+              <Text style={[s.transcriptBtnText, { color: timeColor }]} numberOfLines={1}>{transcriptAction}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {playError ? (
+            <TouchableOpacity
+              onPress={onToggle}
+              style={s.retryBtn}
+              accessibilityRole="button"
+              testID="voice-play-retry"
+            >
+              <Feather name="rotate-ccw" size={12} color={accentColor} />
+              <Text style={[s.retryText, { color: accentColor }]} numberOfLines={1}>{t('chat_attach_retry')}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       ) : null}
       {transcriptVisible ? (
         <View style={[s.transcriptBox, { borderTopColor: onSurface }]} testID="voice-transcript">
@@ -180,9 +222,25 @@ export default function VoiceMessageBubble({
   );
 }
 
+// §3 компактность: раньше wrap имел фиксированный minWidth: 172 — из-за
+// этого секундное голосовое занимало столько же места, сколько минутное, и
+// бабл выглядел визуально тяжёлым с пустотой внутри. Канон: короткое →
+// компактно, длинное → шире, но без «половины экрана». Шкала растёт по
+// длительности и жёстко ограничена сверху.
+const COMPACT_MIN_WIDTH = 132;   // ~1-5 сек
+const MEDIUM_MIN_WIDTH = 168;    // ~6-30 сек
+const LONG_MIN_WIDTH = 196;      // 31+ сек (максимум)
+
+export function voiceBubbleMinWidth(durationSec) {
+  const sec = Math.max(0, Math.round(Number(durationSec) || 0));
+  if (sec <= 5) return COMPACT_MIN_WIDTH;
+  if (sec <= 30) return MEDIUM_MIN_WIDTH;
+  return LONG_MIN_WIDTH;
+}
+
 const s = StyleSheet.create({
-  wrap: { minWidth: 172 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 30 },
+  wrap: { minWidth: COMPACT_MIN_WIDTH },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 30 },
   playBtn: {
     width: 30, height: 30, borderRadius: 15, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
@@ -194,14 +252,24 @@ const s = StyleSheet.create({
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 2 },
   knob: { position: 'absolute', top: -3.5, width: 11, height: 11, borderRadius: 5.5, marginLeft: -5.5 },
   time: { fontSize: 11, fontWeight: '700', minWidth: 34, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  // Один ряд вторичных действий вместо двух строк — минус лишний
+  // вертикальный вес; flexWrap спасает длинные ZH/KK подписи от обрезки.
+  secondaryRow: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    columnGap: 10, rowGap: 4, marginTop: 5,
+  },
   ratePill: {
-    alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: 7, paddingVertical: 2,
-    borderRadius: 9, borderWidth: 1,
+    paddingHorizontal: 6, paddingVertical: 1.5,
+    borderRadius: 8, borderWidth: 1,
   },
   rateText: { fontSize: 10.5, fontWeight: '900' },
-  transcriptBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7, minHeight: 22 },
+  // Touch target сохранён (minHeight 22 + hitSlop у play), но визуальный вес
+  // «В текст / 转文字» снижен: без своей строки и без лишнего marginTop.
+  transcriptBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 22, flexShrink: 1 },
   transcriptBtnText: { fontSize: 11, fontWeight: '800' },
-  transcriptBox: { marginTop: 7, paddingTop: 8, borderTopWidth: 1 },
+  retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 22, flexShrink: 1 },
+  retryText: { fontSize: 11, fontWeight: '800' },
+  transcriptBox: { marginTop: 6, paddingTop: 7, borderTopWidth: 1 },
   transcriptLabel: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase', marginBottom: 4 },
   transcriptText: { fontSize: 13, lineHeight: 19, fontWeight: '500' },
 });

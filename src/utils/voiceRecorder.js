@@ -10,6 +10,52 @@
 
 import { Platform } from 'react-native';
 
+// §8 канон UrTruck: максимальная длительность одного голосового — 60 секунд.
+// На 60-й секунде запись автоматически финализируется и отправляется, второй
+// раз Send нажимать не нужно. Экспортируется, чтобы UI и тесты брали ОДНО
+// значение (никаких магических 60 в разных местах).
+export const MAX_VOICE_DURATION_SEC = 60;
+
+// §9: явный РЕЧЕВОЙ профиль записи вместо Audio.RecordingOptionsPresets
+// .HIGH_QUALITY.
+//
+// HIGH_QUALITY в expo-av 15 — это 44100 Hz, СТЕРЕО, 128 kbps (см.
+// node_modules/expo-av/build/Audio/RecordingConstants.js). Для музыки это
+// нормально, для речи избыточно в разы: именно поэтому длинное голосовое
+// упиралось в серверный потолок (POST /chat/voice отклоняет >10 MB,
+// api/chat.py:820) и пользователь получал 413 вместо отправки.
+//
+// Речевой профиль: AAC в .m4a, 22050 Hz, МОНО, 48 kbps ⇒ ~6 KB/с, то есть
+// 60-секундное сообщение ≈ 360 KB — на порядок ниже серверного лимита при
+// полностью разборчивом голосе. Контейнер и расширение .m4a не меняются,
+// поэтому загрузка, MIME и воспроизведение остаются прежними.
+const VOICE_RECORDING_OPTIONS = {
+  isMeteringEnabled: false,
+  android: {
+    extension: '.m4a',
+    outputFormat: 2,   // AndroidOutputFormat.MPEG_4
+    audioEncoder: 3,   // AndroidAudioEncoder.AAC
+    sampleRate: 22050,
+    numberOfChannels: 1,
+    bitRate: 48000,
+  },
+  ios: {
+    extension: '.m4a',
+    outputFormat: 'mp4a',  // IOSOutputFormat.MPEG4AAC
+    audioQuality: 64,      // IOSAudioQuality.MEDIUM
+    sampleRate: 22050,
+    numberOfChannels: 1,
+    bitRate: 48000,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: {
+    mimeType: 'audio/webm',
+    bitsPerSecond: 48000,
+  },
+};
+
 let _recording = null;
 let _sound = null;
 let _webAudio = null;
@@ -77,9 +123,9 @@ export const voice = {
       }
 
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      // §9: речевой профиль (22050/моно/48k AAC) вместо HIGH_QUALITY
+      // (44100/стерео/128k) — см. VOICE_RECORDING_OPTIONS выше.
+      const { recording } = await Audio.Recording.createAsync(VOICE_RECORDING_OPTIONS);
       _recording = recording;
       return true;
     } catch (e) {
