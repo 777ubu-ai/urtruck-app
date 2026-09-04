@@ -5,21 +5,29 @@
 import sys
 import json
 import re
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Header, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, List
 
 from database.db import get_conn, new_id
+from services import geo_catalog
 from api.verification_gate import require_level, get_user, _extract_driver
 from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
 from services.geo_normalize import normalize_country, is_international_route
+
+
+def _reject_negative_price(value):
+    if value is None:
+        return value
+    if value < 0:
+        raise ValueError("price_must_not_be_negative")
+    return value
 
 
 def _sign_cargo_photos(photos):
@@ -140,6 +148,43 @@ _COUNTRY_ALIASES = {
     "PAK": "PK", "MNG": "MN", "GEO": "GE", "AZE": "AZ", "ARM": "AM",
     "TKM": "TM", "UKR": "UA",
 }
+
+# Канонический словарь каталога → легаси-словарь колонки *_point_type.
+# Колонка существует с 8-го этапа и хранит city/border/terminal; менять её
+# значения нельзя, иначе перестанет работать существующий фильтр
+# from_point_type. Канонический тип при этом не теряется: он однозначно
+# выводится из location_id через каталог.
+_LEGACY_POINT_TYPE = {
+    geo_catalog.CITY: "city",
+    geo_catalog.BORDER_CROSSING: "border",
+    geo_catalog.LOGISTICS_HUB: "terminal",
+}
+
+
+def _canonical_route_columns(country, point_type, point_name, city):
+    """Canonical-resolve маршрутной точки ПЕРЕД записью в БД.
+
+    Возвращает (country, point_type, point_name, location_id) — готовые
+    значения колонок.
+
+    Зачем на бэкенде, а не в форме: формы создания груза/рейса допускают
+    свободный ввод. Когда пользователь не выбрал точку из реестра, клиент
+    присылает from_country = null и только from_city — и объявление
+    получало location_id = NULL, то есть не попадало в маршрутный фильтр по
+    городу. Второй пикер для этого не нужен: сервер сам приводит точку к
+    каталогу, если название однозначно.
+
+    Неизвестная каталогу точка сохраняется как раньше (легаси-значения,
+    location_id = NULL) — неправильный ID не присваивается.
+    """
+    c, ptype, pname = _norm_route_triple(country, point_type, point_name)
+    cid, lid, canonical_type = geo_catalog.canonical_route_point(c, pname, city)
+    if not lid:
+        return c, ptype, pname, None
+    # Страну берём из резолва только если клиент её не присылал:
+    # canonical_route_point не переписывает явно указанную страну.
+    return (cid or c), (_LEGACY_POINT_TYPE.get(canonical_type) or ptype), pname, lid
+
 
 def _norm_route_triple(country, point_type, point_name):
     """Normalise the structured route triple. Country is an ISO-2 code
@@ -306,27 +351,18 @@ def _init():
     # SQLite doesn't support `ALTER TABLE ADD COLUMN IF NOT EXISTS`, so we
     # check pragma_table_info and only add when missing.
     with get_conn() as c:
-        def add_column_if_missing(table: str, column: str, ddl_type: str) -> bool:
-            current = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
-            if column in current:
-                return False
-            try:
-                c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
-                return True
-            except Exception as e:
-                if "duplicate column name" in str(e).lower():
-                    return False
-                raise
-
-        if add_column_if_missing("bids", "updated_at", "TEXT"):
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(bids)").fetchall()}
+        if "updated_at" not in cols:
+            c.execute("ALTER TABLE bids ADD COLUMN updated_at TEXT")
             c.execute("UPDATE bids SET updated_at = created_at WHERE updated_at IS NULL")
         for col, ddl in [
-            ("counter_amount",  "INTEGER"),
-            ("counter_message", "TEXT"),
-            ("counter_by",      "TEXT"),
-            ("counter_at",      "TEXT"),
+            ("counter_amount",  "ALTER TABLE bids ADD COLUMN counter_amount INTEGER"),
+            ("counter_message", "ALTER TABLE bids ADD COLUMN counter_message TEXT"),
+            ("counter_by",      "ALTER TABLE bids ADD COLUMN counter_by TEXT"),
+            ("counter_at",      "ALTER TABLE bids ADD COLUMN counter_at TEXT"),
         ]:
-            add_column_if_missing("bids", col, ddl)
+            if col not in cols:
+                c.execute(ddl)
         # Currency on trips/cargos: USD by default, never NULL.
         # Stage 8: add structured route columns on top of the legacy
         # from_city/to_city strings so the registry-aware picker can
@@ -342,18 +378,53 @@ def _init():
             ("to_point_name",    "TEXT"),
         ]
         for table in ("trips", "cargos"):
-            if add_column_if_missing(table, "currency", "TEXT DEFAULT 'USD'"):
+            tcols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
+            if "currency" not in tcols:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN currency TEXT DEFAULT 'USD'")
                 c.execute(f"UPDATE {table} SET currency = 'USD' WHERE currency IS NULL")
             for col, ddl_type in ROUTE_COLS:
-                add_column_if_missing(table, col, ddl_type)
+                if col not in tcols:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl_type}")
+            # Main Route Filter V2 (§5/§15): стабильные location_id из
+            # нормализованного каталога. Без них маршрутный фильтр может
+            # сравнивать только свободный текст через LIKE '%…%' — на
+            # 10 000+ объявлений это full scan и ложные совпадения
+            # («Хоргос» матчит и город, и КПП, и терминал).
+            # NULL в location_id — легальное состояние: это WHOLE COUNTRY
+            # scope (§4), а не «данные потеряны».
+            for col in ("from_location_id", "to_location_id"):
+                if col not in tcols:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} TEXT")
             # PR2 (03.08): published_at — момент публикации, обновляется при
             # republish. Идемпотентно: добавляем колонку и backfill'им только
             # NULL-строки (безопасно перезапускать на каждом старте сервера).
-            add_column_if_missing(table, "published_at", "TEXT")
+            if "published_at" not in tcols:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN published_at TEXT")
             c.execute(f"UPDATE {table} SET published_at = created_at WHERE published_at IS NULL")
+            # ISO-2 код страны нормализуем В ДАННЫХ, а не в запросе.
+            # Раньше фильтр сравнивал UPPER(from_country) = ?, и вызов
+            # функции по колонке делал составной маршрутный индекс
+            # неприменимым: EXPLAIN QUERY PLAN показывал idx_*_status +
+            # TEMP B-TREE FOR ORDER BY, то есть скан по статусу и сортировку
+            # в памяти на всей выборке. На 10 000 объявлениях это ровно тот
+            # режим, который §15/§18 запрещают.
+            for col in ("from_country", "to_country"):
+                c.execute(
+                    f"UPDATE {table} SET {col} = UPPER({col}) "
+                    f"WHERE {col} IS NOT NULL AND {col} <> UPPER({col})"
+                )
+            # Индекс маршрутного фильтра создаём ПОСЛЕ published_at: на
+            # свежей БД колонки ещё нет, и CREATE INDEX падал бы на старте.
+            c.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{table}_route_scope "
+                f"ON {table}(status, from_country, from_location_id, "
+                f"to_country, to_location_id, published_at)"
+            )
         # 3.8: тип оплаты груза (cash|cashless|any) — важный параметр решения
         # водителя. Колонка на cargos; NULL = не указан.
-        add_column_if_missing("cargos", "payment_type", "TEXT")
+        ccols = {r["name"] for r in c.execute("PRAGMA table_info(cargos)").fetchall()}
+        if "payment_type" not in ccols:
+            c.execute("ALTER TABLE cargos ADD COLUMN payment_type TEXT")
         # Задача B: живая гео-позиция машины по сделке (последняя точка).
         c.execute("""
             CREATE TABLE IF NOT EXISTS deal_locations (
@@ -442,6 +513,11 @@ class CargoIn(BaseModel):
     to_point_type: Optional[str] = None
     to_point_name: Optional[str] = None
 
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, value):
+        return _reject_negative_price(value)
+
     def __init__(self, **data):
         if 'cargo_desc' in data and data['cargo_desc']:
             data['cargo_desc'] = data['cargo_desc'].strip()[:500]
@@ -473,6 +549,11 @@ class TripIn(BaseModel):
     to_point_type: Optional[str] = None
     to_point_name: Optional[str] = None
 
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, value):
+        return _reject_negative_price(value)
+
 
 class TripPatchIn(BaseModel):
     """Partial update of an own active trip — every field is optional;
@@ -493,6 +574,11 @@ class TripPatchIn(BaseModel):
     to_country: Optional[str] = None
     to_point_type: Optional[str] = None
     to_point_name: Optional[str] = None
+
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, value):
+        return _reject_negative_price(value)
 
 
 class BidIn(BaseModel):
@@ -535,23 +621,26 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
     # columns. Country code normalised to upper-case; missing fields
     # stay NULL — `_route_for_row` reads both legacy and structured
     # fields when serialising the row back to clients.
-    fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
-    tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
+    fc, fpt, fpn, flid = _canonical_route_columns(
+        body.from_country, body.from_point_type, body.from_point_name, body.from_city)
+    tc, tpt, tpn, tlid = _canonical_route_columns(
+        body.to_country, body.to_point_type, body.to_point_name, body.to_city)
     with get_conn() as c:
         pay = body.payment_type if body.payment_type in ("cash", "cashless", "any") else None
         c.execute("""
             INSERT INTO cargos (id, owner_id, owner_phone, owner_name,
               from_city, to_city, cargo_desc, cargo_type,
               weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
-              from_country, from_point_type, from_point_name,
-              to_country, to_point_type, to_point_name, published_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+              from_country, from_point_type, from_point_name, from_location_id,
+              to_country, to_point_type, to_point_name, to_location_id, published_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         """, (cid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.cargo_desc, body.cargo_type,
               body.weight_tons, body.volume_m3, body.price, currency, pay,
               body.pickup_date,
               json.dumps(body.photos or [], ensure_ascii=False),
-              fc, fpt, fpn, tc, tpt, tpn))
+              fc, fpt, fpn, flid,
+              tc, tpt, tpn, tlid))
 
     # Push подписчикам маршрута
     try:
@@ -561,6 +650,89 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
         pass
 
     return {"id": cid, "ok": True}
+
+
+
+# ── Main Route Filter V2: общие хелперы маршрутного фильтра ────────────────
+
+def _route_scope_where(where: list, params: list,
+                       origin_country_id: str, origin_location_id: str,
+                       destination_country_id: str, destination_location_id: str) -> None:
+    """Добавить в WHERE канонический маршрутный scope (§4/§15/§21).
+
+    Симметрично для origin и destination:
+      country задан, location пуст → WHOLE COUNTRY: сравниваем только страну;
+      заданы оба                   → сравниваем location_id (индексированное
+                                     равенство, не LIKE).
+
+    §21: пара country/location валидируется ДО SQL. Несовпадение
+    («Germany + Almaty») — это 400, а не пустая лента: молча вернуть 0
+    результатов означало бы скрыть ошибку клиента.
+    """
+    try:
+        o_country, o_location = geo_catalog.validate_scope(
+            origin_country_id, origin_location_id, field="origin")
+        d_country, d_location = geo_catalog.validate_scope(
+            destination_country_id, destination_location_id, field="destination")
+    except geo_catalog.RouteScopeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Равенство БЕЗ UPPER() по колонке — иначе составной индекс
+    # idx_*_route_scope не применяется (см. нормализацию в _init).
+    if o_country:
+        where.append("from_country = ?")
+        params.append(o_country)
+    if o_location:
+        where.append("from_location_id = ?")
+        params.append(o_location)
+    if d_country:
+        where.append("to_country = ?")
+        params.append(d_country)
+    if d_location:
+        where.append("to_location_id = ?")
+        params.append(d_location)
+
+
+def _page_fill(select_sql: str, params: list, offset: int, limit: int,
+               shape, keep):
+    """Собрать РОВНО `limit` прошедших гигиену записей, начиная с `offset`.
+
+    Возвращает (rows, scanned, exhausted):
+      rows     — отданные записи (не больше limit);
+      scanned  — сколько строк БД потреблено; offset + scanned = next_offset;
+      exhausted — источник закончился (страниц больше нет).
+
+    Зачем батчи: гигиена публичной ленты (`_public_cargo_ok`) не выражается в
+    SQL. Если брать ровно `limit` строк и часть выбрасывать, то на 10 000
+    объявлениях страница произвольно «усыхает», а следующий offset,
+    посчитанный клиентом как offset+limit, ПЕРЕПРЫГИВАЕТ выброшенные строки
+    вместе с годными — записи молча исчезают из ленты.
+    """
+    rows: list = []
+    scanned = 0
+    exhausted = False
+    # Батч с запасом: при типичной ленте гигиена режет единицы процентов,
+    # так что обычно хватает одного запроса. Потолок на итерации не даёт
+    # выродиться в полный скан таблицы, если отбраковано почти всё.
+    batch = max(limit * 2, 20)
+    with get_conn() as c:
+        for _ in range(12):
+            fetched = c.execute(select_sql, (*params, batch, offset + scanned)).fetchall()
+            if not fetched:
+                exhausted = True
+                break
+            for raw in fetched:
+                scanned += 1
+                d = shape(raw)
+                if not keep(d):
+                    continue
+                rows.append(d)
+                if len(rows) >= limit:
+                    return rows, scanned, False
+            if len(fetched) < batch:
+                exhausted = True
+                break
+    return rows, scanned, exhausted
 
 
 @mp_router.get("/cargos")
@@ -576,11 +748,22 @@ def list_cargos(
     to_country: str = "",
     from_point_type: str = "",
     to_point_type: str = "",
+    # Main Route Filter V2 (§15): канонический маршрутный scope.
+    #   *_country_id  задан, *_location_id пуст → WHOLE COUNTRY (§4)
+    #   оба заданы                             → конкретная локация
+    # Фильтрация идёт в SQL по индексированному равенству, а не выкачиванием
+    # ленты на телефон.
+    origin_country_id: str = "",
+    origin_location_id: str = "",
+    destination_country_id: str = "",
+    destination_location_id: str = "",
     show_demo: bool = False,
     limit: int = 50,
     offset: int = 0,
 ):
     """Публичный список грузов. Demo-контент скрыт по умолчанию."""
+    limit = max(1, min(int(limit or 50), 100))
+    offset = max(0, int(offset or 0))
     where = ["status = ?"]
     params = [status]
     if from_city:
@@ -604,24 +787,23 @@ def list_cargos(
     if to_point_type:
         where.append("to_point_type = ?")
         params.append(to_point_type.lower())
+    _route_scope_where(where, params,
+                       origin_country_id, origin_location_id,
+                       destination_country_id, destination_location_id)
 
     where_sql = " AND ".join(where)
-    with get_conn() as c:
-        rows = c.execute(f"""
+    select_sql = f"""
             SELECT id, owner_id, from_city, to_city, cargo_desc, cargo_type,
                    weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
                    bids_count, status, created_at, published_at,
-                   from_country, from_point_type, from_point_name,
-                   to_country, to_point_type, to_point_name
+                   from_country, from_point_type, from_point_name, from_location_id,
+                   to_country, to_point_type, to_point_name, to_location_id
             FROM cargos WHERE {where_sql}
             ORDER BY published_at DESC LIMIT ? OFFSET ?
-        """, (*params, limit, offset)).fetchall()
-        total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql}", params).fetchone()[0]
+    """
 
-    result = []
-    today = datetime.utcnow().date()
-    for r in rows:
-        d = dict(r)
+    def _shape(row):
+        d = dict(row)
         try:
             d["photos"] = _sign_cargo_photos(json.loads(d.get("photos") or "[]"))
         except Exception:
@@ -632,13 +814,36 @@ def list_cargos(
             d["photos"] = []
         # НЕ отдаём owner_phone — контакт закрыт гейтом
         d.pop("owner_phone", None)
-        # Public-feed hygiene (skipped only when caller explicitly asks for it,
-        # e.g. an admin tool passing show_demo=true)
-        if not show_demo and not _public_cargo_ok(d, today=today):
-            continue
-        result.append(d)
-    # Recompute total to match what the caller actually sees
-    return {"cargos": result, "total": len(result)}
+        return d
+
+    today = datetime.utcnow().date()
+    # Public-feed hygiene (skipped only when caller explicitly asks for it,
+    # e.g. an admin tool passing show_demo=true). Гигиена не выражается в SQL
+    # (грязные токены в тексте), поэтому страницу ДОБИРАЕМ батчами до
+    # запрошенного размера. Раньше метод брал ровно `limit` строк, часть
+    # выбрасывал в Python и возвращал total=len(result): страница «усыхала»,
+    # total врал, а offset-пагинация на следующей странице пропускала записи.
+    keep = (lambda d: True) if show_demo else (lambda d: _public_cargo_ok(d, today=today))
+    result, scanned, exhausted = _page_fill(select_sql, params, offset, limit, _shape, keep)
+
+    with get_conn() as c:
+        total_matching = c.execute(
+            f"SELECT COUNT(*) FROM cargos WHERE {where_sql}", params
+        ).fetchone()[0]
+
+    return {
+        "cargos": result,
+        # Обратная совместимость: старые клиенты читают `total` как «сколько
+        # пришло в этом ответе».
+        "total": len(result),
+        # Сколько записей удовлетворяет фильтру в БД (до гигиены) — верхняя
+        # оценка для «найдено N».
+        "total_matching": total_matching,
+        # §17: следующий offset. Клиент НЕ считает его сам как offset+limit —
+        # из-за гигиены страница может занимать больше строк, чем отдала.
+        "next_offset": offset + scanned,
+        "has_more": not exhausted,
+    }
 
 
 @mp_router.post("/cargos/photo")
@@ -774,6 +979,11 @@ class CargoPatchIn(BaseModel):
     currency: Optional[str] = None
     pickup_date: Optional[str] = None
     payment_type: Optional[str] = None
+
+    @field_validator("price")
+    @classmethod
+    def _validate_price(cls, value):
+        return _reject_negative_price(value)
 
 
 @mp_router.patch("/cargos/{cargo_id}")
@@ -1104,21 +1314,24 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
     if currency not in ("USD", "KZT", "RUB", "CNY"):
         currency = "USD"
     tid = new_id()
-    fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
-    tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
+    fc, fpt, fpn, flid = _canonical_route_columns(
+        body.from_country, body.from_point_type, body.from_point_name, body.from_city)
+    tc, tpt, tpn, tlid = _canonical_route_columns(
+        body.to_country, body.to_point_type, body.to_point_name, body.to_city)
     with get_conn() as c:
         c.execute("""
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
               from_city, to_city, transit, truck_type,
               capacity_tons, available_m3, price, currency, departure, arrival,
-              from_country, from_point_type, from_point_name,
-              to_country, to_point_type, to_point_name, published_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+              from_country, from_point_type, from_point_name, from_location_id,
+              to_country, to_point_type, to_point_name, to_location_id, published_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         """, (tid, user["id"], user.get("phone"), user.get("full_name"),
               body.from_city, body.to_city, body.transit, body.truck_type,
               body.capacity_tons, body.available_m3, body.price, currency,
               body.departure, body.arrival,
-              fc, fpt, fpn, tc, tpt, tpn))
+              fc, fpt, fpn, flid,
+              tc, tpt, tpn, tlid))
     return {"id": tid, "ok": True}
 
 
@@ -1212,10 +1425,18 @@ def list_trips(
     to_country: str = "",
     from_point_type: str = "",
     to_point_type: str = "",
+    # Main Route Filter V2 (§2/§15): та же модель, что и у грузов —
+    # driver→Loads и shipper→Trucks фильтруются одинаково.
+    origin_country_id: str = "",
+    origin_location_id: str = "",
+    destination_country_id: str = "",
+    destination_location_id: str = "",
     show_demo: bool = False,
     limit: int = 50,
     offset: int = 0,
 ):
+    limit = max(1, min(int(limit or 50), 100))
+    offset = max(0, int(offset or 0))
     where = ["status = ?"]
     params = [status]
     if from_city:
@@ -1239,35 +1460,40 @@ def list_trips(
     if to_point_type:
         where.append("to_point_type = ?")
         params.append(to_point_type.lower())
+    _route_scope_where(where, params,
+                       origin_country_id, origin_location_id,
+                       destination_country_id, destination_location_id)
 
     where_sql = " AND ".join(where)
-    with get_conn() as c:
-        rows = c.execute(f"""
+    select_sql = f"""
             SELECT id, driver_id, driver_name, from_city, to_city, transit,
                    truck_type, capacity_tons, available_m3, price, currency,
                    departure, arrival, status, created_at, published_at,
-                   from_country, from_point_type, from_point_name,
-                   to_country, to_point_type, to_point_name
+                   from_country, from_point_type, from_point_name, from_location_id,
+                   to_country, to_point_type, to_point_name, to_location_id
             FROM trips WHERE {where_sql}
             ORDER BY published_at DESC LIMIT ? OFFSET ?
-        """, (*params, limit, offset)).fetchall()
+    """
 
-    trips = [dict(r) for r in rows]
-    if not show_demo:
-        trips = [
-            t for t in trips
-            if not _is_dirty_text(t.get("driver_name"), t.get("from_city"),
-                                  t.get("to_city"), t.get("truck_type"))
-        ]
+    _today = datetime.utcnow().date()
+
+    def _trip_public_ok(t):
+        if _is_dirty_text(t.get("driver_name"), t.get("from_city"),
+                          t.get("to_city"), t.get("truck_type")):
+            return False
         # Скрываем просроченные рейсы из ПУБЛИЧНОЙ ленты (Модель А: живёт
         # 3 дня — departure + 2). Owner-side /my сюда не проходит — там рейсы
         # остаются с пометкой «Срок истёк».
-        _today = datetime.utcnow().date()
-        trips = [
-            t for t in trips
-            if not ((_dep := _parse_iso_date(t.get("departure")))
-                    and _dep < (_today - timedelta(days=2)))
-        ]
+        dep = _parse_iso_date(t.get("departure"))
+        return not (dep and dep < (_today - timedelta(days=2)))
+
+    keep = (lambda t: True) if show_demo else _trip_public_ok
+    # Та же добивка страницы, что и у грузов: гигиена не выражается в SQL,
+    # а «усохшая» страница ломает offset-пагинацию на 10 000 рейсах.
+    trips, _scanned, _exhausted = _page_fill(select_sql, params, offset, limit,
+                                             dict, keep)
+    _next_offset = offset + _scanned
+    _has_more = not _exhausted
     # Обогащаем каждый рейс РЕАЛЬНЫМИ данными водителя (статус верификации +
     # рейтинг/число отзывов), чтобы фронт не выдумывал «★5.0 · Проверен».
     # Обогащение не должно ронять ленту — при любом сбое отдаём дефолты.
@@ -1291,7 +1517,14 @@ def list_trips(
             t.setdefault("driver_verified", False)
             t.setdefault("driver_rating", 0)
             t.setdefault("driver_reviews_count", 0)
-    return {"trips": trips, "total": len(trips)}
+    return {
+        "trips": trips,
+        "total": len(trips),
+        # §17: next_offset считает сервер — клиент не может вывести его как
+        # offset+limit, потому что часть строк отсеяна гигиеной.
+        "next_offset": _next_offset,
+        "has_more": _has_more,
+    }
 
 
 @mp_router.get("/trips/{trip_id}")
@@ -1347,12 +1580,6 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
 # фронтового CURRENCY_SYMBOLS (src/utils/normalizers.js) — чтобы пуш про ставку
 # показывал «420000 ₸», а не хардкод «$420000». Сумма ставки = валюта груза/рейса.
 _CURRENCY_SYMBOLS = {"USD": "$", "KZT": "₸", "RUB": "₽", "CNY": "¥", "UZS": "сўм"}
-BARGAIN_PRICE_ACTION_KINDS = ("proposed", "updated", "countered")
-BARGAIN_MIN_PRICE_ACTIONS = 5
-
-
-def _bargain_depth_gate_enabled() -> bool:
-    return str(os.getenv("URTRUCK_QA_BARGAIN_DEPTH_GATE", "")).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _money(amount, currency):
@@ -1387,49 +1614,6 @@ def _record_price_event(c, bid_id, actor_id, actor_role, amount, kind, comment=N
     except Exception as e:
         print(f"[price_event] write failed (continuing): {e}", flush=True)
         return None
-
-
-def _bid_price_action_count(c, bid_id: str) -> int:
-    row = c.execute(
-        f"SELECT COUNT(*) AS cnt FROM price_events WHERE bid_id = ? "
-        f"AND kind IN ({','.join('?' for _ in BARGAIN_PRICE_ACTION_KINDS)}) "
-        "AND amount IS NOT NULL",
-        (bid_id, *BARGAIN_PRICE_ACTION_KINDS),
-    ).fetchone()
-    return int(row["cnt"] if row else 0)
-
-
-def _enrich_bargain_depth(c, bid: dict) -> dict:
-    actions = _bid_price_action_count(c, bid["id"])
-    gate_enabled = _bargain_depth_gate_enabled()
-    bid["bargain_price_actions"] = actions
-    bid["bargain_min_actions"] = BARGAIN_MIN_PRICE_ACTIONS
-    bid["bargain_gate_required"] = gate_enabled
-    bid["bargain_can_accept"] = (not gate_enabled) or actions >= BARGAIN_MIN_PRICE_ACTIONS
-    bid["bargain_counter_can_accept"] = (
-        (not gate_enabled)
-        or actions >= max(1, BARGAIN_MIN_PRICE_ACTIONS - 1)
-    )
-    return bid
-
-
-def _ensure_bargain_depth(c, bid: dict, required_actions: int = BARGAIN_MIN_PRICE_ACTIONS) -> None:
-    if not _bargain_depth_gate_enabled():
-        return
-    actions = _bid_price_action_count(c, bid["id"])
-    if actions < required_actions:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "bargain_depth_required",
-                "message": (
-                    f"Торг ещё недостаточный: нужно минимум {BARGAIN_MIN_PRICE_ACTIONS} "
-                    f"ценовых действий, сейчас {actions}"
-                ),
-                "price_actions": actions,
-                "min_price_actions": BARGAIN_MIN_PRICE_ACTIONS,
-            },
-        )
 
 
 @mp_router.post("/bids")
@@ -1583,7 +1767,7 @@ def list_bids(
             WHERE {' AND '.join(where)}
             ORDER BY b.created_at DESC LIMIT 100
         """, params).fetchall()
-        bids = [_enrich_bargain_depth(c, dict(r)) for r in rows]
+    bids = [dict(r) for r in rows]
     # Часть 1: сырой список ДО dirty-фильтра — из него честно считаем число
     # предложений и находим собственную ставку вызывающего (dirty-фильтр по
     # prefix 'agent-'/'guest-' иначе прячет и его собственную ставку в QA).
@@ -2262,8 +2446,6 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
                 status_code=409,
                 detail=f"Ставку нельзя принять в статусе {bid['status']}",
             )
-        _ensure_bid_accept_owner(c, bid, user["id"])
-        _ensure_bargain_depth(c, bid)
         result = _finalize_accept_inline(c, user, bid, bid["amount"])
         # Часть 3: событие — владелец принял ставку (actor=owner).
         _record_price_event(c, bid_id, user["id"], "owner", bid["amount"], "accepted", None)
@@ -2317,12 +2499,6 @@ def _cargo_or_trip_owner_id(c, bid: dict):
         if row:
             return row["driver_id"]
     return None
-
-
-def _ensure_bid_accept_owner(c, bid: dict, user_id: str) -> None:
-    owner_id = _cargo_or_trip_owner_id(c, bid)
-    if not owner_id or owner_id != user_id:
-        raise HTTPException(status_code=403)
 
 
 @mp_router.patch("/bids/{bid_id}")
@@ -2584,10 +2760,6 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
         if not counter:
             # Defensive: status='countered' without amount means data corruption.
             raise HTTPException(status_code=409, detail="Контр-оффер без суммы")
-        # При counter/accept само согласие биддера становится финальным пятым
-        # ценовым действием. До него на ветке уже должны быть: первая ставка,
-        # первый counter, ответ биддера, второй counter.
-        _ensure_bargain_depth(c, bid, BARGAIN_MIN_PRICE_ACTIONS - 1)
 
         # The owner is the user we authorise the accept *as* — load from bid context.
         owner_id = _cargo_or_trip_owner_id(c, bid)

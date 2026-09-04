@@ -18,17 +18,19 @@ import { useTheme } from '../utils/ThemeContext';
 import { useAuth, LEVELS } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay } from '../utils/normalizers';
-import { localizePlace } from '../utils/places';
-import { countryFlag } from '../utils/countryFlags';
 import { useToast } from '../components/Toast';
 import { useVerificationGate } from '../components/VerificationGate';
 import { SkeletonCard } from '../components/Skeleton';
 import NotificationBellButton from '../components/ui/v1/NotificationBellButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
-import LocationPickerModal from '../components/LocationPickerModal';
+import RoutePointPickerV2 from '../components/RoutePointPickerV2';
+import { routePointLabel, routeFilterParams } from '../utils/geoCatalog';
+import { SCOPE_LABELS, routeStrings } from '../utils/routeFilterStrings';
+import {
+  FEED_KEYS, canRestoreFeed, readFeedSnapshot, writeFeedSnapshot,
+} from '../utils/feedSessionState';
 import { TRUCK_KEYS } from '../utils/truckConstants';
-import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
 
 const ACCENT = '#34936B';
 const ACCENT_SOFT = '#EAF5EF';
@@ -87,8 +89,6 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }
   const specs = [display.truckType, display.availableM3, display.capacityTons]
     .filter((value) => value && value !== notSpecified)
     .join(' · ');
-  const fromFlag = countryFlag(item.fromCountry);
-  const toFlag = countryFlag(item.toCountry);
 
   return (
     <TouchableOpacity
@@ -107,17 +107,9 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }
     >
       <View style={styles.greenRail} />
       <View style={styles.cardBody}>
-        <View style={styles.routeLine}>
-          <View style={styles.routePoint}>
-            {fromFlag ? <Text style={styles.routeFlag}>{fromFlag}</Text> : null}
-            <Text style={[styles.route, { color: colors.text }]} numberOfLines={1}>{display.from}</Text>
-          </View>
-          <Feather name="arrow-right" size={16} color={colors.text} style={styles.routeArrow} />
-          <View style={styles.routePoint}>
-            {toFlag ? <Text style={styles.routeFlag}>{toFlag}</Text> : null}
-            <Text style={[styles.route, { color: colors.text }]} numberOfLines={1}>{display.to}</Text>
-          </View>
-        </View>
+        <Text style={[styles.route, { color: colors.text }]} numberOfLines={2}>
+          {display.from} → {display.to}
+        </Text>
         <Text style={[styles.meta, { color: colors.textMuted }]} numberOfLines={1}>
           {[item.departure ? `${copy.departure}: ${display.departure}` : null, specs || null]
             .filter(Boolean)
@@ -164,49 +156,46 @@ export default function FeedScreen({ navigation }) {
   const role = 'client';
   const copy = COPY[lang] || COPY.RU;
 
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // §20: начальное состояние берём из session-снимка. Ленивый инициализатор,
+  // а не useEffect: иначе первый рендер после Back успевал показать пустую
+  // ленту и сбросить позицию скролла до восстановления.
+  const snapshot = React.useRef(readFeedSnapshot(FEED_KEYS.TRUCKS)).current;
+  const [items, setItems] = useState(snapshot.items || []);
+  const [loading, setLoading] = useState(!snapshot.items);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
-  const [pageLimit, setPageLimit] = useState(50);
-  const [dirFrom, setDirFrom] = useState('');
-  const [dirTo, setDirTo] = useState('');
-  const [dirFromCountry, setDirFromCountry] = useState('');
-  const [dirToCountry, setDirToCountry] = useState('');
+  const [pageLimit, setPageLimit] = useState(snapshot.pageLimit || 50);
+  // Main Route Filter V2 (§3/§4): канонический маршрутный scope
+  // { countryId, locationId | null }. locationId === null означает
+  // «вся страна» — это scope, а не город с таким названием.
+  // Свободный текст dirFrom/dirTo больше не источник истины: он гонял
+  // `from_city LIKE '%…%'` и на 10 000 объявлений давал и full scan,
+  // и ложные совпадения.
+  const [routeOrigin, setRouteOrigin] = useState(snapshot.origin || null);
+  const [routeDestination, setRouteDestination] = useState(snapshot.destination || null);
   const [showDirFromPicker, setShowDirFromPicker] = useState(false);
   const [showDirToPicker, setShowDirToPicker] = useState(false);
   const [activeFilter, setActiveFilter] = useState(null);
-  const [filterType, setFilterType] = useState(null);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [sortBy, setSortBy] = useState('newest');
+  const [filterType, setFilterType] = useState(snapshot.filters?.filterType ?? null);
+  const [dateFrom, setDateFrom] = useState(snapshot.filters?.dateFrom ?? '');
+  const [dateTo, setDateTo] = useState(snapshot.filters?.dateTo ?? '');
+  const [sortBy, setSortBy] = useState(snapshot.filters?.sortBy ?? 'newest');
   const [savedIds, setSavedIds] = useState(() => new Set());
-  const [savedOnly, setSavedOnly] = useState(false);
+  const [savedOnly, setSavedOnly] = useState(snapshot.filters?.savedOnly ?? false);
   const savedBusyRef = React.useRef(new Set());
 
-  const countryLabel = (code) => {
-    if (!code) return '';
-    const translated = t(`country_${code}`);
-    return translated && translated !== `country_${code}`
-      ? translated
-      : (GEO_COUNTRIES[code]?.name || code);
-  };
+  // §8/§9: подпись берётся из каталога — «Весь Китай», «Алматы»,
+  // «Нур Жолы · КПП» — и меняется вместе с языком без пересборки фильтра.
+  const routeValue = (point, placeholder) => (point
+    ? routePointLabel(point, lang, SCOPE_LABELS)
+    : placeholder);
 
-  const routeValue = (city, countryCode, placeholder) => {
-    if (city) return localizePlace(city, lang);
-    if (countryCode) return `${GEO_COUNTRIES[countryCode]?.flag || ''} ${countryLabel(countryCode)}`.trim();
-    return placeholder;
-  };
+  const hasRouteFilter = !!(routeOrigin || routeDestination);
 
-  const selectDirFrom = (value, point) => {
-    setDirFrom(point?.countryOnly ? '' : ((point && point.name) || value || ''));
-    setDirFromCountry(point?.country && point.country !== 'XX' ? point.country : '');
-  };
-
-  const selectDirTo = (value, point) => {
-    setDirTo(point?.countryOnly ? '' : ((point && point.name) || value || ''));
-    setDirToCountry(point?.country && point.country !== 'XX' ? point.country : '');
-  };
+  const resetRoute = useCallback(() => {
+    setRouteOrigin(null);
+    setRouteDestination(null);
+  }, []);
 
   const loadSaved = useCallback(async () => {
     if (!myUserId) {
@@ -220,15 +209,30 @@ export default function FeedScreen({ navigation }) {
     }
   }, [myUserId]);
 
+  // §17: держим контроллер последнего запроса. При смене фильтра предыдущий
+  // отменяется, иначе его поздний ответ перезаписывал бы ленту нового
+  // фильтра — на медленной сети пользователь видел результаты чужого
+  // маршрута.
+  const inflightRef = React.useRef(null);
+
   const load = useCallback(async () => {
     setError(false);
+    inflightRef.current?.abort?.();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    inflightRef.current = controller;
     try {
       const result = await marketAPI.listTrips({
-        fromCity: dirFrom.trim() || '',
-        toCity: dirTo.trim() || '',
+        // §15: фильтрация по маршруту — на сервере, а не после выкачивания
+        // всей ленты на телефон.
+        origin: routeOrigin,
+        destination: routeDestination,
         truckType: filterType || '',
         limit: pageLimit,
+        signal: controller?.signal,
       });
+      // Отменённый запрос — не ошибка и не пустая лента: его результат
+      // просто больше не нужен.
+      if (result?.aborted || controller?.signal?.aborted) return;
       if (result?.serverError) throw new Error('trip_feed_failed');
 
       const mapped = (result?.trips || [])
@@ -251,14 +255,70 @@ export default function FeedScreen({ navigation }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [dirFrom, dirTo, filterType, pageLimit, myUserId]);
+  }, [routeOrigin, routeDestination, filterType, pageLimit, myUserId]);
+
+  // ── §20 return state ────────────────────────────────────────────────
+  const listRef = React.useRef(null);
+  const scrollOffsetRef = React.useRef(snapshot.scrollOffset || 0);
+  const restoredRef = React.useRef(false);
+
+  const currentFilters = useMemo(() => ({
+    filterType, dateFrom, dateTo, sortBy, savedOnly,
+  }), [filterType, dateFrom, dateTo, sortBy, savedOnly]);
+
+  const scopeForSnapshot = useMemo(() => ({
+    origin: routeOrigin, destination: routeDestination, filters: currentFilters,
+  }), [routeOrigin, routeDestination, currentFilters]);
+
+  // Фильтры пишем в снимок сразу — даже если результаты ещё летят, Back
+  // должен вернуть тот же фильтр, а не пустой.
+  useEffect(() => {
+    writeFeedSnapshot(FEED_KEYS.TRUCKS, scopeForSnapshot);
+  }, [scopeForSnapshot]);
+
+  // Загруженные страницы кладём в снимок, чтобы Back не перезапрашивал их.
+  useEffect(() => {
+    if (loading) return;
+    writeFeedSnapshot(FEED_KEYS.TRUCKS, { items, pageLimit });
+  }, [items, pageLimit, loading]);
+
+  const onFeedScroll = useCallback((event) => {
+    const y = event?.nativeEvent?.contentOffset?.y;
+    if (!Number.isFinite(y)) return;
+    scrollOffsetRef.current = y;
+    writeFeedSnapshot(FEED_KEYS.TRUCKS, { scrollOffset: y });
+  }, []);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
+
   useFocusEffect(useCallback(() => {
-    load();
+    // Возврат с карточки НЕ должен перезапрашивать ленту: раньше focus
+    // безусловно вызывал load(), из-за чего уже загруженные страницы
+    // выбрасывались и позиция скролла обнулялась. Перезапрашиваем только
+    // когда восстанавливать нечего или фильтр изменился.
+    if (!canRestoreFeed(FEED_KEYS.TRUCKS, scopeForSnapshot)) {
+      load();
+    }
+    // Избранное дешёвое и может измениться из карточки — обновляем всегда.
     loadSaved();
-  }, [load, loadSaved]));
+  }, [load, loadSaved, scopeForSnapshot]));
+
+  // Позицию возвращаем после того, как список получил данные.
+  useFocusEffect(useCallback(() => {
+    const target = scrollOffsetRef.current;
+    if (!target || restoredRef.current || !items.length) return;
+    restoredRef.current = true;
+    // requestAnimationFrame, а не setTimeout: ждём ближайший кадр после
+    // коммита, иначе scrollToOffset уходит в ещё не смонтированный список.
+    const raf = requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset?.({ offset: target, animated: false });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [items.length]));
+
+  // Уход с экрана — снимок закрыт для восстановления в следующий раз.
+  useFocusEffect(useCallback(() => () => { restoredRef.current = false; }, []));
 
   const visibleItems = useMemo(() => {
     const dateStart = toIso(dateFrom);
@@ -267,14 +327,11 @@ export default function FeedScreen({ navigation }) {
       const departure = toIso(item.departure);
       if (dateStart && departure && departure < dateStart) return false;
       if (dateEnd && departure && departure > dateEnd) return false;
-      if (dirFromCountry) {
-        const fromCountry = String(item.fromCountry || '').toUpperCase();
-        if (!(fromCountry === dirFromCountry)) return false;
-      }
-      if (dirToCountry) {
-        const toCountry = String(item.toCountry || '').toUpperCase();
-        if (!(toCountry === dirToCountry)) return false;
-      }
+      // §15: фильтр по стране БОЛЬШЕ НЕ выполняется здесь. Раньше сервер
+      // отдавал ленту целиком, а телефон отсеивал чужие страны локально —
+      // на 10 000 объявлениях это и трафик, и пустые страницы после
+      // отсева. Теперь страна и локация уходят в SQL
+      // (origin_/destination_country_id + _location_id).
       if (savedOnly && !savedIds.has(String(item.id))) return false;
       return true;
     });
@@ -287,7 +344,7 @@ export default function FeedScreen({ navigation }) {
       data = [...data].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     }
     return data;
-  }, [items, dateFrom, dateTo, dirFromCountry, dirToCountry, sortBy, savedOnly, savedIds]);
+  }, [items, dateFrom, dateTo, sortBy, savedOnly, savedIds]);
 
   const openTrip = async (item) => {
     const ok = await requireLevel(LEVELS.PHONE, 'open_detail', 'client');
@@ -348,17 +405,10 @@ export default function FeedScreen({ navigation }) {
     setSavedOnly((value) => !value);
   };
 
-  const onRefresh = async () => {
+  const onRefresh = () => {
     if (refreshing) return;
     setRefreshing(true);
-    try {
-      await Promise.all([
-        load().catch(() => null),
-        loadSaved().catch(() => null),
-      ]);
-    } finally {
-      setRefreshing(false);
-    }
+    Promise.allSettled([load(), loadSaved()]).finally(() => setRefreshing(false));
   };
 
   const filterPill = (key, label, icon, active) => (
@@ -388,7 +438,7 @@ export default function FeedScreen({ navigation }) {
         style={[
           styles.routeSelector,
           {
-            borderColor: (dirFrom || dirTo || dirFromCountry || dirToCountry) ? colors.accent : colors.border,
+            borderColor: hasRouteFilter ? colors.accent : colors.border,
             backgroundColor: colors.surface,
             shadowColor: colors.shadow,
           },
@@ -406,10 +456,11 @@ export default function FeedScreen({ navigation }) {
             <Text style={[styles.routeLabel, { color: colors.textSecondary }]}>{t('from')}</Text>
           </View>
           <Text
-            style={[styles.routeValue, { color: (dirFrom || dirFromCountry) ? colors.text : colors.textMuted }]}
+            style={[styles.routeValue, { color: routeOrigin ? colors.text : colors.textMuted }]}
             numberOfLines={1}
+            testID="feed-route-from-value"
           >
-            {routeValue(dirFrom, dirFromCountry, t('create_field_from_placeholder'))}
+            {routeValue(routeOrigin, t('create_field_from_placeholder'))}
           </Text>
         </TouchableOpacity>
 
@@ -425,21 +476,17 @@ export default function FeedScreen({ navigation }) {
             <Text style={[styles.routeLabel, { color: colors.textSecondary }]}>{t('to')}</Text>
           </View>
           <Text
-            style={[styles.routeValue, { color: (dirTo || dirToCountry) ? colors.text : colors.textMuted }]}
+            style={[styles.routeValue, { color: routeDestination ? colors.text : colors.textMuted }]}
             numberOfLines={1}
+            testID="feed-route-to-value"
           >
-            {routeValue(dirTo, dirToCountry, t('create_field_to_placeholder'))}
+            {routeValue(routeDestination, t('create_field_to_placeholder'))}
           </Text>
         </TouchableOpacity>
 
-        {(dirFrom || dirTo || dirFromCountry || dirToCountry) ? (
+        {hasRouteFilter ? (
           <TouchableOpacity
-            onPress={() => {
-              setDirFrom('');
-              setDirTo('');
-              setDirFromCountry('');
-              setDirToCountry('');
-            }}
+            onPress={resetRoute}
             hitSlop={10}
             testID="feed-route-clear"
           >
@@ -453,7 +500,6 @@ export default function FeedScreen({ navigation }) {
         showsHorizontalScrollIndicator={false}
         style={styles.filtersScroll}
         contentContainerStyle={styles.filters}
-        keyboardShouldPersistTaps="handled"
       >
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
@@ -509,6 +555,11 @@ export default function FeedScreen({ navigation }) {
       </View>
 
       <FlatList
+        ref={listRef}
+        onScroll={onFeedScroll}
+        // 16ms ≈ раз в кадр: реже теряется точность возврата, чаще — лишние
+        // события на каждый пиксель прокрутки.
+        scrollEventThrottle={16}
         style={[styles.list, { backgroundColor: colors.pageBg }]}
         data={loading ? [] : visibleItems}
         keyExtractor={(item) => String(item.id)}
@@ -566,20 +617,24 @@ export default function FeedScreen({ navigation }) {
         )}
       />
 
-      <LocationPickerModal
+      {/* §3: «Откуда» и «Куда» — один и тот же компонент, симметрично. */}
+      <RoutePointPickerV2
         visible={showDirFromPicker}
         onClose={() => setShowDirFromPicker(false)}
-        title={t('loc_from_title')}
-        showGeo
-        allowCountryOnly
-        onSelect={selectDirFrom}
+        onSelect={setRouteOrigin}
+        value={routeOrigin}
+        title={routeStrings(lang).route_from}
+        lang={lang}
+        testIDPrefix="feed-origin-picker"
       />
-      <LocationPickerModal
+      <RoutePointPickerV2
         visible={showDirToPicker}
         onClose={() => setShowDirToPicker(false)}
-        title={t('loc_to_title')}
-        allowCountryOnly
-        onSelect={selectDirTo}
+        onSelect={setRouteDestination}
+        value={routeDestination}
+        title={routeStrings(lang).route_to}
+        lang={lang}
+        testIDPrefix="feed-destination-picker"
       />
 
       <BottomSheet
@@ -715,14 +770,12 @@ export default function FeedScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: PAGE_BG },
   topBar: {
-    flexDirection: 'row',
     minHeight: 42,
     paddingHorizontal: 18,
     paddingTop: 2,
     paddingBottom: 2,
     alignItems: 'flex-end',
     justifyContent: 'center',
-    gap: 2,
     backgroundColor: PAGE_BG,
   },
   menuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
@@ -730,11 +783,15 @@ const styles = StyleSheet.create({
   routeSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 68,
+    // §11 Task 3: 68 → 52. Карточка маршрута была слишком высокой и съедала
+    // место у ленты. Уменьшен ТОЛЬКО вертикальный запас: обе половины
+    // остаются нажимаемыми (routeHalf minHeight 44), состав сохранён —
+    // Откуда · значение → Куда · значение.
+    minHeight: 52,
     marginHorizontal: 18,
     marginBottom: 6,
     paddingHorizontal: 13,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
@@ -746,20 +803,19 @@ const styles = StyleSheet.create({
     elevation: 1,
     gap: 10,
   },
-  routeHalf: { flex: 1, minWidth: 0 },
+  // ≥44dp: селектор стал ниже, но нажимаемая зона половины сохранена (§11).
+  routeHalf: { flex: 1, minWidth: 0, minHeight: 44, justifyContent: 'center' },
   routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
   routeLabel: { fontSize: 11.5, lineHeight: 15, fontWeight: '600' },
   routeValue: { fontSize: 15, lineHeight: 19, fontWeight: '700' },
   filtersScroll: { flexGrow: 0, minHeight: 50, maxHeight: 50 },
-  filters: { paddingLeft: 18, paddingRight: 28, paddingVertical: 4, gap: 7, alignItems: 'center' },
+  filters: { paddingHorizontal: 18, paddingVertical: 4, gap: 7, alignItems: 'center' },
   filterPill: {
     height: 40,
-    minWidth: 44,
     paddingHorizontal: 12,
     borderRadius: 20,
     borderWidth: 1,
     flexDirection: 'row',
-    flexShrink: 0,
     alignItems: 'center',
     gap: 7,
     shadowOpacity: 0.025,
@@ -767,15 +823,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  filterPillText: { fontSize: 13, fontWeight: '600', flexShrink: 0 },
+  filterPillText: { fontSize: 13, fontWeight: '600' },
   favoritesCount: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
   list: { flex: 1 },
   listContent: { paddingTop: 0, paddingBottom: 28 },
   loadingWrap: { paddingHorizontal: 24, paddingTop: 5 },
   card: {
-    minHeight: 104,
+    // §13 Task 3: компактнее на 16dp (104 → 88). Уменьшен ТОЛЬКО лишний
+    // вертикальный запас — состав карточки (маршрут, мета, цена, закладка)
+    // сохранён полностью.
+    minHeight: 88,
     marginHorizontal: 18,
-    marginBottom: 7,
+    marginBottom: 6,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
@@ -789,23 +848,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   greenRail: { width: 4, backgroundColor: '#3A9972' },
-  cardBody: { flex: 1, paddingLeft: 12, paddingRight: 150, paddingTop: 12, paddingBottom: 10 },
-  routeLine: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 },
-  routePoint: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0, flexShrink: 1 },
-  routeFlag: { fontSize: 16, lineHeight: 18, flexShrink: 0 },
-  routeArrow: { flexShrink: 0 },
-  route: { fontSize: 15.5, lineHeight: 20, fontWeight: '700', letterSpacing: -0.1, flexShrink: 1 },
-  meta: { fontSize: 12, lineHeight: 16, fontWeight: '500', marginTop: 7 },
-  priceWrap: { position: 'absolute', right: 58, bottom: 12, alignItems: 'flex-end', maxWidth: 130 },
+  // Раньше cardBody держал paddingRight: 145, потому что справа снизу стояли
+  // И цена, И закладка. Закладка уехала вверх (§14), поэтому общий отступ
+  // больше не нужен: каждая строка резервирует ровно свою зону, и текст
+  // маршрута получил ~100dp дополнительной ширины.
+  cardBody: { flex: 1, paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 8 },
+  // paddingRight: 48 — зона закладки в правом верхнем углу.
+  route: { fontSize: 15.5, lineHeight: 20, fontWeight: '700', letterSpacing: -0.1, paddingRight: 48 },
+  // paddingRight: 120 — зона цены в правом нижнем углу.
+  meta: { fontSize: 12, lineHeight: 16, fontWeight: '500', marginTop: 5, paddingRight: 120 },
+  // Цена больше не отступает на 58dp под закладку — та переехала наверх.
+  priceWrap: { position: 'absolute', right: 12, bottom: 8, alignItems: 'flex-end', maxWidth: 130 },
   price: { fontSize: 16.5, lineHeight: 20, fontWeight: '800' },
   perTrip: { fontSize: 11.5, lineHeight: 15, marginTop: 1 },
   bookmarkBtn: {
+    // §14: закладка ПОДНЯТА в правый верхний угол. Внизу она делила ряд с
+    // ценой и заставляла карточку держать лишнюю высоту; теперь она в одной
+    // визуальной строке с маршрутом и не занимает отдельного нижнего ряда.
+    // Размер 40×40 сохранён — touch target не ужимаем (§14).
     position: 'absolute',
-    right: 8,
-    bottom: 8,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    right: 9,
+    top: 6,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
