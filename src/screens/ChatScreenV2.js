@@ -14,6 +14,7 @@ export default function ChatScreenV2(props) {
   const params = route?.params || {};
   const colors = useV1Colors();
   const [resolvedDealId, setResolvedDealId] = React.useState(params.dealId || null);
+  const [resolvedRoomId, setResolvedRoomId] = React.useState(params.roomId || null);
   const [resolvedPartner, setResolvedPartner] = React.useState(params.partner || null);
   const [checked, setChecked] = React.useState(Boolean(params.dealId && params.partner));
   const [blockedPartnerEntry, setBlockedPartnerEntry] = React.useState(false);
@@ -27,6 +28,7 @@ export default function ChatScreenV2(props) {
     // and may keep using the legacy ChatScreen below.
     if (!roomId && !partnerId) {
       setResolvedDealId(params.dealId || null);
+      setResolvedRoomId(params.roomId || null);
       setResolvedPartner(params.partner || null);
       setBlockedPartnerEntry(false);
       setChecked(true);
@@ -50,6 +52,7 @@ export default function ChatScreenV2(props) {
           : rooms.find((item) => item.deal_id && String(item.partner_id) === String(partnerId));
 
         const nextDealId = params.dealId || room?.deal_id || null;
+        const nextRoomId = params.roomId || room?.id || null;
         let nextPartner = params.partner || null;
         if (room?.partner_id) {
           const profile = await getDealCounterpartyProfile(room.partner_id).catch(() => null);
@@ -70,6 +73,7 @@ export default function ChatScreenV2(props) {
         const partnerOnlyWithoutDeal = Boolean(partnerId && !roomId && !nextDealId);
         setBlockedPartnerEntry(partnerOnlyWithoutDeal);
         setResolvedDealId(nextDealId);
+        setResolvedRoomId(nextRoomId);
         setResolvedPartner(nextPartner);
       } finally {
         if (!cancelled) setChecked(true);
@@ -97,6 +101,7 @@ export default function ChatScreenV2(props) {
       params: {
         ...params,
         dealId: resolvedDealId,
+        roomId: params.roomId || resolvedRoomId || null,
         partner: resolvedPartner || params.partner || null,
       },
     };
@@ -108,6 +113,7 @@ export default function ChatScreenV2(props) {
     params: {
       ...params,
       dealId: resolvedDealId || null,
+      roomId: params.roomId || resolvedRoomId || null,
       partner: resolvedPartner || params.partner || null,
     },
   }} />;

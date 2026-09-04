@@ -12,6 +12,9 @@ test('driver profile partner-only chat entry resolves a deal-linked room before 
   assert.match(chatRouter, /Array\.isArray\(data\?\.rooms\) \? data\.rooms : \[\]/);
   assert.match(chatRouter, /item\.deal_id && String\(item\.partner_id\) === String\(partnerId\)/);
   assert.match(chatRouter, /const nextDealId = params\.dealId \|\| room\?\.deal_id \|\| null/);
+  assert.match(chatRouter, /const nextRoomId = params\.roomId \|\| room\?\.id \|\| null/);
+  assert.match(chatRouter, /setResolvedRoomId\(nextRoomId\)/);
+  assert.match(chatRouter, /roomId: params\.roomId \|\| resolvedRoomId \|\| null/);
   assert.match(chatRouter, /return <DealWorkspaceRoute/);
 });
 
