@@ -111,7 +111,7 @@ console.log('\n=== 3. Восстановленный контракт statusLabe
     'статус проходит через канонический userFacingDealStatus'
   );
   expect(
-    /import \{ getLanguage, formatStatus, formatTruckType \} from '\.\.\/utils\/i18n'/.test(v2Raw),
+    /import \{[^}]*formatStatus[^}]*\} from '\.\.\/utils\/i18n'/.test(v2Raw),
     'formatStatus импортирован из канонического i18n (не второй helper)'
   );
 }

@@ -47,7 +47,7 @@ test('documents render as message bubbles inside the same FlatList, not a separa
   // feed — not a second list mounted alongside it.
   const flatListBlocks = [...workspace.matchAll(/<FlatList/g)];
   assert.ok(flatListBlocks.length >= 1);
-  assert.match(workspace, /data=\{messages\}[\s\S]{0,40}renderItem=\{renderMessage\}/);
+  assert.match(workspace, /data=\{messagesWithDays\}[\s\S]{0,40}renderItem=\{renderMessage\}/);
 });
 
 test('a failed document upload shows a distinct reason and a working retry, not a generic error', () => {
@@ -117,8 +117,12 @@ test('voice recording shows a live indicator, timer, waveform, and send/cancel c
 });
 
 test('voice send renders an optimistic bubble immediately before upload and reuses its clientMsgId', () => {
-  const fn = workspace.match(/const toggleVoice = React\.useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[/);
-  assert.ok(fn, 'toggleVoice definition not found');
+  // §8 (04.09.2026): отправка голосового вынесена из toggleVoice в
+  // sendRecordedVoice, потому что её теперь вызывает и 60-секундная
+  // авто-финализация, и кнопка Send. Намерение теста то же — optimistic
+  // бабл обязан появляться ДО сетевой работы.
+  const fn = workspace.match(/const sendRecordedVoice = React\.useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[/);
+  assert.ok(fn, 'sendRecordedVoice definition not found');
   const body = fn[1];
   const optimisticIndex = body.indexOf("setMessages((items) => [...items, voiceItem])");
   const uploadIndex = body.indexOf('chatAPI.uploadChatVoice');
