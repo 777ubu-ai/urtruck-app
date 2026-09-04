@@ -185,3 +185,81 @@ def resolve_location_id(country_id: Optional[str], text: Optional[str]) -> Optio
         if hit:
             return hit
     return None
+
+
+@lru_cache(maxsize=1)
+def _global_alias_index() -> dict:
+    """folded_term → location_id, ТОЛЬКО для однозначных названий.
+
+    Термины, встречающиеся более чем в одной локации, из индекса
+    ИСКЛЮЧАЮТСЯ. Пример: «Хоргос» — это и город в Китае (cn-horgos), и город
+    в Казахстане (kz-khorgos-kz); угадать сторону границы по одному слову
+    нельзя, поэтому такой ввод остаётся неразрешённым, а не разрешается
+    наугад в чужую страну.
+    """
+    counts: dict[str, set] = {}
+    for loc in locations():
+        terms = list((loc.get("names") or {}).values())
+        terms += list(loc.get("aliases") or [])
+        if loc.get("partner_name"):
+            terms.append(loc["partner_name"])
+        for term in terms:
+            counts.setdefault(_fold(term), set()).add(loc["id"])
+    return {term: next(iter(ids)) for term, ids in counts.items() if len(ids) == 1}
+
+
+def resolve_location_global(text: Optional[str]) -> Optional[dict]:
+    """Свободный текст → локация без указания страны, если название однозначно.
+
+    Нужно потому, что формы создания груза/рейса допускают свободный ввод:
+    когда пользователь не выбрал точку из реестра, клиент присылает
+    from_country = null и только from_city. Без этого резолва такое
+    объявление получало location_id = NULL и не попадало в маршрутный
+    фильтр по конкретному городу.
+    """
+    if not text:
+        return None
+    raw = str(text)
+    # Легаси-формат picker'а: "<name>, <flag>".
+    for candidate in (raw, raw.split(",")[0]):
+        hit = _global_alias_index().get(_fold(candidate))
+        if hit:
+            return get_location(hit)
+    return None
+
+
+def canonical_route_point(country: Optional[str], point_name: Optional[str],
+                          city: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Canonical-resolve маршрутной точки ПЕРЕД записью в БД.
+
+    Возвращает (country_id, location_id, location_type).
+
+    Порядок:
+      1. страна пришла от клиента → ищем локацию внутри неё;
+      2. страны нет → ищем по однозначному названию во всём каталоге и
+         берём страну из найденной локации;
+      3. не опознали → отдаём нормализованную страну (или None) и
+         location_id = None. NULL здесь значит «локация неизвестна»:
+         объявление остаётся видимым в scope «вся страна», но не всплывает
+         в фильтре по конкретному городу.
+
+    Чего эта функция НЕ делает: не переписывает страну, присланную клиентом.
+    Если клиент указал DE, а текст однозначно указывает на KZ, страна
+    остаётся DE, а локация — NULL. Молча перенести груз в другую страну
+    хуже, чем оставить его без локации.
+    """
+    cid = (str(country).strip().upper() or None) if country else None
+    if cid and not get_country(cid):
+        cid = None
+
+    if cid:
+        lid = resolve_location_id(cid, point_name) or resolve_location_id(cid, city)
+        if lid:
+            loc = get_location(lid)
+            return cid, lid, loc["type"]
+        return cid, None, None
+
+    loc = resolve_location_global(point_name) or resolve_location_global(city)
+    if loc:
+        return loc["country_id"], loc["id"], loc["type"]
+    return None, None, None

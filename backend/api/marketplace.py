@@ -149,17 +149,41 @@ _COUNTRY_ALIASES = {
     "TKM": "TM", "UKR": "UA",
 }
 
-def _route_location_ids(country, point_name, city):
-    """country + (point_name | from_city) → location_id из каталога.
+# Канонический словарь каталога → легаси-словарь колонки *_point_type.
+# Колонка существует с 8-го этапа и хранит city/border/terminal; менять её
+# значения нельзя, иначе перестанет работать существующий фильтр
+# from_point_type. Канонический тип при этом не теряется: он однозначно
+# выводится из location_id через каталог.
+_LEGACY_POINT_TYPE = {
+    geo_catalog.CITY: "city",
+    geo_catalog.BORDER_CROSSING: "border",
+    geo_catalog.LOGISTICS_HUB: "terminal",
+}
 
-    Возвращает None, когда точку опознать не удалось: NULL здесь означает
-    «локация неизвестна», и такое объявление просто не попадёт в фильтр по
-    конкретному городу, но останется видимым в scope «вся страна» (§4).
-    Угадывать по подстроке нельзя — ложный location_id тихо увёл бы груз в
-    чужой город.
+
+def _canonical_route_columns(country, point_type, point_name, city):
+    """Canonical-resolve маршрутной точки ПЕРЕД записью в БД.
+
+    Возвращает (country, point_type, point_name, location_id) — готовые
+    значения колонок.
+
+    Зачем на бэкенде, а не в форме: формы создания груза/рейса допускают
+    свободный ввод. Когда пользователь не выбрал точку из реестра, клиент
+    присылает from_country = null и только from_city — и объявление
+    получало location_id = NULL, то есть не попадало в маршрутный фильтр по
+    городу. Второй пикер для этого не нужен: сервер сам приводит точку к
+    каталогу, если название однозначно.
+
+    Неизвестная каталогу точка сохраняется как раньше (легаси-значения,
+    location_id = NULL) — неправильный ID не присваивается.
     """
-    return (geo_catalog.resolve_location_id(country, point_name)
-            or geo_catalog.resolve_location_id(country, city))
+    c, ptype, pname = _norm_route_triple(country, point_type, point_name)
+    cid, lid, canonical_type = geo_catalog.canonical_route_point(c, pname, city)
+    if not lid:
+        return c, ptype, pname, None
+    # Страну берём из резолва только если клиент её не присылал:
+    # canonical_route_point не переписывает явно указанную страну.
+    return (cid or c), (_LEGACY_POINT_TYPE.get(canonical_type) or ptype), pname, lid
 
 
 def _norm_route_triple(country, point_type, point_name):
@@ -597,8 +621,10 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
     # columns. Country code normalised to upper-case; missing fields
     # stay NULL — `_route_for_row` reads both legacy and structured
     # fields when serialising the row back to clients.
-    fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
-    tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
+    fc, fpt, fpn, flid = _canonical_route_columns(
+        body.from_country, body.from_point_type, body.from_point_name, body.from_city)
+    tc, tpt, tpn, tlid = _canonical_route_columns(
+        body.to_country, body.to_point_type, body.to_point_name, body.to_city)
     with get_conn() as c:
         pay = body.payment_type if body.payment_type in ("cash", "cashless", "any") else None
         c.execute("""
@@ -613,8 +639,8 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
               body.weight_tons, body.volume_m3, body.price, currency, pay,
               body.pickup_date,
               json.dumps(body.photos or [], ensure_ascii=False),
-              fc, fpt, fpn, _route_location_ids(fc, fpn, body.from_city),
-              tc, tpt, tpn, _route_location_ids(tc, tpn, body.to_city)))
+              fc, fpt, fpn, flid,
+              tc, tpt, tpn, tlid))
 
     # Push подписчикам маршрута
     try:
@@ -1288,8 +1314,10 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
     if currency not in ("USD", "KZT", "RUB", "CNY"):
         currency = "USD"
     tid = new_id()
-    fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
-    tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
+    fc, fpt, fpn, flid = _canonical_route_columns(
+        body.from_country, body.from_point_type, body.from_point_name, body.from_city)
+    tc, tpt, tpn, tlid = _canonical_route_columns(
+        body.to_country, body.to_point_type, body.to_point_name, body.to_city)
     with get_conn() as c:
         c.execute("""
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
@@ -1302,8 +1330,8 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
               body.from_city, body.to_city, body.transit, body.truck_type,
               body.capacity_tons, body.available_m3, body.price, currency,
               body.departure, body.arrival,
-              fc, fpt, fpn, _route_location_ids(fc, fpn, body.from_city),
-              tc, tpt, tpn, _route_location_ids(tc, tpn, body.to_city)))
+              fc, fpt, fpn, flid,
+              tc, tpt, tpn, tlid))
     return {"id": tid, "ok": True}
 
 

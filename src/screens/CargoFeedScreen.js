@@ -29,6 +29,9 @@ import DatePicker from '../components/DatePicker';
 import RoutePointPickerV2 from '../components/RoutePointPickerV2';
 import { routePointLabel } from '../utils/geoCatalog';
 import { SCOPE_LABELS, routeStrings } from '../utils/routeFilterStrings';
+import {
+  FEED_KEYS, canRestoreFeed, readFeedSnapshot, writeFeedSnapshot,
+} from '../utils/feedSessionState';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 
@@ -263,23 +266,25 @@ export default function CargoFeedScreen({ navigation }) {
   const role = 'driver';
   const copy = COPY[lang] || COPY.RU;
 
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // §20: начальное состояние — из session-снимка ленты грузов.
+  const snapshot = React.useRef(readFeedSnapshot(FEED_KEYS.LOADS)).current;
+  const [items, setItems] = useState(snapshot.items || []);
+  const [loading, setLoading] = useState(!snapshot.items);
   const [error, setError] = useState(false);
-  const [pageLimit, setPageLimit] = useState(50);
+  const [pageLimit, setPageLimit] = useState(snapshot.pageLimit || 50);
   // Main Route Filter V2 (§2/§3): та же модель, что у ленты машин —
   // { countryId, locationId | null }. Обе роли живут по одной логике.
-  const [routeOrigin, setRouteOrigin] = useState(null);
-  const [routeDestination, setRouteDestination] = useState(null);
+  const [routeOrigin, setRouteOrigin] = useState(snapshot.origin || null);
+  const [routeDestination, setRouteDestination] = useState(snapshot.destination || null);
   const [showDirFromPicker, setShowDirFromPicker] = useState(false);
   const [showDirToPicker, setShowDirToPicker] = useState(false);
   const [activeFilter, setActiveFilter] = useState(null);
-  const [filterType, setFilterType] = useState(null);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [sortBy, setSortBy] = useState('newest');
+  const [filterType, setFilterType] = useState(snapshot.filters?.filterType ?? null);
+  const [dateFrom, setDateFrom] = useState(snapshot.filters?.dateFrom ?? '');
+  const [dateTo, setDateTo] = useState(snapshot.filters?.dateTo ?? '');
+  const [sortBy, setSortBy] = useState(snapshot.filters?.sortBy ?? 'newest');
   const [savedIds, setSavedIds] = useState(() => new Set());
-  const [savedOnly, setSavedOnly] = useState(false);
+  const [savedOnly, setSavedOnly] = useState(snapshot.filters?.savedOnly ?? false);
   const savedBusyRef = React.useRef(new Set());
 
   const loadSaved = useCallback(async () => {
@@ -325,12 +330,58 @@ export default function CargoFeedScreen({ navigation }) {
     }
   }, [routeOrigin, routeDestination, filterType, pageLimit, myUserId]);
 
+  // ── §20 return state (симметрично ленте машин) ──────────────────────
+  const listRef = React.useRef(null);
+  const scrollOffsetRef = React.useRef(snapshot.scrollOffset || 0);
+  const restoredRef = React.useRef(false);
+
+  const currentFilters = useMemo(() => ({
+    filterType, dateFrom, dateTo, sortBy, savedOnly,
+  }), [filterType, dateFrom, dateTo, sortBy, savedOnly]);
+
+  const scopeForSnapshot = useMemo(() => ({
+    origin: routeOrigin, destination: routeDestination, filters: currentFilters,
+  }), [routeOrigin, routeDestination, currentFilters]);
+
+  useEffect(() => {
+    writeFeedSnapshot(FEED_KEYS.LOADS, scopeForSnapshot);
+  }, [scopeForSnapshot]);
+
+  useEffect(() => {
+    if (loading) return;
+    writeFeedSnapshot(FEED_KEYS.LOADS, { items, pageLimit });
+  }, [items, pageLimit, loading]);
+
+  const onFeedScroll = useCallback((event) => {
+    const y = event?.nativeEvent?.contentOffset?.y;
+    if (!Number.isFinite(y)) return;
+    scrollOffsetRef.current = y;
+    writeFeedSnapshot(FEED_KEYS.LOADS, { scrollOffset: y });
+  }, []);
+
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
+
   useFocusEffect(useCallback(() => {
-    load();
+    // Возврат с карточки не перезапрашивает ленту — иначе загруженные
+    // страницы выбрасываются и позиция скролла обнуляется.
+    if (!canRestoreFeed(FEED_KEYS.LOADS, scopeForSnapshot)) {
+      load();
+    }
     loadSaved();
-  }, [load, loadSaved]));
+  }, [load, loadSaved, scopeForSnapshot]));
+
+  useFocusEffect(useCallback(() => {
+    const target = scrollOffsetRef.current;
+    if (!target || restoredRef.current || !items.length) return;
+    restoredRef.current = true;
+    const raf = requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset?.({ offset: target, animated: false });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [items.length]));
+
+  useFocusEffect(useCallback(() => () => { restoredRef.current = false; }, []));
 
   const visibleItems = useMemo(() => {
     const dateStart = toIso(dateFrom);
@@ -516,6 +567,9 @@ export default function CargoFeedScreen({ navigation }) {
       </View>
 
       <FlatList
+        ref={listRef}
+        onScroll={onFeedScroll}
+        scrollEventThrottle={16}
         style={[styles.list, { backgroundColor: palette.pageBg }]}
         data={loading ? [] : visibleItems}
         keyExtractor={(item) => String(item.id)}

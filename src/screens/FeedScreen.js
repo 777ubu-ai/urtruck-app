@@ -26,6 +26,9 @@ import DatePicker from '../components/DatePicker';
 import RoutePointPickerV2 from '../components/RoutePointPickerV2';
 import { routePointLabel, routeFilterParams } from '../utils/geoCatalog';
 import { SCOPE_LABELS, routeStrings } from '../utils/routeFilterStrings';
+import {
+  FEED_KEYS, canRestoreFeed, readFeedSnapshot, writeFeedSnapshot,
+} from '../utils/feedSessionState';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 
 const ACCENT = '#34936B';
@@ -152,28 +155,32 @@ export default function FeedScreen({ navigation }) {
   const role = 'client';
   const copy = COPY[lang] || COPY.RU;
 
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // §20: начальное состояние берём из session-снимка. Ленивый инициализатор,
+  // а не useEffect: иначе первый рендер после Back успевал показать пустую
+  // ленту и сбросить позицию скролла до восстановления.
+  const snapshot = React.useRef(readFeedSnapshot(FEED_KEYS.TRUCKS)).current;
+  const [items, setItems] = useState(snapshot.items || []);
+  const [loading, setLoading] = useState(!snapshot.items);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
-  const [pageLimit, setPageLimit] = useState(50);
+  const [pageLimit, setPageLimit] = useState(snapshot.pageLimit || 50);
   // Main Route Filter V2 (§3/§4): канонический маршрутный scope
   // { countryId, locationId | null }. locationId === null означает
   // «вся страна» — это scope, а не город с таким названием.
   // Свободный текст dirFrom/dirTo больше не источник истины: он гонял
   // `from_city LIKE '%…%'` и на 10 000 объявлений давал и full scan,
   // и ложные совпадения.
-  const [routeOrigin, setRouteOrigin] = useState(null);
-  const [routeDestination, setRouteDestination] = useState(null);
+  const [routeOrigin, setRouteOrigin] = useState(snapshot.origin || null);
+  const [routeDestination, setRouteDestination] = useState(snapshot.destination || null);
   const [showDirFromPicker, setShowDirFromPicker] = useState(false);
   const [showDirToPicker, setShowDirToPicker] = useState(false);
   const [activeFilter, setActiveFilter] = useState(null);
-  const [filterType, setFilterType] = useState(null);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [sortBy, setSortBy] = useState('newest');
+  const [filterType, setFilterType] = useState(snapshot.filters?.filterType ?? null);
+  const [dateFrom, setDateFrom] = useState(snapshot.filters?.dateFrom ?? '');
+  const [dateTo, setDateTo] = useState(snapshot.filters?.dateTo ?? '');
+  const [sortBy, setSortBy] = useState(snapshot.filters?.sortBy ?? 'newest');
   const [savedIds, setSavedIds] = useState(() => new Set());
-  const [savedOnly, setSavedOnly] = useState(false);
+  const [savedOnly, setSavedOnly] = useState(snapshot.filters?.savedOnly ?? false);
   const savedBusyRef = React.useRef(new Set());
 
   // §8/§9: подпись берётся из каталога — «Весь Китай», «Алматы»,
@@ -249,12 +256,68 @@ export default function FeedScreen({ navigation }) {
     }
   }, [routeOrigin, routeDestination, filterType, pageLimit, myUserId]);
 
+  // ── §20 return state ────────────────────────────────────────────────
+  const listRef = React.useRef(null);
+  const scrollOffsetRef = React.useRef(snapshot.scrollOffset || 0);
+  const restoredRef = React.useRef(false);
+
+  const currentFilters = useMemo(() => ({
+    filterType, dateFrom, dateTo, sortBy, savedOnly,
+  }), [filterType, dateFrom, dateTo, sortBy, savedOnly]);
+
+  const scopeForSnapshot = useMemo(() => ({
+    origin: routeOrigin, destination: routeDestination, filters: currentFilters,
+  }), [routeOrigin, routeDestination, currentFilters]);
+
+  // Фильтры пишем в снимок сразу — даже если результаты ещё летят, Back
+  // должен вернуть тот же фильтр, а не пустой.
+  useEffect(() => {
+    writeFeedSnapshot(FEED_KEYS.TRUCKS, scopeForSnapshot);
+  }, [scopeForSnapshot]);
+
+  // Загруженные страницы кладём в снимок, чтобы Back не перезапрашивал их.
+  useEffect(() => {
+    if (loading) return;
+    writeFeedSnapshot(FEED_KEYS.TRUCKS, { items, pageLimit });
+  }, [items, pageLimit, loading]);
+
+  const onFeedScroll = useCallback((event) => {
+    const y = event?.nativeEvent?.contentOffset?.y;
+    if (!Number.isFinite(y)) return;
+    scrollOffsetRef.current = y;
+    writeFeedSnapshot(FEED_KEYS.TRUCKS, { scrollOffset: y });
+  }, []);
+
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
+
   useFocusEffect(useCallback(() => {
-    load();
+    // Возврат с карточки НЕ должен перезапрашивать ленту: раньше focus
+    // безусловно вызывал load(), из-за чего уже загруженные страницы
+    // выбрасывались и позиция скролла обнулялась. Перезапрашиваем только
+    // когда восстанавливать нечего или фильтр изменился.
+    if (!canRestoreFeed(FEED_KEYS.TRUCKS, scopeForSnapshot)) {
+      load();
+    }
+    // Избранное дешёвое и может измениться из карточки — обновляем всегда.
     loadSaved();
-  }, [load, loadSaved]));
+  }, [load, loadSaved, scopeForSnapshot]));
+
+  // Позицию возвращаем после того, как список получил данные.
+  useFocusEffect(useCallback(() => {
+    const target = scrollOffsetRef.current;
+    if (!target || restoredRef.current || !items.length) return;
+    restoredRef.current = true;
+    // requestAnimationFrame, а не setTimeout: ждём ближайший кадр после
+    // коммита, иначе scrollToOffset уходит в ещё не смонтированный список.
+    const raf = requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset?.({ offset: target, animated: false });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [items.length]));
+
+  // Уход с экрана — снимок закрыт для восстановления в следующий раз.
+  useFocusEffect(useCallback(() => () => { restoredRef.current = false; }, []));
 
   const visibleItems = useMemo(() => {
     const dateStart = toIso(dateFrom);
@@ -486,6 +549,11 @@ export default function FeedScreen({ navigation }) {
       </View>
 
       <FlatList
+        ref={listRef}
+        onScroll={onFeedScroll}
+        // 16ms ≈ раз в кадр: реже теряется точность возврата, чаще — лишние
+        // события на каждый пиксель прокрутки.
+        scrollEventThrottle={16}
         style={[styles.list, { backgroundColor: colors.pageBg }]}
         data={loading ? [] : visibleItems}
         keyExtractor={(item) => String(item.id)}

@@ -28,7 +28,10 @@ test('route selector and all filter chips scroll away with cargo list like a mes
 });
 
 test('favorites quick filter uses the same saved cargo ids as card bookmarks', () => {
-  assert.match(src, /const \[savedOnly, setSavedOnly\] = useState\(false\)/);
+  // Task 3 §20: «Избранное» — вторичный фильтр, он обязан выживать Back,
+  // поэтому начальное значение приходит из session-снимка. Дефолт по
+  // отсутствующему снимку остался false — это и проверяем.
+  assert.match(src, /const \[savedOnly, setSavedOnly\] = useState\(snapshot\.filters\?\.savedOnly \?\? false\)/);
   assert.match(src, /savedOnly && !savedIds\.has\(String\(item\.id\)\)/);
   assert.match(src, /setSavedOnly\(\(value\) => !value\)/);
   assert.match(src, /saved=\{savedIds\.has\(String\(item\.id\)\)\}/);
@@ -37,7 +40,7 @@ test('favorites quick filter uses the same saved cargo ids as card bookmarks', (
 
 test('cargo cards stay compact so collapsing the controls actually increases visible work', () => {
   // Task 3 §13 уменьшил карточку груза 120 → 100. Интент этого контракта
-  // («карточка остаётся компактной, поэтому сворачиваниеконтролов реально
+  // («карточка остаётся компактной, поэтому сворачивание контролов реально
   // добавляет видимой работы») не нарушен — 100 компактнее 120; устарело
   // именно зафиксированное число.
   assert.match(src, /minHeight: 100/);
