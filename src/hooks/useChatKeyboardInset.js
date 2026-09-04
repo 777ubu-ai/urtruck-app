@@ -22,8 +22,9 @@
 //   isKeyboardVisible — открыта ли клавиатура.
 //   bottomInset — сколько отступа снизу должен взять composer:
 //       * клавиатура закрыта → безопасный инсет системного навбара;
-//       * клавиатура открыта  → высота клавиатуры (Android) либо 0 (iOS,
-//         где подъём делает KeyboardAvoidingView behavior="padding").
+//       * клавиатура открыта  → 0. Подъём делает KeyboardAvoidingView
+//         (Android: behavior="height", iOS: behavior="padding"), поэтому
+//         сам composer остаётся компактной accessory-строкой прямо над IME.
 //     Это убирает и «composer под клавиатурой», и double-inset/пустую полосу.
 //
 // Почему не библиотека: react-native-keyboard-controller в проекте нет, а
@@ -71,13 +72,13 @@ export default function useChatKeyboardInset() {
 
   const isKeyboardVisible = keyboardHeight > 0;
 
-  // Закрытая клавиатура — обычный безопасный инсет.
-  // Открытая: на Android клавиатура перекрывает навбар, поэтому её высота
-  // ЗАМЕНЯЕТ инсет (складывать нельзя — это и был double inset). На iOS
-  // подъём уже делает KeyboardAvoidingView, поэтому свой отступ не нужен.
+  // Закрытая клавиатура — обычный безопасный инсет. Открытая клавиатура не
+  // должна превращаться в margin/padding внутри composer: экран уже ресайзит
+  // KeyboardAvoidingView, а нижняя строка должна сидеть у верхнего края IME,
+  // как нативный chat accessory bar.
   const bottomInset = !isKeyboardVisible
     ? Math.max(insets.bottom + 8, MIN_BOTTOM_GAP)
-    : (Platform.OS === 'android' ? keyboardHeight : 0);
+    : 0;
 
   return { keyboardHeight, isKeyboardVisible, bottomInset, safeBottom: insets.bottom };
 }

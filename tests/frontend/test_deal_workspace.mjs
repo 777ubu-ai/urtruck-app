@@ -154,13 +154,13 @@ test('chat has no permanent second tab — status/history lives behind one icon-
 test('composer uses the approved WeChat-like bottom bar and attachment menu', () => {
   assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
-  assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 32/);
-  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 74/);
+  assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 42/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 96/);
   assert.match(workspace, /Math\.min\(COMPOSER_INPUT_MAX_HEIGHT/);
   assert.match(workspace, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
-  assert.match(workspace, /testID="deal-chat-emoji"/);
+  assert.doesNotMatch(workspace, /testID="deal-chat-emoji"/);
   assert.match(workspace, /testID="deal-chat-attach"/);
   assert.match(workspace, /inputShell/);
   assert.match(workspace, /composerCircle/);
@@ -180,18 +180,25 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /const sendContactCard = React\.useCallback/);
   assert.match(workspace, /attachIcon: \{ width: 64, height: 64/);
   assert.match(workspace, /backgroundColor: DEAL_CHAT_BG/, 'attach/emoji menus share the unified chat background constant');
-  assert.match(workspace, /composer: \{\s*minHeight: 58,\s*flexDirection: 'row',\s*alignItems: 'flex-end'/);
-  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 34, maxHeight: 74/);
+  assert.match(workspace, /composer: \{\s*minHeight: 86,/);
+  assert.match(workspace, /backgroundColor: '#FFFFFF'/, 'composer must be a full-width white WhatsApp-style input panel');
+  assert.match(workspace, /composerKeyboard/, 'focused keyboard composer must use the compact accessory-bar variant');
+  assert.match(workspace, /composerActions/, 'plus, mic and send actions live in the lower row of the composer');
+  assert.match(workspace, /composerTrailingActions/, 'mic and send are grouped on the right edge');
+  assert.match(workspace, /inputShell: \{ minHeight: 44, maxHeight: 104/);
   assert.match(workspace, /placeholder=""/);
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
 });
 
-test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
+test('composer stays visible while scrolling and keeps the full-width message panel', () => {
   assert.match(workspace, /const \[composerFocused, setComposerFocused\] = React\.useState\(false\)/);
   assert.doesNotMatch(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
   assert.doesNotMatch(workspace, /testID="deal-chat-composer-collapsed"/);
   assert.doesNotMatch(workspace, /composerCollapsedHandle/);
-  assert.match(workspace, /\{!composerFocused \? \(/);
+  assert.match(workspace, /testID="deal-chat-attach"/);
+  assert.match(workspace, /testID="deal-chat-voice"/);
+  assert.match(workspace, /testID="deal-chat-send"/);
+  assert.match(workspace, /name="arrow-up"/);
   assert.match(workspace, /testID="deal-chat-attach-collapse"/);
   assert.match(workspace, /attachHandle/);
   assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
@@ -200,15 +207,11 @@ test('composer stays visible while scrolling and avoids duplicate emoji while ty
   assert.doesNotMatch(workspace, /keyboardWillShow|keyboardDidShow/);
 });
 
-test('emoji button opens a real bottom emoji picker instead of a coming-soon toast', () => {
-  assert.match(workspace, /const EMOJI_MENU = \[/);
-  assert.match(workspace, /const \[emojiOpen, setEmojiOpen\] = React\.useState\(false\)/);
-  assert.match(workspace, /const toggleEmojiMenu = React\.useCallback/);
-  assert.match(workspace, /const insertEmoji = React\.useCallback/);
-  assert.match(workspace, /testID="deal-chat-emoji-menu"/);
-  assert.match(workspace, /testID=\{`deal-chat-emoji-option-\$\{index\}`\}/);
-  assert.match(workspace, /setInput\(\(value\) => `\$\{value\}\$\{emoji\}`\)/);
-  assert.match(workspace, /onPress=\{toggleEmojiMenu\}/);
+test('composer has no extra emoji/sticker button in the main input panel', () => {
+  assert.doesNotMatch(workspace, /testID="deal-chat-emoji"/);
+  assert.doesNotMatch(workspace, /style=\{s\.inputEmojiButton\}/);
+  assert.match(workspace, /testID="deal-chat-attach"/);
+  assert.match(workspace, /PLUS_MENU\.map/);
   assert.doesNotMatch(workspace, /showEmojiComingSoon/);
   assert.doesNotMatch(workspace, /toast\(ui\.comingSoon/);
 });

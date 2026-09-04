@@ -58,9 +58,9 @@ import { withDateSeparators } from '../utils/chatDateSeparators';
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
 const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected', 'expired'];
-const COMPOSER_INPUT_MIN_HEIGHT = 32;
-const COMPOSER_INPUT_MAX_HEIGHT = 74;
-const COMPOSER_INPUT_VERTICAL_PADDING = 8;
+const COMPOSER_INPUT_MIN_HEIGHT = 42;
+const COMPOSER_INPUT_MAX_HEIGHT = 96;
+const COMPOSER_INPUT_VERTICAL_PADDING = 10;
 const DEAL_CHAT_BG = '#EFEAE2';
 
 // §6: нижняя полоса карты принадлежит провайдеру — Яндекс рисует там
@@ -1479,7 +1479,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']} testID="deal-workspace-screen">
-      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
         {viewMode === VIEW_CHAT ? (
           <View style={s.chatFullscreen} testID="deal-chat-fullscreen">
             {dealLoading && !dealId ? (
@@ -1544,89 +1544,83 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   </View>
                 ) : null}
 
-                {/* §6 (Android 15/16): отступ снизу берётся из канонического
-                    useChatKeyboardInset — при открытой клавиатуре это её
-                    высота (composer встаёт прямо над ней), при закрытой —
-                    безопасный инсет навбара. Раньше здесь стоял статический
-                    Math.max(insets.bottom + 8, 12), из-за чего на targetSdk 36
-                    (edge-to-edge, adjustResize больше не ресайзит окно)
-                    composer оставался ПОД клавиатурой, а рядом появлялся
-                    двойной отступ. Когда открыто attach/emoji-меню, оно само
-                    держит нижний инсет — composer тогда берёт минимум. */}
+                {/* §6 (Android 15/16): KeyboardAvoidingView ресайзит экран, а
+                    composer остаётся компактной chat accessory-панелью прямо
+                    над IME. Нижний inset нужен только при закрытой клавиатуре
+                    или для attach/emoji-панелей, чтобы не получить двойной
+                    подъём между строкой и клавиатурой. */}
                 <View
                   style={[
                     s.composer,
-                    composerFocused && s.composerFocused,
+                    isKeyboardVisible && s.composerKeyboard,
                     {
-                      paddingBottom: 10,
+                      paddingBottom: isKeyboardVisible ? 4 : 10,
                       marginBottom: attachOpen || emojiOpen ? 8 : composerBottomInset,
                     },
                   ]}
                   testID="deal-chat-composer"
                 >
                   {!recording ? (
+                    <>
+                      <View style={s.inputShell}>
+                        <TextInput
+                          ref={inputRef}
+                          value={input}
+                          onChangeText={(value) => {
+                            setInput(value);
+                            if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+                            if (roomId) chatAPI.typing(roomId);
+                          }}
+                          onFocus={onComposerFocus}
+                          onBlur={onComposerBlur}
+                          onContentSizeChange={(event) => {
+                            const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
+                            setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
+                          }}
+                          multiline
+                          scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
+                          style={[s.input, { height: inputHeight, color: colors.text }]}
+                          placeholder=""
+                          placeholderTextColor="transparent"
+                          testID="deal-chat-input"
+                        />
+                      </View>
+                      <View style={s.composerActions}>
+                        <TouchableOpacity
+                          style={s.composerSmallIcon}
+                          onPress={toggleAttachMenu}
+                          testID="deal-chat-attach"
+                        >
+                          <Feather name="plus" size={30} color="#0B1F18" />
+                        </TouchableOpacity>
+                        <View style={s.composerTrailingActions}>
+                          <TouchableOpacity
+                            style={s.composerSmallIcon}
+                            onPress={toggleVoice}
+                            testID="deal-chat-voice"
+                          >
+                            <Feather name="mic" size={28} color="#0B1F18" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[s.sendButton, !input.trim() && s.sendButtonDisabled]}
+                            onPress={sendText}
+                            disabled={!input.trim()}
+                            testID="deal-chat-send"
+                          >
+                            <FontAwesome5 name="arrow-up" size={18} color="#FFFFFF" solid />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </>
+                  ) : (
                     <TouchableOpacity
-                      style={s.composerCircle}
-                      onPress={sendCameraPhoto}
-                      testID="deal-chat-camera"
+                      style={s.composerSmallIcon}
+                      onPress={toggleVoice}
+                      testID="deal-chat-voice"
                     >
-                      <Feather name="camera" size={22} color="#202020" />
+                      <Feather name="mic" size={28} color="#0B1F18" />
                     </TouchableOpacity>
-                  ) : null}
-                  <View style={s.inputShell}>
-                    <TextInput
-                      ref={inputRef}
-                      value={input}
-                      onChangeText={(value) => {
-                        setInput(value);
-                        if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
-                        if (roomId) chatAPI.typing(roomId);
-                      }}
-                      onFocus={onComposerFocus}
-                      onBlur={onComposerBlur}
-                      onContentSizeChange={(event) => {
-                        const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
-                        setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
-                      }}
-                      multiline
-                      scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
-                      style={[s.input, { height: inputHeight, color: colors.text }]}
-                      placeholder=""
-                      placeholderTextColor="transparent"
-                      testID="deal-chat-input"
-                    />
-                  </View>
-                  {!composerFocused ? (
-                    <TouchableOpacity
-                      style={s.composerCircle}
-                      onPress={toggleEmojiMenu}
-                      testID="deal-chat-emoji"
-                    >
-                      <Feather name="smile" size={26} color="#202020" />
-                    </TouchableOpacity>
-                  ) : null}
-                  {!recording ? (
-                    input.trim() ? (
-                      <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        style={s.composerCircle}
-                        onPress={toggleVoice}
-                        testID="deal-chat-voice"
-                      >
-                        <Feather name="volume-2" size={22} color="#202020" />
-                      </TouchableOpacity>
-                    )
-                  ) : null}
-                  {!recording ? (
-                    <TouchableOpacity
-                      style={s.composerCircle}
-                      onPress={toggleAttachMenu}
-                      testID="deal-chat-attach"
-                    >
-                      <Feather name="plus" size={27} color="#202020" />
-                    </TouchableOpacity>
-                  ) : null}
+                  )}
                 </View>
 
                 {emojiOpen ? (
@@ -1960,29 +1954,30 @@ const s = StyleSheet.create({
   emojiText: { fontSize: 26, lineHeight: 32 },
 
   composer: {
-    minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    marginHorizontal: 14,
-    paddingHorizontal: 12,
+    minHeight: 86,
+    marginHorizontal: 16,
+    paddingHorizontal: 14,
     paddingTop: 10,
+    borderRadius: 28,
     backgroundColor: '#FFFFFF',
-    borderRadius: 30,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#DDE6E1',
+    borderColor: '#E4E7E5',
     shadowColor: '#000',
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 8,
   },
-  composerFocused: { backgroundColor: '#FFFFFF' },
-  composerCircle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  composerKeyboard: { marginHorizontal: 16 },
+  composerActions: { height: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  composerTrailingActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  composerSmallIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  composerCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
-  inputShell: { flex: 1, minHeight: 34, maxHeight: 74, borderRadius: 18, backgroundColor: '#F7F9F7', borderWidth: StyleSheet.hairlineWidth, borderColor: '#DDE6E1', justifyContent: 'center', position: 'relative' },
-  input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
-  sendButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
+  inputShell: { minHeight: 44, maxHeight: 104, justifyContent: 'center' },
+  input: { minHeight: 42, maxHeight: 96, paddingLeft: 0, paddingRight: 0, paddingTop: 2, paddingBottom: 2, fontSize: 20, lineHeight: 26, textAlignVertical: 'top' },
+  sendButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#050505' },
+  sendButtonDisabled: { opacity: 0.32 },
   recordingButton: { backgroundColor: '#168759' },
 
   mapFullscreen: { flex: 1 },

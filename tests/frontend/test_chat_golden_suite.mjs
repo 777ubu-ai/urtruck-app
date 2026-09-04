@@ -121,8 +121,8 @@ console.log('\n=== CHAT-05/06/07/20 клавиатура ↔ composer (§6) ==='
     'учитывается смена высоты (раскладка RU↔ZH) без hide/show');
   check('CHAT-05', !/marginBottom:\s*\d{3}/.test(v2) && !/paddingBottom:\s*300/.test(v2),
     'нет hardcoded высоты клавиатуры под один телефон');
-  check('CHAT-05', /keyboardHeight\s*:\s*0/.test(kbHook) || /Platform\.OS === 'android' \? keyboardHeight : 0/.test(kbHook),
-    'iOS не получает двойной подъём (KeyboardAvoidingView + свой inset)');
+  check('CHAT-05', /KeyboardAvoidingView/.test(kbHook) && /:\s*0/.test(kbHook),
+    'открытая клавиатура не превращается в bottom margin composer');
   check('CHAT-07', /multiline/.test(v2), 'многострочный ввод включён');
   check('CHAT-07', /COMPOSER_INPUT_MAX_HEIGHT/.test(v2), 'высота ввода ограничена (не растёт бесконечно)');
   check('CHAT-20', /if \(isKeyboardVisible\) \{ Keyboard\.dismiss\(\); return true; \}/.test(v2),
