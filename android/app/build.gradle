@@ -93,7 +93,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI (deploy-play.yml) передаёт свой versionCode через -PURTRUCK_VERSION_CODE,
         // чтобы каждая автозаливка в Google Play имела уникальный монотонный код.
-        versionCode (project.hasProperty('URTRUCK_VERSION_CODE') ? URTRUCK_VERSION_CODE.toInteger() : 210488245)
+        versionCode (project.hasProperty('URTRUCK_VERSION_CODE') ? URTRUCK_VERSION_CODE.toInteger() : 210488246)
         versionName "1.0.7"
     }
     signingConfigs {
@@ -205,6 +205,62 @@ dependencies {
 // Firebase-less local development.
 if (file("google-services.json").exists()) {
     apply plugin: "com.google.gms.google-services"
+
+    // P1-PUSH (final gate 04.09.2026): наличия файла НЕДОСТАТОЧНО.
+    //
+    // Прошлый гард падал только когда google-services.json отсутствует. Но
+    // QA2 собирается с -PURTRUCK_APPLICATION_ID=com.urtruck.app.qa2, а конфиг
+    // мог быть от production-пакета com.urtruck.app (или вообще от чужого
+    // Firebase-проекта). Тогда для фактического applicationId не генерируются
+    // google_app_id/gcm_defaultSenderId, FirebaseApp не получает runtime-
+    // конфигурацию для этого пакета, FCM-токен не выдаётся — и APK
+    // выпускается ПУШ-МЁРТВЫМ, молча. Ровно этот класс дал «shade = 0 active
+    // records for com.urtruck.app.qa2» при живом backend.
+    //
+    // Теперь перед КАЖДОЙ release-сборкой запускается тот же верификатор,
+    // что и в CI, с фактическим applicationId: он проверяет идентичность
+    // Firebase-проекта И наличие клиента именно под этот пакет.
+    // Debug-сборка не затронута.
+    gradle.taskGraph.whenReady { graph ->
+        def isRelease = graph.allTasks.any { t ->
+            t.project == project && t.name ==~ /^(assemble|bundle).*Release$/
+        }
+        if (!isRelease) return
+
+        def appId = project.hasProperty('URTRUCK_APPLICATION_ID')
+            ? URTRUCK_APPLICATION_ID
+            : 'com.urtruck.app'
+        def verifier = file("${rootDir}/../scripts/verify_android_firebase_config.py")
+        if (!verifier.exists()) {
+            throw new GradleException(
+                "scripts/verify_android_firebase_config.py не найден — release-сборку\n" +
+                "нельзя проверить на push-пригодность. Восстановите скрипт."
+            )
+        }
+        def stdout = new ByteArrayOutputStream()
+        def stderr = new ByteArrayOutputStream()
+        def run = exec {
+            commandLine 'python3', verifier.absolutePath,
+                        '--check-source', file("google-services.json").absolutePath
+            environment 'URTRUCK_APPLICATION_ID', appId
+            standardOutput = stdout
+            errorOutput = stderr
+            ignoreExitValue = true
+        }
+        if (run.exitValue != 0) {
+            throw new GradleException(
+                "Firebase-конфиг НЕ подходит для applicationId '${appId}' — release-сборка\n" +
+                "остановлена, иначе получился бы APK, который физически не может\n" +
+                "принимать Android push (shade = 0).\n\n" +
+                stdout.toString().trim() + "\n" + stderr.toString().trim() + "\n\n" +
+                "Для QA2 нужен google-services.json, в котором есть Android-клиент\n" +
+                "именно '${appId}' в проекте UrTruck (urtruck-e722b).\n" +
+                "Положите правильный файл в android/app/ (он в .gitignore).\n" +
+                "Подробности: docs/release/android-firebase-config.md"
+            )
+        }
+        logger.lifecycle("[firebase] release-конфиг проверен для applicationId '${appId}'")
+    }
 } else {
     // P0 fix (03.09.2026): раньше отсутствие google-services.json просто
     // пропускало плагин — И ДЛЯ RELEASE ТОЖЕ. Физически доказанный итог:

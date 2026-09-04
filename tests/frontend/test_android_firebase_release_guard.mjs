@@ -105,8 +105,12 @@ console.log('\n=== 3. Падает именно на RELEASE, а не на debug
 
 console.log('\n=== 4. Сообщение об ошибке ведёт к решению ===');
 {
-  const guardIdx = appGradle.indexOf('throw new GradleException');
-  const msg = guardIdx === -1 ? '' : appGradle.slice(guardIdx, guardIdx + 1200);
+  // P1-PUSH (04.09.2026): теперь в файле ДВА fail-closed гарда — «файла нет»
+  // и «файл не подходит для этого applicationId». Контракт сообщений
+  // проверяем по совокупности обоих, а не по первому найденному блоку.
+  const msg = appGradle.includes('throw new GradleException')
+    ? appGradle.slice(appGradle.indexOf('gradle.taskGraph.whenReady'))
+    : '';
   expect(
     msg.includes('verify_android_firebase_config.py'),
     'сообщение указывает на скрипт проверки конфига'
