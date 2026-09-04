@@ -52,6 +52,30 @@ export const voice = {
         console.warn('[voice] microphone permission not granted');
         return false;
       }
+
+      // P1-VOICE-001 (nightly 04.09.2026, repro 2/2, ранее targeted PASS).
+      // voiceRecorder — модульный singleton, общий на 5 точек (ChatScreen,
+      // DealWorkspaceScreen, DealWorkspaceScreenV2, оба VoiceMessageBubble).
+      // Запись и воспроизведение делят ОДИН Android AudioManager. Раньше
+      // startRecording захватывал микрофон, НЕ заглушив активный плеер:
+      // после «проиграть голосовое → записать новое» (ровно ночной сценарий,
+      // которого не было на чистом retest) живой Audio.Sound держал
+      // аудио-сессию, и последующий stopAndUnloadAsync() реджектил → stop
+      // возвращал { uri: null } → sender bubble не появлялся, backend-
+      // сообщение не создавалось. Единственная точка владения аудио-сессией:
+      // ПЕРЕД захватом микрофона глушим любой playback.
+      try { await this.stop(); } catch { /* нет активного playback — не критично */ }
+
+      // Защита от stale-рекордера: expo-av допускает лишь один
+      // подготовленный Recording одновременно. Если прошлый объект по любой
+      // причине остался висеть (реджект stop, чужой cleanup не добежал),
+      // createAsync бросил бы «Only one Recording object can be prepared at
+      // a given time» — снимаем его до создания нового.
+      if (_recording) {
+        try { await _recording.stopAndUnloadAsync(); } catch { /* уже выгружен */ }
+        _recording = null;
+      }
+
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
@@ -60,6 +84,9 @@ export const voice = {
       return true;
     } catch (e) {
       console.warn('[voice] start failed:', e);
+      // Гарантируем чистое состояние singleton при любом сбое старта —
+      // иначе следующая попытка записи унаследует полудохлый рекордер.
+      _recording = null;
       return false;
     }
   },
