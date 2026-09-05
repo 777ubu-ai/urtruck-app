@@ -153,7 +153,21 @@ def _init():
             _ensure_columns(c)
             _migrate_canonical_rooms(c)  # Variant B: канонические комнаты сделок
             c.commit()
-    _ensure_special_users()
+    # ROOT CAUSE (Release Block 6 audit, P0 cold-start crash): _init() runs
+    # at MODULE IMPORT time (see _init() call at the bottom of this file),
+    # and main.py imports `chat_router` from this module BEFORE its
+    # startup() event handler runs registration_dal.init_registration_schema()
+    # — the table _ensure_special_users() reads/writes
+    # (drivers_registration) does not exist yet on a fresh DB. Reproduced:
+    # `import main` on an empty DB_PATH raised
+    # `sqlite3.OperationalError: no such table: drivers_registration`,
+    # i.e. a fresh server / disaster-recovery restore / DB_PATH pointed at
+    # an empty file would crash-loop under PM2 before ever reaching a
+    # request. chat_schema.sql above is this module's OWN schema — safe to
+    # apply at import. _ensure_special_users() depends on a table owned by
+    # a DIFFERENT module's startup-time init, so it must run there instead
+    # — see main.py startup(), which now calls it right after
+    # registration_dal.init_registration_schema(). Not called here anymore.
 
 
 def _deal_key(cargo_id, trip_id, p1: str, p2: str) -> str:
