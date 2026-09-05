@@ -2429,10 +2429,19 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1)), i
             )
         new_message = body.message if body.message is not None else bid.get("message")
 
-        c.execute(
-            "UPDATE bids SET amount = ?, message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        # QA-аудит P1-6 (lost update): SELECT выше и UPDATE ниже шли без
+        # транзакционной связи (autocommit SELECT) — параллельный accept
+        # успевал принять ставку между ними, а этот UPDATE молча переписывал
+        # amount УЖЕ ПРИНЯТОЙ ставки (bid.amount != deal.amount). Предикат
+        # исходного статуса прямо в UPDATE + rowcount закрывает гонку — тот
+        # же паттерн, что в _finalize_accept_inline и _transition_deal.
+        cur = c.execute(
+            "UPDATE bids SET amount = ?, message = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = 'pending'",
             (new_amount, new_message, bid_id),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите список")
         # Часть 3: событие — bidder изменил свою ставку.
         _record_price_event(c, bid_id, user["id"], "bidder", new_amount, "updated", new_message)
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
@@ -2493,10 +2502,16 @@ def cancel_bid(bid_id: str, user=Depends(require_level(1)), idempotency_key: Opt
         if bid["status"] not in ("pending", "countered"):
             raise HTTPException(status_code=409, detail=f"Ставку нельзя отменить в статусе {bid['status']}")
 
-        c.execute(
-            "UPDATE bids SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        # P1-6 (lost update): без предиката статуса параллельный accept успевал
+        # создать сделку, а этот UPDATE затем ставил cancelled поверх accepted —
+        # «ставка отменена» при живой сделке и занятом грузе. rowcount=0 → 409.
+        cur = c.execute(
+            "UPDATE bids SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status IN ('pending', 'countered')",
             (bid_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — отменить нельзя")
         # P3-fix: финал в ценовом timeline — раньше отмена не оставляла события.
         _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "cancelled", None)
         # Decrement bids_count safely (never below 0).
@@ -2554,10 +2569,15 @@ def reject_bid(bid_id: str, user=Depends(require_level(1)), idempotency_key: Opt
         if bid["status"] not in ("pending", "countered"):
             raise HTTPException(status_code=409, detail=f"Ставку нельзя отклонить в статусе {bid['status']}")
 
-        c.execute(
-            "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        # P1-6 (lost update): симметрично cancel — параллельный accept (в т.ч.
+        # accept_counter со стороны биддера) не должен быть перетёрт reject'ом.
+        cur = c.execute(
+            "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status IN ('pending', 'countered')",
             (bid_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — отклонить нельзя")
         # Часть 3: событие — владелец отклонил (actor=owner).
         _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "rejected", None)
         # M2: «отклики» (bids_count) = активные ставки. cancel уже уменьшал
@@ -2626,12 +2646,16 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)),
         if bid["status"] != "pending":
             raise HTTPException(status_code=409, detail=f"Контр-оффер нельзя отправить в статусе {bid['status']}")
 
-        c.execute(
+        # P1-6 (lost update): контр не должен «оживить» ставку, которую биддер
+        # успел отозвать (или которую догнал параллельный accept/reject).
+        cur = c.execute(
             "UPDATE bids SET status = 'countered', counter_amount = ?, counter_message = ?, "
             "counter_by = 'owner', counter_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP "
-            "WHERE id = ?",
+            "WHERE id = ? AND status = 'pending'",
             (body.amount, body.message, bid_id),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — контр-оффер невозможен")
         # Часть 3: событие — владелец прислал контр (actor=owner).
         _record_price_event(c, bid_id, user["id"], "owner", body.amount, "countered", body.message)
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
@@ -2759,11 +2783,17 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1)), idempot
             raise HTTPException(status_code=403, detail="Только владелец груза/рейса может отменить свою встречную")
         if bid["status"] != "countered":
             raise HTTPException(status_code=409, detail=f"Нет активной встречной (статус {bid['status']})")
-        c.execute(
+        # P1-6 (lost update): пока owner отменял встречную, биддер мог успеть
+        # принять контр (accept_counter → status='accepted' + сделка). Без
+        # предиката этот UPDATE возвращал бы принятую ставку в pending.
+        cur = c.execute(
             "UPDATE bids SET status = 'pending', counter_amount = NULL, counter_message = NULL, "
-            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = 'countered'",
             (bid_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — встречную отменить нельзя")
         _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "counter_cancelled", None)
     return {"ok": True, "bid_id": bid_id, "status": "pending"}
 
@@ -2783,11 +2813,16 @@ def decline_counter(bid_id: str, user=Depends(require_level(1)), idempotency_key
             raise HTTPException(status_code=403, detail="Только автор ставки может отклонить контр-оффер")
         if bid["status"] != "countered":
             raise HTTPException(status_code=409, detail=f"Нет активного контр-оффера (статус {bid['status']})")
-        c.execute(
+        # P1-6 (lost update): decline не должен вернуть в pending ставку,
+        # которую параллельный accept_counter уже принял (со сделкой).
+        cur = c.execute(
             "UPDATE bids SET status = 'pending', counter_amount = NULL, counter_message = NULL, "
-            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = 'countered'",
             (bid_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — контр-оффер отклонить нельзя")
         # P3-fix: фиксируем отказ от контр-оффера в ценовом timeline.
         _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "declined", None)
 
