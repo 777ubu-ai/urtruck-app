@@ -46,6 +46,7 @@ import {
 import { compressImage } from '../utils/imageCompress';
 import { voice } from '../utils/voiceRecorder';
 import VoiceMessageBubble from '../components/VoiceMessageBubble';
+import { logVoiceStage, VOICE_STAGES, errorClass } from '../utils/voiceDeliveryLog';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
@@ -944,6 +945,129 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     return clientId;
   }, [ui.voiceMessage]);
 
+  // deliverVoice — единственный путь доставки голосового (Task: fresh voice
+  // delivery). Вынесен из toggleVoice, чтобы Retry повторял РОВНО ту же
+  // цепочку, а не половину её.
+  //
+  // Что здесь исправлено против прежней версии (каждый пункт — доказанный
+  // структурный дефект, любой из них даёт «backend row не появился»):
+  //
+  //  1. НЕ БЫЛО guard'а на адресата. Текст всегда проверял
+  //     `(!roomId && !recipientId) return`, голосовое — нет, и уходило с
+  //     room_id=null + to_user_id=undefined, что бэкенд отвергает как
+  //     400 «room_id или to_user_id обязателен». Комната резолвится
+  //     асинхронно, поэтому окно реально достижимо на первом входе в сделку.
+  //  2. НЕ СОХРАНЯЛСЯ room_id из ответа. Текст делает
+  //     `if (result?.room_id && !roomId) setRoomId(...)`; голосовое — нет,
+  //     поэтому следующее сообщение снова шло без комнаты.
+  //  3. НЕ БЫЛО очереди при сетевом сбое. Текст кладёт payload в outbox и
+  //     помечает 'queued'; голосовое просто терялось навсегда — на телефоне
+  //     это самый частый сценарий (лифт, лифт-офф LTE, смена соты).
+  //  4. НЕ БЫЛО retry. Строка ошибки у голосового была `disabled`.
+  //
+  // Диагностика (logVoiceStage) помечает КАЖДЫЙ этап одним clientVoiceId —
+  // прежняя сборка вообще не позволяла отличить «upload завис» от «send не
+  // стартовал», поэтому физический отказ не локализовывался.
+  const deliverVoice = React.useCallback(async (item) => {
+    const clientId = item.id;
+    const duration = item.voiceDuration;
+
+    const setStatus = (patch) => {
+      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, ...patch } : m)));
+      logVoiceStage(clientId, VOICE_STAGES.OPTIMISTIC_STATUS_UPDATED, { sendStatus: patch.sendStatus });
+    };
+    const failVoice = (message, stageData) => {
+      logVoiceStage(clientId, VOICE_STAGES.CHAT_SEND_FAILED, stageData);
+      setStatus({ sendStatus: 'failed', sendError: message });
+      toast(message, 'error');
+    };
+
+    // (1) Адресат обязателен — иначе бэкенд ответит 400 и сообщение исчезнет.
+    if (!roomId && !recipientId) {
+      failVoice(t('voice_error_send'), { reason: 'no_recipient' });
+      return;
+    }
+
+    setStatus({ sendStatus: 'sending', sendError: null });
+
+    let upload;
+    logVoiceStage(clientId, VOICE_STAGES.UPLOAD_STARTED, { hasBlob: !!item.voiceBlob });
+    try {
+      upload = await chatAPI.uploadChatVoice(item.voiceUri, {
+        blob: item.voiceBlob || null,
+        type: item.voiceMime || null,
+      });
+    } catch (error) {
+      logVoiceStage(clientId, VOICE_STAGES.UPLOAD_COMPLETED, {
+        success: false, errorClass: errorClass(error), status: error?.status ?? null,
+      });
+      // (3) Сетевой сбой на загрузке — файл ещё на устройстве, значит это
+      // очередь, а не потеря. Локальный uri сохраняется в пузыре, Retry
+      // повторит загрузку целиком.
+      if (error?.isNetwork) {
+        setStatus({ sendStatus: 'failed', sendError: t('no_connection') });
+        toast(t('no_connection'), 'error');
+        return;
+      }
+      // Точная причина вместо одного общего текста (P0 2026-08-21): бэкенд
+      // различает «хранилище недоступно» (503) и «хранилище отклонило» (502),
+      // а 413 реален — /chat/voice ограничивает 10 МБ.
+      const key = error?.status === 413 ? 'doc_error_too_large'
+        : error?.status >= 500 ? 'doc_error_server'
+          : 'voice_error_upload';
+      failVoice(t(key), { reason: 'upload_failed', status: error?.status ?? null });
+      return;
+    }
+
+    const hasKey = !!upload?.voice_key;
+    logVoiceStage(clientId, VOICE_STAGES.UPLOAD_COMPLETED, {
+      success: true, hasVoiceKey: hasKey,
+    });
+    if (!hasKey) {
+      // 200 без ключа: контракт нарушен на стороне сервера — это НЕ успех.
+      failVoice(t('voice_error_upload'), { reason: 'malformed_upload_response' });
+      return;
+    }
+
+    const payload = {
+      roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
+      isVoice: true, voiceDuration: duration,
+      cargoId: deal?.cargo_id || params.cargoId || null,
+      tripId: deal?.trip_id || params.tripId || null,
+      clientMsgId: clientId,
+    };
+    logVoiceStage(clientId, VOICE_STAGES.BEFORE_CHAT_SEND, { hasRoomId: !!roomId, hasRecipient: !!recipientId });
+    try {
+      logVoiceStage(clientId, VOICE_STAGES.CHAT_SEND_STARTED, {});
+      const sent = await chatAPI.send(payload);
+      logVoiceStage(clientId, VOICE_STAGES.CHAT_SEND_COMPLETED, {
+        messageId: sent?.message_id ?? null, deduped: !!sent?.deduped,
+      });
+      // (2) Комната, созданная сервером, должна остаться в состоянии.
+      if (sent?.room_id && !roomId) setRoomId(sent.room_id);
+      setStatus({ sendStatus: 'sent', sendError: null });
+      setTimeout(loadMessages, 120);
+    } catch (error) {
+      // (3) Сеть отвалилась уже ПОСЛЕ успешной загрузки: файл в хранилище,
+      // повторять нужно только отправку. Кладём в ту же offline-очередь, что
+      // и текст, — сообщение больше не теряется.
+      if (error?.isNetwork) {
+        try {
+          await enqueueOutbox({ clientId, payload }, session?.user?.id);
+          logVoiceStage(clientId, VOICE_STAGES.CHAT_SEND_FAILED, { reason: 'network_queued' });
+          setStatus({ sendStatus: 'queued', sendError: null });
+          toast(t('chat_queued'), 'info', 2200);
+          return;
+        } catch {
+          // очередь недоступна — падаем в обычный failed с retry
+        }
+      }
+      const message = error?.status === 403 ? t('chat_error_403') : t('voice_error_send');
+      failVoice(message, { reason: 'send_failed', status: error?.status ?? null });
+    }
+  }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId,
+    ui.voiceMessage, loadMessages, session?.user?.id, toast, t]);
+
   const toggleVoice = React.useCallback(async () => {
     if (!recording) {
       try {
@@ -965,6 +1089,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     if (!result?.uri) { toast(t('voice_error_record'), 'error'); return; }
     const duration = result.duration || Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
     const clientId = newClientId('voice');
+    logVoiceStage(clientId, VOICE_STAGES.FINALIZE_STARTED, { duration });
+    logVoiceStage(clientId, VOICE_STAGES.LOCAL_FILE_READY, {
+      exists: !!result.uri,
+      size: result.blob?.size ?? null,
+      duration,
+      mime: result.blob?.type || null,
+    });
     const voiceItem = {
       id: clientId,
       clientMsgId: clientId,
@@ -981,58 +1112,20 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       voiceMime: result.blob?.type || null,
     };
     setMessages((items) => [...items, voiceItem]);
-    // Upload-first voice path keeps the bubble visible immediately:
-    // const clientId = appendOptimisticVoice(result.uri, duration)
     nearBottomRef.current = true;
     setShowJumpLatest(false);
     setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 40);
 
-    const failVoice = (message) => {
-      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'failed', sendError: message } : m)));
-    };
+    await deliverVoice(voiceItem);
+  }, [recording, deliverVoice, toast, t]);
 
-    let upload;
-    try {
-      upload = await chatAPI.uploadChatVoice(result.uri, {
-        blob: result.blob || null,
-        type: result.blob?.type || null,
-      });
-    } catch (error) {
-      // Mirror uploadDocument's precise-cause mapping (P0 2026-08-21): the
-      // backend now distinguishes "storage unreachable" (503) from "storage
-      // rejected the file" (502) instead of one flat error, and 413 is real
-      // (voice/backend.py enforces a 10MB cap) — surface all of it instead of
-      // one generic message regardless of cause.
-      const key = error?.isNetwork ? null
-        : error?.status === 413 ? 'doc_error_too_large'
-          : error?.status >= 500 ? 'doc_error_server'
-            : 'voice_error_upload';
-      const message = key ? t(key) : t('no_connection');
-      failVoice(message);
-      toast(message, 'error');
-      return;
-    }
-    if (!upload?.voice_key) {
-      const message = t('voice_error_upload');
-      failVoice(message);
-      toast(message, 'error');
-      return;
-    }
-    try {
-      await chatAPI.send({
-        roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
-        isVoice: true, voiceDuration: duration,
-        cargoId: deal?.cargo_id || params.cargoId || null, tripId: deal?.trip_id || params.tripId || null,
-        clientMsgId: clientId,
-      });
-      setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'sent' } : m)));
-      setTimeout(loadMessages, 120);
-    } catch {
-      const message = t('voice_error_send');
-      failVoice(message);
-      toast(message, 'error');
-    }
-  }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
+  // (4) Retry голосового: повторяет ПОЛНУЮ цепочку с тем же clientMsgId,
+  // поэтому дубля на бэкенде не будет (там дедуп по client_msg_id).
+  const retryVoice = React.useCallback((item) => {
+    if (!item?.voiceUri) return;
+    logVoiceStage(item.id, VOICE_STAGES.FINALIZE_STARTED, { retry: true });
+    deliverVoice(item);
+  }, [deliverVoice]);
 
   const toggleAttachMenu = React.useCallback(() => {
     setCallMenuOpen(false);
@@ -1107,7 +1200,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               uri={item.mediaUrl}
               fallbackDurationSec={item.voiceDuration}
               mine={item.mine}
-              sending={item.sendStatus === 'sending'}
+              sending={item.sendStatus === 'sending' || item.sendStatus === 'queued'}
+              failed={item.sendStatus === 'failed'}
               textColor="#111B21"
               mutedColor="#667781"
               accentColor="#111B21"
@@ -1175,20 +1269,23 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             </Text>
           </TouchableOpacity>
         ) : item.sendStatus === 'failed' && item.voice ? (
+          // §7: провал голосового больше НЕ тупик. Раньше строка была
+          // `disabled` — пользователь видел ошибку и не мог ничего сделать,
+          // а локальный файл оставался единственной копией записи.
           <TouchableOpacity
-            disabled
+            onPress={() => retryVoice(item)}
             style={s.errorRow}
-            testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
+            testID="deal-chat-voice-retry"
           >
             <Feather name="alert-circle" size={12} color="#EF4444" />
             <Text style={s.errorText} numberOfLines={2}>
-              {item.sendError || t('voice_error_send')}
+              {item.sendError || t('voice_error_send')} · {t('chat_attach_retry')}
             </Text>
           </TouchableOpacity>
         ) : null}
       </View>
     );
-  }, [colors, translations, translating, t, toast, retryDocument, retryFailedText, toggleVoiceTranscript, voiceTranscribing, voiceTranscripts]);
+  }, [colors, translations, translating, t, toast, retryDocument, retryFailedText, retryVoice, toggleVoiceTranscript, voiceTranscribing, voiceTranscripts]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage

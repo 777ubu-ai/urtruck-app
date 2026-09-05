@@ -117,19 +117,33 @@ test('voice recording shows a live indicator, timer, waveform, and send/cancel c
 });
 
 test('voice send renders an optimistic bubble immediately before upload and reuses its clientMsgId', () => {
+  // Доставка вынесена из toggleVoice в deliverVoice (fresh-voice-delivery),
+  // чтобы Retry повторял ту же цепочку целиком. Контракт тот же и проверяется
+  // строже: запись создаёт пузырь, доставка начинается только после этого.
   const fn = workspace.match(/const toggleVoice = React\.useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[/);
   assert.ok(fn, 'toggleVoice definition not found');
   const body = fn[1];
+  const deliver = workspace.slice(
+    workspace.indexOf('const deliverVoice = React.useCallback'),
+    workspace.indexOf('const toggleVoice = React.useCallback'),
+  );
+  assert.ok(deliver.length > 0, 'deliverVoice definition not found');
+
   const optimisticIndex = body.indexOf("setMessages((items) => [...items, voiceItem])");
-  const uploadIndex = body.indexOf('chatAPI.uploadChatVoice');
+  const deliverIndex = body.indexOf('await deliverVoice(voiceItem)');
   assert.ok(optimisticIndex >= 0, 'voice optimistic bubble must be appended before network work');
-  assert.ok(uploadIndex > optimisticIndex, 'voice upload must happen after the local bubble is visible');
+  assert.ok(deliverIndex > optimisticIndex, 'delivery must start after the local bubble is visible');
+  assert.doesNotMatch(body, /chatAPI\.(uploadChatVoice|send)\(/,
+    'запись не должна сама ходить в сеть — только через deliverVoice');
+  assert.match(deliver, /chatAPI\.uploadChatVoice\(/, 'deliverVoice must own the upload');
+
   assert.match(body, /const clientId = newClientId\('voice'\)/);
   assert.match(body, /sendStatus: 'sending'/);
   assert.match(body, /clientMsgId: clientId/);
   assert.match(workspace, /server\.clientMsgId === item\.id/);
-  assert.match(body, /sendStatus: 'failed', sendError: message/);
-  assert.match(workspace, /testID=\{item\.voice \? 'deal-chat-voice-error' : 'deal-chat-message-retry'\}/);
+  // Провал по-прежнему помечает пузырь — и теперь даёт повтор.
+  assert.match(deliver, /sendStatus: 'failed', sendError: message/);
+  assert.match(workspace, /testID="deal-chat-voice-retry"/);
 });
 
 test('voice failures distinguish record vs upload vs send, each with its own message', () => {
@@ -139,12 +153,22 @@ test('voice failures distinguish record vs upload vs send, each with its own mes
 });
 
 test('voice message is rendered optimistically before upload finishes, so the chat never waits on network before showing the bubble', () => {
-  assert.match(workspace, /const appendOptimisticVoice = React\.useCallback/);
-  assert.match(workspace, /sendStatus: 'uploading'/);
-  assert.match(workspace, /mediaUrl: uri/);
-  assert.match(workspace, /voice: true/);
-  assert.match(workspace, /const clientId = appendOptimisticVoice\(result\.uri, duration\)/);
-  assert.match(workspace, /clientMsgId: clientId,/);
+  // Раньше этот контракт матчил `appendOptimisticVoice` — функцию, которая
+  // определена, но НИ РАЗУ не вызывается, и её ЗАКОММЕНТИРОВАННЫЙ вызов.
+  // То есть тест был зелёным, не проверяя живой путь вовсе. Теперь
+  // проверяется реально исполняемая ветка.
+  const live = workspace.match(/const toggleVoice = React\.useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[/);
+  assert.ok(live, 'toggleVoice definition not found');
+  const liveBody = live[1];
+  assert.match(liveBody, /voice: true,/);
+  assert.match(liveBody, /mediaUrl: result\.uri,/);
+  assert.match(liveBody, /sendStatus: 'sending',/);
+  assert.match(liveBody, /clientMsgId: clientId,/);
+  // пузырь добавляется ДО любой сетевой работы
+  assert.ok(
+    liveBody.indexOf('setMessages((items) => [...items, voiceItem])') < liveBody.indexOf('await deliverVoice'),
+    'bubble must be appended before delivery starts',
+  );
   assert.match(workspace, /item\.sendStatus === 'failed' && !item\.voice/);
 });
 
@@ -198,8 +222,13 @@ test('web voice upload sends a real Blob/File in FormData, never an empty/placeh
   // DealWorkspaceScreenV2 must actually pass the recorder's real blob/type
   // through, not just the uri — otherwise the FormData contract above is
   // dead code that nothing ever exercises.
-  assert.match(workspace, /blob: result\.blob \|\| null,/);
-  assert.match(workspace, /type: result\.blob\?\.type \|\| null,/);
+  // Blob теперь едет через оптимистичный item (voiceBlob/voiceMime), потому
+  // что доставку выполняет deliverVoice и её же повторяет Retry. Контракт
+  // тот же: наверх уходит НАСТОЯЩИЙ blob рекордера, а не перечитанный URI.
+  assert.match(workspace, /voiceBlob: result\.blob \|\| null,/);
+  assert.match(workspace, /voiceMime: result\.blob\?\.type \|\| null,/);
+  assert.match(workspace, /blob: item\.voiceBlob \|\| null,/);
+  assert.match(workspace, /type: item\.voiceMime \|\| null,/);
 });
 
 test('voiceRecorder produces a real, non-empty web Blob before upload is attempted', () => {
@@ -275,11 +304,18 @@ test('voice bubble has WhatsApp-grade controls: pause, seek, rate, live progress
 });
 
 test('voice upload failures distinguish too-large, storage-rejected/unreachable, and generic causes, not one flat message', () => {
-  const fn = workspace.match(/upload = await chatAPI\.uploadChatVoice\(result\.uri, \{[\s\S]*?\n    \} catch \(error\) \{([\s\S]*?)\n    \}/);
-  assert.ok(fn, 'toggleVoice upload catch block not found');
+  // catch загрузки переехал в deliverVoice вместе со всей доставкой.
+  const deliverSrc = workspace.slice(
+    workspace.indexOf('const deliverVoice = React.useCallback'),
+    workspace.indexOf('const toggleVoice = React.useCallback'),
+  );
+  const fn = deliverSrc.match(/upload = await chatAPI\.uploadChatVoice\([\s\S]*?\n    \} catch \(error\) \{([\s\S]*?)\n    \}\n/);
+  assert.ok(fn, 'deliverVoice upload catch block not found');
   assert.match(fn[1], /error\?\.status === 413 \? 'doc_error_too_large'/);
   assert.match(fn[1], /error\?\.status >= 500 \? 'doc_error_server'/);
   assert.match(fn[1], /'voice_error_upload'/);
+  // сетевой сбой отделён от серверного и не теряет запись
+  assert.match(fn[1], /error\?\.isNetwork/);
 });
 
 test('backend distinguishes network/DNS failure reaching storage from storage actively rejecting the file', () => {

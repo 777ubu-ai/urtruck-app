@@ -32,6 +32,10 @@ export default function VoiceMessageBubble({
   fallbackDurationSec = 0,
   mine = false,
   sending = false,
+  // §7: пузырь обязан отличать «отправляется» от «не отправилось».
+  // Раньше компонент знал только `sending`, поэтому провалившееся голосовое
+  // выглядело ровно как успешно отправленное.
+  failed = false,
   textColor = '#14221C',
   mutedColor = '#617067',
   accentColor = '#168759',
