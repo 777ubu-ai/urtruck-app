@@ -3,6 +3,7 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+def configuredVersionCode = project.findProperty('URTRUCK_VERSION_CODE')
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -93,7 +94,9 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI (deploy-play.yml) передаёт свой versionCode через -PURTRUCK_VERSION_CODE,
         // чтобы каждая автозаливка в Google Play имела уникальный монотонный код.
-        versionCode (project.hasProperty('URTRUCK_VERSION_CODE') ? URTRUCK_VERSION_CODE.toInteger() : 9)
+        // Debug builds retain a local development code; release tasks below
+        // fail closed unless CI/release configuration provides a monotonic code.
+        versionCode (configuredVersionCode ? configuredVersionCode.toInteger() : 9)
         versionName "1.0.7"
     }
     signingConfigs {
@@ -149,6 +152,18 @@ android {
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+}
+
+// A stale default is acceptable for local debug builds only. Never produce a
+// release artifact whose versionCode was not explicitly assigned by CI.
+tasks.configureEach { task ->
+    if (task.name in ['assembleRelease', 'bundleRelease', 'packageRelease']) {
+        doFirst {
+            if (!configuredVersionCode) {
+                throw new GradleException('Release versionCode is not configured; set -PURTRUCK_VERSION_CODE')
+            }
+        }
     }
 }
 

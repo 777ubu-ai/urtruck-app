@@ -22,3 +22,9 @@ test('release manifest does not ship overlay permission', () => {
   assert.doesNotMatch(manifest, /android\.permission\.SYSTEM_ALERT_WINDOW/);
   assert.match(debugManifest, /android\.permission\.SYSTEM_ALERT_WINDOW/);
 });
+
+test('release version code fails closed without CI assignment', () => {
+  assert.match(gradle, /Release versionCode is not configured/);
+  assert.match(gradle, /-PURTRUCK_VERSION_CODE/);
+  assert.match(gradle, /configuredVersionCode \? configuredVersionCode\.toInteger\(\) : 9/);
+});
