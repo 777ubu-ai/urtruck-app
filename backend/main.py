@@ -280,6 +280,49 @@ def startup():
     except Exception as e:
         print(f"Indexes failed: {e}")
 
+    # P0-A (аудит 2026-09-05): fail-fast видимость geo-каталога. Импорт
+    # ленивый, поэтому /system/info зелёный даже когда каталога нет, а
+    # create/фильтры падают. Здесь читаем каталог на старте и печатаем
+    # счётчики — отсутствие видно в логе НЕМЕДЛЕННО, а не на первом create.
+    # Процесс сознательно НЕ роняем: create_cargo/create_trip умеют
+    # деградировать (api/marketplace.py), фильтрованные ленты отдают 503, а
+    # остальной API (auth, чат, сделки) от каталога не зависит — уронить всё
+    # ради справочника значило бы превратить деградацию в полный outage.
+    geo_catalog_ok = False
+    try:
+        from services import geo_catalog
+        n_countries = len(geo_catalog.countries())
+        n_locations = len(geo_catalog.locations())
+        print(f"[startup] geo-catalog OK: {n_countries} стран, "
+              f"{n_locations} локаций", flush=True)
+        geo_catalog_ok = True
+    except Exception as e:
+        print(
+            "=" * 60 + "\n"
+            f"[startup] КРИТИЧНО: geo-catalog НЕДОСТУПЕН: {e}\n"
+            "[startup] Маркетплейс работает в ДЕГРАДАЦИИ: создание объявлений "
+            "— без location_id, маршрутные фильтры — 503.\n"
+            "[startup] Починить: backend/data/geo-catalog.json "
+            "(python3 scripts/generate_geo_catalog.py) или GEO_CATALOG_PATH.\n"
+            + "=" * 60,
+            flush=True,
+        )
+
+    # P1-B (аудит 2026-09-05): инкрементальный backfill location_id для
+    # легаси-объявлений — иначе они никогда не находятся фильтром по городу.
+    # Дёшево: скрипт трогает ТОЛЬКО строки с NULL location_id (замер на
+    # синтетике 10k строк — доли секунды, см. отчёт аудита); идемпотентен,
+    # ничего не удаляет (COALESCE-заполнение). Без каталога — пропускаем.
+    if geo_catalog_ok:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
+            from backfill_location_ids import backfill as _backfill_location_ids
+            _bf_stats = _backfill_location_ids()
+            print(f"[startup] location_id backfill: {_bf_stats}", flush=True)
+        except Exception as e:
+            print(f"[startup] location_id backfill FAILED (continuing): {e}",
+                  flush=True)
+
     # Telegram bot polling
     print(f"[startup] TELEGRAM_BOT_TOKEN = {'SET' if os.getenv('TELEGRAM_BOT_TOKEN') else 'EMPTY'}", flush=True)
     try:
