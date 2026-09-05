@@ -121,7 +121,10 @@ jobs:
         run: |
           set -euo pipefail
           STAMP=$(date -u +%Y%m%d-%H%M%S)-${DEPLOY_SHA::7}
-          bash scripts/deploy-ssh.sh ssh "mkdir -p ~/urtruck-rollback/frontend ~/urtruck-rollback/backend '$REMOTE_DIR' '$BACKEND_DIR'; [ -d '$REMOTE_DIR' ] && cp -a '$REMOTE_DIR' ~/urtruck-rollback/frontend/$STAMP || true; [ -d '$BACKEND_DIR' ] && cp -a '$BACKEND_DIR' ~/urtruck-rollback/backend/$STAMP || true; cd ~/urtruck-rollback/frontend && ls -dt */ 2>/dev/null | tail -n +11 | xargs -r rm -rf; cd ~/urtruck-rollback/backend && ls -dt */ 2>/dev/null | tail -n +11 | xargs -r rm -rf; echo BACKUP=ok"
+          # P2 (аудит 2026-09-05): backend-копия БЕЗ backups/ и *.db* — иначе
+          # cp -a тащил 48 снапшотов БД в КАЖДУЮ из 10 rollback-копий.
+          # Код отката — это код, а не данные: БД живёт только в живой директории.
+          bash scripts/deploy-ssh.sh ssh "mkdir -p ~/urtruck-rollback/frontend ~/urtruck-rollback/backend '$REMOTE_DIR' '$BACKEND_DIR'; [ -d '$REMOTE_DIR' ] && cp -a '$REMOTE_DIR' ~/urtruck-rollback/frontend/$STAMP || true; if [ -d '$BACKEND_DIR' ]; then if command -v rsync >/dev/null 2>&1; then rsync -a --exclude='backups/' --exclude='*.db*' '$BACKEND_DIR'/ ~/urtruck-rollback/backend/$STAMP/ || true; else cp -a '$BACKEND_DIR' ~/urtruck-rollback/backend/$STAMP || true; rm -rf ~/urtruck-rollback/backend/$STAMP/backups; find ~/urtruck-rollback/backend/$STAMP -name '*.db*' -type f -delete 2>/dev/null || true; fi; fi; cd ~/urtruck-rollback/frontend && ls -dt */ 2>/dev/null | tail -n +11 | xargs -r rm -rf; cd ~/urtruck-rollback/backend && ls -dt */ 2>/dev/null | tail -n +11 | xargs -r rm -rf; echo BACKUP=ok"
 
       - name: Deploy frontend
         run: |
@@ -152,9 +155,52 @@ jobs:
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_bootstrap_env.sh; bash /tmp/urtruck_bootstrap_env.sh '$BACKEND_DIR' '$REMOTE_BOOTSTRAP'; rc=\$?; rm -f /tmp/urtruck_bootstrap_env.sh '$REMOTE_BOOTSTRAP'; exit \$rc"
 
       - name: Deploy backend and verify PM2 health
+        # P1-C (аудит 2026-09-05). Контракт доставки backend:
+        #   stage (scp во временную директорию) → pip по хэшу requirements →
+        #   rsync в живую директорию → import-smoke → restart → health.
+        # Провал pip происходит ДО касания живой директории: старый код и
+        # старые зависимости продолжают работать, PM2 не рестартится.
         run: |
           set -euo pipefail
-          bash scripts/deploy-ssh.sh scp -C -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
+          STAGE_DIR="/tmp/urtruck-backend-stage-${GITHUB_RUN_ID}"
+
+          # 1) Стейджинг: код уезжает во временную директорию, живая не тронута.
+          bash scripts/deploy-ssh.sh ssh "rm -rf '$STAGE_DIR'; mkdir -p '$STAGE_DIR'"
+          bash scripts/deploy-ssh.sh scp -C -r backend/* "$SERVER_USER@$SERVER_HOST:$STAGE_DIR/"
+
+          # 2) Python-зависимости: сравнение sha256 requirements.txt с хэшем
+          #    предыдущей успешной установки (файл рядом с venv в BACKEND_DIR).
+          #    Изменился → pip install в существующий venv (venv живёт в
+          #    BACKEND_DIR, см. scripts/deploy-backend-safe.sh). Фейл установки
+          #    роняет шаг ЗДЕСЬ — до rsync и до рестарта PM2.
+          bash scripts/deploy-ssh.sh ssh "
+            set -euo pipefail
+            test -s '$STAGE_DIR/requirements.txt'
+            test -x '$BACKEND_DIR/venv/bin/pip' || { echo '::error::venv не найден в BACKEND_DIR — деплой требует существующий venv'; exit 1; }
+            REQ_HASH=\$(sha256sum '$STAGE_DIR/requirements.txt' | awk '{print \$1}')
+            PREV_HASH=\$(cat '$BACKEND_DIR/.requirements.sha256' 2>/dev/null || true)
+            if [ \"\$REQ_HASH\" = \"\$PREV_HASH\" ]; then
+              echo 'PIP_INSTALL=skipped (requirements.txt не изменился)'
+            else
+              echo 'requirements.txt изменился — устанавливаю зависимости в venv'
+              '$BACKEND_DIR/venv/bin/pip' install -r '$STAGE_DIR/requirements.txt'
+              printf '%s\n' \"\$REQ_HASH\" > '$BACKEND_DIR/.requirements.sha256'
+              echo 'PIP_INSTALL=done'
+            fi
+          "
+
+          # 3) Публикация: overlay из стейджа в живую директорию (семантика
+          #    прежнего scp: поверх, ничего не удаляем — .env, venv,
+          #    database/, storage/ живут только на сервере). cp -a вместо
+          #    rsync: не тянем новую зависимость на сервер.
+          bash scripts/deploy-ssh.sh ssh "cp -a '$STAGE_DIR'/. '$BACKEND_DIR'/ && rm -rf '$STAGE_DIR' && echo BACKEND_SYNC=ok"
+
+          # 4) Import-smoke перед рестартом: ловит и missing dependency, и
+          #    ошибки cold-start класса (SyntaxError, битые импорты) — пока
+          #    старый процесс ещё обслуживает трафик.
+          bash scripts/deploy-ssh.sh ssh "cd '$BACKEND_DIR' && venv/bin/python -c 'import main' && echo IMPORT_SMOKE=ok"
+
+          # 5) Рестарт + fail-closed health (как раньше).
           bash scripts/deploy-ssh.sh scp scripts/remote_health_check.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_health.sh"
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_health.sh; bash /tmp/urtruck_health.sh '$PM2_PROC'; rc=\$?; rm -f /tmp/urtruck_health.sh; exit \$rc"
 
@@ -202,6 +248,14 @@ jobs:
           trips=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/security/api/v1/market/trips?status=active&limit=1")
           printf '%s\n' "$trips" | grep -q '"trips"'
           echo 'MARKET_API=ok'
+
+          # P0-A: фильтрованный запрос читает geo-каталог на сервере.
+          # Нефильтрованная лента и /system/info каталог НЕ трогают (импорт
+          # ленивый) — только этот curl ловит FileNotFoundError-класс, при
+          # котором health зелёный, а маршрутный фильтр отдаёт 503/500.
+          cargos_filtered=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/security/api/v1/market/cargos?origin_country_id=CN&limit=1")
+          printf '%s\n' "$cargos_filtered" | grep -q '"cargos"'
+          echo 'MARKET_ROUTE_FILTER=ok'
 
           route_guard=$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 5 --max-time 15 -X POST \
             -H 'Content-Type: application/json' \
