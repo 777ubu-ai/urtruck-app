@@ -123,10 +123,19 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Подпись релиза upload-ключом, если заданы свойства подписи в
-            // android/gradle.properties; иначе — безопасный фолбэк на debug
-            // (чтобы dev-сборки без секретов не падали). Прод-.aab для Google
-            // Play ОБЯЗАН собираться со свойствами URTRUCK_UPLOAD_* (см. выше).
+            // FAIL-CLOSED (аудит 2026-09-05, P1-D): release подписывается
+            // ТОЛЬКО upload-ключом из URTRUCK_UPLOAD_* (gradle.properties
+            // локально или ORG_GRADLE_PROJECT_* в CI — см. deploy-play.yml).
+            // Прежний тихий фолбэк на debug уже приводил к инциденту (см.
+            // docs/reports/RELEASE_SIGNING.md): Play отклонял .aab, а
+            // debug-подписанный «release»-APK из GitHub Releases не давал
+            // установившим обновиться на Play-версию. Без ключа release-таска
+            // теперь падает GradleException-ом — guard ниже, по образцу
+            // условного firebase-guard в этом же файле. Debug-сборки и
+            // `expo run:android` (variant debug) не затронуты: guard
+            // срабатывает только когда в графе задач есть Release-таска.
+            // Ternary остаётся ради configuration-фазы (signingConfigs.release
+            // без свойств пуст) — реальную сборку без ключа guard не пропустит.
             signingConfig project.hasProperty('URTRUCK_UPLOAD_STORE_FILE') ? signingConfigs.release : signingConfigs.debug
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
@@ -141,6 +150,35 @@ android {
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+}
+
+// P1-D fail-closed guard (аудит 2026-09-05): запрет release-сборки без
+// upload-ключа. Проверка отложена до готовности графа задач, чтобы НЕ ломать
+// configuration-фазу debug-сборок (`expo run:android`, assembleDebug,
+// Android Studio sync). Падает только когда реально запрошена Release-таска
+// приложения, а URTRUCK_UPLOAD_STORE_FILE не задан.
+gradle.taskGraph.whenReady { graph ->
+    if (project.hasProperty('URTRUCK_UPLOAD_STORE_FILE')) {
+        return
+    }
+    def releaseRequested = graph.allTasks.any { t ->
+        t.project == project && t.name.endsWith('Release') && (
+            t.name.startsWith('assemble') || t.name.startsWith('bundle') ||
+            t.name.startsWith('package') || t.name.startsWith('install')
+        )
+    }
+    if (releaseRequested) {
+        throw new GradleException(
+            "UrTruck release build REFUSED: свойства подписи URTRUCK_UPLOAD_* не заданы.\n" +
+            "Без них release молча подписывался бы debug-ключом — такой APK/AAB " +
+            "невозможно опубликовать в Google Play, а установившие его не смогут " +
+            "обновиться на Play-версию (инцидент: docs/reports/RELEASE_SIGNING.md).\n" +
+            "Локально: задайте URTRUCK_UPLOAD_STORE_FILE/PASSWORD/KEY_ALIAS/KEY_PASSWORD " +
+            "в android/gradle.properties. CI: см. ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_* " +
+            "в .github/workflows/deploy-play.yml. Для тестовой сборки без ключа " +
+            "используйте debug-вариант: ./gradlew assembleDebug."
+        )
     }
 }
 

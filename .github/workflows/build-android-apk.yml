@@ -101,27 +101,38 @@ jobs:
           echo "---gradle wrapper---"
           ls -la android/gradle/wrapper/ 2>/dev/null || true
 
-      - name: Build Release APK with Gradle
+      - name: Build Debug APK with Gradle
+        # P1-D (аудит 2026-09-05): этот workflow собирает ЯВНО debug-вариант.
+        # Раньше здесь был assembleRelease БЕЗ URTRUCK_UPLOAD_* — а поскольку
+        # `expo prebuild --clean` регенерирует android/ из шаблона Expo
+        # (кастомный signing-конфиг из закоммиченного build.gradle теряется),
+        # такой «release» молча подписывался debug-ключом и публиковался в
+        # GitHub Releases как релиз: установившие его не могли обновиться на
+        # Play-версию. Передавать сюда upload-keystore бессмысленно (шаблонный
+        # gradle его не читает) и вредно (лишняя точка обращения к ключу) —
+        # прод-подпись живёт ТОЛЬКО в deploy-play.yml, который собирает из
+        # закоммиченного android/ с fail-closed guard'ом. Здесь — честный
+        # debug-APK для ручного тестирования, и назван он debug.
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary
+          ./gradlew assembleDebug --no-daemon --stacktrace --warning-mode=summary
 
       - name: Verify Firebase runtime resources in build output
         run: python3 scripts/verify_android_firebase_config.py --check-resources android/app/build
 
-      - name: Rename APK to UrTruck.apk
+      - name: Rename APK to UrTruck-debug.apk
         run: |
-          cd android/app/build/outputs/apk/release
+          cd android/app/build/outputs/apk/debug
           ls -la
-          mv app-release.apk UrTruck.apk
-          ls -la UrTruck.apk
+          mv app-debug.apk UrTruck-debug.apk
+          ls -la UrTruck-debug.apk
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: UrTruck-apk
-          path: android/app/build/outputs/apk/release/UrTruck.apk
+          name: UrTruck-debug-apk
+          path: android/app/build/outputs/apk/debug/UrTruck-debug.apk
           retention-days: 30
           if-no-files-found: error
 
@@ -129,12 +140,18 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-build-${{ github.run_number }}
-          name: UrTruck Android APK · build #${{ github.run_number }}
+          name: UrTruck Android DEBUG APK · build #${{ github.run_number }}
           body: |
-            Android APK сборка из ветки `${{ github.ref_name }}` (commit `${{ github.sha }}`).
+            DEBUG-сборка Android APK из ветки `${{ github.ref_name }}` (commit `${{ github.sha }}`).
 
-            Скачать: см. `UrTruck.apk` ниже в Assets.
-          files: android/app/build/outputs/apk/release/UrTruck.apk
+            ВНИМАНИЕ: APK подписан debug-ключом и предназначен ТОЛЬКО для
+            ручного тестирования. С него НЕЛЬЗЯ обновиться на версию из
+            Google Play (другая подпись) — перед установкой Play-версии
+            debug-сборку нужно удалить. Прод-сборка (.aab, upload-ключ)
+            собирается в deploy-play.yml.
+
+            Скачать: см. `UrTruck-debug.apk` ниже в Assets.
+          files: android/app/build/outputs/apk/debug/UrTruck-debug.apk
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
