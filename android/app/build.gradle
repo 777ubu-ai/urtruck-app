@@ -2,6 +2,12 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+// Apply before the Android/dependency configuration so the Google Services
+// plugin can register and execute its release resource generation tasks.
+if (file("google-services.json").exists()) {
+    apply plugin: "com.google.gms.google-services"
+}
+
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 def configuredVersionCode = project.findProperty('URTRUCK_VERSION_CODE')
 
@@ -212,20 +218,4 @@ dependencies {
     } else {
         implementation jscFlavor
     }
-}
-
-// P1 fix (26.08.2026): Android push notifications go through FCM, which
-// requires a real Firebase project's google-services.json to be present at
-// build time (see docs/release/android-firebase-config.md for the full
-// incident writeup). Applied conditionally — a build with no
-// google-services.json present (e.g. a plain local `./gradlew assembleDebug`
-// run by a contributor who hasn't been handed the file) must still succeed;
-// only the release workflows (build-android-apk.yml, deploy-play.yml) fail
-// CLOSED and loudly via scripts/verify_android_firebase_config.py *before*
-// Gradle even starts, so a genuinely broken/missing config is never silently
-// shipped. This mirrors the standard community pattern for optional Firebase
-// wiring in a React Native/Expo Android project that also supports
-// Firebase-less local development.
-if (file("google-services.json").exists()) {
-    apply plugin: "com.google.gms.google-services"
 }

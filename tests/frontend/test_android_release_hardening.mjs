@@ -28,3 +28,9 @@ test('release version code fails closed without CI assignment', () => {
   assert.match(gradle, /-PURTRUCK_VERSION_CODE/);
   assert.match(gradle, /configuredVersionCode \? configuredVersionCode\.toInteger\(\) : 9/);
 });
+
+test('Firebase plugin is applied before Android configuration', () => {
+  const pluginIndex = gradle.indexOf('com.google.gms.google-services');
+  const androidIndex = gradle.indexOf('android {');
+  assert.ok(pluginIndex >= 0 && pluginIndex < androidIndex);
+});
