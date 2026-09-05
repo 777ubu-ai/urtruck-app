@@ -1331,7 +1331,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']} testID="deal-workspace-screen">
-      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
         {viewMode === VIEW_CHAT ? (
           <View style={s.chatFullscreen} testID="deal-chat-fullscreen">
             {dealLoading && !dealId ? (
