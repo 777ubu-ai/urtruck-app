@@ -109,7 +109,7 @@ from api.metrics import metrics_router, MetricsMiddleware
 from api.leaderboard import leader_router
 from api.saved_searches import ss_router
 from api.marketplace import mp_router
-from api.chat import chat_router
+from api.chat import chat_router, _ensure_special_users as _ensure_chat_special_users
 from api.deal_room import deal_room_router
 from api.notifications import notif_router
 from api.profile import profile_router
@@ -228,6 +228,13 @@ def startup():
         print(f"[env-check] guard failed: {e}", flush=True)
     db.init_db()
     registration_dal.init_registration_schema()
+    # Release Block 6 (P0 cold-start fix): chat's Support/demo-user bootstrap
+    # reads/writes drivers_registration, so it must run AFTER the schema
+    # above exists — it used to run at api.chat's import time (main.py
+    # imports chat_router before this handler ever executes), which crashed
+    # on any DB that starts empty (fresh server / DR restore / DB_PATH typo).
+    # See api/chat.py _init() for the full root-cause note.
+    _ensure_chat_special_users()
     reviews_dal.init_reviews_schema()
     consent_dal.init_consent_schema()
     blacklist_mgr.seed_demo_blacklist()

@@ -20,8 +20,36 @@ def init_db():
 
 
 _WAL_INITIALIZED = False
+_DB_DIR_ENSURED = False
 _MARKET_EXPIRY_LAST_RUN = 0.0
 _MARKET_EXPIRY_INTERVAL_SECONDS = 60.0
+
+
+def _ensure_db_dir() -> None:
+    """Гарантировать, что каталог DB_PATH существует — ПЕРЕД первым connect.
+
+    ROOT CAUSE (Release Block 6 audit, P0 cold-start class): mkdir жил
+    только внутри init_db(), которую main.py вызывает в startup(). Но
+    несколько модулей (например api/push.py) делают DDL на уровне ИМПОРТА
+    через get_conn() напрямую — то есть ДО того, как startup() вообще
+    запускается. На сервере с ещё не созданным каталогом БД (свежая
+    машина, DB_PATH указывает в новый путь) это падало
+    `sqlite3.OperationalError: unable to open database file` при самом
+    импорте main.py — до старта, до health-check, до всего.
+    Однократный mkdir здесь, в get_conn() — единственном месте, через
+    которое ЛЮБОЙ модуль реально открывает соединение — закрывает весь
+    класс проблемы разом, а не только конкретный обнаруженный модуль.
+    """
+    global _DB_DIR_ENSURED
+    if _DB_DIR_ENSURED:
+        return
+    try:
+        Path(config.DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        # Не глушим тихо: если каталог создать не удалось, connect() ниже
+        # всё равно упадёт со своей ошибкой — но залогируем причину.
+        print(f"[db] failed to ensure DB directory exists: {exc}", flush=True)
+    _DB_DIR_ENSURED = True
 
 
 def _apply_pragmas(conn: sqlite3.Connection) -> None:
@@ -158,6 +186,7 @@ def get_conn():
     # timeout=10s gives SQLite room to wait on a writer instead of immediately
     # raising OperationalError; combined with WAL+busy_timeout this kills the
     # "database is locked" path for normal API traffic.
+    _ensure_db_dir()
     conn = sqlite3.connect(config.DB_PATH, timeout=10.0)
     conn.row_factory = sqlite3.Row
     _apply_pragmas(conn)
