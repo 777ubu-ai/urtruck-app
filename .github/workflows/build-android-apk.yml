@@ -76,12 +76,8 @@ jobs:
           fi
 
       - name: Materialize Android Firebase config (google-services.json)
-        # P1 fix (26.08.2026): без реального google-services.json Android push
-        # никогда не получит FCM runtime config, даже если весь остальной код
-        # правильный (см. docs/release/android-firebase-config.md). expo
-        # prebuild подхватывает файл через app.json → expo.android.googleServicesFile
-        # и сам копирует его в android/app/, поэтому здесь файл кладётся в
-        # корень репо — ДО prebuild.
+        # The committed native Android tree is built directly (no prebuild), so
+        # the Google Services plugin must see the secret in android/app/.
         env:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
           URTRUCK_APPLICATION_ID: ${{ github.event.inputs.application_id || 'com.urtruck.app' }}
@@ -91,11 +87,11 @@ jobs:
             echo "::error::Секрет ANDROID_GOOGLE_SERVICES_JSON_BASE64 не задан — Android push (FCM) не будет работать в этой сборке. См. docs/release/android-firebase-config.md."
             exit 1
           fi
-          echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > google-services.json
-          python3 scripts/verify_android_firebase_config.py --check-source google-services.json
+          echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
+          python3 scripts/verify_android_firebase_config.py --check-source android/app/google-services.json
           node - <<'NODE'
           const fs = require('fs');
-          const config = JSON.parse(fs.readFileSync('google-services.json', 'utf8'));
+          const config = JSON.parse(fs.readFileSync('android/app/google-services.json', 'utf8'));
           const expected = process.env.URTRUCK_APPLICATION_ID || 'com.urtruck.app';
           const packages = (config.client || [])
             .map((client) => client.client_info?.android_client_info?.package_name)
