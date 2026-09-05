@@ -1,6 +1,7 @@
 """Фоновые задачи: парсинг и переоценка."""
 import sys
 import time
+import json
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -296,8 +297,32 @@ def domain_outbox_job():
             for _ in range(100):
                 if worker.process_one() is None:
                     break
+        _domain_outbox_state.update({
+            "status": "healthy", "last_error": None,
+            "last_run": datetime.utcnow().isoformat(),
+        })
     except Exception as exc:
-        print(f"[domain-outbox] delivery cycle failed: {exc}", flush=True)
+        _domain_outbox_state.update({
+            "status": "degraded", "last_error": str(exc),
+            "last_run": datetime.utcnow().isoformat(),
+        })
+        print(json.dumps({
+            "component": "domain_outbox",
+            "event": "delivery_cycle_failed",
+            "error": str(exc),
+        }, ensure_ascii=False), flush=True)
+
+
+def scheduler_health() -> dict:
+    """Machine-readable readiness state for scheduler-owned side effects."""
+    import os
+    enabled = os.getenv("URTRUCK_ENABLE_SCHEDULER", "1").lower() not in ("0", "false", "no")
+    state = dict(_domain_outbox_state)
+    if not enabled:
+        state["status"] = "disabled"
+    elif _scheduler is None and state["status"] == "unknown":
+        state["status"] = "unavailable"
+    return {"enabled": enabled, "running": _scheduler is not None, "domain_outbox": state}
 
 
 # P0-8 (08.08.2026): раньше start_scheduler() вызывался ТОЛЬКО из
@@ -317,6 +342,7 @@ def domain_outbox_job():
 # scheduler вынесут в один из них явно).
 _scheduler = None
 _lock_fh = None
+_domain_outbox_state = {"status": "unknown", "last_error": None, "last_run": None}
 
 
 def _acquire_singleton_lock():

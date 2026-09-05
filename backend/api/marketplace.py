@@ -3172,8 +3172,15 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
         "cancelled": "cancelled",
     }
     if deal.get("trip_id") and new_status in _DEAL_TO_TRIP:
-        c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                   (_DEAL_TO_TRIP[new_status], deal["trip_id"]))
+        trip_update = c.execute(
+            "UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (_DEAL_TO_TRIP[new_status], deal["trip_id"]),
+        )
+        if trip_update.rowcount != 1:
+            raise DealTransitionError(409, {
+                "error": "TRIP_STATE_SYNC_FAILED",
+                "message": "Состояние рейса не удалось синхронно обновить вместе со сделкой",
+            })
     # Once cargo is picked up, GPS evidence belongs to the deal. Delivery or
     # an in-transit cancellation stops new updates but never deletes the last
     # point or consent record. A pre-pickup cancellation stays private.

@@ -359,7 +359,29 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    try:
+        from scheduler.jobs import scheduler_health
+        scheduler = scheduler_health()
+    except Exception as exc:
+        scheduler = {"enabled": True, "running": False,
+                     "domain_outbox": {"status": "unavailable", "last_error": str(exc)}}
+    return {"status": "ok", "scheduler": scheduler}
+
+
+@app.get("/health/ready")
+def health_ready():
+    """Readiness signal for scheduler-owned side-effect delivery."""
+    from fastapi.responses import JSONResponse
+    try:
+        from scheduler.jobs import scheduler_health
+        scheduler = scheduler_health()
+    except Exception as exc:
+        scheduler = {"enabled": True, "running": False,
+                     "domain_outbox": {"status": "unavailable", "last_error": str(exc)}}
+    state = scheduler.get("domain_outbox", {}).get("status")
+    ready = state in {"healthy", "unknown", "disabled"}
+    payload = {"status": "ready" if ready else "degraded", "scheduler": scheduler}
+    return JSONResponse(payload, status_code=200 if ready else 503)
 
 
 @app.get("/api/v1/system/info")

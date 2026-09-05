@@ -30,6 +30,18 @@ def test_scheduler_disabled_returns_none():
     os.environ.pop("URTRUCK_ENABLE_SCHEDULER", None)
 
 
+def test_domain_outbox_failure_is_visible_in_scheduler_health(monkeypatch):
+    from scheduler import jobs
+    import importlib
+    importlib.reload(jobs)
+    import database.db as database_db
+    monkeypatch.setattr(database_db, "get_conn", lambda: (_ for _ in ()).throw(RuntimeError("db unavailable")))
+    jobs.domain_outbox_job()
+    state = jobs.scheduler_health()
+    assert state["domain_outbox"]["status"] == "degraded"
+    assert "db unavailable" in state["domain_outbox"]["last_error"]
+
+
 def test_scheduler_singleton_idempotent():
     os.environ.pop("URTRUCK_ENABLE_SCHEDULER", None)
     os.environ["URTRUCK_SCHEDULER_LOCK"] = tempfile.mktemp(suffix=".lock")

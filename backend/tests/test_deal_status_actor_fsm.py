@@ -332,6 +332,26 @@ def test_legacy_trip_status_cannot_reactivate_reserved_trip():
         assert dict(c.execute("SELECT status FROM deals WHERE id = ?", (deal_id,)).fetchone()) == before
 
 
+def test_legacy_live_transition_keeps_trip_and_deal_in_sync():
+    from database.db import get_conn, new_id
+
+    trip_id = new_id()
+    deal_id = seed_deal("accepted", from_country="KZ", to_country="KZ")
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO trips (id, driver_id, from_city, to_city, price, status) VALUES (?,?,?,?,?,?)",
+            (trip_id, DRIVER, "Almaty", "Astana", 3000, "booked"),
+        )
+        c.execute("UPDATE deals SET trip_id = ? WHERE id = ?", (trip_id, deal_id))
+    as_user(DRIVER)
+
+    response = client.patch(f"/api/v1/market/trips/{trip_id}/status", params={"new_status": "in_transit"})
+    assert response.status_code == 200, response.text
+    with get_conn() as c:
+        assert c.execute("SELECT status FROM deals WHERE id = ?", (deal_id,)).fetchone()[0] == "in_progress"
+        assert c.execute("SELECT status FROM trips WHERE id = ?", (trip_id,)).fetchone()[0] == "in_transit"
+
+
 def test_concurrent_conflicting_patch_does_not_give_two_false_200():
     """Пре-мёрдж ревью (05.08.2026, P0-блокер, независимый adversarial
     review): SELECT-then-UPDATE без блокировки строки — 2 одновременных
