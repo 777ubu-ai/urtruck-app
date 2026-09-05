@@ -28,15 +28,6 @@ import pytest
 # `attempt to write a readonly database` в standalone-тестах с module-level init.
 Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
 
-# Some test modules import API modules during collection, before the session
-# fixture runs. Bootstrap the schemas those imports require up front; the
-# session fixture below still rebuilds the complete shared schema afterwards.
-from database import db as _collection_db
-from database import registration_dal as _collection_registration
-_collection_db.init_db()
-_collection_registration.init_registration_schema()
-
-
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_full_schema():
     from database import db as dbm

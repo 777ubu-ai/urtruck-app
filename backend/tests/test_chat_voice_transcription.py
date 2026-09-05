@@ -3,16 +3,6 @@ import uuid
 from pathlib import Path
 
 from database.db import get_conn
-from api.chat import (
-    SendMessageIn,
-    TranscribeIn,
-    get_or_create_deal_room,
-    send_message,
-    transcribe_message,
-    translate_message,
-    TranslateIn,
-)
-import api.chat as chat_module
 
 
 def _user(uid: str) -> dict:
@@ -41,6 +31,17 @@ def _mk_deal(cargo_id: str, owner_id: str, driver_id: str, room_id: str) -> str:
 
 
 def test_transcribe_voice_message_caches_transcript_and_translation(monkeypatch, tmp_path):
+    # Import after the session fixture has initialized registration_schema.
+    from api.chat import (
+        SendMessageIn,
+        TranscribeIn,
+        TranslateIn,
+        get_or_create_deal_room,
+        send_message,
+        transcribe_message,
+        translate_message,
+    )
+    import api.chat as chat_module
     owner_id = "own_" + uuid.uuid4().hex[:6]
     driver_id = "drv_" + uuid.uuid4().hex[:6]
     _mk_users(owner_id, driver_id)
