@@ -237,6 +237,15 @@ body = json.dumps(payload, ensure_ascii=False, indent=2)
 # JSON — для backend (backend/services/geo_catalog.py).
 Path('shared/geo-catalog.json').write_text(body + '\n', encoding='utf-8')
 
+# Деплой-копия ВНУТРИ backend/. Прод-деплой (secure-production-deploy.yml)
+# копирует только `backend/*` в BACKEND_DIR — shared/ на сервере не существует,
+# и без этой копии canonical-resolve падал FileNotFoundError на первом же
+# create_cargo/create_trip (health-check при этом зелёный: импорт ленивый).
+# Файл КОММИТИТСЯ в репозиторий; синхронность всех трёх артефактов защищает
+# backend/tests/test_geo_catalog_artifacts_sync.py.
+Path('backend/data').mkdir(parents=True, exist_ok=True)
+Path('backend/data/geo-catalog.json').write_text(body + '\n', encoding='utf-8')
+
 # JS-модуль — для frontend. Отдельный файл, а не import JSON, потому что
 # Metro и строгий ESM-резолвер Node по-разному относятся к JSON-импортам
 # (Node требует import attribute `with { type: 'json' }`, который Babel/Hermes

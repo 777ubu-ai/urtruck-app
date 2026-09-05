@@ -161,6 +161,29 @@ _LEGACY_POINT_TYPE = {
 }
 
 
+# P0-A: флаг «каталог недоступен» уже залогирован — предупреждаем ГРОМКО,
+# но один раз на процесс, а не на каждый create (иначе лог зальёт).
+_CATALOG_WARNED = False
+
+
+def _warn_catalog_unavailable_once(err: Exception) -> None:
+    global _CATALOG_WARNED
+    if _CATALOG_WARNED:
+        return
+    _CATALOG_WARNED = True
+    print(
+        "=" * 70 + "\n"
+        "[marketplace] КРИТИЧНО: geo-catalog недоступен — canonical-resolve "
+        "ОТКЛЮЧЁН, объявления создаются в легаси-режиме (location_id=NULL) и "
+        "НЕ будут находиться фильтром по городу; фильтрованные ленты отдают "
+        f"503. Причина: {err}\n"
+        "Починить: доставить backend/data/geo-catalog.json (генератор "
+        "scripts/generate_geo_catalog.py) или задать GEO_CATALOG_PATH.\n"
+        + "=" * 70,
+        flush=True,
+    )
+
+
 def _canonical_route_columns(country, point_type, point_name, city):
     """Canonical-resolve маршрутной точки ПЕРЕД записью в БД.
 
@@ -176,9 +199,20 @@ def _canonical_route_columns(country, point_type, point_name, city):
 
     Неизвестная каталогу точка сохраняется как раньше (легаси-значения,
     location_id = NULL) — неправильный ID не присваивается.
+
+    P0-A (аудит 2026-09-05): недоступный каталог (FileNotFoundError) НЕ
+    роняет create_cargo/create_trip 500-кой — создание деградирует к
+    поведению до Task 3 (легаси-значения, location_id = NULL). Объявление
+    остаётся видимым в нефильтрованной ленте и в scope «вся страна» после
+    backfill; ронять создание из-за отсутствующего справочника — терять
+    живые сделки. Лог — громкий, один раз на процесс.
     """
     c, ptype, pname = _norm_route_triple(country, point_type, point_name)
-    cid, lid, canonical_type = geo_catalog.canonical_route_point(c, pname, city)
+    try:
+        cid, lid, canonical_type = geo_catalog.canonical_route_point(c, pname, city)
+    except FileNotFoundError as e:
+        _warn_catalog_unavailable_once(e)
+        return c, ptype, pname, None
     if not lid:
         return c, ptype, pname, None
     # Страну берём из резолва только если клиент её не присылал:
@@ -676,6 +710,22 @@ def _route_scope_where(where: list, params: list,
             destination_country_id, destination_location_id, field="destination")
     except geo_catalog.RouteScopeError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        # P0-A: каталог недоступен → фильтрация невозможна. Отдаём честную
+        # 503, а НЕ пустую ленту и НЕ «фильтр молча проигнорирован»: пустая
+        # лента выглядела бы как «грузов нет» и скрыла бы инцидент от
+        # мониторинга и от пользователя; проигнорированный фильтр показал бы
+        # ЧУЖИЕ маршруты под видом отфильтрованных. 503 = «сервис деградирован,
+        # повторите позже» — и именно её ловит production proof в CI.
+        # Ветка достижима только когда фильтр реально запрошен: validate_scope
+        # с пустыми параметрами каталог не читает, нефильтрованная лента
+        # продолжает работать.
+        _warn_catalog_unavailable_once(e)
+        raise HTTPException(
+            status_code=503,
+            detail="Маршрутный справочник временно недоступен — "
+                   "фильтр по стране/городу не может быть применён. "
+                   "Повторите запрос без маршрутного фильтра или позже.")
 
     # Равенство БЕЗ UPPER() по колонке — иначе составной индекс
     # idx_*_route_scope не применяется (см. нормализацию в _init).
