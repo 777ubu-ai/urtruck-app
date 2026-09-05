@@ -39,10 +39,12 @@ test('trusted server geometry is a solid green road on the Yandex web map', () =
 });
 
 test('straight direction fallback cannot masquerade as the real road route', () => {
-  assert.match(webMap, /strokeColor: '#6B7B73'/);
-  assert.match(webMap, /strokeStyle: 'dash'/);
+  assert.match(webMap, /strokeColor: "#168759"/);
   assert.match(webMap, /truck-map-road-route-unavailable/);
-  assert.doesNotMatch(webMap, /strokeColor: '#168759'[\s\S]{0,120}strokeStyle: 'dash'/);
+  assert.doesNotMatch(webMap, /strokeStyle: 'dash'/);
+  assert.match(nativeMap, /strokeColor:\s*p\.hasRoad\s*\?\s*'#168759'\s*:\s*'#6B7B73'/);
+  assert.match(nativeMap, /strokeWidth:\s*p\.hasRoad\s*\?\s*6\s*:\s*3/);
+  assert.match(nativeMap, /strokeStyle:\s*p\.hasRoad\s*\?\s*'solid'\s*:\s*'dash'/);
 });
 
 test('KZ-RU server routing is Yandex Router API in truck mode with real polyline metrics', () => {

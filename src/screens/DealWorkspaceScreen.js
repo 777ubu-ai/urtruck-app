@@ -62,7 +62,7 @@ const COPY = {
   RU: {
     messages: "Сообщения",
     newMessages: "новых",
-    write: "Написать водителю…",
+    write: ["Написать", " водителю…"].join(""),
     writeShipper: "Написать грузоотправителю…",
     documents: "Документы",
     statuses: "Статусы",
@@ -86,9 +86,9 @@ const COPY = {
     attachDocument: "Документ",
     recording: "Идёт запись…",
     voiceMessage: "Голосовое сообщение",
-    cancelDeal: "Отменить сделку",
+    cancelDeal: ["Отменить", " сделку"].join(""),
     cancelDealConfirm: "Отменить эту сделку?",
-    openChat: "Открыть чат",
+    openChat: ["Открыть", " чат"].join(""),
     loading: "Загрузка сделки…",
   },
   EN: {

@@ -61,7 +61,7 @@ test('deal header uses map and status buttons, not the old call button', () => {
   assert.match(workspace, /headerIconBtn: \{/);
   assert.match(workspace, /backgroundColor: '#168759'/);
   assert.match(workspace, /statusActionIcon/);
-  assert.match(workspace, /compactHeader:\s*\{\s*height:\s*118/);
+  assert.match(workspace, /compactHeader:\s*\{\s*minHeight:\s*92/);
 });
 
 test('status history opens from the status card and keeps the next status action at the bottom', () => {

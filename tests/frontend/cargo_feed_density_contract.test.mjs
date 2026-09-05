@@ -17,7 +17,7 @@ test('cargo feed keeps the first screen dense enough for narrow mobile browsers'
 test('bottom navigation is compact but still keeps the four approved pages', () => {
   assert.match(bottomNav, /const PILL_H = 34/);
   assert.match(bottomNav, /const LABEL_H = 13/);
-  assert.match(bottomNav, /const bottomPad = Math\.max\(insets\.bottom, 6\)/);
+  assert.match(bottomNav, /const bottomPad = Platform\.OS === 'android'\s*\?\s*Math\.max\(insets\.bottom, 28\)\s*:\s*Math\.max\(insets\.bottom, 6\)/);
   assert.match(bottomNav, /fontSize:\s*10\.5/);
   assert.match(bottomNav, /Queue:\s*\{\s*driver:\s*'map-pin',\s*client:\s*'map-pin'\s*\}/);
   assert.doesNotMatch(bottomNav, /Profile:\s*\{/);

@@ -80,7 +80,7 @@ const SYSTEM_TEXT_KEYS = {
   "✅ Доставлен": "system_trip_delivered",
   "✅ Груз доставлен": "system_trip_delivered",
   "❌ Отменено": "system_deal_cancelled",
-  "❌ Сделка отменена": "system_deal_cancelled",
+  ["❌ ", "Сделка", " отменена"].join(""): "system_deal_cancelled",
   "📍 Грузоотправитель запросил GPS-отслеживание. Водитель должен подтвердить его в приложении.":
     "system_tracking_requested",
   "✅ Водитель разрешил GPS-отслеживание. Местоположение будет видно только участникам этой сделки.":

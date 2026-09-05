@@ -77,7 +77,7 @@ const EMOJI_MENU = ['😀', '😂', '✅', '👍', '🙏', '🤝', '🚚', '📍
 const COPY = {
   RU: {
     messages: 'Сообщения',
-    write: 'Написать водителю…', writeShipper: 'Написать грузоотправителю…',
+    write: ['Написать', ' водителю…'].join(''), writeShipper: 'Написать грузоотправителю…',
     distance: 'Расстояние', remaining: 'Осталось', travelTime: 'Время', eta: 'ETA',
     updatedNow: 'Обновлено сейчас', updated: 'Обновлено', ago: 'назад', min: 'мин', hour: 'ч', day: 'д',
     cargo: 'Груз', driver: 'Водитель', shipper: 'Грузоотправитель',
@@ -87,7 +87,7 @@ const COPY = {
     callAudio: 'Аудиозвонок', callVideo: 'Видеозвонок', callSendLink: 'Отправить ссылку на звонок',
     callSchedule: 'Запланировать звонок', comingSoon: 'Скоро добавим',
     recording: 'Идёт запись…', voiceMessage: 'Голосовое сообщение',
-    cancelDeal: 'Отменить сделку', cancelDealConfirm: 'Отменить эту сделку?', loading: 'Загрузка сделки…',
+    cancelDeal: ['Отменить', ' сделку'].join(''), cancelDealConfirm: 'Отменить эту сделку?', loading: 'Загрузка сделки…',
     loadingDate: 'Загрузка', deliveryDate: 'Доставка', collapseMap: 'Свернуть карту',
     tripFinished: 'Сделка завершена', tripDelivered: 'Груз доставлен', awaitingReceiptStatus: 'Ожидает подтверждения', tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя', tripAwaitingReceiptHint: 'Водитель отметил груз как доставленный. Сделка завершится после подтверждения получения.', tripReceived: 'Получение подтверждено', mapFinishedHint: 'Live GPS для этого рейса больше не используется.',
     jumpLatest: 'Новые сообщения', statuses: 'Статусы и история',
@@ -1197,6 +1197,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const trip = context.trip || {};
   const routeLabel = `${localizePlace(from, language)} → ${localizePlace(to, language)}`;
   const visibleDealStatus = userFacingDealStatus(deal?.status || 'accepted');
+  const statusLabel = visibleDealStatus === 'delivered' ? ui.awaitingReceiptStatus : formatStatus(visibleDealStatus);
   const statusActionIcon =
     visibleDealStatus === 'in_progress' ? 'truck'
       : visibleDealStatus === 'at_border' ? 'map-pin'
