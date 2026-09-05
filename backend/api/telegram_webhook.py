@@ -85,33 +85,17 @@ async def telegram_webhook(request: Request):
         return {"ok": True}
 
     # /start verify_XXXX
+    #
+    # ROOT CAUSE (Release Block 6 audit, P0): mirrors the same oracle in
+    # services/telegram_bot.py — resolved ANY live code from the shared
+    # verification_codes table (issued by WhatsApp/SMS too) to a phone
+    # number, with no rate limit and no chat_id↔phone binding. Telegram
+    # OTP delivery is disabled (services/otp_service.py send_telegram) —
+    # this webhook path must not touch verification_codes either, or the
+    # oracle stays open via this alternate (webhook, vs polling-bot) path.
     if text.startswith("/start verify_"):
-        code = text.replace("/start verify_", "").strip()
-        if not code:
-            _send_message(chat_id, "❌ Код не указан. Попробуйте ещё раз.")
-            return {"ok": True}
-
-        # Ищем код в verification_codes
-        from database.db import get_conn
-        with get_conn() as c:
-            row = c.execute(
-                "SELECT phone FROM verification_codes WHERE code = ?", (code,)
-            ).fetchone()
-
-        if not row:
-            _send_message(chat_id, "❌ Код не найден или истёк. Запросите новый в приложении.")
-            return {"ok": True}
-
-        phone = row["phone"]
-        # НЕ удаляем код — отправляем юзеру, он введёт в приложении
-        _send_message(
-            chat_id,
-            f"🔐 *Ваш код подтверждения:*\n\n"
-            f"```\n{code}\n```\n\n"
-            f"Введите этот код в приложении UrTruck.\n"
-            f"Код действителен 5 минут.\n\n"
-            f"_Никому не сообщайте этот код!_"
-        )
+        _send_message(chat_id, "ℹ️ Подтверждение через Telegram временно недоступно. "
+                       "Запросите код по WhatsApp или SMS в приложении UrTruck.")
         return {"ok": True}
 
     # /start (без кода)
