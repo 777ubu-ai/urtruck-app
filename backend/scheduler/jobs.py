@@ -282,6 +282,24 @@ def no_bids_notify_job():
     print(f"[{now.isoformat()}] no-bids-notify: sent={sent}")
 
 
+def domain_outbox_job():
+    """Deliver Foundation events through the existing idempotent worker."""
+    from database.db import get_conn
+    from infrastructure.outbox.worker import PersistentOutboxWorker
+    from infrastructure.outbox.deals_handlers import acceptance_handlers
+    from modules.deals.application.service import ensure_v2_schema
+
+    try:
+        with get_conn() as c:
+            ensure_v2_schema(c)
+            worker = PersistentOutboxWorker(c, acceptance_handlers(c))
+            for _ in range(100):
+                if worker.process_one() is None:
+                    break
+    except Exception as exc:
+        print(f"[domain-outbox] delivery cycle failed: {exc}", flush=True)
+
+
 # P0-8 (08.08.2026): раньше start_scheduler() вызывался ТОЛЬКО из
 # `if __name__ == "__main__"` (ручной запуск модуля), а FastAPI-startup его
 # не звал → в production не работали ЧАСОВЫЕ БЭКАПЫ БД, продуктовые пуши
@@ -363,9 +381,10 @@ def start_scheduler():
     # «Пока нет предложений» (18ч без ставок) — проверяем каждые 3 часа,
     # дедуп по data_json удерживает один пуш на публикацию.
     sched.add_job(no_bids_notify_job, IntervalTrigger(hours=3), id="no_bids_notify")
+    sched.add_job(domain_outbox_job, IntervalTrigger(seconds=15), id="domain_outbox")
     sched.start()
     _scheduler = sched
-    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h")
+    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, domain outbox 15s")
     return sched
 
 

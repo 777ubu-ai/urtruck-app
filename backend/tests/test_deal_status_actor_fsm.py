@@ -284,7 +284,9 @@ def test_trip_status_endpoint_cannot_bypass_fsm_or_country_guard():
         c.execute("UPDATE deals SET trip_id = ? WHERE id = ?", (trip_id, d))
     as_user(DRIVER)
     r = client.patch(f"/api/v1/market/trips/{trip_id}/status", params={"new_status": "delivered"})
-    assert r.status_code == 200, r.text  # сам trip-статус обновляется (legacy-совместимость)
+    assert r.status_code == 409, r.text
+    with get_conn() as c:
+        assert c.execute("SELECT status FROM trips WHERE id = ?", (trip_id,)).fetchone()[0] == "booked"
     assert deal_status(d) == "accepted", (
         "БЛОКЕР-регресс: deals.status не должен перепрыгнуть в delivered в обход FSM "
         f"через /trips/status, получили {deal_status(d)!r}"
@@ -299,11 +301,35 @@ def test_trip_status_endpoint_cannot_bypass_fsm_or_country_guard():
         c.execute("UPDATE deals SET trip_id = ? WHERE id = ?", (trip_id2, d2))
     as_user(DRIVER)
     r2 = client.patch(f"/api/v1/market/trips/{trip_id2}/status", params={"new_status": "delivered"})
-    assert r2.status_code == 200, r2.text
+    assert r2.status_code == 409, r2.text
+    with get_conn() as c:
+        assert c.execute("SELECT status FROM trips WHERE id = ?", (trip_id2,)).fetchone()[0] == "in_transit"
     assert deal_status(d2) == "in_progress", (
         "БЛОКЕР-регресс: международный маршрут не должен доставляться в обход at_border "
         f"через /trips/status, получили {deal_status(d2)!r}"
     )
+
+
+def test_legacy_trip_status_cannot_reactivate_reserved_trip():
+    """Legacy OFF path must reject active/booked writes for a live deal."""
+    from database.db import get_conn, new_id
+
+    trip_id = new_id()
+    deal_id = seed_deal("accepted", from_country="KZ", to_country="KZ")
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO trips (id, driver_id, from_city, to_city, price, status) VALUES (?,?,?,?,?,?)",
+            (trip_id, DRIVER, "Almaty", "Astana", 3000, "booked"),
+        )
+        c.execute("UPDATE deals SET trip_id = ? WHERE id = ?", (trip_id, deal_id))
+        before = dict(c.execute("SELECT status FROM deals WHERE id = ?", (deal_id,)).fetchone())
+
+    as_user(DRIVER)
+    response = client.patch(f"/api/v1/market/trips/{trip_id}/status", params={"new_status": "active"})
+    assert response.status_code == 409, response.text
+    with get_conn() as c:
+        assert c.execute("SELECT status FROM trips WHERE id = ?", (trip_id,)).fetchone()[0] == "booked"
+        assert dict(c.execute("SELECT status FROM deals WHERE id = ?", (deal_id,)).fetchone()) == before
 
 
 def test_concurrent_conflicting_patch_does_not_give_two_false_200():

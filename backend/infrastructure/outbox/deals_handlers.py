@@ -68,4 +68,11 @@ def handle_bid_accepted(conn: sqlite3.Connection, event: OutboxEvent) -> None:
 
 def acceptance_handlers(conn: sqlite3.Connection) -> dict[str, callable]:
     """Return handlers suitable for PersistentOutboxWorker in an API worker."""
-    return {"BidAccepted": lambda event: handle_bid_accepted(conn, event)}
+    # Acknowledging these events prevents an unrelated DealCreated event
+    # from poisoning the queue ahead of the BidAccepted notification.
+    return {
+        "BidAccepted": lambda event: handle_bid_accepted(conn, event),
+        "DealCreated": lambda event: None,
+        "DealStatusChanged": lambda event: None,
+        "DealCancelled": lambda event: None,
+    }

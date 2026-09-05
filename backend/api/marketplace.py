@@ -7,6 +7,7 @@ import json
 import re
 import os
 import threading
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -1993,6 +1994,28 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level
             raise HTTPException(status_code=404)
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Только водитель может менять статус")
+
+        # Legacy remains an adapter when V2 is OFF, but it must not mutate a
+        # reserved trip behind the Deals owner.  Delegate lifecycle changes
+        # to the same FSM and reject states that cannot be reconciled.
+        live_deal = c.execute(
+            "SELECT * FROM deals WHERE trip_id = ? AND status IN "
+            "('accepted','in_progress','at_border','awaiting_confirmation','delivered','received') "
+            "ORDER BY created_at LIMIT 1",
+            (trip_id,),
+        ).fetchone()
+        if live_deal:
+            if new_status in ("active", "booked"):
+                raise HTTPException(status_code=409, detail={"error": "LIVE_DEAL_RESERVATION"})
+            mapped = {"in_transit": "in_progress", "delivered": "delivered", "cancelled": "cancelled"}.get(new_status)
+            if not mapped:
+                raise HTTPException(status_code=409, detail={"error": "LIVE_DEAL_RESERVATION"})
+            try:
+                _transition_deal(c, dict(live_deal), mapped, user["id"], uuid.uuid4().hex[:12])
+            except DealTransitionError as e:
+                raise HTTPException(status_code=e.status_code, detail=e.detail)
+            return {"ok": True, "status": new_status}
+
         c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_status, trip_id))
         _TRIP_TO_DEAL = {"in_transit": "in_progress", "delivered": "delivered", "cancelled": "cancelled"}
         if new_status in _TRIP_TO_DEAL:

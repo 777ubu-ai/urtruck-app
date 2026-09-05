@@ -14,7 +14,8 @@ def test_all_counter_mutations_select_v2_before_legacy_sql():
 def test_v2_transition_trip_adapter_is_the_old_bypass_gate():
     source = inspect.getsource(marketplace.update_trip_status)
     assert "service.transition_trip_status" in source
-    assert "LIVE_DEAL_RESERVATION" not in source
+    assert "live_deal" in source
+    assert "status_code=409" in source
     assert "_run_deals_v2(" in source
 
 
