@@ -21,6 +21,34 @@ from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
 from services.geo_normalize import normalize_country, is_international_route
 
+try:
+    from modules.deals.application.service import DealsBidsService, DomainError
+    from modules.deals.application.public_contract import Actor, CommandContext
+    from infrastructure.feature_flags import deals_v2_enabled
+except ImportError:  # repository-root imports used by tests
+    from backend.modules.deals.application.service import DealsBidsService, DomainError
+    from backend.modules.deals.application.public_contract import Actor, CommandContext
+    from backend.infrastructure.feature_flags import deals_v2_enabled
+
+
+def _run_deals_v2(operation: str, user: dict, idempotency_key: Optional[str], handler):
+    """Run a V2 mutation in one SQLite write transaction; default is OFF."""
+    if not deals_v2_enabled():
+        return None
+    import uuid
+    try:
+        with get_conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            actor = Actor(user_id=user["id"], role=user.get("role", "unknown"))
+            context = CommandContext(
+                operation_id=uuid.uuid4().hex,
+                correlation_id=uuid.uuid4().hex,
+                idempotency_key=idempotency_key,
+            )
+            return handler(DealsBidsService(c), actor, context)
+    except DomainError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
 
 def _sign_cargo_photos(photos):
     """Фото груза хранятся как storage-ключи; отдаём ПОДПИСАННЫЕ ссылки, чтобы
@@ -1433,7 +1461,7 @@ def _ensure_bargain_depth(c, bid: dict, required_actions: int = BARGAIN_MIN_PRIC
 
 
 @mp_router.post("/bids")
-def create_bid(body: BidIn, user=Depends(require_level(1))):
+def create_bid(body: BidIn, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     # cargo_id или trip_id — хотя бы один (для серверных грузов)
     # Если оба null — разрешаем (для demo/local грузов), ставка просто без привязки
 
@@ -1444,6 +1472,13 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
     # non-numeric, но не <= 0.
     if body.amount is None or body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount должен быть > 0")
+
+    v2_result = _run_deals_v2(
+        "bid.create", user, idempotency_key,
+        lambda service, actor, context: service.create_bid(body.model_dump(exclude_none=True), actor, context),
+    )
+    if v2_result is not None:
+        return v2_result
 
     bid_id = new_id()
     # PR-B: собираем «post-commit» нотификации в локальные переменные.
@@ -2247,7 +2282,13 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
 
 
 @mp_router.post("/bids/{bid_id}/accept")
-def accept_bid(bid_id: str, user=Depends(require_level(1))):
+def accept_bid(bid_id: str, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
+    v2_result = _run_deals_v2(
+        "bid.accept", user, idempotency_key,
+        lambda service, actor, context: service.accept_bid(bid_id, actor, context),
+    )
+    if v2_result is not None:
+        return v2_result
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
         # Owner cannot accept a bid that is currently countered — driver must
@@ -2326,12 +2367,19 @@ def _ensure_bid_accept_owner(c, bid: dict, user_id: str) -> None:
 
 
 @mp_router.patch("/bids/{bid_id}")
-def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
+def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     """Bidder edits their own pending bid (amount and/or message)."""
     if body.amount is None and body.message is None:
         raise HTTPException(status_code=400, detail="Укажите amount или message для обновления")
     if body.amount is not None and body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount должен быть > 0")
+
+    v2_result = _run_deals_v2(
+        "bid.update", user, idempotency_key,
+        lambda service, actor, context: service.update_bid(bid_id, body.model_dump(exclude_none=True), actor, context),
+    )
+    if v2_result is not None:
+        return v2_result
 
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
@@ -2401,8 +2449,14 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
 
 
 @mp_router.post("/bids/{bid_id}/cancel")
-def cancel_bid(bid_id: str, user=Depends(require_level(1))):
+def cancel_bid(bid_id: str, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     """Bidder cancels their own pending or countered bid."""
+    v2_result = _run_deals_v2(
+        "bid.cancel", user, idempotency_key,
+        lambda service, actor, context: service.reject_or_cancel(bid_id, "cancel", actor, context),
+    )
+    if v2_result is not None:
+        return v2_result
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
         if bid["bidder_id"] != user["id"]:
@@ -2455,8 +2509,14 @@ def cancel_bid(bid_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.post("/bids/{bid_id}/reject")
-def reject_bid(bid_id: str, user=Depends(require_level(1))):
+def reject_bid(bid_id: str, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     """Cargo owner or trip owner explicitly rejects a pending or countered bid."""
+    v2_result = _run_deals_v2(
+        "bid.reject", user, idempotency_key,
+        lambda service, actor, context: service.reject_or_cancel(bid_id, "reject", actor, context),
+    )
+    if v2_result is not None:
+        return v2_result
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
         owner_id = _cargo_or_trip_owner_id(c, bid)
@@ -2519,10 +2579,16 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
 # ═══ Counter-offer + chat-before-accept ═══
 
 @mp_router.post("/bids/{bid_id}/counter")
-def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1))):
+def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     """Cargo/trip owner sends a counter-offer to a pending bid."""
     if body.amount is None or body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount должен быть > 0")
+    v2_result = _run_deals_v2(
+        "bid.counter", user, idempotency_key,
+        lambda service, actor, context: service.counter_bid(bid_id, body.model_dump(exclude_none=True), actor, context),
+    )
+    if v2_result is not None:
+        return v2_result
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
         owner_id = _cargo_or_trip_owner_id(c, bid)
@@ -3021,7 +3087,7 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
 
 
 @mp_router.patch("/deals/{deal_id}/status")
-def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level(1))):
+def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     # Этап-хаб заказа: добавлен промежуточный статус at_border («На границе») —
     # ключевой для коридора Китай↔КЗ. Порядок: accepted → in_progress →
     # at_border → delivered (cancelled — из любого рабочего).
@@ -3031,6 +3097,12 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             "error": "INVALID_STATUS",
             "message": f"Допустимые статусы: {', '.join(VALID)}",
         })
+    v2_result = _run_deals_v2(
+        "deal.transition", user, idempotency_key,
+        lambda service, actor, context: service.transition_deal(deal_id, new_status, actor, context),
+    )
+    if v2_result is not None:
+        return v2_result
     uid = user["id"]
     import uuid as _uuid
     request_id = _uuid.uuid4().hex[:12]
