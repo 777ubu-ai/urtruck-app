@@ -46,12 +46,18 @@ Initial events:
 
 ## SQLite Worker Design
 
-- Table `outbox_events`.
+- Table `domain_outbox`.
 - Claim pending rows with status transition `pending -> processing` guarded by `WHERE status='pending'`.
 - Use short transactions.
 - Retry with exponential backoff.
-- Mark `dead` after max attempts.
+- Mark `failed` after max attempts.
 - Payloads versioned.
+
+Delivery semantics are **at-least-once**. A process crash after a handler's
+external side effect and before `processed_at` can cause the event to be
+retried after the processing lease expires. Consumers must deduplicate by
+`event_id` (with a durable unique delivery record where the side effect is
+local) and must not claim exactly-once external delivery.
 
 ## Broker Decision
 
