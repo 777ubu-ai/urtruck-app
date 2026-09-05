@@ -23,3 +23,8 @@ def test_v2_accept_has_no_inline_side_effect_boundary():
     assert "send_to_user" not in source
     assert "create_notification" not in source
     assert "chat_room" in source
+
+
+def test_v2_rest_adapter_injects_canonical_chat_room_factory():
+    source = inspect.getsource(marketplace._run_deals_v2)
+    assert "room_factory=_v2_room_factory" in source

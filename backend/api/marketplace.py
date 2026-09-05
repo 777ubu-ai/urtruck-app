@@ -35,6 +35,11 @@ except ImportError:  # repository-root imports used by tests
 _V2_SCHEMA_LOCK = threading.Lock()
 
 
+def _v2_room_factory(c, shipper_id, driver_id, cargo_id, trip_id, bid_id):
+    """Adapt Deals V2 to the canonical Chat room upsert on the same conn."""
+    return _ensure_chat_room_inline(c, shipper_id, driver_id, cargo_id, trip_id, bid_id)
+
+
 def _run_deals_v2(operation: str, user: dict, idempotency_key: Optional[str], handler, expected_version: Optional[int] = None):
     """Run a V2 mutation in one SQLite write transaction; default is OFF."""
     if not deals_v2_enabled():
@@ -56,7 +61,7 @@ def _run_deals_v2(operation: str, user: dict, idempotency_key: Optional[str], ha
                 idempotency_key=idempotency_key,
                 expected_version=expected_version,
             )
-            return handler(DealsBidsService(c, ensure_schema=False), actor, context)
+            return handler(DealsBidsService(c, ensure_schema=False, room_factory=_v2_room_factory), actor, context)
     except DomainError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 

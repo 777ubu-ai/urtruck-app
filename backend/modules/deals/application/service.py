@@ -8,7 +8,7 @@ import hashlib
 import json
 import sqlite3
 import uuid
-from typing import Any
+from typing import Any, Callable
 
 from .public_contract import Actor, CommandContext
 
@@ -95,8 +95,10 @@ def ensure_v2_schema(conn: sqlite3.Connection) -> None:
 
 
 class DealsBidsService:
-    def __init__(self, conn: sqlite3.Connection, ensure_schema: bool = True):
+    def __init__(self, conn: sqlite3.Connection, ensure_schema: bool = True,
+                 room_factory: Callable[..., str] | None = None):
         self.conn = conn
+        self.room_factory = room_factory
         if ensure_schema:
             ensure_v2_schema(conn)
 
@@ -124,10 +126,19 @@ class DealsBidsService:
                 (_json(result), key),
             )
 
-    def _event(self, event_type: str, aggregate_type: str, aggregate_id: str, payload: dict) -> None:
+    def _event(self, event_type: str, aggregate_type: str, aggregate_id: str, payload: dict) -> str:
+        event_id = str(uuid.uuid4())
         self.conn.execute(
             "INSERT INTO domain_outbox(event_id,event_type,aggregate_type,aggregate_id,payload) VALUES (?,?,?,?,?)",
-            (str(uuid.uuid4()), event_type, aggregate_type, aggregate_id, _json(payload)),
+            (event_id, event_type, aggregate_type, aggregate_id, _json(payload)),
+        )
+        return event_id
+
+    def _ensure_room(self, shipper_id: str, driver_id: str, bid: sqlite3.Row) -> str | None:
+        if self.room_factory is None:
+            return None
+        return self.room_factory(
+            self.conn, shipper_id, driver_id, bid["cargo_id"], bid["trip_id"], bid["id"]
         )
 
     def create_bid(self, payload: dict, actor: Actor, context: CommandContext) -> dict:
@@ -337,16 +348,18 @@ class DealsBidsService:
                 raise DomainError(409, "Рейс уже занят")
         siblings = self.conn.execute("SELECT id FROM bids WHERE id<>? AND (cargo_id=? OR trip_id=?) AND status IN ('pending','countered')", (bid_id, bid["cargo_id"], bid["trip_id"])).fetchall()
         self.conn.execute("UPDATE bids SET status='rejected',updated_at=CURRENT_TIMESTAMP WHERE id<>? AND (cargo_id=? OR trip_id=?) AND status IN ('pending','countered')", (bid_id, bid["cargo_id"], bid["trip_id"]))
+        chat_room_id = self._ensure_room(shipper_id, driver_id, bid)
         deal_id = str(uuid.uuid4())
-        self.conn.execute("INSERT INTO deals(id,cargo_id,trip_id,bid_id,shipper_id,driver_id,from_city,to_city,amount,status) VALUES (?,?,?,?,?,?,?,?,?,?)", (deal_id, bid["cargo_id"], bid["trip_id"], bid_id, shipper_id, driver_id, from_city, to_city, final_amount, "accepted"))
+        self.conn.execute("INSERT INTO deals(id,cargo_id,trip_id,bid_id,shipper_id,driver_id,from_city,to_city,amount,status,chat_room_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)", (deal_id, bid["cargo_id"], bid["trip_id"], bid_id, shipper_id, driver_id, from_city, to_city, final_amount, "accepted", chat_room_id))
         transition_id = str(uuid.uuid4())
         self.conn.execute("INSERT INTO deal_transitions(transition_id,deal_id,actor_id,from_status,to_status,operation_id,correlation_id) VALUES (?,?,?,?,?,?,?)", (transition_id, deal_id, actor.user_id, "none", "accepted", context.operation_id, context.correlation_id))
-        self._event("BidAccepted", "bid", bid_id, {"deal_id": deal_id, "amount": final_amount})
+        deal_url = f"/cargos/{bid['cargo_id']}" if bid["cargo_id"] else f"/trips/{bid['trip_id']}"
+        self._event("BidAccepted", "bid", bid_id, {"deal_id": deal_id, "amount": final_amount, "chat_room_id": chat_room_id, "recipient_user_ids": [bid["bidder_id"]], "url": deal_url})
         self._event("DealCreated", "deal", deal_id, {"bid_id": bid_id, "cargo_id": bid["cargo_id"], "trip_id": bid["trip_id"], "amount": final_amount})
         result = {
             "ok": True,
             "deal_id": deal_id,
-            "chat_room_id": None,
+            "chat_room_id": chat_room_id,
             "from_city": from_city,
             "to_city": to_city,
             "shipper_id": shipper_id,
@@ -414,12 +427,14 @@ class DealsBidsService:
                 raise DomainError(409, "Рейс уже занят")
         siblings = self.conn.execute("SELECT id FROM bids WHERE id<>? AND (cargo_id=? OR trip_id=?) AND status IN ('pending','countered')", (bid["id"], bid["cargo_id"], bid["trip_id"])).fetchall()
         self.conn.execute("UPDATE bids SET status='rejected',version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id<>? AND (cargo_id=? OR trip_id=?) AND status IN ('pending','countered')", (bid["id"], bid["cargo_id"], bid["trip_id"]))
+        chat_room_id = self._ensure_room(shipper_id, driver_id, bid)
         deal_id = str(uuid.uuid4())
-        self.conn.execute("INSERT INTO deals(id,cargo_id,trip_id,bid_id,shipper_id,driver_id,from_city,to_city,amount,status) VALUES (?,?,?,?,?,?,?,?,?,?)", (deal_id, bid["cargo_id"], bid["trip_id"], bid["id"], shipper_id, driver_id, source["from_city"], source["to_city"], final_amount, "accepted"))
+        self.conn.execute("INSERT INTO deals(id,cargo_id,trip_id,bid_id,shipper_id,driver_id,from_city,to_city,amount,status,chat_room_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)", (deal_id, bid["cargo_id"], bid["trip_id"], bid["id"], shipper_id, driver_id, source["from_city"], source["to_city"], final_amount, "accepted", chat_room_id))
         self.conn.execute("INSERT INTO deal_transitions(transition_id,deal_id,actor_id,from_status,to_status,operation_id,correlation_id) VALUES (?,?,?,?,?,?,?)", (str(uuid.uuid4()), deal_id, actor.user_id, "none", "accepted", context.operation_id, context.correlation_id))
-        self._event("BidAccepted", "bid", bid["id"], {"deal_id": deal_id, "amount": final_amount})
-        self._event("DealCreated", "deal", deal_id, {"bid_id": bid["id"], "cargo_id": bid["cargo_id"], "trip_id": bid["trip_id"], "amount": final_amount})
-        return {"ok": True, "deal_id": deal_id, "chat_room_id": None, "from_city": source["from_city"], "to_city": source["to_city"], "shipper_id": shipper_id, "driver_id": driver_id, "rejected_siblings": [row["id"] for row in siblings], "rejected_bid_ids": [row["id"] for row in siblings]}
+        deal_url = f"/cargos/{bid['cargo_id']}" if bid["cargo_id"] else f"/trips/{bid['trip_id']}"
+        self._event("BidAccepted", "bid", bid["id"], {"deal_id": deal_id, "amount": final_amount, "chat_room_id": chat_room_id, "recipient_user_ids": [bid["bidder_id"]], "url": deal_url})
+        self._event("DealCreated", "deal", deal_id, {"bid_id": bid["id"], "cargo_id": bid["cargo_id"], "trip_id": bid["trip_id"], "amount": final_amount, "chat_room_id": chat_room_id})
+        return {"ok": True, "deal_id": deal_id, "chat_room_id": chat_room_id, "from_city": source["from_city"], "to_city": source["to_city"], "shipper_id": shipper_id, "driver_id": driver_id, "rejected_siblings": [row["id"] for row in siblings], "rejected_bid_ids": [row["id"] for row in siblings]}
 
     def transition_deal(self, deal_id: str, target: str, actor: Actor, context: CommandContext) -> dict:
         replay = self._idempotent("deal.transition", context.idempotency_key, {"deal_id": deal_id, "target": target})

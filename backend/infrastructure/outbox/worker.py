@@ -59,7 +59,7 @@ class PersistentOutboxWorker:
             handler(event)
         except Exception:
             terminal = event.attempts >= self.max_attempts
-            delay = self.retry_delay(event.attempts)
+            delay = OutboxWorker.retry_delay(event.attempts)
             self.conn.execute(
                 "UPDATE domain_outbox SET status=?, next_attempt_at=?, claimed_at=NULL WHERE event_id=? AND status='processing'",
                 ("failed" if terminal else "pending", (datetime.utcnow() + timedelta(seconds=delay)).isoformat(), event.event_id),
