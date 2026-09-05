@@ -1,0 +1,1 @@
+"""Transactional domain outbox infrastructure."""
