@@ -26,7 +26,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run static, UX and production-build checks
-        run: npm run qa:center:quick
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run qa:center:quick
       - name: Upload web build
         if: always()
         uses: actions/upload-artifact@v4
