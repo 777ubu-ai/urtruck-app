@@ -759,6 +759,12 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=404)
         if row["owner_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Можно удалять только свои грузы")
+        if deals_v2_enabled() and c.execute(
+            "SELECT 1 FROM deals WHERE cargo_id = ? AND status IN "
+            "('accepted','in_progress','at_border','awaiting_confirmation','delivered','received') LIMIT 1",
+            (cargo_id,),
+        ).fetchone():
+            raise HTTPException(status_code=409, detail={"error": "LIVE_DEAL_RESERVATION"})
         c.execute("UPDATE cargos SET status = 'cancelled' WHERE id = ?", (cargo_id,))
         # Ревизия 26.07: живые ставки удалённого груза отменяем каскадом —
         # иначе у водителей вечно висели «мёртвые» предложения без груза.
@@ -2656,8 +2662,14 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)),
 
 
 @mp_router.post("/bids/{bid_id}/counter/accept")
-def accept_counter(bid_id: str, user=Depends(require_level(1))):
+def accept_counter(bid_id: str, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     """Bidder accepts the counter-offer; deal/chat are created."""
+    v2_result = _run_deals_v2(
+        "bid.counter.accept", user, idempotency_key,
+        lambda service, actor, context: service.accept_counter(bid_id, actor, context),
+    )
+    if v2_result is not None:
+        return v2_result
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
         if bid["bidder_id"] != user["id"]:
@@ -2723,12 +2735,18 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.post("/bids/{bid_id}/counter/cancel")
-def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
+def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     """Cargo/trip owner отменяет СВОЮ встречную цену. Ставка возвращается в
     pending — теперь owner может принять оригинал одной кнопкой. Дизайн-
     система 2026 (приказ владельца 02.08): «две кнопки: Принять и Отклонить,
     без «отменить встречную» — водитель это не поймёт». Endpoint для того,
     чтобы фронт под капотом делал cancel→accept одним нажатием «Принять $X»."""
+    v2_result = _run_deals_v2(
+        "bid.counter.cancel", user, idempotency_key,
+        lambda service, actor, context: service.counter_response(bid_id, "cancel", actor, context),
+    )
+    if v2_result is not None:
+        return v2_result
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
         owner_id = _cargo_or_trip_owner_id(c, bid)
@@ -2746,8 +2764,14 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.post("/bids/{bid_id}/counter/decline")
-def decline_counter(bid_id: str, user=Depends(require_level(1))):
+def decline_counter(bid_id: str, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     """Bidder declines the counter; bid returns to 'pending', counter fields cleared."""
+    v2_result = _run_deals_v2(
+        "bid.counter.decline", user, idempotency_key,
+        lambda service, actor, context: service.counter_response(bid_id, "decline", actor, context),
+    )
+    if v2_result is not None:
+        return v2_result
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
         if bid["bidder_id"] != user["id"]:

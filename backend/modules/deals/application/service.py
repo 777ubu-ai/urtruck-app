@@ -229,8 +229,37 @@ class DealsBidsService:
             raise DomainError(403, "Только владелец может отправить контр-оффер")
         if bid["status"] != "pending" or not payload.get("amount") or payload["amount"] <= 0:
             raise DomainError(409, "Контр-оффер недоступен")
-        self.conn.execute("UPDATE bids SET status='countered',counter_amount=?,counter_message=?,counter_by='owner',counter_at=CURRENT_TIMESTAMP,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'", (payload["amount"], payload.get("message"), bid_id))
+        changed = self.conn.execute("UPDATE bids SET status='countered',counter_amount=?,counter_message=?,counter_by='owner',counter_at=CURRENT_TIMESTAMP,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'", (payload["amount"], payload.get("message"), bid_id))
+        if changed.rowcount != 1:
+            raise DomainError(409, "Ставка уже обработана")
         result = {"ok": True, "bid": dict(self._bid(bid_id))}
+        self._complete(context.idempotency_key, result)
+        return result
+
+    def counter_response(self, bid_id: str, action: str, actor: Actor, context: CommandContext) -> dict:
+        """Resolve a counter without exposing a direct status write to REST."""
+        if action not in ("cancel", "decline"):
+            raise DomainError(400, "Неизвестное действие контр-оффера")
+        operation = f"bid.counter.{action}"
+        replay = self._idempotent(operation, context.idempotency_key, {"bid_id": bid_id})
+        if replay:
+            return replay
+        bid = self._bid(bid_id)
+        owner = self._owner(bid)
+        expected_actor = owner if action == "cancel" else bid["bidder_id"]
+        if actor.user_id != expected_actor:
+            raise DomainError(403, "Недостаточно прав для этого контр-оффера")
+        if bid["status"] != "countered":
+            raise DomainError(409, f"Нет активного контр-оффера (статус {bid['status']})")
+        changed = self.conn.execute(
+            "UPDATE bids SET status='pending', counter_amount=NULL, counter_message=NULL, "
+            "counter_by=NULL, counter_at=NULL, version=version+1, updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND status='countered'",
+            (bid_id,),
+        )
+        if changed.rowcount != 1:
+            raise DomainError(409, "Контр-оффер уже обработан")
+        result = {"ok": True, "bid_id": bid_id, "status": "pending"}
         self._complete(context.idempotency_key, result)
         return result
 
@@ -256,6 +285,15 @@ class DealsBidsService:
         result = {"ok": True, "bid_id": bid_id, "status": status}
         self._complete(context.idempotency_key, result)
         return result
+
+    def expire_bid(self, bid_id: str, reason: str) -> bool:
+        """Scheduler adapter for the Bids owner; safe under concurrent expiry."""
+        changed = self.conn.execute(
+            "UPDATE bids SET status='expired', version=version+1, updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND status IN ('pending','countered')",
+            (bid_id,),
+        )
+        return changed.rowcount == 1
 
     def accept_bid(self, bid_id: str, actor: Actor, context: CommandContext, amount: int | None = None) -> dict:
         payload = {"bid_id": bid_id, "amount": amount}
@@ -318,6 +356,70 @@ class DealsBidsService:
         }
         self._complete(context.idempotency_key, result)
         return result
+
+    def accept_counter(self, bid_id: str, actor: Actor, context: CommandContext) -> dict:
+        """Accept a countered bid as the bidder, preserving the legacy URL."""
+        payload = {"bid_id": bid_id, "counter": True}
+        replay = self._idempotent("bid.counter.accept", context.idempotency_key, payload)
+        if replay:
+            return replay
+        bid = self._bid(bid_id)
+        if bid["bidder_id"] != actor.user_id:
+            raise DomainError(403, "Только автор ставки может принять контр-оффер")
+        if bid["status"] != "countered" or not bid["counter_amount"]:
+            raise DomainError(409, "Нет активного контр-оффера (статус или сумма отсутствует)")
+        result = self._accept_bid_transaction(
+            bid, actor, context, bid["counter_amount"], allowed_status="countered"
+        )
+        result["amount"] = bid["counter_amount"]
+        self._complete(context.idempotency_key, result)
+        return result
+
+    def _accept_bid_transaction(
+        self, bid: sqlite3.Row, actor: Actor, context: CommandContext,
+        final_amount: int, allowed_status: str = "pending",
+    ) -> dict:
+        """Common atomic reservation/deal creation for normal and counter accept."""
+        owner = self._owner(bid)
+        if allowed_status == "countered":
+            if bid["bidder_id"] != actor.user_id:
+                raise DomainError(403, "Только автор ставки может принять контр-оффер")
+        elif owner != actor.user_id:
+            raise DomainError(403, "Только владелец может принять ставку")
+        cargo = self.conn.execute("SELECT * FROM cargos WHERE id=?", (bid["cargo_id"],)).fetchone() if bid["cargo_id"] else None
+        trip = self.conn.execute("SELECT * FROM trips WHERE id=?", (bid["trip_id"],)).fetchone() if bid["trip_id"] else None
+        if bid["cargo_id"] and (not cargo or cargo["status"] not in (None, "active")):
+            raise DomainError(409, "Груз уже занят или недоступен")
+        if bid["trip_id"] and (not trip or trip["status"] not in (None, "active")):
+            raise DomainError(409, "Рейс уже занят или недоступен")
+        live = "'accepted','in_progress','at_border','awaiting_confirmation','delivered','received'"
+        for column, value in (("cargo_id", bid["cargo_id"]), ("trip_id", bid["trip_id"])):
+            if value and self.conn.execute(f"SELECT 1 FROM deals WHERE {column}=? AND status IN ({live}) LIMIT 1", (value,)).fetchone():
+                raise DomainError(409, "Для объявления уже существует активная сделка")
+        shipper_id = cargo["owner_id"] if cargo else bid["bidder_id"]
+        driver_id = bid["bidder_id"] if cargo else trip["driver_id"]
+        source = cargo or trip
+        updated = self.conn.execute(
+            "UPDATE bids SET amount=?,status='accepted',version=version+1,updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND status=?",
+            (final_amount, bid["id"], allowed_status),
+        )
+        if updated.rowcount != 1:
+            raise DomainError(409, "Ставка уже обработана")
+        if bid["cargo_id"]:
+            if self.conn.execute("UPDATE cargos SET status='taken',taken_by=? WHERE id=? AND (status='active' OR status IS NULL)", (driver_id, bid["cargo_id"])).rowcount != 1:
+                raise DomainError(409, "Груз уже занят")
+        if bid["trip_id"]:
+            if self.conn.execute("UPDATE trips SET status='booked',booked_by=? WHERE id=? AND (status='active' OR status IS NULL)", (shipper_id, bid["trip_id"])).rowcount != 1:
+                raise DomainError(409, "Рейс уже занят")
+        siblings = self.conn.execute("SELECT id FROM bids WHERE id<>? AND (cargo_id=? OR trip_id=?) AND status IN ('pending','countered')", (bid["id"], bid["cargo_id"], bid["trip_id"])).fetchall()
+        self.conn.execute("UPDATE bids SET status='rejected',version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id<>? AND (cargo_id=? OR trip_id=?) AND status IN ('pending','countered')", (bid["id"], bid["cargo_id"], bid["trip_id"]))
+        deal_id = str(uuid.uuid4())
+        self.conn.execute("INSERT INTO deals(id,cargo_id,trip_id,bid_id,shipper_id,driver_id,from_city,to_city,amount,status) VALUES (?,?,?,?,?,?,?,?,?,?)", (deal_id, bid["cargo_id"], bid["trip_id"], bid["id"], shipper_id, driver_id, source["from_city"], source["to_city"], final_amount, "accepted"))
+        self.conn.execute("INSERT INTO deal_transitions(transition_id,deal_id,actor_id,from_status,to_status,operation_id,correlation_id) VALUES (?,?,?,?,?,?,?)", (str(uuid.uuid4()), deal_id, actor.user_id, "none", "accepted", context.operation_id, context.correlation_id))
+        self._event("BidAccepted", "bid", bid["id"], {"deal_id": deal_id, "amount": final_amount})
+        self._event("DealCreated", "deal", deal_id, {"bid_id": bid["id"], "cargo_id": bid["cargo_id"], "trip_id": bid["trip_id"], "amount": final_amount})
+        return {"ok": True, "deal_id": deal_id, "chat_room_id": None, "from_city": source["from_city"], "to_city": source["to_city"], "shipper_id": shipper_id, "driver_id": driver_id, "rejected_siblings": [row["id"] for row in siblings], "rejected_bid_ids": [row["id"] for row in siblings]}
 
     def transition_deal(self, deal_id: str, target: str, actor: Actor, context: CommandContext) -> dict:
         replay = self._idempotent("deal.transition", context.idempotency_key, {"deal_id": deal_id, "target": target})

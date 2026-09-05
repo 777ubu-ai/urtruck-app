@@ -120,6 +120,15 @@ def _expire_with_conn(conn, now: datetime) -> dict:
     expired_trips = []
     expired_bids = []
     reasons = {}
+    v2_service = None
+    try:
+        from infrastructure.feature_flags import deals_v2_enabled
+        if deals_v2_enabled():
+            from modules.deals.application.service import DealsBidsService, ensure_v2_schema
+            ensure_v2_schema(conn)
+            v2_service = DealsBidsService(conn, ensure_schema=False)
+    except ImportError:
+        pass
 
     # Date is a hard ceiling for an ACTIVE listing, but never mutate an
     # accepted/active deal. This repairs the parent status first so new bids
@@ -197,12 +206,12 @@ def _expire_with_conn(conn, now: datetime) -> dict:
         if reason is None:
             continue
 
-        cur = conn.execute(
+        changed = v2_service.expire_bid(bid["id"], reason) if v2_service else bool(conn.execute(
             "UPDATE bids SET status='expired', updated_at=CURRENT_TIMESTAMP "
             "WHERE id=? AND status IN ('pending','countered')",
             (bid["id"],),
-        )
-        if not cur.rowcount:
+        ).rowcount)
+        if not changed:
             continue
         expired_bids.append(bid["id"])
         reasons[bid["id"]] = reason

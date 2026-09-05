@@ -201,6 +201,41 @@ def test_bid_mutations_replay_without_duplicate_rows_or_events():
     assert conn.execute("SELECT COUNT(*) FROM domain_outbox").fetchone()[0] == 0
 
 
+def test_counter_accept_cancel_and_decline_are_owned_by_v2():
+    conn = make_db()
+    conn.execute("BEGIN IMMEDIATE")
+    service = DealsBidsService(conn)
+    service.counter_bid("b1", {"amount": 120, "message": "counter"}, Actor("ship", "client"), context("counter"))
+    conn.commit()
+
+    conn.execute("BEGIN IMMEDIATE")
+    first = DealsBidsService(conn).accept_counter("b1", Actor("drv", "driver"), context("counter-accept"))
+    conn.commit()
+    conn.execute("BEGIN IMMEDIATE")
+    replay = DealsBidsService(conn).accept_counter("b1", Actor("drv", "driver"), context("counter-accept"))
+    conn.commit()
+    assert replay == first
+    row = conn.execute("SELECT status, amount FROM bids WHERE id='b1'").fetchone()
+    assert (row["status"], row["amount"]) == ("accepted", 120)
+    assert conn.execute("SELECT COUNT(*) FROM deals").fetchone()[0] == 1
+
+    conn2 = make_db()
+    conn2.execute("BEGIN IMMEDIATE")
+    DealsBidsService(conn2).counter_bid("b1", {"amount": 120}, Actor("ship", "client"), context("counter"))
+    result = DealsBidsService(conn2).counter_response("b1", "cancel", Actor("ship", "client"), context("counter-cancel"))
+    conn2.commit()
+    assert result["status"] == "pending"
+    assert conn2.execute("SELECT status FROM bids WHERE id='b1'").fetchone()[0] == "pending"
+
+    conn3 = make_db()
+    conn3.execute("BEGIN IMMEDIATE")
+    DealsBidsService(conn3).counter_bid("b1", {"amount": 120}, Actor("ship", "client"), context("counter"))
+    result = DealsBidsService(conn3).counter_response("b1", "decline", Actor("drv", "driver"), context("counter-decline"))
+    conn3.commit()
+    assert result["status"] == "pending"
+    assert conn3.execute("SELECT status FROM bids WHERE id='b1'").fetchone()[0] == "pending"
+
+
 def test_stale_bid_version_is_rejected():
     conn = make_db()
     conn.execute("BEGIN IMMEDIATE")
