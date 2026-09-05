@@ -9,7 +9,7 @@ PyJWT==2.9.0
 cryptography>=46,<47
 redis==5.1.0
 apscheduler==3.10.4
-python-multipart==0.0.12
+python-multipart==0.0.31
 python-dateutil==2.9.0
 
 # CGR Integration (Stream A) — см. docs/cgr/TZ-CGR-001-v1.1.md

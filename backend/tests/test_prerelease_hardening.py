@@ -72,7 +72,7 @@ def test_reviewer_default_code_disabled_in_production(monkeypatch):
         importlib.reload(config)  # не заражаем другие тесты
 
 
-def test_reviewer_overridden_code_enabled_in_production(monkeypatch):
+def test_reviewer_overridden_code_stays_disabled_in_production(monkeypatch):
     import importlib
     monkeypatch.setenv("REVIEWER_DEMO_CODE", "rot-" + uuid.uuid4().hex[:8])
     monkeypatch.setenv("URTRUCK_ENV", "production")
@@ -80,8 +80,21 @@ def test_reviewer_overridden_code_enabled_in_production(monkeypatch):
     importlib.reload(config)
     try:
         assert config.REVIEWER_DEMO_CODE_IS_DEFAULT is False
-        allowed = not (config.IS_PRODUCTION and config.REVIEWER_DEMO_CODE_IS_DEFAULT)
-        assert allowed is True, "явно заданный reviewer-код не принят на проде"
+        allowed = not config.IS_PRODUCTION
+        assert allowed is False, "reviewer bypass с ENV override включён на проде"
+    finally:
+        importlib.reload(config)
+
+
+def test_beta_mode_is_forced_off_in_production(monkeypatch):
+    import importlib
+    monkeypatch.setenv("BETA_MODE", "true")
+    monkeypatch.setenv("URTRUCK_ENV", "production")
+    import config
+    importlib.reload(config)
+    try:
+        assert config.IS_PRODUCTION is True
+        assert config.BETA_MODE is False
     finally:
         importlib.reload(config)
 

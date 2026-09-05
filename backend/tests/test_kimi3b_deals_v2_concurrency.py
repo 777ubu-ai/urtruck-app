@@ -32,14 +32,14 @@ def seed(path):
     conn.close()
 
 
-def race(path, barrier, key):
+def race(path, barrier, key, bid_id="b1"):
     conn = sqlite3.connect(path, timeout=10)
     conn.row_factory = sqlite3.Row
     try:
         barrier.wait()
         conn.execute("BEGIN IMMEDIATE")
         result = DealsBidsService(conn, ensure_schema=False, room_factory=room_factory).accept_bid(
-            "b1", Actor("ship", "client"), CommandContext("op", "corr", key)
+            bid_id, Actor("ship", "client"), CommandContext("op", "corr", key)
         )
         conn.commit()
         return "winner", result
@@ -76,3 +76,43 @@ def test_actual_service_accept_race_has_one_winner_for_ten_runs(tmp_path):
         assert conn.execute("SELECT COUNT(*) FROM bids WHERE status='accepted'").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM domain_outbox WHERE event_type='BidAccepted'").fetchone()[0] == 1
         conn.close()
+
+
+def test_two_independent_bids_same_cargo_have_one_winner(tmp_path):
+    path = str(tmp_path / "two-bids-one-cargo.sqlite")
+    seed(path)
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("INSERT INTO bids(id,cargo_id,bidder_id,amount,status) VALUES ('b2','c1','drv-2',125,'pending')")
+    ensure_v2_schema(conn)
+    conn.commit()
+    conn.close()
+
+    barrier = threading.Barrier(2)
+    results = []
+    threads = [
+        threading.Thread(target=lambda bid, key: results.append(race(path, barrier, key, bid)), args=(bid, key))
+        for bid, key in (("b1", "two-bids-a"), ("b2", "two-bids-b"))
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(15)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert [item[0] for item in results].count("winner") == 1
+    assert [item[0] for item in results].count("loser") == 1
+    assert next(item for item in results if item[0] == "loser")[1] == 409
+
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    deal = conn.execute("SELECT bid_id, amount, cargo_id FROM deals").fetchone()
+    assert deal is not None
+    assert deal["bid_id"] in {"b1", "b2"}
+    assert deal["amount"] in {100, 125}
+    assert conn.execute("SELECT COUNT(*) FROM deals WHERE cargo_id='c1'").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM bids WHERE status='accepted'").fetchone()[0] == 1
+    assert conn.execute("SELECT status FROM cargos WHERE id='c1'").fetchone()[0] == "taken"
+    assert conn.execute("SELECT COUNT(*) FROM chat_rooms").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM domain_outbox WHERE event_type='BidAccepted'").fetchone()[0] == 1
+    conn.close()

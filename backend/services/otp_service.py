@@ -24,10 +24,11 @@ from services import email_service
 
 # BETA bypass
 try:
-    from config import BETA_MODE, BETA_OTP_CODE
+    from config import BETA_MODE, BETA_OTP_CODE, IS_PRODUCTION
 except Exception:
     BETA_MODE = False
     BETA_OTP_CODE = "0000"
+    IS_PRODUCTION = True
 
 # Совместимость со старыми именами env (на случай если кто ещё пользуется)
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "") or os.getenv("WHATSAPP_TOKEN", "")
@@ -201,7 +202,7 @@ def send_otp(phone: str, code: str, channel: str = "whatsapp") -> dict:
     Если все каналы MOCK — возвращаем последний mock-результат с кодом в ответе.
     """
     # ── BETA bypass ──────────────────────────────────────────
-    if BETA_MODE:
+    if BETA_MODE and not IS_PRODUCTION:
         return {
             "sent": True, "mock": False, "beta": True,
             "channel": "beta",

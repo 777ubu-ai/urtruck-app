@@ -16,8 +16,10 @@ API_PORT = 8001  # Отдельный порт (не 8080 — там фронт�
 #   * dev / preview / unset → BETA_MODE=true (тестеры заходят с 0000).
 URTRUCK_ENV = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").lower()
 IS_PRODUCTION = URTRUCK_ENV == "production"
-_beta_default = "false" if URTRUCK_ENV == "production" else "true"
-BETA_MODE = os.getenv("BETA_MODE", _beta_default).lower() in ("1", "true", "yes")
+_beta_default = "false" if IS_PRODUCTION else "true"
+_beta_requested = os.getenv("BETA_MODE", _beta_default).lower() in ("1", "true", "yes")
+# Production remains fail-closed even when BETA_MODE is explicitly set.
+BETA_MODE = _beta_requested and not IS_PRODUCTION
 BETA_OTP_CODE = os.getenv("BETA_OTP_CODE", "0000")
 
 # Ставки: конфиденциальный режим (InDrive-модель) под будущую монетизацию.
@@ -41,8 +43,8 @@ REVIEWER_DEMO_CODE = os.getenv("REVIEWER_DEMO_CODE", _REVIEWER_DEMO_CODE_DEFAULT
 # репозиторий и в qa/scripts/* — это фактический бэкдор, если оставить его
 # живым на проде. Поэтому на проде демо-вход работает ТОЛЬКО когда владелец
 # ЯВНО переопределил код в серверном .env (REVIEWER_DEMO_CODE=<random>).
-# Пока код равен закоммиченному дефолту — на проде bypass отключён (fail-safe,
-# boot не блокируется; в dev/beta дефолт продолжает работать для ревью).
+# Reviewer bypass разрешён только вне production; production всегда требует
+# реальный OTP независимо от значения этого ENV.
 REVIEWER_DEMO_CODE_IS_DEFAULT = (REVIEWER_DEMO_CODE == _REVIEWER_DEMO_CODE_DEFAULT)
 
 # Database

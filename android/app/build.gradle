@@ -123,11 +123,19 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Подпись релиза upload-ключом, если заданы свойства подписи в
-            // android/gradle.properties; иначе — безопасный фолбэк на debug
-            // (чтобы dev-сборки без секретов не падали). Прод-.aab для Google
-            // Play ОБЯЗАН собираться со свойствами URTRUCK_UPLOAD_* (см. выше).
-            signingConfig project.hasProperty('URTRUCK_UPLOAD_STORE_FILE') ? signingConfigs.release : signingConfigs.debug
+            // Release никогда не должен незаметно использовать debug.keystore.
+            // Debug-сборки остаются независимыми от production secrets.
+            def uploadSigningProperties = [
+                'URTRUCK_UPLOAD_STORE_FILE',
+                'URTRUCK_UPLOAD_STORE_PASSWORD',
+                'URTRUCK_UPLOAD_KEY_ALIAS',
+                'URTRUCK_UPLOAD_KEY_PASSWORD',
+            ]
+            def missingUploadSigning = uploadSigningProperties.findAll { !project.hasProperty(it) || !project.property(it)?.toString()?.trim() }
+            if (!missingUploadSigning.isEmpty()) {
+                throw new GradleException("Release signing is not configured; missing: ${missingUploadSigning.join(', ')}")
+            }
+            signingConfig signingConfigs.release
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
