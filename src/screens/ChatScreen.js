@@ -2538,6 +2538,7 @@ export default function ChatScreen({ navigation, route }) {
 
         <FlatList
           ref={flatListRef}
+          style={{ flex: 1 }}
           data={messages}
           keyExtractor={(i) => i.id}
           renderItem={renderMessage}
