@@ -9,12 +9,16 @@ const playWorkflow = fs.readFileSync('.github/workflows/deploy-play.yml', 'utf8'
 const iosVersion = ios.match(/<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/)?.[1];
 const iosBuild = ios.match(/<key>CFBundleVersion<\/key>\s*<string>([^<]+)<\/string>/)?.[1];
 const androidVersion = android.match(/versionName\s+["']([^"']+)["']/)?.[1];
-const androidVersionCode = android.match(/versionCode\s+\(project\.hasProperty\('URTRUCK_VERSION_CODE'\)[\s\S]*?:\s*(\d+)\)/)?.[1];
+const androidVersionCode = android.match(/versionCode\s+\(configuredVersionCode\s*\?\s*configuredVersionCode\.toInteger\(\)\s*:\s*(\d+)\)/)?.[1];
 
 assert.equal(iosVersion, app.version, `iOS version ${iosVersion} must match app.json ${app.version}`);
 assert.equal(iosBuild, app.ios.buildNumber, `iOS build ${iosBuild} must match app.json ${app.ios.buildNumber}`);
 assert.equal(androidVersion, app.version, `Android version ${androidVersion} must match app.json ${app.version}`);
 assert.ok(Number(androidVersionCode) >= app.android.versionCode, `Android fallback versionCode ${androidVersionCode} must not be lower than app.json ${app.android.versionCode}`);
+assert.match(android, /configuredVersionCode\s*=\s*project\.findProperty\(['"]URTRUCK_VERSION_CODE['"]\)/,
+  'Android versionCode must be supplied through URTRUCK_VERSION_CODE when configured');
+assert.match(android, /Release versionCode is not configured; set -PURTRUCK_VERSION_CODE/,
+  'release builds must fail closed without an explicit versionCode');
 
 // Google Play versionCode must not depend on a small workflow-local counter.
 // A previous run-number-based scheme collided with an already-used Play code.
