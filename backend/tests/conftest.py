@@ -13,6 +13,7 @@ Harness унифицирует DB_PATH до import тест-модулей и п
 получал ложный `no such table: border_checkpoints`.
 """
 import os
+import importlib
 
 # До любого импорта config/db/chat — единый DB_PATH на все test modules.
 os.environ["DB_PATH"] = "/tmp/urtruck_tests_badge_suite.db"
@@ -25,12 +26,32 @@ os.environ.setdefault("CGR_IIN_SALT", "pytest-harness-salt-not-a-secret")
 from pathlib import Path
 import pytest
 
+def pytest_collection_modifyitems(session, config, items):
+    """Keep startup-invariant checks before attachment module env mutation."""
+    canonical_db = "/tmp/urtruck_tests_badge_suite.db"
+    os.environ["DB_PATH"] = canonical_db
+    for module in {item.module for item in items}:
+        if hasattr(module, "TEST_DB"):
+            module.TEST_DB = canonical_db
+        if hasattr(module, "DB_PATH"):
+            module.DB_PATH = canonical_db
+    prerelease = [item for item in items if "test_prerelease_hardening.py" in item.nodeid]
+    other = [item for item in items if "test_prerelease_hardening.py" not in item.nodeid]
+    if prerelease:
+        items[:] = prerelease + other
+
+
+def pytest_runtest_setup(item):
+    # Legacy modules mutate DB_PATH at import and some tests reload config.
+    # Re-pin the canonical path before every test so a later reload cannot
+    # redirect DAL calls to a module-specific database.
+    os.environ["DB_PATH"] = "/tmp/urtruck_tests_badge_suite.db"
+
 # Сбрасываем shared DB до collection, пока test modules ещё не открыли
 # SQLite/WAL connection. Удаление внутри fixture после import модулей давало
 # `attempt to write a readonly database` в standalone-тестах с module-level init.
 Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
 
-# 
 # ─────────────────────────────────────────────────────────────────────────
 # HARNESS FIX (final release gate, 04.09.2026): детерминированная авторизация
 # независимо от порядка импорта.
@@ -157,6 +178,16 @@ def _init_all_shared_schemas():
     один раз перед сюитом и ещё раз после каждого тест-модуля — см.
     _restore_shared_schema_after_module ниже.
     """
+    # cgr.test_settings reloads its settings module deliberately. Restore the
+    # runtime singleton before every module so that its last parametrization
+    # cannot disable the following border API tests.
+    os.environ["CGR_FEATURE_ENABLED"] = "true"
+    os.environ["CGR_IIN_SALT"] = "pytest-harness-salt-not-a-secret"
+    from cgr import settings as _cgr_settings
+    importlib.reload(_cgr_settings)
+    from cgr import scoreboard_service as _scoreboard_service
+    _scoreboard_service.cgr_settings = _cgr_settings.cgr_settings
+
     from database import db as dbm
     from database import registration_dal
     from database import cgr_dal
@@ -191,6 +222,13 @@ def _init_all_shared_schemas():
         with get_conn() as c:
             c.executescript(_deal_room_schema.read_text(encoding="utf-8"))
 
+    # Re-assert the existing startup invariant after a module reset. Production
+    # intentionally skips this index when legacy duplicate bid_id data exists;
+    # the clean test DB has no such data, so its invariant must be deterministic.
+    from database.db import get_conn as _invariant_conn
+    with _invariant_conn() as c:
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_deals_bid_unique ON deals(bid_id)")
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_full_schema():
@@ -199,7 +237,7 @@ def _ensure_full_schema():
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _restore_shared_schema_after_module():
+def _restore_shared_schema_after_module(request):
     """Восстанавливает общие схемы ПОСЛЕ каждого тест-модуля.
 
     ROOT CAUSE второй половины «падений» полного прогона: отдельные модули
@@ -215,15 +253,19 @@ def _restore_shared_schema_after_module():
     Идемпотентное восстановление после модуля делает результат независимым от
     порядка коллекции и не требует правок в самих тест-файлах.
     """
-    # Восстанавливаем И ДО модуля, И ПОСЛЕ него: модуль, портящий общую БД,
-    # может стоять как раньше, так и позже проверяющего — «только после» не
-    # даёт независимости от порядка коллекции.
+    # Сохраняем состояние внутри module, но восстанавливаем схемы и
+    # загрязняющие данные на его границе.
     _cleanup_cross_module_data_pollution()
     _init_all_shared_schemas()
+    if request.module.__name__.endswith("test_social_auth"):
+        from database.db import get_conn as _registration_conn
+        with _registration_conn() as c:
+            c.execute("DELETE FROM reg_sessions")
+            c.execute("DELETE FROM verification_codes")
+            c.execute("DELETE FROM drivers_registration")
     yield
     _cleanup_cross_module_data_pollution()
     _init_all_shared_schemas()
-
 
 def _cleanup_cross_module_data_pollution():
     """Снимает тестовые ДАННЫЕ, которые мешают идемпотентному init схем.
