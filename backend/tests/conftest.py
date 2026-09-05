@@ -17,6 +17,8 @@ import os
 # До любого импорта config/db/chat — единый DB_PATH на все test modules.
 os.environ["DB_PATH"] = "/tmp/urtruck_tests_badge_suite.db"
 os.environ["URTRUCK_PYTEST_SHARED_DB"] = "1"
+os.environ["ENV"] = "test"
+os.environ["URTRUCK_ENV"] = "test"
 os.environ.setdefault("FILE_SIGNING_KEY", "test-file-signing-key-32-bytes-minimum")
 os.environ.setdefault("CGR_IIN_SALT", "pytest-harness-salt-not-a-secret")
 
