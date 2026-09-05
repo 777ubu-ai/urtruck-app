@@ -5,7 +5,7 @@
 ## 1. Ревизии
 
 - Baseline: `d91653f755012326d8cb7331fa0e7f9f9e4a0a93`.
-- Проверяемый HEAD: `PENDING_REPORT_COMMIT_SHA`.
+- Проверяемый HEAD: итоговый commit этого отчёта; точный SHA зафиксирован в git history и финальном отчёте агента.
 - Foundation V2 flag: `DEALS_V2_ENABLED` не включён; default остаётся `false`.
 - Commits текущего блока: `a8eb4cd4ae893009d3e1b58fb4230b399fdaf942` и commit этого отчёта.
 
