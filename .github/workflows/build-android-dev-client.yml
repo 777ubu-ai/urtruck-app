@@ -11,9 +11,14 @@ name: Build Android Dev Client (debug)
 
 on:
   workflow_dispatch:
+    inputs:
+      application_id:
+        description: Android applicationId for the debug QA build
+        required: false
+        default: com.urtruck.app
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -64,24 +69,34 @@ jobs:
       - name: Materialize Android Firebase config (best-effort — не блокирует dev-сборку)
         env:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+          URTRUCK_APPLICATION_ID: ${{ github.event.inputs.application_id || 'com.urtruck.app' }}
         run: |
-          if [ -n "${ANDROID_GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
-            echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > google-services.json
-          else
-            echo "::warning::ANDROID_GOOGLE_SERVICES_JSON_BASE64 не задан — push (FCM) не будет работать в dev-сборке, остальное тестируется нормально."
-          fi
-
-      - name: Expo prebuild (Android, non-interactive)
-        run: npx expo prebuild --platform android --clean --no-install --non-interactive
-        env:
-          EXPO_NO_TELEMETRY: 1
-          CI: 1
-
+          set -euo pipefail
+          test -n "${ANDROID_GOOGLE_SERVICES_JSON_BASE64:-}"
+          echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
+          python3 scripts/verify_android_firebase_config.py --check-source android/app/google-services.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          expected = os.environ.get("URTRUCK_APPLICATION_ID", "com.urtruck.app")
+          config = json.loads(Path("android/app/google-services.json").read_text())
+          packages = [
+              client.get("client_info", {}).get("android_client_info", {}).get("package_name")
+              for client in config.get("client", [])
+          ]
+          if expected not in packages:
+              raise SystemExit(f"Firebase Android client missing for {expected}; found {packages}")
+          print(f"Firebase client present for {expected}")
+          PY
       - name: Target API 36 (Google Play требование с 31.08.2026)
         run: |
           printf '\nandroid.compileSdkVersion=36\nandroid.targetSdkVersion=36\nandroid.buildToolsVersion=36.0.0\n' >> android/gradle.properties
 
       - name: Build Debug APK with Gradle (debug-keystore, dev-client)
+        env:
+          ORG_GRADLE_PROJECT_URTRUCK_APPLICATION_ID: ${{ github.event.inputs.application_id || 'com.urtruck.app' }}
+          ORG_GRADLE_PROJECT_URTRUCK_VERSION_CODE: 210793100
         run: |
           cd android
           chmod +x gradlew
@@ -101,20 +116,3 @@ jobs:
           path: android/app/build/outputs/apk/debug/UrTruck-dev.apk
           retention-days: 14
           if-no-files-found: error
-
-      - name: Create GitHub Release with dev APK (public direct link)
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: android-dev-build-${{ github.run_number }}
-          name: UrTruck Android Dev Client · build #${{ github.run_number }}
-          prerelease: true
-          body: |
-            Debug dev-client сборка из ветки `${{ github.ref_name }}` (commit `${{ github.sha }}`).
-            Для локального тестирования — не для Play Console.
-
-            Скачать: `UrTruck-dev.apk` ниже в Assets.
-            После установки: `npx expo start --dev-client` для hot-reload.
-          files: android/app/build/outputs/apk/debug/UrTruck-dev.apk
-          fail_on_unmatched_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
