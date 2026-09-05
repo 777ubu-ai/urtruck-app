@@ -134,16 +134,6 @@ android {
         release {
             // Release никогда не должен незаметно использовать debug.keystore.
             // Debug-сборки остаются независимыми от production secrets.
-            def uploadSigningProperties = [
-                'URTRUCK_UPLOAD_STORE_FILE',
-                'URTRUCK_UPLOAD_STORE_PASSWORD',
-                'URTRUCK_UPLOAD_KEY_ALIAS',
-                'URTRUCK_UPLOAD_KEY_PASSWORD',
-            ]
-            def missingUploadSigning = uploadSigningProperties.findAll { !project.hasProperty(it) || !project.property(it)?.toString()?.trim() }
-            if (!missingUploadSigning.isEmpty()) {
-                throw new GradleException("Release signing is not configured; missing: ${missingUploadSigning.join(', ')}")
-            }
             signingConfig signingConfigs.release
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
@@ -166,6 +156,16 @@ android {
 tasks.configureEach { task ->
     if (task.name in ['assembleRelease', 'bundleRelease', 'packageRelease']) {
         doFirst {
+            def uploadSigningProperties = [
+                'URTRUCK_UPLOAD_STORE_FILE',
+                'URTRUCK_UPLOAD_STORE_PASSWORD',
+                'URTRUCK_UPLOAD_KEY_ALIAS',
+                'URTRUCK_UPLOAD_KEY_PASSWORD',
+            ]
+            def missingUploadSigning = uploadSigningProperties.findAll { !project.hasProperty(it) || !project.property(it)?.toString()?.trim() }
+            if (!missingUploadSigning.isEmpty()) {
+                throw new GradleException("Release signing is not configured; missing: ${missingUploadSigning.join(', ')}")
+            }
             if (!configuredVersionCode) {
                 throw new GradleException('Release versionCode is not configured; set -PURTRUCK_VERSION_CODE')
             }
