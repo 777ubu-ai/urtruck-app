@@ -560,6 +560,20 @@ def create_cargo(body: CargoIn, user=Depends(require_level(1))):
         raise HTTPException(status_code=400, detail="Укажите откуда и куда")
     if not body.cargo_desc:
         raise HTTPException(status_code=400, detail="Укажите что везти")
+    # Release Block 6 (P1 regression fix): create_cargo had NO price/weight/
+    # volume validation at all — update_cargo (PATCH) has always guarded
+    # `if body.price < 0: raise 400`, but nothing equivalent existed on the
+    # CREATE path, so `price: -100` produced a real ACTIVE cargo with a
+    # negative price (live-fire proved: POST /cargos with price=-100 → 200).
+    # This is a regression of a previously-shipped fix (P1-CARGO-VALIDATION-001
+    # in this project's own history) — this branch forked before that landed
+    # on main. Same guard, applied to the endpoint that was missing it.
+    if body.price is not None and body.price < 0:
+        raise HTTPException(status_code=400, detail="price должен быть >= 0")
+    if body.weight_tons is not None and body.weight_tons < 0:
+        raise HTTPException(status_code=400, detail="weight_tons должен быть >= 0")
+    if body.volume_m3 is not None and body.volume_m3 < 0:
+        raise HTTPException(status_code=400, detail="volume_m3 должен быть >= 0")
     # Stage 52 / P1-8: дата погрузки не может быть в прошлом.
     _validate_future_date(body.pickup_date, "pickup_date")
     # Pilot currency whitelist (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
@@ -1143,6 +1157,14 @@ def republish_cargo(cargo_id: str, user=Depends(require_level(1))):
 def create_trip(body: TripIn, user=Depends(require_level(1))):
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
+    # Release Block 6 (P1 regression fix): same gap as create_cargo above —
+    # create_trip had no price/capacity validation at all.
+    if body.price is not None and body.price < 0:
+        raise HTTPException(status_code=400, detail="price должен быть >= 0")
+    if body.capacity_tons is not None and body.capacity_tons < 0:
+        raise HTTPException(status_code=400, detail="capacity_tons должен быть >= 0")
+    if body.available_m3 is not None and body.available_m3 < 0:
+        raise HTTPException(status_code=400, detail="available_m3 должен быть >= 0")
     # Stage 52 / P1-8: дата выезда не может быть в прошлом.
     _validate_future_date(body.departure, "departure")
     # Same pilot whitelist as create_cargo — see note there.
