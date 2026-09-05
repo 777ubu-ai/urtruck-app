@@ -89,6 +89,36 @@ jobs:
             limit: 15m
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install isolated QA backend
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Start isolated QA backend
+        working-directory: backend
+        env:
+          ENV: test
+          URTRUCK_ENV: test
+          API_HOST: 127.0.0.1
+          API_PORT: 8001
+          DB_PATH: ${{ runner.temp }}/urtruck-qa-playwright.db
+          URTRUCK_DB_PATH: ${{ runner.temp }}/urtruck-qa-playwright.db
+          QA_AGENT_TOKEN: ci-playwright-ephemeral-token
+          QA_CLEANUP_TOKEN: ci-playwright-ephemeral-cleanup-token
+        run: |
+          python main.py > /tmp/urtruck-qa-backend.log 2>&1 &
+          echo $! > /tmp/urtruck-qa-backend.pid
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8001/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/urtruck-qa-backend.log
+          exit 1
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -109,6 +139,8 @@ jobs:
         env:
           E2E_BASE_URL: http://127.0.0.1:4173
           QA_BASE_URL: http://127.0.0.1:4173
+          QA_API_BASE: http://127.0.0.1:8001/api/v1
+          QA_AGENT_TOKEN: ci-playwright-ephemeral-token
           QA_CAPTURE_ALL: '1'
         run: |
           mkdir -p qa-artifacts/playwright
