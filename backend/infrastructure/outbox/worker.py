@@ -35,13 +35,14 @@ class PersistentOutboxWorker:
 
     def claim_one(self) -> OutboxEvent | None:
         self.conn.execute("BEGIN IMMEDIATE")
+        self.conn.execute("UPDATE domain_outbox SET status='pending' WHERE status='processing' AND claimed_at <= datetime('now', '-5 minutes')")
         row = self.conn.execute(
             "SELECT * FROM domain_outbox WHERE status='pending' AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP) ORDER BY created_at LIMIT 1"
         ).fetchone()
         if not row:
             self.conn.commit()
             return None
-        self.conn.execute("UPDATE domain_outbox SET status='processing', attempts=attempts+1 WHERE event_id=? AND status='pending'", (row["event_id"],))
+        self.conn.execute("UPDATE domain_outbox SET status='processing', claimed_at=CURRENT_TIMESTAMP, attempts=attempts+1 WHERE event_id=? AND status='pending'", (row["event_id"],))
         self.conn.commit()
         return OutboxEvent(
             event_id=row["event_id"], event_type=row["event_type"], aggregate_type=row["aggregate_type"],
@@ -60,11 +61,11 @@ class PersistentOutboxWorker:
             terminal = event.attempts >= self.max_attempts
             delay = self.retry_delay(event.attempts)
             self.conn.execute(
-                "UPDATE domain_outbox SET status=?, next_attempt_at=? WHERE event_id=? AND status='processing'",
+                "UPDATE domain_outbox SET status=?, next_attempt_at=?, claimed_at=NULL WHERE event_id=? AND status='processing'",
                 ("failed" if terminal else "pending", (datetime.utcnow() + timedelta(seconds=delay)).isoformat(), event.event_id),
             )
             self.conn.commit()
             return "failed" if terminal else "retry"
-        self.conn.execute("UPDATE domain_outbox SET status='processed',processed_at=CURRENT_TIMESTAMP WHERE event_id=? AND status='processing'", (event.event_id,))
+        self.conn.execute("UPDATE domain_outbox SET status='processed',processed_at=CURRENT_TIMESTAMP,claimed_at=NULL WHERE event_id=? AND status='processing'", (event.event_id,))
         self.conn.commit()
         return "processed"

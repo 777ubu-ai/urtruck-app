@@ -18,6 +18,7 @@ class CommandContext:
     operation_id: str
     correlation_id: str
     idempotency_key: str | None = None
+    expected_version: int | None = None
 
 
 class DealsApplication(Protocol):

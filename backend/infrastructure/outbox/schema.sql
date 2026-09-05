@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS domain_outbox (
     processed_at TEXT,
     attempts INTEGER NOT NULL DEFAULT 0,
     next_attempt_at TEXT,
+    claimed_at TEXT,
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'processing', 'processed', 'failed'))
 );

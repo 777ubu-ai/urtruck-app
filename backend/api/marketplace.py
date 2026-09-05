@@ -6,6 +6,7 @@ import sys
 import json
 import re
 import os
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -22,21 +23,30 @@ from services import storage_service as _cargo_storage
 from services.geo_normalize import normalize_country, is_international_route
 
 try:
-    from modules.deals.application.service import DealsBidsService, DomainError
+    from modules.deals.application.service import DealsBidsService, DomainError, ensure_v2_schema
     from modules.deals.application.public_contract import Actor, CommandContext
     from infrastructure.feature_flags import deals_v2_enabled
 except ImportError:  # repository-root imports used by tests
-    from backend.modules.deals.application.service import DealsBidsService, DomainError
+    from backend.modules.deals.application.service import DealsBidsService, DomainError, ensure_v2_schema
     from backend.modules.deals.application.public_contract import Actor, CommandContext
     from backend.infrastructure.feature_flags import deals_v2_enabled
 
 
-def _run_deals_v2(operation: str, user: dict, idempotency_key: Optional[str], handler):
+_V2_SCHEMA_LOCK = threading.Lock()
+
+
+def _run_deals_v2(operation: str, user: dict, idempotency_key: Optional[str], handler, expected_version: Optional[int] = None):
     """Run a V2 mutation in one SQLite write transaction; default is OFF."""
     if not deals_v2_enabled():
         return None
     import uuid
     try:
+        # DDL/preflight is performed before request transactions and serialized
+        # within this process. Business races then contend only on DML.
+        with _V2_SCHEMA_LOCK:
+            with get_conn() as schema_conn:
+                schema_conn.execute("BEGIN IMMEDIATE")
+                ensure_v2_schema(schema_conn)
         with get_conn() as c:
             c.execute("BEGIN IMMEDIATE")
             actor = Actor(user_id=user["id"], role=user.get("role", "unknown"))
@@ -44,8 +54,9 @@ def _run_deals_v2(operation: str, user: dict, idempotency_key: Optional[str], ha
                 operation_id=uuid.uuid4().hex,
                 correlation_id=uuid.uuid4().hex,
                 idempotency_key=idempotency_key,
+                expected_version=expected_version,
             )
-            return handler(DealsBidsService(c), actor, context)
+            return handler(DealsBidsService(c, ensure_schema=False), actor, context)
     except DomainError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
@@ -533,6 +544,7 @@ class BidIn(BaseModel):
 class BidUpdateIn(BaseModel):
     amount: Optional[int] = None
     message: Optional[str] = None
+    version: Optional[int] = None
 
 
 class BidCounterIn(BaseModel):
@@ -1940,7 +1952,7 @@ def list_drivers(truck_type: str = "", limit: int = 30):
 # ═══ Trip Status ═══
 
 @mp_router.patch("/trips/{trip_id}/status")
-def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level(1))):
+def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     """Обновить статус рейса: active → booked → in_transit → delivered.
 
     Пре-мёрдж ревью (05.08.2026, P0-БЛОКЕР, независимый adversarial review):
@@ -1958,6 +1970,12 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level
     VALID = ["active", "booked", "in_transit", "delivered", "cancelled"]
     if new_status not in VALID:
         raise HTTPException(status_code=400, detail=f"Допустимые статусы: {', '.join(VALID)}")
+    v2_result = _run_deals_v2(
+        "trip.status", user, idempotency_key,
+        lambda service, actor, context: service.transition_trip_status(trip_id, new_status, actor, context),
+    )
+    if v2_result is not None:
+        return v2_result
     with get_conn() as c:
         trip = c.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone()
         if not trip:
@@ -3087,7 +3105,7 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
 
 
 @mp_router.patch("/deals/{deal_id}/status")
-def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
+def update_deal_status(deal_id: str, new_status: str, version: Optional[int] = Query(None), user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     # Этап-хаб заказа: добавлен промежуточный статус at_border («На границе») —
     # ключевой для коридора Китай↔КЗ. Порядок: accepted → in_progress →
     # at_border → delivered (cancelled — из любого рабочего).
@@ -3100,6 +3118,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     v2_result = _run_deals_v2(
         "deal.transition", user, idempotency_key,
         lambda service, actor, context: service.transition_deal(deal_id, new_status, actor, context),
+        expected_version=version,
     )
     if v2_result is not None:
         return v2_result

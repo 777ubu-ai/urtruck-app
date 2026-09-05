@@ -12,6 +12,11 @@ from typing import Any
 
 from .public_contract import Actor, CommandContext
 
+try:
+    from services.geo_normalize import is_international_route
+except ImportError:  # repository-root imports used by tests
+    from backend.services.geo_normalize import is_international_route
+
 
 LIVE_DEAL_STATUSES = ("accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received")
 ALLOWED_DEAL_TRANSITIONS = {
@@ -51,7 +56,8 @@ def ensure_v2_schema(conn: sqlite3.Connection) -> None:
             aggregate_type TEXT NOT NULL, aggregate_id TEXT NOT NULL,
             payload TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             processed_at TEXT, attempts INTEGER NOT NULL DEFAULT 0,
-            next_attempt_at TEXT, status TEXT NOT NULL DEFAULT 'pending'
+            next_attempt_at TEXT, claimed_at TEXT,
+            status TEXT NOT NULL DEFAULT 'pending'
                 CHECK(status IN ('pending','processing','processed','failed'))
         );
         CREATE INDEX IF NOT EXISTS idx_domain_outbox_pending
@@ -71,6 +77,13 @@ def ensure_v2_schema(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(domain_outbox)").fetchall()}
+    if "claimed_at" not in columns:
+        conn.execute("ALTER TABLE domain_outbox ADD COLUMN claimed_at TEXT")
+    for table in ("bids", "deals"):
+        table_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "version" not in table_columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN version INTEGER NOT NULL DEFAULT 0")
     live = "'accepted','in_progress','at_border','awaiting_confirmation','delivered','received'"
     for column, index_name in (("cargo_id", "idx_deals_live_cargo_v2"), ("trip_id", "idx_deals_live_trip_v2")):
         duplicate = conn.execute(
@@ -82,9 +95,10 @@ def ensure_v2_schema(conn: sqlite3.Connection) -> None:
 
 
 class DealsBidsService:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, ensure_schema: bool = True):
         self.conn = conn
-        ensure_v2_schema(conn)
+        if ensure_schema:
+            ensure_v2_schema(conn)
 
     def _idempotent(self, operation: str, key: str | None, payload: Any) -> dict | None:
         if not key:
@@ -171,6 +185,16 @@ class DealsBidsService:
             return row["driver_id"] if row else None
         return None
 
+    def _route_countries(self, deal: sqlite3.Row) -> tuple[str | None, str | None]:
+        source = ("cargos", deal["cargo_id"]) if deal["cargo_id"] else (("trips", deal["trip_id"]) if deal["trip_id"] else None)
+        if not source:
+            return None, None
+        columns = {row["name"] for row in self.conn.execute(f"PRAGMA table_info({source[0]})").fetchall()}
+        if "from_country" not in columns or "to_country" not in columns:
+            return None, None
+        row = self.conn.execute(f"SELECT from_country,to_country FROM {source[0]} WHERE id=?", (source[1],)).fetchone()
+        return (row["from_country"], row["to_country"]) if row else (None, None)
+
     def update_bid(self, bid_id: str, payload: dict, actor: Actor, context: CommandContext) -> dict:
         replay = self._idempotent("bid.update", context.idempotency_key, {"bid_id": bid_id, **payload})
         if replay:
@@ -183,7 +207,13 @@ class DealsBidsService:
         amount = payload.get("amount", bid["amount"])
         if amount <= 0:
             raise DomainError(400, "amount должен быть > 0")
-        cur = self.conn.execute("UPDATE bids SET amount=?, message=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'", (amount, payload.get("message", bid["message"]), bid_id))
+        if payload.get("amount") is not None and bid["amount"] and amount < bid["amount"] * 0.1:
+            raise DomainError(400, "Слишком большая скидка: цену нельзя снижать более чем на 90%")
+        expected_version = payload.get("version")
+        if expected_version is None:
+            cur = self.conn.execute("UPDATE bids SET amount=?, message=?, version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'", (amount, payload.get("message", bid["message"]), bid_id))
+        else:
+            cur = self.conn.execute("UPDATE bids SET amount=?, message=?, version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending' AND version=?", (amount, payload.get("message", bid["message"]), bid_id, expected_version))
         if cur.rowcount != 1:
             raise DomainError(409, "Ставка уже изменена")
         result = {"ok": True, "bid": dict(self._bid(bid_id))}
@@ -199,7 +229,7 @@ class DealsBidsService:
             raise DomainError(403, "Только владелец может отправить контр-оффер")
         if bid["status"] != "pending" or not payload.get("amount") or payload["amount"] <= 0:
             raise DomainError(409, "Контр-оффер недоступен")
-        self.conn.execute("UPDATE bids SET status='countered',counter_amount=?,counter_message=?,counter_by='owner',counter_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'", (payload["amount"], payload.get("message"), bid_id))
+        self.conn.execute("UPDATE bids SET status='countered',counter_amount=?,counter_message=?,counter_by='owner',counter_at=CURRENT_TIMESTAMP,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'", (payload["amount"], payload.get("message"), bid_id))
         result = {"ok": True, "bid": dict(self._bid(bid_id))}
         self._complete(context.idempotency_key, result)
         return result
@@ -218,7 +248,7 @@ class DealsBidsService:
         if bid["status"] not in ("pending", "countered"):
             raise DomainError(409, f"Ставку нельзя обработать в статусе {bid['status']}")
         status = "cancelled" if action == "cancel" else "rejected"
-        cur = self.conn.execute("UPDATE bids SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending','countered')", (status, bid_id))
+        cur = self.conn.execute("UPDATE bids SET status=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending','countered')", (status, bid_id))
         if cur.rowcount != 1:
             raise DomainError(409, "Ставка уже обработана")
         if bid["cargo_id"]:
@@ -256,7 +286,7 @@ class DealsBidsService:
         driver_id = bid["bidder_id"] if cargo else trip["driver_id"]
         from_city = (cargo or trip)["from_city"]
         to_city = (cargo or trip)["to_city"]
-        updated = self.conn.execute("UPDATE bids SET amount=?,status='accepted',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'", (final_amount, bid_id))
+        updated = self.conn.execute("UPDATE bids SET amount=?,status='accepted',version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'", (final_amount, bid_id))
         if updated.rowcount != 1:
             raise DomainError(409, "Ставка уже обработана")
         if bid["cargo_id"]:
@@ -275,7 +305,17 @@ class DealsBidsService:
         self.conn.execute("INSERT INTO deal_transitions(transition_id,deal_id,actor_id,from_status,to_status,operation_id,correlation_id) VALUES (?,?,?,?,?,?,?)", (transition_id, deal_id, actor.user_id, "none", "accepted", context.operation_id, context.correlation_id))
         self._event("BidAccepted", "bid", bid_id, {"deal_id": deal_id, "amount": final_amount})
         self._event("DealCreated", "deal", deal_id, {"bid_id": bid_id, "cargo_id": bid["cargo_id"], "trip_id": bid["trip_id"], "amount": final_amount})
-        result = {"ok": True, "deal_id": deal_id, "chat_room_id": None, "rejected_bid_ids": [row["id"] for row in siblings]}
+        result = {
+            "ok": True,
+            "deal_id": deal_id,
+            "chat_room_id": None,
+            "from_city": from_city,
+            "to_city": to_city,
+            "shipper_id": shipper_id,
+            "driver_id": driver_id,
+            "rejected_siblings": [row["id"] for row in siblings],
+            "rejected_bid_ids": [row["id"] for row in siblings],
+        }
         self._complete(context.idempotency_key, result)
         return result
 
@@ -299,16 +339,56 @@ class DealsBidsService:
             raise DomainError(403, "Переход доступен только водителю")
         if (current, target) in SHIPPER_ONLY and actor.user_id != deal["shipper_id"]:
             raise DomainError(403, "Переход доступен только грузовладельцу")
-        changed = self.conn.execute("UPDATE deals SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?", (target, deal_id, current))
+        if current == "in_progress" and target in ("at_border", "delivered"):
+            from_country, to_country = self._route_countries(deal)
+            international, reason = is_international_route(from_country, to_country)
+            if international is None:
+                raise DomainError(409, {"error": reason, "message": "Уточните страны маршрута перед продолжением"})
+            if not international and target == "at_border":
+                raise DomainError(409, {"error": "ROUTE_NOT_INTERNATIONAL"})
+            if international and target == "delivered":
+                raise DomainError(409, {"error": "ROUTE_REQUIRES_BORDER_STEP"})
+        expected_version = context.expected_version
+        if expected_version is None:
+            changed = self.conn.execute("UPDATE deals SET status=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?", (target, deal_id, current))
+        else:
+            changed = self.conn.execute("UPDATE deals SET status=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=? AND version=?", (target, deal_id, current, expected_version))
         if changed.rowcount != 1:
             raise DomainError(409, "Статус сделки уже изменён")
         if target == "completed" and deal["cargo_id"]:
             self.conn.execute("UPDATE cargos SET status='completed' WHERE id=?", (deal["cargo_id"],))
         if target == "cancelled" and deal["cargo_id"]:
             self.conn.execute("UPDATE cargos SET status='active',taken_by=NULL WHERE id=?", (deal["cargo_id"],))
+        trip_status = {"in_progress": "in_transit", "at_border": "in_transit", "delivered": "delivered", "received": "delivered", "completed": "completed", "cancelled": "cancelled"}.get(target)
+        if trip_status and deal["trip_id"]:
+            self.conn.execute("UPDATE trips SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (trip_status, deal["trip_id"]))
         transition_id = str(uuid.uuid4())
         self.conn.execute("INSERT INTO deal_transitions(transition_id,deal_id,actor_id,from_status,to_status,operation_id,correlation_id) VALUES (?,?,?,?,?,?,?)", (transition_id, deal_id, actor.user_id, current, target, context.operation_id, context.correlation_id))
         self._event("DealCancelled" if target == "cancelled" else "DealStatusChanged", "deal", deal_id, {"from_status": current, "to_status": target, "actor_id": actor.user_id})
+        result = {"ok": True, "status": target}
+        self._complete(context.idempotency_key, result)
+        return result
+
+    def transition_trip_status(self, trip_id: str, target: str, actor: Actor, context: CommandContext) -> dict:
+        """Compatibility adapter that cannot reactivate a live reservation."""
+        trip = self.conn.execute("SELECT * FROM trips WHERE id=?", (trip_id,)).fetchone()
+        if not trip:
+            raise DomainError(404, "Рейс не найден")
+        if trip["driver_id"] != actor.user_id:
+            raise DomainError(403, "Только водитель может менять статус")
+        live = "'accepted','in_progress','at_border','awaiting_confirmation','delivered','received'"
+        deal = self.conn.execute("SELECT * FROM deals WHERE trip_id=? AND status IN (" + live + ") ORDER BY created_at LIMIT 1", (trip_id,)).fetchone()
+        if deal:
+            if target == "active":
+                raise DomainError(409, {"error": "LIVE_DEAL_RESERVATION"})
+            mapped = {"in_transit": "in_progress", "delivered": "delivered", "cancelled": "cancelled"}.get(target)
+            if mapped:
+                return self.transition_deal(deal["id"], mapped, actor, context)
+            if target == "booked":
+                return {"ok": True, "status": target}
+        changed = self.conn.execute("UPDATE trips SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND driver_id=?", (target, trip_id, actor.user_id))
+        if changed.rowcount != 1:
+            raise DomainError(409, "Рейс уже изменён")
         result = {"ok": True, "status": target}
         self._complete(context.idempotency_key, result)
         return result
