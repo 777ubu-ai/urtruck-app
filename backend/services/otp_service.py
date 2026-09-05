@@ -122,24 +122,62 @@ def send_sms(phone: str, code: str) -> dict:
 
 
 # ---------- Telegram ----------
+#
+# ROOT CAUSE (Release Block 6 audit, P0 account takeover): deep link
+# `https://t.me/<bot>?start=verify_<code>` embeds the RAW OTP code, and
+# every caller of send-otp — anonymous, no auth — received this deeplink
+# back in the HTTP response, in mock AND real mode. An attacker calls
+# send-otp for a victim's phone, reads the code straight out of the JSON
+# response's `deeplink` field (no need to even open Telegram), then calls
+# verify-otp — full account takeover with zero interaction from the victim.
+#
+# Deeper problem, not just an over-exposed field: Telegram bots cannot
+# push a message to a chat_id that has never /start'ed them, so the ONLY
+# way this flow could ever deliver a code to a user's Telegram is by
+# putting the code (or an equally redeemable token) into something the
+# send-otp CALLER holds and can act on. Whoever calls send-otp — attacker
+# or the real phone owner — holds the exact same artifact and can redeem
+# it themselves by opening the link in their own Telegram. Obfuscating the
+# payload (opaque token instead of raw code) does not close this: it only
+# stops someone reading the code by eyeballing the response text, not an
+# attacker willing to tap the link. Telegram can only be a genuine
+# out-of-band channel once a chat_id↔phone binding exists (e.g. via
+# Telegram's native "share contact" button, verified by Telegram itself) —
+# that binding does not exist in the current schema and is a real UX/auth
+# flow change, not something to invent here without owner sign-off.
+#
+# Fix: fail closed. Telegram is no longer a selectable OTP-delivery
+# channel — send_telegram always reports non-delivery so the fallback
+# chain in send_otp_multi moves on to WhatsApp/SMS (both genuinely
+# out-of-band: the code goes straight to the SIM/registered number).
+# No deeplink, no code, is ever emitted by this function again. The bot's
+# own `/start verify_<code>` handler is closed as a matching fix in
+# services/telegram_bot.py and api/telegram_webhook.py (it was a second,
+# independent oracle: no rate limit, resolved ANY live code — including
+# ones issued over WhatsApp/SMS — straight to phone number).
 def telegram_deeplink(code: str) -> str:
-    """Deep link на бот — юзер откроет @UrTruckBot с preseed командой.
-    Сценарий: юзер жмёт ссылку → Telegram → /start <code> → бот отвечает подтверждением.
+    """Больше не используется для доставки OTP (см. root cause выше).
+    Оставлена только как чистая функция форматирования — на случай, если
+    понадобится генерировать ссылку для НЕ-секретного контента (например,
+    статичного /start без payload). Не вызывать с реальным OTP-кодом.
     """
     payload = urllib.parse.quote(f"verify_{code}")
     return f"https://t.me/{TG_BOT_USERNAME}?start={payload}"
 
 
 def send_telegram(phone: str, code: str) -> dict:
-    """В MOCK режиме возвращаем код и deep link — юзер открывает бот, вводит код.
-    В production с ботом можно дополнительно посылать уведомление админу.
+    """Telegram-доставка OTP отключена (fail-closed) — см. root cause выше.
+
+    Ни код, ни deeplink с embedded-кодом больше не возвращаются. Канал
+    остаётся «неизвестным» для send_otp_multi: _try() увидит sent=False и
+    перейдёт к следующему каналу в fallback-цепочке (WhatsApp/SMS).
     """
-    link = telegram_deeplink(code)
-    if TG_MOCK:
-        print(f"[OTP·TG MOCK] {phone}: {code} → {link}")
-        return {"sent": True, "mock": True, "channel": "telegram", "code": code, "deeplink": link}
-    # При реальном боте можно логировать запрос или сделать ping админ-чату
-    return {"sent": True, "mock": False, "channel": "telegram", "deeplink": link}
+    return {
+        "sent": False,
+        "mock": TG_MOCK,
+        "channel": "telegram",
+        "error": "telegram_disabled_pending_chat_binding",
+    }
 
 
 # ---------- Router с fallback ----------

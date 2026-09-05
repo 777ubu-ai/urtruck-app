@@ -44,61 +44,23 @@ def _handle_message(msg: dict):
         return
 
     if text.startswith("/start verify_"):
-        code = text.replace("/start verify_", "").strip()
-        if not code:
-            _send(chat_id, "❌ Код не указан.")
-            return
-
-        from database.db import get_conn
-
-        with get_conn() as c:
-            row = c.execute("SELECT phone FROM verification_codes WHERE code = ?", (code,)).fetchone()
-
-        if not row:
-            _send(chat_id, "❌ Код не найден или истёк. Запросите новый в приложении.")
-            return
-
-        phone = row["phone"]
-        # Мультиязычное OTP-сообщение (user_lang + RU + EN)
-        # Определяем язык по номеру: +86 = CN, +998 = UZ, +996 = KG, else RU
-        prefix = phone[:4] if phone.startswith('+') else ''
-        if prefix.startswith('+86'):
-            user_lang_block = f"🇨🇳 您的验证码: <b>{code}</b>\n在UrTruck应用中输入此代码。"
-        elif prefix.startswith('+998'):
-            user_lang_block = f"🇺🇿 Sizning kodingiz: <b>{code}</b>\nUrTruck ilovasida ushbu kodni kiriting."
-        elif prefix.startswith('+996'):
-            user_lang_block = f"🇰🇬 Сиздин код: <b>{code}</b>\nUrTruck колдонмосуна кодду киргизиңиз."
-        else:
-            user_lang_block = ""
-
-        msg = (
-            f"🚛 <b>UrTruck — Ваш надежный партнер в логистике</b>\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
-            f"🔐 Ваш код подтверждения:\n\n"
-            f"    <b>{code}</b>\n\n"
-            f"Введите этот код в приложении.\n"
-            f"Код действителен 5 минут.\n\n"
-        )
-        if user_lang_block:
-            msg += f"━━━━━━━━━━━━━━━━━━\n{user_lang_block}\n\n"
-        msg += (
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"🇬🇧 Your code: <b>{code}</b>\n"
-            f"Enter it in the UrTruck app.\n\n"
-            f"🛡 <i>Никому не сообщайте этот код!\n"
-            f"Do not share this code with anyone!</i>"
-        )
-
-        # Отправляем через sendMessage с HTML parse_mode
-        try:
-            httpx.post(f"{_api}/sendMessage",
-                json={"chat_id": chat_id, "text": msg, "parse_mode": "HTML"},
-                timeout=10.0,
-            )
-        except Exception as e:
-            print(f"[TG-bot] sendMessage failed: {e}")
-
-        print(f"[TG-bot] Sent OTP {code} to chat {chat_id} for {phone}")
+        # ROOT CAUSE (Release Block 6 audit, P0): this handler used to
+        # SELECT phone FROM verification_codes WHERE code = ? and echo
+        # BOTH the phone number and the code back to whoever sent this
+        # message — with no rate limit, no expiry check beyond the code's
+        # own TTL, and no binding between this chat_id and the phone.
+        # Codes are 4 digits (9000 possible values) and this table is
+        # shared across ALL delivery channels (WhatsApp/SMS-issued codes
+        # too), so this was a standalone brute-force oracle: anyone
+        # messaging the bot with random /start verify_XXXX values could
+        # resolve live codes to phone numbers regardless of how those
+        # codes were actually issued. Telegram OTP delivery is disabled
+        # (see services/otp_service.py send_telegram) — this resolver is
+        # now dead code by design, not just unreachable from the app's
+        # normal flow, and never touches verification_codes.
+        _send(chat_id, "ℹ️ Подтверждение через Telegram временно недоступно. "
+              "Запросите код по WhatsApp или SMS в приложении UrTruck.")
+        print(f"[TG-bot] /start verify_ received on disabled channel, chat={chat_id}")
 
     elif text.startswith("/start"):
         welcome = (

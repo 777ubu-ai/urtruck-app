@@ -40,12 +40,16 @@ def collect_issues() -> List[str]:
     sms_real = sms_provider != "mock" and (
         os.getenv("MOBIZON_API_KEY") or os.getenv("TWILIO_ACCOUNT_SID")
     )
-    tg_real = bool(os.getenv("TELEGRAM_BOT_TOKEN"))
-    if not (wa_token and wa_phone) and not sms_real and not tg_real:
+    # Release Block 6 (P0 OTP account-takeover fix): Telegram delivery is
+    # disabled (services/otp_service.py send_telegram fails closed) — a
+    # configured TELEGRAM_BOT_TOKEN no longer means a real OTP channel
+    # exists, so it must not count toward this guard.
+    if not (wa_token and wa_phone) and not sms_real:
         issues.append(
-            "OTP: no real channel configured (WhatsApp / SMS / Telegram all in MOCK). "
+            "OTP: no real channel configured (WhatsApp / SMS in MOCK; Telegram OTP "
+            "delivery is disabled — see services/otp_service.py send_telegram). "
             "Real users will not receive codes. Set WHATSAPP_TOKEN+WHATSAPP_PHONE_ID, "
-            "or SMS_PROVIDER=mobizon|twilio with credentials, or TELEGRAM_BOT_TOKEN."
+            "or SMS_PROVIDER=mobizon|twilio with credentials."
         )
 
     # Stage 22: BETA_MODE in production is a security hole — anyone
