@@ -1,7 +1,7 @@
 name: Build Android APK
 
 # Триггеры:
-#   - workflow_dispatch — ручной запуск из GitHub UI ("Run workflow") → создаёт GitHub Release с APK
+#   - workflow_dispatch — ручной запуск из GitHub UI ("Run workflow") → публикует CI artifacts
 #   - push в main или claude/** — автоматическая сборка на любое изменение веток разработки
 
 on:
@@ -15,7 +15,7 @@ on:
     branches: [main, "claude/**"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -51,6 +51,12 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk || true
           df -h
+
+      - name: Preinstall Expo-compatible NDK
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "ndk;26.1.10909125"
 
       - name: Install npm dependencies (skip postinstall scripts)
         run: |
@@ -101,31 +107,30 @@ jobs:
           console.log(`[firebase] package '${expected}' найден в google-services.json`);
           NODE
 
-      - name: Expo prebuild (Android, non-interactive)
-        run: npx expo prebuild --platform android --clean --no-install --non-interactive
-        env:
-          EXPO_NO_TELEMETRY: 1
-          CI: 1
-
-      - name: Verify Google Services Gradle plugin wired after prebuild
+      - name: Verify Google Services Gradle plugin wired
         run: python3 scripts/verify_android_firebase_config.py --check-plugin android
 
-      - name: Apply requested Android applicationId
+      - name: Decode release upload keystore
         env:
-          URTRUCK_APPLICATION_ID: ${{ github.event.inputs.application_id || 'com.urtruck.app' }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path("android/app/build.gradle")
-          src = path.read_text()
-          old = "applicationId 'com.urtruck.app'"
-          new = "applicationId (project.hasProperty('URTRUCK_APPLICATION_ID') ? URTRUCK_APPLICATION_ID : 'com.urtruck.app')"
-          if old in src:
-              path.write_text(src.replace(old, new))
-          elif new not in src:
-              raise SystemExit("Could not locate applicationId line in android/app/build.gradle")
-          PY
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not configured"
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/urtruck-upload-key.jks"
+
+      - name: Compute monotonic release versionCode
+        run: |
+          set -euo pipefail
+          base_epoch=1577836800
+          now_epoch=$(date -u +%s)
+          version_code=$((now_epoch - base_epoch))
+          test "$version_code" -gt 0
+          test "$version_code" -lt 2100000000
+          echo "URTRUCK_VERSION_CODE=$version_code" >> "$GITHUB_ENV"
+          echo "Android versionCode=$version_code"
 
       - name: Target API 36 (Google Play требование с 31.08.2026)
         run: |
@@ -140,10 +145,15 @@ jobs:
       - name: Build Release APK with Gradle
         env:
           ORG_GRADLE_PROJECT_URTRUCK_APPLICATION_ID: ${{ github.event.inputs.application_id || 'com.urtruck.app' }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ORG_GRADLE_PROJECT_URTRUCK_VERSION_CODE: ${{ env.URTRUCK_VERSION_CODE }}
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary
+          ./gradlew assembleRelease bundleRelease --no-daemon --max-workers=2 --stacktrace --warning-mode=summary
 
       - name: Verify Firebase runtime resources in build output
         run: python3 scripts/verify_android_firebase_config.py --check-resources android/app/build
@@ -155,24 +165,30 @@ jobs:
           mv app-release.apk UrTruck.apk
           ls -la UrTruck.apk
 
+      - name: Write exact RC identity
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/release/UrTruck.apk
+          aab=android/app/build/outputs/bundle/release/app-release.aab
+          {
+            echo "source_sha=${GITHUB_SHA}"
+            echo "application_id=${{ github.event.inputs.application_id || 'com.urtruck.app' }}"
+            echo "version_name=1.0.7"
+            echo "version_code=${URTRUCK_VERSION_CODE}"
+            sha256sum "$apk" "$aab"
+          } | tee android/app/build/outputs/rc-metadata.txt
+
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: UrTruck-apk
-          path: android/app/build/outputs/apk/release/UrTruck.apk
+          name: UrTruck-android-rc
+          path: |
+            android/app/build/outputs/apk/release/UrTruck.apk
+            android/app/build/outputs/bundle/release/app-release.aab
+            android/app/build/outputs/rc-metadata.txt
           retention-days: 30
           if-no-files-found: error
 
-      - name: Create GitHub Release with APK (public direct link)
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: android-build-${{ github.run_number }}
-          name: UrTruck Android APK · build #${{ github.run_number }}
-          body: |
-            Android APK сборка из ветки `${{ github.ref_name }}` (commit `${{ github.sha }}`).
-
-            Скачать: см. `UrTruck.apk` ниже в Assets.
-          files: android/app/build/outputs/apk/release/UrTruck.apk
-          fail_on_unmatched_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Remove temporary keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/urtruck-upload-key.jks"
