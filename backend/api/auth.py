@@ -32,19 +32,25 @@ def _block_default_in_prod(kind: str, value: str, default: str):
 
 def require_api_key(request: Request):
     _block_default_in_prod("URTRUCK_API_KEY", API_KEY, _DEFAULT_API_KEY)
-    key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
+    key = request.headers.get("X-API-Key")
+    if not key and not _IS_PROD:
+        key = request.query_params.get("api_key")
     if not key or not secrets.compare_digest(key, API_KEY):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def require_admin(request: Request):
     _block_default_in_prod("URTRUCK_ADMIN_TOKEN", ADMIN_TOKEN, _DEFAULT_ADMIN_TOKEN)
-    token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
+    token = request.headers.get("X-Admin-Token")
+    if not token and not _IS_PROD:
+        token = request.query_params.get("admin_token")
     if not token or not secrets.compare_digest(token, ADMIN_TOKEN):
         raise HTTPException(status_code=401, detail="Admin token required")
 
 
 def optional_api_key(request: Request) -> bool:
     """Опциональная проверка — возвращает True если ключ валидный."""
-    key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
+    key = request.headers.get("X-API-Key")
+    if not key and not _IS_PROD:
+        key = request.query_params.get("api_key")
     return bool(key and secrets.compare_digest(key, API_KEY))
