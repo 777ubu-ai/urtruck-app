@@ -34,3 +34,6 @@ def test_health_separates_expected_4xx_from_server_failures():
     assert health["error_rate"] == "25.0%"
     assert health["total_client_errors"] == 2
     assert health["client_error_rate"] == "50.0%"
+    assert health["outbox"]["domain"]["pending"] >= 0
+    assert health["scheduler"]["readiness"] in ("ready", "degraded")
+    assert "user_id" not in str(health)

@@ -23,6 +23,35 @@ _request_duration = defaultdict(float) # {method_path: total_seconds}
 _startup_time = time.time()
 
 
+def _outbox_metrics() -> dict:
+    result = {
+        "domain": {"pending": 0, "processing": 0, "failed": 0, "oldest_pending_age_seconds": 0, "retry_total": 0},
+        "push": {"pending": 0, "processing": 0, "failed": 0, "oldest_pending_age_seconds": 0, "retry_total": 0},
+    }
+    try:
+        from database.db import get_conn
+        with get_conn() as c:
+            for name, table, attempts in (("domain", "domain_outbox", "attempts"), ("push", "push_outbox", "attempt_count")):
+                rows = c.execute(
+                    f"SELECT status, COUNT(*) AS count, COALESCE(SUM({attempts}), 0) AS retries "
+                    f"FROM {table} GROUP BY status"
+                ).fetchall()
+                for row in rows:
+                    if row["status"] in ("pending", "processing", "failed"):
+                        result[name][row["status"]] = int(row["count"])
+                    result[name]["retry_total"] += int(row["retries"] or 0)
+                oldest = c.execute(
+                    f"SELECT MAX(0, (julianday('now') - julianday(MIN(created_at))) * 86400) "
+                    f"FROM {table} WHERE status = 'pending'"
+                ).fetchone()[0]
+                result[name]["oldest_pending_age_seconds"] = int(oldest or 0)
+    except Exception:
+        # Health must remain available on a fresh DB before all optional
+        # outbox schemas have been materialized.
+        pass
+    return result
+
+
 class MetricsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         start = time.time()
@@ -113,6 +142,11 @@ def prometheus_metrics(_admin: str = Depends(check_admin)):
     except Exception:
         pass
 
+    outbox = _outbox_metrics()
+    for channel, values in outbox.items():
+        for key, value in values.items():
+            lines.append(f"urtruck_outbox_{channel}_{key} {value}")
+
     # CGR metrics (раздел 8.1 чеклиста). Все 3 счётчика + 1 gauge.
     try:
         from cgr import scoreboard_service as cgr_sb
@@ -187,6 +221,7 @@ def health_detailed():
     total_err = sum(_request_errors.values())
     total_client_err = sum(_request_client_errors.values())
     scheduler = scheduler_health()
+    outbox = _outbox_metrics()
     return {
         "status": "ok" if scheduler["readiness"] == "ready" else "degraded",
         "uptime_hours": round(uptime / 3600, 1),
@@ -197,5 +232,6 @@ def health_detailed():
         "client_error_rate": f"{(total_client_err / max(total_req, 1)) * 100:.1f}%",
         "top_endpoints": dict(sorted(_request_count.items(), key=lambda x: -x[1])[:5]),
         "scheduler": scheduler,
+        "outbox": outbox,
         "readiness": {"scheduler": scheduler["readiness"]},
     }
