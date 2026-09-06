@@ -1,8 +1,12 @@
 """Deals/Bids V2 application service backed by the current SQLite schema.
 
 This module is deliberately side-by-side with the legacy API. It owns status
-mutations when an adapter explicitly selects it; no notification or Chat
-side-effect is performed here.
+mutations when an adapter explicitly selects it; no notification, push, or
+Chat side-effect is ever PERFORMED here — that stays the job of the domain
+outbox's consumers (infrastructure/outbox/deals_handlers.py, AC6). This
+module's only responsibility toward those side effects is to record enough
+FACTS on each emitted event (recipient_user_ids, route, amount) for a
+consumer to act on later — never already-localized presentation text.
 """
 import hashlib
 import json
@@ -30,6 +34,19 @@ ALLOWED_DEAL_TRANSITIONS = {
 }
 DRIVER_ONLY = {("accepted", "in_progress"), ("in_progress", "at_border"), ("in_progress", "delivered"), ("at_border", "delivered")}
 SHIPPER_ONLY = {("delivered", "received"), ("received", "completed")}
+
+# AC6 (2026-09-07): duplicated from api/marketplace.py's _CURRENCY_SYMBOLS /
+# _money() rather than imported — this module must not import the legacy API
+# layer (that would invert the dependency direction the architecture guard
+# enforces). Kept intentionally tiny and covered by
+# tests/foundation/test_deal_status_outbox_parity.py alongside the legacy copy.
+_CURRENCY_SYMBOLS = {"USD": "$", "KZT": "₸", "RUB": "₽", "CNY": "¥", "UZS": "сўм"}
+
+
+def _format_money(amount, currency) -> str:
+    cur = (currency or "USD").upper()
+    sym = _CURRENCY_SYMBOLS.get(cur, "$")
+    return f"{amount} {sym}" if cur == "UZS" else f"{sym}{amount}"
 
 
 class DomainError(Exception):
@@ -481,7 +498,36 @@ class DealsBidsService:
             self.conn.execute("UPDATE trips SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (trip_status, deal["trip_id"]))
         transition_id = str(uuid.uuid4())
         self.conn.execute("INSERT INTO deal_transitions(transition_id,deal_id,actor_id,from_status,to_status,operation_id,correlation_id) VALUES (?,?,?,?,?,?,?)", (transition_id, deal_id, actor.user_id, current, target, context.operation_id, context.correlation_id))
-        self._event("DealCancelled" if target == "cancelled" else "DealStatusChanged", "deal", deal_id, {"from_status": current, "to_status": target, "actor_id": actor.user_id})
+        # AC6: recipient/route/amount are FACTS recorded now, while the row
+        # (and its cargo/trip parent) is guaranteed to still be in scope —
+        # the outbox consumer runs later, in its own transaction, and must
+        # not have to re-derive "who is the other party" itself. Mirrors the
+        # exact `other_id` computation the legacy synchronous handler used
+        # (api/marketplace.py update_deal_status): the counterparty of
+        # whoever performed this transition.
+        other_id = deal["driver_id"] if actor.user_id == deal["shipper_id"] else deal["shipper_id"]
+        currency = None
+        source = ("cargos", deal["cargo_id"]) if deal["cargo_id"] else (("trips", deal["trip_id"]) if deal["trip_id"] else None)
+        if source:
+            try:
+                row = self.conn.execute(f"SELECT currency FROM {source[0]} WHERE id=?", (source[1],)).fetchone()
+                currency = row["currency"] if row else None
+            except sqlite3.OperationalError:
+                # `currency` is added by a legacy migration (marketplace.py),
+                # not by database/marketplace_schema.sql itself — a DB whose
+                # migration hasn't run yet (or an isolated test schema) must
+                # not fail the transition over a display-formatting nicety.
+                currency = None
+        self._event(
+            "DealCancelled" if target == "cancelled" else "DealStatusChanged", "deal", deal_id,
+            {
+                "from_status": current, "to_status": target, "actor_id": actor.user_id,
+                "recipient_user_ids": [other_id] if other_id else [],
+                "cargo_id": deal["cargo_id"], "trip_id": deal["trip_id"],
+                "from_city": deal["from_city"], "to_city": deal["to_city"],
+                "amount": deal["amount"], "amount_display": _format_money(deal["amount"], currency),
+            },
+        )
         result = {"ok": True, "status": target}
         self._complete(context.idempotency_key, result)
         return result
