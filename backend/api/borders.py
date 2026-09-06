@@ -21,7 +21,16 @@ def _current_user_id(authorization: str = Header(default="")) -> str:
     token = authorization.split(" ", 1)[1].strip()
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Empty token")
-    return token
+    # Владение бизнес-данными должно использовать стабильный id аккаунта
+    # UrTruck, а не заменяемый bearer-токен. Поэтому новая сессия сохраняет
+    # брони и наблюдения пользователя, а истёкшая/отозванная сессия
+    # отклоняется так же, как в остальных защищённых API.
+    from database import registration_dal as reg_dal
+
+    user_id = reg_dal.get_driver_by_token(token)
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    return user_id
 
 
 def _cgr_enabled() -> bool:
