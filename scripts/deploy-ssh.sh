@@ -7,12 +7,6 @@
 #   - host key MUST be supplied out-of-band and is pinned
 #   - StrictHostKeyChecking=yes
 #
-# Legacy compatibility mode:
-#   SERVER_PASS only
-#   - retained temporarily for repositories/servers that have not completed
-#     the key migration yet
-#   - never selected when SERVER_SSH_KEY is present
-#
 # SECURITY: key mode deliberately does NOT run ssh-keyscan at deploy time.
 # A host key learned over the same untrusted network would not be a pin and
 # would not protect against MITM. Obtain/verify the fingerprint independently
@@ -47,10 +41,8 @@ if [ -n "${SERVER_SSH_KEY:-}" ]; then
   SSH_AUTH=(ssh -i "$_keyfile" -o IdentitiesOnly=yes -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
   SCP_AUTH=(scp -i "$_keyfile" -o IdentitiesOnly=yes -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
 else
-  MODE=pass
-  : "${SERVER_PASS:?SERVER_PASS required when SERVER_SSH_KEY is not configured}"
-  SSH_AUTH=(sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no)
-  SCP_AUTH=(sshpass -p "$SERVER_PASS" scp -o StrictHostKeyChecking=no)
+  echo "SERVER_SSH_KEY and SERVER_SSH_KNOWN_HOSTS are required; password transport is disabled" >&2
+  exit 2
 fi
 
 sub="${1:?subcommand required: ssh|scp}"

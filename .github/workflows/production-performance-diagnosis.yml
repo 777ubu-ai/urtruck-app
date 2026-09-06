@@ -17,19 +17,29 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Install SSH client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq openssh-client
 
       - name: Collect safe server performance evidence
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
           test -n "$SERVER_HOST"
           test -n "$SERVER_USER"
-          test -n "$SERVER_PASS"
-          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+          keyfile="$RUNNER_TEMP/urtruck_ssh_key"
+          known_hosts="$RUNNER_TEMP/urtruck_known_hosts"
+          umask 077
+          printf '%s\n' "$SERVER_SSH_KEY" > "$keyfile"
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known_hosts"
+          trap 'rm -f "$keyfile" "$known_hosts"' EXIT
+          ssh -i "$keyfile" -o IdentitiesOnly=yes \
+            -o "UserKnownHostsFile=$known_hosts" -o StrictHostKeyChecking=yes \
+            "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           echo '=== UTC / uptime ==='
           date -u +%Y-%m-%dT%H:%M:%SZ

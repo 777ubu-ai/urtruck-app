@@ -22,13 +22,14 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Install SSH client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq openssh-client
 
       - name: Create and verify production backup
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
           BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
           BACKUP_NOTE: ${{ inputs.note }}
@@ -36,10 +37,17 @@ jobs:
           set -euo pipefail
           test -n "$SERVER_HOST"
           test -n "$SERVER_USER"
-          test -n "$SERVER_PASS"
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+          keyfile="$RUNNER_TEMP/urtruck_ssh_key"
+          known_hosts="$RUNNER_TEMP/urtruck_known_hosts"
+          umask 077
+          printf '%s\n' "$SERVER_SSH_KEY" > "$keyfile"
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known_hosts"
+          trap 'rm -f "$keyfile" "$known_hosts"' EXIT
 
-          sshpass -p "$SERVER_PASS" ssh \
-            -o StrictHostKeyChecking=no \
+          ssh -i "$keyfile" -o IdentitiesOnly=yes \
+            -o "UserKnownHostsFile=$known_hosts" -o StrictHostKeyChecking=yes \
             -o ServerAliveInterval=20 \
             "$SERVER_USER@$SERVER_HOST" \
             "REMOTE_DIR='$REMOTE_DIR' BACKEND_DIR='$BACKEND_DIR' BACKUP_NOTE='$BACKUP_NOTE' bash -s" <<'REMOTE'
@@ -95,19 +103,9 @@ jobs:
             exit 1
           fi
 
-          # Environment files: stored only inside private backup directory.
-          mkdir -p "$DEST/env"
-          found_env=0
-          for env_file in "$BACKEND_DIR/.env" "$REMOTE_DIR/.env"; do
-            if [ -f "$env_file" ]; then
-              cp -a "$env_file" "$DEST/env/$(basename "$(dirname "$env_file")")-env"
-              found_env=1
-            fi
-          done
-          if [ "$found_env" -ne 1 ]; then
-            echo "ERROR: no .env file found" >&2
-            exit 1
-          fi
+          # Secrets are intentionally excluded. Database recovery and secret
+          # recovery are separate owner-managed procedures.
+          echo "secret_files: excluded (.env, private keys, service credentials)" >> "$DEST/manifest.txt"
 
           # Storage may exist under either the backend root or legacy security path.
           mkdir -p "$DEST/storage"
@@ -144,8 +142,8 @@ jobs:
 
           # Lightweight code snapshots for immediate rollback.
           mkdir -p "$DEST/code"
-          [ -d "$REMOTE_DIR" ] && tar --exclude='.git' -C "$(dirname "$REMOTE_DIR")" -czf "$DEST/code/frontend.tar.gz" "$(basename "$REMOTE_DIR")"
-          [ -d "$BACKEND_DIR" ] && tar --exclude='.git' --exclude='storage' -C "$(dirname "$BACKEND_DIR")" -czf "$DEST/code/backend.tar.gz" "$(basename "$BACKEND_DIR")"
+          [ -d "$REMOTE_DIR" ] && tar --exclude='.git' --exclude='.env' --exclude='.env.*' --exclude='*.pem' --exclude='*.key' --exclude='google-services.json' --exclude='credentials*.json' -C "$(dirname "$REMOTE_DIR")" -czf "$DEST/code/frontend.tar.gz" "$(basename "$REMOTE_DIR")"
+          [ -d "$BACKEND_DIR" ] && tar --exclude='.git' --exclude='storage' --exclude='.env' --exclude='.env.*' --exclude='*.pem' --exclude='*.key' --exclude='google-services.json' --exclude='credentials*.json' -C "$(dirname "$BACKEND_DIR")" -czf "$DEST/code/backend.tar.gz" "$(basename "$BACKEND_DIR")"
 
           find "$DEST" -type f -print0 | sort -z | xargs -0 sha256sum > "$DEST/SHA256SUMS"
           test -s "$DEST/SHA256SUMS"
