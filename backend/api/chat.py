@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 from database.db import get_conn, new_id
@@ -302,13 +302,13 @@ class SendMessageIn(BaseModel):
     # оставлен опциональным для поддержки/легаси (получатель = собеседник).
     room_id: Optional[str] = None
     to_user_id: Optional[str] = None
-    text: Optional[str] = None
-    photo_url: Optional[str] = None
+    text: Optional[str] = Field(default=None, max_length=10000)
+    photo_url: Optional[str] = Field(default=None, max_length=2048)
     is_voice: bool = False
     voice_duration: Optional[int] = None
     cargo_id: Optional[str] = None
     trip_id: Optional[str] = None
-    client_msg_id: Optional[str] = None  # QA-аудит P1-3: ключ идемпотентности
+    client_msg_id: Optional[str] = Field(default=None, max_length=120)  # QA-аудит P1-3
     lang: Optional[str] = None           # QA-аудит P2-8: язык для авто-ответа поддержки
 
 
@@ -356,6 +356,8 @@ def _assert_chat_is_accepted(sender_id, recipient_id, *, room_id=None, cargo_id=
 
 @chat_router.post("/send")
 def send_message(body: SendMessageIn, user=Depends(require_level(1))):
+    from api.rate_limit import limit_action
+    limit_action("chat", user["id"], 120)
     if not body.text and not body.photo_url:
         raise HTTPException(status_code=400, detail="text или photo_url обязателен")
     _LAST_SEEN[user["id"]] = _time.time()   # активность для «онлайн»
@@ -830,6 +832,8 @@ async def upload_chat_photo(file: UploadFile = File(...), user=Depends(require_l
     Само сообщение шлётся через POST /chat/send с photo_url=этот ключ; на
     чтении сервер подписывает ключ (см. sign в list-messages). Так фото видно
     и получателю (раньше слался локальный uri устройства — не резолвился)."""
+    from api.rate_limit import limit_action
+    limit_action("chat_upload", user["id"], 60)
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Пустой файл")
@@ -851,6 +855,8 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
     Само сообщение шлётся через POST /chat/send с photo_url=этот ключ и
     is_voice=true (ключ живёт в том же поле, подпись на чтении общая —
     см. get_messages). Web пишет audio/webm, native (expo-av) — m4a."""
+    from api.rate_limit import limit_action
+    limit_action("voice_upload", user["id"], 20)
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Пустой файл")
@@ -936,6 +942,8 @@ class TranscribeIn(BaseModel):
 def translate_message(body: TranslateIn, user=Depends(require_level(1))):
     """Перевести сообщение чата. Кэшируется."""
     from services.translate_service import translate_text
+    from api.rate_limit import limit_action
+    limit_action("translation", user["id"], 60)
 
     _ensure_translation_schema()
     target_lang = _normalize_lang_code(body.target_lang) or "en"
@@ -988,6 +996,8 @@ def translate_message(body: TranslateIn, user=Depends(require_level(1))):
 def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
     """Распознать голосовое сообщение в текст и при необходимости перевести."""
     from services.speech_to_text_service import SpeechToTextError, transcribe_audio_ref
+    from api.rate_limit import limit_action
+    limit_action("transcription", user["id"], 20)
     from services.translate_service import translate_text
 
     _ensure_translation_schema()

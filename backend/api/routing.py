@@ -348,6 +348,8 @@ def _apply_realistic_duration(payload: dict) -> dict:
 
 @routing_router.post("/road-route")
 async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
+    from api.rate_limit import limit_action
+    limit_action("routing", _user["id"], 60)
     key = _cache_key(body)
     cached = _cache_get(key)
     if cached:

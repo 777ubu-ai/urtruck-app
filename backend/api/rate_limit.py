@@ -2,6 +2,7 @@
 В scale-режиме заменить на Redis (redis.incr + expire).
 """
 import time
+import os
 from collections import defaultdict, deque
 from fastapi import HTTPException
 
@@ -26,6 +27,20 @@ def check_rate(key: str, max_per_window: int, window_sec: int) -> bool:
         )
     q.append(now)
     return True
+
+
+def limit_action(action: str, subject: str, default_max: int, window_sec: int = 60):
+    """Configurable abuse/cost guard shared by expensive API actions.
+
+    Defaults are engineering safeguards, not commercial policy. Production can
+    tune each action with URTRUCK_RATE_<ACTION>_MAX without code changes.
+    """
+    env_name = f"URTRUCK_RATE_{action.upper()}_MAX"
+    try:
+        maximum = int(os.getenv(env_name, str(default_max)))
+    except ValueError:
+        maximum = default_max
+    check_rate(f"action:{action}:{subject}", max(1, maximum), window_sec)
 
 
 def limit_otp_send(phone: str):

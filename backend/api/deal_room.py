@@ -306,6 +306,8 @@ async def upload_attachment(
     before writing to remote storage, so double taps cannot create duplicate
     durable objects/messages in the normal application flow.
     """
+    from api.rate_limit import limit_action
+    limit_action("document_upload", user["id"], 30)
     if not dr.room_exists(conversation_id):
         raise HTTPException(status_code=404, detail="Беседа не найдена")
     if not dr.is_participant(conversation_id, user["id"]):

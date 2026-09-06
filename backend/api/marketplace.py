@@ -1494,6 +1494,8 @@ def _ensure_bargain_depth(c, bid: dict, required_actions: int = BARGAIN_MIN_PRIC
 
 @mp_router.post("/bids")
 def create_bid(body: BidIn, user=Depends(require_level(1)), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
+    from api.rate_limit import limit_action
+    limit_action("bid_mutation", user["id"], 120)
     # cargo_id или trip_id — хотя бы один (для серверных грузов)
     # Если оба null — разрешаем (для demo/local грузов), ставка просто без привязки
 
