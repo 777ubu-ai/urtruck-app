@@ -1,0 +1,86 @@
+name: UrTruck Internal TestFlight RC
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Exact audited integration/RC branch or commit SHA
+        required: true
+        type: string
+        default: integration/urtruck-rc-foundation-20260905
+      submit_internal:
+        description: Submit the verified archive to internal TestFlight
+        required: true
+        type: boolean
+        default: false
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  internal-rc:
+    runs-on: macos-latest
+    timeout-minutes: 180
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_API_URL: https://urtruck.kz
+      EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+    steps:
+      - name: Checkout requested audited source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Guard exact RC source and release configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_REF="${{ inputs.source_ref || github.event.pull_request.head.ref }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            test "${{ github.event.pull_request.head.repo.full_name }}" = "${{ github.repository }}"
+          fi
+          case "$SOURCE_REF" in
+            integration/*|arch/*|fix/*|????????????????????????????????????????)
+              ;;
+            *) echo "::error::Only audited integration/arch/fix refs or a full commit SHA are allowed"; exit 1 ;;
+          esac
+          SOURCE_SHA=$(git rev-parse HEAD)
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          test -n "${EXPO_TOKEN:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
+          test "$(node -p "require('./app.json').expo.version")" = "1.0.8"
+          test "$(node -p "require('./app.json').expo.ios.bundleIdentifier")" = "com.urtruck.app"
+          node qa/utils/testflightRcGuard.mjs eas.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build exact release archive
+        run: |
+          npx eas-cli@latest build --platform ios --profile production --non-interactive --wait --json > eas-build.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const build = JSON.parse(fs.readFileSync('eas-build.json', 'utf8'))[0];
+          if (build.gitCommitHash !== process.env.SOURCE_SHA) throw new Error('EAS source SHA mismatch');
+          if (build.appVersion !== '1.0.8') throw new Error('Unexpected app version');
+          fs.writeFileSync('rc-metadata.txt', `source_sha=${process.env.SOURCE_SHA}\nbuild_id=${build.id}\napp_version=${build.appVersion}\nbuild_number=${build.appBuildVersion}\nbundle_id=com.urtruck.app\narchive_url=${build.artifactUrl || ''}\n`);
+          NODE
+
+      - name: Submit internal TestFlight only
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.submit_internal == true }}
+        run: npx eas-cli@latest submit --platform ios --profile production --path "$(node -p "JSON.parse(require('fs').readFileSync('eas-build.json','utf8'))[0].artifactUrl")" --non-interactive --wait
+
+      - name: Upload RC metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: urtruck-internal-testflight-rc-metadata
+          path: rc-metadata.txt
