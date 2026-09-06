@@ -32,7 +32,9 @@ const QA_HOOK_ALLOWED = (() => {
   try {
     const Constants = require('expo-constants').default;
     const qa2Standalone = process.env.EXPO_PUBLIC_QA2_STANDALONE === '1';
-    const isStandalone = Constants?.appOwnership === 'standalone';
+    const isStandalone = Constants?.appOwnership === 'standalone'
+      || Constants?.executionEnvironment === 'standalone'
+      || Constants?.executionEnvironment === 'storeClient';
     if (qa2Standalone) return isStandalone;
     return typeof __DEV__ !== 'undefined' && __DEV__ && !isStandalone;
   } catch {
