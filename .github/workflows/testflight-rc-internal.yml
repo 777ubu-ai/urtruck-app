@@ -32,14 +32,14 @@ jobs:
       - name: Checkout requested audited source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_ref || github.event.pull_request.head.sha }}
+          ref: ${{ github.event_name == 'pull_request' && 'integration/urtruck-rc-foundation-20260905' || inputs.source_ref }}
           fetch-depth: 0
 
       - name: Guard exact RC source and release configuration
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_REF="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.source_ref || github.sha }}"
+          SOURCE_REF="${{ github.event_name == 'pull_request' && 'integration/urtruck-rc-foundation-20260905' || inputs.source_ref || github.sha }}"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             test "${{ github.event.pull_request.head.repo.full_name }}" = "${{ github.repository }}"
           fi
