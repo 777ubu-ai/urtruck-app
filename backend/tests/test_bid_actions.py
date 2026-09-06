@@ -729,6 +729,20 @@ def test_pr_b_accept_bid_creates_accepted_notif_with_order_url():
     n = accepted[0]
     expect(n["url"] == f"/cargos/{cargo_id}",
            f"accepted notif url=/cargos/{{id}} (got {n['url']})")
+    expect(n.get("event_key", "").startswith("bid.accepted:"),
+           f"accepted notification has stable event key (got {n.get('event_key')!r})")
+
+    from database.db import get_conn
+    with get_conn() as c:
+        push_rows = c.execute(
+            "SELECT event_id, event_type, recipient_user_id, payload "
+            "FROM push_outbox WHERE recipient_user_id = ? AND event_type = 'bid.accepted' "
+            "ORDER BY id DESC",
+            (driver,),
+        ).fetchall()
+    expect(len(push_rows) == 1, f"one acceptance push outbox row (got {len(push_rows)})")
+    expect(push_rows[0]["event_id"].startswith("bid.accepted:"),
+           f"push event has stable event id (got {push_rows[0]['event_id']!r})")
 
 
 def test_pr_b_reject_bid_notif_has_back_url():
