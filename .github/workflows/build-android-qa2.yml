@@ -177,6 +177,8 @@ jobs:
           ./gradlew assembleRelease -PALLOW_QA2_STANDALONE_RELEASE=true --no-daemon --max-workers=2 --stacktrace --warning-mode=summary
 
       - name: Verify APK identity and signing before upload
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.QA2_API_URL }}
         run: |
           set -euo pipefail
           apk=android/app/build/outputs/apk/release/app-release.apk
