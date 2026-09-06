@@ -7673,8 +7673,10 @@ export const subscribeToLanguage = (cb) => {
 export const t = (key) => {
   const lang = translations[currentLang];
   if (lang && lang[key]) return lang[key];
-  if (currentLang !== 'RU') return translations.EN[key] || key;
-  return translations.RU[key] || translations.EN[key] || key;
+  // Never leak Russian source text into a selected non-RU locale. English is
+  // the controlled fallback for incomplete catalogs; the key remains visible
+  // only when neither catalog defines the semantic key.
+  return translations.EN[key] || key;
 };
 
 // Склонение для русского: 1 ставка, 2 ставки, 5 ставок

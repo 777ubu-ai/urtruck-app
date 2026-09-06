@@ -2310,7 +2310,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
     # первой смены статуса комната открывалась без единого сообщения).
     try:
         if chat_room_id:
-            _mk = f"🤝 Сделка создана · {final_amount}"
+            _mk = f"[[i18n:deal_created]]::{final_amount}"
             c.execute(
                 "INSERT INTO chat_messages (room_id, sender_id, text) VALUES (?,?,?)",
                 (chat_room_id, "system", _mk),
@@ -3326,12 +3326,12 @@ def update_deal_status(deal_id: str, new_status: str, version: Optional[int] = Q
     # Системное сообщение в чат — чтобы оба участника видели смену статуса inline
     try:
         chat_labels = {
-            "in_progress": "🚛 Рейс начался",
-            "at_border": "🛂 Груз на границе",
-            "delivered": "✅ Груз доставлен — ожидается подтверждение получения",
-            "received": "✅ Получение груза подтверждено",
-            "completed": "🤝 Сделка завершена",
-            "cancelled": "❌ Сделка отменена",
+            "in_progress": "[[i18n:system_trip_started]]",
+            "at_border": "[[i18n:system_trip_at_border]]",
+            "delivered": "[[i18n:system_trip_delivered]]",
+            "received": "[[i18n:deal_event_status_completed]]",
+            "completed": "[[i18n:deal_done]]",
+            "cancelled": "[[i18n:system_deal_cancelled]]",
         }
         if new_status in chat_labels and deal.get("chat_room_id"):
             with get_conn() as c3:

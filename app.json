@@ -2,7 +2,7 @@
   "expo": {
     "name": "UrTruck",
     "slug": "urtruck",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "orientation": "portrait",
     "scheme": "urtruck",
     "platforms": [
@@ -24,7 +24,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.urtruck.app",
-      "buildNumber": "27",
+      "buildNumber": "28",
       "usesAppleSignIn": true,
       "associatedDomains": [
         "applinks:urtruck.kz"
@@ -48,7 +48,7 @@
     "android": {
       "package": "com.urtruck.app",
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 9,
+      "versionCode": 28,
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
         {

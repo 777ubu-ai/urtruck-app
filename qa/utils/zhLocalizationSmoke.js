@@ -95,7 +95,7 @@ const importSourceModule = async (rel) => {
   const share = read('src/utils/share.js');
 
   assert(useI18n.includes("if (lang !== 'RU') return translations.EN"), 'useI18n non-RU fallback must be EN, never RU');
-  assert(i18n.includes("if (currentLang !== 'RU') return translations.EN"), 'global t() non-RU fallback must be EN, never RU');
+  assert(i18n.includes("return translations.EN[key] || key"), 'global t() fallback must never use RU source text');
   assert(dateInput.includes('年${Number(year)}年') === false, 'broken duplicated ZH year marker');
   assert(dateInput.includes('年${Number(month)}月${Number(day)}日'), 'ZH full date formatter missing');
   assert(share.includes("ZH: { trip: 'UrTruck 行程'"), 'ZH share copy missing');
