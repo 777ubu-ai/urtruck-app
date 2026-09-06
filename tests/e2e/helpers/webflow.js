@@ -25,7 +25,7 @@ async function gotoPhoneScreen(page) {
   await cta.click();
   await page.locator(tid('email-v2-input')).waitFor({ state: 'visible', timeout: 15000 });
   await expect(page.locator(tid('auth-google'))).toBeVisible();
-  await expect(page.locator(tid('auth-apple'))).toBeVisible();
+  await expect(page.locator(tid('auth-apple'))).toHaveCount(0);
 }
 
 // Ввести код на OtpV2 и, если новый юзер, пройти канонический профиль 2/2.

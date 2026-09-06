@@ -42,7 +42,15 @@ jobs:
           test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
           test "$(node -p "require('./app.json').expo.version")" = "1.0.8"
           test "$(node -p "require('./app.json').expo.ios.bundleIdentifier")" = "com.urtruck.app"
-          ! rg -n 'developmentClient|distribution.*internal|debug' eas.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          const production = eas?.build?.production;
+          if (!production) throw new Error('Missing build.production profile');
+          if (production.developmentClient === true) throw new Error('Production profile cannot enable developmentClient');
+          if (production.distribution === 'internal') throw new Error('Production profile cannot use internal distribution');
+          if (production.ios?.simulator === true) throw new Error('Production profile cannot target simulator');
+          NODE
 
       - uses: actions/setup-node@v4
         with:

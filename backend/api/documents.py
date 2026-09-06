@@ -126,7 +126,7 @@ def _load_ttn_context(document_ref: str, user_id: str) -> tuple[dict, dict, str]
         "security_color": data["security_color"],
     }
     required = {
-        "route": (trip["from"], trip["to"]), "cargo": trip["cargo"], "weight": trip["tons"],
+        "origin": trip["from"], "destination": trip["to"], "cargo": trip["cargo"], "weight": trip["tons"],
         "volume": trip["m3"], "amount": trip["price"], "driver": driver["full_name"],
         "shipper": data["shipper_full_name"], "vehicle": trip["type"],
     }

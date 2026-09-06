@@ -109,11 +109,11 @@ test.describe.serial('A. Вход по EMAIL (обе роли)', () => {
 });
 
 // ─────────────────── БЛОК B — SOCIAL AUTH ENTRY ──────────────────────
-test.describe('B. Google + Apple auth entry', () => {
-  test('B1. Google и Apple видимы, телефонный login полностью убран', async ({ page }) => {
+test.describe('B. Social auth entry', () => {
+  test('B1. Google виден, Apple отключён, телефонный login полностью убран', async ({ page }) => {
     await H.gotoPhoneScreen(page);
     await expect(page.locator(tid('auth-google'))).toBeVisible();
-    await expect(page.locator(tid('auth-apple'))).toBeVisible();
+    await expect(page.locator(tid('auth-apple'))).toHaveCount(0);
     await expect(page.locator(tid('email-v2-input'))).toBeVisible();
     await expect(page.locator(tid('auth-tab-phone'))).toHaveCount(0);
     await expect(page.locator(tid('phone-v2-input'))).toHaveCount(0);
