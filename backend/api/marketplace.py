@@ -2722,6 +2722,19 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)),
         counter_url = "/"
     with get_conn() as c2:
         cur = _bid_currency(c2, bid)
+        route_row = None
+        if bid.get("cargo_id"):
+            route_row = c2.execute(
+                "SELECT from_city, to_city FROM cargos WHERE id = ?",
+                (bid["cargo_id"],),
+            ).fetchone()
+        elif bid.get("trip_id"):
+            route_row = c2.execute(
+                "SELECT from_city, to_city FROM trips WHERE id = ?",
+                (bid["trip_id"],),
+            ).fetchone()
+        route_from = route_row["from_city"] if route_row else None
+        route_to = route_row["to_city"] if route_row else None
     title = f"🔁 Контр-оффер: {_money(body.amount, cur)}"
     # Роль-зависимый текст: для bid на груз контр шлёт владелец груза; для bid
     # на рейс — владелец рейса (водитель). Иначе биддеру на рейс приходило
@@ -2733,7 +2746,7 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)),
             bid["bidder_id"], title, text, url=counter_url,
             kind="bid_countered", data={
                 "amount": _money(body.amount, cur),
-                "from_city": bid.get("from_city"), "to_city": bid.get("to_city"),
+                "from_city": route_from, "to_city": route_to,
             },
         )
     except Exception:
