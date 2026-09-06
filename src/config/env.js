@@ -39,7 +39,9 @@ const PROD_API = 'https://urtruck.kz';
 // by `eas build --profile preview` / `--profile development` to
 // point at a staging backend). Empty string => fall through to
 // the production default below.
-const ENV_OVERRIDE = (typeof process !== 'undefined' && process?.env?.EXPO_PUBLIC_API_URL) || '';
+// Expo inlines only direct `process.env.EXPO_PUBLIC_*` references during
+// Metro export; optional chaining leaves the variable name unresolved.
+const ENV_OVERRIDE = process.env.EXPO_PUBLIC_API_URL || '';
 
 // Build-profile signal from EAS / app.json `extra.eas.profile`.
 // Stays undefined inside `expo start`, where __DEV__ is true.
