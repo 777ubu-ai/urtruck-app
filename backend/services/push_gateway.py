@@ -22,6 +22,10 @@ from database.db import get_conn
 
 PUSH_PROVIDER_MODE = (os.getenv("PUSH_PROVIDER_MODE") or "expo").strip().lower()
 NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
+PUSH_OUTBOX_MAX_ATTEMPTS = 5
+PUSH_OUTBOX_BASE_DELAY_SECONDS = 5
+PUSH_OUTBOX_MAX_DELAY_SECONDS = 300
+PUSH_OUTBOX_PROCESSING_LEASE_SECONDS = 300
 
 FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "")
 FCM_SERVICE_ACCOUNT_JSON = os.getenv("FCM_SERVICE_ACCOUNT_JSON", "")
@@ -445,6 +449,18 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
     """
     picked = []
     with get_conn() as c:
+        c.execute(
+            """
+            UPDATE push_outbox
+               SET status='pending', next_attempt_at=CURRENT_TIMESTAMP,
+                   processing_started_at=NULL,
+                   last_error=COALESCE(last_error, 'processing_lease_expired')
+             WHERE status='processing'
+               AND COALESCE(processing_started_at, created_at)
+                   <= datetime(CURRENT_TIMESTAMP, ?)
+            """,
+            (f"-{PUSH_OUTBOX_PROCESSING_LEASE_SECONDS} seconds",),
+        )
         rows = c.execute(
             """
             SELECT * FROM push_outbox
@@ -456,7 +472,10 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
         ).fetchall()
         picked = [dict(r) for r in rows]
         for row in picked:
-            c.execute("UPDATE push_outbox SET status = 'processing' WHERE id = ? AND status = 'pending'", (row["id"],))
+            c.execute(
+                "UPDATE push_outbox SET status='processing', processing_started_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
+                (row["id"],),
+            )
 
     stats = {"picked": len(picked), "sent": 0, "failed": 0, "dead": 0}
     for row in picked:
@@ -475,29 +494,42 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
             if status == "sent":
                 stats["sent"] += 1
                 with get_conn() as c:
-                    c.execute("UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=? WHERE id=?", (attempt, row["id"]))
+                    c.execute(
+                        "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=?, processing_started_at=NULL WHERE id=?",
+                        (attempt, row["id"]),
+                    )
                 continue
-            if attempt >= 5:
+            if attempt >= PUSH_OUTBOX_MAX_ATTEMPTS:
                 stats["dead"] += 1
                 with get_conn() as c:
                     c.execute(
-                        "UPDATE push_outbox SET status='dead', failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=? WHERE id=?",
+                        "UPDATE push_outbox SET status='dead', failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, processing_started_at=NULL WHERE id=?",
                         (attempt, "delivery_not_confirmed", row["id"]),
                     )
                 continue
             stats["failed"] += 1
-            delay = min(300, 2 ** attempt * 5)
+            delay = min(PUSH_OUTBOX_MAX_DELAY_SECONDS, 2 ** attempt * PUSH_OUTBOX_BASE_DELAY_SECONDS)
             with get_conn() as c:
                 c.execute(
-                    "UPDATE push_outbox SET status='pending', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=? WHERE id=?",
+                    "UPDATE push_outbox SET status='pending', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, processing_started_at=NULL WHERE id=?",
                     (attempt, f"+{delay} seconds", "delivery_not_confirmed", row["id"]),
                 )
         except Exception as exc:
+            attempt = int(row["attempt_count"] or 0) + 1
+            if attempt >= PUSH_OUTBOX_MAX_ATTEMPTS:
+                stats["dead"] += 1
+                with get_conn() as c:
+                    c.execute(
+                        "UPDATE push_outbox SET status='dead', failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, processing_started_at=NULL WHERE id=?",
+                        (attempt, "exception: " + str(exc)[:480], row["id"]),
+                    )
+                continue
             stats["failed"] += 1
+            delay = min(PUSH_OUTBOX_MAX_DELAY_SECONDS, 2 ** attempt * PUSH_OUTBOX_BASE_DELAY_SECONDS)
             with get_conn() as c:
                 c.execute(
-                    "UPDATE push_outbox SET status='pending', attempt_count=attempt_count+1, last_error=? WHERE id=?",
-                    (str(exc)[:500], row["id"]),
+                    "UPDATE push_outbox SET status='pending', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, processing_started_at=NULL WHERE id=?",
+                    (attempt, f"+{delay} seconds", str(exc)[:500], row["id"]),
                 )
     return stats
 
