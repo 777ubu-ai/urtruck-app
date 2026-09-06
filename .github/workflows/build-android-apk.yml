@@ -169,7 +169,9 @@ jobs:
           {
             echo "source_sha=${GITHUB_SHA}"
             echo "application_id=${{ github.event.inputs.application_id || 'com.urtruck.app' }}"
-            echo "version_name=1.0.7"
+            version_name=$(aapt dump badging "$apk" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+            test -n "$version_name"
+            echo "version_name=$version_name"
             echo "version_code=${URTRUCK_VERSION_CODE}"
             sha256sum "$apk" "$aab"
           } | tee android/app/build/outputs/rc-metadata.txt

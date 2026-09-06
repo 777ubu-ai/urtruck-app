@@ -1,0 +1,107 @@
+name: UrTruck Internal TestFlight RC
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Audited integration/RC branch or exact commit SHA
+        required: true
+        default: integration/urtruck-rc-foundation-20260905
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-testflight-internal-rc
+  cancel-in-progress: false
+
+jobs:
+  internal-rc:
+    name: Build and upload internal-only RC
+    runs-on: macos-14
+    timeout-minutes: 180
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_API_URL: https://urtruck.kz
+      EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+      YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+    steps:
+      - name: Checkout exact RC source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+
+      - name: Verify controlled source and clean tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REPOSITORY}" = "777ubu-ai/urtruck-app"
+          ref='${{ inputs.source_ref }}'
+          if [[ ! "$ref" =~ ^(integration|arch|fix)/[A-Za-z0-9._/-]+$ && ! "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Internal RC accepts only integration/arch/fix review refs or an exact SHA"
+            exit 1
+          fi
+          test -z "$(git status --porcelain)"
+          export SOURCE_SHA="$(git rev-parse HEAD)"
+          echo "SOURCE_SHA=$SOURCE_SHA" | tee rc-source.txt >> "$GITHUB_ENV"
+          node -e "const a=require('./app.json'); if(a.expo.version!=='1.0.8') throw new Error('Expected app version 1.0.8'); console.log('version='+a.expo.version)"
+          test -n "${EXPO_TOKEN:-}"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Verify release archive prerequisites
+        run: |
+          set -euo pipefail
+          npx expo config --json > expo-config.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const c=JSON.parse(fs.readFileSync('expo-config.json'));
+          if (c.expo?.ios?.bundleIdentifier !== 'com.urtruck.app') throw new Error('wrong bundle identifier');
+          if (c.expo?.version !== '1.0.8') throw new Error('wrong marketing version');
+          if (c.expo?.ios?.buildNumber === '27') throw new Error('stale iOS build number');
+          console.log(`bundle=${c.expo.ios.bundleIdentifier} version=${c.expo.version} build=${c.expo.ios.buildNumber}`);
+          NODE
+
+      - name: Configure exact RC runtime
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const path='eas.json';
+          const eas=JSON.parse(fs.readFileSync(path));
+          eas.build=eas.build||{};
+          eas.build.production=eas.build.production||{};
+          eas.build.production.env={...(eas.build.production.env||{}), EXPO_PUBLIC_API_URL:process.env.EXPO_PUBLIC_API_URL, EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY};
+          fs.writeFileSync(path, JSON.stringify(eas,null,2)+'\n');
+          NODE
+
+      - name: Build exact RC archive
+        id: build
+        run: |
+          set -euo pipefail
+          npx eas-cli@latest build --platform ios --profile production --clear-cache --non-interactive --wait --json > eas-build.json
+          node - <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs=require('fs'); const b=JSON.parse(fs.readFileSync('eas-build.json'))[0];
+          const head=process.env.SOURCE_SHA;
+          if (b.gitCommitHash !== head) throw new Error(`EAS SHA ${b.gitCommitHash} != ${head}`);
+          console.log(`build_id=${b.id}`);
+          console.log(`archive_identity=${b.id}:${b.gitCommitHash}`);
+          NODE
+
+      - name: Upload internal TestFlight only
+        id: submit
+        run: |
+          set -euo pipefail
+          npx eas-cli@latest submit --platform ios --profile production --id "${{ steps.build.outputs.build_id }}" --non-interactive --wait | tee submit.log
+          echo "submission_scope=internal_testflight_only" | tee -a rc-source.txt
+
+      - name: Publish RC metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-iOS-internal-RC-${{ env.SOURCE_SHA }}
+          path: |
+            rc-source.txt
+            eas-build.json
+            submit.log

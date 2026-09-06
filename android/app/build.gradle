@@ -10,6 +10,19 @@ if (file("google-services.json").exists()) {
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 def configuredVersionCode = project.findProperty('URTRUCK_VERSION_CODE')
+def configuredApplicationId = project.findProperty('URTRUCK_APPLICATION_ID') ?: 'com.urtruck.app'
+def configuredVersionName = project.findProperty('URTRUCK_VERSION_NAME') ?: '1.0.8'
+def qa2ApplicationId = 'com.urtruck.app.qa2'
+def uploadSigningPropertyNames = [
+    'URTRUCK_UPLOAD_STORE_FILE',
+    'URTRUCK_UPLOAD_STORE_PASSWORD',
+    'URTRUCK_UPLOAD_KEY_ALIAS',
+    'URTRUCK_UPLOAD_KEY_PASSWORD',
+]
+def hasUploadSigningProperties = uploadSigningPropertyNames.any { project.hasProperty(it) && project.property(it)?.toString()?.trim() }
+if (configuredApplicationId == qa2ApplicationId && hasUploadSigningProperties) {
+    throw new GradleException('QA2 must use the stable QA/debug signing lineage; production upload signing is forbidden')
+}
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -95,15 +108,15 @@ android {
 
     namespace 'com.urtruck.app'
     defaultConfig {
-        applicationId (project.hasProperty('URTRUCK_APPLICATION_ID') ? URTRUCK_APPLICATION_ID : 'com.urtruck.app')
+        applicationId configuredApplicationId
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI (deploy-play.yml) передаёт свой versionCode через -PURTRUCK_VERSION_CODE,
         // чтобы каждая автозаливка в Google Play имела уникальный монотонный код.
         // Debug builds retain a local development code; release tasks below
         // fail closed unless CI/release configuration provides a monotonic code.
-        versionCode (configuredVersionCode ? configuredVersionCode.toInteger() : 9)
-        versionName "1.0.7"
+        versionCode (configuredVersionCode ? configuredVersionCode.toInteger() : 28)
+        versionName configuredVersionName
     }
     signingConfigs {
         debug {
@@ -156,13 +169,10 @@ android {
 tasks.configureEach { task ->
     if (task.name in ['assembleRelease', 'bundleRelease', 'packageRelease']) {
         doFirst {
-            def uploadSigningProperties = [
-                'URTRUCK_UPLOAD_STORE_FILE',
-                'URTRUCK_UPLOAD_STORE_PASSWORD',
-                'URTRUCK_UPLOAD_KEY_ALIAS',
-                'URTRUCK_UPLOAD_KEY_PASSWORD',
-            ]
-            def missingUploadSigning = uploadSigningProperties.findAll { !project.hasProperty(it) || !project.property(it)?.toString()?.trim() }
+            if (configuredApplicationId == qa2ApplicationId) {
+                throw new GradleException('QA2 cannot be assembled as a release artifact')
+            }
+            def missingUploadSigning = uploadSigningPropertyNames.findAll { !project.hasProperty(it) || !project.property(it)?.toString()?.trim() }
             if (!missingUploadSigning.isEmpty()) {
                 throw new GradleException("Release signing is not configured; missing: ${missingUploadSigning.join(', ')}")
             }

@@ -26,7 +26,7 @@ test('release manifest does not ship overlay permission', () => {
 test('release version code fails closed without CI assignment', () => {
   assert.match(gradle, /Release versionCode is not configured/);
   assert.match(gradle, /-PURTRUCK_VERSION_CODE/);
-  assert.match(gradle, /configuredVersionCode \? configuredVersionCode\.toInteger\(\) : 9/);
+  assert.match(gradle, /configuredVersionCode \? configuredVersionCode\.toInteger\(\) : 28/);
 });
 
 test('Firebase plugin is applied before Android configuration', () => {

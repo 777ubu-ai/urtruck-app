@@ -1,0 +1,135 @@
+name: Build Android QA2
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Audited integration/RC branch or exact commit SHA
+        required: true
+        default: integration/urtruck-rc-foundation-20260905
+
+permissions:
+  contents: read
+
+jobs:
+  qa2:
+    name: Build exact-SHA QA2 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      QA2_APPLICATION_ID: com.urtruck.app.qa2
+      QA2_CERT_SHA256: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c
+    steps:
+      - name: Checkout audited source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+
+      - name: Verify source ref and clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REPOSITORY}" = "777ubu-ai/urtruck-app"
+          ref='${{ inputs.source_ref }}'
+          if [[ ! "$ref" =~ ^(integration|arch|fix)/[A-Za-z0-9._/-]+$ && ! "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::QA2 accepts only integration/arch/fix review refs or an exact commit SHA"
+            exit 1
+          fi
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;26.1.10909125"
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --ignore-scripts || npm install --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+
+      - name: Materialize and verify QA2 Firebase config
+        env:
+          ANDROID_QA2_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_QA2_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "${ANDROID_QA2_GOOGLE_SERVICES_JSON_BASE64:-}" || {
+            echo "::error::ANDROID_QA2_GOOGLE_SERVICES_JSON_BASE64 is required for QA2"
+            exit 1
+          }
+          echo "$ANDROID_QA2_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
+          python3 scripts/verify_android_firebase_config.py --check-source android/app/google-services.json
+          python3 - "$QA2_APPLICATION_ID" <<'PY'
+          import json, sys
+          from pathlib import Path
+          expected = sys.argv[1]
+          config = json.loads(Path('android/app/google-services.json').read_text())
+          packages = [c.get('client_info', {}).get('android_client_info', {}).get('package_name') for c in config.get('client', [])]
+          if expected not in packages:
+              raise SystemExit(f'QA2 Firebase config missing {expected}; found {packages}')
+          PY
+
+      - name: Compute monotonic QA2 versionCode
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_epoch=1577836800
+          now_epoch=$(date -u +%s)
+          version_code=$((now_epoch - base_epoch))
+          test "$version_code" -gt 210000000
+          test "$version_code" -lt 2100000000
+          echo "URTRUCK_VERSION_CODE=$version_code" >> "$GITHUB_ENV"
+
+      - name: Build QA2 debug artifact with stable QA signing
+        run: |
+          set -euo pipefail
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --max-workers=2 \
+            -PURTRUCK_APPLICATION_ID="$QA2_APPLICATION_ID" \
+            -PURTRUCK_VERSION_NAME=1.0.8 \
+            -PURTRUCK_VERSION_CODE="$URTRUCK_VERSION_CODE"
+
+      - name: Verify QA2 artifact identity and signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$apk"
+          package=$(aapt dump badging "$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          version_name=$(aapt dump badging "$apk" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          version_code=$(aapt dump badging "$apk" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
+          cert=$(apksigner verify --print-certs "$apk" | sed -n 's/.*SHA-256 digest: \(.*\)/\1/p' | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+          test "$package" = "$QA2_APPLICATION_ID"
+          test "$cert" = "$QA2_CERT_SHA256"
+          test "$version_name" = "1.0.8"
+          {
+            echo "source_sha=$SOURCE_SHA"
+            echo "application_id=$package"
+            echo "version_name=$version_name"
+            echo "version_code=$version_code"
+            echo "apk_sha256=$(sha256sum "$apk" | awk '{print $1}')"
+            echo "signing_cert_sha256=$cert"
+          } | tee android/app/build/outputs/qa2-metadata.txt
+
+      - name: Upload QA2 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-QA2-${{ env.SOURCE_SHA }}
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/qa2-metadata.txt
