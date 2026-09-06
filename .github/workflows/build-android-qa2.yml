@@ -11,6 +11,9 @@ on:
         description: Exact source commit to build (defaults to checked out SHA)
         required: false
         type: string
+  push:
+    branches:
+      - fix/qa2-standalone-bundle-20260906
 
 permissions:
   contents: read
@@ -29,6 +32,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.source_sha || github.sha }}
+
+      - name: Resolve exact standalone source on push lane
+        if: github.event_name == 'push'
+        env:
+          EXACT_SOURCE_SHA: 7dabb3925a6667081a0875bc83f9252349853a29
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin "$EXACT_SOURCE_SHA"
+          git checkout --detach "$EXACT_SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$EXACT_SOURCE_SHA"
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
