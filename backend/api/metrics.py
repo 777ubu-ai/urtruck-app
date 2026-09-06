@@ -180,12 +180,15 @@ def recent_errors(_admin: str = Depends(check_admin)):
 @metrics_router.get("/health")
 def health_detailed():
     """Расширенный health с метриками."""
+    from scheduler.jobs import scheduler_health
+
     uptime = time.time() - _startup_time
     total_req = sum(_request_count.values())
     total_err = sum(_request_errors.values())
     total_client_err = sum(_request_client_errors.values())
+    scheduler = scheduler_health()
     return {
-        "status": "ok",
+        "status": "ok" if scheduler["readiness"] == "ready" else "degraded",
         "uptime_hours": round(uptime / 3600, 1),
         "total_requests": total_req,
         "total_errors": total_err,
@@ -193,4 +196,6 @@ def health_detailed():
         "total_client_errors": total_client_err,
         "client_error_rate": f"{(total_client_err / max(total_req, 1)) * 100:.1f}%",
         "top_endpoints": dict(sorted(_request_count.items(), key=lambda x: -x[1])[:5]),
+        "scheduler": scheduler,
+        "readiness": {"scheduler": scheduler["readiness"]},
     }

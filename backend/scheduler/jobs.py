@@ -290,6 +290,8 @@ def domain_outbox_job():
     from infrastructure.outbox.deals_handlers import acceptance_handlers
     from modules.deals.application.service import ensure_v2_schema
 
+    started = datetime.utcnow().isoformat()
+    _domain_outbox_state["started_at"] = started
     try:
         with get_conn() as c:
             ensure_v2_schema(c)
@@ -300,11 +302,14 @@ def domain_outbox_job():
         _domain_outbox_state.update({
             "status": "healthy", "last_error": None,
             "last_run": datetime.utcnow().isoformat(),
+            "last_success": datetime.utcnow().isoformat(),
+            "success_count": _domain_outbox_state.get("success_count", 0) + 1,
         })
     except Exception as exc:
         _domain_outbox_state.update({
             "status": "degraded", "last_error": str(exc),
             "last_run": datetime.utcnow().isoformat(),
+            "failure_count": _domain_outbox_state.get("failure_count", 0) + 1,
         })
         print(json.dumps({
             "component": "domain_outbox",
@@ -317,16 +322,20 @@ def push_outbox_job():
     """Drain the canonical push outbox after business transactions commit."""
     from services import push_gateway, push_sender
 
+    _push_outbox_state["started_at"] = datetime.utcnow().isoformat()
     try:
         stats = push_gateway.process_pending_once(push_sender._send_expo_detailed)
         _push_outbox_state.update({
             "status": "healthy", "last_error": None,
             "last_run": datetime.utcnow().isoformat(), "last_stats": stats,
+            "last_success": datetime.utcnow().isoformat(),
+            "success_count": _push_outbox_state.get("success_count", 0) + 1,
         })
     except Exception as exc:
         _push_outbox_state.update({
             "status": "degraded", "last_error": str(exc),
             "last_run": datetime.utcnow().isoformat(),
+            "failure_count": _push_outbox_state.get("failure_count", 0) + 1,
         })
         print(json.dumps({
             "component": "push_outbox",
@@ -351,6 +360,9 @@ def scheduler_health() -> dict:
     return {
         "enabled": enabled,
         "running": _scheduler is not None,
+        "readiness": "ready" if not enabled or (_scheduler is not None and
+                     state["status"] not in ("degraded", "unavailable") and
+                     push_state["status"] not in ("degraded", "unavailable")) else "degraded",
         "domain_outbox": state,
         "push_outbox": push_state,
     }
@@ -373,8 +385,15 @@ def scheduler_health() -> dict:
 # scheduler вынесут в один из них явно).
 _scheduler = None
 _lock_fh = None
-_domain_outbox_state = {"status": "unknown", "last_error": None, "last_run": None}
-_push_outbox_state = {"status": "unknown", "last_error": None, "last_run": None, "last_stats": None}
+_domain_outbox_state = {
+    "status": "unknown", "last_error": None, "last_run": None,
+    "started_at": None, "last_success": None, "success_count": 0, "failure_count": 0,
+}
+_push_outbox_state = {
+    "status": "unknown", "last_error": None, "last_run": None,
+    "started_at": None, "last_success": None, "success_count": 0, "failure_count": 0,
+    "last_stats": None,
+}
 
 
 def _acquire_singleton_lock():

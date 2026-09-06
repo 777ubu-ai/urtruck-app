@@ -13,7 +13,7 @@
     "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/splash/urtruck-splash.png",
-      "backgroundColor": "#070B14",
+      "backgroundColor": "#F6F8F7",
       "resizeMode": "contain"
     },
     "web": {
