@@ -313,16 +313,47 @@ def domain_outbox_job():
         }, ensure_ascii=False), flush=True)
 
 
+def push_outbox_job():
+    """Drain the canonical push outbox after business transactions commit."""
+    from services import push_gateway, push_sender
+
+    try:
+        stats = push_gateway.process_pending_once(push_sender._send_expo_detailed)
+        _push_outbox_state.update({
+            "status": "healthy", "last_error": None,
+            "last_run": datetime.utcnow().isoformat(), "last_stats": stats,
+        })
+    except Exception as exc:
+        _push_outbox_state.update({
+            "status": "degraded", "last_error": str(exc),
+            "last_run": datetime.utcnow().isoformat(),
+        })
+        print(json.dumps({
+            "component": "push_outbox",
+            "event": "delivery_cycle_failed",
+            "error": str(exc),
+        }, ensure_ascii=False), flush=True)
+
+
 def scheduler_health() -> dict:
     """Machine-readable readiness state for scheduler-owned side effects."""
     import os
     enabled = os.getenv("URTRUCK_ENABLE_SCHEDULER", "1").lower() not in ("0", "false", "no")
     state = dict(_domain_outbox_state)
+    push_state = dict(_push_outbox_state)
     if not enabled:
         state["status"] = "disabled"
+        push_state["status"] = "disabled"
     elif _scheduler is None and state["status"] == "unknown":
         state["status"] = "unavailable"
-    return {"enabled": enabled, "running": _scheduler is not None, "domain_outbox": state}
+    if enabled and _scheduler is None and push_state["status"] == "unknown":
+        push_state["status"] = "unavailable"
+    return {
+        "enabled": enabled,
+        "running": _scheduler is not None,
+        "domain_outbox": state,
+        "push_outbox": push_state,
+    }
 
 
 # P0-8 (08.08.2026): раньше start_scheduler() вызывался ТОЛЬКО из
@@ -343,6 +374,7 @@ def scheduler_health() -> dict:
 _scheduler = None
 _lock_fh = None
 _domain_outbox_state = {"status": "unknown", "last_error": None, "last_run": None}
+_push_outbox_state = {"status": "unknown", "last_error": None, "last_run": None, "last_stats": None}
 
 
 def _acquire_singleton_lock():
@@ -408,6 +440,7 @@ def start_scheduler():
     # дедуп по data_json удерживает один пуш на публикацию.
     sched.add_job(no_bids_notify_job, IntervalTrigger(hours=3), id="no_bids_notify")
     sched.add_job(domain_outbox_job, IntervalTrigger(seconds=15), id="domain_outbox")
+    sched.add_job(push_outbox_job, IntervalTrigger(seconds=15), id="push_outbox")
     sched.start()
     _scheduler = sched
     print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, domain outbox 15s")
