@@ -28,11 +28,13 @@ import { isSocialAuthCallback, takeBufferedSocialCallbackUrl } from '../../utils
 import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
 const QA_HOOK_ALLOWED = (() => {
-  if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
   if (process.env.EXPO_PUBLIC_QA_HOOKS !== '1') return false;
   try {
     const Constants = require('expo-constants').default;
-    return Constants?.appOwnership !== 'standalone';
+    const qa2Standalone = process.env.EXPO_PUBLIC_QA2_STANDALONE === '1';
+    const isStandalone = Constants?.appOwnership === 'standalone';
+    if (qa2Standalone) return isStandalone;
+    return typeof __DEV__ !== 'undefined' && __DEV__ && !isStandalone;
   } catch {
     return false;
   }
