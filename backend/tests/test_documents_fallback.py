@@ -96,3 +96,48 @@ def test_ttn_missing_required_data_is_fail_visible():
         documents.generate_ttn("ttn-trip-a", user={"id": "ttn-shipper"})
     assert exc.value.status_code == 409
     assert "weight" in exc.value.detail["fields"]
+
+
+@pytest.mark.parametrize(
+    ("table", "column", "value", "field"),
+    [
+        ("deals", "from_city", "", "origin"),
+        ("deals", "to_city", "", "destination"),
+        ("cargos", "weight_tons", 0, "weight"),
+    ],
+)
+def test_ttn_each_missing_required_field_is_fail_visible(table, column, value, field):
+    with get_conn() as conn:
+        record_id = "ttn-deal-a" if table == "deals" else "ttn-cargo-a"
+        conn.execute(f"UPDATE {table} SET {column} = ? WHERE id = ?", (value, record_id))
+    with pytest.raises(HTTPException) as exc:
+        documents.generate_ttn("ttn-trip-a", user={"id": "ttn-shipper"})
+    assert exc.value.status_code == 409
+    assert field in exc.value.detail["fields"]
+
+
+def test_ttn_both_route_components_are_required():
+    with get_conn() as conn:
+        conn.execute("UPDATE deals SET from_city = '', to_city = '' WHERE id = 'ttn-deal-a'")
+    with pytest.raises(HTTPException) as exc:
+        documents.generate_ttn("ttn-trip-a", user={"id": "ttn-shipper"})
+    assert exc.value.status_code == 409
+    assert {"origin", "destination"}.issubset(exc.value.detail["fields"])
+
+
+def test_ttn_cargo_requires_description_and_type():
+    with get_conn() as conn:
+        conn.execute("UPDATE cargos SET cargo_desc = '', cargo_type = '' WHERE id = 'ttn-cargo-a'")
+    with pytest.raises(HTTPException) as exc:
+        documents.generate_ttn("ttn-trip-a", user={"id": "ttn-shipper"})
+    assert exc.value.status_code == 409
+    assert "cargo" in exc.value.detail["fields"]
+
+
+def test_ttn_missing_participant_data_is_fail_visible():
+    with get_conn() as conn:
+        conn.execute("UPDATE drivers_registration SET full_name = '' WHERE id = 'ttn-driver'")
+    with pytest.raises(HTTPException) as exc:
+        documents.generate_ttn("ttn-trip-a", user={"id": "ttn-shipper"})
+    assert exc.value.status_code == 409
+    assert "driver" in exc.value.detail["fields"]

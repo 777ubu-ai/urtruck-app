@@ -62,9 +62,10 @@ test('social OAuth fails closed until Supabase confirms provider readiness', () 
 });
 
 
-test('iOS declares Sign in with Apple capability for App Store builds', () => {
+test('Apple Sign In is not active in the current product build', () => {
   assert.equal(appConfig?.expo?.ios?.bundleIdentifier, 'com.urtruck.app');
-  assert.equal(appConfig?.expo?.ios?.usesAppleSignIn, true);
+  assert.equal(appConfig?.expo?.ios?.usesAppleSignIn, undefined);
+  assert.doesNotMatch(read('ios/UrTruck/UrTruck.entitlements'), /com\.apple\.developer\.applesignin/);
 });
 
 
