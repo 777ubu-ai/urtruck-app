@@ -21,8 +21,8 @@ EXPIRY = (ROOT / "backend/services/bid_expiry.py").read_text(encoding="utf-8")
 
 def test_bid_created_routes_to_owner_or_trip_driver_with_order_deeplink():
     assert 'create_notification(recipient, "bid_created", title, text, icon, url=url)' in MARKET
-    assert 'post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True))' in MARKET
-    assert 'post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True))' in MARKET
+    assert 'post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True, {' in MARKET
+    assert 'post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True, {' in MARKET
     assert 'bid_url = f"/cargos/{body.cargo_id}?bid={bid_id}"' in MARKET
     assert 'bid_url = f"/trips/{body.trip_id}?bid={bid_id}"' in MARKET
 
@@ -57,7 +57,7 @@ def test_deal_status_notifications_cover_release_status_flow():
     for status in ("in_progress", "at_border", "delivered", "received", "completed", "cancelled"):
         assert f'"{status}":' in MARKET
     assert 'create_notification(other_id, "deal_status", labels[new_status], body_txt, "🚛", url=deal_url)' in MARKET
-    assert 'send_to_user(other_id, labels[new_status], body_txt, url=deal_url)' in MARKET
+    assert 'kind="deal_status", data={' in MARKET
 
 
 def test_tracking_notifications_use_deal_tracking_action_link_for_push_and_in_app():
@@ -84,5 +84,5 @@ def test_non_chat_push_events_still_do_not_have_typed_payload_contract_everywher
     # path feeds the durable push outbox/dedupe contract used by V2.
     info_calls = re.findall(r"send_to_user\([^\\n]+url=.*?\)", MARKET)
     assert info_calls, "expected marketplace push callsites to exist"
-    assert 'send_to_user(recipient, title, text, url=url)' in MARKET
+    assert 'kind="bid_created", data=push_data' in MARKET
     assert 'kind="bid_accepted", data=acceptance_data' in MARKET

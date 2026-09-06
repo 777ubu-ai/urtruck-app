@@ -97,6 +97,73 @@ def _already_delivered(user_id: str, event_key: Optional[str]) -> bool:
     """
     if not user_id or not event_key:
         return False
+
+
+def _recipient_locale(user_id: str) -> str:
+    """Use the locale registered by the recipient's active device."""
+    try:
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT locale FROM push_devices WHERE user_id = ? AND enabled = 1 "
+                "AND locale IS NOT NULL AND TRIM(locale) <> '' "
+                "ORDER BY last_seen_at DESC LIMIT 1",
+                (user_id,),
+            ).fetchone()
+        return str(row["locale"] if row else "RU").strip().upper() or "RU"
+    except Exception:
+        return "RU"
+
+
+_SYSTEM_PUSH_COPY = {
+    "RU": {
+        "bid_created": ("💰 Новая ставка", "Новая ставка: {amount} · {route}"),
+        "bid_countered": ("🔁 Контр-оффер", "Новая цена: {amount} · {route}"),
+        "bid_accepted": ("✅ Сделка создана", "Согласована цена {amount} · {route}"),
+        "deal_status": ("🚚 Статус сделки", "Статус: {status} · {route}"),
+        "trip_status": ("🚚 Статус рейса", "Статус: {status} · {route}"),
+    },
+    "EN": {
+        "bid_created": ("💰 New bid", "New bid: {amount} · {route}"),
+        "bid_countered": ("🔁 Counter-offer", "New price: {amount} · {route}"),
+        "bid_accepted": ("✅ Deal created", "Agreed price {amount} · {route}"),
+        "deal_status": ("🚚 Deal status", "Status: {status} · {route}"),
+        "trip_status": ("🚚 Trip status", "Status: {status} · {route}"),
+    },
+    "KK": {
+        "bid_created": ("💰 Жаңа баға", "Жаңа баға: {amount} · {route}"),
+        "bid_countered": ("🔁 Қарсы ұсыныс", "Жаңа баға: {amount} · {route}"),
+        "bid_accepted": ("✅ Мәміле жасалды", "Келісілген баға {amount} · {route}"),
+        "deal_status": ("🚚 Мәміле күйі", "Күйі: {status} · {route}"),
+        "trip_status": ("🚚 Рейс күйі", "Күйі: {status} · {route}"),
+    },
+    "ZH": {
+        "bid_created": ("💰 新报价", "新报价：{amount} · {route}"),
+        "bid_countered": ("🔁 还价", "新价格：{amount} · {route}"),
+        "bid_accepted": ("✅ 交易已创建", "协商价格 {amount} · {route}"),
+        "deal_status": ("🚚 交易状态", "状态：{status} · {route}"),
+        "trip_status": ("🚚 行程状态", "状态：{status} · {route}"),
+    },
+}
+
+
+def _localize_system_copy(user_id: str, kind: str, title: str, body: str, data: dict) -> tuple[str, str]:
+    """Localize server-authored system copy; user content remains untouched."""
+    if kind in ("chat", "info", "reminder", "expired", "no_bids"):
+        return title, body
+    locale = _recipient_locale(user_id)
+    catalog = _SYSTEM_PUSH_COPY.get(locale, _SYSTEM_PUSH_COPY["RU"])
+    template = catalog.get(kind)
+    if not template:
+        return title, body
+    route = str(data.get("route") or "").strip()
+    if not route:
+        route = " → ".join(str(v).strip() for v in (data.get("from_city"), data.get("to_city")) if str(v or "").strip())
+    values = {
+        "amount": str(data.get("amount") or "—"),
+        "route": route or "UrTruck",
+        "status": str(data.get("status") or "updated"),
+    }
+    return template[0], template[1].format(**values)
     try:
         with get_conn() as c:
             row = c.execute(
@@ -515,6 +582,7 @@ def send(user_id: str, title: str, body: str,
 
     data = data or {}
     data = {**data, "kind": kind, "url": url}
+    title, body = _localize_system_copy(user_id, kind, title, body, data)
     event_key = _event_key(data)
 
     # PR#187: повтор того же серверного перехода не создаёт дубль-доставку.

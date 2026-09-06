@@ -1520,7 +1520,7 @@ def create_bid(body: BidIn, user=Depends(require_level(1)), idempotency_key: Opt
     # silent try/except → пользователи жалуются "уведомлений нет".
     # accept_bid / reject_bid / update_bid этот баг не имели потому что
     # create_notification у них уже ВНЕ with-блока. Делаем то же тут.
-    post_notifs: list = []  # каждый элемент: (recipient_id, title, body, icon, url, push)
+    post_notifs: list = []  # (recipient, title, body, icon, url, push, data)
 
     with get_conn() as c:
         # M1: нельзя ставить на уже занятый/истёкший груз или рейс. Пустой/
@@ -1586,7 +1586,9 @@ def create_bid(body: BidIn, user=Depends(require_level(1)), idempotency_key: Opt
                 bid_url = f"/cargos/{body.cargo_id}?bid={bid_id}"
                 title = f"💰 Ставка {money}"
                 text = f"{money} · {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True))
+                post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True, {
+                    "amount": money, "from_city": row["from_city"], "to_city": row["to_city"],
+                }))
 
         if body.trip_id:
             row = c.execute("SELECT driver_id, from_city, to_city, currency FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
@@ -1595,16 +1597,18 @@ def create_bid(body: BidIn, user=Depends(require_level(1)), idempotency_key: Opt
                 bid_url = f"/trips/{body.trip_id}?bid={bid_id}"
                 title = f"📦 Заказ {money}"
                 text = f"{money} · {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True))
+                post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True, {
+                    "amount": money, "from_city": row["from_city"], "to_city": row["to_city"],
+                }))
 
     # PR-B: post-commit notifications — connection с bid INSERT уже закрыт,
     # create_notification открывает свой conn без conflict'а с транзакцией.
     # Раздельные try/except: push и InApp независимы — failure одного не
     # должен подавлять другое.
-    for recipient, title, text, icon, url, want_push in post_notifs:
+    for recipient, title, text, icon, url, want_push, push_data in post_notifs:
         if want_push:
             try:
-                send_to_user(recipient, title, text, url=url)
+                send_to_user(recipient, title, text, url=url, kind="bid_created", data=push_data)
             except Exception:
                 pass
         try:
@@ -2723,7 +2727,13 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)),
     _owner_word = "Владелец груза" if bid.get("cargo_id") else "Владелец рейса"
     text = f"{_owner_word} предложил {_money(body.amount, cur)} вместо {_money(bid['amount'], cur)}"
     try:
-        send_to_user(bid["bidder_id"], title, text, url=counter_url)
+        send_to_user(
+            bid["bidder_id"], title, text, url=counter_url,
+            kind="bid_countered", data={
+                "amount": _money(body.amount, cur),
+                "from_city": bid.get("from_city"), "to_city": bid.get("to_city"),
+            },
+        )
     except Exception:
         pass
     try:
@@ -2800,6 +2810,9 @@ def accept_counter(bid_id: str, user=Depends(require_level(1)), idempotency_key:
             "event_key": acceptance_event_key,
             "deal_id": result["deal_id"],
             "chat_room_id": result["chat_room_id"],
+            "amount": money,
+            "from_city": result.get("from_city"),
+            "to_city": result.get("to_city"),
         }
         try:
             send_to_user(
@@ -3302,7 +3315,14 @@ def update_deal_status(deal_id: str, new_status: str, version: Optional[int] = Q
             else:
                 deal_url = f"/deals/{deal_id}"
             try:
-                send_to_user(other_id, labels[new_status], body_txt, url=deal_url)
+                send_to_user(
+                    other_id, labels[new_status], body_txt, url=deal_url,
+                    kind="deal_status", data={
+                        "status": new_status,
+                        "from_city": deal["from_city"], "to_city": deal["to_city"],
+                        "amount": _money(deal["amount"], cur),
+                    },
+                )
             except Exception:
                 pass
             try:
