@@ -165,8 +165,12 @@ jobs:
             echo "::error::QA2_API_URL is required; QA2 must not fall back to production API"; exit 1;
           }
           case "$EXPO_PUBLIC_API_URL" in
-            *urtruck.kz*|*185.22.65.11*)
+            https://urtruck.kz/qa2|https://urtruck.kz/qa2/)
+              : ;;
+            https://urtruck.kz|https://urtruck.kz/|*185.22.65.11*)
               echo "::error::QA2_API_URL must point to a non-production QA backend"; exit 1 ;;
+            *)
+              : ;;
           esac
           cd android
           chmod +x gradlew
