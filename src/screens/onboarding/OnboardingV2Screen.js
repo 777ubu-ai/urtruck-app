@@ -31,11 +31,13 @@ const QA_HOOK_ALLOWED = (() => {
   if (process.env.EXPO_PUBLIC_QA_HOOKS !== '1') return false;
   try {
     const Constants = require('expo-constants').default;
+    const Application = require('expo-application');
     const qa2Standalone = process.env.EXPO_PUBLIC_QA2_STANDALONE === '1';
     const isStandalone = Constants?.appOwnership === 'standalone'
       || Constants?.executionEnvironment === 'standalone'
       || Constants?.executionEnvironment === 'storeClient'
-      || Constants?.expoConfig?.android?.package === 'com.urtruck.app.qa2';
+      || Constants?.expoConfig?.android?.package === 'com.urtruck.app.qa2'
+      || Application?.applicationId === 'com.urtruck.app.qa2';
     if (qa2Standalone) return isStandalone;
     return typeof __DEV__ !== 'undefined' && __DEV__ && !isStandalone;
   } catch {

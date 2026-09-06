@@ -10,5 +10,6 @@ test('QA login hook is opt-in and standalone-only for QA2', () => {
   assert.match(onboarding, /appOwnership === 'standalone'/);
   assert.match(onboarding, /executionEnvironment === 'standalone'/);
   assert.match(onboarding, /com\.urtruck\.app\.qa2/);
+  assert.match(onboarding, /expo-application/);
   assert.match(onboarding, /testID="qa-debug-submit"/);
 });
