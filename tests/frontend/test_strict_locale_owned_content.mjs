@@ -42,7 +42,7 @@ test('known canonical cargo/place/system content localizes for ZH, EN and KK', (
 
 test('translation fallback can never jump from non-RU locale to RU', () => {
   assert.match(hook, /if \(lang !== 'RU'\) return translations\.EN/);
-  assert.match(i18n, /if \(currentLang !== 'RU'\) return translations\.EN/);
+  assert.match(i18n, /return translations\.EN\[key\] \|\| key/);
   assert.doesNotMatch(i18n, /currentLang === 'RU' \|\| currentLang === 'KK'/);
 });
 

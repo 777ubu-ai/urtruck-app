@@ -73,7 +73,9 @@ const resolveAttachment = (u) =>
 // Server audit messages are stored once in the shared deal timeline.  Keep the
 // stored event immutable, but render known system events in the viewer's
 // language instead of showing Russian text to a Chinese or English driver.
-const SYSTEM_TEXT_KEYS = {
+// New system events are stored as semantic i18n markers. The legacy map only
+// keeps already-persisted messages readable during the gradual migration.
+const LEGACY_SYSTEM_TEXT_KEYS = {
   "🚛 Рейс начался": "system_trip_started",
   "🛂 На границе": "system_trip_at_border",
   "🛂 Груз на границе": "system_trip_at_border",
@@ -93,7 +95,12 @@ const SYSTEM_TEXT_KEYS = {
 
 const localizeSystemMessage = (text, translate) => {
   const raw = String(text || "");
-  const key = SYSTEM_TEXT_KEYS[raw];
+  const marker = raw.match(/^\[\[i18n:([a-z0-9_]+)\]\](?:::(.*))?$/i);
+  if (marker) {
+    const amount = marker[2] ? ` · ${marker[2]}` : "";
+    return `${translate(marker[1])}${amount}`;
+  }
+  const key = LEGACY_SYSTEM_TEXT_KEYS[raw];
   if (/^🤝\s*Сделка создана(?:\s*·\s*(.+))?$/.test(raw)) {
     const amount = raw.match(/^🤝\s*Сделка создана(?:\s*·\s*(.+))?$/)?.[1];
     return `🤝 ${translate('deal_created')}${amount ? ` · ${amount}` : ""}`;
@@ -386,7 +393,7 @@ export default function ChatScreen({ navigation, route }) {
           borderWidth: 1,
           borderColor: "rgba(17,27,33,0.08)",
         },
-        msgText: { fontSize: 14, lineHeight: 19 },
+        msgText: { fontSize: 16, lineHeight: 21 },
         msgTextMe: { color: "#111B21" },
         translated: {
           marginTop: 6,
@@ -396,7 +403,7 @@ export default function ChatScreen({ navigation, route }) {
         },
         translatedText: {
           color: "rgba(17,27,33,0.58)",
-          fontSize: 11,
+          fontSize: 11.5,
           fontStyle: "italic",
         },
         assistLabel: {
@@ -408,7 +415,7 @@ export default function ChatScreen({ navigation, route }) {
         assistText: { fontSize: 12, lineHeight: 17 },
         msgTime: {
           color: v1.textMuted,
-          fontSize: 11,
+          fontSize: 11.5,
           textAlign: "right",
           marginTop: 3,
         },
@@ -436,7 +443,7 @@ export default function ChatScreen({ navigation, route }) {
         },
         systemMsgText: {
           color: "#617067",
-          fontSize: 13,
+          fontSize: 12.5,
           fontWeight: "600",
           textAlign: "center",
         },

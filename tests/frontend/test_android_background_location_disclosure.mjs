@@ -121,7 +121,7 @@ test('Android location foreground service starts only while app is visible', () 
 });
 
 test('Android config declares background location and keeps location foreground service', () => {
-  assert.equal(app.android.versionCode, 9);
+  assert.equal(app.android.versionCode, 28);
   assert.ok(app.android.permissions.includes('android.permission.ACCESS_FINE_LOCATION'));
   assert.ok(app.android.permissions.includes('android.permission.ACCESS_COARSE_LOCATION'));
   assert.ok(app.android.permissions.includes('android.permission.FOREGROUND_SERVICE'));

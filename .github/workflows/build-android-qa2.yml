@@ -91,6 +91,7 @@ jobs:
         run: |
           printf '\nandroid.compileSdkVersion=36\nandroid.targetSdkVersion=36\nandroid.buildToolsVersion=36.0.0\n' >> android/gradle.properties
           echo "URTRUCK_VERSION_CODE=$(( $(date -u +%s) - 1577836800 ))" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_NAME=1.0.8" >> "$GITHUB_ENV"
 
       - name: Assert QA2 debug signing lineage
         run: |
@@ -104,6 +105,7 @@ jobs:
         env:
           ORG_GRADLE_PROJECT_URTRUCK_APPLICATION_ID: com.urtruck.app.qa2
           ORG_GRADLE_PROJECT_URTRUCK_VERSION_CODE: ${{ env.URTRUCK_VERSION_CODE }}
+          ORG_GRADLE_PROJECT_URTRUCK_VERSION_NAME: ${{ env.URTRUCK_VERSION_NAME }}
         run: |
           cd android
           chmod +x gradlew
@@ -116,6 +118,7 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/qa2-apksigner.txt"
           grep -q 'Signer #1 certificate SHA-256 digest: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c' "$RUNNER_TEMP/qa2-apksigner.txt"
           aapt dump badging "$apk" | grep -q "package: name='com.urtruck.app.qa2'"
+          aapt dump badging "$apk" | grep -q "versionName='1.0.8'"
 
       - name: Write exact QA2 identity
         run: |
@@ -125,7 +128,7 @@ jobs:
           {
             echo "source_sha=$(git rev-parse HEAD)"
             echo "application_id=com.urtruck.app.qa2"
-            echo "version_name=1.0.7"
+            echo "version_name=1.0.8"
             echo "version_code=${URTRUCK_VERSION_CODE}"
             echo "signing_cert_sha256=fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c"
             sha256sum "$apk"
