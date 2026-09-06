@@ -8,6 +8,14 @@ on:
         required: true
         type: string
         default: integration/urtruck-rc-foundation-20260905
+      submit_internal:
+        description: Submit the verified archive to internal TestFlight
+        required: true
+        type: boolean
+        default: false
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -24,14 +32,18 @@ jobs:
       - name: Checkout requested audited source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ inputs.source_ref || github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Guard exact RC source and release configuration
         shell: bash
         run: |
           set -euo pipefail
-          case "${{ inputs.source_ref }}" in
+          SOURCE_REF="${{ inputs.source_ref || github.event.pull_request.head.ref }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            test "${{ github.event.pull_request.head.repo.full_name }}" = "${{ github.repository }}"
+          fi
+          case "$SOURCE_REF" in
             integration/*|arch/*|fix/*|????????????????????????????????????????)
               ;;
             *) echo "::error::Only audited integration/arch/fix refs or a full commit SHA are allowed"; exit 1 ;;
@@ -72,6 +84,7 @@ jobs:
           NODE
 
       - name: Submit internal TestFlight only
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.submit_internal == true }}
         run: npx eas-cli@latest submit --platform ios --profile production --path "$(node -p "JSON.parse(require('fs').readFileSync('eas-build.json','utf8'))[0].artifactUrl")" --non-interactive --wait
 
       - name: Upload RC metadata
