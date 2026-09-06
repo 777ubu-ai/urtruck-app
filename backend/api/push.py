@@ -149,6 +149,9 @@ def _migrate_ownership_columns():
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_status_next ON push_outbox(status, next_attempt_at)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_event_type ON push_outbox(event_type)")
+        outbox_cols = {r["name"] for r in c.execute("PRAGMA table_info(push_outbox)").fetchall()}
+        if "processing_started_at" not in outbox_cols:
+            c.execute("ALTER TABLE push_outbox ADD COLUMN processing_started_at TEXT")
         c.execute("""
             CREATE TABLE IF NOT EXISTS push_delivery_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

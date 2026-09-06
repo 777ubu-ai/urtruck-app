@@ -42,6 +42,22 @@ def test_domain_outbox_failure_is_visible_in_scheduler_health(monkeypatch):
     assert "db unavailable" in state["domain_outbox"]["last_error"]
 
 
+def test_push_outbox_failure_is_visible_in_scheduler_health(monkeypatch):
+    from scheduler import jobs
+    import importlib
+    importlib.reload(jobs)
+    from services import push_gateway
+    monkeypatch.setattr(
+        push_gateway,
+        "process_pending_once",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("push provider unavailable")),
+    )
+    jobs.push_outbox_job()
+    state = jobs.scheduler_health()
+    assert state["push_outbox"]["status"] == "degraded"
+    assert "push provider unavailable" in state["push_outbox"]["last_error"]
+
+
 def test_scheduler_singleton_idempotent():
     os.environ.pop("URTRUCK_ENABLE_SCHEDULER", None)
     os.environ["URTRUCK_SCHEDULER_LOCK"] = tempfile.mktemp(suffix=".lock")
@@ -58,7 +74,7 @@ def test_scheduler_singleton_idempotent():
         ids = sorted(j.id for j in s1.get_jobs())
         assert ids == sorted(["telegram_parse", "monthly_rescore", "db_backup",
                               "push_reminders", "expired_notify", "no_bids_notify",
-                              "domain_outbox"]), ids
+                              "domain_outbox", "push_outbox"]), ids
     finally:
         jobs.stop_scheduler()
         os.environ.pop("URTRUCK_SCHEDULER_LOCK", None)
