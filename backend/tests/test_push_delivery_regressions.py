@@ -13,7 +13,7 @@ def test_expo_invalid_credentials_does_not_deactivate_driver_token():
 def test_trip_bid_push_targets_driver_id():
     src = (ROOT / 'backend/api/marketplace.py').read_text(encoding='utf-8')
     assert 'post_notifs.append((row["driver_id"]' in src
-    assert 'send_to_user(recipient, title, text, url=url)' in src
+    assert 'kind="bid_created", data=push_data' in src
 
 
 def test_push_info_has_safe_registration_counts():
