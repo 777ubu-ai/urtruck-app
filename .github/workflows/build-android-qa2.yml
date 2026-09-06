@@ -114,7 +114,7 @@ jobs:
             | tee "$RUNNER_TEMP/qa2-signing.txt"
           grep -q 'Android Debug' "$RUNNER_TEMP/qa2-signing.txt"
 
-      - name: Configure standalone QA2 JavaScript bundling
+      - name: Configure standalone QA2 release variant
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -131,11 +131,22 @@ jobs:
                       + "    debuggableVariants = []\n",
               1,
           )
+          source = source.replace(
+              "signingConfig signingConfigs.release",
+              "signingConfig (configuredApplicationId == qa2ApplicationId ? signingConfigs.debug : signingConfigs.release)",
+              1,
+          )
+          source = source.replace(
+              "if (configuredApplicationId == qa2ApplicationId) {\n                throw new GradleException('QA2 cannot be assembled as a release artifact')\n            }",
+              "if (configuredApplicationId == qa2ApplicationId && project.findProperty('ALLOW_QA2_STANDALONE_RELEASE') != 'true') {\n                throw new GradleException('QA2 cannot be assembled as a release artifact without the standalone CI contract')\n            }",
+              1,
+          )
           path.write_text(source)
           PY
           grep -q 'debuggableVariants = \[\]' android/app/build.gradle
+          grep -q 'ALLOW_QA2_STANDALONE_RELEASE' android/app/build.gradle
 
-      - name: Build QA2 debug APK
+      - name: Build standalone QA2 APK
         env:
           ORG_GRADLE_PROJECT_URTRUCK_APPLICATION_ID: com.urtruck.app.qa2
           ORG_GRADLE_PROJECT_URTRUCK_VERSION_CODE: ${{ env.URTRUCK_VERSION_CODE }}
@@ -143,22 +154,24 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --max-workers=2 --stacktrace --warning-mode=summary
+          ./gradlew assembleRelease -PALLOW_QA2_STANDALONE_RELEASE=true --no-daemon --max-workers=2 --stacktrace --warning-mode=summary
 
       - name: Verify APK identity and signing before upload
         run: |
           set -euo pipefail
-          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          apk=android/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/qa2-apksigner.txt"
           grep -q 'Signer #1 certificate SHA-256 digest: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c' "$RUNNER_TEMP/qa2-apksigner.txt"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep -q "package: name='com.urtruck.app.qa2'"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep -q "versionName='1.0.8'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep -q "launchable-activity: name='com.urtruck.app.MainActivity'"
           unzip -l "$apk" | grep -Eq '(^|/)index\.android\.bundle$'
+          ! "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$apk" AndroidManifest.xml | grep -q 'DevLauncherActivity'
 
       - name: Write exact QA2 identity
         run: |
           set -euo pipefail
-          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          apk=android/app/build/outputs/apk/release/app-release.apk
           out=android/app/build/outputs/qa2-metadata.txt
           {
             echo "source_sha=$(git rev-parse HEAD)"
@@ -174,7 +187,7 @@ jobs:
         with:
           name: UrTruck-qa2-exact
           path: |
-            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/qa2-metadata.txt
           retention-days: 30
           if-no-files-found: error
