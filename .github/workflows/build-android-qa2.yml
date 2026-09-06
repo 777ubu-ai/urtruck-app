@@ -187,6 +187,15 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep -q "launchable-activity: name='com.urtruck.app.MainActivity'"
           unzip -l "$apk" | grep -Eq '(^|/)index\.android\.bundle$'
           ! "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$apk" AndroidManifest.xml | grep -q 'DevLauncherActivity'
+          bundle=$(mktemp)
+          trap 'rm -f "$bundle"' EXIT
+          unzip -p "$apk" assets/index.android.bundle > "$bundle"
+          grep -aFq "$EXPO_PUBLIC_API_URL" "$bundle" || {
+            echo "::error::QA2 bundle does not contain the configured non-production API URL"; exit 1;
+          }
+          if grep -aFq 'https://urtruck.kz/api/v1' "$bundle"; then
+            echo "::error::QA2 bundle contains the production API endpoint"; exit 1;
+          fi
 
       - name: Write exact QA2 identity
         run: |
