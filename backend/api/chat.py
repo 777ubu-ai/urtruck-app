@@ -603,6 +603,11 @@ def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:
                      room.get("cargo_id"), room.get("trip_id")),
                 ).fetchone()
                 if deal:
+                    # ARCH-ALLOW: narrow, idempotent (COALESCE-guarded) repair of
+                    # legacy deals created before deals.chat_room_id was
+                    # populated (see the P1 2026-08-21 comment above). Tracked
+                    # as a documented legacy adapter in AC5 — see
+                    # docs/architecture/urtruck-v2/LEGACY-ADAPTERS-20260907.md.
                     c.execute(
                         "UPDATE deals SET chat_room_id = COALESCE(chat_room_id, ?) WHERE id = ?",
                         (room_id, deal["id"]),
