@@ -1,19 +1,23 @@
-"""Chat application service — canonical deal-room creation (AC2, 2026-09-07).
+"""Chat application service (AC2 room creation, AC4 message persistence — 2026-09-07).
 
-Moved here verbatim from api/marketplace.py's `_ensure_chat_room_inline`,
-which is where the actual canonical room-creation logic has lived since the
-"Variant B" migration (see api/chat.py's `_deal_key` — same key format,
-declared independently there for its own lookups). This is the ONE owner of
-room *creation*; api/chat.py keeps reading/using rooms it did not create
-without needing to change.
+`create_or_get_deal_room` moved here verbatim from api/marketplace.py's
+`_ensure_chat_room_inline`, which is where the actual canonical room-
+creation logic has lived since the "Variant B" migration (see
+api/chat.py's `_deal_key` — same key format, declared independently there
+for its own lookups). This is the ONE owner of room *creation*; api/chat.py
+keeps reading/using rooms it did not create without needing to change.
 
-Deliberately connection-scoped, not connection-owning: callers (Deals V2's
-`_v2_room_factory`, and legacy `_finalize_accept_inline` /
-`accept_counter`) pass their own open `sqlite3.Connection`, already inside a
-`BEGIN IMMEDIATE` transaction that also writes `bids`/`cargos`/`trips`/
-`deals`. If room creation fails, the caller's transaction rolls back the
-whole accept — a bid does not get "half accepted". This module must never
-open or commit its own connection for this reason.
+`persist_message` moved here from api/chat.py's send_message() — the
+idempotent insert-or-return core only (see its own docstring for exactly
+what did and did not move in this increment).
+
+Deliberately connection-scoped, not connection-owning throughout this
+module: callers pass their own open `sqlite3.Connection`, already inside a
+transaction (accept_bid's bid/cargo/deal writes, or send_message's request
+transaction). A failure here must roll back with the caller's whole
+operation — a bid must never end up "half accepted", a message must never
+end up "half sent". This module must never open or commit its own
+connection for that reason.
 """
 import sqlite3
 
@@ -73,3 +77,72 @@ def create_or_get_deal_room(
     # room the winner actually created, never our own discarded row id.
     row = conn.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (dk,)).fetchone()
     return row["id"] if row else room_id
+
+
+def persist_message(
+    conn: sqlite3.Connection,
+    room_id: str,
+    sender_id: str,
+    text: str | None,
+    photo_url: str | None = None,
+    is_voice: bool = False,
+    voice_duration=None,
+    client_msg_id: str | None = None,
+) -> dict:
+    """AC4 (2026-09-07, scoped increment): the idempotent insert-or-return
+    core of api/chat.py's send_message(), moved here verbatim. This is
+    ONLY the persistence/idempotency slice — authorization (room
+    membership, `_assert_chat_is_accepted`), rate limiting, push, and the
+    support/demo-bot auto-reply triggers deliberately stay in api/chat.py
+    for this increment (see AC4 status in the AC5 legacy-adapter doc for
+    the rest of the canonical send flow this does not yet cover).
+
+    Idempotency has two layers, both preserved exactly from the original:
+    a SELECT-first dedupe (the common case: a retried request after the
+    first response was lost) and a fallback catch of the UNIQUE(room_id,
+    sender_id, client_msg_id) IntegrityError (the race: two concurrent
+    retries with the same client_msg_id — the loser's INSERT collides, and
+    that collision IS success, not an error, for an idempotent send).
+
+    Returns {"deduped": bool, "message_id": int|None, "created_at": str|None}.
+    A caller MUST still separately decide whether to fire push/bot-reply
+    side effects — this function never does, matching its module-level
+    connection-scoped/no-side-effect convention (see create_or_get_deal_room).
+    """
+    if client_msg_id:
+        existing = conn.execute(
+            "SELECT id, created_at FROM chat_messages WHERE room_id = ? AND sender_id = ? AND client_msg_id = ?",
+            (room_id, sender_id, client_msg_id),
+        ).fetchone()
+        if existing:
+            return {"deduped": True, "message_id": existing["id"], "created_at": existing["created_at"]}
+    try:
+        conn.execute(
+            "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration, client_msg_id) VALUES (?,?,?,?,?,?,?)",
+            (room_id, sender_id, text, photo_url, 1 if is_voice else 0, voice_duration, client_msg_id),
+        )
+    except sqlite3.IntegrityError:
+        if not client_msg_id:
+            raise
+        existing = conn.execute(
+            "SELECT id, created_at FROM chat_messages WHERE room_id = ? AND sender_id = ? AND client_msg_id = ?",
+            (room_id, sender_id, client_msg_id),
+        ).fetchone()
+        if not existing:
+            raise
+        return {"deduped": True, "message_id": existing["id"], "created_at": existing["created_at"]}
+    preview = (text or "📷 Фото")[:50]
+    conn.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
+    created = (
+        conn.execute(
+            "SELECT id, created_at FROM chat_messages WHERE room_id = ? AND sender_id = ? AND client_msg_id = ?",
+            (room_id, sender_id, client_msg_id),
+        ).fetchone()
+        if client_msg_id
+        else None
+    )
+    return {
+        "deduped": False,
+        "message_id": created["id"] if created else None,
+        "created_at": created["created_at"] if created else None,
+    }

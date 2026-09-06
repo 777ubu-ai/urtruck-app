@@ -15,6 +15,11 @@ from services import file_signing
 from services import storage_service as storage
 from api.push import send_to_user
 
+try:
+    from modules.chat.application.service import persist_message
+except ImportError:  # repository-root imports used by tests
+    from backend.modules.chat.application.service import persist_message
+
 chat_router = APIRouter()
 
 # Специальные юзеры
@@ -391,48 +396,25 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     else:
         raise HTTPException(status_code=400, detail="room_id или to_user_id обязателен")
 
+    # AC4 (scoped increment): the idempotent insert-or-return core moved to
+    # modules/chat/application/service.py::persist_message — same two-layer
+    # dedupe (SELECT-first, then IntegrityError-catch for the concurrent-
+    # retry race), same UPDATE chat_rooms.last_message, byte-identical
+    # behavior. Authorization above and push/bot-reply below stay here.
     with get_conn() as c:
-        # QA-аудит P1-3: дедуп ретраев из офлайн-очереди. Если сообщение с
-        # этим client_msg_id уже записано (предыдущая попытка дошла, но ответ
-        # не вернулся) — не вставляем второй раз и не шлём повторный push.
-        if body.client_msg_id:
-            ex = c.execute(
-                "SELECT id, created_at FROM chat_messages "
-                "WHERE room_id = ? AND sender_id = ? AND client_msg_id = ?",
-                (room_id, user["id"], body.client_msg_id),
-            ).fetchone()
-            if ex:
-                return {
-                    "ok": True,
-                    "room_id": room_id,
-                    "message_id": ex["id"],
-                    "created_at": ex["created_at"],
-                    "deduped": True,
-                }
-        try:
-            cursor = c.execute(
-                "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration, client_msg_id) VALUES (?,?,?,?,?,?,?)",
-                (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration, body.client_msg_id),
-            )
-        except sqlite3.IntegrityError:
-            # Гонка двух одновременных ретраев с одним client_msg_id —
-            # уникальный индекс отсёк дубль. Это успех (идемпотентность).
-            ex = c.execute(
-                "SELECT id, created_at FROM chat_messages "
-                "WHERE room_id = ? AND sender_id = ? AND client_msg_id = ?",
-                (room_id, user["id"], body.client_msg_id),
-            ).fetchone()
-            if not ex:
-                raise
-            return {
-                "ok": True,
-                "room_id": room_id,
-                "message_id": ex["id"],
-                "created_at": ex["created_at"],
-                "deduped": True,
-            }
-        preview = (body.text or "📷 Фото")[:50]
-        c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
+        persisted = persist_message(
+            c, room_id, user["id"], body.text, body.photo_url,
+            body.is_voice, body.voice_duration, body.client_msg_id,
+        )
+    if persisted["deduped"]:
+        return {
+            "ok": True,
+            "room_id": room_id,
+            "message_id": persisted["message_id"],
+            "created_at": persisted["created_at"],
+            "deduped": True,
+        }
+    preview = (body.text or "📷 Фото")[:50]
 
     # Push получателю
     # PR-C2 (P0-2): kind='chat' — push_sender вычислит unread badge
@@ -469,18 +451,14 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     if recipient_id == VOLODYA_ID and ENABLE_DEMO_CHAT:
         _volodya_reply(room_id, body.text or "", user)
 
-    # Return the authoritative row identity so the client can reconcile its
-    # optimistic bubble with the committed server message before the next poll.
-    with get_conn() as c:
-        created = c.execute(
-            "SELECT id, created_at FROM chat_messages WHERE room_id = ? AND sender_id = ? AND client_msg_id = ?",
-            (room_id, user["id"], body.client_msg_id),
-        ).fetchone() if body.client_msg_id else None
+    # Authoritative row identity so the client can reconcile its optimistic
+    # bubble with the committed server message before the next poll — already
+    # resolved by persist_message() above, no need to re-read a third time.
     return {
         "ok": True,
         "room_id": room_id,
-        "message_id": created["id"] if created else None,
-        "created_at": created["created_at"] if created else None,
+        "message_id": persisted["message_id"],
+        "created_at": persisted["created_at"],
     }
 
 
