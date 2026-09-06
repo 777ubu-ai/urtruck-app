@@ -28,8 +28,9 @@ def test_bid_created_routes_to_owner_or_trip_driver_with_order_deeplink():
 
 
 def test_bid_accepted_and_deal_created_keep_canonical_order_card_links():
-    assert 'create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url)' in MARKET
-    assert 'create_notification(uid_, "deal_created", title_, text_, "✅", url=deal_url)' in MARKET
+    assert '"bid_accepted"' in MARKET
+    assert '"deal_created"' in MARKET
+    assert 'event_key=acceptance_event_key' in MARKET
     assert 'deal_url = f"/cargos/{bid[\'cargo_id\']}"' in MARKET or 'deal_url = f"/cargos/{bid["cargo_id"]}"' in MARKET
     assert 'deal_url = f"/trips/{bid[\'trip_id\']}"' in MARKET or 'deal_url = f"/trips/{bid["trip_id"]}"' in MARKET
 
@@ -79,10 +80,9 @@ def test_bid_expiry_has_no_notification_sender_yet_so_live_matrix_must_not_claim
 
 
 def test_non_chat_push_events_still_do_not_have_typed_payload_contract_everywhere():
-    # Chat/tracking already send structured data. Bid/deal-status routes mostly
-    # still rely on url + title/body only; this is a REAL gap the matrix must
-    # report instead of claiming typed payload parity.
+    # Acceptance notifications carry a stable event identity so the legacy
+    # path feeds the durable push outbox/dedupe contract used by V2.
     info_calls = re.findall(r"send_to_user\([^\\n]+url=.*?\)", MARKET)
     assert info_calls, "expected marketplace push callsites to exist"
     assert 'send_to_user(recipient, title, text, url=url)' in MARKET
-    assert 'send_to_user(bid["bidder_id"], title, text, url=deal_url)' in MARKET
+    assert 'kind="bid_accepted", data=acceptance_data' in MARKET

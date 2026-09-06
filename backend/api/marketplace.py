@@ -2374,13 +2374,27 @@ def accept_bid(bid_id: str, user=Depends(require_level(1)), idempotency_key: Opt
         deal_url = f"/deals/{result['deal_id']}"
     title = "✅ Ставка принята!"
     text = f"Ваше предложение {_money(bid['amount'], _cur)} принято! Сделка создана."
+    acceptance_event_key = f"bid.accepted:{result['deal_id']}"
+    acceptance_data = {
+        "event": "bid.accepted",
+        "event_id": acceptance_event_key,
+        "event_key": acceptance_event_key,
+        "deal_id": result["deal_id"],
+        "chat_room_id": result["chat_room_id"],
+    }
     try:
-        send_to_user(bid["bidder_id"], title, text, url=deal_url)
+        send_to_user(
+            bid["bidder_id"], title, text, url=deal_url,
+            kind="bid_accepted", data=acceptance_data,
+        )
     except Exception:
         pass
     try:
         from api.notifications import create_notification
-        create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url)
+        create_notification(
+            bid["bidder_id"], "bid_accepted", title, text, "✅",
+            url=deal_url, event_key=acceptance_event_key,
+        )
     except Exception:
         pass
 
@@ -2771,12 +2785,26 @@ def accept_counter(bid_id: str, user=Depends(require_level(1)), idempotency_key:
         (bid["bidder_id"], "✅ Сделка создана", f"Цена: {money}"),
     )
     for uid_, title_, text_ in recipients:
+        acceptance_event_key = f"bid.accepted:{result['deal_id']}:{uid_}"
+        acceptance_data = {
+            "event": "bid.accepted",
+            "event_id": acceptance_event_key,
+            "event_key": acceptance_event_key,
+            "deal_id": result["deal_id"],
+            "chat_room_id": result["chat_room_id"],
+        }
         try:
-            send_to_user(uid_, title_, text_, url=deal_url)
+            send_to_user(
+                uid_, title_, text_, url=deal_url,
+                kind="bid_accepted", data=acceptance_data,
+            )
         except Exception:
             pass
         try:
-            create_notification(uid_, "deal_created", title_, text_, "✅", url=deal_url)
+            create_notification(
+                uid_, "deal_created", title_, text_, "✅", url=deal_url,
+                event_key=acceptance_event_key,
+            )
         except Exception:
             pass
 
