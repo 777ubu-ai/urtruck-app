@@ -28,10 +28,12 @@ try:
     from modules.deals.application.service import DealsBidsService, DomainError, ensure_v2_schema
     from modules.deals.application.public_contract import Actor, CommandContext
     from infrastructure.feature_flags import deals_v2_enabled
+    from modules.chat.application.service import create_or_get_deal_room
 except ImportError:  # repository-root imports used by tests
     from backend.modules.deals.application.service import DealsBidsService, DomainError, ensure_v2_schema
     from backend.modules.deals.application.public_contract import Actor, CommandContext
     from backend.infrastructure.feature_flags import deals_v2_enabled
+    from backend.modules.chat.application.service import create_or_get_deal_room
 
 
 _V2_SCHEMA_LOCK = threading.Lock()
@@ -51,8 +53,17 @@ def _city_matches(value: str, query: str) -> bool:
 
 
 def _v2_room_factory(c, shipper_id, driver_id, cargo_id, trip_id, bid_id):
-    """Adapt Deals V2 to the canonical Chat room upsert on the same conn."""
-    return _ensure_chat_room_inline(c, shipper_id, driver_id, cargo_id, trip_id, bid_id)
+    """Adapt Deals V2 to the canonical Chat room upsert on the same conn.
+
+    AC2: calls the Chat application contract directly (not through the
+    legacy _ensure_chat_room_inline wrapper) — this IS "Deals V2 → Chat
+    application" the way the mission asks for it. Argument order preserved
+    exactly: previously this called
+    _ensure_chat_room_inline(c, shipper_id, driver_id, ...), whose user_b
+    (owner slot) received driver_id and user_a (bidder slot) received
+    shipper_id — same mapping reproduced here directly.
+    """
+    return create_or_get_deal_room(c, driver_id, shipper_id, cargo_id=cargo_id, trip_id=trip_id, bid_id=bid_id)
 
 
 def _run_deals_v2(operation: str, user: dict, idempotency_key: Optional[str], handler, expected_version: Optional[int] = None):
@@ -2101,30 +2112,18 @@ def driver_profile(driver_id: str):
 
 
 def _ensure_chat_room_inline(c, user_a: str, user_b: str, cargo_id, trip_id, bid_id=None) -> str:
-    """Variant B: КАНОНИЧЕСКАЯ комната сделки на открытом conn (в транзакции
-    вызывающего, без отдельного write-lock). Ключ = deal_key (cargo/trip +
-    отсортированная пара) — паритет с api.chat. user_b трактуется как владелец
-    (cargo owner / driver рейса), user_a — откликнувшийся (bidder)."""
-    p1, p2 = sorted([user_a, user_b])
-    if cargo_id:
-        dk = f"c:{cargo_id}:{p1}:{p2}"
-    elif trip_id:
-        dk = f"t:{trip_id}:{p1}:{p2}"
-    else:
-        dk = f"p:{p1}:{p2}"
-    row = c.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (dk,)).fetchone()
-    if row:
-        if bid_id:
-            c.execute("UPDATE chat_rooms SET bid_id = COALESCE(bid_id, ?) WHERE id = ?", (bid_id, row["id"]))
-        return row["id"]
-    rid = new_id()
-    c.execute(
-        "INSERT INTO chat_rooms (id, participant_1, participant_2, owner_id, bidder_id, bid_id, cargo_id, trip_id, deal_key) "
-        "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(deal_key) DO NOTHING",
-        (rid, p1, p2, user_b, user_a, bid_id, cargo_id, trip_id, dk),
-    )
-    row = c.execute("SELECT id FROM chat_rooms WHERE deal_key = ?", (dk,)).fetchone()
-    return row["id"] if row else rid
+    """AC2 (2026-09-07): thin delegate — the canonical room-creation SQL now
+    lives in modules/chat/application/service.py::create_or_get_deal_room
+    (Chat is the owner of room creation; Marketplace is one of its callers,
+    not the other way round). Kept as a same-named wrapper so every existing
+    call site (_v2_room_factory, _finalize_accept_inline, accept_counter)
+    needs zero changes — same signature, same open connection/transaction
+    passed straight through, so accept-transaction atomicity is unchanged:
+    a room-creation failure still rolls back the whole bid acceptance.
+    user_b is the cargo owner / trip driver, user_a is the bidder — same
+    convention create_or_get_deal_room documents as
+    (conn, shipper_or_owner_id, driver_or_bidder_id, ...)."""
+    return create_or_get_deal_room(c, user_b, user_a, cargo_id=cargo_id, trip_id=trip_id, bid_id=bid_id)
 
 
 def _notify_rejected_siblings(rejected_siblings):
