@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS push_outbox (
   sent_at TEXT,
   failed_at TEXT,
   last_error TEXT,
+  processing_started_at TEXT,
   UNIQUE(event_id, recipient_user_id)
 );
 

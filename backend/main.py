@@ -382,8 +382,11 @@ def health_ready():
     except Exception as exc:
         scheduler = {"enabled": True, "running": False,
                      "domain_outbox": {"status": "unavailable", "last_error": str(exc)}}
-    state = scheduler.get("domain_outbox", {}).get("status")
-    ready = state in {"healthy", "unknown", "disabled"}
+    states = [
+        scheduler.get("domain_outbox", {}).get("status"),
+        scheduler.get("push_outbox", {}).get("status"),
+    ]
+    ready = all(state in {"healthy", "unknown", "disabled"} for state in states)
     payload = {"status": "ready" if ready else "degraded", "scheduler": scheduler}
     return JSONResponse(payload, status_code=200 if ready else 503)
 
