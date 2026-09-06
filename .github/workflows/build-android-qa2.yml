@@ -101,6 +101,27 @@ jobs:
             | tee "$RUNNER_TEMP/qa2-signing.txt"
           grep -q 'Android Debug' "$RUNNER_TEMP/qa2-signing.txt"
 
+      - name: Configure standalone QA2 JavaScript bundling
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("android/app/build.gradle")
+          source = path.read_text()
+          marker = "react {\n"
+          if source.count(marker) != 1:
+              raise SystemExit("unexpected React Gradle configuration")
+          source = source.replace(
+              marker,
+              marker + "    // QA2 standalone artifact must carry JS and launch without Metro.\n"
+                      + "    debuggableVariants = []\n",
+              1,
+          )
+          path.write_text(source)
+          PY
+          grep -q 'debuggableVariants = \[\]' android/app/build.gradle
+
       - name: Build QA2 debug APK
         env:
           ORG_GRADLE_PROJECT_URTRUCK_APPLICATION_ID: com.urtruck.app.qa2
@@ -119,6 +140,7 @@ jobs:
           grep -q 'Signer #1 certificate SHA-256 digest: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c' "$RUNNER_TEMP/qa2-apksigner.txt"
           aapt dump badging "$apk" | grep -q "package: name='com.urtruck.app.qa2'"
           aapt dump badging "$apk" | grep -q "versionName='1.0.8'"
+          unzip -l "$apk" | grep -Eq '(^|/)index\.android\.bundle$'
 
       - name: Write exact QA2 identity
         run: |
