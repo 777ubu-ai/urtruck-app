@@ -153,10 +153,21 @@ jobs:
 
       - name: Build standalone QA2 APK
         env:
+          EXPO_PUBLIC_QA_HOOKS: '1'
+          EXPO_PUBLIC_QA2_STANDALONE: '1'
+          EXPO_PUBLIC_API_URL: ${{ secrets.QA2_API_URL }}
           ORG_GRADLE_PROJECT_URTRUCK_APPLICATION_ID: com.urtruck.app.qa2
           ORG_GRADLE_PROJECT_URTRUCK_VERSION_CODE: ${{ env.URTRUCK_VERSION_CODE }}
           ORG_GRADLE_PROJECT_URTRUCK_VERSION_NAME: ${{ env.URTRUCK_VERSION_NAME }}
         run: |
+          set -euo pipefail
+          test -n "${EXPO_PUBLIC_API_URL:-}" || {
+            echo "::error::QA2_API_URL is required; QA2 must not fall back to production API"; exit 1;
+          }
+          case "$EXPO_PUBLIC_API_URL" in
+            *urtruck.kz*|*185.22.65.11*)
+              echo "::error::QA2_API_URL must point to a non-production QA backend"; exit 1 ;;
+          esac
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease -PALLOW_QA2_STANDALONE_RELEASE=true --no-daemon --max-workers=2 --stacktrace --warning-mode=summary
