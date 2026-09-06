@@ -106,6 +106,15 @@ jobs:
       - name: Verify Google Services Gradle plugin wired
         run: python3 scripts/verify_android_firebase_config.py --check-plugin android
 
+      - name: Guard production application id
+        env:
+          URTRUCK_APPLICATION_ID: ${{ github.event.inputs.application_id || 'com.urtruck.app' }}
+        run: |
+          set -euo pipefail
+          if [ "$URTRUCK_APPLICATION_ID" != "com.urtruck.app" ]; then
+            echo "::error::Production APK workflow only accepts com.urtruck.app. Use build-android-qa2.yml for QA2."
+            exit 1
+          fi
       - name: Decode release upload keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
