@@ -130,9 +130,6 @@ android {
         //   URTRUCK_UPLOAD_KEY_ALIAS=***
         //   URTRUCK_UPLOAD_KEY_PASSWORD=***
         release {
-            if (configuredApplicationId == qa2ApplicationId) {
-                throw new GradleException('QA2 cannot be assembled as a release artifact')
-            }
             if (project.hasProperty('URTRUCK_UPLOAD_STORE_FILE')) {
                 storeFile file(URTRUCK_UPLOAD_STORE_FILE)
                 storePassword URTRUCK_UPLOAD_STORE_PASSWORD
@@ -170,6 +167,9 @@ android {
 tasks.configureEach { task ->
     if (task.name in ['assembleRelease', 'bundleRelease', 'packageRelease']) {
         doFirst {
+            if (configuredApplicationId == qa2ApplicationId) {
+                throw new GradleException('QA2 cannot be assembled as a release artifact')
+            }
             def missingUploadSigning = uploadSigningProperties.findAll { !project.hasProperty(it) || !project.property(it)?.toString()?.trim() }
             if (!missingUploadSigning.isEmpty()) {
                 throw new GradleException("Release signing is not configured; missing: ${missingUploadSigning.join(', ')}")
