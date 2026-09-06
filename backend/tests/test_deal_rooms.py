@@ -119,6 +119,38 @@ def test_received_deal_keeps_room_visible_and_chat_usable_until_completion():
     assert blocked.value.status_code == 403
 
 
+def test_client_msg_id_is_scoped_to_room_and_sender():
+    owner, driver = "own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6]
+    _mk_users(owner, driver)
+    room_a = get_or_create_deal_room("cargo_a_" + uuid.uuid4().hex[:6], owner, driver)
+    room_b = get_or_create_deal_room("cargo_b_" + uuid.uuid4().hex[:6], owner, driver)
+    _mk_accepted_deal("cargo_a", owner, driver, room_a)
+    _mk_accepted_deal("cargo_b", owner, driver, room_b)
+
+    first = send_message(
+        SendMessageIn(room_id=room_a, text="same client id A", client_msg_id="retry-key"),
+        user=_u(owner),
+    )
+    replay = send_message(
+        SendMessageIn(room_id=room_a, text="same client id A", client_msg_id="retry-key"),
+        user=_u(owner),
+    )
+    other_room = send_message(
+        SendMessageIn(room_id=room_b, text="same client id B", client_msg_id="retry-key"),
+        user=_u(owner),
+    )
+
+    assert first["message_id"] == replay["message_id"]
+    assert replay["deduped"] is True
+    assert other_room["message_id"] != first["message_id"]
+    with get_conn() as c:
+        count = c.execute(
+            "SELECT COUNT(*) FROM chat_messages WHERE sender_id = ? AND client_msg_id = ?",
+            (owner, "retry-key"),
+        ).fetchone()[0]
+    assert count == 2
+
+
 def test_third_user_cannot_read_or_send():
     o, d, t = ("own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6], "thr_" + uuid.uuid4().hex[:6])
     cargo = "cg_" + uuid.uuid4().hex[:6]

@@ -137,11 +137,14 @@ def _ensure_columns(c):
         c.execute("ALTER TABLE chat_messages ADD COLUMN voice_transcript_provider TEXT")
     if "voice_transcribed_at" not in cols:
         c.execute("ALTER TABLE chat_messages ADD COLUMN voice_transcribed_at TEXT")
-    # Уникальность в рамках отправителя (client id генерируется на устройстве).
-    # Partial index — NULL-значения (старые сообщения) не конфликтуют.
+    # Уникальность в рамках комнаты и отправителя. Один и тот же клиентский
+    # UUID может быть сгенерирован заново для другой комнаты или другим
+    # отправителем, поэтому более широкий исторический индекс был неверен.
+    c.execute("DROP INDEX IF EXISTS idx_chat_msg_client")
     c.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_msg_client "
-        "ON chat_messages(sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL"
+        "ON chat_messages(room_id, sender_id, client_msg_id) "
+        "WHERE client_msg_id IS NOT NULL"
     )
 
 
@@ -392,11 +395,18 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         # не вернулся) — не вставляем второй раз и не шлём повторный push.
         if body.client_msg_id:
             ex = c.execute(
-                "SELECT id FROM chat_messages WHERE sender_id = ? AND client_msg_id = ?",
-                (user["id"], body.client_msg_id),
+                "SELECT id, created_at FROM chat_messages "
+                "WHERE room_id = ? AND sender_id = ? AND client_msg_id = ?",
+                (room_id, user["id"], body.client_msg_id),
             ).fetchone()
             if ex:
-                return {"ok": True, "room_id": room_id, "deduped": True}
+                return {
+                    "ok": True,
+                    "room_id": room_id,
+                    "message_id": ex["id"],
+                    "created_at": ex["created_at"],
+                    "deduped": True,
+                }
         try:
             cursor = c.execute(
                 "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration, client_msg_id) VALUES (?,?,?,?,?,?,?)",
@@ -405,7 +415,20 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         except sqlite3.IntegrityError:
             # Гонка двух одновременных ретраев с одним client_msg_id —
             # уникальный индекс отсёк дубль. Это успех (идемпотентность).
-            return {"ok": True, "room_id": room_id, "deduped": True}
+            ex = c.execute(
+                "SELECT id, created_at FROM chat_messages "
+                "WHERE room_id = ? AND sender_id = ? AND client_msg_id = ?",
+                (room_id, user["id"], body.client_msg_id),
+            ).fetchone()
+            if not ex:
+                raise
+            return {
+                "ok": True,
+                "room_id": room_id,
+                "message_id": ex["id"],
+                "created_at": ex["created_at"],
+                "deduped": True,
+            }
         preview = (body.text or "📷 Фото")[:50]
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
 
