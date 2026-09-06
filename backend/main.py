@@ -245,8 +245,12 @@ def startup():
     # дал бы дубли («Нуржолы» + «Нур Жолы - Хоргос»).
     try:
         from database import cgr_dal
-        from cgr.settings import cgr_settings
+        # Сначала применяем локальную схему, затем загружаем настройки CGR.
+        # Настройки могут намеренно завершиться fail-closed без production
+        # salt, но это не должно оставлять свежую БД без таблиц границ и
+        # детерминированного legacy-каталога.
         cgr_dal.init_cgr_schema()
+        from cgr.settings import cgr_settings
         if cgr_settings.feature_enabled:
             print("[startup] CGR enabled — legacy checkpoint seed skipped (CGR is source)", flush=True)
         else:
