@@ -141,6 +141,11 @@ jobs:
               "if (configuredApplicationId == qa2ApplicationId && project.findProperty('ALLOW_QA2_STANDALONE_RELEASE') != 'true') {\n                throw new GradleException('QA2 cannot be assembled as a release artifact without the standalone CI contract')\n            }",
               1,
           )
+          source = source.replace(
+              "if (!missingUploadSigning.isEmpty()) {\n                throw new GradleException(\"Release signing is not configured; missing: ${missingUploadSigning.join(', ')}\")\n            }",
+              "if (configuredApplicationId != qa2ApplicationId && !missingUploadSigning.isEmpty()) {\n                throw new GradleException(\"Release signing is not configured; missing: ${missingUploadSigning.join(', ')}\")\n            }",
+              1,
+          )
           path.write_text(source)
           PY
           grep -q 'debuggableVariants = \[\]' android/app/build.gradle
