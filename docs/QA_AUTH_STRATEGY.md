@@ -56,10 +56,12 @@ OTP/SMS-барьер для глубоких QA-сценариев, и поче�
 Реальный путь auth (`PhoneV2 → OtpV2`) **не тронут** этим механизмом.
 В коде остаются те же вызовы `regAPI.sendCode` / `regAPI.verifyCode`.
 
-## Frontend dev-only hook
+## Frontend QA hook
 
-Файл: `src/screens/onboarding/OnboardingV2Screen.js`
-Гард: `QA_HOOK_ALLOWED = __DEV__ && Constants.appOwnership !== 'standalone'`
+Файл: `src/screens/onboarding/OnboardingV2Screen.js`.
+Гард: `EXPO_PUBLIC_QA_HOOKS=1` плюс обычный dev/Expo Go режим
+(`__DEV__` и не `standalone`) либо standalone QA2 режим с дополнительным
+`EXPO_PUBLIC_QA2_STANDALONE=1`.
 
 Что хук делает:
 - рендерит `<TextInput testID="qa-debug-token">` + `<Pressable testID="qa-debug-submit">` в самом низу онбординга.
@@ -70,8 +72,18 @@ OTP/SMS-барьер для глубоких QA-сценариев, и поче�
 Что хук **не делает**:
 - не пишет токен в `console.log` / Sentry / любой prod-логгер;
 - не создаёт universal OTP bypass — без валидного backend-токена ничего не происходит;
-- не отрисовывается в standalone-сборке (release / TestFlight / EAS);
+- не отрисовывается в production/TestFlight standalone-сборке;
+- в standalone QA2 отрисовывается только в отдельной QA lane с explicit opt-in;
 - не меняет существующее поведение phone/OTP-флоу.
+
+В production backend `_require_agent_token` безусловно отклоняет
+`/api/v1/qa/ensure-actor` (`404`), даже если `QA_AGENT_TOKEN` случайно задан.
+В production APK флаг `EXPO_PUBLIC_QA2_STANDALONE` не задаётся. Поэтому
+знание QA token не создаёт production login bypass.
+
+Для standalone QA2 workflow обязан получить `QA2_API_URL` из secret store.
+Production URL отклоняется до Gradle-сборки; QA2 не должен случайно обращаться
+к production backend.
 
 ## Secret handling
 

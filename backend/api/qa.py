@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from database.db import get_conn, new_id
 from database import registration_dal as reg_dal
 from services.qa_token_guard import is_compromised_qa_agent_token
+from config import IS_PRODUCTION
 
 qa_router = APIRouter()
 
@@ -70,6 +71,8 @@ def _require_token(provided: Optional[str]) -> None:
 
 
 def _require_agent_token(provided: Optional[str]) -> None:
+    if IS_PRODUCTION:
+        raise HTTPException(status_code=404, detail="QA actor provisioning is unavailable")
     expected = os.getenv("QA_AGENT_TOKEN")
     if not expected:
         raise HTTPException(status_code=503, detail="QA agent endpoint not configured (QA_AGENT_TOKEN unset)")
