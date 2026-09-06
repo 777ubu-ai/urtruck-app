@@ -8,6 +8,7 @@ import re
 import os
 import threading
 import uuid
+import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -34,6 +35,19 @@ except ImportError:  # repository-root imports used by tests
 
 
 _V2_SCHEMA_LOCK = threading.Lock()
+
+
+def _city_matches(value: str, query: str) -> bool:
+    """Unicode-safe substring matching for user-entered route filters.
+
+    SQLite NOCASE/LIKE only provides ASCII case folding. Normalizing and
+    casefolding in Python keeps Cyrillic/Kazakh/Chinese display values intact
+    while making the filter deterministic across SQLite builds.
+    """
+    if not query:
+        return True
+    normalize = lambda text: unicodedata.normalize("NFKC", str(text or "")).strip().casefold()
+    return normalize(query) in normalize(value)
 
 
 def _v2_room_factory(c, shipper_id, driver_id, cargo_id, trip_id, bid_id):
@@ -629,12 +643,6 @@ def list_cargos(
     """Публичный список грузов. Demo-контент скрыт по умолчанию."""
     where = ["status = ?"]
     params = [status]
-    if from_city:
-        where.append("from_city LIKE ?")
-        params.append(f"%{from_city}%")
-    if to_city:
-        where.append("to_city LIKE ?")
-        params.append(f"%{to_city}%")
     if cargo_type:
         where.append("cargo_type = ?")
         params.append(cargo_type)
@@ -660,14 +668,15 @@ def list_cargos(
                    from_country, from_point_type, from_point_name,
                    to_country, to_point_type, to_point_name
             FROM cargos WHERE {where_sql}
-            ORDER BY published_at DESC LIMIT ? OFFSET ?
-        """, (*params, limit, offset)).fetchall()
-        total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql}", params).fetchone()[0]
+            ORDER BY published_at DESC
+        """, params).fetchall()
 
     result = []
     today = datetime.utcnow().date()
     for r in rows:
         d = dict(r)
+        if not _city_matches(d.get("from_city"), from_city) or not _city_matches(d.get("to_city"), to_city):
+            continue
         try:
             d["photos"] = _sign_cargo_photos(json.loads(d.get("photos") or "[]"))
         except Exception:
@@ -683,8 +692,8 @@ def list_cargos(
         if not show_demo and not _public_cargo_ok(d, today=today):
             continue
         result.append(d)
-    # Recompute total to match what the caller actually sees
-    return {"cargos": result, "total": len(result)}
+    paged = result[offset:offset + limit]
+    return {"cargos": paged, "total": len(result)}
 
 
 @mp_router.post("/cargos/photo")
@@ -1270,12 +1279,6 @@ def list_trips(
 ):
     where = ["status = ?"]
     params = [status]
-    if from_city:
-        where.append("from_city LIKE ?")
-        params.append(f"%{from_city}%")
-    if to_city:
-        where.append("to_city LIKE ?")
-        params.append(f"%{to_city}%")
     if truck_type:
         where.append("truck_type = ?")
         params.append(truck_type)
@@ -1301,10 +1304,15 @@ def list_trips(
                    from_country, from_point_type, from_point_name,
                    to_country, to_point_type, to_point_name
             FROM trips WHERE {where_sql}
-            ORDER BY published_at DESC LIMIT ? OFFSET ?
-        """, (*params, limit, offset)).fetchall()
+            ORDER BY published_at DESC
+        """, params).fetchall()
 
     trips = [dict(r) for r in rows]
+    trips = [
+        t for t in trips
+        if _city_matches(t.get("from_city"), from_city)
+        and _city_matches(t.get("to_city"), to_city)
+    ]
     if not show_demo:
         trips = [
             t for t in trips
@@ -1343,7 +1351,7 @@ def list_trips(
             t.setdefault("driver_verified", False)
             t.setdefault("driver_rating", 0)
             t.setdefault("driver_reviews_count", 0)
-    return {"trips": trips, "total": len(trips)}
+    return {"trips": trips[offset:offset + limit], "total": len(trips)}
 
 
 @mp_router.get("/trips/{trip_id}")

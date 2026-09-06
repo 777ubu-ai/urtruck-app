@@ -27,6 +27,7 @@ from api.marketplace import (
     _is_dirty_text,
     _public_cargo_ok,
     _norm_route_triple,
+    _city_matches,
     PUBLIC_CUTOFF_DATE,
 )
 
@@ -150,6 +151,15 @@ def norm_route_triple_normalises_safely():
            "name trimmed to 200 chars")
 
 
+def unicode_city_search_is_casefolded_outside_sqlite():
+    print("unicode city search")
+    _check(_city_matches("Алматы", "алматы"), "Cyrillic casefold")
+    _check(_city_matches("  Шымкент  ", "ымкент"), "trimmed substring")
+    _check(_city_matches("Қостанай", "қостанай"), "Kazakh characters")
+    _check(_city_matches("北京市", "北京"), "Chinese dictionary value")
+    _check(not _city_matches("Алматы", "Астана"), "different cities do not match")
+
+
 if __name__ == "__main__":
     print(f"PUBLIC_CUTOFF_DATE={PUBLIC_CUTOFF_DATE}")
     parse_iso_date_keeps_full_day_digit()
@@ -158,6 +168,7 @@ if __name__ == "__main__":
     public_cargo_ok_uses_correct_pickup_date()
     public_cargo_ok_respects_cutoff_for_undated_legacy_rows()
     norm_route_triple_normalises_safely()
+    unicode_city_search_is_casefolded_outside_sqlite()
 
     if _failures:
         print(f"\nFAILED ({len(_failures)}):")
