@@ -8,7 +8,7 @@ const playWorkflow = fs.readFileSync('.github/workflows/deploy-play.yml', 'utf8'
 
 const iosVersion = ios.match(/<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/)?.[1];
 const iosBuild = ios.match(/<key>CFBundleVersion<\/key>\s*<string>([^<]+)<\/string>/)?.[1];
-const androidVersion = android.match(/versionName\s+["']([^"']+)["']/)?.[1];
+const androidVersion = android.match(/configuredVersionName\s*=\s*project\.findProperty\(['"]URTRUCK_VERSION_NAME['"]\)\s*\?:\s*['"]([^'"]+)['"]/)?.[1];
 const androidVersionCode = android.match(/versionCode\s+\(configuredVersionCode\s*\?\s*configuredVersionCode\.toInteger\(\)\s*:\s*(\d+)\)/)?.[1];
 
 assert.equal(iosVersion, app.version, `iOS version ${iosVersion} must match app.json ${app.version}`);
