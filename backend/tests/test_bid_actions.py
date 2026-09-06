@@ -10,6 +10,7 @@ exits with non-zero on any assertion failure.
 import contextvars
 import os
 import sys
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -733,13 +734,18 @@ def test_pr_b_accept_bid_creates_accepted_notif_with_order_url():
            f"accepted notification has stable event key (got {n.get('event_key')!r})")
 
     from database.db import get_conn
-    with get_conn() as c:
-        push_rows = c.execute(
-            "SELECT event_id, event_type, recipient_user_id, payload "
-            "FROM push_outbox WHERE recipient_user_id = ? AND event_type = 'bid.accepted' "
-            "ORDER BY id DESC",
-            (driver,),
-        ).fetchall()
+    push_rows = []
+    for _ in range(20):
+        with get_conn() as c:
+            push_rows = c.execute(
+                "SELECT event_id, event_type, recipient_user_id, payload "
+                "FROM push_outbox WHERE recipient_user_id = ? AND event_type = 'bid.accepted' "
+                "ORDER BY id DESC",
+                (driver,),
+            ).fetchall()
+        if push_rows:
+            break
+        time.sleep(0.01)
     expect(len(push_rows) == 1, f"one acceptance push outbox row (got {len(push_rows)})")
     expect(push_rows[0]["event_id"].startswith("bid.accepted:"),
            f"push event has stable event id (got {push_rows[0]['event_id']!r})")
