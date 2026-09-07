@@ -3088,6 +3088,32 @@ class DealTransitionError(Exception):
         self.detail = detail
 
 
+def stop_tracking_for_deal(c, deal_id: str) -> bool:
+    """Close the current GPS lifecycle without deleting its evidence.
+
+    This runs on the caller's open transaction so a terminal deal transition
+    cannot commit while its tracking row remains active. Repeated calls are
+    safe and repair legacy rows that were stopped without ``stopped_at``.
+    """
+    row = c.execute(
+        "SELECT status, stopped_at FROM deal_tracking WHERE deal_id = ?",
+        (deal_id,),
+    ).fetchone()
+    if not row:
+        return False
+    if row["status"] == "stopped" and row["stopped_at"]:
+        return False
+    c.execute(
+        "UPDATE deal_tracking SET status='stopped', "
+        "stopped_at=COALESCE(stopped_at, CURRENT_TIMESTAMP), "
+        "completed_at=COALESCE(completed_at, CURRENT_TIMESTAMP), "
+        "health_status='healthy', gps_problem_reason=NULL, "
+        "updated_at=CURRENT_TIMESTAMP WHERE deal_id = ?",
+        (deal_id,),
+    )
+    return True
+
+
 def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id: str) -> dict | None:
     """Единая точка входа для смены deals.status — валидирует и атомарно
     применяет переход. Вызывается ИЗ УЖЕ ОТКРЫТОЙ транзакции (`c` — тот же
@@ -3212,12 +3238,8 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
     # Once cargo is picked up, GPS evidence belongs to the deal. Delivery or
     # an in-transit cancellation stops new updates but never deletes the last
     # point or consent record. A pre-pickup cancellation stays private.
-    if new_status in ("delivered", "cancelled"):
-        c.execute(
-            "UPDATE deal_tracking SET completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP "
-            "WHERE deal_id = ? AND locked_at IS NOT NULL",
-            (deal_id,),
-        )
+    if new_status in ("delivered", "received", "completed", "cancelled"):
+        stop_tracking_for_deal(c, deal_id)
         if cur_status == "accepted":
             c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
     event_payload = {"status": new_status, "old_status": cur_status, "request_id": request_id}
@@ -3561,11 +3583,7 @@ def stop_deal_tracking(deal_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=409, detail="После забора груза GPS-отслеживание фиксируется в сделке и отключается только через поддержку")
         if current.get("status") != "active":
             return {"ok": True, "tracking": current, "already_stopped": True}
-        c.execute(
-            "UPDATE deal_tracking SET status='stopped', stopped_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP "
-            "WHERE deal_id = ?",
-            (deal_id,),
-        )
+        stop_tracking_for_deal(c, deal_id)
         c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
         c.execute(
             "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'tracking_stopped_before_pickup', ?)",
