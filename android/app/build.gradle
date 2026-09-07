@@ -95,6 +95,7 @@ android {
         // чтобы каждая автозаливка в Google Play имела уникальный монотонный код.
         versionCode (project.hasProperty('URTRUCK_VERSION_CODE') ? URTRUCK_VERSION_CODE.toInteger() : 9)
         versionName "1.0.8"
+        missingDimensionStrategy 'store', 'play'
     }
     signingConfigs {
         debug {
