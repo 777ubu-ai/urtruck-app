@@ -30,6 +30,19 @@ if (isNative) {
 const secureReady = () => !!(SecureStore && typeof SecureStore.getItemAsync === 'function');
 const useSecure = (key) => isNative && SECURE_KEYS.has(key) && secureReady();
 
+// Удаляем legacy-копию только после подтверждённой записи в SecureStore.
+// Если Keystore временно недоступен или ключ был инвалидирован, AsyncStorage
+// остаётся безопасным совместимым fallback до следующего успешного запуска.
+export async function migrateLegacyValue({ value, setSecure, removeLegacy }) {
+  try {
+    await setSecure(value);
+  } catch {
+    return false;
+  }
+  try { await removeLegacy(); } catch {}
+  return true;
+}
+
 // Базовый (несекьюрный) слой — прежнее поведение.
 async function baseGet(key) {
   if (isWeb) return typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
@@ -55,8 +68,11 @@ export const storage = {
           // чтобы уже вошедшие пользователи не разлогинились после обновления.
           const legacy = await AsyncStorage.getItem(key);
           if (legacy != null) {
-            try { await SecureStore.setItemAsync(key, legacy); } catch {}
-            try { await AsyncStorage.removeItem(key); } catch {}
+            await migrateLegacyValue({
+              value: legacy,
+              setSecure: (value) => SecureStore.setItemAsync(key, value),
+              removeLegacy: () => AsyncStorage.removeItem(key),
+            });
             return legacy;
           }
           return null;
