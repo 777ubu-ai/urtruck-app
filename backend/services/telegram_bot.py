@@ -97,7 +97,10 @@ def _handle_message(msg: dict):
 
 def _poll_loop():
     global _offset, _running
-    print(f"[TG-bot] Polling started (token: ...{_token[-8:]})")
+    # Security (token-guard RC-20260907): last-8 токена — частичное раскрытие
+    # (идентифицирует и подтверждает секрет). Печатаем только fingerprint.
+    from security.token_guard import fingerprint as _tk_fp
+    print(f"[TG-bot] Polling started (token sha256:{_tk_fp(_token)[:12]}…)")
     while _running:
         try:
             r = httpx.get(f"{_api}/getUpdates",
