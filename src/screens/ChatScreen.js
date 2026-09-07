@@ -2135,7 +2135,10 @@ export default function ChatScreen({ navigation, route }) {
               </View>
             ) : resolvedPartner?.role === "driver" ||
               resolvedPartner?.role === "client" ? (
-              <Text style={[s.online, { color: "#A8A29E" }]}>
+              <Text
+                style={[s.online, { color: "#A8A29E", flexShrink: 1 }]}
+                numberOfLines={1}
+              >
                 {t(resolvedPartner.role)}
               </Text>
             ) : null}
