@@ -124,6 +124,19 @@ def collect_issues() -> List[str]:
     if "*" in cors.split(","):
         issues.append("CORS: wildcard '*' in CORS_ORIGINS — restrict to known frontends.")
 
+    # Payments: включённая монетизация контактов в production обязана
+    # верифицировать покупки по-настоящему. Без сервис-аккаунта Google Play
+    # verify_purchase работает в MOCK-режиме и принимает ЛЮБОЙ purchase_token
+    # как валидную подписку — платный доступ открывался бы по подделке.
+    if (os.getenv("CONTACTS_MONETIZATION_ENABLED") or "").lower() in ("1", "true", "yes"):
+        if not (os.getenv("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON") or "").strip():
+            issues.append(
+                "Payments: CONTACTS_MONETIZATION_ENABLED=true but GOOGLE_PLAY_SERVICE_ACCOUNT_JSON "
+                "is empty — subscription verification runs in MOCK mode and would accept ANY "
+                "purchase token as paid. Set the service-account JSON (Play Console → "
+                "Users and permissions → View financial data) or keep monetization disabled."
+            )
+
     return issues
 
 

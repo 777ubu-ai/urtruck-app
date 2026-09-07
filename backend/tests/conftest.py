@@ -53,6 +53,11 @@ def _ensure_full_schema():
     import api.favorites as favorites
     favorites._init()
 
+    # payments (подписка на контакты, Google Play Billing) — та же история:
+    # схема payments_schema.sql применяется здесь заново после удаления БД.
+    from database import subscription_dal
+    subscription_dal.init_payments_schema()
+
     # deal_events immutable timeline schema used by status-FSM tests.
     _deal_room_schema = Path(__file__).resolve().parent.parent / "database" / "schemas" / "deal_room_schema.sql"
     if _deal_room_schema.exists():

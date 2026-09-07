@@ -28,6 +28,20 @@ def test_production_env_requires_separate_file_signing_key(monkeypatch):
     assert any("FILE_SIGNING_KEY" in issue for issue in env_check.collect_issues())
 
 
+def test_payments_monetization_requires_real_google_play_verification(monkeypatch):
+    """CONTACTS_MONETIZATION_ENABLED в production без сервис-аккаунта Google
+    Play = MOCK-верификация приняла бы любой подписочный токен как оплаченный.
+    Guard обязан это ловить; заданный JSON — чисто."""
+    monkeypatch.setenv("URTRUCK_ENV", "production")
+    monkeypatch.setenv("CONTACTS_MONETIZATION_ENABLED", "true")
+    monkeypatch.delenv("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON", raising=False)
+
+    assert any("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" in i for i in env_check.collect_issues())
+
+    monkeypatch.setenv("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON", '{"type": "service_account"}')
+    assert not any("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" in i for i in env_check.collect_issues())
+
+
 def test_compromised_qa_token_fingerprint_is_not_a_plaintext_secret():
     assert len(COMPROMISED_QA_AGENT_TOKEN_SHA256) == 64
     assert is_compromised_qa_agent_token("") is False
