@@ -157,6 +157,14 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
         }
+        // QA2 uses release runtime behavior and embedded JS while retaining
+        // the stable QA certificate for in-place device updates.
+        qa2 {
+            initWith release
+            matchingFallbacks = ['release']
+            signingConfig signingConfigs.debug
+            debuggable false
+        }
     }
     packagingOptions {
         jniLibs {

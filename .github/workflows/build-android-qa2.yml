@@ -101,7 +101,7 @@ jobs:
             | tee "$RUNNER_TEMP/qa2-signing.txt"
           grep -q 'Android Debug' "$RUNNER_TEMP/qa2-signing.txt"
 
-      - name: Build QA2 debug APK
+      - name: Build standalone QA2 APK
         env:
           ORG_GRADLE_PROJECT_URTRUCK_APPLICATION_ID: com.urtruck.app.qa2
           ORG_GRADLE_PROJECT_URTRUCK_VERSION_CODE: ${{ env.URTRUCK_VERSION_CODE }}
@@ -109,12 +109,12 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --max-workers=2 --stacktrace --warning-mode=summary
+          ./gradlew assembleQa2 --no-daemon --max-workers=2 --stacktrace --warning-mode=summary
 
       - name: Verify APK identity and signing before upload
         run: |
           set -euo pipefail
-          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          apk=android/app/build/outputs/apk/qa2/app-qa2.apk
           aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/qa2-apksigner.txt"
           grep -q 'Signer #1 certificate SHA-256 digest: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c' "$RUNNER_TEMP/qa2-apksigner.txt"
@@ -125,7 +125,7 @@ jobs:
       - name: Write exact QA2 identity
         run: |
           set -euo pipefail
-          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          apk=android/app/build/outputs/apk/qa2/app-qa2.apk
           out=android/app/build/outputs/qa2-metadata.txt
           {
             echo "source_sha=$(git rev-parse HEAD)"
@@ -141,7 +141,7 @@ jobs:
         with:
           name: UrTruck-qa2-exact
           path: |
-            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/qa2/app-qa2.apk
             android/app/build/outputs/qa2-metadata.txt
           retention-days: 30
           if-no-files-found: error
