@@ -192,7 +192,8 @@ jobs:
           bundle=$(mktemp)
           trap 'rm -f "$bundle"' EXIT
           unzip -p "$apk" assets/index.android.bundle > "$bundle"
-          grep -aFq "$EXPO_PUBLIC_API_URL" "$bundle" || {
+          expected_api_url="${EXPO_PUBLIC_API_URL%/}"
+          grep -aFq "$expected_api_url" "$bundle" || {
             echo "::error::QA2 bundle does not contain the configured non-production API URL"; exit 1;
           }
           if grep -aFq 'https://urtruck.kz/api/v1' "$bundle"; then
