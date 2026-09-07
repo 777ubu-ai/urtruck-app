@@ -103,13 +103,13 @@ export const ds2026 = {
     body: { fontSize: 16, fontWeight: '400' },
     bodySmall: { fontSize: 14, fontWeight: '400' },
     caption: { fontSize: 12, fontWeight: '400' },
-    timestamp: { fontSize: 11.5, fontWeight: '400' },
+    timestamp: { fontSize: 12, fontWeight: '400' },
     button: { fontSize: 15, fontWeight: '600' },
     badge: { fontSize: 11, fontWeight: '600' },
     // Чат — отдельные канонические пары (size/lineHeight)
-    chatBody: { fontSize: 16, lineHeight: 21.5 },
-    chatTimestamp: { fontSize: 11.5, lineHeight: 14 },
-    chatDateSeparator: { fontSize: 12.5, lineHeight: 16 },
+    chatBody: { fontSize: 16, lineHeight: 21 },
+    chatTimestamp: { fontSize: 12, lineHeight: 14 },
+    chatDateSeparator: { fontSize: 12, lineHeight: 16 },
     // ZH: иероглифы требуют ≥1.35 lineHeight, проверять clipping
     zhLineHeightFactor: 1.4,
   },

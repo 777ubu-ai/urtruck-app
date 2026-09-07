@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, shadowOpacity: 0.55, shadowRadius: 9, shadowOffset: { width: 0, height: 0 }, elevation: 6,
   },
   label: {
-    height: LABEL_H, fontSize: 10.5, fontWeight: '700', marginTop: 2,
+    height: LABEL_H, fontSize: 11, fontWeight: '700', marginTop: 2,
     textAlign: 'center', includeFontPadding: false,
   },
   iconBadge: {

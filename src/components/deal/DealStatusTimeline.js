@@ -168,7 +168,7 @@ const s = StyleSheet.create({
   card: { flex: 1, borderWidth: 1, borderRadius: 15, paddingHorizontal: 13, paddingVertical: 11, marginBottom: 12 },
   currentCard: { borderWidth: 1.5 },
   title: { fontSize: 14, fontWeight: '900', lineHeight: 19 },
-  moment: { fontSize: 11.5, fontWeight: '700', marginTop: 3, marginBottom: 7 },
+  moment: { fontSize: 12, fontWeight: '700', marginTop: 3, marginBottom: 7 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   metaText: { flex: 1, fontSize: 12, fontWeight: '650', lineHeight: 17 },
   detail: { fontSize: 12, lineHeight: 17, marginTop: 7 },

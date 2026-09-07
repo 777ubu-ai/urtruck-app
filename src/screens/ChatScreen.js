@@ -388,7 +388,7 @@ export default function ChatScreen({ navigation, route }) {
           borderColor: "rgba(17,27,33,0.08)",
         },
         // DS-2026: основной текст сообщения 16/21.5 (канон typography.chatBody).
-        msgText: { fontSize: 16, lineHeight: 21.5 },
+        msgText: { fontSize: 16, lineHeight: 21 },
         msgTextMe: { color: "#111B21" },
         translated: {
           marginTop: 6,
