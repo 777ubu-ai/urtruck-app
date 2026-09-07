@@ -48,6 +48,18 @@ if _ENV_NAME == "test" and _DB_PATH_RAW.startswith(_PROD_DB_MARKERS):
 
 print(f"[startup] ENV={_ENV_NAME} DB_PATH={_masked_db_path(_DB_PATH_RAW)}", flush=True)
 
+# Security (token-guard RC-20260907):
+# 1) централизованная редакция секретов во всех логах (root-cause fix:
+#    ни один call-site больше не может случайно напечатать токен);
+# 2) fail-closed отказ старта, если задействованный конфиг-секрет числится
+#    в revocation list (URTRUCK_REVOKED_TOKEN_SHA256 — sha256-префиксы,
+#    сами секреты нигде не хранятся).
+from security.log_redaction import install_global_redaction
+from security.token_guard import assert_config_tokens_not_revoked
+
+install_global_redaction()
+assert_config_tokens_not_revoked()
+
 # Sentry init — как можно раньше, до создания FastAPI app, чтобы ловить
 # ошибки startup. Если SENTRY_DSN пуст — graceful no-op.
 # См. docs/cgr/DECISIONS.md §2.
