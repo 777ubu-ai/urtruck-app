@@ -158,7 +158,18 @@ test('P1-D: only the actively-pressed provider button shows a spinner', () => {
   assert.match(socialAuth, /PENDING_PROVIDER_KEY/);
   assert.match(socialAuth, /export async function setPendingProvider/);
   assert.match(socialAuth, /export async function getPendingProvider/);
-  assert.match(phoneV2, /getPendingProvider\(\)/);
+  assert.match(socialAuth, /startedAt/);
+  assert.match(socialAuth, /PENDING_PROVIDER_MAX_AGE_MS/);
+  assert.match(phoneV2, /getPendingProviderState\(\)/);
+  assert.match(phoneV2, /clearPendingProvider\(\)/);
+});
+
+test('stale OAuth state cannot permanently block Email while a callback remains valid', () => {
+  assert.match(phoneV2, /isPendingProviderStale\(state\)/);
+  assert.match(phoneV2, /isSocialAuthCallback\(routedSocialUrl\)/);
+  assert.match(phoneV2, /shouldRestorePendingProvider\(state, \{ hasCallback: hasRoutedCallback \}\)/);
+  assert.match(socialAuth, /legacy: true/);
+  assert.match(socialAuth, /return now - state\.startedAt > PENDING_PROVIDER_MAX_AGE_MS/);
 });
 
 test('P0-A: callback success path always resolves role and completes navigation before touching UI state', () => {

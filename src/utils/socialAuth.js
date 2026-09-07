@@ -14,6 +14,7 @@ const NATIVE_REDIRECT = 'urtruck://auth-social';
 // both Google and Apple simultaneously (#P1-D), and so the error banner can
 // be attributed to the right provider (#P1-C).
 const PENDING_PROVIDER_KEY = 'ur_social_pending_provider';
+export const PENDING_PROVIDER_MAX_AGE_MS = 10 * 60 * 1000;
 // Idempotency guard, round 2 (owner review 25.08.2026): the PKCE `code`
 // Supabase issues is single-use, but a transient failure AFTER the code was
 // already exchanged (backend 500, network blip) must stay retryable — it
@@ -138,12 +139,52 @@ const redirectUrl = () => {
   return NATIVE_REDIRECT;
 };
 
+const parsePendingProviderState = (value) => {
+  if (!value) return null;
+
+  let candidate = value;
+  if (typeof value === 'string') {
+    try { candidate = JSON.parse(value); } catch {
+      // Pre-metadata installs stored only "google"/"apple". Treat those
+      // records as stale when no callback is present, rather than restoring
+      // an abandoned spinner forever.
+      return ['google', 'apple'].includes(value)
+        ? { provider: value, startedAt: null, legacy: true }
+        : null;
+    }
+  }
+
+  if (!candidate || typeof candidate !== 'object') return null;
+  if (!['google', 'apple'].includes(candidate.provider)) return null;
+  return {
+    provider: candidate.provider,
+    startedAt: Number.isFinite(candidate.startedAt) ? candidate.startedAt : null,
+    legacy: candidate.legacy === true,
+  };
+};
+
+export function isPendingProviderStale(state, now = Date.now()) {
+  if (!state?.provider) return false;
+  if (state.legacy || state.startedAt == null) return true;
+  return now - state.startedAt > PENDING_PROVIDER_MAX_AGE_MS;
+}
+
+export function shouldRestorePendingProvider(state, { hasCallback = false, now = Date.now() } = {}) {
+  return Boolean(state?.provider) && (hasCallback || !isPendingProviderStale(state, now));
+}
+
 export async function setPendingProvider(provider) {
-  try { await storage.set(PENDING_PROVIDER_KEY, provider); } catch {}
+  try {
+    await storage.set(PENDING_PROVIDER_KEY, JSON.stringify({ provider, startedAt: Date.now() }));
+  } catch {}
 }
 
 export async function getPendingProvider() {
-  try { return await storage.get(PENDING_PROVIDER_KEY); } catch { return null; }
+  try { return (await getPendingProviderState())?.provider || null; } catch { return null; }
+}
+
+export async function getPendingProviderState() {
+  try { return parsePendingProviderState(await storage.get(PENDING_PROVIDER_KEY)); } catch { return null; }
 }
 
 export async function clearPendingProvider() {

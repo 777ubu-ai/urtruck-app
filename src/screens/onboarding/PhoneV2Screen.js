@@ -40,8 +40,11 @@ import {
   clearPendingProvider,
   completeSocialAuth,
   getPendingProvider,
+  getPendingProviderState,
+  isPendingProviderStale,
   isSocialAuthCallback,
   logAuthStage,
+  shouldRestorePendingProvider,
   SocialAuthError,
   startSocialAuth,
   takeBufferedSocialCallbackUrl,
@@ -153,13 +156,24 @@ export default function PhoneV2Screen({ navigation, route }) {
   const emailOk = isValidEmail(email);
   const anyBusy = emailBusy || !!socialBusy;
 
-  // Hydrate which provider's callback we're resuming (survives the full
-  // page reload Google/Apple OAuth does on web — React state does not).
+  // Hydrate only a live OAuth attempt. Legacy string values and expired
+  // metadata are abandoned attempts; keeping them would permanently block
+  // the Email CTA after the provider browser was closed.
   useEffect(() => {
     let mounted = true;
-    getPendingProvider().then((p) => { if (mounted && p) setSocialBusy(p); }).catch(() => {});
+    getPendingProviderState().then(async (state) => {
+      if (!mounted || !state) return;
+      const hasRoutedCallback = isSocialAuthCallback(routedSocialUrl);
+      if (isPendingProviderStale(state) && !hasRoutedCallback) {
+        await clearPendingProvider();
+        return;
+      }
+      if (mounted && shouldRestorePendingProvider(state, { hasCallback: hasRoutedCallback })) {
+        setSocialBusy(state.provider);
+      }
+    }).catch(() => {});
     return () => { mounted = false; };
-  }, []);
+  }, [routedSocialUrl]);
 
   const goAfterLogin = useCallback(async (result, identifier, channel) => {
     await signIn(identifier, result.verification_level || 1, result.token);
