@@ -238,6 +238,13 @@ def collect_issues() -> List[str]:
             'or set REVIEWER_DEMO_EMAIL="" to disable the feature explicitly.'
         )
 
+    if (os.getenv("CONTACTS_MONETIZATION_ENABLED") or "").lower() in ("1", "true", "yes"):
+        if not (os.getenv("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON") or "").strip():
+            issues.append(
+                "Payments: CONTACTS_MONETIZATION_ENABLED=true but GOOGLE_PLAY_SERVICE_ACCOUNT_JSON "
+                "is empty — production purchase verification would be insecure."
+            )
+
     return issues
 
 
