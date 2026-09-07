@@ -133,7 +133,18 @@ export default function SubscriptionScreen({ navigation, route }) {
     if (!RNIap || !status?.google_product_id) return;
     setPurchasing(true);
     try {
-      await RNIap.requestSubscription({ sku: status.google_product_id });
+      const productId = status.google_product_id;
+      let request = { sku: productId };
+      if (Platform.OS === 'android') {
+        // Google Play Billing 5+: покупка подписки требует offerToken
+        // выбранного базового плана — берём первый оффер из каталога.
+        const subs = await RNIap.getSubscriptions({ skus: [productId] });
+        const offerToken = subs?.[0]?.subscriptionOfferDetails?.[0]?.offerToken;
+        if (offerToken) {
+          request = { subscriptionOffers: [{ sku: productId, offerToken }] };
+        }
+      }
+      await RNIap.requestSubscription(request);
     } catch {
       setPurchasing(false);
       toast(t('subscription_purchase_error'));
