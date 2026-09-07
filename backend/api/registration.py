@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from database import registration_dal as reg_dal
+from security import token_guard
 from services.whatsapp_service import generate_code, send_whatsapp_code, MOCK_MODE
 from services.iin_validator import validate_iin_kz, extract_birthdate_from_iin
 from services import storage_service as storage
@@ -63,6 +64,9 @@ def get_current_driver(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Токен не предоставлен")
     token = authorization.split(" ", 1)[1]
+    # Token-guard (RC-20260907): отозванный по fingerprint токен отклоняется
+    # до обращения к БД, даже если запись в sessions ещё жива.
+    token_guard.assert_not_revoked(token)
     driver_id = reg_dal.get_driver_by_token(token)
     if not driver_id:
         raise HTTPException(status_code=401, detail="Недействительный токен")
