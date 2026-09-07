@@ -1482,7 +1482,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               ) : null}
             </View>
 
-            <TouchableOpacity style={[s.chatDock, { backgroundColor: colors.bg, borderColor: colors.border }]} onPress={closeMap} testID="deal-chat-dock">
+            <TouchableOpacity style={[s.chatDock, { backgroundColor: colors.bg, borderColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }]} onPress={closeMap} testID="deal-chat-dock">
               <View style={[s.chatIconBox]}><Feather name="message-circle" size={18} color="#168759" /></View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={s.sheetTitleRow}>
