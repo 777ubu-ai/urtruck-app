@@ -193,10 +193,24 @@ jobs:
           trap 'rm -f "$bundle"' EXIT
           unzip -p "$apk" assets/index.android.bundle > "$bundle"
           expected_api_url="${EXPO_PUBLIC_API_URL%/}"
-          grep -aFq "$expected_api_url" "$bundle" || {
-            echo "::error::QA2 bundle does not contain the configured non-production API URL"; exit 1;
+          expected_host="${expected_api_url#https://}"
+          expected_host="${expected_host%%/*}"
+          expected_path="${expected_api_url#https://*/}"
+          bundle_strings=$(mktemp)
+          trap 'rm -f "$bundle" "$bundle_strings"' EXIT
+          strings "$bundle" > "$bundle_strings"
+          grep -Fq "$expected_host" "$bundle_strings" || {
+            echo "::error::QA2 bundle does not contain the configured non-production API host"; exit 1;
           }
-          if grep -aFq 'https://urtruck.kz/api/v1' "$bundle"; then
+          if [ -n "$expected_path" ]; then
+            expected_path_fragment="${expected_path%%/*}"
+            grep -Fq "$expected_path_fragment" "$bundle_strings" || {
+              echo "::error::QA2 bundle does not contain the configured non-production API path"; exit 1;
+            }
+          fi
+          if grep -aFq 'https://urtruck.kz/api/v1' "$bundle" || {
+            grep -Fq 'urtruck.kz' "$bundle_strings" && ! grep -Fq 'qa2' "$bundle_strings";
+          }; then
             echo "::error::QA2 bundle contains the production API endpoint"; exit 1;
           fi
 
