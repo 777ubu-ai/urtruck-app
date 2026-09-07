@@ -1320,8 +1320,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         <TouchableOpacity
           onPress={() => setStatusModalOpen(true)}
           style={s.headerIconBtn}
-          testID="deal-status-open"
           accessibilityLabel={ui.statuses}
+          testID="deal-status-open"
         >
           <Feather name={statusActionIcon} size={19} color="#111B21" />
         </TouchableOpacity>
@@ -1401,13 +1401,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   {!recording ? (
                     <TouchableOpacity
                       style={s.composerCircle}
-                      onPress={sendCameraPhoto}
-                      testID="deal-chat-camera"
+                      onPress={toggleAttachMenu}
+                      testID="deal-chat-attach"
+                      accessibilityRole="button"
                     >
-                      <Feather name="camera" size={22} color="#202020" />
+                      <Feather name="plus" size={27} color="#202020" />
                     </TouchableOpacity>
                   ) : null}
-                  <View style={s.inputShell}>
+                  <View style={s.inputShell} testID="deal-chat-input-shell">
                     <TextInput
                       ref={inputRef}
                       value={input}
@@ -1425,41 +1426,32 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       multiline
                       scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
                       style={[s.input, { height: inputHeight, color: colors.text }]}
-                      placeholder=""
-                      placeholderTextColor="transparent"
+                      placeholder={isDriver ? ui.writeShipper : ui.write}
+                      placeholderTextColor="#8A8A8A"
                       testID="deal-chat-input"
                     />
-                  </View>
-                  {!composerFocused ? (
                     <TouchableOpacity
-                      style={s.composerCircle}
+                      style={s.emojiInsideBtn}
                       onPress={toggleEmojiMenu}
                       testID="deal-chat-emoji"
+                      accessibilityRole="button"
                     >
-                      <Feather name="smile" size={26} color="#202020" />
+                      <Feather name="smile" size={22} color="#8A8A8A" />
                     </TouchableOpacity>
-                  ) : null}
+                  </View>
                   {!recording ? (
                     input.trim() ? (
-                      <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
+                      <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send" accessibilityRole="button"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
                     ) : (
                       <TouchableOpacity
                         style={s.composerCircle}
                         onPress={toggleVoice}
                         testID="deal-chat-voice"
+                        accessibilityRole="button"
                       >
-                        <Feather name="volume-2" size={22} color="#202020" />
+                        <Feather name="mic" size={22} color="#202020" />
                       </TouchableOpacity>
                     )
-                  ) : null}
-                  {!recording ? (
-                    <TouchableOpacity
-                      style={s.composerCircle}
-                      onPress={toggleAttachMenu}
-                      testID="deal-chat-attach"
-                    >
-                      <Feather name="plus" size={27} color="#202020" />
-                    </TouchableOpacity>
                   ) : null}
                 </View>
 
@@ -1521,7 +1513,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   <Text style={[s.finishedTitle, { color: colors.text }]}>{inactiveTitle}</Text>
                   <Text style={[s.finishedRoute, { color: colors.text }]}>{routeLabel}</Text>
                   {inactiveSubtitle ? <Text style={[s.finishedSubtitle, { color: colors.text }]}>{inactiveSubtitle}</Text> : null}
-                  {inactiveHint ? <Text style={[s.finishedHint, { color: colors.textMuted }]}>{inactiveHint}</Text> : null}
+                  {inactiveHint ? <Text style={[s.finishedHint, { color: colors.text }]}>{inactiveHint}</Text> : null}
                   <Text style={[s.finishedGpsHint, { color: colors.textMuted }]}>{ui.mapFinishedHint}</Text>
                 </View>
               )}
@@ -1797,8 +1789,9 @@ const s = StyleSheet.create({
   composerFocused: { backgroundColor: '#FFFFFF' },
   composerCircle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
-  inputShell: { flex: 1, minHeight: 34, maxHeight: 74, borderRadius: 18, backgroundColor: '#F7F9F7', borderWidth: StyleSheet.hairlineWidth, borderColor: '#DDE6E1', justifyContent: 'center', position: 'relative' },
-  input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  inputShell: { flex: 1, minHeight: 34, maxHeight: 74, borderRadius: 18, backgroundColor: '#F7F9F7', borderWidth: StyleSheet.hairlineWidth, borderColor: '#DDE6E1', flexDirection: 'row', alignItems: 'flex-end' },
+  input: { flex: 1, minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 4, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  emojiInsideBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   sendButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#168759' },
 
