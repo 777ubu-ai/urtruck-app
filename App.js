@@ -32,6 +32,7 @@ if (Platform.OS !== 'web') {
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import * as Sentry from '@sentry/react-native';
+import { scrubSentryEvent } from './src/utils/logScrub';
 
 const STARTUP_SPLASH_IMAGE = require('./assets/splash/urtruck-splash.png');
 
@@ -71,6 +72,10 @@ try {
     tracesSampleRate: 0.1,
     sendDefaultPii: false,
     enableNativeFramesTracking: false,
+    // Root-cause guard RC-20260907: breadcrumbs/request data могли нести
+    // Bearer/JWT/push-token/sig= подписанных URL — событие целиком через тот
+    // же контракт редакции, что и backend (security/log_redaction.py).
+    beforeSend: scrubSentryEvent,
   });
 } catch (e) {
   // Нет нативного модуля (Expo Go) / иная причина — не мешаем запуску.
