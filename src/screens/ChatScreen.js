@@ -184,7 +184,7 @@ export default function ChatScreen({ navigation, route }) {
           backgroundColor: v1Colors.driver,
           alignItems: "center",
         },
-        acceptOkTxt: { color: "#0C0A09", fontSize: 12, fontWeight: "900" },
+        acceptOkTxt: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
         // Компактный статус перевозки (05.08.2026) — заменяет горизонтальную шкалу.
         statusRow: {
           flexDirection: "row",
@@ -362,7 +362,7 @@ export default function ChatScreen({ navigation, route }) {
           borderColor: v1.border,
         },
         trackingAllowText: {
-          color: "#0C0A09",
+          color: "#FFFFFF",
           fontSize: 13,
           fontWeight: "900",
         },
@@ -381,8 +381,9 @@ export default function ChatScreen({ navigation, route }) {
         },
         // B2B deal chat: компактнее и спокойнее (не consumer/WhatsApp). Меньше
         // padding/radius/maxWidth; outgoing — спокойный изумруд (не ядовитый #168759).
+        // DS-2026: maxWidth 72% → 76% (канон chat.bubbleMaxWidth).
         bubble: {
-          maxWidth: "72%",
+          maxWidth: "76%",
           paddingHorizontal: 11,
           paddingVertical: 7,
           borderRadius: 12,
@@ -394,6 +395,8 @@ export default function ChatScreen({ navigation, route }) {
           borderWidth: 1,
           borderColor: "rgba(17,27,33,0.08)",
         },
+        // DS-2026: основной текст сообщения 16/21 (канон typography.chatBody;
+        // значение уже присутствовало в integration).
         msgText: { fontSize: 16, lineHeight: 21 },
         msgTextMe: { color: "#111B21" },
         translated: {
@@ -433,7 +436,7 @@ export default function ChatScreen({ navigation, route }) {
           marginLeft: 5,
           paddingBottom: 1,
         },
-        msgStatus: { fontSize: 10.5, color: "rgba(17,27,33,0.58)" },
+        msgStatus: { fontSize: 11, color: "rgba(17,27,33,0.58)" },
         systemMsgRow: { alignItems: "center", marginVertical: 6 },
         systemMsgPill: {
           backgroundColor: "rgba(124,139,130,0.14)",
@@ -642,20 +645,6 @@ export default function ChatScreen({ navigation, route }) {
           borderRadius: 24,
         },
         fullSaveTxt: { color: "#fff", fontSize: 15, fontWeight: "800" },
-        voiceBubble: {
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 8,
-          minWidth: 180,
-        },
-        waveform: {
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 2,
-          flex: 1,
-        },
-        wavebar: { width: 2, borderRadius: 1 },
-        voiceTime: { fontSize: 11, minWidth: 30 },
         assistBtn: {
           flexDirection: "row",
           alignItems: "center",
@@ -1843,7 +1832,7 @@ export default function ChatScreen({ navigation, route }) {
     const statusIcon = isMe ? (item.is_read ? "✓✓" : "✓") : "";
     const statusColor = isMe
       ? item.is_read
-        ? "#168759"
+        ? v1Colors.driver
         : "rgba(17,27,33,0.38)"
       : "";
     if (item.from === "system") {
@@ -1938,139 +1927,6 @@ export default function ChatScreen({ navigation, route }) {
             {voiceBubble}
             <View style={s.msgFooter}>
               <Text style={[s.msgTime, isMe ? s.msgTimeMe : { color: v1.textMuted }]}>{item.time}</Text>
-            </View>
-          </View>
-        </View>
-      );
-      const voiceMeta = voiceTranscripts[item.id];
-      const voiceExpanded = !!voiceMeta?.visible;
-      const voiceActionLabel =
-        voiceTranscribing === item.id
-          ? "..."
-          : voiceExpanded
-            ? t("voice_hide_text")
-            : voiceMeta?.transcriptText
-              ? t("voice_show_text")
-              : t("voice_to_text");
-      return (
-        <View style={[s.msgRow, isMe && s.msgRowMe]}>
-          {!isMe && partner?.name ? (
-            <Text style={[s.senderLabel, { color: theme.textMuted }]}>
-              {partner.name}
-            </Text>
-          ) : null}
-          <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem]}>
-            <TouchableOpacity
-              style={s.voiceBubble}
-              onPress={() => playVoice(item.id)}
-            >
-              <Feather
-                name={item.playing ? "pause" : "play"}
-                size={20}
-                color={isMe ? "#fff" : theme.text}
-              />
-              <View style={s.waveform}>
-                {[...Array(15)].map((_, i) => (
-                  <View
-                    key={i}
-                    style={[
-                      s.wavebar,
-                      {
-                        height: 4 + (i % 4) * 4,
-                        backgroundColor: isMe ? "#fff" : theme.textMuted,
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
-              <Text
-                style={[
-                  s.voiceTime,
-                  isMe && { color: "#fff" },
-                  !isMe && { color: theme.text },
-                ]}
-              >
-                {item.playing
-                  ? t("voicePlaying")
-                  : `${Math.floor((item.duration || 0) / 60)}:${String((item.duration || 0) % 60).padStart(2, "0")}`}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={s.assistBtn}
-              onPress={() => toggleVoiceTranscript(item)}
-              disabled={voiceTranscribing === item.id}
-            >
-              {voiceTranscribing !== item.id ? (
-                <Feather
-                  name="align-left"
-                  size={12}
-                  color={isMe ? "rgba(255,255,255,0.5)" : theme.textMuted}
-                />
-              ) : null}
-              <Text
-                style={{
-                  color: isMe ? "rgba(255,255,255,0.5)" : theme.textMuted,
-                  fontSize: 11,
-                }}
-              >
-                {voiceActionLabel}
-              </Text>
-            </TouchableOpacity>
-            {voiceExpanded && voiceMeta?.transcriptText ? (
-              <View
-                style={[s.translated, !isMe && { borderTopColor: v1.border }]}
-              >
-                <Text
-                  style={[
-                    s.assistLabel,
-                    {
-                      color: isMe ? "rgba(255,255,255,0.72)" : theme.textMuted,
-                    },
-                  ]}
-                >
-                  {t("voice_original_label")}
-                </Text>
-                <Text
-                  style={[s.assistText, { color: isMe ? "#EAFBF1" : v1.text }]}
-                >
-                  {voiceMeta.transcriptText}
-                </Text>
-                {voiceMeta.translatedText ? (
-                  <>
-                    <Text
-                      style={[
-                        s.assistLabel,
-                        {
-                          color: isMe
-                            ? "rgba(255,255,255,0.72)"
-                            : theme.textMuted,
-                          marginTop: 8,
-                        },
-                      ]}
-                    >
-                      {t("voice_translation_label")}
-                    </Text>
-                    <Text
-                      style={[
-                        s.assistText,
-                        { color: isMe ? "#EAFBF1" : v1.text },
-                      ]}
-                    >
-                      {voiceMeta.translatedText}
-                    </Text>
-                  </>
-                ) : null}
-              </View>
-            ) : null}
-            <View style={s.msgFooter}>
-              <Text
-                style={[
-                  s.msgTime,
-                  isMe ? s.msgTimeMe : { color: v1.textMuted },
-                ]}
-              >
-                {item.time}
-              </Text>
             </View>
           </View>
         </View>
@@ -2296,12 +2152,12 @@ export default function ChatScreen({ navigation, route }) {
                       width: 8,
                       height: 8,
                       borderRadius: 4,
-                      backgroundColor: "#168759",
+                      backgroundColor: v1Accent.main,
                     }}
                   />
                   <Text
                     style={{
-                      color: "#168759",
+                      color: v1Accent.main,
                       fontSize: 11,
                       fontWeight: "700",
                     }}
@@ -2319,8 +2175,8 @@ export default function ChatScreen({ navigation, route }) {
               <View
                 style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
               >
-                <Feather name="edit-3" size={12} color="#168759" />
-                <Text style={[s.online, { color: "#168759" }]}>
+                <Feather name="edit-3" size={12} color={v1Accent.main} />
+                <Text style={[s.online, { color: v1Accent.main }]}>
                   {t("chat_typing")}
                 </Text>
               </View>
