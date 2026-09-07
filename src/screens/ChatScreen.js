@@ -482,9 +482,10 @@ export default function ChatScreen({ navigation, route }) {
           borderTopColor: v1.border,
           backgroundColor: v1.bgDeep,
         },
+        // DS-2026: touch target композера 44 (команда chat.composer.buttonSize).
         iconBtn: {
-          width: 40,
-          height: 40,
+          width: 44,
+          height: 44,
           borderRadius: 12,
           borderWidth: 1,
           borderColor: v1.border,
@@ -506,8 +507,8 @@ export default function ChatScreen({ navigation, route }) {
           color: v1.text,
         },
         sendBtn: {
-          width: 40,
-          height: 40,
+          width: 44,
+          height: 44,
           borderRadius: 12,
           alignItems: "center",
           justifyContent: "center",
@@ -2474,7 +2475,7 @@ export default function ChatScreen({ navigation, route }) {
             >
               <Feather
                 name={recording ? "square" : "mic"}
-                size={18}
+                size={22}
                 color="#FFFFFF"
               />
             </TouchableOpacity>
@@ -2487,7 +2488,7 @@ export default function ChatScreen({ navigation, route }) {
             >
               <FontAwesome5
                 name="paper-plane"
-                size={16}
+                size={20}
                 color="#FFFFFF"
                 solid
               />
