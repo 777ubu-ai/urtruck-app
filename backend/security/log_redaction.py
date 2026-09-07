@@ -9,7 +9,9 @@ Root-cause fix инцидента с утечкой токена: раньше �
    record.args независимо от того, что передал call-site (defence in depth:
    даже если кто-то залогирует сырое значение, в sink уйдёт редacted);
 3. `install_global_redaction()` — навешивает фильтр на все root handlers
-   при старте backend (см. main.py).
+   при старте backend (см. main.py);
+4. `sentry_scrub_event()` — before_send hook для Sentry: тот же контракт
+   редакции применяется к telemetry payload целиком.
 
 Запрещено: печатать сами секреты. Допустимы только redacted value,
 fingerprint (sha256 hex) или его prefix.
@@ -50,6 +52,12 @@ _PATTERNS = (
     (re.compile(r"\b\d{6,}:[A-Za-z0-9_-]{20,}\b"), "<telegram-token:***>"),
     # OpenAI-style ключи
     (re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"), "sk-***"),
+    # key=value / key: value в свободном тексте логов и exception strings
+    # (token=abc, refresh_token: abc, api_key=abc, password=abc ...)
+    (re.compile(
+        r"(?i)\b(token|access_token|refresh_token|id_token|api_key|apikey|"
+        r"secret|password|session_id)\s*[=:]\s*[\"']?[A-Za-z0-9._~+/=-]{6,}"
+    ), r"\1=***"),
 )
 
 REDACTED = "***"
@@ -77,7 +85,7 @@ def redact(obj: Any) -> Any:
 
     - dict: значения чувствительных ключей заменяются на ***; остальные
       значения обходятся рекурсивно;
-    - str: вычищаются token-паттерны (Bearer/JWT/Expo/Telegram/sk-);
+    - str: вычищаются token-паттерны (Bearer/JWT/Expo/Telegram/sk-/kv);
     - прочие объекты возвращаются как есть.
     """
     if isinstance(obj, dict):
@@ -135,3 +143,20 @@ def install_global_redaction() -> int:
         root.addHandler(h)
         added = 1
     return added
+
+
+def sentry_scrub_event(event: Any, hint: Any = None) -> Any:
+    """Sentry `before_send` hook: скраббит telemetry payload целиком.
+
+    Root-cause guard: даже при send_default_pii=False FastApiIntegration
+    прикладывает request headers/body/exception strings к event, и
+    Authorization/Cookie/refresh_token могли уйти в Sentry. Прогоняем весь
+    event через тот же redact(), что и логи (единый контракт редакции).
+
+    Fail-safe: любая ошибка скраббинга дропает event (return None) —
+    лучше потерять событие, чем отправить сырой секрет.
+    """
+    try:
+        return redact(event)
+    except Exception:
+        return None

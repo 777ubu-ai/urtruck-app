@@ -70,6 +70,11 @@ assert_config_tokens_not_revoked()
 # (например, отключить, задав пустую строку).
 _DEFAULT_SENTRY_DSN = "https://18453143e7167ce08c98f2ce0d90bfd2@o4511743497273344.ingest.de.sentry.io/4511743527354448"
 _sentry_dsn = os.getenv("SENTRY_DSN", _DEFAULT_SENTRY_DSN).strip()
+
+# before_send hook вынесен в security.log_redaction.sentry_scrub_event —
+# тот же контракт редакции, что и для логов (единая точка истины).
+from security.log_redaction import sentry_scrub_event
+
 if _sentry_dsn:
     try:
         import sentry_sdk
@@ -81,6 +86,7 @@ if _sentry_dsn:
             traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
             integrations=[FastApiIntegration()],
             send_default_pii=False,  # ИИН/ФИО водителей в Sentry не уходят
+            before_send=sentry_scrub_event,
         )
         print("[sentry] initialized", flush=True)
     except Exception as e:
