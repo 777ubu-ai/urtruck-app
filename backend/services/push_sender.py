@@ -292,8 +292,12 @@ def _send_expo(tokens: list[str], title: str, body: str, data: dict, badge: Opti
                 if err == "DeviceNotRegistered":
                     dead.append(tokens[i])
                 else:
-                    log.error("expo ticket error token=%s error=%s message=%s",
-                              (tokens[i][:4] + "..." + tokens[i][-4:]) if tokens[i] else "-",
+                    # Security (token-guard RC-20260907): в логи уходит только
+                    # необратимый sha256-fingerprint токена, никогда — ни raw
+                    # значение, ни обратимые first/last-символы.
+                    from security.token_guard import fingerprint as _tk_fp
+                    log.error("expo ticket error token_fp=%s error=%s message=%s",
+                              ("sha256:" + _tk_fp(tokens[i])[:12]) if tokens[i] else "-",
                               err or "unknown", tk.get("message") or "")
         if dead:
             # Блок 1 (P0-1 модель): деактивируем, а не удаляем — см. комментарий
