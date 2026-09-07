@@ -119,6 +119,7 @@ const CHAT_PHOTO_ENABLED = true;
 const CHAT_VOICE_ENABLED = true;
 const TRACKING_STATUSES = ["in_progress", "at_border", "delivered"];
 const DRIVER_ROUTE_STATUSES = ['accepted', 'in_progress', 'at_border', 'delivered'];
+const EMOJI_MENU = ["😀", "😂", "👍", "🙏", "🚛", "📦", "✅", "❤️", "🤝", "🔥", "🎉", "🙂"];
 
 export default function ChatScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -488,8 +489,8 @@ export default function ChatScreen({ navigation, route }) {
           backgroundColor: v1.bgDeep,
         },
         iconBtn: {
-          width: 40,
-          height: 40,
+          width: 44,
+          height: 44,
           borderRadius: 12,
           borderWidth: 1,
           borderColor: v1.border,
@@ -498,24 +499,59 @@ export default function ChatScreen({ navigation, route }) {
           justifyContent: "center",
         },
         iconBtnText: { fontSize: 16, color: v1.text },
-        input: {
+        inputShell: {
           flex: 1,
+          minHeight: 44,
+          maxHeight: 96,
+          flexDirection: "row",
+          alignItems: "flex-end",
           borderRadius: 12,
-          paddingHorizontal: 14,
-          paddingVertical: 12,
-          fontSize: 14,
           borderWidth: 1,
           borderColor: v1.border,
           backgroundColor: v1.surface,
+          overflow: "hidden",
+        },
+        input: {
+          flex: 1,
+          minHeight: 42,
+          maxHeight: 94,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          fontSize: 16,
+          borderWidth: 0,
+          backgroundColor: "transparent",
           color: v1.text,
         },
+        emojiBtn: {
+          width: 44,
+          height: 44,
+          alignItems: "center",
+          justifyContent: "center",
+        },
         sendBtn: {
-          width: 40,
-          height: 40,
+          width: 44,
+          height: 44,
           borderRadius: 12,
           alignItems: "center",
           justifyContent: "center",
         },
+        emojiPanel: {
+          flexDirection: "row",
+          flexWrap: "wrap",
+          gap: 4,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderTopWidth: 1,
+          borderTopColor: v1.border,
+          backgroundColor: v1.bgDeep,
+        },
+        emojiItem: {
+          width: 44,
+          height: 44,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        emojiText: { fontSize: 24 },
         // WeChat-панель вложений: сетка плиток под строкой ввода.
         attachPanel: {
           flexDirection: "row",
@@ -653,6 +689,7 @@ export default function ChatScreen({ navigation, route }) {
   const [roomId, setRoomId] = useState(initialRoomId || null);
   const [input, setInput] = useState("");
   const [showPhrases, setShowPhrases] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   // WeChat-стиль: панель вложений снизу, открывается по «+». Главная строка
   // ввода остаётся чистой ([+] · поле · 🎤 · отправить).
   const [showAttach, setShowAttach] = useState(false);
@@ -713,6 +750,10 @@ export default function ChatScreen({ navigation, route }) {
       lastTypingPing.current = now;
       chatAPI.typing(roomId); // fire-and-forget
     }
+  };
+  const insertEmoji = (emoji) => {
+    setInput((value) => `${value}${emoji}`);
+    setEmojiOpen(false);
   };
   const [translations, setTranslations] = useState({});
   const [translating, setTranslating] = useState(null);
@@ -2593,6 +2634,7 @@ export default function ChatScreen({ navigation, route }) {
               },
             ]}
             testID="chat-attach-btn"
+            accessibilityRole="button"
             accessibilityLabel={t("chat_attach")}
           >
             <Feather
@@ -2601,17 +2643,32 @@ export default function ChatScreen({ navigation, route }) {
               color={showAttach ? v1Accent.main : v1.text}
             />
           </TouchableOpacity>
-          <TextInput
-            style={s.input}
-            value={input}
-            onChangeText={onInputChange}
-            onFocus={() => setShowAttach(false)}
-            placeholder={t("message")}
-            placeholderTextColor={v1.placeholder}
-            onSubmitEditing={() => sendMessage()}
-            returnKeyType="send"
-            testID="chat-input"
-          />
+          <View style={s.inputShell} testID="chat-input-shell">
+            <TextInput
+              style={s.input}
+              value={input}
+              onChangeText={onInputChange}
+              onFocus={() => {
+                setShowAttach(false);
+                setEmojiOpen(false);
+              }}
+              placeholder={t("message")}
+              placeholderTextColor={v1.placeholder}
+              onSubmitEditing={() => sendMessage()}
+              returnKeyType="send"
+              multiline
+              testID="chat-input"
+            />
+            <TouchableOpacity
+              onPress={() => setEmojiOpen((value) => !value)}
+              style={s.emojiBtn}
+              testID="chat-emoji-btn"
+              accessibilityRole="button"
+              accessibilityLabel="Emoji"
+            >
+              <Feather name="smile" size={20} color={v1.textMuted} />
+            </TouchableOpacity>
+          </View>
           {/* WhatsApp-style: одна кнопка справа, а не две рядом — микрофон,
             пока поле пустое, отправка, как только появился текст
             (04.08.2026, п.5 ТЗ). Во время записи всегда виден стоп. */}
@@ -2623,6 +2680,8 @@ export default function ChatScreen({ navigation, route }) {
                 { backgroundColor: recording ? v1Colors.error : v1Accent.main },
               ]}
               testID="chat-voice-btn"
+              accessibilityRole="button"
+              accessibilityLabel={t("voice_send")}
             >
               <Feather
                 name={recording ? "square" : "mic"}
@@ -2635,6 +2694,7 @@ export default function ChatScreen({ navigation, route }) {
               onPress={() => sendMessage()}
               style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
               testID="chat-send-btn"
+              accessibilityRole="button"
               accessibilityLabel="Send"
             >
               <FontAwesome5
@@ -2646,6 +2706,23 @@ export default function ChatScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
         </View>
+
+        {emojiOpen && (
+          <View style={s.emojiPanel} testID="chat-emoji-panel">
+            {EMOJI_MENU.map((emoji, index) => (
+              <TouchableOpacity
+                key={`${emoji}-${index}`}
+                style={s.emojiItem}
+                onPress={() => insertEmoji(emoji)}
+                testID={`chat-emoji-option-${index}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Emoji ${emoji}`}
+              >
+                <Text style={s.emojiText}>{emoji}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {/* Панель вложений (WeChat-сетка): открывается по «+». Тап по плитке
           закрывает панель и запускает действие. */}
