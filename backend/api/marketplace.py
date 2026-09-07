@@ -3107,7 +3107,6 @@ def stop_tracking_for_deal(c, deal_id: str) -> bool:
         "UPDATE deal_tracking SET status='stopped', "
         "stopped_at=COALESCE(stopped_at, CURRENT_TIMESTAMP), "
         "completed_at=COALESCE(completed_at, CURRENT_TIMESTAMP), "
-        "health_status='healthy', gps_problem_reason=NULL, "
         "updated_at=CURRENT_TIMESTAMP WHERE deal_id = ?",
         (deal_id,),
     )
@@ -3641,12 +3640,10 @@ def get_deal_location(deal_id: str, user=Depends(require_level(1))):
         if user["id"] not in (d["shipper_id"], d["driver_id"]):
             raise HTTPException(status_code=403, detail="Нет доступа к сделке")
         tracking = _tracking_payload(c, deal_id)
-        if tracking.get("status") != "active":
-            return {"ok": True, "has_location": False, "tracking_status": tracking.get("status", "not_requested")}
         loc = c.execute(
             "SELECT lat, lng, heading, speed, updated_at FROM deal_locations WHERE deal_id = ?",
             (deal_id,),
         ).fetchone()
     if not loc:
-        return {"ok": True, "has_location": False, "tracking_status": "active", "deal_status": d["status"]}
-    return {"ok": True, "has_location": True, "location": dict(loc), "tracking_status": "active", "deal_status": d["status"]}
+        return {"ok": True, "has_location": False, "tracking_status": tracking.get("status", "not_requested"), "deal_status": d["status"]}
+    return {"ok": True, "has_location": True, "location": dict(loc), "tracking_status": tracking.get("status", "not_requested"), "deal_status": d["status"]}
