@@ -50,8 +50,8 @@ export default function VoiceMessageBubble({
   return (
     <View style={s.root}>
       <View style={s.playerRow}>
-        <TouchableOpacity onPress={togglePlayback} style={s.playButton} accessibilityRole="button">
-          <Feather name={playing ? "pause" : "play"} size={18} color={foreground} />
+        <TouchableOpacity onPress={togglePlayback} style={s.playButton} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }} accessibilityRole="button">
+          <Feather name={playing ? "pause" : "play"} size={22} color={foreground} />
         </TouchableOpacity>
         <View style={s.waveform}>
           {[3, 6, 10, 7, 13, 8, 15, 9, 12, 6, 11, 7, 14, 8, 5].map((height, index) => (
@@ -86,13 +86,13 @@ export default function VoiceMessageBubble({
 }
 
 const s = StyleSheet.create({
-  root: { minWidth: 220 },
+  root: { minWidth: 240 },
   playerRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  playButton: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(17,27,33,0.18)" },
-  waveform: { flex: 1, height: 24, flexDirection: "row", alignItems: "center", gap: 2 },
+  playButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(17,27,33,0.18)" },
+  waveform: { flex: 1, height: 26, flexDirection: "row", alignItems: "center", gap: 2 },
   wave: { width: 3, borderRadius: 2 },
   duration: { fontSize: 11, minWidth: 28, textAlign: "right" },
-  rateButton: { minWidth: 34, height: 26, borderRadius: 13, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  rateButton: { minWidth: 34, height: 28, borderRadius: 14, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   rateText: { fontSize: 11, fontWeight: "800" },
   translateButton: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
   translateText: { fontSize: 11, fontWeight: "700" },
