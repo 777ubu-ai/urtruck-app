@@ -24,6 +24,7 @@ import { countryFlag } from '../utils/countryFlags';
 import { useToast } from '../components/Toast';
 import { useVerificationGate } from '../components/VerificationGate';
 import { SkeletonCard } from '../components/Skeleton';
+import NotificationBellButton from '../components/ui/v1/NotificationBellButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
@@ -493,6 +494,11 @@ export default function CargoFeedScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
       <View style={[styles.topBar, { backgroundColor: palette.pageBg }]} testID="cargo-feed-minimal-header">
+        <NotificationBellButton
+          navigation={navigation}
+          color={palette.text}
+          testID="cargo-feed-notification-bell-btn"
+        />
         <TouchableOpacity
           onPress={() => navigation.navigate('Profile', { role })}
           style={styles.menuBtn}
@@ -648,12 +654,13 @@ export default function CargoFeedScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: PAGE_BG },
   topBar: {
+    flexDirection: 'row',
     minHeight: 48,
     paddingHorizontal: 18,
     paddingTop: 2,
     paddingBottom: 2,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: PAGE_BG,
   },
   menuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },

@@ -4,9 +4,11 @@ import fs from 'node:fs';
 
 const src = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
 
-test('cargo feed removes heavy brand/title chrome and keeps only compact menu above list', () => {
+test('cargo feed removes heavy brand/title chrome and keeps the canonical bell/menu header', () => {
   assert.match(src, /testID="cargo-feed-minimal-header"/);
+  assert.match(src, /testID="cargo-feed-notification-bell-btn"/);
   assert.match(src, /testID="feed-menu-btn"/);
+  assert.match(src, /justifyContent: 'space-between'/);
   assert.match(src, /topBar: \{[\s\S]*?minHeight: 48/);
   assert.doesNotMatch(src, /<Text style=\{styles\.brand\}>UrTruck<\/Text>/);
   assert.doesNotMatch(src, /styles\.titleRow/);
