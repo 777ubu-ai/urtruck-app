@@ -57,11 +57,6 @@ def check_admin(
     credentials: HTTPBasicCredentials = Depends(security),
     request: Request = None,
 ):
-    if _IS_PROD and ADMIN_PASS == _ADMIN_PASS_DEFAULT:
-        raise HTTPException(
-            status_code=503,
-            detail="Админ-панель отключена: задайте URTRUCK_ADMIN_PASS в .env",
-        )
     ip = _client_ip(request)
 
     # FAIL-CLOSED: хранилище счётчиков недоступно → 503, не «без лимита».
@@ -79,12 +74,34 @@ def check_admin(
             headers={"Retry-After": str(retry_after)},
         )
 
-    if credentials is not None:
-        u_ok = secrets.compare_digest(credentials.username.encode(), ADMIN_USER.encode())
-        p_ok = secrets.compare_digest(credentials.password.encode(), ADMIN_PASS.encode())
-    else:
-        # запрос без Authorization-заголовка — тоже неудачная попытка
-        u_ok = p_ok = False
+    if credentials is None:
+        # Анонимный запрос: оригинальная семантика до C1.1 — 401 +
+        # WWW-Authenticate (prod-guard дефолтного пароля анонимов не касается,
+        # иначе /metrics без заголовка отвечал бы 503 вместо 401 — регрессия
+        # test_production_security_guards). При этом попытка считается
+        # неудачной — брутфорс «без заголовка» не обходит счётчик.
+        try:
+            admin_rl.record_failure(
+                ADMIN_RL_SCOPE, ip, ADMIN_RL_MAX_FAILURES, ADMIN_RL_BLOCK_SECONDS
+            )
+        except admin_rl.RateLimitUnavailable:
+            raise HTTPException(
+                status_code=503,
+                detail="Сервис временно недоступен, повторите позже",
+            )
+        raise HTTPException(
+            status_code=401,
+            detail="Требуется авторизация",
+            headers={"WWW-Authenticate": 'Basic realm="UrTruck Admin"'},
+        )
+
+    if _IS_PROD and ADMIN_PASS == _ADMIN_PASS_DEFAULT:
+        raise HTTPException(
+            status_code=503,
+            detail="Админ-панель отключена: задайте URTRUCK_ADMIN_PASS в .env",
+        )
+    u_ok = secrets.compare_digest(credentials.username.encode(), ADMIN_USER.encode())
+    p_ok = secrets.compare_digest(credentials.password.encode(), ADMIN_PASS.encode())
     if not (u_ok and p_ok):
         try:
             blocked_retry_after = admin_rl.record_failure(

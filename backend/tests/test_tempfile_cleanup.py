@@ -65,7 +65,7 @@ def test_ocr_passport_removes_temp_on_success(monkeypatch, authed_client):
     monkeypatch.setattr(r.db, "save_ocr", lambda *a, **k: None)
 
     resp = authed_client.post(
-        "/ocr/passport?user_id=u1",
+        "/ocr/passport?user_id=driver-test-1",
         headers=AUTH,
         files={"file": ("p.jpg", b"jpg-bytes", "image/jpeg")},
     )
@@ -87,7 +87,7 @@ def test_ocr_passport_removes_temp_on_exception(monkeypatch, authed_client):
     monkeypatch.setattr(r.db, "save_ocr", lambda *a, **k: None)
 
     resp = authed_client.post(
-        "/ocr/passport?user_id=u1",
+        "/ocr/passport?user_id=driver-test-1",
         headers=AUTH,
         files={"file": ("p.jpg", b"jpg-bytes", "image/jpeg")},
     )
@@ -120,7 +120,7 @@ def _liveness_client(monkeypatch, result):
 def test_liveness_removes_temp_on_success(monkeypatch):
     client, seen = _liveness_client(monkeypatch, {"liveness_passed": True})
     resp = client.post(
-        "/biometric/liveness?user_id=u1",
+        "/biometric/liveness?user_id=driver-test-1",
         headers=AUTH,
         files={"file": ("s.jpg", b"selfie", "image/jpeg")},
     )
@@ -131,7 +131,7 @@ def test_liveness_removes_temp_on_success(monkeypatch):
 def test_liveness_removes_temp_on_exception(monkeypatch):
     client, seen = _liveness_client(monkeypatch, RuntimeError("face lib down"))
     resp = client.post(
-        "/biometric/liveness?user_id=u1",
+        "/biometric/liveness?user_id=driver-test-1",
         headers=AUTH,
         files={"file": ("s.jpg", b"selfie", "image/jpeg")},
     )
@@ -163,7 +163,7 @@ def _face_match_client(monkeypatch, result):
 def test_face_match_removes_both_temps_on_success(monkeypatch):
     client, seen = _face_match_client(monkeypatch, {"match": True})
     resp = client.post(
-        "/biometric/face_match?user_id=u1",
+        "/biometric/face_match?user_id=driver-test-1",
         headers=AUTH,
         files={
             "selfie": ("s.jpg", b"selfie", "image/jpeg"),
@@ -178,7 +178,7 @@ def test_face_match_removes_both_temps_on_success(monkeypatch):
 def test_face_match_removes_both_temps_on_exception(monkeypatch):
     client, seen = _face_match_client(monkeypatch, RuntimeError("match backend down"))
     resp = client.post(
-        "/biometric/face_match?user_id=u1",
+        "/biometric/face_match?user_id=driver-test-1",
         headers=AUTH,
         files={
             "selfie": ("s.jpg", b"selfie", "image/jpeg"),
@@ -247,9 +247,14 @@ def _reg_client(monkeypatch, liveness_result):
 
     monkeypatch.setattr(reg, "check_liveness", fake_check)
     monkeypatch.setattr(reg.storage, "save_image", lambda data, cat: f"mock://{cat}/k")
+    monkeypatch.setattr(reg.storage, "save_file",
+                        lambda data, cat, ext=None, content_type=None: f"mock://{cat}/k.{ext}")
     monkeypatch.setattr(reg.reg_dal, "update_driver", lambda did, fields: None)
 
     return _authed_client(reg.reg_router, "driver-test-1"), seen
+
+
+_JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64
 
 
 def test_license_selfie_removes_temp_when_liveness_raises(monkeypatch):
@@ -258,7 +263,7 @@ def test_license_selfie_removes_temp_when_liveness_raises(monkeypatch):
     resp = client.post(
         "/license-selfie",
         headers={"Authorization": "Bearer t"},
-        files={"file": ("l.jpg", b"license-selfie", "image/jpeg")},
+        files={"file": ("l.jpg", _JPEG, "image/jpeg")},
     )
     assert resp.status_code == 200, resp.text
     assert seen and not os.path.exists(seen["path"])
@@ -269,7 +274,7 @@ def test_license_selfie_removes_temp_on_face_rejected(monkeypatch):
     resp = client.post(
         "/license-selfie",
         headers={"Authorization": "Bearer t"},
-        files={"file": ("l.jpg", b"license-selfie", "image/jpeg")},
+        files={"file": ("l.jpg", _JPEG, "image/jpeg")},
     )
     assert resp.status_code == 400
     assert seen and not os.path.exists(seen["path"])
@@ -280,7 +285,7 @@ def test_license_selfie_removes_temp_on_success(monkeypatch):
     resp = client.post(
         "/license-selfie",
         headers={"Authorization": "Bearer t"},
-        files={"file": ("l.jpg", b"license-selfie", "image/jpeg")},
+        files={"file": ("l.jpg", _JPEG, "image/jpeg")},
     )
     assert resp.status_code == 200
     assert seen and not os.path.exists(seen["path"])

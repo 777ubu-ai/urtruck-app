@@ -33,3 +33,4 @@ api/persistent_rate_limit.py (SQLite sidecar рядом с config.DB_PATH, fail-
 admin/OTP/auth (общий per-IP лимит для прочих endpoint'ов — fail-open с логом,
 по пункту 2). До подключения Redis-код не возвращать — мёртвый код с fail-open
 семантикой хуже его отсутствия.
+"""
