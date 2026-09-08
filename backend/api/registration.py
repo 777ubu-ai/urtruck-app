@@ -14,6 +14,7 @@ from services.iin_validator import validate_iin_kz, extract_birthdate_from_iin
 from services import storage_service as storage
 from services import otp_service
 from services.tempfile_guard import temp_upload_file
+from services import upload_validation
 from api.rate_limit import limit_otp_send, limit_otp_send_ip, limit_otp_verify, limit_guest_create
 from ocr.document_reader import extract_passport_data
 from biometrics.liveness import check_liveness, face_match
@@ -24,6 +25,24 @@ import logging
 
 reg_router = APIRouter()
 _beta_log = logging.getLogger("beta_auth")
+
+
+# ---------- Upload validation (shared with profile/chat/deal-room) ----------
+async def _read_validated_image(file: UploadFile) -> tuple:
+    """Bounded read + JPEG/PNG magic-byte gate for registration photos.
+
+    Root cause of the audit finding: `await file.read()` slurped any size and
+    `storage.save_image` relabeled everything as image/jpeg. Now: max 15 МБ,
+    content sniffed by magic bytes, stored with its real type.
+    """
+    data = await file.read(upload_validation.MAX_REGISTRATION_IMAGE_BYTES + 1)
+    try:
+        ext, mime = upload_validation.validate_image_bytes(
+            data, max_bytes=upload_validation.MAX_REGISTRATION_IMAGE_BYTES
+        )
+    except upload_validation.UploadValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    return data, ext, mime
 
 
 # ---------- Models ----------
@@ -496,9 +515,9 @@ async def upload_selfie(
             detail=f"Этот ИИН уже зарегистрирован ({dup.get('full_name', '—')}). Обратитесь в поддержку.",
         )
 
-    # Сохраняем фото в persistent storage
-    data = await file.read()
-    selfie_url = storage.save_image(data, "selfies")
+    # Сохраняем фото в persistent storage (15 МБ, JPEG/PNG по magic bytes)
+    data, ext, mime = await _read_validated_image(file)
+    selfie_url = storage.save_file(data, "selfies", ext=ext, content_type=mime)
     # Liveness.  With Supabase the file is materialized in a short-lived temp
     # path for the verifier and removed immediately afterwards.
     with storage.materialize_for_processing(selfie_url) as selfie_path:
@@ -545,10 +564,8 @@ async def upload_personal_photo(
     портрет профиля — liveness/face здесь НЕ проверяем (биометрия — отдельный
     шаг /selfie). raw-картинку и ИИН не логируем; возвращаем только публичный
     ключ файла (не приватный signed URL)."""
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Пустой файл")
-    photo_url = storage.save_image(data, "personal_photos")
+    data, ext, mime = await _read_validated_image(file)
+    photo_url = storage.save_file(data, "personal_photos", ext=ext, content_type=mime)
     reg_dal.update_driver(driver_id, {"personal_photo_url": photo_url})
     return {"personal_photo_key": photo_url}
 
@@ -560,10 +577,8 @@ async def upload_id_front(
     driver_id: str = Depends(get_current_driver),
 ):
     """Удостоверение личности — лицевая сторона. Храним только ключ файла."""
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Пустой файл")
-    url = storage.save_image(data, "id_documents")
+    data, ext, mime = await _read_validated_image(file)
+    url = storage.save_file(data, "id_documents", ext=ext, content_type=mime)
     reg_dal.update_driver(driver_id, {"id_front_url": url})
     return {"id_front_key": url}
 
@@ -574,10 +589,8 @@ async def upload_id_back(
     driver_id: str = Depends(get_current_driver),
 ):
     """Удостоверение личности — оборотная сторона. Храним только ключ файла."""
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Пустой файл")
-    url = storage.save_image(data, "id_documents")
+    data, ext, mime = await _read_validated_image(file)
+    url = storage.save_file(data, "id_documents", ext=ext, content_type=mime)
     reg_dal.update_driver(driver_id, {"id_back_url": url})
     return {"id_back_key": url}
 
@@ -594,9 +607,13 @@ async def upload_license_selfie(
     Теперь проверяем, что в кадре есть ЛИЦО (check_liveness). На проде биометрия
     реальная (face_recognition). Отказ — только когда лицо не обнаружено; при
     инфраструктурной ошибке пропускаем (fail-open, не блокируем легитимных)."""
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Пустой файл")
+    data = await file.read(upload_validation.MAX_REGISTRATION_IMAGE_BYTES + 1)
+    try:
+        ext, mime = upload_validation.validate_image_bytes(
+            data, max_bytes=upload_validation.MAX_REGISTRATION_IMAGE_BYTES
+        )
+    except upload_validation.UploadValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     # Антифрод-гейт: на селфи с правами должно быть лицо.
     try:
         with temp_upload_file(data) as tmp_path:
@@ -611,7 +628,7 @@ async def upload_license_selfie(
         raise
     except Exception:
         pass  # fail-open: инфра-ошибка биометрии не должна блокировать шаг
-    url = storage.save_image(data, "license_selfies")
+    url = storage.save_file(data, "license_selfies", ext=ext, content_type=mime)
     reg_dal.update_driver(driver_id, {"license_selfie_url": url})
     return {"license_selfie_key": url}
 
@@ -626,10 +643,8 @@ async def upload_vehicle_photo(
     vehicle_photo_url (не raw base64). Отдельно от legacy /vehicle (там
     plate-dedup 409). raw/ИИН не логируем; возвращаем публичный ключ файла
     (не приватный signed URL)."""
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Пустой файл")
-    url = storage.save_image(data, "vehicle_photos")
+    data, ext, mime = await _read_validated_image(file)
+    url = storage.save_file(data, "vehicle_photos", ext=ext, content_type=mime)
     reg_dal.update_driver(driver_id, {"vehicle_photo_url": url})
     return {"vehicle_photo_key": url}
 
@@ -642,10 +657,8 @@ async def upload_cabin_photo(
     """Фото салона/кабины. Store-only: файл в storage, в БД ТОЛЬКО ключ
     cabin_photo_url (не raw base64). raw/ИИН не логируем; возвращаем публичный
     ключ файла."""
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Пустой файл")
-    url = storage.save_image(data, "cabin_photos")
+    data, ext, mime = await _read_validated_image(file)
+    url = storage.save_file(data, "cabin_photos", ext=ext, content_type=mime)
     reg_dal.update_driver(driver_id, {"cabin_photo_url": url})
     return {"cabin_photo_key": url}
 
@@ -657,8 +670,8 @@ async def upload_license(
     driver_id: str = Depends(get_current_driver),
 ):
     """Фото водительских прав → OCR (KZ/RU/CN/UZ шаблоны)."""
-    data = await file.read()
-    license_url = storage.save_image(data, "licenses")
+    data, ext, mime = await _read_validated_image(file)
+    license_url = storage.save_file(data, "licenses", ext=ext, content_type=mime)
     from ocr.license_reader import extract_license_data
     with storage.materialize_for_processing(license_url) as path:
         lic = extract_license_data(path)  # license_reader пока без ui_lang — Step 2
@@ -729,8 +742,8 @@ async def upload_passport(
     driver_id: str = Depends(get_current_driver),
 ):
     """Фото техпаспорта → Tesseract OCR (RU/KZ/CN/UZ/EN)."""
-    raw = await file.read()
-    passport_url = storage.save_image(raw, "passports")
+    raw, ext, mime = await _read_validated_image(file)
+    passport_url = storage.save_file(raw, "passports", ext=ext, content_type=mime)
     with storage.materialize_for_processing(passport_url) as path:
         data = extract_passport_data(path, ui_lang=lang)
     ocr_result = {
@@ -765,10 +778,8 @@ async def upload_tech_passport_back(
     driver_id: str = Depends(get_current_driver),
 ):
     """Техпаспорт (СРТС) — оборотная сторона. Храним только ключ файла."""
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Пустой файл")
-    url = storage.save_image(data, "passports")
+    data, ext, mime = await _read_validated_image(file)
+    url = storage.save_file(data, "passports", ext=ext, content_type=mime)
     reg_dal.update_driver(driver_id, {"tech_back_url": url})
     return {"tech_back_key": url}
 
@@ -779,10 +790,8 @@ async def upload_license_back(
     driver_id: str = Depends(get_current_driver),
 ):
     """Водительские права (ВУ) — оборотная сторона. Храним только ключ файла."""
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Пустой файл")
-    url = storage.save_image(data, "licenses")
+    data, ext, mime = await _read_validated_image(file)
+    url = storage.save_file(data, "licenses", ext=ext, content_type=mime)
     reg_dal.update_driver(driver_id, {"license_back_url": url})
     return {"license_back_key": url}
 
@@ -809,8 +818,8 @@ async def save_vehicle(
             )
     photo_url = None
     if photo:
-        raw = await photo.read()
-        photo_url = storage.save_image(raw, "vehicles")
+        raw, ext, mime = await _read_validated_image(photo)
+        photo_url = storage.save_file(raw, "vehicles", ext=ext, content_type=mime)
 
     reg_dal.update_driver(driver_id, {
         "vehicle_type": vehicle_type,

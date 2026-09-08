@@ -13,6 +13,7 @@ from database.db import get_conn, new_id
 from api.verification_gate import require_level
 from services import file_signing
 from services import storage_service as storage
+from services import upload_validation
 from api.push import send_to_user
 
 chat_router = APIRouter()
@@ -793,18 +794,16 @@ async def upload_chat_photo(file: UploadFile = File(...), user=Depends(require_l
     Само сообщение шлётся через POST /chat/send с photo_url=этот ключ; на
     чтении сервер подписывает ключ (см. sign в list-messages). Так фото видно
     и получателю (раньше слался локальный uri устройства — не резолвился)."""
-    data = await file.read()
+    data = await file.read(upload_validation.MAX_CHAT_PHOTO_BYTES + 1)
     if not data:
         raise HTTPException(status_code=400, detail="Пустой файл")
-    if len(data) > 8 * 1024 * 1024:
+    if len(data) > upload_validation.MAX_CHAT_PHOTO_BYTES:
         raise HTTPException(status_code=413, detail="Файл слишком большой")
-    if data[:3] == b"\xff\xd8\xff":
-        ext, content_type = "jpg", "image/jpeg"
-    elif data[:8] == b"\x89PNG\r\n\x1a\n":
-        ext, content_type = "png", "image/png"
-    else:
+    mime = upload_validation.sniff_image_mime(data)
+    if mime is None:
         raise HTTPException(status_code=415, detail="Неподдерживаемый тип фото")
-    key = storage.save_file(data, "chat_photos", ext=ext, content_type=content_type)
+    ext = "jpg" if mime == upload_validation.JPEG_MIME else "png"
+    key = storage.save_file(data, "chat_photos", ext=ext, content_type=mime)
     return {"photo_key": key}
 
 
@@ -814,25 +813,18 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
     Само сообщение шлётся через POST /chat/send с photo_url=этот ключ и
     is_voice=true (ключ живёт в том же поле, подпись на чтении общая —
     см. get_messages). Web пишет audio/webm, native (expo-av) — m4a."""
-    data = await file.read()
+    data = await file.read(upload_validation.MAX_CHAT_VOICE_BYTES + 1)
     if not data:
         raise HTTPException(status_code=400, detail="Пустой файл")
-    if len(data) > 10 * 1024 * 1024:
+    if len(data) > upload_validation.MAX_CHAT_VOICE_BYTES:
         raise HTTPException(status_code=413, detail="Файл слишком большой")
-    name = (file.filename or "").lower()
-    ext = "m4a"
-    for cand in ("webm", "m4a", "mp3", "aac", "ogg", "wav"):
-        if name.endswith("." + cand):
-            ext = cand
-            break
-    audio_mime = {
-        "webm": "audio/webm",
-        "m4a": "audio/mp4",
-        "mp3": "audio/mpeg",
-        "aac": "audio/aac",
-        "ogg": "audio/ogg",
-        "wav": "audio/wav",
-    }.get(ext, "application/octet-stream")
+    # Magic bytes are authoritative. Root cause of the audit finding: the
+    # extension was derived from the client filename, so a renamed arbitrary
+    # binary was stored and served with an audio MIME.
+    sniffed = upload_validation.sniff_audio_mime(data)
+    if sniffed is None:
+        raise HTTPException(status_code=415, detail="Неподдерживаемый тип аудио")
+    ext, audio_mime = sniffed
     try:
         key = storage.save_file(data, "chat_voice", ext=ext, content_type=audio_mime)
     except Exception as exc:
