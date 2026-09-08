@@ -165,7 +165,7 @@ function esc(v) {
     .replace(/'/g, '&#39;');
 }
 function safeUrl(u) {
-  if (typeof u !== 'string' || !/^https?:\/\//i.test(u)) return '';
+  if (typeof u !== 'string' || !/^https?:\\/\\//i.test(u)) return '';
   return esc(u);
 }
 
