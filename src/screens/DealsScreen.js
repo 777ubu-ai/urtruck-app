@@ -185,9 +185,7 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
         {icon ? <Feather name={icon} size={13} color={active ? colors.accent : colors.inactiveIcon} /> : null}
         <Text
           style={[styles.tabChipText, { color: active ? colors.accent : colors.textSecondary }]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.62}
+          numberOfLines={2}
         >
           {label}
         </Text>
@@ -886,8 +884,8 @@ const styles = StyleSheet.create({
   },
   tabChipText: {
     color: TEXT_SECONDARY,
-    fontSize: 11,
-    lineHeight: 13,
+    fontSize: 12,
+    lineHeight: 15,
     fontWeight: '800',
     flexShrink: 1,
     flexGrow: 1,
