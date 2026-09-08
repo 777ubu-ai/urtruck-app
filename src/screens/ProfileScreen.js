@@ -313,10 +313,6 @@ export default function ProfileScreen({ navigation, route }) {
             </View>
           </View>
 
-          <TouchableOpacity style={[s.pushBtn, { backgroundColor: theme.bg, borderColor: theme.border }]} onPress={() => navigation.navigate('PushFilter', { role })} testID="profile-push-filter" accessibilityLabel={t('pushFilter')}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Feather name="bell" size={14} color={theme.text} /><Text style={[s.settingLabel, { color: theme.text }]}>{t('pushFilter')}</Text></View>
-            <Text style={[s.configureBtn, { color: accent }]}>{t('configure')} →</Text>
-          </TouchableOpacity>
         </View>
 
         {Platform.OS === 'web' ? (

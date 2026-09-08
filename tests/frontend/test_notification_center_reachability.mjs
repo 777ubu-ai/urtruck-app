@@ -10,6 +10,15 @@ test('Profile does not duplicate deal notifications entry or unread badge', () =
   assert.doesNotMatch(profile, /testID: 'profile-notifications'/);
   assert.doesNotMatch(profile, /useUnreadNotifications/, 'Profile must not subscribe to deal unread counter');
   assert.doesNotMatch(profile, /profile-notifications-badge/);
+  assert.doesNotMatch(profile, /profile-push-filter/);
+  assert.doesNotMatch(profile, /navigation\.navigate\(['"]PushFilter/);
+});
+
+test('My Work bell opens notification settings, not the legacy notification list', () => {
+  const myTrips = readFileSync('src/screens/MyTripsScreen.js', 'utf8');
+  assert.match(myTrips, /testID="mywork-notification-settings-btn"/);
+  assert.match(myTrips, /navigation\.navigate\('PushFilter', \{ role \}\)/);
+  assert.doesNotMatch(myTrips, /navigation\.navigate\(['"]Notifications/);
 });
 
 test('NotificationsScreen still clears unread state correctly when reached by supported routing', () => {

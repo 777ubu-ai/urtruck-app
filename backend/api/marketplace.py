@@ -19,6 +19,7 @@ from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
 from services.geo_normalize import normalize_country, is_international_route
+from config import IS_PRODUCTION
 
 
 def _reject_negative_price(value):
@@ -77,6 +78,7 @@ DIRTY_TOKENS = (
 # pickup_date — anything older than this with no pickup is treated as stale
 # pre-pilot leftover.
 PUBLIC_CUTOFF_DATE = "2026-05-01"
+QA_RECORD_MARKER = "[ar-"
 
 
 def _parse_iso_date(s):
@@ -214,8 +216,11 @@ def _is_dirty_text(*fields) -> bool:
     incidentally matches a dirty token (e.g. "QA" inside an agent name).
     """
     blob = " ".join(str(f or "") for f in fields).lower()
-    if "[ar-" in blob:
-        return False
+    # QA records are visible only from an explicitly non-production backend.
+    # The old exception made QA runs against the default production URL leak
+    # fixtures into the ordinary user feed.
+    if QA_RECORD_MARKER in blob:
+        return bool(IS_PRODUCTION)
     return any(tok in blob for tok in DIRTY_TOKENS)
 
 
