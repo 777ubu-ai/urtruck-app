@@ -2,16 +2,18 @@
 
 Два канала:
   1. Web Push — через pywebpush + VAPID (браузер, PWA).
-  2. Native — через Expo Push Service (https://exp.host) — один endpoint
-     работает и для Android (FCM), и для iOS (APNs), без Firebase-ключей.
-     Для подключения «чистого» FCM позже — см. stub ниже.
+  2. Native — через Push Gateway. По умолчанию Expo Push Service
+     сохраняется как legacy-path, но PUSH_PROVIDER_MODE=native|dual включает
+     прямой FCM/APNs через services.push_gateway.
 
 ENV (.env):
   VAPID_PUBLIC_KEY    — публичный VAPID-ключ (base64url, без паддинга)
   VAPID_PRIVATE_KEY   — приватный VAPID-ключ (PEM либо base64url)
   VAPID_SUBJECT       — mailto:admin@urtruck.kz (default)
   EXPO_ACCESS_TOKEN   — опционально (если бот в private mode)
-  FCM_SERVER_KEY      — опционально, если будет прямая интеграция FCM
+  PUSH_PROVIDER_MODE  — expo | native | dual
+  FCM_SERVICE_ACCOUNT_JSON / GOOGLE_APPLICATION_CREDENTIALS + FCM_PROJECT_ID
+  APNS_KEY_ID / APNS_TEAM_ID / APNS_BUNDLE_ID / APNS_AUTH_KEY_P8
 
 Использование:
   from services import push_sender
@@ -30,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import httpx
 
 from database.db import get_conn
+from services import push_gateway
 
 log = logging.getLogger("push")
 
@@ -44,6 +47,15 @@ NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
 
 FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "")
 FCM_MOCK = not FCM_SERVER_KEY
+
+
+def _mask_token(token: str) -> str:
+    if not token:
+        return ""
+    token = str(token)
+    if len(token) <= 12:
+        return token[:4] + "..."
+    return f"{token[:10]}...{token[-6:]}"
 
 
 # ───────────────────────── Storage helpers ─────────────────────────
@@ -233,6 +245,81 @@ def _send_expo(tokens: list[str], title: str, body: str, data: dict, badge: Opti
         return 0
 
 
+def _send_expo_detailed(tokens: list[str], title: str, body: str, data: dict, badge: Optional[int] = None) -> dict:
+    """QA diagnostics variant of _send_expo.
+
+    Returns masked token metadata + Expo tickets so release QA can separate
+    backend/event bugs from Expo/Firebase/Android delivery bugs without
+    exposing raw push tokens.
+    """
+    if not tokens:
+        return {"sent": 0, "tickets": [], "error": None}
+    msg_base = {
+        "title": title,
+        "body": body,
+        "data": data,
+        "sound": "default",
+        "priority": "high",
+        "channelId": NATIVE_PUSH_CHANNEL_ID,
+    }
+    if badge is not None:
+        msg_base["badge"] = int(badge)
+    messages = [{**msg_base, "to": t} for t in tokens]
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if EXPO_TOKEN:
+        headers["Authorization"] = f"Bearer {EXPO_TOKEN}"
+
+    try:
+        r = httpx.post(EXPO_ENDPOINT, headers=headers, json=messages, timeout=10.0)
+    except Exception as e:
+        return {"sent": 0, "tickets": [], "error": f"expo_push_exception: {e}"}
+
+    if r.status_code >= 400:
+        return {"sent": 0, "tickets": [], "error": f"expo_http_{r.status_code}: {r.text[:300]}"}
+
+    try:
+        payload = r.json()
+    except Exception as e:
+        return {"sent": 0, "tickets": [], "error": f"expo_bad_json: {e}"}
+
+    raw_tickets = payload.get("data", [])
+    tickets = []
+    sent = 0
+    for i, ticket in enumerate(raw_tickets):
+        token = tokens[i] if i < len(tokens) else ""
+        item = {
+            "token_masked": _mask_token(token),
+            "status": ticket.get("status") if isinstance(ticket, dict) else None,
+            "id": ticket.get("id") if isinstance(ticket, dict) else None,
+            "message": ticket.get("message") if isinstance(ticket, dict) else None,
+            "details": ticket.get("details") if isinstance(ticket, dict) else None,
+        }
+        if item["status"] == "ok":
+            sent += 1
+        tickets.append(item)
+    return {"sent": sent, "tickets": tickets, "error": None}
+
+
+def expo_receipts(ticket_ids: list[str]) -> dict:
+    """Fetch Expo delivery receipts for ticket IDs returned by diagnostics."""
+    ids = [str(x).strip() for x in (ticket_ids or []) if str(x).strip()]
+    if not ids:
+        return {"receipts": {}, "error": None}
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if EXPO_TOKEN:
+        headers["Authorization"] = f"Bearer {EXPO_TOKEN}"
+    try:
+        r = httpx.post("https://exp.host/--/api/v2/push/getReceipts", headers=headers, json={"ids": ids}, timeout=10.0)
+    except Exception as e:
+        return {"receipts": {}, "error": f"expo_receipt_exception: {e}"}
+    if r.status_code >= 400:
+        return {"receipts": {}, "error": f"expo_receipt_http_{r.status_code}: {r.text[:300]}"}
+    try:
+        return {"receipts": r.json().get("data", {}), "error": None}
+    except Exception as e:
+        return {"receipts": {}, "error": f"expo_receipt_bad_json: {e}"}
+
+
 def _send_fcm(tokens: list[str], title: str, body: str, data: dict) -> int:
     """Отправка через FCM HTTP v1 (прямое Firebase).
     Сейчас stub — включается только если FCM_SERVER_KEY задан.
@@ -255,7 +342,7 @@ def _send_fcm(tokens: list[str], title: str, body: str, data: dict) -> int:
     return sent
 
 
-def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> int:
+def _send_native_legacy(user_id: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> int:
     tokens = _native_tokens(user_id)
     if not tokens:
         return 0
@@ -272,6 +359,106 @@ def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optiona
     if FCM_MOCK and PUSH_MOCK_WEB and not expo_tokens and not fcm_tokens:
         print(f"[PUSH·NATIVE MOCK] {user_id}: {title} · {body}")
     return sent
+
+
+def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> int:
+    """Native delivery with gradual migration.
+
+    push_devices is the new source for provider choice. Legacy
+    push_tokens_native remains a fallback so production users do not lose
+    notifications during rollout.
+    """
+    gateway_result = push_gateway.send_to_devices(
+        user_id,
+        title,
+        body,
+        data,
+        badge,
+        expo_send_one=_send_expo_detailed,
+    )
+    if gateway_result.get("devices", 0) > 0:
+        return int(gateway_result.get("sent", 0) or 0)
+    return _send_native_legacy(user_id, title, body, data, badge=badge)
+
+
+def native_token_diagnostics(user_id: str) -> dict:
+    """Masked active native tokens for a user. QA-only callers must guard this."""
+    tokens = _native_tokens(user_id)
+    devices = push_gateway.active_devices(user_id)
+    return {
+        "user_id": user_id,
+        "count": len(tokens),
+        "device_registry_count": len(devices),
+        "tokens": [
+            {
+                "token_masked": _mask_token(t.get("token")),
+                "provider": t.get("provider"),
+                "platform": t.get("platform"),
+            }
+            for t in tokens
+        ],
+        "devices": [
+            {
+                "id": d.get("id"),
+                "device_id": d.get("device_id"),
+                "token_masked": _mask_token(d.get("push_token")),
+                "provider": d.get("push_provider"),
+                "platform": d.get("platform"),
+                "app_id": d.get("app_id"),
+                "locale": d.get("locale"),
+                "app_version": d.get("app_version"),
+            }
+            for d in devices
+        ],
+    }
+
+
+def send_native_debug(user_id: str, title: str, body: str, data: Optional[dict] = None, url: str = "/", kind: str = "qa_push_test", provider: Optional[str] = None) -> dict:
+    """Direct provider test for one user's active native tokens.
+
+    This bypasses marketplace/chat event creation but keeps the same Expo
+    payload contract used by normal push sends. It is intentionally separate
+    from send() so existing business call-sites keep their current behavior.
+    """
+    if not user_id:
+        return {"user_id": user_id, "tokens": 0, "sent": 0, "tickets": [], "error": "missing_user_id"}
+    data = {**(data or {}), "kind": kind, "url": url}
+    badge = _compute_recipient_badge(user_id)
+    if provider and provider in ("expo", "fcm", "apns", "native", "dual"):
+        mode = "native" if provider in ("fcm", "apns", "native") else provider
+        gateway = push_gateway.send_to_devices(
+            user_id,
+            title,
+            body,
+            data,
+            badge,
+            expo_send_one=_send_expo_detailed,
+            mode=mode,
+            provider_filter=provider if provider in ("expo", "fcm", "apns") else None,
+        )
+        return {
+            "user_id": user_id,
+            "provider": provider,
+            "sent": gateway.get("sent", 0),
+            "devices": gateway.get("devices", 0),
+            "providers": gateway.get("providers", {}),
+            "mode": gateway.get("mode"),
+            "error": None if gateway.get("sent", 0) else "no_provider_delivery",
+        }
+
+    tokens = _native_tokens(user_id)
+    expo_tokens = [t["token"] for t in tokens if t["provider"] == "expo"]
+    fcm_tokens = [t["token"] for t in tokens if t["provider"] == "fcm"]
+    expo_result = _send_expo_detailed(expo_tokens, title, body, data, badge=badge)
+    return {
+        "user_id": user_id,
+        "tokens": len(tokens),
+        "expo_tokens": len(expo_tokens),
+        "fcm_tokens": len(fcm_tokens),
+        "sent": expo_result.get("sent", 0),
+        "tickets": expo_result.get("tickets", []),
+        "error": expo_result.get("error"),
+    }
 
 
 def _compute_recipient_badge(user_id: str) -> int:
@@ -328,11 +515,22 @@ def send(user_id: str, title: str, body: str,
 
     data = data or {}
     data = {**data, "kind": kind, "url": url}
+    event_key = _event_key(data)
 
     # PR#187: повтор того же серверного перехода не создаёт дубль-доставку.
     # Без event_key поведение прежнее (независимые сообщения не дедупятся).
-    if _already_delivered(user_id, _event_key(data)):
+    if _already_delivered(user_id, event_key):
         return {"web": 0, "native": 0, "total": 0, "deduped": True}
+    if event_key:
+        try:
+            push_gateway.enqueue_event(
+                event_key,
+                str(data.get("event") or data.get("type") or kind),
+                user_id,
+                {"title": title, "body": body, "data": data, "url": url},
+            )
+        except Exception:
+            pass
 
     badge = _compute_recipient_badge(user_id)
 
@@ -389,6 +587,7 @@ def info() -> dict:
         "native": {
             "expo": {"endpoint": EXPO_ENDPOINT, "access_token_set": bool(EXPO_TOKEN)},
             "fcm": {"mode": "MOCK" if FCM_MOCK else "REAL"},
+            "gateway": push_gateway.info(),
         },
         "registrations": counts,
     }

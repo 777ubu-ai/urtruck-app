@@ -160,6 +160,56 @@ def test_05_push_audit_table_and_index_exist():
     assert index is not None
 
 
+def test_05b_push_gateway_tables_exist():
+    with get_conn() as c:
+        tables = {
+            row["name"]
+            for row in c.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('push_devices','push_outbox','push_delivery_log')"
+            ).fetchall()
+        }
+        indexes = {
+            row["name"]
+            for row in c.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_push_devices_user','idx_push_outbox_status_next','idx_push_delivery_dedupe')"
+            ).fetchall()
+        }
+    assert {"push_devices", "push_outbox", "push_delivery_log"} <= tables
+    assert {"idx_push_devices_user", "idx_push_outbox_status_next", "idx_push_delivery_dedupe"} <= indexes
+
+
+def test_05c_register_native_writes_unified_device_registry():
+    push_api.register_native(
+        push_api.NativeTokenIn(
+            token="fcm-test-token-production-like",
+            provider="fcm",
+            platform="android",
+            device_name="QA Xiaomi",
+            device_id="device-fcm-0001",
+            app_version="1.0.7",
+            app_id="com.urtruck.app.qa2",
+            locale="ru-RU",
+            os_version="14",
+        ),
+        authorization=None,
+    )
+    with get_conn() as c:
+        legacy = c.execute(
+            "SELECT provider, platform, device_id FROM push_tokens_native WHERE token=?",
+            ("fcm-test-token-production-like",),
+        ).fetchone()
+        device = c.execute(
+            "SELECT push_provider, platform, device_id, app_id, locale, enabled FROM push_devices WHERE push_token=?",
+            ("fcm-test-token-production-like",),
+        ).fetchone()
+    assert legacy["provider"] == "fcm"
+    assert legacy["platform"] == "android"
+    assert device["push_provider"] == "fcm"
+    assert device["app_id"] == "com.urtruck.app.qa2"
+    assert device["locale"] == "ru-RU"
+    assert device["enabled"] == 1
+
+
 def test_06_notification_event_key_added_without_data_loss():
     assert "event_key" in _columns("notifications")
     with get_conn() as c:
