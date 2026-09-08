@@ -28,6 +28,7 @@ import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
 import BellBadge from '../components/ui/v1/BellBadge';
+import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 
 const ACCENT = '#34936B';
 const ACCENT_SOFT = '#EAF5EF';
@@ -474,18 +475,21 @@ export default function FeedScreen({ navigation }) {
         testID="trip-feed-minimal-header"
       >
         <BellBadge
-          onPress={() => navigation.navigate('PushFilter', { role })}
+          onPress={async () => {
+            // PushFilter only exists in the authenticated navigation stack —
+            // gate it like every other account-required action here instead
+            // of silently no-op-ing for a guest/no-role tap.
+            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
+            if (ok) navigation.navigate('PushFilter', { role });
+          }}
           testID="feed-notification-settings-btn"
         />
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Profile', { role })}
-          style={styles.menuBtn}
-          hitSlop={8}
+        <HeaderMenuButton
+          navigation={navigation}
+          role={role}
+          color={colors.text}
           testID="feed-menu-btn"
-          accessibilityLabel={t('tab_profile')}
-        >
-          <Feather name="menu" size={27} color={colors.text} />
-        </TouchableOpacity>
+        />
       </View>
 
       <FlatList

@@ -30,6 +30,7 @@ import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import BellBadge from '../components/ui/v1/BellBadge';
+import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 
 const ACCENT = '#34936B';
 const ACCENT_SOFT = '#EAF5EF';
@@ -492,18 +493,18 @@ export default function CargoFeedScreen({ navigation }) {
     <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
       <View style={[styles.topBar, { backgroundColor: palette.pageBg }]} testID="cargo-feed-minimal-header">
         <BellBadge
-          onPress={() => navigation.navigate('PushFilter', { role })}
+          onPress={async () => {
+            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
+            if (ok) navigation.navigate('PushFilter', { role });
+          }}
           testID="cargo-feed-notification-settings-btn"
         />
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Profile', { role })}
-          style={styles.menuBtn}
-          hitSlop={8}
+        <HeaderMenuButton
+          navigation={navigation}
+          role={role}
+          color={palette.text}
           testID="feed-menu-btn"
-          accessibilityLabel={t('tab_profile')}
-        >
-          <Feather name="menu" size={27} color={palette.text} />
-        </TouchableOpacity>
+        />
       </View>
 
       <FlatList

@@ -25,6 +25,8 @@ import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { isBidActionable } from '../utils/dealsUnread';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
 import BellBadge from '../components/ui/v1/BellBadge';
+import { useVerificationGate } from '../components/VerificationGate';
+import { LEVELS } from '../utils/AuthContext';
 
 const ACCENT = "#34936B";
 const ACCENT_SOFT = '#EAF5EF';
@@ -275,6 +277,7 @@ export default function DealsScreen({ navigation, route }) {
   const role = route?.params?.role || 'client';
   const roleAccent = accentFor(role) || ACCENT;
   const copy = COPY[lang] || COPY.EN;
+  const { requireLevel, Gate } = useVerificationGate();
 
   const [dealTab, setDealTab] = useState("offers");
   const [query, setQuery] = useState("");
@@ -688,7 +691,10 @@ export default function DealsScreen({ navigation, route }) {
     >
       <View style={styles.menuRow}>
         <BellBadge
-          onPress={() => navigation.navigate('PushFilter', { role })}
+          onPress={async () => {
+            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
+            if (ok) navigation.navigate('PushFilter', { role });
+          }}
           testID="deals-notification-settings-btn"
         />
         <HeaderMenuButton
@@ -808,6 +814,7 @@ export default function DealsScreen({ navigation, route }) {
           )}
         />
       )}
+      {Gate}
     </SafeAreaView>
   );
 }
