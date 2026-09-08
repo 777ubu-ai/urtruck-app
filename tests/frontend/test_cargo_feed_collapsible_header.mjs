@@ -29,6 +29,20 @@ test('route selector and all filter chips scroll away with cargo list like a mes
   assert.doesNotMatch(src, /position:\s*['"]sticky['"]/);
 });
 
+test('route selector switches to stacked layout on 320-360dp widths instead of clipping RU placeholders', () => {
+  assert.match(src, /useWindowDimensions/);
+  assert.match(src, /const \{ width: viewportWidth \} = useWindowDimensions\(\)/);
+  assert.match(src, /const routeSelectorCompact = viewportWidth <= 380/);
+  assert.match(src, /routeSelectorCompact && styles\.routeSelectorCompact/);
+  assert.match(src, /routeSelectorCompact \? 'arrow-down' : 'arrow-right'/);
+  assert.match(src, /routeSelectorCompact && styles\.routeHalfCompact/);
+  assert.match(src, /routeSelectorCompact: \{[^}]*flexDirection: 'column'[^}]*alignItems: 'stretch'[^}]*minHeight: 116/);
+  assert.match(src, /routeHalfCompact: \{ width: '100%', flexBasis: 'auto' \}/);
+  assert.match(src, /routeValue: \{ fontSize: 16, lineHeight: 20/);
+  assert.doesNotMatch(src, /routeValue: \{[^}]*fontSize: 11/);
+  assert.doesNotMatch(src, /routeValue: \{[^}]*fontSize: 12/);
+});
+
 test('favorites quick filter uses the same saved cargo ids as card bookmarks', () => {
   assert.match(src, /const \[savedOnly, setSavedOnly\] = useState\(false\)/);
   assert.match(src, /savedOnly && !savedIds\.has\(String\(item\.id\)\)/);

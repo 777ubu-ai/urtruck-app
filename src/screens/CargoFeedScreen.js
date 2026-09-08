@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -255,6 +256,7 @@ export default function CargoFeedScreen({ navigation }) {
   const { t, lang } = useI18n();
   const { theme, isDark } = useTheme();
   const palette = useMemo(() => cargoPalette(theme, isDark), [theme, isDark]);
+  const { width: viewportWidth } = useWindowDimensions();
   const { session } = useAuth();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -278,6 +280,7 @@ export default function CargoFeedScreen({ navigation }) {
   const [savedIds, setSavedIds] = useState(() => new Set());
   const [savedOnly, setSavedOnly] = useState(false);
   const savedBusyRef = React.useRef(new Set());
+  const routeSelectorCompact = viewportWidth <= 380;
 
   const loadSaved = useCallback(async () => {
     if (!myUserId) {
@@ -426,6 +429,7 @@ export default function CargoFeedScreen({ navigation }) {
       <View
         style={[
           styles.routeSelector,
+          routeSelectorCompact && styles.routeSelectorCompact,
           {
             borderColor: (dirFrom || dirTo) ? palette.accent : palette.border,
             backgroundColor: palette.surface,
@@ -434,7 +438,11 @@ export default function CargoFeedScreen({ navigation }) {
         ]}
         testID="feed-route-selector"
       >
-        <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirFromPicker(true)} testID="feed-route-from">
+        <TouchableOpacity
+          style={[styles.routeHalf, routeSelectorCompact && styles.routeHalfCompact]}
+          onPress={() => setShowDirFromPicker(true)}
+          testID="feed-route-from"
+        >
           <View style={styles.routeLabelRow}>
             <Feather name="map-pin" size={14} color={palette.textMuted} />
             <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('from')}</Text>
@@ -443,8 +451,17 @@ export default function CargoFeedScreen({ navigation }) {
             {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
           </Text>
         </TouchableOpacity>
-        <Feather name="arrow-right" size={24} color={ACCENT} />
-        <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirToPicker(true)} testID="feed-route-to">
+        <Feather
+          name={routeSelectorCompact ? 'arrow-down' : 'arrow-right'}
+          size={routeSelectorCompact ? 20 : 24}
+          color={ACCENT}
+          style={routeSelectorCompact && styles.routeArrowCompact}
+        />
+        <TouchableOpacity
+          style={[styles.routeHalf, routeSelectorCompact && styles.routeHalfCompact]}
+          onPress={() => setShowDirToPicker(true)}
+          testID="feed-route-to"
+        >
           <View style={styles.routeLabelRow}>
             <Feather name="flag" size={14} color={palette.textMuted} />
             <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('to')}</Text>
@@ -685,10 +702,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   routeSelectorActive: { borderColor: ACCENT },
+  routeSelectorCompact: { flexDirection: 'column', alignItems: 'stretch', minHeight: 116, paddingVertical: 10, gap: 7 },
   routeHalf: { flex: 1, minWidth: 0 },
+  routeHalfCompact: { width: '100%', flexBasis: 'auto' },
+  routeArrowCompact: { alignSelf: 'center', marginVertical: -1 },
   routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
   routeLabel: { fontSize: 12, lineHeight: 15, fontWeight: '600', color: TEXT_SECONDARY },
-  routeValue: { fontSize: 15, lineHeight: 19, fontWeight: '700', color: TEXT },
+  routeValue: { fontSize: 16, lineHeight: 20, fontWeight: '700', color: TEXT },
   placeholder: { color: '#727D77' },
   filtersScroll: { flexGrow: 0, minHeight: 50, maxHeight: 50 },
   filters: { paddingHorizontal: 18, paddingVertical: 4, gap: 7, alignItems: 'center' },
