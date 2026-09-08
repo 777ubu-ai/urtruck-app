@@ -1398,13 +1398,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   ]}
                   testID="deal-chat-composer"
                 >
+                  {/* DS-2026 канон: [+] [поле + emoji внутри справа] [mic] [Send].
+                    Камера живёт в «+»-меню (PLUS_MENU), отдельной кнопки нет. */}
                   {!recording ? (
                     <TouchableOpacity
-                      style={s.composerCircle}
-                      onPress={sendCameraPhoto}
-                      testID="deal-chat-camera"
+                      style={[s.composerCircle, attachOpen && { transform: [{ rotate: '45deg' }] }]}
+                      onPress={toggleAttachMenu}
+                      testID="deal-chat-attach"
                     >
-                      <Feather name="camera" size={22} color="#202020" />
+                      <Feather name="plus" size={24} color="#202020" />
                     </TouchableOpacity>
                   ) : null}
                   <View style={s.inputShell}>
@@ -1429,37 +1431,27 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       placeholderTextColor="transparent"
                       testID="deal-chat-input"
                     />
-                  </View>
-                  {!composerFocused ? (
                     <TouchableOpacity
-                      style={s.composerCircle}
+                      style={s.inputEmojiBtn}
                       onPress={toggleEmojiMenu}
                       testID="deal-chat-emoji"
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Feather name="smile" size={26} color="#202020" />
+                      <Feather name="smile" size={20} color="#202020" />
                     </TouchableOpacity>
-                  ) : null}
+                  </View>
                   {!recording ? (
                     input.trim() ? (
-                      <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
+                      <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={16} color="#FFFFFF" solid /></TouchableOpacity>
                     ) : (
                       <TouchableOpacity
-                        style={s.composerCircle}
+                        style={[s.composerCircle, s.micCircle]}
                         onPress={toggleVoice}
                         testID="deal-chat-voice"
                       >
-                        <Feather name="volume-2" size={22} color="#202020" />
+                        <Feather name="mic" size={22} color="#FFFFFF" />
                       </TouchableOpacity>
                     )
-                  ) : null}
-                  {!recording ? (
-                    <TouchableOpacity
-                      style={s.composerCircle}
-                      onPress={toggleAttachMenu}
-                      testID="deal-chat-attach"
-                    >
-                      <Feather name="plus" size={27} color="#202020" />
-                    </TouchableOpacity>
                   ) : null}
                 </View>
 
@@ -1795,11 +1787,13 @@ const s = StyleSheet.create({
     elevation: 6,
   },
   composerFocused: { backgroundColor: '#FFFFFF' },
-  composerCircle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  composerCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
+  micCircle: { backgroundColor: '#168759' },
+  inputEmojiBtn: { position: 'absolute', right: 4, top: 0, bottom: 0, width: 40, alignItems: 'center', justifyContent: 'center' },
   inputShell: { flex: 1, minHeight: 34, maxHeight: 74, borderRadius: 18, backgroundColor: '#F7F9F7', borderWidth: StyleSheet.hairlineWidth, borderColor: '#DDE6E1', justifyContent: 'center', position: 'relative' },
-  input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
-  sendButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
+  input: { minHeight: 34, maxHeight: 74, paddingLeft: 12, paddingRight: 44, paddingTop: 6, paddingBottom: 6, fontSize: 16, lineHeight: 21, textAlignVertical: 'top' },
+  sendButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#168759' },
 
   mapFullscreen: { flex: 1 },

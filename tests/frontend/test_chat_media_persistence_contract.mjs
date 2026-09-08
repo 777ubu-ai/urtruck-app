@@ -112,7 +112,12 @@ test('voice recording shows a live indicator, timer, waveform, and send/cancel c
   assert.match(workspace, /recordSecs % 60/);
   assert.match(workspace, /recordWaveBar/);
   assert.match(workspace, /const cancelRecording = React\.useCallback/);
-  assert.match(workspace, /!\s*recording \? \(\s*<TouchableOpacity[\s\S]*testID="deal-chat-camera"/);
+  // DS-2026 canon: the composer starts with the "+" attach button; the camera
+  // action lives inside the "+" menu (PLUS_MENU), not as a standalone composer button.
+  assert.match(workspace, /!\s*recording \? \(\s*<TouchableOpacity[\s\S]*testID="deal-chat-attach"/);
+  assert.doesNotMatch(workspace, /testID="deal-chat-camera"/);
+  assert.match(workspace, /testID:\s*'deal-chat-attach-camera'/);
+  assert.match(workspace, /onPress:\s*sendCameraPhoto,?\s*testID:\s*'deal-chat-attach-camera'/);
   assert.match(workspace, /!\s*recording \? \(\s*input\.trim\(\) \? \(\s*<TouchableOpacity[\s\S]*testID="deal-chat-send"[\s\S]*\)\s*:\s*\(\s*<TouchableOpacity[\s\S]*testID="deal-chat-voice"/);
 });
 

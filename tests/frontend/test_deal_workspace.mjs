@@ -191,7 +191,10 @@ test('composer stays visible while scrolling and avoids duplicate emoji while ty
   assert.doesNotMatch(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
   assert.doesNotMatch(workspace, /testID="deal-chat-composer-collapsed"/);
   assert.doesNotMatch(workspace, /composerCollapsedHandle/);
-  assert.match(workspace, /\{!composerFocused \? \(/);
+  // DS-2026 canon: emoji живёт ВНУТРИ поля ввода (справа) и существует в
+  // единственном экземпляре — дубли при печати исключены конструктивно.
+  const emojiCount = (workspace.match(/testID="deal-chat-emoji"/g) || []).length;
+  assert.equal(emojiCount, 1, 'exactly one emoji button inside the input shell');
   assert.match(workspace, /testID="deal-chat-attach-collapse"/);
   assert.match(workspace, /attachHandle/);
   assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
