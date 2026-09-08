@@ -1004,7 +1004,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "700",
-    letterSpacing: -0.18,
+    letterSpacing: 0,
   },
   price: {
     maxWidth: "37%",
