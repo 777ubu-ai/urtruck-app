@@ -75,10 +75,9 @@ export const WEB_URL = IS_WEB
   ? 'https://urtruck.kz'
   : (ENV_OVERRIDE || 'https://urtruck.kz').replace(/\/+$/, '');
 
-// Beta pricing flag — keeps premium features free during the
-// pilot. Toggling to false enables paywalls; coordinate with
-// product before flipping.
-export const IS_BETA = true;
+// ВРЕМЕННО: false только для internal-теста покупки подписки (сборка
+// 08.09.2026). После теста откатить, монетизация на проде ещё не решена.
+export const IS_BETA = false;
 
 // Hard guard: if a production build somehow ended up with an
 // HTTP endpoint, fail loud at module-init so QA/the operator
