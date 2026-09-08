@@ -4,70 +4,12 @@
 // brand/status constants that do not need to change with the theme.
 
 import { useTheme } from '../utils/ThemeContext';
-
-const DARK = {
-  bg: '#0F1512',
-  bgDeep: '#0B100D',
-  surface: '#151E19',
-  surfaceLift: '#1B2620',
-  surfaceMuted: '#202C25',
-
-  border: '#2A3930',
-  borderStrong: '#3A4B40',
-
-  // Keep one UrTruck green identity in both roles. #168759 with white text
-  // remains WCAG-AA for normal CTA text (~4.5:1) and avoids neon glare.
-  driver: '#168759',
-  driverDeep: '#0F6B47',
-  driverGlow: 'rgba(22,135,89,0.30)',
-  driverSoft: 'rgba(22,135,89,0.18)',
-  driverOnAccent: '#FFFFFF',
-
-  cargoOwner: '#168759',
-  cargoOwnerDeep: '#0F6B47',
-  cargoOwnerGlow: 'rgba(22,135,89,0.30)',
-  cargoOwnerSoft: 'rgba(22,135,89,0.18)',
-
-  text: '#F3F7F4',
-  textMuted: '#B7C3BB',
-  textDim: '#9EAAA2',
-  placeholder: '#9EAAA2',
-
-  error: '#FF7B7B',
-  success: '#63D69A',
-  warning: '#F5B75B',
-};
-
-const LIGHT = {
-  bg: '#F6F8F7',
-  bgDeep: '#FFFFFF',
-  surface: '#FFFFFF',
-  surfaceLift: '#F3FBF7',
-  surfaceMuted: '#F0F4F2',
-
-  border: '#E5ECE8',
-  borderStrong: '#C8D8CF',
-
-  driver: '#168759',
-  driverDeep: '#0F6B47',
-  driverGlow: 'rgba(22,135,89,0.18)',
-  driverSoft: '#E8F6EF',
-  driverOnAccent: '#FFFFFF',
-
-  cargoOwner: '#168759',
-  cargoOwnerDeep: '#0F6B47',
-  cargoOwnerGlow: 'rgba(22,135,89,0.18)',
-  cargoOwnerSoft: '#E8F6EF',
-
-  text: '#14221C',
-  textMuted: '#617067',
-  textDim: '#7C8B82',
-  placeholder: '#6B7A71',
-
-  error: '#D64545',
-  success: '#168759',
-  warning: '#B76B00',
-};
+// Track B / B6: palette data now lives in designV1Palette.js (zero
+// dependencies, importable from plain Node tooling) so
+// qa/utils/themeContrastSmoke.js can import the real values instead of a
+// hand-copy that had already drifted (see that file's own comment). This
+// file adds nothing but the theme-aware hook on top of the same data.
+import { LIGHT, DARK } from './designV1Palette';
 
 // Backwards compatibility. User-facing surfaces/text should not consume
 // theme-dependent keys from this frozen object; qa/utils/themeSmoke.js guards

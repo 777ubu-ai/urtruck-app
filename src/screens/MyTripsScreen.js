@@ -83,8 +83,8 @@ export default function MyTripsScreen({ navigation, route }) {
   // Дизайн 2026 v3: плашка «N предложений» — outline вместо заливки,
   // компактнее (меньше 32px), шрифт 12. Не «кричит».
   offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: '#FF8400', backgroundColor: 'transparent' },
-  offersCtaText: { color: '#E06D00', fontSize: 12, fontWeight: '700', flex: 1 },
-  offersCtaArrow: { color: '#E06D00', fontSize: 14, fontWeight: '700' },
+  offersCtaText: { color: v1.warning, fontSize: 12, fontWeight: '700', flex: 1 },
+  offersCtaArrow: { color: v1.warning, fontSize: 14, fontWeight: '700' },
 
   // 27.07: кнопки действий сделки вылезали за карточку. Делаем их гибкими
   // (flexGrow/Shrink + minWidth) — в ряду с flexWrap они заполняют ширину и
@@ -508,7 +508,7 @@ export default function MyTripsScreen({ navigation, route }) {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Feather name="edit-3" size={14} color="#FF8400" />
-                <Text style={[s.miniBtnText, { color: '#E06D00' }]}>{t('edit_btn')}</Text>
+                <Text style={[s.miniBtnText, { color: v1.warning }]}>{t('edit_btn')}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity
