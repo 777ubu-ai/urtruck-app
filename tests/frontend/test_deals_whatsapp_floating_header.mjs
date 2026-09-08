@@ -27,6 +27,19 @@ test('deal inbox scrolls menu, primary chips, and search away with the list', ()
   assert.doesNotMatch(deals, /t\('tab_deals'\)/);
 });
 
+test('deals root header keeps bell left and menu right instead of a centered icon pair', () => {
+  const match = deals.match(/menuRow: \{([\s\S]*?)\n  \},/);
+  assert.ok(match, 'menuRow style must exist');
+  const menuRow = match[1];
+  assert.match(menuRow, /flexDirection: 'row'/);
+  assert.match(menuRow, /minHeight: 48/);
+  assert.match(menuRow, /justifyContent: 'space-between'/);
+  assert.match(menuRow, /alignItems: 'center'/);
+  assert.doesNotMatch(menuRow, /justifyContent: 'center'/);
+  assert.doesNotMatch(menuRow, /gap: 2/);
+  assert.match(deals, /testID="deals-notification-bell-btn"[\s\S]*testID="deals-menu-btn"/);
+});
+
 test("archive is separate and includes completed deals plus closed negotiations", () => {
   assert.match(deals, /ARCHIVE_DEAL_STATUSES/);
   assert.match(deals, /CLOSED_BID_STATUSES/);

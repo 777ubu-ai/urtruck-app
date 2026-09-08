@@ -833,13 +833,12 @@ const styles = StyleSheet.create({
   },
   menuRow: {
     flexDirection: 'row',
-    gap: 2,
-    minHeight: 38,
+    minHeight: 48,
     paddingHorizontal: 18,
     paddingTop: 0,
     paddingBottom: 0,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   tabsRow: {
     minHeight: 52,
