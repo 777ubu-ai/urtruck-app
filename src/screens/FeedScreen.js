@@ -182,6 +182,17 @@ export default function FeedScreen({ navigation }) {
       : (GEO_COUNTRIES[code]?.name || code);
   };
 
+  // Track: Claude harness fix, feed placeholder truncation. Callers used to
+  // pass t('create_field_from_placeholder')/t('create_field_to_placeholder')
+  // here ('Например, Алматы' / 'Например, Москва') — that text is sized for
+  // CreateTripScreen.js's full-width input, not this filter's ~50%-width
+  // routeHalf column with numberOfLines={1}; it visibly clipped to
+  // "Например, Алм…" / "Например, Мос…" (the routeLabel row right above
+  // already says "Откуда"/"Куда", so an "example city" hint is redundant
+  // here anyway). Callers now pass t('city') instead — short, fits the
+  // column, and reads naturally under the From/To label without repeating
+  // it. The two create_field_*_placeholder keys are unchanged (still used
+  // by the real forms) — this only changes what filter callers pass in.
   const routeValue = (city, countryCode, placeholder) => {
     if (city) return localizePlace(city, lang);
     if (countryCode) return `${GEO_COUNTRIES[countryCode]?.flag || ''} ${countryLabel(countryCode)}`.trim();
@@ -392,7 +403,7 @@ export default function FeedScreen({ navigation }) {
             style={[styles.routeValue, { color: (dirFrom || dirFromCountry) ? colors.text : colors.textMuted }]}
             numberOfLines={1}
           >
-            {routeValue(dirFrom, dirFromCountry, t('create_field_from_placeholder'))}
+            {routeValue(dirFrom, dirFromCountry, t('city'))}
           </Text>
         </TouchableOpacity>
 
@@ -411,7 +422,7 @@ export default function FeedScreen({ navigation }) {
             style={[styles.routeValue, { color: (dirTo || dirToCountry) ? colors.text : colors.textMuted }]}
             numberOfLines={1}
           >
-            {routeValue(dirTo, dirToCountry, t('create_field_to_placeholder'))}
+            {routeValue(dirTo, dirToCountry, t('city'))}
           </Text>
         </TouchableOpacity>
 

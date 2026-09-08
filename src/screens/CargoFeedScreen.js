@@ -437,8 +437,13 @@ export default function CargoFeedScreen({ navigation }) {
             <Feather name="map-pin" size={14} color={palette.textMuted} />
             <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('from')}</Text>
           </View>
+          {/* Track: Claude harness fix, feed placeholder truncation. Was
+              t('create_field_from_placeholder') ('Например, Алматы') — sized
+              for CreateTripScreen.js's full-width input, not this ~50%-width
+              routeHalf column; clipped to "Например, Алм…". t('city') is
+              short and reads naturally under the "Откуда" label above. */}
           <Text style={[styles.routeValue, { color: palette.text }, !dirFrom && { color: palette.textMuted }]} numberOfLines={1}>
-            {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
+            {dirFrom ? localizePlace(dirFrom, lang) : t('city')}
           </Text>
         </TouchableOpacity>
         <Feather name="arrow-right" size={24} color={ACCENT} />
@@ -448,7 +453,7 @@ export default function CargoFeedScreen({ navigation }) {
             <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('to')}</Text>
           </View>
           <Text style={[styles.routeValue, { color: palette.text }, !dirTo && { color: palette.textMuted }]} numberOfLines={1}>
-            {dirTo ? localizePlace(dirTo, lang) : t('create_field_to_placeholder')}
+            {dirTo ? localizePlace(dirTo, lang) : t('city')}
           </Text>
         </TouchableOpacity>
         {(dirFrom || dirTo) ? (
