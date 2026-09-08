@@ -104,8 +104,17 @@ def get_score(user_id: str, user=Depends(require_level(1))):
     return score
 
 
+def _require_own_user_id(query_user_id: str, user: dict) -> None:
+    """IDOR-guard: верификационные записи (OCR/биометрия) пишутся только
+    от своего имени. user_id из query обязан совпадать с аутентифицированным
+    пользователем — без admin-bypass (ср. owner-check в /verification/{id}/history)."""
+    if query_user_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Можно загружать документы только на свой user_id")
+
+
 @router.post("/ocr/passport", response_model=OCRResponse)
 async def ocr_passport(file: UploadFile = File(...), user_id: str = Query(...), user=Depends(require_level(1))):
+    _require_own_user_id(user_id, user)
     with temp_upload_file(await file.read()) as tmp_path:
         result = extract_passport_data(tmp_path)
     if result.get("success"):
@@ -178,6 +187,7 @@ def gov_check(req: CheckQuickRequest, user=Depends(require_level(1))):
 
 @router.post("/biometric/liveness")
 async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(...), user=Depends(require_level(1))):
+    _require_own_user_id(user_id, user)
     from biometrics.liveness import check_liveness
     with temp_upload_file(await file.read()) as tmp_path:
         r = check_liveness(tmp_path)
@@ -190,6 +200,7 @@ async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(
 @router.post("/biometric/face_match")
 async def biometric_face_match(selfie: UploadFile = File(...), document: UploadFile = File(...),
                                 user_id: str = Query(...), user=Depends(require_level(1))):
+    _require_own_user_id(user_id, user)
     from biometrics.liveness import face_match
     with temp_upload_file(await selfie.read()) as p1, temp_upload_file(await document.read()) as p2:
         r = face_match(p1, p2)
