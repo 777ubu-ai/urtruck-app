@@ -58,6 +58,10 @@ const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected', 'expired'];
 const COMPOSER_INPUT_MIN_HEIGHT = 32;
 const COMPOSER_INPUT_MAX_HEIGHT = 74;
 const COMPOSER_INPUT_VERTICAL_PADDING = 8;
+const CHAT_MESSAGE_BOTTOM_GAP = 12;
+const COMPOSER_CLOSED_BOTTOM_MIN = 12;
+const COMPOSER_PANEL_BOTTOM = 8;
+const COMPOSER_BASE_HEIGHT = 58;
 
 // WhatsApp-style chat is the default view; the trip map is a deliberate,
 // button-triggered secondary view (PR #255 review: "map-first бардак" was the
@@ -261,6 +265,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [statusModalOpen, setStatusModalOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
   const [composerFocused, setComposerFocused] = React.useState(false);
+  const [composerHeight, setComposerHeight] = React.useState(COMPOSER_BASE_HEIGHT);
   const [emojiOpen, setEmojiOpen] = React.useState(false);
   const [recordSecs, setRecordSecs] = React.useState(0);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
@@ -294,6 +299,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   ), [t]);
   const settleConfirm = React.useCallback((answer) => {
     setConfirmDialog((current) => { current?.resolve?.(answer); return null; });
+  }, []);
+  const composerBottomOffset = attachOpen || emojiOpen
+    ? COMPOSER_PANEL_BOTTOM
+    : Math.max(insets.bottom + 8, COMPOSER_CLOSED_BOTTOM_MIN);
+  const composerGrowthClearance = Math.max(0, composerHeight - COMPOSER_BASE_HEIGHT);
+  const safeAreaClearance = attachOpen || emojiOpen
+    ? 0
+    : Math.max(0, composerBottomOffset - COMPOSER_CLOSED_BOTTOM_MIN);
+  const messageBottomClearance = Math.ceil(CHAT_MESSAGE_BOTTOM_GAP + composerGrowthClearance + safeAreaClearance);
+  const onComposerLayout = React.useCallback((event) => {
+    const nextHeight = Math.ceil(event.nativeEvent.layout.height || COMPOSER_BASE_HEIGHT);
+    setComposerHeight((current) => (Math.abs(current - nextHeight) > 1 ? nextHeight : current));
   }, []);
 
   React.useEffect(() => {
@@ -1362,6 +1379,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     style={s.messageList}
                     contentContainerStyle={s.messageContent}
                     keyboardShouldPersistTaps="handled"
+                    ListFooterComponent={<View style={{ height: messageBottomClearance }} testID="deal-chat-bottom-clearance" />}
                     onScroll={(event) => {
                       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
                       const nearBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 80;
@@ -1404,9 +1422,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     composerFocused && s.composerFocused,
                     {
                       paddingBottom: attachOpen || emojiOpen ? 10 : 10,
-                      marginBottom: attachOpen || emojiOpen ? 8 : Math.max(insets.bottom + 8, 12),
+                      marginBottom: composerBottomOffset,
                     },
                   ]}
+                  onLayout={onComposerLayout}
                   testID="deal-chat-composer"
                 >
                   {/* DS-2026 канон: [+] [поле + emoji внутри справа] [mic] [Send].
@@ -1704,7 +1723,7 @@ const s = StyleSheet.create({
 
   chatBody: { flex: 1, position: 'relative', backgroundColor: '#F4EFE7' },
   messageList: { flex: 1 },
-  messageContent: { paddingHorizontal: 14, paddingTop: 18, paddingBottom: 14 },
+  messageContent: { paddingHorizontal: 14, paddingTop: 18, paddingBottom: 0 },
   messageRow: { marginBottom: 10, paddingHorizontal: 4 },
   messageMine: { alignItems: 'flex-end' },
   messageThem: { alignItems: 'flex-start' },

@@ -49,3 +49,18 @@ test('input text is Body 16sp with room for the in-field emoji button', () => {
   assert.match(src, /input: \{[^}]*paddingRight: 44,/);
   assert.match(src, /inputEmojiBtn: \{ position: 'absolute', right: 4,/);
 });
+
+test('closed composer reserves measured bottom clearance without double safe-area gap', () => {
+  assert.match(src, /const CHAT_MESSAGE_BOTTOM_GAP = 12/);
+  assert.match(src, /const COMPOSER_CLOSED_BOTTOM_MIN = 12/);
+  assert.match(src, /const COMPOSER_BASE_HEIGHT = 58/);
+  assert.match(src, /const \[composerHeight, setComposerHeight\] = React\.useState\(COMPOSER_BASE_HEIGHT\)/);
+  assert.match(src, /const composerBottomOffset = attachOpen \|\| emojiOpen[\s\S]*?Math\.max\(insets\.bottom \+ 8, COMPOSER_CLOSED_BOTTOM_MIN\)/);
+  assert.match(src, /const composerGrowthClearance = Math\.max\(0, composerHeight - COMPOSER_BASE_HEIGHT\)/);
+  assert.match(src, /const safeAreaClearance = attachOpen \|\| emojiOpen[\s\S]*?Math\.max\(0, composerBottomOffset - COMPOSER_CLOSED_BOTTOM_MIN\)/);
+  assert.match(src, /const messageBottomClearance = Math\.ceil\(CHAT_MESSAGE_BOTTOM_GAP \+ composerGrowthClearance \+ safeAreaClearance\)/);
+  assert.match(src, /ListFooterComponent=\{<View style=\{\{ height: messageBottomClearance \}\} testID="deal-chat-bottom-clearance" \/>}/);
+  assert.match(src, /onLayout=\{onComposerLayout\}/);
+  assert.match(src, /messageContent: \{ paddingHorizontal: 14, paddingTop: 18, paddingBottom: 0 \}/);
+  assert.doesNotMatch(src, /messageContent: \{ paddingHorizontal: 14, paddingTop: 18, paddingBottom: 14 \}/);
+});
