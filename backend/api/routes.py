@@ -1,6 +1,5 @@
 """API маршруты UrTruck Security — все endpoints кроме public требуют авторизацию."""
 import sys
-import tempfile
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -12,6 +11,7 @@ from api.models import (
     CheckFullRequest, CheckQuickRequest, BlacklistAddRequest,
     ScoreResponse, OCRResponse,
 )
+from services.tempfile_guard import temp_upload_file
 from api.verification_gate import require_level, get_user, require_admin
 from api.routing import routing_router
 from scoring.engine import calculate_score, quick_check
@@ -106,10 +106,8 @@ def get_score(user_id: str, user=Depends(require_level(1))):
 
 @router.post("/ocr/passport", response_model=OCRResponse)
 async def ocr_passport(file: UploadFile = File(...), user_id: str = Query(...), user=Depends(require_level(1))):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-        tmp.write(await file.read())
-        tmp_path = tmp.name
-    result = extract_passport_data(tmp_path)
+    with temp_upload_file(await file.read()) as tmp_path:
+        result = extract_passport_data(tmp_path)
     if result.get("success"):
         db.save_ocr(user_id, "tech_passport", result, result.get("confidence", 0.0))
     return result
@@ -180,12 +178,9 @@ def gov_check(req: CheckQuickRequest, user=Depends(require_level(1))):
 
 @router.post("/biometric/liveness")
 async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(...), user=Depends(require_level(1))):
-    import tempfile
     from biometrics.liveness import check_liveness
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-        tmp.write(await file.read())
-        tmp_path = tmp.name
-    r = check_liveness(tmp_path)
+    with temp_upload_file(await file.read()) as tmp_path:
+        r = check_liveness(tmp_path)
     db.log_verification(user_id, "biometric", "liveness",
                          "pass" if r.get("liveness_passed") else "fail",
                          r, 10 if r.get("liveness_passed") else -5)
@@ -195,13 +190,9 @@ async def biometric_liveness(file: UploadFile = File(...), user_id: str = Query(
 @router.post("/biometric/face_match")
 async def biometric_face_match(selfie: UploadFile = File(...), document: UploadFile = File(...),
                                 user_id: str = Query(...), user=Depends(require_level(1))):
-    import tempfile
     from biometrics.liveness import face_match
-    p1 = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-    p2 = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-    p1.write(await selfie.read()); p1.close()
-    p2.write(await document.read()); p2.close()
-    r = face_match(p1.name, p2.name)
+    with temp_upload_file(await selfie.read()) as p1, temp_upload_file(await document.read()) as p2:
+        r = face_match(p1, p2)
     db.log_verification(user_id, "biometric", "face_match",
                          "pass" if r.get("match") else "fail",
                          r, 15 if r.get("match") else -10)
@@ -210,12 +201,9 @@ async def biometric_face_match(selfie: UploadFile = File(...), document: UploadF
 
 @router.post("/parsers/whatsapp_screenshot")
 async def whatsapp_screenshot(file: UploadFile = File(...), user=Depends(require_level(1))):
-    import tempfile
     from parsers.whatsapp_monitor import process_screenshot
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-        tmp.write(await file.read())
-        tmp_path = tmp.name
-    return process_screenshot(tmp_path)
+    with temp_upload_file(await file.read()) as tmp_path:
+        return process_screenshot(tmp_path)
 
 
 @router.get("/gov/{country}")

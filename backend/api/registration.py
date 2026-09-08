@@ -1,6 +1,5 @@
 """Регистрация водителей — 5 этапов + auto-moderation."""
 import sys
-import tempfile
 import json
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -14,6 +13,7 @@ from services.whatsapp_service import generate_code, send_whatsapp_code, MOCK_MO
 from services.iin_validator import validate_iin_kz, extract_birthdate_from_iin
 from services import storage_service as storage
 from services import otp_service
+from services.tempfile_guard import temp_upload_file
 from api.rate_limit import limit_otp_send, limit_otp_send_ip, limit_otp_verify, limit_guest_create
 from ocr.document_reader import extract_passport_data
 from biometrics.liveness import check_liveness, face_match
@@ -599,16 +599,8 @@ async def upload_license_selfie(
         raise HTTPException(status_code=400, detail="Пустой файл")
     # Антифрод-гейт: на селфи с правами должно быть лицо.
     try:
-        import tempfile
-        from biometrics.liveness import check_liveness
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-            tmp.write(data)
-            tmp_path = tmp.name
-        live = check_liveness(tmp_path) or {}
-        try:
-            Path(tmp_path).unlink(missing_ok=True)
-        except Exception:
-            pass
+        with temp_upload_file(data) as tmp_path:
+            live = check_liveness(tmp_path) or {}
         reason = (live.get("reason") or "").lower()
         if "лицо не обнаружено" in reason or "лицо не найдено" in reason:
             raise HTTPException(
