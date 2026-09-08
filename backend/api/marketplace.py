@@ -600,6 +600,10 @@ def list_cargos(
     offset: int = 0,
 ):
     """Публичный список грузов. Demo-контент скрыт по умолчанию."""
+    # Cap пагинации: без верхней границы limit=10**9 заставляет SQLite
+    # материализовать всю таблицу (DoS-вектор аудита C1.4).
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
     where = ["status = ?"]
     params = [status]
     if from_city:
@@ -1240,6 +1244,9 @@ def list_trips(
     limit: int = 50,
     offset: int = 0,
 ):
+    # Cap пагинации — та же защита, что в list_cargos (аудит C1.4).
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
     where = ["status = ?"]
     params = [status]
     if from_city:
