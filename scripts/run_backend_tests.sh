@@ -6,6 +6,8 @@ cd "$ROOT_DIR/backend"
 
 export PYTHONPATH="$ROOT_DIR:$ROOT_DIR/backend${PYTHONPATH:+:$PYTHONPATH}"
 export APP_ENV="${APP_ENV:-test}"
+export URTRUCK_ENV="${URTRUCK_ENV:-test}"
+export ENV="${ENV:-test}"
 export CGR_IIN_SALT="${CGR_IIN_SALT:-ci-test-salt-not-a-secret}"
 export DB_PATH="${DB_PATH:-${TMPDIR:-/tmp}/urtruck-tests.db}"
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python || command -v python3)}"
