@@ -1,7 +1,7 @@
 // Design System 2026 — Skeleton (§40) and barrel exports.
 import React from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
-import { useTokens, radius2026, space2026 } from '../../theme/tokens2026';
+import { useTokens, radius2026, space2026 } from '../../../theme/tokens2026';
 
 /** Skeleton > spinner whenever screen structure is known (§40).
  *  No infinite shimmer without a state: parent must swap to an explorable

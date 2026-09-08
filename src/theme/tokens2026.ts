@@ -166,7 +166,7 @@ export const type2026 = {
 export type TypeToken = keyof typeof type2026;
 
 /** ZH lineHeight compensation (+2) per §3 — CJK glyphs must never clip. */
-export const withZhLeading = <T extends { lineHeight?: number }>(style: T, isZh: boolean): T =>
+export const withZhLeading = <T extends { lineHeight?: number },>(style: T, isZh: boolean): T =>
   isZh && typeof style.lineHeight === 'number'
     ? { ...style, lineHeight: style.lineHeight + 2 }
     : style;

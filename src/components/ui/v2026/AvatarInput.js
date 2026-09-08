@@ -1,7 +1,7 @@
 // Design System 2026 — Avatar (§16/§55) and Input (§8).
 import React from 'react';
 import { View, Text, Image, TextInput, StyleSheet } from 'react-native';
-import { useTokens, type2026, radius2026, metrics2026, space2026 } from '../../theme/tokens2026';
+import { useTokens, type2026, radius2026, metrics2026, space2026 } from '../../../theme/tokens2026';
 
 export function Avatar2026({ uri, name = '', size = metrics2026.avatarList, role, style }) {
   const t = useTokens();

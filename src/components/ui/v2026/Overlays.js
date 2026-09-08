@@ -2,7 +2,7 @@
 import React from 'react';
 import { View, Modal as RNModal, TouchableOpacity, TouchableWithoutFeedback, StyleSheet, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTokens, radius2026, space2026, metrics2026, motion2026 } from '../../theme/tokens2026';
+import { useTokens, radius2026, space2026, metrics2026, motion2026 } from '../../../theme/tokens2026';
 import Text2026 from './Text';
 
 export function BottomSheet2026({ visible, onClose, title, children, dismissable = true }) {

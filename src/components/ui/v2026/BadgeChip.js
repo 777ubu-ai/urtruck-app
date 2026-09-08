@@ -1,7 +1,7 @@
 // Design System 2026 — Badge (§30) and Chip (§10/§63).
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useTokens, type2026, metrics2026, radius2026 } from '../../theme/tokens2026';
+import { useTokens, type2026, metrics2026, radius2026 } from '../../../theme/tokens2026';
 
 export function Badge2026({ value, dot = false, tone = 'status.danger.main', style }) {
   const t = useTokens();

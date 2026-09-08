@@ -4,7 +4,7 @@
 import React from 'react';
 import { TouchableOpacity, Platform, StyleSheet, View, Text } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
-import { useTokens, type2026, metrics2026 } from '../../theme/tokens2026';
+import { useTokens, type2026, metrics2026 } from '../../../theme/tokens2026';
 
 export default function IconButton2026({
   icon,                 // Feather icon name — single icon system (§15)

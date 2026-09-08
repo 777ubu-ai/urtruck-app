@@ -5,7 +5,7 @@
 // layout must adapt — shrinking text to fit is forbidden (§2.3).
 import React from 'react';
 import { TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { useTokens, type2026, radius2026, metrics2026 } from '../../theme/tokens2026';
+import { useTokens, type2026, radius2026, metrics2026 } from '../../../theme/tokens2026';
 import Text2026 from './Text';
 
 const HEIGHTS = {

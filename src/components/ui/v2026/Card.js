@@ -2,7 +2,7 @@
 // border, minimal shadow. Hierarchy: main → route → price → meta → status → action.
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { useTokens, radius2026, space2026 } from '../../theme/tokens2026';
+import { useTokens, radius2026, space2026 } from '../../../theme/tokens2026';
 
 export default function Card2026({ children, elevated = false, style, ...rest }) {
   const t = useTokens();

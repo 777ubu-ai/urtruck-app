@@ -2,7 +2,7 @@
 import React from 'react';
 import { View, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTokens, metrics2026, space2026 } from '../../theme/tokens2026';
+import { useTokens, metrics2026, space2026 } from '../../../theme/tokens2026';
 import Text2026 from './Text';
 import IconButton2026 from './IconButton';
 
