@@ -1183,6 +1183,25 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const openMap = () => { setAttachOpen(false); setCallMenuOpen(false); setViewMode(VIEW_MAP); };
   const closeMap = () => setViewMode(VIEW_CHAT);
 
+  // GPS deep-link P1 fix: backend's tracking-request/approved/declined/
+  // stopped pushes set url=/deals/{id}?action=tracking
+  // (backend/api/marketplace.py:_tracking_notify) so the app knows to
+  // surface GPS context immediately, not leave the tapper to find it
+  // themselves in a plain chat view. App.js/NotificationsScreen.js now
+  // thread `action` through unchanged; this is where it actually lands.
+  // No separate "approve/decline GPS" banner exists on this screen yet
+  // (marketAPI.requestTracking/respondTracking have no live UI caller —
+  // flagged separately, out of scope for this fix per "don't create a
+  // second DealWorkspace route / don't invent new product UI"), so the
+  // most accurate thing this screen can honestly do today is open the
+  // live map, which is where any tracking state is actually visible.
+  // Runs once, reacting to the deep-link's initial intent — not on every
+  // params identity change React Navigation may produce afterward.
+  React.useEffect(() => {
+    if (params.action === 'tracking') openMap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const sendDealShare = React.useCallback(() => {
     const parts = [
       ui.dealShareTitle,
