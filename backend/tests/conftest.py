@@ -15,12 +15,23 @@ Harness унифицирует DB_PATH до import тест-модулей и п
 import os
 
 # До любого импорта config/db/chat — единый DB_PATH на все test modules.
-os.environ["DB_PATH"] = "/tmp/urtruck_tests_badge_suite.db"
+os.environ.setdefault("DB_PATH", "/tmp/urtruck_tests_badge_suite.db")
+os.environ["URTRUCK_ENV"] = "test"
+os.environ["ENV"] = "test"
+os.environ["BETA_MODE"] = "true"
 os.environ.setdefault("FILE_SIGNING_KEY", "test-file-signing-key-32-bytes-minimum")
 os.environ.setdefault("CGR_IIN_SALT", "pytest-harness-salt-not-a-secret")
 
 from pathlib import Path
 import pytest
+
+# Some modules initialise their schema at import time during pytest collection
+# (before fixtures run). Bootstrap the two foundational schemas here so those
+# imports cannot bind to an empty database.
+from database import db as _collection_db
+from database import registration_dal as _collection_registration
+_collection_db.init_db()
+_collection_registration.init_registration_schema()
 
 
 @pytest.fixture(scope="session", autouse=True)

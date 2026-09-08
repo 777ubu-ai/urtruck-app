@@ -28,42 +28,16 @@ jobs:
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest pytest-json-report
-      - name: Run every backend/API module in isolation
+          pip install -r requirements-test.txt
+      - name: Run canonical backend/API suite
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
           APP_ENV: test
         run: |
-          set -euo pipefail
           python -m compileall -q backend
-          mkdir -p qa-artifacts/backend-json qa-artifacts/backend-logs
-          count=0
-          failed=0
-          while IFS= read -r test_file; do
-            count=$((count + 1))
-            stem="$(basename "$test_file" .py)"
-            db_path="${{ runner.temp }}/urtruck-full-qa-${count}.db"
-            rm -f "$db_path" "$db_path-wal" "$db_path-shm"
-            echo "::group::${stem}"
-            set +e
-            if grep -Eq '^def test_' "$test_file"; then
-              DB_PATH="$db_path" URTRUCK_DB_PATH="$db_path" \
-                pytest "$test_file" -q --disable-warnings --maxfail=25 \
-                --json-report --json-report-file="qa-artifacts/backend-json/${stem}.json" \
-                2>&1 | tee "qa-artifacts/backend-logs/${stem}.log"
-              rc=${PIPESTATUS[0]}
-            else
-              DB_PATH="$db_path" URTRUCK_DB_PATH="$db_path" \
-                python "$test_file" 2>&1 | tee "qa-artifacts/backend-logs/${stem}.log"
-              rc=${PIPESTATUS[0]}
-            fi
-            set -e
-            echo "::endgroup::"
-            if [ "$rc" -ne 0 ]; then failed=$((failed + 1)); fi
-          done < <(find backend/tests -type f -name 'test_*.py' | sort)
-          printf '{"modules":%s,"failed_modules":%s}\n' "$count" "$failed" > qa-artifacts/backend-summary.json
-          test "$count" -gt 0
-          test "$failed" -eq 0
+          mkdir -p qa-artifacts
+          DB_PATH="${{ runner.temp }}/urtruck-full-qa.db" \
+            ./scripts/run_backend_tests.sh --isolated --disable-warnings
       - name: Upload backend reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -185,7 +159,7 @@ jobs:
         run: npm run qa:center:quick
       - name: Run frontend unit regressions
         run: |
-          node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/*.mjs
+          npm run test:unit
       - name: Archive production build and QA definitions
         if: always()
         uses: actions/upload-artifact@v4

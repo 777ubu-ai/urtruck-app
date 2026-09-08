@@ -68,8 +68,11 @@ jobs:
       - name: Build production web with Yandex Maps
         env:
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          EXPO_PUBLIC_IS_BETA: 'false'
+          EAS_BUILD_PROFILE: production
         run: |
           set -euo pipefail
+          npm run release:check-config
           npm run build:web
           node scripts/injectYandexMaps.mjs
           test -s dist/index.html
