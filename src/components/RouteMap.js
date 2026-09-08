@@ -194,7 +194,7 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
 const s = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingTop: 11 },
-  title: { fontSize: 11.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.35 },
+  title: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.35 },
   route: { fontSize: 14, fontWeight: '800', paddingHorizontal: 12, paddingTop: 5, paddingBottom: 10 },
   mapWrap: { height: 250, position: 'relative', overflow: 'hidden', backgroundColor: '#EAF1ED' },
   loadingPill: { position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.94)' },
@@ -220,7 +220,7 @@ const s = StyleSheet.create({
   },
   fullscreenTitleWrap: { flex: 1 },
   fullscreenTitle: { fontSize: 18, fontWeight: '900' },
-  fullscreenRoute: { marginTop: 3, fontSize: 12.5, fontWeight: '700' },
+  fullscreenRoute: { marginTop: 3, fontSize: 12, fontWeight: '700' },
   closeButton: {
     width: 44, height: 44, borderRadius: 22, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',

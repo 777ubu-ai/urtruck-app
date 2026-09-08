@@ -329,9 +329,9 @@ const s = StyleSheet.create({
   inlineRow: { minHeight: 54, borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 7 },
   fileIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   fileText: { flex: 1, minWidth: 0 },
-  name: { fontSize: 12.5, fontWeight: '750' },
-  size: { fontSize: 10.5, fontWeight: '650', marginTop: 1 },
-  status: { fontSize: 10.5, fontWeight: '800', marginTop: 2 },
+  name: { fontSize: 12, fontWeight: '750' },
+  size: { fontSize: 11, fontWeight: '650', marginTop: 1 },
+  status: { fontSize: 11, fontWeight: '800', marginTop: 2 },
   retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   retryTxt: { fontSize: 11, fontWeight: '800' },
 });

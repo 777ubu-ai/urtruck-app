@@ -1664,12 +1664,12 @@ const s = StyleSheet.create({
   },
   statusPillText: {
     color: "#168759",
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: "800",
     maxWidth: 104,
   },
-  metaText: { fontSize: 12.5, fontWeight: "650", marginTop: 1 },
-  partnerText: { fontSize: 11.5, marginTop: 3 },
+  metaText: { fontSize: 12, fontWeight: "650", marginTop: 1 },
+  partnerText: { fontSize: 12, marginTop: 3 },
   mapArea: {
     flex: 1,
     position: "relative",
@@ -1695,7 +1695,7 @@ const s = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
   },
-  updatedText: { fontSize: 11.5, fontWeight: "800" },
+  updatedText: { fontSize: 12, fontWeight: "800" },
   floatingAction: {
     position: "absolute",
     right: 12,
@@ -1714,7 +1714,7 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  floatingActionText: { fontSize: 12.5, fontWeight: "900", flexShrink: 1 },
+  floatingActionText: { fontSize: 12, fontWeight: "900", flexShrink: 1 },
   mapQuickRow: { position: "absolute", left: 12, flexDirection: "row", gap: 8 },
   mapQuick: {
     minHeight: 42,
@@ -1730,7 +1730,7 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-  mapQuickText: { fontSize: 12.5, fontWeight: "800" },
+  mapQuickText: { fontSize: 12, fontWeight: "800" },
   metricsCard: {
     position: "absolute",
     left: 12,
@@ -1750,7 +1750,7 @@ const s = StyleSheet.create({
   },
   metricCell: { flex: 1, minWidth: 0 },
   metricLabel: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",
     letterSpacing: 0.35,
@@ -1804,7 +1804,7 @@ const s = StyleSheet.create({
   sheetTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   sheetTitle: { fontSize: 16, fontWeight: "900" },
   newCount: { color: "#168759", fontSize: 12, fontWeight: "800" },
-  preview: { fontSize: 12.5, marginTop: 2 },
+  preview: { fontSize: 12, marginTop: 2 },
   collapseButton: {
     width: 40,
     height: 40,
@@ -1829,7 +1829,7 @@ const s = StyleSheet.create({
     borderRadius: 12,
   },
   tabActive: { backgroundColor: "#E9F6EF" },
-  tabText: { fontSize: 11.5, fontWeight: "800" },
+  tabText: { fontSize: 12, fontWeight: "800" },
   messageList: { flex: 1 },
   messageContent: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 12 },
   messageRow: { marginBottom: 10 },
@@ -1843,11 +1843,11 @@ const s = StyleSheet.create({
   },
   bubbleMine: { backgroundColor: "#168759", borderBottomRightRadius: 5 },
   bubbleThem: { borderWidth: 1, borderBottomLeftRadius: 5 },
-  messageText: { fontSize: 14.5, lineHeight: 20 },
-  messageTime: { fontSize: 10.5, marginTop: 4, textAlign: "right" },
+  messageText: { fontSize: 14, lineHeight: 20 },
+  messageTime: { fontSize: 11, marginTop: 4, textAlign: "right" },
   systemRow: { alignItems: "center", marginVertical: 5 },
   systemText: {
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: "650",
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -1939,7 +1939,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#E4F5EC",
   },
-  attachLabel: { fontSize: 11.5, fontWeight: "850" },
+  attachLabel: { fontSize: 12, fontWeight: "850" },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -1965,7 +1965,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 13,
     paddingTop: 11,
     paddingBottom: 10,
-    fontSize: 14.5,
+    fontSize: 14,
     lineHeight: 19,
   },
   sendButton: {
@@ -1989,5 +1989,5 @@ const s = StyleSheet.create({
     paddingVertical: 10,
     marginTop: 4,
   },
-  cancelLinkText: { color: "#EF4444", fontSize: 12.5, fontWeight: "750" },
+  cancelLinkText: { color: "#EF4444", fontSize: 12, fontWeight: "750" },
 });

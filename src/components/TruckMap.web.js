@@ -568,7 +568,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#DDE5E0",
   },
-  routeStateText: { color: "#3F4E46", fontSize: 11.5, fontWeight: "800" },
+  routeStateText: { color: "#3F4E46", fontSize: 12, fontWeight: "800" },
   badge: {
     position: "absolute",
     left: 12,
@@ -584,7 +584,7 @@ const s = StyleSheet.create({
   badgeTitle: { color: "#14221C", fontSize: 12, fontWeight: "900" },
   badgeText: {
     color: "#617067",
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: "700",
     marginTop: 2,
   },

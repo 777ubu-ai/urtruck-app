@@ -1555,7 +1555,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               ) : null}
             </View>
 
-            <TouchableOpacity style={[s.chatDock, { backgroundColor: colors.bg, borderColor: colors.border }]} onPress={closeMap} testID="deal-chat-dock">
+            <TouchableOpacity style={[s.chatDock, { backgroundColor: colors.bg, borderColor: colors.border, paddingBottom: Math.max(insets.bottom, 8) }]} onPress={closeMap} testID="deal-chat-dock">
               <View style={[s.chatIconBox]}><Feather name="message-circle" size={18} color="#168759" /></View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={s.sheetTitleRow}>
@@ -1691,9 +1691,9 @@ const s = StyleSheet.create({
   },
   routeHeaderRow: { flexDirection: 'row', alignItems: 'center', minHeight: 28, minWidth: 0 },
   routeTitle: { flex: 1, minWidth: 0, fontSize: 20, fontWeight: '900', letterSpacing: 0 },
-  metaPrimary: { color: '#111B21', fontSize: 14.5, lineHeight: 19, fontWeight: '850', marginTop: 1 },
-  metaSecondary: { fontSize: 11.5, fontWeight: '650', marginTop: 3 },
-  partnerText: { color: '#667781', fontSize: 13.5, lineHeight: 18, fontWeight: '650', marginTop: 3 },
+  metaPrimary: { color: '#111B21', fontSize: 14, lineHeight: 19, fontWeight: '850', marginTop: 1 },
+  metaSecondary: { fontSize: 12, fontWeight: '650', marginTop: 3 },
+  partnerText: { color: '#667781', fontSize: 14, lineHeight: 18, fontWeight: '650', marginTop: 3 },
 
   chatFullscreen: { flex: 1, backgroundColor: '#F4EFE7' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 9 },
@@ -1718,17 +1718,17 @@ const s = StyleSheet.create({
   },
   bubbleMine: { backgroundColor: '#D9FDD3', borderBottomRightRadius: 5 },
   bubbleThem: { backgroundColor: '#FFFFFF', borderBottomLeftRadius: 5 },
-  messageText: { color: '#111B21', fontSize: 15.5, lineHeight: 21 },
+  messageText: { color: '#111B21', fontSize: 16, lineHeight: 21 },
   messageTime: { color: '#667781', fontSize: 11, marginTop: 3, textAlign: 'right' },
   systemRow: { alignItems: 'center', marginVertical: 5 },
-  systemText: { fontSize: 12.5, fontWeight: '650', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#E6EAE7', borderRadius: 999 },
+  systemText: { fontSize: 12, fontWeight: '650', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#E6EAE7', borderRadius: 999 },
   photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
   voiceRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 8 },
   translateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   translateText: { color: '#667781', fontSize: 11, fontWeight: '700' },
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
   jumpLatest: { position: 'absolute', right: 14, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#168759', paddingHorizontal: 11, height: 34, borderRadius: 17, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, elevation: 3 },
-  jumpLatestText: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' },
+  jumpLatestText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
 
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3, maxWidth: '84%' },
   errorText: { color: '#EF4444', fontSize: 11, fontWeight: '700', flexShrink: 1 },
@@ -1757,7 +1757,7 @@ const s = StyleSheet.create({
   recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' },
   recordWave: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 22 },
   recordWaveBar: { width: 2.5, borderRadius: 2, backgroundColor: '#168759', opacity: 0.58 },
-  recordText: { color: '#15392B', fontSize: 12.5, fontWeight: '800', flex: 1 },
+  recordText: { color: '#15392B', fontSize: 12, fontWeight: '800', flex: 1 },
   recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   recordSendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
@@ -1766,7 +1766,7 @@ const s = StyleSheet.create({
   attachHandle: { width: 48, height: 5, borderRadius: 3, backgroundColor: '#D5D8DA' },
   attachItem: { width: '25%', alignItems: 'center', gap: 11, marginBottom: 24 },
   attachIcon: { width: 64, height: 64, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  attachLabel: { color: '#737373', fontSize: 13.5, fontWeight: '400', textAlign: 'center' },
+  attachLabel: { color: '#737373', fontSize: 14, fontWeight: '400', textAlign: 'center' },
   attachPager: { position: 'absolute', left: 0, right: 0, bottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 13 },
   attachPagerDotActive: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7A7A7A' },
   attachPagerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E0E0E0' },
@@ -1805,12 +1805,12 @@ const s = StyleSheet.create({
   mapFullscreen: { flex: 1 },
   mapArea: { flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#EAF1ED' },
   updatedPill: { position: 'absolute', left: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
-  updatedText: { fontSize: 11.5, fontWeight: '800' },
+  updatedText: { fontSize: 12, fontWeight: '800' },
   mapCollapse: { position: 'absolute', right: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 13, borderRadius: 20, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3, zIndex: 8 },
-  mapCollapseText: { fontSize: 12.5, fontWeight: '800' },
+  mapCollapseText: { fontSize: 12, fontWeight: '800' },
   metricsCard: { position: 'absolute', left: 12, right: 12, bottom: 12, minHeight: 68, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 4 },
   metricCell: { flex: 1, minWidth: 0 },
-  metricLabel: { fontSize: 10.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.35, marginBottom: 3 },
+  metricLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.35, marginBottom: 3 },
   metricValue: { fontSize: 18, fontWeight: '900' },
   metricDivider: { width: 1, alignSelf: 'stretch', marginHorizontal: 14 },
   finishedMap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
@@ -1826,7 +1826,7 @@ const s = StyleSheet.create({
   sheetTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sheetTitle: { fontSize: 16, fontWeight: '900' },
   newCount: { color: '#168759', fontSize: 12, fontWeight: '800' },
-  preview: { fontSize: 12.5, lineHeight: 17, marginTop: 2 },
+  preview: { fontSize: 12, lineHeight: 17, marginTop: 2 },
 
   fullBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
   fullImage: { width: '100%', height: '80%' },
@@ -1835,7 +1835,7 @@ const s = StyleSheet.create({
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   callMenuCard: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 8, paddingBottom: 24 },
   callMenuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth },
-  callMenuLabel: { flex: 1, fontSize: 14.5, fontWeight: '750' },
+  callMenuLabel: { flex: 1, fontSize: 14, fontWeight: '750' },
   comingSoonPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(124,139,130,0.14)' },
   comingSoonText: { fontSize: 10, fontWeight: '800', color: '#7C8B82' },
 
@@ -1844,5 +1844,5 @@ const s = StyleSheet.create({
   statusNextBtn: { minHeight: 50, borderRadius: 16, backgroundColor: '#168759', marginHorizontal: 2, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   statusNextText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
   cancelLink: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, marginTop: 4, marginBottom: 8 },
-  cancelLinkText: { color: '#EF4444', fontSize: 12.5, fontWeight: '750' },
+  cancelLinkText: { color: '#EF4444', fontSize: 12, fontWeight: '750' },
 });
