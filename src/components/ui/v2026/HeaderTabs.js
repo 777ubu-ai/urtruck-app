@@ -46,7 +46,7 @@ export function Header2026({
           {right || (onMenuPress ? (
             <IconButton2026 icon="menu" onPress={onMenuPress}
               accessibilityLabel={labels.menu || 'Меню'} />
-          ) : null}
+          ) : null)}
         </View>
       </View>
     </View>
