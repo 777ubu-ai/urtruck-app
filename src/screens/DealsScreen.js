@@ -185,9 +185,7 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
         {icon ? <Feather name={icon} size={13} color={active ? colors.accent : colors.inactiveIcon} /> : null}
         <Text
           style={[styles.tabChipText, { color: active ? colors.accent : colors.textSecondary }]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.62}
+          numberOfLines={2}
         >
           {label}
         </Text>
@@ -835,13 +833,12 @@ const styles = StyleSheet.create({
   },
   menuRow: {
     flexDirection: 'row',
-    gap: 2,
-    minHeight: 38,
+    minHeight: 48,
     paddingHorizontal: 18,
     paddingTop: 0,
     paddingBottom: 0,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   tabsRow: {
     minHeight: 52,
@@ -886,8 +883,8 @@ const styles = StyleSheet.create({
   },
   tabChipText: {
     color: TEXT_SECONDARY,
-    fontSize: 11,
-    lineHeight: 13,
+    fontSize: 12,
+    lineHeight: 15,
     fontWeight: '800',
     flexShrink: 1,
     flexGrow: 1,
@@ -907,7 +904,7 @@ const styles = StyleSheet.create({
   },
   tabCount: {
     color: '#7B8580',
-    fontSize: 10.5,
+    fontSize: 11,
     lineHeight: 12,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
@@ -1006,7 +1003,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "700",
-    letterSpacing: -0.18,
+    letterSpacing: 0,
   },
   price: {
     maxWidth: "37%",

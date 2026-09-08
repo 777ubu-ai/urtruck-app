@@ -110,7 +110,7 @@ const s = StyleSheet.create({
   icon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#EAF5EF', alignItems: 'center', justifyContent: 'center' },
   copy: { flex: 1, minWidth: 0 },
   title: { color: '#17221E', fontSize: 13, lineHeight: 17, fontWeight: '700' },
-  body: { color: '#606B66', fontSize: 11.5, lineHeight: 15, marginTop: 2 },
+  body: { color: '#606B66', fontSize: 12, lineHeight: 15, marginTop: 2 },
   action: { minHeight: 38, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#34936B', alignItems: 'center', justifyContent: 'center' },
   actionText: { color: '#34936B', fontSize: 12, fontWeight: '700' },
 });

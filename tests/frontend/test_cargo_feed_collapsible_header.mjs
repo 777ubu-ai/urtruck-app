@@ -4,9 +4,11 @@ import fs from 'node:fs';
 
 const src = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
 
-test('cargo feed removes heavy brand/title chrome and keeps only compact menu above list', () => {
+test('cargo feed removes heavy brand/title chrome and keeps the canonical bell/menu header', () => {
   assert.match(src, /testID="cargo-feed-minimal-header"/);
+  assert.match(src, /testID="cargo-feed-notification-bell-btn"/);
   assert.match(src, /testID="feed-menu-btn"/);
+  assert.match(src, /justifyContent: 'space-between'/);
   assert.match(src, /topBar: \{[\s\S]*?minHeight: 48/);
   assert.doesNotMatch(src, /<Text style=\{styles\.brand\}>UrTruck<\/Text>/);
   assert.doesNotMatch(src, /styles\.titleRow/);
@@ -25,6 +27,20 @@ test('route selector and all filter chips scroll away with cargo list like a mes
   assert.match(src, /testID="cargo-filter-favorites"/);
   assert.doesNotMatch(src, /stickyHeaderIndices/);
   assert.doesNotMatch(src, /position:\s*['"]sticky['"]/);
+});
+
+test('route selector switches to stacked layout on 320-360dp widths instead of clipping RU placeholders', () => {
+  assert.match(src, /useWindowDimensions/);
+  assert.match(src, /const \{ width: viewportWidth \} = useWindowDimensions\(\)/);
+  assert.match(src, /const routeSelectorCompact = viewportWidth <= 380/);
+  assert.match(src, /routeSelectorCompact && styles\.routeSelectorCompact/);
+  assert.match(src, /routeSelectorCompact \? 'arrow-down' : 'arrow-right'/);
+  assert.match(src, /routeSelectorCompact && styles\.routeHalfCompact/);
+  assert.match(src, /routeSelectorCompact: \{[^}]*flexDirection: 'column'[^}]*alignItems: 'stretch'[^}]*minHeight: 116/);
+  assert.match(src, /routeHalfCompact: \{ width: '100%', flexBasis: 'auto' \}/);
+  assert.match(src, /routeValue: \{ fontSize: 16, lineHeight: 20/);
+  assert.doesNotMatch(src, /routeValue: \{[^}]*fontSize: 11/);
+  assert.doesNotMatch(src, /routeValue: \{[^}]*fontSize: 12/);
 });
 
 test('favorites quick filter uses the same saved cargo ids as card bookmarks', () => {

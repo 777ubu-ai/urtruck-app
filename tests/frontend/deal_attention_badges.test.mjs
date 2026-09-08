@@ -50,7 +50,7 @@ test('deal top tabs fit narrow phones and show counts as badges', () => {
   assert.match(deals, /styles\.tabChipLabelRow/);
   assert.match(deals, /flexDirection:\s*'column'/);
   assert.match(deals, /adjustsFontSizeToFit/);
-  assert.match(deals, /minimumFontScale=\{0\.62\}/);
+  assert.match(deals, /minimumFontScale=\{0\.75\}/);
   assert.match(deals, /tabChip:\s*\{[\s\S]*flex:\s*1/);
   assert.match(deals, /tabChipText:\s*\{[\s\S]*fontSize:\s*11/);
   assert.match(deals, /tabChipText:\s*\{[\s\S]*flexGrow:\s*1/);

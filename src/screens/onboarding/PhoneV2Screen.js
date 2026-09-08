@@ -49,7 +49,7 @@ import {
   startSocialAuth,
   takeBufferedSocialCallbackUrl,
 } from '../../utils/socialAuth';
-import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight, radius, typography } from '../../theme/brandV2';
 import { WEB_URL } from '../../config/env';
 
 const LEGAL_BASE = WEB_URL || 'https://urtruck.kz';
@@ -131,7 +131,12 @@ const socialErrorKey = (err, provider) => {
 };
 
 export default function PhoneV2Screen({ navigation, route }) {
-  const _b = useBrand();
+  // P1 (physical QA 08.09.2026): pre-auth screen must stay light
+  // regardless of OS/system/manual dark mode -- see the same note in
+  // OnboardingV2Screen.js. The reactive brand hook would pick up whatever the app's
+  // CURRENT theme is (including leftover state from an earlier themed
+  // screen); brandLight is the static, always-correct value.
+  const _b = brandLight;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t, lang } = useI18n();
   const { toast } = useToast();
@@ -338,9 +343,9 @@ export default function PhoneV2Screen({ navigation, route }) {
       >
         <View style={s.socialIconWrap}>
           {loading ? (
-            <ActivityIndicator size="small" color={brand.textPrimary} />
+            <ActivityIndicator size="small" color={brandLight.textPrimary} />
           ) : (
-            <FontAwesome name={icon} size={22} color={brand.textPrimary} />
+            <FontAwesome name={icon} size={22} color={brandLight.textPrimary} />
           )}
         </View>
         <Text style={s.socialText}>{label}</Text>
@@ -365,7 +370,7 @@ export default function PhoneV2Screen({ navigation, route }) {
               accessibilityRole="button"
               accessibilityLabel="back"
             >
-              <Feather name="arrow-left" size={22} color={brand.textPrimary} />
+              <Feather name="arrow-left" size={22} color={brandLight.textPrimary} />
             </Pressable>
           ) : <View style={s.backBtn} />}
         </View>
@@ -379,8 +384,8 @@ export default function PhoneV2Screen({ navigation, route }) {
         >
           <View style={s.form}>
             <Text style={s.logo} accessibilityRole="header">
-              <Text style={{ color: brand.logoDark }}>Ur</Text>
-              <Text style={{ color: brand.logoAccent }}>Truck</Text>
+              <Text style={{ color: brandLight.logoDark }}>Ur</Text>
+              <Text style={{ color: brandLight.logoAccent }}>Truck</Text>
             </Text>
 
             <Text style={s.title}>{t('phone_v2_title')}</Text>
@@ -407,7 +412,7 @@ export default function PhoneV2Screen({ navigation, route }) {
               <Feather
                 name="mail"
                 size={20}
-                color={brand.textSecondary}
+                color={brandLight.textSecondary}
                 style={s.mailIcon}
               />
               <TextInput
@@ -417,7 +422,7 @@ export default function PhoneV2Screen({ navigation, route }) {
                   if (emailError) setEmailError(null);
                 }}
                 placeholder={t('email_v2_placeholder')}
-                placeholderTextColor={brand.textTertiary}
+                placeholderTextColor={brandLight.textTertiary}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -440,7 +445,7 @@ export default function PhoneV2Screen({ navigation, route }) {
               testID="phone-v2-cta"
               style={({ pressed }) => [
                 s.ctaPrimary,
-                { backgroundColor: emailOk && !anyBusy ? brand.primary : brand.borderStrong },
+                { backgroundColor: emailOk && !anyBusy ? brandLight.primary : brandLight.borderStrong },
                 pressed && emailOk && !anyBusy && { opacity: 0.85 },
               ]}
             >
@@ -455,7 +460,7 @@ export default function PhoneV2Screen({ navigation, route }) {
             </Pressable>
 
             <View style={s.infoBlock}>
-              <Feather name="shield" size={14} color={brand.textSecondary} />
+              <Feather name="shield" size={14} color={brandLight.textSecondary} />
               <Text style={s.infoText}>{t('email_v2_send_hint')}</Text>
             </View>
           </View>

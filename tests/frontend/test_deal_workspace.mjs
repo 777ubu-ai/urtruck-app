@@ -186,12 +186,26 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
 });
 
+test('attachment menu labels allow long Russian actions without ellipsis', () => {
+  assert.match(workspace, /attachShare: 'Поделиться'/);
+  assert.match(workspace, /statuses: 'Статусы и история'/);
+  assert.match(workspace, /<Text style=\{s\.attachLabel\} numberOfLines=\{2\}>/);
+  assert.match(workspace, /attachMenu: \{[^}]*minHeight: 278/);
+  assert.match(workspace, /attachItem: \{[^}]*minHeight: 108/);
+  assert.match(workspace, /attachLabel: \{[^}]*fontSize: 14, lineHeight: 17/);
+  assert.doesNotMatch(workspace, /attachLabel: \{[^}]*fontSize: 11/);
+  assert.doesNotMatch(workspace, /attachLabel: \{[^}]*fontSize: 12/);
+});
+
 test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
   assert.match(workspace, /const \[composerFocused, setComposerFocused\] = React\.useState\(false\)/);
   assert.doesNotMatch(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
   assert.doesNotMatch(workspace, /testID="deal-chat-composer-collapsed"/);
   assert.doesNotMatch(workspace, /composerCollapsedHandle/);
-  assert.match(workspace, /\{!composerFocused \? \(/);
+  // DS-2026 canon: emoji живёт ВНУТРИ поля ввода (справа) и существует в
+  // единственном экземпляре — дубли при печати исключены конструктивно.
+  const emojiCount = (workspace.match(/testID="deal-chat-emoji"/g) || []).length;
+  assert.equal(emojiCount, 1, 'exactly one emoji button inside the input shell');
   assert.match(workspace, /testID="deal-chat-attach-collapse"/);
   assert.match(workspace, /attachHandle/);
   assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);

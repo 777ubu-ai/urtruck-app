@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -24,6 +25,7 @@ import { countryFlag } from '../utils/countryFlags';
 import { useToast } from '../components/Toast';
 import { useVerificationGate } from '../components/VerificationGate';
 import { SkeletonCard } from '../components/Skeleton';
+import NotificationBellButton from '../components/ui/v1/NotificationBellButton';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
@@ -254,6 +256,7 @@ export default function CargoFeedScreen({ navigation }) {
   const { t, lang } = useI18n();
   const { theme, isDark } = useTheme();
   const palette = useMemo(() => cargoPalette(theme, isDark), [theme, isDark]);
+  const { width: viewportWidth } = useWindowDimensions();
   const { session } = useAuth();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -277,6 +280,7 @@ export default function CargoFeedScreen({ navigation }) {
   const [savedIds, setSavedIds] = useState(() => new Set());
   const [savedOnly, setSavedOnly] = useState(false);
   const savedBusyRef = React.useRef(new Set());
+  const routeSelectorCompact = viewportWidth <= 380;
 
   const loadSaved = useCallback(async () => {
     if (!myUserId) {
@@ -425,6 +429,7 @@ export default function CargoFeedScreen({ navigation }) {
       <View
         style={[
           styles.routeSelector,
+          routeSelectorCompact && styles.routeSelectorCompact,
           {
             borderColor: (dirFrom || dirTo) ? palette.accent : palette.border,
             backgroundColor: palette.surface,
@@ -433,7 +438,11 @@ export default function CargoFeedScreen({ navigation }) {
         ]}
         testID="feed-route-selector"
       >
-        <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirFromPicker(true)} testID="feed-route-from">
+        <TouchableOpacity
+          style={[styles.routeHalf, routeSelectorCompact && styles.routeHalfCompact]}
+          onPress={() => setShowDirFromPicker(true)}
+          testID="feed-route-from"
+        >
           <View style={styles.routeLabelRow}>
             <Feather name="map-pin" size={14} color={palette.textMuted} />
             <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('from')}</Text>
@@ -442,8 +451,17 @@ export default function CargoFeedScreen({ navigation }) {
             {dirFrom ? localizePlace(dirFrom, lang) : t('create_field_from_placeholder')}
           </Text>
         </TouchableOpacity>
-        <Feather name="arrow-right" size={24} color={ACCENT} />
-        <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirToPicker(true)} testID="feed-route-to">
+        <Feather
+          name={routeSelectorCompact ? 'arrow-down' : 'arrow-right'}
+          size={routeSelectorCompact ? 20 : 24}
+          color={ACCENT}
+          style={routeSelectorCompact && styles.routeArrowCompact}
+        />
+        <TouchableOpacity
+          style={[styles.routeHalf, routeSelectorCompact && styles.routeHalfCompact]}
+          onPress={() => setShowDirToPicker(true)}
+          testID="feed-route-to"
+        >
           <View style={styles.routeLabelRow}>
             <Feather name="flag" size={14} color={palette.textMuted} />
             <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('to')}</Text>
@@ -493,6 +511,11 @@ export default function CargoFeedScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
       <View style={[styles.topBar, { backgroundColor: palette.pageBg }]} testID="cargo-feed-minimal-header">
+        <NotificationBellButton
+          navigation={navigation}
+          color={palette.text}
+          testID="cargo-feed-notification-bell-btn"
+        />
         <TouchableOpacity
           onPress={() => navigation.navigate('Profile', { role })}
           style={styles.menuBtn}
@@ -648,12 +671,13 @@ export default function CargoFeedScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: PAGE_BG },
   topBar: {
+    flexDirection: 'row',
     minHeight: 48,
     paddingHorizontal: 18,
     paddingTop: 2,
     paddingBottom: 2,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: PAGE_BG,
   },
   menuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
@@ -678,10 +702,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   routeSelectorActive: { borderColor: ACCENT },
+  routeSelectorCompact: { flexDirection: 'column', alignItems: 'stretch', minHeight: 116, paddingVertical: 10, gap: 7 },
   routeHalf: { flex: 1, minWidth: 0 },
+  routeHalfCompact: { width: '100%', flexBasis: 'auto' },
+  routeArrowCompact: { alignSelf: 'center', marginVertical: -1 },
   routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
-  routeLabel: { fontSize: 11.5, lineHeight: 15, fontWeight: '600', color: TEXT_SECONDARY },
-  routeValue: { fontSize: 15, lineHeight: 19, fontWeight: '700', color: TEXT },
+  routeLabel: { fontSize: 12, lineHeight: 15, fontWeight: '600', color: TEXT_SECONDARY },
+  routeValue: { fontSize: 16, lineHeight: 20, fontWeight: '700', color: TEXT },
   placeholder: { color: '#727D77' },
   filtersScroll: { flexGrow: 0, minHeight: 50, maxHeight: 50 },
   filters: { paddingHorizontal: 18, paddingVertical: 4, gap: 7, alignItems: 'center' },
@@ -740,7 +767,7 @@ const styles = StyleSheet.create({
   flag: { fontSize: 17, lineHeight: 19 },
   cargoPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 20 },
   cargoInfoRow: { flex: 1, minWidth: 0, paddingRight: 0 },
-  price: { maxWidth: '38%', flexShrink: 0, textAlign: 'right', fontSize: 16.5, lineHeight: 20, fontWeight: '800', letterSpacing: 0, color: TEXT },
+  price: { maxWidth: '38%', flexShrink: 0, textAlign: 'right', fontSize: 16, lineHeight: 20, fontWeight: '800', letterSpacing: 0, color: TEXT },
   infoRow: { minHeight: 18, flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 34 },
   infoText: { flex: 1, fontSize: 12, lineHeight: 16, fontWeight: '400', color: '#39443F' },
   bookmarkBtn: { position: 'absolute', right: 9, bottom: 6, width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
