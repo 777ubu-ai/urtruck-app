@@ -2,6 +2,14 @@
 
 Защищён паролем через HTTP Basic Auth.
 Credentials: ENV URTRUCK_ADMIN_USER и URTRUCK_ADMIN_PASS
+
+Анти-брутфорс (аудит C1.1, 08.09.2026): не более 5 неудачных попыток входа
+с одного IP, далее блокировка на 15 минут (429 + Retry-After). Счётчик —
+персистентный (SQLite sidecar, api/persistent_rate_limit.py), переживает
+рестарт процесса. Fail-mode: FAIL-CLOSED — при недоступном хранилище
+счётчиков админка отвечает 503, а не работает без лимита. Лимитер живёт
+только внутри check_admin (/admin), поэтому /health, /storage и прочие
+не-админ пути (включая внутреннюю автоматизацию) им не затрагиваются.
 """
 import sys
 import os
@@ -9,15 +17,20 @@ import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from database import db
 from services import file_signing
+from api import persistent_rate_limit as admin_rl
 
 admin_router = APIRouter()
-security = HTTPBasic()
+# auto_error=False: 401 формируем сами в check_admin, чтобы запрос БЕЗ
+# Authorization-заголовка тоже считался неудачной попыткой (иначе брутфорс
+# «без заголовка» обходил бы счётчик — HTTPBasic с auto_error=True ронял
+# такой запрос до входа в check_admin).
+security = HTTPBasic(auto_error=False)
 
 ADMIN_USER = os.getenv("URTRUCK_ADMIN_USER", "admin")
 _ADMIN_PASS_DEFAULT = "urtruck-admin-2026"
@@ -28,20 +41,71 @@ ADMIN_PASS = os.getenv("URTRUCK_ADMIN_PASS", _ADMIN_PASS_DEFAULT)
 _IS_PROD = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower() == "production"
 
 
-def check_admin(credentials: HTTPBasicCredentials = Depends(security)):
+def _client_ip(request) -> str:
+    if request is not None and request.client is not None and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+# Анти-брутфорс /admin (C1.1): 5 неудачных попыток с IP → блокировка 15 минут.
+ADMIN_RL_SCOPE = "admin_basic"
+ADMIN_RL_MAX_FAILURES = 5
+ADMIN_RL_BLOCK_SECONDS = 15 * 60
+
+
+def check_admin(
+    credentials: HTTPBasicCredentials = Depends(security),
+    request: Request = None,
+):
     if _IS_PROD and ADMIN_PASS == _ADMIN_PASS_DEFAULT:
         raise HTTPException(
             status_code=503,
             detail="Админ-панель отключена: задайте URTRUCK_ADMIN_PASS в .env",
         )
-    u_ok = secrets.compare_digest(credentials.username.encode(), ADMIN_USER.encode())
-    p_ok = secrets.compare_digest(credentials.password.encode(), ADMIN_PASS.encode())
+    ip = _client_ip(request)
+
+    # FAIL-CLOSED: хранилище счётчиков недоступно → 503, не «без лимита».
+    try:
+        allowed, retry_after = admin_rl.check_allowed(ADMIN_RL_SCOPE, ip)
+    except admin_rl.RateLimitUnavailable:
+        raise HTTPException(
+            status_code=503,
+            detail="Сервис временно недоступен, повторите позже",
+        )
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Слишком много неудачных попыток входа. Попробуйте позже.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    if credentials is not None:
+        u_ok = secrets.compare_digest(credentials.username.encode(), ADMIN_USER.encode())
+        p_ok = secrets.compare_digest(credentials.password.encode(), ADMIN_PASS.encode())
+    else:
+        # запрос без Authorization-заголовка — тоже неудачная попытка
+        u_ok = p_ok = False
     if not (u_ok and p_ok):
+        try:
+            blocked_retry_after = admin_rl.record_failure(
+                ADMIN_RL_SCOPE, ip, ADMIN_RL_MAX_FAILURES, ADMIN_RL_BLOCK_SECONDS
+            )
+        except admin_rl.RateLimitUnavailable:
+            raise HTTPException(
+                status_code=503,
+                detail="Сервис временно недоступен, повторите позже",
+            )
+        headers = {"WWW-Authenticate": 'Basic realm="UrTruck Admin"'}
+        if blocked_retry_after:
+            headers["Retry-After"] = str(blocked_retry_after)
         raise HTTPException(
             status_code=401,
             detail="Неверный логин или пароль",
-            headers={"WWW-Authenticate": 'Basic realm="UrTruck Admin"'},
+            headers=headers,
         )
+    # Успешный вход — сбрасываем счётчик неудач для этого IP (best-effort:
+    # запрос уже авторизован, обваливать его из-за cleanup нельзя).
+    admin_rl.reset(ADMIN_RL_SCOPE, ip)
     return credentials.username
 
 

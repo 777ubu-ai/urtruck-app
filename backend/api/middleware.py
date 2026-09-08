@@ -1,40 +1,35 @@
-"""Rate limiting через Redis (опционально)."""
-import time
-from fastapi import Request, HTTPException
-import redis
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import config
+"""Fail-mode policy для rate limiter'ов UrTruck (C1.5, security-спринт 08.09.2026).
 
-try:
-    r = redis.Redis.from_url(config.REDIS_URL, decode_responses=True)
-    r.ping()
-    REDIS_OK = True
-except Exception:
-    REDIS_OK = False
+Источник истины (полный текст, мотивация и таблица endpoint'ов):
+docs/security/rate-limit-fail-mode-policy.md.
 
+ПОЛИТИКА КОРОТКО:
 
-async def rate_limit(request: Request, limit: int = 120, window: int = 60):
-    """Лимит: 120 запросов в минуту с одного IP."""
-    if not REDIS_OK:
-        return
-    ip = request.client.host
-    key = f"rl:{ip}:{int(time.time() // window)}"
-    count = r.incr(key)
-    if count == 1:
-        r.expire(key, window)
-    if count > limit:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+1. OTP / auth / admin (security-критичные) — FAIL-CLOSED. Хранилище счётчиков
+   недоступно → запрос ОТКЛОНЯЕТСЯ с 503 + запись в лог. Сбой инфраструктуры
+   не должен превращаться в снятие защиты. Реализация: проверка доступности
+   хранилища ДО бизнес-логики; исключение RateLimitUnavailable не ловится
+   «в тишину».
+2. Прочие write-endpoint'ы (reviews, reports, favorites, guest-сессии) —
+   FAIL-OPEN с логом: отказ лимитера не должен ронять пользовательские
+   сценарии. Текущий in-memory лимитер (api/rate_limit.py) этому следует —
+   он физически не может «упасть», его ограничение — потеря счётчиков при
+   рестарте (см. пункт «Ограничения» в доке).
+3. Read-only и служебные пути (/health, /api/version, /storage по подписи,
+   Telegram webhook) — НЕ лимитируются лимитерами auth-класса: внутренняя
+   автоматизация (мониторинг, healthchecks, scheduler) не должна блокироваться
+   чужими брутфорс-атаками.
 
+ИСТОРИЯ ФАЙЛА: раньше здесь был Redis-лимитер rate_limit() и cache_get/cache_set.
+Удалены как мёртвый код — ни одна строка backend/ их не импортировала (функции
+были написаны, но никуда не подключены), а заявленный в них fail-open
+(`if not REDIS_OK: return`) противоречит пункту 1: в Redis-режиме админка и OTP
+остались бы без лимита при любом сбое Redis, без единой записи в лог.
+Персистентная замена для security-критичных счётчиков —
+api/persistent_rate_limit.py (SQLite sidecar рядом с config.DB_PATH, fail-closed).
 
-def cache_get(key: str):
-    if not REDIS_OK:
-        return None
-    return r.get(key)
-
-
-def cache_set(key: str, value: str, ttl: int = None):
-    if not REDIS_OK:
-        return
-    r.set(key, value, ex=ttl or config.CACHE_TTL_SECONDS)
+Если появится настоящий Redis: лимитер подключается через app.add_middleware
+в main.py и обязан реализовывать fail-closed семантику пункта 1 для
+admin/OTP/auth (общий per-IP лимит для прочих endpoint'ов — fail-open с логом,
+по пункту 2). До подключения Redis-код не возвращать — мёртвый код с fail-open
+семантикой хуже его отсутствия.
