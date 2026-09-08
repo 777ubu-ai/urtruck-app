@@ -38,7 +38,7 @@ import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import { push } from '../../utils/push';
-import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight, radius, typography } from '../../theme/brandV2';
 
 const CODE_LEN = 4;
 const RESEND_SECS = 60;
@@ -72,7 +72,12 @@ const maskEmail = (raw) => {
 };
 
 export default function OtpV2Screen({ navigation, route }) {
-  const _b = useBrand();
+  // P1 (physical QA 08.09.2026): pre-auth screen must stay light
+  // regardless of OS/system/manual dark mode -- see the same note in
+  // OnboardingV2Screen.js. The reactive brand hook would pick up whatever the app's
+  // CURRENT theme is (including leftover state from an earlier themed
+  // screen); brandLight is the static, always-correct value.
+  const _b = brandLight;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
   const { toast } = useToast();
@@ -251,7 +256,7 @@ export default function OtpV2Screen({ navigation, route }) {
             accessibilityRole="button"
             accessibilityLabel="back"
           >
-            <Feather name="arrow-left" size={22} color={brand.textPrimary} />
+            <Feather name="arrow-left" size={22} color={brandLight.textPrimary} />
           </Pressable>
         </View>
 
@@ -333,7 +338,7 @@ export default function OtpV2Screen({ navigation, route }) {
               s.ctaPrimary,
               {
                 backgroundColor:
-                  code.length < CODE_LEN ? brand.borderStrong : brand.primary,
+                  code.length < CODE_LEN ? brandLight.borderStrong : brandLight.primary,
               },
               pressed && code.length === CODE_LEN && { opacity: 0.85 },
             ]}
@@ -352,7 +357,7 @@ export default function OtpV2Screen({ navigation, route }) {
               accessibilityRole="button"
               style={({ pressed }) => [s.openMailBtn, pressed && { opacity: 0.7 }]}
             >
-              <Feather name="mail" size={16} color={brand.primary} />
+              <Feather name="mail" size={16} color={brandLight.primary} />
               <Text style={s.openMailText}>{t('otp_v2_open_mail') || 'Открыть почту'}</Text>
             </Pressable>
           )}

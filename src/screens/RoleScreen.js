@@ -27,7 +27,11 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import LanguageSwitcher from '../components/LanguageSwitcher';
-import { brand, radius, typography } from '../theme/brandV2';
+// P1 (physical QA 08.09.2026): Role selection is pre-auth-role screen -- see the
+// same always-light note in onboarding/OnboardingV2Screen.js. brand is a
+// theme-reactive Proxy; brandLight is the static light-only value this
+// screen must use unconditionally.
+import { brandLight, radius, typography } from '../theme/brandV2';
 
 const RoleCard = ({
   icon,
@@ -50,7 +54,7 @@ const RoleCard = ({
       disabled && { opacity: 0.5 },
     ]}
   >
-    <View style={[styles.cardIcon, { backgroundColor: brand.surfaceMuted }]}>
+    <View style={[styles.cardIcon, { backgroundColor: brandLight.surfaceMuted }]}>
       <Feather name={icon} size={26} color={iconColor} />
     </View>
     <View style={{ flex: 1 }}>
@@ -59,7 +63,7 @@ const RoleCard = ({
         {description}
       </Text>
     </View>
-    <Feather name="chevron-right" size={20} color={brand.textTertiary} />
+    <Feather name="chevron-right" size={20} color={brandLight.textTertiary} />
   </Pressable>
 );
 
@@ -137,8 +141,8 @@ export default function RoleScreen({ navigation }) {
           {/* Logo + tagline */}
           <View style={styles.brandBlock}>
             <Text style={styles.logo}>
-              <Text style={{ color: brand.logoDark }}>Ur</Text>
-              <Text style={{ color: brand.logoAccent }}>Truck</Text>
+              <Text style={{ color: brandLight.logoDark }}>Ur</Text>
+              <Text style={{ color: brandLight.logoAccent }}>Truck</Text>
             </Text>
             <Text style={styles.tagline}>{t('role_welcome_tagline')}</Text>
           </View>
@@ -148,7 +152,7 @@ export default function RoleScreen({ navigation }) {
             {/* Card 1 — Перевезти груз (client / cargo owner) */}
             <RoleCard
               icon="package"
-              iconColor={brand.accent}
+              iconColor={brandLight.accent}
               title={t('role_client_title')}
               description={t('role_client_desc')}
               onPress={() => enterAs('client')}
@@ -158,7 +162,7 @@ export default function RoleScreen({ navigation }) {
             {/* Card 2 — Брать грузы (driver / carrier) */}
             <RoleCard
               icon="truck"
-              iconColor={brand.primary}
+              iconColor={brandLight.primary}
               title={t('role_driver_title')}
               description={t('role_driver_desc')}
               onPress={() => enterAs('driver')}
@@ -191,7 +195,7 @@ export default function RoleScreen({ navigation }) {
             activeOpacity={0.7}
             style={styles.guestBtn}
           >
-            <Feather name="eye" size={16} color={brand.textSecondary} />
+            <Feather name="eye" size={16} color={brandLight.textSecondary} />
             <Text style={styles.guestBtnText}>{t('browse_as_guest')}</Text>
           </TouchableOpacity>
 
@@ -209,7 +213,7 @@ export default function RoleScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: brand.surfaceMuted,  // #F4F6FA
+    backgroundColor: brandLight.surfaceMuted,  // #F4F6FA
   },
   outer: {
     flex: 1,
@@ -241,7 +245,7 @@ const styles = StyleSheet.create({
   },
   tagline: {
     ...typography.body,
-    color: brand.textSecondary,
+    color: brandLight.textSecondary,
     textAlign: 'center',
     marginTop: 8,
     paddingHorizontal: 16,
@@ -254,9 +258,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: brand.surface,
+    backgroundColor: brandLight.surface,
     borderWidth: 1,
-    borderColor: brand.border,
+    borderColor: brandLight.border,
     borderRadius: radius.lg,
     padding: 16,
   },
@@ -270,12 +274,12 @@ const styles = StyleSheet.create({
   cardTitle: {
     ...typography.bodyLarge,
     fontWeight: '800',
-    color: brand.textPrimary,
+    color: brandLight.textPrimary,
     marginBottom: 2,
   },
   cardDesc: {
     ...typography.bodySmall,
-    color: brand.textSecondary,
+    color: brandLight.textSecondary,
   },
   loginLink: {
     alignSelf: 'center',
@@ -284,10 +288,10 @@ const styles = StyleSheet.create({
   },
   loginText: {
     ...typography.body,
-    color: brand.textSecondary,
+    color: brandLight.textSecondary,
   },
   loginCta: {
-    color: brand.primary,
+    color: brandLight.primary,
     fontWeight: '700',
   },
   guestBtn: {
@@ -302,7 +306,7 @@ const styles = StyleSheet.create({
   },
   guestBtnText: {
     ...typography.bodySmall,
-    color: brand.textSecondary,
+    color: brandLight.textSecondary,
     fontWeight: '600',
     textDecorationLine: 'underline',
   },
@@ -311,7 +315,7 @@ const styles = StyleSheet.create({
     bottom: 16,
     left: 16,
     right: 16,
-    backgroundColor: brand.error,
+    backgroundColor: brandLight.error,
     borderRadius: radius.md,
     paddingVertical: 10,
     paddingHorizontal: 14,

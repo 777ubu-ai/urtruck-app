@@ -23,7 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
-import { brand, useBrand, radius, space, typography } from '../../theme/brandV2';
+import { brandLight, radius, space, typography } from '../../theme/brandV2';
 import { COUNTRIES, POPULAR_ISO } from '../../utils/countries';
 
 const Row = ({ s, country, label, onPress }) => (
@@ -31,19 +31,24 @@ const Row = ({ s, country, label, onPress }) => (
     onPress={onPress}
     style={({ pressed }) => [
       s.row,
-      pressed && { backgroundColor: brand.surfaceMuted },
+      pressed && { backgroundColor: brandLight.surfaceMuted },
     ]}
     testID={`country-row-${country.iso}`}
   >
     <Text style={s.flag}>{country.flag}</Text>
     <Text style={s.countryName}>{label}</Text>
     <Text style={s.dial}>+{country.dial}</Text>
-    <Feather name="chevron-right" size={18} color={brand.textTertiary} />
+    <Feather name="chevron-right" size={18} color={brandLight.textTertiary} />
   </Pressable>
 );
 
 export default function CountryPickerSheet({ navigation, route }) {
-  const _b = useBrand();
+  // P1 (physical QA 08.09.2026): pre-auth screen must stay light
+  // regardless of OS/system/manual dark mode -- see the same note in
+  // OnboardingV2Screen.js. The reactive brand hook would pick up whatever the app's
+  // CURRENT theme is (including leftover state from an earlier themed
+  // screen); brandLight is the static, always-correct value.
+  const _b = brandLight;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t, lang } = useI18n();
   const [query, setQuery] = useState('');
@@ -119,19 +124,19 @@ export default function CountryPickerSheet({ navigation, route }) {
           accessibilityLabel="close"
           testID="country-picker-close"
         >
-          <Feather name="x" size={22} color={brand.textPrimary} />
+          <Feather name="x" size={22} color={brandLight.textPrimary} />
         </TouchableOpacity>
         <Text style={s.title}>{t('country_picker_title')}</Text>
         <View style={s.closeBtn} />
       </View>
 
       <View style={s.searchWrap}>
-        <Feather name="search" size={18} color={brand.textTertiary} />
+        <Feather name="search" size={18} color={brandLight.textTertiary} />
         <TextInput
           value={query}
           onChangeText={setQuery}
           placeholder={t('country_picker_search')}
-          placeholderTextColor={brand.textTertiary}
+          placeholderTextColor={brandLight.textTertiary}
           style={s.searchInput}
           autoCorrect={false}
           autoCapitalize="none"
@@ -155,7 +160,7 @@ export default function CountryPickerSheet({ navigation, route }) {
       />
 
       <View style={s.footer}>
-        <Feather name="globe" size={16} color={brand.textSecondary} />
+        <Feather name="globe" size={16} color={brandLight.textSecondary} />
         <Text style={s.footerText}>{t('country_picker_footer_hint')}</Text>
       </View>
     </SafeAreaView>
