@@ -16,7 +16,7 @@ test('border calendar exposes exact 2026 MRP value in tenge', () => {
 test('1 MRP and 100 MRP calendar cards show their tenge amounts under the MRP label', () => {
   assert.match(source, /\{formatKztAmount\(1\)\}/);
   assert.match(source, /\{formatKztAmount\(100\)\}/);
-  assert.match(source, /dateAmount: \{ fontSize: 8\.5/);
+  assert.match(source, /dateAmount: \{ fontSize: 9/);
   assert.match(source, /dateCard: \{ width: 90, minHeight: 101/);
 });
 
