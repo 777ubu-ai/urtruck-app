@@ -1512,7 +1512,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         <View style={s.attachIcon}>
                           {item.busy ? <ActivityIndicator size="small" color="#168759" /> : <FontAwesome5 name={item.icon} size={30} color="#686868" solid />}
                         </View>
-                        <Text style={s.attachLabel} numberOfLines={1}>{item.label}</Text>
+                        <Text style={s.attachLabel} numberOfLines={2}>{item.label}</Text>
                       </TouchableOpacity>
                     ))}
                     <View style={s.attachPager} pointerEvents="none">
@@ -1783,12 +1783,12 @@ const s = StyleSheet.create({
   recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   recordSendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
-  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, backgroundColor: '#F7FAF8', borderTopWidth: StyleSheet.hairlineWidth },
+  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 278, paddingHorizontal: 18, paddingTop: 30, backgroundColor: '#F7FAF8', borderTopWidth: StyleSheet.hairlineWidth },
   attachHandleHit: { position: 'absolute', top: 0, left: 0, right: 0, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   attachHandle: { width: 48, height: 5, borderRadius: 3, backgroundColor: '#D5D8DA' },
-  attachItem: { width: '25%', alignItems: 'center', gap: 11, marginBottom: 24 },
+  attachItem: { width: '25%', minHeight: 108, alignItems: 'center', gap: 8, marginBottom: 18, paddingHorizontal: 3 },
   attachIcon: { width: 64, height: 64, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  attachLabel: { color: '#737373', fontSize: 14, fontWeight: '400', textAlign: 'center' },
+  attachLabel: { minHeight: 34, color: '#737373', fontSize: 14, lineHeight: 17, fontWeight: '400', textAlign: 'center' },
   attachPager: { position: 'absolute', left: 0, right: 0, bottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 13 },
   attachPagerDotActive: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7A7A7A' },
   attachPagerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E0E0E0' },
