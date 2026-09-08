@@ -1,7 +1,7 @@
 // Design System 2026 — Badge (§30) and Chip (§10/§63).
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useTokens, type2026, metrics2026, radius2026 } from '../../../theme/tokens2026';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { useTokens, type2026, metrics2026, radius2026, componentState2026 } from '../../../theme/tokens2026';
 
 export function Badge2026({ value, dot = false, tone = 'status.danger.main', style }) {
   const t = useTokens();
@@ -32,7 +32,7 @@ export function Badge2026({ value, dot = false, tone = 'status.danger.main', sty
  *  Filter/action chip (§63) via `kind="filter"`. */
 export function Chip2026({
   label, icon, tone = 'status.neutral', kind = 'status',
-  selected = false, onPress, accessibilityLabel, style,
+  selected = false, disabled = false, onPress, accessibilityLabel, style,
 }) {
   const t = useTokens();
   const isFilter = kind === 'filter';
@@ -55,10 +55,20 @@ export function Chip2026({
 
   if (!onPress) return content;
   return (
-    <TouchableOpacity accessibilityRole="button" accessibilityLabel={accessibilityLabel || label}
-      accessibilityState={{ selected }} activeOpacity={0.75} onPress={onPress}>
+    <Pressable
+      accessibilityRole={isFilter ? 'tab' : 'button'}
+      accessibilityLabel={accessibilityLabel || label}
+      accessibilityState={{ selected, disabled }}
+      disabled={disabled}
+      hitSlop={metrics2026.hitSlop}
+      onPress={onPress}
+      style={({ pressed }) => [
+        s.pressable,
+        { minHeight: metrics2026.touchTargetAndroid, opacity: disabled ? componentState2026.disabledOpacity : pressed ? componentState2026.pressedOpacity : 1 },
+      ]}
+    >
       {content}
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -69,4 +79,5 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, borderRadius: radius2026.pill, borderWidth: 1,
   },
+  pressable: { justifyContent: 'center' },
 });

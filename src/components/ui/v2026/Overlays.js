@@ -2,7 +2,7 @@
 import React from 'react';
 import { View, Modal as RNModal, TouchableOpacity, TouchableWithoutFeedback, StyleSheet, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTokens, radius2026, space2026, metrics2026, motion2026 } from '../../../theme/tokens2026';
+import { useTokens, radius2026, space2026, metrics2026, motion2026, componentState2026 } from '../../../theme/tokens2026';
 import Text2026 from './Text';
 
 export function BottomSheet2026({ visible, onClose, title, children, dismissable = true }) {
@@ -18,7 +18,7 @@ export function BottomSheet2026({ visible, onClose, title, children, dismissable
 
   return (
     <RNModal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <TouchableWithoutFeedback onPress={dismissable ? onClose : undefined} accessibilityLabel="Close sheet">
+      <TouchableWithoutFeedback onPress={dismissable ? onClose : undefined} accessibilityLabel="Закрыть панель">
         <View style={[s.overlay, { backgroundColor: t['surface.overlay'] }]} />
       </TouchableWithoutFeedback>
       <View style={s.sheetAnchor} pointerEvents="box-none">
@@ -67,7 +67,9 @@ export function Modal2026({ visible, onClose, title, body, actions = [], dismiss
                   backgroundColor: a.destructive ? t['status.danger.main']
                     : a.primary ? t['brand.primary'] : 'transparent',
                   borderRadius: radius2026.lg,
+                  opacity: a.disabled ? componentState2026.disabledOpacity : 1,
                 }]}
+                disabled={a.disabled}
               >
                 <Text2026 variant="buttonCompact" style={{
                   color: a.destructive || a.primary ? t['text.onAccent'] : t['text.secondary'],

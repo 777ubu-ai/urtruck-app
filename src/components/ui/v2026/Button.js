@@ -4,8 +4,8 @@
 // A button never escapes its container: labels wrap (min 2 lines allowed),
 // layout must adapt — shrinking text to fit is forbidden (§2.3).
 import React from 'react';
-import { TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { useTokens, type2026, radius2026, metrics2026 } from '../../../theme/tokens2026';
+import { Pressable, ActivityIndicator, StyleSheet } from 'react-native';
+import { useTokens, type2026, radius2026, metrics2026, componentState2026 } from '../../../theme/tokens2026';
 import Text2026 from './Text';
 
 const HEIGHTS = {
@@ -51,14 +51,13 @@ export default function Button2026({
   const typeVariant = size === 'compact' ? 'buttonCompact' : 'button';
 
   return (
-    <TouchableOpacity
+    <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel || (typeof label === 'string' ? label : undefined)}
       accessibilityState={{ disabled: isDisabled, busy: loading }}
-      activeOpacity={0.8}
       onPress={onPress}
       disabled={isDisabled}
-      style={[
+      style={({ pressed }) => [
         s.btn,
         {
           minHeight: HEIGHTS[size] || HEIGHTS.standard,
@@ -66,7 +65,7 @@ export default function Button2026({
           borderColor,
           borderRadius: size === 'compact' ? radius2026.md : radius2026.lg,
           paddingHorizontal: size === 'compact' ? 14 : size === 'cta' ? 24 : 20,
-          opacity: isDisabled ? 0.5 : 1,
+          opacity: isDisabled ? componentState2026.disabledOpacity : pressed ? componentState2026.pressedOpacity : 1,
         },
         fullWidth && s.fullWidth,
         style,
@@ -79,7 +78,7 @@ export default function Button2026({
           {label}
         </Text2026>
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 

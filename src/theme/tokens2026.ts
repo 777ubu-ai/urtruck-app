@@ -210,6 +210,8 @@ export const metrics2026 = {
   inputHeight: 50,           // 48–52
   headerHeight: 56,
   bottomNavHeight: 56,
+  bottomNavItemMinWidth: 64,
+  bottomNavIconBox: 32,
   statusChipHeight: 30,      // 28–32
   chipHeight: 34,            // 32–36 filter/action chips
   badgeHeight: 19,           // 18–20
@@ -230,6 +232,12 @@ export const metrics2026 = {
   mapControl: 46,            // 44–48
   mapCardRadius: 22,         // 20–24
   hitSlop: { top: 10, bottom: 10, left: 10, right: 10 },
+} as const;
+
+export const componentState2026 = {
+  pressedOpacity: 0.72,
+  disabledOpacity: 0.5,
+  focusRingWidth: 2,
 } as const;
 
 // ─── Deal FSM status → semantic mapping (§47) ──────────────────────

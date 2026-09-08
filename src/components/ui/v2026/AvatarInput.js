@@ -1,7 +1,7 @@
 // Design System 2026 — Avatar (§16/§55) and Input (§8).
 import React from 'react';
 import { View, Text, Image, TextInput, StyleSheet } from 'react-native';
-import { useTokens, type2026, radius2026, metrics2026, space2026 } from '../../../theme/tokens2026';
+import { useTokens, type2026, radius2026, metrics2026, space2026, componentState2026 } from '../../../theme/tokens2026';
 
 export function Avatar2026({ uri, name = '', size = metrics2026.avatarList, role, style }) {
   const t = useTokens();
@@ -59,14 +59,16 @@ export function Input2026({
         multiline={multiline}
         maxFontSizeMultiplier={1.3}
         accessibilityLabel={accessibilityLabel || label || placeholder}
+        accessibilityState={{ disabled, invalid: !!error }}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={[s.input, {
           minHeight: multiline ? 96 : metrics2026.inputHeight,
           backgroundColor: disabled ? t['surface.muted'] : t['surface.card'],
           borderColor, borderRadius: radius2026.md,
+          borderWidth: focused ? componentState2026.focusRingWidth : 1,
           color: t['text.primary'],
-          opacity: disabled ? 0.6 : 1,
+          opacity: disabled ? componentState2026.disabledOpacity : 1,
           textAlignVertical: multiline ? 'top' : 'center',
         }, inputStyle]}
       />

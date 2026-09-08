@@ -33,11 +33,11 @@ export function Skeleton2026({ width = '100%', height = 16, radius = radius2026.
 
 export function SkeletonCard2026() {
   return (
-    <View style={{ borderRadius: radius2026.card, padding: space2026[4] }}>
+    <View style={s.skeletonCard}>
       <Skeleton2026 width="40%" height={18} />
-      <Skeleton2026 width="80%" height={14} style={{ marginTop: space2026[3] }} />
-      <Skeleton2026 width="65%" height={14} style={{ marginTop: space2026[2] }} />
-      <Skeleton2026 width="30%" height={20} style={{ marginTop: space2026[3] }} />
+      <Skeleton2026 width="80%" height={14} style={s.skeletonGapMd} />
+      <Skeleton2026 width="65%" height={14} style={s.skeletonGapSm} />
+      <Skeleton2026 width="30%" height={20} style={s.skeletonGapMd} />
     </View>
   );
 }
@@ -45,8 +45,15 @@ export function SkeletonCard2026() {
 export { default as Text2026 } from './Text';
 export { default as Button2026 } from './Button';
 export { default as IconButton2026 } from './IconButton';
+export { default as BottomNav2026 } from './BottomNav';
 export { default as Card2026 } from './Card';
 export { Badge2026, Chip2026 } from './BadgeChip';
 export { Avatar2026, Input2026 } from './AvatarInput';
 export { Header2026, Tabs2026 } from './HeaderTabs';
 export { BottomSheet2026, Modal2026, Toast2026 } from './Overlays';
+
+const s = StyleSheet.create({
+  skeletonCard: { borderRadius: radius2026.card, padding: space2026[4] },
+  skeletonGapMd: { marginTop: space2026[3] },
+  skeletonGapSm: { marginTop: space2026[2] },
+});
