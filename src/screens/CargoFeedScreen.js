@@ -29,6 +29,8 @@ import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
+import BellBadge from '../components/ui/v1/BellBadge';
+import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 
 const ACCENT = '#34936B';
 const ACCENT_SOFT = '#EAF5EF';
@@ -259,6 +261,7 @@ export default function CargoFeedScreen({ navigation }) {
   const { requireLevel, Gate } = useVerificationGate();
   const myUserId = session?.user?.id;
   const role = 'driver';
+  const unreadNotifications = useUnreadNotifications(true);
   const copy = COPY[lang] || COPY.RU;
 
   const [items, setItems] = useState([]);
@@ -490,6 +493,11 @@ export default function CargoFeedScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
       <View style={[styles.topBar, { backgroundColor: palette.pageBg }]} testID="cargo-feed-minimal-header">
+        <BellBadge
+          count={unreadNotifications}
+          onPress={() => navigation.navigate('PushFilter', { role })}
+          testID="cargo-feed-notification-settings-btn"
+        />
         <TouchableOpacity
           onPress={() => navigation.navigate('Profile', { role })}
           style={styles.menuBtn}

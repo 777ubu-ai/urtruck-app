@@ -24,6 +24,8 @@ import { accentFor } from '../components/deal/DealRoom';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { isBidActionable } from '../utils/dealsUnread';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
+import BellBadge from '../components/ui/v1/BellBadge';
+import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 
 const ACCENT = "#34936B";
 const ACCENT_SOFT = '#EAF5EF';
@@ -272,6 +274,7 @@ export default function DealsScreen({ navigation, route }) {
   const { theme, isDark } = useTheme();
   const palette = useMemo(() => dealsPalette(theme, isDark), [theme, isDark]);
   const role = route?.params?.role || 'client';
+  const unreadNotifications = useUnreadNotifications(true);
   const roleAccent = accentFor(role) || ACCENT;
   const copy = COPY[lang] || COPY.EN;
 
@@ -686,6 +689,11 @@ export default function DealsScreen({ navigation, route }) {
       testID="deals-minimal-header"
     >
       <View style={styles.menuRow}>
+        <BellBadge
+          count={unreadNotifications}
+          onPress={() => navigation.navigate('PushFilter', { role })}
+          testID="deals-notification-settings-btn"
+        />
         <HeaderMenuButton
           navigation={navigation}
           role={role}

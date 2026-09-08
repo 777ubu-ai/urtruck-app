@@ -21,6 +21,15 @@ test('My Work bell opens notification settings, not the legacy notification list
   assert.doesNotMatch(myTrips, /navigation\.navigate\(['"]Notifications/);
 });
 
+test('all active root feeds route Bell to notification settings', () => {
+  for (const file of ['src/screens/FeedScreen.js', 'src/screens/CargoFeedScreen.js', 'src/screens/DealsScreen.js']) {
+    const source = readFileSync(file, 'utf8');
+    assert.match(source, /BellBadge/);
+    assert.match(source, /navigation\.navigate\('PushFilter', \{ role \}\)/, file);
+    assert.doesNotMatch(source, /navigation\.navigate\(['"]Notifications/, file);
+  }
+});
+
 test('NotificationsScreen still clears unread state correctly when reached by supported routing', () => {
   assert.match(notifScreen, /import \{ notifyNotifRead \} from '..\/utils\/unreadEvents'/);
   assert.match(notifScreen, /import \{ refreshAppIconBadge \} from '..\/utils\/appBadge'/);
