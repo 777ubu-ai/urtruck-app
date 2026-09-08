@@ -1,4 +1,4 @@
-import { localizeCargoName } from './places';
+import { localizeCargoName } from './places.js';
 
 // Переводы UrTruck — RU / EN / KZ / CN
 // Все остальные языки (UZ / KG / DE / FR / TJ / GE / TM …) убраны из
@@ -7510,8 +7510,27 @@ const translations = {
 },
 };
 
-import { storage } from './storage';
-import { Platform, NativeModules } from 'react-native';
+// Track B / B4: `storage`/`react-native` used to be static top-level
+// imports. That's fine inside the app bundle, but it means nothing could
+// ever import this file's `translations` data from plain Node tooling
+// (an i18n symmetry/raw-key checker, for example) without react-native's
+// native-module bridging throwing outside Metro — and it meant a failure
+// inside `storage.js` on ANY platform would produce an unhandled promise
+// rejection from the IIFE below (no .catch() existed). Lazily required,
+// same pattern as `getLocalization()` right below, which already did this
+// correctly for expo-localization.
+let _storage;
+function getStorage() {
+  if (_storage !== undefined) return _storage;
+  try { _storage = require('./storage').storage; } catch { _storage = null; }
+  return _storage;
+}
+let _RN;
+function getRN() {
+  if (_RN !== undefined) return _RN;
+  try { _RN = require('react-native'); } catch { _RN = null; }
+  return _RN;
+}
 // PR-C2 (Task C auto-detect): expo-localization выдаёт надёжный locale
 // на iOS/Android — лучше чем NativeModules.SettingsManager.AppleLocale
 // (deprecated в новых RN). Лоадим лениво чтобы web-bundle не тащил
@@ -7573,7 +7592,9 @@ function detectSystemLang() {
     // PR-C2: предпочитаем expo-localization (Localization.getLocales() в
     // SDK 52, или Localization.locale в legacy). Это работает на новых
     // iOS / Android без NativeModules deprecation warnings.
-    if (Platform.OS !== 'web') {
+    const RN = getRN();
+    const platformOS = RN?.Platform?.OS;
+    if (platformOS !== 'web') {
       const Loc = getLocalization();
       if (Loc) {
         try {
@@ -7589,13 +7610,13 @@ function detectSystemLang() {
       }
     }
     if (!code) {
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
+      if (platformOS === 'web' && typeof navigator !== 'undefined') {
         code = (navigator.language || navigator.userLanguage || '').toLowerCase();
       } else {
         const locale =
-          NativeModules.SettingsManager?.settings?.AppleLocale ||
-          NativeModules.SettingsManager?.settings?.AppleLanguages?.[0] ||
-          NativeModules.I18nManager?.localeIdentifier ||
+          RN?.NativeModules?.SettingsManager?.settings?.AppleLocale ||
+          RN?.NativeModules?.SettingsManager?.settings?.AppleLanguages?.[0] ||
+          RN?.NativeModules?.I18nManager?.localeIdentifier ||
           '';
         code = locale.toLowerCase().replace('_', '-');
       }
@@ -7614,28 +7635,43 @@ function detectSystemLang() {
 // Load saved language on start; если не выбран — авто из системы.
 // PR-C2: если detect ничего не нашёл — устанавливаем EN (универсальный
 // fallback для приграничных пользователей с экзотическими locale).
+//
+// Track B / B4: this used to have no try/catch and no .catch() on the IIFE
+// itself — any failure inside storage.get/set (any platform, any reason)
+// produced an unhandled promise rejection with no fallback. Now: any
+// failure just keeps the sync-detected `currentLang` from module load
+// (never worse than before this ran), and is caught rather than left
+// unhandled — which also happens to be what makes this file safely
+// importable from plain Node tooling (a symmetry/raw-key checker) where
+// storage is unavailable at all.
 (async () => {
-  let saved = await storage.get(KEY);
-  // Legacy fix-up: rewrite `KZ` → `KK`, `CN` → `ZH` for users
-  // upgrading from a Stage 5 build.
-  if (saved && LEGACY_LANG_FIX[saved]) {
-    saved = LEGACY_LANG_FIX[saved];
-    storage.set(KEY, saved);
-  }
-  if (saved && translations[saved]) {
-    currentLang = saved;
-  } else {
-    const sys = detectSystemLang();
-    if (sys && translations[sys]) {
-      currentLang = sys;
-      storage.set(KEY, sys); // сохраняем выбор авто
-    } else if (!translations[currentLang]) {
-      currentLang = 'EN';
-      storage.set(KEY, 'EN');
+  try {
+    const store = getStorage();
+    let saved = await store?.get(KEY);
+    // Legacy fix-up: rewrite `KZ` → `KK`, `CN` → `ZH` for users
+    // upgrading from a Stage 5 build.
+    if (saved && LEGACY_LANG_FIX[saved]) {
+      saved = LEGACY_LANG_FIX[saved];
+      store?.set(KEY, saved);
     }
+    if (saved && translations[saved]) {
+      currentLang = saved;
+    } else {
+      const sys = detectSystemLang();
+      if (sys && translations[sys]) {
+        currentLang = sys;
+        store?.set(KEY, sys); // сохраняем выбор авто
+      } else if (!translations[currentLang]) {
+        currentLang = 'EN';
+        store?.set(KEY, 'EN');
+      }
+    }
+    syncDocumentLanguage(currentLang);
+    listeners.forEach(cb => cb(currentLang));
+  } catch {
+    // Best-effort: keep whatever currentLang the synchronous detect at
+    // module load already picked.
   }
-  syncDocumentLanguage(currentLang);
-  listeners.forEach(cb => cb(currentLang));
 })();
 
 const HTML_LANG = { RU: 'ru', KK: 'kk', ZH: 'zh-CN', EN: 'en' };
@@ -7650,7 +7686,7 @@ const syncDocumentLanguage = (lang) => {
 
 export const setLanguage = (lang) => {
   currentLang = translations[lang] ? lang : 'EN';
-  storage.set(KEY, currentLang);
+  getStorage()?.set(KEY, currentLang);
   syncDocumentLanguage(currentLang);
   listeners.forEach(cb => cb(currentLang));
 };
@@ -7663,6 +7699,14 @@ export const subscribeToLanguage = (cb) => {
 };
 
 export const t = (key) => {
+  // Track B / B4 (2026-09-08): a prior audit flagged this as "should also
+  // fall back to RU for KK/ZH, not just EN" and it was briefly changed that
+  // way here — reverted. qa/utils/zhLocalizationSmoke.js encodes this as a
+  // deliberate, tested product rule: "Chinese UI uses Chinese system copy
+  // ...; it must never fall back to Russian" — the same policy applies to
+  // KK. EN is the intentional universal fallback, not an oversight. Do not
+  // add a translations.RU[key] step here without updating/removing that
+  // rule (and the same one in useI18n.js) first, with product sign-off.
   const lang = translations[currentLang];
   if (lang && lang[key]) return lang[key];
   if (currentLang !== 'RU') return translations.EN[key] || key;

@@ -590,6 +590,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const from = deal?.from_city || params.fromCity || '—';
   const to = deal?.to_city || params.toCity || '—';
   const routePoints = React.useMemo(() => dedupePoints([...parseRouteCities(from), ...parseRouteCities(to)]), [from, to]);
+  // Track B / B1 fix: this embedded map used to render TruckMap with no
+  // `vehicle` prop at all, silently dropping the payload-aware road-routing
+  // wiring that RouteMap.js/TrackTruckScreen.js carry (see
+  // tests/frontend/test_vehicle_weight_routing.mjs and its 3-round review
+  // history). Mirrors RouteMap.js exactly: payload_t (cargo capacity), never
+  // weight_t (full vehicle mass) — we don't collect the latter anywhere.
+  const vehicle = React.useMemo(() => {
+    const tons = Number(deal?.trip_capacity_tons);
+    return Number.isFinite(tons) && tons > 0 ? { payload_t: tons } : null;
+  }, [deal?.trip_capacity_tons]);
   const lat = location ? Number(location.lat) : null;
   const lng = location ? Number(location.lng) : null;
   const hasLivePoint = Number.isFinite(lat) && Number.isFinite(lng);
@@ -1441,6 +1451,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   planned={!hasLivePoint}
                   showBadge={false}
                   onRouteSummary={onRouteSummary}
+                  vehicle={vehicle}
                 />
               ) : (
                 <View style={[s.finishedMap, { backgroundColor: colors.surface }]} testID="deal-inactive-map-summary">
