@@ -149,6 +149,26 @@ HTML = """<!DOCTYPE html>
   </div>
 
 <script>
+// Security fix (Track B / B3): every field below can originate from an
+// untrusted party — driver full_name/reason/vehicle_* at registration,
+// blacklist reason, or raw Telegram message text — and was previously
+// interpolated straight into innerHTML. esc() HTML-escapes it before
+// insertion; safeUrl() additionally restricts href/src to http(s) so a
+// stored value can't inject a javascript: URL. Never remove esc()/safeUrl()
+// around user-controlled fields below without an equivalent replacement.
+function esc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function safeUrl(u) {
+  if (typeof u !== 'string' || !/^https?:\/\//i.test(u)) return '';
+  return esc(u);
+}
+
 async function loadPending() {
   const q = document.getElementById('search-q')?.value || '';
   const sf = document.getElementById('status-filter')?.value || '';
@@ -190,26 +210,26 @@ async function load() {
   document.getElementById('bl-count').textContent = `(${bl.entries.length})`;
   document.getElementById('bl-body').innerHTML = bl.entries.map(e => `
     <tr>
-      <td class="code">${e.phone || '—'}</td>
-      <td class="code">${e.plate_number || '—'}</td>
-      <td>${e.full_name || '—'}</td>
-      <td>${e.reason || '—'}</td>
-      <td><span class="pill ${e.source}">${e.source}</span></td>
-      <td><span class="pill ${e.severity}">${e.severity}</span></td>
-      <td class="code">${(e.created_at || '').split('.')[0]}</td>
+      <td class="code">${esc(e.phone) || '—'}</td>
+      <td class="code">${esc(e.plate_number) || '—'}</td>
+      <td>${esc(e.full_name) || '—'}</td>
+      <td>${esc(e.reason) || '—'}</td>
+      <td><span class="pill ${esc(e.source)}">${esc(e.source)}</span></td>
+      <td><span class="pill ${esc(e.severity)}">${esc(e.severity)}</span></td>
+      <td class="code">${esc((e.created_at || '').split('.')[0])}</td>
     </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:#78716C">Пусто</td></tr>';
 
   document.getElementById('tm-count').textContent = `(${tm.mentions.length})`;
   document.getElementById('tm-body').innerHTML = tm.mentions.slice(0, 20).map(m => {
-    const kw = m.keywords_found ? JSON.parse(m.keywords_found).slice(0, 3).join(', ') : '';
+    const kw = m.keywords_found ? JSON.parse(m.keywords_found).slice(0, 3).map(esc).join(', ') : '';
     return `
     <tr>
-      <td class="code">${m.chat_name}</td>
-      <td class="code">${m.mentioned_phone || '—'}</td>
-      <td class="code">${m.mentioned_plate || '—'}</td>
-      <td><span class="pill ${m.sentiment}">${m.sentiment}</span></td>
+      <td class="code">${esc(m.chat_name)}</td>
+      <td class="code">${esc(m.mentioned_phone) || '—'}</td>
+      <td class="code">${esc(m.mentioned_plate) || '—'}</td>
+      <td><span class="pill ${esc(m.sentiment)}">${esc(m.sentiment)}</span></td>
       <td class="code">${kw}</td>
-      <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.message_text || ''}</td>
+      <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.message_text)}</td>
     </tr>`;
   }).join('') || '<tr><td colspan="6" style="text-align:center;color:#78716C">Пусто</td></tr>';
 
@@ -217,30 +237,39 @@ async function load() {
   document.getElementById('al-count').textContent = `(${alerts.length})`;
   document.getElementById('al-body').innerHTML = alerts.map(a => `
     <tr>
-      <td class="code">${a.alert_type}</td>
-      <td><span class="pill ${a.severity}">${a.severity}</span></td>
-      <td class="code">${a.driver_id || '—'}</td>
-      <td>${a.message || '—'}</td>
-      <td class="code">${(a.created_at || '').split('.')[0]}</td>
+      <td class="code">${esc(a.alert_type)}</td>
+      <td><span class="pill ${esc(a.severity)}">${esc(a.severity)}</span></td>
+      <td class="code">${esc(a.driver_id) || '—'}</td>
+      <td>${esc(a.message) || '—'}</td>
+      <td class="code">${esc((a.created_at || '').split('.')[0])}</td>
     </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:#78716C">Нет активных</td></tr>';
 }
 
 function renderPending(d) {
-  const fmt = (url) => url ? `<a href="${url}" target="_blank"><img src="${url}" style="width:100px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #44403C"/></a>` : '<span style="color:#78716C">—</span>';
-  const score = d.security_score != null ? d.security_score : '—';
-  const color = d.security_color || 'neutral';
-  const reason = d.manual_review_reason || d.rejected_reason || '';
+  const fmt = (url) => {
+    const u = safeUrl(url);
+    return u ? `<a href="${u}" target="_blank"><img src="${u}" style="width:100px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #44403C"/></a>` : '<span style="color:#78716C">—</span>';
+  };
+  const score = d.security_score != null ? esc(d.security_score) : '—';
+  const color = esc(d.security_color || 'neutral');
+  const reason = esc(d.manual_review_reason || d.rejected_reason || '');
+  // d.id is drivers.id, an integer primary key (never free-text), so it is
+  // safe inside the single-quoted onclick handler below; do not put any
+  // other field from `d` into an inline event-handler attribute — HTML
+  // entity-decoding happens before the JS parses it, so esc() alone does
+  // NOT make arbitrary text safe in that specific context.
+  const id = esc(d.id);
   return `
     <div style="background:#17140F;border:1px solid #F59E0B40;border-radius:14px;padding:14px">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px">
         <div>
-          <div style="font-weight:800;font-size:16px">${d.full_name || 'Без имени'}</div>
-          <div class="code">${d.phone || '—'} · ИИН ${d.iin || '—'}</div>
+          <div style="font-weight:800;font-size:16px">${esc(d.full_name) || 'Без имени'}</div>
+          <div class="code">${esc(d.phone) || '—'} · ИИН ${esc(d.iin) || '—'}</div>
         </div>
         <span class="pill ${color}">${score} · ${color}</span>
       </div>
       <div class="code" style="margin-bottom:8px">
-        ${d.vehicle_brand || ''} ${d.vehicle_year || ''} · ${d.vehicle_plate || ''} · ${d.vehicle_type || ''}
+        ${esc(d.vehicle_brand) || ''} ${esc(d.vehicle_year) || ''} · ${esc(d.vehicle_plate) || ''} · ${esc(d.vehicle_type) || ''}
       </div>
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <div><div class="stat-label" style="margin:0 0 4px">Селфи</div>${fmt(d.selfie_url)}</div>
@@ -251,12 +280,12 @@ function renderPending(d) {
       <div style="font-size:11px;color:#A8A29E;margin-bottom:10px">
         Liveness: ${Math.round((d.face_quality || 0) * 100)}% ·
         Face match: ${Math.round((d.face_match_score || 0) * 100)}% ·
-        Уровень: ${d.verification_level || 0}
+        Уровень: ${esc(d.verification_level || 0)}
         ${reason ? '<br>⚠ ' + reason : ''}
       </div>
       <div style="display:flex;gap:8px">
-        <button onclick="moderate('${d.id}','approve')" style="flex:1;background:#22C55E;color:#fff;border:0;padding:10px;border-radius:8px;cursor:pointer;font-weight:700">✓ Одобрить</button>
-        <button onclick="moderate('${d.id}','reject')" style="flex:1;background:#EF4444;color:#fff;border:0;padding:10px;border-radius:8px;cursor:pointer;font-weight:700">✗ Отклонить</button>
+        <button onclick="moderate('${id}','approve')" style="flex:1;background:#22C55E;color:#fff;border:0;padding:10px;border-radius:8px;cursor:pointer;font-weight:700">✓ Одобрить</button>
+        <button onclick="moderate('${id}','reject')" style="flex:1;background:#EF4444;color:#fff;border:0;padding:10px;border-radius:8px;cursor:pointer;font-weight:700">✗ Отклонить</button>
       </div>
     </div>`;
 }
