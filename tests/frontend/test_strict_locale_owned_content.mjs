@@ -47,7 +47,7 @@ test('translation fallback can never jump from non-RU locale to RU', () => {
 });
 
 test('generic cargo formatter uses canonical locale dictionary instead of raw Russian fallback', () => {
-  assert.match(i18n, /import \{ localizeCargoName \} from '\.\/places'/);
+  assert.match(i18n, /import \{ localizeCargoName \} from '\.\/places(?:\.js)?'/);
   assert.match(i18n, /return localizeCargoName\(raw, currentLang\) \|\| raw/);
 });
 

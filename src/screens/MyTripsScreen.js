@@ -21,7 +21,6 @@ import Feather from '@expo/vector-icons/Feather';
 import { countryFlag } from '../utils/countryFlags';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import BellBadge from '../components/ui/v1/BellBadge';
-import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -104,7 +103,6 @@ export default function MyTripsScreen({ navigation, route }) {
   }), [v1]);
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const unreadNotifications = useUnreadNotifications(true);
   const accent = isDriver ? '#168759' : '#FF8400';
   const { t, lang } = useI18n();
   const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
@@ -625,7 +623,6 @@ export default function MyTripsScreen({ navigation, route }) {
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       <View style={[s.brandBar, { justifyContent: 'flex-end' }]} testID="mywork-minimal-header">
         <BellBadge
-          count={unreadNotifications}
           onPress={() => navigation.navigate('PushFilter', { role })}
           testID="mywork-notification-settings-btn"
         />
