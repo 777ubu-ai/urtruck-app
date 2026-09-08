@@ -1222,9 +1222,20 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     delivery ? `${ui.deliveryDate}: ${compactDate(delivery, lang)}` : null,
   ].filter(Boolean).join(' · ');
   const tripCode = text(deal?.trip_id, trip?.id, params.tripId, deal?.id, params.dealId);
+  // N-01: сырой UUID в шапке ни к чему — показываем короткий человеко-читаемый ref.
+  const humanizeCode = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const compact = raw.replace(/-/g, '');
+    if (/^[0-9a-f]{32}$/i.test(compact)) return `#${compact.slice(-6).toUpperCase()}`;
+    return raw.toUpperCase();
+  };
+  const shortCode = humanizeCode(tripCode);
+  // N-02/п.25: роль+имя — отдельная строка, чтобы «Грузоотправитель» не резался.
+  const headerPartnerText = `${isDriver ? ui.shipper : ui.driver}: ${partnerName || '—'}`;
   const compactHeaderMeta = [
+    shortCode,
     pickup ? `${ui.loadingDate}: ${compactDate(pickup, lang)}` : null,
-    `${isDriver ? ui.shipper : ui.driver}: ${partnerName || '—'}`,
   ].filter(Boolean).join(' · ');
 
   const counterpartyMeta = [
@@ -1305,8 +1316,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         <View style={s.routeHeaderRow}>
           <Text style={[s.routeTitle, { color: colors.text }]} numberOfLines={1}>{routeLabel}</Text>
         </View>
-        {tripCode ? <Text style={s.metaPrimary} numberOfLines={1} ellipsizeMode="tail">{String(tripCode).toUpperCase()}</Text> : null}
-        <Text style={s.partnerText} numberOfLines={1} ellipsizeMode="tail">{compactHeaderMeta}</Text>
+        {compactHeaderMeta ? <Text style={s.metaPrimary} numberOfLines={1} ellipsizeMode="tail">{compactHeaderMeta}</Text> : null}
+        <Text style={s.partnerText} numberOfLines={1} ellipsizeMode="tail">{headerPartnerText}</Text>
       </View>
       <View style={s.headerActions}>
         <TouchableOpacity
