@@ -1,5 +1,6 @@
 // themeContrastSmoke — WCAG-контраст обеих тем (P1 theme fix 2026-08;
-// re-wired Track B / B6 2026-09-08).
+// re-wired Track B / B6 2026-09-08; text/non-text tokens split + fixed
+// 2026-09-08, same Track B session, owner-approved policy below).
 //
 // Imports the REAL palettes from src/theme/designV1Palette.js and
 // src/theme/brandV2.js instead of hand-copying values — a hand-copy is how
@@ -10,28 +11,15 @@
 //
 //   node qa/utils/themeContrastSmoke.js
 //
-// KNOWN FAILURES as of 2026-09-08 (real, evidence-backed, not caused by this
-// rewrite — this is the first version of the script that actually checks
-// these rows; the old hand-copy either omitted them or tested a different,
-// equally-wrong value). Left FAILING on purpose rather than weakened to
-// pass, per the "don't loosen a guard to get green" rule — these need an
-// explicit design decision (darker hex, or accept + document the exception
-// + move the affected text to bold/≥19px so it legitimately qualifies for
-// the large-text 3:1 threshold), not a silent code fix:
-//   - designV1 LIGHT 'warning text on card': 3.30:1, needs 4.5:1. The
-//     CLAUDE.md-canonical '#E06D00' fails normal-text AA on white. Used at
-//     12-14px bold in MyTripsScreen.js (offersCtaText/offersCtaArrow,
-//     miniBtnText) — below the ~19px-bold large-text carve-out.
-//   - brandV2 LIGHT 'error on bg' (#EF4444 on #FFFFFF): 3.76:1, needs 4.5:1.
-//     Real usage: registration/onboarding error text (IdentityStepScreen,
-//     OtpV2Screen, PhoneV2Screen, RegistrationCloseModal, SelfieStepScreen),
-//     all typography.caption/bodySmall — normal-text threshold applies.
-//   - brandV2 LIGHT 'info on bg' (#3478D4 on #FFFFFF): 4.39:1, needs 4.5:1.
-//     No live text consumer found (grep for `brand.info` is empty) — a
-//     forward guard, not an active bug, but real if this token is ever used.
-//   - brandV2 LIGHT 'accent/warning as large graphic element on bg'
-//     (#FF8400 on #FFFFFF): 2.46:1, needs 3:1. Real usage:
-//     RoleScreen.js:151 `iconColor={brand.accent}` on a white background.
+// Policy (owner-approved 2026-09-08): keep UrTruck's visual style — bright
+// accent/warning colors stay bright for backgrounds, badges, borders and
+// decorative/icon use, where the applicable bar is the WCAG 1.4.11
+// non-text threshold (3:1). The SAME color used as small text must clear
+// the stricter 1.4.3 normal-text threshold (4.5:1) — so where a color has
+// both a text and a non-text real usage, there are two tokens
+// (`error`/`errorText`, `accent`/`accentIcon`), not one value pulling
+// double duty. See src/theme/brandV2.js and src/theme/designV1Palette.js
+// for the reasoning behind each specific hex below.
 
 import { LIGHT as V1_LIGHT, DARK as V1_DARK } from '../../src/theme/designV1Palette.js';
 // brandV2.js only exports `brandLight` via its default export object (not
@@ -73,6 +61,9 @@ group('designV1 LIGHT', [
   ['white on deep CTA', '#FFFFFF', V1_LIGHT.driverDeep, 4.5],
   ['deep green on soft tint', V1_LIGHT.driverDeep, V1_LIGHT.driverSoft, 4.5],
   ['error on card (large/icon)', V1_LIGHT.error, V1_LIGHT.surface, 3],
+  // warning is only ever used as small text (MyTripsScreen.js,
+  // TrackTruckScreen.js) — no background/icon use exists to keep bright,
+  // so it's held to the normal-text bar, not the graphic-element one.
   ['warning text on card', V1_LIGHT.warning, V1_LIGHT.surface, 4.5],
   ['info on card (large)', V1_LIGHT.info, V1_LIGHT.surface, 3],
   ['rating on card (graphic)', V1_LIGHT.rating, V1_LIGHT.surface, 3],
@@ -97,21 +88,42 @@ group('brandV2 LIGHT', [
   ['text on bg', brandLight.textPrimary, brandLight.bg, 4.5],
   ['secondary text on bg', brandLight.textSecondary, brandLight.bg, 4.5],
   ['white on primary CTA', brandLight.textOnPrimary, brandLight.primary, 4.5],
-  ['error on bg', brandLight.error, brandLight.bg, 4.5],
-  ['info on bg', brandLight.info, brandLight.bg, 4.5],
-  // accent/warning ('#FF8400') is documented (CLAUDE.md) as a background/
-  // badge color only, never as text on white — so it's checked at the
-  // "large graphic element" threshold (3:1), not the 4.5:1 text threshold.
-  ['accent/warning as large graphic element on bg', brandLight.accent, brandLight.bg, 3],
+  // `error`/`info` stay bright for their real non-text uses (RoleScreen.js
+  // background badge, input-error borders in IdentityStepScreen/
+  // VehicleDocsScreen/OtpV2Screen/PhoneV2Screen) — checked at the 3:1
+  // non-text threshold against both real render surfaces they appear on.
+  ['error as background badge/border on bg', brandLight.error, brandLight.bg, 3],
+  ['error as background badge/border on surfaceMuted', brandLight.error, brandLight.surfaceMuted, 3],
+  ['info as background/border on bg', brandLight.info, brandLight.bg, 3],
+  // `errorText` is the only variant used as actual small text (registration/
+  // onboarding error messages, typography.caption/bodySmall) — held to 4.5:1.
+  ['errorText as small text on bg', brandLight.errorText, brandLight.bg, 4.5],
+  // `infoText` has no live text consumer yet (grep for `brand.info`/
+  // `brand.infoText` in src/ is empty) — a forward guard for if it's ever
+  // used as text, not an active bug today.
+  ['infoText as small text on bg (forward guard, no live consumer)', brandLight.infoText, brandLight.bg, 4.5],
+  // `accent` stays bright for backgrounds/badges/decorative marks (logo,
+  // route lines) — not held to any contrast bar here since it never
+  // renders as a UI component boundary or icon on its own in the code we
+  // could find; if that changes, test it like accentIcon below.
+  // `accentIcon` is the variant used for a meaningful icon a user reads
+  // (RoleScreen.js:151 `iconColor={brand.accentIcon}`) — real render
+  // surface is `surfaceMuted` (RoleCard's icon chip background), checked
+  // against both that and `bg` at the 3:1 non-text threshold.
+  ['accentIcon on bg', brandLight.accentIcon, brandLight.bg, 3],
+  ['accentIcon on surfaceMuted (real render surface)', brandLight.accentIcon, brandLight.surfaceMuted, 3],
 ]);
 
 group('brandV2 DARK', [
   ['text on bg', brandDark.textPrimary, brandDark.bg, 4.5],
   ['secondary text on bg', brandDark.textSecondary, brandDark.bg, 4.5],
   ['white on primary CTA', brandDark.textOnPrimary, brandDark.primary, 4.5],
-  ['error on bg', brandDark.error, brandDark.bg, 4.5],
-  ['info on bg', brandDark.info, brandDark.bg, 4.5],
-  ['accent/warning as large graphic element on bg', brandDark.accent, brandDark.bg, 3],
+  ['error as background badge/border on bg', brandDark.error, brandDark.bg, 3],
+  ['info as background/border on bg', brandDark.info, brandDark.bg, 3],
+  ['errorText as small text on surface', brandDark.errorText, brandDark.surface, 4.5],
+  ['infoText as small text on surface (forward guard)', brandDark.infoText, brandDark.surface, 4.5],
+  ['accentIcon on bg', brandDark.accentIcon, brandDark.bg, 3],
+  ['accentIcon on surfaceMuted', brandDark.accentIcon, brandDark.surfaceMuted, 3],
 ]);
 
 console.log(fails === 0 ? '\n[theme-contrast] OK — designV1 + brandV2, both themes WCAG-clean' : `\n[theme-contrast] ${fails} FAILS`);

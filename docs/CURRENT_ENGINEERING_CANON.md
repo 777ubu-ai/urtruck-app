@@ -25,29 +25,43 @@ FastAPI. Покрыто тестом `backend/tests/test_borders_lazy_routes.py`
 `LIGHT.warning='#F59E0B'`, разошедшаяся с источником), и 6+ экранов с
 хардкодом `#E06D00` напрямую.
 
-После Track B:
+После Track B (первый проход, коммит `fix(theme): consolidate warning
+token...`):
 - `src/theme/designV1Palette.js` — чистые данные (`LIGHT`/`DARK`, без
   импортов), единственный источник для `designV1.js`'s токенов.
   `designV1.js` реэкспортирует их и добавляет только `useV1Colors()`.
-- `LIGHT.warning` исправлен на `#E06D00` (соответствует канону `CLAUDE.md`
-  и уже задеплоенным экранам).
 - `qa/utils/themeContrastSmoke.js` импортирует РЕАЛЬНЫЕ палитры
   (`designV1Palette.js` + `brandV2.js`) вместо копии — расхождение больше
   невозможно физически, не только по соглашению.
+- Это впервые проверило 4 связки цвет/фон, которые раньше не проверялись
+  вообще или проверялись с другим, одинаково неверным числом —
+  `npm run qa:theme-contrast` честно упал (код 1), задокументировано как
+  known-failure с решением владельца.
 
-**`npm run qa:theme-contrast` сейчас осознанно завершается с кодом 1** —
-рефактор впервые проверил 4 связки цвет/фон, которые раньше не
-проверялись вообще (не были в списке) или проверялись с другим,
-одинаково неверным числом. Это НЕ регрессия рефактора, это найденные
-реальные WCAG-проблемы, требующие решения владельца (заменить hex или
-задокументировать исключение с ограничением "только bold/≥19px"):
+**Владелец решил (2026-09-08): сохранить визуальный стиль, не убирать
+яркие акцентные цвета — только развести "текст" и "фон/иконка/декор" на
+разные токены там, где один hex обслуживал обе роли.** Второй коммит
+(`fix(theme): text/non-text token split for WCAG AA`) это реализовал —
+**`npm run qa:theme-contrast` сейчас снова exit 0**, 0 FAIL:
 
-| Пара | Контраст | Порог | Где используется |
-|---|---|---|---|
-| `#E06D00` текст на белом (designV1 LIGHT.warning) | 3.30:1 | 4.5:1 | `MyTripsScreen.js` (12-14px bold) |
-| `#EF4444` текст на белом (brandV2 LIGHT.error) | 3.76:1 | 4.5:1 | Ошибки в registration/onboarding (5 файлов) |
-| `#3478D4` текст на белом (brandV2 LIGHT.info) | 4.39:1 | 4.5:1 | Живых потребителей не найдено — forward guard |
-| `#FF8400` как графич. элемент на белом (brandV2 LIGHT.accent) | 2.46:1 | 3:1 | Иконка в `RoleScreen.js:151` |
+| Токен | Роль | LIGHT hex | Контраст (реальный фон) | Порог |
+|---|---|---|---|---|
+| `designV1.warning` | только текст (нет фон/icon-использования) | `#E06D00` → `#B45800` | 4.84:1 на `#FFFFFF` | 4.5:1 |
+| `brandV2.error` | фон/бордер (не менялся) | `#EF4444` | 3.76:1 на `bg`, 3.39:1 на `surfaceMuted` | 3:1 |
+| `brandV2.errorText` (новый) | текст (registration/onboarding, 4 живых файла) | `#D03B3B` | 4.80:1 на `#FFFFFF` | 4.5:1 |
+| `brandV2.info` | фон/бордер (не менялся) | `#3478D4` | 4.39:1 на `bg` | 3:1 |
+| `brandV2.infoText` (новый) | текст (0 живых потребителей — forward guard) | `#3273CC` | 4.71:1 на `#FFFFFF` | 4.5:1 |
+| `brandV2.accent` | фон/бейдж/лого/маршрут (не менялся) | `#FF8400` | не тестируется — нет UI-компонент/icon-использования | — |
+| `brandV2.accentIcon` (новый) | иконка (`RoleScreen.js:151`) | `#FF8400` → `#D26D00` | 3.19:1 на реальном `surfaceMuted` | 3:1 |
+
+DARK-варианты не менялись — уже проходили (6.5-8.75:1) во всех связках.
+Затронутые живые файлы (только текстовые usage, border/background не
+трогались): `src/screens/registration/IdentityStepScreen.js`,
+`src/components/DateOfBirthSheet.js`, `src/screens/onboarding/OtpV2Screen.js`,
+`src/screens/onboarding/PhoneV2Screen.js`, `src/components/RegistrationCloseModal.js`,
+`src/screens/RoleScreen.js`. `src/screens/registration/SelfieStepScreen.js`
+(мёртвый файл, см. п.4.1) содержит идентичный `color: brand.error` —
+сознательно не тронут, чтобы не расширять диф на неиспользуемый код.
 
 ## 3. i18n — загрузчик защищён от сбоя вне бандла
 

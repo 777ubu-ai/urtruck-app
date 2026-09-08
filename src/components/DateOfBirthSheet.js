@@ -130,7 +130,7 @@ const s = StyleSheet.create({
   cellActive: { backgroundColor: brand.primarySoft },
   cellText: { ...typography.body, color: brand.textSecondary },
   cellTextActive: { color: brand.primary, fontWeight: '800' },
-  err: { ...typography.caption, color: brand.error || '#EF4444', marginTop: 10, textAlign: 'center' },
+  err: { ...typography.caption, color: brand.errorText || '#D03B3B', marginTop: 10, textAlign: 'center' },
   doneBtn: { marginTop: 16, height: 52, borderRadius: radius.md, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center' },
   doneText: { ...typography.button, color: brand.textOnPrimary },
   cancelBtn: { alignItems: 'center', marginTop: 10, paddingVertical: 8 },

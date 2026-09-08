@@ -42,10 +42,17 @@ export const LIGHT = {
 
   error: '#D64545',
   success: '#168759',
-  // Corrected 2026-09-08 from an orphaned '#B76B00' (zero live consumers)
-  // to '#E06D00' — the value already hardcoded as "warning text on white"
-  // across 6+ live screens and the one CLAUDE.md documents as canon.
-  warning: '#E06D00',
+  // Track B, 2026-09-08 (two-step correction):
+  //  1. Was an orphaned '#B76B00' (zero live consumers) — corrected to
+  //     '#E06D00', the value already hardcoded across 6+ live screens.
+  //  2. '#E06D00' on white measures 3.30:1, below the 4.5:1 normal-text
+  //     threshold (this token is only ever used as small text — see
+  //     MyTripsScreen.js, TrackTruckScreen.js — never as a background or
+  //     icon, so there's no "keep it bright for decorative use" case
+  //     here). Same hue/saturation family, darkened until compliant:
+  //     4.84:1 on white. Owner-approved per the WCAG-AA-for-text /
+  //     bright-OK-for-background-or-icon-only policy (2026-09-08).
+  warning: '#B45800',
   // info/rating: previously only lived as a hand-copy inside
   // qa/utils/themeContrastSmoke.js (never in this file), per CLAUDE.md canon.
   info: '#3478D4',

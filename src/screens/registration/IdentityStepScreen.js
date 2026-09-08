@@ -420,7 +420,7 @@ const s = StyleSheet.create({
   dobField: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dobValue: { ...typography.body, color: brand.textPrimary },
   dobPlaceholder: { ...typography.body, color: brand.textTertiary },
-  err: { ...typography.caption, color: brand.error, marginTop: 6 },
+  err: { ...typography.caption, color: brand.errorText, marginTop: 6 },
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
   cta: { height: 56, borderRadius: radius.lg, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center' },
   ctaText: { ...typography.button, color: brand.textOnPrimary },

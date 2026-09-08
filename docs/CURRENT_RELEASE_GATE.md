@@ -21,7 +21,7 @@
 | `tests/unit/` (theme resolve, deal status order) | ✅ | `node tests/unit/dealStatusOrder.test.mjs && node tests/unit/themeResolve.test.mjs` |
 | i18n симметрия/raw-key (существующий инструмент, не новый) | ✅ 0 пропусков | `node qa/utils/i18nSmoke.js` |
 | ZH/KK product-rule (не откатываться на RU) | ✅ | `node qa/utils/zhLocalizationSmoke.js` |
-| Theme WCAG-контраст | ⚠️ **4 честных FAIL** (см. `CURRENT_ENGINEERING_CANON.md` п.2) | `node qa/utils/themeContrastSmoke.js` |
+| Theme WCAG-контраст | ✅ 0 FAIL (было 4, закрыто owner-approved text/non-text token split — `CURRENT_ENGINEERING_CANON.md` п.2) | `node qa/utils/themeContrastSmoke.js` |
 | Admin XSS regression | ✅ 17/17 | `cd backend && python -m pytest tests/test_admin_xss_escaping.py` |
 | Синтакс-чек изменённых JSX-файлов | ✅ babel parse OK | см. коммиты Track B |
 
@@ -33,10 +33,13 @@
 
 ## ⚠️ Требует решения владельца перед релизом
 
-1. **4 WCAG-контраста, честно проваливающиеся** — `#E06D00`/`#EF4444`/`#3478D4`/`#FF8400`
-   не проходят свои пороги в реальных местах использования (детали —
-   `CURRENT_ENGINEERING_CANON.md` п.2). Не исправлено намеренно: замена
-   брендовых hex — не инженерное решение, а дизайн-решение.
+1. ~~4 WCAG-контраста, честно проваливающиеся~~ — **закрыто 2026-09-08.**
+   Owner-approved policy: сохранить яркие цвета для фона/бейджа/иконки/
+   декора, завести отдельные `*Text`/`accentIcon` токены только там, где
+   тот же hex использовался как мелкий текст. `#E06D00`→`#B45800` (только
+   текст), `#EF4444`/`#3478D4`/`#FF8400` остались как есть для фона/
+   бордера/лого, новые `errorText`/`infoText`/`accentIcon` — для текста/
+   иконки. Детали — `CURRENT_ENGINEERING_CANON.md` п.2.
 2. **Осиротевший маршрут `TrackTruck`** — оставить, удалить или
    переиспользовать (`CURRENT_PRODUCT_CANON.md` п.2.2).
 3. **Недостижимая кнопка звонка** в `DealWorkspaceScreenV2.js` — добавить

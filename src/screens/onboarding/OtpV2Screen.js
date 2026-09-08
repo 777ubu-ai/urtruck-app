@@ -478,7 +478,7 @@ const makeStyles = (brand) => StyleSheet.create({
     opacity: 0,
   },
   errorText: {
-    color: brand.error,
+    color: brand.errorText,
     ...typography.bodySmall,
     fontWeight: '600',
     marginBottom: 4,
