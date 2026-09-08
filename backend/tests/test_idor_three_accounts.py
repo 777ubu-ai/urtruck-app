@@ -19,7 +19,6 @@ pytest-файлы через `grep '^def test_'` и иначе запускае�
 import uuid
 
 import contextvars
-from api import verification_gate
 
 _current_user = contextvars.ContextVar("user", default=None)
 
@@ -36,18 +35,20 @@ def _fake_require_level(_min_level):
     return dep
 
 
-verification_gate.require_level = _fake_require_level
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.marketplace import mp_router
 from api.chat import chat_router
 from database.db import get_conn, new_id
+from tests.auth_harness import override_require_level
 
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
 app.include_router(chat_router, prefix="/api/v1/chat")
+# App-scoped override (tests/auth_harness.py) instead of mutating the
+# shared api.verification_gate module — see that file for why.
+override_require_level(app, _fake_require_level(1))
 client = TestClient(app)
 
 A = "idor-shipper-" + uuid.uuid4().hex[:8]
