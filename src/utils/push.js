@@ -9,6 +9,11 @@ const BASE = `${API_BASE}/push`;
 const TOKEN_KEY = 'ur_reg_token';
 const PUSH_ASKED = 'ur_push_asked';
 const NATIVE_TOKEN_KEY = 'ur_push_native_token';
+// Track: push-recovery — сырой FCM(Android)/APNs(iOS) токен, отдельно от
+// Expo-токена выше. Нужен собственный ключ, чтобы unsubscribe() мог снять
+// ОБА провайдера по значению (POST /push/unregister-native шлёт конкретный
+// token, не device_id) — см. registerNative()/unsubscribe() ниже.
+const NATIVE_RAW_TOKEN_KEY = 'ur_push_native_raw_token';
 export const NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2';
 // P0-1 (аудит push-безопасности): технический идентификатор устройства —
 // НЕ секрет, НЕ user_id, НЕ сам push-токен. Генерируется один раз и живёт
@@ -163,7 +168,7 @@ export const push = {
         await sub.unsubscribe();
       }
     }
-    // Native: убираем expo-токен с backend
+    // Native: убираем Expo-токен с backend
     try {
       const existing = await storage.get(NATIVE_TOKEN_KEY);
       if (existing) {
@@ -173,6 +178,22 @@ export const push = {
           body: JSON.stringify({ token: existing, reason: 'user_unregistered' }),
         });
         await storage.remove(NATIVE_TOKEN_KEY);
+      }
+    } catch {}
+    // Track: push-recovery — и сырой FCM/APNs-токен тоже (если был
+    // зарегистрирован, см. registerNative()). /unregister-native снимает по
+    // значению конкретного token, поэтому оба провайдера нужно отписывать
+    // отдельными вызовами — logoutCleanup() ниже, наоборот, снимает всё по
+    // device_id за один запрос и в этом отдельном вызове не нуждается.
+    try {
+      const existingNative = await storage.get(NATIVE_RAW_TOKEN_KEY);
+      if (existingNative) {
+        await fetch(`${BASE}/unregister-native`, {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({ token: existingNative, reason: 'user_unregistered' }),
+        });
+        await storage.remove(NATIVE_RAW_TOKEN_KEY);
       }
     } catch {}
   },
@@ -278,8 +299,6 @@ export const push = {
     // вызов (web/legacy).
     let projectId;
     let appVersion = null;
-    let appId = null;
-    let locale = null;
     try {
       const Constants = require('expo-constants').default;
       projectId =
@@ -288,27 +307,11 @@ export const push = {
         Constants?.manifest?.extra?.eas?.projectId ||
         null;
       appVersion = Constants?.expoConfig?.version || Constants?.manifest?.version || null;
-      appId = Constants?.expoConfig?.android?.package ||
-        Constants?.expoConfig?.ios?.bundleIdentifier ||
-        Constants?.manifest?.android?.package ||
-        Constants?.manifest?.ios?.bundleIdentifier || null;
     } catch { projectId = null; }
-    try {
-      const Localization = require('expo-localization');
-      locale = Localization?.getLocales?.()?.[0]?.languageTag || null;
-    } catch {}
     // issue #5: dev-only debug logging для проверки регистрации токена на
     // реальном устройстве/dev-билде (в проде молчим).
     const dbg = (...a) => { if (typeof __DEV__ !== 'undefined' && __DEV__) console.log('[push]', ...a); };
     dbg('projectId', projectId || '(none)');
-    let nativeTokenData = null;
-    try {
-      nativeTokenData = await Notifications.getDevicePushTokenAsync();
-      dbg('native token', nativeTokenData?.type, _maskToken(nativeTokenData?.data));
-    } catch (e) {
-      dbg('getDevicePushTokenAsync failed', String(e));
-    }
-
     let tokenData;
     try {
       tokenData = projectId
@@ -316,18 +319,28 @@ export const push = {
         : await Notifications.getExpoPushTokenAsync();
     } catch (e) {
       dbg('getExpoPushTokenAsync failed', String(e));
-      if (!nativeTokenData?.data) return { ok: false, reason: 'token_failed', error: String(e) };
+      return { ok: false, reason: 'token_failed', error: String(e) };
     }
     const token = tokenData?.data;
-    if (!token && !nativeTokenData?.data) { dbg('no token returned'); return { ok: false, reason: 'no_token' }; }
-    if (token) dbg('expo token', _maskToken(token)); // P0-1: полный токен в логи не пишем даже в dev
+    if (!token) { dbg('no token returned'); return { ok: false, reason: 'no_token' }; }
+    dbg('expo token', _maskToken(token)); // P0-1: полный токен в логи не пишем даже в dev
 
     // Отправляем на бэк. issue #5: проверяем ответ — раньше статус
     // игнорировался и при 401/500 функция всё равно возвращала ok:true,
     // хотя токен на сервере не сохранялся (push не доходил).
+    // Track: push-recovery (2026-09-09) — вынесено в _registerToken(), т.к.
+    // ниже регистрируем ЕЩЁ и сырой FCM/APNs-токен тем же device_id тем же
+    // эндпоинтом (см. Notifications.getDevicePushTokenAsync() ниже);
+    // исторический прецедент — commit fb5c6415 ("add native gateway and
+    // device registry", 31.08.2026), который добавил ровно эту функцию, но
+    // не попал в эту ветку (см. forensic-аудит). Логика самого Expo-пути
+    // (порядок проверок 409/2xx/not_linked) не менялась ни на строчку.
     const authToken = await storage.get(TOKEN_KEY);
     const deviceId = await getOrCreateDeviceId();
+
     const registerToken = async ({ pushToken, provider }) => {
+      let regStatus = 0;
+      let regUserId;
       try {
         const resp = await fetch(`${BASE}/register-native`, {
           method: 'POST',
@@ -342,56 +355,78 @@ export const push = {
             device_name: Device.modelName || Device.deviceName || null,
             device_id: deviceId,
             app_version: appVersion,
-            app_id: appId,
-            locale,
-            os_version: Device.osVersion || null,
           }),
         });
-        let userId;
-        try { userId = (await resp.json())?.user_id; } catch {}
-        dbg('register-native', provider, '→', resp.status, 'user_id=', userId);
-        if (resp.status === 409) return { ok: false, reason: 'token_conflict', token: pushToken, status: resp.status, provider };
-        if (resp.status < 200 || resp.status >= 300) return { ok: false, reason: 'register_rejected', token: pushToken, status: resp.status, provider };
-        if (authToken && !userId) return { ok: false, reason: 'not_linked', token: pushToken, status: resp.status, provider };
-        return { ok: true, token: pushToken, user_id: userId, provider };
+        regStatus = resp.status;
+        try { const j = await resp.json(); regUserId = j?.user_id; } catch {}
+        dbg('register-native', provider, '→', regStatus, 'user_id=', regUserId);
       } catch (e) {
+        dbg('register-native network error', provider, String(e));
         return { ok: false, reason: 'register_failed', token: pushToken, provider, error: String(e) };
       }
+      if (regStatus === 409) {
+        // P0-1: TOKEN_OWNERSHIP_CONFLICT — этот физический токен уже активно
+        // привязан к другому пользователю на другом устройстве (не должно
+        // случаться в норме на одном юзере/девайсе; для старых клиентов без
+        // device_id это единственный сигнал — не считаем успехом).
+        return { ok: false, reason: 'token_conflict', token: pushToken, provider, status: regStatus };
+      }
+      if (regStatus < 200 || regStatus >= 300) {
+        return { ok: false, reason: 'register_rejected', token: pushToken, provider, status: regStatus };
+      }
+      // BUG-004: слали auth-токен, но сервер не привязал (user_id=null → протухший
+      // токен) → токен «висит» без владельца, push не дойдёт, а раньше клиент
+      // рапортовал ok и кэшировал → автозапуск не перезапускал регистрацию.
+      // Не кэшируем как успех, чтобы следующий старт повторил линковку.
+      if (authToken && !regUserId) {
+        return { ok: false, reason: 'not_linked', token: pushToken, provider, status: regStatus };
+      }
+      return { ok: true, token: pushToken, provider, user_id: regUserId };
     };
 
-    const registrations = [];
-    if (token) registrations.push(await registerToken({ pushToken: token, provider: 'expo' }));
-    if (nativeTokenData?.data) {
-      registrations.push(await registerToken({
-        pushToken: nativeTokenData.data,
-        provider: Platform.OS === 'android' ? 'fcm' : 'apns',
-      }));
+    const expoResult = await registerToken({ pushToken: token, provider: 'expo' });
+    if (expoResult.ok) await storage.set(NATIVE_TOKEN_KEY, token);
+
+    // Track: push-recovery — сырой нативный токен (FCM registration token на
+    // Android / APNs device token на iOS), дополнительно к Expo-токену выше.
+    // Historical: Notifications.getDevicePushTokenAsync() — тот же вызов,
+    // что был в commit fb5c6415, не требует отдельного Firebase SDK (это
+    // API самого expo-notifications). Backend-шлюз (services/push_gateway.py
+    // FCMProvider/APNsProvider) уже умеет их принимать и слать напрямую —
+    // ждёт только PUSH_PROVIDER_MODE=native|dual + креды (не меняются этим
+    // коммитом, см. PHASE 7 контракт). Регистрация ВСЕГДА идёт тем же
+    // register-native эндпоинтом и тем же device_id — backend уже умеет
+    // держать несколько активных провайдеров на одном device_id (см.
+    // _resolve_ownership / push_devices UNIQUE(push_provider, push_token)).
+    // Падение этого блока НЕ должно откатывать успешную Expo-регистрацию
+    // выше — весь блок в своём try/catch, ошибка только логируется в dev.
+    let nativeResult = null;
+    try {
+      let nativeTokenData = null;
+      try {
+        nativeTokenData = await Notifications.getDevicePushTokenAsync();
+      } catch (e) {
+        dbg('getDevicePushTokenAsync failed', String(e));
+      }
+      const nativeToken = nativeTokenData?.data;
+      if (nativeToken) {
+        dbg('native token', nativeTokenData?.type, _maskToken(nativeToken)); // P0-1: не логируем токен целиком
+        const nativeProvider = Platform.OS === 'android' ? 'fcm' : 'apns';
+        nativeResult = await registerToken({ pushToken: nativeToken, provider: nativeProvider });
+        if (nativeResult.ok) await storage.set(NATIVE_RAW_TOKEN_KEY, nativeToken);
+      }
+    } catch (e) {
+      dbg('native registration block failed (Expo unaffected)', String(e));
     }
-    const failed = registrations.find((r) => !r?.ok);
-    if (failed?.reason === 'token_conflict') {
-      // P0-1: TOKEN_OWNERSHIP_CONFLICT — этот физический токен уже активно
-      // привязан к другому пользователю на другом устройстве (не должно
-      // случаться в норме на одном юзере/девайсе; для старых клиентов без
-      // device_id это единственный сигнал — не считаем успехом).
-      return failed;
-    }
-    if (failed && !registrations.some((r) => r?.ok)) {
-      return failed;
-    }
-    // BUG-004: слали auth-токен, но сервер не привязал (user_id=null → протухший
-    // токен) → токен «висит» без владельца, push не дойдёт, а раньше клиент
-    // рапортовал ok и кэшировал → автозапуск не перезапускал регистрацию.
-    // Не кэшируем как успех, чтобы следующий старт повторил линковку.
-    const primary = registrations.find((r) => r?.provider === 'fcm' || r?.provider === 'apns') || registrations.find((r) => r?.ok);
-    await storage.set(NATIVE_TOKEN_KEY, primary?.token || token || nativeTokenData.data);
+
+    if (!expoResult.ok) return { ...expoResult, native: nativeResult };
     return {
       ok: true,
-      token: primary?.token || token || nativeTokenData.data,
-      expo_token: token || null,
-      native_token: nativeTokenData?.data || null,
-      native_provider: Platform.OS === 'android' ? 'fcm' : 'apns',
-      user_id: primary?.user_id,
-      partial_failure: failed || null,
+      token,
+      user_id: expoResult.user_id,
+      native: nativeResult,
+      native_token: nativeResult?.ok ? nativeResult.token : null,
+      native_provider: nativeResult?.provider || null,
     };
   },
 
