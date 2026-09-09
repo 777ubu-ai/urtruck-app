@@ -270,7 +270,7 @@ export default function IdentityStepScreen({ navigation }) {
           <Text style={s.label}>{docType === 'passport' ? t('id_doc_type_passport') : t('id_step_title')}</Text>
           <Text style={s.photoHint}>{t('id_photo_hint')}</Text>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Pressable onPress={() => pickIdSide(setIdFront, 'idFront')} style={[s.photoSlot, { flex: 1, width: undefined }]} testID="identity-id-front">
+            <Pressable onPress={() => pickIdSide(setIdFront, 'idFront')} style={s.photoSlot} testID="identity-id-front">
               {idFront ? (
                 <Image source={{ uri: idFront }} style={s.photoThumb} resizeMode="cover" />
               ) : hasIdFront ? (
@@ -279,7 +279,7 @@ export default function IdentityStepScreen({ navigation }) {
                 <><Feather name="credit-card" size={22} color={brand.textSecondary} /><Text style={s.photoText}>{t('id_front_label')}</Text></>
               )}
             </Pressable>
-            <Pressable onPress={() => pickIdSide(setIdBack, 'idBack')} style={[s.photoSlot, { flex: 1, width: undefined }]} testID="identity-id-back">
+            <Pressable onPress={() => pickIdSide(setIdBack, 'idBack')} style={s.photoSlot} testID="identity-id-back">
               {idBack ? (
                 <Image source={{ uri: idBack }} style={s.photoThumb} resizeMode="cover" />
               ) : hasIdBack ? (
@@ -401,7 +401,10 @@ const s = StyleSheet.create({
   subtitle: { ...typography.bodySmall, color: brand.textSecondary, marginBottom: 16 },
   label: { ...typography.bodySmall, fontWeight: '700', color: brand.textPrimary, marginTop: 18, marginBottom: 8 },
   photoHint: { ...typography.caption, color: brand.textSecondary, marginBottom: 8, lineHeight: 16 },
-  photoSlot: { alignSelf: 'flex-start', width: 120, height: 120, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: brand.border, alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
+  // Design v1 Commit 6: слоты документа — 4:3 (были квадратные 120×120).
+  // flex:1 в row из двух слотов + aspectRatio держат пропорцию при любой
+  // ширине экрана; cover/quality/tap-repick поведение не менялось.
+  photoSlot: { flex: 1, aspectRatio: 4 / 3, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: brand.border, alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
   photoThumb: { width: '100%', height: '100%' },
   photoText: { ...typography.caption, color: brand.textSecondary },
   // Тумблер типа документа личности (удостоверение | паспорт)

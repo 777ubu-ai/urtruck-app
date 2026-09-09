@@ -157,7 +157,9 @@ export default function BottomNav({ state, navigation }) {
   };
 
   const bottomPad = Math.max(insets.bottom, 6);
-  const barBg = isDark ? '#111827' : '#FFFFFF';
+  // Design v1 Commit 6: тёмная плашка — из токена палитры (DARK.bg #0F1512),
+  // не графитовый хардкод #111827 из прежней темы.
+  const barBg = isDark ? colors.bg : '#FFFFFF';
   const barBorder = isDark ? 'rgba(255,255,255,0.08)' : '#E5ECE8';
 
   return (

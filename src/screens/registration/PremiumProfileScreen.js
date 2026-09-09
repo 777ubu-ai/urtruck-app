@@ -9,9 +9,6 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -21,6 +18,7 @@ import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
 import { saveProfile } from '../../utils/store';
 import { regAPI } from '../../utils/registration';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const COPY = {
   RU: {
@@ -143,8 +141,8 @@ export default function PremiumProfileScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="prem-reg-profile-screen">
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.flex}>
-        <ScrollView
+      <KeyboardSafeLayout>
+        <KeyboardSafeScrollView
           contentContainerStyle={s.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -268,8 +266,8 @@ export default function PremiumProfileScreen({ navigation, route }) {
               <Text style={s.skipText}>{t('prem_reg_profile_skip')}</Text>
             </Pressable>
           ) : null}
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardSafeScrollView>
+      </KeyboardSafeLayout>
     </SafeAreaView>
   );
 }

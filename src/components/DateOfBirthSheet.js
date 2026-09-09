@@ -5,7 +5,7 @@
 // корректный день для месяца/года, возраст 18–100, не в будущем.
 // Без новых зависимостей — обычные ScrollView-колонки.
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, Pressable, Modal, ScrollView, StyleSheet, Platform,
 } from 'react-native';
@@ -14,6 +14,44 @@ import { brand, radius, typography } from '../theme/brandV2';
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const daysInMonth = (m, y) => new Date(y, m, 0).getDate(); // m: 1..12
+
+// Колонка пикера. Модуль-level компонент (а не closure внутри sheet-а),
+// иначе каждый рендер пересоздаёт тип и ScrollView ремаунтится.
+// Высота ячейки фиксирована (padding 10+10 + lineHeight 22) — по ней считаем
+// scroll-to-selected.
+const COL_H = 200;
+const ITEM_H = 42;
+
+const Column = ({ data, value, onSelect, render, testID }) => {
+  const ref = useRef(null);
+  const scrollToValue = useCallback((v) => {
+    const idx = data.indexOf(v);
+    if (idx < 0 || !ref.current) return;
+    const y = Math.max(0, idx * ITEM_H - (COL_H - ITEM_H) / 2);
+    // Небольшая задержка: content должен отрендериться до первого scrollTo
+    // (иначе клампится к нулю при открытии sheet-а).
+    setTimeout(() => ref.current?.scrollTo?.({ y, animated: false }), 50);
+  }, [data]);
+  useEffect(() => { scrollToValue(value); }, [value, scrollToValue]);
+  return (
+    <ScrollView
+      ref={ref}
+      style={s.col}
+      contentContainerStyle={s.colContent}
+      showsVerticalScrollIndicator={false}
+      testID={testID}
+    >
+      {data.map((item) => {
+        const active = item === value;
+        return (
+          <Pressable key={item} onPress={() => onSelect(item)} style={[s.cell, active && s.cellActive]}>
+            <Text style={[s.cellText, active && s.cellTextActive]}>{render ? render(item) : item}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+};
 
 function parseInitial(v) {
   const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(v || '').trim());
@@ -69,28 +107,6 @@ export default function DateOfBirthSheet({ visible, initial, onCancel, onConfirm
     onConfirm(`${pad2(d)}.${pad2(month)}.${year}`);
   };
 
-  const Column = ({ data, value, onSelect, render, testID }) => {
-    const ref = useRef(null);
-    return (
-      <ScrollView
-        ref={ref}
-        style={s.col}
-        contentContainerStyle={s.colContent}
-        showsVerticalScrollIndicator={false}
-        testID={testID}
-      >
-        {data.map((item) => {
-          const active = item === value;
-          return (
-            <Pressable key={item} onPress={() => { onSelect(item); setError(null); }} style={[s.cell, active && s.cellActive]}>
-              <Text style={[s.cellText, active && s.cellTextActive]}>{render ? render(item) : item}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-    );
-  };
-
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
       <Pressable style={s.backdrop} onPress={onCancel}>
@@ -98,9 +114,9 @@ export default function DateOfBirthSheet({ visible, initial, onCancel, onConfirm
           <View style={s.handle} />
           <Text style={s.title}>{t('dob_title')}</Text>
           <View style={s.cols}>
-            <Column data={days} value={clampedDay} onSelect={setDay} testID="dob-day" />
-            <Column data={months} value={month} onSelect={setMonth} render={(m) => MONTHS[m - 1]} testID="dob-month" />
-            <Column data={years} value={year} onSelect={setYear} testID="dob-year" />
+            <Column data={days} value={clampedDay} onSelect={(v) => { setDay(v); setError(null); }} testID="dob-day" />
+            <Column data={months} value={month} onSelect={(v) => { setMonth(v); setError(null); }} render={(m) => MONTHS[m - 1]} testID="dob-month" />
+            <Column data={years} value={year} onSelect={(v) => { setYear(v); setError(null); }} testID="dob-year" />
           </View>
           {error ? <Text style={s.err}>{error}</Text> : null}
           <Pressable style={s.doneBtn} onPress={onDone} testID="dob-done">
@@ -123,7 +139,7 @@ const s = StyleSheet.create({
   },
   handle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: brand.border, marginBottom: 14 },
   title: { ...typography.h1, fontSize: 20, lineHeight: 26, color: brand.textPrimary, marginBottom: 12, textAlign: 'center' },
-  cols: { flexDirection: 'row', gap: 8, height: 200 },
+  cols: { flexDirection: 'row', gap: 8, height: COL_H },
   col: { flex: 1, backgroundColor: brand.surfaceMuted, borderRadius: radius.md },
   colContent: { paddingVertical: 8 },
   cell: { paddingVertical: 10, alignItems: 'center', borderRadius: radius.sm },

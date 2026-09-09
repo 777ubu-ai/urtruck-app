@@ -7,6 +7,7 @@ import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useToast } from '../components/Toast';
 import { getPushSettings, setPushSettings } from '../utils/store';
 import { marketAPI } from '../utils/marketAPI';
+import Button from '../components/ui/v1/Button';
 import Feather from '@expo/vector-icons/Feather';
 
 const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'curtain', 'lowloader', 'tanker', 'dumptruck'];
@@ -222,9 +223,13 @@ export default function PushFilterScreen({ navigation, route }) {
           ))}
         </View>
 
-        <TouchableOpacity style={[s.saveBtn, { backgroundColor: accent }]} onPress={save} disabled={savingRoute}>
-          {savingRoute ? <ActivityIndicator color="#0C0A09" /> : <Text style={s.saveBtnText}>{t('push_save_btn')}</Text>}
-        </TouchableOpacity>
+        <Button
+          title={t('push_save_btn')}
+          onPress={save}
+          loading={savingRoute}
+          fullWidth
+          style={{ marginTop: 14 }}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -250,6 +255,4 @@ const s = StyleSheet.create({
   savedRoute: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 10, marginTop: 8 },
   savedRouteText: { fontSize: 13, fontWeight: '800' },
   deleteRouteBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  saveBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 14 },
-  saveBtnText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
 });

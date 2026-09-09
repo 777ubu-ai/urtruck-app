@@ -18,6 +18,7 @@ import HelpButton from '../components/HelpButton';
 import { API_BASE } from '../config/env';
 import { IS_BETA } from '../config/supabase';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
+import Button from '../components/ui/v1/Button';
 import { localizePlace } from '../utils/places';
 
 const LANGS = [
@@ -254,13 +255,17 @@ export default function ProfileScreen({ navigation, route }) {
             </View>
             <View style={[s.proTrack, { backgroundColor: theme.bg }]}><View style={[s.proFill, { width: `${proPercent}%`, backgroundColor: accent }]} /></View>
             {!proActive ? (
-              <TouchableOpacity style={[s.proCta, { backgroundColor: accent }]} onPress={() => {
-                if ((verificationLevel || 0) >= 2) navigation.navigate('EditProfile', { role, focus: 'pro' });
-                else navigation.navigate('Citizenship');
-              }} activeOpacity={0.85} testID="profile-pro-cta" accessibilityLabel={t('pro_become_btn')}>
-                <Text style={[s.proCtaText, { color: onAccent }]}>{t('pro_become_btn')}</Text>
-                <Feather name="chevron-right" size={18} color={onAccent} />
-              </TouchableOpacity>
+              <Button
+                title={t('pro_become_btn')}
+                fullWidth
+                onPress={() => {
+                  if ((verificationLevel || 0) >= 2) navigation.navigate('EditProfile', { role, focus: 'pro' });
+                  else navigation.navigate('Citizenship');
+                }}
+                testID="profile-pro-cta"
+                accessibilityLabel={t('pro_become_btn')}
+                style={{ marginTop: 12 }}
+              />
             ) : null}
           </View>
         ) : null}
@@ -372,8 +377,6 @@ const s = StyleSheet.create({
   proStatusBadgeText: { fontSize: 12, fontWeight: '900' },
   proTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   proFill: { height: '100%', borderRadius: 3 },
-  proCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, paddingVertical: 11, borderRadius: 10, marginTop: 12 },
-  proCtaText: { fontSize: 13, fontWeight: '700' },
   becomeDriverBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14 },
   becomeDriverText: { color: '#FFF', fontSize: 14, fontWeight: '800', flex: 1 },
   profileCard: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 14, borderWidth: 1, marginBottom: 14, position: 'relative' },

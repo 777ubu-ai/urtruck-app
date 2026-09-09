@@ -6,10 +6,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -22,6 +19,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
 import { useBrand, radius, typography } from '../../theme/brandV2';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const COPY = {
   RU: {
@@ -306,10 +304,7 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="profile-v2-screen">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={s.flex}
-      >
+      <KeyboardSafeLayout style={s.flex}>
         <View style={s.header}>
           <Pressable
             onPress={() => navigation.goBack()}
@@ -321,7 +316,7 @@ export default function ProfileV2Screen({ navigation, route }) {
           </Pressable>
         </View>
 
-        <ScrollView
+        <KeyboardSafeScrollView
           contentContainerStyle={s.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -466,8 +461,8 @@ export default function ProfileV2Screen({ navigation, route }) {
               </>
             )}
           </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardSafeScrollView>
+      </KeyboardSafeLayout>
     </SafeAreaView>
   );
 }

@@ -32,12 +32,16 @@ test('auth entry exposes Google + Email while Apple is hidden for build 18', () 
 
 
 test('keyboard-safe layout keeps legal consent inside the scrollable content', () => {
-  const scrollStart = phoneV2.indexOf('<ScrollView');
+  // Commit 6: PhoneV2 composes the canonical KeyboardSafeLayout +
+  // KeyboardSafeScrollView (the old local KAV + ScrollView fork is gone);
+  // the contract is the same — the legal block must live inside the scroll
+  // body so it never collides with the keyboard-raised form.
+  const scrollStart = phoneV2.indexOf('<KeyboardSafeScrollView');
   const legal = phoneV2.indexOf('testID="auth-legal-consent"');
-  const scrollEnd = phoneV2.indexOf('</ScrollView>', legal);
-  assert.ok(scrollStart >= 0, 'ScrollView must exist');
-  assert.ok(legal > scrollStart, 'legal block must be inside ScrollView');
-  assert.ok(scrollEnd > legal, 'ScrollView must close after legal block');
+  const scrollEnd = phoneV2.indexOf('</KeyboardSafeScrollView>', legal);
+  assert.ok(scrollStart >= 0, 'KeyboardSafeScrollView must exist');
+  assert.ok(legal > scrollStart, 'legal block must be inside the scroll container');
+  assert.ok(scrollEnd > legal, 'scroll container must close after legal block');
   assert.match(phoneV2, /keyboardShouldPersistTaps="handled"/);
   assert.match(phoneV2, /flexGrow:\s*1/);
 });

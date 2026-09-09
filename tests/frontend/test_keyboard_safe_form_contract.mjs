@@ -11,6 +11,24 @@ const truckParams = readFileSync('src/screens/registration/TruckParamsScreen.js'
 const vehicleDocs = readFileSync('src/screens/registration/VehicleDocsScreen.js', 'utf8');
 const editTrip = readFileSync('src/screens/EditTripScreen.js', 'utf8');
 const createTrip = readFileSync('src/screens/CreateTripScreen.js', 'utf8');
+// Commit 6: registration Premium* and onboarding V2 forms migrated from
+// their own KeyboardAvoidingView forks to the canonical primitive.
+const PREM_REGISTER = 'src/screens/registration/PremiumRegisterScreen.js';
+const PREM_LOGIN = 'src/screens/registration/PremiumLoginScreen.js';
+const PREM_OTP = 'src/screens/registration/PremiumOtpScreen.js';
+const PREM_PROFILE = 'src/screens/registration/PremiumProfileScreen.js';
+const PHONE_V2 = 'src/screens/onboarding/PhoneV2Screen.js';
+const OTP_V2 = 'src/screens/onboarding/OtpV2Screen.js';
+const PROFILE_V2 = 'src/screens/onboarding/ProfileV2Screen.js';
+const migratedForms = [
+  ['PremiumRegisterScreen', readFileSync(PREM_REGISTER, 'utf8')],
+  ['PremiumLoginScreen', readFileSync(PREM_LOGIN, 'utf8')],
+  ['PremiumOtpScreen', readFileSync(PREM_OTP, 'utf8')],
+  ['PremiumProfileScreen', readFileSync(PREM_PROFILE, 'utf8')],
+  ['PhoneV2Screen', readFileSync(PHONE_V2, 'utf8')],
+  ['OtpV2Screen', readFileSync(OTP_V2, 'utf8')],
+  ['ProfileV2Screen', readFileSync(PROFILE_V2, 'utf8')],
+];
 
 test('canonical keyboard primitive scrolls the focused native input into view', () => {
   assert.match(primitive, /KeyboardSafeScrollView/);
@@ -49,6 +67,20 @@ test('bottom-docked chat uses the measured IME overlap without a double offset',
   assert.match(primitive, /Platform\.Version >= 36/);
   assert.match(primitive, /Math\.max\(0, height - keyboardTop \+ visualImeInset\)/);
   assert.match(primitive, /Platform\.OS !== 'android'/);
+});
+
+// Design v1 Commit 6: Premium* (registration) and onboarding V2 forms no
+// longer own a KeyboardAvoidingView fork — they compose the canonical
+// KeyboardSafeLayout (iOS padding / Android adjustResize single owner) and
+// KeyboardSafeScrollView (shared focus-reveal), same as the rest of the app.
+test('registration/onboarding auth forms use the canonical keyboard primitive, no KAV fork', () => {
+  for (const [name, src] of migratedForms) {
+    assert.match(src, /KeyboardSafeLayout/, `${name}: must compose KeyboardSafeLayout`);
+    assert.match(src, /KeyboardSafeScrollView/, `${name}: must scroll via KeyboardSafeScrollView`);
+    assert.doesNotMatch(src, /KeyboardAvoidingView/, `${name}: local KAV fork must be gone`);
+    assert.doesNotMatch(src, /behavior=\{Platform\.OS === 'ios'/, `${name}: behavior fork must live in the primitive only`);
+    assert.doesNotMatch(src, /<ScrollView/, `${name}: raw ScrollView must be replaced by KeyboardSafeScrollView`);
+  }
 });
 
 // Design v1 Commit 2: the create-form submit CTA is pinned in a sticky
