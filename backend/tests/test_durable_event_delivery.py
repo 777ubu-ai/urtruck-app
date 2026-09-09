@@ -439,6 +439,87 @@ def test_retry_preserves_title_body_deeplink_badge(monkeypatch):
     assert delivered["badge"] is not None, "retried delivery must not degrade badge to a missing/None value"
 
 
+def test_ordinary_bid_cancel_is_durable_and_retries_once(monkeypatch):
+    _reset_outbox()
+    install_synchronous_send_to_user(monkeypatch)
+    owner, driver = "owner-cancel-durable", "driver-cancel-durable"
+    seed_device(owner)
+    cargo_id = seed_cargo(owner)
+    as_user(driver)
+    bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1100}).json()["id"]
+    _reset_outbox()
+    flaky = _FlakyExpo(fail_times=1)
+    monkeypatch.setattr(push_sender, "_send_expo_detailed", flaky)
+    assert client.post(f"/api/v1/market/bids/{bid_id}/cancel").status_code == 200
+    rows = outbox_rows(owner)
+    assert len(rows) == 1 and rows[0]["status"] == "pending"
+    assert rows[0]["event_id"].startswith(f"bid:{bid_id}:cancelled:")
+    _force_due(owner)
+    assert push_gateway.process_pending_once(flaky, limit=10)["sent"] == 1
+    assert outbox_rows(owner)[0]["status"] == "sent"
+
+
+def test_partial_multi_device_retry_completes_without_resending_success(monkeypatch):
+    _reset_outbox()
+    user = "multi-device-final"
+    seed_device(user, locale="EN")
+    seed_device(user, locale="ZH")
+    key = "event:multi-device-final"
+    push_gateway.enqueue_event(key, "bid.created", user, {
+        "title": "fallback", "body": "fallback",
+        "data": {"event_key": key, "i18n_event": "bid_created", "i18n_params": {"amount": "$1", "route": "A→B"}},
+    })
+    calls = []
+    def partial(tokens, title, body, data, badge=None):
+        token = tokens[0]
+        calls.append(token)
+        if len(calls) == 1:
+            return {"sent": 0, "tickets": [{"status": "error", "details": {"error": "transient"}}]}
+        return {"sent": 1, "tickets": [{"status": "ok", "id": token}]}
+    assert push_gateway.process_pending_once(partial, limit=10)["failed"] == 1
+    _force_due(user)
+    assert push_gateway.process_pending_once(partial, limit=10)["sent"] == 1
+    assert outbox_rows(user)[0]["status"] == "sent"
+    assert len(calls) == 3, "the successful first-attempt device must not be re-sent"
+
+
+def test_system_push_is_localized_per_device_not_per_last_seen():
+    _reset_outbox()
+    user = "mixed-locale-final"
+    seed_device(user, locale="EN")
+    seed_device(user, locale="ZH")
+    captured = []
+    def capture(tokens, title, body, data, badge=None):
+        captured.append((tokens[0], title, body))
+        return {"sent": 1, "tickets": [{"status": "ok"}]}
+    result = push_gateway.send_to_devices(user, "fallback", "fallback", {
+        "event_key": "event:mixed-locale-final", "i18n_event": "bid_created",
+        "i18n_params": {"amount": "$1", "route": "A→B"},
+    }, badge=1, expo_send_one=capture)
+    assert result["sent"] == 2
+    texts = " ".join(f"{title} {body}" for _, title, body in captured)
+    assert "New bid" in texts and "新报价" in texts
+
+
+def test_counter_rounds_within_one_timestamp_have_distinct_event_keys(monkeypatch):
+    _reset_outbox()
+    owner, driver = "owner-counter-round", "driver-counter-round"
+    cargo_id = seed_cargo(owner)
+    as_user(driver)
+    bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1000}).json()["id"]
+    captured = []
+    def capture(_user, _title, _body, url="/", kind="info", data=None):
+        captured.append(dict(data or {}))
+        return 0
+    monkeypatch.setattr(marketplace_module, "send_to_user", capture)
+    as_user(owner)
+    assert client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 1200}).status_code == 200
+    assert client.post(f"/api/v1/market/bids/{bid_id}/counter/cancel").status_code == 200
+    assert client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 1300}).status_code == 200
+    keys = [d["event_key"] for d in captured if d.get("event") == "bid.countered"]
+    assert len(keys) == 2 and len(set(keys)) == 2
+
+
 if __name__ == "__main__":
     import traceback
 

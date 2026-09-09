@@ -428,11 +428,25 @@ def send_to_devices(
         "expo": ExpoProvider(expo_send_one),
     }
     sent = 0
+    already_delivered = 0
     by_provider: dict[str, int] = {}
     event_id = (data or {}).get("event_id") or (data or {}).get("event_key")
     for device in devices:
         if _already_sent_to_device(event_id, device.get("id")):
+            already_delivered += 1
             continue
+        device_title, device_body = title, body
+        # System text may be tailored to each registered device. Free-form
+        # chat/attachment text has no i18n_event and is forwarded unchanged.
+        i18n_event = (data or {}).get("i18n_event")
+        if i18n_event:
+            try:
+                from services.push_i18n import push_text
+                localized = push_text(i18n_event, device.get("locale"), **((data or {}).get("i18n_params") or {}))
+                if localized[0] is not None:
+                    device_title, device_body = localized
+            except Exception:
+                pass
         provider_name = device.get("push_provider")
         provider = providers.get(provider_name)
         if not provider:
@@ -442,12 +456,18 @@ def send_to_devices(
         if not provider.supports_platform(platform) or not provider.validate_token(token):
             result = ProviderResult(provider_name, "failed", error_code="invalid_token", retryable=False)
         else:
-            result = provider.send(token, title, body, data, badge=badge)
+            result = provider.send(token, device_title, device_body, data, badge=badge)
         log_delivery(event_id, user_id, device, result)
         if result.status == "sent":
             sent += 1
             by_provider[provider_name] = by_provider.get(provider_name, 0) + 1
-    return {"sent": sent, "providers": by_provider, "devices": len(devices), "mode": mode}
+    return {
+        "sent": sent,
+        "already_delivered": already_delivered,
+        "providers": by_provider,
+        "devices": len(devices),
+        "mode": mode,
+    }
 
 
 MAX_OUTBOX_ATTEMPTS = 5
@@ -589,8 +609,8 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
             # same row on the next tick only re-targets the device(s) that
             # did not yet succeed.
             total_devices = int(result.get("devices", 0) or 0)
-            sent_count = int(result.get("sent", 0) or 0)
-            fully_delivered = total_devices > 0 and sent_count >= total_devices
+            confirmed = int(result.get("sent", 0) or 0) + int(result.get("already_delivered", 0) or 0)
+            fully_delivered = total_devices > 0 and confirmed >= total_devices
             outcome = _finish_row(row["id"], attempt, sent=fully_delivered, error=None)
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside

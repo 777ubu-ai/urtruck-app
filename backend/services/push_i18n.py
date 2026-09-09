@@ -74,6 +74,18 @@ TEMPLATES: dict[str, dict[str, tuple[str, str]]] = {
         "ZH": ("↩️ 还价已取消", "原报价 {amount} 已重新生效。"),
         "EN": ("↩️ Counter-offer cancelled", "Your original bid {amount} is active again."),
     },
+    "bid_cancelled": {
+        "RU": ("↩️ Ставка отозвана", "Предложение {amount} отозвано автором."),
+        "KK": ("↩️ Баға кері қайтарылды", "{amount} ұсынысын авторы кері қайтарды."),
+        "ZH": ("↩️ 报价已撤回", "{amount} 报价已被发布者撤回。"),
+        "EN": ("↩️ Bid withdrawn", "The offer of {amount} was withdrawn by its author."),
+    },
+    "bid_withdrawn": {
+        "RU": ("📋 Объявление снято", "Ваша ставка больше не активна."),
+        "KK": ("📋 Хабарландыру алынды", "Сіздің бағаңыз енді белсенді емес."),
+        "ZH": ("📋 信息已下架", "您的报价已不再有效。"),
+        "EN": ("📋 Listing withdrawn", "Your bid is no longer active."),
+    },
     "deal_status_in_progress": {
         "RU": ("🚛 Рейс начался", "{route}"),
         "KK": ("🚛 Рейс басталды", "{route}"),

@@ -99,6 +99,8 @@ def _send_booking_change_push(booking: dict, parsed: dict | None,
         if event_key:
             push_data["event_key"] = event_key
             push_data["event"] = f"cgr.{status_kind}"
+            push_data["i18n_event"] = i18n_event
+            push_data["i18n_params"] = {"booking": plate_or_booking}
         send_to_user(booking["urtruck_user_id"], title, body,
                      url="/queue", kind="queue", data=push_data)
         # Push-recovery track, Phase 4 (event-matrix audit finding): CGR

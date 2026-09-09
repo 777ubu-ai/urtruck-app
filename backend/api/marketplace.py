@@ -781,7 +781,7 @@ def unpublish_cargo(cargo_id: str, user=Depends(require_level(1))):
         if active_deal:
             raise HTTPException(status_code=409, detail="Нельзя снять с публикации: перевозка уже началась")
         cancelled_bids = c.execute(
-            "SELECT bidder_id FROM bids WHERE cargo_id = ? AND status IN ('pending', 'countered')",
+            "SELECT id, bidder_id FROM bids WHERE cargo_id = ? AND status IN ('pending', 'countered')",
             (cargo_id,)).fetchall()
         c.execute("UPDATE cargos SET status = 'unpublished', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (cargo_id,))
         c.execute(
@@ -791,8 +791,12 @@ def unpublish_cargo(cargo_id: str, user=Depends(require_level(1))):
     try:
         from api.notifications import create_notification
         for bid in cancelled_bids:
-            send_to_user(bid["bidder_id"], "📋 Груз снят с публикации",
-                         "Грузовладелец снял груз с публикации", url=f"/cargos/{cargo_id}")
+            event_key = f"bid:{bid['id']}:withdrawn"
+            loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+            title, text = push_i18n.push_text("bid_withdrawn", loc)
+            send_to_user(bid["bidder_id"], title, text, url=f"/cargos/{cargo_id}",
+                         kind="bid", data={"event_key": event_key, "event": "bid.withdrawn",
+                                            "bid_id": bid["id"], "i18n_event": "bid_withdrawn", "i18n_params": {}})
             create_notification(bid["bidder_id"], "bid_cancelled",
                                 "Груз снят с публикации", "Грузовладелец снял груз с публикации", "📋")
     except Exception:
@@ -1074,7 +1078,7 @@ def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
         if active_deal:
             raise HTTPException(status_code=409, detail="Нельзя снять с публикации: перевозка уже началась")
         cancelled_bids = c.execute(
-            "SELECT bidder_id, cargo_id FROM bids WHERE trip_id = ? AND status IN ('pending', 'countered')",
+            "SELECT id, bidder_id, cargo_id FROM bids WHERE trip_id = ? AND status IN ('pending', 'countered')",
             (trip_id,)).fetchall()
         c.execute("UPDATE trips SET status = 'unpublished', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (trip_id,))
         c.execute(
@@ -1084,8 +1088,12 @@ def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
     try:
         from api.notifications import create_notification
         for bid in cancelled_bids:
-            send_to_user(bid["bidder_id"], "📋 Рейс снят с публикации",
-                         "Водитель снял рейс с публикации", url=f"/trips/{trip_id}")
+            event_key = f"bid:{bid['id']}:withdrawn"
+            loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+            title, text = push_i18n.push_text("bid_withdrawn", loc)
+            send_to_user(bid["bidder_id"], title, text, url=f"/trips/{trip_id}",
+                         kind="bid", data={"event_key": event_key, "event": "bid.withdrawn",
+                                            "bid_id": bid["id"], "i18n_event": "bid_withdrawn", "i18n_params": {}})
             create_notification(bid["bidder_id"], "bid_cancelled",
                                 "Рейс снят с публикации", "Водитель снял рейс с публикации", "📋")
     except Exception:
@@ -1537,7 +1545,8 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
         if want_push:
             try:
                 send_to_user(recipient, title, text, url=url, kind="bid",
-                             data={"event_key": event_key, "event": "bid.created", "bid_id": bid_id})
+                             data={"event_key": event_key, "event": "bid.created", "bid_id": bid_id,
+                                   "i18n_event": "bid_created", "i18n_params": {"amount": amount, "route": route}})
             except Exception:
                 pass
         try:
@@ -2285,7 +2294,8 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
     event_key = f"bid:{bid_id}:accepted"
     try:
         send_to_user(bid["bidder_id"], title, text, url=deal_url, kind="bid",
-                     data={"event_key": event_key, "event": "bid.accepted", "bid_id": bid_id})
+                     data={"event_key": event_key, "event": "bid.accepted", "bid_id": bid_id,
+                           "i18n_event": "bid_accepted", "i18n_params": {"amount": _money(bid['amount'], _cur)}})
     except Exception:
         pass
     try:
@@ -2412,7 +2422,7 @@ def cancel_bid(bid_id: str, user=Depends(require_level(1))):
             (bid_id,),
         )
         # P3-fix: финал в ценовом timeline — раньше отмена не оставляла события.
-        _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "cancelled", None)
+        cancel_event_id = _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "cancelled", None)
         # Decrement bids_count safely (never below 0).
         if bid.get("cargo_id"):
             c.execute(
@@ -2434,10 +2444,13 @@ def cancel_bid(bid_id: str, user=Depends(require_level(1))):
                 back_url = f"/trips/{bid['trip_id']}"
             else:
                 back_url = "/"
-            title = "↩️ Ставка отозвана"
-            body_text = f"Предложение {_money(bid['amount'], _cur)} отозвано автором"
+            amount = _money(bid['amount'], _cur)
+            title, body_text = push_i18n.push_text("bid_cancelled", push_gateway.get_recipient_locale(owner_id), amount=amount)
+            event_key = f"bid:{bid_id}:cancelled:{cancel_event_id or 'persisted'}"
             try:
-                send_to_user(owner_id, title, body_text, url=back_url)
+                send_to_user(owner_id, title, body_text, url=back_url, kind="bid",
+                             data={"event_key": event_key, "event": "bid.cancelled", "bid_id": bid_id,
+                                   "i18n_event": "bid_cancelled", "i18n_params": {"amount": amount}})
             except Exception:
                 pass
             try:
@@ -2506,7 +2519,8 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
     event_key = f"bid:{bid_id}:rejected"
     try:
         send_to_user(bid["bidder_id"], title, body_text, url=back_url, kind="bid",
-                     data={"event_key": event_key, "event": "bid.rejected", "bid_id": bid_id})
+                     data={"event_key": event_key, "event": "bid.rejected", "bid_id": bid_id,
+                           "i18n_event": "bid_rejected", "i18n_params": {"amount": _money(bid['amount'], _cur)}})
     except Exception:
         pass
     try:
@@ -2540,7 +2554,7 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
             (body.amount, body.message, bid_id),
         )
         # Часть 3: событие — владелец прислал контр (actor=owner).
-        _record_price_event(c, bid_id, user["id"], "owner", body.amount, "countered", body.message)
+        counter_event_id = _record_price_event(c, bid_id, user["id"], "owner", body.amount, "countered", body.message)
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
 
     # «Дом заказа»: контр-оффер ведёт биддера в карточку заказа (там сверху
@@ -2554,16 +2568,15 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
         counter_url = "/"
     with get_conn() as c2:
         cur = _bid_currency(c2, bid)
-    # Push-closure track: a bid legitimately cycles pending<->countered
-    # multiple times, so bid_id alone is NOT a stable-per-occurrence key —
-    # `counter_at` (freshly written above, re-read into `updated`) changes
-    # every real round while staying fixed for retries of THIS round.
+    # A persisted price-event id identifies this counter round even when a
+    # counter/cancel/counter cycle happens within one SQLite timestamp tick.
     loc = push_gateway.get_recipient_locale(bid["bidder_id"])
     title, text = push_i18n.push_text("bid_countered", loc, amount=_money(body.amount, cur))
-    event_key = f"bid:{bid_id}:countered:{updated.get('counter_at')}"
+    event_key = f"bid:{bid_id}:countered:{counter_event_id or updated.get('counter_at')}"
     try:
         send_to_user(bid["bidder_id"], title, text, url=counter_url, kind="bid",
-                     data={"event_key": event_key, "event": "bid.countered", "bid_id": bid_id})
+                     data={"event_key": event_key, "event": "bid.countered", "bid_id": bid_id,
+                           "i18n_event": "bid_countered", "i18n_params": {"amount": _money(body.amount, cur)}})
     except Exception:
         pass
     try:
@@ -2657,7 +2670,7 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
             "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (bid_id,),
         )
-        _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "counter_cancelled", None)
+        cancel_counter_event_id = _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "counter_cancelled", None)
 
     # Counter cancellation changes the bidder's actionable state back to
     # pending. Keep the durable Bell record and push in parity with the other
@@ -2685,10 +2698,11 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
             _cur = _bid_currency(c2, bid)
         loc = push_gateway.get_recipient_locale(bid["bidder_id"])
         title, body = push_i18n.push_text("bid_counter_cancelled", loc, amount=_money(bid.get("amount"), _cur))
-        event_key = f"bid:{bid_id}:counter_cancelled:{bid.get('counter_at')}"
+        event_key = f"bid:{bid_id}:counter_cancelled:{cancel_counter_event_id or bid.get('counter_at')}"
         send_to_user(bid["bidder_id"], title, body, url=counter_url,
                      kind="bid_counter_cancelled",
-                     data={"event_key": event_key, "event": "bid.counter_cancelled", "bid_id": bid_id})
+                     data={"event_key": event_key, "event": "bid.counter_cancelled", "bid_id": bid_id,
+                           "i18n_event": "bid_counter_cancelled", "i18n_params": {"amount": _money(bid.get("amount"), _cur)}})
         from api.notifications import create_notification
         create_notification(bid["bidder_id"], "bid_countered", title, body, "↩️", url=counter_url, event_key=event_key)
     except Exception:
@@ -3125,7 +3139,8 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
             event_key = f"deal:{deal_id}:status:{new_status}"
             try:
                 send_to_user(other_id, title, body_txt, url=deal_url, kind="deal_status",
-                             data={"event_key": event_key, "event": f"deal.status.{new_status}", "deal_id": deal_id})
+                             data={"event_key": event_key, "event": f"deal.status.{new_status}", "deal_id": deal_id,
+                                   "i18n_event": push_events[new_status], "i18n_params": {"route": route}})
             except Exception:
                 pass
             try:
@@ -3261,7 +3276,8 @@ def _tracking_notify(user_id: str, event: str, deal_id: str, kind: str, event_ke
         from services import push_sender
         push_sender.send(user_id, title, body, kind=kind,
                          data={"deal_id": deal_id, "action": "tracking",
-                               "event_key": event_key, "event": event},
+                               "event_key": event_key, "event": event,
+                               "i18n_event": event, "i18n_params": {}},
                          url=f"/deals/{deal_id}?action=tracking")
     except Exception:
         pass
