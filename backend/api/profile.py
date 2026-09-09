@@ -100,17 +100,23 @@ async def upload_pro_document(kind: str, file: UploadFile = File(...), user=Depe
     field = _PRO_DOC_FIELD.get((kind or "").strip().lower())
     if not field:
         raise HTTPException(status_code=400, detail={"error": "INVALID_DOCUMENT_KIND"})
-    mime = (file.content_type or "").lower()
-    if mime not in _PRO_DOC_MIME:
-        raise HTTPException(status_code=415, detail={"error": "UNSUPPORTED_FILE_TYPE"})
     data = await file.read(_PRO_DOC_MAX + 1)
     if not data:
         raise HTTPException(status_code=400, detail={"error": "EMPTY_FILE"})
     if len(data) > _PRO_DOC_MAX:
         raise HTTPException(status_code=413, detail={"error": "FILE_TOO_LARGE"})
+    # Magic bytes are authoritative — the declared content_type is
+    # client-controlled and previously was the ONLY check (a renamed binary
+    # would pass as "image/jpeg" and get served with an image MIME).
+    from services import upload_validation
+    sniffed = upload_validation.sniff_pro_doc_mime(data)
+    if sniffed is None or sniffed not in _PRO_DOC_MIME:
+        raise HTTPException(status_code=415, detail={"error": "UNSUPPORTED_FILE_TYPE"})
+    if upload_validation.declared_contradicts_sniffed(file.content_type, sniffed):
+        raise HTTPException(status_code=415, detail={"error": "MIME_MISMATCH"})
+    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[sniffed]
     from services import storage_service
-    ext = "png" if mime == "image/png" else ("webp" if mime == "image/webp" else "jpg")
-    ref = storage_service.save_image(data, f"pro-{kind}-{user['id']}", ext=ext)
+    ref = storage_service.save_file(data, f"pro-{kind}-{user['id']}", ext=ext, content_type=sniffed)
     reg_dal.update_driver(user["id"], {field: ref})
     return {"ok": True, "field": field, "url": file_signing.sign(ref, ttl=3600)}
 
