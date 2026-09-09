@@ -14,14 +14,15 @@ from pathlib import Path
 
 # Use an isolated DB. Caller can override via DB_PATH env var.
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_bid.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
+    Path(TEST_DB).unlink(missing_ok=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-# Patch require_level BEFORE marketplace is imported.
-from api import verification_gate
-
+# Fake require_level dependency, wired in via app.dependency_overrides below
+# (tests/auth_harness.py) instead of mutating api.verification_gate.
 _current_user = contextvars.ContextVar("user", default=None)
 
 def fake_require_level(_min_level):
@@ -32,8 +33,6 @@ def fake_require_level(_min_level):
             raise HTTPException(status_code=401, detail="No test user set")
         return u
     return dep
-
-verification_gate.require_level = fake_require_level
 
 # Bring up minimal FastAPI app with marketplace routes only.
 from fastapi import FastAPI
@@ -62,8 +61,11 @@ if _notif_schema_path.exists():
     with _get_conn_for_setup() as _c_notif:
         _c_notif.executescript(_notif_schema_path.read_text(encoding="utf-8"))
 
+from tests.auth_harness import override_require_level
+
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
+override_require_level(app, fake_require_level(1))
 client = TestClient(app)
 
 

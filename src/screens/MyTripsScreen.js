@@ -21,6 +21,9 @@ import Feather from '@expo/vector-icons/Feather';
 import { countryFlag } from '../utils/countryFlags';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import BellBadge from '../components/ui/v1/BellBadge';
+import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
+import { useVerificationGate } from '../components/VerificationGate';
+import { LEVELS } from '../utils/AuthContext';
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -105,6 +108,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const isDriver = role === 'driver';
   const accent = isDriver ? '#168759' : '#FF8400';
   const { t, lang } = useI18n();
+  const { requireLevel, Gate } = useVerificationGate();
   const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
   const cubicMeterUnit = lang === 'ZH' ? '立方米' : 'м³';
   const { theme } = useTheme();
@@ -623,18 +627,18 @@ export default function MyTripsScreen({ navigation, route }) {
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       <View style={[s.brandBar, { justifyContent: 'flex-end' }]} testID="mywork-minimal-header">
         <BellBadge
-          onPress={() => navigation.navigate('PushFilter', { role })}
+          onPress={async () => {
+            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
+            if (ok) navigation.navigate('PushFilter', { role });
+          }}
           testID="mywork-notification-settings-btn"
         />
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Profile', { role })}
-          style={s.menuBtn}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        <HeaderMenuButton
+          navigation={navigation}
+          role={role}
+          color={v1.text}
           testID="mywork-menu-btn"
-          accessibilityLabel={t('tab_profile')}
-        >
-          <Feather name="menu" size={24} color={v1.text} />
-        </TouchableOpacity>
+        />
       </View>
 
       <FlatList
@@ -731,6 +735,7 @@ export default function MyTripsScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
+      {Gate}
     </SafeAreaView>
   );
 }

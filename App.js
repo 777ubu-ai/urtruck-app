@@ -132,7 +132,16 @@ function navigateFromUrl(navRef, url, role) {
     } else if (kind === 'deals' && id) {
       // BUG-002: deals → Deal Room (ChatScreen с dealId), как в
       // NotificationsScreen. Раньше кидало в общий список чатов без контекста.
-      navRef.current.navigate('Chat', { dealId: id, role });
+      // GPS-consent P1 fix: backend's tracking-request/approved/declined/
+      // stopped pushes all send url=/deals/{id}?action=tracking
+      // (backend/api/marketplace.py:_tracking_notify) — params.action used
+      // to be parsed here and then silently dropped, so tapping that push
+      // opened the deal at its default chat view with no indication a GPS
+      // decision needed attention. Threaded through unchanged;
+      // ChatScreenV2/DealWorkspaceRoute already forward the full params
+      // object (spread, not a named allow-list), so this alone is enough
+      // for DealWorkspaceScreenV2 to see it on mount.
+      navRef.current.navigate('Chat', { dealId: id, role, action: params.action || null });
     } else if (kind === 'chats' && id) {
       navRef.current.navigate('Chat', { roomId: id, role });
     } else if (kind === 'chat' || kind === 'chats') {

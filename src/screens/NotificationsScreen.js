@@ -160,7 +160,12 @@ export default function NotificationsScreen({ navigation }) {
       } else if (kind === "trips" && id) {
         navigation.navigate("TripDetail", { tripId: id, bidId: params.bid || null, role });
       } else if (kind === "deals" && id) {
-        navigation.navigate("Chat", { dealId: id, role });
+        // Same fix as App.js's navigateFromUrl (this is a separate, in-app
+        // copy of the same parser, for tapping a notification without a
+        // native push/cold-start) — see that file for the full root-cause
+        // comment. GPS tracking-request/approved/declined/stopped pushes
+        // all set url=/deals/{id}?action=tracking; must not be dropped.
+        navigation.navigate("Chat", { dealId: id, role, action: params.action || null });
       } else if ((kind === "chats" || kind === "chat") && id) {
         navigation.navigate("Chat", { roomId: id, role });
       }

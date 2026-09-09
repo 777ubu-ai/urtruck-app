@@ -13,7 +13,9 @@ from pathlib import Path
 import pytest
 
 os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_unread_badge.db")
-Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
+    Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
 
 from database import db as dbm
 from database import registration_dal

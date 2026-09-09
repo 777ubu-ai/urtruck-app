@@ -11,7 +11,6 @@ CI-контракт: top-level `def test_*` (не класс) — иначе CI 
 import uuid
 
 import contextvars
-from api import verification_gate
 
 _cu = contextvars.ContextVar("u", default=None)
 
@@ -28,15 +27,15 @@ def _fake_require_level(_min):
     return dep
 
 
-verification_gate.require_level = _fake_require_level
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from api.marketplace import mp_router
 from database.db import get_conn, new_id
+from tests.auth_harness import override_require_level
 
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
+override_require_level(app, _fake_require_level(1))
 client = TestClient(app)
 
 

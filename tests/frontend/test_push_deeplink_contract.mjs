@@ -20,7 +20,10 @@ test('native push tap routing keeps canonical deep-links for cargo, trip, deal, 
   assert.match(app, /if \(kind === 'trips' && id\)/);
   assert.match(app, /navigate\('TripDetail', \{ tripId: id, bidId: params\.bid \|\| null, role \}\)/);
   assert.match(app, /if \(kind === 'deals' && id\)/);
-  assert.match(app, /navigate\('Chat', \{ dealId: id, role \}\)/);
+  // action is threaded through (Track: Claude harness fix, P1) — backend's
+  // tracking-request/approved/declined/stopped pushes set
+  // url=/deals/{id}?action=tracking and it must not be dropped here.
+  assert.match(app, /navigate\('Chat', \{ dealId: id, role, action: params\.action \|\| null \}\)/);
   assert.match(app, /if \(kind === 'chats' && id\)/);
   assert.match(app, /navigate\('Chat', \{ roomId: id, role \}\)/);
   assert.match(app, /else if \(kind === 'profile'\)/);
@@ -35,7 +38,7 @@ test('notifications screen uses the same deep-link families as native push tap r
   assert.match(notifications, /if \(kind === "trips" && id\)/);
   assert.match(notifications, /navigation\.navigate\("TripDetail", \{/);
   assert.match(notifications, /if \(kind === "deals" && id\)/);
-  assert.match(notifications, /navigation\.navigate\("Chat", \{ dealId: id, role \}\)/);
+  assert.match(notifications, /navigation\.navigate\("Chat", \{ dealId: id, role, action: params\.action \|\| null \}\)/);
   assert.match(notifications, /else if \(\(kind === "chats" \|\| kind === "chat"\) && id\)/);
   assert.match(notifications, /navigation\.navigate\("Chat", \{ roomId: id, role \}\)/);
 });
