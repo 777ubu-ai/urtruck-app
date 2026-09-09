@@ -16,8 +16,13 @@ test('Track 2 root header owns canonical left bell and right menu', () => {
 
 test('Track 2 shared controls expose 44px touch and accessibility contracts', () => {
   assert.match(back, /width: 44, height: 44/);
+  assert.match(back, /hitSlop=\{4\}/);
   assert.match(back, /accessibilityRole="button"/);
-  assert.match(back, /accessibilityLabel=\{label\}/);
+  // Design v1 Commit 2: the default label is localized via t('back')
+  // (RU «Назад» / ZH «返回» / EN «Back» / KK «Артқа»); the `label` prop
+  // remains as an explicit override.
+  assert.match(back, /accessibilityLabel=\{a11yLabel\}/);
+  assert.match(back, /const a11yLabel = label \|\| t\('back'\)/);
   assert.match(back, /accessibilityState=\{\{ disabled \}\}/);
 });
 

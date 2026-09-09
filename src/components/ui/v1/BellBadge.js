@@ -19,6 +19,9 @@ export default function BellBadge({ count = 0, onPress, testID }) {
       activeOpacity={0.7}
       testID={testID || 'bell-btn'}
       style={[s.btn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+      // Visual size stays 40dp; hitSlop grows the effective touch target
+      // to 48dp (>= 44dp minimum) without shifting header layout.
+      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
       accessibilityRole="button"
       accessibilityLabel={t('menu_notifications')}
       accessibilityState={{ disabled: !onPress }}

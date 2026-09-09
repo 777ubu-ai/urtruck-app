@@ -14,6 +14,7 @@ import Field from '../components/ui/v1/Field';
 // PR-C2: Textarea import удалён — comment field больше не используется
 // (backend TripIn не имеет comment, симметрия с CreateCargoScreen PR-C1).
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
+import StickyCTABar from '../components/ui/v1/StickyCTABar';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import LocationPickerModal from '../components/LocationPickerModal';
 import DatePicker from '../components/DatePicker';
@@ -190,8 +191,25 @@ export default function CreateTripScreen({ navigation, route }) {
     }
   };
 
+  // Design v1 Commit 2: sticky footer CTA (same pattern as CreateCargoScreen)
+  // — the submit button renders in Screen's `footer` slot, above the IME,
+  // never inside the scroll content tree.
   return (
-    <Screen contentStyle={{ paddingBottom: 80 }}>
+    <Screen
+      contentStyle={{ paddingBottom: 24 }}
+      footer={(
+        <StickyCTABar>
+          <PrimaryButton
+            label={t('publish_trip_action')}
+            onPress={submit}
+            loading={submitting}
+            accent="driver"
+            testID="trip-submit-button"
+            style={{ minHeight: 52, borderRadius: 14, alignSelf: 'stretch' }}
+          />
+        </StickyCTABar>
+      )}
+    >
       <BrandHeader onBack={() => navigation.goBack()} accent={accent.main} />
 
       <Text style={s.title}>{t('postTrip')}</Text>
@@ -373,15 +391,6 @@ export default function CreateTripScreen({ navigation, route }) {
           🛡  {t('create_route_visibility')}
         </Text>
       </View>
-
-      <PrimaryButton
-        label={t('publish_trip_action')}
-        onPress={submit}
-        loading={submitting}
-        accent="driver"
-        testID="trip-submit-button"
-        style={{ marginTop: v1Spacing.sm, minHeight: 52, borderRadius: 14 }}
-      />
 
       {/* Draft link — backend doesn't accept status='draft' yet, so this is
           a visual placeholder per the macro. */}

@@ -10,6 +10,7 @@ const createCargo = readFileSync('src/screens/CreateCargoScreen.js', 'utf8');
 const truckParams = readFileSync('src/screens/registration/TruckParamsScreen.js', 'utf8');
 const vehicleDocs = readFileSync('src/screens/registration/VehicleDocsScreen.js', 'utf8');
 const editTrip = readFileSync('src/screens/EditTripScreen.js', 'utf8');
+const createTrip = readFileSync('src/screens/CreateTripScreen.js', 'utf8');
 
 test('canonical keyboard primitive scrolls the focused native input into view', () => {
   assert.match(primitive, /KeyboardSafeScrollView/);
@@ -48,4 +49,29 @@ test('bottom-docked chat uses the measured IME overlap without a double offset',
   assert.match(primitive, /Platform\.Version >= 36/);
   assert.match(primitive, /Math\.max\(0, height - keyboardTop \+ visualImeInset\)/);
   assert.match(primitive, /Platform\.OS !== 'android'/);
+});
+
+// Design v1 Commit 2: the create-form submit CTA is pinned in a sticky
+// footer (Screen's `footer` slot, rendered inside KeyboardSafeLayout AFTER
+// the scroll body) so it sits directly above the IME instead of scrolling
+// away at the bottom of the content. The scroll container itself stays the
+// canonical Screen + KeyboardSafeScrollView composition.
+test('create forms pin the submit CTA in a sticky footer outside the scroll body', () => {
+  // Screen must implement the footer slot after the scroll body.
+  assert.match(screen, /footer/);
+  assert.match(screen, /<KeyboardSafeLayout>[\s\S]*?\{inner\}[\s\S]*?\{footer\}/);
+  assert.match(screen, /style: footer \? s\.flex : undefined/);
+
+  const cases = [
+    ['CreateCargoScreen', createCargo, 'cargo-submit-button'],
+    ['CreateTripScreen', createTrip, 'trip-submit-button'],
+  ];
+  for (const [name, src, submitTestID] of cases) {
+    // CTA is declared inside the footer= prop (sticky footer composition)…
+    assert.match(src, new RegExp(`footer=\\{\\(\\s*\\)?\\s*<StickyCTABar>[\\s\\S]*?testID="${submitTestID}"`), `${name}: submit CTA must render via Screen's sticky footer`);
+    // …so no standalone <PrimaryButton> remains in the scroll children.
+    assert.doesNotMatch(src, new RegExp(`</View>\\s*\\n\\s*<PrimaryButton[\\s\\S]*?${submitTestID}`), `${name}: submit CTA leaked back into scroll content`);
+    // Form scroll container unchanged: same Screen wrapper + scroll content style.
+    assert.match(src, /<Screen[\s\S]*?contentStyle=\{\{/, `${name}: lost the Screen scroll content style`);
+  }
 });

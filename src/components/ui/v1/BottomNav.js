@@ -23,9 +23,21 @@ const ICONS = {
   Queue:   { driver: 'map-pin', client: 'map-pin' },
 };
 
+// Role accent (Design Bible "Direction B", 2026-09-09, Commit 2):
+// driver — emerald, client — dosed orange, NAV ONLY for now. The client
+// orange #FF8400 is a background/pill accent; it is NOT used as the tab
+// label color on the white bar — at 11/700 on white it measures ~2.5:1,
+// below the small-text bar. The focused-tab label uses the brandV2
+// `accentIcon` variant (#D26D00, ~3.5:1 on white / ~5:1 on the dark bar),
+// the same two-token split policy as brandV2 (bright accent for surfaces,
+// readable variant for elements a user reads).
 const ROLE_ACCENT = {
   driver: { main: '#168759', soft: '#E8F6EF' },
-  client: { main: '#168759', soft: '#E8F6EF' },
+  client: { main: '#FF8400', soft: '#FFF3E6' },
+};
+const LABEL_ACCENT = {
+  driver: '#168759',
+  client: '#D26D00',
 };
 
 function syncAppIconBadge(total) {
@@ -157,6 +169,7 @@ export default function BottomNav({ state, navigation }) {
           const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
           const label = labelOf(route.name);
           const iconColor = isFocused ? accent.main : inactiveColor;
+          const labelColor = isFocused ? (LABEL_ACCENT[role] || LABEL_ACCENT.client) : inactiveColor;
           const tabBadgeCount = route.name === 'Chats' ? chatUnread : route.name === 'Deals' ? dealsUnread : 0;
           const showBadge = tabBadgeCount > 0;
           const badgeLabel = tabBadgeCount > 9 ? '9+' : String(tabBadgeCount);
@@ -190,7 +203,7 @@ export default function BottomNav({ state, navigation }) {
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.label, { color: isFocused ? accent.main : inactiveColor }]} numberOfLines={1}>
+              <Text style={[styles.label, { color: labelColor }]} numberOfLines={1}>
                 {label}
               </Text>
             </TouchableOpacity>
@@ -220,7 +233,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, shadowOpacity: 0.55, shadowRadius: 9, shadowOffset: { width: 0, height: 0 }, elevation: 6,
   },
   label: {
-    height: LABEL_H, fontSize: 10.5, fontWeight: '700', marginTop: 2,
+    height: LABEL_H, fontSize: 11, fontWeight: '700', marginTop: 2,
     textAlign: 'center', includeFontPadding: false,
   },
   iconBadge: {

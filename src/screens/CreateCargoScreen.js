@@ -11,6 +11,7 @@ import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
+import StickyCTABar from '../components/ui/v1/StickyCTABar';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import LocationPickerModal from '../components/LocationPickerModal';
 import CargoTypeInput from '../components/CargoTypeInput';
@@ -236,8 +237,26 @@ export default function CreateCargoScreen({ navigation, route }) {
     }
   };
 
+  // Design v1 Commit 2: submit CTA lives in a sticky footer (Screen's
+  // `footer` slot → KeyboardSafeLayout), directly above the IME — not
+  // at the bottom of the scroll content. Scroll container itself is
+  // unchanged (same Screen + canonical keyboard-safe scroll).
   return (
-    <Screen contentStyle={{ paddingBottom: 80 }}>
+    <Screen
+      contentStyle={{ paddingBottom: 24 }}
+      footer={(
+        <StickyCTABar>
+          <PrimaryButton
+            label={t('publish_cargo_action')}
+            onPress={submit}
+            loading={submitting}
+            accent="cargo"
+            testID="cargo-submit-button"
+            style={{ minHeight: 52, borderRadius: 14, alignSelf: 'stretch' }}
+          />
+        </StickyCTABar>
+      )}
+    >
       <BrandHeader onBack={() => navigation.goBack()} accent={accent.main} />
 
       <Text style={s.title}>{t('postCargo')}</Text>
@@ -488,14 +507,6 @@ export default function CreateCargoScreen({ navigation, route }) {
         </Text>
       </View>
 
-      <PrimaryButton
-        label={t('publish_cargo_action')}
-        onPress={submit}
-        loading={submitting}
-        accent="cargo"
-        testID="cargo-submit-button"
-        style={{ marginTop: v1Spacing.sm, minHeight: 52, borderRadius: 14 }}
-      />
       {/* «Сохранить черновик» убран (2026-06-13): кнопка только тостила
           feature_coming_soon — мёртвое действие на экране публикации. Вернём,
           когда черновики будут реально сохраняться. */}
