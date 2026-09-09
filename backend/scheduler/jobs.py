@@ -24,6 +24,19 @@ def parse_telegram_job():
         print(f"  ERROR: {e}")
 
 
+def push_outbox_job():
+    """Deliver durable push events from the single canonical scheduler."""
+    try:
+        from services import push_gateway, push_sender
+        result = push_gateway.process_pending_once(push_sender._send_expo_detailed)
+        if result.get("picked"):
+            print(f"[{datetime.now().isoformat()}] push outbox: {result}")
+        return result
+    except Exception as e:
+        print(f"[{datetime.now().isoformat()}] push outbox ERROR: {e}")
+        return {"picked": 0, "sent": 0, "failed": 0, "dead": 0}
+
+
 def monthly_rescore_job():
     """Переоценка всех водителей — раз в месяц."""
     print(f"[{datetime.now().isoformat()}] Monthly rescore start")
@@ -363,6 +376,7 @@ def start_scheduler():
     # «Пока нет предложений» (18ч без ставок) — проверяем каждые 3 часа,
     # дедуп по data_json удерживает один пуш на публикацию.
     sched.add_job(no_bids_notify_job, IntervalTrigger(hours=3), id="no_bids_notify")
+    sched.add_job(push_outbox_job, IntervalTrigger(seconds=15), id="push_outbox")
     sched.start()
     _scheduler = sched
     print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h")
