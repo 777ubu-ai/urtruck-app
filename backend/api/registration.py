@@ -921,17 +921,9 @@ def run_moderation(driver_id: str = Depends(get_current_driver)):
         status = "manual_review"
         auto_approved = False
 
-    update_fields = {
-        "moderation_score": moderation_score,
-        "security_score": total_score,
-        "security_color": color,
-        "status": status,
-        "auto_approved": 1 if auto_approved else 0,
-        "rejected_reason": rejected_reason,
-        "approved_at": "CURRENT_TIMESTAMP" if auto_approved else None,
-    }
     # A score is not a verification decision. Self-service approval is
     # fail-closed unless the persisted capability signal proves real providers.
+    update_fields = {}
     trusted_provider = driver.get("verification_provider_status") == "trusted_real"
     if auto_approved and not trusted_provider:
         status = "manual_review"
@@ -944,6 +936,19 @@ def run_moderation(driver_id: str = Depends(get_current_driver)):
     if auto_approved and trusted_provider:
         update_fields["verification_level"] = 3
         update_fields["role"] = "driver"
+        update_fields["manual_review_required"] = 0
+        update_fields["manual_review_reason"] = None
+    # Persist only the final decision. In particular, never leave status=approved
+    # behind after the fail-closed provider override above.
+    update_fields.update({
+        "moderation_score": moderation_score,
+        "security_score": total_score,
+        "security_color": color,
+        "status": status,
+        "auto_approved": 1 if auto_approved else 0,
+        "rejected_reason": rejected_reason,
+        "approved_at": "CURRENT_TIMESTAMP" if auto_approved else None,
+    })
     reg_dal.update_driver(driver_id, update_fields)
 
     # Push-триггер. Блок 6 аудита (P1-8): раньше это событие (итог модерации
@@ -986,7 +991,7 @@ def run_moderation(driver_id: str = Depends(get_current_driver)):
         "security_color": color,
         "breakdown": score_parts,
         "rejected_reason": rejected_reason,
-        "manual_review_required": bool(driver.get("manual_review_required")),
+        "manual_review_required": bool(update_fields.get("manual_review_required", driver.get("manual_review_required"))),
     }
 
 

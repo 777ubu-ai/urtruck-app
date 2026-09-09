@@ -47,6 +47,11 @@ def _sign_cargo_photos(photos):
 mp_router = APIRouter()
 
 
+def _driver_verified(driver: dict | None) -> bool:
+    """Marketplace trust badge requires the canonical approved state."""
+    return bool(driver and driver.get("status") == "approved")
+
+
 def _maybe_user(authorization: Optional[str]) -> Optional[dict]:
     """Optional auth: return user dict if the caller passed a valid bearer
     token, otherwise None. Never raises. Used by endpoints that have both
@@ -730,7 +735,7 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
                     _ph = "".join(ch for ch in (orow["phone"] or "") if ch.isdigit())
                     _nm = f"+{_ph[-4:]}" if len(_ph) >= 4 else "Пользователь UrTruck"
                 d["owner_name"] = _nm
-                d["owner_verified"] = (orow["status"] == "approved")
+                d["owner_verified"] = _driver_verified(dict(orow))
             summary = reviews_dal.get_rating_summary(owner_id)
             d["owner_rating"] = summary.get("average", 0) or 0
             d["owner_reviews_count"] = summary.get("count", 0) or 0
@@ -1316,7 +1321,7 @@ def list_trips(
                     "SELECT status FROM drivers_registration WHERE id = ?",
                     (did,),
                 ).fetchone() if did else None
-                t["driver_verified"] = bool(drow and drow["status"] == "approved")
+                t["driver_verified"] = _driver_verified(dict(drow) if drow else None)
         for t in trips:
             did = t.get("driver_id")
             summary = reviews_dal.get_rating_summary(did) if did else {}
@@ -1368,7 +1373,7 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
                     _ph = "".join(ch for ch in (drow["phone"] or "") if ch.isdigit())
                     _nm = f"+{_ph[-4:]}" if len(_ph) >= 4 else "Пользователь UrTruck"
                 d["driver_display_name"] = _nm
-                d["driver_verified"] = (drow["status"] == "approved")
+                d["driver_verified"] = _driver_verified(dict(drow))
             summary = reviews_dal.get_rating_summary(drv_id)
             d["driver_rating"] = summary.get("average", 0) or 0
             d["driver_reviews_count"] = summary.get("count", 0) or 0
@@ -1675,7 +1680,7 @@ def list_bids(
                     "SELECT status FROM drivers_registration WHERE id = ?",
                     (did,),
                 ).fetchone() if did else None
-                b["bidder_verified"] = bool(drow and drow["status"] == "approved")
+                b["bidder_verified"] = _driver_verified(dict(drow) if drow else None)
         for b in bids:
             did = b.get("bidder_id")
             summary = reviews_dal.get_rating_summary(did) if did else {}
