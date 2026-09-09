@@ -52,6 +52,7 @@ import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
 import { SERVER_URL } from '../config/env';
+import { useKeyboardDockInset } from '../components/ui/v1/KeyboardSafeLayout';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
@@ -229,6 +230,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
+  const chatKeyboardInset = useKeyboardDockInset(window.height);
   const params = route?.params || {};
 
   const [dealId, setDealId] = React.useState(params.dealId || null);
@@ -1343,7 +1345,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-workspace-screen">
-      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
         {viewMode === VIEW_CHAT ? (
           <View style={s.chatFullscreen} testID="deal-chat-fullscreen">
             {dealLoading && !dealId ? (
@@ -1402,7 +1404,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 <View
                   style={[
                     s.composerDock,
-                    { borderTopColor: colors.border, paddingBottom: attachOpen || emojiOpen ? 6 : Math.max(insets.bottom, 8) },
+                    {
+                      borderTopColor: colors.border,
+                      paddingBottom: attachOpen || emojiOpen ? 6 : Math.max(insets.bottom, 8),
+                      marginBottom: chatKeyboardInset,
+                    },
                   ]}
                   testID="deal-chat-composer-dock"
                 >

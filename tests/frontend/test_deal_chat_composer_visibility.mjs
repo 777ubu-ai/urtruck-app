@@ -23,8 +23,10 @@ test('composer: collapsed-режим полностью убран из чата
   assert.match(src, /testID="deal-chat-input"/);
 });
 
-test('Android chat dock owns one explicit IME resize and voice failures stay observable', () => {
-  assert.match(src, /Platform\.OS === 'ios' \? 'padding' : 'height'/);
+test('Android chat dock uses the canonical measured IME overlap and voice failures stay observable', () => {
+  assert.match(src, /useKeyboardDockInset\(window\.height\)/);
+  assert.match(src, /Platform\.OS === 'ios' \? 'padding' : undefined/);
+  assert.match(src, /marginBottom: chatKeyboardInset/);
   assert.match(src, /testID="deal-chat-composer-dock"/);
   assert.match(src, /errorText: t\('voice_transcription_unavailable'\)/);
   assert.match(src, /<VoiceMessageBubble[\s\S]*t=\{t\}/);

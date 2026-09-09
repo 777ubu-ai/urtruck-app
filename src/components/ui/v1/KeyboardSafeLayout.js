@@ -21,6 +21,46 @@ export function useKeyboardSafeFocus(onFocus) {
 }
 
 /**
+ * Canonical bottom-dock contract for the one UI that cannot scroll away from
+ * the IME: the deal chat composer. Android 15+ may report a full-height
+ * window even with adjustResize set; in that case the dock has to move by
+ * the measured IME overlap. When Android did resize the window, the overlap
+ * is zero, so this never creates a second keyboard offset.
+ */
+export function useKeyboardDockInset(viewportHeight) {
+  const [inset, setInset] = React.useState(0);
+  const viewportHeightRef = useRef(viewportHeight);
+
+  React.useEffect(() => {
+    viewportHeightRef.current = viewportHeight;
+  }, [viewportHeight]);
+
+  React.useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const onShow = (event) => {
+      // iOS uses KeyboardAvoidingView padding. Android needs this measured
+      // fallback only when the Activity did not actually resize its viewport.
+      if (Platform.OS !== 'android') return;
+      const keyboardTop = event?.endCoordinates?.screenY ?? Keyboard.metrics?.()?.screenY;
+      const height = viewportHeightRef.current;
+      setInset(Number.isFinite(keyboardTop) && Number.isFinite(height)
+        ? Math.max(0, height - keyboardTop)
+        : 0);
+    };
+    const onHide = () => setInset(0);
+    const showSubscription = Keyboard.addListener(showEvent, onShow);
+    const hideSubscription = Keyboard.addListener(hideEvent, onHide);
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  return inset;
+}
+
+/**
  * Canonical long-form container. ScrollView's native responder knows how to
  * reveal the focused TextInput above the IME on both Android and iOS. Keeping
  * this behavior here avoids per-screen keyboard offsets and duplicate listeners.
