@@ -173,7 +173,7 @@ export function completeBookingCalendar(live) {
 export default function QueueScreenLazyV2({ navigation, route }) {
   const { theme } = useTheme();
   const v1 = useV1Colors();
-  const { lang } = useI18n();
+  const { t, lang, sp } = useI18n();
   const L = COPY[lang] || COPY.RU;
   const role = route?.params?.role || 'driver';
   const { requireLevel } = useVerificationGate();
@@ -317,7 +317,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               return (
                 <TouchableOpacity key={String(checkpoint.id)} onPress={() => loadLive(checkpoint)} style={[s.cpCard, { backgroundColor: theme.card, borderColor: active ? '#168759' : theme.border }, active && s.cpCardActive]} testID="border-checkpoint-chip">
                   <View style={s.cpTop}><Text style={[s.cpName, { color: theme.text }]} numberOfLines={1}>{localizeCheckpointName(checkpoint, lang).split(' - ')[0]}</Text>{favorites.includes(String(checkpoint.id)) ? <Feather name="star" size={14} color="#168759" fill="#168759" /> : null}</View>
-                  <Text style={[s.cpRoute, { color: theme.textDim }]} numberOfLines={1}>{localizeCheckpointName(checkpoint, lang)}</Text>
+                  <Text style={[s.cpRoute, { color: theme.textDim, fontSize: sp(10.5) }]} numberOfLines={1}>{localizeCheckpointName(checkpoint, lang)}</Text>
                   {loaded?.nearest_booking ? <Text style={s.cpLoadedText}>📅 {formatShortDate(loaded.nearest_booking, lang)}</Text> : <Text style={[s.tapText, { color: active ? '#168759' : theme.textDim }]}>{active ? L.selected : L.tapToOpen}</Text>}
                 </TouchableOpacity>
               );
@@ -333,7 +333,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
           <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: '#9FD8BD' }]} testID="border-selected-card">
             <View style={s.liveHeader}>
               <View style={{ flex: 1, paddingRight: 8 }}><Text style={[s.liveTitle, { color: theme.text }]}>{localizeCheckpointName({ ...selected, name: live.name || selected.name }, lang)}</Text><Text style={[s.liveCountry, { color: theme.textMuted }]}>{selected.country ? countryName(selected.country) : ''}</Text></View>
-              <TouchableOpacity onPress={toggleFavorite} style={[s.iconButton, { borderColor: theme.border }]}><Feather name="star" size={19} color="#168759" fill={favorites.includes(String(selectedId)) ? '#168759' : 'transparent'} /></TouchableOpacity>
+              <TouchableOpacity onPress={toggleFavorite} style={[s.iconButton, { borderColor: theme.border }]} accessibilityRole="button" accessibilityLabel={t('a11y_toggle_favorite')} accessibilityState={{ selected: favorites.includes(String(selectedId)) }}><Feather name="star" size={19} color="#168759" fill={favorites.includes(String(selectedId)) ? '#168759' : 'transparent'} /></TouchableOpacity>
             </View>
 
             <View style={s.heroBooking}>
@@ -350,7 +350,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               <View style={s.metric}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{L.limit}</Text><Text style={[s.metricValue, { color: theme.text }]}>{live.daily_capacity != null ? `${live.daily_capacity}${L.perDay}` : '—'}</Text></View>
             </View>
 
-            <View style={s.calendarHead}><Text style={[s.sectionTitleSmall, { color: theme.text }]}>{L.calendar}</Text><Text style={[s.swipeHint, { color: theme.textDim }]}>{L.swipeCalendar}</Text></View>
+            <View style={s.calendarHead}><Text style={[s.sectionTitleSmall, { color: theme.text }]}>{L.calendar}</Text><Text style={[s.swipeHint, { color: theme.textDim, fontSize: sp(10.5) }]}>{L.swipeCalendar}</Text></View>
             <FlatList
               horizontal
               data={calendarRows}
@@ -363,7 +363,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 return (
                   <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? '#70C49B' : hasPremium ? '#E4B35A' : '#E5B8B8', backgroundColor: item.is_day_off ? v1.bg : hasStandard ? '#F0FBF6' : hasPremium ? '#FFF8E8' : '#FFF7F7' }]} testID="border-booking-date-card">
                     <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
-                    {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim }]}>{L.dayOff}</Text> : hasStandard ? <><Text style={s.dateFree}>{standardFree}</Text><Text style={[s.dateState, { color: '#168759' }]}>{L.standard}</Text><Text style={[s.dateAmount, { color: '#168759' }]}>{formatKztAmount(1)}</Text></> : hasPremium ? <><Text style={s.datePremium}>{premiumFree}</Text><Text style={[s.dateState, { color: '#B7791F' }]}>{L.premium}</Text><Text style={[s.dateAmount, { color: '#B7791F' }]}>{formatKztAmount(100)}</Text></> : <Text style={[s.dateState, { color: '#B42318' }]}>{L.noPlaces}</Text>}
+                    {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim, fontSize: sp(9.5) }]}>{L.dayOff}</Text> : hasStandard ? <><Text style={s.dateFree}>{standardFree}</Text><Text style={[s.dateState, { color: '#168759', fontSize: sp(9.5) }]}>{L.standard}</Text><Text style={[s.dateAmount, { color: '#168759', fontSize: sp(8.5) }]}>{formatKztAmount(1)}</Text></> : hasPremium ? <><Text style={s.datePremium}>{premiumFree}</Text><Text style={[s.dateState, { color: '#B7791F', fontSize: sp(9.5) }]}>{L.premium}</Text><Text style={[s.dateAmount, { color: '#B7791F', fontSize: sp(8.5) }]}>{formatKztAmount(100)}</Text></> : <Text style={[s.dateState, { color: '#B42318', fontSize: sp(9.5) }]}>{L.noPlaces}</Text>}
                   </View>
                 );
               }}
@@ -427,7 +427,7 @@ const s = StyleSheet.create({
   liveHeader: { flexDirection: 'row', alignItems: 'flex-start' },
   liveTitle: { fontSize: 20, lineHeight: 25, fontWeight: '900' },
   liveCountry: { fontSize: 13, marginTop: 4 },
-  iconButton: { width: 38, height: 38, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  iconButton: { width: 44, height: 44, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   heroBooking: { backgroundColor: '#F2FBF6', borderRadius: 16, padding: 16, marginTop: 15, alignItems: 'flex-start' },
   heroLabel: { fontSize: 12.5, fontWeight: '750' },
   heroDate: { color: '#126C49', fontSize: 31, lineHeight: 37, fontWeight: '950', marginTop: 4 },
@@ -453,7 +453,7 @@ const s = StyleSheet.create({
   dateAmount: { fontSize: 8.5, lineHeight: 11, fontWeight: '700', textAlign: 'center', marginTop: 2 },
   sourceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 15 },
   source: { fontSize: 11 },
-  refreshButton: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8 },
+  refreshButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8 },
   refreshText: { color: '#168759', fontWeight: '800', fontSize: 12 },
   cgrButton: { minHeight: 46, borderRadius: 14, backgroundColor: '#168759', flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   cgrButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '850' },

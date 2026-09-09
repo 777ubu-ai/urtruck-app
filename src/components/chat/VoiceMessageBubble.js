@@ -2,6 +2,8 @@ import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 import { voice } from "../../utils/voiceRecorder";
+import { getLanguage } from "../../utils/i18n";
+import { spFor } from "../../utils/useI18n";
 
 const RATES = [1, 1.5, 2];
 
@@ -37,6 +39,8 @@ export default function VoiceMessageBubble({
   };
 
   const textVisible = !!transcript?.visible && !!transcript?.transcriptText;
+  // CJK floor (Commit 7): duration/rate chrome never below 12sp in ZH.
+  const sp = (size) => spFor(getLanguage(), size);
   const actionLabel = transcribing
     ? "..."
     : textVisible
@@ -58,11 +62,11 @@ export default function VoiceMessageBubble({
             <View key={index} style={[s.wave, { height, backgroundColor: mine ? "rgba(17,27,33,0.42)" : colors.textMuted }]} />
           ))}
         </View>
-        <Text style={[s.duration, { color: foreground }]}>
+        <Text style={[s.duration, { color: foreground, fontSize: sp(11) }]}>
           {item?.voiceDuration || item?.duration ? `${item.voiceDuration || item.duration}${t("unit_sec_short")}` : "—"}
         </Text>
         <TouchableOpacity onPress={cycleRate} style={[s.rateButton, { borderColor: mine ? "rgba(17,27,33,0.2)" : colors.border }]} accessibilityLabel={`speed-${rate}`}>
-          <Text style={[s.rateText, { color: foreground }]}>{rate}x</Text>
+          <Text style={[s.rateText, { color: foreground, fontSize: sp(11) }]}>{rate}x</Text>
         </TouchableOpacity>
       </View>
       <TouchableOpacity style={s.translateButton} onPress={onToggleTranscript} disabled={transcribing}>

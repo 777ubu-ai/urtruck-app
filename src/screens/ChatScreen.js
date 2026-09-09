@@ -115,6 +115,9 @@ const DRIVER_ROUTE_STATUSES = ['accepted', 'in_progress', 'at_border', 'delivere
 
 export default function ChatScreen({ navigation, route }) {
   const v1 = useV1Colors();
+  // CJK floor (Commit 7): timestamps/voice chrome go through sp() so ZH
+  // never renders below 12sp. Hook runs before the style factory below.
+  const { t, sp } = useI18n();
   const s = React.useMemo(
     () =>
       StyleSheet.create({
@@ -408,7 +411,7 @@ export default function ChatScreen({ navigation, route }) {
         assistText: { fontSize: 12, lineHeight: 17 },
         msgTime: {
           color: v1.textMuted,
-          fontSize: 11,
+          fontSize: sp(11),
           textAlign: "right",
           marginTop: 3,
         },
@@ -425,7 +428,7 @@ export default function ChatScreen({ navigation, route }) {
           marginLeft: 5,
           paddingBottom: 1,
         },
-        msgStatus: { fontSize: 10.5, color: "rgba(17,27,33,0.58)" },
+        msgStatus: { fontSize: sp(10.5), color: "rgba(17,27,33,0.58)" },
         systemMsgRow: { alignItems: "center", marginVertical: 6 },
         systemMsgPill: {
           backgroundColor: "rgba(124,139,130,0.14)",
@@ -612,7 +615,7 @@ export default function ChatScreen({ navigation, route }) {
           flex: 1,
         },
         wavebar: { width: 2, borderRadius: 1 },
-        voiceTime: { fontSize: 11, minWidth: 30 },
+        voiceTime: { fontSize: sp(11), minWidth: 30 },
         assistBtn: {
           flexDirection: "row",
           alignItems: "center",
@@ -620,7 +623,7 @@ export default function ChatScreen({ navigation, route }) {
           marginTop: 6,
         },
       }),
-    [v1],
+    [v1, sp],
   );
   const {
     partner,
@@ -636,7 +639,6 @@ export default function ChatScreen({ navigation, route }) {
   // dealId), достаём deal_id из комнаты, чтобы подгрузить сделку → появляются
   // маршрут в шапке и карточка сделки при ЛЮБОМ входе.
   const [dealId, setDealId] = useState(dealIdParam || null);
-  const { t } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
   const { session } = useAuth();
@@ -1861,7 +1863,7 @@ export default function ChatScreen({ navigation, route }) {
               </Text>
               {statusIcon ? (
                 <Text
-                  style={{ fontSize: 11, color: statusColor, marginLeft: 2 }}
+                  style={{ fontSize: sp(11), color: statusColor, marginLeft: 2 }}
                 >
                   {statusIcon}
                 </Text>
@@ -1962,7 +1964,7 @@ export default function ChatScreen({ navigation, route }) {
               <Text
                 style={{
                   color: isMe ? "rgba(255,255,255,0.5)" : theme.textMuted,
-                  fontSize: 11,
+                  fontSize: sp(11),
                 }}
               >
                 {voiceActionLabel}
@@ -2057,7 +2059,7 @@ export default function ChatScreen({ navigation, route }) {
               </Text>
               {statusIcon ? (
                 <Text
-                  style={{ fontSize: 11, color: statusColor, marginLeft: 2 }}
+                  style={{ fontSize: sp(11), color: statusColor, marginLeft: 2 }}
                 >
                   {statusIcon}
                 </Text>
@@ -2627,7 +2629,7 @@ export default function ChatScreen({ navigation, route }) {
               onPress={() => sendMessage()}
               style={[s.sendBtn, { backgroundColor: v1Accent.main }]}
               testID="chat-send-btn"
-              accessibilityLabel="Send"
+              accessibilityLabel={t("send")}
             >
               <FontAwesome5
                 name="paper-plane"
@@ -2717,6 +2719,8 @@ export default function ChatScreen({ navigation, route }) {
                   key={it.key}
                   style={s.attachTile}
                   testID={`chat-attach-${it.key}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={it.label}
                   onPress={() => {
                     setShowAttach(false);
                     it.on();

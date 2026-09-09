@@ -53,7 +53,7 @@ export default function BottomNav({ state, navigation }) {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { session, hasToken } = useAuth();
-  const { t } = useI18n();
+  const { t, sp } = useI18n();
   const role = session?.user?.role || state.routes[0]?.params?.role || 'client';
   const isDriver = role === 'driver';
   const accent = ROLE_ACCENT[role] || ROLE_ACCENT.client;
@@ -205,7 +205,7 @@ export default function BottomNav({ state, navigation }) {
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.label, { color: labelColor }]} numberOfLines={1}>
+              <Text style={[styles.label, { color: labelColor, fontSize: sp(11) }]} numberOfLines={1}>
                 {label}
               </Text>
             </TouchableOpacity>

@@ -184,7 +184,7 @@ const dealStatus = (status, t) => {
   return { label: formatStatus(status), color: ARCHIVE };
 };
 
-function TabChip({ label, count, attentionCount = 0, active, onPress, testID, icon = null, colors }) {
+function TabChip({ label, count, attentionCount = 0, active, onPress, testID, icon = null, colors, sp = (n) => n }) {
   return (
     <TouchableOpacity
       testID={testID}
@@ -214,7 +214,7 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
       </View>
       <View style={[styles.tabCountBadge, { backgroundColor: active ? colors.surface : colors.surfaceAlt, borderColor: active ? '#B9DACB' : colors.border }]}>
         <Text
-          style={[styles.tabCount, { color: active ? colors.accent : colors.textMuted }]}
+          style={[styles.tabCount, { color: active ? colors.accent : colors.textMuted, fontSize: sp(10.5) }]}
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.75}
@@ -224,7 +224,7 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
       </View>
       {attentionCount > 0 ? (
         <View style={styles.tabAttentionBadge} testID={`${testID}-attention`}>
-          <Text style={styles.tabAttentionText}>
+          <Text style={[styles.tabAttentionText, { fontSize: sp(9) }]}>
             {attentionCount > 99 ? '99+' : attentionCount}
           </Text>
         </View>
@@ -270,7 +270,7 @@ function CompactDealCard({
 }
 
 export default function DealsScreen({ navigation, route }) {
-  const { t, lang } = useI18n();
+  const { t, lang, sp } = useI18n();
   const { theme, isDark } = useTheme();
   const palette = useMemo(() => dealsPalette(theme, isDark), [theme, isDark]);
   const role = route?.params?.role || 'client';
@@ -704,6 +704,7 @@ export default function DealsScreen({ navigation, route }) {
           active={dealTab === 'offers'}
           onPress={() => setDealTab('offers')}
           colors={palette}
+          sp={sp}
         />
         <TabChip
           testID="deals-tab-active"
@@ -713,6 +714,7 @@ export default function DealsScreen({ navigation, route }) {
           active={dealTab === 'active'}
           onPress={() => setDealTab('active')}
           colors={palette}
+          sp={sp}
         />
         <TabChip
           testID="deals-tab-archive"
@@ -722,6 +724,7 @@ export default function DealsScreen({ navigation, route }) {
           onPress={() => setDealTab('archive')}
           icon="archive"
           colors={palette}
+          sp={sp}
         />
       </View>
 
