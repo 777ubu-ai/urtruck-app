@@ -142,12 +142,11 @@ def save_draft(body: DraftBody, driver_id: str = Depends(get_current_driver)):
 def submit_registration(driver_id: str = Depends(get_current_driver)):
     """Отправка заявки.
 
-    Модель (решение владельца): пока нет штатного модератора — АВТО-одобрение,
-    чтобы водитель начал работать сразу, НО с флагом manual_review_required=1,
-    чтобы админ позже просмотрел документы и при желании отозвал доступ.
-    Чёрный список — жёсткий гейт: заблокированного не пускаем даже авто.
-    Раньше здесь ставился status='pending' и заявка висела бесконечно, т.к.
-    штатного процесса одобрения нет."""
+    Отправка формы только создаёт заявку на проверку. Скоринг и наличие
+    документов не являются решением верификации: trusted level 3 может быть
+    выдан только отдельным trusted_real/admin-путём. Чёрный список — жёсткий
+    гейт: заблокированного не пускаем даже в manual review.
+    """
     driver = reg_dal.get_driver(driver_id)
     if not driver:
         raise HTTPException(status_code=404, detail="Водитель не найден")
@@ -173,19 +172,22 @@ def submit_registration(driver_id: str = Depends(get_current_driver)):
         })
         return {"ok": False, "status": "rejected", "reason": "blacklist", "scoring": scoring}
 
-    # Авто-одобрение + флаг «проверить вручную позже».
+    # Обычная отправка формы не является верификацией. Сохраняем pending и
+    # оставляем максимум identity-level; level 3/status=approved принадлежат
+    # только trusted_real moderation или явно авторизованному admin action.
+    existing_approved = driver.get("status") == "approved" and (driver.get("verification_level") or 0) >= 3
     reg_dal.update_driver(driver_id, {
         "security_score": scoring["score"],
         "security_color": scoring["color"],
-        "status": "approved",
-        "verification_level": 3,
+        "status": "approved" if existing_approved else "pending",
+        "verification_level": 3 if existing_approved else min(int(driver.get("verification_level") or 0), 2),
         "role": "driver",
         "submitted_at": datetime.utcnow().isoformat(),
-        "manual_review_required": 1,
+        "manual_review_required": 0 if existing_approved else 1,
     })
     return {
         "ok": True,
-        "status": "approved",
-        "manual_review": True,
+        "status": "approved" if existing_approved else "pending",
+        "manual_review": not existing_approved,
         "scoring": scoring,
     }

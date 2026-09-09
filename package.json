@@ -44,6 +44,7 @@
     "qa:keystore": "node qa/utils/noTrackedKeystoreSmoke.js",
     "qa:favorites": "node qa/utils/favoritesContractSmoke.js",
     "qa:locale-runtime": "node qa/utils/runtimeLocaleLeakProbe.mjs",
+    "qa:i18n-duplicates": "node scripts/check-i18n-critical-duplicates.mjs",
     "qa:role-locale": "node qa/utils/roleLocaleMatrixProbe.mjs",
     "test:unit": "node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/*.mjs tests/unit/*.mjs",
     "qa:report-gate": "node scripts/check_qa_report_gate.js",

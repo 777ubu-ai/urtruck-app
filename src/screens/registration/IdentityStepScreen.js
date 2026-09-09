@@ -202,6 +202,7 @@ export default function IdentityStepScreen({ navigation }) {
       await regAPI.saveDriverDraft({
         full_name: fullName,
         birth_date: birthDate.trim(),
+        iin: iin.trim(),
         id_doc_type: docType,
       });
     } catch (err) {

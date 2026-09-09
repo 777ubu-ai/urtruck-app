@@ -250,6 +250,28 @@ export async function getCurrentLocationPayload() {
   } catch { return null; }
 }
 
+// Read-only preflight for Start trip. It never requests permissions and keeps
+// GPS capability errors distinct for truthful UI messaging.
+export async function getLocationHealth() {
+  const locationModule = await resolveLocationModule();
+  if (!locationModule) return { state: 'unsupported' };
+  try {
+    const permission = await locationModule.getForegroundPermissionsAsync();
+    if (permission.status !== 'granted') return { state: 'permission_denied' };
+    const provider = await locationModule.getProviderStatusAsync?.();
+    if (provider && provider.locationServicesEnabled === false) return { state: 'system_disabled' };
+    const position = await Promise.race([
+      locationModule.getCurrentPositionAsync({ accuracy: locationModule.Accuracy.Balanced }),
+      new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
+    ]);
+    const c = position?.coords;
+    if (!c || !Number.isFinite(c.latitude) || !Number.isFinite(c.longitude)) return { state: 'no_fix' };
+    return { state: 'ready', point: { lat: c.latitude, lng: c.longitude } };
+  } catch {
+    return { state: 'no_fix' };
+  }
+}
+
 // Background hook may call this after the deal becomes active. It MUST NOT
 // trigger a permission dialog by itself. On Android it starts the visible
 // foreground service only after foreground + background permissions are granted.

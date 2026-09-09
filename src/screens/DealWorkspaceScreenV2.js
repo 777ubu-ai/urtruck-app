@@ -41,6 +41,7 @@ import { getAvailableDealActions } from '../utils/dealActionResolver';
 import {
   ensureBackgroundLocationPermission,
   getCurrentLocationPayload,
+  getLocationHealth,
   requestForegroundLocationPermission,
 } from '../utils/backgroundLocation';
 import { compressImage } from '../utils/imageCompress';
@@ -682,6 +683,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     const permission = await ensureBackgroundLocationPermission();
     setTrackingLoading(false);
     if (!permission.ok) { toast(t('track_permission_needed'), 'error'); return; }
+    const health = await getLocationHealth();
+    if (health.state !== 'ready') {
+      const message = health.state === 'system_disabled' ? t('gps_system_disabled')
+        : health.state === 'no_fix' ? t('gps_no_fix')
+          : t('track_permission_needed');
+      toast(message, 'error');
+      return;
+    }
     const result = await changeDealStatus('in_progress');
     if (result?.ok) {
       const point = await getCurrentLocationPayload();
