@@ -24,7 +24,7 @@ test('composer: collapsed-режим полностью убран из чата
 });
 
 test('Android chat dock uses the canonical measured IME overlap and voice failures stay observable', () => {
-  assert.match(src, /useKeyboardDockInset\(window\.height\)/);
+  assert.match(src, /useKeyboardDockInset\(window\.height, insets\.top\)/);
   assert.match(src, /Platform\.OS === 'ios' \? 'padding' : undefined/);
   assert.match(src, /marginBottom: chatKeyboardInset/);
   assert.match(src, /testID="deal-chat-composer-dock"/);

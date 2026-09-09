@@ -27,7 +27,7 @@ export function useKeyboardSafeFocus(onFocus) {
  * the measured IME overlap. When Android did resize the window, the overlap
  * is zero, so this never creates a second keyboard offset.
  */
-export function useKeyboardDockInset(viewportHeight) {
+export function useKeyboardDockInset(viewportHeight, topInset = 0) {
   const [inset, setInset] = React.useState(0);
   const viewportHeightRef = useRef(viewportHeight);
 
@@ -44,8 +44,13 @@ export function useKeyboardDockInset(viewportHeight) {
       if (Platform.OS !== 'android') return;
       const keyboardTop = event?.endCoordinates?.screenY ?? Keyboard.metrics?.()?.screenY;
       const height = viewportHeightRef.current;
+      // Android 16's edge-to-edge IME reports its touch frame below the
+      // visual toolbar. Include the measured safe-area top only there, so the
+      // dock stays above the whole rendered IME; older Android keeps its
+      // normal coordinate contract and therefore has no artificial gap.
+      const visualImeInset = Platform.Version >= 36 ? Math.max(0, topInset) : 0;
       setInset(Number.isFinite(keyboardTop) && Number.isFinite(height)
-        ? Math.max(0, height - keyboardTop)
+        ? Math.max(0, height - keyboardTop + visualImeInset)
         : 0);
     };
     const onHide = () => setInset(0);
@@ -55,7 +60,7 @@ export function useKeyboardDockInset(viewportHeight) {
       showSubscription.remove();
       hideSubscription.remove();
     };
-  }, []);
+  }, [topInset]);
 
   return inset;
 }

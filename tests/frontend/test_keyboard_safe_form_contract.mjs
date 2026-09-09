@@ -45,6 +45,7 @@ test('Android forms have one resize owner: system adjustResize, not KAV height',
 
 test('bottom-docked chat uses the measured IME overlap without a double offset', () => {
   assert.match(primitive, /export function useKeyboardDockInset/);
-  assert.match(primitive, /Math\.max\(0, height - keyboardTop\)/);
+  assert.match(primitive, /Platform\.Version >= 36/);
+  assert.match(primitive, /Math\.max\(0, height - keyboardTop \+ visualImeInset\)/);
   assert.match(primitive, /Platform\.OS !== 'android'/);
 });

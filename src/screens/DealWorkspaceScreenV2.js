@@ -230,7 +230,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
-  const chatKeyboardInset = useKeyboardDockInset(window.height);
+  const chatKeyboardInset = useKeyboardDockInset(window.height, insets.top);
   const params = route?.params || {};
 
   const [dealId, setDealId] = React.useState(params.dealId || null);
