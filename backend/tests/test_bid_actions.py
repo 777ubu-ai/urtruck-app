@@ -676,3 +676,40 @@ def test_pr_b_reject_bid_notif_has_back_url():
     n = rejected[0]
     expect(n["url"] == f"/cargos/{cargo_id}",
            f"rejected notif url=/cargos/{{id}} (got {n['url']})")
+
+
+def test_counter_cancel_by_owner_notifies_bidder():
+    """Push-recovery track, Phase 4: cancel_counter_as_owner() used to have
+    NO push and NO in-app notification at all — the bidder's counter-offer
+    silently vanished with zero signal that their original bid was active
+    again. Mirrors test_pr_b_reject_bid_notif_has_back_url()'s verification
+    style for the symmetric fix (bidder is now notified, not the owner)."""
+    print("\n=== test_counter_cancel_by_owner_notifies_bidder ===")
+    owner = "owner-cc-1"
+    driver = "driver-cc-1"
+    cargo_id, bid_id = _new_pending_bid(owner, driver, 1000)
+    as_user(owner)
+    client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 800})
+    expect(get_bid(bid_id)["status"] == "countered", "bid is countered before cancel")
+
+    r = client.post(f"/api/v1/market/bids/{bid_id}/counter/cancel")
+    expect(r.status_code == 200, f"counter/cancel 200 (got {r.status_code} {r.text})")
+
+    final = get_bid(bid_id)
+    expect(final["status"] == "pending", "back to pending")
+    expect(final["amount"] == 1000, "original bidder amount preserved")
+
+    notifs = query_notifications(driver)
+    cancelled = [n for n in notifs if "Встречная цена отменена" in (n.get("title") or "")]
+    expect(len(cancelled) >= 1, f"bidder got a counter-cancelled notif (count={len(cancelled)})")
+    n = cancelled[0]
+    expect(n["url"] == f"/cargos/{cargo_id}?bid={bid_id}",
+           f"counter-cancel notif url has cargo+bid context (got {n['url']})")
+
+    # A repeat cancel on an already-pending bid must not be silently
+    # accepted (and must not send a second notification) — the business
+    # guard (`status != 'countered'`) is what makes this endpoint safe
+    # without a dedicated event_key.
+    r2 = client.post(f"/api/v1/market/bids/{bid_id}/counter/cancel")
+    expect(r2.status_code == 409, f"repeat cancel on pending bid → 409 (got {r2.status_code})")
+    expect(len(query_notifications(driver)) == len(notifs), "repeat cancel must not create a second notification")

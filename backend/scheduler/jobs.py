@@ -54,6 +54,22 @@ def push_outbox_drain_job():
         print(f"[push-outbox] drain job failed (continuing): {e}", flush=True)
 
 
+def gps_heartbeat_check_job():
+    """Push-recovery track, Phase 4: fires trip.gps_lost/gps_restored, which
+    previously existed only as declared event-type constants with no
+    producer (see api/marketplace.py:check_gps_heartbeats_job for the actual
+    stale-detection query and dedup guard, built on the real
+    deal_tracking.last_signal_at heartbeat already maintained by every
+    driver location ping — not invented telemetry)."""
+    try:
+        from api.marketplace import check_gps_heartbeats_job as _check
+        stats = _check()
+        if stats.get("fired"):
+            print(f"[gps-heartbeat] checked={stats['checked']} fired={stats['fired']}", flush=True)
+    except Exception as e:
+        print(f"[gps-heartbeat] check failed (continuing): {e}", flush=True)
+
+
 def monthly_rescore_job():
     """Переоценка всех водителей — раз в месяц."""
     print(f"[{datetime.now().isoformat()}] Monthly rescore start")
@@ -399,9 +415,14 @@ def start_scheduler():
     # пользователя без уведомления полчаса неприемлемо. max_instances=1 +
     # атомарный claim в process_pending_once защищают от наложения.
     sched.add_job(push_outbox_drain_job, IntervalTrigger(seconds=30), id="push_outbox_drain")
+    # GPS heartbeat staleness check — каждые 5 минут (порог staleness сам —
+    # 20 минут, см. GPS_LOST_THRESHOLD_MINUTES), достаточно редко, чтобы не
+    # быть busy-loop, достаточно часто, чтобы задержка обнаружения была мала
+    # относительно самого порога.
+    sched.add_job(gps_heartbeat_check_job, IntervalTrigger(minutes=5), id="gps_heartbeat_check")
     sched.start()
     _scheduler = sched
-    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s")
+    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s, gps-heartbeat 5m")
     return sched
 
 
