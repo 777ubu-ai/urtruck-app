@@ -572,6 +572,14 @@ def drain_outbox_once(limit: int = 50) -> dict:
     return push_gateway.process_pending_once(_send_expo_detailed, limit=limit)
 
 
+def poll_expo_receipts_once(limit: int = 50) -> dict:
+    """Thin public entry point for the scheduler (scheduler.jobs.push_receipts_poll_job) —
+    see push_gateway.poll_pending_receipts for the actual bounded, once-per-row
+    reconciliation logic.
+    """
+    return push_gateway.poll_pending_receipts(expo_receipts, limit=limit)
+
+
 def broadcast(user_ids: list[str], title: str, body: str,
               kind: str = "info", data: Optional[dict] = None, url: str = "/") -> dict:
     """Массовая рассылка — тем же сообщением нескольким юзерам."""

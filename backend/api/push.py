@@ -174,15 +174,26 @@ def _migrate_ownership_columns():
                 delivered_at TEXT,
                 error_code TEXT,
                 token_masked TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                receipt_checked_at TEXT
             )
         """)
+        try:
+            delivery_cols = {r["name"] for r in c.execute("PRAGMA table_info(push_delivery_log)").fetchall()}
+            if "receipt_checked_at" not in delivery_cols:
+                c.execute("ALTER TABLE push_delivery_log ADD COLUMN receipt_checked_at TEXT")
+        except Exception:
+            pass
         c.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_push_delivery_dedupe
             ON push_delivery_log(event_id, device_registry_id)
             WHERE event_id IS NOT NULL AND status = 'sent'
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_delivery_event ON push_delivery_log(event_id)")
+        c.execute("""
+            CREATE INDEX IF NOT EXISTS idx_push_delivery_receipt_pending
+            ON push_delivery_log(provider, status, receipt_checked_at, sent_at)
+        """)
         # PR#187 reconciliation: на legacy-БД (без event_key) добавляем колонку
         # ПЕРЕД созданием уникального индекса — иначе индекс по несуществующей
         # колонке падает. Тот же порядок, что и в notifications._migrate_event_key.

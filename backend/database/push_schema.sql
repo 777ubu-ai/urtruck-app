@@ -100,13 +100,20 @@ CREATE TABLE IF NOT EXISTS push_delivery_log (
   delivered_at TEXT,
   error_code TEXT,
   token_masked TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  -- receipt_checked_at: set the ONE time a delayed Expo receipt was polled
+  -- for this row (see services/push_gateway.poll_pending_receipts) so a
+  -- bounded poller queries each row at most once instead of re-checking it
+  -- on every tick for as long as it stays in the lookback window.
+  receipt_checked_at TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_push_delivery_dedupe
   ON push_delivery_log(event_id, device_registry_id)
   WHERE event_id IS NOT NULL AND status = 'sent';
 CREATE INDEX IF NOT EXISTS idx_push_delivery_event ON push_delivery_log(event_id);
+CREATE INDEX IF NOT EXISTS idx_push_delivery_receipt_pending
+  ON push_delivery_log(provider, status, receipt_checked_at, sent_at);
 
 -- Лог отправленных push (для отладки и avoiding дубликатов)
 CREATE TABLE IF NOT EXISTS push_log (
