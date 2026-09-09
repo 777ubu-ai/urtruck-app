@@ -2649,7 +2649,7 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
             counter_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
         else:
             counter_url = "/"
-        title = "↩️ Контр-оффер отменён"
+        title = "↩️ Встречная цена отменена"
         body = "Встречная цена отменена, исходная ставка снова доступна"
         send_to_user(bid["bidder_id"], title, body, url=counter_url,
                      kind="bid_counter_cancelled",
@@ -3216,6 +3216,52 @@ class TrackingDecisionIn(BaseModel):
     decision: str
 
 
+# GPS loss notifications are derived only from the real deal_tracking
+# last_signal_at heartbeat written by update_deal_location(). The threshold is
+# intentionally a QA/product value until the deployed background interval is
+# confirmed; it is not enabled by changing the provider mode.
+GPS_LOST_THRESHOLD_MINUTES = 20
+
+
+def _latest_gps_signal_marker(c, deal_id: str) -> Optional[str]:
+    row = c.execute(
+        "SELECT event_type FROM deal_tracking_events WHERE deal_id=? AND event_type IN ('gps_lost','gps_restored') ORDER BY id DESC LIMIT 1",
+        (deal_id,),
+    ).fetchone()
+    return row["event_type"] if row else None
+
+
+def check_gps_heartbeats_job() -> dict:
+    """Emit one lost event per stale active-trip episode."""
+    fired = 0
+    with get_conn() as c:
+        stale = c.execute(
+            """SELECT dt.deal_id, d.shipper_id FROM deal_tracking dt
+               JOIN deals d ON d.id = dt.deal_id
+               WHERE dt.status = 'active' AND d.status IN ('in_progress', 'at_border')
+                 AND dt.last_signal_at IS NOT NULL
+                 AND dt.last_signal_at <= datetime(CURRENT_TIMESTAMP, ?)""",
+            (f"-{GPS_LOST_THRESHOLD_MINUTES} minutes",),
+        ).fetchall()
+        to_notify = []
+        for row in stale:
+            if _latest_gps_signal_marker(c, row["deal_id"]) == "gps_lost":
+                continue
+            c.execute(
+                "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'gps_lost', NULL)",
+                (row["deal_id"],),
+            )
+            to_notify.append((row["deal_id"], row["shipper_id"]))
+        c.commit()
+    for deal_id, shipper_id in to_notify:
+        if shipper_id:
+            _tracking_notify(shipper_id, "⚠️ Пропал сигнал GPS",
+                             "Машина не передаёт местоположение уже некоторое время. Проверьте связь с водителем.",
+                             deal_id, "gps_lost")
+            fired += 1
+    return {"checked": len(stale), "fired": fired}
+
+
 @mp_router.get("/deals/{deal_id}/tracking")
 def get_deal_tracking(deal_id: str, user=Depends(require_level(1))):
     """Return the server-side GPS consent state to a deal participant."""
@@ -3385,6 +3431,7 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
         tracking = _tracking_payload(c, deal_id)
         if tracking.get("status") != "active":
             raise HTTPException(status_code=409, detail="GPS не разрешён водителем для этой сделки")
+        was_lost = _latest_gps_signal_marker(c, deal_id) == "gps_lost"
         c.execute(
             "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, updated_at) "
             "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP) "
@@ -3396,6 +3443,17 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
             "UPDATE deal_tracking SET last_signal_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE deal_id=?",
             (deal_id,),
         )
+        shipper_id = None
+        if was_lost:
+            c.execute(
+                "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'gps_restored', ?)",
+                (deal_id, user["id"]),
+            )
+            row = c.execute("SELECT shipper_id FROM deals WHERE id=?", (deal_id,)).fetchone()
+            shipper_id = row["shipper_id"] if row else None
+    if was_lost and shipper_id:
+        _tracking_notify(shipper_id, "✅ Сигнал GPS восстановлен",
+                         "Машина снова передаёт местоположение.", deal_id, "gps_restored")
     return {"ok": True}
 
 
