@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -10,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
-import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
@@ -30,6 +28,7 @@ import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
 import BellBadge from '../components/ui/v1/BellBadge';
 import RootHeader from '../components/ui/v1/RootHeader';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
+import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 
 const ACCENT = '#34936B';
 const ACCENT_SOFT = '#EAF5EF';
@@ -82,7 +81,10 @@ const feedPalette = (theme, isDark) => ({
   favoriteBg: isDark ? (theme.surfaceAlt || theme.card || theme.surface || SURFACE) : '#F5FBF8',
 });
 
-function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }) {
+// TripCard — canonical MarketplaceCard (Design v1 Commit 3). Flags are
+// rendered from item.fromCountry/toCountry by the shared component; the
+// screen only maps data to display strings.
+function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
   const display = tripDisplay(item, t, lang);
   const notSpecified = t('not_specified');
   const specs = [display.truckType, display.availableM3, display.capacityTons]
@@ -90,57 +92,32 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }
     .join(' · ');
 
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.88}
-      style={[
-        styles.card,
-        {
-          borderColor: colors.border,
-          backgroundColor: colors.surface,
-          shadowColor: colors.shadow,
-        },
-      ]}
+    <MarketplaceCard
       testID={`trip-card-${item.id}`}
-      accessibilityRole="button"
-    >
-      <View style={styles.greenRail} />
-      <View style={styles.cardBody}>
-        <Text style={[styles.route, { color: colors.text }]} numberOfLines={2}>
-          {display.from} → {display.to}
-        </Text>
-        <Text style={[styles.meta, { color: colors.textMuted }]} numberOfLines={1}>
-          {[item.departure ? `${copy.departure}: ${display.departure}` : null, specs || null]
-            .filter(Boolean)
-            .join(' · ')}
-        </Text>
-      </View>
-
-      <View style={styles.priceWrap}>
-        <Text style={[styles.price, { color: colors.text }]} numberOfLines={1}>{display.price}</Text>
-        <Text style={[styles.perTrip, { color: colors.textMuted }]}>{copy.perTrip}</Text>
-      </View>
-
-      <Pressable
-        onPress={(event) => { event?.stopPropagation?.(); onToggleSaved(); }}
-        hitSlop={10}
-        style={[
-          styles.bookmarkBtn,
-          { backgroundColor: colors.favoriteBg },
-          saved && { backgroundColor: colors.accentSoft },
-        ]}
-        testID={`trip-card-bookmark-${item.id}`}
-        accessibilityRole="button"
-        accessibilityLabel={saved ? 'Remove saved trip' : 'Save trip'}
-        accessibilityState={{ selected: saved }}
-      >
-        {saved ? (
-          <FontAwesome5 name="bookmark" size={18} color={colors.accent} solid />
-        ) : (
-          <Feather name="bookmark" size={18} color={colors.accent} />
-        )}
-      </Pressable>
-    </TouchableOpacity>
+      onPress={onPress}
+      style={styles.cardSpacing}
+      route={{
+        from: display.from,
+        to: display.to,
+        fromFlag: item.fromCountry || null,
+        toFlag: item.toCountry || null,
+        numberOfLines: 2,
+      }}
+      price={display.price}
+      priceMeta={copy.perTrip}
+      meta={[
+        item.departure ? `${copy.departure}: ${display.departure}` : null,
+        specs || null,
+      ]}
+      badge={{ label: t('badge_trip'), kind: 'trip' }}
+      counterparty={display.driverName !== notSpecified ? display.driverName : null}
+      bookmark={{
+        saved,
+        onToggle: onToggleSaved,
+        testID: `trip-card-bookmark-${item.id}`,
+        accessibilityLabel: saved ? t('in_favorites') : t('add_to_favorites'),
+      }}
+    />
   );
 }
 
@@ -320,6 +297,8 @@ export default function FeedScreen({ navigation }) {
         : await marketAPI.favAdd('trip', id, {
             from: item.from,
             to: item.to,
+            from_country: item.fromCountry || '',
+            to_country: item.toCountry || '',
             departure: item.departure,
             truck_type: item.truckType,
             capacity_tons: item.capacityTons,
@@ -500,7 +479,6 @@ export default function FeedScreen({ navigation }) {
             saved={savedIds.has(String(item.id))}
             onToggleSaved={() => toggleSaved(item)}
             onPress={() => openTrip(item)}
-            colors={colors}
           />
         )}
         ListHeaderComponent={feedControls}
@@ -747,39 +725,10 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { paddingTop: 0, paddingBottom: 28 },
   loadingWrap: { paddingHorizontal: 24, paddingTop: 5 },
-  card: {
-    minHeight: 104,
-    marginHorizontal: 18,
-    marginBottom: 7,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-    overflow: 'hidden',
-    shadowColor: '#15211C',
-    shadowOpacity: 0.035,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-    flexDirection: 'row',
-  },
-  greenRail: { width: 4, backgroundColor: '#3A9972' },
-  cardBody: { flex: 1, paddingLeft: 12, paddingRight: 145, paddingTop: 12, paddingBottom: 10 },
-  route: { fontSize: 15.5, lineHeight: 20, fontWeight: '700', letterSpacing: -0.1 },
-  meta: { fontSize: 12, lineHeight: 16, fontWeight: '500', marginTop: 7 },
-  priceWrap: { position: 'absolute', right: 58, bottom: 12, alignItems: 'flex-end', maxWidth: 130 },
-  price: { fontSize: 16.5, lineHeight: 20, fontWeight: '800' },
-  perTrip: { fontSize: 11.5, lineHeight: 15, marginTop: 1 },
-  bookmarkBtn: {
-    position: 'absolute',
-    right: 9,
-    bottom: 6,
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // Design v1 Commit 3: the card itself is the canonical MarketplaceCard
+  // (radius 16, border, no shadow, no green rail) — the screen only keeps
+  // its list spacing.
+  cardSpacing: { marginHorizontal: 18, marginBottom: 7 },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
   emptyTitle: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
   retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center' },

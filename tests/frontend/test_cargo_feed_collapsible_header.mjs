@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const src = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
+// Design v1 Commit 3: card chrome (density baselines included) moved into
+// the canonical MarketplaceCard; the screen keeps only list spacing.
+const card = fs.readFileSync('src/components/ui/v1/MarketplaceCard.js', 'utf8');
 
 test('cargo feed removes heavy brand/title chrome and keeps only compact menu above list', () => {
   assert.match(src, /testID="cargo-feed-minimal-header"/);
@@ -36,7 +39,9 @@ test('favorites quick filter uses the same saved cargo ids as card bookmarks', (
 });
 
 test('cargo cards stay compact so collapsing the controls actually increases visible work', () => {
-  assert.match(src, /minHeight: 120/);
-  assert.match(src, /fontSize: 16, lineHeight: 20/);
+  // Canon density: route city 16/20, compact list spacing on the screen,
+  // no legacy expanded-card fork.
+  assert.match(card, /fontSize:\s*16,\s*lineHeight:\s*20/);
+  assert.match(src, /cardSpacing: \{ marginHorizontal: 18, marginBottom: 7 \}/);
   assert.doesNotMatch(src, /cardExpanded/);
 });

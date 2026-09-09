@@ -8,6 +8,7 @@ import { localizeCargoName } from './places.js';
 
 const translations = {
   RU: {
+    emoji: 'Эмодзи', send: 'Отправить',
     // Splash & Auth
     welcome: 'Войти или создать аккаунт',
 
@@ -2095,6 +2096,7 @@ const translations = {
 },
 
   KK: {
+    emoji: 'Эмодзи', send: 'Жіберу',
     // i18n-fill 26.07.2026: недостающие живые ключи (симметрия с RU)
     accept_bid_btn: 'Қабылдау',
     accept_bid_confirm: '{sum} ставканы қабылдап, мәміле жасайсыз ба? Қалған ставкалар қабылданбайды.',
@@ -3924,6 +3926,7 @@ const translations = {
 },
 
   ZH: {
+    emoji: '表情', send: '发送',
     // i18n-fill 26.07.2026: недостающие живые ключи (симметрия с RU)
     accept_bid_btn: '接受',
     accept_bid_confirm: '接受这个 {sum} 的报价并创建交易？其他报价将被拒绝。',
@@ -5735,6 +5738,7 @@ const translations = {
 },
 
   EN: {
+    emoji: 'Emoji', send: 'Send',
     // i18n-fill 26.07.2026: недостающие живые ключи (симметрия с RU)
     accept_bid_confirm: 'Accept this bid of {sum} and create a deal? Other bids will be rejected.',
     add_to_favorites: 'Add to favorites',

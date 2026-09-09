@@ -27,6 +27,7 @@ import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { isBidActionable } from '../utils/dealsUnread';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
 import BellBadge from '../components/ui/v1/BellBadge';
+import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
 
@@ -222,6 +223,11 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
   );
 }
 
+// CompactDealCard — deals-inbox card, now a thin adapter over the canonical
+// MarketplaceCard (Design v1 Commit 3): radius 17→16, StatusPill instead of
+// the local status-pill fork, no shadow. Unread badge, chevron, time and
+// counterparty meta are preserved; the inbox keeps its own status colors
+// (dealStatus + attention overrides) via the StatusPill `color` prop.
 function CompactDealCard({
   routeLabel,
   price,
@@ -233,48 +239,21 @@ function CompactDealCard({
   dimmed = false,
   onPress,
   testID,
-  colors,
 }) {
   return (
-    <TouchableOpacity
+    <MarketplaceCard
       testID={testID}
-      activeOpacity={0.72}
       onPress={onPress}
-      style={[
-        styles.card,
-        {
-          borderColor: colors.border,
-          backgroundColor: colors.surface,
-          shadowColor: colors.shadow,
-          opacity: dimmed ? colors.dimOpacity : 1,
-        },
-      ]}
-    >
-      <View style={styles.cardTop}>
-        <Text style={[styles.route, { color: colors.text }]} numberOfLines={1}>{routeLabel}</Text>
-        {price ? <Text style={[styles.price, { color: colors.text }]} numberOfLines={1}>{price}</Text> : null}
-        <Feather name="chevron-right" size={17} color={colors.chevron} />
-      </View>
-
-      <View style={styles.cardMiddle}>
-        <View style={[styles.statusPill, { backgroundColor: `${statusColor}12` }]}>
-          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-          <Text style={[styles.statusText, { color: statusColor }]} numberOfLines={1}>
-            {statusLabel}
-          </Text>
-        </View>
-        <View style={styles.cardRightMeta}>
-          {time ? <Text style={[styles.time, { color: colors.textMuted }]}>{time}</Text> : null}
-          {unread > 0 ? (
-            <View style={styles.unreadBadge} testID="deals-card-unread">
-              <Text style={styles.unreadText}>{unread > 9 ? '9+' : unread}</Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
-
-      {meta ? <Text style={[styles.meta, { color: colors.textMuted }]} numberOfLines={1}>{meta}</Text> : null}
-    </TouchableOpacity>
+      style={styles.card}
+      route={routeLabel}
+      price={price}
+      status={{ key: 'deal', label: statusLabel, color: statusColor }}
+      counterparty={meta}
+      rightMeta={time}
+      unread={unread}
+      chevron
+      dimmed={dimmed}
+    />
   );
 }
 
@@ -631,7 +610,6 @@ export default function DealsScreen({ navigation, route }) {
           dimmed={isClosed}
           unread={!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0}
           onPress={() => openBid(data)}
-          colors={palette}
         />
       );
       }
@@ -666,7 +644,6 @@ export default function DealsScreen({ navigation, route }) {
           unread={unread}
           dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
           onPress={() => openDeal(data)}
-          colors={palette}
         />
       );
     }, [
@@ -975,107 +952,9 @@ const styles = StyleSheet.create({
     paddingTop: 0,
     paddingBottom: 118,
   },
-  card: {
-    minHeight: 92,
-    marginHorizontal: 18,
-    marginBottom: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-    shadowColor: "#15211C",
-    shadowOpacity: 0.03,
-    shadowRadius: 9,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  cardTop: {
-    minHeight: 23,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  route: {
-    flex: 1,
-    minWidth: 0,
-    color: TEXT,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "700",
-    letterSpacing: -0.18,
-  },
-  price: {
-    maxWidth: "37%",
-    flexShrink: 0,
-    color: TEXT,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "800",
-    fontVariant: ["tabular-nums"],
-    textAlign: "right",
-  },
-  cardMiddle: {
-    marginTop: 7,
-    minHeight: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  statusPill: {
-    maxWidth: "72%",
-    minHeight: 24,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: {
-    flexShrink: 1,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "700",
-  },
-  cardRightMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 6,
-    minWidth: 54,
-    flexShrink: 0,
-  },
-  time: {
-    color: TEXT_DIM,
-    fontSize: 11,
-    lineHeight: 16,
-    fontVariant: ["tabular-nums"],
-    textAlign: "right",
-  },
-  unreadBadge: {
-    minWidth: 21,
-    height: 21,
-    paddingHorizontal: 5,
-    borderRadius: 11,
-    backgroundColor: "#D64545",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  unreadText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  meta: {
-    marginTop: 6,
-    color: TEXT_MUTED,
-    fontSize: 12,
-    lineHeight: 16,
-  },
+  // Design v1 Commit 3: the card chrome lives in MarketplaceCard (radius
+  // 16, border-only, StatusPill); the inbox keeps list spacing only.
+  card: { marginHorizontal: 18, marginBottom: 8 },
   emptyText: {
     marginTop: 58,
     paddingHorizontal: 24,

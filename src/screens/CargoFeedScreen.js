@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -10,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
-import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
@@ -20,7 +18,7 @@ import { useAuth, LEVELS } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
 import { sanitizeForDisplay } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
-import { countryFlag } from '../utils/countryFlags';
+import { flagCode } from '../utils/countryFlags';
 import { useToast } from '../components/Toast';
 import { useVerificationGate } from '../components/VerificationGate';
 import { SkeletonCard } from '../components/Skeleton';
@@ -32,6 +30,7 @@ import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import BellBadge from '../components/ui/v1/BellBadge';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
+import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 
 const ACCENT = '#34936B';
 const ACCENT_SOFT = '#EAF5EF';
@@ -165,12 +164,15 @@ const normalizeCargo = (c, myUserId) => {
   };
 };
 
-function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, colors }) {
+// CargoCard — canonical MarketplaceCard (Design v1 Commit 3). Emoji flags
+// are replaced by the shared Flag component; the screen maps data to
+// display strings only.
+function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
   const from = localizePlace(item.from, lang) || '—';
   const to = localizePlace(item.to, lang) || '—';
   const cargo = localizeCargoName(item.cargo, lang) || '—';
-  const fromFlag = countryFlag(item.fromCountry) || item.fromEmbeddedFlag;
-  const toFlag = countryFlag(item.toCountry) || item.toEmbeddedFlag;
+  const fromFlag = item.fromCountry || flagCode(item.fromEmbeddedFlag) || null;
+  const toFlag = item.toCountry || flagCode(item.toEmbeddedFlag) || null;
   const units = {
     volume: lang === 'ZH' ? '立方米' : 'м³',
     tons: lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т',
@@ -182,74 +184,30 @@ function CargoCard({ item, lang, copy, saved, onToggleSaved, onPress, colors }) 
   ].filter(Boolean).join(' · ');
 
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.88}
-      style={[
-        styles.card,
-        {
-          borderColor: colors.border,
-          backgroundColor: colors.surface,
-          shadowColor: colors.shadow,
-        },
-      ]}
+    <MarketplaceCard
       testID={`cargo-card-${item.id}`}
-      accessibilityRole="button"
-    >
-      <View style={styles.greenRail} />
-      <View style={styles.cardBody}>
-        <View style={styles.cardTopRow}>
-          <View style={styles.routeWrap} testID={`cargo-card-route-${item.id}`}>
-            <View style={styles.routeLine}>
-              <View style={styles.placeInline}>
-                {!!fromFlag && <Text style={styles.flag}>{fromFlag}</Text>}
-                <Text style={[styles.routeCity, { color: colors.text }]} numberOfLines={1}>{from}</Text>
-              </View>
-              <Feather name="arrow-right" size={18} color={colors.text} style={styles.routeArrow} />
-              <View style={styles.placeInline}>
-                {!!toFlag && <Text style={styles.flag}>{toFlag}</Text>}
-                <Text style={[styles.routeCity, { color: colors.text }]} numberOfLines={1}>{to}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.cargoPriceRow}>
-          <View style={[styles.infoRow, styles.cargoInfoRow]}>
-            <Feather name="package" size={15} color={colors.textSecondary} />
-            <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>{cargo}</Text>
-          </View>
-          <Text style={[styles.price, { color: colors.priceText }]} numberOfLines={1} testID={`cargo-card-price-${item.id}`}>
-            {formatMoney(item.price, item.currency, copy)}
-          </Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Feather name="truck" size={15} color={colors.textSecondary} />
-          <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>{specs || formatTruckType(item.type)}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Feather name="calendar" size={15} color={colors.textSecondary} />
-          <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>
-            {copy.loading}: {formatPickupDate(item.pickup, lang)}
-          </Text>
-        </View>
-      </View>
-
-      <Pressable
-        onPress={(e) => { e?.stopPropagation?.(); onToggleSaved(); }}
-        hitSlop={10}
-        style={[styles.bookmarkBtn, saved && [styles.bookmarkBtnSaved, { backgroundColor: colors.accentSoft }]]}
-        testID={`cargo-card-bookmark-${item.id}`}
-        accessibilityRole="button"
-        accessibilityLabel={saved ? 'Remove bookmark' : 'Save cargo'}
-      >
-        {saved ? (
-          <FontAwesome5 name="bookmark" size={18} color={colors.accent} solid />
-        ) : (
-          <Feather name="bookmark" size={18} color={colors.textSecondary} />
-        )}
-      </Pressable>
-    </TouchableOpacity>
+      onPress={onPress}
+      style={styles.cardSpacing}
+      route={{
+        from,
+        to,
+        fromFlag,
+        toFlag,
+        testID: `cargo-card-route-${item.id}`,
+        numberOfLines: 2,
+      }}
+      price={formatMoney(item.price, item.currency, copy)}
+      priceTestID={`cargo-card-price-${item.id}`}
+      priceMeta={item.pickup ? formatPickupDate(item.pickup, lang) : null}
+      meta={[cargo, specs || formatTruckType(item.type)]}
+      badge={{ label: t('badge_cargo'), kind: 'cargo' }}
+      bookmark={{
+        saved,
+        onToggle: onToggleSaved,
+        testID: `cargo-card-bookmark-${item.id}`,
+        accessibilityLabel: saved ? t('in_favorites') : t('add_to_favorites'),
+      }}
+    />
   );
 }
 
@@ -366,6 +324,8 @@ export default function CargoFeedScreen({ navigation }) {
         : await marketAPI.favAdd('cargo', id, {
             from: item.from,
             to: item.to,
+            from_country: item.fromCountry || '',
+            to_country: item.toCountry || '',
             cargo: item.cargo,
             type: item.type,
             tons: item.tons,
@@ -510,11 +470,11 @@ export default function CargoFeedScreen({ navigation }) {
           <CargoCard
             item={item}
             lang={lang}
+            t={t}
             copy={copy}
             saved={savedIds.has(String(item.id))}
             onToggleSaved={() => toggleSaved(item)}
             onPress={() => openCargo(item)}
-            colors={palette}
           />
         )}
         ListHeaderComponent={feedControls}
@@ -709,40 +669,10 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { paddingTop: 0, paddingBottom: 28 },
   loadingWrap: { paddingHorizontal: 24, paddingTop: 5 },
-  card: {
-    minHeight: 120,
-    // Legacy density contract baseline: minHeight: 104.
-    marginHorizontal: 18,
-    marginBottom: 7,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-    overflow: 'hidden',
-    shadowColor: '#15211C',
-    shadowOpacity: 0.035,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-    flexDirection: 'row',
-  },
-  greenRail: { width: 4, backgroundColor: '#3A9972' },
-  cardBody: { flex: 1, paddingLeft: 12, paddingRight: 12, paddingTop: 9, paddingBottom: 8 },
-  cardTopRow: { marginBottom: 5 },
-  routeWrap: { width: '100%', minWidth: 0 },
-  routeLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', gap: 6, width: '100%' },
-  placeInline: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0, flexShrink: 1, maxWidth: '44%' },
-  routeCity: { fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.1, color: TEXT, flexShrink: 1 },
-  // Legacy density contract baseline: routeCity: { fontSize: 15 }.
-  routeArrow: { marginHorizontal: 0, flexShrink: 0 },
-  flag: { fontSize: 17, lineHeight: 19 },
-  cargoPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 20 },
-  cargoInfoRow: { flex: 1, minWidth: 0, paddingRight: 0 },
-  price: { maxWidth: '38%', flexShrink: 0, textAlign: 'right', fontSize: 16.5, lineHeight: 20, fontWeight: '800', letterSpacing: 0, color: TEXT },
-  infoRow: { minHeight: 18, flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 34 },
-  infoText: { flex: 1, fontSize: 12, lineHeight: 16, fontWeight: '400', color: '#39443F' },
-  bookmarkBtn: { position: 'absolute', right: 9, bottom: 6, width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  bookmarkBtnSaved: { backgroundColor: ACCENT_SOFT },
+  // Design v1 Commit 3: the card itself is the canonical MarketplaceCard
+  // (radius 16, border, no shadow, no green rail) — the screen only keeps
+  // its list spacing.
+  cardSpacing: { marginHorizontal: 18, marginBottom: 7 },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
   emptyTitle: { fontSize: 14, lineHeight: 20, color: TEXT_MUTED, textAlign: 'center' },
   retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: ACCENT_SOFT },

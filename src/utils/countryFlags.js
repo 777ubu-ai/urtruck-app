@@ -28,3 +28,16 @@ export function countryFlag(code) {
   const norm = code.trim().toUpperCase();
   return FLAGS[norm] || FLAGS[ALIASES[norm]] || '';
 }
+
+// Reverse lookup: emoji flag pair → ISO code. Used when a stored/snapshot
+// route string embeds the flag emoji instead of carrying a country code
+// (e.g. legacy favorites item_data), so the v1 Flag component can still
+// render the endpoint flags. Returns '' for unknown input.
+export function flagCode(emoji) {
+  const text = String(emoji || '').trim();
+  if (!text) return '';
+  for (const [code, flag] of Object.entries(FLAGS)) {
+    if (flag === text) return code;
+  }
+  return '';
+}

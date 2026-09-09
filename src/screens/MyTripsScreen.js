@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Platform, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
-import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { regAPI } from '../utils/registration';
@@ -12,19 +11,40 @@ import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import { localizePlace, localizeCargoName } from '../utils/places';
 import EmptyState from '../components/ui/EmptyState';
 import EditCargoModal from '../components/EditCargoModal';
-import { colors, spacing, radius, typography } from '../theme/theme';
-import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
+import { spacing, radius, typography } from '../theme/theme';
+import {v1Colors, useV1Colors, v1AccentFor, v1StatusColors} from '../theme/designV1';
 import { useMountedRef } from '../hooks/useMountedRef';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import FadeInUp from '../components/ui/FadeInUp';
 import Feather from '@expo/vector-icons/Feather';
-import { countryFlag } from '../utils/countryFlags';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import BellBadge from '../components/ui/v1/BellBadge';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
+import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
+
+// Endpoint flag code for the v1 Flag component: backend from_country/
+// to_country are ISO codes; anything else (empty, emoji leftovers) renders
+// no flag rather than the grey «?» fallback.
+const flagCodeOrNull = (value) => {
+  const code = String(value || '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : null;
+};
+
+// Публикация/сделка → цвет v1-роли. Статусы сделки (accepted…received,
+// completed, cancelled) берутся из v1StatusColors; публикационные состояния
+// — из семантических токенов. Раньше received/неизвестные статусы падали в
+// дефолтный зелёный — теперь у каждого статуса явная маппинг-раскладка.
+const myItemStatusColor = (colors, st) => {
+  const role = v1StatusColors(colors)[st];
+  if (role) return role;
+  if (st === 'active') return colors.success;
+  if (st === 'draft' || st === 'pending' || st === 'unpublished') return colors.textMuted;
+  if (st === 'rejected' || st === 'expired') return colors.error;
+  return colors.textDim;
+};
 
 export default function MyTripsScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -66,28 +86,13 @@ export default function MyTripsScreen({ navigation, route }) {
   archiveToggle: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4, marginTop: 2 },
   archiveToggleText: { fontSize: 12, fontWeight: '700' },
 
-  // Дизайн 2026 v4: плотный ленточный формат карточки груза/рейса.
-  // Было: padding 16, margin 14, borderRadius 20, тень 16 — «карточки-кирпичи
-  // на весь экран, помещается 1-2 груза». Стало: padding 12x14, margin 8,
-  // borderRadius 10, лёгкая тень. Помещается в 2 раза больше.
-  card: { borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, marginBottom: 8, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  badge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5 },
-  badgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-  statusLabel: { fontSize: 11 },
-  route: { fontSize: 16, lineHeight: 20, fontWeight: '700', marginBottom: 4, letterSpacing: -0.15 },
-  desc: { fontSize: 12, marginBottom: 2 },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
-  metaItem: { fontSize: 11 },
-  metaDot: { color: '#94A3B8', fontSize: 10 },
-  cardBottom: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  // Цена: было 24pt жирный оранжевый — крик. Теперь 16pt, тёмный текст,
-  // оранжевый ушёл в мелкий label «$» перед суммой.
-  price: { fontSize: 18, lineHeight: 22, fontWeight: '700', color: v1.text, fontVariant: ['tabular-nums'], flexShrink: 1 },
-  bidsLabel: { ...typography.caption, flex: 1 },
+  // Design v1 Commit 3: карточка объявления — каноническая MarketplaceCard
+  // (radius 16, padding 16, border, без тени). Экран оставляет только
+  // ленточный spacing (marginBottom 8 — плотность списка сохранена).
+  cardSpacing: { marginBottom: 8 },
   // Дизайн 2026 v3: плашка «N предложений» — outline вместо заливки,
   // компактнее (меньше 32px), шрифт 12. Не «кричит».
-  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: '#FF8400', backgroundColor: 'transparent' },
+  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: v1.clientAccent || v1.warning, backgroundColor: 'transparent' },
   offersCtaText: { color: v1.warning, fontSize: 12, fontWeight: '700', flex: 1 },
   offersCtaArrow: { color: v1.warning, fontSize: 14, fontWeight: '700' },
 
@@ -112,7 +117,6 @@ export default function MyTripsScreen({ navigation, route }) {
   const { requireLevel, Gate } = useVerificationGate();
   const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
   const cubicMeterUnit = lang === 'ZH' ? '立方米' : 'м³';
-  const { theme } = useTheme();
   const { toast } = useToast();
 
   // Решение владельца (05.08.2026): «Грузы»/«Рейсы» — только управление
@@ -348,16 +352,28 @@ export default function MyTripsScreen({ navigation, route }) {
     const to = item.to_city || '—';
     const desc = item.cargo_desc || '';
     const isCargo = !!item.cargo_desc;
-    const badge = isCargo ? t('badge_cargo') : t('badge_trip');
-    const badgeColor = isCargo ? '#FF8400' : '#168759';
     // Edit/unpublish is allowed only for an own ACTIVE trip. Backend remains
     // authoritative and rejects removal once a deal has already taken it.
     const canEditTrip = !isCargo && (item.status || 'active') === 'active';
+    const st = item.status || 'active';
+
+    // RC2 hotfix (P0-3): для cargos показываем pickup_date, не created_at.
+    // Для trips остаётся departure || created_at. Вес/объём: cargo и trip
+    // используют разные имена полей, единицы локализуются вместе с карточкой.
+    const dateText = isCargo
+      ? formatDateForDisplay(item.pickup_date || item.departure || item.created_at)
+      : formatDateForDisplay(item.departure || item.created_at);
+    const specLine = [
+      formatTruckType(item.truck_type || item.cargo_type),
+      dateText,
+      (isCargo ? item.weight_tons : item.capacity_tons) ? `${isCargo ? item.weight_tons : item.capacity_tons} ${tonUnit}` : null,
+      (isCargo ? item.volume_m3 : item.available_m3) ? `${isCargo ? item.volume_m3 : item.available_m3} ${cubicMeterUnit}` : null,
+    ].filter(Boolean).join(' · ');
 
     return (
-      <TouchableOpacity
+      <MarketplaceCard
         testID={isCargo ? 'my-cargo-card' : 'my-trip-card'}
-        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+        style={s.cardSpacing}
         onPress={() => {
           if (isCargo) {
             navigation.navigate('CargoDetail', { cargo: { ...item, from, to, cargo: desc, _server: true }, cargoId: item.id, role });
@@ -366,73 +382,32 @@ export default function MyTripsScreen({ navigation, route }) {
             navigation.navigate('TripDetail', { trip: normalizeTrip({ ...item, isMine: true, _server: true }), tripId: item.id, role });
           }
         }}
+        route={{
+          from: localizePlace(from, lang),
+          to: localizePlace(to, lang),
+          fromFlag: flagCodeOrNull(item.from_country),
+          toFlag: flagCodeOrNull(item.to_country),
+          numberOfLines: 2,
+        }}
+        price={formatPrice(item.price, item.currency, t)}
+        meta={[desc ? localizeCargoName(desc, lang) : null, specLine]}
+        badge={{ label: isCargo ? t('badge_cargo') : t('badge_trip'), kind: isCargo ? 'cargo' : 'trip' }}
+        status={item._expired
+          ? { key: 'expired', label: t('deadline_expired'), color: v1.error }
+          : { key: st, label: formatStatus(st), color: myItemStatusColor(v1, st) }}
+        rightMeta={item.bids_count > 0 && !(isCargo && !isDriver) ? formatBids(item.bids_count) : null}
       >
-        <View style={s.cardTop}>
-          <View style={[s.badge, { backgroundColor: badgeColor + '20' }]}>
-            <Text style={[s.badgeText, { color: badgeColor }]}>{badge}</Text>
-          </View>
-          {/* Stage DS-1: статус не должен быть плоско-зелёным для всех состояний.
-              Раньше cancelled / draft / pending тоже рендерились #168759,
-              что визуально врало пользователю (зелёное = "успешно"). Теперь
-              цвет подбирается по item.status. */}
-          {item._expired ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Feather name="clock" size={13} color="#EF4444" />
-              <Text style={[s.statusLabel, { color: '#EF4444' }]}>{t('deadline_expired')}</Text>
-            </View>
-          ) : (
-            <Text style={[s.statusLabel, { color: (() => {
-              const st = item.status || 'active';
-              if (st === 'cancelled') return '#94A3B8';        // серый
-              if (st === 'draft' || st === 'pending') return '#64748B'; // neutral waiting
-              if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
-              if (st === 'completed' || st === 'delivered') return '#168759'; // зелёный
-              return '#168759'; // active по умолчанию — зелёный
-            })() }]}>{formatStatus(item.status || 'active')}</Text>
-          )}
-        </View>
-        <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(from, lang)} → {countryFlag(item.to_country)} {localizePlace(to, lang)}</Text>
-        {desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(desc, lang)}</Text> : null}
-        <View style={s.cardMeta}>
-          <Text style={[s.metaItem, { color: theme.textDim }]}>{formatTruckType(item.truck_type || item.cargo_type)}</Text>
-          <Text style={s.metaDot}>·</Text>
-          {/* RC2 hotfix (P0-3): для cargos показываем pickup_date, не
-              created_at. Для trips остаётся departure || created_at. */}
-          <Text style={[s.metaItem, { color: theme.textDim }]}>
-            {isCargo
-              ? formatDateForDisplay(item.pickup_date || item.departure || item.created_at)
-              : formatDateForDisplay(item.departure || item.created_at)}
-          </Text>
-          {/* Вес/объём: cargo и trip используют разные имена полей,
-              а единицы локализуются вместе с карточкой. */}
-          {(isCargo ? item.weight_tons : item.capacity_tons) ? (
-            <>
-              <Text style={s.metaDot}>·</Text>
-              <Text style={[s.metaItem, { color: theme.textDim }]}>{isCargo ? item.weight_tons : item.capacity_tons} {tonUnit}</Text>
-            </>
-          ) : null}
-          {(isCargo ? item.volume_m3 : item.available_m3) ? (
-            <>
-              <Text style={s.metaDot}>·</Text>
-              <Text style={[s.metaItem, { color: theme.textDim }]}>{isCargo ? item.volume_m3 : item.available_m3} {cubicMeterUnit}</Text>
-            </>
-          ) : null}
-        </View>
-        <View style={s.cardBottom}>
-          <Text style={s.price} numberOfLines={1}>{formatPrice(item.price, item.currency, t)}</Text>
-          {item.bids_count > 0 && !(isCargo && !isDriver) && <Text style={[s.bidsLabel, { color: theme.textMuted }]}>{formatBids(item.bids_count)}</Text>}
-        </View>
         {/* Индикатор откликов на карточке груза. С 26.07.2026 работа со
             ставками живёт во вкладке «Сделки» — тап по плашке ведёт туда
             (витрина показывает «есть отклик», решение принимается в Сделках). */}
-        {isCargo && !isDriver && item.bids_count > 0 && (item.status || 'active') === 'active' && (
+        {isCargo && !isDriver && item.bids_count > 0 && st === 'active' && (
           <TouchableOpacity
             style={s.offersCta}
             testID="cargo-offers-cta"
             onPress={(e) => { e.stopPropagation && e.stopPropagation(); navigation.navigate('Deals'); }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-              <Feather name="message-square" size={14} color="#FF8400" />
+              <Feather name="message-square" size={14} color={v1.clientAccent || v1.warning} />
               <Text style={s.offersCtaText} numberOfLines={1}>{formatBids(item.bids_count)}</Text>
             </View>
             <Text style={s.offersCtaArrow}>›</Text>
@@ -449,8 +424,8 @@ export default function MyTripsScreen({ navigation, route }) {
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="edit-3" size={14} color="#168759" />
-                <Text style={[s.miniBtnText, { color: '#168759' }]}>{t('edit_btn')}</Text>
+                <Feather name="edit-3" size={14} color={v1.success} />
+                <Text style={[s.miniBtnText, { color: v1.success }]}>{t('edit_btn')}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity
@@ -465,8 +440,8 @@ export default function MyTripsScreen({ navigation, route }) {
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="trash-2" size={14} color="#EF4444" />
-                <Text style={[s.miniBtnText, { color: '#EF4444' }]}>{t('trip_delete')}</Text>
+                <Feather name="trash-2" size={14} color={v1.error} />
+                <Text style={[s.miniBtnText, { color: v1.error }]}>{t('trip_delete')}</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -505,21 +480,21 @@ export default function MyTripsScreen({ navigation, route }) {
         )}
         {/* Задача A: управление СВОИМ грузом — Изменить (цена/описание) + Удалить.
             Только для активного груза (taken/принятый редактировать нельзя). */}
-        {isCargo && !isDriver && (item.status || 'active') === 'active' && (
+        {isCargo && !isDriver && st === 'active' && (
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
             <TouchableOpacity
               testID="my-cargo-edit-btn"
-              style={[s.miniBtn, { borderColor: '#FF8400', flex: 1 }]}
+              style={[s.miniBtn, { borderColor: v1.clientAccent || v1.warning, flex: 1 }]}
               onPress={(e) => { e.stopPropagation && e.stopPropagation(); setEditCargo(item); }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="edit-3" size={14} color="#FF8400" />
+                <Feather name="edit-3" size={14} color={v1.clientAccent || v1.warning} />
                 <Text style={[s.miniBtnText, { color: v1.warning }]}>{t('edit_btn')}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="my-cargo-delete-btn"
-              style={[s.miniBtn, { borderColor: '#EF4444', flex: 1 }]}
+              style={[s.miniBtn, { borderColor: v1.error, flex: 1 }]}
               onPress={async (e) => {
                 e.stopPropagation && e.stopPropagation();
                 if (!(await confirmAction(t('delete_cargo_confirm')))) return;
@@ -529,13 +504,13 @@ export default function MyTripsScreen({ navigation, route }) {
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="trash-2" size={14} color="#EF4444" />
-                <Text style={[s.miniBtnText, { color: '#EF4444' }]}>{t('delete_btn')}</Text>
+                <Feather name="trash-2" size={14} color={v1.error} />
+                <Text style={[s.miniBtnText, { color: v1.error }]}>{t('delete_btn')}</Text>
               </View>
             </TouchableOpacity>
           </View>
         )}
-      </TouchableOpacity>
+      </MarketplaceCard>
     );
   };
 
@@ -576,14 +551,19 @@ export default function MyTripsScreen({ navigation, route }) {
     const from = item.from_city || '—';
     const to = item.to_city || '—';
     return (
-      <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: 0.7 }]}>
-        <View style={s.cardTop}>
-          <View style={[s.badge, { backgroundColor: '#94A3B820' }]}>
-            <Text style={[s.badgeText, { color: '#94A3B8' }]}>{isCargo ? t('badge_cargo') : t('badge_trip')}</Text>
-          </View>
-          <Text style={[s.statusLabel, { color: '#94A3B8' }]}>{formatStatus(item.status || 'unpublished')}</Text>
-        </View>
-        <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(from, lang)} → {countryFlag(item.to_country)} {localizePlace(to, lang)}</Text>
+      <MarketplaceCard
+        dimmed
+        style={s.cardSpacing}
+        route={{
+          from: localizePlace(from, lang),
+          to: localizePlace(to, lang),
+          fromFlag: flagCodeOrNull(item.from_country),
+          toFlag: flagCodeOrNull(item.to_country),
+          numberOfLines: 2,
+        }}
+        badge={{ label: isCargo ? t('badge_cargo') : t('badge_trip'), kind: isCargo ? 'cargo' : 'trip' }}
+        status={{ key: 'unpublished', label: formatStatus(item.status || 'unpublished'), color: v1.textDim }}
+      >
         <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
           <TouchableOpacity
             testID="republish-btn"
@@ -593,7 +573,7 @@ export default function MyTripsScreen({ navigation, route }) {
             <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('republish')}</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </MarketplaceCard>
     );
   };
 

@@ -55,7 +55,9 @@ const displayUnits = (lang = 'RU') => {
   return { ton: 'т', volume: 'м³' };
 };
 
-const displayDate = (value, lang = 'RU') => {
+// Exported for FavoritesScreen (saved-item snapshots store raw departure
+// strings; the hub must localize them the same way tripDisplay does).
+export const displayDate = (value, lang = 'RU') => {
   const raw = String(value || '').trim();
   if (!raw) return '';
   let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
