@@ -12,7 +12,6 @@ import {
   Text,
   TextInput,
   Pressable,
-  ScrollView,
   StyleSheet,
   ActivityIndicator,
   Image,
@@ -30,6 +29,7 @@ import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import PhotoGuide from '../../components/PhotoGuide';
 import QaStepSkip from '../../components/dev/QaStepSkip';
 import { brand, radius, typography } from '../../theme/brandV2';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const TOTAL_STEPS = 4;
 const STEP = 3;
@@ -346,7 +346,8 @@ export default function VehicleDocsScreen({ navigation }) {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <KeyboardSafeLayout>
+      <KeyboardSafeScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <Text style={s.title}>{t('vdocs_title')}</Text>
         <Text style={s.subtitle}>{t('vdocs_subtitle')}</Text>
 
@@ -428,13 +429,14 @@ export default function VehicleDocsScreen({ navigation }) {
         <QaStepSkip
           onPress={() => navigation.navigate('TruckParams', { fromVerification: true, plate: null })}
         />
-      </ScrollView>
+      </KeyboardSafeScrollView>
 
       <View style={s.ctaWrap}>
         <Pressable onPress={onNext} style={s.cta} testID="vd-next">
           <Text style={s.ctaText}>{t('vdocs_next')}</Text>
         </Pressable>
       </View>
+      </KeyboardSafeLayout>
       <RegistrationCloseModal
         visible={closeVisible}
         onCancel={() => setCloseVisible(false)}

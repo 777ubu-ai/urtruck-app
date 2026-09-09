@@ -36,6 +36,7 @@ import {
   modelsForBrand,
 } from '../../utils/truckConstants';
 import { brand, radius, typography } from '../../theme/brandV2';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 // Канонический PRO-flow = 4 экрана: Identity → Selfie → VehicleDocs →
 // этот экран → submit. Финальный шаг 4/4 (PR-V3 добавил Identity+Selfie).
@@ -264,7 +265,8 @@ export default function TruckParamsScreen({ navigation, route }) {
         </Pressable>
       </View>
 
-      <ScrollView ref={scrollRef} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <KeyboardSafeLayout>
+      <KeyboardSafeScrollView ref={scrollRef} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <Text style={s.title}>{t('truck_params_title')}</Text>
 
         {subStep === 0 ? (
@@ -401,7 +403,7 @@ export default function TruckParamsScreen({ navigation, route }) {
         </View>
         </>
         ) : null}
-      </ScrollView>
+      </KeyboardSafeScrollView>
 
       <View style={s.ctaWrap}>
         {subStep < SUB_COUNT - 1 ? (
@@ -423,6 +425,7 @@ export default function TruckParamsScreen({ navigation, route }) {
           </Pressable>
         )}
       </View>
+      </KeyboardSafeLayout>
 
       {/* Bottom-sheet выбора марки / модели / цвета */}
       <Modal visible={!!sheet} transparent animationType="slide" onRequestClose={() => setSheet(null)}>

@@ -4,8 +4,9 @@
 import React, { useState } from 'react';
 import {
   Modal, View, Text, TextInput, TouchableOpacity, Pressable,
-  StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
+  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
+import { KeyboardSafeScrollView } from './ui/v1/KeyboardSafeLayout';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
@@ -106,7 +107,7 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
         <Pressable style={[s.backdrop, { backgroundColor: theme.overlay || 'rgba(0,0,0,0.5)' }]} onPress={onClose}>
           <Pressable style={[s.sheet, { backgroundColor: theme.cardElevated || theme.card }]} onPress={(e) => e.stopPropagation()}>
             <View style={[s.handle, { backgroundColor: theme.border }]} />
-            <ScrollView
+            <KeyboardSafeScrollView
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               contentInsetAdjustmentBehavior="automatic"
@@ -199,7 +200,7 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
               <TouchableOpacity onPress={onClose} style={s.cancel}>
                 <Text style={[s.cancelText, { color: theme.textMuted }]}>{t('cancel')}</Text>
               </TouchableOpacity>
-            </ScrollView>
+            </KeyboardSafeScrollView>
           </Pressable>
         </Pressable>
       </KeyboardAvoidingView>

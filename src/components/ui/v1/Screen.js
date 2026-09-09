@@ -2,13 +2,14 @@
 // Pure-black background to match the macros; SafeAreaView for status bar.
 
 import React from 'react';
-import { ScrollView, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useV1Colors, v1Spacing } from '../../../theme/designV1';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from './KeyboardSafeLayout';
 
 export default function Screen({ children, contentStyle, scroll = true, keyboardAvoiding = true }) {
   const colors = useV1Colors();
-  const Body = scroll ? ScrollView : React.Fragment;
+  const Body = scroll ? KeyboardSafeScrollView : React.Fragment;
   const bodyProps = scroll
     ? {
         contentContainerStyle: [s.scroll, contentStyle],
@@ -20,16 +21,7 @@ export default function Screen({ children, contentStyle, scroll = true, keyboard
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']}>
-      {keyboardAvoiding ? (
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ flex: 1 }}
-        >
-          {inner}
-        </KeyboardAvoidingView>
-      ) : (
-        inner
-      )}
+      {keyboardAvoiding ? <KeyboardSafeLayout>{inner}</KeyboardSafeLayout> : inner}
     </SafeAreaView>
   );
 }

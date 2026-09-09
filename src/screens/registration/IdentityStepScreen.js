@@ -33,7 +33,7 @@ import QaStepSkip from '../../components/dev/QaStepSkip';
 import DateOfBirthSheet from '../../components/DateOfBirthSheet';
 import { brand, radius, typography } from '../../theme/brandV2';
 import BackButton from '../../components/ui/v1/BackButton';
-import KeyboardSafeLayout from '../../components/ui/v1/KeyboardSafeLayout';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const TOTAL_STEPS = 4;
 const STEP = 2;
@@ -241,7 +241,7 @@ export default function IdentityStepScreen({ navigation }) {
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+        <KeyboardSafeScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
           <Text style={s.title}>{t('identity_title')}</Text>
           <Text style={s.subtitle}>{t('identity_subtitle')}</Text>
 
@@ -360,7 +360,7 @@ export default function IdentityStepScreen({ navigation }) {
               fromVerification: true,
             })}
           />
-        </ScrollView>
+        </KeyboardSafeScrollView>
 
         <View style={s.ctaWrap}>
           <Pressable onPress={onNext} disabled={saving} style={[s.cta, saving && { opacity: 0.6 }]} testID="identity-next">

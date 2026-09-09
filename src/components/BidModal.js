@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { KeyboardSafeScrollView } from './ui/v1/KeyboardSafeLayout';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from './Toast';
@@ -216,7 +217,7 @@ export default function BidModal({
       >
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
         <TouchableOpacity testID="bid-modal" style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
-        <ScrollView
+        <KeyboardSafeScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 8 }}
@@ -307,7 +308,7 @@ export default function BidModal({
               </Text>
             )}
           </TouchableOpacity>
-        </ScrollView>
+        </KeyboardSafeScrollView>
         </TouchableOpacity>
       </TouchableOpacity>
       </KeyboardAvoidingView>
