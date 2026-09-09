@@ -13,9 +13,12 @@ const editTrip = readFileSync('src/screens/EditTripScreen.js', 'utf8');
 
 test('canonical keyboard primitive scrolls the focused native input into view', () => {
   assert.match(primitive, /KeyboardSafeScrollView/);
-  assert.match(primitive, /scrollResponderScrollNativeHandleToKeyboard/);
   assert.match(primitive, /KeyboardSafeFocusContext/);
-  assert.match(primitive, /setTimeout\(reveal, 80\)/);
+  assert.match(primitive, /Keyboard\.addListener/);
+  assert.match(primitive, /keyboardDidShow/);
+  assert.match(primitive, /UIManager\.measure/);
+  assert.match(primitive, /const overlap = pageY \+ height \+ 16 - keyboardTop\.current/);
+  assert.match(primitive, /scrollTo\?\.\(\{ y: nextY, animated: true \}\)/);
   assert.match(primitive, /keyboardShouldPersistTaps/);
   assert.match(primitive, /keyboardVerticalOffset=\{offset\}/);
 });
