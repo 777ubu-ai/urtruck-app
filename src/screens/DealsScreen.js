@@ -18,6 +18,7 @@ import { formatStatus } from '../utils/i18n';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
 import { marketAPI } from '../utils/marketAPI';
+import { notificationsAPI } from '../utils/notificationsAPI';
 import { formatPrice } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
 import { countryFlag } from '../utils/countryFlags';
@@ -134,6 +135,12 @@ const normalizeNotifPath = (value) => {
   if (!clean) return "";
   return clean.startsWith("/") ? (clean.replace(/\/+$/, "") || "/") : `/${clean.replace(/\/+$/, "")}`;
 };
+
+export const unreadNotificationPaths = (data) =>
+  (Array.isArray(data?.notifications) ? data.notifications : [])
+    .filter((item) => !item?.is_read)
+    .map((item) => normalizeNotifPath(item?.url))
+    .filter(Boolean);
 
 const parseServerDate = (raw) => {
   if (!raw) return null;
@@ -297,11 +304,14 @@ export default function DealsScreen({ navigation, route }) {
       setAllDeals(dashboard.my_deals || []);
       setIncomingBids(dashboard.incoming_bids || []);
       setMyBids(dashboard.my_bids || []);
-      const unreadPaths = (notifData?.notifications || [])
-        .filter((item) => !item?.is_read)
-        .map((item) => normalizeNotifPath(item?.url))
-        .filter(Boolean);
-      setUnreadNotifPaths(unreadPaths);
+      try {
+        const notificationData = await notificationsAPI.list(50);
+        setUnreadNotifPaths(unreadNotificationPaths(notificationData));
+      } catch {
+        // Notification badges are auxiliary; a notification API outage must
+        // not turn an otherwise valid Deals dashboard into an error screen.
+        setUnreadNotifPaths([]);
+      }
     } catch (error) {
       setLoadError(true);
       console.warn("deals load failed", error?.message || error);
