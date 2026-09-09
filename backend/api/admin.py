@@ -560,6 +560,9 @@ def admin_reject(driver_id: str, reason: str = "Не прошёл проверк
         "verification_level": 2,
         "role": "client",
         "approved_at": None,
+        # P1: полностью отзываем доверенное состояние — stale trusted_real
+        # не должен быть переиспользован self-service /register/moderate.
+        "verification_provider_status": None,
     })
     # Блок 6 аудита (P1-8): см. комментарий в admin_approve выше.
     try:

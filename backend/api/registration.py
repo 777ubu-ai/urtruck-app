@@ -925,12 +925,19 @@ def run_moderation(driver_id: str = Depends(get_current_driver)):
     # fail-closed unless the persisted capability signal proves real providers.
     update_fields = {}
     trusted_provider = driver.get("verification_provider_status") == "trusted_real"
-    if auto_approved and not trusted_provider:
+    # Defense-in-depth (P1 verify): водитель в status='rejected' не должен
+    # self-approve даже со stale trusted_real в строке — восстановление только
+    # через admin reapprove.
+    rejected_driver = driver.get("status") == "rejected"
+    if auto_approved and (not trusted_provider or rejected_driver):
         status = "manual_review"
         auto_approved = False
         rejected_reason = None
         update_fields["manual_review_required"] = 1
-        update_fields["manual_review_reason"] = "trusted_real_provider_required"
+        update_fields["manual_review_reason"] = (
+            "rejected_requires_admin_reapproval" if rejected_driver
+            else "trusted_real_provider_required"
+        )
 
     # Уровень 3 — полноценный водитель — только при auto_approve + trusted provider.
     if auto_approved and trusted_provider:
