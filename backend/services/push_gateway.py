@@ -436,30 +436,108 @@ def send_to_devices(
     return {"sent": sent, "providers": by_provider, "devices": len(devices), "mode": mode}
 
 
-def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
-    """Process one small outbox batch.
+MAX_OUTBOX_ATTEMPTS = 5
+STALE_PROCESSING_MINUTES = 5
 
-    Business actions can enqueue rows inside their transaction, then a worker
-    calls this function after commit. It retries only retryable provider errors;
-    non-retryable rows become dead.
-    """
-    picked = []
+
+def _reclaim_stale_processing(c) -> int:
+    """A worker that crashed (or was killed) between claiming a row
+    (status='processing') and finishing it would otherwise leave that row
+    stuck forever — process_pending_once only ever SELECTs status='pending'.
+    Reclaim anything that has been 'processing' longer than a worker could
+    plausibly still be legitimately running (a single send_to_devices call is
+    a handful of HTTP requests with a 10s timeout each, never minutes)."""
+    cur = c.execute(
+        "UPDATE push_outbox SET status='pending', claimed_at=NULL "
+        "WHERE status='processing' AND claimed_at IS NOT NULL "
+        "AND claimed_at <= datetime(CURRENT_TIMESTAMP, ?)",
+        (f"-{STALE_PROCESSING_MINUTES} minutes",),
+    )
+    return cur.rowcount
+
+
+def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
+    """Atomically flip exactly one pending row to 'processing' and return it,
+    or None if it was already claimed by someone else (another worker tick,
+    another process) between the earlier SELECT and this UPDATE. The
+    `WHERE status='pending'` clause plus checking `rowcount` is what makes
+    this safe under concurrent callers — see test for two workers racing the
+    same row."""
     with get_conn() as c:
-        rows = c.execute(
-            """
-            SELECT * FROM push_outbox
-            WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
-            ORDER BY CASE priority WHEN 'critical' THEN 0 ELSE 1 END, created_at
-            LIMIT ?
-            """,
-            (max(1, min(int(limit or 100), 500)),),
-        ).fetchall()
-        picked = [dict(r) for r in rows]
-        for row in picked:
-            c.execute("UPDATE push_outbox SET status = 'processing' WHERE id = ? AND status = 'pending'", (row["id"],))
+        cur = c.execute(
+            "UPDATE push_outbox SET status='processing', claimed_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND status='pending'",
+            (row_id,),
+        )
+        if cur.rowcount != 1:
+            return None
+        row = c.execute("SELECT * FROM push_outbox WHERE id=?", (row_id,)).fetchone()
+        return dict(row) if row else None
 
-    stats = {"picked": len(picked), "sent": 0, "failed": 0, "dead": 0}
-    for row in picked:
+
+def _finish_row(row_id: int, attempt: int, sent: bool, error: Optional[str]) -> str:
+    """Apply the terminal/retry decision for one claimed row. Shared by both
+    the normal (no delivery) and exception (poison event) paths so a handler
+    that always raises still hits the same MAX_OUTBOX_ATTEMPTS→dead ceiling
+    instead of retrying forever with no backoff."""
+    with get_conn() as c:
+        if sent:
+            c.execute(
+                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=?, claimed_at=NULL WHERE id=?",
+                (attempt, row_id),
+            )
+            return "sent"
+        if attempt >= MAX_OUTBOX_ATTEMPTS:
+            c.execute(
+                "UPDATE push_outbox SET status='dead', failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL WHERE id=?",
+                (attempt, (error or "delivery_not_confirmed")[:500], row_id),
+            )
+            return "dead"
+        delay = min(300, 2 ** attempt * 5)
+        c.execute(
+            "UPDATE push_outbox SET status='pending', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, claimed_at=NULL WHERE id=?",
+            (attempt, f"+{delay} seconds", (error or "delivery_not_confirmed")[:500], row_id),
+        )
+        return "failed"
+
+
+def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
+    """Process one small outbox batch. Safe to call repeatedly/concurrently
+    (idempotent — a row already 'sent'/'dead', or already claimed by a
+    concurrent caller, is simply skipped) and safe after a crash (stale
+    'processing' rows are reclaimed first).
+
+    Delivery ownership contract: the immediate/inline fast path
+    (services.push_sender.send -> _send_native) marks its own outbox row
+    'sent' via mark_event_sent() as soon as it succeeds, so a row only ever
+    reaches this function's SELECT if the fast path never ran for it, or ran
+    and failed. This function is therefore the sole retry owner for
+    everything that is not already known-delivered — it never re-sends
+    something the fast path already delivered.
+    """
+    bounded_limit = max(1, min(int(limit or 100), 500))
+    with get_conn() as c:
+        _reclaim_stale_processing(c)
+        candidate_ids = [
+            r["id"]
+            for r in c.execute(
+                """
+                SELECT id FROM push_outbox
+                WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
+                ORDER BY CASE priority WHEN 'critical' THEN 0 ELSE 1 END, created_at
+                LIMIT ?
+                """,
+                (bounded_limit,),
+            ).fetchall()
+        ]
+
+    stats = {"picked": 0, "sent": 0, "failed": 0, "dead": 0}
+    for row_id in candidate_ids:
+        row = _claim_row(row_id)
+        if row is None:
+            continue  # lost the race to another concurrent drain — not our row
+        stats["picked"] += 1
+        attempt = int(row["attempt_count"] or 0) + 1
         try:
             payload = json.loads(row["payload"] or "{}")
             result = send_to_devices(
@@ -470,36 +548,39 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
                 payload.get("badge"),
                 expo_send_one=expo_send_one,
             )
-            status = "sent" if result.get("sent", 0) else "pending"
-            attempt = int(row["attempt_count"] or 0) + 1
-            if status == "sent":
-                stats["sent"] += 1
-                with get_conn() as c:
-                    c.execute("UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=? WHERE id=?", (attempt, row["id"]))
-                continue
-            if attempt >= 5:
-                stats["dead"] += 1
-                with get_conn() as c:
-                    c.execute(
-                        "UPDATE push_outbox SET status='dead', failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=? WHERE id=?",
-                        (attempt, "delivery_not_confirmed", row["id"]),
-                    )
-                continue
-            stats["failed"] += 1
-            delay = min(300, 2 ** attempt * 5)
-            with get_conn() as c:
-                c.execute(
-                    "UPDATE push_outbox SET status='pending', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=? WHERE id=?",
-                    (attempt, f"+{delay} seconds", "delivery_not_confirmed", row["id"]),
-                )
+            outcome = _finish_row(row["id"], attempt, sent=bool(result.get("sent", 0)), error=None)
         except Exception as exc:
-            stats["failed"] += 1
-            with get_conn() as c:
-                c.execute(
-                    "UPDATE push_outbox SET status='pending', attempt_count=attempt_count+1, last_error=? WHERE id=?",
-                    (str(exc)[:500], row["id"]),
-                )
+            # Poison event (malformed payload, provider client raising outside
+            # its own try/except, etc.) — must not crash the worker or loop
+            # forever without backoff; goes through the exact same
+            # attempt/backoff/dead ladder as an ordinary delivery failure.
+            outcome = _finish_row(row["id"], attempt, sent=False, error=str(exc))
+        stats[outcome] += 1
     return stats
+
+
+def mark_event_sent(event_id: Optional[str], recipient_user_id: str) -> bool:
+    """Called by the immediate/inline fast path right after a successful
+    native send. Flips a still-pending/processing outbox row for this exact
+    (event_id, recipient) straight to 'sent' so process_pending_once's
+    `WHERE status='pending'` scan never re-sends it — this is the atomic
+    claim/mark half of the delivery-ownership contract described on
+    process_pending_once(). A no-op (returns False) when no event_key was
+    used for this send (nothing was ever enqueued) or the row is already
+    terminal (sent/dead) — never resurrects or re-marks a dead row.
+    """
+    if not event_id or not recipient_user_id:
+        return False
+    try:
+        with get_conn() as c:
+            cur = c.execute(
+                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL "
+                "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','processing')",
+                (event_id, recipient_user_id),
+            )
+            return cur.rowcount > 0
+    except Exception:
+        return False
 
 
 def info() -> dict[str, Any]:

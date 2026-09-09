@@ -144,9 +144,18 @@ def _migrate_ownership_columns():
                 sent_at TEXT,
                 failed_at TEXT,
                 last_error TEXT,
+                claimed_at TEXT,
                 UNIQUE(event_id, recipient_user_id)
             )
         """)
+        # Additive (idempotent) — legacy DBs created before the drain-worker
+        # fix (Track: Claude push recovery) predate `claimed_at`.
+        try:
+            outbox_cols = {r["name"] for r in c.execute("PRAGMA table_info(push_outbox)").fetchall()}
+            if "claimed_at" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN claimed_at TEXT")
+        except Exception:
+            pass
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_status_next ON push_outbox(status, next_attempt_at)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_event_type ON push_outbox(event_type)")
         c.execute("""

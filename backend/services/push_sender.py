@@ -545,8 +545,31 @@ def send(user_id: str, title: str, body: str,
         log.exception("native push fatal")
         native = 0
 
+    # Delivery-ownership contract (push recovery track): this inline call is
+    # the FAST PATH: it already tried native delivery synchronously above. If
+    # that reached at least one device, mark the outbox row (if any — only
+    # event_key'd sends ever get one, see enqueue_event above) 'sent' right
+    # now so the background drain worker (push_gateway.process_pending_once,
+    # scheduler.jobs.push_outbox_drain_job) never re-sends it. If native==0
+    # here, the row stays 'pending' and the worker becomes the retry owner —
+    # this is the only path that is allowed to leave a row 'pending'.
+    if event_key and native > 0:
+        try:
+            push_gateway.mark_event_sent(event_key, user_id)
+        except Exception:
+            pass
+
     _log(user_id, kind, title, body, data, web, native)
     return {"web": web, "native": native, "total": web + native}
+
+
+def drain_outbox_once(limit: int = 50) -> dict:
+    """Thin public entry point for the scheduler (scheduler.jobs.push_outbox_drain_job)
+    so it never has to reach into push_gateway's private `_send_expo_detailed`
+    convention directly — mirrors how `_send_native` already wires the same
+    callback for the inline fast path.
+    """
+    return push_gateway.process_pending_once(_send_expo_detailed, limit=limit)
 
 
 def broadcast(user_ids: list[str], title: str, body: str,
