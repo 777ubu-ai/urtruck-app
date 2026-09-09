@@ -74,6 +74,11 @@ CREATE TABLE IF NOT EXISTS push_outbox (
   sent_at TEXT,
   failed_at TEXT,
   last_error TEXT,
+  -- claimed_at: when a worker atomically flipped this row pending→processing.
+  -- Lets a restarted/second worker reclaim rows a crashed worker abandoned
+  -- mid-flight (see push_gateway.process_pending_once) instead of leaving
+  -- them stuck in 'processing' forever.
+  claimed_at TEXT,
   UNIQUE(event_id, recipient_user_id)
 );
 

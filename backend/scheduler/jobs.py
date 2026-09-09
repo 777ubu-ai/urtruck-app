@@ -24,6 +24,36 @@ def parse_telegram_job():
         print(f"  ERROR: {e}")
 
 
+def push_outbox_drain_job():
+    """Drains backend/services/push_gateway.py's push_outbox table.
+
+    Root cause this fixes (push-recovery track, confirmed by forensic audit):
+    push_gateway.enqueue_event() was already called on every event_key'd send
+    (services/push_sender.py `send()`), but nothing ever called
+    process_pending_once() in production — rows piled up 'pending' forever
+    with zero retries whenever the inline synchronous send failed. Wiring
+    this job (not a bespoke loop/thread) reuses the exact same singleton-lock
+    + max_instances=1 + coalesce=True + per-job-try/except guarantees
+    start_scheduler() already provides for every other job below, so this
+    gets "only one process runs it, never overlaps itself, a crash in this
+    job never takes down the process" for free instead of re-implementing
+    them.
+    """
+    try:
+        from services.push_sender import drain_outbox_once
+        stats = drain_outbox_once(limit=50)
+        if stats.get("picked"):
+            print(
+                f"[push-outbox] picked={stats['picked']} sent={stats['sent']} "
+                f"failed={stats['failed']} dead={stats['dead']}",
+                flush=True,
+            )
+    except Exception as e:
+        # A single bad batch must not take the scheduler process down —
+        # matches the per-job try/except convention every job here follows.
+        print(f"[push-outbox] drain job failed (continuing): {e}", flush=True)
+
+
 def monthly_rescore_job():
     """Переоценка всех водителей — раз в месяц."""
     print(f"[{datetime.now().isoformat()}] Monthly rescore start")
@@ -363,9 +393,15 @@ def start_scheduler():
     # «Пока нет предложений» (18ч без ставок) — проверяем каждые 3 часа,
     # дедуп по data_json удерживает один пуш на публикацию.
     sched.add_job(no_bids_notify_job, IntervalTrigger(hours=3), id="no_bids_notify")
+    # Push outbox drain — каждые 30с. Короткий интервал оправдан: это не
+    # тяжёлая джоба (LIMIT 50 строк, локальный SQLite), а retry-safety-net
+    # для push, которые не ушли синхронным inline-путём — держать
+    # пользователя без уведомления полчаса неприемлемо. max_instances=1 +
+    # атомарный claim в process_pending_once защищают от наложения.
+    sched.add_job(push_outbox_drain_job, IntervalTrigger(seconds=30), id="push_outbox_drain")
     sched.start()
     _scheduler = sched
-    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h")
+    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s")
     return sched
 
 
