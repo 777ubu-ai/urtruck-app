@@ -28,11 +28,11 @@ const SCREENS_WITH_MENU = [
   'src/screens/DealsScreen.js',
 ];
 
-test('all four permanent tabs use HeaderMenuButton (unread-aware), not a bare menu icon', () => {
+test('all four permanent tabs use the canonical RootHeader, not a bare menu icon', () => {
   for (const file of SCREENS_WITH_MENU) {
     const src = readFileSync(file, 'utf8');
-    assert.match(src, /import HeaderMenuButton from '..\/components\/ui\/v1\/HeaderMenuButton'/, `${file}: missing HeaderMenuButton import`);
-    assert.match(src, /<HeaderMenuButton\b/, `${file}: HeaderMenuButton must actually be rendered`);
+    assert.match(src, /import RootHeader from '..\/components\/ui\/v1\/RootHeader'/, `${file}: missing RootHeader import`);
+    assert.match(src, /<RootHeader\b/, `${file}: RootHeader must actually be rendered`);
   }
 });
 
@@ -42,9 +42,9 @@ test('Bell stays settings-only — the unread signal moved to the menu button, n
     // Bell's own onPress block must not read the unread hook — that would
     // reintroduce the old "Bell as unread inbox" pattern the product
     // explicitly moved away from.
-    const bellIdx = src.search(/<BellBadge/);
-    assert.ok(bellIdx > -1, `${file}: BellBadge not found`);
-    const bellBlock = src.slice(bellIdx, bellIdx + 300);
+    const bellIdx = src.search(/<RootHeader/);
+    assert.ok(bellIdx > -1, `${file}: RootHeader not found`);
+    const bellBlock = src.slice(bellIdx, bellIdx + 500);
     assert.doesNotMatch(bellBlock, /useUnreadNotifications|unread/, `${file}: Bell must not carry the unread signal again`);
   }
 });

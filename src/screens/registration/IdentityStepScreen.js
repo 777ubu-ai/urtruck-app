@@ -16,8 +16,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   Image,
   ActivityIndicator,
   Alert,
@@ -34,6 +32,8 @@ import PhotoGuide from '../../components/PhotoGuide';
 import QaStepSkip from '../../components/dev/QaStepSkip';
 import DateOfBirthSheet from '../../components/DateOfBirthSheet';
 import { brand, radius, typography } from '../../theme/brandV2';
+import BackButton from '../../components/ui/v1/BackButton';
+import KeyboardSafeLayout from '../../components/ui/v1/KeyboardSafeLayout';
 
 const TOTAL_STEPS = 4;
 const STEP = 2;
@@ -225,14 +225,9 @@ export default function IdentityStepScreen({ navigation }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="identity-step-screen">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
+      <KeyboardSafeLayout>
         <View style={s.header}>
-          <Pressable onPress={() => navigation.goBack()} style={s.backBtn} testID="identity-back">
-            <Feather name="arrow-left" size={22} color={brand.textPrimary} />
-          </Pressable>
+          <BackButton onPress={() => navigation.goBack()} label={t('back')} testID="identity-back" />
           <View style={s.progressTrack}>
             <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
           </View>
@@ -375,7 +370,7 @@ export default function IdentityStepScreen({ navigation }) {
             )}
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardSafeLayout>
       <RegistrationCloseModal
         visible={closeVisible}
         onCancel={() => setCloseVisible(false)}

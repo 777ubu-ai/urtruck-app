@@ -6,9 +6,11 @@ import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors } from '../../../theme/designV1';
+import { useI18n } from '../../../utils/useI18n';
 
 export default function BellBadge({ count = 0, onPress, testID }) {
   const colors = useV1Colors();
+  const { t } = useI18n();
   const visible = Number(count) > 0;
   const label = Number(count) > 9 ? '9+' : String(count);
   return (
@@ -17,6 +19,9 @@ export default function BellBadge({ count = 0, onPress, testID }) {
       activeOpacity={0.7}
       testID={testID || 'bell-btn'}
       style={[s.btn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+      accessibilityRole="button"
+      accessibilityLabel={t('menu_notifications')}
+      accessibilityState={{ disabled: !onPress }}
     >
       <Feather name="bell" size={18} color={colors.text} />
       {visible ? (

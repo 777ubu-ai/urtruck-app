@@ -16,9 +16,12 @@ import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import { useV1Colors } from '../theme/designV1';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
+import RootHeader from '../components/ui/v1/RootHeader';
 import { API_BASE } from '../config/env';
 import { localizeCheckpointName } from '../utils/checkpointNames';
 import { storage } from '../utils/storage';
+import { useVerificationGate } from '../components/VerificationGate';
+import { LEVELS } from '../utils/AuthContext';
 
 const BASE = `${API_BASE}/borders`;
 const FAVORITES_KEY = 'ur_border_favorites_v2';
@@ -173,6 +176,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const { lang } = useI18n();
   const L = COPY[lang] || COPY.RU;
   const role = route?.params?.role || 'driver';
+  const { requireLevel } = useVerificationGate();
 
   const [catalog, setCatalog] = useState([]);
   const [countries, setCountries] = useState([]);
@@ -273,10 +277,10 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: v1.bg }]} edges={['top']} testID="border-screen-v2">
-      <View style={[s.topBar, { borderBottomColor: theme.border, backgroundColor: v1.bg }]}> 
-        <View style={{ flex: 1 }} />
-        <HeaderMenuButton navigation={navigation} role={role} />
-      </View>
+      <RootHeader navigation={navigation} role={role} testID="queue-root-header" onBellPress={async () => {
+        const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
+        if (ok) navigation.navigate('PushFilter', { role });
+      }} />
 
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
         <Text style={[s.topTitle, s.scrollTitle, { color: theme.text }]} testID="queue-title">{L.title}</Text>

@@ -16,7 +16,7 @@ test('Profile does not duplicate deal notifications entry or unread badge', () =
 
 test('My Work bell opens notification settings, not the legacy notification list', () => {
   const myTrips = readFileSync('src/screens/MyTripsScreen.js', 'utf8');
-  assert.match(myTrips, /testID="mywork-notification-settings-btn"/);
+  assert.match(myTrips, /bellTestID="mywork-notification-settings-btn"/);
   assert.match(myTrips, /navigation\.navigate\('PushFilter', \{ role \}\)/);
   assert.doesNotMatch(myTrips, /navigation\.navigate\(['"]Notifications/);
 });
@@ -24,7 +24,7 @@ test('My Work bell opens notification settings, not the legacy notification list
 test('all active root feeds route Bell to notification settings', () => {
   for (const file of ['src/screens/FeedScreen.js', 'src/screens/CargoFeedScreen.js', 'src/screens/DealsScreen.js']) {
     const source = readFileSync(file, 'utf8');
-    assert.match(source, /BellBadge/);
+    assert.match(source, /RootHeader/);
     assert.match(source, /navigation\.navigate\('PushFilter', \{ role \}\)/, file);
     assert.doesNotMatch(source, /useUnreadNotifications/);
     assert.doesNotMatch(source, /navigation\.navigate\(['"]Notifications/, file);

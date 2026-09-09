@@ -15,6 +15,7 @@ import Feather from "@expo/vector-icons/Feather";
 import { useV1Colors } from "../../../theme/designV1";
 import { useAuth } from "../../../utils/AuthContext";
 import { useUnreadNotifications } from "../../../utils/useUnreadNotifications";
+import { useI18n } from "../../../utils/useI18n";
 
 export default function HeaderMenuButton({
   navigation,
@@ -24,6 +25,7 @@ export default function HeaderMenuButton({
 }) {
   const colors = useV1Colors();
   const { hasToken } = useAuth();
+  const { t } = useI18n();
   const unread = useUnreadNotifications(hasToken);
   const visible = Number(unread) > 0;
   const label = Number(unread) > 9 ? "9+" : String(unread);
@@ -38,8 +40,8 @@ export default function HeaderMenuButton({
       accessibilityRole="button"
       accessibilityLabel={
         visible
-          ? `Профиль и меню, ${unread} непрочитанных уведомлений`
-          : "Профиль и меню"
+        ? `${t('profile')} и меню, ${unread} ${t('menu_notifications').toLowerCase()}`
+          : `${t('profile')} и меню`
       }
     >
       <Feather name="menu" size={24} color={color || colors.text} />
@@ -60,8 +62,8 @@ export default function HeaderMenuButton({
 
 const s = StyleSheet.create({
   btn: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",

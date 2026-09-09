@@ -27,11 +27,10 @@ const SCREENS = [
 test('guest/no-role: Bell is gated behind requireLevel, never a direct unguarded navigate', () => {
   for (const [file, testID] of SCREENS) {
     const src = readFileSync(file, 'utf8');
-    const idx = src.indexOf(`testID="${testID}"`);
+    const idx = src.indexOf(`bellTestID="${testID}"`);
     assert.ok(idx > -1, `${file}: Bell testID not found`);
-    // Look at the onPress block immediately preceding this testID (Bell is
-    // always defined as <BellBadge onPress={...} testID="..." />).
-    const block = src.slice(Math.max(0, idx - 400), idx);
+    // RootHeader owns the Bell; inspect its onBellPress contract.
+    const block = src.slice(Math.max(0, idx - 100), idx + 500);
     assert.match(block, /requireLevel\(LEVELS\.PHONE, 'push_settings'/, `${file}: Bell must gate through requireLevel before navigating`);
     assert.match(block, /if \(ok\) navigation\.navigate\('PushFilter'/, `${file}: PushFilter navigation must be conditional on the gate result`);
     // The old bug: an unconditional navigate with no gate at all.

@@ -16,6 +16,7 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { formatStatus } from '../utils/i18n';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
+import RootHeader from '../components/ui/v1/RootHeader';
 import { marketAPI } from '../utils/marketAPI';
 import { formatPrice } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
@@ -689,20 +690,10 @@ export default function DealsScreen({ navigation, route }) {
       ]}
       testID="deals-minimal-header"
     >
-      <View style={styles.menuRow}>
-        <BellBadge
-          onPress={async () => {
+      <RootHeader navigation={navigation} role={role} testID="deals-minimal-header" bellTestID="deals-notification-settings-btn" menuTestID="deals-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
             if (ok) navigation.navigate('PushFilter', { role });
-          }}
-          testID="deals-notification-settings-btn"
-        />
-        <HeaderMenuButton
-          navigation={navigation}
-          role={role}
-          testID="deals-menu-btn"
-        />
-      </View>
+          }} />
 
       <View style={styles.tabsRow} testID="deals-primary-tabs">
         <TabChip

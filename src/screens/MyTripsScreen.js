@@ -22,6 +22,7 @@ import { countryFlag } from '../utils/countryFlags';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import BellBadge from '../components/ui/v1/BellBadge';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
+import RootHeader from '../components/ui/v1/RootHeader';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
 
@@ -625,21 +626,10 @@ export default function MyTripsScreen({ navigation, route }) {
 
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      <View style={[s.brandBar, { justifyContent: 'flex-end' }]} testID="mywork-minimal-header">
-        <BellBadge
-          onPress={async () => {
+      <RootHeader navigation={navigation} role={role} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
             if (ok) navigation.navigate('PushFilter', { role });
-          }}
-          testID="mywork-notification-settings-btn"
-        />
-        <HeaderMenuButton
-          navigation={navigation}
-          role={role}
-          color={v1.text}
-          testID="mywork-menu-btn"
-        />
-      </View>
+          }} />
 
       <FlatList
         data={listData}

@@ -28,6 +28,7 @@ import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
 import BellBadge from '../components/ui/v1/BellBadge';
+import RootHeader from '../components/ui/v1/RootHeader';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 
 const ACCENT = '#34936B';
@@ -481,27 +482,13 @@ export default function FeedScreen({ navigation }) {
       edges={['top']}
       testID="trip-feed-screen"
     >
-      <View
-        style={[styles.topBar, { backgroundColor: colors.pageBg }]}
-        testID="trip-feed-minimal-header"
-      >
-        <BellBadge
-          onPress={async () => {
+      <RootHeader navigation={navigation} role={role} testID="trip-feed-minimal-header" bellTestID="feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
             // PushFilter only exists in the authenticated navigation stack —
             // gate it like every other account-required action here instead
             // of silently no-op-ing for a guest/no-role tap.
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
             if (ok) navigation.navigate('PushFilter', { role });
-          }}
-          testID="feed-notification-settings-btn"
-        />
-        <HeaderMenuButton
-          navigation={navigation}
-          role={role}
-          color={colors.text}
-          testID="feed-menu-btn"
-        />
-      </View>
+          }} />
 
       <FlatList
         style={[styles.list, { backgroundColor: colors.pageBg }]}
