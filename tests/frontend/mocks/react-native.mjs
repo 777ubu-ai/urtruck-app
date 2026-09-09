@@ -61,6 +61,7 @@ export const StyleSheet = {
   create: (styles) => styles,
   flatten: (s) => (Array.isArray(s) ? Object.assign({}, ...s.filter(Boolean).map((x) => (typeof x === 'object' ? x : {}))) : (s || {})),
   hairlineWidth: 1,
+  absoluteFillObject: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 };
 
 export const Animated = {

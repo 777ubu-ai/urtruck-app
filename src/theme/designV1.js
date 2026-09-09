@@ -25,7 +25,7 @@ export const v1Radius = {
   field: 12,
   card: 16,
   pill: 999,
-  button: 12,
+  button: 14,
 };
 
 export const v1Spacing = {
@@ -50,6 +50,10 @@ const typographyFor = (c) => ({
   caption: { fontSize: 12, fontWeight: '500', color: c.textMuted },
   small:   { fontSize: 11, fontWeight: '600', letterSpacing: 0.2, color: c.textDim },
   button:  { fontSize: 15, fontWeight: '600', color: c.driverOnAccent },
+  // ── Design Bible "Direction B" (2026-09-09, Commit 1) — additive only.
+  label:   { fontSize: 13, lineHeight: 18, fontWeight: '600', color: c.textMuted },
+  micro:   { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.2, color: c.textDim },
+  price:   { fontSize: 17, lineHeight: 22, fontWeight: '800', color: c.text },
 });
 
 export const v1Typography = typographyFor(LIGHT);
@@ -64,3 +68,40 @@ export const v1AccentFor = (role) =>
   role === 'driver'
     ? { main: v1Colors.driver, deep: v1Colors.driverDeep, glow: v1Colors.driverGlow, soft: v1Colors.driverSoft, onAccent: v1Colors.driverOnAccent }
     : { main: v1Colors.cargoOwner, deep: v1Colors.cargoOwnerDeep, glow: v1Colors.cargoOwnerGlow, soft: v1Colors.cargoOwnerSoft, onAccent: v1Colors.driverOnAccent };
+
+// ── Design Bible "Direction B" (owner-approved 2026-09-09, Commit 1) ──
+// Status role colors per theme. `cancelled` has no LIGHT-key counterpart in
+// the approved additions — the palette's pre-existing `warning`-era grey
+// `#718078` is the LIGHT value; DARK shifts it to textDim-family `#7C8B82`.
+export const v1StatusColors = (c) => ({
+  accepted: c.statusAccepted,
+  in_progress: c.statusInProgress,
+  at_border: c.statusAtBorder,
+  delivered: c.statusDelivered,
+  received: c.statusReceived,
+  completed: c.statusCompleted,
+  cancelled: c.statusCancelled,
+});
+
+export const getStatusColor = (c, status) =>
+  v1StatusColors(c)[status] || c.textDim;
+
+// Chat bubble color contract: outgoing uses the approved WhatsApp-family
+// green (light `#D9FDD3` / dark `#005C4B`); incoming is surface/border + text.
+export const getBubbleColors = (isMine, isDark) => {
+  const c = isDark ? DARK : LIGHT;
+  const outgoing = isDark
+    ? { backgroundColor: DARK.outgoingDark, textColor: DARK.outgoingDarkText }
+    : { backgroundColor: LIGHT.outgoing, textColor: LIGHT.outgoingText };
+  return isMine
+    ? { ...outgoing, borderColor: outgoing.backgroundColor }
+    : { backgroundColor: c.surface, textColor: c.text, borderColor: c.border };
+};
+
+// `v1BubbleColors` — the full per-theme bubble contract (both directions).
+export const v1BubbleColors = (isDark) => ({
+  outgoing: isDark
+    ? { backgroundColor: DARK.outgoingDark, textColor: DARK.outgoingDarkText }
+    : { backgroundColor: LIGHT.outgoing, textColor: LIGHT.outgoingText },
+  incoming: { backgroundColor: (isDark ? DARK : LIGHT).surface, textColor: (isDark ? DARK : LIGHT).text, borderColor: (isDark ? DARK : LIGHT).border },
+});

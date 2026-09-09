@@ -57,6 +57,21 @@ export const LIGHT = {
   // qa/utils/themeContrastSmoke.js (never in this file), per CLAUDE.md canon.
   info: '#3478D4',
   rating: '#D97706',
+
+  // ── Design Bible "Direction B: Modern Global/China Hybrid" (owner-approved
+  // 2026-09-09, Commit 1: tokens + primitives). Chat bubbles, client accent,
+  // and per-status role colors. Light values are the approved originals.
+  outgoing: '#D9FDD3',
+  outgoingText: '#111B21',
+  clientAccent: '#FF8400',
+
+  statusAccepted: '#168759',
+  statusInProgress: '#2878D6',
+  statusAtBorder: '#B45800',
+  statusDelivered: '#0E9384',
+  statusReceived: '#0F6B47',
+  statusCompleted: '#7C8B82',
+  statusCancelled: '#718078',
 };
 
 export const DARK = {
@@ -92,4 +107,19 @@ export const DARK = {
   warning: '#F5B75B',
   info: '#5BA3F5',
   rating: '#D97706',
+
+  // ── Design Bible "Direction B" dark counterparts (owner-approved
+  // 2026-09-09, Commit 1). Same semantic hues as LIGHT, shifted lighter for
+  // contrast on the dark surfaces (see qa/utils/themeContrastSmoke.js).
+  outgoingDark: '#005C4B',
+  outgoingDarkText: '#E9EDEF',
+  errorDark: '#E06565',
+
+  statusAccepted: '#3BB273',
+  statusInProgress: '#5BA3F5',
+  statusAtBorder: '#F5B75B',
+  statusDelivered: '#2DD4BF',
+  statusReceived: '#3BB273',
+  statusCompleted: '#9EAAA2',
+  statusCancelled: '#7C8B82',
 };
