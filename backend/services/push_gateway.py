@@ -583,6 +583,87 @@ def mark_event_sent(event_id: Optional[str], recipient_user_id: str) -> bool:
         return False
 
 
+RECEIPT_MIN_AGE_MINUTES = 15  # Expo's own guidance: receipts are not reliably available before this
+RECEIPT_MAX_AGE_DAYS = 1      # Expo retains receipts ~1 day; querying older rows would waste a call for nothing
+
+
+def poll_pending_receipts(expo_receipts_fn, limit: int = 50) -> dict[str, int]:
+    """Bounded, once-per-row Expo delivery-receipt reconciliation (push-
+    recovery track, Phase 5).
+
+    Complements the immediate ticket-level DeviceNotRegistered handling
+    services.push_sender._send_expo already does (that only sees errors Expo
+    already knows about at send time) — some invalid-token errors only
+    surface in the DELAYED receipt, not the immediate ticket. Each
+    push_delivery_log row is queried at MOST ONCE (receipt_checked_at guard
+    below, set unconditionally whether or not Expo had an answer yet), in a
+    bounded age window (RECEIPT_MIN_AGE_MINUTES..RECEIPT_MAX_AGE_DAYS) — this
+    can never grow into an unbounded query or re-poll the same row forever.
+    A row whose receipt never resolves in that window simply stays
+    delivered_at=NULL — no retry loop, no aggressive polling.
+    """
+    bounded_limit = max(1, min(int(limit or 50), 200))
+    with get_conn() as c:
+        rows = [
+            dict(r)
+            for r in c.execute(
+                """
+                SELECT id, device_registry_id, provider_message_id FROM push_delivery_log
+                WHERE provider = 'expo' AND status = 'sent' AND delivered_at IS NULL
+                  AND receipt_checked_at IS NULL AND provider_message_id IS NOT NULL
+                  AND sent_at IS NOT NULL
+                  AND sent_at <= datetime(CURRENT_TIMESTAMP, ?)
+                  AND sent_at >= datetime(CURRENT_TIMESTAMP, ?)
+                LIMIT ?
+                """,
+                (f"-{RECEIPT_MIN_AGE_MINUTES} minutes", f"-{RECEIPT_MAX_AGE_DAYS} days", bounded_limit),
+            ).fetchall()
+        ]
+
+    stats = {"checked": 0, "delivered": 0, "invalid_token": 0, "errors": 0}
+    if not rows:
+        return stats
+
+    # Same ticket could theoretically repeat across rows; a dict is fine —
+    # we only need the row to update per ticket, not a list of duplicates.
+    by_ticket = {r["provider_message_id"]: r for r in rows}
+    try:
+        result = expo_receipts_fn(list(by_ticket.keys())) or {}
+    except Exception:
+        return stats  # transient provider failure — rows stay unchecked, next tick retries them
+    receipts = result.get("receipts") or {}
+
+    with get_conn() as c:
+        for ticket_id, row in by_ticket.items():
+            stats["checked"] += 1
+            c.execute(
+                "UPDATE push_delivery_log SET receipt_checked_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (row["id"],),
+            )
+            receipt = receipts.get(ticket_id)
+            if not receipt:
+                continue  # not resolved yet / Expo has no record for it — leave delivered_at NULL
+            if receipt.get("status") == "ok":
+                c.execute(
+                    "UPDATE push_delivery_log SET delivered_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (row["id"],),
+                )
+                stats["delivered"] += 1
+                continue
+            details = receipt.get("details") or {}
+            if details.get("error") == "DeviceNotRegistered" and row.get("device_registry_id"):
+                c.execute(
+                    "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
+                    "invalidated_reason = 'expo_receipt_device_not_registered' WHERE id = ?",
+                    (row["device_registry_id"],),
+                )
+                stats["invalid_token"] += 1
+            else:
+                stats["errors"] += 1
+        c.commit()
+    return stats
+
+
 def info() -> dict[str, Any]:
     counts = {"devices_active": 0, "expo": 0, "fcm": 0, "apns": 0, "outbox_pending": 0, "outbox_dead": 0}
     try:
