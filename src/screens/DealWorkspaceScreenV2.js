@@ -588,10 +588,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...current, visible: !current.visible } }));
       return;
     }
+    setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: null } }));
     setVoiceTranscribing(item.id);
     try {
       const result = await chatAPI.transcribe(item.id, getLanguage().toLowerCase());
       if (!result?.transcript_text) {
+        setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('voice_transcription_unavailable') } }));
         toast(t('voice_transcription_unavailable'), 'info');
         return;
       }
@@ -600,6 +602,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         [item.id]: { visible: true, transcriptText: result.transcript_text, sourceLang: result.source_lang || null, provider: result.provider || null, translatedText: result.translated_text || null },
       }));
     } catch {
+      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('voice_transcription_unavailable') } }));
       toast(t('voice_transcription_unavailable'), 'info');
     } finally {
       setVoiceTranscribing(null);
@@ -1109,6 +1112,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               transcript={voiceTranscripts[item.id]}
               transcribing={voiceTranscribing === item.id}
               onToggleTranscript={() => toggleVoiceTranscript(item)}
+              t={t}
               onError={() => toast(t('voice_play_fail'), 'error')}
             />
           ) : item.text ? (
@@ -1339,7 +1343,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-workspace-screen">
-      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
         {viewMode === VIEW_CHAT ? (
           <View style={s.chatFullscreen} testID="deal-chat-fullscreen">
             {dealLoading && !dealId ? (

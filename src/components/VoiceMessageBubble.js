@@ -42,6 +42,7 @@ export default function VoiceMessageBubble({
   transcript,
   transcribing = false,
   onToggleTranscript,
+  t = (key) => key,
   testID = 'voice-bubble',
 }) {
   const [state, setState] = React.useState(() => voice.getState?.() || {
@@ -96,7 +97,7 @@ export default function VoiceMessageBubble({
   const timeColor = mine ? OUTGOING_VOICE_TEXT : mutedColor;
   const rateColor = mine ? OUTGOING_VOICE_MUTED : iconColor;
   const textVisible = !!transcript?.visible && !!transcript?.transcriptText;
-  const transcriptLabel = transcribing ? '…' : textVisible ? 'Hide text' : transcript?.transcriptText ? 'Show text' : 'Voice to text';
+  const transcriptLabel = transcribing ? '…' : textVisible ? t('voice_hide_text') : transcript?.transcriptText ? t('voice_show_text') : t('voice_to_text');
 
   return (
     <View style={s.wrap} testID={testID}>
@@ -147,10 +148,12 @@ export default function VoiceMessageBubble({
       {onToggleTranscript ? (
         <TouchableOpacity onPress={onToggleTranscript} disabled={transcribing} style={s.transcriptButton} accessibilityRole="button" testID="voice-transcription-btn">
           <Feather name="align-left" size={12} color={mutedColor} />
+          {transcribing ? <ActivityIndicator size="small" color={mutedColor} testID="voice-transcription-loading" /> : null}
           <Text style={[s.transcriptLabel, { color: mutedColor }]}>{transcriptLabel}</Text>
         </TouchableOpacity>
       ) : null}
       {textVisible ? <Text style={[s.transcriptText, { color: textColor }]}>{transcript.transcriptText}</Text> : null}
+      {transcript?.errorText ? <Text style={[s.transcriptError, { color: mutedColor }]} testID="voice-transcription-error">{transcript.errorText}</Text> : null}
     </View>
   );
 }
@@ -177,4 +180,5 @@ const s = StyleSheet.create({
   transcriptButton: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
   transcriptLabel: { fontSize: 11, fontWeight: '700' },
   transcriptText: { marginTop: 2, fontSize: 12, lineHeight: 17 },
+  transcriptError: { marginTop: 3, fontSize: 11, lineHeight: 15 },
 });

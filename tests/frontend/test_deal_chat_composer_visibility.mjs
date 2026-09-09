@@ -22,3 +22,14 @@ test('composer: collapsed-режим полностью убран из чата
   assert.match(src, /testID="deal-chat-composer"/);
   assert.match(src, /testID="deal-chat-input"/);
 });
+
+test('Android chat dock owns one explicit IME resize and voice failures stay observable', () => {
+  assert.match(src, /Platform\.OS === 'ios' \? 'padding' : 'height'/);
+  assert.match(src, /testID="deal-chat-composer-dock"/);
+  assert.match(src, /errorText: t\('voice_transcription_unavailable'\)/);
+  assert.match(src, /<VoiceMessageBubble[\s\S]*t=\{t\}/);
+  const bubble = readFileSync('src/components/VoiceMessageBubble.js', 'utf8');
+  assert.match(bubble, /testID="voice-transcription-loading"/);
+  assert.match(bubble, /testID="voice-transcription-error"/);
+  assert.match(bubble, /t\('voice_to_text'\)/);
+});

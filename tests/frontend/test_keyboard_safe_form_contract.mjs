@@ -14,6 +14,8 @@ const editTrip = readFileSync('src/screens/EditTripScreen.js', 'utf8');
 test('canonical keyboard primitive scrolls the focused native input into view', () => {
   assert.match(primitive, /KeyboardSafeScrollView/);
   assert.match(primitive, /scrollResponderScrollNativeHandleToKeyboard/);
+  assert.match(primitive, /KeyboardSafeFocusContext/);
+  assert.match(primitive, /setTimeout\(reveal, 80\)/);
   assert.match(primitive, /keyboardShouldPersistTaps/);
   assert.match(primitive, /keyboardVerticalOffset=\{offset\}/);
 });
@@ -28,10 +30,12 @@ test('active long forms use the canonical keyboard-aware scroll container', () =
   assert.match(editTrip, /KeyboardSafeLayout[\s\S]*KeyboardSafeScrollView/);
 });
 
-test('Android uses resize mode without a fixed keyboard offset', () => {
+test('Android forms have one resize owner: system adjustResize, not KAV height', () => {
   const app = readFileSync('app.json', 'utf8');
   const manifest = readFileSync('android/app/src/main/AndroidManifest.xml', 'utf8');
   assert.match(app, /"softwareKeyboardLayoutMode"\s*:\s*"resize"/);
   assert.match(manifest, /android:windowSoftInputMode="adjustResize"/);
+  assert.match(primitive, /Platform\.OS === 'ios' \? 'padding' : undefined/);
+  assert.doesNotMatch(primitive, /Platform\.OS === 'ios' \? 'padding' : 'height'/);
   assert.doesNotMatch(primitive, /paddingBottom:\s*\d{3,}/);
 });

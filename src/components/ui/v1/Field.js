@@ -12,6 +12,7 @@ import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius, v1Spacing, v1Typography } from '../../../theme/designV1';
+import { useKeyboardSafeFocus } from './KeyboardSafeLayout';
 
 export default function Field(props) {
   if (props.variant === 'dropdown') return <DropdownRow {...props} />;
@@ -36,9 +37,10 @@ function InputRow({
   // read-only row (country during the KZ-only pilot) without
   // resorting to the dropdown variant.
   editable = true,
-  testID,
+  testID, onFocus,
 }) {
   const colors = useV1Colors();
+  const handleFocus = useKeyboardSafeFocus(onFocus);
   return (
     <View style={{ marginBottom: v1Spacing.sm }}>
       {/* Stage 28: label теперь рендерится ВСЕГДА сверху row,
@@ -71,6 +73,7 @@ function InputRow({
             autoCapitalize={autoCapitalize}
             maxLength={maxLength}
             editable={editable}
+            onFocus={handleFocus}
             testID={testID}
           />
         </View>
