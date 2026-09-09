@@ -1748,8 +1748,11 @@ const s = StyleSheet.create({
   composerCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
   composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
   inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
-  input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
-  inputEmojiButton: { position: 'absolute', right: 4, bottom: 3, width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
+  // The Android multiline TextInput is a native surface. It must reserve the
+  // emoji slot and stay below it in the stacking order, otherwise four lines
+  // of text can visually cover a still-clickable emoji button.
+  input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 50, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  inputEmojiButton: { position: 'absolute', right: 4, bottom: 3, zIndex: 2, elevation: 2, width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   sendButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#168759' },
 

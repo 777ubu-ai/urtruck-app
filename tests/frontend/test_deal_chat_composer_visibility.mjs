@@ -33,3 +33,10 @@ test('Android chat dock owns one explicit IME resize and voice failures stay obs
   assert.match(bubble, /testID="voice-transcription-error"/);
   assert.match(bubble, /t\('voice_to_text'\)/);
 });
+
+test('emoji control stays visually above a multiline native input', () => {
+  assert.match(src, /input: \{[^\n]*paddingRight: 50/,
+    'multiline text must reserve the emoji slot instead of drawing underneath it');
+  assert.match(src, /inputEmojiButton: \{[^\n]*zIndex: 2, elevation: 2/,
+    'Android native TextInput must not paint over the visible emoji control');
+});
