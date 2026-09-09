@@ -536,6 +536,13 @@ async def upload_selfie(
         "selfie_url": selfie_url,
         "face_verified": 1 if live.get("liveness_passed") else 0,
         "face_quality": live.get("confidence", 0),
+        # Level 3 may only be granted when both identity providers explicitly
+        # report a real, trusted result. MOCK/heuristic/fallback is evidence
+        # for the registration flow, never a verification decision.
+        "verification_provider_status": (
+            "trusted_real" if gov.get("source") == "egov.kz" and live.get("mode") == "real"
+            else "untrusted"
+        ),
         "current_step": 3,
         "verification_level": 2,  # identity verified
     })
@@ -923,8 +930,18 @@ def run_moderation(driver_id: str = Depends(get_current_driver)):
         "rejected_reason": rejected_reason,
         "approved_at": "CURRENT_TIMESTAMP" if auto_approved else None,
     }
-    # Уровень 3 — полноценный водитель — только при auto_approve
-    if auto_approved:
+    # A score is not a verification decision. Self-service approval is
+    # fail-closed unless the persisted capability signal proves real providers.
+    trusted_provider = driver.get("verification_provider_status") == "trusted_real"
+    if auto_approved and not trusted_provider:
+        status = "manual_review"
+        auto_approved = False
+        rejected_reason = None
+        update_fields["manual_review_required"] = 1
+        update_fields["manual_review_reason"] = "trusted_real_provider_required"
+
+    # Уровень 3 — полноценный водитель — только при auto_approve + trusted provider.
+    if auto_approved and trusted_provider:
         update_fields["verification_level"] = 3
         update_fields["role"] = "driver"
     reg_dal.update_driver(driver_id, update_fields)

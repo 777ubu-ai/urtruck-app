@@ -557,6 +557,9 @@ def admin_reject(driver_id: str, reason: str = "Не прошёл проверк
         "status": "rejected",
         "manual_review_required": 0,
         "rejected_reason": reason,
+        "verification_level": 2,
+        "role": "client",
+        "approved_at": None,
     })
     # Блок 6 аудита (P1-8): см. комментарий в admin_approve выше.
     try:

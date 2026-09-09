@@ -16,6 +16,7 @@ def _migrate(c):
         ("manual_review_required", "INTEGER DEFAULT 0"),
         ("manual_review_reason", "TEXT"),
         ("verification_level", "INTEGER DEFAULT 0"),
+        ("verification_provider_status", "TEXT DEFAULT 'unavailable'"),
         ("role", "TEXT DEFAULT 'guest'"),
         ("is_demo", "INTEGER DEFAULT 0"),
         ("city", "TEXT"),

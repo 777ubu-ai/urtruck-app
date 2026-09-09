@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS drivers_registration (
   face_verified INTEGER DEFAULT 0,
   face_quality REAL,
   face_match_score REAL,
+  verification_provider_status TEXT DEFAULT 'unavailable',
 
   -- Документы (этап 3)
   license_url TEXT,

@@ -44,7 +44,10 @@ def require_level(min_level: int):
     def dependency(authorization: str = Header(None)) -> dict:
         driver = _extract_driver(authorization)
         current = driver.get("verification_level", 0) or 0
-        if current < min_level and not BETA_MODE:
+        # Level 3 is a conjunctive invariant: a stale numeric level must not
+        # survive an explicit rejection.
+        level3_rejected = min_level >= 3 and driver.get("status") != "approved"
+        if (current < min_level or level3_rejected) and not BETA_MODE:
             # 403 с payload который фронт использует для показа VerificationGate
             raise HTTPException(
                 status_code=403,
