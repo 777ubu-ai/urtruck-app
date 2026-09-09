@@ -257,7 +257,9 @@ def run_full_lifecycle(run_label):
     delivered_res = client.patch(f"/api/v1/market/deals/{deal_id}/status", params={"new_status": "delivered"})
     assert delivered_res.status_code == 200, delivered_res.text
     shipper_notifs_after_delivered = get_notifications(shipper)
-    delivered_notif = [n for n in shipper_notifs_after_delivered if n["type"] == "deal_status" and "Доставлен" in (n["title"] or "")]
+    # Push-closure track: title localized via push_i18n ("✅ Груз доставлен" —
+    # lowercase mid-word, was "✅ Доставлен — ...").
+    delivered_notif = [n for n in shipper_notifs_after_delivered if n["type"] == "deal_status" and "доставлен" in (n["title"] or "").lower()]
     assert delivered_notif, "shipper must be notified when marked delivered"
 
     # ── 10. Shipper confirms received -> driver notified (final) ────────

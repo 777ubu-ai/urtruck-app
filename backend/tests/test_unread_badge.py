@@ -176,7 +176,7 @@ def test_inv6_only_chat_kind_sets_badge():
 
     def fake_native(uid, title, body, data, badge=None):
         captured["badge"] = badge
-        return 0
+        return 0, 0  # (sent, total_devices) — push-closure track signature
 
     orig_web, orig_native = push_sender._send_web, push_sender._send_native
     push_sender._send_web, push_sender._send_native = fake_web, fake_native

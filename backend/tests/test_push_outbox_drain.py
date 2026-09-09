@@ -249,7 +249,7 @@ def test_11_immediate_success_prevents_worker_duplicate(monkeypatch):
 
     def fake_send_native(user_id, title, body, data, badge=None):
         calls["native"] += 1
-        return 1  # one device successfully reached
+        return 1, 1  # (sent, total_devices) — push-closure track signature
 
     monkeypatch.setattr(push_sender, "_send_web", lambda *a, **k: 0)
     monkeypatch.setattr(push_sender, "_send_native", fake_send_native)
