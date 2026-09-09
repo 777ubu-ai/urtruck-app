@@ -91,6 +91,21 @@ def _send_booking_change_push(booking: dict, parsed: dict | None,
         send_to_user(booking["urtruck_user_id"], title, body,
                      url="/queue", kind="queue",
                      data={"booking_id": booking["id"], "status": parsed_code or new_status})
+        # Push-recovery track, Phase 4 (event-matrix audit finding): CGR
+        # events were push-only, never reaching the in-app Bell/notifications
+        # table. Only the 3 significant lifecycle events (called/crossed/
+        # revoked) get a Bell entry — position_changed / generic status
+        # updates are exactly the "high-frequency telemetry" this track was
+        # told NOT to add to Bell history (queue position can shift several
+        # times while a driver waits; called/crossed/revoked each happen at
+        # most once per booking).
+        if status_kind in ("queue_called", "queue_crossed", "queue_revoked"):
+            try:
+                from api.notifications import create_notification
+                create_notification(booking["urtruck_user_id"], status_kind, title, body, "🛂",
+                                    url="/queue", event_key=f"{status_kind}:{booking['id']}")
+            except Exception:
+                pass
         cgr_dal.log_push_sent(booking["id"], push_kind)
         return True
     except Exception:

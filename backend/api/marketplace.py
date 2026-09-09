@@ -2638,6 +2638,40 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
             (bid_id,),
         )
         _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "counter_cancelled", None)
+
+    # Push-recovery track, Phase 4 (event-matrix audit finding): this
+    # endpoint used to have NO push and NO in-app notification at all — the
+    # bidder's counter-offer silently disappeared from under them (bid
+    # reverts to 'pending', so they may now want to act on the ORIGINAL
+    # price) with zero signal. Mirrors decline_counter()'s notify pattern
+    # just above, symmetrically to the bidder instead of the owner. The
+    # surrounding `if bid["status"] != "countered": raise 409` guard already
+    # makes this endpoint itself idempotent against a literal duplicate
+    # call, so no separate event_key is needed here (matches decline_counter).
+    try:
+        with get_conn() as c2:
+            _cur = _bid_currency(c2, bid)
+        if bid.get("cargo_id"):
+            _cc_url = f"/cargos/{bid['cargo_id']}?bid={bid_id}"
+        elif bid.get("trip_id"):
+            _cc_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
+        else:
+            _cc_url = "/"
+        try:
+            send_to_user(bid["bidder_id"], "↩️ Встречная цена отменена",
+                         f"Владелец отменил встречную цену. Ваша ставка {_money(bid['amount'], _cur)} снова активна.",
+                         url=_cc_url)
+        except Exception:
+            pass
+        try:
+            from api.notifications import create_notification
+            create_notification(bid["bidder_id"], "bid", "↩️ Встречная цена отменена",
+                                f"Ставка {_money(bid['amount'], _cur)} снова в статусе pending", "↩️", url=_cc_url)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
     return {"ok": True, "bid_id": bid_id, "status": "pending"}
 
 
@@ -3192,6 +3226,76 @@ def _tracking_notify(user_id: str, title: str, body: str, deal_id: str, kind: st
         pass
 
 
+# Push-recovery track, Phase 4 (event-matrix audit finding): trip.gps_lost /
+# trip.gps_restored were declared as event-type constants
+# (services/push_gateway.py CRITICAL_EVENTS/PUSH_EVENT_CATALOG) but no
+# producer anywhere ever emitted them. Built here on top of REAL,
+# already-maintained data — deal_tracking.last_signal_at, updated by every
+# genuine location ping from update_deal_location() below, not invented
+# telemetry — plus deal_tracking_events as the existing append-only audit
+# table, reused as the "was this deal already flagged lost" marker so a
+# scheduler tick never has to keep any of its own in-memory state.
+#
+# 20 minutes is a placeholder default, not an empirically-tuned product
+# value — Codex/product should confirm it against the actual background
+# location ping interval documented in
+# docs/release/google-play-background-location.md before relying on it for
+# a real driver-facing SLA.
+GPS_LOST_THRESHOLD_MINUTES = 20
+
+
+def _latest_gps_signal_marker(c, deal_id: str) -> Optional[str]:
+    row = c.execute(
+        "SELECT event_type FROM deal_tracking_events WHERE deal_id=? AND event_type IN ('gps_lost','gps_restored') "
+        "ORDER BY id DESC LIMIT 1",
+        (deal_id,),
+    ).fetchone()
+    return row["event_type"] if row else None
+
+
+def check_gps_heartbeats_job() -> dict:
+    """Scan active-tracking deals for a stale last_signal_at and fire exactly
+    ONE gps_lost per stale episode (never re-fires while still stale — see
+    _latest_gps_signal_marker guard). Intended to be called periodically by
+    the scheduler (scheduler/jobs.py), not per-request."""
+    fired = 0
+    with get_conn() as c:
+        stale = c.execute(
+            """
+            SELECT dt.deal_id, d.shipper_id
+            FROM deal_tracking dt
+            JOIN deals d ON d.id = dt.deal_id
+            WHERE dt.status = 'active'
+              AND d.status IN ('in_progress', 'at_border')
+              AND dt.last_signal_at IS NOT NULL
+              AND dt.last_signal_at <= datetime(CURRENT_TIMESTAMP, ?)
+            """,
+            (f"-{GPS_LOST_THRESHOLD_MINUTES} minutes",),
+        ).fetchall()
+        to_notify = []
+        for row in stale:
+            deal_id = row["deal_id"]
+            if _latest_gps_signal_marker(c, deal_id) == "gps_lost":
+                continue  # already flagged, still stale — no spam
+            c.execute(
+                "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'gps_lost', NULL)",
+                (deal_id,),
+            )
+            to_notify.append((deal_id, row["shipper_id"]))
+        c.commit()
+    for deal_id, shipper_id in to_notify:
+        if not shipper_id:
+            continue
+        _tracking_notify(
+            shipper_id,
+            "⚠️ Пропал сигнал GPS",
+            "Машина не передаёт местоположение уже некоторое время. Проверьте связь с водителем.",
+            deal_id, "gps_lost",
+        )
+        fired += 1
+    return {"checked": len(stale), "fired": fired}
+
+
 class TrackingDecisionIn(BaseModel):
     decision: str
 
@@ -3365,6 +3469,13 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
         tracking = _tracking_payload(c, deal_id)
         if tracking.get("status") != "active":
             raise HTTPException(status_code=409, detail="GPS не разрешён водителем для этой сделки")
+        # Push-recovery track, Phase 4: capture the "was this deal currently
+        # flagged gps_lost" state BEFORE this fresh ping overwrites
+        # last_signal_at — this is the exact, and only, moment a
+        # healthy->stale->healthy transition is observable, so it is where
+        # gps_restored must fire (once, not per subsequent ping — see the
+        # marker guard below).
+        was_lost = _latest_gps_signal_marker(c, deal_id) == "gps_lost"
         c.execute(
             "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, updated_at) "
             "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP) "
@@ -3375,6 +3486,21 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
         c.execute(
             "UPDATE deal_tracking SET last_signal_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE deal_id=?",
             (deal_id,),
+        )
+        shipper_id = None
+        if was_lost:
+            c.execute(
+                "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'gps_restored', ?)",
+                (deal_id, user["id"]),
+            )
+            row = c.execute("SELECT shipper_id FROM deals WHERE id=?", (deal_id,)).fetchone()
+            shipper_id = row["shipper_id"] if row else None
+    if was_lost and shipper_id:
+        _tracking_notify(
+            shipper_id,
+            "✅ Сигнал GPS восстановлен",
+            "Машина снова передаёт местоположение.",
+            deal_id, "gps_restored",
         )
     return {"ok": True}
 
