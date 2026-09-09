@@ -34,6 +34,12 @@ def test_bid_accepted_and_deal_created_keep_canonical_order_card_links():
     assert 'deal_url = f"/trips/{bid[\'trip_id\']}"' in MARKET or 'deal_url = f"/trips/{bid["trip_id"]}"' in MARKET
 
 
+def test_counter_cancellation_reaches_bidder_via_push_and_bell():
+    assert 'kind="bid_counter_cancelled"' in MARKET
+    assert 'data={"bid_id": bid_id, "event": f"bid.counter_cancelled:{bid_id}"}' in MARKET
+    assert 'create_notification(bid["bidder_id"], "bid_countered"' in MARKET
+
+
 def test_chat_message_push_payload_keeps_room_sender_recipient_context():
     assert 'kind="chat"' in CHAT
     assert '"type": "chat_message"' in CHAT

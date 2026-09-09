@@ -2638,6 +2638,26 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
             (bid_id,),
         )
         _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "counter_cancelled", None)
+
+    # Counter cancellation changes the bidder's actionable state back to
+    # pending. Keep the durable Bell record and push in parity with the other
+    # bid transitions; the old endpoint changed only the database row.
+    try:
+        if bid.get("cargo_id"):
+            counter_url = f"/cargos/{bid['cargo_id']}?bid={bid_id}"
+        elif bid.get("trip_id"):
+            counter_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
+        else:
+            counter_url = "/"
+        title = "↩️ Контр-оффер отменён"
+        body = "Встречная цена отменена, исходная ставка снова доступна"
+        send_to_user(bid["bidder_id"], title, body, url=counter_url,
+                     kind="bid_counter_cancelled",
+                     data={"bid_id": bid_id, "event": f"bid.counter_cancelled:{bid_id}"})
+        from api.notifications import create_notification
+        create_notification(bid["bidder_id"], "bid_countered", title, body, "↩️", url=counter_url)
+    except Exception:
+        pass
     return {"ok": True, "bid_id": bid_id, "status": "pending"}
 
 
