@@ -85,18 +85,22 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   assert.doesNotMatch(workspace, /open_route_btn|Открыть маршрут|navigation\.navigate\('TrackTruck'/);
 });
 
-test('deal workspace uses bright header action buttons instead of large map/status cards', () => {
+test('deal workspace uses canonical header action buttons instead of large map/status cards', () => {
   assert.match(workspace, /testID="deal-header-map"/);
   assert.match(workspace, /testID="deal-status-open"/);
+  // Design v1 Commit 4: chrome canon — 44dp targets, surface bg, hairline
+  // border token, textSecondary icon (the 32dp #F7F7F7/#202020 fork is gone).
   assert.match(workspace, /headerIconBtn: \{/);
-  assert.match(workspace, /backgroundColor: '#F7F7F7'/);
-  assert.match(workspace, /borderWidth: 1\.5/);
-  assert.match(workspace, /borderColor: '#202020'/);
-  assert.match(workspace, /<Feather name="map" size=\{17\} color="#111827"/);
-  assert.match(workspace, /<Feather name=\{statusActionIcon\} size=\{17\} color="#111827"/);
-  assert.match(workspace, /width: 32/);
-  assert.match(workspace, /borderRadius: 16/);
-  assert.match(workspace, /routeTitle: \{ flex: 1, fontSize: 14\.5/);
+  assert.match(workspace, /width: 44/);
+  assert.match(workspace, /borderRadius: 22/);
+  assert.match(workspace, /borderWidth: StyleSheet\.hairlineWidth/);
+  assert.match(workspace, /backgroundColor: colors\.surface, borderColor: colors\.border/);
+  assert.match(workspace, /<Feather name="map" size=\{17\} color=\{colors\.textMuted\}/);
+  assert.match(workspace, /<Feather name=\{statusActionIcon\} size=\{17\} color=\{colors\.textMuted\}/);
+  // Compact header canon: route 16/900 + «Сделка №… · price» second line.
+  assert.match(workspace, /routeTitle: \{ flex: 1, fontSize: 16, fontWeight: '900'/);
+  assert.match(workspace, /dealNoLine: \{ fontSize: 12, fontWeight: '600'/);
+  assert.match(workspace, /\$\{t\('deal_no'\)\} \$\{dealNumber\}/);
   assert.doesNotMatch(workspace, /style=\{s\.statusPill\}/);
   assert.doesNotMatch(workspace, /testID="deal-top-quick-actions"/);
   assert.doesNotMatch(workspace, /testID="deal-map-card-open"/);

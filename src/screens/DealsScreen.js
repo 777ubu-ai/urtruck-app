@@ -42,6 +42,9 @@ const TEXT_SECONDARY = '#526057';
 const TEXT_MUTED = '#758078';
 const TEXT_DIM = '#98A19B';
 const WAITING = "#617067";
+// Design v1 Commit 4: at_border rides the approved at-border role colour
+// (LIGHT statusAtBorder — same hue family the timeline uses).
+const AT_BORDER = "#B45800";
 const INFO = "#3478D4";
 const ARCHIVE = "#7C8B82";
 const CANCELLED = "#A45A5A";
@@ -154,8 +157,15 @@ const parseServerDate = (raw) => {
 const dealStatus = (status, t) => {
   if (status === "accepted")
     return { label: t("status_accepted"), color: ACCENT };
-  if (status === "in_progress" || status === "at_border") {
+  if (status === "in_progress") {
     return { label: t("status_in_progress"), color: ACCENT };
+  }
+  // Design v1 Commit 4: the list used to collapse at_border into the
+  // in_progress label («В работе»). at_border has its own dedicated key
+  // (deal_status_at_border, present in RU/KK/ZH/EN) and the at-border
+  // role colour.
+  if (status === "at_border") {
+    return { label: t("deal_status_at_border"), color: AT_BORDER };
   }
   if (status === "awaiting_confirmation" || status === "delivered") {
     return { label: t("status_awaiting_receipt"), color: INFO };
@@ -231,6 +241,7 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
 function CompactDealCard({
   routeLabel,
   price,
+  priceMeta,
   statusLabel,
   statusColor,
   time,
@@ -247,6 +258,7 @@ function CompactDealCard({
       style={styles.card}
       route={routeLabel}
       price={price}
+      priceMeta={priceMeta}
       status={{ key: 'deal', label: statusLabel, color: statusColor }}
       counterparty={meta}
       rightMeta={time}
@@ -637,6 +649,7 @@ export default function DealsScreen({ navigation, route }) {
           testID="deals-deal-card"
           routeLabel={routeFor(data, 'deal')}
           price={priceText(data.amount, data.currency || 'USD')}
+          priceMeta={data.id ? `${t('deal_no')} ${data.id}` : null}
           statusLabel={statusLabel}
           statusColor={statusColor}
           time={relTime(data.last_message_at || data.updated_at || data.created_at)}

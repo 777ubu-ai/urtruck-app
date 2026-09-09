@@ -46,19 +46,24 @@ test('deal header uses map and status buttons, not the old call button', () => {
   assert.doesNotMatch(workspace, /testID="deal-header-call"/);
   assert.doesNotMatch(workspace, /testID="deal-map-card-open"/);
   assert.doesNotMatch(workspace, /testID="deal-status-compact-open"/);
+  // Design v1 Commit 4: canonical chrome — 44dp, surface bg, hairline
+  // border token (replaces the 32dp #F7F7F7/#202020 hardcoded fork).
   assert.match(workspace, /headerIconBtn: \{/);
-  assert.match(workspace, /backgroundColor: '#F7F7F7'/);
-  assert.match(workspace, /width: 32/);
-  assert.match(workspace, /borderRadius: 16/);
-  assert.match(workspace, /borderColor: '#202020'/);
+  assert.match(workspace, /width: 44/);
+  assert.match(workspace, /borderRadius: 22/);
+  assert.match(workspace, /backgroundColor: colors\.surface, borderColor: colors\.border/);
   assert.match(workspace, /statusActionIcon/);
 });
 
 test('status history opens from the status card and keeps the next status action at the bottom', () => {
   assert.match(workspace, /onPress=\{\(\) => setStatusModalOpen\(true\)\}/);
   assert.match(workspace, /<DealStatusTimeline events=\{timeline\} fallbackStatus=\{statusLabel\}/);
-  assert.match(workspace, /statusNextBtn/);
+  // Design v1 Commit 4: the next-action CTA is the canonical Button primary
+  // (dealActionResolver labels/transitions untouched, testID contract kept).
+  assert.match(workspace, /<Button/);
   assert.match(workspace, /testID=\{nextActionTestId \|\| 'deal-status-next-action'\}/);
+  assert.match(workspace, /disabled=\{nextAction\.disabled \|\| statusLoading \|\| trackingLoading\}/);
+  assert.doesNotMatch(workspace, /statusNextBtn/);
   assert.match(timeline, /const sortedEvents = \[\.\.\.events\]\.sort/);
   assert.match(timeline, /return eventTime\(b\) - eventTime\(a\)/);
   assert.match(timeline, /currentCard/);

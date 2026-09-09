@@ -26,6 +26,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import TruckMap from '../components/TruckMap';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
+import Button from '../components/ui/v1/Button';
 import { chatAPI, documentKindFromFile } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { parseRouteCities } from '../utils/geo';
@@ -1201,6 +1202,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const cargo = context.cargo || {};
   const trip = context.trip || {};
   const routeLabel = `${localizePlace(from, language)} → ${localizePlace(to, language)}`;
+  // «Сделка №…» — бэкенд отдаёт реальный числовой id сделки (getDeal/
+  // my_dashboard), он же пробрасывается через params.dealId. Рендерим только
+  // реальный id — ничего не выдумываем.
+  const dealNumber = deal?.id || dealId;
+  const dealPrice = deal?.amount != null
+    ? formatPrice(deal.amount, deal.currency || cargo?.currency || trip?.currency || 'USD', t)
+    : null;
+  const dealNoLine = [
+    dealNumber ? `${t('deal_no')} ${dealNumber}` : null,
+    dealPrice,
+  ].filter(Boolean).join(' · ');
   const visibleDealStatus = userFacingDealStatus(deal?.status || 'accepted');
   const statusLabel = visibleDealStatus === 'delivered' ? ui.awaitingReceiptStatus : formatStatus(visibleDealStatus);
   const statusActionIcon =
@@ -1217,7 +1229,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     localizeCargoName(rawCargoName, lang) || rawCargoName,
     formatWeight(text(deal?.weight_tons, cargo?.weight_tons), lang),
     rawTruckType ? formatTruckType(rawTruckType) : null,
-    deal?.amount != null ? formatPrice(deal.amount, deal.currency || cargo?.currency || trip?.currency || 'USD', t) : null,
   ].filter(Boolean).join(' · ');
 
   const pickup = text(deal?.pickup_date, deal?.departure, cargo?.pickup_date, trip?.departure);
@@ -1331,19 +1342,19 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       <View style={s.headerActions}>
         <TouchableOpacity
           onPress={openMap}
-          style={s.headerIconBtn}
+          style={[s.headerIconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
           testID="deal-header-map"
           accessibilityLabel={t('deal_map_card_title')}
         >
-          <Feather name="map" size={17} color="#111827" />
+          <Feather name="map" size={17} color={colors.textMuted} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setStatusModalOpen(true)}
-          style={s.headerIconBtn}
+          style={[s.headerIconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
           testID="deal-status-open"
           accessibilityLabel={ui.statuses}
         >
-          <Feather name={statusActionIcon} size={17} color="#111827" />
+          <Feather name={statusActionIcon} size={17} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
     </View>
@@ -1642,15 +1653,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 contentContainerStyle={{ paddingBottom: 12 }}
               />
               {nextAction ? (
-                <TouchableOpacity
-                  style={[s.statusNextBtn, { opacity: nextAction.disabled || statusLoading || trackingLoading ? 0.6 : 1 }]}
+                <Button
+                  title={statusLoading || trackingLoading ? '…' : nextAction.label}
+                  icon={nextAction.icon}
                   onPress={runNextAction}
                   disabled={nextAction.disabled || statusLoading || trackingLoading}
                   testID={nextActionTestId || 'deal-status-next-action'}
-                >
-                  <Feather name={nextAction.icon} size={17} color="#FFFFFF" />
-                  <Text style={s.statusNextText}>{statusLoading || trackingLoading ? '…' : nextAction.label}</Text>
-                </TouchableOpacity>
+                  fullWidth
+                  style={{ marginBottom: 8 }}
+                />
               ) : null}
               {deal?.status === 'accepted' ? (
                 <TouchableOpacity style={s.cancelLink} onPress={cancelDeal} testID="deal-cancel-link"><Text style={s.cancelLinkText}>{ui.cancelDeal}</Text></TouchableOpacity>
@@ -1681,18 +1692,22 @@ const s = StyleSheet.create({
   backButton: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center', marginTop: 3 },
   headerText: { flex: 1, minWidth: 0, paddingRight: 6 },
   headerActions: { flexDirection: 'row', gap: 5, marginTop: 3 },
+  // Design v1 Commit 4: canonical chrome — 44dp target, surface bg,
+  // hairline border, textSecondary icon (third style, replaces the
+  // 32dp #F7F7F7/#202020 hardcoded fork).
   headerIconBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F7F7F7',
-    borderWidth: 1.5,
-    borderColor: '#202020',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   routeHeaderRow: { flexDirection: 'row', alignItems: 'center', minHeight: 25 },
-  routeTitle: { flex: 1, fontSize: 14.5, fontWeight: '900', letterSpacing: -0.05 },
+  // Design v1 Commit 4: compact header canon — route 16/900, second line
+  // «Сделка №… · price» 12/600.
+  routeTitle: { flex: 1, fontSize: 16, fontWeight: '900', letterSpacing: -0.05 },
+  dealNoLine: { fontSize: 12, fontWeight: '600', marginTop: 1 },
   metaPrimary: { fontSize: 11.7, fontWeight: '800', marginTop: 1 },
   metaSecondary: { fontSize: 10.8, fontWeight: '650', marginTop: 2 },
   partnerText: { fontSize: 10.8, fontWeight: '650', marginTop: 2 },
@@ -1807,8 +1822,6 @@ const s = StyleSheet.create({
 
   statusModalCard: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 14, paddingTop: 14 },
   statusModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  statusNextBtn: { minHeight: 50, borderRadius: 16, backgroundColor: '#168759', marginHorizontal: 2, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  statusNextText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
   cancelLink: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, marginTop: 4, marginBottom: 8 },
   cancelLinkText: { color: '#EF4444', fontSize: 12.5, fontWeight: '750' },
 });
