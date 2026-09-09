@@ -47,7 +47,8 @@
     "qa:role-locale": "node qa/utils/roleLocaleMatrixProbe.mjs",
     "test:unit": "node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/*.mjs tests/unit/*.mjs",
     "qa:report-gate": "node scripts/check_qa_report_gate.js",
-    "release:check-config": "node scripts/check-production-config.mjs"
+    "release:check-config": "node scripts/check-production-config.mjs",
+    "lint": "node scripts/lint-source.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",

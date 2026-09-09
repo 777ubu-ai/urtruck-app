@@ -1,16 +1,28 @@
 """Regression tests for the production-release security gates."""
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import pytest
 
 from api.admin import check_admin
 from api.metrics import metrics_router
 from services import file_signing
 from services import env_check
 from services import storage_service
+from api import persistent_rate_limit
 from services.qa_token_guard import (
     COMPROMISED_QA_AGENT_TOKEN_SHA256,
     is_compromised_qa_agent_token,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_admin_rate_limit_state():
+    # The limiter is intentionally persistent in production. Tests must clear
+    # only its sidecar state between cases so anonymous requests retain the
+    # real 401 contract instead of inheriting a prior test's 429.
+    persistent_rate_limit.reset_all()
+    yield
+    persistent_rate_limit.reset_all()
 
 
 def test_file_signing_never_uses_empty_or_api_secret(monkeypatch):

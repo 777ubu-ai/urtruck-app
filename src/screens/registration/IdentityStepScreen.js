@@ -102,6 +102,7 @@ export default function IdentityStepScreen({ navigation }) {
     const payload = {};
     if (fullName) payload.full_name = fullName;
     if (birthDate.trim()) payload.birth_date = birthDate.trim();
+    if (iin.trim()) payload.iin = iin.trim();
     if (!Object.keys(payload).length) return;
     const res = await regAPI.saveDriverDraft(payload);
     if (!res.ok) throw new Error('save_failed');

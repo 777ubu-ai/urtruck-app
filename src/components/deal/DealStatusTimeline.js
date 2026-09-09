@@ -24,6 +24,7 @@ const ICON_BY_EVENT = {
   at_border: 'map-pin',
   border_crossed: 'check-square',
   delivered: 'package',
+  received: 'check-square',
   completed: 'flag',
   cancelled: 'x-circle',
   rejected: 'x-circle',
