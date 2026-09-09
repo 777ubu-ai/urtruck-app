@@ -242,7 +242,7 @@ const newClientId = (prefix = 'c') => `${prefix}_${Date.now().toString(36)}_${Ma
 const yandexMapsLink = (lat, lng) => `https://yandex.ru/maps/?pt=${lng},${lat}&z=16&l=map`;
 
 export default function DealWorkspaceScreenV2({ navigation, route }) {
-  const { t, lang } = useI18n();
+  const { t, lang, sp } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const colors = useV1Colors();
   const { isDark } = useTheme();
@@ -1095,7 +1095,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     const datePill = (index === 0 || dayKeyOf(messages[index - 1]) !== dayKeyOf(item)) ? (
       <View style={s.datePillRow} testID="deal-chat-date-separator">
         <View style={[s.datePill, { backgroundColor: colors.surfaceMuted }]} pointerEvents="none">
-          <Text style={[s.datePillText, { color: colors.textMuted }]}>{formatDayLabel(item, { t, lang })}</Text>
+          <Text style={[s.datePillText, { color: colors.textMuted, fontSize: sp(11) }]}>{formatDayLabel(item, { t, lang })}</Text>
         </View>
       </View>
     ) : null;
@@ -1141,7 +1141,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 </TouchableOpacity>
               ) : item.docUrl ? <Feather name="chevron-right" size={16} color={onBubbleMuted} /> : null}
             </TouchableOpacity>
-            <Text style={[s.messageTime, { color: colors.textMuted, textAlign: item.mine ? 'right' : 'left' }]}>{item.time}</Text>
+            <Text style={[s.messageTime, { color: colors.textMuted, textAlign: item.mine ? 'right' : 'left', fontSize: sp(11) }]}>{item.time}</Text>
           </View>
         </React.Fragment>
       );
@@ -1210,7 +1210,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 ) : null}
               </>
             ) : null}
-            <Text style={[s.messageTime, { color: item.mine ? withAlpha(bubbleMineColors.textColor, 0.62) : colors.textMuted }]}>{item.time}</Text>
+            <Text style={[s.messageTime, { color: item.mine ? withAlpha(bubbleMineColors.textColor, 0.62) : colors.textMuted, fontSize: sp(11) }]}>{item.time}</Text>
           </View>
           {item.sendStatus === 'failed' && !item.voice ? (
             <TouchableOpacity

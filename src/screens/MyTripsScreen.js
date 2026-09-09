@@ -11,8 +11,7 @@ import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import { localizePlace, localizeCargoName } from '../utils/places';
 import EmptyState from '../components/ui/EmptyState';
 import EditCargoModal from '../components/EditCargoModal';
-import { spacing, radius, typography } from '../theme/theme';
-import {v1Colors, useV1Colors, v1AccentFor, v1StatusColors} from '../theme/designV1';
+import {v1Colors, useV1Colors, v1AccentFor, v1StatusColors, v1Spacing, v1Typography} from '../theme/designV1';
 import { useMountedRef } from '../hooks/useMountedRef';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import FadeInUp from '../components/ui/FadeInUp';
@@ -92,19 +91,19 @@ export default function MyTripsScreen({ navigation, route }) {
   cardSpacing: { marginBottom: 8 },
   // Дизайн 2026 v3: плашка «N предложений» — outline вместо заливки,
   // компактнее (меньше 32px), шрифт 12. Не «кричит».
-  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: v1.clientAccent || v1.warning, backgroundColor: 'transparent' },
+  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: v1Spacing.sm, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: v1.clientAccent || v1.warning, backgroundColor: 'transparent' },
   offersCtaText: { color: v1.warning, fontSize: 12, fontWeight: '700', flex: 1 },
   offersCtaArrow: { color: v1.warning, fontSize: 14, fontWeight: '700' },
 
   // 27.07: кнопки действий сделки вылезали за карточку. Делаем их гибкими
   // (flexGrow/Shrink + minWidth) — в ряду с flexWrap они заполняют ширину и
   // аккуратно переносятся на след. строку, не вылезая за края.
-  acceptBtn: { backgroundColor: '#168759', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130, maxWidth: '100%' },
-  acceptBtnText: { color: '#FFF', ...typography.title, flexShrink: 1, textAlign: 'center' },
+  acceptBtn: { backgroundColor: '#168759', borderRadius: 10, paddingVertical: v1Spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130, maxWidth: '100%' },
+  acceptBtnText: { color: '#FFF', ...v1Typography.button, lineHeight: 20, flexShrink: 1, textAlign: 'center' },
   // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
-  miniBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, maxWidth: '100%', backgroundColor: 'rgba(148,163,184,0.14)' },
+  miniBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, maxWidth: '100%', backgroundColor: 'rgba(148,163,184,0.14)' },
   miniBtnText: { fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
-  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
+  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: v1Spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
   editBtnText: { color: '#168759', fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
   extendBtn: { flex: 1, backgroundColor: '#168759', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
   extendBtnText: { color: '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
@@ -450,7 +449,7 @@ export default function MyTripsScreen({ navigation, route }) {
             ОДНИМ ТАПОМ (дата = сегодня, снова живёт 3 дня и в ленте). Рядом —
             «Изменить дату», если нужна конкретная дата. */}
         {item._expired && (
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: v1Spacing.sm }}>
             <TouchableOpacity
               testID="extend-oneclick-btn"
               style={[s.extendBtn, extending === item.id && { opacity: 0.6 }]}
@@ -564,7 +563,7 @@ export default function MyTripsScreen({ navigation, route }) {
         badge={{ label: isCargo ? t('badge_cargo') : t('badge_trip'), kind: isCargo ? 'cargo' : 'trip' }}
         status={{ key: 'unpublished', label: formatStatus(item.status || 'unpublished'), color: v1.textDim }}
       >
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: v1Spacing.sm }}>
           <TouchableOpacity
             testID="republish-btn"
             style={[s.acceptBtn, { backgroundColor: accent, flex: 1 }]}

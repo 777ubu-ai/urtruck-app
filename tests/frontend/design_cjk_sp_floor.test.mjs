@@ -10,8 +10,11 @@ import { readFileSync } from 'node:fs';
 
 const useI18n = readFileSync('src/utils/useI18n.js', 'utf8');
 const bottomNav = readFileSync('src/components/ui/v1/BottomNav.js', 'utf8');
-const chat = readFileSync('src/screens/ChatScreen.js', 'utf8');
-const voiceBubble = readFileSync('src/components/chat/VoiceMessageBubble.js', 'utf8');
+// Commit 8: the legacy ChatScreen.js and components/chat/VoiceMessageBubble.js
+// were deleted as dead code. The live chat chrome is DealWorkspaceScreenV2
+// (timestamps/date pills) and components/VoiceMessageBubble.js (voice rows).
+const chat = readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
+const voiceBubble = readFileSync('src/components/VoiceMessageBubble.js', 'utf8');
 const queue = readFileSync('src/screens/QueueScreenLazyV2.js', 'utf8');
 const deals = readFileSync('src/screens/DealsScreen.js', 'utf8');
 
@@ -25,16 +28,20 @@ test('BottomNav tab label goes through sp()', () => {
   assert.match(bottomNav, /fontSize: sp\(11\)/);
 });
 
-test('Chat timestamps and voice chrome go through sp()', () => {
-  assert.match(chat, /msgTime: \{[^}]*fontSize: sp\(11\)/);
-  assert.match(chat, /msgStatus: \{ fontSize: sp\(10\.5\)/);
-  assert.match(chat, /voiceTime: \{ fontSize: sp\(11\)/);
-  assert.match(chat, /fontSize: sp\(11\), color: statusColor/);
+test('Chat timestamps and date pills go through sp()', () => {
+  // Live chat chrome (DealWorkspaceScreenV2): message time rows (both the
+  // incoming and the on-bubble outgoing variants) and the date-separator pill.
+  assert.match(chat, /s\.datePillText, \{ color: colors\.textMuted, fontSize: sp\(11\) \}/);
+  assert.ok(
+    (chat.match(/s\.messageTime, \{[^}]*fontSize: sp\(11\)/g) || []).length >= 2,
+    'both messageTime call sites (incoming + on outgoing bubble) use sp(11)',
+  );
 });
 
-test('VoiceMessageBubble duration/rate rows go through sp()', () => {
-  assert.match(voiceBubble, /s\.duration, \{ color: foreground, fontSize: sp\(11\) \}/);
-  assert.match(voiceBubble, /s\.rateText, \{ color: foreground, fontSize: sp\(11\) \}/);
+test('VoiceMessageBubble duration/rate/transcript rows go through sp()', () => {
+  assert.match(voiceBubble, /s\.time, \{ color: timeColor, fontSize: sp\(12\) \}/);
+  assert.match(voiceBubble, /s\.rateText, \{ color: rateColor, fontSize: sp\(12\) \}/);
+  assert.match(voiceBubble, /s\.transcriptLabel, \{ color: baseMuted, fontSize: sp\(11\) \}/);
 });
 
 test('Queue micro labels (≤10.5) go through sp()', () => {

@@ -18,7 +18,9 @@ const FRAME_COMPONENTS = [
   'Screen.js', 'BottomNav.js', 'BottomSheet.js',
   'BrandHeader.js', 'BrandBarWithShare.js',
   'FilterChips.js', 'SearchBar.js',
-  'FeedCard.js', 'GlassCard.js',
+  // Commit 8: FeedCard.js deleted (0 importers). MarketplaceCard.js is the
+  // live canonical card family and takes its slot in the frame check.
+  'MarketplaceCard.js', 'GlassCard.js',
   'Field.js', 'Textarea.js',
   'OutlineButton.js', 'Checkbox.js',
   'RoleTabs.js', 'SegmentTabs.js',

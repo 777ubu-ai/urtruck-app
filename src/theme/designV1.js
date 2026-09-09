@@ -60,11 +60,6 @@ const typographyFor = (c) => ({
 export const v1Typography = typographyFor(LIGHT);
 export const useV1Typography = () => typographyFor(useV1Colors());
 
-export const v1Shadow = {
-  glowEmerald: { shadowColor: v1Colors.driver, shadowOpacity: 0.45, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
-  glowOrange:  { shadowColor: v1Colors.cargoOwner, shadowOpacity: 0.45, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
-};
-
 export const v1AccentFor = (role) =>
   role === 'driver'
     ? { main: v1Colors.driver, deep: v1Colors.driverDeep, glow: v1Colors.driverGlow, soft: v1Colors.driverSoft, onAccent: v1Colors.driverOnAccent }

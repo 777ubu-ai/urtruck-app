@@ -12,7 +12,6 @@ import { marketAPI } from '../../../utils/marketAPI';
 import { subscribeChatRead } from '../../../utils/unreadEvents';
 import { useUnreadNotifications } from '../../../utils/useUnreadNotifications';
 import { computeDealsUnread } from '../../../utils/dealsUnread';
-import { colors as v2 } from '../../../theme/designSystemV2';
 
 const UNREAD_POLL_MS = 12000;
 
@@ -57,7 +56,10 @@ export default function BottomNav({ state, navigation }) {
   const role = session?.user?.role || state.routes[0]?.params?.role || 'client';
   const isDriver = role === 'driver';
   const accent = ROLE_ACCENT[role] || ROLE_ACCENT.client;
-  const inactiveColor = v2.textSecondary;
+  // Theme-aware inactive label: light resolves to the same #617067 the old
+  // frozen designSystemV2 token carried; dark now resolves to the dark
+  // textMuted instead of staying frozen light.
+  const inactiveColor = colors.textMuted;
 
   const [chatUnread, setChatUnread] = useState(0);
   const [dealsUnread, setDealsUnread] = useState(0);

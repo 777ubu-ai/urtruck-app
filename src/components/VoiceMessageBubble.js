@@ -16,6 +16,7 @@ import { View, Text, TouchableOpacity, Pressable, StyleSheet, ActivityIndicator 
 import { Feather } from '@expo/vector-icons';
 import { voice } from '../utils/voiceRecorder';
 import { useTheme } from '../utils/ThemeContext';
+import { useI18n } from '../utils/useI18n';
 import { useV1Colors, getBubbleColors, withAlpha } from '../theme/designV1';
 
 const RATES = [1, 1.5, 2];
@@ -50,6 +51,7 @@ export default function VoiceMessageBubble({
   forceActive = false,
 }) {
   const { isDark } = useTheme();
+  const { sp } = useI18n();
   const palette = useV1Colors();
   const bubble = getBubbleColors(mine, !!isDark);
   const baseText = textColor || (mine ? bubble.textColor : palette.text);
@@ -142,7 +144,7 @@ export default function VoiceMessageBubble({
           </View>
         </Pressable>
 
-        <Text style={[s.time, { color: timeColor }]} testID="voice-time">
+        <Text style={[s.time, { color: timeColor, fontSize: sp(12) }]} testID="voice-time">
           {isActive && positionMs > 0 ? fmt(positionMs) : fmt(durationMs)}
         </Text>
       </View>
@@ -154,14 +156,14 @@ export default function VoiceMessageBubble({
           accessibilityRole="button"
           testID="voice-rate-btn"
         >
-          <Text style={[s.rateText, { color: rateColor }]}>{(state.rate || 1)}x</Text>
+          <Text style={[s.rateText, { color: rateColor, fontSize: sp(12) }]}>{(state.rate || 1)}x</Text>
         </TouchableOpacity>
       ) : null}
       {onToggleTranscript ? (
         <TouchableOpacity onPress={onToggleTranscript} disabled={transcribing} style={s.transcriptButton} accessibilityRole="button" testID="voice-transcription-btn">
           <Feather name="align-left" size={12} color={baseMuted} />
           {transcribing ? <ActivityIndicator size="small" color={baseMuted} testID="voice-transcription-loading" /> : null}
-          <Text style={[s.transcriptLabel, { color: baseMuted }]}>{transcriptLabel}</Text>
+          <Text style={[s.transcriptLabel, { color: baseMuted, fontSize: sp(11) }]}>{transcriptLabel}</Text>
         </TouchableOpacity>
       ) : null}
       {textVisible ? <View style={[s.transcriptDivider, { backgroundColor: dividerColor }]} testID="voice-transcription-divider" /> : null}
@@ -184,15 +186,17 @@ const s = StyleSheet.create({
   track: { height: 4, borderRadius: 2, overflow: 'visible', position: 'relative' },
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 2 },
   knob: { position: 'absolute', top: -3.5, width: 11, height: 11, borderRadius: 5.5, marginLeft: -5.5 },
-  time: { fontSize: 12, fontWeight: '700', minWidth: 36, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  // fontSize для time/rateText/transcriptLabel задаётся инлайн через sp()
+  // (CJK floor, Commit 7/8) — в статике не дублируем.
+  time: { fontWeight: '700', minWidth: 36, textAlign: 'right', fontVariant: ['tabular-nums'] },
   ratePill: {
     alignSelf: 'flex-start', marginTop: 6, minHeight: 22,
     paddingHorizontal: 8, paddingVertical: 2,
     borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center',
   },
-  rateText: { fontSize: 12, fontWeight: '700' },
+  rateText: { fontWeight: '700' },
   transcriptButton: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
-  transcriptLabel: { fontSize: 11, fontWeight: '700' },
+  transcriptLabel: { fontWeight: '700' },
   // Разделитель над блоком расшифровки (регрессия против legacy-чата,
   // где визуальной границы между «В текст» и текстом не было).
   transcriptDivider: { height: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginTop: 4, marginBottom: 2 },

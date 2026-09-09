@@ -25,7 +25,6 @@ import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoFeedScreen from '../screens/CargoFeedScreen';
 import CargoDetailV2 from '../screens/CargoDetailV2';
-import TrackTruckScreen from '../screens/TrackTruckScreen';
 import DriverDetail from '../screens/DriverDetail';
 import ChatScreenV2 from '../screens/ChatScreenV2';
 import WalletScreen from '../screens/WalletScreen';
@@ -194,7 +193,6 @@ export default function AppNavigator() {
         <Stack.Screen name="EditTrip" component={EditTripScreen} />
         <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
         <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
-        <Stack.Screen name="TrackTruck" component={TrackTruckScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
       </Stack.Navigator>
@@ -277,7 +275,6 @@ export default function AppNavigator() {
           <Stack.Screen name="EditTrip" component={EditTripScreen} />
           <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
           <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
-          <Stack.Screen name="TrackTruck" component={TrackTruckScreen} />
         <Stack.Screen name="Citizenship" component={CitizenshipScreen} />
         <Stack.Screen name="Identity" component={IdentityStepScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
@@ -285,7 +282,8 @@ export default function AppNavigator() {
           {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя (4 шага):
               Citizenship 1 → Identity 2 → VehicleDocs 3 → TruckParams 4 →
               submit. TOTAL_STEPS=4 во всех четырёх экранах. Legacy-экраны
-              SelfieStepScreen/VehiclePhotosScreen не смонтированы.
+              SelfieStepScreen/VehiclePhotosScreen удалены (Commit 8) — не
+              были смонтированы и ниоткуда не импортировались.
 
               Reg/RegOtp/RegProfile (Premium) ниже — это ОБЩИЙ профиль
               (имя + город), а НЕ документная верификация. Оставлены как legacy
