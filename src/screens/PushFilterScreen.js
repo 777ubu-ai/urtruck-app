@@ -151,20 +151,20 @@ export default function PushFilterScreen({ navigation, route }) {
         </View>
 
         <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>{label('route_direction', 'Направление')}</Text>
+          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>{t('route_direction')}</Text>
           <View style={s.routeInputs}>
             <TextInput style={[s.input, s.routeInput, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-              placeholder={label('from', 'Откуда')} placeholderTextColor={theme.textMuted}
+              placeholder={t('from')} placeholderTextColor={theme.textMuted}
               value={fromCity} onChangeText={setFromCity} autoCapitalize="words" />
             <Feather name="arrow-right" size={18} color={theme.textMuted} />
             <TextInput style={[s.input, s.routeInput, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-              placeholder={label('to', 'Куда')} placeholderTextColor={theme.textMuted}
+              placeholder={t('to')} placeholderTextColor={theme.textMuted}
               value={toCity} onChangeText={setToCity} autoCapitalize="words" />
           </View>
           <Text style={[s.desc, { color: theme.textMuted, marginTop: 8 }]}>
             {role === 'driver'
-              ? label('push_route_driver_hint', 'Водитель получит push, когда появится новый груз по этому направлению.')
-              : label('push_route_shipper_hint', 'Грузоотправитель сохранит нужное направление для поиска машин и заявок.')}
+              ? t('push_route_driver_hint')
+              : t('push_route_shipper_hint')}
           </Text>
         </View>
 
@@ -199,11 +199,11 @@ export default function PushFilterScreen({ navigation, route }) {
 
         <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={[s.row, { marginBottom: 8 }]}>
-            <Text style={[s.label, { color: theme.text }]}>{label('saved_routes', 'Сохранённые маршруты')}</Text>
+            <Text style={[s.label, { color: theme.text }]}>{t('saved_routes')}</Text>
             {routesLoading ? <ActivityIndicator color={accent} /> : null}
           </View>
           {!routesLoading && savedRoutes.length === 0 ? (
-            <Text style={[s.desc, { color: theme.textMuted }]}>{label('saved_routes_empty', 'Пока нет сохранённых маршрутов.')}</Text>
+            <Text style={[s.desc, { color: theme.textMuted }]}>{t('saved_routes_empty')}</Text>
           ) : null}
           {savedRoutes.map((item) => (
             <View key={item.id} style={[s.savedRoute, { borderColor: theme.border, backgroundColor: theme.bg }]}>
@@ -212,10 +212,10 @@ export default function PushFilterScreen({ navigation, route }) {
                   {item.from_city || '—'} → {item.to_city || '—'}
                 </Text>
                 <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>
-                  {[item.truck_type, item.min_price ? `${item.min_price} USD+` : null].filter(Boolean).join(' · ') || label('push_any_cargo', 'Любой груз')}
+                  {[item.truck_type, item.min_price ? `${item.min_price} USD+` : null].filter(Boolean).join(' · ') || t('push_any_cargo')}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => deleteRoute(item.id)} style={s.deleteRouteBtn} accessibilityLabel={label('delete', 'Удалить')}>
+              <TouchableOpacity onPress={() => deleteRoute(item.id)} style={s.deleteRouteBtn} accessibilityLabel={t('delete')}>
                 <Feather name="trash-2" size={17} color={theme.textMuted} />
               </TouchableOpacity>
             </View>
