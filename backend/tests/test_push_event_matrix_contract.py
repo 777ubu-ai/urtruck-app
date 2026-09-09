@@ -8,7 +8,6 @@ This is intentionally source-level contract coverage:
 - does NOT pretend to be real-device delivery proof.
 """
 from pathlib import Path
-import re
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,8 +20,8 @@ EXPIRY = (ROOT / "backend/services/bid_expiry.py").read_text(encoding="utf-8")
 
 def test_bid_created_routes_to_owner_or_trip_driver_with_order_deeplink():
     assert 'create_notification(recipient, "bid_created", title, text, icon, url=url)' in MARKET
-    assert 'post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True))' in MARKET
-    assert 'post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True))' in MARKET
+    assert 'post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True,' in MARKET
+    assert 'post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True,' in MARKET
     assert 'bid_url = f"/cargos/{body.cargo_id}?bid={bid_id}"' in MARKET
     assert 'bid_url = f"/trips/{body.trip_id}?bid={bid_id}"' in MARKET
 
@@ -62,19 +61,23 @@ def test_deal_status_notifications_cover_release_status_flow():
     for status in ("in_progress", "at_border", "delivered", "received", "completed", "cancelled"):
         assert f'"{status}":' in MARKET
     assert 'create_notification(other_id, "deal_status", labels[new_status], body_txt, "🚛", url=deal_url)' in MARKET
-    assert 'send_to_user(other_id, labels[new_status], body_txt, url=deal_url)' in MARKET
+    # P1 durable wiring: тот же push теперь несёт стабильную идентичность
+    # (deal_id + status) — без этого outbox-строка не создавалась вовсе.
+    assert 'send_to_user(other_id, labels[new_status], body_txt, url=deal_url,' in MARKET
+    assert 'event_key=f"deal.status:{deal_id}:{new_status}"' in MARKET
 
 
 def test_tracking_notifications_use_deal_tracking_action_link_for_push_and_in_app():
     assert 'create_notification(user_id, kind, title, body, "📍", url=f"/deals/{deal_id}?action=tracking")' in MARKET
     assert 'push_sender.send(user_id, title, body, kind=kind,' in MARKET
-    assert 'data={"deal_id": deal_id, "action": "tracking"}' in MARKET
+    assert 'data = {"deal_id": deal_id, "action": "tracking"}' in MARKET
+    assert 'data["event_key"] = f"{kind}:{event_ref}"' in MARKET
     for kind in ("tracking_request", "tracking_approved", "tracking_declined", "tracking_stopped"):
         assert f'"{kind}' in MARKET or f"'{kind}'" in MARKET
 
 
 def test_push_api_wraps_background_sender_without_removing_kind_or_data():
-    assert 'def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str = "info", data: dict = None)' in PUSH
+    assert 'def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str = "info", data: dict = None,' in PUSH
     assert 'push_sender.send(user_id, title, body, url=url, kind=kind, data=data)' in PUSH
 
 
@@ -88,7 +91,11 @@ def test_non_chat_push_events_still_do_not_have_typed_payload_contract_everywher
     # Chat/tracking already send structured data. Bid/deal-status routes mostly
     # still rely on url + title/body only; this is a REAL gap the matrix must
     # report instead of claiming typed payload parity.
-    info_calls = re.findall(r"send_to_user\([^\\n]+url=.*?\)", MARKET)
-    assert info_calls, "expected marketplace push callsites to exist"
-    assert 'send_to_user(recipient, title, text, url=url)' in MARKET
-    assert 'send_to_user(bid["bidder_id"], title, text, url=deal_url)' in MARKET
+    assert MARKET.count("send_to_user(") >= 10, "expected marketplace push callsites to exist"
+    # P1 durable wiring: bid-created push now carries bid_id as its stable
+    # event identity (the call grew event_key/event_type kwargs — the deep
+    # link itself must stay the canonical /cargos/{id}?bid={bid_id}).
+    assert 'send_to_user(recipient, title, text, url=url,' in MARKET
+    assert 'event_key=event_key, event_type="bid.created"' in MARKET
+    assert 'send_to_user(bid["bidder_id"], title, text, url=deal_url,' in MARKET
+    assert 'event_key=f"bid.accepted:{bid_id}"' in MARKET

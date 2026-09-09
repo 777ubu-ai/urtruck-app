@@ -67,7 +67,10 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
     review_body = body.text[:80] if body.text else f"Оценка {body.rating} из 5"
     try:
         from api.push import send_to_user
-        send_to_user(body.target_id, review_title, review_body, url="/profile")
+        # P1 durable outbox wiring: id созданного отзыва — стабильная
+        # идентичность события (повторный отзыв этой паре запрещён 409 выше).
+        send_to_user(body.target_id, review_title, review_body, url="/profile",
+                     event_key=f"review.created:{rid}", event_type="review.created")
     except Exception as e:
         print(f"[push] review failed: {e}")
     # P0-hotfix 28.08.2026: push шёл без записи в notifications — badge на

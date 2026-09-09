@@ -52,6 +52,37 @@ def test_called_booking_change_sends_throttled_push(monkeypatch):
     assert n_args[1] == "queue_called"
     assert n_kwargs.get("event_key") == "queue_called:7"
 
+    # P1 durable outbox wiring: the push itself must carry the same stable
+    # (booking, kind) identity so a transient provider failure stays
+    # retryable in push_outbox instead of losing the notification.
+    assert sent[0][1].get("event_key") == "cgr.queue:7:queue_called"
+    assert sent[0][1].get("event_type") == "queue_called"
+
+
+def test_position_change_stays_fire_and_forget_without_durable_key(monkeypatch):
+    """Position updates are high-frequency telemetry: the durable outbox key
+    would dedupe a later legitimate repeat forever (throttle allows it), so
+    they MUST stay without event_key — only called/crossed/revoked get one."""
+    sent = []
+    monkeypatch.setattr(booking_service.cgr_dal, "should_send_push", lambda *a, **k: True)
+    monkeypatch.setattr(booking_service.cgr_dal, "log_push_sent", lambda *a, **k: None)
+
+    import api.push
+    import api.notifications
+    monkeypatch.setattr(api.push, "send_to_user", lambda *a, **k: sent.append((a, k)))
+    monkeypatch.setattr(api.notifications, "create_notification", lambda *a, **k: None)
+
+    ok = booking_service._send_booking_change_push(
+        {"id": 11, "urtruck_user_id": "driver-3", "cgr_booking_number": "POS-2"},
+        {"status": "in_queue"},
+        "active",
+        5,
+        "active",
+        4,
+    )
+    assert ok is True
+    assert sent and sent[0][1].get("event_key") is None
+
 
 def test_position_only_change_does_not_reach_bell(monkeypatch):
     """Push-recovery track, Phase 4: queue position updates are exactly the

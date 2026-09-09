@@ -711,7 +711,8 @@ def logout_cleanup(body: dict, user=Depends(get_user)):
 
 
 # Backward-compatible обёртка — использовалась в старом коде.
-def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str = "info", data: dict = None) -> int:
+def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str = "info", data: dict = None,
+                 event_key: str = None, event_type: str = None) -> int:
     """Legacy: отправить push юзеру. Возвращает суммарное число отправленных.
 
     PR-C2 (P0-2 app icon badge): добавлены опциональные `kind` и `data`
@@ -728,7 +729,48 @@ def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str 
     Теперь отправка уходит в daemon-поток; возвращаемое значение нигде не
     использовалось (проверено по всем callsites), /push/test зовёт
     push_sender.send напрямую и сохраняет диагностику.
+
+    P1 (durable push outbox wiring): опциональные `event_key`/`event_type`
+    подключают событие к durable-контуру. Когда callsite передаёт стабильную
+    логическую идентичность события (доменный ID — bid id, deal+status,
+    chat client_msg_id, tracking marker id, review id), outbox-строка
+    создаётся ЗДЕСЬ, синхронно, до старта fire-and-forget потока: бизнес-
+    переход уже закоммичен, значит durable-событие обязано существовать даже
+    если немедленная попытка упадёт или процесс умрёт до запуска потока.
+    Транзиентный сбой провайдера оставляет строку 'pending' — worker
+    (push_outbox_drain) ретраит; успех fast-path помечает её 'sent'
+    (delivery-ownership contract, см. push_gateway.mark_event_sent), ровно
+    одна доставка на устройство гарантируется _already_sent_to_device +
+    UNIQUE(event_id, recipient_user_id) + unique push_delivery_log.
+    Вызовы без event_key работают ровно как раньше (no outbox row).
     """
+    if event_key:
+        # Копия data с event_key: fast-path в потоке дедупит и пометит 'sent'
+        # ту же строку, а per-device дедуп в push_delivery_log берёт identity
+        # из data (send_to_devices: data.event_id/event_key). kind/url кладём
+        # в data уже здесь — push_sender.send делает то же слияние перед
+        # отправкой, и retry-worker (process_pending_once шлёт ровно
+        # payload['data']) обязан выдать тот же payload, что fast-path.
+        data = {**(data or {}), "event_key": event_key, "kind": kind, "url": url}
+        try:
+            from services import push_gateway
+            push_gateway.enqueue_event(
+                event_key,
+                event_type or str(data.get("event") or data.get("type") or kind),
+                user_id,
+                {
+                    "title": title,
+                    "body": body,
+                    "data": data,
+                    "url": url,
+                    # badge — часть контракта payload'а: retry-.worker читает
+                    # payload["badge"] (см. push_sender.send).
+                    "badge": push_sender._compute_recipient_badge(user_id),
+                },
+            )
+        except Exception:
+            pass  # enqueue — best-effort; fast path всё равно попробует сам
+
     def _bg():
         try:
             push_sender.send(user_id, title, body, url=url, kind=kind, data=data)

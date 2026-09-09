@@ -389,6 +389,7 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
                 "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration, client_msg_id) VALUES (?,?,?,?,?,?,?)",
                 (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration, body.client_msg_id),
             )
+            msg_rowid = cursor.lastrowid
         except sqlite3.IntegrityError:
             # Гонка двух одновременных ретраев с одним client_msg_id —
             # уникальный индекс отсёк дубль. Это успех (идемпотентность).
@@ -404,6 +405,15 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     # пользователь сейчас открыл эту же комнату.
     try:
         sender_name = user.get("full_name") or user.get("phone") or "Пользователь"
+        # P1 durable outbox wiring: стабильная логическая идентичность пуша =
+        # client_msg_id (идемпотентность офлайн-ретраев уже опирается на него),
+        # fallback — id закоммиченного сообщения. Повторный send с тем же
+        # client_msg_id возвращается раньше (deduped) и сюда не доходит.
+        chat_event_key = (
+            f"chat.message:{user['id']}:{body.client_msg_id}"
+            if body.client_msg_id
+            else f"chat.message:{msg_rowid}"
+        )
         send_to_user(
             recipient_id,
             f"💬 {sender_name}",
@@ -419,6 +429,8 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
                 "sender_id": user["id"],
                 "recipient_id": recipient_id,
             },
+            event_key=chat_event_key,
+            event_type="chat.voice" if body.is_voice else "chat.message",
         )
     except Exception:
         pass

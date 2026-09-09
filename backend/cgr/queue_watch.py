@@ -102,9 +102,16 @@ async def check_watches() -> dict:
             title, body = msg
             cp = res.get("checkpoint")
             try:
+                # P1 durable outbox wiring: (user, plate, status) — статус
+                # меняется монотонно (last_status), каждый переход пушится
+                # один раз. Известный край: тот же status по той же паре
+                # (user, plate) во второй жизни (новая бронь на тот же ГРНЗ)
+                # дедупится старым push_log — задокументировано, не чинится.
                 send_to_user(w["user_id"], title,
                              f"{w['plate']}{(' · ' + cp) if cp else ''} — {body}",
-                             url="/", kind="queue")
+                             url="/", kind="queue",
+                             event_key=f"cgr.watch:{w['user_id']}:{w['plate']}:{status}",
+                             event_type=f"queue_watch.{status}")
                 sent += 1
             except Exception:
                 pass

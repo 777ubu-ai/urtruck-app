@@ -517,6 +517,12 @@ def send(user_id: str, title: str, body: str,
     data = {**data, "kind": kind, "url": url}
     event_key = _event_key(data)
 
+    # Badge is computed BEFORE the durable enqueue so the outbox payload
+    # carries it: push_gateway.process_pending_once hands payload["badge"]
+    # to send_to_devices on retry — without this key a retried push silently
+    # lost the APNs badge (known regression, enqueue payload had no badge).
+    badge = _compute_recipient_badge(user_id)
+
     # PR#187: повтор того же серверного перехода не создаёт дубль-доставку.
     # Без event_key поведение прежнее (независимые сообщения не дедупятся).
     if _already_delivered(user_id, event_key):
@@ -525,14 +531,14 @@ def send(user_id: str, title: str, body: str,
         try:
             push_gateway.enqueue_event(
                 event_key,
-                str(data.get("event") or data.get("type") or kind),
+                # event_type в data (если callsite задал явно) побеждает —
+                # иначе выводим как раньше; без event_key enqueue не вызывается.
+                str(data.get("event_type") or data.get("event") or data.get("type") or kind),
                 user_id,
-                {"title": title, "body": body, "data": data, "url": url},
+                {"title": title, "body": body, "data": data, "url": url, "badge": badge},
             )
         except Exception:
             pass
-
-    badge = _compute_recipient_badge(user_id)
 
     try:
         web = _send_web(user_id, title, body, data, url)

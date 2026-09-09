@@ -343,6 +343,10 @@ async def upload_attachment(
                     "sender_id": user["id"],
                     "recipient_id": recipient_id,
                 },
+                # id вложения — стабильная идентичность (та же семья доставки,
+                # что и chat.message, но отдельное логическое событие).
+                event_key=f"chat.attachment:{att.get('id') if isinstance(att, dict) else None}",
+                event_type="chat.attachment",
             )
     except Exception as exc:
         print(f"[attachment-push] failed room={conversation_id}: {type(exc).__name__}", flush=True)

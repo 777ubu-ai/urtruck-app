@@ -86,11 +86,20 @@ def _send_booking_change_push(booking: dict, parsed: dict | None,
     if checkpoint:
         body += f" Пункт: {checkpoint}."
 
+    # P1 durable outbox wiring: стабильная идентичность критичных lifecycle-
+    # событий CGR = (booking id, kind) — called/crossed/revoked случаются не
+    # более одного раза на бронь, поэтому дедуп не глотает легитимные повторы.
+    # position_changed/общие статусы намеренно остаются без durable-ключа:
+    # это высокочастотная телеметрия (см. Phase-4 audit, Bell-решение там же),
+    # а throttle should_send_push разрешает легитимный повтор позже — вечный
+    # ключ (booking, kind) дедупил бы его навсегда.
+    _durable = {"event_key": f"cgr.queue:{booking['id']}:{push_kind}", "event_type": push_kind} if status_kind else {}
     try:
         from api.push import send_to_user
         send_to_user(booking["urtruck_user_id"], title, body,
                      url="/queue", kind="queue",
-                     data={"booking_id": booking["id"], "status": parsed_code or new_status})
+                     data={"booking_id": booking["id"], "status": parsed_code or new_status},
+                     **_durable)
         # Push-recovery track, Phase 4 (event-matrix audit finding): CGR
         # events were push-only, never reaching the in-app Bell/notifications
         # table. Only the 3 significant lifecycle events (called/crossed/
