@@ -393,6 +393,7 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
             # Гонка двух одновременных ретраев с одним client_msg_id —
             # уникальный индекс отсёк дубль. Это успех (идемпотентность).
             return {"ok": True, "room_id": room_id, "deduped": True}
+        message_id = cursor.lastrowid
         preview = (body.text or "📷 Фото")[:50]
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
 
@@ -402,6 +403,13 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     # data.type='chat_message' позволит фронту в onNotificationReceived
     # отличить chat push от bid push и не дублировать banner если
     # пользователь сейчас открыл эту же комнату.
+    # Push-closure track: event_key uses the PERSISTED message row id
+    # (message_id, message text itself is user-generated and never passed
+    # through push_i18n) — every real message gets a fresh, unique,
+    # server-assigned id, and a retry that reaches this line twice for the
+    # SAME already-inserted row cannot happen (the client_msg_id dedup /
+    # IntegrityError guards above already return before this point on any
+    # retry of an already-committed message).
     try:
         sender_name = user.get("full_name") or user.get("phone") or "Пользователь"
         send_to_user(
@@ -418,6 +426,8 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
                 "bid_id": room_bid,
                 "sender_id": user["id"],
                 "recipient_id": recipient_id,
+                "event_key": f"chat:{room_id}:msg:{message_id}",
+                "event": "chat.message",
             },
         )
     except Exception:

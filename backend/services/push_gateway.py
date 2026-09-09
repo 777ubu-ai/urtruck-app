@@ -288,6 +288,20 @@ def active_devices(user_id: str) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def get_recipient_locale(user_id: str) -> str:
+    """Push-closure track: which language a system-generated push to this
+    user should be written in. Reads `push_devices.locale` (most recently
+    active device wins — ORDER BY last_seen_at DESC from active_devices())
+    and normalizes it via push_i18n.normalize_locale(). Falls back to the
+    app-wide default (RU) when the user has no device with a locale on file
+    (older client, or a client that never sent one)."""
+    from services.push_i18n import normalize_locale
+    for device in active_devices(user_id):
+        if device.get("locale"):
+            return normalize_locale(device["locale"])
+    return normalize_locale(None)
+
+
 def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payload: dict, priority: Optional[str] = None) -> bool:
     if not (event_id and event_type and recipient_user_id):
         return False
@@ -540,15 +554,44 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
         attempt = int(row["attempt_count"] or 0) + 1
         try:
             payload = json.loads(row["payload"] or "{}")
+            # Retry-payload-integrity fix (push-closure track): the enqueued
+            # payload (services/push_sender.py send() -> enqueue_event) never
+            # included `badge` at all — every retried delivery silently sent
+            # badge=None (Expo: the "badge" field is omitted entirely when
+            # None, so the OS keeps showing whatever stale number it already
+            # had). Recompute fresh here rather than trying to persist a
+            # static number: unread counts can legitimately change between
+            # the original attempt and a retry minutes later, so a stored
+            # value would risk being WRONG, not just missing.
+            badge = payload.get("badge")
+            if badge is None:
+                try:
+                    from services.push_sender import _compute_recipient_badge
+                    badge = _compute_recipient_badge(row["recipient_user_id"])
+                except Exception:
+                    badge = None
             result = send_to_devices(
                 row["recipient_user_id"],
                 payload.get("title") or "UrTruck",
                 payload.get("body") or "",
                 payload.get("data") or payload,
-                payload.get("badge"),
+                badge,
                 expo_send_one=expo_send_one,
             )
-            outcome = _finish_row(row["id"], attempt, sent=bool(result.get("sent", 0)), error=None)
+            # Multi-device fix (push-closure track): "sent" here must mean
+            # EVERY currently-active device was reached, not merely at
+            # least one — `result["sent"]` alone conflates "fully
+            # delivered" with "partially delivered", which would close out
+            # (mark 'sent', stop retrying) a row while one of the
+            # recipient's devices never got it. `result["devices"]` is the
+            # total targeted this attempt; per-device dedup already lives in
+            # push_delivery_log/_already_sent_to_device, so a re-run of this
+            # same row on the next tick only re-targets the device(s) that
+            # did not yet succeed.
+            total_devices = int(result.get("devices", 0) or 0)
+            sent_count = int(result.get("sent", 0) or 0)
+            fully_delivered = total_devices > 0 and sent_count >= total_devices
+            outcome = _finish_row(row["id"], attempt, sent=fully_delivered, error=None)
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside
             # its own try/except, etc.) — must not crash the worker or loop

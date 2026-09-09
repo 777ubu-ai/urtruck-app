@@ -14,6 +14,11 @@ const NATIVE_TOKEN_KEY = 'ur_push_native_token';
 // ОБА провайдера по значению (POST /push/unregister-native шлёт конкретный
 // token, не device_id) — см. registerNative()/unsubscribe() ниже.
 const NATIVE_RAW_TOKEN_KEY = 'ur_push_native_raw_token';
+// Push-closure track: same key src/utils/i18n.js persists the user's chosen
+// app language under (`const KEY = 'ur_lang'`). Read-only here — never
+// written — so backend system push text (services/push_i18n.py) can be
+// localized to the recipient without a second, independent language store.
+const LANG_KEY = 'ur_lang';
 export const NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2';
 // P0-1 (аудит push-безопасности): технический идентификатор устройства —
 // НЕ секрет, НЕ user_id, НЕ сам push-токен. Генерируется один раз и живёт
@@ -337,6 +342,7 @@ export const push = {
     // (порядок проверок 409/2xx/not_linked) не менялась ни на строчку.
     const authToken = await storage.get(TOKEN_KEY);
     const deviceId = await getOrCreateDeviceId();
+    const locale = await storage.get(LANG_KEY);
 
     const registerToken = async ({ pushToken, provider }) => {
       let regStatus = 0;
@@ -355,6 +361,7 @@ export const push = {
             device_name: Device.modelName || Device.deviceName || null,
             device_id: deviceId,
             app_version: appVersion,
+            locale: locale || null,
           }),
         });
         regStatus = resp.status;

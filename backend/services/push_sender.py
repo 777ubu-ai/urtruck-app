@@ -342,10 +342,12 @@ def _send_fcm(tokens: list[str], title: str, body: str, data: dict) -> int:
     return sent
 
 
-def _send_native_legacy(user_id: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> int:
+def _send_native_legacy(user_id: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> tuple[int, int]:
+    """Returns (sent, total_devices_targeted) — see _send_native's docstring
+    for why the caller needs both, not just `sent`."""
     tokens = _native_tokens(user_id)
     if not tokens:
-        return 0
+        return 0, 0
 
     expo_tokens = [t["token"] for t in tokens if t["provider"] == "expo"]
     fcm_tokens = [t["token"] for t in tokens if t["provider"] == "fcm"]
@@ -358,11 +360,23 @@ def _send_native_legacy(user_id: str, title: str, body: str, data: dict, badge: 
 
     if FCM_MOCK and PUSH_MOCK_WEB and not expo_tokens and not fcm_tokens:
         print(f"[PUSH·NATIVE MOCK] {user_id}: {title} · {body}")
-    return sent
+    return sent, len(tokens)
 
 
-def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> int:
-    """Native delivery with gradual migration.
+def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> tuple[int, int]:
+    """Native delivery with gradual migration. Returns (sent, total_devices).
+
+    Push-closure track: previously returned only `sent` (an int) — the
+    caller (send()) then treated `sent > 0` as "fully delivered" for the
+    purpose of marking the durable outbox row done (mark_event_sent). That
+    is correct for a single-device user but wrong for a multi-device one:
+    Device A succeeding while Device B transiently fails must NOT close out
+    the logical delivery — B needs its own retry via the outbox worker,
+    which push_delivery_log/_already_sent_to_device already support
+    per-device (see services/push_gateway.py). Exposing `total_devices`
+    here is what lets the caller tell "fully delivered" (sent >= total)
+    apart from "partially delivered" (0 &lt; sent &lt; total) instead of
+    collapsing both into a truthy int.
 
     push_devices is the new source for provider choice. Legacy
     push_tokens_native remains a fallback so production users do not lose
@@ -377,7 +391,7 @@ def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optiona
         expo_send_one=_send_expo_detailed,
     )
     if gateway_result.get("devices", 0) > 0:
-        return int(gateway_result.get("sent", 0) or 0)
+        return int(gateway_result.get("sent", 0) or 0), int(gateway_result.get("devices", 0) or 0)
     return _send_native_legacy(user_id, title, body, data, badge=badge)
 
 
@@ -540,20 +554,27 @@ def send(user_id: str, title: str, body: str,
         log.exception("web push fatal")
         web = 0
     try:
-        native = _send_native(user_id, title, body, data, badge=badge)
+        native, native_total = _send_native(user_id, title, body, data, badge=badge)
     except Exception as e:
         log.exception("native push fatal")
-        native = 0
+        native, native_total = 0, 0
 
     # Delivery-ownership contract (push recovery track): this inline call is
-    # the FAST PATH: it already tried native delivery synchronously above. If
-    # that reached at least one device, mark the outbox row (if any — only
-    # event_key'd sends ever get one, see enqueue_event above) 'sent' right
-    # now so the background drain worker (push_gateway.process_pending_once,
-    # scheduler.jobs.push_outbox_drain_job) never re-sends it. If native==0
-    # here, the row stays 'pending' and the worker becomes the retry owner —
-    # this is the only path that is allowed to leave a row 'pending'.
-    if event_key and native > 0:
+    # the FAST PATH: it already tried native delivery synchronously above.
+    #
+    # Multi-device fix (push-closure track): only mark the outbox row
+    # (if any — only event_key'd sends ever get one, see enqueue_event
+    # above) 'sent' when EVERY currently-active device was reached
+    # (native >= native_total), not merely "at least one". A user with two
+    # devices where A succeeded and B transiently failed must keep this row
+    # 'pending' so the background drain worker (push_gateway.
+    # process_pending_once, scheduler.jobs.push_outbox_drain_job) retries —
+    # push_delivery_log/_already_sent_to_device already skip re-sending to
+    # A (already logged 'sent' for this event+device), so the retry only
+    # ever re-targets B. If nothing was reached at all, the row also stays
+    # 'pending' and the worker is the sole retry owner — this is the only
+    # path allowed to leave a row 'pending'.
+    if event_key and native_total > 0 and native >= native_total:
         try:
             push_gateway.mark_event_sent(event_key, user_id)
         except Exception:
