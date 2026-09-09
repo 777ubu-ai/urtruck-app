@@ -19,6 +19,8 @@ from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
 from services.geo_normalize import normalize_country, is_international_route
+from services import push_gateway
+from services import push_i18n
 from config import IS_PRODUCTION
 
 
@@ -1509,32 +1511,38 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
             if row:
                 money = _money(body.amount, row["currency"])
                 bid_url = f"/cargos/{body.cargo_id}?bid={bid_id}"
-                title = f"💰 Ставка {money}"
-                text = f"{money} · {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True))
+                route = f"{row['from_city']}→{row['to_city']}"
+                post_notifs.append((row["owner_id"], money, route, "💰", bid_url, True))
 
         if body.trip_id:
             row = c.execute("SELECT driver_id, from_city, to_city, currency FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if row:
                 money = _money(body.amount, row["currency"])
                 bid_url = f"/trips/{body.trip_id}?bid={bid_id}"
-                title = f"📦 Заказ {money}"
-                text = f"{money} · {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True))
+                route = f"{row['from_city']}→{row['to_city']}"
+                post_notifs.append((row["driver_id"], money, route, "💰", bid_url, True))
 
     # PR-B: post-commit notifications — connection с bid INSERT уже закрыт,
     # create_notification открывает свой conn без conflict'а с транзакцией.
     # Раздельные try/except: push и InApp независимы — failure одного не
     # должен подавлять другое.
-    for recipient, title, text, icon, url, want_push in post_notifs:
+    # Push-closure track: stable event_key = bid:{bid_id}:created — a bid is
+    # created exactly once, so this can never legitimately repeat; a retried
+    # request that somehow reached here twice would be deduped, not double-
+    # sent. Localized via push_i18n (recipient's push_devices.locale).
+    for recipient, amount, route, icon, url, want_push in post_notifs:
+        loc = push_gateway.get_recipient_locale(recipient)
+        title, text = push_i18n.push_text("bid_created", loc, amount=amount, route=route)
+        event_key = f"bid:{bid_id}:created"
         if want_push:
             try:
-                send_to_user(recipient, title, text, url=url)
+                send_to_user(recipient, title, text, url=url, kind="bid",
+                             data={"event_key": event_key, "event": "bid.created", "bid_id": bid_id})
             except Exception:
                 pass
         try:
             from api.notifications import create_notification
-            create_notification(recipient, "bid_created", title, text, icon, url=url)
+            create_notification(recipient, "bid_created", title, text, icon, url=url, event_key=event_key)
         except Exception:
             pass
 
@@ -2269,15 +2277,20 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
         deal_url = f"/trips/{bid['trip_id']}"
     else:
         deal_url = f"/deals/{result['deal_id']}"
-    title = "✅ Ставка принята!"
-    text = f"Ваше предложение {_money(bid['amount'], _cur)} принято! Сделка создана."
+    # Push-closure track: event_key=bid:{bid_id}:accepted — a bid can only
+    # be accepted once (guarded by the status!='pending' check above), so
+    # this key is inherently stable/unique; localized via push_i18n.
+    loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+    title, text = push_i18n.push_text("bid_accepted", loc, amount=_money(bid['amount'], _cur))
+    event_key = f"bid:{bid_id}:accepted"
     try:
-        send_to_user(bid["bidder_id"], title, text, url=deal_url)
+        send_to_user(bid["bidder_id"], title, text, url=deal_url, kind="bid",
+                     data={"event_key": event_key, "event": "bid.accepted", "bid_id": bid_id})
     except Exception:
         pass
     try:
         from api.notifications import create_notification
-        create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url)
+        create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url, event_key=event_key)
     except Exception:
         pass
 
@@ -2465,7 +2478,6 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
             )
 
     # Notify the bidder. Часть 4: deeplink ведёт в чат сделки (не на лист).
-    title = "❌ Ставка отклонена"
     with get_conn() as _cc:
         _cur = _bid_currency(_cc, bid)
         try:
@@ -2486,14 +2498,20 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
         back_url = f"/chats/{_rr}"
     else:
         back_url = "/"
-    body_text = f"Ваше предложение {_money(bid['amount'], _cur)} отклонено"
+    # Push-closure track: event_key=bid:{bid_id}:rejected — terminal
+    # transition (status can only ever leave 'rejected' never re-enter it),
+    # inherently unique/stable.
+    loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+    title, body_text = push_i18n.push_text("bid_rejected", loc, amount=_money(bid['amount'], _cur))
+    event_key = f"bid:{bid_id}:rejected"
     try:
-        send_to_user(bid["bidder_id"], title, body_text, url=back_url)
+        send_to_user(bid["bidder_id"], title, body_text, url=back_url, kind="bid",
+                     data={"event_key": event_key, "event": "bid.rejected", "bid_id": bid_id})
     except Exception:
         pass
     try:
         from api.notifications import create_notification
-        create_notification(bid["bidder_id"], "bid_rejected", title, body_text, "❌", url=back_url)
+        create_notification(bid["bidder_id"], "bid_rejected", title, body_text, "❌", url=back_url, event_key=event_key)
     except Exception:
         pass
 
@@ -2536,19 +2554,21 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
         counter_url = "/"
     with get_conn() as c2:
         cur = _bid_currency(c2, bid)
-    title = f"🔁 Контр-оффер: {_money(body.amount, cur)}"
-    # Роль-зависимый текст: для bid на груз контр шлёт владелец груза; для bid
-    # на рейс — владелец рейса (водитель). Иначе биддеру на рейс приходило
-    # неверное «Владелец груза предложил».
-    _owner_word = "Владелец груза" if bid.get("cargo_id") else "Владелец рейса"
-    text = f"{_owner_word} предложил {_money(body.amount, cur)} вместо {_money(bid['amount'], cur)}"
+    # Push-closure track: a bid legitimately cycles pending<->countered
+    # multiple times, so bid_id alone is NOT a stable-per-occurrence key —
+    # `counter_at` (freshly written above, re-read into `updated`) changes
+    # every real round while staying fixed for retries of THIS round.
+    loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+    title, text = push_i18n.push_text("bid_countered", loc, amount=_money(body.amount, cur))
+    event_key = f"bid:{bid_id}:countered:{updated.get('counter_at')}"
     try:
-        send_to_user(bid["bidder_id"], title, text, url=counter_url)
+        send_to_user(bid["bidder_id"], title, text, url=counter_url, kind="bid",
+                     data={"event_key": event_key, "event": "bid.countered", "bid_id": bid_id})
     except Exception:
         pass
     try:
         from api.notifications import create_notification
-        create_notification(bid["bidder_id"], "bid_countered", title, text, "🔁", url=counter_url)
+        create_notification(bid["bidder_id"], "bid_countered", title, text, "🔁", url=counter_url, event_key=event_key)
     except Exception:
         pass
 
@@ -2642,6 +2662,18 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
     # Counter cancellation changes the bidder's actionable state back to
     # pending. Keep the durable Bell record and push in parity with the other
     # bid transitions; the old endpoint changed only the database row.
+    #
+    # Push-closure track fix: this previously set data={"event": ...} — but
+    # _event_key() in services/push_sender.py reads data["event_key"]
+    # specifically ("event" only ever feeds enqueue_event's separate
+    # event_type label). That made this call LOOK wired into the durable-
+    # outbox/dedup path while never actually being so — enqueue_event's
+    # `if event_key:` guard stayed False. Fixed to the correct field name
+    # below. `bid['counter_at']` (captured from the ORIGINAL row, before the
+    # UPDATE above cleared it) is the same per-round identifier counter_bid()
+    # used when this round was created — stable across retries of this
+    # exact cancellation, distinct from any later round. Also restores the
+    # specific amount the old (pre-53ff5a8f) text included.
     try:
         if bid.get("cargo_id"):
             counter_url = f"/cargos/{bid['cargo_id']}?bid={bid_id}"
@@ -2649,13 +2681,16 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
             counter_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
         else:
             counter_url = "/"
-        title = "↩️ Встречная цена отменена"
-        body = "Встречная цена отменена, исходная ставка снова доступна"
+        with get_conn() as c2:
+            _cur = _bid_currency(c2, bid)
+        loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+        title, body = push_i18n.push_text("bid_counter_cancelled", loc, amount=_money(bid.get("amount"), _cur))
+        event_key = f"bid:{bid_id}:counter_cancelled:{bid.get('counter_at')}"
         send_to_user(bid["bidder_id"], title, body, url=counter_url,
                      kind="bid_counter_cancelled",
-                     data={"bid_id": bid_id, "event": f"bid.counter_cancelled:{bid_id}"})
+                     data={"event_key": event_key, "event": "bid.counter_cancelled", "bid_id": bid_id})
         from api.notifications import create_notification
-        create_notification(bid["bidder_id"], "bid_countered", title, body, "↩️", url=counter_url)
+        create_notification(bid["bidder_id"], "bid_countered", title, body, "↩️", url=counter_url, event_key=event_key)
     except Exception:
         pass
     return {"ok": True, "bid_id": bid_id, "status": "pending"}
@@ -3055,22 +3090,24 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     # сумма в валюте груза/рейса, deep-link на /deals/{id}.
     try:
         other_id = deal["driver_id"] if uid == deal["shipper_id"] else deal["shipper_id"]
-        labels = {
-            "in_progress": "🚛 Рейс начался",
-            "at_border": "🛂 На границе",
-            "delivered": "✅ Доставлен — ожидается подтверждение получения",
-            "received": "✅ Получение подтверждено",
-            "completed": "🤝 Сделка завершена",
-            "cancelled": "❌ Отменено",
+        # Push-closure track: labels keys map 1:1 onto push_i18n event names
+        # ("in_progress" -> "deal_status_in_progress" etc).
+        push_events = {
+            "in_progress": "deal_status_in_progress",
+            "at_border": "deal_status_at_border",
+            "delivered": "deal_status_delivered",
+            "received": "deal_status_received",
+            "completed": "deal_status_completed",
+            "cancelled": "deal_status_cancelled",
         }
-        if new_status in labels:
+        if new_status in push_events:
             cur = "USD"
             with get_conn() as c2:
                 src = ("cargos", deal["cargo_id"]) if deal.get("cargo_id") else (("trips", deal["trip_id"]) if deal.get("trip_id") else None)
                 if src:
                     r = c2.execute(f"SELECT currency FROM {src[0]} WHERE id = ?", (src[1],)).fetchone()
                     cur = ((dict(r).get("currency") if r else None) or "USD")
-            body_txt = f"{deal['from_city']}→{deal['to_city']} · {_money(deal['amount'], cur)}"
+            route = f"{deal['from_city']}→{deal['to_city']} · {_money(deal['amount'], cur)}"
             # «Дом заказа»: смена статуса ведёт в карточку заказа с прогресс-
             # баром отслеживания. Раньше — в Deal Room (чат), но статус ≠
             # переписка.
@@ -3080,13 +3117,20 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
                 deal_url = f"/trips/{deal['trip_id']}"
             else:
                 deal_url = f"/deals/{deal_id}"
+            # Each status is reached at most once per deal (linear FSM,
+            # DealTransitionError guards non-forward moves) — deal_id+status
+            # is inherently a stable, unique-per-occurrence event key.
+            loc = push_gateway.get_recipient_locale(other_id)
+            title, body_txt = push_i18n.push_text(push_events[new_status], loc, route=route)
+            event_key = f"deal:{deal_id}:status:{new_status}"
             try:
-                send_to_user(other_id, labels[new_status], body_txt, url=deal_url)
+                send_to_user(other_id, title, body_txt, url=deal_url, kind="deal_status",
+                             data={"event_key": event_key, "event": f"deal.status.{new_status}", "deal_id": deal_id})
             except Exception:
                 pass
             try:
                 from api.notifications import create_notification
-                create_notification(other_id, "deal_status", labels[new_status], body_txt, "🚛", url=deal_url)
+                create_notification(other_id, "deal_status", title, body_txt, "🚛", url=deal_url, event_key=event_key)
             except Exception:
                 pass
     except Exception:
@@ -3190,23 +3234,34 @@ def _tracking_system_message(deal: dict, text: str) -> None:
         pass
 
 
-def _tracking_notify(user_id: str, title: str, body: str, deal_id: str, kind: str) -> None:
-    """Create in-app + native/web push after the DB transaction is committed."""
+def _tracking_notify(user_id: str, event: str, deal_id: str, kind: str, event_key: str) -> None:
+    """Create in-app + native/web push after the DB transaction is committed.
+
+    Push-closure track: `title`/`body` are now looked up via push_i18n
+    (localized to the recipient) instead of being passed in pre-built RU
+    text by every caller. `event_key` is REQUIRED (no default) — every
+    caller below derives it from a freshly-inserted deal_tracking_events row
+    id, since request/approve/decline/stop can each legitimately happen
+    more than once per deal (comment previously here: "Do not reuse a
+    permanent key by deal: a later, explicit re-request must create a fresh
+    notification" — still true, just now satisfied via a real per-event
+    identity instead of no dedup key at all).
+    A tap must open the exact Deal Room with the consent controls, not a
+    general list where the driver has to guess where to continue.
+    """
+    loc = push_gateway.get_recipient_locale(user_id)
+    title, body = push_i18n.push_text(event, loc)
     try:
         from api.notifications import create_notification
-        # The callers invoke this only for a real state transition (the
-        # repeated-pending / repeated-stopped paths return before here). Do
-        # not reuse a permanent key by deal: a later, explicit re-request
-        # must create a fresh notification for the driver.
-        # A tap must open the exact Deal Room with the consent controls, not a
-        # general list where the driver has to guess where to continue.
-        create_notification(user_id, kind, title, body, "📍", url=f"/deals/{deal_id}?action=tracking")
+        create_notification(user_id, kind, title, body, "📍", url=f"/deals/{deal_id}?action=tracking",
+                            event_key=event_key)
     except Exception:
         pass
     try:
         from services import push_sender
         push_sender.send(user_id, title, body, kind=kind,
-                         data={"deal_id": deal_id, "action": "tracking"},
+                         data={"deal_id": deal_id, "action": "tracking",
+                               "event_key": event_key, "event": event},
                          url=f"/deals/{deal_id}?action=tracking")
     except Exception:
         pass
@@ -3247,17 +3302,16 @@ def check_gps_heartbeats_job() -> dict:
         for row in stale:
             if _latest_gps_signal_marker(c, row["deal_id"]) == "gps_lost":
                 continue
-            c.execute(
+            _ev = c.execute(
                 "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'gps_lost', NULL)",
                 (row["deal_id"],),
             )
-            to_notify.append((row["deal_id"], row["shipper_id"]))
+            to_notify.append((row["deal_id"], row["shipper_id"], _ev.lastrowid))
         c.commit()
-    for deal_id, shipper_id in to_notify:
+    for deal_id, shipper_id, ev_id in to_notify:
         if shipper_id:
-            _tracking_notify(shipper_id, "⚠️ Пропал сигнал GPS",
-                             "Машина не передаёт местоположение уже некоторое время. Проверьте связь с водителем.",
-                             deal_id, "gps_lost")
+            _tracking_notify(shipper_id, "gps_lost", deal_id, "gps_lost",
+                             event_key=f"deal:{deal_id}:gps_lost:{ev_id}")
             fired += 1
     return {"checked": len(stale), "fired": fired}
 
@@ -3324,13 +3378,15 @@ def request_deal_tracking(deal_id: str, user=Depends(require_level(1))):
         # Before pickup a renewed consent starts cleanly. After pickup this
         # path is blocked above, so protected evidence can never be erased.
         c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
-        c.execute(
+        _ev = c.execute(
             "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'tracking_requested', ?)",
             (deal_id, user["id"]),
         )
+        _ev_id = _ev.lastrowid
         tracking = _tracking_payload(c, deal_id)
     _tracking_system_message(deal, "📍 Грузоотправитель запросил GPS-отслеживание. Водитель должен подтвердить его в приложении.")
-    _tracking_notify(deal["driver_id"], "Запрос GPS-отслеживания", "Грузоотправитель просит показать местоположение машины по сделке.", deal_id, "tracking_request")
+    _tracking_notify(deal["driver_id"], "tracking_request", deal_id, "tracking_request",
+                     event_key=f"deal:{deal_id}:tracking_requested:{_ev_id}")
     return {"ok": True, "tracking": tracking}
 
 
@@ -3364,17 +3420,20 @@ def respond_deal_tracking(deal_id: str, body: TrackingDecisionIn, user=Depends(r
         )
         if new_status != "active":
             c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
-        c.execute(
+        _ev = c.execute(
             "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, ?, ?)",
             (deal_id, "tracking_approved" if new_status == "active" else "tracking_declined", user["id"]),
         )
+        _ev_id = _ev.lastrowid
         tracking = _tracking_payload(c, deal_id)
     if decision == "approve":
         _tracking_system_message(deal, "✅ Водитель разрешил GPS-отслеживание. Местоположение будет видно только участникам этой сделки.")
-        _tracking_notify(deal["shipper_id"], "GPS-отслеживание включено", "Водитель разрешил показывать местоположение машины.", deal_id, "tracking_approved")
+        _tracking_notify(deal["shipper_id"], "tracking_approved", deal_id, "tracking_approved",
+                         event_key=f"deal:{deal_id}:tracking_approved:{_ev_id}")
     else:
         _tracking_system_message(deal, "ℹ️ Водитель не разрешил GPS-отслеживание по этой сделке.")
-        _tracking_notify(deal["shipper_id"], "GPS-отслеживание отклонено", "Водитель не разрешил передачу геопозиции.", deal_id, "tracking_declined")
+        _tracking_notify(deal["shipper_id"], "tracking_declined", deal_id, "tracking_declined",
+                         event_key=f"deal:{deal_id}:tracking_declined:{_ev_id}")
     return {"ok": True, "tracking": tracking}
 
 
@@ -3400,13 +3459,15 @@ def stop_deal_tracking(deal_id: str, user=Depends(require_level(1))):
             (deal_id,),
         )
         c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
-        c.execute(
+        _ev = c.execute(
             "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'tracking_stopped_before_pickup', ?)",
             (deal_id, user["id"]),
         )
+        _ev_id = _ev.lastrowid
         tracking = _tracking_payload(c, deal_id)
     _tracking_system_message(deal, "🔒 Водитель отменил GPS-отслеживание до забора груза.")
-    _tracking_notify(deal["shipper_id"], "GPS-отслеживание отменено", "Водитель отменил передачу местоположения до забора груза.", deal_id, "tracking_stopped")
+    _tracking_notify(deal["shipper_id"], "tracking_stopped", deal_id, "tracking_stopped",
+                     event_key=f"deal:{deal_id}:tracking_stopped:{_ev_id}")
     return {"ok": True, "tracking": tracking}
 
 class DealLocationIn(BaseModel):
@@ -3444,16 +3505,18 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
             (deal_id,),
         )
         shipper_id = None
+        ev_id = None
         if was_lost:
-            c.execute(
+            _ev = c.execute(
                 "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'gps_restored', ?)",
                 (deal_id, user["id"]),
             )
+            ev_id = _ev.lastrowid
             row = c.execute("SELECT shipper_id FROM deals WHERE id=?", (deal_id,)).fetchone()
             shipper_id = row["shipper_id"] if row else None
     if was_lost and shipper_id:
-        _tracking_notify(shipper_id, "✅ Сигнал GPS восстановлен",
-                         "Машина снова передаёт местоположение.", deal_id, "gps_restored")
+        _tracking_notify(shipper_id, "gps_restored", deal_id, "gps_restored",
+                         event_key=f"deal:{deal_id}:gps_restored:{ev_id}")
     return {"ok": True}
 
 

@@ -330,6 +330,10 @@ async def upload_attachment(
         if room:
             recipient_id = room["participant_2"] if room["participant_1"] == user["id"] else room["participant_1"]
             label = f"📄 {original_name}" if resolved_kind == "document" else "🖼 Фото"
+            attachment_id = att.get("id") if isinstance(att, dict) else None
+            # Push-closure track: event_key from the persisted attachment id —
+            # same family as chat text (message_id), a fresh attachment row
+            # is created for every real upload, never reused on retry.
             send_to_user(
                 recipient_id,
                 "Новое вложение в сделке",
@@ -339,9 +343,11 @@ async def upload_attachment(
                 data={
                     "type": "chat_attachment",
                     "room_id": conversation_id,
-                    "attachment_id": att.get("id") if isinstance(att, dict) else None,
+                    "attachment_id": attachment_id,
                     "sender_id": user["id"],
                     "recipient_id": recipient_id,
+                    "event_key": f"chat:{conversation_id}:attachment:{attachment_id}",
+                    "event": "chat.attachment",
                 },
             )
     except Exception as exc:
