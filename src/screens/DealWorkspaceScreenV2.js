@@ -270,6 +270,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [translations, setTranslations] = React.useState({});
   const [translating, setTranslating] = React.useState(null);
   const [autoTranslate, setAutoTranslate] = React.useState(false);
+  const [voiceTranscripts, setVoiceTranscripts] = React.useState({});
+  const [voiceTranscribing, setVoiceTranscribing] = React.useState(null);
 
   const listRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -556,6 +558,52 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     })();
     return () => { cancelled = true; };
   }, [autoTranslate, messages, translations]);
+
+  React.useEffect(() => {
+    setVoiceTranscripts((previous) => {
+      let next = previous;
+      let changed = false;
+      for (const message of messages) {
+        if (!message?.voice || !message?.transcript) continue;
+        const current = previous[message.id];
+        if (current?.transcriptText === message.transcript) continue;
+        if (!changed) next = { ...previous };
+        next[message.id] = {
+          ...current,
+          visible: current?.visible ?? false,
+          transcriptText: message.transcript,
+          sourceLang: message.transcriptLang || null,
+          provider: message.transcriptProvider || null,
+        };
+        changed = true;
+      }
+      return changed ? next : previous;
+    });
+  }, [messages]);
+
+  const toggleVoiceTranscript = React.useCallback(async (item) => {
+    const current = voiceTranscripts[item.id];
+    if (current?.transcriptText) {
+      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...current, visible: !current.visible } }));
+      return;
+    }
+    setVoiceTranscribing(item.id);
+    try {
+      const result = await chatAPI.transcribe(item.id, getLanguage().toLowerCase());
+      if (!result?.transcript_text) {
+        toast(t('voice_transcription_unavailable'), 'info');
+        return;
+      }
+      setVoiceTranscripts((previous) => ({
+        ...previous,
+        [item.id]: { visible: true, transcriptText: result.transcript_text, sourceLang: result.source_lang || null, provider: result.provider || null, translatedText: result.translated_text || null },
+      }));
+    } catch {
+      toast(t('voice_transcription_unavailable'), 'info');
+    } finally {
+      setVoiceTranscribing(null);
+    }
+  }, [voiceTranscripts, toast, t]);
 
   const trackingActive = Boolean(dealId && LIVE_TRACKING_STATUSES.includes(deal?.status));
   const refreshLocation = React.useCallback(async () => {
@@ -1049,11 +1097,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               uri={item.mediaUrl}
               fallbackDurationSec={item.voiceDuration}
               mine={item.mine}
-              sending={item.sendStatus === 'sending'}
-              textColor={item.mine ? '#FFFFFF' : colors.text}
-              mutedColor={item.mine ? 'rgba(255,255,255,0.85)' : colors.textMuted}
+              transcript={voiceTranscripts[item.id]}
+              transcribing={voiceTranscribing === item.id}
+              onToggleTranscript={() => toggleVoiceTranscript(item)}
               onError={() => toast(t('voice_play_fail'), 'error')}
-              testID="deal-chat-voice-bubble"
             />
           ) : item.text ? (
             <>
@@ -1124,7 +1171,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         ) : null}
       </View>
     );
-  }, [colors, translations, translating, t, toast, retryDocument, retryFailedText]);
+  }, [colors, translations, translating, voiceTranscripts, voiceTranscribing, t, toast, retryDocument, retryFailedText, toggleVoiceTranscript]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
@@ -1354,12 +1401,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     testID="deal-chat-composer"
                   >
                     {!recording ? (
-                      <TouchableOpacity
-                        style={s.composerCircle}
-                        onPress={sendCameraPhoto}
-                        testID="deal-chat-camera"
-                      >
-                        <Feather name="camera" size={22} color="#202020" />
+                      <TouchableOpacity style={s.composerCircle} onPress={toggleAttachMenu} testID="deal-chat-plus" accessibilityLabel={ui.attachPhoto}>
+                        <Feather name="plus" size={27} color="#202020" />
                       </TouchableOpacity>
                     ) : null}
                     <View style={s.inputShell}>
@@ -1384,37 +1427,29 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         placeholderTextColor="transparent"
                         testID="deal-chat-input"
                       />
+                      {!recording ? (
+                        <TouchableOpacity style={s.inputEmojiButton} onPress={toggleEmojiMenu} testID="deal-chat-emoji" accessibilityLabel={t('emoji')}>
+                          <Feather name="smile" size={22} color="#202020" />
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
-                    {!composerFocused ? (
-                      <TouchableOpacity
-                        style={s.composerCircle}
-                        onPress={toggleEmojiMenu}
-                        testID="deal-chat-emoji"
-                      >
-                        <Feather name="smile" size={26} color="#202020" />
-                      </TouchableOpacity>
-                    ) : null}
                     {!recording ? (
                       input.trim() ? (
-                        <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
+                        <TouchableOpacity style={s.composerCircle} onPress={toggleVoice} testID="deal-chat-voice" accessibilityLabel={ui.voiceMessage}>
+                          <Feather name="mic" size={22} color="#202020" />
+                        </TouchableOpacity>
                       ) : (
                         <TouchableOpacity
                           style={s.composerCircle}
                           onPress={toggleVoice}
                           testID="deal-chat-voice"
                         >
-                          <Feather name="volume-2" size={22} color="#202020" />
+                          <Feather name="mic" size={22} color="#202020" />
                         </TouchableOpacity>
                       )
                     ) : null}
                     {!recording ? (
-                      <TouchableOpacity
-                        style={s.composerCircle}
-                        onPress={toggleAttachMenu}
-                        testID="deal-chat-attach"
-                      >
-                        <Feather name="plus" size={27} color="#202020" />
-                      </TouchableOpacity>
+                      input.trim() ? <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send" accessibilityLabel={t('send')}><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity> : null
                     ) : null}
                   </View>
                 </View>
@@ -1449,10 +1484,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         <Text style={s.attachLabel} numberOfLines={1}>{item.label}</Text>
                       </TouchableOpacity>
                     ))}
-                    <View style={s.attachPager} pointerEvents="none">
-                      <View style={s.attachPagerDotActive} />
-                      <View style={s.attachPagerDot} />
-                    </View>
                   </View>
                 ) : null}
               </>
@@ -1705,6 +1736,7 @@ const s = StyleSheet.create({
   composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
   inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
   input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  inputEmojiButton: { position: 'absolute', right: 4, bottom: 3, width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   sendButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
   recordingButton: { backgroundColor: '#168759' },
 

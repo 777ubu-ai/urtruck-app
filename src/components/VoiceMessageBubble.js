@@ -39,6 +39,9 @@ export default function VoiceMessageBubble({
   mutedColor = '#617067',
   accentColor = '#168759',
   onError,
+  transcript,
+  transcribing = false,
+  onToggleTranscript,
   testID = 'voice-bubble',
 }) {
   const [state, setState] = React.useState(() => voice.getState?.() || {
@@ -92,6 +95,8 @@ export default function VoiceMessageBubble({
   const iconColor = mine ? OUTGOING_VOICE_TEXT : accentColor;
   const timeColor = mine ? OUTGOING_VOICE_TEXT : mutedColor;
   const rateColor = mine ? OUTGOING_VOICE_MUTED : iconColor;
+  const textVisible = !!transcript?.visible && !!transcript?.transcriptText;
+  const transcriptLabel = transcribing ? '…' : textVisible ? 'Hide text' : transcript?.transcriptText ? 'Show text' : 'Voice to text';
 
   return (
     <View style={s.wrap} testID={testID}>
@@ -139,6 +144,13 @@ export default function VoiceMessageBubble({
           <Text style={[s.rateText, { color: rateColor }]}>{(state.rate || 1)}x</Text>
         </TouchableOpacity>
       ) : null}
+      {onToggleTranscript ? (
+        <TouchableOpacity onPress={onToggleTranscript} disabled={transcribing} style={s.transcriptButton} accessibilityRole="button" testID="voice-transcription-btn">
+          <Feather name="align-left" size={12} color={mutedColor} />
+          <Text style={[s.transcriptLabel, { color: mutedColor }]}>{transcriptLabel}</Text>
+        </TouchableOpacity>
+      ) : null}
+      {textVisible ? <Text style={[s.transcriptText, { color: textColor }]}>{transcript.transcriptText}</Text> : null}
     </View>
   );
 }
@@ -162,4 +174,7 @@ const s = StyleSheet.create({
     borderRadius: 9, borderWidth: 1,
   },
   rateText: { fontSize: 10.5, fontWeight: '900' },
+  transcriptButton: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  transcriptLabel: { fontSize: 11, fontWeight: '700' },
+  transcriptText: { marginTop: 2, fontSize: 12, lineHeight: 17 },
 });

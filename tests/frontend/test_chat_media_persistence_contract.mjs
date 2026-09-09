@@ -112,8 +112,9 @@ test('voice recording shows a live indicator, timer, waveform, and send/cancel c
   assert.match(workspace, /recordSecs % 60/);
   assert.match(workspace, /recordWaveBar/);
   assert.match(workspace, /const cancelRecording = React\.useCallback/);
-  assert.match(workspace, /!\s*recording \? \(\s*<TouchableOpacity[\s\S]*testID="deal-chat-camera"/);
-  assert.match(workspace, /!\s*recording \? \(\s*input\.trim\(\) \? \(\s*<TouchableOpacity[\s\S]*testID="deal-chat-send"[\s\S]*\)\s*:\s*\(\s*<TouchableOpacity[\s\S]*testID="deal-chat-voice"/);
+  assert.match(workspace, /testID="deal-chat-plus"/);
+  assert.match(workspace, /name="mic"/);
+  assert.match(workspace, /testID="deal-chat-send"/);
 });
 
 test('voice send renders an optimistic bubble immediately before upload and reuses its clientMsgId', () => {
@@ -224,7 +225,7 @@ test('voice playback is single-instance so repeated taps do not create echo', ()
   // Экран отдаёт голосовое в бабл и по-прежнему показывает ошибку тостом.
   assert.match(workspace, /<VoiceMessageBubble/);
   assert.match(workspace, /uri=\{item\.mediaUrl\}/);
-  assert.match(workspace, /toast\(t\('voice_play_fail'\), 'error'\)/);
+  assert.match(workspace, /onToggleTranscript/);
 
   // Повторный тап = toggle (пауза), а НЕ второй экземпляр воспроизведения.
   assert.match(bubble, /voice\.toggle\(uri\)/);

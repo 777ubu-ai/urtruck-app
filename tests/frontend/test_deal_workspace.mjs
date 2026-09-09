@@ -168,7 +168,7 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
   assert.match(workspace, /testID="deal-chat-emoji"/);
-  assert.match(workspace, /testID="deal-chat-attach"/);
+  assert.match(workspace, /testID="deal-chat-plus"/);
   assert.match(workspace, /inputShell/);
   assert.match(workspace, /composerCircle/);
   assert.match(workspace, /sendPhoto\(false\)/);
@@ -202,7 +202,8 @@ test('composer stays visible while scrolling and avoids duplicate emoji while ty
   assert.doesNotMatch(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
   assert.doesNotMatch(workspace, /testID="deal-chat-composer-collapsed"/);
   assert.doesNotMatch(workspace, /composerCollapsedHandle/);
-  assert.match(workspace, /\{!composerFocused \? \(/);
+  assert.match(workspace, /testID="deal-chat-emoji"/);
+  assert.match(workspace, /inputEmojiButton/);
   assert.match(workspace, /testID="deal-chat-attach-collapse"/);
   assert.match(workspace, /attachHandle/);
   assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
