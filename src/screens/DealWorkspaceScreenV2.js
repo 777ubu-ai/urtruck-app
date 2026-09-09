@@ -35,7 +35,8 @@ import { getLanguage, formatStatus, formatTruckType } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
-import { useV1Colors } from '../theme/designV1';
+import { useV1Colors, getBubbleColors, withAlpha } from '../theme/designV1';
+import { useTheme } from '../utils/ThemeContext';
 import { formatPrice } from '../utils/normalizers';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { getAvailableDealActions } from '../utils/dealActionResolver';
@@ -200,6 +201,23 @@ const compactDate = (raw, lang) => {
   } catch { return `${match[3]}.${match[2]}`; }
 };
 
+// ── Date separators (Commit 5): render-level day grouping of the existing
+// message list — the data model is untouched. A centered pill is drawn
+// between messages whose server day differs from the previous one.
+const dayKeyOf = (message) => {
+  const date = parseServerDate(message?.createdAt);
+  return (date || new Date()).toDateString();
+};
+
+const formatDayLabel = (message, { t, lang }) => {
+  const key = dayKeyOf(message);
+  const now = new Date();
+  if (key === now.toDateString()) return t('chat_day_today');
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toDateString();
+  if (key === yesterday) return t('chat_day_yesterday');
+  return compactDate(message?.createdAt, lang) || key;
+};
+
 const formatWeight = (value, lang) => {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return '';
@@ -227,6 +245,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { t, lang } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const colors = useV1Colors();
+  const { isDark } = useTheme();
+  // Chat bubble canon (Commit 5): outgoing = WhatsApp-family green from
+  // getBubbleColors, incoming = surface + hairline border. Everything that
+  // lives ON a bubble (text, timestamps, translate link, doc icons) derives
+  // from these — no standalone hardcoded fork.
+  const bubbleMineColors = getBubbleColors(true, !!isDark);
+  const bubbleSurfaceFor = React.useCallback((mine) => (mine
+    ? { backgroundColor: bubbleMineColors.backgroundColor, borderColor: bubbleMineColors.borderColor }
+    : { backgroundColor: colors.surface, borderColor: colors.border }), [bubbleMineColors, colors]);
   const { session } = useAuth();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
@@ -1064,136 +1091,154 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setInput((value) => `${value}${emoji}`);
   }, []);
 
-  const renderMessage = React.useCallback(({ item }) => {
+  const renderMessage = React.useCallback(({ item, index }) => {
+    const datePill = (index === 0 || dayKeyOf(messages[index - 1]) !== dayKeyOf(item)) ? (
+      <View style={s.datePillRow} testID="deal-chat-date-separator">
+        <View style={[s.datePill, { backgroundColor: colors.surfaceMuted }]} pointerEvents="none">
+          <Text style={[s.datePillText, { color: colors.textMuted }]}>{formatDayLabel(item, { t, lang })}</Text>
+        </View>
+      </View>
+    ) : null;
+
     if (item.system) return (
-      <View style={s.systemRow}><Text style={[s.systemText, { color: colors.textMuted }]}>{item.text}</Text></View>
+      <React.Fragment>
+        {datePill}
+        <View style={s.systemRow}><Text style={[s.systemText, { color: colors.textMuted }]}>{item.text}</Text></View>
+      </React.Fragment>
     );
 
     if (item.kind === 'document') {
       const meta = item.docKind || {};
       const isBusy = item.docStatus === 'uploading' || item.docStatus === 'queued' || item.docStatus === 'retrying';
       const isFailed = item.docStatus === 'failed';
+      const onBubbleMuted = item.mine ? withAlpha(bubbleMineColors.textColor, 0.7) : colors.textMuted;
       return (
-        <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
-          <TouchableOpacity
-            activeOpacity={item.docUrl ? 0.72 : 1}
-            disabled={!item.docUrl}
-            onPress={() => item.docUrl && Linking.openURL(item.docUrl).catch(() => {})}
-            style={[s.docBubble, item.mine ? s.bubbleMine : s.bubbleThem, !item.mine && { borderColor: colors.border, backgroundColor: colors.surface }]}
-            testID="deal-chat-document-bubble"
-          >
-            <View style={[s.docIconBox, { backgroundColor: item.mine ? 'rgba(255,255,255,0.18)' : '#E9F6EF' }]}>
-              <Feather name={meta.icon || 'file'} size={20} color={item.mine ? '#FFFFFF' : '#168759'} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={[s.docName, { color: item.mine ? '#FFFFFF' : colors.text }]}>{item.docName}</Text>
-              <Text numberOfLines={1} style={[s.docMeta, { color: isFailed ? (item.mine ? '#FFE1E1' : '#EF4444') : (item.mine ? 'rgba(255,255,255,0.75)' : colors.textMuted) }]}>
-                {isFailed
-                  ? (item.docErrorText || t('doc_error_failed'))
-                  : [formatBytes(item.docSize), isBusy ? t('chat_attach_status_uploading') : t('chat_attach_status_uploaded')].filter(Boolean).join(' · ')}
-              </Text>
-            </View>
-            {isBusy ? <ActivityIndicator size="small" color={item.mine ? '#FFFFFF' : '#168759'} /> : null}
-            {isFailed ? (
-              <TouchableOpacity onPress={() => retryDocument(item)} style={s.docRetryBtn} testID="deal-chat-document-retry">
-                <Feather name="refresh-cw" size={15} color={item.mine ? '#FFFFFF' : '#168759'} />
-              </TouchableOpacity>
-            ) : item.docUrl ? <Feather name="chevron-right" size={16} color={item.mine ? 'rgba(255,255,255,0.75)' : colors.textMuted} /> : null}
-          </TouchableOpacity>
-          <Text style={[s.messageTime, { color: colors.textMuted, textAlign: item.mine ? 'right' : 'left' }]}>{item.time}</Text>
-        </View>
+        <React.Fragment>
+          {datePill}
+          <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
+            <TouchableOpacity
+              activeOpacity={item.docUrl ? 0.72 : 1}
+              disabled={!item.docUrl}
+              onPress={() => item.docUrl && Linking.openURL(item.docUrl).catch(() => {})}
+              style={[s.docBubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}
+              testID="deal-chat-document-bubble"
+            >
+              <View style={[s.docIconBox, { backgroundColor: item.mine ? withAlpha(bubbleMineColors.textColor, 0.14) : colors.driverGlow }]}>
+                <Feather name={meta.icon || 'file'} size={20} color={item.mine ? bubbleMineColors.textColor : colors.driver} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={[s.docName, { color: item.mine ? bubbleMineColors.textColor : colors.text }]}>{item.docName}</Text>
+                <Text numberOfLines={1} style={[s.docMeta, { color: isFailed ? colors.error : onBubbleMuted }]}>
+                  {isFailed
+                    ? (item.docErrorText || t('doc_error_failed'))
+                    : [formatBytes(item.docSize), isBusy ? t('chat_attach_status_uploading') : t('chat_attach_status_uploaded')].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+              {isBusy ? <ActivityIndicator size="small" color={item.mine ? bubbleMineColors.textColor : colors.driver} /> : null}
+              {isFailed ? (
+                <TouchableOpacity onPress={() => retryDocument(item)} style={s.docRetryBtn} testID="deal-chat-document-retry">
+                  <Feather name="refresh-cw" size={15} color={item.mine ? bubbleMineColors.textColor : colors.driver} />
+                </TouchableOpacity>
+              ) : item.docUrl ? <Feather name="chevron-right" size={16} color={onBubbleMuted} /> : null}
+            </TouchableOpacity>
+            <Text style={[s.messageTime, { color: colors.textMuted, textAlign: item.mine ? 'right' : 'left' }]}>{item.time}</Text>
+          </View>
+        </React.Fragment>
       );
     }
 
     return (
-      <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
-        <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, !item.mine && { borderColor: colors.border, backgroundColor: colors.surface }]}>
-          {item.photo && item.mediaUrl ? (
-            <TouchableOpacity onPress={() => setFullImage(item.mediaUrl)} testID="deal-chat-photo-bubble">
-              <Image source={{ uri: item.mediaUrl }} style={s.photo} />
+      <React.Fragment>
+        {datePill}
+        <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
+          <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}>
+            {item.photo && item.mediaUrl ? (
+              <TouchableOpacity onPress={() => setFullImage(item.mediaUrl)} testID="deal-chat-photo-bubble">
+                <Image source={{ uri: item.mediaUrl }} style={s.photo} />
+              </TouchableOpacity>
+            ) : null}
+            {item.voice ? (
+              <VoiceMessageBubble
+                uri={item.mediaUrl}
+                fallbackDurationSec={item.voiceDuration}
+                mine={item.mine}
+                transcript={voiceTranscripts[item.id]}
+                transcribing={voiceTranscribing === item.id}
+                onToggleTranscript={() => toggleVoiceTranscript(item)}
+                t={t}
+                onError={() => toast(t('voice_play_fail'), 'error')}
+              />
+            ) : item.text ? (
+              <>
+                <Text style={[s.messageText, { color: item.mine ? bubbleMineColors.textColor : colors.text }]}>
+                  {translations[item.id] && !translations[item.id].showOriginal ? translations[item.id].text : item.text}
+                </Text>
+                {!item.mine && !item.system ? (
+                  <TouchableOpacity
+                    style={s.translateBtn}
+                    disabled={translating === item.id}
+                    onPress={async () => {
+                      const current = translations[item.id];
+                      if (current) {
+                        setTranslations((prev) => ({ ...prev, [item.id]: { ...current, showOriginal: !current.showOriginal } }));
+                        return;
+                      }
+                      setTranslating(item.id);
+                      try {
+                        const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
+                        if (result?.translated_text) {
+                          setTranslations((prev) => ({
+                            ...prev,
+                            [item.id]: { text: result.translated_text, provider: result.provider, showOriginal: false },
+                          }));
+                        } else {
+                          toast(t('translation_unavailable'), 'info');
+                        }
+                      } catch {
+                        toast(t('translation_unavailable'), 'info');
+                      } finally {
+                        setTranslating(null);
+                      }
+                    }}
+                    testID="deal-chat-message-translate"
+                  >
+                    <Feather name="globe" size={11} color={colors.info} />
+                    <Text style={[s.translateText, { color: colors.info }]}>
+                      {translating === item.id ? '...' : translations[item.id] ? (translations[item.id].showOriginal ? t('hide_original') : t('show_original')) : t('translate')}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            ) : null}
+            <Text style={[s.messageTime, { color: item.mine ? withAlpha(bubbleMineColors.textColor, 0.62) : colors.textMuted }]}>{item.time}</Text>
+          </View>
+          {item.sendStatus === 'failed' && !item.voice ? (
+            <TouchableOpacity
+              onPress={() => retryFailedText(item)}
+              style={s.errorRow}
+              testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
+            >
+              <Feather name="alert-circle" size={12} color="#EF4444" />
+              <Text style={s.errorText} numberOfLines={2}>
+                {item.sendError || t('chat_send_failed')} · {t('chat_attach_retry')}
+              </Text>
+            </TouchableOpacity>
+          ) : item.sendStatus === 'failed' && item.voice ? (
+            <TouchableOpacity
+              disabled
+              style={s.errorRow}
+              testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
+            >
+              <Feather name="alert-circle" size={12} color="#EF4444" />
+              <Text style={s.errorText} numberOfLines={2}>
+                {item.sendError || t('voice_error_send')}
+              </Text>
             </TouchableOpacity>
           ) : null}
-          {item.voice ? (
-            <VoiceMessageBubble
-              uri={item.mediaUrl}
-              fallbackDurationSec={item.voiceDuration}
-              mine={item.mine}
-              transcript={voiceTranscripts[item.id]}
-              transcribing={voiceTranscribing === item.id}
-              onToggleTranscript={() => toggleVoiceTranscript(item)}
-              t={t}
-              onError={() => toast(t('voice_play_fail'), 'error')}
-            />
-          ) : item.text ? (
-            <>
-              <Text style={[s.messageText, { color: item.mine ? '#FFFFFF' : colors.text }]}>
-                {translations[item.id] && !translations[item.id].showOriginal ? translations[item.id].text : item.text}
-              </Text>
-              {!item.mine && !item.system ? (
-                <TouchableOpacity
-                  style={s.translateBtn}
-                  disabled={translating === item.id}
-                  onPress={async () => {
-                    const current = translations[item.id];
-                    if (current) {
-                      setTranslations((prev) => ({ ...prev, [item.id]: { ...current, showOriginal: !current.showOriginal } }));
-                      return;
-                    }
-                    setTranslating(item.id);
-                    try {
-                      const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
-                      if (result?.translated_text) {
-                        setTranslations((prev) => ({
-                          ...prev,
-                          [item.id]: { text: result.translated_text, provider: result.provider, showOriginal: false },
-                        }));
-                      } else {
-                        toast(t('translation_unavailable'), 'info');
-                      }
-                    } catch {
-                      toast(t('translation_unavailable'), 'info');
-                    } finally {
-                      setTranslating(null);
-                    }
-                  }}
-                  testID="deal-chat-message-translate"
-                >
-                  <Feather name="globe" size={11} color={item.mine ? 'rgba(255,255,255,0.65)' : colors.textMuted} />
-                  <Text style={[s.translateText, { color: item.mine ? 'rgba(255,255,255,0.68)' : colors.textMuted }]}>
-                    {translating === item.id ? '...' : translations[item.id] ? (translations[item.id].showOriginal ? t('hide_original') : t('show_original')) : t('translate')}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-            </>
-          ) : null}
-          <Text style={[s.messageTime, { color: item.mine ? 'rgba(255,255,255,0.68)' : colors.textMuted }]}>{item.time}</Text>
         </View>
-        {item.sendStatus === 'failed' && !item.voice ? (
-          <TouchableOpacity
-            onPress={() => retryFailedText(item)}
-            style={s.errorRow}
-            testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
-          >
-            <Feather name="alert-circle" size={12} color="#EF4444" />
-            <Text style={s.errorText} numberOfLines={2}>
-              {item.sendError || t('chat_send_failed')} · {t('chat_attach_retry')}
-            </Text>
-          </TouchableOpacity>
-        ) : item.sendStatus === 'failed' && item.voice ? (
-          <TouchableOpacity
-            disabled
-            style={s.errorRow}
-            testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
-          >
-            <Feather name="alert-circle" size={12} color="#EF4444" />
-            <Text style={s.errorText} numberOfLines={2}>
-              {item.sendError || t('voice_error_send')}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
+      </React.Fragment>
     );
-  }, [colors, translations, translating, voiceTranscripts, voiceTranscribing, t, toast, retryDocument, retryFailedText, toggleVoiceTranscript]);
+  }, [colors, translations, translating, voiceTranscripts, voiceTranscribing, t, lang, toast, retryDocument, retryFailedText, toggleVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
@@ -1429,65 +1474,79 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   ]}
                   testID="deal-chat-composer-dock"
                 >
-                  <View
-                    style={[
-                      s.composer,
-                      composerFocused && s.composerFocused,
-                    ]}
-                    testID="deal-chat-composer"
-                  >
-                    {!recording ? (
-                      <TouchableOpacity style={s.composerCircle} onPress={toggleAttachMenu} testID="deal-chat-plus" accessibilityLabel={ui.attachPhoto}>
-                        <Feather name="plus" size={27} color="#202020" />
+                  {/* While recording, the empty composer row is hidden entirely —
+                      only the recording bar above is visible (Commit 5 canon). */}
+                  {!recording ? (
+                    <View
+                      style={[
+                        s.composer,
+                        composerFocused && s.composerFocused,
+                      ]}
+                      testID="deal-chat-composer"
+                    >
+                      <TouchableOpacity
+                        style={[s.composerCircle, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
+                        onPress={toggleAttachMenu}
+                        testID="deal-chat-plus"
+                        accessibilityLabel={ui.attachPhoto}
+                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                      >
+                        <Feather name="plus" size={27} color={colors.text} />
                       </TouchableOpacity>
-                    ) : null}
-                    <View style={s.inputShell}>
-                      <TextInput
-                        ref={inputRef}
-                        value={input}
-                        onChangeText={(value) => {
-                          setInput(value);
-                          if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
-                          if (roomId) chatAPI.typing(roomId);
-                        }}
-                        onFocus={onComposerFocus}
-                        onBlur={onComposerBlur}
-                        onContentSizeChange={(event) => {
-                          const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
-                          setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
-                        }}
-                        multiline
-                        scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
-                        style={[s.input, { height: inputHeight, color: colors.text }]}
-                        placeholder=""
-                        placeholderTextColor="transparent"
-                        testID="deal-chat-input"
-                      />
-                      {!recording ? (
-                        <TouchableOpacity style={s.inputEmojiButton} onPress={toggleEmojiMenu} testID="deal-chat-emoji" accessibilityLabel={t('emoji')}>
-                          <Feather name="smile" size={22} color="#202020" />
+                      <View style={s.inputShell}>
+                        <TextInput
+                          ref={inputRef}
+                          value={input}
+                          onChangeText={(value) => {
+                            setInput(value);
+                            if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+                            if (roomId) chatAPI.typing(roomId);
+                          }}
+                          onFocus={onComposerFocus}
+                          onBlur={onComposerBlur}
+                          onContentSizeChange={(event) => {
+                            const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
+                            setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
+                          }}
+                          multiline
+                          scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
+                          style={[s.input, { height: inputHeight, color: colors.text }]}
+                          placeholder=""
+                          placeholderTextColor="transparent"
+                          testID="deal-chat-input"
+                        />
+                        <TouchableOpacity
+                          style={s.inputEmojiButton}
+                          onPress={toggleEmojiMenu}
+                          testID="deal-chat-emoji"
+                          accessibilityLabel={t('emoji')}
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                        >
+                          <Feather name="smile" size={22} color={colors.text} />
+                        </TouchableOpacity>
+                      </View>
+                      <TouchableOpacity
+                        style={[s.composerCircle, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
+                        onPress={toggleVoice}
+                        testID="deal-chat-voice"
+                        accessibilityLabel={ui.voiceMessage}
+                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                      >
+                        <Feather name="mic" size={22} color={colors.text} />
+                      </TouchableOpacity>
+                      {input.trim() ? (
+                        <TouchableOpacity
+                          style={[s.sendButton, { backgroundColor: colors.driver }]}
+                          onPress={sendText}
+                          testID="deal-chat-send"
+                          accessibilityLabel={t('send')}
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                        >
+                          <FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid />
                         </TouchableOpacity>
                       ) : null}
                     </View>
-                    {!recording ? (
-                      input.trim() ? (
-                        <TouchableOpacity style={s.composerCircle} onPress={toggleVoice} testID="deal-chat-voice" accessibilityLabel={ui.voiceMessage}>
-                          <Feather name="mic" size={22} color="#202020" />
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          style={s.composerCircle}
-                          onPress={toggleVoice}
-                          testID="deal-chat-voice"
-                        >
-                          <Feather name="mic" size={22} color="#202020" />
-                        </TouchableOpacity>
-                      )
-                    ) : null}
-                    {!recording ? (
-                      input.trim() ? <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send" accessibilityLabel={t('send')}><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity> : null
-                    ) : null}
-                  </View>
+                  ) : null}
                 </View>
 
                 {emojiOpen ? (
@@ -1723,14 +1782,21 @@ const s = StyleSheet.create({
   messageMine: { alignItems: 'flex-end' },
   messageThem: { alignItems: 'flex-start' },
   bubble: { maxWidth: '84%', borderRadius: 16, paddingHorizontal: 11, paddingVertical: 8 },
-  bubbleMine: { backgroundColor: '#168759', borderBottomRightRadius: 5 },
+  // Bubble fills come from getBubbleColors via the inline bubbleSurfaceFor
+  // override — these static styles only own the corner radius canon.
+  bubbleMine: { borderBottomRightRadius: 5 },
   bubbleThem: { borderWidth: 1, borderBottomLeftRadius: 5 },
   messageText: { fontSize: 14.5, lineHeight: 20 },
-  messageTime: { fontSize: 10.5, marginTop: 4, textAlign: 'right' },
+  // Timestamp canon: micro token 11/14·600 (was 10.5). Colour is applied
+  // inline — outgoing uses the bubble text colour at ~62% alpha, incoming
+  // uses textMuted, so both match their surface.
+  messageTime: { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.2, marginTop: 4, textAlign: 'right' },
+  datePillRow: { alignItems: 'center', marginTop: 2, marginBottom: 10 },
+  datePill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  datePillText: { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.2 },
   systemRow: { alignItems: 'center', marginVertical: 5 },
   systemText: { fontSize: 11.5, fontWeight: '650', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: 'rgba(124,139,130,0.12)', borderRadius: 999 },
   photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
-  voiceRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 8 },
   translateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   translateText: { fontSize: 11, fontWeight: '700' },
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
@@ -1760,9 +1826,6 @@ const s = StyleSheet.create({
   attachItem: { width: '25%', alignItems: 'center', gap: 11, marginBottom: 24 },
   attachIcon: { width: 64, height: 64, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   attachLabel: { color: '#737373', fontSize: 13.5, fontWeight: '400', textAlign: 'center' },
-  attachPager: { position: 'absolute', left: 0, right: 0, bottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 13 },
-  attachPagerDotActive: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7A7A7A' },
-  attachPagerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E0E0E0' },
 
   emojiMenu: { backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 12 },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
@@ -1772,16 +1835,18 @@ const s = StyleSheet.create({
   composerDock: { paddingHorizontal: 8, paddingTop: 5, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
   composer: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 30, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDE8E2', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   composerFocused: { backgroundColor: '#FFFFFF' },
-  composerCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
-  composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
+  // Action circles: 40dp visual + 4dp hitSlop (48dp total target, ≥44 canon).
+  // The legacy 2px #202020 ring is a 1px hairline token border now; the fill
+  // and icon colours come from tokens inline (surfaceMuted / text).
+  composerCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth },
   inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
   // The Android multiline TextInput is a native surface. It must reserve the
   // emoji slot and stay below it in the stacking order, otherwise four lines
-  // of text can visually cover a still-clickable emoji button.
+  // of text can visually cover a still-clickable emoji button. (Integration
+  // multiline-emoji fix preserved; 40dp canon geometry from Design v1.)
   input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 50, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
-  inputEmojiButton: { position: 'absolute', right: 4, bottom: 3, zIndex: 2, elevation: 2, width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  sendButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
-  recordingButton: { backgroundColor: '#168759' },
+  inputEmojiButton: { position: 'absolute', right: 4, bottom: 3, zIndex: 2, elevation: 2, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 
   mapFullscreen: { flex: 1 },
   mapArea: { flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#EAF1ED' },

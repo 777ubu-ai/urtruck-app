@@ -267,12 +267,15 @@ test('voice bubble has WhatsApp-grade controls: pause, seek, rate, live progress
   // Активен только тот бабл, чей трек играет — иначе все показывали бы pause.
   assert.match(bubble, /state\.uri === uri/);
   // На исходящем зелёном пузыре WhatsApp-стиля белые элементы теряются на
-  // реальном телефоне; контраст должен быть тёмным.
-  assert.match(bubble, /const OUTGOING_VOICE_TEXT = '#111827'/);
-  assert.match(bubble, /const OUTGOING_VOICE_MUTED = '#374151'/);
-  assert.match(bubble, /const OUTGOING_VOICE_TRACK = 'rgba\(17,24,39,0\.26\)'/);
-  assert.match(bubble, /const iconColor = mine \? OUTGOING_VOICE_TEXT : accentColor/);
-  assert.match(bubble, /const timeColor = mine \? OUTGOING_VOICE_TEXT : mutedColor/);
+  // реальном телефоне; контраст должен быть тёмным. Commit 5: эти цвета
+  // больше не хардкод-константы, а производные от токена пузыря
+  // (light #111B21 на #D9FDD3 / dark #E9EDEF на #005C4B) — та же гарантия
+  // контраста, но theme-aware.
+  assert.match(bubble, /getBubbleColors\(mine, !!isDark\)/);
+  assert.doesNotMatch(bubble, /OUTGOING_VOICE_TEXT/);
+  assert.match(bubble, /const onSurface = mine \? withAlpha\(bubble\.textColor, 0\.26\)/);
+  assert.match(bubble, /const iconColor = mine \? bubble\.textColor : baseAccent/);
+  assert.match(bubble, /const timeColor = mine \? bubble\.textColor : baseMuted/);
 });
 
 test('voice upload failures distinguish too-large, storage-rejected/unreachable, and generic causes, not one flat message', () => {

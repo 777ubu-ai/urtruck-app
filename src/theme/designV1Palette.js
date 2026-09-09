@@ -14,6 +14,19 @@
 // Node tooling to import directly. designV1.js now re-exports LIGHT/DARK
 // from here instead of declaring its own copies — same values, single
 // source of truth.
+
+// Derived-colour helper: `#RRGGBB` → `rgba(r,g,b,alpha)`. Lets bubble
+// chrome (timestamps, voice tracks, icon wells) dim the SAME token instead
+// of hardcoding a parallel greyscale palette that drifts per theme.
+// Non-hex input is returned unchanged so callers can pass through rgba()
+// tokens safely.
+export const withAlpha = (hex, alpha) => {
+  const match = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!match) return hex;
+  const n = parseInt(match[1], 16);
+  const clamp = Math.min(1, Math.max(0, Number(alpha)));
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${clamp})`;
+};
 export const LIGHT = {
   bg: '#F6F8F7',
   bgDeep: '#FFFFFF',

@@ -9,12 +9,13 @@ import { useTheme } from '../utils/ThemeContext';
 // qa/utils/themeContrastSmoke.js can import the real values instead of a
 // hand-copy that had already drifted (see that file's own comment). This
 // file adds nothing but the theme-aware hook on top of the same data.
-import { LIGHT, DARK } from './designV1Palette';
+import { LIGHT, DARK, withAlpha } from './designV1Palette';
 
 // Backwards compatibility. User-facing surfaces/text should not consume
 // theme-dependent keys from this frozen object; qa/utils/themeSmoke.js guards
 // screens against doing so.
 export const v1Colors = LIGHT;
+export { withAlpha };
 
 export const useV1Colors = () => {
   const { isDark } = useTheme();

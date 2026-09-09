@@ -15,11 +15,10 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { voice } from '../utils/voiceRecorder';
+import { useTheme } from '../utils/ThemeContext';
+import { useV1Colors, getBubbleColors, withAlpha } from '../theme/designV1';
 
 const RATES = [1, 1.5, 2];
-const OUTGOING_VOICE_TEXT = '#111827';
-const OUTGOING_VOICE_MUTED = '#374151';
-const OUTGOING_VOICE_TRACK = 'rgba(17,24,39,0.26)';
 
 const fmt = (ms) => {
   const total = Math.max(0, Math.round((ms || 0) / 1000));
@@ -35,16 +34,27 @@ export default function VoiceMessageBubble({
   fallbackDurationSec = 0,
   mine = false,
   sending = false,
-  textColor = '#14221C',
-  mutedColor = '#617067',
-  accentColor = '#168759',
+  // Цвета по умолчанию берутся из токенов (getBubbleColors для своего
+  // бабла, accent/textMuted чужого) — пропы оставлены для совместимости.
+  textColor,
+  mutedColor,
+  accentColor,
   onError,
   transcript,
   transcribing = false,
   onToggleTranscript,
   t = (key) => key,
   testID = 'voice-bubble',
+  // QA-only (DesignPreviewScreen): показать пилюлю скорости/активное
+  // состояние без реального воспроизведения. Playback-логику не трогает.
+  forceActive = false,
 }) {
+  const { isDark } = useTheme();
+  const palette = useV1Colors();
+  const bubble = getBubbleColors(mine, !!isDark);
+  const baseText = textColor || (mine ? bubble.textColor : palette.text);
+  const baseMuted = mutedColor || (mine ? withAlpha(bubble.textColor, 0.68) : palette.textMuted);
+  const baseAccent = accentColor || (mine ? bubble.textColor : (isDark ? palette.success : palette.driver));
   const [state, setState] = React.useState(() => voice.getState?.() || {
     uri: null, isPlaying: false, positionMillis: 0, durationMillis: 0, rate: 1,
   });
@@ -56,8 +66,9 @@ export default function VoiceMessageBubble({
     return () => { try { unsub?.(); } catch {} };
   }, []);
 
-  // Этот бабл активен только если плеер играет ИМЕННО его трек.
-  const isActive = !!uri && state.uri === uri;
+  // Этот бабл активен только если плеер играет ИМЕННО его трек
+  // (forceActive — QA-only предпросмотр активного состояния).
+  const isActive = forceActive || (!!uri && state.uri === uri);
   const isPlaying = isActive && !!state.isPlaying;
   const durationMs = (isActive && state.durationMillis)
     ? state.durationMillis
@@ -91,11 +102,12 @@ export default function VoiceMessageBubble({
     voice.setRate?.(RATES[(idx + 1) % RATES.length]);
   }, [state.rate]);
 
-  const onSurface = mine ? OUTGOING_VOICE_TRACK : 'rgba(22,135,89,0.18)';
-  const fillColor = mine ? OUTGOING_VOICE_TEXT : accentColor;
-  const iconColor = mine ? OUTGOING_VOICE_TEXT : accentColor;
-  const timeColor = mine ? OUTGOING_VOICE_TEXT : mutedColor;
-  const rateColor = mine ? OUTGOING_VOICE_MUTED : iconColor;
+  const onSurface = mine ? withAlpha(bubble.textColor, 0.26) : withAlpha(baseAccent, 0.18);
+  const fillColor = mine ? bubble.textColor : baseAccent;
+  const iconColor = mine ? bubble.textColor : baseAccent;
+  const timeColor = mine ? bubble.textColor : baseMuted;
+  const rateColor = mine ? withAlpha(bubble.textColor, 0.78) : baseAccent;
+  const dividerColor = mine ? withAlpha(bubble.textColor, 0.24) : palette.border;
   const textVisible = !!transcript?.visible && !!transcript?.transcriptText;
   const transcriptLabel = transcribing ? '…' : textVisible ? t('voice_hide_text') : transcript?.transcriptText ? t('voice_show_text') : t('voice_to_text');
 
@@ -113,7 +125,7 @@ export default function VoiceMessageBubble({
         >
           {sending
             ? <ActivityIndicator size="small" color={iconColor} />
-            : <Feather name={isPlaying ? 'pause' : 'play'} size={15} color={iconColor} />}
+            : <Feather name={isPlaying ? 'pause' : 'play'} size={17} color={iconColor} />}
         </TouchableOpacity>
 
         <Pressable
@@ -147,38 +159,43 @@ export default function VoiceMessageBubble({
       ) : null}
       {onToggleTranscript ? (
         <TouchableOpacity onPress={onToggleTranscript} disabled={transcribing} style={s.transcriptButton} accessibilityRole="button" testID="voice-transcription-btn">
-          <Feather name="align-left" size={12} color={mutedColor} />
-          {transcribing ? <ActivityIndicator size="small" color={mutedColor} testID="voice-transcription-loading" /> : null}
-          <Text style={[s.transcriptLabel, { color: mutedColor }]}>{transcriptLabel}</Text>
+          <Feather name="align-left" size={12} color={baseMuted} />
+          {transcribing ? <ActivityIndicator size="small" color={baseMuted} testID="voice-transcription-loading" /> : null}
+          <Text style={[s.transcriptLabel, { color: baseMuted }]}>{transcriptLabel}</Text>
         </TouchableOpacity>
       ) : null}
-      {textVisible ? <Text style={[s.transcriptText, { color: textColor }]}>{transcript.transcriptText}</Text> : null}
-      {transcript?.errorText ? <Text style={[s.transcriptError, { color: mutedColor }]} testID="voice-transcription-error">{transcript.errorText}</Text> : null}
+      {textVisible ? <View style={[s.transcriptDivider, { backgroundColor: dividerColor }]} testID="voice-transcription-divider" /> : null}
+      {textVisible ? <Text style={[s.transcriptText, { color: baseText }]}>{transcript.transcriptText}</Text> : null}
+      {transcript?.errorText ? <Text style={[s.transcriptError, { color: baseMuted }]} testID="voice-transcription-error">{transcript.errorText}</Text> : null}
     </View>
   );
 }
 
 const s = StyleSheet.create({
   wrap: { minWidth: 172 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 30 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 36 },
   playBtn: {
-    width: 30, height: 30, borderRadius: 15, borderWidth: 1,
+    width: 36, height: 36, borderRadius: 18, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  // Полоса прогресса: увеличенная зона нажатия (44px по гайдлайнам), сама
+  // Полоса прогресса: зона нажатия 44px (guidelines), сама
   // полоса тонкая — визуально как в WhatsApp.
-  trackHit: { flex: 1, minWidth: 64, height: 26, justifyContent: 'center' },
+  trackHit: { flex: 1, minWidth: 64, height: 44, justifyContent: 'center' },
   track: { height: 4, borderRadius: 2, overflow: 'visible', position: 'relative' },
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 2 },
   knob: { position: 'absolute', top: -3.5, width: 11, height: 11, borderRadius: 5.5, marginLeft: -5.5 },
-  time: { fontSize: 11, fontWeight: '700', minWidth: 34, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  time: { fontSize: 12, fontWeight: '700', minWidth: 36, textAlign: 'right', fontVariant: ['tabular-nums'] },
   ratePill: {
-    alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: 7, paddingVertical: 2,
-    borderRadius: 9, borderWidth: 1,
+    alignSelf: 'flex-start', marginTop: 6, minHeight: 22,
+    paddingHorizontal: 8, paddingVertical: 2,
+    borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center',
   },
-  rateText: { fontSize: 10.5, fontWeight: '900' },
+  rateText: { fontSize: 12, fontWeight: '700' },
   transcriptButton: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
   transcriptLabel: { fontSize: 11, fontWeight: '700' },
-  transcriptText: { marginTop: 2, fontSize: 12, lineHeight: 17 },
-  transcriptError: { marginTop: 3, fontSize: 11, lineHeight: 15 },
+  // Разделитель над блоком расшифровки (регрессия против legacy-чата,
+  // где визуальной границы между «В текст» и текстом не было).
+  transcriptDivider: { height: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginTop: 4, marginBottom: 2 },
+  transcriptText: { marginTop: 2, fontSize: 13, lineHeight: 18 },
+  transcriptError: { marginTop: 3, fontSize: 12, lineHeight: 16 },
 });

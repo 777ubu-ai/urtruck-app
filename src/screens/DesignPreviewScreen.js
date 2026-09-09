@@ -14,9 +14,11 @@
 // state is a `navigation.navigate` only.
 
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
+import Feather from '@expo/vector-icons/Feather';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import {v1Colors, useV1Colors, v1Radius, v1AccentFor, getBubbleColors, withAlpha} from '../theme/designV1';
 import { LIGHT as V1_LIGHT, DARK as V1_DARK } from '../theme/designV1Palette';
 import { useTheme, ThemeScope } from '../utils/ThemeContext';
 import RootHeader from '../components/ui/v1/RootHeader';
@@ -27,6 +29,7 @@ import Field from '../components/ui/v1/Field';
 import StatusPill from '../components/ui/v1/StatusPill';
 import Flag from '../components/ui/v1/Flag';
 import Card from '../components/ui/v1/Card';
+import VoiceMessageBubble from '../components/VoiceMessageBubble';
 
 // Mock objects mirror the canonical shape produced by normalizeTrip /
 // normalizeCargo so the destination screens render exactly the same way
@@ -274,6 +277,174 @@ function DesignV1Gallery() {
   );
 }
 
+// ── Chat canon gallery (Commit 5) ──────────────────────────────────────
+// Renders the REAL chat chrome from DealWorkspaceScreenV2 — VoiceMessageBubble
+// component, getBubbleColors bubble surfaces, date-separator pill, micro
+// timestamps, translate link, composer replica — in the ACTIVE app theme
+// (?theme=light|dark drives the screenshot gate). All copy lives in consts
+// to stay clear of the no-Cyrillic-JSX-text sweep.
+const QA_COPY = {
+  dateToday: 'Сегодня',
+  incomingText: 'Добрый день! Груз будет готов к погрузке завтра с 9:00. Пропуск на КПП оформлен.',
+  outgoingText: 'Отлично, буду на складе к 8:45. Нужен ли вам фото пломб после погрузки?',
+  outgoingShort: 'Понял, спасибо! Выезжаю.',
+  transcript: '«Завтра с утра на границе очередь около двух часов, планируйте время. Все документы уже у водителя.»',
+  translate: 'Перевести',
+  placeholder: 'Сообщение…',
+};
+
+const qaT = (key) => ({
+  voice_to_text: 'В текст',
+  voice_hide_text: 'Скрыть текст',
+  voice_show_text: 'Показать текст',
+}[key] || key);
+
+// Faithful equivalent of the DWSV2 bubble surface: radius canon from the
+// screen + getBubbleColors fills (outgoing green / incoming surface+border).
+function PreviewBubble({ mine, children, style }) {
+  const { isDark } = useTheme();
+  const bubble = getBubbleColors(mine, !!isDark);
+  return (
+    <View style={[{
+      maxWidth: '84%',
+      borderRadius: 16,
+      paddingHorizontal: 11,
+      paddingVertical: 8,
+      backgroundColor: bubble.backgroundColor,
+      borderColor: bubble.borderColor,
+      borderWidth: 1,
+      alignSelf: mine ? 'flex-end' : 'flex-start',
+      borderBottomRightRadius: mine ? 5 : 16,
+      borderBottomLeftRadius: mine ? 16 : 5,
+    }, style]}>
+      {children}
+    </View>
+  );
+}
+
+function PreviewTimestamp({ mine, children }) {
+  const colors = useV1Colors();
+  const { isDark } = useTheme();
+  const bubble = getBubbleColors(true, !!isDark);
+  return (
+    <Text style={{
+      fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.2,
+      marginTop: 4, textAlign: 'right',
+      color: mine ? withAlpha(bubble.textColor, 0.62) : colors.textMuted,
+    }}
+    >
+      {children}
+    </Text>
+  );
+}
+
+function ChatGallery() {
+  const colors = useV1Colors();
+  return (
+    <View style={{ marginTop: 20 }} testID="qa-chat-section">
+      <Text style={{ fontSize: 11, fontWeight: '800', color: '#8A978F', letterSpacing: 1, marginBottom: 8 }}>
+        CHAT · BUBBLES / VOICE / COMPOSER (ACTIVE THEME)
+      </Text>
+      <View style={{ backgroundColor: colors.bg, borderRadius: 12, padding: 12, overflow: 'hidden' }}>
+
+        {/* Date separator pill */}
+        <View style={{ alignItems: 'center', marginTop: 2, marginBottom: 10 }}>
+          <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.surfaceMuted }}>
+            <Text style={{ fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.2, color: colors.textMuted }}>{QA_COPY.dateToday}</Text>
+          </View>
+        </View>
+
+        {/* Incoming text bubble + translate link */}
+        <PreviewBubble mine={false} style={{ marginBottom: 10 }}>
+          <Text style={{ fontSize: 14.5, lineHeight: 20, color: colors.text }}>{QA_COPY.incomingText}</Text>
+          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+            <Feather name="globe" size={11} color={colors.info} />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.info }}>{QA_COPY.translate}</Text>
+          </TouchableOpacity>
+          <PreviewTimestamp mine={false}>{'12:38'}</PreviewTimestamp>
+        </PreviewBubble>
+
+        {/* Outgoing text bubble */}
+        <PreviewBubble mine style={{ marginBottom: 10 }}>
+          <PreviewOutgoingText>{QA_COPY.outgoingText}</PreviewOutgoingText>
+          <PreviewTimestamp mine>{'12:40'}</PreviewTimestamp>
+        </PreviewBubble>
+
+        {/* Outgoing voice bubble: active state (speed pill) + transcription */}
+        <PreviewBubble mine style={{ marginBottom: 10 }}>
+          <VoiceMessageBubble
+            uri="qa-preview://voice/outgoing.m4a"
+            fallbackDurationSec={47}
+            mine
+            forceActive
+            transcript={{ visible: true, transcriptText: QA_COPY.transcript }}
+            onToggleTranscript={() => {}}
+            t={qaT}
+            testID="qa-voice-outgoing"
+          />
+          <PreviewTimestamp mine>{'12:41'}</PreviewTimestamp>
+        </PreviewBubble>
+
+        {/* Incoming voice bubble: idle state + «В текст» */}
+        <PreviewBubble mine={false} style={{ marginBottom: 10 }}>
+          <VoiceMessageBubble
+            uri="qa-preview://voice/incoming.m4a"
+            fallbackDurationSec={12}
+            mine={false}
+            onToggleTranscript={() => {}}
+            t={qaT}
+            testID="qa-voice-incoming"
+          />
+          <PreviewTimestamp mine={false}>{'12:42'}</PreviewTimestamp>
+        </PreviewBubble>
+
+        {/* Outgoing short text */}
+        <PreviewBubble mine style={{ marginBottom: 12 }}>
+          <PreviewOutgoingText>{QA_COPY.outgoingShort}</PreviewOutgoingText>
+          <PreviewTimestamp mine>{'12:43'}</PreviewTimestamp>
+        </PreviewBubble>
+
+        {/* Composer replica (visual only) */}
+        <View style={{
+          minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 7,
+          paddingHorizontal: 8, paddingVertical: 6, borderRadius: 30,
+          backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+        }}
+        >
+          <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.border }}>
+            <Feather name="plus" size={27} color={colors.text} />
+          </View>
+          <View style={{ flex: 1, minHeight: 32, borderRadius: 999, backgroundColor: colors.surface, justifyContent: 'center' }}>
+            <TextInput
+              editable={false}
+              value=""
+              placeholder={QA_COPY.placeholder}
+              placeholderTextColor={colors.placeholder}
+              style={{ minHeight: 32, paddingHorizontal: 12, fontSize: 15, color: colors.text }}
+            />
+            <View style={{ position: 'absolute', right: 2, bottom: -1, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+              <Feather name="smile" size={22} color={colors.text} />
+            </View>
+          </View>
+          <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.border }}>
+            <Feather name="mic" size={22} color={colors.text} />
+          </View>
+          <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.driver }}>
+            <FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid />
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// Outgoing bubble body text — colour from the outgoing bubble token.
+function PreviewOutgoingText({ children }) {
+  const { isDark } = useTheme();
+  const bubble = getBubbleColors(true, !!isDark);
+  return <Text style={{ fontSize: 14.5, lineHeight: 20, color: bubble.textColor }}>{children}</Text>;
+}
+
 export default function DesignPreviewScreen({ navigation }) {
   const v1 = useV1Colors();
   // ?theme=dark|light forces the app theme for screenshot runs (Commit 2
@@ -330,6 +501,8 @@ export default function DesignPreviewScreen({ navigation }) {
         </Text>
 
         <DesignV1Gallery />
+
+        <ChatGallery />
 
         {SECTIONS.map((section) => (
           <View key={section.title} style={{ marginTop: 18 }}>
