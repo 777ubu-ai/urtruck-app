@@ -607,8 +607,10 @@ def test_pr_b_cargo_bid_creates_notif_without_eager_chat_room():
     expect(n["type"] == "bid_created", f"notif type=bid_created (got {n['type']})")
     expect(n["url"] == f"/cargos/{cargo_id}?bid={bid_id}",
            f"notif url=/cargos/X?bid=Y (got {n['url']})")
-    expect("Новое предложение" in n["title"] or "$2500" in n["title"],
-           f"notif title meaningful (got {n['title']!r})")
+    # Push-closure track: amount moved from title into body (push_i18n
+    # bid_created template — localized title, "{amount} за {route}" body).
+    expect("Новая ставка" in n["title"] or "$2500" in (n.get("body") or ""),
+           f"notif title/body meaningful (got title={n['title']!r} body={n.get('body')!r})")
 
     room = query_chat_room(driver, owner)
     expect(room is None, "no chat_room before cargo bid acceptance")
