@@ -1,0 +1,144 @@
+name: Production DB Read-Only Preflight
+
+# This workflow is intentionally diagnostic-only. It never deploys, restarts a
+# process, uploads files, or changes production data/schema. GitHub's protected
+# `production` environment gates the existing SSH credentials before this job.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-production-db-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Active-deal UNIQUE index preflight
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+    steps:
+      - name: Checkout SSH transport helper
+        # P2 fix (2026-09-10): a mutable tag (`@v4`) can be repointed by the
+        # action's own maintainer (or anyone who compromises that repo) to
+        # different code at any time -- a job that then runs with the
+        # protected `production` environment's SSH secrets in scope would
+        # silently start trusting whatever that tag now resolves to. Pinned
+        # to the exact commit actions/checkout@v4.4.0 currently resolves to
+        # (verified: `git ls-remote --tags https://github.com/actions/checkout.git`
+        # -> refs/tags/v4 and refs/tags/v4.4.0 both point at this SHA).
+        # Bump deliberately (re-verify + re-pin the SHA), never by moving
+        # back to a mutable tag.
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Read-only production DB preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # No password fallback: this preflight must use the same pinned-key
+          # transport configured for secure production operations.
+          test -n "$SERVER_HOST"
+          test -n "$SERVER_USER"
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+
+          # BACKEND_DIR is a deployment path, not emitted into logs. It is
+          # passed as one positional argument to the remote shell.
+          #
+          # P1 fix (2026-09-10): the naive `'$BACKEND_DIR'` single-quote
+          # wrap below was NOT injection-safe -- ssh concatenates all
+          # trailing arguments into one string and hands it to the remote
+          # shell verbatim, so a BACKEND_DIR value containing a single quote
+          # (e.g. from secrets.BACKEND_DIR) would close that quote early and
+          # let anything after it execute as a second command ON THE
+          # PRODUCTION SERVER. Confirmed exploitable against the prior
+          # version of this line with a local `bash -c` reproduction before
+          # fixing (a `'; touch marker; echo '` payload created the marker
+          # file). `printf %q` shell-escapes BACKEND_DIR into a form that
+          # round-trips back to the exact original string when the remote
+          # shell parses it as ONE token, regardless of quotes, backticks,
+          # $(...), semicolons, &&, or embedded newlines it contains --
+          # verified against all of those in
+          # tests/test_db_preflight_shell_injection.py.
+          BACKEND_DIR_Q=$(printf '%q' "$BACKEND_DIR")
+          bash scripts/deploy-ssh.sh ssh "bash -s -- $BACKEND_DIR_Q" <<'REMOTE'
+          set -euo pipefail
+
+          BACKEND_DIR="${1:?BACKEND_DIR required}"
+          echo 'SSH_TRANSPORT=ok'
+
+          # Resolve only the database path; never print it or read any other
+          # .env value. The fallback list covers the canonical deployment and
+          # the existing configured backend directory.
+          DB_PATH=""
+          if [ -r "$BACKEND_DIR/.env" ]; then
+            configured_path="$(sed -nE 's/^(URTRUCK_DB_PATH|DB_PATH)=(.*)$/\2/p' "$BACKEND_DIR/.env" | tail -1 | tr -d "'\"" || true)"
+            case "$configured_path" in
+              /*) candidate="$configured_path" ;;
+              '') candidate='' ;;
+              *) candidate="$BACKEND_DIR/$configured_path" ;;
+            esac
+            if [ -n "$candidate" ] && [ -r "$candidate" ]; then DB_PATH="$candidate"; fi
+          fi
+
+          if [ -z "$DB_PATH" ]; then
+            for candidate in \
+              /home/ubuntu/urtruck/backend/database/security.db \
+              "$BACKEND_DIR/database/security.db" \
+              "$BACKEND_DIR/urtruck.db" \
+              "$BACKEND_DIR/database.db" \
+              "$BACKEND_DIR/database/urtruck.db" \
+              "$BACKEND_DIR/database/urtruck-security.db"; do
+              if [ -r "$candidate" ]; then DB_PATH="$candidate"; break; fi
+            done
+          fi
+
+          if [ -z "$DB_PATH" ]; then
+            echo 'DB_PREFLIGHT=BLOCKED_DATABASE_NOT_FOUND'
+            exit 2
+          fi
+          if ! command -v sqlite3 >/dev/null 2>&1; then
+            echo 'DB_PREFLIGHT=BLOCKED_SQLITE3_UNAVAILABLE'
+            exit 2
+          fi
+
+          # Both the CLI open mode and SQLite's connection pragma prohibit
+          # writes. Output is deliberately aggregate-only: no IDs, paths,
+          # rows, secrets, or schema text are emitted.
+          sqlite3 -readonly "$DB_PATH" <<'SQL'
+          PRAGMA query_only = ON;
+          SELECT 'CARGO_DUPLICATE_GROUPS=' || COUNT(*)
+            FROM (
+              SELECT 1 FROM deals
+              WHERE cargo_id IS NOT NULL AND status NOT IN ('completed', 'cancelled')
+              GROUP BY cargo_id HAVING COUNT(*) > 1
+            );
+          SELECT 'TRIP_DUPLICATE_GROUPS=' || COUNT(*)
+            FROM (
+              SELECT 1 FROM deals
+              WHERE trip_id IS NOT NULL AND status NOT IN ('completed', 'cancelled')
+              GROUP BY trip_id HAVING COUNT(*) > 1
+            );
+          SELECT 'INDEX idx_deals_active_cargo_unique=' ||
+            CASE WHEN EXISTS (
+              SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_deals_active_cargo_unique'
+            ) THEN 'PRESENT' ELSE 'MISSING' END;
+          SELECT 'INDEX idx_deals_active_trip_unique=' ||
+            CASE WHEN EXISTS (
+              SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_deals_active_trip_unique'
+            ) THEN 'PRESENT' ELSE 'MISSING' END;
+          SELECT 'INDEX idx_deals_bid_unique=' ||
+            CASE WHEN EXISTS (
+              SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_deals_bid_unique'
+            ) THEN 'PRESENT' ELSE 'MISSING' END;
+          SQL
+          REMOTE
