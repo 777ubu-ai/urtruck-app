@@ -63,6 +63,53 @@ def require_level(min_level: int):
     return dependency
 
 
+def require_active_level(min_level: int):
+    """Track B (2026-09-10): same as require_level(min_level), but ALSO
+    fails closed when the driver's own status is 'rejected' -- regardless
+    of level. require_level() itself only ever consults `status` for
+    min_level>=3 (the level3_rejected check above); every other level was
+    never checking it at all, so a driver who reached verification_level=1
+    (phone-verified) and was later rejected during document moderation
+    (blacklist hit or failed verification -- 'rejected' is the only status
+    that mechanism ever sets; there is no separate 'blacklisted'/'blocked'
+    literal in this codebase) kept full level-1 marketplace write access
+    indefinitely. Confirmed gap, Block 1 audit.
+
+    Deliberately NOT folded into require_level() itself: require_level()
+    is also the auth dependency for chat/reviews/notifications/profile/
+    favorites, where a driver rejected mid-deal must still be able to
+    coordinate wind-down of an ALREADY-accepted commitment (message the
+    other party, view their own profile) rather than being locked out of
+    everything the moment moderation rejects them. This wraps require_level
+    and adds the same "not rejected" invariant it already applies at level
+    3, for callers that specifically need it -- see api/marketplace.py's
+    write endpoints (listing create/edit/publish, bid lifecycle, deal
+    status transitions) for where it's actually used.
+
+    NOT gated by BETA_MODE, unlike the underlying level check. BETA_MODE
+    exists so testers can skip real SMS/OTP verification -- a convenience
+    about *how much you've proven*, not a reason to ignore an explicit
+    moderation decision that a specific account is rejected. A BETA_MODE
+    tester realistically never has status='rejected' in the first place
+    (they never went through real moderation), so this only matters for a
+    genuinely-rejected row, where it should hold regardless.
+    """
+    base_dependency = require_level(min_level)
+
+    def dependency(authorization: str = Header(None)) -> dict:
+        driver = base_dependency(authorization)
+        if driver.get("status") == "rejected":
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "account_rejected",
+                    "message": "Аккаунт отклонён модерацией — действия в маркетплейсе недоступны",
+                },
+            )
+        return driver
+    return dependency
+
+
 def get_user(authorization: str = Header(None)) -> dict:
     """Просто вернуть текущего пользователя (может быть гостем)."""
     return _extract_driver(authorization)
