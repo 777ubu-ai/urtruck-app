@@ -53,12 +53,17 @@ client = TestClient(app)
 OWNER = "price-owner-1"
 
 
-def _as(uid=OWNER):
+def _as(uid=OWNER, role="client"):
+    """Track B (2026-09-10): create_cargo()/create_trip() now enforce
+    server-side role direction -- default "client" matches this file's
+    OWNER persona (cargo owner in most tests here); the trip-price test
+    below passes role="driver" explicitly since create_trip requires it."""
     _current_user.set({
         "id": uid,
         "full_name": "Owner",
         "phone": "+700",
         "verification_level": 1,
+        "role": role,
     })
 
 
@@ -121,7 +126,7 @@ def test_patch_cargo_negative_price_is_422_and_does_not_partial_update():
 
 
 def test_trip_create_and_patch_negative_price_are_422():
-    _as()
+    _as(role="driver")
     created = client.post("/api/v1/market/trips", json={
         "from_city": "Almaty",
         "to_city": "Moscow",

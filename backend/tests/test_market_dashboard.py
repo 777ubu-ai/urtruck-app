@@ -68,8 +68,10 @@ client = TestClient(app)
 CLIENT_ID = "test-client-dash"
 DRIVER_ID = "test-driver-dash"
 
-def as_user(uid):
-    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1})
+def as_user(uid, role="client"):
+    # Track B (2026-09-10): create_cargo/create_trip/create_bid now enforce
+    # server-side role direction -- see as_user() callers below for overrides.
+    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1, "role": role})
 
 def _seed_deal_with_message(text: str | None):
     """Создаёт cargo(client) → bid(driver) → accept → deal + chat_room.
@@ -81,7 +83,7 @@ def _seed_deal_with_message(text: str | None):
         "cargo_desc": "dash test", "price": 4000, "currency": "USD"})
     assert r.status_code in (200, 201), r.text
     cargo_id = r.json()["id"]
-    as_user(DRIVER_ID)
+    as_user(DRIVER_ID, role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 3500})
     assert r.status_code in (200, 201), r.text
     bid_id = r.json()["id"]
