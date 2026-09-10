@@ -126,5 +126,47 @@ group('brandV2 DARK', [
   ['accentIcon on surfaceMuted', brandDark.accentIcon, brandDark.surfaceMuted, 3],
 ]);
 
+group('BottomNav client focused tab (real render surfaces)', [
+  // Render surfaces come from the same palette tokens BottomNav.js renders
+  // with — the bar bg is `colors.surface` (light) / `colors.bg` (dark) and
+  // the focused pill is `clientNavPill`, so these pairs ARE the runtime
+  // pairs, not a hand-copied approximation.
+  ['icon on focused pill (LIGHT)', V1_LIGHT.clientNavIcon, V1_LIGHT.clientNavPill, 3],
+  ['icon on focused pill (DARK)', V1_DARK.clientNavIcon, V1_DARK.clientNavPill, 3],
+  ['label on light bar', V1_LIGHT.clientNavLabel, V1_LIGHT.surface, 4.5],
+  ['label on dark bar', V1_DARK.clientNavLabel, V1_DARK.bg, 4.5],
+]);
+
+// Drift guards: the bright client accent is a pill/shadow accent ONLY. If
+// anyone ever points the focused icon or the small-text label back at it,
+// these fail — the exact blind spot that let this P1 through (2.2:1 icon on
+// the pill, 2.5:1 label on the white bar) must not regress silently.
+(function guardBrightAccentStaysOffTextAndIcon() {
+  const bad = [
+    ['clientAccent as icon on pill (LIGHT)', ratio(V1_LIGHT.clientAccent, V1_LIGHT.clientNavPill), 3],
+    ['clientAccent as icon on pill (DARK)', ratio(V1_DARK.clientAccent, V1_DARK.clientNavPill), 3],
+    ['clientAccent as label on light bar', ratio(V1_LIGHT.clientAccent, V1_LIGHT.surface), 4.5],
+  ];
+  console.log('\n— BottomNav drift guards —');
+  for (const [label, r, req] of bad) {
+    const ok = r < req;
+    if (!ok) fails++;
+    console.log(`${r.toFixed(2).padStart(5)} need<${req}   ${ok ? 'PASS' : 'FAIL'}  ${label}`);
+  }
+  // On the dark bar the bright accent happens to clear 4.5:1 against near-black,
+  // so a contrast guard can't catch a revert there — an identity guard can: the
+  // focused label must never be the bright accent token in either theme.
+  const identity = [
+    ['LIGHT clientNavLabel is not the bright clientAccent', V1_LIGHT.clientNavLabel !== V1_LIGHT.clientAccent],
+    ['DARK clientNavLabel is not the bright clientAccent', V1_DARK.clientNavLabel !== V1_DARK.clientAccent],
+    ['LIGHT clientNavIcon is not the bright clientAccent', V1_LIGHT.clientNavIcon !== V1_LIGHT.clientAccent],
+    ['DARK clientNavIcon is not the bright clientAccent', V1_DARK.clientNavIcon !== V1_DARK.clientAccent],
+  ];
+  for (const [label, ok] of identity) {
+    if (!ok) fails++;
+    console.log(`    ${ok ? 'PASS' : 'FAIL'}  ${label}`);
+  }
+})();
+
 console.log(fails === 0 ? '\n[theme-contrast] OK — designV1 + brandV2, both themes WCAG-clean' : `\n[theme-contrast] ${fails} FAILS`);
 process.exit(fails === 0 ? 0 : 1);

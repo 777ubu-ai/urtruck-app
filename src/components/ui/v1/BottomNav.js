@@ -22,22 +22,19 @@ const ICONS = {
   Queue:   { driver: 'map-pin', client: 'map-pin' },
 };
 
-// Role accent (Design Bible "Direction B", 2026-09-09, Commit 2):
-// driver — emerald, client — dosed orange, NAV ONLY for now. The client
-// orange #FF8400 is a background/pill accent; it is NOT used as the tab
-// label color on the white bar — at 11/700 on white it measures ~2.5:1,
-// below the small-text bar. The focused-tab label uses the brandV2
-// `accentIcon` variant (#D26D00, ~3.5:1 on white / ~5:1 on the dark bar),
-// the same two-token split policy as brandV2 (bright accent for surfaces,
-// readable variant for elements a user reads).
-const ROLE_ACCENT = {
-  driver: { main: '#168759', soft: '#E8F6EF' },
-  client: { main: '#FF8400', soft: '#FFF3E6' },
-};
-const LABEL_ACCENT = {
-  driver: '#168759',
-  client: '#D26D00',
-};
+// Role accent (Design Bible "Direction B", 2026-09-09, Commit 2). Driver
+// keeps the frozen emerald constants — NOT touched by the client contrast
+// closure. Client focused-tab colors come from the palette (single source
+// of truth; qa/utils/themeContrastSmoke.js checks them against the real
+// render surfaces):
+//   pill    — clientNavPill (#FFF3E6, both themes)
+//   icon    — clientNavIcon (#C2410C, deep orange; 4.7:1 on the pill).
+//             The bright clientAccent #FF8400 stays a pill/shadow accent
+//             ONLY: ~2.2:1 as icon on the pill (fails 1.4.11).
+//   label   — clientNavLabel, theme-aware: #C2410C on the white bar (5.2:1)
+//             and #FB923C on the dark bar (7.9:1) — one value cannot serve
+//             both themes at the 11sp 4.5:1 bar.
+const DRIVER_ACCENT = { main: '#168759', soft: '#E8F6EF' };
 
 function syncAppIconBadge(total) {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
@@ -55,7 +52,13 @@ export default function BottomNav({ state, navigation }) {
   const { t, sp } = useI18n();
   const role = session?.user?.role || state.routes[0]?.params?.role || 'client';
   const isDriver = role === 'driver';
-  const accent = ROLE_ACCENT[role] || ROLE_ACCENT.client;
+  // Client values are palette tokens (see the comment above DRIVER_ACCENT);
+  // `?? '#FF8400'` is a defensive fallback only — DARK also declares it.
+  const accent = isDriver
+    ? DRIVER_ACCENT
+    : { main: colors.clientAccent ?? '#FF8400', soft: colors.clientNavPill ?? '#FFF3E6' };
+  const focusedIconColor = isDriver ? accent.main : (colors.clientNavIcon ?? '#C2410C');
+  const focusedLabelColor = isDriver ? accent.main : (colors.clientNavLabel ?? '#C2410C');
   // Theme-aware inactive label: light resolves to the same #617067 the old
   // frozen designSystemV2 token carried; dark now resolves to the dark
   // textMuted instead of staying frozen light.
@@ -160,8 +163,10 @@ export default function BottomNav({ state, navigation }) {
 
   const bottomPad = Math.max(insets.bottom, 6);
   // Design v1 Commit 6: тёмная плашка — из токена палитры (DARK.bg #0F1512),
-  // не графитовый хардкод #111827 из прежней темы.
-  const barBg = isDark ? colors.bg : '#FFFFFF';
+  // не графитовый хардкод #111827 из прежней темы. Светлая плашка —
+  // colors.surface (тот же #FFFFFF; токен, а не хардкод, чтобы QA smoke
+  // проверял именно рендер-поверхность).
+  const barBg = isDark ? colors.bg : colors.surface;
   const barBorder = isDark ? 'rgba(255,255,255,0.08)' : '#E5ECE8';
 
   return (
@@ -172,8 +177,8 @@ export default function BottomNav({ state, navigation }) {
           const iconKey = ICONS[route.name];
           const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
           const label = labelOf(route.name);
-          const iconColor = isFocused ? accent.main : inactiveColor;
-          const labelColor = isFocused ? (LABEL_ACCENT[role] || LABEL_ACCENT.client) : inactiveColor;
+          const iconColor = isFocused ? focusedIconColor : inactiveColor;
+          const labelColor = isFocused ? focusedLabelColor : inactiveColor;
           const tabBadgeCount = route.name === 'Chats' ? chatUnread : route.name === 'Deals' ? dealsUnread : 0;
           const showBadge = tabBadgeCount > 0;
           const badgeLabel = tabBadgeCount > 9 ? '9+' : String(tabBadgeCount);

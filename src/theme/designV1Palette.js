@@ -78,6 +78,17 @@ export const LIGHT = {
   outgoingText: '#111B21',
   clientAccent: '#FF8400',
 
+  // ── BottomNav client focused-tab tokens (P1 contrast closure 2026-09-10;
+  //  checked by qa/utils/themeContrastSmoke.js against these real values).
+  //  Bright clientAccent #FF8400 stays a pill/shadow accent ONLY: as the
+  //  focused icon on the soft pill it measures ~2.2:1 (fails WCAG 1.4.11)
+  //  and as an 11sp label on the white bar ~2.5:1 (fails 1.4.3). Deep orange
+  //  keeps the hue identity and clears both bars: icon #C2410C is 4.7:1 on
+  //  the pill and the light label is 5.2:1 on the white bar.
+  clientNavPill: '#FFF3E6',
+  clientNavIcon: '#C2410C',
+  clientNavLabel: '#C2410C',
+
   statusAccepted: '#168759',
   statusInProgress: '#2878D6',
   statusAtBorder: '#B45800',
@@ -127,6 +138,16 @@ export const DARK = {
   outgoingDark: '#005C4B',
   outgoingDarkText: '#E9EDEF',
   errorDark: '#E06565',
+
+  // ── BottomNav client focused-tab tokens, dark counterparts (same P1
+  //  closure). The pill stays the light orange soft in both themes, so the
+  //  deep icon token is shared; the small-text label shifts lighter —
+  //  #FB923C is 7.9:1 on the dark bar while #C2410C would be only ~3.4:1,
+  //  so a single value cannot serve both themes.
+  clientAccent: '#FF8400',
+  clientNavPill: '#FFF3E6',
+  clientNavIcon: '#C2410C',
+  clientNavLabel: '#FB923C',
 
   statusAccepted: '#3BB273',
   statusInProgress: '#5BA3F5',
