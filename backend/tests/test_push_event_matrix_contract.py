@@ -62,6 +62,8 @@ def test_chat_message_push_payload_keeps_room_sender_recipient_context():
     assert '"sender_id": user["id"]' in CHAT
     assert '"recipient_id": recipient_id' in CHAT
     assert 'url=f"/chats/{room_id}"' in CHAT
+    assert 'create_notification(' in CHAT
+    assert '"chat_message"' in CHAT
 
 
 def test_chat_attachment_push_payload_keeps_attachment_context():
@@ -72,7 +74,9 @@ def test_chat_attachment_push_payload_keeps_attachment_context():
     assert '"recipient_id": recipient_id' in DEAL_ROOM
     assert 'url=f"/chats/{conversation_id}"' in DEAL_ROOM
     # Push-closure track: durable event_key from the persisted attachment id.
-    assert '"event_key": f"chat:{conversation_id}:attachment:{attachment_id}"' in DEAL_ROOM
+    assert '"event_key": event_key' in DEAL_ROOM
+    assert '"chat_attachment"' in DEAL_ROOM
+    assert 'create_notification(' in DEAL_ROOM
 
 
 def test_deal_status_notifications_cover_release_status_flow():

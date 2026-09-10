@@ -16,6 +16,7 @@ from database import deal_room_dal as dr
 from services import storage_service
 from services import file_signing
 from api.push import send_to_user
+from api.notifications import create_notification
 from database.db import get_conn, new_id
 
 # Sniffing/validation lives in services.upload_validation — single source of
@@ -331,6 +332,19 @@ async def upload_attachment(
             recipient_id = room["participant_2"] if room["participant_1"] == user["id"] else room["participant_1"]
             label = f"📄 {original_name}" if resolved_kind == "document" else "🖼 Фото"
             attachment_id = att.get("id") if isinstance(att, dict) else None
+            event_key = f"chat:{conversation_id}:attachment:{attachment_id}"
+            # Bell remains available even if the asynchronous provider push
+            # is delayed or rejected. The persisted attachment id makes this
+            # write idempotent across upload retries.
+            create_notification(
+                recipient_id,
+                "chat_attachment",
+                "Новое вложение в сделке",
+                label,
+                "📄" if resolved_kind == "document" else "🖼",
+                url=f"/chats/{conversation_id}",
+                event_key=event_key,
+            )
             # Push-closure track: event_key from the persisted attachment id —
             # same family as chat text (message_id), a fresh attachment row
             # is created for every real upload, never reused on retry.
@@ -346,7 +360,7 @@ async def upload_attachment(
                     "attachment_id": attachment_id,
                     "sender_id": user["id"],
                     "recipient_id": recipient_id,
-                    "event_key": f"chat:{conversation_id}:attachment:{attachment_id}",
+                    "event_key": event_key,
                     "event": "chat.attachment",
                 },
             )

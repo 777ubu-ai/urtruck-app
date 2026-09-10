@@ -26,7 +26,7 @@ test('RootHeader owns the real unread badge on Bell, not the hamburger', () => {
   const root = readFileSync('src/components/ui/v1/RootHeader.js', 'utf8');
   const menu = readFileSync('src/components/ui/v1/HeaderMenuButton.js', 'utf8');
   assert.match(root, /import \{ useUnreadNotifications \} from '..\/..\/..\/utils\/useUnreadNotifications'/);
-  assert.match(root, /const unread = useUnreadNotifications\(hasToken\)/);
+  assert.match(root, /const unread = useUnreadNotifications\(hasToken, \{ includeChat: true \}\)/);
   assert.match(root, /<BellBadge onPress=\{onBellPress\} count=\{visibleBellCount\}/);
   assert.doesNotMatch(menu, /header-menu-unread-badge/);
   assert.doesNotMatch(menu, /useUnreadNotifications/);

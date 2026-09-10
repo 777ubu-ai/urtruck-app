@@ -294,6 +294,16 @@ def test_chat_message_durable_event_excludes_sender_and_retry_does_not_duplicate
     driver_rows = outbox_rows(driver)
     assert len(driver_rows) == 1 and driver_rows[0]["status"] == "pending"
     assert driver_rows[0]["event_id"].startswith("chat:")
+    with get_conn() as c:
+        bell_rows = c.execute(
+            "SELECT type, url, event_key FROM notifications WHERE user_id = ? AND event_key = ?",
+            (driver, driver_rows[0]["event_id"]),
+        ).fetchall()
+    assert [dict(row) for row in bell_rows] == [{
+        "type": "chat_message",
+        "url": f"/chats/{room_id}",
+        "event_key": driver_rows[0]["event_id"],
+    }]
 
     # A client retry of the SAME message (network hiccup, same client_msg_id)
     # must not create a second push attempt at all — the chat_messages
@@ -303,6 +313,23 @@ def test_chat_message_durable_event_excludes_sender_and_retry_does_not_duplicate
     })
     assert retry.status_code == 200 and retry.json().get("deduped") is True
     assert flaky.calls == 1, "a deduped retry must not attempt delivery again"
+    with get_conn() as c:
+        assert c.execute(
+            "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND event_key = ?",
+            (driver, driver_rows[0]["event_id"]),
+        ).fetchone()[0] == 1
+
+    # Opening the room consumes both the raw chat unread and its Bell entry;
+    # otherwise a user who already read the message still sees a stale badge.
+    as_user(driver)
+    opened = client.get(f"/api/v1/chat/messages/{room_id}")
+    assert opened.status_code == 200, opened.text
+    with get_conn() as c:
+        read_state = c.execute(
+            "SELECT is_read FROM notifications WHERE user_id = ? AND event_key = ?",
+            (driver, driver_rows[0]["event_id"]),
+        ).fetchone()
+    assert read_state and read_state["is_read"] == 1
 
     _force_due(driver)
     stats = push_gateway.process_pending_once(flaky, limit=10)

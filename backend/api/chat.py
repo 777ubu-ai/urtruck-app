@@ -15,6 +15,7 @@ from services import file_signing
 from services import storage_service as storage
 from services import upload_validation
 from api.push import send_to_user
+from api.notifications import create_notification, mark_notifications_read_by_urls
 
 chat_router = APIRouter()
 
@@ -397,6 +398,24 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         preview = (body.text or "📷 Фото")[:50]
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
 
+    event_key = f"chat:{room_id}:msg:{message_id}"
+    # Bell is a durable inbox, independent of provider delivery. Persist the
+    # event before the asynchronous push attempt; the event key makes a
+    # retried client request idempotent along with client_msg_id above.
+    try:
+        sender_name = user.get("full_name") or user.get("phone") or "Пользователь"
+        create_notification(
+            recipient_id,
+            "chat_message",
+            f"💬 {sender_name}",
+            preview,
+            "💬",
+            url=f"/chats/{room_id}",
+            event_key=event_key,
+        )
+    except Exception as exc:
+        print(f"[chat-notification] failed room={room_id}: {type(exc).__name__}", flush=True)
+
     # Push получателю
     # PR-C2 (P0-2): kind='chat' — push_sender вычислит unread badge
     # для iOS APNs (красный кружок на иконке UrTruck на home screen).
@@ -411,7 +430,6 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     # IntegrityError guards above already return before this point on any
     # retry of an already-committed message).
     try:
-        sender_name = user.get("full_name") or user.get("phone") or "Пользователь"
         send_to_user(
             recipient_id,
             f"💬 {sender_name}",
@@ -426,7 +444,7 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
                 "bid_id": room_bid,
                 "sender_id": user["id"],
                 "recipient_id": recipient_id,
-                "event_key": f"chat:{room_id}:msg:{message_id}",
+                "event_key": event_key,
                 "event": "chat.message",
             },
         )
@@ -722,6 +740,14 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
             "UPDATE chat_messages SET is_read = 1 WHERE room_id = ? AND sender_id != ? AND is_read = 0",
             (room_id, uid),
         )
+
+    # Opening a room consumes its durable Bell records as well as the raw
+    # chat rows. Without this, a user who reads a chat directly keeps a stale
+    # Bell badge until they separately open the notification center.
+    try:
+        mark_notifications_read_by_urls(uid, [f"/chats/{room_id}"])
+    except Exception:
+        pass
 
     # mine — серверный признак «это моё сообщение». Клиент НЕ должен
     # определять авторство по локальному id (он может быть фейковым после

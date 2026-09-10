@@ -503,7 +503,9 @@ def _compute_recipient_badge(user_id: str) -> int:
                 pass
             try:
                 row = c.execute(
-                    "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0",
+                    "SELECT COUNT(*) FROM notifications "
+                    "WHERE user_id = ? AND is_read = 0 "
+                    "AND type NOT IN ('chat_message', 'chat_attachment')",
                     (user_id,),
                 ).fetchone()
                 total += int(row[0]) if row else 0

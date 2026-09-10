@@ -10,7 +10,9 @@ import { useUnreadNotifications } from '../../../utils/useUnreadNotifications';
 export default function RootHeader({ navigation, role, onBellPress, bellCount, testID = 'root-header', bellTestID, menuTestID }) {
   const colors = useV1Colors();
   const { hasToken } = useAuth();
-  const unread = useUnreadNotifications(hasToken);
+  // Bell is the cross-product inbox: its count includes durable business
+  // notifications and unread chat rows exactly once.
+  const unread = useUnreadNotifications(hasToken, { includeChat: true });
   const visibleBellCount = Number.isFinite(Number(bellCount)) ? Number(bellCount) : unread;
   return (
     <View style={[s.row, { backgroundColor: colors.bg }]} testID={testID}>
