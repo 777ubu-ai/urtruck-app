@@ -228,6 +228,11 @@ def startup():
         print(f"[env-check] guard failed: {e}", flush=True)
     db.init_db()
     registration_dal.init_registration_schema()
+    # api.chat is imported while routers are registered, before a fresh DB
+    # has its core registration schema.  Seed its special users only after
+    # that schema exists; the operation is idempotent on established DBs.
+    from api.chat import _ensure_special_users
+    _ensure_special_users()
     reviews_dal.init_reviews_schema()
     consent_dal.init_consent_schema()
     blacklist_mgr.seed_demo_blacklist()
