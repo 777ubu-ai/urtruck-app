@@ -296,6 +296,43 @@ def _init():
                 c.commit()
     except Exception as e:
         print(f"[startup] deals.bid_id UNIQUE index migration skipped: {e}", flush=True)
+    # P0 (аудит 2026-09-10): defense-in-depth — «одна АКТИВНАЯ сделка на
+    # груз/рейс». Приложенческий guard (conditional UPDATE + rowcount в
+    # _finalize_accept_inline и во всех bid-мутирующих эндпоинтах, см. правки
+    # той же даты) уже закрывает известный TOCTOU-путь ко второй deals-записи
+    # на тот же cargo_id/trip_id, но, в отличие от deals.bid_id (у которого
+    # одна ставка физически не может породить два разных deal.id при верном
+    # guard), у cargo_id/trip_id НЕТ отдельной естественной уникальности —
+    # это ДВЕ разные ставки на один груз, и только бизнес-инвариант
+    # «активная сделка одна» делает вторую недопустимой. Partial UNIQUE
+    # индекс — не по всем статусам, а только по нетерминальным ('completed'
+    # и 'cancelled' исключены: завершённая/отменённая сделка не блокирует
+    # повторную продажу того же груза, ровно как остальной код это уже
+    # трактует, см. active-deal проверки в unpublish_cargo/unpublish_trip).
+    # Тот же fail-closed паттерн: если в истории УЖЕ есть дубли — НЕ создаём
+    # индекс и НЕ роняем boot, только логируем (продовые данные не трогаем,
+    # чинить отдельно). Идемпотентно — безопасно перезапускать на каждом
+    # старте и на уже существующей БД.
+    for _col, _idx_name in (("cargo_id", "idx_deals_active_cargo_unique"),
+                             ("trip_id", "idx_deals_active_trip_unique")):
+        try:
+            with get_conn() as c:
+                dup = c.execute(
+                    f"SELECT {_col}, COUNT(*) n FROM deals "
+                    f"WHERE {_col} IS NOT NULL AND status NOT IN ('completed', 'cancelled') "
+                    f"GROUP BY {_col} HAVING n > 1 LIMIT 1"
+                ).fetchone()
+                if dup:
+                    print(f"[startup] deals.{_col} active-UNIQUE index SKIPPED — "
+                          f"есть дубли активных сделок ({_col}={dup[_col]}), чинить отдельно", flush=True)
+                else:
+                    c.execute(
+                        f"CREATE UNIQUE INDEX IF NOT EXISTS {_idx_name} ON deals({_col}) "
+                        f"WHERE {_col} IS NOT NULL AND status NOT IN ('completed', 'cancelled')"
+                    )
+                    c.commit()
+        except Exception as e:
+            print(f"[startup] deals.{_col} active-UNIQUE index migration skipped: {e}", flush=True)
     # Часть 3 (история цены): таблица price_events + связь chat_messages.event_id.
     # Аддитивно и идемпотентно. Бэкфилл старых ставок НЕ делаем.
     with get_conn() as c:
@@ -754,6 +791,17 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=404)
         if row["owner_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Можно удалять только свои грузы")
+        # P0 (аудит 2026-09-10): unpublish_cargo уже блокирует снятие груза с
+        # публикации, если по нему есть активная (незавершённая) сделка —
+        # delete_cargo той же проверки не имело и молча ставило status=
+        # 'cancelled' на груз, у которого перевозка уже шла (accepted и
+        # дальше). Тот же canonical active-deal guard, что и в unpublish.
+        active_deal = c.execute(
+            "SELECT id FROM deals WHERE cargo_id = ? AND status IN "
+            "('accepted','in_progress','at_border','awaiting_confirmation','delivered','received') LIMIT 1",
+            (cargo_id,)).fetchone()
+        if active_deal:
+            raise HTTPException(status_code=409, detail="Нельзя удалить: перевозка уже началась")
         c.execute("UPDATE cargos SET status = 'cancelled' WHERE id = ?", (cargo_id,))
         # Ревизия 26.07: живые ставки удалённого груза отменяем каскадом —
         # иначе у водителей вечно висели «мёртвые» предложения без груза.
@@ -2096,12 +2144,28 @@ def _notify_rejected_siblings(rejected_siblings):
             pass
 
 
-def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
+def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: str = "pending"):
     """Shared accept logic used by accept_bid and counter/accept.
 
     Runs inside an open SQLite transaction (`with get_conn() as c:`).
     Authorises the user, updates linked cargo/trip, marks the winning bid
     as accepted (auto-rejecting siblings), creates a chat_room and a deal.
+
+    `expected_status` (P0, аудит 2026-09-10): the ONE status the caller
+    itself already verified via its own precondition check just before
+    calling in — accept_bid only ever calls this with a bid it just saw as
+    'pending' (it explicitly 409s on 'countered' bids earlier); accept_counter
+    only ever calls it with a bid it just saw as 'countered'. The write guard
+    below must match that SAME precondition, not a blanket
+    "pending OR countered" for both callers — that blanket guard was itself
+    a race: decline_counter/cancel_counter_as_owner concurrently flipping a
+    'countered' bid back to 'pending' (also fixed this same date, see their
+    conditional UPDATEs) would let a racing accept_counter's write still
+    match `status IN ('pending','countered')` and silently "accept" a
+    counter-offer round that had just been withdrawn/declined by the other
+    side — found via the concurrency regression matrix (scenario F/G), not
+    the original report. Matrix scenarios F/G in
+    tests/test_p0_deal_bid_race.py regression-cover exactly this.
 
     Returns: dict(deal_id, chat_room_id, from_city, to_city, shipper_id, driver_id)
     """
@@ -2116,10 +2180,25 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
         ).fetchone()
         if not cargo or cargo["owner_id"] != user["id"]:
             raise HTTPException(status_code=403)
-        c.execute(
-            "UPDATE cargos SET status = 'taken', taken_by = ? WHERE id = ?",
+        # P0 (аудит 2026-09-10): раньше это был безусловный UPDATE — полагались
+        # ИСКЛЮЧИТЕЛЬНО на то, что guarded UPDATE ниже по bids.status (и полный
+        # rollback транзакции при его провале) в итоге откатит и эту запись
+        # тоже. Верно для простого double-accept, но не для восстановления
+        # через TOCTOU-гонку в counter_bid/cancel_bid/decline_counter/
+        # cancel_counter_as_owner (P0 fix выше): та гонка могла откатить
+        # bids.status обратно в 'pending'/'countered' уже ПОСЛЕ того, как
+        # cargo стал 'taken' в первом accept — второй, «легитимный на вид»
+        # accept_counter/accept_bid тогда проходил guarded UPDATE bids (статус
+        # снова pending/countered) и пытался создать ВТОРУЮ deals-запись на
+        # уже занятый груз. Явный guard на родительском статусе останавливает
+        # это на первом же шаге, а не полагается на то, что где-то ниже
+        # что-то ещё упадёт.
+        cur = c.execute(
+            "UPDATE cargos SET status = 'taken', taken_by = ? WHERE id = ? AND status = 'active'",
             (bid["bidder_id"], bid["cargo_id"]),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Груз уже занят другой сделкой")
         from_city, to_city = cargo["from_city"], cargo["to_city"]
 
     if bid["trip_id"]:
@@ -2137,10 +2216,13 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
         driver_id = trip["driver_id"]
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403)
-        c.execute(
-            "UPDATE trips SET status = 'booked', booked_by = ? WHERE id = ?",
+        # P0 (аудит 2026-09-10): тот же guard, что и для cargo выше.
+        cur = c.execute(
+            "UPDATE trips SET status = 'booked', booked_by = ? WHERE id = ? AND status = 'active'",
             (bid["bidder_id"], bid["trip_id"]),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Рейс уже занят другой сделкой")
 
     # P0 (аудит 2026-08-21, обход авторизации): вся проверка «я владелец
     # объявления» жила ТОЛЬКО внутри двух `if` выше, а create_bid явно
@@ -2163,13 +2245,38 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
     # сделки на один груз. Conditional UPDATE + rowcount закрывает гонку:
     # проигравшая транзакция получает rowcount=0 → 409 → полный rollback
     # (включая UPDATE cargos/trips выше по функции).
-    cur = c.execute(
-        "UPDATE bids SET amount = ?, status = 'accepted', updated_at = CURRENT_TIMESTAMP "
-        "WHERE id = ? AND status IN ('pending', 'countered')",
-        (final_amount, bid_id),
-    )
+    # P0 (аудит 2026-09-10, найдено concurrency-матрицей, сценарий E — не из
+    # исходного отчёта): accept_bid зовёт эту функцию с final_amount,
+    # прочитанным ДО открытия транзакции (bid["amount"] в самом начале
+    # accept_bid). Если update_bid (тоже P0-guarded теперь, но он не трогает
+    # status) успевает изменить сумму МЕЖДУ тем чтением и этим UPDATE, старый
+    # код тут слепо перезаписывал amount обратно на устаревшее значение —
+    # ответ update_bid говорил «успех», а реально созданная сделка молча
+    # фиксировала цену ДО правки автора ставки. final_amount=None — сигнал
+    # «принять по текущей, а не по когда-то прочитанной цене»: guarded UPDATE
+    # трогает только status (держит write lock), а сумму берём СВЕЖЕЙ SELECT
+    # сразу после — это гарантированно либо строка ДО гонки (мы победили и
+    # держим лок первыми), либо уже применённая чужая правка (она победила и
+    # закоммитилась раньше нас). Для accept_counter final_amount всегда
+    # конкретное число (согласованная сумма контроффера) — там семантика
+    # другая: контроффер — не редактируемое пользователем поле, его пишем
+    # как раньше.
+    if final_amount is None:
+        cur = c.execute(
+            "UPDATE bids SET status = 'accepted', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = ?",
+            (bid_id, expected_status),
+        )
+    else:
+        cur = c.execute(
+            "UPDATE bids SET amount = ?, status = 'accepted', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = ?",
+            (final_amount, bid_id, expected_status),
+        )
     if cur.rowcount == 0:
         raise HTTPException(status_code=409, detail="Ставка уже обработана")
+    if final_amount is None:
+        final_amount = c.execute("SELECT amount FROM bids WHERE id = ?", (bid_id,)).fetchone()["amount"]
     # Auto-decline siblings: anything still pending OR countered on the same parent.
     # Сначала собираем перебитые ставки (id/bidder/amount) — их авторов надо
     # уведомить после коммита (см. _notify_rejected_siblings).
@@ -2252,6 +2359,12 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
         "shipper_id": shipper_id,
         "driver_id": driver_id,
         "rejected_siblings": rejected_siblings,
+        # P0: the amount actually committed to the deal -- may differ from
+        # whatever the caller read before opening the transaction when
+        # final_amount was passed as None (see the comment above the guarded
+        # UPDATE). Callers must use THIS value for post-commit push/notification
+        # text, not a pre-transaction read of bid["amount"].
+        "amount": final_amount,
     }
 
 
@@ -2271,9 +2384,15 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
                 status_code=409,
                 detail=f"Ставку нельзя принять в статусе {bid['status']}",
             )
-        result = _finalize_accept_inline(c, user, bid, bid["amount"])
+        # final_amount=None: принять по актуальной (не устаревшей) сумме —
+        # см. комментарий P0 внутри _finalize_accept_inline.
+        result = _finalize_accept_inline(c, user, bid, None)
+        # P0: используем реально закоммиченную сумму (могла отличаться от
+        # bid["amount"], прочитанного ДО транзакции, если бид успел
+        # обновиться гонкой с update_bid — см. _finalize_accept_inline).
+        committed_amount = result["amount"]
         # Часть 3: событие — владелец принял ставку (actor=owner).
-        _record_price_event(c, bid_id, user["id"], "owner", bid["amount"], "accepted", None)
+        _record_price_event(c, bid_id, user["id"], "owner", committed_amount, "accepted", None)
         _cur = _bid_currency(c, bid)   # валюта ставки для текста уведомления
 
     # «Дом заказа» (02.08.2026): пуш о принятой ставке ведёт в карточку
@@ -2290,12 +2409,12 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
     # be accepted once (guarded by the status!='pending' check above), so
     # this key is inherently stable/unique; localized via push_i18n.
     loc = push_gateway.get_recipient_locale(bid["bidder_id"])
-    title, text = push_i18n.push_text("bid_accepted", loc, amount=_money(bid['amount'], _cur))
+    title, text = push_i18n.push_text("bid_accepted", loc, amount=_money(committed_amount, _cur))
     event_key = f"bid:{bid_id}:accepted"
     try:
         send_to_user(bid["bidder_id"], title, text, url=deal_url, kind="bid",
                      data={"event_key": event_key, "event": "bid.accepted", "bid_id": bid_id,
-                           "i18n_event": "bid_accepted", "i18n_params": {"amount": _money(bid['amount'], _cur)}})
+                           "i18n_event": "bid_accepted", "i18n_params": {"amount": _money(committed_amount, _cur)}})
     except Exception:
         pass
     try:
@@ -2359,10 +2478,21 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
             )
         new_message = body.message if body.message is not None else bid.get("message")
 
-        c.execute(
-            "UPDATE bids SET amount = ?, message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        # P0 (аудит 2026-09-10, TOCTOU race): раньше это был безусловный
+        # UPDATE ... WHERE id=? — читали статус отдельным SELECT'ом выше,
+        # проверяли в Python, а писали без повторной проверки. Конкурентный
+        # accept_bid/accept_counter/cancel_bid, прошедший гонку между тем же
+        # чтением и этой записью, тихо перезаписывался — принятая (и уже
+        # привязанная к deals-записи) ставка могла снова стать «pending» с
+        # чужими amount/message. Conditional UPDATE + rowcount закрывает
+        # гонку тем же приёмом, что уже используется в _finalize_accept_inline.
+        cur = c.execute(
+            "UPDATE bids SET amount = ?, message = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = 'pending'",
             (new_amount, new_message, bid_id),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже изменена — обновите экран")
         # Часть 3: событие — bidder изменил свою ставку.
         _record_price_event(c, bid_id, user["id"], "bidder", new_amount, "updated", new_message)
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
@@ -2417,10 +2547,17 @@ def cancel_bid(bid_id: str, user=Depends(require_level(1))):
         if bid["status"] not in ("pending", "countered"):
             raise HTTPException(status_code=409, detail=f"Ставку нельзя отменить в статусе {bid['status']}")
 
-        c.execute(
-            "UPDATE bids SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        # P0 (аудит 2026-09-10, TOCTOU race): conditional UPDATE + rowcount —
+        # тот же класс гонки, что и в update_bid выше: без повторной проверки
+        # статуса при записи cancel_bid мог отменить уже принятую (accepted)
+        # ставку, для которой уже создана deals-запись.
+        cur = c.execute(
+            "UPDATE bids SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status IN ('pending', 'countered')",
             (bid_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите экран")
         # P3-fix: финал в ценовом timeline — раньше отмена не оставляла события.
         cancel_event_id = _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "cancelled", None)
         # Decrement bids_count safely (never below 0).
@@ -2475,10 +2612,14 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
         if bid["status"] not in ("pending", "countered"):
             raise HTTPException(status_code=409, detail=f"Ставку нельзя отклонить в статусе {bid['status']}")
 
-        c.execute(
-            "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        # P0 (аудит 2026-09-10, TOCTOU race): conditional UPDATE + rowcount.
+        cur = c.execute(
+            "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status IN ('pending', 'countered')",
             (bid_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите экран")
         # Часть 3: событие — владелец отклонил (actor=owner).
         _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "rejected", None)
         # M2: «отклики» (bids_count) = активные ставки. cancel уже уменьшал
@@ -2547,12 +2688,24 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
         if bid["status"] != "pending":
             raise HTTPException(status_code=409, detail=f"Контр-оффер нельзя отправить в статусе {bid['status']}")
 
-        c.execute(
+        # P0 (аудит 2026-09-10, TOCTOU race — исходная находка): раньше этот
+        # UPDATE ничего не проверял при записи. Конкурентный accept_bid мог
+        # принять ставку между SELECT-проверкой выше и этой записью — тогда
+        # counter_bid тихо откатывал только что созданную (deal-backed)
+        # accepted-ставку обратно в 'countered', а следующий accept_counter()
+        # по тому же bid_id мог создать вторую deals-запись на тот же груз.
+        # Conditional UPDATE + rowcount закрывает гонку: проигравший запрос
+        # получает чистый 409 и не производит НИКАКИХ побочных эффектов
+        # (push/notification блок ниже не выполняется, т.к. исключение
+        # прерывает функцию раньше).
+        cur = c.execute(
             "UPDATE bids SET status = 'countered', counter_amount = ?, counter_message = ?, "
             "counter_by = 'owner', counter_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP "
-            "WHERE id = ?",
+            "WHERE id = ? AND status = 'pending'",
             (body.amount, body.message, bid_id),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите экран")
         # Часть 3: событие — владелец прислал контр (actor=owner).
         counter_event_id = _record_price_event(c, bid_id, user["id"], "owner", body.amount, "countered", body.message)
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
@@ -2607,7 +2760,7 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
         if not owner_id:
             raise HTTPException(status_code=409, detail="Не найден владелец груза/рейса")
         owner_user = {"id": owner_id}
-        result = _finalize_accept_inline(c, owner_user, bid, counter)
+        result = _finalize_accept_inline(c, owner_user, bid, counter, expected_status="countered")
         # Часть 3: событие — bidder принял контр-оффер (actor=bidder).
         _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
 
@@ -2665,11 +2818,15 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=403, detail="Только владелец груза/рейса может отменить свою встречную")
         if bid["status"] != "countered":
             raise HTTPException(status_code=409, detail=f"Нет активной встречной (статус {bid['status']})")
-        c.execute(
+        # P0 (аудит 2026-09-10, TOCTOU race): conditional UPDATE + rowcount.
+        cur = c.execute(
             "UPDATE bids SET status = 'pending', counter_amount = NULL, counter_message = NULL, "
-            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = 'countered'",
             (bid_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите экран")
         cancel_counter_event_id = _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "counter_cancelled", None)
 
     # Counter cancellation changes the bidder's actionable state back to
@@ -2719,11 +2876,15 @@ def decline_counter(bid_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=403, detail="Только автор ставки может отклонить контр-оффер")
         if bid["status"] != "countered":
             raise HTTPException(status_code=409, detail=f"Нет активного контр-оффера (статус {bid['status']})")
-        c.execute(
+        # P0 (аудит 2026-09-10, TOCTOU race): conditional UPDATE + rowcount.
+        cur = c.execute(
             "UPDATE bids SET status = 'pending', counter_amount = NULL, counter_message = NULL, "
-            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = 'countered'",
             (bid_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите экран")
         # P3-fix: фиксируем отказ от контр-оффера в ценовом timeline.
         _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "declined", None)
 
