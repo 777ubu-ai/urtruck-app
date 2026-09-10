@@ -1,7 +1,7 @@
-"""Fresh database startup must initialize chat after registration tables.
+"""Новая БД должна запускать chat после registration-таблиц.
 
-This mirrors the local/CI E2E runtime: importing the router happens before
-FastAPI startup, while the SQLite file has not yet received its core schema.
+Это повторяет local/CI E2E runtime: router импортируется до FastAPI startup,
+когда SQLite-файл ещё не получил базовую схему.
 """
 import os
 import subprocess
@@ -19,6 +19,11 @@ from fastapi.testclient import TestClient
 import main
 with TestClient(main.app) as client:
     assert client.get('/api/v1/system/info').status_code == 200
+    assert client.get('/api/v1/borders/catalog').status_code == 200
+    with main.db.get_conn() as conn:
+        assert conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'border_checkpoints'"
+        ).fetchone()
 """
     env = {
         **os.environ,

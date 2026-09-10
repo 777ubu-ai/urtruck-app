@@ -228,9 +228,9 @@ def startup():
         print(f"[env-check] guard failed: {e}", flush=True)
     db.init_db()
     registration_dal.init_registration_schema()
-    # api.chat is imported while routers are registered, before a fresh DB
-    # has its core registration schema.  Seed its special users only after
-    # that schema exists; the operation is idempotent on established DBs.
+    # api.chat импортируется при регистрации роутеров, когда новая БД ещё не
+    # имеет registration-схему. Создаём special users только после неё;
+    # операция идемпотентна для существующих БД.
     from api.chat import _ensure_special_users
     _ensure_special_users()
     reviews_dal.init_reviews_schema()
@@ -241,17 +241,23 @@ def startup():
     # ТОЛЬКО при выключенном CGR. При включённом CGR авторитетный список с
     # парными именами даёт seed_checkpoints_from_cgr() (scheduler), а легаси
     # дал бы дубли («Нуржолы» + «Нур Жолы - Хоргос»).
+    from database import cgr_dal
+    # Queue API требует эту схему даже когда optional CGR workers не могут
+    # стартовать из-за неполной runtime-конфигурации.
+    cgr_dal.init_cgr_schema()
     try:
-        from database import cgr_dal
         from cgr.settings import cgr_settings
-        cgr_dal.init_cgr_schema()
         if cgr_settings.feature_enabled:
             print("[startup] CGR enabled — legacy checkpoint seed skipped (CGR is source)", flush=True)
         else:
             n = cgr_dal.seed_border_checkpoints_from_legacy()
             print(f"[startup] CGR schema applied, border_checkpoints seeded: +{n}", flush=True)
     except Exception as e:
-        print(f"[startup] CGR schema init failed (continuing): {e}", flush=True)
+        # Отсутствие CGR-секрета не должно оставлять Queue без таблиц. Legacy
+        # catalogue локален, идемпотентен и сохраняет read-only просмотр
+        # границ до настройки CGR.
+        n = cgr_dal.seed_border_checkpoints_from_legacy()
+        print(f"[startup] CGR config unavailable; legacy catalogue seeded: +{n}; {e}", flush=True)
 
     # Deal Room foundation — схема + backfill участников из chat_rooms.
     # Идемпотентно, безопасно при повторе; старый чат не затрагивается.

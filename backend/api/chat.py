@@ -155,10 +155,9 @@ def _init():
             _ensure_columns(c)
             _migrate_canonical_rooms(c)  # Variant B: канонические комнаты сделок
             c.commit()
-    # drivers_registration belongs to the core registration schema.  This
-    # module is imported before FastAPI startup initializes that schema on a
-    # new database, so special-user seeding must run from main.startup after
-    # registration_dal.init_registration_schema().
+    # drivers_registration — часть базовой registration-схемы. Этот модуль
+    # импортируется до её инициализации на новой БД, поэтому special users
+    # создаются из main.startup после init_registration_schema().
 
 
 def _deal_key(cargo_id, trip_id, p1: str, p2: str) -> str:
