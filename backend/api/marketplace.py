@@ -14,7 +14,7 @@ from pydantic import BaseModel, field_validator
 from typing import Optional, List
 
 from database.db import get_conn, new_id
-from api.verification_gate import require_level, get_user, _extract_driver
+from api.verification_gate import require_level, require_active_level, get_user, _extract_driver
 from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
@@ -583,7 +583,12 @@ class BidCounterIn(BaseModel):
 # ═══ Cargos ═══
 
 @mp_router.post("/cargos")
-def create_cargo(body: CargoIn, user=Depends(require_level(1))):
+def create_cargo(body: CargoIn, user=Depends(require_active_level(1))):
+    # Track B (2026-09-10): a cargo listing is a client/shipper action —
+    # server-side role enforcement (see _require_role above), not just a UI
+    # affordance. Confirmed gap: a driver-role account could previously
+    # publish a client cargo listing directly via the API.
+    _require_role(user, ("client",), "разместить груз")
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите откуда и куда")
     if not body.cargo_desc:
@@ -649,6 +654,7 @@ def list_cargos(
     offset: int = 0,
 ):
     """Публичный список грузов. Demo-контент скрыт по умолчанию."""
+    _require_public_listing_status(status)
     # Cap пагинации: без верхней границы limit=10**9 заставляет SQLite
     # материализовать всю таблицу (DoS-вектор аудита C1.4).
     limit = max(1, min(limit, 200))
@@ -714,7 +720,7 @@ def list_cargos(
 
 
 @mp_router.post("/cargos/photo")
-async def upload_cargo_photo(file: UploadFile = File(...), user=Depends(require_level(1))):
+async def upload_cargo_photo(file: UploadFile = File(...), user=Depends(require_active_level(1))):
     """Фото груза → storage, возвращаем КЛЮЧ (как у /chat/photo). Ключ кладётся
     в cargos.photos; на выдаче подписывается (_sign_cargo_photos). Раньше фронт
     сохранял локальный uri устройства — у других он не открывался."""
@@ -783,8 +789,90 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     return d
 
 
+# Track B (2026-09-10): confirmed gap (Block 2 audit) -- list_cargos()/
+# list_trips() took `status` as a free-form, UNAUTHENTICATED query param
+# with no whitelist. Anyone could request status=unpublished/cancelled/
+# taken/completed/expired and enumerate every user's non-active listings
+# (price, description, route, owner_id) -- the official app client only
+# ever requests status=active (own listings by any status are served
+# separately, through the authenticated /market/my endpoint). Shared by
+# both list_cargos and list_trips so the same public-vs-private boundary
+# can't drift between the two symmetric endpoints.
+_PUBLIC_LISTING_STATUSES = frozenset({"active"})
+
+
+def _require_public_listing_status(status: str) -> None:
+    if status not in _PUBLIC_LISTING_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "STATUS_NOT_PUBLIC",
+                "message": "Публичный список доступен только для активных объявлений",
+                "allowed": sorted(_PUBLIC_LISTING_STATUSES),
+            },
+        )
+
+
+# Track B (2026-09-10): shared "is there still a live delivery in progress
+# for this listing" check. Previously hand-copied as an identical literal
+# tuple into delete_cargo/unpublish_cargo/unpublish_trip (and missing
+# entirely from the legacy update_trip_status, the confirmed gap this
+# track closes) -- factored out once so a future active-deal guard doesn't
+# risk drifting from this list. Deliberately NOT reused by update_cargo/
+# update_trip, which enforce a DIFFERENT, stricter invariant
+# (`status NOT IN ('cancelled')` -- also blocks editing a *completed*
+# deal's listing, not just an in-progress one); that's an intentional
+# product distinction, not duplication to clean up.
+_ACTIVE_DEAL_STATUSES = (
+    "accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received",
+)
+
+
+def _active_deal_exists(c, *, cargo_id: str = None, trip_id: str = None) -> bool:
+    placeholders = ",".join("?" for _ in _ACTIVE_DEAL_STATUSES)
+    if cargo_id:
+        row = c.execute(
+            f"SELECT id FROM deals WHERE cargo_id = ? AND status IN ({placeholders}) LIMIT 1",
+            (cargo_id, *_ACTIVE_DEAL_STATUSES),
+        ).fetchone()
+        return bool(row)
+    if trip_id:
+        row = c.execute(
+            f"SELECT id FROM deals WHERE trip_id = ? AND status IN ({placeholders}) LIMIT 1",
+            (trip_id, *_ACTIVE_DEAL_STATUSES),
+        ).fetchone()
+        return bool(row)
+    return False
+
+
+# Track B (2026-09-10): server-side role enforcement for the marketplace's
+# two directions (a cargo listing/bid is a client-side action; a trip
+# listing/bid is a driver-side action). Previously enforced ONLY by the UI
+# (dealActionResolver.js et al) -- create_cargo/create_trip/create_bid had
+# no user["role"] check at all, so a client account could publish a driver
+# trip (or bid on another client's cargo) directly via the API, and
+# vice versa. `role` is normalized the same way api/profile.py already
+# does when a user sets it (bare "shipper" -> "client"; drivers_registration
+# itself never stores literal "shipper") -- matched here in case an older
+# token/row predates that normalization.
+def _require_role(user: dict, allowed: tuple, action: str) -> None:
+    role = (user.get("role") or "").strip().lower()
+    if role == "shipper":
+        role = "client"
+    if role not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "ROLE_NOT_ALLOWED",
+                "message": f"Действие «{action}» недоступно для вашей роли",
+                "your_role": role or "not_set",
+                "allowed_roles": list(allowed),
+            },
+        )
+
+
 @mp_router.delete("/cargos/{cargo_id}")
-def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
+def delete_cargo(cargo_id: str, user=Depends(require_active_level(1))):
     with get_conn() as c:
         row = c.execute("SELECT owner_id FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
         if not row:
@@ -795,12 +883,9 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
         # публикации, если по нему есть активная (незавершённая) сделка —
         # delete_cargo той же проверки не имело и молча ставило status=
         # 'cancelled' на груз, у которого перевозка уже шла (accepted и
-        # дальше). Тот же canonical active-deal guard, что и в unpublish.
-        active_deal = c.execute(
-            "SELECT id FROM deals WHERE cargo_id = ? AND status IN "
-            "('accepted','in_progress','at_border','awaiting_confirmation','delivered','received') LIMIT 1",
-            (cargo_id,)).fetchone()
-        if active_deal:
+        # дальше). Тот же canonical active-deal guard, что и в unpublish
+        # (Track B: теперь общий _active_deal_exists() helper).
+        if _active_deal_exists(c, cargo_id=cargo_id):
             raise HTTPException(status_code=409, detail="Нельзя удалить: перевозка уже началась")
         c.execute("UPDATE cargos SET status = 'cancelled' WHERE id = ?", (cargo_id,))
         # Ревизия 26.07: живые ставки удалённого груза отменяем каскадом —
@@ -813,7 +898,7 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.patch("/cargos/{cargo_id}/unpublish")
-def unpublish_cargo(cargo_id: str, user=Depends(require_level(1))):
+def unpublish_cargo(cargo_id: str, user=Depends(require_active_level(1))):
     """Снять груз с публикации. Ставит status=unpublished, отклоняет pending-ставки."""
     with get_conn() as c:
         row = c.execute("SELECT owner_id, status FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
@@ -823,10 +908,7 @@ def unpublish_cargo(cargo_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=403, detail="Можно снять только свой груз")
         if row["status"] not in (None, "active", "draft", "expired"):
             raise HTTPException(status_code=409, detail="Груз уже не активен")
-        active_deal = c.execute(
-            "SELECT id FROM deals WHERE cargo_id = ? AND status IN ('accepted','in_progress','at_border','awaiting_confirmation','delivered','received') LIMIT 1",
-            (cargo_id,)).fetchone()
-        if active_deal:
+        if _active_deal_exists(c, cargo_id=cargo_id):
             raise HTTPException(status_code=409, detail="Нельзя снять с публикации: перевозка уже началась")
         cancelled_bids = c.execute(
             "SELECT id, bidder_id FROM bids WHERE cargo_id = ? AND status IN ('pending', 'countered')",
@@ -869,7 +951,7 @@ class CargoPatchIn(BaseModel):
 
 
 @mp_router.patch("/cargos/{cargo_id}")
-def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_level(1))):
+def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_active_level(1))):
     """Частичное обновление СВОЕГО активного груза (задача A): цена/описание/
     вес/объём/тип/дата. 403 — не владелец; 404 — нет груза; 409 — груз уже
     не active или есть принятая (не отменённая) сделка."""
@@ -1080,7 +1162,7 @@ td:first-child{{color:#666;width:42%}}.head{{display:flex;justify-content:space-
 # Дата загрузки/выезда сбрасывается на сегодня → публикация снова живёт
 # 3 дня и возвращается в общую ленту. Без ручного ввода даты.
 @mp_router.post("/cargos/{cargo_id}/extend")
-def extend_cargo(cargo_id: str, user=Depends(require_level(1))):
+def extend_cargo(cargo_id: str, user=Depends(require_active_level(1))):
     new_date = datetime.utcnow().date().isoformat()
     with get_conn() as c:
         row = c.execute("SELECT owner_id, status FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
@@ -1095,7 +1177,7 @@ def extend_cargo(cargo_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.post("/trips/{trip_id}/extend")
-def extend_trip(trip_id: str, user=Depends(require_level(1))):
+def extend_trip(trip_id: str, user=Depends(require_active_level(1))):
     new_date = datetime.utcnow().date().isoformat()
     with get_conn() as c:
         row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
@@ -1110,7 +1192,7 @@ def extend_trip(trip_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.patch("/trips/{trip_id}/unpublish")
-def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
+def unpublish_trip(trip_id: str, user=Depends(require_active_level(1))):
     """Снять рейс с публикации. Ставит status=unpublished, отклоняет pending-ставки."""
     with get_conn() as c:
         row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
@@ -1150,7 +1232,7 @@ def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.patch("/trips/{trip_id}/republish")
-def republish_trip(trip_id: str, user=Depends(require_level(1))):
+def republish_trip(trip_id: str, user=Depends(require_active_level(1))):
     """Опубликовать снова снятый рейс. Обновляет дату выезда на сегодня."""
     with get_conn() as c:
         row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
@@ -1169,7 +1251,7 @@ def republish_trip(trip_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.patch("/cargos/{cargo_id}/republish")
-def republish_cargo(cargo_id: str, user=Depends(require_level(1))):
+def republish_cargo(cargo_id: str, user=Depends(require_active_level(1))):
     """Опубликовать снова снятый груз. Обновляет дату подачи на сегодня."""
     with get_conn() as c:
         row = c.execute("SELECT owner_id, status FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
@@ -1190,7 +1272,11 @@ def republish_cargo(cargo_id: str, user=Depends(require_level(1))):
 # ═══ Trips ═══
 
 @mp_router.post("/trips")
-def create_trip(body: TripIn, user=Depends(require_level(1))):
+def create_trip(body: TripIn, user=Depends(require_active_level(1))):
+    # Track B (2026-09-10): symmetric to create_cargo -- a trip listing is a
+    # driver action. Confirmed gap: a client-role account could previously
+    # publish a driver trip listing directly via the API.
+    _require_role(user, ("driver",), "разместить рейс")
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
     # Stage 52 / P1-8: дата выезда не может быть в прошлом.
@@ -1219,7 +1305,7 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
 
 
 @mp_router.patch("/trips/{trip_id}")
-def update_trip(trip_id: str, body: TripPatchIn, user=Depends(require_level(1))):
+def update_trip(trip_id: str, body: TripPatchIn, user=Depends(require_active_level(1))):
     """Partial update of own active trip. Locked once a deal exists.
 
     - 403 if not owner; 404 if trip missing
@@ -1312,6 +1398,7 @@ def list_trips(
     limit: int = 50,
     offset: int = 0,
 ):
+    _require_public_listing_status(status)
     # Cap пагинации — та же защита, что в list_cargos (аудит C1.4).
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
@@ -1483,9 +1570,24 @@ def _record_price_event(c, bid_id, actor_id, actor_role, amount, kind, comment=N
 
 
 @mp_router.post("/bids")
-def create_bid(body: BidIn, user=Depends(require_level(1))):
+def create_bid(body: BidIn, user=Depends(require_active_level(1))):
     # cargo_id или trip_id — хотя бы один (для серверных грузов)
     # Если оба null — разрешаем (для demo/local грузов), ставка просто без привязки
+
+    # Track B (2026-09-10): bid direction enforcement. A bid ON a cargo is
+    # only meaningful coming from a driver (offering to carry it); a bid ON
+    # a trip is only meaningful coming from a client (offering cargo for
+    # that driver's route). Confirmed gap: neither direction was enforced
+    # server-side -- a client could bid on another client's cargo, and
+    # symmetrically a driver on another driver's trip. Only checked when
+    # the bid is actually bound to a listing -- an unbound bid (both IDs
+    # null, the pre-existing "demo/local cargo" case above) has no
+    # direction to validate against, and can never be accepted anyway
+    # (see _finalize_accept_inline's own fail-closed check on that case).
+    if body.cargo_id:
+        _require_role(user, ("driver",), "сделать ставку на груз")
+    elif body.trip_id:
+        _require_role(user, ("client",), "сделать ставку на рейс")
 
     # PR-B (P0-E): hard 400 на невалидный amount. Раньше backend принимал
     # 0 / отрицательные значения, защищён был только frontend (BidModal:61-64).
@@ -1962,7 +2064,7 @@ def list_drivers(truck_type: str = "", limit: int = 30):
 # ═══ Trip Status ═══
 
 @mp_router.patch("/trips/{trip_id}/status")
-def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level(1))):
+def update_trip_status(trip_id: str, new_status: str, user=Depends(require_active_level(1))):
     """Обновить статус рейса: active → booked → in_transit → delivered.
 
     Пре-мёрдж ревью (05.08.2026, P0-БЛОКЕР, независимый adversarial review):
@@ -1986,6 +2088,26 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level
             raise HTTPException(status_code=404)
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Только водитель может менять статус")
+        # Track B (2026-09-10): confirmed gap (found during the independent
+        # P0 re-review of fix/p0-deal-bid-race-20260910) -- "active" and
+        # "booked" are NOT in _TRIP_TO_DEAL below, so they never went
+        # through _transition_deal()'s FSM/actor validation at all; the
+        # unconditional UPDATE two lines below would let a driver silently
+        # reset an already-dealt trip back to "active", re-listing it in
+        # the public feed while the deal is still live. A second shipper's
+        # subsequent accept_bid would then only be stopped by the raw
+        # deals.trip_id UNIQUE index as an unhandled sqlite3.IntegrityError
+        # (500), not a clean rejection. Same canonical active-deal guard as
+        # unpublish_trip/delete_cargo/unpublish_cargo -- fail closed with a
+        # real 409 before the trip status can move at all.
+        if new_status in ("active", "booked") and _active_deal_exists(c, trip_id=trip_id):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "ACTIVE_DEAL_EXISTS",
+                    "message": "Нельзя вернуть рейс в этот статус: сделка уже в работе",
+                },
+            )
         c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_status, trip_id))
         _TRIP_TO_DEAL = {"in_transit": "in_progress", "delivered": "delivered", "cancelled": "cancelled"}
         if new_status in _TRIP_TO_DEAL:
@@ -2369,7 +2491,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
 
 @mp_router.post("/bids/{bid_id}/accept")
-def accept_bid(bid_id: str, user=Depends(require_level(1))):
+def accept_bid(bid_id: str, user=Depends(require_active_level(1))):
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
         # Owner cannot accept a bid that is currently countered — driver must
@@ -2452,7 +2574,7 @@ def _cargo_or_trip_owner_id(c, bid: dict):
 
 
 @mp_router.patch("/bids/{bid_id}")
-def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
+def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_active_level(1))):
     """Bidder edits their own pending bid (amount and/or message)."""
     if body.amount is None and body.message is None:
         raise HTTPException(status_code=400, detail="Укажите amount или message для обновления")
@@ -2538,7 +2660,7 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
 
 
 @mp_router.post("/bids/{bid_id}/cancel")
-def cancel_bid(bid_id: str, user=Depends(require_level(1))):
+def cancel_bid(bid_id: str, user=Depends(require_active_level(1))):
     """Bidder cancels their own pending or countered bid."""
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
@@ -2602,7 +2724,7 @@ def cancel_bid(bid_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.post("/bids/{bid_id}/reject")
-def reject_bid(bid_id: str, user=Depends(require_level(1))):
+def reject_bid(bid_id: str, user=Depends(require_active_level(1))):
     """Cargo owner or trip owner explicitly rejects a pending or countered bid."""
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
@@ -2676,7 +2798,7 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
 # ═══ Counter-offer + chat-before-accept ═══
 
 @mp_router.post("/bids/{bid_id}/counter")
-def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1))):
+def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_active_level(1))):
     """Cargo/trip owner sends a counter-offer to a pending bid."""
     if body.amount is None or body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount должен быть > 0")
@@ -2742,7 +2864,7 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
 
 
 @mp_router.post("/bids/{bid_id}/counter/accept")
-def accept_counter(bid_id: str, user=Depends(require_level(1))):
+def accept_counter(bid_id: str, user=Depends(require_active_level(1))):
     """Bidder accepts the counter-offer; deal/chat are created."""
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
@@ -2805,7 +2927,7 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.post("/bids/{bid_id}/counter/cancel")
-def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
+def cancel_counter_as_owner(bid_id: str, user=Depends(require_active_level(1))):
     """Cargo/trip owner отменяет СВОЮ встречную цену. Ставка возвращается в
     pending — теперь owner может принять оригинал одной кнопкой. Дизайн-
     система 2026 (приказ владельца 02.08): «две кнопки: Принять и Отклонить,
@@ -2868,7 +2990,7 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.post("/bids/{bid_id}/counter/decline")
-def decline_counter(bid_id: str, user=Depends(require_level(1))):
+def decline_counter(bid_id: str, user=Depends(require_active_level(1))):
     """Bidder declines the counter; bid returns to 'pending', counter fields cleared."""
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
@@ -3231,7 +3353,7 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
 
 
 @mp_router.patch("/deals/{deal_id}/status")
-def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level(1))):
+def update_deal_status(deal_id: str, new_status: str, user=Depends(require_active_level(1))):
     # Этап-хаб заказа: добавлен промежуточный статус at_border («На границе») —
     # ключевой для коридора Китай↔КЗ. Порядок: accepted → in_progress →
     # at_border → delivered (cancelled — из любого рабочего).
