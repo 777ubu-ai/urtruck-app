@@ -31,9 +31,10 @@ import BellBadge from '../components/ui/v1/BellBadge';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
+import { LIGHT as V1_LIGHT } from '../theme/designV1Palette';
 
-const ACCENT = '#34936B';
-const ACCENT_SOFT = '#EAF5EF';
+const ACCENT = V1_LIGHT.driver;
+const ACCENT_SOFT = V1_LIGHT.driverSoft;
 const PAGE_BG = '#F7F9F7';
 const SURFACE = '#FFFFFF';
 const TEXT = '#17221E';
@@ -365,7 +366,7 @@ export default function CargoFeedScreen({ navigation }) {
       style={[
         styles.filterPill,
         {
-          borderColor: active ? '#BFDCCF' : palette.border,
+          borderColor: active ? palette.accent : palette.border,
           backgroundColor: active ? palette.filterActive : palette.surface,
           shadowColor: palette.shadow,
         },
@@ -548,7 +549,7 @@ export default function CargoFeedScreen({ navigation }) {
       <BottomSheet visible={activeFilter === 'body'} onClose={() => setActiveFilter(null)} title={t('filter_body')}>
         <View style={styles.bodyGrid}>
           <TouchableOpacity
-            style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, !filterType && styles.bodyChipActive]}
+            style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, !filterType && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
             onPress={() => setFilterType(null)}
           >
             <Text style={[styles.bodyChipText, { color: palette.textSecondary }, !filterType && styles.bodyChipTextActive]}>{t('filter_all')}</Text>
@@ -556,7 +557,7 @@ export default function CargoFeedScreen({ navigation }) {
           {TRUCK_KEYS.map((key) => (
             <TouchableOpacity
               key={key}
-              style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, filterType === key && styles.bodyChipActive]}
+              style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, filterType === key && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
               onPress={() => setFilterType(filterType === key ? null : key)}
             >
               <Text style={[styles.bodyChipText, { color: palette.textSecondary }, filterType === key && styles.bodyChipTextActive]}>{formatTruckType(key)}</Text>
@@ -581,7 +582,7 @@ export default function CargoFeedScreen({ navigation }) {
         ].map(([key, label]) => (
           <TouchableOpacity
             key={key}
-            style={[styles.sortRow, { backgroundColor: palette.surface, borderColor: palette.border }, sortBy === key && styles.sortRowActive]}
+            style={[styles.sortRow, { backgroundColor: palette.surface, borderColor: palette.border }, sortBy === key && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
             onPress={() => setSortBy(key)}
           >
             <Text style={[styles.sortText, { color: palette.textSecondary }, sortBy === key && styles.sortTextActive]}>{label}</Text>
@@ -659,7 +660,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  filterPillActive: { borderColor: '#BFDCCF', backgroundColor: '#FAFDFC' },
   filterPillText: { fontSize: 13, fontWeight: '600', color: TEXT_SECONDARY },
   filterPillTextActive: { color: ACCENT },
   favoritesPill: { borderColor: '#CAE2D7', backgroundColor: '#F5FBF8' },
@@ -685,11 +685,9 @@ const styles = StyleSheet.create({
   sheetPrimaryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   bodyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   bodyChip: { minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE, alignItems: 'center', justifyContent: 'center' },
-  bodyChipActive: { borderColor: '#BFDCCF', backgroundColor: ACCENT_SOFT },
   bodyChipText: { color: TEXT_SECONDARY, fontSize: 13, fontWeight: '600' },
   bodyChipTextActive: { color: ACCENT },
   sortRow: { minHeight: 50, paddingHorizontal: 14, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE },
-  sortRowActive: { borderColor: '#BFDCCF', backgroundColor: '#FAFDFC' },
   sortText: { fontSize: 14, fontWeight: '600', color: TEXT_SECONDARY },
   sortTextActive: { color: ACCENT },
 });

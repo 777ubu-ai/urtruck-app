@@ -29,9 +29,11 @@ import BellBadge from '../components/ui/v1/BellBadge';
 import RootHeader from '../components/ui/v1/RootHeader';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
+import { LIGHT as V1_LIGHT } from '../theme/designV1Palette';
 
-const ACCENT = '#34936B';
-const ACCENT_SOFT = '#EAF5EF';
+// Canonical driver accent from the designV1 palette (identical value in
+// DARK.driver) — no local hardcoded green.
+const ACCENT = V1_LIGHT.driver;
 const PAGE_BG = '#F7F9F7';
 const SURFACE = '#FFFFFF';
 const TEXT = '#17221E';
@@ -75,8 +77,11 @@ const feedPalette = (theme, isDark) => ({
   textMuted: theme.textMuted || TEXT_MUTED,
   border: theme.border || BORDER,
   shadow: isDark ? '#000000' : '#14211C',
-  accent: ACCENT,
-  accentSoft: ACCENT_SOFT,
+  // Canonical driver accent: no local hardcoded green. cardActiveBorder is
+  // #168759 in both themes; cardActive is the theme-aware soft surface
+  // (#E8F6EF light / #203329 dark) for active chips and favorites.
+  accent: theme.cardActiveBorder || '#168759',
+  accentSoft: theme.cardActive || '#E8F6EF',
   filterActive: isDark ? (theme.surfaceAlt || theme.card || theme.surface || SURFACE) : '#FAFDFC',
   favoriteBg: isDark ? (theme.surfaceAlt || theme.card || theme.surface || SURFACE) : '#F5FBF8',
 });
@@ -341,7 +346,7 @@ export default function FeedScreen({ navigation }) {
       style={[
         styles.filterPill,
         {
-          borderColor: active ? '#BFDCCF' : colors.border,
+          borderColor: active ? colors.accent : colors.border,
           backgroundColor: active ? colors.filterActive : colors.surface,
           shadowColor: colors.shadow,
         },
@@ -571,7 +576,7 @@ export default function FeedScreen({ navigation }) {
             style={[
               styles.bodyChip,
               { backgroundColor: colors.surface, borderColor: colors.border },
-              !filterType && styles.bodyChipActive,
+              !filterType && { backgroundColor: colors.accentSoft, borderColor: colors.accent },
             ]}
             onPress={() => setFilterType(null)}
           >
@@ -591,7 +596,7 @@ export default function FeedScreen({ navigation }) {
               style={[
                 styles.bodyChip,
                 { backgroundColor: colors.surface, borderColor: colors.border },
-                filterType === key && styles.bodyChipActive,
+                filterType === key && { backgroundColor: colors.accentSoft, borderColor: colors.accent },
               ]}
               onPress={() => setFilterType(filterType === key ? null : key)}
             >
@@ -635,7 +640,7 @@ export default function FeedScreen({ navigation }) {
             style={[
               styles.sortRow,
               { backgroundColor: colors.surface, borderColor: colors.border },
-              sortBy === value && styles.sortRowActive,
+              sortBy === value && { backgroundColor: colors.accentSoft, borderColor: colors.accent },
             ]}
             onPress={() => setSortBy(value)}
           >
@@ -741,11 +746,9 @@ const styles = StyleSheet.create({
   sheetPrimaryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   bodyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   bodyChip: { minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  bodyChipActive: { borderColor: '#BFDCCF', backgroundColor: ACCENT_SOFT },
   bodyChipText: { fontSize: 13, fontWeight: '600' },
   bodyChipTextActive: { color: ACCENT },
   sortRow: { minHeight: 48, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sortRowActive: { borderColor: '#BFDCCF', backgroundColor: ACCENT_SOFT },
   sortRowText: { fontSize: 14, fontWeight: '600' },
   sortRowTextActive: { color: ACCENT },
 });
