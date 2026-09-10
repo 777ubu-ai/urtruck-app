@@ -166,6 +166,18 @@ function navigateFromUrl(navRef, url, role) {
   }
 }
 
+// Chat push already carries the authoritative room_id in its structured data
+// (backend/api/chat.py). Prefer it to the display URL on a notification tap:
+// Android may retain a stale notification URL while replacing an aggregated
+// FCM record, whereas room_id identifies the exact accepted-deal conversation.
+function notificationResponseUrl(response) {
+  const data = response?.notification?.request?.content?.data || {};
+  const isChat = data.type === 'chat_message' || data.type === 'chat_attachment';
+  const roomId = typeof data.room_id === 'string' ? data.room_id.trim() : '';
+  if (isChat && roomId) return `/chats/${encodeURIComponent(roomId)}`;
+  return typeof data.url === 'string' ? data.url : null;
+}
+
 // Welcome-splash показывает НАТИВНЫЙ splash (app.json → splash.image), он сам
 // уходит, когда отрисован первый кадр JS. JS-оверлей убран (баг: всплывал ПОВЕРХ
 // уже загруженной ленты → «двоение UrTruck», как и в предыдущий раз 14.06).
@@ -266,7 +278,7 @@ function AppInner() {
         if (handled.has(rid)) return;
         handled.add(rid);
       }
-      const url = response?.notification?.request?.content?.data?.url;
+      const url = notificationResponseUrl(response);
       if (url) routeFromUrl(url);
     };
     Notifications.getLastNotificationResponseAsync?.()

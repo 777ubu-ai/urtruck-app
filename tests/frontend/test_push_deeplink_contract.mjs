@@ -64,6 +64,13 @@ test('auth and notification cold-start deeplinks are queued until nav and auth a
   assert.match(app, /Notifications\.addNotificationResponseReceivedListener/);
 });
 
+test('chat notification tap prefers its structured room_id over an aggregated display URL', () => {
+  assert.match(app, /function notificationResponseUrl\(response\)/);
+  assert.match(app, /data\.type === 'chat_message' \|\| data\.type === 'chat_attachment'/);
+  assert.match(app, /return `\/chats\/\$\{encodeURIComponent\(roomId\)\}`/);
+  assert.match(app, /const url = notificationResponseUrl\(response\);/);
+});
+
 test('custom-scheme and universal-link notification entrypoints are parsed as Notifications', () => {
   assert.match(app, /parsed\.protocol === 'urtruck:' \|\| parsed\.protocol === 'com\.urtruck\.app:'/);
   assert.match(app, /const hostPart = parsed\.hostname \? `\/\$\{parsed\.hostname\}` : ''/);
