@@ -1831,13 +1831,13 @@ const s = StyleSheet.create({
   // The legacy 2px #202020 ring is a 1px hairline token border now; the fill
   // and icon colours come from tokens inline (surfaceMuted / text).
   composerCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth },
-  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, justifyContent: 'center', position: 'relative' },
-  // The Android multiline TextInput is a native surface. It must reserve the
-  // emoji slot and stay below it in the stacking order, otherwise four lines
-  // of text can visually cover a still-clickable emoji button. (Integration
-  // multiline-emoji fix preserved; 40dp canon geometry from Design v1.)
-  input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 50, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
-  inputEmojiButton: { position: 'absolute', right: 4, bottom: 3, zIndex: 2, elevation: 2, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  // Android renders a multiline TextInput as a native surface above absolute
+  // siblings, even with zIndex/elevation. Keep the emoji in the same visual
+  // input area but make it a flex sibling instead: it can never be painted
+  // over by four lines of text and stays visibly available at every height.
+  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, flexDirection: 'row', alignItems: 'flex-end' },
+  input: { flex: 1, minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 8, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  inputEmojiButton: { flexShrink: 0, marginRight: 4, marginBottom: 3, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 
   mapFullscreen: { flex: 1 },
