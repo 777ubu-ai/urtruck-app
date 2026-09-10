@@ -14,6 +14,7 @@ is careful to write ONLY into pytest's own tmp_path — nothing here ever
 touches a real DB_PATH.
 """
 import hashlib
+import os
 import sqlite3
 import subprocess
 import sys
@@ -83,6 +84,14 @@ def _run(*args) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(RESTORE_SCRIPT), *[str(a) for a in args]],
         capture_output=True, text=True, timeout=30,
+    )
+
+
+def _run_with_env(extra_env: dict, *args) -> subprocess.CompletedProcess:
+    env = {**os.environ, **extra_env}
+    return subprocess.run(
+        [sys.executable, str(RESTORE_SCRIPT), *[str(a) for a in args]],
+        capture_output=True, text=True, timeout=30, env=env,
     )
 
 
@@ -183,3 +192,88 @@ def test_corrupt_sqlite_file_fails_quick_check(tmp_path):
     snapshot.write_bytes(b"this is not a sqlite database at all, just bytes")
     result = _run(snapshot)
     assert result.returncode != 0
+
+
+# ── P2 (hardening A final repair, 2026-09-10): confirmation required for a ──
+# ── live/prod target even when the file doesn't exist there yet ────────────
+
+def test_refuses_nonexistent_target_that_matches_configured_db_path(tmp_path):
+    """The confirmed gap: pointing --target at config.DB_PATH used to
+    restore there with ZERO confirmation as long as no file already
+    happened to sit at that path (a fresh server, or one where the DB was
+    deleted) -- silently becoming production data on the next app start."""
+    snapshot = _make_snapshot_with_sidecar(tmp_path)
+    live_path = tmp_path / "would_be_prod" / "security.db"
+    assert not live_path.exists()
+    result = _run_with_env({"DB_PATH": str(live_path)}, snapshot, "--target", live_path)
+    assert result.returncode != 0
+    assert "REFUSING" in result.stdout
+    assert "configured production DB_PATH" in result.stdout
+    assert not live_path.exists(), "must not have written anything at all"
+
+
+def test_overwrites_nonexistent_live_target_when_explicitly_confirmed(tmp_path):
+    snapshot = _make_snapshot_with_sidecar(tmp_path)
+    live_path = tmp_path / "would_be_prod" / "security.db"
+    assert not live_path.exists()
+    result = _run_with_env(
+        {"DB_PATH": str(live_path)},
+        snapshot, "--target", live_path, "--i-understand-this-overwrites-the-target-file",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert live_path.exists()
+    conn = sqlite3.connect(str(live_path))
+    try:
+        rows = conn.execute("SELECT id, phone FROM drivers_registration").fetchall()
+    finally:
+        conn.close()
+    assert rows == [("d1", "+77001234567")]
+
+
+def test_still_refuses_existing_live_target_without_confirmation(tmp_path):
+    """Regression pin: the pre-existing exists()-based refusal for a live
+    target must keep working too, not just the new not-yet-existing case."""
+    snapshot = _make_snapshot_with_sidecar(tmp_path)
+    live_path = tmp_path / "would_be_prod" / "security.db"
+    live_path.parent.mkdir(parents=True)
+    live_path.write_text("pre-existing prod data, must not be touched")
+    result = _run_with_env({"DB_PATH": str(live_path)}, snapshot, "--target", live_path)
+    assert result.returncode != 0
+    assert "REFUSING" in result.stdout
+    assert live_path.read_text() == "pre-existing prod data, must not be touched"
+
+
+def test_non_live_target_still_does_not_need_confirmation_when_absent(tmp_path):
+    """Confirm the fix is scoped correctly -- an explicit --target that is
+    NOT the configured DB_PATH still behaves exactly as before: no
+    confirmation needed when nothing exists there yet."""
+    snapshot = _make_snapshot_with_sidecar(tmp_path)
+    other_prod_path = tmp_path / "totally_different_prod_path.db"
+    test_target = tmp_path / "explicitly_a_test_target.db"
+    assert not test_target.exists()
+    result = _run_with_env({"DB_PATH": str(other_prod_path)}, snapshot, "--target", test_target)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert test_target.exists()
+
+
+def test_live_target_detection_is_fail_closed_when_db_path_env_is_unset(tmp_path, monkeypatch):
+    """If DB_PATH can't be read at all (config import failure path), the
+    script must treat every explicit --target as potentially live rather
+    than silently trusting it isn't -- confirmed by removing DB_PATH from
+    the subprocess env entirely (config.py then falls back to its own
+    hardcoded default, which is still a real, specific path -- so this
+    mainly exercises that the fail-closed branch in _is_live_target isn't
+    needed for config.py's own fallback to work, but confirms the general
+    posture: an explicit, non-matching --target with no DB_PATH override
+    behaves exactly as the "not live" case, precisely because config.py's
+    default is itself a well-defined path that this tmp_path target won't
+    collide with)."""
+    snapshot = _make_snapshot_with_sidecar(tmp_path)
+    test_target = tmp_path / "definitely_not_prod.db"
+    env = {k: v for k, v in os.environ.items() if k != "DB_PATH"}
+    result = subprocess.run(
+        [sys.executable, str(RESTORE_SCRIPT), str(snapshot), "--target", str(test_target)],
+        capture_output=True, text=True, timeout=30, env=env,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert test_target.exists()

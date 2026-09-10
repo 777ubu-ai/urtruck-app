@@ -15,10 +15,17 @@ DELIBERATELY safe-by-default:
     it) and only ever READS the source snapshot.
   - Verification (PRAGMA quick_check, checksum, core-table sanity) always
     runs against the restored COPY, never the live database.
-  - Actually overwriting a live target (in particular anything matching
-    config.DB_PATH) requires BOTH --target pointing at it AND the separate,
-    explicit --i-understand-this-overwrites-the-target-file flag. Without
-    both, the script refuses and explains what to pass.
+  - Actually restoring onto a live target (anything that resolves to the
+    exact same path as config.DB_PATH) ALWAYS requires the explicit
+    --i-understand-this-overwrites-the-target-file flag -- even if that
+    path doesn't exist yet (a fresh server, or a DB file that was deleted).
+    Hardening A final repair (2026-09-10), P2: the original version of this
+    check only looked at whether --target already existed, so pointing
+    --target at the live path on a box where the DB file happened to be
+    briefly absent would have restored there with zero confirmation,
+    silently becoming the production database the next time the app
+    started. The check now fires on IDENTITY (is this config.DB_PATH),
+    not just on existence.
   - This script makes no PM2/service-management decisions — see
     docs/ops/BACKUP_RESTORE_RUNBOOK.md for the full stop/swap/verify/start
     procedure around it.
@@ -45,6 +52,20 @@ import sqlite3
 import sys
 import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+
+def _live_db_path() -> Path | None:
+    """The path the running app would actually read/write, per config.py.
+    None if config can't be imported (e.g. a stripped-down test env) --
+    callers must treat that as "cannot confirm this ISN'T live", not as
+    "safe to assume it isn't"; see _is_live_target below."""
+    try:
+        import config
+        return Path(config.DB_PATH).resolve()
+    except Exception:
+        return None
 
 # Tables whose presence+row-count give a human reviewer a fast, meaningful
 # signal that this is a real, populated UrTruck backup and not an empty or
@@ -124,6 +145,24 @@ def _table_sanity(db_path: Path) -> dict[str, int | str]:
     return counts
 
 
+def _is_live_target(target: Path) -> bool:
+    """True if `target` resolves to exactly the path the running app reads
+    its data from (config.DB_PATH) -- regardless of whether a file
+    currently sits there. Fail-closed: if config.DB_PATH can't be
+    determined at all, treat every explicit --target as potentially live
+    rather than silently trusting it isn't."""
+    live = _live_db_path()
+    if live is None:
+        return True
+    try:
+        return target.resolve() == live
+    except OSError:
+        # A target whose parent directory doesn't exist yet can't be
+        # resolved on some platforms -- compare the un-resolved absolute
+        # path instead rather than assuming it's safe.
+        return target.absolute() == live
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("snapshot", type=Path, help="Path to a security-*.db backup snapshot")
@@ -134,8 +173,9 @@ def main() -> int:
     )
     parser.add_argument(
         "--i-understand-this-overwrites-the-target-file", action="store_true", dest="confirmed_overwrite",
-        help="Required in addition to --target when --target already exists — without it, "
-             "an existing target is refused rather than silently clobbered.",
+        help="Required in addition to --target whenever --target already exists OR "
+             "resolves to the live production DB_PATH (even if no file sits there yet) "
+             "— without it, the restore is refused rather than silently written.",
     )
     args = parser.parse_args()
 
@@ -146,21 +186,40 @@ def main() -> int:
 
     if args.target is not None:
         target = args.target
-        if target.exists():
-            if not args.confirmed_overwrite:
-                print(
-                    f"[restore] REFUSING: --target {target} already exists. "
-                    f"Pass --i-understand-this-overwrites-the-target-file to proceed, "
-                    f"or omit --target to restore into a fresh temp file instead (safe default)."
+        target_exists = target.exists()
+        # Hardening A final repair (2026-09-10), P2: confirmation is required
+        # whenever --target IS (or, if config.DB_PATH can't be determined,
+        # MIGHT BE) the live production path -- not only when a file already
+        # sits there. A fresh server, or a DB file that was deleted/never
+        # created, is exactly the situation where restoring straight onto
+        # the live path with no confirmation would have been most dangerous
+        # under the old exists()-only check: nothing to "overwrite" yet, so
+        # the old check silently allowed it, and the very next app start
+        # would pick up this restored file as production data.
+        is_live = _is_live_target(target)
+        if (target_exists or is_live) and not args.confirmed_overwrite:
+            if target_exists:
+                reason = f"--target {target} already exists"
+            else:
+                reason = (
+                    f"--target {target} resolves to the configured production DB_PATH "
+                    f"(no file sits there yet, but the next app start would treat "
+                    f"whatever this script writes there as production data)"
                 )
-                return 1
+            print(
+                f"[restore] REFUSING: {reason}. "
+                f"Pass --i-understand-this-overwrites-the-target-file to proceed, "
+                f"or omit --target to restore into a fresh temp file instead (safe default)."
+            )
+            return 1
+        if target_exists:
             # sqlite3's backup API validates the destination file header when
             # it's non-empty — restoring onto an existing file (whether an
             # older DB or, as a defensive edge case, an unrelated file that
             # merely happens to sit at this path) must start from a clean
             # slate, not attempt to write pages into whatever is already
-            # there. The existence+confirmation check above is what makes
-            # this an intentional overwrite, not a silent one.
+            # there. The existence/liveness+confirmation check above is what
+            # makes this an intentional overwrite, not a silent one.
             target.unlink()
             for side_effect in (target.with_name(target.name + "-wal"), target.with_name(target.name + "-shm")):
                 side_effect.unlink(missing_ok=True)
