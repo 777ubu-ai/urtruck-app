@@ -129,22 +129,8 @@ jobs:
         # but was never actually invoked by any CI workflow — it only ran
         # when a human remembered to run it locally. Runs against the same
         # checkout/build this job already produced.
-        #
-        # continue-on-error (temporary, not a permanent weakening): as of
-        # 2026-09-10 the version of this script on the current canonical
-        # branch fails its own "24-48h copy present" check for reasons
-        # unrelated to this track — that specific check (and the copy it
-        # expects) is already being realigned on the separate, not-yet-
-        # merged design/kimi-urtruck-final-ui-system-20260909 branch
-        # ("fix(qa): align release static gate with current product
-        # contracts"). Blocking every deploy on a check that's known-broken
-        # for a reason a different in-flight track already fixes would be
-        # exactly the kind of self-inflicted CI outage this track exists to
-        # prevent, not cause. Flip this back to blocking (remove the
-        # continue-on-error line) once that design branch merges — the step
-        # still runs and reports its real status either way, so a reviewer
-        # can see it failing today without it stopping the pipeline.
-        continue-on-error: true
+        # Final design gate is now integrated and its release-static
+        # contract passes. This must remain blocking for release workflows.
         run: bash scripts/release_static_gate.sh
 
   mandatory-e2e:
