@@ -8,6 +8,7 @@ import { useToast } from '../components/Toast';
 import { getPushSettings, setPushSettings } from '../utils/store';
 import { marketAPI } from '../utils/marketAPI';
 import Button from '../components/ui/v1/Button';
+import BackButton from '../components/ui/v1/BackButton';
 import Feather from '@expo/vector-icons/Feather';
 
 const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'curtain', 'lowloader', 'tanker', 'dumptruck'];
@@ -108,9 +109,7 @@ export default function PushFilterScreen({ navigation, route }) {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.backText, { color: theme.text }]}>‹</Text>
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} testID="push-filter-back" />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Feather name="bell" size={20} color={theme.text} />
           <Text style={[s.title, { color: theme.text }]}>{t('push_title')}</Text>
@@ -238,8 +237,6 @@ export default function PushFilterScreen({ navigation, route }) {
 const s = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  backText: { fontSize: 22 },
   title: { fontSize: 22, fontWeight: '900' },
   sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 10 },
   card: { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
