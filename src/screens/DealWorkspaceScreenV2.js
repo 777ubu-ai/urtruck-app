@@ -1062,10 +1062,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const toggleAttachMenu = React.useCallback(() => {
     setCallMenuOpen(false);
     setEmojiOpen(false);
-    // The attachment sheet replaces the composer interaction.  Leaving the
+    // The attachment sheet replaces the composer interaction. Leaving the
     // native IME focused makes the sheet render behind it on Android, so it
-    // must use the same ownership handoff as the emoji sheet.
-    setComposerFocused(false);
+    // uses the same ownership handoff as the emoji sheet.
     Keyboard.dismiss();
     inputRef.current?.blur?.();
     setAttachOpen((value) => !value);
@@ -1578,7 +1577,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           </View>
         ) : (
           <View style={s.mapFullscreen} testID="deal-map-fullscreen">
-            <View style={s.mapArea} testID="deal-map-first-area">
+            <View style={[s.mapArea, { backgroundColor: colors.driverSoft }]} testID="deal-map-first-area">
               {showLiveMap ? (
                 <TruckMap
                   lat={hasLivePoint ? lat : undefined}
@@ -1592,7 +1591,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 />
               ) : (
                 <View style={[s.finishedMap, { backgroundColor: colors.surface }]} testID="deal-inactive-map-summary">
-                  <View style={s.finishedIcon}><Feather name={visibleDealStatus === 'delivered' ? 'package' : 'check-circle'} size={28} color="#168759" /></View>
+                  <View style={[s.finishedIcon, { backgroundColor: colors.driverSoft }]}><Feather name={visibleDealStatus === 'delivered' ? 'package' : 'check-circle'} size={28} color="#168759" /></View>
                   <Text style={[s.finishedTitle, { color: colors.text }]}>{inactiveTitle}</Text>
                   <Text style={[s.finishedRoute, { color: colors.text }]}>{routeLabel}</Text>
                   {inactiveSubtitle ? <Text style={[s.finishedSubtitle, { color: colors.text }]}>{inactiveSubtitle}</Text> : null}
@@ -1631,7 +1630,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             </View>
 
             <TouchableOpacity style={[s.chatDock, { backgroundColor: colors.bg, borderColor: colors.border }]} onPress={closeMap} testID="deal-chat-dock">
-              <View style={[s.chatIconBox]}><Feather name="message-circle" size={18} color="#168759" /></View>
+              <View style={[s.chatIconBox, { backgroundColor: colors.driverSoft }]}><Feather name="message-circle" size={18} color="#168759" /></View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={s.sheetTitleRow}>
                   <Text style={[s.sheetTitle, { color: colors.text }]}>{ui.messages}</Text>
@@ -1842,7 +1841,7 @@ const s = StyleSheet.create({
   sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 
   mapFullscreen: { flex: 1 },
-  mapArea: { flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#EAF1ED' },
+  mapArea: { flex: 1, position: 'relative', overflow: 'hidden' },
   updatedPill: { position: 'absolute', left: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   updatedText: { fontSize: 11.5, fontWeight: '800' },
   mapCollapse: { position: 'absolute', right: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 13, borderRadius: 20, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3, zIndex: 8 },
@@ -1853,7 +1852,7 @@ const s = StyleSheet.create({
   metricValue: { fontSize: 18, fontWeight: '900' },
   metricDivider: { width: 1, alignSelf: 'stretch', marginHorizontal: 14 },
   finishedMap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
-  finishedIcon: { width: 58, height: 58, borderRadius: 20, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
+  finishedIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   finishedTitle: { fontSize: 20, fontWeight: '900', marginTop: 14 },
   finishedRoute: { fontSize: 14, fontWeight: '800', textAlign: 'center', marginTop: 6 },
   finishedSubtitle: { fontSize: 15, fontWeight: '800', textAlign: 'center', lineHeight: 20, marginTop: 13 },
@@ -1861,7 +1860,7 @@ const s = StyleSheet.create({
   finishedGpsHint: { fontSize: 11, textAlign: 'center', lineHeight: 16, marginTop: 8, opacity: 0.82 },
 
   chatDock: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 66, paddingHorizontal: 14, borderTopWidth: 1 },
-  chatIconBox: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
+  chatIconBox: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   sheetTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sheetTitle: { fontSize: 16, fontWeight: '900' },
   newCount: { color: '#168759', fontSize: 12, fontWeight: '800' },

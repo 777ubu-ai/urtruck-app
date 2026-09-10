@@ -194,6 +194,13 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   // (P2-1 dark composer): colours come from designV1 tokens inline, not from
   // hardcoded light hex.
   assert.match(workspace, /s\.attachMenu, \{ backgroundColor: colors\.bg, borderTopColor: colors\.border/);
+  // Light-only map/summary surfaces must be theme-tokenized (driverSoft), not
+  // hardcoded light hex that glows in dark mode.
+  assert.doesNotMatch(workspace, /backgroundColor: '#EAF1ED'/);
+  assert.doesNotMatch(workspace, /backgroundColor: '#E9F6EF'/);
+  assert.match(workspace, /s\.mapArea, \{ backgroundColor: colors\.driverSoft \}/);
+  assert.match(workspace, /s\.finishedIcon, \{ backgroundColor: colors\.driverSoft \}/);
+  assert.match(workspace, /s\.chatIconBox, \{ backgroundColor: colors\.driverSoft \}/);
   assert.match(workspace, /testID="deal-chat-composer-dock"/);
   assert.match(workspace, /composerDock: \{ paddingHorizontal: 8, paddingTop: 5/);
   assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'center'/);
@@ -232,6 +239,30 @@ test('emoji button opens a real bottom emoji picker instead of a coming-soon toa
   assert.match(workspace, /onPress=\{toggleEmojiMenu\}/);
   assert.doesNotMatch(workspace, /showEmojiComingSoon/);
   assert.doesNotMatch(workspace, /toast\(ui\.comingSoon/);
+});
+
+test('toggleAttachMenu dismisses the keyboard and blurs input before opening the sheet', () => {
+  // Rebase-prep contract: the canonical toggle must close emoji/call menus,
+  // dismiss the IME and blur the input, then toggle the attachment sheet.
+  // The removed composerFocused state must NOT come back.
+  const block = workspace.match(/const toggleAttachMenu = React\.useCallback\(\(\) => \{([\s\S]*?)\}, \[\]\);/);
+  assert.ok(block, 'toggleAttachMenu definition not found');
+  const body = block[1];
+  const closeEmoji = body.indexOf('setEmojiOpen(false)');
+  const dismiss = body.indexOf('Keyboard.dismiss()');
+  const blur = body.indexOf('inputRef.current?.blur?.()');
+  const toggle = body.indexOf('setAttachOpen((value) => !value)');
+  assert.ok(closeEmoji !== -1 && dismiss !== -1 && blur !== -1 && toggle !== -1,
+    'toggleAttachMenu must close menus, dismiss keyboard, blur input, then toggle the sheet');
+  assert.ok(closeEmoji < dismiss && dismiss < blur && blur < toggle,
+    'toggleAttachMenu ordering must be: close menus → Keyboard.dismiss → input blur → toggle sheet');
+  assert.doesNotMatch(body, /setComposerFocused/, 'removed composerFocused state must not return');
+  assert.doesNotMatch(workspace, /setComposerFocused/);
+  // Multiline/emoji contract must survive: multiline input with emoji gutter.
+  assert.match(workspace, /multiline/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 74/);
+  assert.match(workspace, /testID="deal-chat-emoji"/);
+  assert.match(workspace, /testID="deal-chat-composer"/);
 });
 
 test('every plus-menu tile has a real handler — no decorative buttons', () => {
