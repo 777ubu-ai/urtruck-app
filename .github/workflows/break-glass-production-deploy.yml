@@ -1,0 +1,88 @@
+name: 🚨 BREAK-GLASS Production Deploy
+
+# Release hardening track A (2026-09-10): the ONLY sanctioned way to deploy
+# to production outside the normal "UrTruck Deploy" release-gate ->
+# "UrTruck Secure Production Deploy" pipeline. Previously, that normal
+# pipeline's own workflow_dispatch trigger served as a silent, unnamed
+# bypass — anyone with repo write access could run it directly against any
+# ref with zero justification required and zero audit trail beyond "this
+# workflow ran". That trigger is gone; this file replaces it, deliberately
+# loud (name, required typed confirmation, required written reason) so it
+# can never be mistaken for routine deployment and always leaves a clear
+# record of who invoked it and why.
+#
+# Operational note for the repo owner (cannot be enforced from this YAML
+# file alone): attach GitHub's "required reviewers" protection rule to the
+# `production` environment referenced by production-deploy-execute.yml, so
+# a break-glass run additionally requires a second person's manual approval
+# before the deploy job executes, not just this workflow's own inputs.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or exact SHA to deploy"
+        required: true
+        default: main
+      reason:
+        description: "Why does this need to bypass the normal release gate? (required, goes in the audit log)"
+        required: true
+      confirm:
+        description: 'Type exactly "DEPLOY" to confirm — this skips backend/frontend/E2E tests and the P0/P1 + Push/Bell subsets'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - name: Require typed confirmation
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" != "DEPLOY" ]; then
+            echo "::error::Confirmation input must be exactly 'DEPLOY' (got: '${{ inputs.confirm }}'). Aborting — nothing was deployed."
+            exit 1
+          fi
+          if [ -z "${{ inputs.reason }}" ]; then
+            echo "::error::A reason is required for a break-glass deploy."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Resolve exact SHA and write audit record
+        id: resolve
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "### 🚨 BREAK-GLASS PRODUCTION DEPLOY"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Actor | \`${{ github.actor }}\` |"
+            echo "| Ref requested | \`${{ inputs.ref }}\` |"
+            echo "| Resolved SHA | \`$SHA\` |"
+            echo "| Timestamp (UTC) | \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\` |"
+            echo "| Reason | ${{ inputs.reason }} |"
+            echo "| Normal release gate | **SKIPPED** — backend/frontend/E2E/P0-P1/Push-Bell suites did NOT run |"
+            echo ""
+            echo "This record is this workflow run's own permanent log — GitHub retains it exactly like any other Actions run history entry (Settings → Actions retention policy controls how long)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::BREAK-GLASS DEPLOY by ${{ github.actor }} of $SHA — reason: ${{ inputs.reason }}"
+
+  deploy:
+    needs: [guard]
+    uses: ./.github/workflows/production-deploy-execute.yml
+    with:
+      deploy_sha: ${{ needs.guard.outputs.sha }}
+      break_glass: true
+      break_glass_reason: ${{ inputs.reason }}
+    secrets: inherit

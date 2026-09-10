@@ -1,5 +1,9 @@
 name: PR Quality Gate
 
+# Release hardening track A (2026-09-10): the actual job definitions moved
+# to quality-gate-reusable.yml so deploy.yml's release gate can call the
+# exact same checks (see that file's header comment). This file is now a
+# thin PR-triggered caller — no behavior change for pull requests.
 on:
   pull_request:
     branches: [main]
@@ -13,125 +17,5 @@ permissions:
   contents: read
 
 jobs:
-  backend-tests:
-    name: Backend tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-      - name: Install dependencies
-        working-directory: backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
-      - name: Compile backend and tests
-        run: |
-          python -m compileall -q backend
-      - name: Run canonical backend suite
-        env:
-          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
-          APP_ENV: test
-          CGR_IIN_SALT: ci-test-salt-not-a-secret
-        run: |
-          DB_PATH="${{ runner.temp }}/urtruck-ci.db" \
-            ./scripts/run_backend_tests.sh --isolated --disable-warnings
-
-  frontend-quality:
-    name: Frontend tests and build
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Frontend ownership and currency tests
-        run: |
-          npm run test:unit
-      - name: Social auth and keyboard-safe onboarding contract
-        run: |
-          node --test tests/frontend/test_social_auth_onboarding.mjs
-          node --test tests/frontend/test_configure_social_auth_workflow.mjs
-      - name: Social auth retry/idempotency behavioral regression
-        run: node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_social_auth_retry.mjs
-      - name: Deploy SSH security guard
-        run: node qa/utils/deploySshSecurityGuard.js
-      - name: Border dashboard contract
-        run: node qa/utils/borderDashboardSmoke.js
-      - name: Android GPS background-location contract
-        run: |
-          npm run qa:gps-consent
-          node --test tests/frontend/test_android_background_location_disclosure.mjs
-      - name: i18n smoke
-        run: npm run qa:i18n
-      - name: UX smoke
-        run: npm run qa:ux
-      - name: Web production build
-        env:
-          CI: 'true'
-        run: npm run build:web
-
-  mandatory-e2e:
-    name: Mandatory web E2E subset
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: backend/requirements-test.txt
-      - name: Install frontend and backend dependencies
-        run: |
-          npm ci
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements-test.txt
-      - name: Build web bundle
-        env:
-          EXPO_PUBLIC_IS_BETA: 'true'
-        run: npm run build:web
-      - name: Start local beta backend and static proxy
-        run: |
-          set -euo pipefail
-          URTRUCK_ENV=development ENV=development BETA_MODE=true \
-            PYTHONPATH="$PWD:$PWD/backend" DB_PATH="$RUNNER_TEMP/urtruck-e2e.db" \
-            python -m uvicorn main:app --host 127.0.0.1 --port 8001 > "$RUNNER_TEMP/urtruck-backend.log" 2>&1 &
-          node scripts/e2e-static-proxy.js > "$RUNNER_TEMP/urtruck-proxy.log" 2>&1 &
-          npx wait-on http://127.0.0.1:4599
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Run current mandatory E2E subset
-        env:
-          E2E_BASE: http://127.0.0.1:4599
-          E2E_BASE_URL: http://127.0.0.1:4599
-          E2E_BETA_CODE: '0000'
-        run: |
-          npx playwright test --config playwright.config.js \
-            tests/e2e/urtruck-email-login.spec.js \
-            tests/e2e/urtruck-deal-mvp.spec.js \
-            tests/e2e/urtruck-full-e2e-web.spec.js
-      - name: Upload E2E diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mandatory-e2e-${{ github.sha }}
-          path: |
-            playwright-report
-            test-results
-            ${{ runner.temp }}/urtruck-backend.log
-            ${{ runner.temp }}/urtruck-proxy.log
-          if-no-files-found: warn
-          retention-days: 14
+  quality-gate:
+    uses: ./.github/workflows/quality-gate-reusable.yml
