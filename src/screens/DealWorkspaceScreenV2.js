@@ -1041,6 +1041,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const toggleAttachMenu = React.useCallback(() => {
     setCallMenuOpen(false);
     setEmojiOpen(false);
+    // The attachment sheet replaces the composer interaction.  Leaving the
+    // native IME focused makes the sheet render behind it on Android, so it
+    // must use the same ownership handoff as the emoji sheet.
+    setComposerFocused(false);
+    Keyboard.dismiss();
+    inputRef.current?.blur?.();
     setAttachOpen((value) => !value);
   }, []);
 
