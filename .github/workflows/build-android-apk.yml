@@ -33,8 +33,23 @@ jobs:
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.8" >> "$GITHUB_ENV"
           # Must be strictly newer than the intermediate/installed QA2 artifact.
-          echo "URTRUCK_VERSION_CODE=211039973" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_CODE=211039974" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
+
+      - name: Materialize QA2 native map build contract
+        # TruckMap.native.js reads this public browser key while Metro bundles
+        # the native JS.  Keep the key out of source, but fail the QA2 build
+        # rather than publishing an APK that can only show map_unavailable.
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}" || {
+            echo "::error::YANDEX_MAPS_JS_API_KEY is required for QA2 Android builds; native deal maps would be unavailable without it."
+            exit 1
+          }
+          printf 'EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY=%s\n' "$EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY" >> "$GITHUB_ENV"
+          echo "QA2_YANDEX_MAP_CONFIG=present"
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
