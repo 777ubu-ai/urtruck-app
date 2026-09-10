@@ -1,213 +1,30 @@
 name: UrTruck Secure Production Deploy
 
+# Release hardening track A (2026-09-10): this workflow used to also accept
+# `workflow_dispatch` directly — meaning anyone with repo write access could
+# trigger a full production deploy of an ARBITRARY ref, entirely bypassing
+# "UrTruck Deploy" (the release gate: quality-gate + map checks), with no
+# distinguishing name, no required justification, and no audit trail beyond
+# "someone ran a workflow". That bypass is removed. This workflow now has
+# EXACTLY ONE trigger: automatically, after "UrTruck Deploy" succeeds on
+# main. The actual deploy steps live in production-deploy-execute.yml
+# (a reusable workflow) so there is one implementation shared with the
+# separate, explicitly-named break-glass-production-deploy.yml — see that
+# file for the emergency path (typed confirmation + written reason,
+# recorded in the run log as the audit trail).
 on:
   workflow_run:
     workflows: ["UrTruck Deploy"]
     types: [completed]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: urtruck-production-release
-  cancel-in-progress: false
-
 jobs:
   deploy:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success') }}
-    runs-on: ubuntu-latest
-    environment: production
-    timeout-minutes: 35
-    env:
-      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
-      SERVER_HOST: ${{ secrets.SERVER_HOST }}
-      SERVER_USER: ${{ secrets.SERVER_USER }}
-      SERVER_PASS: ${{ secrets.SERVER_PASS }}
-      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
-      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
-      REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/home/ubuntu/urtruck-app' }}
-      BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
-      PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL || 'https://urtruck.kz' }}
-      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-      EXPO_ACCESS_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN || secrets.EXPO_TOKEN }}
-      YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
-      YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
-      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
-      PM2_PROC: urtruck-security-api
-
-    steps:
-      - name: Checkout exact main commit that passed release gate
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.DEPLOY_SHA }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build production web bundle with Yandex Maps
-        env:
-          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
-        run: |
-          set -euo pipefail
-          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}" || {
-            echo "::error::YANDEX_MAPS_JS_API_KEY is required for production"
-            exit 1
-          }
-          npm run build:web
-          node scripts/injectYandexMaps.mjs
-          test -s dist/index.html
-          grep -q 'api-maps.yandex.ru/2.1/' dist/index.html
-          grep -q 'lang=ru_RU' dist/index.html
-          echo 'YANDEX_WEB_BUILD=ok'
-
-      - name: Prepare production PWA and build marker
-        run: |
-          set -euo pipefail
-          cp sw-template.js dist/sw.js
-          cp .version dist/.version
-          cp .version dist/version.txt
-          python3 scripts/postprocess_web_release.py
-          BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          printf '{"commit":"%s","short":"%s","built_at":"%s","version":%s}\n' \
-            "$DEPLOY_SHA" "${DEPLOY_SHA::7}" "$BUILT_AT" "$(cat .version)" > dist/build-info.json
-          test -s dist/index.html
-          test -s dist/build-info.json
-          grep -q 'api-maps.yandex.ru/2.1/' dist/index.html
-
-      - name: Preflight optional server-side Yandex Router
-        run: |
-          set -euo pipefail
-          ROUTER_KEY="${YANDEX_ROUTER_API_KEY:-}"
-          if [ -n "$ROUTER_KEY" ]; then
-            export YANDEX_ROUTER_API_KEY="$ROUTER_KEY"
-            if python3 scripts/yandex_router_smoke.py; then
-              printf 'SELECTED_YANDEX_ROUTER_API_KEY=%s\n' "$ROUTER_KEY" >> "$GITHUB_ENV"
-              echo 'YANDEX_ROUTER_SERVER=ready'
-            else
-              echo '::warning::Server Yandex Router key was rejected; web/PWA will use embedded Yandex JS API 2.1 MultiRoute. Production deploy continues.'
-              echo 'SELECTED_YANDEX_ROUTER_API_KEY=' >> "$GITHUB_ENV"
-            fi
-          else
-            echo '::warning::YANDEX_ROUTER_API_KEY is not configured; web/PWA will use embedded Yandex JS API 2.1 MultiRoute. Production deploy continues.'
-            echo 'SELECTED_YANDEX_ROUTER_API_KEY=' >> "$GITHUB_ENV"
-          fi
-
-      - name: Install SSH transport dependency
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq sshpass
-
-      - name: Secure SSH preflight
-        run: |
-          set -euo pipefail
-          test -n "$SERVER_HOST"
-          test -n "$SERVER_USER"
-          if [ -n "${SERVER_SSH_KEY:-}" ]; then
-            test -n "${SERVER_SSH_KNOWN_HOSTS:-}" || { echo '::error::SERVER_SSH_KNOWN_HOSTS is required with SERVER_SSH_KEY'; exit 1; }
-            echo 'SSH_MODE=key+pinned-known-hosts'
-          else
-            echo 'SSH_MODE=legacy-password-fallback'
-          fi
-          bash scripts/deploy-ssh.sh ssh "echo SSH_TRANSPORT=ok"
-
-      - name: Backup current production
-        run: |
-          set -euo pipefail
-          STAMP=$(date -u +%Y%m%d-%H%M%S)-${DEPLOY_SHA::7}
-          bash scripts/deploy-ssh.sh ssh "mkdir -p ~/urtruck-rollback/frontend ~/urtruck-rollback/backend '$REMOTE_DIR' '$BACKEND_DIR'; [ -d '$REMOTE_DIR' ] && cp -a '$REMOTE_DIR' ~/urtruck-rollback/frontend/$STAMP || true; [ -d '$BACKEND_DIR' ] && cp -a '$BACKEND_DIR' ~/urtruck-rollback/backend/$STAMP || true; cd ~/urtruck-rollback/frontend && ls -dt */ 2>/dev/null | tail -n +11 | xargs -r rm -rf; cd ~/urtruck-rollback/backend && ls -dt */ 2>/dev/null | tail -n +11 | xargs -r rm -rf; echo BACKUP=ok"
-
-      - name: Deploy frontend
-        run: |
-          set -euo pipefail
-          bash scripts/deploy-ssh.sh ssh "rm -rf '$REMOTE_DIR/_expo'"
-          bash scripts/deploy-ssh.sh scp -C -r dist/. "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/"
-          bash scripts/deploy-ssh.sh ssh "chmod -R 755 '$REMOTE_DIR'; test -s '$REMOTE_DIR/index.html'; test -s '$REMOTE_DIR/build-info.json'; grep -q 'api-maps.yandex.ru/2.1/' '$REMOTE_DIR/index.html'; echo FRONTEND_FILES=ok"
-
-      - name: Bootstrap secure server-only environment
-        run: |
-          set -euo pipefail
-          umask 077
-          BOOTSTRAP_FILE=$(mktemp)
-          trap 'rm -f "$BOOTSTRAP_FILE"' EXIT
-          printf 'SUPABASE_SERVICE_KEY=%s\n' "$SUPABASE_SERVICE_KEY" > "$BOOTSTRAP_FILE"
-          if [ -n "${EXPO_ACCESS_TOKEN:-}" ]; then
-            printf 'EXPO_ACCESS_TOKEN=%s\n' "$EXPO_ACCESS_TOKEN" >> "$BOOTSTRAP_FILE"
-          fi
-          if [ -n "${SELECTED_YANDEX_ROUTER_API_KEY:-}" ]; then
-            printf 'YANDEX_ROUTER_API_KEY=%s\n' "$SELECTED_YANDEX_ROUTER_API_KEY" >> "$BOOTSTRAP_FILE"
-          fi
-          if [ -n "${OPENROUTESERVICE_API_KEY:-}" ]; then
-            printf 'OPENROUTESERVICE_API_KEY=%s\n' "$OPENROUTESERVICE_API_KEY" >> "$BOOTSTRAP_FILE"
-          fi
-          REMOTE_BOOTSTRAP="/tmp/urtruck-secure-env-${GITHUB_RUN_ID}"
-          bash scripts/deploy-ssh.sh scp "$BOOTSTRAP_FILE" "$SERVER_USER@$SERVER_HOST:$REMOTE_BOOTSTRAP"
-          bash scripts/deploy-ssh.sh scp scripts/remote_bootstrap_secure_env.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_bootstrap_env.sh"
-          bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_bootstrap_env.sh; bash /tmp/urtruck_bootstrap_env.sh '$BACKEND_DIR' '$REMOTE_BOOTSTRAP'; rc=\$?; rm -f /tmp/urtruck_bootstrap_env.sh '$REMOTE_BOOTSTRAP'; exit \$rc"
-
-      - name: Deploy backend and verify PM2 health
-        run: |
-          set -euo pipefail
-          bash scripts/deploy-ssh.sh scp -C -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
-          bash scripts/deploy-ssh.sh scp scripts/remote_health_check.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_health.sh"
-          bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_health.sh; bash /tmp/urtruck_health.sh '$PM2_PROC'; rc=\$?; rm -f /tmp/urtruck_health.sh; exit \$rc"
-
-      - name: Verify optional Yandex Router from production server
-        run: |
-          set -euo pipefail
-          if bash scripts/deploy-ssh.sh ssh "grep -q '^YANDEX_ROUTER_API_KEY=.' '$BACKEND_DIR/.env'"; then
-            bash scripts/deploy-ssh.sh scp scripts/yandex_router_smoke.py "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_yandex_router_smoke.py"
-            if bash scripts/deploy-ssh.sh ssh "python3 /tmp/urtruck_yandex_router_smoke.py '$BACKEND_DIR/.env'; rc=\$?; rm -f /tmp/urtruck_yandex_router_smoke.py; exit \$rc"; then
-              echo 'YANDEX_ROUTER_SERVER=ready'
-            else
-              echo '::warning::Server-side Yandex Router verification failed; embedded web Yandex MultiRoute remains available.'
-            fi
-          else
-            echo 'YANDEX_ROUTER_SERVER=not_configured_web_multiroute_fallback'
-          fi
-
-      - name: Verify document signing on production server
-        run: |
-          set -euo pipefail
-          bash scripts/deploy-ssh.sh scp scripts/signing_smoke.py "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_signing_smoke.py"
-          bash scripts/deploy-ssh.sh scp scripts/remote_signing_verify.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_verify.sh"
-          bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_verify.sh; bash /tmp/urtruck_verify.sh '$BACKEND_DIR'; rc=\$?; rm -f /tmp/urtruck_verify.sh; exit \$rc"
-
-      - name: Public production proof
-        run: |
-          set -euo pipefail
-          echo 'Waiting for nginx/browser-facing paths to settle...'
-          sleep 10
-          info=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/build-info.json?sha=${DEPLOY_SHA}")
-          printf '%s\n' "$info" | grep -Fq "\"commit\":\"$DEPLOY_SHA\""
-          echo "PRODUCTION_SHA=${DEPLOY_SHA::7}"
-
-          html=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/?release=${DEPLOY_SHA}")
-          printf '%s\n' "$html" | grep -q 'api-maps.yandex.ru/2.1/'
-          printf '%s\n' "$html" | grep -q 'lang=ru_RU'
-          echo 'YANDEX_MAP_PUBLIC=ok'
-
-          system=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/security/api/v1/system/info")
-          printf '%s\n' "$system" | grep -q '"otp"'
-          echo 'SYSTEM_INFO=ok'
-
-          cargos=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/security/api/v1/market/cargos?status=active&limit=1")
-          printf '%s\n' "$cargos" | grep -q '"cargos"'
-          trips=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$PUBLIC_BASE_URL/security/api/v1/market/trips?status=active&limit=1")
-          printf '%s\n' "$trips" | grep -q '"trips"'
-          echo 'MARKET_API=ok'
-
-          route_guard=$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 5 --max-time 15 -X POST \
-            -H 'Content-Type: application/json' \
-            -d '{"points":[{"lat":43.238949,"lng":76.889709},{"lat":55.755864,"lng":37.617698}]}' \
-            "$PUBLIC_BASE_URL/security/api/v1/routing/road-route")
-          test "$route_guard" = "401" || test "$route_guard" = "403"
-          echo 'ROAD_ROUTING_ENDPOINT=guarded'
-
-          echo 'SECURE_PRODUCTION_DEPLOY=success'
+    if: ${{ github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success' }}
+    uses: ./.github/workflows/production-deploy-execute.yml
+    with:
+      deploy_sha: ${{ github.event.workflow_run.head_sha }}
+      break_glass: false
+    secrets: inherit
