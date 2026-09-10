@@ -291,7 +291,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [callMenuOpen, setCallMenuOpen] = React.useState(false);
   const [statusModalOpen, setStatusModalOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
-  const [composerFocused, setComposerFocused] = React.useState(false);
   const [emojiOpen, setEmojiOpen] = React.useState(false);
   const [recordSecs, setRecordSecs] = React.useState(0);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
@@ -341,11 +340,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setAttachOpen(false);
     setCallMenuOpen(false);
     setEmojiOpen(false);
-    setComposerFocused(true);
-  }, []);
-
-  const onComposerBlur = React.useCallback(() => {
-    setComposerFocused(false);
   }, []);
 
   const collapseComposer = React.useCallback(() => {
@@ -353,7 +347,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     if (recording || input.trim()) return;
     setAttachOpen(false);
     setCallMenuOpen(false);
-    setComposerFocused(false);
     inputRef.current?.blur?.();
     Keyboard.dismiss();
   }, [input, recording]);
@@ -1081,7 +1074,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const toggleEmojiMenu = React.useCallback(() => {
     setAttachOpen(false);
     setCallMenuOpen(false);
-    setComposerFocused(false);
     Keyboard.dismiss();
     inputRef.current?.blur?.();
     setEmojiOpen((value) => !value);
@@ -1446,15 +1438,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 </View>
 
                 {recording ? (
-                  <View style={s.recordBar} testID="deal-chat-recording-bar">
+                  <View style={[s.recordBar, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]} testID="deal-chat-recording-bar">
                     <View style={s.recordDot} />
                     <View style={s.recordWave} pointerEvents="none">
                       {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
                         <View key={i} style={[s.recordWaveBar, { height: 5 + (i % 4) * 4 }]} />
                       ))}
                     </View>
-                    <Text style={s.recordText}>{ui.recording} 0:{String(recordSecs % 60).padStart(2, '0')}</Text>
-                    <TouchableOpacity onPress={cancelRecording} style={s.recordCancelBtn} testID="deal-chat-recording-cancel" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={[s.recordText, { color: colors.text }]}>{ui.recording} 0:{String(recordSecs % 60).padStart(2, '0')}</Text>
+                    <TouchableOpacity onPress={cancelRecording} style={[s.recordCancelBtn, { backgroundColor: colors.surface }]} testID="deal-chat-recording-cancel" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Feather name="trash-2" size={15} color="#B91C1C" />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={toggleVoice} style={s.recordSendBtn} testID="deal-chat-recording-send">
@@ -1467,6 +1459,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   style={[
                     s.composerDock,
                     {
+                      backgroundColor: colors.bg,
                       borderTopColor: colors.border,
                       paddingBottom: attachOpen || emojiOpen ? 6 : Math.max(insets.bottom, 8),
                       marginBottom: chatKeyboardInset,
@@ -1480,7 +1473,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     <View
                       style={[
                         s.composer,
-                        composerFocused && s.composerFocused,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
                       ]}
                       testID="deal-chat-composer"
                     >
@@ -1493,7 +1486,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       >
                         <Feather name="plus" size={27} color={colors.text} />
                       </TouchableOpacity>
-                      <View style={s.inputShell}>
+                      <View style={[s.inputShell, { backgroundColor: colors.surface }]}>
                         <TextInput
                           ref={inputRef}
                           value={input}
@@ -1503,7 +1496,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                             if (roomId) chatAPI.typing(roomId);
                           }}
                           onFocus={onComposerFocus}
-                          onBlur={onComposerBlur}
                           onContentSizeChange={(event) => {
                             const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
                             setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
@@ -1550,7 +1542,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 </View>
 
                 {emojiOpen ? (
-                  <View style={[s.emojiMenu, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 14, 22) }]} testID="deal-chat-emoji-menu">
+                  <View style={[s.emojiMenu, { backgroundColor: colors.bg, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 14, 22) }]} testID="deal-chat-emoji-menu">
                     <View style={s.emojiGrid}>
                       {EMOJI_MENU.map((emoji, index) => (
                         <TouchableOpacity
@@ -1567,16 +1559,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 ) : null}
 
                 {attachOpen ? (
-                  <View style={[s.attachMenu, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 18, 26) }]} testID="deal-chat-attach-menu">
+                  <View style={[s.attachMenu, { backgroundColor: colors.bg, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 18, 26) }]} testID="deal-chat-attach-menu">
                     <TouchableOpacity style={s.attachHandleHit} onPress={collapseComposer} testID="deal-chat-attach-collapse" activeOpacity={0.8}>
-                      <View style={s.attachHandle} />
+                      <View style={[s.attachHandle, { backgroundColor: colors.border }]} />
                     </TouchableOpacity>
                     {PLUS_MENU.map((item) => (
                       <TouchableOpacity key={item.key} style={s.attachItem} onPress={item.onPress} testID={item.testID} disabled={item.busy}>
-                        <View style={s.attachIcon}>
-                          {item.busy ? <ActivityIndicator size="small" color="#168759" /> : <FontAwesome5 name={item.icon} size={30} color="#686868" solid />}
+                        <View style={[s.attachIcon, { backgroundColor: colors.surface }]}>
+                          {item.busy ? <ActivityIndicator size="small" color="#168759" /> : <FontAwesome5 name={item.icon} size={30} color={colors.textMuted} solid />}
                         </View>
-                        <Text style={s.attachLabel} numberOfLines={1}>{item.label}</Text>
+                        <Text style={[s.attachLabel, { color: colors.textMuted }]} numberOfLines={1}>{item.label}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -1812,34 +1804,35 @@ const s = StyleSheet.create({
   docMeta: { fontSize: 11, fontWeight: '650', marginTop: 2 },
   docRetryBtn: { padding: 4 },
 
-  recordBar: { flexDirection: 'row', alignItems: 'center', gap: 9, marginHorizontal: 10, marginBottom: 7, paddingHorizontal: 12, minHeight: 44, borderRadius: 22, backgroundColor: '#F4F7F5', borderWidth: 1, borderColor: '#DDE8E2' },
+  recordBar: { flexDirection: 'row', alignItems: 'center', gap: 9, marginHorizontal: 10, marginBottom: 7, paddingHorizontal: 12, minHeight: 44, borderRadius: 22, borderWidth: 1 },
   recordDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' },
   recordWave: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 22 },
   recordWaveBar: { width: 2.5, borderRadius: 2, backgroundColor: '#168759', opacity: 0.58 },
-  recordText: { color: '#15392B', fontSize: 12.5, fontWeight: '800', flex: 1 },
-  recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  recordText: { fontSize: 12.5, fontWeight: '800', flex: 1 },
+  recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   recordSendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
-  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth },
+  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, borderTopWidth: StyleSheet.hairlineWidth },
   attachHandleHit: { position: 'absolute', top: 0, left: 0, right: 0, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  attachHandle: { width: 48, height: 5, borderRadius: 3, backgroundColor: '#D5D8DA' },
+  attachHandle: { width: 48, height: 5, borderRadius: 3 },
   attachItem: { width: '25%', alignItems: 'center', gap: 11, marginBottom: 24 },
-  attachIcon: { width: 64, height: 64, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  attachLabel: { color: '#737373', fontSize: 13.5, fontWeight: '400', textAlign: 'center' },
+  attachIcon: { width: 64, height: 64, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  attachLabel: { fontSize: 13.5, fontWeight: '400', textAlign: 'center' },
 
-  emojiMenu: { backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 12 },
+  emojiMenu: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 12 },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
   emojiItem: { width: '12.5%', height: 42, alignItems: 'center', justifyContent: 'center' },
   emojiText: { fontSize: 26, lineHeight: 32 },
 
-  composerDock: { paddingHorizontal: 8, paddingTop: 5, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
-  composer: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 30, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDE8E2', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
-  composerFocused: { backgroundColor: '#FFFFFF' },
+  // Composer surfaces take their colours from designV1 tokens inline below so
+  // the dock/pill/input stay canonical in dark mode (P2-1). Geometry untouched.
+  composerDock: { paddingHorizontal: 8, paddingTop: 5, borderTopWidth: StyleSheet.hairlineWidth },
+  composer: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 30, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   // Action circles: 40dp visual + 4dp hitSlop (48dp total target, ≥44 canon).
   // The legacy 2px #202020 ring is a 1px hairline token border now; the fill
   // and icon colours come from tokens inline (surfaceMuted / text).
   composerCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth },
-  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
+  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, justifyContent: 'center', position: 'relative' },
   // The Android multiline TextInput is a native surface. It must reserve the
   // emoji slot and stay below it in the stacking order, otherwise four lines
   // of text can visually cover a still-clickable emoji button. (Integration
