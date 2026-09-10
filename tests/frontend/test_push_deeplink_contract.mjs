@@ -11,7 +11,7 @@ const appJson = JSON.parse(read('app.json'));
 const aasa = JSON.parse(read('web/apple-app-site-association'));
 const wellKnownAasa = JSON.parse(read('web/.well-known/apple-app-site-association'));
 const assetlinks = JSON.parse(read('web/.well-known/assetlinks.json'));
-const secureDeploy = read('.github/workflows/secure-production-deploy.yml');
+const productionDeploy = read('.github/workflows/production-deploy-execute.yml');
 const deployScript = read('deploy.sh');
 
 test('native push tap routing keeps canonical deep-links for cargo, trip, deal, chat, profile and notifications', () => {
@@ -103,7 +103,7 @@ test('release web bundle ships apple-app-site-association and assetlinks for not
 });
 
 test('deploy paths keep .well-known release files instead of dropping hidden entries', () => {
-  assert.match(secureDeploy, /scp -C -r dist\/\. "\$SERVER_USER@\$SERVER_HOST:\$REMOTE_DIR\/"/);
+  assert.match(productionDeploy, /scp -C -r dist\/\. "\$SERVER_USER@\$SERVER_HOST:\$REMOTE_DIR\/"/);
   assert.match(deployScript, /scp -i ~\/\.ssh\/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist\/\. "\$\{SERVER\}:\$\{REMOTE_DIR\}\/"/);
   assert.match(deployScript, /scp -i ~\/\.ssh\/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist\/\. "\$\{SERVER\}:\$\{VERSIONS_DIR\}\/v\$NEW_VERSION\/"/);
 });
