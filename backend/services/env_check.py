@@ -37,8 +37,23 @@ def collect_issues() -> List[str]:
     wa_token = os.getenv("WHATSAPP_TOKEN") or os.getenv("WHATSAPP_ACCESS_TOKEN")
     wa_phone = os.getenv("WHATSAPP_PHONE_ID") or os.getenv("WHATSAPP_PHONE_NUMBER_ID")
     sms_provider = (os.getenv("SMS_PROVIDER") or "mock").lower()
+    # Hardening A final repair (2026-09-10), P1: this used to treat Twilio as
+    # "real" the moment TWILIO_ACCOUNT_SID alone was set -- but
+    # services/otp_service.py's actual Twilio call needs all three
+    # (TWILIO_ACCOUNT_SID for the URL + basic-auth username, TWILIO_AUTH_TOKEN
+    # for the basic-auth password, TWILIO_FROM as the sender number Twilio's
+    # API itself requires). A SID-only config passed this check ("OTP channel
+    # configured, production env OK") while every real SMS send would fail at
+    # request time -- no mock fallback exists in that code path, so users
+    # would just silently never receive a code. Require the complete triple
+    # before treating Twilio as configured; see the dedicated Twilio-specific
+    # issue below for the actionable message when it's chosen but incomplete.
+    twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
+    twilio_from = os.getenv("TWILIO_FROM")
+    twilio_real = bool(twilio_sid and twilio_token and twilio_from)
     sms_real = sms_provider != "mock" and (
-        os.getenv("MOBIZON_API_KEY") or os.getenv("TWILIO_ACCOUNT_SID")
+        os.getenv("MOBIZON_API_KEY") or twilio_real
     )
     tg_real = bool(os.getenv("TELEGRAM_BOT_TOKEN"))
     if not (wa_token and wa_phone) and not sms_real and not tg_real:
@@ -75,6 +90,30 @@ def collect_issues() -> List[str]:
         issues.append(
             "Mobizon: SMS_PROVIDER=mobizon but MOBIZON_API_KEY is empty. "
             "Set the API key from https://mobizon.kz → API."
+        )
+
+    # Hardening A final repair (2026-09-10), P1: symmetric to the Mobizon
+    # check above. SMS_PROVIDER=twilio requires TWILIO_ACCOUNT_SID +
+    # TWILIO_AUTH_TOKEN + TWILIO_FROM together -- a partial set (e.g. only
+    # the SID, which used to be all `sms_real` above checked) fails closed
+    # here rather than silently falling back to mock OTP or a different
+    # channel; there is no such fallback in services/otp_service.py's
+    # Twilio call path, so an incomplete config means real users simply
+    # never receive a code, with no other symptom until they complain.
+    if sms_provider == "twilio" and not twilio_real:
+        missing = [
+            name for name, val in (
+                ("TWILIO_ACCOUNT_SID", twilio_sid),
+                ("TWILIO_AUTH_TOKEN", twilio_token),
+                ("TWILIO_FROM", twilio_from),
+            ) if not val
+        ]
+        issues.append(
+            "Twilio: SMS_PROVIDER=twilio but the credential set is incomplete "
+            f"(missing: {', '.join(missing)}). All three of TWILIO_ACCOUNT_SID, "
+            "TWILIO_AUTH_TOKEN, and TWILIO_FROM are required together -- set the "
+            "missing value(s). There is no mock fallback for a partial Twilio "
+            "config in production; OTP delivery would fail for every user."
         )
 
     # Storage — local FS in production loses uploads on redeploy.
