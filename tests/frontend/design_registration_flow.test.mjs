@@ -6,7 +6,37 @@ import { readFileSync } from 'node:fs';
 
 const citizenship = readFileSync('src/screens/registration/CitizenshipScreen.js', 'utf8');
 const identity = readFileSync('src/screens/registration/IdentityStepScreen.js', 'utf8');
+const vehicleDocs = readFileSync('src/screens/registration/VehicleDocsScreen.js', 'utf8');
+const truckParams = readFileSync('src/screens/registration/TruckParamsScreen.js', 'utf8');
 const dobSheet = readFileSync('src/components/DateOfBirthSheet.js', 'utf8');
+
+// Back on a registration step must not silently destroy data the user typed.
+// Contract: with a dirty form the visible Back button opens the guarded
+// RegistrationCloseModal (which saves a draft); only a clean form goes back
+// instantly. The premium phone/OTP steps keep plain goBack (nothing to lose).
+test('registration back UX: dirty forms ask before exit, clean forms go back', () => {
+  // IdentityStepScreen: dirty flag set by every edit handler, back routes
+  // through the close modal instead of a bare goBack.
+  assert.match(identity, /const \[dirty, setDirty\] = useState\(false\)/);
+  assert.match(identity, /const onBackPress = \(\) => \{/);
+  assert.match(identity, /if \(dirty\) \{ setCloseVisible\(true\); return; \}/);
+  assert.match(identity, /onPress=\{onBackPress\}/);
+  assert.ok(identity.split('setDirty(true)').length - 1 >= 5, 'identity must mark dirty on all edit handlers');
+  // VehicleDocsScreen: only manual date edits are at risk (photos/OCR persist
+  // server-side immediately).
+  assert.match(vehicleDocs, /const \[datesDirty, setDatesDirty\] = useState\(false\)/);
+  assert.equal(vehicleDocs.split('setDatesDirty(true)').length - 1, 2, 'both license date fields must mark dirty');
+  assert.match(vehicleDocs, /onPress=\{onBackPress\}/);
+  // TruckParamsScreen: baseline snapshot at mount; any deviation guards Back.
+  assert.match(truckParams, /const baselineRef = useRef\(/);
+  assert.match(truckParams, /const isDirty = /);
+  assert.match(truckParams, /if \(isDirty\) \{ setCloseVisible\(true\); return; \}/);
+  // No PRO step may keep a silent bare-goBack back button.
+  assert.doesNotMatch(identity, /onPress=\{\(\) => navigation\.goBack\(\)\}/);
+  assert.doesNotMatch(vehicleDocs, /onPress=\{\(\) => navigation\.goBack\(\)\}/);
+  // Early premium steps (phone/OTP) keep the instant back — nothing entered yet.
+  assert.match(readFileSync('src/screens/registration/PremiumRegisterScreen.js', 'utf8'), /onPress=\{\(\) => navigation\.goBack\(\)\}/);
+});
 
 // CitizenshipScreen migrated from ThemeContext hardcodes (#168759 accent,
 // theme.card/theme.border fills) to the same brandV2 token family as
