@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
 
+from services.log_redact import mask_phone, mask_token
+
 POLL_TIMEOUT = 30
 _running = False
 _offset = 0
@@ -98,7 +100,12 @@ def _handle_message(msg: dict):
         except Exception as e:
             print(f"[TG-bot] sendMessage failed: {e}")
 
-        print(f"[TG-bot] Sent OTP {code} to chat {chat_id} for {phone}")
+        # Release hardening track A (2026-09-10, P0): this is the LIVE polling
+        # path (runs whenever TELEGRAM_BOT_TOKEN is set — not a mock), and it
+        # used to print the raw OTP code and the full phone number to stdout
+        # on every Telegram-based verification. Never log the code at all;
+        # chat_id is Telegram-internal (not a phone/PII), phone is masked.
+        print(f"[TG-bot] Sent OTP (redacted) to chat {chat_id} for {mask_phone(phone)}")
 
     elif text.startswith("/start"):
         welcome = (
@@ -135,7 +142,7 @@ def _handle_message(msg: dict):
 
 def _poll_loop():
     global _offset, _running
-    print(f"[TG-bot] Polling started (token: ...{_token[-8:]})")
+    print(f"[TG-bot] Polling started (token: {mask_token(_token)})")
     while _running:
         try:
             r = httpx.get(f"{_api}/getUpdates",
