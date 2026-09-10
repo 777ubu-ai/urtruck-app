@@ -73,12 +73,14 @@ if grep -iqE 'passenger|пассажир|такси|taxi' src/utils/i18n.js; the
   fail "passenger/taxi wording present in i18n.js"
 else pass "no passenger/taxi wording in i18n"; fi
 
-# 8) 24-48h presence (verification timing unified).
+# 8) Verification timing copy. The old "24–48h" promise was removed on
+#    purpose (integration e84116bb): auto-approval opens access immediately,
+#    so the false 24–48h claim must stay absent. Guard against its return.
 # Литеральный поиск: en-dash «–» — многобайтовый, regex `.` в C-локали
 # матчит байты, поэтому ищем обе формы тире как литералы.
 if LC_ALL=C grep -qF -e '24–48' -e '24-48' src/utils/i18n.js; then
-  pass "24–48h copy present"
-else fail "24–48h copy missing"; fi
+  fail "stale 24–48h verification promise present (access opens immediately now)"
+else pass "no stale 24–48h promise in i18n"; fi
 
 # 9) gate keys exist (Queue + CreateTrip progressive gates)
 if grep -q 'queue_gate_locked_title:' src/utils/i18n.js && grep -q 'trips_gate_title:' src/utils/i18n.js; then
