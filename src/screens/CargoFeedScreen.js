@@ -499,7 +499,7 @@ export default function CargoFeedScreen({ navigation }) {
     <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
       <RootHeader navigation={navigation} role={role} testID="cargo-feed-minimal-header" bellTestID="cargo-feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-            if (ok) navigation.navigate('PushFilter', { role });
+            if (ok) navigation.navigate('Notifications', { role });
           }} />
 
       <FlatList

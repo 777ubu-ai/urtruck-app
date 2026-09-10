@@ -483,11 +483,8 @@ export default function FeedScreen({ navigation }) {
       testID="trip-feed-screen"
     >
       <RootHeader navigation={navigation} role={role} testID="trip-feed-minimal-header" bellTestID="feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
-            // PushFilter only exists in the authenticated navigation stack —
-            // gate it like every other account-required action here instead
-            // of silently no-op-ing for a guest/no-role tap.
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-            if (ok) navigation.navigate('PushFilter', { role });
+            if (ok) navigation.navigate('Notifications', { role });
           }} />
 
       <FlatList

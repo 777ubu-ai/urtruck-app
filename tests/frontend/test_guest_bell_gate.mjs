@@ -1,8 +1,8 @@
 // Track: Claude harness fix, P1 (2026-09-08/09).
 //
-// Root cause: PushFilter is only registered in the authenticated navigation
+// Root cause: Notifications is only registered in the authenticated navigation
 // stack (src/navigation/AppNavigator.js — the guest/no-role stack has
-// `Main` but not `PushFilter`), yet Bell/BellBadge is rendered
+// `Main` but not `Notifications`), yet Bell/BellBadge is rendered
 // unconditionally on FeedScreen/CargoFeedScreen/MyTripsScreen/DealsScreen,
 // all four of which are reachable by a guest via the `Main` route
 // (RoleScreen.js's guest-browsing entry: `navigate('Main', { role, guest:
@@ -32,16 +32,16 @@ test('guest/no-role: Bell is gated behind requireLevel, never a direct unguarded
     // RootHeader owns the Bell; inspect its onBellPress contract.
     const block = src.slice(Math.max(0, idx - 100), idx + 500);
     assert.match(block, /requireLevel\(LEVELS\.PHONE, 'push_settings'/, `${file}: Bell must gate through requireLevel before navigating`);
-    assert.match(block, /if \(ok\) navigation\.navigate\('PushFilter'/, `${file}: PushFilter navigation must be conditional on the gate result`);
+    assert.match(block, /if \(ok\) navigation\.navigate\('Notifications'/, `${file}: notification-center navigation must be conditional on the gate result`);
     // The old bug: an unconditional navigate with no gate at all.
-    assert.doesNotMatch(block, /onPress=\{\(\) => navigation\.navigate\('PushFilter'/, `${file}: Bell must not navigate to PushFilter unconditionally (that's the guest no-op bug)`);
+    assert.doesNotMatch(block, /onPress=\{\(\) => navigation\.navigate\('Notifications'/, `${file}: Bell must not navigate to Notifications unconditionally (that's the guest no-op bug)`);
   }
 });
 
-test('authenticated Driver/Shipper: gate passing still leads to PushFilter, not a dead end', () => {
+test('authenticated Driver/Shipper: gate passing leads to the notification center', () => {
   for (const [file] of SCREENS) {
     const src = readFileSync(file, 'utf8');
-    assert.match(src, /navigation\.navigate\('PushFilter', \{ role \}\)/, `${file}: a passing gate must still land on PushFilter with role`);
+    assert.match(src, /navigation\.navigate\('Notifications', \{ role \}\)/, `${file}: a passing gate must land on Notifications with role`);
   }
 });
 

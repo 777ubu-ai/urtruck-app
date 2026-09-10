@@ -702,7 +702,7 @@ export default function DealsScreen({ navigation, route }) {
     >
       <RootHeader navigation={navigation} role={role} testID="deals-minimal-header" bellTestID="deals-notification-settings-btn" menuTestID="deals-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-            if (ok) navigation.navigate('PushFilter', { role });
+            if (ok) navigation.navigate('Notifications', { role });
           }} />
 
       <View style={styles.tabsRow} testID="deals-primary-tabs">
