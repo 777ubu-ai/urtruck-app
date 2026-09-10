@@ -35,13 +35,15 @@ test('favorites quick filter uses the same saved cargo ids as card bookmarks', (
   assert.match(src, /savedOnly && !savedIds\.has\(String\(item\.id\)\)/);
   assert.match(src, /setSavedOnly\(\(value\) => !value\)/);
   assert.match(src, /saved=\{savedIds\.has\(String\(item\.id\)\)\}/);
-  assert.match(src, /savedIds\.size/);
+  assert.match(src, /accessibilityLabel=\{copy\.favorites\}/);
 });
 
 test('cargo cards stay compact so collapsing the controls actually increases visible work', () => {
-  // Canon density: route city 16/20, compact list spacing on the screen,
+  // Canon density: route city 12/16 avoids wrapping routes under the fixed
+  // price rail, while the list spacing stays compact on the screen.
   // no legacy expanded-card fork.
-  assert.match(card, /fontSize:\s*16,\s*lineHeight:\s*20/);
+  const routeLine = fs.readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
+  assert.match(routeLine, /fontSize:\s*12,\s*lineHeight:\s*16/);
   assert.match(src, /cardSpacing: \{ marginHorizontal: 18, marginBottom: 7 \}/);
   assert.doesNotMatch(src, /cardExpanded/);
 });

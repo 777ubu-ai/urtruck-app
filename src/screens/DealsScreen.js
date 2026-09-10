@@ -21,7 +21,7 @@ import { marketAPI } from '../utils/marketAPI';
 import { notificationsAPI } from '../utils/notificationsAPI';
 import { formatPrice } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
-import { countryFlag } from '../utils/countryFlags';
+import { countryCode } from '../utils/countryFlags';
 import { accentFor } from '../components/deal/DealRoom';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { isBidActionable } from '../utils/dealsUnread';
@@ -350,21 +350,22 @@ export default function DealsScreen({ navigation, route }) {
     [t, lang],
   );
 
-  const endpoint = useCallback(
-    (country, city) => {
-      const flag = countryFlag(country);
-      const place = localizePlace(city || "—", lang);
-      return [flag, place].filter(Boolean).join(" ");
-    },
-    [lang],
-  );
-
   const routeFor = useCallback((item, kind) => {
     if (kind === 'bid') {
-      return `${endpoint(item.from_country, item.cargo_from || item.trip_from)} → ${endpoint(item.to_country, item.trip_to || item.cargo_to)}`;
+      return {
+        from: localizePlace(item.cargo_from || item.trip_from || '—', lang),
+        to: localizePlace(item.trip_to || item.cargo_to || '—', lang),
+        fromFlag: countryCode(item.from_country) || null,
+        toFlag: countryCode(item.to_country) || null,
+      };
     }
-    return `${endpoint(item.from_country, item.from_city)} → ${endpoint(item.to_country, item.to_city)}`;
-  }, [endpoint, role]);
+    return {
+      from: localizePlace(item.from_city || '—', lang),
+      to: localizePlace(item.to_city || '—', lang),
+      fromFlag: countryCode(item.from_country) || null,
+      toFlag: countryCode(item.to_country) || null,
+    };
+  }, [lang]);
 
   const priceText = useCallback(
     (amount, currency = "USD") => {
@@ -606,14 +607,13 @@ export default function DealsScreen({ navigation, route }) {
         ? relTime(data.updated_at || data.created_at)
         : formatBidRemaining(data, lang);
       const isIncomingCargoOffer = role === 'client' && data._incoming && data.cargo_id;
-      const offerTitle = data.bidder_name || t('role_driver');
       const offerRoute = routeFor(data, 'bid');
       const offerCargo = data.cargo_desc ? localizeCargoName(data.cargo_desc, lang) : '';
-      const offerMeta = [offerRoute, offerCargo].filter(Boolean).join(' · ');
+      const offerMeta = [data.bidder_name || t('role_driver'), offerCargo].filter(Boolean).join(' · ');
       return (
         <CompactDealCard
           testID="deals-driver-bid"
-          routeLabel={isIncomingCargoOffer ? offerTitle : routeFor(data, 'bid')}
+          routeLabel={offerRoute}
           price={price}
           statusLabel={statusLabel}
           statusColor={statusColor}

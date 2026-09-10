@@ -103,6 +103,10 @@ export const normalizeTrip = (raw) => {
     id: raw.id || raw.trip_id || null,
     from: pick(raw.from_city, raw.from, raw.fromCity, raw.from_point_name),
     to: pick(raw.to_city, raw.to, raw.toCity, raw.to_point_name),
+    // Preserve ISO endpoints for the shared CountryFlag renderer. This is
+    // display metadata only; requests and marketplace state stay untouched.
+    fromCountry: pick(raw.from_country, raw.fromCountry),
+    toCountry: pick(raw.to_country, raw.toCountry),
     transit: pick(raw.transit, raw.transitCity, raw.transit_city),
     departure: pick(raw.departure, raw.departure_date, raw.departureDate),
     arrival: pick(raw.arrival, raw.arrival_date, raw.arrivalDate),

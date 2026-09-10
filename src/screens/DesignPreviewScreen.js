@@ -27,7 +27,7 @@ import BackButton from '../components/ui/v1/BackButton';
 import Button from '../components/ui/v1/Button';
 import Field from '../components/ui/v1/Field';
 import StatusPill from '../components/ui/v1/StatusPill';
-import Flag from '../components/ui/v1/Flag';
+import CountryFlag, { COUNTRY_FLAG_CODES } from '../components/ui/v1/CountryFlag';
 import Card from '../components/ui/v1/Card';
 import VoiceMessageBubble from '../components/VoiceMessageBubble';
 
@@ -252,11 +252,14 @@ function DesignV1Gallery() {
         )}
       </GalleryPair>
 
-      <GalleryPair label="Flag">
+      <GalleryPair label="CountryFlag fixture">
         {() => (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            {['KZ', 'RU', 'CN', 'XX'].map((code) => (
-              <Flag key={code} code={code} testID={`qa-v1-flag-${code.toLowerCase()}`} />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }} testID="qa-country-flag-fixture">
+            {COUNTRY_FLAG_CODES.map((code) => (
+              <View key={code} style={{ alignItems: 'center', gap: 3 }}>
+                <CountryFlag code={code} width={36} testID={`qa-country-flag-${code.toLowerCase()}`} />
+                <Text style={{ fontSize: 10, fontWeight: '700' }}>{code}</Text>
+              </View>
             ))}
           </View>
         )}
@@ -537,4 +540,3 @@ export default function DesignPreviewScreen({ navigation }) {
     </SafeAreaView>
   );
 }
-

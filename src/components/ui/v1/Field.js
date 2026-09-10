@@ -21,7 +21,8 @@ export default function Field(props) {
 
 // Ведущая иконка поля. Приоритет — профессиональная Feather-иконка (монохром,
 // серый), эмодзи оставлен как fallback для ещё не мигрированных экранов.
-function FieldIcon({ featherIcon, icon, color }) {
+function FieldIcon({ leading, featherIcon, icon, color }) {
+  if (leading) return leading;
   if (featherIcon) {
     return <Feather name={featherIcon} size={18} color={color} style={{ width: 20, textAlign: 'center' }} />;
   }
@@ -30,7 +31,7 @@ function FieldIcon({ featherIcon, icon, color }) {
 }
 
 function InputRow({
-  icon, featherIcon, label, value, onChangeText, placeholder,
+  icon, featherIcon, leading, label, value, onChangeText, placeholder,
   secureTextEntry, onTogglePassword, isPasswordVisible,
   keyboardType, autoCapitalize = 'sentences', maxLength, error, helper,
   // Stage 21: pass-through editable so callers can render a
@@ -72,7 +73,7 @@ function InputRow({
             borderWidth: focused && !error ? 2 : 1 },
         ]}
       >
-        <FieldIcon featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
+        <FieldIcon leading={leading} featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
         <View style={{ flex: 1 }}>
           <TextInput
             style={[s.input, { color: colors.text }, value ? s.inputFilled : null, !editable && { opacity: 0.7 }]}
@@ -103,7 +104,7 @@ function InputRow({
   );
 }
 
-function DropdownRow({ icon, featherIcon, label, value, onPress, placeholder, testID }) {
+function DropdownRow({ icon, featherIcon, leading, label, value, onPress, placeholder, testID }) {
   const colors = useV1Colors();
   return (
     <View style={{ marginBottom: v1Spacing.sm }}>
@@ -124,7 +125,7 @@ function DropdownRow({ icon, featherIcon, label, value, onPress, placeholder, te
         ]}
         testID={testID}
       >
-        <FieldIcon featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
+        <FieldIcon leading={leading} featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
         <View style={{ flex: 1 }}>
           <Text style={[s.input, value ? s.inputFilled : null, { color: value ? colors.text : colors.placeholder }]} numberOfLines={1}>
             {value || placeholder || '—'}

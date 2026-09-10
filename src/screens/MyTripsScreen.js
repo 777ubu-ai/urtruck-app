@@ -364,7 +364,6 @@ export default function MyTripsScreen({ navigation, route }) {
       : formatDateForDisplay(item.departure || item.created_at);
     const specLine = [
       formatTruckType(item.truck_type || item.cargo_type),
-      dateText,
       (isCargo ? item.weight_tons : item.capacity_tons) ? `${isCargo ? item.weight_tons : item.capacity_tons} ${tonUnit}` : null,
       (isCargo ? item.volume_m3 : item.available_m3) ? `${isCargo ? item.volume_m3 : item.available_m3} ${cubicMeterUnit}` : null,
     ].filter(Boolean).join(' · ');
@@ -389,8 +388,9 @@ export default function MyTripsScreen({ navigation, route }) {
           numberOfLines: 2,
         }}
         price={formatPrice(item.price, item.currency, t)}
-        meta={[desc ? localizeCargoName(desc, lang) : null, specLine]}
-        badge={{ label: isCargo ? t('badge_cargo') : t('badge_trip'), kind: isCargo ? 'cargo' : 'trip' }}
+        priceMeta={dateText}
+        meta={[specLine]}
+        description={desc ? localizeCargoName(desc, lang) : null}
         status={item._expired
           ? { key: 'expired', label: t('deadline_expired'), color: v1.error }
           : { key: st, label: formatStatus(st), color: myItemStatusColor(v1, st) }}
@@ -560,7 +560,6 @@ export default function MyTripsScreen({ navigation, route }) {
           toFlag: flagCodeOrNull(item.to_country),
           numberOfLines: 2,
         }}
-        badge={{ label: isCargo ? t('badge_cargo') : t('badge_trip'), kind: isCargo ? 'cargo' : 'trip' }}
         status={{ key: 'unpublished', label: formatStatus(item.status || 'unpublished'), color: v1.textDim }}
       >
         <View style={{ flexDirection: 'row', gap: 8, marginTop: v1Spacing.sm }}>

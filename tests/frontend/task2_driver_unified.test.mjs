@@ -25,6 +25,11 @@ test('main tabs are four canonical tabs with Border and no Profile duplication',
   assert.doesNotMatch(bottom, /Profile:\s*\{/);
   assert.match(bottom, /name === 'Queue'\)\s+return t\('tab_border'\)/);
   assert.doesNotMatch(bottom, /route\.name === 'Publish'/);
+
+  const driverStart = tabs.indexOf('{isDriver ? (');
+  const driverTabs = tabs.slice(driverStart, tabs.indexOf(') : (', driverStart));
+  assert.match(driverTabs, /name="Feed"[\s\S]*name="MyWork"[\s\S]*name="Deals"[\s\S]*name="Queue"/,
+    'Driver order is Cargo → Trips → Deals → Border');
 });
 
 test('shared resolver enforces driver and shipper actions including explicit received', () => {
@@ -48,7 +53,7 @@ test('driver save UI uses bookmark consistently', () => {
   assert.match(feed, /cargo-filter-favorites/);
   // Icon canon moved into the shared card (FeedCard/CargoCard forks are
   // gone); the driver feed keeps its per-card bookmark testID wiring.
-  assert.match(card, /name="bookmark"/);
+  assert.match(card, /BookmarkButton/);
   assert.match(feed, /testID: `cargo-card-bookmark-\$\{item\.id\}`/);
   assert.doesNotMatch(feed, /<Feather name="star"/);
 });

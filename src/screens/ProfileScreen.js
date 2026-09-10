@@ -19,13 +19,14 @@ import { API_BASE } from '../config/env';
 import { IS_BETA } from '../config/supabase';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import Button from '../components/ui/v1/Button';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 import { localizePlace } from '../utils/places';
 
 const LANGS = [
-  { code: 'RU', flag: '🇷🇺' },
-  { code: 'EN', flag: '🇬🇧' },
-  { code: 'KK', flag: '🇰🇿' },
-  { code: 'ZH', flag: '🇨🇳' },
+  { code: 'RU', country: 'RU' },
+  { code: 'EN', country: 'GB' },
+  { code: 'KK', country: 'KZ' },
+  { code: 'ZH', country: 'CN' },
 ];
 
 const QA_HOOK_ALLOWED = (() => {
@@ -311,8 +312,8 @@ export default function ProfileScreen({ navigation, route }) {
             <View style={s.langGrid}>
               {LANGS.map(l => (
                 <TouchableOpacity key={l.code} style={[s.langCard, { backgroundColor: theme.bg, borderColor: theme.border }, lang === l.code && { backgroundColor: accent, borderColor: accent }]} onPress={() => { setLang(l.code); setLanguage(l.code); }}>
-                  <Text style={{ fontSize: 22 }}>{l.flag}</Text>
-                  <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: onAccent }]} numberOfLines={1}>{l.name}</Text>
+                  <CountryFlag code={l.country} width={28} />
+                  <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: onAccent }]} numberOfLines={1}>{l.code}</Text>
                 </TouchableOpacity>
               ))}
             </View>

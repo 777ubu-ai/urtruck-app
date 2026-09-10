@@ -117,13 +117,12 @@ export default function FavoritesScreen({ navigation, route }) {
           }}
           price={formatPrice(data.price, data.currency, t)}
           priceMeta={dateText || null}
-          meta={[
-            isCargo && data.cargo ? data.cargo : null,
+          meta={[[
             typeLabel ? t(typeLabel) : null,
             isCargo && data.tons ? `${data.tons} ${lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т'}` : null,
             isCargo && data.m3 ? `${data.m3} ${lang === 'ZH' ? '立方米' : 'м³'}` : null,
-          ]}
-          badge={{ label: isCargo ? t('badge_cargo') : t('badge_trip'), kind: isCargo ? 'cargo' : 'trip' }}
+          ].filter(Boolean).join(' · ')]}
+          description={isCargo && data.cargo ? data.cargo : null}
           bookmark={{
             saved: true,
             onToggle: () => removeItem(item),

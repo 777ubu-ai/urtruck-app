@@ -19,6 +19,7 @@ import { useI18n } from '../utils/useI18n';
 import { storage } from '../utils/storage';
 import { localizePlace } from '../utils/places';
 import { COUNTRIES, COUNTRY_ORDER, POINTS, searchPoints, formatPoint, pointsForCountry } from '../utils/geography';
+import CountryFlag from './ui/v1/CountryFlag';
 
 const RECENT_KEY = 'ur_recent_places';
 const FAV_KEY = 'ur_fav_places';
@@ -31,7 +32,6 @@ const POPULAR = POPULAR_NAMES.map((n) => POINTS.find((p) => p.name === n)).filte
 const BORDERS = POINTS.filter((p) => p.type === 'border').slice(0, 6);
 
 const pointKey = (p) => `${p.country}:${p.type}:${p.name}`;
-const iconFor = (p) => (p.type === 'border' ? '🛂' : p.type === 'terminal' ? '🏗' : (COUNTRIES[p.country]?.flag || '📍'));
 
 const loadList = async (key) => {
   try {
@@ -141,7 +141,6 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     leadText: { fontSize: 19 },
     name: { fontSize: 15, fontWeight: '700', color: v1.text },
     sub: { fontSize: 12, color: v1.textMuted, marginTop: 2 },
-    heart: { fontSize: 18, paddingHorizontal: 4 },
     chev: { fontSize: 18, color: v1.textMuted },
     geoLead: { backgroundColor: 'rgba(0,230,118,0.12)', borderColor: 'rgba(0,230,118,0.3)' },
     divider: { height: 1, backgroundColor: v1.border, marginHorizontal: 16, marginVertical: 6 },
@@ -160,7 +159,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     const isFav = favSet.has(pointKey(p));
     return (
       <TouchableOpacity style={s.row} onPress={() => pick(p)} testID={`loc-point-${p.name}`} activeOpacity={0.7}>
-        <View style={s.lead}><Text style={s.leadText}>{iconFor(p)}</Text></View>
+        <View style={s.lead}><CountryFlag code={p.country} width={25} /></View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={s.name} numberOfLines={1}>{localizePlace(p.name, lang)}</Text>
           <Text style={s.sub} numberOfLines={1}>
@@ -179,7 +178,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             testID={`loc-fav-${p.name}`}
           >
-            <Feather name="heart" size={18} color={isFav ? v1.driver : v1.textMuted} style={{ paddingHorizontal: 4 }} />
+            <Feather name="bookmark" size={18} color={isFav ? v1.driver : v1.textMuted} />
           </TouchableOpacity>
         ) : <Text style={s.chev}>›</Text>}
       </TouchableOpacity>
@@ -281,7 +280,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
               <Sect icon="globe">{t('loc_countries')}</Sect>
               {COUNTRY_ORDER.map((code) => (
                 <TouchableOpacity key={`country:${code}`} style={s.row} onPress={() => setCountry(code)} activeOpacity={0.7} testID={`loc-country-${code}`}>
-                  <View style={s.lead}><Text style={s.leadText}>{COUNTRIES[code]?.flag || '🌐'}</Text></View>
+                  <View style={s.lead}><CountryFlag code={code} width={25} /></View>
                   <View style={{ flex: 1 }}>
                     <Text style={s.name} numberOfLines={1}>{countryLabel(code)}</Text>
                   </View>

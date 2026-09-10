@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-nati
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { cleanPlaceName, localizePlace } from '../utils/places';
-import { countryFlag } from '../utils/countryFlags';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
@@ -93,8 +93,7 @@ export default function CreateTripScreen({ navigation, route }) {
   const displayRoutePoint = (raw, point) => {
     const canonical = point?.name || cleanPlaceName(raw || '');
     const localized = localizePlace(canonical, lang) || canonical;
-    const flag = point?.country ? countryFlag(point.country) : '';
-    return [localized, flag].filter(Boolean).join(', ');
+    return localized;
   };
 
   const [from, setFrom] = useState('');
@@ -219,6 +218,7 @@ export default function CreateTripScreen({ navigation, route }) {
       <Field
         variant="dropdown"
         featherIcon="map-pin"
+        leading={fromPoint?.country ? <CountryFlag code={fromPoint.country} width={23} /> : null}
         label={t('signup_field_country')}
         value={displayRoutePoint(from, fromPoint)}
         placeholder={t('create_field_from_placeholder')}
@@ -229,6 +229,7 @@ export default function CreateTripScreen({ navigation, route }) {
       <Field
         variant="dropdown"
         featherIcon="map-pin"
+        leading={toPoint?.country ? <CountryFlag code={toPoint.country} width={23} /> : null}
         label={t('toCountry')}
         value={displayRoutePoint(to, toPoint)}
         placeholder={t('create_field_to_placeholder')}

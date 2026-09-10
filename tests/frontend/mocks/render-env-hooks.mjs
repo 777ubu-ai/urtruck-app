@@ -18,6 +18,7 @@ const MAP = {
   '@react-navigation/native-stack': MOCK('navigation-stub.mjs'),
   '@react-navigation/bottom-tabs': MOCK('navigation-stub.mjs'),
   '@react-navigation/stack': MOCK('navigation-stub.mjs'),
+  'react-native-svg': MOCK('react-native-svg.mjs'),
 };
 
 export async function resolve(specifier, context, nextResolve) {

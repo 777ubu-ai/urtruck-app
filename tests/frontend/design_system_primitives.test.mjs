@@ -13,7 +13,7 @@ const { LIGHT, DARK } = await import('../../src/theme/designV1Palette.js');
 const designV1 = await import('../../src/theme/designV1.js');
 const { default: Button } = await import('../../src/components/ui/v1/Button.js');
 const { default: StatusPill } = await import('../../src/components/ui/v1/StatusPill.js');
-const { default: Flag, flagColors, isKnownFlagCode } = await import('../../src/components/ui/v1/Flag.js');
+const { default: CountryFlag, countryFlagXml, isKnownCountryFlag } = await import('../../src/components/ui/v1/CountryFlag.js');
 const { default: Card } = await import('../../src/components/ui/v1/Card.js');
 const { StyleSheet } = await import('react-native');
 
@@ -209,32 +209,28 @@ test('StatusPill color override wins over the role color', () => {
   assert.equal(flatten(text.props.style).color, '#123456');
 });
 
-// ══ 4. Flag ══════════════════════════════════════════════════════════
-test('flagColors: KZ/RU/CN distinct sets, unknown code falls back to null', () => {
-  const kz = flagColors('KZ');
-  const ru = flagColors('RU');
-  const cn = flagColors('CN');
-  assert.ok(kz && ru && cn, 'known codes resolve');
-  assert.notDeepEqual(kz.colors, ru.colors, 'KZ ≠ RU');
-  assert.notDeepEqual(kz.colors, cn.colors, 'KZ ≠ CN');
-  assert.notDeepEqual(ru.colors, cn.colors, 'RU ≠ CN');
-  assert.equal(flagColors('XX'), null, 'unknown code → null (grey fallback in render)');
-  assert.equal(isKnownFlagCode('kz'), true, 'codes are case-insensitive');
-  assert.equal(isKnownFlagCode('XX'), false);
+// ══ 4. CountryFlag ═══════════════════════════════════════════════════
+test('CountryFlag uses bundled standards SVG and resolves ISO codes only', () => {
+  const kz = countryFlagXml('KZ');
+  const ru = countryFlagXml('RU');
+  const cn = countryFlagXml('CN');
+  assert.ok(kz && ru && cn, 'known codes resolve to local SVG');
+  assert.match(kz, /#36B6CC/i, 'KZ field is the official cyan blue');
+  assert.doesNotMatch(kz, /#FEC50C/i, 'KZ has no fabricated yellow bottom stripe');
+  assert.notEqual(kz, ru);
+  assert.notEqual(kz, cn);
+  assert.equal(countryFlagXml('XX'), null);
+  assert.equal(isKnownCountryFlag('kz'), true, 'codes are case-insensitive');
+  assert.equal(isKnownCountryFlag('XX'), false);
 });
 
-test('Flag renders stripe geometry; unknown code renders grey fallback with ?', () => {
-  const ru = Flag({ code: 'RU' });
-  const views = findByType(ru, 'View');
-  const stripeColors = views
-    .map((el) => flatten(el.props.style).backgroundColor)
-    .filter(Boolean);
-  for (const c of ['#FFFFFF', '#0039A6', '#D52B1E']) {
-    assert.ok(stripeColors.includes(c), `RU must include stripe ${c}`);
-  }
-  const unknown = Flag({ code: 'XX' });
+test('CountryFlag renders an SVG frame and a clear unknown fallback', () => {
+  const ru = CountryFlag({ code: 'RU' });
+  assert.equal(typeName(ru), 'View');
+  assert.equal(ru.props.accessibilityRole, 'image');
+  const unknown = CountryFlag({ code: 'XX' });
   const unknownBg = flatten(unknown.props.style).backgroundColor;
-  assert.equal(unknownBg, '#C8D8CF', 'unknown flag = grey #C8D8CF');
+  assert.equal(unknownBg, '#DDE6E0', 'unknown flag = grey fallback');
   const mark = findByType(unknown, 'Text')[0];
   assert.equal(mark.children[0], '?');
 });

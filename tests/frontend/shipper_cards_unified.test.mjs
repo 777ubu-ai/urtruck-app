@@ -14,7 +14,7 @@ const myTrips = fs.readFileSync('src/screens/MyTripsScreen.js', 'utf8');
 
 test('unified marketplace save action uses the approved bookmark icon and calm price colour', () => {
   assert.doesNotMatch(card, /❤️|🤍/); // Feather/FontAwesome5-иконка, не emoji
-  assert.match(card, /name="bookmark"/);
+  assert.match(card, /BookmarkButton/);
   assert.doesNotMatch(card, /name="heart"/);
   // price colour comes from the theme token (`typo.price` → colors.text),
   // never a hardcoded orange hex.
@@ -29,12 +29,11 @@ test('shipper feed wires the bookmark with localized accessibility labels', () =
   assert.match(shipperFeed, /testID: `trip-card-bookmark-\$\{item\.id\}`/);
 });
 
-test('route owns primary row with Flag on both endpoints and a 2-line clamp', () => {
-  // MyTrips route: Flag codes for both endpoints via the shared card
-  // (legacy countryFlag emoji rendering is gone), 2-line clamp.
+test('route owns primary row with CountryFlag on both endpoints and a clamp', () => {
+  // MyTrips passes ISO codes for both endpoints into the shared RouteLine.
   assert.match(myTrips, /fromFlag: flagCodeOrNull\(item\.from_country\)/);
   assert.match(myTrips, /toFlag: flagCodeOrNull\(item\.to_country\)/);
-  assert.match(card, /route\.numberOfLines \?\? 2/);
-  assert.match(card, /<Flag code=\{fromFlag\} \/>/);
-  assert.match(card, /<Flag code=\{toFlag\} \/>/);
+  assert.match(card, /<RouteLine/);
+  assert.match(card, /fromFlag=\{routeMeta\.fromFlag\}/);
+  assert.match(card, /toFlag=\{routeMeta\.toFlag\}/);
 });

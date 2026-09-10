@@ -31,6 +31,7 @@ import BellBadge from '../components/ui/v1/BellBadge';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
+import CompactFilterChip from '../components/ui/v1/CompactFilterChip';
 import { LIGHT as V1_LIGHT } from '../theme/designV1Palette';
 
 const ACCENT = V1_LIGHT.driver;
@@ -200,8 +201,8 @@ function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
       price={formatMoney(item.price, item.currency, copy)}
       priceTestID={`cargo-card-price-${item.id}`}
       priceMeta={item.pickup ? formatPickupDate(item.pickup, lang) : null}
-      meta={[cargo, specs || formatTruckType(item.type)]}
-      badge={{ label: t('badge_cargo'), kind: 'cargo' }}
+      meta={[specs || formatTruckType(item.type)]}
+      description={cargo}
       bookmark={{
         saved,
         onToggle: onToggleSaved,
@@ -361,24 +362,7 @@ export default function CargoFeedScreen({ navigation }) {
   );
 
   const filterPill = (key, label, icon, active) => (
-    <TouchableOpacity
-      key={key}
-      style={[
-        styles.filterPill,
-        {
-          borderColor: active ? palette.accent : palette.border,
-          backgroundColor: active ? palette.filterActive : palette.surface,
-          shadowColor: palette.shadow,
-        },
-      ]}
-      onPress={() => setActiveFilter(key)}
-      testID={`cargo-filter-${key}`}
-      accessibilityRole="button"
-    >
-      <Feather name={icon} size={16} color={active ? ACCENT : TEXT_SECONDARY} />
-      <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
-      <Feather name="chevron-down" size={15} color={palette.textSecondary} />
-    </TouchableOpacity>
+    <CompactFilterChip key={key} icon={icon} label={label} active={active} onPress={() => setActiveFilter(key)} testID={`cargo-filter-${key}`} />
   );
 
   const feedControls = (
@@ -434,24 +418,7 @@ export default function CargoFeedScreen({ navigation }) {
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
         {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
-        <TouchableOpacity
-          style={[
-            styles.filterPill,
-            {
-              borderColor: savedOnly ? '#A6D2BE' : '#CAE2D7',
-              backgroundColor: savedOnly ? palette.accentSoft : palette.favoriteBg,
-              shadowColor: palette.shadow,
-            },
-          ]}
-          onPress={toggleSavedOnly}
-          testID="cargo-filter-favorites"
-          accessibilityRole="button"
-          accessibilityState={{ selected: savedOnly }}
-        >
-          <Feather name="bookmark" size={17} color={palette.accent} />
-          <Text style={[styles.filterPillText, { color: palette.accent }]}>{copy.favorites}</Text>
-          {savedIds.size > 0 ? <Text style={[styles.favoritesCount, { color: palette.textSecondary }]}>{savedIds.size}</Text> : null}
-        </TouchableOpacity>
+        <CompactFilterChip icon="bookmark" active={savedOnly} onPress={toggleSavedOnly} testID="cargo-filter-favorites" accessibilityLabel={copy.favorites} />
       </ScrollView>
     </View>
   );

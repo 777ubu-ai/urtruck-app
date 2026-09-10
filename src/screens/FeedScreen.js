@@ -29,6 +29,8 @@ import BellBadge from '../components/ui/v1/BellBadge';
 import RootHeader from '../components/ui/v1/RootHeader';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
+import CompactFilterChip from '../components/ui/v1/CompactFilterChip';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 import { LIGHT as V1_LIGHT } from '../theme/designV1Palette';
 
 // Canonical driver accent from the designV1 palette (identical value in
@@ -110,12 +112,8 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
       }}
       price={display.price}
       priceMeta={copy.perTrip}
-      meta={[
-        item.departure ? `${copy.departure}: ${display.departure}` : null,
-        specs || null,
-      ]}
-      badge={{ label: t('badge_trip'), kind: 'trip' }}
-      counterparty={display.driverName !== notSpecified ? display.driverName : null}
+      meta={[[item.departure ? `${copy.departure}: ${display.departure}` : null, specs || null].filter(Boolean).join(' · ')]}
+      description={display.driverName !== notSpecified ? display.driverName : null}
       bookmark={{
         saved,
         onToggle: onToggleSaved,
@@ -178,7 +176,7 @@ export default function FeedScreen({ navigation }) {
   // by the real forms) — this only changes what filter callers pass in.
   const routeValue = (city, countryCode, placeholder) => {
     if (city) return localizePlace(city, lang);
-    if (countryCode) return `${GEO_COUNTRIES[countryCode]?.flag || ''} ${countryLabel(countryCode)}`.trim();
+    if (countryCode) return countryLabel(countryCode);
     return placeholder;
   };
 
@@ -341,24 +339,7 @@ export default function FeedScreen({ navigation }) {
   };
 
   const filterPill = (key, label, icon, active) => (
-    <TouchableOpacity
-      key={key}
-      style={[
-        styles.filterPill,
-        {
-          borderColor: active ? colors.accent : colors.border,
-          backgroundColor: active ? colors.filterActive : colors.surface,
-          shadowColor: colors.shadow,
-        },
-      ]}
-      onPress={() => setActiveFilter(key)}
-      testID={`trip-filter-${key}`}
-      accessibilityRole="button"
-    >
-      <Feather name={icon} size={16} color={active ? ACCENT : colors.textSecondary} />
-      <Text style={[styles.filterPillText, { color: active ? ACCENT : colors.textSecondary }]}>{label}</Text>
-      <Feather name="chevron-down" size={15} color={colors.textSecondary} />
-    </TouchableOpacity>
+    <CompactFilterChip key={key} icon={icon} label={label} active={active} onPress={() => setActiveFilter(key)} testID={`trip-filter-${key}`} />
   );
 
   const feedControls = (
@@ -384,12 +365,15 @@ export default function FeedScreen({ navigation }) {
             <Feather name="map-pin" size={14} color={colors.textMuted} />
             <Text style={[styles.routeLabel, { color: colors.textSecondary }]}>{t('from')}</Text>
           </View>
-          <Text
-            style={[styles.routeValue, { color: (dirFrom || dirFromCountry) ? colors.text : colors.textMuted }]}
-            numberOfLines={1}
-          >
-            {routeValue(dirFrom, dirFromCountry, t('city'))}
-          </Text>
+          <View style={styles.routeValueRow}>
+            {dirFromCountry ? <CountryFlag code={dirFromCountry} width={20} /> : null}
+            <Text
+              style={[styles.routeValue, { color: (dirFrom || dirFromCountry) ? colors.text : colors.textMuted, flex: 1 }]}
+              numberOfLines={1}
+            >
+              {routeValue(dirFrom, dirFromCountry, t('city'))}
+            </Text>
+          </View>
         </TouchableOpacity>
 
         <Feather name="arrow-right" size={24} color={ACCENT} />
@@ -403,12 +387,15 @@ export default function FeedScreen({ navigation }) {
             <Feather name="flag" size={14} color={colors.textMuted} />
             <Text style={[styles.routeLabel, { color: colors.textSecondary }]}>{t('to')}</Text>
           </View>
-          <Text
-            style={[styles.routeValue, { color: (dirTo || dirToCountry) ? colors.text : colors.textMuted }]}
-            numberOfLines={1}
-          >
-            {routeValue(dirTo, dirToCountry, t('city'))}
-          </Text>
+          <View style={styles.routeValueRow}>
+            {dirToCountry ? <CountryFlag code={dirToCountry} width={20} /> : null}
+            <Text
+              style={[styles.routeValue, { color: (dirTo || dirToCountry) ? colors.text : colors.textMuted, flex: 1 }]}
+              numberOfLines={1}
+            >
+              {routeValue(dirTo, dirToCountry, t('city'))}
+            </Text>
+          </View>
         </TouchableOpacity>
 
         {(dirFrom || dirTo || dirFromCountry || dirToCountry) ? (
@@ -436,26 +423,7 @@ export default function FeedScreen({ navigation }) {
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
         {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
-        <TouchableOpacity
-          style={[
-            styles.filterPill,
-            {
-              borderColor: savedOnly ? '#A6D2BE' : '#CAE2D7',
-              backgroundColor: savedOnly ? colors.accentSoft : colors.favoriteBg,
-              shadowColor: colors.shadow,
-            },
-          ]}
-          onPress={toggleSavedOnly}
-          testID="trip-filter-favorites"
-          accessibilityRole="button"
-          accessibilityState={{ selected: savedOnly }}
-        >
-          <Feather name="bookmark" size={17} color={colors.accent} />
-          <Text style={[styles.filterPillText, { color: colors.accent }]}>{copy.favorites}</Text>
-          {savedIds.size > 0 ? (
-            <Text style={[styles.favoritesCount, { color: colors.textSecondary }]}>{savedIds.size}</Text>
-          ) : null}
-        </TouchableOpacity>
+        <CompactFilterChip icon="bookmark" active={savedOnly} onPress={toggleSavedOnly} testID="trip-filter-favorites" accessibilityLabel={copy.favorites} />
       </ScrollView>
     </View>
   );
@@ -708,6 +676,7 @@ const styles = StyleSheet.create({
   },
   routeHalf: { flex: 1, minWidth: 0 },
   routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
+  routeValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
   routeLabel: { fontSize: 11.5, lineHeight: 15, fontWeight: '600' },
   routeValue: { fontSize: 15, lineHeight: 19, fontWeight: '700' },
   filtersScroll: { flexGrow: 0, minHeight: 50, maxHeight: 50 },
