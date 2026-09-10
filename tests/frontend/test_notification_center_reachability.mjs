@@ -14,20 +14,25 @@ test('Profile does not duplicate deal notifications entry or unread badge', () =
   assert.doesNotMatch(profile, /navigation\.navigate\(['"]PushFilter/);
 });
 
-test('My Work Bell opens the canonical notification center', () => {
+test('My Work Bell opens the canonical PushFilter settings', () => {
   const myTrips = readFileSync('src/screens/MyTripsScreen.js', 'utf8');
   assert.match(myTrips, /bellTestID="mywork-notification-settings-btn"/);
-  assert.match(myTrips, /navigation\.navigate\('Notifications', \{ role \}\)/);
-  assert.doesNotMatch(myTrips, /navigation\.navigate\(['"]PushFilter/);
+  assert.match(myTrips, /navigation\.navigate\('PushFilter', \{ role \}\)/);
+  assert.doesNotMatch(myTrips, /navigation\.navigate\(['"]Notifications/);
 });
 
-test('all active root feeds route Bell to the canonical notification center', () => {
-  for (const file of ['src/screens/FeedScreen.js', 'src/screens/CargoFeedScreen.js', 'src/screens/DealsScreen.js']) {
+test('all active root screens route Bell to PushFilter, never Notifications', () => {
+  for (const file of [
+    'src/screens/FeedScreen.js',
+    'src/screens/CargoFeedScreen.js',
+    'src/screens/DealsScreen.js',
+    'src/screens/QueueScreenLazyV2.js',
+  ]) {
     const source = readFileSync(file, 'utf8');
     assert.match(source, /RootHeader/);
-    assert.match(source, /navigation\.navigate\('Notifications', \{ role \}\)/, file);
+    assert.match(source, /navigation\.navigate\('PushFilter', \{ role \}\)/, file);
     assert.doesNotMatch(source, /useUnreadNotifications/);
-    assert.doesNotMatch(source, /navigation\.navigate\(['"]PushFilter/, file);
+    assert.doesNotMatch(source, /navigation\.navigate\(['"]Notifications/, file);
   }
 });
 
@@ -44,7 +49,7 @@ test('NotificationsScreen still clears unread state correctly when reached by su
   assert.match(handlePress, /refreshAppIconBadge\(\)/);
 });
 
-test('NotificationsScreen retains durable lifecycle entries for the Bell inbox', () => {
+test('NotificationsScreen retains durable lifecycle entries for supported deep links', () => {
   assert.match(notifScreen, /setItems\(all\)/);
   assert.doesNotMatch(notifScreen, /isDealLifecycleNotification/);
 });

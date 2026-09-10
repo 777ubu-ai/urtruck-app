@@ -484,7 +484,7 @@ export default function FeedScreen({ navigation }) {
     >
       <RootHeader navigation={navigation} role={role} testID="trip-feed-minimal-header" bellTestID="feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-            if (ok) navigation.navigate('Notifications', { role });
+            if (ok) navigation.navigate('PushFilter', { role });
           }} />
 
       <FlatList

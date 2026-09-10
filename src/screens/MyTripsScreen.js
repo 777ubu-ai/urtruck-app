@@ -628,7 +628,7 @@ export default function MyTripsScreen({ navigation, route }) {
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       <RootHeader navigation={navigation} role={role} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-            if (ok) navigation.navigate('Notifications', { role });
+            if (ok) navigation.navigate('PushFilter', { role });
           }} />
 
       <FlatList

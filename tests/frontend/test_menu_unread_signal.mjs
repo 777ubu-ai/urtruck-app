@@ -1,8 +1,8 @@
 // Track: Claude harness fix, P1 (2026-09-08/09).
 //
-// Bell is the canonical notification inbox entry and owns the sole unread
-// signal. The hamburger remains a profile/menu action, so counts cannot be
-// duplicated or visually imply that menu settings are unread.
+// Bell opens canonical push filters and owns the sole unread signal. The
+// hamburger remains a profile/menu action, so counts cannot be duplicated or
+// visually imply that menu settings are unread.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

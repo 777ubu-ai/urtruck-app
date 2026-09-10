@@ -279,7 +279,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     <SafeAreaView style={[s.safe, { backgroundColor: v1.bg }]} edges={['top']} testID="border-screen-v2">
       <RootHeader navigation={navigation} role={role} testID="queue-root-header" onBellPress={async () => {
         const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-        if (ok) navigation.navigate('Notifications', { role });
+        if (ok) navigation.navigate('PushFilter', { role });
       }} />
 
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
