@@ -254,7 +254,10 @@ for (const lang of LOCALES) {
     // the Border tab is the last item of the bottom nav
     // (runtime contract: BottomNav emits `bottom-nav-${route.name.toLowerCase()}`
     // and the route is `Queue` → `bottom-nav-queue`).
-    const tab = page.locator('[data-testid="bottom-nav-queue"]');
+    // React Navigation web keeps inactive tab screens mounted (aria-hidden,
+    // zero-size), so several bottom-nav-queue nodes exist; only the visible
+    // one is clickable.
+    const tab = page.locator('[data-testid="bottom-nav-queue"]:visible');
     if (await tab.count()) {
       await tab.first().click();
     } else {
