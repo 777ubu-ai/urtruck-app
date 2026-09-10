@@ -55,26 +55,20 @@ def test_quality_gate_reusable_has_the_required_gate_components():
     assert "web production build" in frontend_steps.lower() or "build" in frontend_steps.lower()
 
 
-def test_static_release_gate_is_temporarily_non_blocking_with_a_documented_reason():
-    """As of this track, the static gate step is `continue-on-error: true`
-    because the version of scripts/release_static_gate.sh on the current
-    canonical branch fails a check unrelated to this track (a stale
-    "24-48h copy" expectation already being fixed on the separate,
-    not-yet-merged Kimi design branch). Pin BOTH the current non-blocking
-    state AND the presence of the comment explaining why + when to flip it
-    back — so this doesn't quietly stay non-blocking forever once the
-    design branch merges and the underlying reason is gone."""
+def test_static_release_gate_is_blocking_after_final_design_integration():
+    """The final design branch fixed the release-static contract.
+
+    The release gate must therefore be a real blocking dependency. Pin the
+    absence of `continue-on-error` so a future workflow edit cannot silently
+    restore the temporary bypass.
+    """
     doc = _load("quality-gate-reusable.yml")
     steps = doc["jobs"]["frontend-quality"]["steps"]
     gate_step = next(s for s in steps if s.get("name") == "Static release gate")
-    assert gate_step.get("continue-on-error") is True
-    # yaml.safe_load drops standalone `#` comments, so re-read the raw file
-    # text for the explanatory comment rather than the parsed step dict.
+    assert "continue-on-error" not in gate_step
+    assert gate_step.get("run") == "bash scripts/release_static_gate.sh"
     raw = (WORKFLOWS / "quality-gate-reusable.yml").read_text(encoding="utf-8")
-    assert "not-yet-merged design" in raw or "design/kimi" in raw, (
-        "the continue-on-error must stay accompanied by an explanation of why "
-        "and a pointer to when it should become blocking again"
-    )
+    assert "continue-on-error: true" not in raw
 
 
 # ── pr-quality-gate.yml and deploy.yml both call the SAME reusable file ──
