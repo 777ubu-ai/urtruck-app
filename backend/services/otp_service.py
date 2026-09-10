@@ -21,6 +21,7 @@ from services import whatsapp as wa
 from services import sms_mobizon
 # Email OTP (SMTP) — канал для Китая и резерв. MOCK если нет SMTP-реквизитов.
 from services import email_service
+from services.log_redact import mask_phone
 
 # BETA bypass
 try:
@@ -94,11 +95,13 @@ def send_sms(phone: str, code: str) -> dict:
     """
     msg = f"UrTruck: {code}. Не сообщайте код никому."
     if SMS_MOCK:
-        # Mask middle digits: a real phone in a server log is a PII
-        # leak even in dev, and confuses on-call when reading logs
-        # quickly.
-        masked = phone if len(phone) < 8 else f"{phone[:4]}***{phone[-3:]}"
-        print(f"[OTP·SMS MOCK] {masked}: {code}")
+        # Release hardening track A (2026-09-10): never print the raw code,
+        # even in the mock path — a mock server's stdout still ends up in
+        # the same log aggregation as production. The code itself is still
+        # returned in the dict below (that's the actual mock-delivery
+        # mechanism, gated separately by IS_PRODUCTION at the API layer,
+        # e.g. api/registration.py) — this only fixes the LOG line.
+        print(f"[OTP·SMS MOCK] {mask_phone(phone)}: (redacted)")
         return {"sent": True, "mock": True, "channel": "sms", "code": code}
 
     if SMS_PROVIDER == "mobizon":
@@ -136,7 +139,10 @@ def send_telegram(phone: str, code: str) -> dict:
     """
     link = telegram_deeplink(code)
     if TG_MOCK:
-        print(f"[OTP·TG MOCK] {phone}: {code} → {link}")
+        # Release hardening track A: `link` itself embeds the raw code
+        # (telegram_deeplink() urlencodes "verify_{code}" into the URL) —
+        # never print phone, code, OR the deeplink.
+        print(f"[OTP·TG MOCK] {mask_phone(phone)}: (redacted, deeplink omitted — contains code)")
         return {"sent": True, "mock": True, "channel": "telegram", "code": code, "deeplink": link}
     # При реальном боте можно логировать запрос или сделать ping админ-чату
     return {"sent": True, "mock": False, "channel": "telegram", "deeplink": link}

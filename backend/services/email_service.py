@@ -21,6 +21,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from services.log_redact import mask_email
+
 try:
     from config import (
         EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, EMAIL_SMTP_USER,
@@ -79,7 +81,8 @@ def send_otp(email: str, code: str) -> dict:
     """
     email = (email or "").strip()
     if EMAIL_MOCK:
-        print(f"[EMAIL MOCK] {email}: {code}", flush=True)
+        # Release hardening track A: never print the raw code, even in mock.
+        print(f"[EMAIL MOCK] {mask_email(email)}: (redacted)", flush=True)
         return {"sent": True, "mock": True, "channel": "email", "code": code}
 
     try:
@@ -99,5 +102,5 @@ def send_otp(email: str, code: str) -> dict:
                 s.send_message(msg)
         return {"sent": True, "mock": False, "channel": "email"}
     except Exception as e:
-        print(f"[EMAIL] send failed to {email}: {e}", flush=True)
+        print(f"[EMAIL] send failed to {mask_email(email)}: {e}", flush=True)
         return {"sent": False, "mock": False, "channel": "email", "error": "email_delivery_failed"}

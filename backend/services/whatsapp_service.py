@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
 
+from services.log_redact import mask_phone
+
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
 WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
 MOCK_MODE = not (WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID)
@@ -31,7 +33,8 @@ def send_whatsapp_code(phone: str, code: str) -> dict:
     REAL режим: через Meta WhatsApp Cloud API.
     """
     if MOCK_MODE:
-        print(f"[WhatsApp MOCK] → {phone}: код {code}")
+        # Release hardening track A: never print the raw code, even in mock.
+        print(f"[WhatsApp MOCK] → {mask_phone(phone)}: код (redacted)")
         return {
             "success": True,
             "mock": True,
