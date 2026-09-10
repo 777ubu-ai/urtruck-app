@@ -37,7 +37,7 @@ import TruckTypeGrid from '../components/TruckTypeGrid';
 // Mirrors CreateTripScreen structurally, with three differences:
 //   - extra "Описание груза" dropdown (CargoTypeInput overlay)
 //   - photo picker (collapsible "Фото груза (необязательно)")
-//   - orange brand accent
+//   - client role accent from v1AccentFor('client') (token-driven, дозированно)
 
 // Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY only.
 // Removed: UZS / KGS / EUR / AED. Old persisted cargo with a removed

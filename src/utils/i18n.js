@@ -775,7 +775,6 @@ const translations = {
     role_feature_routes: 'Международные маршруты',
     // Гостевой режим
     browse_as_guest: 'Смотреть грузы без регистрации',
-    browse_as_guest_sub: '',
     guest_tab_cargos: 'Грузы',
     guest_tab_trips: 'Рейсы',
     guest_subtitle: 'Просмотр без регистрации',
@@ -2714,7 +2713,7 @@ const translations = {
     role_feature_verified: 'Расталған тасымалдаушылар', role_feature_deals: 'Мәмілелер мен мәртебелер',
     role_feature_chat: 'Аудармасы бар чат', role_feature_routes: 'Халықаралық бағыттар',
     // Stage 45: қонақ режим
-    browse_as_guest: 'Тіркелусіз жүктерді қарау', browse_as_guest_sub: '',
+    browse_as_guest: 'Тіркелусіз жүктерді қарау',
     guest_tab_cargos: 'Жүктер', guest_tab_trips: 'Рейстер',
     guest_subtitle: 'Тіркелусіз қарау',
     language_label: 'Тіл', onboarding_trust_count: 'расталған тасымалдаушылар',
@@ -4559,7 +4558,7 @@ const translations = {
     role_feature_verified: '已验证的承运人', role_feature_deals: '订单与状态',
     role_feature_chat: '带翻译的聊天', role_feature_routes: '国际线路',
     // Stage 45: 访客模式
-    browse_as_guest: '无需注册查看货物', browse_as_guest_sub: '',
+    browse_as_guest: '无需注册查看货物',
     guest_tab_cargos: '货物', guest_tab_trips: '车辆',
     guest_subtitle: '无需注册即可浏览',
     language_label: '语言', onboarding_trust_count: '位已验证的承运人',
@@ -6451,7 +6450,7 @@ trip_route: 'Route', trip_dates: 'Dates', trip_transport: 'Transport',
     role_feature_verified: 'Verified carriers', role_feature_deals: 'Deals & statuses',
     role_feature_chat: 'Chat with translation', role_feature_routes: 'International routes',
     // Stage 45: guest mode
-    browse_as_guest: 'Browse cargo without sign-up', browse_as_guest_sub: '',
+    browse_as_guest: 'Browse cargo without sign-up',
     guest_tab_cargos: 'Cargos', guest_tab_trips: 'Trips',
     guest_subtitle: 'Browse without signup',
     language_label: 'Language', onboarding_trust_count: 'verified carriers',

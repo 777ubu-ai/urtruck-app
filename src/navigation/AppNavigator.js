@@ -110,7 +110,9 @@ function MainTabs({ route }) {
   //   Обе роли (4): рабочий каталог · своя работа · Сделки · Граница.
   //   Queue — электронная очередь/граница; Profile остаётся только в верхнем
   //   меню и stack-навигации, чтобы не дублировать его в bottom bar.
-  // BottomNav красит неон по роли: driver #168759, client #FF8400.
+  // BottomNav красит акцент по роли: driver #168759 (icon+label); client —
+  // pill #FF8400, а icon/label #D26D00 (контрастная пара, см. BottomNav
+  // ROLE_ACCENT / LABEL_ACCENT).
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}
