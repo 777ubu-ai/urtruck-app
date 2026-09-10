@@ -47,11 +47,15 @@ if npm run -s qa:i18n >/tmp/_rg_i18n.log 2>&1; then
 else skip "i18n smoke (qa:i18n unavailable)"; fi
 
 # 6) babel parse of registration files (if @babel/parser present)
+# Live registration flow: Citizenship → PremiumRegister/Profile → Identity →
+# VehicleDocs → TruckParams. (SelfieStep/VehiclePhotos were removed as dead
+# forks in the design cleanup; the gate follows the current screens.)
 REG_FILES="src/utils/i18n.js src/utils/registration.js \
+src/screens/registration/CitizenshipScreen.js \
+src/screens/registration/PremiumRegisterScreen.js \
+src/screens/registration/PremiumProfileScreen.js \
 src/screens/registration/IdentityStepScreen.js \
-src/screens/registration/SelfieStepScreen.js \
 src/screens/registration/VehicleDocsScreen.js \
-src/screens/registration/VehiclePhotosScreen.js \
 src/screens/registration/TruckParamsScreen.js \
 src/components/RegistrationHelpSheet.js \
 src/screens/QueueScreen.js src/screens/MyTripsScreen.js"
@@ -83,10 +87,11 @@ else fail "gate i18n keys missing"; fi
 
 # 10) no raw/photo/uri/key/IIN/phone console logs in registration flow screens
 LEAK=$(grep -rnE 'console\.(log|warn|error|debug)' \
+  src/screens/registration/CitizenshipScreen.js \
+  src/screens/registration/PremiumRegisterScreen.js \
+  src/screens/registration/PremiumProfileScreen.js \
   src/screens/registration/IdentityStepScreen.js \
-  src/screens/registration/SelfieStepScreen.js \
   src/screens/registration/VehicleDocsScreen.js \
-  src/screens/registration/VehiclePhotosScreen.js \
   src/screens/registration/TruckParamsScreen.js \
   src/components/RegistrationHelpSheet.js 2>/dev/null \
   | grep -iE 'uri|key|photo|iin|phone|raw|base64|token|selfie' || true)

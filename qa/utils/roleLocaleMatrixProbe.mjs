@@ -252,7 +252,9 @@ for (const lang of LOCALES) {
     await page.locator(`[data-testid="${BORDER_TAB_AFTER}"]`).first().click();
     await page.waitForTimeout(2500);
     // the Border tab is the last item of the bottom nav
-    const tab = page.locator('[data-testid="nav-Queue"], [data-testid="tab-Queue"]');
+    // (runtime contract: BottomNav emits `bottom-nav-${route.name.toLowerCase()}`
+    // and the route is `Queue` → `bottom-nav-queue`).
+    const tab = page.locator('[data-testid="bottom-nav-queue"]');
     if (await tab.count()) {
       await tab.first().click();
     } else {
