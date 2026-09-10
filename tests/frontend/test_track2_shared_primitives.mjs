@@ -27,7 +27,7 @@ test('Track 2 shared controls expose 44px touch and accessibility contracts', ()
 });
 
 test('Track 2 keyboard primitive defines platform behavior and is used by active identity form', () => {
-  assert.match(keyboard, /Platform\.OS === 'ios' \? 'padding' : undefined/);
+  assert.match(keyboard, /Platform\.OS === 'ios' \? 'padding' : 'height'/);
   assert.match(keyboard, /keyboardVerticalOffset=\{offset\}/);
   assert.match(identity, /KeyboardSafeLayout/);
 });
