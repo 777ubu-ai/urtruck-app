@@ -310,9 +310,14 @@ export async function startBackgroundTracking() {
 }
 
 export async function stopBackgroundTracking() {
-  if (!TaskManager || !Location) return;
+  // A native task can outlive an app-process restart.  In that case the
+  // module-global Location binding is still null when the dashboard first
+  // learns that there are no server-approved active deals.  Resolve it here
+  // so completed/cancelled trips always tear down the persisted Android FGS.
+  const locationModule = await resolveLocationModule();
+  if (!TaskManager || !locationModule) return;
   try {
-    const started = await Location.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
-    if (started) await Location.stopLocationUpdatesAsync(BG_LOCATION_TASK);
+    const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
+    if (started) await locationModule.stopLocationUpdatesAsync(BG_LOCATION_TASK);
   } catch {}
 }

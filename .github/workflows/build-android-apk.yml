@@ -33,7 +33,7 @@ jobs:
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.8" >> "$GITHUB_ENV"
           # Must be strictly newer than the intermediate/installed QA2 artifact.
-          echo "URTRUCK_VERSION_CODE=211039974" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_CODE=211039975" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
 
       - name: Materialize QA2 native map build contract
