@@ -151,6 +151,7 @@ def test_break_glass_requires_reason_and_typed_confirmation():
     inputs = triggers["workflow_dispatch"]["inputs"]
     assert "reason" in inputs and inputs["reason"]["required"] is True
     assert "confirm" in inputs and inputs["confirm"]["required"] is True
+    assert "ref" not in inputs, "break-glass must not accept an arbitrary source ref"
 
 
 def test_break_glass_guard_job_enforces_confirmation_before_deploy():
@@ -166,8 +167,16 @@ def test_break_glass_guard_job_enforces_confirmation_before_deploy():
     needs = deploy_job.get("needs")
     needs_list = needs if isinstance(needs, list) else [needs]
     assert "guard" in needs_list, "the deploy job must depend on the guard job, not run unconditionally"
-    assert deploy_job.get("uses") == "./.github/workflows/production-deploy-execute.yml"
+    assert deploy_job.get("uses") == (
+        "777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main"
+    ), "break-glass must call the executor from protected main, never its UI-selected ref"
     assert deploy_job["with"]["break_glass"] is True
+
+
+def test_break_glass_guard_checks_out_only_protected_main():
+    doc = _load("break-glass-production-deploy.yml")
+    checkout = next(s for s in doc["jobs"]["guard"]["steps"] if s.get("uses") == "actions/checkout@v4")
+    assert checkout["with"]["ref"] == "refs/heads/main"
 
 
 def test_break_glass_writes_an_audit_trail():
@@ -190,7 +199,7 @@ def test_production_deploy_execute_is_reusable_and_parameterized():
     assert "break_glass" in inputs
 
 
-def test_only_two_callers_of_production_deploy_execute():
+def test_only_normal_path_locally_calls_production_deploy_execute():
     callers = []
     for f in WORKFLOWS.glob("*.yml"):
         if f.name == "production-deploy-execute.yml":
@@ -199,10 +208,22 @@ def test_only_two_callers_of_production_deploy_execute():
         for job in doc.get("jobs", {}).values():
             if job.get("uses") == "./.github/workflows/production-deploy-execute.yml":
                 callers.append(f.name)
-    assert sorted(callers) == ["break-glass-production-deploy.yml", "secure-production-deploy.yml"], (
-        f"expected exactly the normal and break-glass paths to call the shared deploy "
-        f"implementation, got: {callers}"
+    assert sorted(callers) == ["secure-production-deploy.yml"], (
+        f"only the normal local caller may resolve the executor in-repository; "
+        f"break-glass is anchored to protected main, got: {callers}"
     )
+
+
+def test_production_executor_is_key_only_and_pins_the_host_key():
+    doc = _load("production-deploy-execute.yml")
+    env = doc["jobs"]["deploy"]["env"]
+    assert "SERVER_PASS" not in env
+    assert env["URTRUCK_REQUIRE_KEY"] == "1"
+    steps = doc["jobs"]["deploy"]["steps"]
+    assert not any("sshpass" in step.get("run", "") for step in steps)
+    preflight = next(s for s in steps if s.get("name") == "Secure SSH preflight")["run"]
+    assert "SERVER_SSH_KEY is required for production deploy" in preflight
+    assert "SERVER_SSH_KNOWN_HOSTS is required for production deploy" in preflight
 
 
 if __name__ == "__main__":

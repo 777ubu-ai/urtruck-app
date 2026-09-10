@@ -19,10 +19,6 @@ name: 🚨 BREAK-GLASS Production Deploy
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        description: "Branch, tag, or exact SHA to deploy"
-        required: true
-        default: main
       reason:
         description: "Why does this need to bypass the normal release gate? (required, goes in the audit log)"
         required: true
@@ -70,13 +66,17 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          # Break-glass is an emergency path, not an arbitrary-code runner.
+          # Both its guard and the executable reusable workflow are anchored
+          # to the protected main branch below, so production secrets can
+          # never be made available to code from an operator-supplied ref.
+          ref: refs/heads/main
 
       - name: Resolve exact SHA and write audit record
         id: resolve
         env:
           ACTOR: ${{ github.actor }}
-          REF_INPUT: ${{ inputs.ref }}
+          REF_INPUT: refs/heads/main
           REASON_INPUT: ${{ inputs.reason }}
         run: |
           set -euo pipefail
@@ -106,7 +106,9 @@ jobs:
 
   deploy:
     needs: [guard]
-    uses: ./.github/workflows/production-deploy-execute.yml
+    # Do not resolve this local reusable workflow from the ref chosen in the
+    # Actions UI.  The immutable job definition must come from protected main.
+    uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main
     with:
       deploy_sha: ${{ needs.guard.outputs.sha }}
       break_glass: true
