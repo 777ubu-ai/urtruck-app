@@ -164,7 +164,10 @@ jobs:
             PYTHONPATH="$PWD:$PWD/backend" DB_PATH="$RUNNER_TEMP/urtruck-e2e.db" \
             python -m uvicorn main:app --host 127.0.0.1 --port 8001 > "$RUNNER_TEMP/urtruck-backend.log" 2>&1 &
           node scripts/e2e-static-proxy.js > "$RUNNER_TEMP/urtruck-proxy.log" 2>&1 &
-          npx wait-on http://127.0.0.1:4599
+          # wait-on probes HTTP with HEAD by default, while FastAPI's health
+          # endpoint deliberately exposes GET only. Use the real readiness
+          # request so this mandatory E2E job cannot wait forever on 405.
+          npx wait-on --http-get http://127.0.0.1:4599/api/v1/system/info
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Run current mandatory E2E subset

@@ -1,7 +1,7 @@
 // ПОЛНАЯ e2e-регрессия обеих ролей на СОБРАННОМ веб-UI (dist/ + прокси :4599,
-// backend :8001 MOCK/BETA). Канонический вход: Google + Apple + Email.
-// Google/Apple здесь проверяются как UI/contract entry; реальный provider OAuth
-// проходит отдельно после настройки внешних provider credentials.
+// backend :8001 MOCK/BETA). Канонический web-вход: Google + Email.
+// Apple — native-only entry и проверяется на соответствующей платформе;
+// реальный provider OAuth проходит отдельно после настройки credentials.
 const { test, expect } = require('@playwright/test');
 const H = require('./helpers/webflow');
 const { tid, shot } = H;
@@ -12,8 +12,8 @@ const driverEmail = `driver-${RUN}@urtruck.kz`;
 const ownerEmail = `owner-${RUN}@urtruck.kz`;
 
 // ─────────────────────────── БЛОК A — EMAIL ───────────────────────────
-test.describe.serial('A. Вход по EMAIL (обе роли)', () => {
-  test('A1. Клиент по email → в приложении', async ({ page }) => {
+test.describe.serial('A. Вход по EMAIL', () => {
+  test('A1. Email beta-вход → в приложении', async ({ page }) => {
     await H.gotoPhoneScreen(page);
     await shot(page, 'A1_01_auth_entry');
     await page.locator(tid('email-v2-input')).click();
@@ -26,29 +26,21 @@ test.describe.serial('A. Вход по EMAIL (обе роли)', () => {
     await shot(page, 'A1_03_otp_screen');
     await page.locator(tid('otp-v2-cells')).click();
     await page.locator(tid('otp-v2-input')).fill(H.BETA_CODE);
-    await page.locator(tid('role-v2-screen')).waitFor({ state: 'visible', timeout: 20000 });
-    await shot(page, 'A1_04_role_screen');
-    await page.locator(tid('role-v2-client')).click();
-    await page.locator(tid('role-v2-cta')).click();
-
-    const profile = page.locator(tid('profile-v2-screen'));
+    const role = page.locator(tid('role-v2-screen'));
+    const nav = page.locator(tid('bottom-nav'));
     await Promise.race([
-      profile.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {}),
-      page.locator(tid('bottom-nav')).waitFor({ state: 'visible', timeout: 8000 }).catch(() => {}),
+      role.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {}),
+      nav.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {}),
     ]);
-    if (await profile.isVisible().catch(() => false)) {
-      await page.locator(tid('profile-v2-name')).fill('QA Client');
-      const country = page.locator(tid('profile-v2-country'));
-      if (await country.isVisible().catch(() => false)) await country.fill('Казахстан');
-      const phone = page.locator(tid('profile-v2-phone'));
-      if (await phone.isVisible().catch(() => false)) await phone.fill('+77011234567');
-      const city = page.locator(tid('profile-v2-city'));
-      if (await city.isVisible().catch(() => false)) await city.fill('Алматы');
-      await page.locator(tid('profile-v2-cta')).click();
+    if (await role.isVisible().catch(() => false)) {
+      await shot(page, 'A1_04_role_screen');
+      await expect(page.locator(tid('role-v2-client'))).toBeVisible();
+    } else {
+      // Local beta deliberately supplies the ready demo driver profile.
+      await expect(nav).toBeVisible();
     }
-    await page.locator(tid('bottom-nav')).waitFor({ state: 'visible', timeout: 20000 });
     await shot(page, 'A1_05_in_app');
-    await expect(page.locator(tid('bottom-nav'))).toBeVisible();
+    await expect(nav).toBeVisible();
   });
 
   test('A2. Водитель по email → роль водитель', async ({ page }) => {
@@ -109,12 +101,12 @@ test.describe.serial('A. Вход по EMAIL (обе роли)', () => {
 });
 
 // ─────────────────── БЛОК B — SOCIAL AUTH ENTRY ──────────────────────
-test.describe('B. Google + Apple auth entry', () => {
-  test('B1. Google и Apple видимы, телефонный login полностью убран', async ({ page }) => {
+test.describe('B. Web auth entry', () => {
+  test('B1. Google и Email видимы, Apple и телефонный login отсутствуют на web', async ({ page }) => {
     await H.gotoPhoneScreen(page);
     await expect(page.locator(tid('auth-google'))).toBeVisible();
-    await expect(page.locator(tid('auth-apple'))).toBeVisible();
     await expect(page.locator(tid('email-v2-input'))).toBeVisible();
+    await expect(page.locator(tid('auth-apple'))).toHaveCount(0);
     await expect(page.locator(tid('auth-tab-phone'))).toHaveCount(0);
     await expect(page.locator(tid('phone-v2-input'))).toHaveCount(0);
     await expect(page.locator(tid('auth-legal-consent'))).toBeVisible();
@@ -124,12 +116,14 @@ test.describe('B. Google + Apple auth entry', () => {
 
 // ─────────────────────── БЛОК C — ВОДИТЕЛЬ ────────────────────────────
 test.describe.serial('C. Водитель — регрессия', () => {
-  test('C2. Таб-бар: 5 вкладок, Chats отдельно, нет Publish', async ({ page }) => {
+  test('C2. Таб-бар: текущие 4 вкладки, без Chats/Publish/Profile', async ({ page }) => {
     await H.emailLogin(page, `drv-tabs-${RUN}@urtruck.kz`, 'driver');
-    for (const t of ['feed', 'mywork', 'queue', 'chats', 'profile']) {
+    for (const t of ['feed', 'mywork', 'deals', 'queue']) {
       await expect(page.locator(tid(`bottom-nav-${t}`))).toBeVisible();
     }
     await expect(page.locator(tid('bottom-nav-publish'))).toHaveCount(0);
+    await expect(page.locator(tid('bottom-nav-chats'))).toHaveCount(0);
+    await expect(page.locator(tid('bottom-nav-profile'))).toHaveCount(0);
     await shot(page, 'C2_01_driver_tabs');
   });
 
@@ -150,9 +144,9 @@ test.describe.serial('D. Клиент — регрессия + кросс-рол
   let cargoId = null;
 
   test('D1. Клиент публикует груз (API, валюта KZT/₸) и видит его в «Мои грузы»', async ({ page, request }) => {
-    await H.emailLogin(page, ownerEmail, 'client', { name: 'QA Shipper', city: 'Алматы' });
-    clientToken = await page.evaluate(() => window.localStorage.getItem('ur_reg_token'));
+    clientToken = await H.apiEmailToken(request, ownerEmail, 'client');
     expect(clientToken).toBeTruthy();
+    await H.openAuthenticated(page, clientToken, 'client');
     const res = await H.apiCreateCargo(request, clientToken, {
       cargo_desc: 'QA Груз ₸', price: 420000, currency: 'KZT',
     });
@@ -174,7 +168,7 @@ test.describe.serial('D. Клиент — регрессия + кросс-рол
     const bid = await H.apiCreateBid(request, driverToken, cargoId, 400000);
     expect(bid.status).toBeLessThan(300);
 
-    await H.emailLogin(page, ownerEmail, 'client');
+    await H.openAuthenticated(page, clientToken, 'client');
     await page.locator(tid('bottom-nav-mywork')).click();
     await page.waitForTimeout(1200);
     await page.reload({ waitUntil: 'networkidle' });
@@ -186,14 +180,22 @@ test.describe.serial('D. Клиент — регрессия + кросс-рол
     await page.waitForTimeout(1500);
     await shot(page, 'D2_01_offer_in_cargodetail');
 
-    const bodyText = await page.locator('body').innerText();
-    expect(bodyText).toContain('₸');
-    expect(bodyText).toContain('400 000');
-    expect(bodyText).not.toMatch(/\$\s?4[0-9]{5}/);
+    // Current Deals is a two-step flow: MyWork opens the Offers tab, then
+    // the concrete offer card opens the actionable bid detail.
+    await page.locator(tid('deals-driver-bid')).first().click();
+
+    const acceptedPrice = page.locator(tid('cargo-price-value'));
+    await expect(acceptedPrice).toContainText('₸');
+    await expect(acceptedPrice).toContainText(/420\s?000/);
+    await expect(acceptedPrice).not.toContainText('$');
+    await expect(page.getByRole('button', { name: /Принять.*₸400\s?000/ })).toBeVisible();
 
     const accept = page.locator(tid('bid-accept')).first();
     await accept.waitFor({ state: 'visible', timeout: 10000 });
     await accept.click();
+    const confirm = page.locator(tid('cargo-confirm-modal-confirm'));
+    await confirm.waitFor({ state: 'visible', timeout: 10000 });
+    await confirm.click();
     await page.waitForTimeout(2000);
     await shot(page, 'D2_02_after_accept_ui');
 
@@ -205,14 +207,17 @@ test.describe.serial('D. Клиент — регрессия + кросс-рол
     expect(darr.length).toBeGreaterThan(0);
   });
 
-  test('D4. Клиентский таб-бар (есть Publish) и выход', async ({ page }) => {
-    await H.emailLogin(page, `cli-logout-${RUN}@urtruck.kz`, 'client');
-    await expect(page.locator(tid('bottom-nav-publish'))).toBeVisible();
-    await page.locator(tid('bottom-nav-profile')).click();
-    await page.waitForTimeout(800);
-    await shot(page, 'D4_01_profile');
-    const logout = page.locator(tid('profile-logout'));
-    await logout.scrollIntoViewIfNeeded().catch(() => {});
-    await expect(logout).toBeVisible({ timeout: 8000 });
+  test('D4. Клиентский таб-бар: размещение внутри MyWork, без legacy tabs', async ({ page, request }) => {
+    const token = await H.apiEmailToken(request, `cli-tabs-${RUN}@urtruck.kz`, 'client');
+    await H.openAuthenticated(page, token, 'client');
+    for (const t of ['mywork', 'feed', 'deals', 'queue']) {
+      await expect(page.locator(tid(`bottom-nav-${t}`))).toBeVisible();
+    }
+    await expect(page.locator(tid('bottom-nav-publish'))).toHaveCount(0);
+    await expect(page.locator(tid('bottom-nav-chats'))).toHaveCount(0);
+    await expect(page.locator(tid('bottom-nav-profile'))).toHaveCount(0);
+    await page.locator(tid('bottom-nav-mywork')).click();
+    await expect(page.locator(tid('mytrips-place-cargo'))).toBeVisible({ timeout: 10000 });
+    await shot(page, 'D4_01_client_mywork');
   });
 });
