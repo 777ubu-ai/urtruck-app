@@ -97,9 +97,17 @@ def collect_issues() -> List[str]:
 
     # Admin auth — never ship the placeholder password to production.
     # Fix (B3): admin.py reads URTRUCK_ADMIN_PASS, not ADMIN_PASSWORD — the old
-    # check looked at the wrong var and never fired. Check the real var (with
-    # legacy ADMIN_PASSWORD as fallback) and reject the committed default too.
-    admin_pass = os.getenv("URTRUCK_ADMIN_PASS") or os.getenv("ADMIN_PASSWORD", "")
+    # check looked at the wrong var and never fired.
+    # Release hardening track A (2026-09-10): the legacy ADMIN_PASSWORD
+    # fallback that used to sit here was a FALSE sense of security —
+    # api/admin.py's actual auth check never reads ADMIN_PASSWORD at all,
+    # only URTRUCK_ADMIN_PASS. An operator who set only the (unread) legacy
+    # name would see "production env OK" from this check, while the real
+    # admin panel auth silently used its own committed default underneath
+    # (admin.py separately disables the panel with a 503 in that case, so
+    # it wasn't directly exploitable — but the boot-time signal was wrong).
+    # Check the exact variable admin.py actually authenticates against.
+    admin_pass = os.getenv("URTRUCK_ADMIN_PASS", "")
     if _is_unsafe_password(admin_pass) or admin_pass == "urtruck-admin-2026":
         issues.append(
             "Admin: URTRUCK_ADMIN_PASS is empty or a default placeholder "
@@ -123,6 +131,31 @@ def collect_issues() -> List[str]:
     cors = os.getenv("CORS_ORIGINS", "")
     if "*" in cors.split(","):
         issues.append("CORS: wildcard '*' in CORS_ORIGINS — restrict to known frontends.")
+
+    # Release hardening track A (2026-09-10): App Store/Play reviewer demo
+    # login (config.py's REVIEWER_DEMO_EMAIL/REVIEWER_DEMO_CODE) has its own
+    # committed default code ("1975"). A prior audit (28.08.2026) already
+    # made the bypass request-time fail-closed in production
+    # (api/registration.py's `_reviewer_allowed_here`) -- so this specific
+    # default is currently inert, not exploitable -- but that neutering
+    # never surfaced HERE, meaning an operator got zero boot-time signal,
+    # unlike every other committed-default check in this file (admin
+    # password, API key, admin token). Same treatment: fail closed the same
+    # way those do. This is deliberate, not an oversight -- if reviewer
+    # demo login is genuinely needed in this environment, the fix is to set
+    # a real REVIEWER_DEMO_CODE in the server's .env, not to leave the
+    # inert default in place. If the feature isn't needed at all, set
+    # REVIEWER_DEMO_EMAIL="" to disable it outright (see .env.example).
+    _reviewer_code_default = "1975"
+    if (os.getenv("REVIEWER_DEMO_CODE") or _reviewer_code_default) == _reviewer_code_default \
+            and (os.getenv("REVIEWER_DEMO_EMAIL", "appreview@urtruck.kz").strip()):
+        issues.append(
+            "Reviewer demo login: REVIEWER_DEMO_CODE is still the committed default "
+            '("1975"). The app-level guard already refuses this bypass in production, '
+            "so this is not currently exploitable — but set REVIEWER_DEMO_CODE to a "
+            "real value if App Store/Play reviewer demo login is actually used here, "
+            'or set REVIEWER_DEMO_EMAIL="" to disable the feature explicitly.'
+        )
 
     return issues
 
