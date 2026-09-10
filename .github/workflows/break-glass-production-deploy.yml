@@ -41,13 +41,29 @@ jobs:
       sha: ${{ steps.resolve.outputs.sha }}
     steps:
       - name: Require typed confirmation
+        # Hardening A final repair (2026-09-10), P0: `inputs.reason`/
+        # `inputs.confirm` are free-text supplied by whoever triggers this
+        # workflow — a repo-write-access user, not necessarily trusted with
+        # arbitrary code execution. The OLD version interpolated
+        # `${{ inputs.confirm }}`/`${{ inputs.reason }}` directly into the
+        # run: script text — GitHub Actions substitutes `${{ }}` BEFORE the
+        # shell parses the script, so a reason/confirm value containing
+        # shell metacharacters (`$(...)`, backticks, quotes, `;`, `&&`, a
+        # newline) would have become literal shell source, not data, in a
+        # job that later (via the deploy job below) runs with production
+        # SSH/deploy secrets in scope. Passed through `env:` instead: `$VAR`
+        # expansion happens at shell RUNTIME, always as data.
+        env:
+          CONFIRM_INPUT: ${{ inputs.confirm }}
+          REASON_INPUT: ${{ inputs.reason }}
         run: |
           set -euo pipefail
-          if [ "${{ inputs.confirm }}" != "DEPLOY" ]; then
-            echo "::error::Confirmation input must be exactly 'DEPLOY' (got: '${{ inputs.confirm }}'). Aborting — nothing was deployed."
+          if [ "$CONFIRM_INPUT" != "DEPLOY" ]; then
+            printf '::error::Confirmation input must be exactly %s (got: %s). Aborting — nothing was deployed.\n' \
+              "'DEPLOY'" "'$CONFIRM_INPUT'"
             exit 1
           fi
-          if [ -z "${{ inputs.reason }}" ]; then
+          if [ -z "$REASON_INPUT" ]; then
             echo "::error::A reason is required for a break-glass deploy."
             exit 1
           fi
@@ -58,25 +74,35 @@ jobs:
 
       - name: Resolve exact SHA and write audit record
         id: resolve
+        env:
+          ACTOR: ${{ github.actor }}
+          REF_INPUT: ${{ inputs.ref }}
+          REASON_INPUT: ${{ inputs.reason }}
         run: |
           set -euo pipefail
           SHA=$(git rev-parse HEAD)
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          # Defense in depth beyond the env:/$VAR fix above (which already
+          # closes code-execution injection): a REASON_INPUT containing a
+          # literal newline could still spoof a fake ::error::/::warning::
+          # annotation in the Actions log, or break the markdown table row
+          # below, once printed — collapse embedded newlines to spaces first.
+          REASON_SAFE="${REASON_INPUT//$'\n'/ }"
           {
             echo "### 🚨 BREAK-GLASS PRODUCTION DEPLOY"
             echo ""
             echo "| Field | Value |"
             echo "|---|---|"
-            echo "| Actor | \`${{ github.actor }}\` |"
-            echo "| Ref requested | \`${{ inputs.ref }}\` |"
+            printf '| Actor | `%s` |\n' "$ACTOR"
+            printf '| Ref requested | `%s` |\n' "$REF_INPUT"
             echo "| Resolved SHA | \`$SHA\` |"
             echo "| Timestamp (UTC) | \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\` |"
-            echo "| Reason | ${{ inputs.reason }} |"
+            printf '| Reason | %s |\n' "$REASON_SAFE"
             echo "| Normal release gate | **SKIPPED** — backend/frontend/E2E/P0-P1/Push-Bell suites did NOT run |"
             echo ""
             echo "This record is this workflow run's own permanent log — GitHub retains it exactly like any other Actions run history entry (Settings → Actions retention policy controls how long)."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::warning::BREAK-GLASS DEPLOY by ${{ github.actor }} of $SHA — reason: ${{ inputs.reason }}"
+          printf '::warning::BREAK-GLASS DEPLOY by %s of %s — reason: %s\n' "$ACTOR" "$SHA" "$REASON_SAFE"
 
   deploy:
     needs: [guard]
