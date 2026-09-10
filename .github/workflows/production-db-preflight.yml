@@ -27,7 +27,17 @@ jobs:
       BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
     steps:
       - name: Checkout SSH transport helper
-        uses: actions/checkout@v4
+        # P2 fix (2026-09-10): a mutable tag (`@v4`) can be repointed by the
+        # action's own maintainer (or anyone who compromises that repo) to
+        # different code at any time -- a job that then runs with the
+        # protected `production` environment's SSH secrets in scope would
+        # silently start trusting whatever that tag now resolves to. Pinned
+        # to the exact commit actions/checkout@v4.4.0 currently resolves to
+        # (verified: `git ls-remote --tags https://github.com/actions/checkout.git`
+        # -> refs/tags/v4 and refs/tags/v4.4.0 both point at this SHA).
+        # Bump deliberately (re-verify + re-pin the SHA), never by moving
+        # back to a mutable tag.
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Read-only production DB preflight
         shell: bash
@@ -42,8 +52,25 @@ jobs:
           test -n "$SERVER_SSH_KNOWN_HOSTS"
 
           # BACKEND_DIR is a deployment path, not emitted into logs. It is
-          # passed as one quoted positional argument to the remote shell.
-          bash scripts/deploy-ssh.sh ssh "bash -s -- '$BACKEND_DIR'" <<'REMOTE'
+          # passed as one positional argument to the remote shell.
+          #
+          # P1 fix (2026-09-10): the naive `'$BACKEND_DIR'` single-quote
+          # wrap below was NOT injection-safe -- ssh concatenates all
+          # trailing arguments into one string and hands it to the remote
+          # shell verbatim, so a BACKEND_DIR value containing a single quote
+          # (e.g. from secrets.BACKEND_DIR) would close that quote early and
+          # let anything after it execute as a second command ON THE
+          # PRODUCTION SERVER. Confirmed exploitable against the prior
+          # version of this line with a local `bash -c` reproduction before
+          # fixing (a `'; touch marker; echo '` payload created the marker
+          # file). `printf %q` shell-escapes BACKEND_DIR into a form that
+          # round-trips back to the exact original string when the remote
+          # shell parses it as ONE token, regardless of quotes, backticks,
+          # $(...), semicolons, &&, or embedded newlines it contains --
+          # verified against all of those in
+          # tests/test_db_preflight_shell_injection.py.
+          BACKEND_DIR_Q=$(printf '%q' "$BACKEND_DIR")
+          bash scripts/deploy-ssh.sh ssh "bash -s -- $BACKEND_DIR_Q" <<'REMOTE'
           set -euo pipefail
 
           BACKEND_DIR="${1:?BACKEND_DIR required}"
