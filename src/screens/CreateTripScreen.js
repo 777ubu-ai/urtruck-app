@@ -48,6 +48,7 @@ const normalizeDecimal = (v) => {
   if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '');
   return s;
 };
+const vehicleBodyToMarketType = (body) => ({ curtain_sider: 'tent', refrigerated: 'ref', insulated: 'izoterm', flatbed: 'platform', container_platform: 'platform', dump_body: 'dump_truck', tanker: 'tanker', lowboy: 'platform', car_carrier: 'auto', van: 'van' }[body] || body);
 
 export default function CreateTripScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -115,6 +116,15 @@ export default function CreateTripScreen({ navigation, route }) {
   // CreateCargoScreen (PR-C1 fix).
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const vehicle = route?.params?.vehicle;
+
+  // Сохранённая машина подставляется один раз при открытии публикации.
+  React.useEffect(() => {
+    if (!vehicle) return;
+    setTruckType(vehicleBodyToMarketType(vehicle.body_type || vehicle.vehicle_type || null));
+    setTons(vehicle.payload_tons != null ? String(vehicle.payload_tons) : '');
+    setM3(vehicle.cargo_volume_m3 != null ? String(vehicle.cargo_volume_m3) : '');
+  }, [vehicle]);
 
   // City / date pickers reuse the existing standalone components: tapping
   // a Field row toggles the corresponding picker into a portal-like overlay.
@@ -156,6 +166,7 @@ export default function CreateTripScreen({ navigation, route }) {
       to_city: toPoint?.name || cleanPlaceName(to.trim()),
       transit: transit.trim() || null,
       truck_type: truckType,
+      vehicle_id: route?.params?.vehicleId || vehicle?.id || null,
       // Stage 7: stop silently injecting fake defaults (20t / 82m³).
       // The user explicitly leaves the field blank — the backend's
       // own column default is enough; we only send the number when

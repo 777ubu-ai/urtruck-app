@@ -24,7 +24,7 @@ DRAFT_FIELDS = {
     # шаг 1
     "full_name", "birth_date", "iin", "personal_photo_url",
     # новый порядок: гражданство (шаг 1) + удостоверение личности (шаг 2)
-    "citizenship_country", "id_doc_type", "id_front_url", "id_back_url",
+    "citizenship_country", "driver_citizenship_country_code", "vehicle_registration_country_code", "id_doc_type", "id_front_url", "id_back_url",
     # шаг 2
     "residence_status",
     # шаг 3

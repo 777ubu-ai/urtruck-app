@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
+import { vehicleAPI } from '../utils/vehicleAPI';
 import { regAPI } from '../utils/registration';
 import { formatStatus, formatTruckType, formatBids } from '../utils/i18n';
 import { formatDateForDisplay } from '../utils/dateInput';
@@ -188,9 +189,13 @@ export default function MyTripsScreen({ navigation, route }) {
   // (ChatsListScreen в dealsMode). Здесь ничего не гасим — иначе бейдж
   // пропадал бы от простого захода в «Мои рейсы»/«Мои грузы».
 
-  const onPublishRoute = () => {
-    if (verState === 'approved') navigation.navigate('CreateTrip', { role });
-    else setPubGateVisible(true);
+  const onPublishRoute = async () => {
+    if (verState !== 'approved') { setPubGateVisible(true); return; }
+    const result = await vehicleAPI.list();
+    const vehicles = result.ok ? (result.vehicles || []) : [];
+    if (vehicles.length === 0) navigation.navigate('VehicleSetupCountry', { origin: 'CreateTrip', role });
+    else if (vehicles.length === 1) navigation.navigate('CreateTrip', { role, vehicle: vehicles[0], vehicleId: vehicles[0].id });
+    else navigation.navigate('VehicleChooser', { role });
   };
 
   const confirmAction = async (msg, confirmLabel = t('confirm'), destructive = false) => (

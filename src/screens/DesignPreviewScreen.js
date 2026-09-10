@@ -117,6 +117,12 @@ const SECTIONS = [
     { label: 'CreateTrip',  screen: 'CreateTrip',  params: { role: 'driver' } },
     { label: 'CreateCargo', screen: 'CreateCargo', params: { role: 'client' } },
   ]},
+  { title: 'Vehicle setup (4 steps)', items: [
+    { label: 'Vehicle setup 1 — countries', screen: 'VehicleSetupCountry', params: { role: 'driver' } },
+    { label: 'Vehicle setup 2 — machine', screen: 'VehicleSetupMachine', params: { role: 'driver' } },
+    { label: 'Vehicle setup 3 — review', screen: 'VehicleSetupReview', params: { role: 'driver' } },
+    { label: 'Vehicle setup 4 — success', screen: 'VehicleSetupSuccess', params: { role: 'driver', vehicle: { id: 'preview-vehicle', make: 'Volvo', model: 'FH' } } },
+  ]},
   { title: 'Detail screens (mock data)', items: [
     { label: 'CargoDetail demo',  screen: 'CargoDetail', params: { cargo: mockCargo, cargoId: mockCargo.id, role: 'driver' } },
     { label: 'TripDetail demo',   screen: 'TripDetail',  params: { trip: mockTrip, tripId: mockTrip.id, role: 'client' } },

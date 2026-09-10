@@ -32,6 +32,8 @@ def _migrate(c):
         ("personal_photo_url", "TEXT"),
         ("residence_status", "TEXT"),
         ("citizenship_country", "TEXT"),
+        ("driver_citizenship_country_code", "TEXT"),
+        ("vehicle_registration_country_code", "TEXT"),
         ("id_doc_type", "TEXT"),
         ("id_front_url", "TEXT"),
         ("id_back_url", "TEXT"),

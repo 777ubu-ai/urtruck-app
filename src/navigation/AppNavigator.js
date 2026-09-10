@@ -21,6 +21,11 @@ import TruckParamsScreen from '../screens/registration/TruckParamsScreen';
 import VehicleDocsScreen from '../screens/registration/VehicleDocsScreen';
 import IdentityStepScreen from '../screens/registration/IdentityStepScreen';
 import CitizenshipScreen from '../screens/registration/CitizenshipScreen';
+import VehicleSetupCountryScreen from '../screens/vehicle/VehicleSetupCountryScreen';
+import VehicleSetupMachineScreen from '../screens/vehicle/VehicleSetupMachineScreen';
+import VehicleSetupReviewScreen from '../screens/vehicle/VehicleSetupReviewScreen';
+import VehicleSetupSuccessScreen from '../screens/vehicle/VehicleSetupSuccessScreen';
+import VehicleChooserScreen from '../screens/vehicle/VehicleChooserScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoFeedScreen from '../screens/CargoFeedScreen';
@@ -195,6 +200,11 @@ export default function AppNavigator() {
         <Stack.Screen name="EditTrip" component={EditTripScreen} />
         <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
         <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
+        <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
+        <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
+        <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
+        <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
+        <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
       </Stack.Navigator>
@@ -247,6 +257,11 @@ export default function AppNavigator() {
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
+          <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
+          <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
+          <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
+          <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
         </>
       ) : (
         // Полностью в приложении
@@ -277,6 +292,11 @@ export default function AppNavigator() {
           <Stack.Screen name="EditTrip" component={EditTripScreen} />
           <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
           <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
+          <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
+          <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
+          <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
+          <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
+          <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
         <Stack.Screen name="Citizenship" component={CitizenshipScreen} />
         <Stack.Screen name="Identity" component={IdentityStepScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
