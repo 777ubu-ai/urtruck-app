@@ -59,8 +59,10 @@ override_require_level(app, fake_require_level(1))
 client = TestClient(app)
 
 
-def as_user(uid: str):
-    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1})
+def as_user(uid: str, role: str = "client"):
+    # Track B (2026-09-10): create_cargo/create_trip/create_bid now enforce
+    # server-side role direction -- see as_user() callers below for overrides.
+    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1, "role": role})
 
 
 def seed_cargo(owner_id: str, from_country=None, to_country=None, price: int = 3000) -> str:
@@ -94,7 +96,7 @@ def _make_in_progress_deal(owner_id, driver_id, from_country, to_country):
     instead of bypassing the production guard.
     """
     cargo_id = seed_cargo(owner_id=owner_id, from_country=from_country, to_country=to_country)
-    as_user(driver_id)
+    as_user(driver_id, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2500}).json()["id"]
     as_user(owner_id)
     r = client.post(f"/api/v1/market/bids/{bid_id}/accept")

@@ -69,9 +69,16 @@ override_require_level(app, fake_require_level(1))
 client = TestClient(app)
 
 
-def as_user(uid: str, full_name: str = "Test User", phone: str = "+70000000000"):
-    """Switch the active fake user for require_level."""
-    _current_user.set({"id": uid, "full_name": full_name, "phone": phone, "verification_level": 1})
+def as_user(uid: str, full_name: str = "Test User", phone: str = "+70000000000", role: str = "client"):
+    """Switch the active fake user for require_level.
+
+    Track B (2026-09-10): create_cargo/create_trip/create_bid now enforce
+    server-side role direction -- role defaults to "client" (the more common
+    persona in this file's existing tests); pass role="driver" explicitly
+    wherever a call site needs a driver-side action (creating a trip, or
+    bidding on a cargo).
+    """
+    _current_user.set({"id": uid, "full_name": full_name, "phone": phone, "verification_level": 1, "role": role})
 
 
 def seed_cargo(owner_id: str, price: int = 3000) -> str:
@@ -155,7 +162,7 @@ def test_schema_has_updated_at():
 def test_edit_own_pending():
     print("\n=== test_edit_own_pending ===")
     cargo_id = seed_cargo(owner_id="owner-1")
-    as_user("driver-1")
+    as_user("driver-1", role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 3000, "message": "first"})
     expect(r.status_code == 200, f"create bid 200 (got {r.status_code} {r.text})")
     bid_id = r.json()["id"]
@@ -173,7 +180,7 @@ def test_edit_own_pending():
 def test_edit_rejects_zero_amount():
     print("\n=== test_edit_rejects_zero_amount ===")
     cargo_id = seed_cargo(owner_id="owner-2")
-    as_user("driver-2")
+    as_user("driver-2", role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1000}).json()["id"]
     r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": 0})
     expect(r.status_code == 400, f"amount<=0 → 400 (got {r.status_code})")
@@ -182,7 +189,7 @@ def test_edit_rejects_zero_amount():
 def test_edit_forbidden_for_other_user():
     print("\n=== test_edit_forbidden_for_other_user ===")
     cargo_id = seed_cargo(owner_id="owner-3")
-    as_user("driver-3")
+    as_user("driver-3", role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1500}).json()["id"]
     as_user("intruder")
     r = client.patch(f"/api/v1/market/bids/{bid_id}", json={"amount": 100})
@@ -199,7 +206,7 @@ def test_edit_404_when_missing():
 def test_cancel_decrements_bids_count():
     print("\n=== test_cancel_decrements_bids_count ===")
     cargo_id = seed_cargo(owner_id="owner-4")
-    as_user("driver-4")
+    as_user("driver-4", role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2000}).json()["id"]
     expect(get_cargo(cargo_id)["bids_count"] == 1, "bids_count == 1 after create")
 
@@ -215,7 +222,7 @@ def test_cancel_never_below_zero():
     cargo_id = seed_cargo(owner_id="owner-5")
     # Force bids_count to 0 manually then cancel a freshly created bid → bids_count must clamp at 0
     from database.db import get_conn
-    as_user("driver-5")
+    as_user("driver-5", role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1100}).json()["id"]
     with get_conn() as c:
         c.execute("UPDATE cargos SET bids_count = 0 WHERE id = ?", (cargo_id,))
@@ -227,7 +234,7 @@ def test_cancel_never_below_zero():
 def test_cancel_409_if_not_pending():
     print("\n=== test_cancel_409_if_not_pending ===")
     cargo_id = seed_cargo(owner_id="owner-6")
-    as_user("driver-6")
+    as_user("driver-6", role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1200}).json()["id"]
     # Manually flip status to accepted
     from database.db import get_conn
@@ -240,7 +247,7 @@ def test_cancel_409_if_not_pending():
 def test_cancel_403_for_other_user():
     print("\n=== test_cancel_403_for_other_user ===")
     cargo_id = seed_cargo(owner_id="owner-7")
-    as_user("driver-7")
+    as_user("driver-7", role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1300}).json()["id"]
     as_user("not-the-bidder")
     r = client.post(f"/api/v1/market/bids/{bid_id}/cancel")
@@ -250,7 +257,7 @@ def test_cancel_403_for_other_user():
 def test_reject_by_cargo_owner():
     print("\n=== test_reject_by_cargo_owner ===")
     cargo_id = seed_cargo(owner_id="owner-8")
-    as_user("driver-8")
+    as_user("driver-8", role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1400}).json()["id"]
 
     as_user("owner-8")
@@ -263,7 +270,7 @@ def test_reject_by_cargo_owner():
 def test_reject_403_for_non_owner():
     print("\n=== test_reject_403_for_non_owner ===")
     cargo_id = seed_cargo(owner_id="owner-9")
-    as_user("driver-9")
+    as_user("driver-9", role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1500}).json()["id"]
     as_user("rando")
     r = client.post(f"/api/v1/market/bids/{bid_id}/reject")
@@ -273,7 +280,7 @@ def test_reject_403_for_non_owner():
 def test_reject_409_if_not_pending():
     print("\n=== test_reject_409_if_not_pending ===")
     cargo_id = seed_cargo(owner_id="owner-10")
-    as_user("driver-10")
+    as_user("driver-10", role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1600}).json()["id"]
     # Cancel first → status=cancelled
     client.post(f"/api/v1/market/bids/{bid_id}/cancel")
@@ -286,9 +293,9 @@ def test_cancelled_and_rejected_statuses_persist():
     """Terminal bid states persist even though public listings hide non-actionable rows."""
     print("\n=== test_list_bids_shows_cancelled_and_rejected_statuses ===")
     cargo_id = seed_cargo(owner_id="dash-owner")
-    as_user("dash-driver-a")
+    as_user("dash-driver-a", role="driver")
     bid_a = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 100}).json()["id"]
-    as_user("dash-driver-b")
+    as_user("dash-driver-b", role="driver")
     bid_b = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 200}).json()["id"]
     as_user("dash-driver-a")
     client.post(f"/api/v1/market/bids/{bid_a}/cancel")
@@ -327,7 +334,7 @@ def test_my_dashboard_driver_with_bids():
     """Driver-only user (no cargos/trips) with pending+cancelled+rejected bids must work."""
     print("\n=== test_my_dashboard_driver_with_bids ===")
     cargo_id = seed_cargo(owner_id="dash2-owner")
-    as_user("dash2-driver")
+    as_user("dash2-driver", role="driver")
     bid_cancelled = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1100}).json()["id"]
     client.post(f"/api/v1/market/bids/{bid_cancelled}/cancel")
 
@@ -335,7 +342,7 @@ def test_my_dashboard_driver_with_bids():
     as_user("dash2-owner")
     client.post(f"/api/v1/market/bids/{bid_rejected}/reject")
 
-    as_user("dash2-driver")
+    as_user("dash2-driver", role="driver")
     bid_pending = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1000}).json()["id"]
 
     as_user("dash2-driver")
@@ -364,7 +371,7 @@ def test_counter_schema_columns():
 
 def _new_pending_bid(owner: str, driver: str, amount: int = 1000):
     cargo_id = seed_cargo(owner_id=owner)
-    as_user(driver)
+    as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": amount}).json()["id"]
     return cargo_id, bid_id
 
@@ -508,7 +515,7 @@ def test_my_dashboard_owner_with_cargos_and_incoming():
     """Owner-side: my_cargos populated, photos parsed, incoming_bids visible."""
     print("\n=== test_my_dashboard_owner_with_cargos_and_incoming ===")
     cargo_id = seed_cargo(owner_id="dash3-owner")
-    as_user("dash3-bidder")
+    as_user("dash3-bidder", role="driver")
     client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 4242})
 
     as_user("dash3-owner")
@@ -575,7 +582,7 @@ if __name__ == "__main__":
 def test_pr_b_create_bid_rejects_zero_amount():
     print("\n=== PR-B test_create_bid_rejects_zero_amount ===")
     cargo_id = seed_cargo(owner_id="owner-pr-b1")
-    as_user("driver-pr-b1")
+    as_user("driver-pr-b1", role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 0})
     expect(r.status_code == 400, f"amount=0 → 400 (got {r.status_code} {r.text})")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1})
@@ -585,7 +592,7 @@ def test_pr_b_create_bid_rejects_zero_amount():
 def test_pr_b_create_bid_rejects_negative_amount():
     print("\n=== PR-B test_create_bid_rejects_negative_amount ===")
     cargo_id = seed_cargo(owner_id="owner-pr-b2")
-    as_user("driver-pr-b2")
+    as_user("driver-pr-b2", role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": -100})
     expect(r.status_code == 400, f"amount<0 → 400 (got {r.status_code} {r.text})")
 
@@ -595,7 +602,7 @@ def test_pr_b_cargo_bid_creates_notif_without_eager_chat_room():
     owner = "owner-pr-b3"
     driver = "driver-pr-b3"
     cargo_id = seed_cargo(owner_id=owner)
-    as_user(driver)
+    as_user(driver, role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2500})
     expect(r.status_code == 200, f"create bid 200 (got {r.status_code})")
     bid_id = r.json()["id"]
@@ -643,7 +650,7 @@ def test_pr_b_accept_bid_creates_accepted_notif_with_order_url():
     owner = "owner-pr-b5"
     driver = "driver-pr-b5"
     cargo_id = seed_cargo(owner_id=owner, price=5000)
-    as_user(driver)
+    as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 4800}).json()["id"]
 
     as_user(owner)
@@ -665,7 +672,7 @@ def test_pr_b_reject_bid_notif_has_back_url():
     owner = "owner-pr-b6"
     driver = "driver-pr-b6"
     cargo_id = seed_cargo(owner_id=owner)
-    as_user(driver)
+    as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2000}).json()["id"]
 
     as_user(owner)

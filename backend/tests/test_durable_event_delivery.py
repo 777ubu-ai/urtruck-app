@@ -101,8 +101,10 @@ def install_synchronous_send_to_user(monkeypatch):
     monkeypatch.setattr(chat_module, "send_to_user", _synchronous_send_to_user)
 
 
-def as_user(uid, name="Test User", phone="+70000000000"):
-    _current_user.set({"id": uid, "full_name": name, "phone": phone, "verification_level": 1})
+def as_user(uid, name="Test User", phone="+70000000000", role="client"):
+    # Track B (2026-09-10): create_cargo/create_trip/create_bid now enforce
+    # server-side role direction -- see as_user() callers below for overrides.
+    _current_user.set({"id": uid, "full_name": name, "phone": phone, "verification_level": 1, "role": role})
 
 
 def seed_cargo(owner_id, price=1234):
@@ -196,7 +198,7 @@ def test_new_bid_survives_transient_provider_failure_via_worker_retry(monkeypatc
     flaky = _FlakyExpo(fail_times=1)
     monkeypatch.setattr(push_sender, "_send_expo_detailed", flaky)
 
-    as_user(driver)
+    as_user(driver, role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2000})
     assert r.status_code == 200, r.text
     bid_id = r.json()["id"]
@@ -230,7 +232,7 @@ def test_bid_accepted_survives_transient_provider_failure_via_worker_retry(monke
     seed_device(driver)
     cargo_id = seed_cargo(owner)
 
-    as_user(driver)
+    as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1500}).json()["id"]
 
     flaky = _FlakyExpo(fail_times=1)
@@ -269,7 +271,7 @@ def test_chat_message_durable_event_excludes_sender_and_retry_does_not_duplicate
     monkeypatch.setattr(push_sender, "_send_expo_detailed",
                         lambda tokens, *a, **k: {"sent": len(tokens), "tickets": [{"status": "ok"}] * len(tokens)})
 
-    as_user(driver)
+    as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1800}).json()["id"]
     as_user(owner)
     accept = client.post(f"/api/v1/market/bids/{bid_id}/accept")
@@ -355,7 +357,7 @@ def test_deal_status_transitions_create_durable_events(monkeypatch):
     monkeypatch.setattr(push_sender, "_send_expo_detailed",
                         lambda tokens, *a, **k: {"sent": len(tokens), "tickets": [{"status": "ok"}] * len(tokens)})
 
-    as_user(driver)
+    as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1200}).json()["id"]
     as_user(owner)
     deal_id = client.post(f"/api/v1/market/bids/{bid_id}/accept").json()["deal_id"]
@@ -404,7 +406,7 @@ def test_system_push_localized_per_recipient_device_locale(monkeypatch):
         driver = f"driver-loc-{locale}"
         seed_device(owner, locale=locale)
         cargo_id = seed_cargo(owner)
-        as_user(driver)
+        as_user(driver, role="driver")
         r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 900})
         assert r.status_code == 200, r.text
         title, body = captured[owner]
@@ -419,7 +421,7 @@ def test_system_push_localized_per_recipient_device_locale(monkeypatch):
     seed_device(owner, locale="RU")
     seed_device(driver, locale="RU")
     cargo_id = seed_cargo(owner)
-    as_user(driver)
+    as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 700}).json()["id"]
     as_user(owner)
     accept = client.post(f"/api/v1/market/bids/{bid_id}/accept")
@@ -446,7 +448,7 @@ def test_retry_preserves_title_body_deeplink_badge(monkeypatch):
     flaky = _FlakyExpo(fail_times=1)
     monkeypatch.setattr(push_sender, "_send_expo_detailed", flaky)
 
-    as_user(driver)
+    as_user(driver, role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 3300})
     assert r.status_code == 200
     bid_id = r.json()["id"]
@@ -472,7 +474,7 @@ def test_ordinary_bid_cancel_is_durable_and_retries_once(monkeypatch):
     owner, driver = "owner-cancel-durable", "driver-cancel-durable"
     seed_device(owner)
     cargo_id = seed_cargo(owner)
-    as_user(driver)
+    as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1100}).json()["id"]
     _reset_outbox()
     flaky = _FlakyExpo(fail_times=1)
@@ -532,7 +534,7 @@ def test_counter_rounds_within_one_timestamp_have_distinct_event_keys(monkeypatc
     _reset_outbox()
     owner, driver = "owner-counter-round", "driver-counter-round"
     cargo_id = seed_cargo(owner)
-    as_user(driver)
+    as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1000}).json()["id"]
     captured = []
     def capture(_user, _title, _body, url="/", kind="info", data=None):

@@ -125,8 +125,10 @@ client = TestClient(app)
 from services.push_sender import _compute_recipient_badge
 
 
-def as_user(uid, name="Test User", phone="+70000000000"):
-    _current_user.set({"id": uid, "full_name": name, "phone": phone, "verification_level": 1})
+def as_user(uid, name="Test User", phone="+70000000000", role="client"):
+    # Track B (2026-09-10): create_cargo/create_trip/create_bid now enforce
+    # server-side role direction -- see as_user() callers below for overrides.
+    _current_user.set({"id": uid, "full_name": name, "phone": phone, "verification_level": 1, "role": role})
 
 
 def seed_cargo(owner_id, price=1234):
@@ -187,7 +189,7 @@ def run_full_lifecycle(run_label):
 
     # ── 1. Shipper's cargo exists, driver bids ──────────────────────────
     cargo_id = seed_cargo(shipper)
-    as_user(driver, "Driver QA")
+    as_user(driver, "Driver QA", role="driver")
     bid_res = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1100, "message": f"bid {run_label}"})
     assert bid_res.status_code == 200, bid_res.text
     bid_id = bid_res.json()["id"]

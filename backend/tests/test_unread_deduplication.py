@@ -71,12 +71,16 @@ DRIVER_ID, DRIVER_TOKEN = _real_user()
 TOKENS = {CLIENT_ID: CLIENT_TOKEN, DRIVER_ID: DRIVER_TOKEN}
 
 
-def as_user(uid: str):
+def as_user(uid: str, role: str = "client"):
+    """Track B (2026-09-10): create_cargo()/create_bid() now enforce
+    server-side role direction -- default "client" matches CLIENT_ID's own
+    calls here; create_bid() passes role="driver" explicitly for DRIVER_ID."""
     _current_user.set({
         "id": uid,
         "full_name": uid,
         "phone": "+70000000000",
         "verification_level": 1,
+        "role": role,
     })
 
 
@@ -135,7 +139,7 @@ def create_cargo(description: str, price: int = 3000) -> str:
 
 
 def create_bid(cargo_id: str, amount: int) -> str:
-    as_user(DRIVER_ID)
+    as_user(DRIVER_ID, role="driver")
     response = client.post("/api/v1/market/bids", json={
         "cargo_id": cargo_id,
         "amount": amount,
