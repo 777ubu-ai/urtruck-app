@@ -190,7 +190,10 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /const sendDealShare = React\.useCallback/);
   assert.match(workspace, /const sendContactCard = React\.useCallback/);
   assert.match(workspace, /attachIcon: \{ width: 64, height: 64/);
-  assert.match(workspace, /backgroundColor: '#F4F4F4'/);
+  // Attach/emoji menus and the composer surfaces are theme-tokenized now
+  // (P2-1 dark composer): colours come from designV1 tokens inline, not from
+  // hardcoded light hex.
+  assert.match(workspace, /s\.attachMenu, \{ backgroundColor: colors\.bg, borderTopColor: colors\.border/);
   assert.match(workspace, /testID="deal-chat-composer-dock"/);
   assert.match(workspace, /composerDock: \{ paddingHorizontal: 8, paddingTop: 5/);
   assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'center'/);
@@ -202,7 +205,9 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
 });
 
 test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
-  assert.match(workspace, /const \[composerFocused, setComposerFocused\] = React\.useState\(false\)/);
+  // Structural marker: composer state exists and the dock is theme-tokenized
+  // (no hardcoded light surface). The old composerCollapsed fork must stay gone.
+  assert.match(workspace, /backgroundColor: colors\.bg,\s*borderTopColor: colors\.border/);
   assert.doesNotMatch(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
   assert.doesNotMatch(workspace, /testID="deal-chat-composer-collapsed"/);
   assert.doesNotMatch(workspace, /composerCollapsedHandle/);
