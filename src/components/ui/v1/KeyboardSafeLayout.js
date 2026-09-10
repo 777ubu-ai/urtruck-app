@@ -94,18 +94,35 @@ export const KeyboardSafeScrollView = forwardRef(function KeyboardSafeScrollView
     if (!target || keyboardTop.current == null) return;
 
     // On Android 15+ edge-to-edge, adjustResize can leave the ScrollView
-    // viewport unchanged even though the IME covers it. Measure after the IME
-    // frame is final, then scroll only by the real overlap. This keeps one
-    // shared rule for every form instead of per-screen keyboard offsets.
+    // viewport unchanged even though the IME covers it. A sticky footer also
+    // shortens the actual scroll viewport above the IME. Measure both frames
+    // after the IME is final, then use their nearest bottom edge. This keeps
+    // one shared rule for every form instead of per-screen keyboard offsets.
     requestAnimationFrame(() => {
       UIManager.measure(target, (_x, _y, _width, height, _pageX, pageY) => {
         if (lastFocusedTarget.current !== target || keyboardTop.current == null) return;
-        const overlap = pageY + height + 16 - keyboardTop.current;
-        if (overlap <= 0) return;
+        const revealAbove = (visibleBottom) => {
+          if (lastFocusedTarget.current !== target || keyboardTop.current == null) return;
+          const overlap = pageY + height + 16 - visibleBottom;
+          if (overlap <= 0) return;
 
-        const nextY = Math.max(0, scrollY.current + overlap);
-        ref.current?.scrollTo?.({ y: nextY, animated: true });
-        scrollY.current = nextY;
+          const nextY = Math.max(0, scrollY.current + overlap);
+          ref.current?.scrollTo?.({ y: nextY, animated: true });
+          scrollY.current = nextY;
+        };
+
+        const scrollNode = ref.current;
+        if (!scrollNode?.measure) {
+          revealAbove(keyboardTop.current);
+          return;
+        }
+        scrollNode.measure((_sx, _sy, _scrollWidth, scrollHeight, _scrollPageX, scrollPageY) => {
+          const scrollBottom = scrollPageY + scrollHeight;
+          const visibleBottom = Number.isFinite(scrollBottom) && scrollHeight > 0
+            ? Math.min(keyboardTop.current, scrollBottom)
+            : keyboardTop.current;
+          revealAbove(visibleBottom);
+        });
       });
     });
   }, []);
