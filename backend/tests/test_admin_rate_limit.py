@@ -190,6 +190,8 @@ def test_other_ips_not_affected_by_block():
     for _ in range(5):
         _get("/admin/", headers=_bad(), ip=blocked_ip)
     other = _fresh_ip()
+    while other == blocked_ip:
+        other = _fresh_ip()
     r = _get("/admin/", headers=_good(), ip=other)
     assert r.status_code == 200, f"другой IP не должен страдать от чужой блокировки: {r.status_code}"
     assert "UrTruck Security" in r.text
