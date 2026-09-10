@@ -1,12 +1,55 @@
-import React, { createContext, forwardRef, useCallback, useContext, useImperativeHandle, useRef } from 'react';
+import React, { createContext, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, UIManager } from 'react-native';
 
 /** Shared long-form keyboard contract; chat composer remains Track 3. */
 export default function KeyboardSafeLayout({ children, style, offset = 0, testID = 'keyboard-safe-layout' }) {
-  // Android's Activity already owns resizing through adjustResize. Applying
-  // KeyboardAvoidingView height there was a second resize owner and made a
-  // focused field jump below the IME on physical devices.
-  return <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={offset} style={[s.fill, style]} testID={testID}>{children}</KeyboardAvoidingView>;
+  const layoutRef = useRef(null);
+  const [androidImeInset, setAndroidImeInset] = useState(0);
+
+  const measureAndroidImeOverlap = useCallback((keyboardTop) => {
+    if (Platform.OS !== 'android' || !Number.isFinite(keyboardTop)) return;
+
+    // `adjustResize` is the first resize owner. Android 15/16 edge-to-edge
+    // can nevertheless leave this root at full screen height. Measure its
+    // real bottom instead of applying a guessed per-screen offset: when the
+    // system resized it, overlap is 0; otherwise padding makes every footer
+    // slot end immediately above the actual IME.
+    requestAnimationFrame(() => {
+      layoutRef.current?.measure?.((_x, _y, _width, height, _pageX, pageY) => {
+        const overlap = Math.max(0, pageY + height - keyboardTop);
+        setAndroidImeInset(overlap);
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    const onShow = (event) => {
+      const keyboardTop = event?.endCoordinates?.screenY ?? Keyboard.metrics?.()?.screenY;
+      measureAndroidImeOverlap(keyboardTop);
+    };
+    const onHide = () => setAndroidImeInset(0);
+    const showSubscription = Keyboard.addListener('keyboardDidShow', onShow);
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', onHide);
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [measureAndroidImeOverlap]);
+
+  // Do not use Android KAV `height`: that would compete with `adjustResize`.
+  // The measured inset above is deliberately zero on normal resize devices.
+  return (
+    <KeyboardAvoidingView
+      ref={layoutRef}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={offset}
+      style={[s.fill, style, Platform.OS === 'android' && androidImeInset > 0 ? { paddingBottom: androidImeInset } : null]}
+      testID={testID}
+    >
+      {children}
+    </KeyboardAvoidingView>
+  );
 }
 
 const KeyboardSafeFocusContext = createContext(null);

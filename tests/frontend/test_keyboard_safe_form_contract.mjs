@@ -52,14 +52,17 @@ test('active long forms use the canonical keyboard-aware scroll container', () =
   assert.match(editTrip, /KeyboardSafeLayout[\s\S]*KeyboardSafeScrollView/);
 });
 
-test('Android forms have one resize owner: system adjustResize, not KAV height', () => {
+test('Android forms use adjustResize first, with one measured root-IME fallback for edge-to-edge', () => {
   const app = readFileSync('app.json', 'utf8');
   const manifest = readFileSync('android/app/src/main/AndroidManifest.xml', 'utf8');
   assert.match(app, /"softwareKeyboardLayoutMode"\s*:\s*"resize"/);
   assert.match(manifest, /android:windowSoftInputMode="adjustResize"/);
   assert.match(primitive, /Platform\.OS === 'ios' \? 'padding' : undefined/);
   assert.doesNotMatch(primitive, /Platform\.OS === 'ios' \? 'padding' : 'height'/);
-  assert.doesNotMatch(primitive, /paddingBottom:\s*\d{3,}/);
+  assert.match(primitive, /measureAndroidImeOverlap/);
+  assert.match(primitive, /pageY \+ height - keyboardTop/);
+  assert.match(primitive, /paddingBottom: androidImeInset/);
+  assert.match(primitive, /androidImeInset > 0/);
 });
 
 test('bottom-docked chat uses the measured IME overlap without a double offset', () => {
