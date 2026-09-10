@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.urtruck.app",
+      "sha256_cert_fingerprints": [
+        "F8:15:CC:F3:BF:E1:A2:17:58:F9:5B:FC:C9:49:CE:B5:FE:35:75:BB:8E:47:0D:8B:1C:E1:C1:CF:FF:56:4A:53"
+      ]
+    }
+  }
+]
