@@ -179,7 +179,10 @@ export default function BottomNav({ state, navigation }) {
           const label = labelOf(route.name);
           const iconColor = isFocused ? focusedIconColor : inactiveColor;
           const labelColor = isFocused ? focusedLabelColor : inactiveColor;
-          const tabBadgeCount = route.name === 'Chats' ? chatUnread : route.name === 'Deals' ? dealsUnread : 0;
+          // The canonical navigator has no standalone Chats tab. Chat attention
+          // therefore belongs to the Deals tab alongside deal attention; keeping
+          // it on the removed Chats route made the visible badge unreachable.
+          const tabBadgeCount = route.name === 'Deals' ? Math.max(chatUnread, dealsUnread) : 0;
           const showBadge = tabBadgeCount > 0;
           const badgeLabel = tabBadgeCount > 9 ? '9+' : String(tabBadgeCount);
           const badgeTestID = route.name === 'Chats' ? 'bottom-nav-chats-badge' : 'bottom-nav-deals-badge';
