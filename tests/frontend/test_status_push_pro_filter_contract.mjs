@@ -90,3 +90,13 @@ test('route filter can select a whole country without forcing a city', () => {
   assert.match(locationPicker, /testID=\{`loc-country-only-\$\{country\}`\}/);
   assert.match(i18n, /loc_whole_country:\s*'Вся страна'/);
 });
+
+test('shared route picker searches countries and separates country, city, and border scopes', () => {
+  assert.match(locationPicker, /const \[scope, setScope\] = useState\('all'\)/);
+  assert.match(locationPicker, /countryHits/);
+  assert.match(locationPicker, /\['country', t\('loc_countries'\)\]/);
+  assert.match(locationPicker, /\['city', t\('point_type_city'\)\]/);
+  assert.match(locationPicker, /\['border', t\('loc_borders'\)\]/);
+  assert.match(locationPicker, /testID=\{`loc-scope-\$\{key\}`\}/);
+  assert.match(locationPicker, /hits\.countryHits\.length === 0 && hits\.pointHits\.length === 0/);
+});

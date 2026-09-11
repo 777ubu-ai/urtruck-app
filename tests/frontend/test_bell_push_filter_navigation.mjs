@@ -49,6 +49,13 @@ test('PushFilter remains route and vehicle based push settings, not a Bell inbox
   assert.doesNotMatch(screen, /NotificationsScreen|ChatsListScreen|DealsScreen/);
 });
 
+test('PushFilter itself never returns a user to the legacy Bell feed', () => {
+  const screen = read('src/screens/PushFilterScreen.js');
+  assert.match(screen, /testID="push-filter-back"/);
+  assert.match(screen, /navigation\.goBack\(\)/);
+  assert.doesNotMatch(screen, /BellBadge|HeaderMenuButton|navigate\('Notifications'/);
+});
+
 test('PushFilter critical copy exists in RU, EN, KK, and ZH', () => {
   const translations = loadTranslations();
   const keys = [
