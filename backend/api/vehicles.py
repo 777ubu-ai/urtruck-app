@@ -1,6 +1,7 @@
 """API карточек машин водителя."""
 import math
 import re
+import sqlite3
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,8 +9,17 @@ from pydantic import BaseModel, Field, field_validator
 
 from api.registration import get_current_driver
 from database import vehicles_dal
+from database.vehicles_dal import VehicleNotOwned
 
 router = APIRouter()
+
+# Track: Vehicle Security & Trip Integrity Repair (2026-09-11). Единая
+# ошибка для "машина не найдена" ИЛИ "чужая машина" -- внешний вызывающий
+# не должен уметь отличить одно от другого (existence oracle, закрыт по
+# итогам overnight forensic audit). Factory (not a shared instance) so each
+# raise gets its own exception object.
+def _vehicle_not_found() -> HTTPException:
+    return HTTPException(status_code=404, detail={"error": "VEHICLE_NOT_FOUND", "message": "Машина не найдена"})
 
 
 class VehicleBody(BaseModel):
@@ -53,12 +63,26 @@ def get_vehicles(driver_id: str = Depends(get_current_driver)):
 
 @router.put("")
 def save_vehicle(body: VehicleBody, vehicle_id: Optional[str] = None, driver_id: str = Depends(get_current_driver)):
+    """Create (no vehicle_id) or update (vehicle_id) a Vehicle owned by the
+    caller. Track: Vehicle Security & Trip Integrity Repair (2026-09-11):
+
+    - vehicle_id supplied for a machine that doesn't exist OR belongs to
+      another driver -> 404 VEHICLE_NOT_FOUND, same response either way
+      (existence oracle closed -- see vehicles_dal.VehicleNotOwned).
+    - No vehicle_id, license_plate already used by this SAME owner for a
+      byte-identical payload -> idempotent replay, 200 with the existing
+      row (see vehicles_dal.upsert_vehicle). A genuinely different payload
+      on the same plate is still a real 409 conflict.
+    """
     try:
         vehicle = vehicles_dal.upsert_vehicle(driver_id, body.model_dump(), vehicle_id)
-    except Exception as exc:
-        if "UNIQUE" in str(exc).upper():
-            raise HTTPException(status_code=409, detail="Такая машина уже сохранена")
-        raise
+    except VehicleNotOwned:
+        raise _vehicle_not_found()
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail={
+            "error": "LICENSE_PLATE_TAKEN",
+            "message": "Машина с этим госномером уже сохранена с другими данными",
+        })
     return {"ok": True, "vehicle": vehicle}
 
 
@@ -66,5 +90,5 @@ def save_vehicle(body: VehicleBody, vehicle_id: Optional[str] = None, driver_id:
 def get_vehicle(vehicle_id: str, driver_id: str = Depends(get_current_driver)):
     vehicle = vehicles_dal.get_vehicle(driver_id, vehicle_id)
     if not vehicle:
-        raise HTTPException(status_code=404, detail="Машина не найдена")
+        raise _vehicle_not_found()
     return {"ok": True, "vehicle": vehicle}

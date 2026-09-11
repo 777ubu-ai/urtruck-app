@@ -5,6 +5,8 @@
 import sys
 import json
 import re
+import sqlite3
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -22,6 +24,7 @@ from services.geo_normalize import normalize_country, is_international_route
 from services import push_gateway
 from services import push_i18n
 from config import IS_PRODUCTION
+from database import vehicles_dal
 
 
 def _reject_negative_price(value):
@@ -465,6 +468,37 @@ def _init():
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_deal_tracking_events_deal ON deal_tracking_events(deal_id, created_at)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_deal_tracking_status ON deal_tracking(status, updated_at)")
+        c.commit()
+    # Track: Vehicle Security & Trip Integrity Repair (2026-09-11). Guard
+    # against a duplicate trip from a double-tap / network retry on
+    # "Publish route" -- there is no client-supplied idempotency key for
+    # trip creation (unlike bids' client_msg_id), and adding one is a
+    # frontend change out of scope for this track.
+    #
+    # Deliberately a SEPARATE, dedicated table rather than a UNIQUE index on
+    # trips itself. First attempt was a bucketed-time UNIQUE index directly
+    # on trips(driver_id, route, truck_type, vehicle_id, price, time-bucket)
+    # -- it broke the existing suite: a pre-existing, unrelated backfill two
+    # lines above this ("UPDATE {table} SET published_at = created_at WHERE
+    # published_at IS NULL", run on EVERY _init() call, including the
+    # per-test autouse fixture) can touch MANY rows in one statement, and
+    # test fixtures across this codebase routinely INSERT trips directly via
+    # raw SQL with generic, repeated dummy values (same driver id, "Almaty"
+    # -> "Moscow", price 1000, ...). Any two such rows that end up sharing a
+    # bucket mid-backfill collided with the UNIQUE index and made the WHOLE
+    # backfill statement fail -- every test in the suite, not just trip
+    # tests, broke on setup. A dedicated table this migration creates AND
+    # this feature exclusively reads/writes cannot be touched by any
+    # existing raw-SQL seed helper or backfill, so it carries zero risk to
+    # anything already in the codebase.
+    with get_conn() as c:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS trip_publish_intents (
+                intent_key TEXT PRIMARY KEY,
+                trip_id    TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         c.commit()
     # One-time migration: picked_up → in_progress (status removed from code).
     with get_conn() as c:
@@ -1284,6 +1318,22 @@ def create_trip(body: TripIn, user=Depends(require_active_level(1))):
     _require_role(user, ("driver",), "разместить рейс")
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
+    # Track: Vehicle Security & Trip Integrity Repair (2026-09-11), P0.
+    # Overnight forensic audit reproduced this live: create_trip stored
+    # ANY vehicle_id verbatim -- no check that it exists, none that it
+    # belongs to the calling driver. body.vehicle_id="<someone else's id>"
+    # created a real trip row pointing at another driver's vehicle. Same
+    # unified 404 as the vehicles API (existence vs ownership must not be
+    # distinguishable) -- see vehicles_dal.vehicle_owned_by /
+    # VehicleNotOwned. require_active_level(1) above already establishes
+    # "this is a driver, not rejected"; this is specifically about THIS
+    # vehicle_id belonging to THIS driver, which is a per-request check the
+    # role gate cannot make.
+    if body.vehicle_id and not vehicles_dal.vehicle_owned_by(user["id"], body.vehicle_id):
+        raise HTTPException(status_code=404, detail={
+            "error": "VEHICLE_NOT_FOUND",
+            "message": "Машина не найдена",
+        })
     # Stage 52 / P1-8: дата выезда не может быть в прошлом.
     _validate_future_date(body.departure, "departure")
     # Same pilot whitelist as create_cargo — see note there.
@@ -1293,7 +1343,38 @@ def create_trip(body: TripIn, user=Depends(require_active_level(1))):
     tid = new_id()
     fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
     tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
+    # Track: Vehicle Security & Trip Integrity Repair (2026-09-11). Publish
+    # idempotency: bucket "now" into 20s windows in application code (NOT
+    # derived from any stored/backfillable column -- see trip_publish_intents
+    # comment in _init()) and try to claim that bucket via the dedicated
+    # table's PRIMARY KEY before writing the actual trip. Two requests that
+    # are really the same user intent (double-tap, network retry, two
+    # racing near-simultaneous submits) produce the SAME intent_key; SQLite
+    # serializes the two INSERTs at commit time regardless of timing, so
+    # only the first one to actually commit "wins" the key -- the second's
+    # INSERT raises IntegrityError deterministically, not a race that
+    # sometimes lets both through. See test_trip_publish_idempotency.py.
+    intent_key = "|".join(str(part) for part in (
+        user["id"], body.from_city, body.to_city, body.transit or "",
+        body.truck_type, body.vehicle_id or "", body.price,
+        int(time.time()) // 20,
+    ))
     with get_conn() as c:
+        try:
+            c.execute(
+                "INSERT INTO trip_publish_intents (intent_key, trip_id) VALUES (?, ?)",
+                (intent_key, tid),
+            )
+        except sqlite3.IntegrityError:
+            # Already claimed by an earlier (or concurrently-committed)
+            # request with the identical intent -- hand back THAT trip
+            # instead of creating a second row. Response shape is identical
+            # to the success path, so no frontend change is needed.
+            existing = c.execute(
+                "SELECT trip_id FROM trip_publish_intents WHERE intent_key = ?",
+                (intent_key,),
+            ).fetchone()
+            return {"id": existing["trip_id"], "ok": True}
         c.execute("""
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
               from_city, to_city, transit, truck_type, vehicle_id,
