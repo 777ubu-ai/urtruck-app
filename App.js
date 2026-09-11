@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, AppState, Linking } from 'react-native';
+import { Platform, AppState, Linking, BackHandler } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
@@ -193,6 +193,22 @@ function AppInner() {
   const pendingUrlRef = useRef(null);
   const { session, hasToken } = useAuth();
   const { theme, isDark } = useTheme();
+
+  // Android hardware Back must pop the in-app stack before allowing the
+  // Activity to finish. This is intentionally global: detail/deal/chat/map
+  // routes are all pushed on the same root stack, while tab changes stay
+  // inside MainTabs and must not exit the app from a child screen.
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    const onHardwareBackPress = () => {
+      const navigator = navRef.current;
+      if (!navigator?.isReady?.() || !navigator.canGoBack()) return false;
+      navigator.goBack();
+      return true;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onHardwareBackPress);
+    return () => subscription?.remove?.();
+  }, []);
 
   // Фон САМОГО навигатора (не только сцены). Без theme у NavigationContainer
   // берётся DefaultTheme с БЕЛЫМ фоном — и он просвечивал снизу, под прозрачным
