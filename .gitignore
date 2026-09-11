@@ -16,6 +16,7 @@ venv/
 .venv/
 backend/.venv-trackb/
 backend/.venv-audit/
+backend/.venv-push/
 
 # Build
 dist/

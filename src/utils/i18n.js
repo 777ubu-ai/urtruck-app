@@ -7727,6 +7727,21 @@ export const setLanguage = (lang) => {
   getStorage()?.set(KEY, currentLang);
   syncDocumentLanguage(currentLang);
   listeners.forEach(cb => cb(currentLang));
+  // Push/Outbox/Localization repair (2026-09-11): push_devices.locale is
+  // otherwise only ever captured once, at push.autoRegister() (OTP/login) —
+  // a user who changes the in-app language afterwards kept receiving
+  // system push text in whatever language was active at login for the
+  // rest of that session (confirmed root cause of a device showing the
+  // right UI language while its push notifications arrived in a stale
+  // one). Fire-and-forget, lazy require (push.js is native-module-heavy
+  // and i18n.js is imported far too widely to eagerly pull it in) — never
+  // touches native permission APIs, see push.refreshLocale()'s own
+  // docstring for why that matters here specifically.
+  try {
+    require('./push').push.refreshLocale?.().catch(() => {});
+  } catch {
+    // best-effort only — must never block a language switch
+  }
 };
 
 export const getLanguage = () => currentLang;

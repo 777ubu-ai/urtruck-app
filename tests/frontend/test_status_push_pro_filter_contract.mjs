@@ -102,3 +102,22 @@ test('shared route picker searches countries and separates country, city, and bo
   assert.match(locationPicker, /testID=\{`loc-scope-\$\{key\}`\}/);
   assert.match(locationPicker, /hits\.countryHits\.length === 0 && hits\.pointHits\.length === 0/);
 });
+
+// Push/Outbox/Localization repair (2026-09-11): push_devices.locale was
+// only ever captured once, at push.autoRegister() (OTP/login) — a user
+// who later switched the in-app language kept receiving system push text
+// in whatever language was active at login for the rest of that session.
+// setLanguage() must refresh it on every language switch, and the
+// refresh itself must never touch native permission APIs (that would
+// re-prompt a user who had previously denied notifications, as an
+// unexpected side effect of switching UI language).
+test('language switch refreshes the backend push locale without re-touching native permissions', () => {
+  assert.match(i18n, /require\('\.\/push'\)\.push\.refreshLocale\?\.\(\)/);
+  assert.match(push, /async refreshLocale\(\)/);
+  const refreshLocaleBody = push.slice(push.indexOf('async refreshLocale()'), push.indexOf('// ── Единый автозапуск'));
+  assert.doesNotMatch(refreshLocaleBody, /getPermissionsAsync/);
+  assert.doesNotMatch(refreshLocaleBody, /requestPermissionsAsync/);
+  assert.match(refreshLocaleBody, /NATIVE_TOKEN_KEY/);
+  assert.match(refreshLocaleBody, /NATIVE_RAW_TOKEN_KEY/);
+  assert.match(refreshLocaleBody, /register-native/);
+});
