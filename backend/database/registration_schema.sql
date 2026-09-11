@@ -32,6 +32,13 @@ CREATE TABLE IF NOT EXISTS drivers_registration (
   passport_ocr TEXT,                   -- JSON: plate, VIN, brand, year
   passport_verified INTEGER DEFAULT 0,
 
+  -- Базовый водительский онбординг без Pro-документов
+  citizenship_country TEXT,
+  birth_date TEXT,
+  vehicle_registration_country TEXT,
+  basic_onboarding_completed INTEGER DEFAULT 0,
+  basic_onboarding_completed_at TEXT,
+
   -- Транспорт (этап 4)
   vehicle_type TEXT,                   -- car | van | truck | tent | ref | platform
   vehicle_capacity_kg INTEGER,

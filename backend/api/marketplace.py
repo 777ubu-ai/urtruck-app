@@ -14,7 +14,7 @@ from pydantic import BaseModel, field_validator
 from typing import Optional, List
 
 from database.db import get_conn, new_id
-from api.verification_gate import require_level, require_active_level, get_user, _extract_driver
+from api.verification_gate import require_level, require_active_level, require_driver_trip_publication, get_user, _extract_driver
 from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
@@ -1237,7 +1237,7 @@ def unpublish_trip(trip_id: str, user=Depends(require_active_level(1))):
 
 
 @mp_router.patch("/trips/{trip_id}/republish")
-def republish_trip(trip_id: str, user=Depends(require_active_level(1))):
+def republish_trip(trip_id: str, user=Depends(require_driver_trip_publication)):
     """Опубликовать снова снятый рейс. Обновляет дату выезда на сегодня."""
     with get_conn() as c:
         row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
@@ -1277,7 +1277,7 @@ def republish_cargo(cargo_id: str, user=Depends(require_active_level(1))):
 # ═══ Trips ═══
 
 @mp_router.post("/trips")
-def create_trip(body: TripIn, user=Depends(require_active_level(1))):
+def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
     # Track B (2026-09-10): symmetric to create_cargo -- a trip listing is a
     # driver action. Confirmed gap: a client-role account could previously
     # publish a driver trip listing directly via the API.

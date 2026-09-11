@@ -30,6 +30,12 @@ const COPY = {
     nameLabel: 'Имя / контактное лицо *',
     namePlaceholder: 'Например, Иван Петров',
     phoneLabel: 'Основной телефон *',
+    birthDateLabel: 'Дата рождения *',
+    birthDatePlaceholder: 'ДД.ММ.ГГГГ',
+    birthDateRequired: 'Укажите дату рождения',
+    iinLabel: 'ИИН *',
+    iinPlaceholder: '12 цифр',
+    iinRequired: 'ИИН должен содержать 12 цифр',
     companyLabel: 'Компания / ИП *',
     companyPlaceholder: 'Название компании или ИП',
     companyHint: 'Обязательно для порядка в сделках и документах',
@@ -50,6 +56,12 @@ const COPY = {
     nameLabel: 'Name / contact person *',
     namePlaceholder: 'For example, Alex Morgan',
     phoneLabel: 'Primary phone *',
+    birthDateLabel: 'Date of birth *',
+    birthDatePlaceholder: 'DD.MM.YYYY',
+    birthDateRequired: 'Enter your date of birth',
+    iinLabel: 'IIN *',
+    iinPlaceholder: '12 digits',
+    iinRequired: 'IIN must contain 12 digits',
     companyLabel: 'Company / business *',
     companyPlaceholder: 'Company or sole trader name',
     companyHint: 'Required to keep deals and documents clean',
@@ -70,6 +82,12 @@ const COPY = {
     nameLabel: '姓名 / 联系人 *',
     namePlaceholder: '例如：张伟',
     phoneLabel: '主要手机号 *',
+    birthDateLabel: '出生日期 *',
+    birthDatePlaceholder: '日.月.年',
+    birthDateRequired: '请输入出生日期',
+    iinLabel: '个人识别号 *',
+    iinPlaceholder: '12位数字',
+    iinRequired: '个人识别号必须为12位数字',
     companyLabel: '公司 / 个体经营 *',
     companyPlaceholder: '公司或个体经营名称',
     companyHint: '交易和文件中必须填写',
@@ -90,6 +108,12 @@ const COPY = {
     nameLabel: 'Аты / байланыс тұлғасы *',
     namePlaceholder: 'Мысалы, Айдан Нұрлан',
     phoneLabel: 'Негізгі телефон *',
+    birthDateLabel: 'Туған күні *',
+    birthDatePlaceholder: 'КК.АА.ЖЖЖЖ',
+    birthDateRequired: 'Туған күнді көрсетіңіз',
+    iinLabel: 'ЖСН *',
+    iinPlaceholder: '12 сан',
+    iinRequired: 'ЖСН 12 саннан тұруы керек',
     companyLabel: 'Компания / ЖК *',
     companyPlaceholder: 'Компания немесе ЖК атауы',
     companyHint: 'Мәмілелер мен құжаттар реті үшін міндетті',
@@ -236,6 +260,8 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
+  const [birthDate, setBirthDate] = useState('');
+  const [iin, setIin] = useState('');
   const [company, setCompany] = useState('');
   const [messengerType, setMessengerType] = useState('');
   const [messengerId, setMessengerId] = useState('');
@@ -247,16 +273,21 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   const validName = name.trim().length >= 2;
   const validPhone = isRealPhone(phone);
+  const validBirthDate = role !== 'driver' || /^\d{2}\.\d{2}\.\d{4}$/.test(birthDate.trim());
+  const validIin = role !== 'driver' || /^\d{12}$/.test(digitsOnly(iin));
   const validCompany = company.trim().length >= 2;
   const validMessenger = !messengerType
     || (messengerType === 'whatsapp' && sameAsPhone && validPhone)
     || messengerId.trim().length >= 2;
   const formValid = validName && validPhone && validCompany && validMessenger;
+  const basicFormValid = formValid && validBirthDate && validIin;
 
   const validate = () => {
     const next = {};
     if (!validName) next.name = t('profile_v2_err_name');
     if (!validPhone) next.phone = t('prem_reg_phone_invalid');
+    if (role === 'driver' && !validBirthDate) next.birthDate = ui.birthDateRequired;
+    if (role === 'driver' && !validIin) next.iin = ui.iinRequired;
     if (!validCompany) next.company = ui.companyRequired;
     if (!validMessenger) next.messenger = ui.messengerRequired;
     setErrors(next);
@@ -302,6 +333,15 @@ export default function ProfileV2Screen({ navigation, route }) {
           return;
         }
         throw new Error(typeof detail === 'string' ? detail : 'profile_save_failed');
+      }
+
+      if (role === 'driver') {
+        const draftSaved = await regAPI.saveDriverDraft({
+          full_name: name.trim(),
+          birth_date: birthDate.trim(),
+          iin: digitsOnly(iin),
+        });
+        if (!draftSaved?.ok) throw new Error('basic_profile_save_failed');
       }
 
       // Критический инвариант: AppNavigator считает session.user.role признаком
@@ -376,6 +416,42 @@ export default function ProfileV2Screen({ navigation, route }) {
             errors={errors}
             setErrors={setErrors}
           />
+
+          {role === 'driver' ? (
+            <>
+              <ProfileField
+                id="birthDate"
+                label={ui.birthDateLabel}
+                value={birthDate}
+                onChange={setBirthDate}
+                placeholder={ui.birthDatePlaceholder}
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+                s={s}
+                colors={colors}
+                focused={focused}
+                setFocused={setFocused}
+                errors={errors}
+                setErrors={setErrors}
+              />
+              <ProfileField
+                id="iin"
+                label={ui.iinLabel}
+                value={iin}
+                onChange={(value) => setIin(digitsOnly(value).slice(0, 12))}
+                placeholder={ui.iinPlaceholder}
+                keyboardType="number-pad"
+                inputMode="numeric"
+                autoCapitalize="none"
+                s={s}
+                colors={colors}
+                focused={focused}
+                setFocused={setFocused}
+                errors={errors}
+                setErrors={setErrors}
+              />
+            </>
+          ) : null}
 
           <ProfileField
             id="company"
@@ -461,14 +537,14 @@ export default function ProfileV2Screen({ navigation, route }) {
 
           <Pressable
             onPress={onContinue}
-            disabled={busy || !formValid}
+            disabled={busy || !basicFormValid}
             accessibilityRole="button"
-            accessibilityState={{ disabled: busy || !formValid }}
+            accessibilityState={{ disabled: busy || !basicFormValid }}
             testID="profile-v2-cta"
             style={({ pressed }) => [
-              s.ctaPrimary,
-              { backgroundColor: formValid ? colors.primary : colors.borderStrong },
-              pressed && formValid && s.pressed,
+            s.ctaPrimary,
+              { backgroundColor: basicFormValid ? colors.primary : colors.borderStrong },
+              pressed && basicFormValid && s.pressed,
             ]}
           >
             {busy ? (

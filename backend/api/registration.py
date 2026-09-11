@@ -173,6 +173,7 @@ def get_me(driver_id: str = Depends(get_current_driver)):
         "role": driver.get("role", "guest"),
         "full_name": driver.get("full_name"),
         "status": driver.get("status"),
+        "basic_onboarding_completed": bool(driver.get("basic_onboarding_completed")),
     }
 
 

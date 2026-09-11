@@ -162,28 +162,32 @@ export default function MyTripsScreen({ navigation, route }) {
     finally { setExtending(null); }
   };
 
-  // Progressive verification: размещение рейса — trust-действие, доступно
-  // только одобренному водителю. Источник статуса — regAPI.me()
+  // Публикация рейса доступна после basic onboarding либо по legacy Pro-пути.
+  // Источник статуса — regAPI.me(); UI не должен открывать CreateTrip всем
+  // водителям подряд, потому что backend повторяет этот gate.
   // ({status, verification_level}). verState: loading|approved|review|
   // rejected|unverified. Без fake-approved: CreateTrip открывается только
   // при approved, иначе показываем gate-модалку → 5-шаговая проверка.
   const [verState, setVerState] = useState('loading');
+  const [canPublish, setCanPublish] = useState(false);
   const [pubGateVisible, setPubGateVisible] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
 
   useEffect(() => {
-    if (!isDriver) { setVerState('approved'); return; } // у клиента кнопки размещения рейса нет
+    if (!isDriver) { setVerState('approved'); setCanPublish(true); return; } // у клиента кнопки размещения рейса нет
     let alive = true;
     (async () => {
       try {
         const me = await regAPI.me();
         if (!alive) return;
-        if (me && (me.status === 'approved' || me.verification_level >= 3)) setVerState('approved');
+        const eligible = Boolean(me && (me.basic_onboarding_completed || me.status === 'approved' || Number(me.verification_level) >= 3));
+        setCanPublish(eligible);
+        if (eligible) setVerState('approved');
         else if (me && (me.status === 'pending' || me.status === 'under_review' || me.status === 'manual_review')) setVerState('review');
         else if (me && me.status === 'rejected') setVerState('rejected');
         else setVerState('unverified');
       } catch {
-        if (alive) setVerState('unverified');
+        if (alive) { setCanPublish(false); setVerState('unverified'); }
       }
     })();
     return () => { alive = false; };
@@ -194,6 +198,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // пропадал бы от простого захода в «Мои рейсы»/«Мои грузы».
 
   const onPublishRoute = async () => {
+    if (!canPublish) { setPubGateVisible(true); return; }
     const result = await vehicleAPI.list();
     const vehicles = result.ok ? (result.vehicles || []) : [];
     if (vehicles.length === 0) navigation.navigate('VehicleSetupCountry', { origin: 'CreateTrip', role });
@@ -701,7 +706,7 @@ export default function MyTripsScreen({ navigation, route }) {
               testID="trips-publish-gate-cta"
               onPress={() => {
                 setPubGateVisible(false);
-                navigation.navigate(verState === 'review' ? 'Security' : 'Citizenship');
+                navigation.navigate(verState === 'review' ? 'Security' : verState === 'rejected' ? 'Citizenship' : 'ProfileV2', { role: 'driver' });
               }}
             >
               <Text style={s.pgBtnText}>

@@ -7,7 +7,8 @@
 
 Аутентификация — общий Bearer-токен регистрации (как в api/registration.py).
 """
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -24,7 +25,7 @@ DRAFT_FIELDS = {
     # шаг 1
     "full_name", "birth_date", "iin", "personal_photo_url",
     # новый порядок: гражданство (шаг 1) + удостоверение личности (шаг 2)
-    "citizenship_country", "driver_citizenship_country_code", "vehicle_registration_country_code", "id_doc_type", "id_front_url", "id_back_url",
+    "citizenship_country", "driver_citizenship_country_code", "vehicle_registration_country_code", "vehicle_registration_country", "id_doc_type", "id_front_url", "id_back_url",
     # шаг 2
     "residence_status",
     # шаг 3
@@ -136,6 +137,81 @@ def save_draft(body: DraftBody, driver_id: str = Depends(get_current_driver)):
     if updates:
         reg_dal.update_driver(driver_id, updates)
     return {"ok": True, "saved": sorted(updates.keys())}
+
+
+_BASIC_REQUIRED_FIELDS = (
+    "citizenship_country", "full_name", "birth_date", "vehicle_registration_country",
+    "truck_kind", "body_type", "vehicle_brand", "vehicle_plate", "capacity_tons", "volume_m3",
+)
+
+
+def _basic_onboarding_missing(driver: dict) -> list[str]:
+    missing = [
+        field for field in _BASIC_REQUIRED_FIELDS
+        if field != "truck_kind" and not str(driver.get(field) or "").strip()
+    ]
+    # Старые черновики могли сохранить тип транспорта под vehicle_type.
+    if not str(driver.get("truck_kind") or driver.get("vehicle_type") or "").strip():
+        missing.append("truck_kind")
+    iin = re.sub(r"\s+", "", str(driver.get("iin") or ""))
+    if not re.fullmatch(r"\d{12}", iin):
+        missing.append("iin")
+    for field in ("capacity_tons", "volume_m3"):
+        try:
+            if float(driver.get(field)) <= 0:
+                missing.append(field)
+        except (TypeError, ValueError):
+            if field not in missing:
+                missing.append(field)
+    return sorted(set(missing))
+
+
+def can_publish_driver_trip(driver: dict) -> bool:
+    """Базовая публикация доступна после минимального онбординга."""
+    return bool(driver.get("basic_onboarding_completed")) or (
+        driver.get("status") == "approved"
+        or int(driver.get("verification_level") or 0) >= 3
+    )
+
+
+@driver_reg_router.post("/complete-basic")
+def complete_basic_onboarding(driver_id: str = Depends(get_current_driver)):
+    """Закрыть базовый водительский онбординг без Pro-верификации."""
+    driver = reg_dal.get_driver(driver_id)
+    if not driver:
+        raise HTTPException(status_code=404, detail="Водитель не найден")
+    missing = _basic_onboarding_missing(driver)
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "BASIC_ONBOARDING_INCOMPLETE", "fields": missing},
+        )
+
+    # Повторный вызов не понижает уже подтверждённый legacy-аккаунт.
+    if driver.get("status") == "approved" or int(driver.get("verification_level") or 0) >= 3:
+        return {
+            "ok": True,
+            "role": driver.get("role") or "driver",
+            "status": driver.get("status"),
+            "verification_level": int(driver.get("verification_level") or 0),
+            "basic_onboarding_completed": True,
+        }
+
+    completed_at = datetime.now(timezone.utc).isoformat()
+    reg_dal.update_driver(driver_id, {
+        "role": "driver",
+        "status": "basic",
+        "basic_onboarding_completed": 1,
+        "basic_onboarding_completed_at": completed_at,
+    })
+    return {
+        "ok": True,
+        "role": "driver",
+        "status": "basic",
+        "verification_level": int(driver.get("verification_level") or 0),
+        "basic_onboarding_completed": True,
+        "basic_onboarding_completed_at": completed_at,
+    }
 
 
 @driver_reg_router.post("/submit")

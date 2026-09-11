@@ -110,6 +110,26 @@ def require_active_level(min_level: int):
     return dependency
 
 
+def require_driver_trip_publication(authorization: str = Header(None)) -> dict:
+    """Разрешить публикацию рейса только после basic onboarding или Pro."""
+    driver = require_active_level(1)(authorization)
+    if driver.get("role") != "driver":
+        raise HTTPException(status_code=403, detail={"error": "driver_role_required"})
+    if not (
+        driver.get("basic_onboarding_completed")
+        or driver.get("status") == "approved"
+        or int(driver.get("verification_level") or 0) >= 3
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "basic_onboarding_required",
+                "message": "Сначала заполните базовый профиль водителя и данные автомобиля",
+            },
+        )
+    return driver
+
+
 def get_user(authorization: str = Header(None)) -> dict:
     """Просто вернуть текущего пользователя (может быть гостем)."""
     return _extract_driver(authorization)
