@@ -17,6 +17,15 @@ let dashboardCache = null;
 let dashboardCacheAt = 0;
 let dashboardInFlight = null;
 
+// Vehicle Security & Trip Integrity Repair, Round 2 (2026-09-11), item 9.
+// Same shape as DealWorkspaceScreenV2.js's newClientId() for chat
+// client_msg_id — no crypto.randomUUID dependency (not reliably present
+// across every RN/Hermes target this app ships to).
+function newIdempotencyKey(prefix = 'trip') {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+let _lastTripIntent = null; // { key, payloadJSON } | null — see createTrip() below
+
 async function headers() {
   const token = await storage.get(TOKEN_KEY);
   return {
@@ -256,11 +265,36 @@ export const marketAPI = {
   },
 
   // ─── Trips ───
+  // Vehicle Security & Trip Integrity Repair, Round 2 (2026-09-11), item 9:
+  // real client-supplied Idempotency-Key (backend/api/marketplace.py's
+  // create_trip). Transport-only change — CreateTripScreen.js is untouched
+  // and keeps calling createTrip(payload) exactly as before; the key is
+  // generated and remembered here, invisibly to the screen.
+  //
+  // A NEW key is generated the first time this payload is seen (or after a
+  // previous attempt already succeeded). A RETRY of the exact same payload
+  // — the screen's own `submitting` guard already blocks a same-instance
+  // double-tap, so what reaches here again is a genuine resubmit: a manual
+  // re-tap after an error, or a caller retrying past a network failure —
+  // reuses that same key, matching "не генерировать новый key на каждый
+  // автоматический retry". A DIFFERENT payload (the user actually changed
+  // something) always gets its own fresh key, so it can never collide with
+  // — and get wrongly rejected as reusing — an older, unrelated attempt's
+  // key (the server's own 409 IDEMPOTENCY_KEY_REUSED guard only fires on a
+  // real key collision; this cache exists purely so a genuine retry reuses
+  // one instead of every call minting a new key and losing the protection).
   async createTrip(data) {
+    const payloadJSON = JSON.stringify(data);
+    if (!_lastTripIntent || _lastTripIntent.payloadJSON !== payloadJSON) {
+      _lastTripIntent = { key: newIdempotencyKey(), payloadJSON };
+    }
+    const { key } = _lastTripIntent;
     const r = await authedFetch(`${BASE}/trips`, {
-      method: 'POST', headers: await headers(),
-      body: JSON.stringify(data),
+      method: 'POST',
+      headers: { ...(await headers()), 'Idempotency-Key': key },
+      body: payloadJSON,
     });
+    if (r.ok) _lastTripIntent = null; // intent complete — next call starts a new one
     return r.json();
   },
 
