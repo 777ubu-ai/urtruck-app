@@ -2,17 +2,19 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import CountryFlag from './CountryFlag';
-import { useV1Colors } from '../../../theme/designV1';
+import { useV1Colors, useDriverCeramicColors } from '../../../theme/designV1';
 
-export default function RouteLine({ from, to, fromFlag, toFlag, numberOfLines = 1, testID }) {
+export default function RouteLine({ from, to, fromFlag, toFlag, numberOfLines = 1, testID, ceramic = false }) {
   const colors = useV1Colors();
+  const ceramicColors = useDriverCeramicColors();
+  const palette = ceramic ? ceramicColors : colors;
   return (
     <View style={s.row} testID={testID}>
-      {fromFlag ? <CountryFlag code={fromFlag} width={18} style={s.flag} /> : null}
-      <Text style={[s.city, { color: colors.text }]} numberOfLines={numberOfLines}>{from || '—'}</Text>
-      <Feather name="arrow-right" size={16} color={colors.driver} style={s.arrow} />
-      {toFlag ? <CountryFlag code={toFlag} width={18} style={s.flag} /> : null}
-      <Text style={[s.city, { color: colors.text }]} numberOfLines={numberOfLines}>{to || '—'}</Text>
+      {fromFlag ? <CountryFlag code={fromFlag} width={ceramic ? 24 : 18} round={ceramic} style={s.flag} /> : null}
+      <Text style={[s.city, { color: palette.text }]} numberOfLines={numberOfLines}>{from || '—'}</Text>
+      <Feather name="arrow-right" size={16} color={palette.textMuted} style={s.arrow} />
+      {toFlag ? <CountryFlag code={toFlag} width={ceramic ? 24 : 18} round={ceramic} style={s.flag} /> : null}
+      <Text style={[s.city, { color: palette.text }]} numberOfLines={numberOfLines}>{to || '—'}</Text>
     </View>
   );
 }

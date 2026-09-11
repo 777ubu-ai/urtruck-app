@@ -6,13 +6,15 @@
 // + accentSoft tint (driverSoft).
 import React from 'react';
 import { Pressable, View, StyleSheet } from 'react-native';
-import { useV1Colors, v1Radius } from '../../../theme/designV1';
+import { useV1Colors, useDriverCeramicColors, v1Radius } from '../../../theme/designV1';
 
-export default function Card({ children, style, onPress, testID, accessibilityLabel }) {
+export default function Card({ children, style, onPress, testID, accessibilityLabel, ceramic = false }) {
   const colors = useV1Colors();
+  const ceramicColors = useDriverCeramicColors();
+  const palette = ceramic ? ceramicColors : colors;
   const base = {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
   };
   if (onPress) {
     return (
@@ -24,7 +26,7 @@ export default function Card({ children, style, onPress, testID, accessibilityLa
         style={({ pressed }) => [
           s.card,
           base,
-          pressed && { transform: [{ scale: 0.97 }], backgroundColor: colors.driverSoft },
+          pressed && { transform: [{ scale: 0.97 }], backgroundColor: ceramic ? ceramicColors.activeSoft : colors.driverSoft },
           style,
         ]}
       >

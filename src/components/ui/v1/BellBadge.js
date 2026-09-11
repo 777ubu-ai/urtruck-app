@@ -5,11 +5,13 @@
 import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
-import { useV1Colors } from '../../../theme/designV1';
+import { useV1Colors, useDriverCeramicColors } from '../../../theme/designV1';
 import { useI18n } from '../../../utils/useI18n';
 
-export default function BellBadge({ count = 0, onPress, testID }) {
+export default function BellBadge({ count = 0, onPress, testID, ceramic = false }) {
   const colors = useV1Colors();
+  const ceramicColors = useDriverCeramicColors();
+  const palette = ceramic ? ceramicColors : colors;
   const { t } = useI18n();
   const visible = Number(count) > 0;
   const label = Number(count) > 9 ? '9+' : String(count);
@@ -18,7 +20,7 @@ export default function BellBadge({ count = 0, onPress, testID }) {
       onPress={onPress}
       activeOpacity={0.7}
       testID={testID || 'bell-btn'}
-      style={[s.btn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+      style={[s.btn, { borderColor: palette.border, backgroundColor: palette.surface }]}
       // Visual size stays 40dp; hitSlop grows the effective touch target
       // to 48dp (>= 44dp minimum) without shifting header layout.
       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
@@ -26,13 +28,13 @@ export default function BellBadge({ count = 0, onPress, testID }) {
       accessibilityLabel={t('menu_notifications')}
       accessibilityState={{ disabled: !onPress }}
     >
-      <Feather name="bell" size={18} color={colors.text} />
+      <Feather name="bell" size={18} color={palette.text} />
       {visible ? (
         <View
           testID="bell-unread-badge"
           style={[
             s.badge,
-            { backgroundColor: colors.error, borderColor: colors.bg },
+            { backgroundColor: ceramic ? ceramicColors.error : colors.error, borderColor: palette.bg },
           ]}
           accessibilityLabel={`${count} unread`}
         >

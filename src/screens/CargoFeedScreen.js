@@ -12,7 +12,6 @@ import Feather from '@expo/vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
-import { useTheme } from '../utils/ThemeContext';
 import { formatTruckType } from '../utils/i18n';
 import { useAuth, LEVELS } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
@@ -32,31 +31,32 @@ import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import CompactFilterChip from '../components/ui/v1/CompactFilterChip';
-import { LIGHT as V1_LIGHT } from '../theme/designV1Palette';
+import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
+import { DRIVER_CERAMIC } from '../theme/designV1Palette';
 
-const ACCENT = V1_LIGHT.driver;
-const ACCENT_SOFT = V1_LIGHT.driverSoft;
-const PAGE_BG = '#F7F9F7';
+const ACCENT = DRIVER_CERAMIC.active;
+const ACCENT_SOFT = DRIVER_CERAMIC.activeSoft;
+const PAGE_BG = DRIVER_CERAMIC.bg;
 const SURFACE = '#FFFFFF';
-const TEXT = '#17221E';
+const TEXT = '#17221D';
 const TEXT_SECONDARY = '#606B66';
-const TEXT_MUTED = '#808A85';
+const TEXT_MUTED = '#718078';
 const BORDER = '#E5EAE7';
 
-const cargoPalette = (theme, isDark) => ({
-  pageBg: theme.bg,
-  surface: theme.card || theme.surface,
-  surfaceAlt: theme.surfaceAlt || theme.cardActive || theme.surface,
-  text: theme.text,
-  textSecondary: theme.textSecondary,
-  textMuted: theme.textMuted,
-  border: theme.border,
-  shadow: isDark ? '#000000' : '#14211C',
+const cargoPalette = () => ({
+  pageBg: DRIVER_CERAMIC.bg,
+  surface: DRIVER_CERAMIC.surface,
+  surfaceAlt: DRIVER_CERAMIC.surface,
+  text: DRIVER_CERAMIC.text,
+  textSecondary: DRIVER_CERAMIC.textMuted,
+  textMuted: DRIVER_CERAMIC.textMuted,
+  border: DRIVER_CERAMIC.border,
+  shadow: DRIVER_CERAMIC.shadow,
   accent: ACCENT,
-  accentSoft: isDark ? 'rgba(22,135,89,0.18)' : ACCENT_SOFT,
-  filterActive: isDark ? 'rgba(22,135,89,0.16)' : '#FAFDFC',
-  favoriteBg: isDark ? 'rgba(22,135,89,0.12)' : '#F5FBF8',
-  priceText: theme.text,
+  accentSoft: ACCENT_SOFT,
+  filterActive: ACCENT_SOFT,
+  favoriteBg: DRIVER_CERAMIC.surface,
+  priceText: DRIVER_CERAMIC.text,
 });
 
 const COPY = {
@@ -203,6 +203,7 @@ function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
       priceMeta={item.pickup ? formatPickupDate(item.pickup, lang) : null}
       meta={[specs || formatTruckType(item.type)]}
       description={cargo}
+      variant="driver"
       bookmark={{
         saved,
         onToggle: onToggleSaved,
@@ -215,8 +216,7 @@ function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
 
 export default function CargoFeedScreen({ navigation }) {
   const { t, lang } = useI18n();
-  const { theme, isDark } = useTheme();
-  const palette = useMemo(() => cargoPalette(theme, isDark), [theme, isDark]);
+  const palette = useMemo(() => cargoPalette(), []);
   const { session } = useAuth();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -362,7 +362,7 @@ export default function CargoFeedScreen({ navigation }) {
   );
 
   const filterPill = (key, label, icon, active) => (
-    <CompactFilterChip key={key} icon={icon} label={label} active={active} onPress={() => setActiveFilter(key)} testID={`cargo-filter-${key}`} />
+    <CompactFilterChip key={key} variant="driver" icon={icon} label={label} active={active} onPress={() => setActiveFilter(key)} testID={`cargo-filter-${key}`} />
   );
 
   const feedControls = (
@@ -418,20 +418,21 @@ export default function CargoFeedScreen({ navigation }) {
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
         {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
-        <CompactFilterChip icon="bookmark" active={savedOnly} onPress={toggleSavedOnly} testID="cargo-filter-favorites" accessibilityLabel={copy.favorites} />
+        <CompactFilterChip variant="driver" icon="bookmark" active={savedOnly} onPress={toggleSavedOnly} testID="cargo-filter-favorites" accessibilityLabel={copy.favorites} />
       </ScrollView>
     </View>
   );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
-      <RootHeader navigation={navigation} role={role} testID="cargo-feed-minimal-header" bellTestID="cargo-feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
+      <DriverRouteBackdrop />
+      <RootHeader ceramic navigation={navigation} role={role} testID="cargo-feed-minimal-header" bellTestID="cargo-feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
             if (ok) navigation.navigate('PushFilter', { role });
           }} />
 
       <FlatList
-        style={[styles.list, { backgroundColor: palette.pageBg }]}
+        style={styles.list}
         data={loading ? [] : visibleItems}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (

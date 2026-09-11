@@ -12,7 +12,7 @@ import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import { localizePlace, localizeCargoName } from '../utils/places';
 import EmptyState from '../components/ui/EmptyState';
 import EditCargoModal from '../components/EditCargoModal';
-import {v1Colors, useV1Colors, v1AccentFor, v1StatusColors, v1Spacing, v1Typography} from '../theme/designV1';
+import {v1Colors, useV1Colors, useDriverCeramicColors, v1AccentFor, v1StatusColors, v1Spacing, v1Typography} from '../theme/designV1';
 import { useMountedRef } from '../hooks/useMountedRef';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import FadeInUp from '../components/ui/FadeInUp';
@@ -22,6 +22,8 @@ import BellBadge from '../components/ui/v1/BellBadge';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
+import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
+import { DRIVER_CERAMIC } from '../theme/designV1Palette';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
 
@@ -47,7 +49,11 @@ const myItemStatusColor = (colors, st) => {
 };
 
 export default function MyTripsScreen({ navigation, route }) {
-  const v1 = useV1Colors();
+  const v1Base = useV1Colors();
+  const ceramic = useDriverCeramicColors();
+  const { role } = route.params || {};
+  const isDriver = role === 'driver';
+  const v1 = isDriver ? ceramic : v1Base;
   const s = React.useMemo(() => StyleSheet.create({
 
   // v1 brand bar (mirrors FeedScreen)
@@ -79,8 +85,8 @@ export default function MyTripsScreen({ navigation, route }) {
   pgIcon: { fontSize: 44, marginBottom: 12 },
   pgTitle: { color: v1.text, fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 10 },
   pgText: { color: v1.textMuted, fontSize: 14, lineHeight: 21, textAlign: 'center', marginBottom: 22 },
-  pgBtn: { height: 52, borderRadius: 14, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center', width: '100%' },
-  pgBtnText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
+  pgBtn: { height: 48, borderRadius: 10, backgroundColor: v1.active || v1.driver, alignItems: 'center', justifyContent: 'center', width: '100%' },
+  pgBtnText: { color: v1.activeText || v1.driverOnAccent || '#FFFFFF', fontSize: 15, fontWeight: '800' },
   pgCancel: { marginTop: 10, paddingVertical: 8 },
   pgCancelText: { color: v1.textMuted, fontSize: 13, fontWeight: '600' },
   archiveToggle: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4, marginTop: 2 },
@@ -99,20 +105,18 @@ export default function MyTripsScreen({ navigation, route }) {
   // 27.07: кнопки действий сделки вылезали за карточку. Делаем их гибкими
   // (flexGrow/Shrink + minWidth) — в ряду с flexWrap они заполняют ширину и
   // аккуратно переносятся на след. строку, не вылезая за края.
-  acceptBtn: { backgroundColor: '#168759', borderRadius: 10, paddingVertical: v1Spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130, maxWidth: '100%' },
-  acceptBtnText: { color: '#FFF', ...v1Typography.button, lineHeight: 20, flexShrink: 1, textAlign: 'center' },
+  acceptBtn: { backgroundColor: v1.active || v1.driver, borderRadius: 10, paddingVertical: v1Spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130, maxWidth: '100%' },
+  acceptBtnText: { color: v1.activeText || v1.driverOnAccent || '#FFF', ...v1Typography.button, lineHeight: 20, flexShrink: 1, textAlign: 'center' },
   // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
   miniBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, maxWidth: '100%', backgroundColor: 'rgba(148,163,184,0.14)' },
   miniBtnText: { fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
   editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: v1Spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
-  editBtnText: { color: '#168759', fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
-  extendBtn: { flex: 1, backgroundColor: '#168759', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
-  extendBtnText: { color: '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
+  editBtnText: { color: v1.active || v1.driver, fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  extendBtn: { flex: 1, backgroundColor: v1.active || v1.driver, borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
+  extendBtnText: { color: v1.activeText || v1.driverOnAccent || '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
 
   }), [v1]);
-  const { role } = route.params || {};
-  const isDriver = role === 'driver';
-  const accent = isDriver ? '#168759' : '#FF8400';
+  const accent = isDriver ? DRIVER_CERAMIC.active : '#FF8400';
   const { t, lang } = useI18n();
   const { requireLevel, Gate } = useVerificationGate();
   const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
@@ -190,7 +194,6 @@ export default function MyTripsScreen({ navigation, route }) {
   // пропадал бы от простого захода в «Мои рейсы»/«Мои грузы».
 
   const onPublishRoute = async () => {
-    if (verState !== 'approved') { setPubGateVisible(true); return; }
     const result = await vehicleAPI.list();
     const vehicles = result.ok ? (result.vehicles || []) : [];
     if (vehicles.length === 0) navigation.navigate('VehicleSetupCountry', { origin: 'CreateTrip', role });
@@ -375,6 +378,7 @@ export default function MyTripsScreen({ navigation, route }) {
 
     return (
       <MarketplaceCard
+        variant={isDriver ? 'driver' : 'default'}
         testID={isCargo ? 'my-cargo-card' : 'my-trip-card'}
         style={s.cardSpacing}
         onPress={() => {
@@ -548,7 +552,9 @@ export default function MyTripsScreen({ navigation, route }) {
 
   // ─── Layout ───
 
-  const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
+  const v1Accent = isDriver
+    ? { main: ceramic.active, deep: ceramic.driverDeep, soft: ceramic.activeSoft }
+    : v1AccentFor('client');
 
   const renderUnpublishedItem = ({ item }) => {
     const isCargo = !!item.cargo_desc;
@@ -556,6 +562,7 @@ export default function MyTripsScreen({ navigation, route }) {
     const to = item.to_city || '—';
     return (
       <MarketplaceCard
+        variant={isDriver ? 'driver' : 'default'}
         dimmed
         style={s.cardSpacing}
         route={{
@@ -609,7 +616,8 @@ export default function MyTripsScreen({ navigation, route }) {
 
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      <RootHeader navigation={navigation} role={role} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={async () => {
+      {isDriver ? <DriverRouteBackdrop /> : null}
+      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
             if (ok) navigation.navigate('PushFilter', { role });
           }} />

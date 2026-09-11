@@ -7,7 +7,7 @@ import Card from './Card';
 import RouteLine from './RouteLine';
 import BookmarkButton from './BookmarkButton';
 import StatusPill from './StatusPill';
-import { useV1Colors, useV1Typography } from '../../../theme/designV1';
+import { useV1Colors, useDriverCeramicColors, useV1Typography } from '../../../theme/designV1';
 
 // 108dp protects a complete price/currency; the route renderer owns the
 // complementary compact type scale for 390dp phones.
@@ -35,9 +35,13 @@ export default function MarketplaceCard({
   dimmed = false,
   bookmark,
   children,
+  variant = 'default',
 }) {
-  const colors = useV1Colors();
+  const baseColors = useV1Colors();
+  const ceramic = useDriverCeramicColors();
   const typo = useV1Typography();
+  const colors = variant === 'driver' ? ceramic : baseColors;
+  const palette = colors;
   const structured = route && typeof route === 'object';
   const routeLabel = structured ? null : route;
   const routeMeta = structured ? route : {};
@@ -51,6 +55,7 @@ export default function MarketplaceCard({
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       style={[s.card, dimmed && s.dimmed, style]}
+      ceramic={variant === 'driver'}
     >
       <View style={s.topRow}>
         {structured ? (
@@ -61,28 +66,29 @@ export default function MarketplaceCard({
             toFlag={routeMeta.toFlag}
             numberOfLines={routeMeta.numberOfLines || 1}
             testID={routeMeta.testID}
+            ceramic={variant === 'driver'}
           />
         ) : (
-          <Text style={[s.routeText, { color: colors.text }]} numberOfLines={1}>{routeLabel || '—'}</Text>
+      <Text style={[s.routeText, { color: palette.text }]} numberOfLines={1}>{routeLabel || '—'}</Text>
         )}
         {price ? (
           <View style={s.priceColumn}>
-            <Text style={[typo.price, s.price, { color: colors.driver }]} numberOfLines={1} testID={priceTestID}>{price}</Text>
-            {priceMeta ? <Text style={[s.priceMeta, { color: colors.textMuted }]} numberOfLines={1}>{priceMeta}</Text> : null}
+            <Text style={[typo.price, s.price, { color: palette.text }]} numberOfLines={1} testID={priceTestID}>{price}</Text>
+            {priceMeta ? <Text style={[s.priceMeta, { color: palette.textMuted }]} numberOfLines={1}>{priceMeta}</Text> : null}
           </View>
         ) : null}
         {chevron ? <Feather name="chevron-right" size={18} color={colors.textDim} style={s.chevron} /> : null}
       </View>
 
-      {firstMeta ? <Text style={[s.meta, { color: colors.textMuted }]} numberOfLines={1}>{firstMeta}</Text> : null}
+      {firstMeta ? <Text style={[s.meta, { color: palette.textMuted }]} numberOfLines={1}>{firstMeta}</Text> : null}
       {body || status || rightMeta || bookmark || unread > 0 ? (
         <View style={s.bottomRow}>
           <View style={s.bottomText}>
-            {body ? <Text style={[s.description, { color: colors.textMuted }]} numberOfLines={1}>{body}</Text> : null}
+            {body ? <Text style={[s.description, { color: palette.textMuted }]} numberOfLines={1}>{body}</Text> : null}
             {status ? <StatusPill status={status.key} label={status.label} color={status.color} testID={status.testID} /> : null}
           </View>
-          {rightMeta ? <Text style={[s.rightMeta, { color: colors.textDim }]} numberOfLines={1}>{rightMeta}</Text> : null}
-          {unread > 0 ? <View style={[s.unread, { backgroundColor: colors.error }]} testID="deals-card-unread"><Text style={s.unreadText}>{unread > 9 ? '9+' : unread}</Text></View> : null}
+          {rightMeta ? <Text style={[s.rightMeta, { color: palette.textMuted }]} numberOfLines={1}>{rightMeta}</Text> : null}
+            {unread > 0 ? <View style={[s.unread, { backgroundColor: colors.error }]} testID="deals-card-unread"><Text style={s.unreadText}>{unread > 9 ? '9+' : unread}</Text></View> : null}
           {bookmark ? <BookmarkButton saved={bookmark.saved} onPress={bookmark.onToggle} testID={bookmark.testID} accessibilityLabel={bookmark.accessibilityLabel} /> : null}
         </View>
       ) : null}
@@ -92,7 +98,7 @@ export default function MarketplaceCard({
 }
 
 const s = StyleSheet.create({
-  card: { padding: 12, minHeight: 108 },
+  card: { padding: 12, minHeight: 108, borderRadius: 15 },
   dimmed: { opacity: 0.62 },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 0 },
   routeText: { flex: 1, minWidth: 0, fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.15 },

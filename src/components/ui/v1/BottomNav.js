@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, AppState, Platform } from 're
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useV1Colors } from '../../../theme/designV1';
+import { useV1Colors, useDriverCeramicColors } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 import { useAuth } from '../../../utils/AuthContext';
 import { useI18n } from '../../../utils/useI18n';
@@ -34,8 +34,6 @@ const ICONS = {
 //   label   — clientNavLabel, theme-aware: #C2410C on the white bar (5.2:1)
 //             and #FB923C on the dark bar (7.9:1) — one value cannot serve
 //             both themes at the 11sp 4.5:1 bar.
-const DRIVER_ACCENT = { main: '#168759', soft: '#E8F6EF' };
-
 function syncAppIconBadge(total) {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
   let Notifications;
@@ -46,6 +44,7 @@ function syncAppIconBadge(total) {
 
 export default function BottomNav({ state, navigation }) {
   const colors = useV1Colors();
+  const ceramic = useDriverCeramicColors();
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { session, hasToken } = useAuth();
@@ -55,14 +54,14 @@ export default function BottomNav({ state, navigation }) {
   // Client values are palette tokens (see the comment above DRIVER_ACCENT);
   // `?? '#FF8400'` is a defensive fallback only — DARK also declares it.
   const accent = isDriver
-    ? DRIVER_ACCENT
+    ? { main: ceramic.active, soft: ceramic.activeSoft }
     : { main: colors.clientAccent ?? '#FF8400', soft: colors.clientNavPill ?? '#FFF3E6' };
   const focusedIconColor = isDriver ? accent.main : (colors.clientNavIcon ?? '#C2410C');
   const focusedLabelColor = isDriver ? accent.main : (colors.clientNavLabel ?? '#C2410C');
   // Theme-aware inactive label: light resolves to the same #617067 the old
   // frozen designSystemV2 token carried; dark now resolves to the dark
   // textMuted instead of staying frozen light.
-  const inactiveColor = colors.textMuted;
+  const inactiveColor = isDriver ? ceramic.textMuted : colors.textMuted;
 
   const [chatUnread, setChatUnread] = useState(0);
   const [dealsUnread, setDealsUnread] = useState(0);
@@ -166,8 +165,8 @@ export default function BottomNav({ state, navigation }) {
   // не графитовый хардкод #111827 из прежней темы. Светлая плашка —
   // colors.surface (тот же #FFFFFF; токен, а не хардкод, чтобы QA smoke
   // проверял именно рендер-поверхность).
-  const barBg = isDark ? colors.bg : colors.surface;
-  const barBorder = isDark ? 'rgba(255,255,255,0.08)' : '#E5ECE8';
+  const barBg = isDriver ? ceramic.surface : (isDark ? colors.bg : colors.surface);
+  const barBorder = isDriver ? ceramic.border : (isDark ? 'rgba(255,255,255,0.08)' : '#E5ECE8');
 
   return (
     <View style={[styles.wrap, { paddingBottom: bottomPad }]} pointerEvents="box-none" testID="bottom-nav">
@@ -210,7 +209,7 @@ export default function BottomNav({ state, navigation }) {
                   <Feather name={iconName} size={22} color={iconColor} />
                 )}
                 {showBadge ? (
-                  <View style={[styles.iconBadge, { backgroundColor: colors.error, borderColor: barBg }]} testID={badgeTestID}>
+                  <View style={[styles.iconBadge, { backgroundColor: isDriver ? ceramic.error : colors.error, borderColor: barBg }]} testID={badgeTestID}>
                     <Text style={styles.iconBadgeText}>{badgeLabel}</Text>
                   </View>
                 ) : null}
@@ -233,16 +232,16 @@ const styles = StyleSheet.create({
   wrap: { paddingHorizontal: 12, paddingTop: 4, backgroundColor: 'transparent' },
   bar: {
     flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    paddingHorizontal: 7, paddingTop: 7, paddingBottom: 5, borderRadius: 24, borderWidth: 1,
-    shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 9,
+    paddingHorizontal: 6, paddingTop: 5, paddingBottom: 4, borderRadius: 20, borderWidth: 1,
+    shadowColor: '#8998A6', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5,
   },
   cell: {
     flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: 2,
     minHeight: PILL_H + LABEL_H + 3,
   },
   pill: {
-    height: PILL_H, minWidth: 46, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 12, shadowOpacity: 0.55, shadowRadius: 9, shadowOffset: { width: 0, height: 0 }, elevation: 6,
+    height: PILL_H, minWidth: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 10, shadowOpacity: 0.28, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 3,
   },
   label: {
     height: LABEL_H, fontSize: 11, fontWeight: '700', marginTop: 2,

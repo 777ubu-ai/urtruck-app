@@ -98,6 +98,40 @@ export const LIGHT = {
   statusCancelled: '#718078',
 };
 
+// Driver ceramic redesign (2026-09). Kept separate from the existing role
+// palettes during the staged rollout so client surfaces and legacy Pro flows
+// do not change accidentally. These are visual tokens only: no API/status
+// semantics belong here.
+export const DRIVER_CERAMIC = {
+  bg: '#EEF2F5',
+  surface: '#FAFCFD',
+  surfaceMuted: '#E5EBF0',
+  text: '#111C2C',
+  textMuted: '#657489',
+  border: '#D1DAE3',
+  active: '#738396',
+  activeSoft: '#DDE4EA',
+  activeText: '#FAFCFD',
+  success: '#3E8E6B',
+  warning: '#A4773E',
+  error: '#B85454',
+  shadow: '#9AA9B7',
+  routeLine: '#D7E0E7',
+  textDim: '#7A8795',
+  driver: '#738396',
+  driverDeep: '#5F6E7E',
+  driverSoft: '#DDE4EA',
+  driverOnAccent: '#FAFCFD',
+  statusAccepted: '#3E8E6B',
+  statusInProgress: '#738396',
+  statusAtBorder: '#A4773E',
+  statusDelivered: '#3E8E6B',
+  statusReceived: '#3E8E6B',
+  statusCompleted: '#738396',
+  statusCancelled: '#7A8795',
+  clientAccent: '#738396',
+};
+
 export const DARK = {
   bg: '#0F1512',
   bgDeep: '#0B100D',

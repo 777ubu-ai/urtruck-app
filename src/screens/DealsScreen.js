@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
+import { DRIVER_CERAMIC } from '../theme/designV1Palette';
 import { formatStatus } from '../utils/i18n';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
@@ -28,6 +29,7 @@ import { isBidActionable } from '../utils/dealsUnread';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
 import BellBadge from '../components/ui/v1/BellBadge';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
+import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
 
@@ -49,7 +51,22 @@ const INFO = "#3478D4";
 const ARCHIVE = "#7C8B82";
 const CANCELLED = "#A45A5A";
 
-const dealsPalette = (theme, isDark) => ({
+const dealsPalette = (theme, isDark, isDriver) => isDriver ? ({
+  pageBg: DRIVER_CERAMIC.bg,
+  surface: DRIVER_CERAMIC.surface,
+  surfaceAlt: DRIVER_CERAMIC.surfaceMuted,
+  text: DRIVER_CERAMIC.text,
+  textSecondary: DRIVER_CERAMIC.textMuted,
+  textMuted: DRIVER_CERAMIC.textMuted,
+  border: DRIVER_CERAMIC.border,
+  headerBorder: DRIVER_CERAMIC.border,
+  shadow: DRIVER_CERAMIC.shadow,
+  accent: DRIVER_CERAMIC.active,
+  accentSoft: DRIVER_CERAMIC.activeSoft,
+  inactiveIcon: DRIVER_CERAMIC.textMuted,
+  chevron: DRIVER_CERAMIC.textMuted,
+  dimOpacity: 0.72,
+}) : ({
   pageBg: theme.bg,
   surface: theme.card || theme.surface,
   surfaceAlt: theme.surfaceAlt || theme.cardActive || theme.surface,
@@ -154,11 +171,11 @@ const parseServerDate = (raw) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const dealStatus = (status, t) => {
+const dealStatus = (status, t, activeColor = ACCENT) => {
   if (status === "accepted")
-    return { label: t("status_accepted"), color: ACCENT };
+    return { label: t("status_accepted"), color: activeColor };
   if (status === "in_progress") {
-    return { label: t("status_in_progress"), color: ACCENT };
+    return { label: t("status_in_progress"), color: activeColor };
   }
   // Design v1 Commit 4: the list used to collapse at_border into the
   // in_progress label («В работе»). at_border has its own dedicated key
@@ -171,7 +188,7 @@ const dealStatus = (status, t) => {
     return { label: t("status_awaiting_receipt"), color: INFO };
   }
   if (status === 'received') {
-    return { label: t('status_received'), color: ACCENT };
+    return { label: t('status_received'), color: activeColor };
   }
   if (status === 'completed') {
     return { label: t('status_completed'), color: ARCHIVE };
@@ -195,7 +212,7 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
       style={[
         styles.tabChip,
         {
-          borderColor: active ? '#A6D2BE' : colors.border,
+          borderColor: active ? colors.accent : colors.border,
           backgroundColor: active ? colors.accentSoft : colors.surface,
           shadowColor: colors.shadow,
         },
@@ -212,7 +229,7 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
           {label}
         </Text>
       </View>
-      <View style={[styles.tabCountBadge, { backgroundColor: active ? colors.surface : colors.surfaceAlt, borderColor: active ? '#B9DACB' : colors.border }]}>
+      <View style={[styles.tabCountBadge, { backgroundColor: active ? colors.surface : colors.surfaceAlt, borderColor: active ? colors.accent : colors.border }]}>
         <Text
           style={[styles.tabCount, { color: active ? colors.accent : colors.textMuted, fontSize: sp(10.5) }]}
           numberOfLines={1}
@@ -250,6 +267,7 @@ function CompactDealCard({
   dimmed = false,
   onPress,
   testID,
+  variant = 'default',
 }) {
   return (
     <MarketplaceCard
@@ -265,6 +283,7 @@ function CompactDealCard({
       unread={unread}
       chevron
       dimmed={dimmed}
+      variant={variant}
     />
   );
 }
@@ -272,9 +291,10 @@ function CompactDealCard({
 export default function DealsScreen({ navigation, route }) {
   const { t, lang, sp } = useI18n();
   const { theme, isDark } = useTheme();
-  const palette = useMemo(() => dealsPalette(theme, isDark), [theme, isDark]);
   const role = route?.params?.role || 'client';
-  const roleAccent = accentFor(role) || ACCENT;
+  const isDriver = role === 'driver';
+  const palette = useMemo(() => dealsPalette(theme, isDark, isDriver), [theme, isDark, isDriver]);
+  const roleAccent = isDriver ? palette.accent : (accentFor(role) || ACCENT);
   const copy = COPY[lang] || COPY.EN;
   const { requireLevel, Gate } = useVerificationGate();
 
@@ -622,10 +642,11 @@ export default function DealsScreen({ navigation, route }) {
           dimmed={isClosed}
           unread={!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0}
           onPress={() => openBid(data)}
+          variant={isDriver ? 'driver' : 'default'}
         />
       );
       }
-      const status = dealStatus(data.status, t);
+      const status = dealStatus(data.status, t, palette.accent);
       const partnerName = role === 'client'
         ? (data.driver_name || t('role_driver'))
         : (data.shipper_name || t('role_client'));
@@ -657,6 +678,7 @@ export default function DealsScreen({ navigation, route }) {
           unread={unread}
           dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
           onPress={() => openDeal(data)}
+          variant={isDriver ? 'driver' : 'default'}
         />
       );
     }, [
@@ -690,7 +712,7 @@ export default function DealsScreen({ navigation, route }) {
       ]}
       testID="deals-minimal-header"
     >
-      <RootHeader navigation={navigation} role={role} testID="deals-minimal-header" bellTestID="deals-notification-settings-btn" menuTestID="deals-menu-btn" onBellPress={async () => {
+      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="deals-minimal-header" bellTestID="deals-notification-settings-btn" menuTestID="deals-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
             if (ok) navigation.navigate('PushFilter', { role });
           }} />
@@ -769,6 +791,7 @@ export default function DealsScreen({ navigation, route }) {
       edges={['top']}
       testID="deal-room-list"
     >
+      {isDriver ? <DriverRouteBackdrop /> : null}
       {loading ? (
         <>
           {listHeader}

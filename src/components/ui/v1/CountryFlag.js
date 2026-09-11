@@ -57,23 +57,24 @@ export const normalizeCountryCode = (value) => (typeof value === 'string' ? valu
 export const isKnownCountryFlag = (value) => Boolean(FLAG_XML[normalizeCountryCode(value)]);
 export const countryFlagXml = (value) => FLAG_XML[normalizeCountryCode(value)] || null;
 
-export default function CountryFlag({ code, width = 24, height, style, testID, accessibilityLabel }) {
+export default function CountryFlag({ code, width = 24, height, round = false, style, testID, accessibilityLabel }) {
   const normalized = normalizeCountryCode(code);
   const xml = countryFlagXml(normalized);
-  const resolvedHeight = height || Math.round(Number(width) * 2 / 3);
+  const resolvedHeight = round ? Number(width) : (height || Math.round(Number(width) * 2 / 3));
   const label = accessibilityLabel || (xml ? `Country flag: ${normalized}` : `Unknown country: ${normalized || 'none'}`);
   if (!xml) {
-    return <View testID={testID} accessibilityLabel={label} accessibilityRole="image" style={[s.unknown, { width, height: resolvedHeight }, style]}><Text style={s.unknownText}>?</Text></View>;
+    return <View testID={testID} accessibilityLabel={label} accessibilityRole="image" style={[s.unknown, round && s.round, { width, height: resolvedHeight }, style]}><Text style={s.unknownText}>?</Text></View>;
   }
   return (
-    <View testID={testID} accessibilityLabel={label} accessibilityRole="image" style={[s.frame, { width, height: resolvedHeight }, style]}>
-      <SvgXml xml={xml} width="100%" height="100%" />
+    <View testID={testID} accessibilityLabel={label} accessibilityRole="image" style={[s.frame, round && s.round, { width, height: resolvedHeight }, style]}>
+      <SvgXml xml={xml} width="100%" height="100%" preserveAspectRatio={round ? 'xMidYMid slice' : undefined} />
     </View>
   );
 }
 
 const s = StyleSheet.create({
   frame: { overflow: 'hidden', borderRadius: 3, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(20,34,28,0.12)', backgroundColor: '#FFFFFF' },
+  round: { borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.9)', shadowColor: '#738396', shadowOpacity: 0.28, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   unknown: { alignItems: 'center', justifyContent: 'center', borderRadius: 3, backgroundColor: '#DDE6E0' },
   unknownText: { color: '#617067', fontSize: 10, fontWeight: '800' },
 });

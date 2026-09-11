@@ -19,7 +19,9 @@ import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
 import { useBrand, radius, typography } from '../../theme/brandV2';
+import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
+import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
 
 const COPY = {
   RU: {
@@ -203,11 +205,27 @@ function ProfileField({
 
 export default function ProfileV2Screen({ navigation, route }) {
   const colors = useBrand();
-  const s = useMemo(() => makeStyles(colors), [colors]);
+  const driverColors = useMemo(() => ({
+    ...colors,
+    bg: DRIVER_CERAMIC.bg,
+    surface: DRIVER_CERAMIC.surface,
+    surfaceSoft: DRIVER_CERAMIC.surface,
+    surfaceMuted: DRIVER_CERAMIC.surfaceMuted,
+    textPrimary: DRIVER_CERAMIC.text,
+    textSecondary: DRIVER_CERAMIC.textMuted,
+    textTertiary: DRIVER_CERAMIC.textDim,
+    primary: DRIVER_CERAMIC.active,
+    primarySoft: DRIVER_CERAMIC.activeSoft,
+    border: DRIVER_CERAMIC.border,
+    borderStrong: DRIVER_CERAMIC.border,
+    divider: DRIVER_CERAMIC.border,
+    textOnPrimary: DRIVER_CERAMIC.activeText,
+  }), [colors]);
   const { t, lang } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const { session, setRole } = useAuth();
   const role = route?.params?.role || session?.user?.role || 'driver';
+  const s = useMemo(() => role === 'driver' ? makeStyles(driverColors) : makeStyles(colors), [colors, driverColors, role]);
 
   const signupIdentity = route?.params?.phone || session?.user?.phone || '';
   const initialPhone = isRealPhone(signupIdentity) ? signupIdentity : '';
@@ -304,6 +322,7 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="profile-v2-screen">
+      {role === 'driver' ? <DriverRouteBackdrop /> : null}
       <KeyboardSafeLayout style={s.flex}>
         <View style={s.header}>
           <Pressable
@@ -491,7 +510,7 @@ const makeStyles = (colors) => StyleSheet.create({
     opacity: 0.7,
   },
   scroll: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
     paddingTop: 4,
     paddingBottom: 36,
   },
@@ -558,8 +577,8 @@ const makeStyles = (colors) => StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    minHeight: 54,
-    borderRadius: radius.md,
+    minHeight: 52,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
@@ -604,7 +623,7 @@ const makeStyles = (colors) => StyleSheet.create({
     minHeight: 62,
     flexGrow: 1,
     flexBasis: '22%',
-    borderRadius: radius.md,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
@@ -640,7 +659,7 @@ const makeStyles = (colors) => StyleSheet.create({
     color: colors.textSecondary,
   },
   infoCard: {
-    borderRadius: radius.md,
+    borderRadius: 14,
     backgroundColor: colors.surfaceSoft,
     borderWidth: 1,
     borderColor: colors.border,
@@ -665,8 +684,8 @@ const makeStyles = (colors) => StyleSheet.create({
     marginBottom: 10,
   },
   ctaPrimary: {
-    height: 58,
-    borderRadius: radius.lg,
+    minHeight: 48,
+    borderRadius: 10,
     flexDirection: 'row',
     gap: 10,
     alignItems: 'center',
