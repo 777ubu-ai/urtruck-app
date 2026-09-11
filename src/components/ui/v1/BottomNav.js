@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, AppState, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useV1Colors, useDriverCeramicColors } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 import { useAuth } from '../../../utils/AuthContext';
@@ -48,7 +47,7 @@ export default function BottomNav({ state, navigation }) {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { session, hasToken } = useAuth();
-  const { t, sp } = useI18n();
+  const { t } = useI18n();
   const role = session?.user?.role || state.routes[0]?.params?.role || 'client';
   const isDriver = role === 'driver';
   // Client values are palette tokens (see the comment above DRIVER_ACCENT);
@@ -203,18 +202,14 @@ export default function BottomNav({ state, navigation }) {
                   isFocused && { backgroundColor: accent.soft, shadowColor: accent.main },
                 ]}
               >
-                {route.name === 'Deals' ? (
-                  <MaterialCommunityIcons name="handshake-outline" size={24} color={iconColor} />
-                ) : (
-                  <Feather name={iconName} size={22} color={iconColor} />
-                )}
+                <Feather name={route.name === 'Deals' ? 'briefcase' : iconName} size={22} color={iconColor} />
                 {showBadge ? (
                   <View style={[styles.iconBadge, { backgroundColor: isDriver ? ceramic.error : colors.error, borderColor: barBg }]} testID={badgeTestID}>
                     <Text style={styles.iconBadgeText}>{badgeLabel}</Text>
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.label, { color: labelColor, fontSize: sp(11) }]} numberOfLines={1}>
+              <Text style={[styles.label, { color: labelColor, fontSize: 11 }]} numberOfLines={1}>
                 {label}
               </Text>
             </TouchableOpacity>
