@@ -280,7 +280,7 @@ def test_reject_409_if_not_pending():
     expect(r.status_code == 409, f"already cancelled → 409 (got {r.status_code})")
 
 
-def test_cancelled_and_rejected_statuses_persist():
+def test_list_bids_shows_cancelled_and_rejected_statuses():
     """Terminal bid states persist even though public listings hide non-actionable rows."""
     print("\n=== test_list_bids_shows_cancelled_and_rejected_statuses ===")
     cargo_id = seed_cargo(owner_id="dash-owner")

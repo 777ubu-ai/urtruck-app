@@ -5,6 +5,7 @@ import fs from 'node:fs';
 const feed = fs.readFileSync('src/components/ui/v1/FeedCard.js', 'utf8');
 const places = fs.readFileSync('src/utils/places.js', 'utf8');
 const myTrips = fs.readFileSync('src/screens/MyTripsScreen.js', 'utf8');
+const card = fs.readFileSync('src/components/ui/v1/MarketplaceCard.js', 'utf8');
 
 // 2026-08-19: короткая инверсия туда-сюда на этой строке — задокументировано,
 // чтобы никто не откатил обратно без явного нового решения владельца.
@@ -25,8 +26,10 @@ test('unified marketplace save action uses the approved bookmark icon and calm p
   assert.doesNotMatch(feed, /color: '#E06D00'/);
 });
 
-test('route owns primary row and legacy flags are cleaned for RU too', () => {
-  assert.match(feed, /numberOfLines=\{compact \? 1 : 2\}/);
-  assert.match(places, /const clean = cleanPlaceName\(raw\);[\s\S]*return clean;/);
-  assert.match(myTrips, /countryFlag\(item\.from_country\).*localizePlace\(from, lang\).*countryFlag\(item\.to_country\)/s);
+test('route owns primary row with CountryFlag on both endpoints and a clamp', () => {
+  assert.match(myTrips, /fromFlag: flagCodeOrNull\(item\.from_country\)/);
+  assert.match(myTrips, /toFlag: flagCodeOrNull\(item\.to_country\)/);
+  assert.match(card, /<RouteLine/);
+  assert.match(card, /fromFlag=\{routeMeta\.fromFlag\}/);
+  assert.match(card, /toFlag=\{routeMeta\.toFlag\}/);
 });

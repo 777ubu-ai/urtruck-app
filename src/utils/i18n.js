@@ -10,6 +10,14 @@ const translations = {
   RU: {
     // Splash & Auth
     welcome: 'Войти или создать аккаунт',
+    push_title: 'Уведомления', route_direction: 'Направление',
+    push_route_driver_hint: 'Выберите направление рейса', push_route_shipper_hint: 'Выберите направление груза',
+    saved_routes: 'Сохранённые маршруты', saved_routes_empty: 'Пока нет сохранённых маршрутов.', push_any_cargo: 'Любой груз',
+    deal_no: 'Сделка №', chat_day_today: 'Сегодня', chat_day_yesterday: 'Вчера',
+    gps_system_disabled: 'Включите геолокацию в настройках телефона.',
+    gps_no_fix: 'Не удалось получить сигнал GPS. Выйдите на открытое место и повторите попытку.',
+    emoji: 'Эмодзи', send: 'Отправить',
+    a11y_toggle_favorite: 'Добавить или убрать из избранного',
 
     // i18n-fix: вынесенные хардкод-строки (FeedCard / CityInput / CargoTypeInput /
     // RatingModal / QuickPhrases / ChatScreen / NotificationsScreen / VerificationGate /
@@ -2206,6 +2214,14 @@ const translations = {
     verified_short: 'Тексерілген',
     voicePlaying: 'Ойнатылуда...',
     welcome: 'Кіру немесе тіркелу',
+    push_title: 'Хабарламалар', route_direction: 'Бағыт',
+    push_route_driver_hint: 'Рейс бағытын таңдаңыз', push_route_shipper_hint: 'Жүк бағытын таңдаңыз',
+    saved_routes: 'Сақталған бағыттар', saved_routes_empty: 'Сақталған бағыттар әзірге жоқ.', push_any_cargo: 'Кез келген жүк',
+    deal_no: 'Мәміле №', chat_day_today: 'Бүгін', chat_day_yesterday: 'Кеше',
+    gps_system_disabled: 'Телефон баптауларында геолокацияны қосыңыз.',
+    gps_no_fix: 'GPS сигналы алынбады. Ашық жерге шығып, қайталап көріңіз.',
+    emoji: 'Эмодзи', send: 'Жіберу',
+    a11y_toggle_favorite: 'Таңдаулыларға қосу немесе алып тастау',
 
     // i18n-fix: вынесенные хардкод-строки
     feed_response_one: 'жауап',
@@ -4041,6 +4057,14 @@ const translations = {
     verified_short: '已认证',
     voicePlaying: '播放中...',
     welcome: '登录或创建账户',
+    push_title: '通知', route_direction: '路线方向',
+    push_route_driver_hint: '选择行程方向', push_route_shipper_hint: '选择货物方向',
+    saved_routes: '已保存路线', saved_routes_empty: '暂无已保存路线。', push_any_cargo: '任意货物',
+    deal_no: '交易 №', chat_day_today: '今天', chat_day_yesterday: '昨天',
+    gps_system_disabled: '请在手机设置中开启定位服务。',
+    gps_no_fix: '无法获取 GPS 信号。请到开阔处后重试。',
+    emoji: '表情', send: '发送',
+    a11y_toggle_favorite: '添加到收藏或从收藏中移除',
 
     // i18n-fix: вынесенные хардкод-строки
     feed_response_one: '回复',
@@ -5861,6 +5885,14 @@ const translations = {
     wallet_beta_title: 'Free pilot',
     weight: 'Weight (t)',
     welcome: 'Sign in or create account',
+    push_title: 'Notifications', route_direction: 'Route direction',
+    push_route_driver_hint: 'Choose trip direction', push_route_shipper_hint: 'Choose cargo direction',
+    saved_routes: 'Saved routes', saved_routes_empty: 'No saved routes yet.', push_any_cargo: 'Any cargo',
+    deal_no: 'Deal №', chat_day_today: 'Today', chat_day_yesterday: 'Yesterday',
+    gps_system_disabled: 'Turn on location services in your phone settings.',
+    gps_no_fix: 'Could not get a GPS fix. Move to an open area and try again.',
+    emoji: 'Emoji', send: 'Send',
+    a11y_toggle_favorite: 'Add to or remove from favorites',
 
     // i18n-fix: extracted hardcoded strings
     feed_response_one: 'response',

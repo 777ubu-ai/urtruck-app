@@ -3,7 +3,7 @@
 Текущий канон после auth + выбора роли:
 - имя обязательно для driver и client;
 - реальный телефон обязателен для driver и client;
-- компания/ИП обязательна для driver и client;
+- компания/ИП обязательна для client, но необязательна для базового driver;
 - страна/город не блокируют завершение короткого onboarding;
 - preferred messenger необязателен;
 - если messenger выбран, контакт обязателен;
@@ -97,20 +97,20 @@ def test_real_phone_is_required_for_every_role(monkeypatch, role):
     assert exc.value.detail["error"] == "PHONE_REQUIRED"
 
 
-def test_company_is_required_for_every_role(monkeypatch):
-    with pytest.raises(HTTPException) as exc:
-        _run(
-            monkeypatch,
-            profile.UpdateProfileIn(
-                role="driver",
-                name="Wei Zhang",
-                phone="+86 138 0013 8000",
-                company_name="",
-            ),
-        )
+def test_company_is_optional_for_basic_driver(monkeypatch):
+    result, captured = _run(
+        monkeypatch,
+        profile.UpdateProfileIn(
+            role="driver",
+            name="Wei Zhang",
+            phone="+86 138 0013 8000",
+            company_name="",
+        ),
+    )
 
-    assert exc.value.status_code == 400
-    assert exc.value.detail["error"] == "COMPANY_REQUIRED"
+    assert result == {"ok": True}
+    assert captured["values"]["role"] == "driver"
+    assert captured["values"]["company_name"] == ""
 
 
 def test_other_messenger_and_company_are_persisted(monkeypatch):

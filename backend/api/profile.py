@@ -265,7 +265,7 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
             raise HTTPException(status_code=400, detail={"error": "NAME_REQUIRED", "message": "Для завершения регистрации укажите имя"})
 
         effective_company = updates.get("company_name") or (current.get("company_name") or "").strip() or None
-        if not effective_company or len(effective_company) < 2:
+        if role_norm == "client" and (not effective_company or len(effective_company) < 2):
             raise HTTPException(status_code=400, detail={"error": "COMPANY_REQUIRED", "message": "Для завершения регистрации укажите компанию или ИП"})
 
         # Messenger is optional, but once a channel is selected its address is

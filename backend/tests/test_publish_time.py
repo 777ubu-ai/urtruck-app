@@ -31,6 +31,7 @@ def fake_require_level(_min_level):
     return dep
 
 verification_gate.require_level = fake_require_level
+verification_gate.require_driver_trip_publication = fake_require_level(1)
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -57,7 +58,7 @@ client = TestClient(app)
 
 
 def as_user(uid: str):
-    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1})
+    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1, "basic_onboarding_completed": 1})
 
 
 def expect(cond, msg):

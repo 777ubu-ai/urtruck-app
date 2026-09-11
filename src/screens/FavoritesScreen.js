@@ -9,8 +9,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
 import { useV1Colors } from '../theme/designV1';
 import { marketAPI } from '../utils/marketAPI';
-import { formatPrice } from '../utils/normalizers';
+import { formatPrice, displayDate } from '../utils/normalizers';
 import { localizePlace } from '../utils/places';
+import { flagCode } from '../utils/countryFlags';
+import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import { useToast } from '../components/Toast';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Feather from '@expo/vector-icons/Feather';
@@ -91,40 +93,65 @@ export default function FavoritesScreen({ navigation, route }) {
     const data = item.item_data || {};
     const isCargo = item.item_type === 'cargo';
     const isTrip = item.item_type === 'trip';
-    const routeText = `${localizePlace(data.from, lang) || t('not_specified')} → ${localizePlace(data.to, lang) || t('not_specified')}`;
     const removalKey = `${item.item_type || 'driver'}:${item.item_id}`;
 
+    // cargo/trip — каноническая MarketplaceCard (Design v1 Commit 3):
+    // флаги — где данные снапшота их содержат (новые сохранения пишут
+    // from_country/to_country; у старых пробуем вытащить код из эмодзи во
+    // from/to), дата выезда/погрузки — через локализующий displayDate
+    // normalizers (раньше рендерился сырой ISO-строкой из снапшота).
+    if (isCargo || isTrip) {
+      const typeLabel = data.type || data.truck_type;
+      const dateText = isTrip && data.departure ? displayDate(data.departure, lang) : '';
+      return (
+        <MarketplaceCard
+          testID={`favorite-card-${item.item_type}`}
+          onPress={() => openItem(item)}
+          style={styles.cardSpacing}
+          route={{
+            from: localizePlace(data.from, lang) || t('not_specified'),
+            to: localizePlace(data.to, lang) || t('not_specified'),
+            fromFlag: flagCode(data.from_country) || flagCode(data.from) || null,
+            toFlag: flagCode(data.to_country) || flagCode(data.to) || null,
+            numberOfLines: 2,
+          }}
+          price={formatPrice(data.price, data.currency, t)}
+          priceMeta={dateText || null}
+          meta={[
+            isCargo && data.cargo ? data.cargo : null,
+            typeLabel ? t(typeLabel) : null,
+            isCargo && data.tons ? `${data.tons} ${lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т'}` : null,
+            isCargo && data.m3 ? `${data.m3} ${lang === 'ZH' ? '立方米' : 'м³'}` : null,
+          ]}
+          badge={{ label: isCargo ? t('badge_cargo') : t('badge_trip'), kind: isCargo ? 'cargo' : 'trip' }}
+          bookmark={{
+            saved: true,
+            onToggle: () => removeItem(item),
+            testID: 'favorite-remove',
+            accessibilityLabel: t('favorites_remove') || 'Remove from favorites',
+          }}
+        />
+      );
+    }
+
+    // driver — не маршрутная карточка, оставляем компактный row.
     return (
       <TouchableOpacity
         style={[styles.card, { backgroundColor: v1.card, borderColor: v1.border }]}
         onPress={() => openItem(item)}
         activeOpacity={0.8}
-        testID={`favorite-card-${item.item_type || 'driver'}`}
+        testID="favorite-card-driver"
       >
         <View style={[styles.typeIcon, { backgroundColor: v1.surfaceMuted }]}>
-          <Feather name={isCargo ? 'package' : 'truck'} size={18} color={v1.textMuted} />
+          <Feather name="truck" size={18} color={v1.textMuted} />
         </View>
         <View style={{ flex: 1 }}>
-          {(isCargo || isTrip) ? (
-            <>
-              <Text style={[styles.name, { color: v1.text }]} numberOfLines={1}>{routeText}</Text>
-              <Text style={[styles.sub, { color: v1.textMuted }]} numberOfLines={1}>
-                {formatPrice(data.price, data.currency, t)}
-                {isCargo && data.type ? ` · ${t(data.type)}` : ''}
-                {isTrip && data.truck_type ? ` · ${t(data.truck_type)}` : ''}
-                {isTrip && data.departure ? ` · ${data.departure}` : ''}
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={[styles.name, { color: v1.text }]} numberOfLines={1}>{data.name || t('anonymous')}</Text>
-              {data.type ? (
-                <Text style={[styles.sub, { color: v1.textMuted }]} numberOfLines={1}>
-                  {t(data.type)}{data.plate ? ` · ${data.plate}` : ''}
-                </Text>
-              ) : null}
-            </>
-          )}
+          <Text style={[styles.name, { color: v1.text }]} numberOfLines={1}>{data.name || t('anonymous')}</Text>
+          {data.type ? (
+            <Text style={[styles.sub, { color: v1.textMuted }]} numberOfLines={1}>
+              {t(data.type)}{data.plate ? ` · ${data.plate}` : ''}
+            </Text>
+          ) : null}
         </View>
         <TouchableOpacity
           onPress={(event) => { event?.stopPropagation?.(); removeItem(item); }}
@@ -153,7 +180,7 @@ export default function FavoritesScreen({ navigation, route }) {
           keyExtractor={(item) => `${item.item_type || 'driver'}_${item.id || item.item_id}`}
           renderItem={renderItem}
           contentContainerStyle={{ padding: 16, paddingTop: 8 }}
-          refreshControl={<RefreshControl refreshing={refreshing || refreshingList} onRefresh={onRefresh} tintColor={v1.textMuted} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={v1.textMuted} />}
           ListEmptyComponent={
             <View style={styles.center} testID="favorites-empty">
               <Feather name="bookmark" size={40} color={v1.textMuted} style={{ marginBottom: 10 }} />
@@ -171,6 +198,7 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyText: { fontSize: 14, textAlign: 'center', paddingHorizontal: 30 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderWidth: 1, borderRadius: 14, marginBottom: 10, minHeight: 60 },
+  cardSpacing: { marginBottom: 10 },
   typeIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   name: { fontSize: 15, fontWeight: '700' },
   sub: { fontSize: 12, marginTop: 2 },

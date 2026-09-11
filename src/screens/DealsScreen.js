@@ -14,16 +14,24 @@ import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
+import { DRIVER_CERAMIC } from '../theme/designV1Palette';
 import { formatStatus } from '../utils/i18n';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
+import RootHeader from '../components/ui/v1/RootHeader';
 import { marketAPI } from '../utils/marketAPI';
+import { notificationsAPI } from '../utils/notificationsAPI';
 import { formatPrice } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
-import { countryFlag } from '../utils/countryFlags';
+import { countryCode } from '../utils/countryFlags';
 import { accentFor } from '../components/deal/DealRoom';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { isBidActionable } from '../utils/dealsUnread';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
+import BellBadge from '../components/ui/v1/BellBadge';
+import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
+import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
+import { useVerificationGate } from '../components/VerificationGate';
+import { LEVELS } from '../utils/AuthContext';
 
 const ACCENT = "#34936B";
 const ACCENT_SOFT = '#EAF5EF';
@@ -36,11 +44,29 @@ const TEXT_SECONDARY = '#526057';
 const TEXT_MUTED = '#758078';
 const TEXT_DIM = '#98A19B';
 const WAITING = "#617067";
+// Design v1 Commit 4: at_border rides the approved at-border role colour
+// (LIGHT statusAtBorder — same hue family the timeline uses).
+const AT_BORDER = "#B45800";
 const INFO = "#3478D4";
 const ARCHIVE = "#7C8B82";
 const CANCELLED = "#A45A5A";
 
-const dealsPalette = (theme, isDark) => ({
+const dealsPalette = (theme, isDark, isDriver) => isDriver ? ({
+  pageBg: DRIVER_CERAMIC.bg,
+  surface: DRIVER_CERAMIC.surface,
+  surfaceAlt: DRIVER_CERAMIC.surfaceMuted,
+  text: DRIVER_CERAMIC.text,
+  textSecondary: DRIVER_CERAMIC.textMuted,
+  textMuted: DRIVER_CERAMIC.textMuted,
+  border: DRIVER_CERAMIC.border,
+  headerBorder: DRIVER_CERAMIC.border,
+  shadow: DRIVER_CERAMIC.shadow,
+  accent: DRIVER_CERAMIC.active,
+  accentSoft: DRIVER_CERAMIC.activeSoft,
+  inactiveIcon: DRIVER_CERAMIC.textMuted,
+  chevron: DRIVER_CERAMIC.textMuted,
+  dimOpacity: 0.72,
+}) : ({
   pageBg: theme.bg,
   surface: theme.card || theme.surface,
   surfaceAlt: theme.surfaceAlt || theme.cardActive || theme.surface,
@@ -131,6 +157,12 @@ const normalizeNotifPath = (value) => {
   return clean.startsWith("/") ? (clean.replace(/\/+$/, "") || "/") : `/${clean.replace(/\/+$/, "")}`;
 };
 
+export const unreadNotificationPaths = (data) =>
+  (Array.isArray(data?.notifications) ? data.notifications : [])
+    .filter((item) => !item?.is_read)
+    .map((item) => normalizeNotifPath(item?.url))
+    .filter(Boolean);
+
 const parseServerDate = (raw) => {
   if (!raw) return null;
   const normalized = String(raw).replace(" ", "T");
@@ -139,17 +171,24 @@ const parseServerDate = (raw) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const dealStatus = (status, t) => {
+const dealStatus = (status, t, activeColor = ACCENT) => {
   if (status === "accepted")
-    return { label: t("status_accepted"), color: ACCENT };
-  if (status === "in_progress" || status === "at_border") {
-    return { label: t("status_in_progress"), color: ACCENT };
+    return { label: t("status_accepted"), color: activeColor };
+  if (status === "in_progress") {
+    return { label: t("status_in_progress"), color: activeColor };
+  }
+  // Design v1 Commit 4: the list used to collapse at_border into the
+  // in_progress label («В работе»). at_border has its own dedicated key
+  // (deal_status_at_border, present in RU/KK/ZH/EN) and the at-border
+  // role colour.
+  if (status === "at_border") {
+    return { label: t("deal_status_at_border"), color: AT_BORDER };
   }
   if (status === "awaiting_confirmation" || status === "delivered") {
     return { label: t("status_awaiting_receipt"), color: INFO };
   }
   if (status === 'received') {
-    return { label: t('status_received'), color: ACCENT };
+    return { label: t('status_received'), color: activeColor };
   }
   if (status === 'completed') {
     return { label: t('status_completed'), color: ARCHIVE };
@@ -162,7 +201,7 @@ const dealStatus = (status, t) => {
   return { label: formatStatus(status), color: ARCHIVE };
 };
 
-function TabChip({ label, count, attentionCount = 0, active, onPress, testID, icon = null, colors }) {
+function TabChip({ label, count, attentionCount = 0, active, onPress, testID, icon = null, colors, sp = (n) => n }) {
   return (
     <TouchableOpacity
       testID={testID}
@@ -173,7 +212,7 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
       style={[
         styles.tabChip,
         {
-          borderColor: active ? '#A6D2BE' : colors.border,
+          borderColor: active ? colors.accent : colors.border,
           backgroundColor: active ? colors.accentSoft : colors.surface,
           shadowColor: colors.shadow,
         },
@@ -190,9 +229,9 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
           {label}
         </Text>
       </View>
-      <View style={[styles.tabCountBadge, { backgroundColor: active ? colors.surface : colors.surfaceAlt, borderColor: active ? '#B9DACB' : colors.border }]}>
+      <View style={[styles.tabCountBadge, { backgroundColor: active ? colors.surface : colors.surfaceAlt, borderColor: active ? colors.accent : colors.border }]}>
         <Text
-          style={[styles.tabCount, { color: active ? colors.accent : colors.textMuted }]}
+          style={[styles.tabCount, { color: active ? colors.accent : colors.textMuted, fontSize: sp(10.5) }]}
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.75}
@@ -202,7 +241,7 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
       </View>
       {attentionCount > 0 ? (
         <View style={styles.tabAttentionBadge} testID={`${testID}-attention`}>
-          <Text style={styles.tabAttentionText}>
+          <Text style={[styles.tabAttentionText, { fontSize: sp(9) }]}>
             {attentionCount > 99 ? '99+' : attentionCount}
           </Text>
         </View>
@@ -211,9 +250,15 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
   );
 }
 
+// CompactDealCard — deals-inbox card, now a thin adapter over the canonical
+// MarketplaceCard (Design v1 Commit 3): radius 17→16, StatusPill instead of
+// the local status-pill fork, no shadow. Unread badge, chevron, time and
+// counterparty meta are preserved; the inbox keeps its own status colors
+// (dealStatus + attention overrides) via the StatusPill `color` prop.
 function CompactDealCard({
   routeLabel,
   price,
+  priceMeta,
   statusLabel,
   statusColor,
   time,
@@ -222,58 +267,36 @@ function CompactDealCard({
   dimmed = false,
   onPress,
   testID,
-  colors,
+  variant = 'default',
 }) {
   return (
-    <TouchableOpacity
+    <MarketplaceCard
       testID={testID}
-      activeOpacity={0.72}
       onPress={onPress}
-      style={[
-        styles.card,
-        {
-          borderColor: colors.border,
-          backgroundColor: colors.surface,
-          shadowColor: colors.shadow,
-          opacity: dimmed ? colors.dimOpacity : 1,
-        },
-      ]}
-    >
-      <View style={styles.cardTop}>
-        <Text style={[styles.route, { color: colors.text }]} numberOfLines={1}>{routeLabel}</Text>
-        {price ? <Text style={[styles.price, { color: colors.text }]} numberOfLines={1}>{price}</Text> : null}
-        <Feather name="chevron-right" size={17} color={colors.chevron} />
-      </View>
-
-      <View style={styles.cardMiddle}>
-        <View style={[styles.statusPill, { backgroundColor: `${statusColor}12` }]}>
-          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-          <Text style={[styles.statusText, { color: statusColor }]} numberOfLines={1}>
-            {statusLabel}
-          </Text>
-        </View>
-        <View style={styles.cardRightMeta}>
-          {time ? <Text style={[styles.time, { color: colors.textMuted }]}>{time}</Text> : null}
-          {unread > 0 ? (
-            <View style={styles.unreadBadge} testID="deals-card-unread">
-              <Text style={styles.unreadText}>{unread > 9 ? '9+' : unread}</Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
-
-      {meta ? <Text style={[styles.meta, { color: colors.textMuted }]} numberOfLines={1}>{meta}</Text> : null}
-    </TouchableOpacity>
+      style={styles.card}
+      route={routeLabel}
+      price={price}
+      priceMeta={priceMeta}
+      status={{ key: 'deal', label: statusLabel, color: statusColor }}
+      counterparty={meta}
+      rightMeta={time}
+      unread={unread}
+      chevron
+      dimmed={dimmed}
+      variant={variant}
+    />
   );
 }
 
 export default function DealsScreen({ navigation, route }) {
-  const { t, lang } = useI18n();
+  const { t, lang, sp } = useI18n();
   const { theme, isDark } = useTheme();
-  const palette = useMemo(() => dealsPalette(theme, isDark), [theme, isDark]);
   const role = route?.params?.role || 'client';
-  const roleAccent = accentFor(role) || ACCENT;
+  const isDriver = role === 'driver';
+  const palette = useMemo(() => dealsPalette(theme, isDark, isDriver), [theme, isDark, isDriver]);
+  const roleAccent = isDriver ? palette.accent : (accentFor(role) || ACCENT);
   const copy = COPY[lang] || COPY.EN;
+  const { requireLevel, Gate } = useVerificationGate();
 
   const [dealTab, setDealTab] = useState("offers");
   const [query, setQuery] = useState("");
@@ -292,11 +315,14 @@ export default function DealsScreen({ navigation, route }) {
       setAllDeals(dashboard.my_deals || []);
       setIncomingBids(dashboard.incoming_bids || []);
       setMyBids(dashboard.my_bids || []);
-      const unreadPaths = (notifData?.notifications || [])
-        .filter((item) => !item?.is_read)
-        .map((item) => normalizeNotifPath(item?.url))
-        .filter(Boolean);
-      setUnreadNotifPaths(unreadPaths);
+      try {
+        const notificationData = await notificationsAPI.list(50);
+        setUnreadNotifPaths(unreadNotificationPaths(notificationData));
+      } catch {
+        // Notification badges are auxiliary; a notification API outage must
+        // not turn an otherwise valid Deals dashboard into an error screen.
+        setUnreadNotifPaths([]);
+      }
     } catch (error) {
       setLoadError(true);
       console.warn("deals load failed", error?.message || error);
@@ -344,21 +370,22 @@ export default function DealsScreen({ navigation, route }) {
     [t, lang],
   );
 
-  const endpoint = useCallback(
-    (country, city) => {
-      const flag = countryFlag(country);
-      const place = localizePlace(city || "—", lang);
-      return [flag, place].filter(Boolean).join(" ");
-    },
-    [lang],
-  );
-
   const routeFor = useCallback((item, kind) => {
     if (kind === 'bid') {
-      return `${endpoint(item.from_country, item.cargo_from || item.trip_from)} → ${endpoint(item.to_country, item.trip_to || item.cargo_to)}`;
+      return {
+        from: localizePlace(item.cargo_from || item.trip_from || '—', lang),
+        to: localizePlace(item.trip_to || item.cargo_to || '—', lang),
+        fromFlag: countryCode(item.from_country) || null,
+        toFlag: countryCode(item.to_country) || null,
+      };
     }
-    return `${endpoint(item.from_country, item.from_city)} → ${endpoint(item.to_country, item.to_city)}`;
-  }, [endpoint, role]);
+    return {
+      from: localizePlace(item.from_city || '—', lang),
+      to: localizePlace(item.to_city || '—', lang),
+      fromFlag: countryCode(item.from_country) || null,
+      toFlag: countryCode(item.to_country) || null,
+    };
+  }, [lang]);
 
   const priceText = useCallback(
     (amount, currency = "USD") => {
@@ -600,14 +627,13 @@ export default function DealsScreen({ navigation, route }) {
         ? relTime(data.updated_at || data.created_at)
         : formatBidRemaining(data, lang);
       const isIncomingCargoOffer = role === 'client' && data._incoming && data.cargo_id;
-      const offerTitle = data.bidder_name || t('role_driver');
       const offerRoute = routeFor(data, 'bid');
       const offerCargo = data.cargo_desc ? localizeCargoName(data.cargo_desc, lang) : '';
-      const offerMeta = [offerRoute, offerCargo].filter(Boolean).join(' · ');
+      const offerMeta = [data.bidder_name || t('role_driver'), offerCargo].filter(Boolean).join(' · ');
       return (
         <CompactDealCard
           testID="deals-driver-bid"
-          routeLabel={isIncomingCargoOffer ? offerTitle : routeFor(data, 'bid')}
+          routeLabel={offerRoute}
           price={price}
           statusLabel={statusLabel}
           statusColor={statusColor}
@@ -616,11 +642,11 @@ export default function DealsScreen({ navigation, route }) {
           dimmed={isClosed}
           unread={!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0}
           onPress={() => openBid(data)}
-          colors={palette}
+          variant={isDriver ? 'driver' : 'default'}
         />
       );
       }
-      const status = dealStatus(data.status, t);
+      const status = dealStatus(data.status, t, palette.accent);
       const partnerName = role === 'client'
         ? (data.driver_name || t('role_driver'))
         : (data.shipper_name || t('role_client'));
@@ -644,6 +670,7 @@ export default function DealsScreen({ navigation, route }) {
           testID="deals-deal-card"
           routeLabel={routeFor(data, 'deal')}
           price={priceText(data.amount, data.currency || 'USD')}
+          priceMeta={data.id ? `${t('deal_no')} ${data.id}` : null}
           statusLabel={statusLabel}
           statusColor={statusColor}
           time={relTime(data.last_message_at || data.updated_at || data.created_at)}
@@ -651,7 +678,7 @@ export default function DealsScreen({ navigation, route }) {
           unread={unread}
           dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
           onPress={() => openDeal(data)}
-          colors={palette}
+          variant={isDriver ? 'driver' : 'default'}
         />
       );
     }, [
@@ -685,13 +712,10 @@ export default function DealsScreen({ navigation, route }) {
       ]}
       testID="deals-minimal-header"
     >
-      <View style={styles.menuRow}>
-        <HeaderMenuButton
-          navigation={navigation}
-          role={role}
-          testID="deals-menu-btn"
-        />
-      </View>
+      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="deals-minimal-header" bellTestID="deals-notification-settings-btn" menuTestID="deals-menu-btn" onBellPress={async () => {
+            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
+            if (ok) navigation.navigate('PushFilter', { role });
+          }} />
 
       <View style={styles.tabsRow} testID="deals-primary-tabs">
         <TabChip
@@ -702,6 +726,7 @@ export default function DealsScreen({ navigation, route }) {
           active={dealTab === 'offers'}
           onPress={() => setDealTab('offers')}
           colors={palette}
+          sp={sp}
         />
         <TabChip
           testID="deals-tab-active"
@@ -711,6 +736,7 @@ export default function DealsScreen({ navigation, route }) {
           active={dealTab === 'active'}
           onPress={() => setDealTab('active')}
           colors={palette}
+          sp={sp}
         />
         <TabChip
           testID="deals-tab-archive"
@@ -720,6 +746,7 @@ export default function DealsScreen({ navigation, route }) {
           onPress={() => setDealTab('archive')}
           icon="archive"
           colors={palette}
+          sp={sp}
         />
       </View>
 
@@ -764,6 +791,7 @@ export default function DealsScreen({ navigation, route }) {
       edges={['top']}
       testID="deal-room-list"
     >
+      {isDriver ? <DriverRouteBackdrop /> : null}
       {loading ? (
         <>
           {listHeader}
@@ -803,6 +831,7 @@ export default function DealsScreen({ navigation, route }) {
           )}
         />
       )}
+      {Gate}
     </SafeAreaView>
   );
 }
@@ -962,107 +991,9 @@ const styles = StyleSheet.create({
     paddingTop: 0,
     paddingBottom: 118,
   },
-  card: {
-    minHeight: 92,
-    marginHorizontal: 18,
-    marginBottom: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-    shadowColor: "#15211C",
-    shadowOpacity: 0.03,
-    shadowRadius: 9,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  cardTop: {
-    minHeight: 23,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  route: {
-    flex: 1,
-    minWidth: 0,
-    color: TEXT,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "700",
-    letterSpacing: -0.18,
-  },
-  price: {
-    maxWidth: "37%",
-    flexShrink: 0,
-    color: TEXT,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "800",
-    fontVariant: ["tabular-nums"],
-    textAlign: "right",
-  },
-  cardMiddle: {
-    marginTop: 7,
-    minHeight: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  statusPill: {
-    maxWidth: "72%",
-    minHeight: 24,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: {
-    flexShrink: 1,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "700",
-  },
-  cardRightMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 6,
-    minWidth: 54,
-    flexShrink: 0,
-  },
-  time: {
-    color: TEXT_DIM,
-    fontSize: 11,
-    lineHeight: 16,
-    fontVariant: ["tabular-nums"],
-    textAlign: "right",
-  },
-  unreadBadge: {
-    minWidth: 21,
-    height: 21,
-    paddingHorizontal: 5,
-    borderRadius: 11,
-    backgroundColor: "#D64545",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  unreadText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  meta: {
-    marginTop: 6,
-    color: TEXT_MUTED,
-    fontSize: 12,
-    lineHeight: 16,
-  },
+  // Design v1 Commit 3: the card chrome lives in MarketplaceCard (radius
+  // 16, border-only, StatusPill); the inbox keeps list spacing only.
+  card: { marginHorizontal: 18, marginBottom: 8 },
   emptyText: {
     marginTop: 58,
     paddingHorizontal: 24,

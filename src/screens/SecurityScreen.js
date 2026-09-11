@@ -11,6 +11,7 @@ import { regAPI } from '../utils/registration';
 import { marketAPI } from '../utils/marketAPI';
 import GradientText from '../components/GradientText';
 import SecurityBadge from '../components/SecurityBadge';
+import Button from '../components/ui/v1/Button';
 
 export default function SecurityScreen({ navigation }) {
   const v1 = useV1Colors();
@@ -89,16 +90,14 @@ export default function SecurityScreen({ navigation }) {
                 повторный вход в верификацию перезаписывал данные (хвост
                 бага «повторная регистрация после верификации»). */}
             {(session?.user?.role !== 'client' && !confirmed) ? (
-              <TouchableOpacity
-                style={[s.verifyBtn, { backgroundColor: '#168759' }]}
+              <Button
+                title={t('security_verify_cta')}
+                icon="file-text"
+                fullWidth
                 onPress={() => navigation.navigate('Citizenship')}
                 testID="security-verify-docs"
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Feather name="file-text" size={15} color="#0C0A09" />
-                  <Text style={s.verifyBtnText}>{t('security_verify_cta')}</Text>
-                </View>
-              </TouchableOpacity>
+                style={{ marginBottom: 14 }}
+              />
             ) : null}
 
             {/* Что улучшит скоринг */}
@@ -171,8 +170,6 @@ const s = StyleSheet.create({
   heroMax: { fontSize: 22, opacity: 0.5, fontWeight: '700' },
   heroLabel: { fontSize: 16, fontWeight: '800' },
   heroHint: { fontSize: 12, textAlign: 'center', lineHeight: 18, marginTop: 10 },
-  verifyBtn: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  verifyBtnText: { fontSize: 15, fontWeight: '800', color: '#0C0A09' },
   section: { borderRadius: 16, padding: 16, borderWidth: 1, marginBottom: 12 },
   sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
   tipRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1 },

@@ -589,6 +589,21 @@ export const regAPI = {
     }
   },
 
+  async completeBasic() {
+    const token = await this.getToken();
+    if (!token) return { ok: false, detail: 'no_token' };
+    try {
+      const r = await fetch(`${DRIVER_REG_BASE}/complete-basic`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
+  },
+
   // ТЗ §9 — отправка заявки на проверку (стартовый скоринг на бэке).
   async submitDriverRegistration() {
     const token = await this.getToken();

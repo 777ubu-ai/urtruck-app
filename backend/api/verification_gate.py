@@ -65,6 +65,24 @@ def get_user(authorization: str = Header(None)) -> dict:
     return _extract_driver(authorization)
 
 
+def require_driver_trip_publication(authorization: str = Header(None)) -> dict:
+    """Разрешить публикацию рейса после basic onboarding или Pro."""
+    driver = _extract_driver(authorization)
+    if not (
+        driver.get("basic_onboarding_completed")
+        or driver.get("status") == "approved"
+        or int(driver.get("verification_level") or 0) >= 3
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "basic_onboarding_required",
+                "message": "Сначала заполните личные данные и данные автомобиля",
+            },
+        )
+    return driver
+
+
 def require_admin(authorization: str = Header(None)) -> dict:
     """Только admin / support роли. Для blacklist/add, report, alerts."""
     driver = _extract_driver(authorization)

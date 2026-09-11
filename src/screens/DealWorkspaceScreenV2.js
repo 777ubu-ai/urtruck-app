@@ -26,6 +26,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import TruckMap from '../components/TruckMap';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
+import Button from '../components/ui/v1/Button';
 import { chatAPI, documentKindFromFile } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { parseRouteCities } from '../utils/geo';
@@ -34,13 +35,15 @@ import { getLanguage, formatStatus, formatTruckType } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
-import { useV1Colors } from '../theme/designV1';
+import { useV1Colors, getBubbleColors, withAlpha } from '../theme/designV1';
+import { useTheme } from '../utils/ThemeContext';
 import { formatPrice } from '../utils/normalizers';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { getAvailableDealActions } from '../utils/dealActionResolver';
 import {
   ensureBackgroundLocationPermission,
   getCurrentLocationPayload,
+  getLocationHealth,
   requestForegroundLocationPermission,
 } from '../utils/backgroundLocation';
 import { compressImage } from '../utils/imageCompress';
@@ -51,6 +54,7 @@ import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
 import { SERVER_URL } from '../config/env';
+import { useKeyboardDockInset } from '../components/ui/v1/KeyboardSafeLayout';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
@@ -197,6 +201,23 @@ const compactDate = (raw, lang) => {
   } catch { return `${match[3]}.${match[2]}`; }
 };
 
+// ── Date separators (Commit 5): render-level day grouping of the existing
+// message list — the data model is untouched. A centered pill is drawn
+// between messages whose server day differs from the previous one.
+const dayKeyOf = (message) => {
+  const date = parseServerDate(message?.createdAt);
+  return (date || new Date()).toDateString();
+};
+
+const formatDayLabel = (message, { t, lang }) => {
+  const key = dayKeyOf(message);
+  const now = new Date();
+  if (key === now.toDateString()) return t('chat_day_today');
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toDateString();
+  if (key === yesterday) return t('chat_day_yesterday');
+  return compactDate(message?.createdAt, lang) || key;
+};
+
 const formatWeight = (value, lang) => {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return '';
@@ -224,10 +245,20 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { t, lang } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const colors = useV1Colors();
+  const { isDark } = useTheme();
+  // Chat bubble canon (Commit 5): outgoing = WhatsApp-family green from
+  // getBubbleColors, incoming = surface + hairline border. Everything that
+  // lives ON a bubble (text, timestamps, translate link, doc icons) derives
+  // from these — no standalone hardcoded fork.
+  const bubbleMineColors = getBubbleColors(true, !!isDark);
+  const bubbleSurfaceFor = React.useCallback((mine) => (mine
+    ? { backgroundColor: bubbleMineColors.backgroundColor, borderColor: bubbleMineColors.borderColor }
+    : { backgroundColor: colors.surface, borderColor: colors.border }), [bubbleMineColors, colors]);
   const { session } = useAuth();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
+  const chatKeyboardInset = useKeyboardDockInset(window.height, insets.top);
   const params = route?.params || {};
 
   const [dealId, setDealId] = React.useState(params.dealId || null);
@@ -260,7 +291,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [callMenuOpen, setCallMenuOpen] = React.useState(false);
   const [statusModalOpen, setStatusModalOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
-  const [composerFocused, setComposerFocused] = React.useState(false);
   const [emojiOpen, setEmojiOpen] = React.useState(false);
   const [recordSecs, setRecordSecs] = React.useState(0);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
@@ -270,6 +300,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [translations, setTranslations] = React.useState({});
   const [translating, setTranslating] = React.useState(null);
   const [autoTranslate, setAutoTranslate] = React.useState(false);
+  const [voiceTranscripts, setVoiceTranscripts] = React.useState({});
+  const [voiceTranscribing, setVoiceTranscribing] = React.useState(null);
 
   const listRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -308,11 +340,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setAttachOpen(false);
     setCallMenuOpen(false);
     setEmojiOpen(false);
-    setComposerFocused(true);
-  }, []);
-
-  const onComposerBlur = React.useCallback(() => {
-    setComposerFocused(false);
   }, []);
 
   const collapseComposer = React.useCallback(() => {
@@ -320,7 +347,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     if (recording || input.trim()) return;
     setAttachOpen(false);
     setCallMenuOpen(false);
-    setComposerFocused(false);
     inputRef.current?.blur?.();
     Keyboard.dismiss();
   }, [input, recording]);
@@ -557,6 +583,55 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     return () => { cancelled = true; };
   }, [autoTranslate, messages, translations]);
 
+  React.useEffect(() => {
+    setVoiceTranscripts((previous) => {
+      let next = previous;
+      let changed = false;
+      for (const message of messages) {
+        if (!message?.voice || !message?.transcript) continue;
+        const current = previous[message.id];
+        if (current?.transcriptText === message.transcript) continue;
+        if (!changed) next = { ...previous };
+        next[message.id] = {
+          ...current,
+          visible: current?.visible ?? false,
+          transcriptText: message.transcript,
+          sourceLang: message.transcriptLang || null,
+          provider: message.transcriptProvider || null,
+        };
+        changed = true;
+      }
+      return changed ? next : previous;
+    });
+  }, [messages]);
+
+  const toggleVoiceTranscript = React.useCallback(async (item) => {
+    const current = voiceTranscripts[item.id];
+    if (current?.transcriptText) {
+      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...current, visible: !current.visible } }));
+      return;
+    }
+    setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: null } }));
+    setVoiceTranscribing(item.id);
+    try {
+      const result = await chatAPI.transcribe(item.id, getLanguage().toLowerCase());
+      if (!result?.transcript_text) {
+        setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('voice_transcription_unavailable') } }));
+        toast(t('voice_transcription_unavailable'), 'info');
+        return;
+      }
+      setVoiceTranscripts((previous) => ({
+        ...previous,
+        [item.id]: { visible: true, transcriptText: result.transcript_text, sourceLang: result.source_lang || null, provider: result.provider || null, translatedText: result.translated_text || null },
+      }));
+    } catch {
+      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('voice_transcription_unavailable') } }));
+      toast(t('voice_transcription_unavailable'), 'info');
+    } finally {
+      setVoiceTranscribing(null);
+    }
+  }, [voiceTranscripts, toast, t]);
+
   const trackingActive = Boolean(dealId && LIVE_TRACKING_STATUSES.includes(deal?.status));
   const refreshLocation = React.useCallback(async () => {
     if (!trackingActive || !dealId) {
@@ -590,6 +665,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const from = deal?.from_city || params.fromCity || '—';
   const to = deal?.to_city || params.toCity || '—';
   const routePoints = React.useMemo(() => dedupePoints([...parseRouteCities(from), ...parseRouteCities(to)]), [from, to]);
+  // Track B / B1 fix: this embedded map used to render TruckMap with no
+  // `vehicle` prop at all, silently dropping the payload-aware road-routing
+  // wiring that RouteMap.js/TrackTruckScreen.js carry (see
+  // tests/frontend/test_vehicle_weight_routing.mjs and its 3-round review
+  // history). Mirrors RouteMap.js exactly: payload_t (cargo capacity), never
+  // weight_t (full vehicle mass) — we don't collect the latter anywhere.
+  const vehicle = React.useMemo(() => {
+    const tons = Number(deal?.trip_capacity_tons);
+    return Number.isFinite(tons) && tons > 0 ? { payload_t: tons } : null;
+  }, [deal?.trip_capacity_tons]);
   const lat = location ? Number(location.lat) : null;
   const lng = location ? Number(location.lng) : null;
   const hasLivePoint = Number.isFinite(lat) && Number.isFinite(lng);
@@ -624,6 +709,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     const permission = await ensureBackgroundLocationPermission();
     setTrackingLoading(false);
     if (!permission.ok) { toast(t('track_permission_needed'), 'error'); return; }
+    const health = await getLocationHealth();
+    if (health.state !== 'ready') {
+      const message = health.state === 'system_disabled' ? t('gps_system_disabled')
+        : health.state === 'no_fix' ? t('gps_no_fix')
+          : t('track_permission_needed');
+      toast(message, 'error');
+      return;
+    }
     const result = await changeDealStatus('in_progress');
     if (result?.ok) {
       const point = await getCurrentLocationPayload();
@@ -969,6 +1062,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const toggleAttachMenu = React.useCallback(() => {
     setCallMenuOpen(false);
     setEmojiOpen(false);
+    // The attachment sheet replaces the composer interaction. Leaving the
+    // native IME focused makes the sheet render behind it on Android, so it
+    // must use the same ownership handoff as the emoji sheet.
+    Keyboard.dismiss();
+    inputRef.current?.blur?.();
     setAttachOpen((value) => !value);
   }, []);
 
@@ -985,136 +1083,154 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setInput((value) => `${value}${emoji}`);
   }, []);
 
-  const renderMessage = React.useCallback(({ item }) => {
+  const renderMessage = React.useCallback(({ item, index }) => {
+    const datePill = (index === 0 || dayKeyOf(messages[index - 1]) !== dayKeyOf(item)) ? (
+      <View style={s.datePillRow} testID="deal-chat-date-separator">
+        <View style={[s.datePill, { backgroundColor: colors.surfaceMuted }]} pointerEvents="none">
+          <Text style={[s.datePillText, { color: colors.textMuted }]}>{formatDayLabel(item, { t, lang })}</Text>
+        </View>
+      </View>
+    ) : null;
+
     if (item.system) return (
-      <View style={s.systemRow}><Text style={[s.systemText, { color: colors.textMuted }]}>{item.text}</Text></View>
+      <React.Fragment>
+        {datePill}
+        <View style={s.systemRow}><Text style={[s.systemText, { color: colors.textMuted }]}>{item.text}</Text></View>
+      </React.Fragment>
     );
 
     if (item.kind === 'document') {
       const meta = item.docKind || {};
       const isBusy = item.docStatus === 'uploading' || item.docStatus === 'queued' || item.docStatus === 'retrying';
       const isFailed = item.docStatus === 'failed';
+      const onBubbleMuted = item.mine ? withAlpha(bubbleMineColors.textColor, 0.7) : colors.textMuted;
       return (
-        <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
-          <TouchableOpacity
-            activeOpacity={item.docUrl ? 0.72 : 1}
-            disabled={!item.docUrl}
-            onPress={() => item.docUrl && Linking.openURL(item.docUrl).catch(() => {})}
-            style={[s.docBubble, item.mine ? s.bubbleMine : s.bubbleThem, !item.mine && { borderColor: colors.border, backgroundColor: colors.surface }]}
-            testID="deal-chat-document-bubble"
-          >
-            <View style={[s.docIconBox, { backgroundColor: item.mine ? 'rgba(255,255,255,0.18)' : '#E9F6EF' }]}>
-              <Feather name={meta.icon || 'file'} size={20} color={item.mine ? '#FFFFFF' : '#168759'} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={[s.docName, { color: item.mine ? '#FFFFFF' : colors.text }]}>{item.docName}</Text>
-              <Text numberOfLines={1} style={[s.docMeta, { color: isFailed ? (item.mine ? '#FFE1E1' : '#EF4444') : (item.mine ? 'rgba(255,255,255,0.75)' : colors.textMuted) }]}>
-                {isFailed
-                  ? (item.docErrorText || t('doc_error_failed'))
-                  : [formatBytes(item.docSize), isBusy ? t('chat_attach_status_uploading') : t('chat_attach_status_uploaded')].filter(Boolean).join(' · ')}
-              </Text>
-            </View>
-            {isBusy ? <ActivityIndicator size="small" color={item.mine ? '#FFFFFF' : '#168759'} /> : null}
-            {isFailed ? (
-              <TouchableOpacity onPress={() => retryDocument(item)} style={s.docRetryBtn} testID="deal-chat-document-retry">
-                <Feather name="refresh-cw" size={15} color={item.mine ? '#FFFFFF' : '#168759'} />
-              </TouchableOpacity>
-            ) : item.docUrl ? <Feather name="chevron-right" size={16} color={item.mine ? 'rgba(255,255,255,0.75)' : colors.textMuted} /> : null}
-          </TouchableOpacity>
-          <Text style={[s.messageTime, { color: colors.textMuted, textAlign: item.mine ? 'right' : 'left' }]}>{item.time}</Text>
-        </View>
+        <React.Fragment>
+          {datePill}
+          <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
+            <TouchableOpacity
+              activeOpacity={item.docUrl ? 0.72 : 1}
+              disabled={!item.docUrl}
+              onPress={() => item.docUrl && Linking.openURL(item.docUrl).catch(() => {})}
+              style={[s.docBubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}
+              testID="deal-chat-document-bubble"
+            >
+              <View style={[s.docIconBox, { backgroundColor: item.mine ? withAlpha(bubbleMineColors.textColor, 0.14) : colors.driverGlow }]}>
+                <Feather name={meta.icon || 'file'} size={20} color={item.mine ? bubbleMineColors.textColor : colors.driver} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={[s.docName, { color: item.mine ? bubbleMineColors.textColor : colors.text }]}>{item.docName}</Text>
+                <Text numberOfLines={1} style={[s.docMeta, { color: isFailed ? colors.error : onBubbleMuted }]}>
+                  {isFailed
+                    ? (item.docErrorText || t('doc_error_failed'))
+                    : [formatBytes(item.docSize), isBusy ? t('chat_attach_status_uploading') : t('chat_attach_status_uploaded')].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+              {isBusy ? <ActivityIndicator size="small" color={item.mine ? bubbleMineColors.textColor : colors.driver} /> : null}
+              {isFailed ? (
+                <TouchableOpacity onPress={() => retryDocument(item)} style={s.docRetryBtn} testID="deal-chat-document-retry">
+                  <Feather name="refresh-cw" size={15} color={item.mine ? bubbleMineColors.textColor : colors.driver} />
+                </TouchableOpacity>
+              ) : item.docUrl ? <Feather name="chevron-right" size={16} color={onBubbleMuted} /> : null}
+            </TouchableOpacity>
+            <Text style={[s.messageTime, { color: colors.textMuted, textAlign: item.mine ? 'right' : 'left' }]}>{item.time}</Text>
+          </View>
+        </React.Fragment>
       );
     }
 
     return (
-      <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
-        <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, !item.mine && { borderColor: colors.border, backgroundColor: colors.surface }]}>
-          {item.photo && item.mediaUrl ? (
-            <TouchableOpacity onPress={() => setFullImage(item.mediaUrl)} testID="deal-chat-photo-bubble">
-              <Image source={{ uri: item.mediaUrl }} style={s.photo} />
+      <React.Fragment>
+        {datePill}
+        <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
+          <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}>
+            {item.photo && item.mediaUrl ? (
+              <TouchableOpacity onPress={() => setFullImage(item.mediaUrl)} testID="deal-chat-photo-bubble">
+                <Image source={{ uri: item.mediaUrl }} style={s.photo} />
+              </TouchableOpacity>
+            ) : null}
+            {item.voice ? (
+              <VoiceMessageBubble
+                uri={item.mediaUrl}
+                fallbackDurationSec={item.voiceDuration}
+                mine={item.mine}
+                transcript={voiceTranscripts[item.id]}
+                transcribing={voiceTranscribing === item.id}
+                onToggleTranscript={() => toggleVoiceTranscript(item)}
+                t={t}
+                onError={() => toast(t('voice_play_fail'), 'error')}
+              />
+            ) : item.text ? (
+              <>
+                <Text style={[s.messageText, { color: item.mine ? bubbleMineColors.textColor : colors.text }]}>
+                  {translations[item.id] && !translations[item.id].showOriginal ? translations[item.id].text : item.text}
+                </Text>
+                {!item.mine && !item.system ? (
+                  <TouchableOpacity
+                    style={s.translateBtn}
+                    disabled={translating === item.id}
+                    onPress={async () => {
+                      const current = translations[item.id];
+                      if (current) {
+                        setTranslations((prev) => ({ ...prev, [item.id]: { ...current, showOriginal: !current.showOriginal } }));
+                        return;
+                      }
+                      setTranslating(item.id);
+                      try {
+                        const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
+                        if (result?.translated_text) {
+                          setTranslations((prev) => ({
+                            ...prev,
+                            [item.id]: { text: result.translated_text, provider: result.provider, showOriginal: false },
+                          }));
+                        } else {
+                          toast(t('translation_unavailable'), 'info');
+                        }
+                      } catch {
+                        toast(t('translation_unavailable'), 'info');
+                      } finally {
+                        setTranslating(null);
+                      }
+                    }}
+                    testID="deal-chat-message-translate"
+                  >
+                    <Feather name="globe" size={11} color={colors.info} />
+                    <Text style={[s.translateText, { color: colors.info }]}>
+                      {translating === item.id ? '...' : translations[item.id] ? (translations[item.id].showOriginal ? t('hide_original') : t('show_original')) : t('translate')}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            ) : null}
+            <Text style={[s.messageTime, { color: item.mine ? withAlpha(bubbleMineColors.textColor, 0.62) : colors.textMuted }]}>{item.time}</Text>
+          </View>
+          {item.sendStatus === 'failed' && !item.voice ? (
+            <TouchableOpacity
+              onPress={() => retryFailedText(item)}
+              style={s.errorRow}
+              testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
+            >
+              <Feather name="alert-circle" size={12} color="#EF4444" />
+              <Text style={s.errorText} numberOfLines={2}>
+                {item.sendError || t('chat_send_failed')} · {t('chat_attach_retry')}
+              </Text>
+            </TouchableOpacity>
+          ) : item.sendStatus === 'failed' && item.voice ? (
+            <TouchableOpacity
+              disabled
+              style={s.errorRow}
+              testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
+            >
+              <Feather name="alert-circle" size={12} color="#EF4444" />
+              <Text style={s.errorText} numberOfLines={2}>
+                {item.sendError || t('voice_error_send')}
+              </Text>
             </TouchableOpacity>
           ) : null}
-          {item.voice ? (
-            <VoiceMessageBubble
-              uri={item.mediaUrl}
-              fallbackDurationSec={item.voiceDuration}
-              mine={item.mine}
-              sending={item.sendStatus === 'sending'}
-              textColor={item.mine ? '#FFFFFF' : colors.text}
-              mutedColor={item.mine ? 'rgba(255,255,255,0.85)' : colors.textMuted}
-              onError={() => toast(t('voice_play_fail'), 'error')}
-              testID="deal-chat-voice-bubble"
-            />
-          ) : item.text ? (
-            <>
-              <Text style={[s.messageText, { color: item.mine ? '#FFFFFF' : colors.text }]}>
-                {translations[item.id] && !translations[item.id].showOriginal ? translations[item.id].text : item.text}
-              </Text>
-              {!item.mine && !item.system ? (
-                <TouchableOpacity
-                  style={s.translateBtn}
-                  disabled={translating === item.id}
-                  onPress={async () => {
-                    const current = translations[item.id];
-                    if (current) {
-                      setTranslations((prev) => ({ ...prev, [item.id]: { ...current, showOriginal: !current.showOriginal } }));
-                      return;
-                    }
-                    setTranslating(item.id);
-                    try {
-                      const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
-                      if (result?.translated_text) {
-                        setTranslations((prev) => ({
-                          ...prev,
-                          [item.id]: { text: result.translated_text, provider: result.provider, showOriginal: false },
-                        }));
-                      } else {
-                        toast(t('translation_unavailable'), 'info');
-                      }
-                    } catch {
-                      toast(t('translation_unavailable'), 'info');
-                    } finally {
-                      setTranslating(null);
-                    }
-                  }}
-                  testID="deal-chat-message-translate"
-                >
-                  <Feather name="globe" size={11} color={item.mine ? 'rgba(255,255,255,0.65)' : colors.textMuted} />
-                  <Text style={[s.translateText, { color: item.mine ? 'rgba(255,255,255,0.68)' : colors.textMuted }]}>
-                    {translating === item.id ? '...' : translations[item.id] ? (translations[item.id].showOriginal ? t('hide_original') : t('show_original')) : t('translate')}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-            </>
-          ) : null}
-          <Text style={[s.messageTime, { color: item.mine ? 'rgba(255,255,255,0.68)' : colors.textMuted }]}>{item.time}</Text>
         </View>
-        {item.sendStatus === 'failed' && !item.voice ? (
-          <TouchableOpacity
-            onPress={() => retryFailedText(item)}
-            style={s.errorRow}
-            testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
-          >
-            <Feather name="alert-circle" size={12} color="#EF4444" />
-            <Text style={s.errorText} numberOfLines={2}>
-              {item.sendError || t('chat_send_failed')} · {t('chat_attach_retry')}
-            </Text>
-          </TouchableOpacity>
-        ) : item.sendStatus === 'failed' && item.voice ? (
-          <TouchableOpacity
-            disabled
-            style={s.errorRow}
-            testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
-          >
-            <Feather name="alert-circle" size={12} color="#EF4444" />
-            <Text style={s.errorText} numberOfLines={2}>
-              {item.sendError || t('voice_error_send')}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
+      </React.Fragment>
     );
-  }, [colors, translations, translating, t, toast, retryDocument, retryFailedText]);
+  }, [colors, translations, translating, voiceTranscripts, voiceTranscribing, t, lang, toast, retryDocument, retryFailedText, toggleVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
@@ -1123,6 +1239,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const cargo = context.cargo || {};
   const trip = context.trip || {};
   const routeLabel = `${localizePlace(from, language)} → ${localizePlace(to, language)}`;
+  // «Сделка №…» — бэкенд отдаёт реальный числовой id сделки (getDeal/
+  // my_dashboard), он же пробрасывается через params.dealId. Рендерим только
+  // реальный id — ничего не выдумываем.
+  const dealNumber = deal?.id || dealId;
+  const dealPrice = deal?.amount != null
+    ? formatPrice(deal.amount, deal.currency || cargo?.currency || trip?.currency || 'USD', t)
+    : null;
+  const dealNoLine = [
+    dealNumber ? `${t('deal_no')} ${dealNumber}` : null,
+    dealPrice,
+  ].filter(Boolean).join(' · ');
   const visibleDealStatus = userFacingDealStatus(deal?.status || 'accepted');
   const statusLabel = visibleDealStatus === 'delivered' ? ui.awaitingReceiptStatus : formatStatus(visibleDealStatus);
   const statusActionIcon =
@@ -1139,7 +1266,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     localizeCargoName(rawCargoName, lang) || rawCargoName,
     formatWeight(text(deal?.weight_tons, cargo?.weight_tons), lang),
     rawTruckType ? formatTruckType(rawTruckType) : null,
-    deal?.amount != null ? formatPrice(deal.amount, deal.currency || cargo?.currency || trip?.currency || 'USD', t) : null,
   ].filter(Boolean).join(' · ');
 
   const pickup = text(deal?.pickup_date, deal?.departure, cargo?.pickup_date, trip?.departure);
@@ -1172,6 +1298,25 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const openMap = () => { setAttachOpen(false); setCallMenuOpen(false); setViewMode(VIEW_MAP); };
   const closeMap = () => setViewMode(VIEW_CHAT);
+
+  // GPS deep-link P1 fix: backend's tracking-request/approved/declined/
+  // stopped pushes set url=/deals/{id}?action=tracking
+  // (backend/api/marketplace.py:_tracking_notify) so the app knows to
+  // surface GPS context immediately, not leave the tapper to find it
+  // themselves in a plain chat view. App.js/NotificationsScreen.js now
+  // thread `action` through unchanged; this is where it actually lands.
+  // No separate "approve/decline GPS" banner exists on this screen yet
+  // (marketAPI.requestTracking/respondTracking have no live UI caller —
+  // flagged separately, out of scope for this fix per "don't create a
+  // second DealWorkspace route / don't invent new product UI"), so the
+  // most accurate thing this screen can honestly do today is open the
+  // live map, which is where any tracking state is actually visible.
+  // Runs once, reacting to the deep-link's initial intent — not on every
+  // params identity change React Navigation may produce afterward.
+  React.useEffect(() => {
+    if (params.action === 'tracking') openMap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sendDealShare = React.useCallback(() => {
     const parts = [
@@ -1234,19 +1379,19 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       <View style={s.headerActions}>
         <TouchableOpacity
           onPress={openMap}
-          style={s.headerIconBtn}
+          style={[s.headerIconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
           testID="deal-header-map"
           accessibilityLabel={t('deal_map_card_title')}
         >
-          <Feather name="map" size={17} color="#111827" />
+          <Feather name="map" size={17} color={colors.textMuted} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setStatusModalOpen(true)}
-          style={s.headerIconBtn}
+          style={[s.headerIconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
           testID="deal-status-open"
           accessibilityLabel={ui.statuses}
         >
-          <Feather name={statusActionIcon} size={17} color="#111827" />
+          <Feather name={statusActionIcon} size={17} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
     </View>
@@ -1313,85 +1458,91 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 <View
                   style={[
                     s.composerDock,
-                    { borderTopColor: colors.border, paddingBottom: attachOpen || emojiOpen ? 6 : Math.max(insets.bottom, 8) },
+                    {
+                      backgroundColor: colors.bg,
+                      borderTopColor: colors.border,
+                      paddingBottom: attachOpen || emojiOpen ? 6 : Math.max(insets.bottom, 8),
+                      marginBottom: chatKeyboardInset,
+                    },
                   ]}
                   testID="deal-chat-composer-dock"
                 >
-                  <View
-                    style={[
-                      s.composer,
-                      composerFocused && s.composerFocused,
-                    ]}
-                    testID="deal-chat-composer"
-                  >
-                    {!recording ? (
+                  {/* While recording, the empty composer row is hidden entirely —
+                      only the recording bar above is visible (Commit 5 canon). */}
+                  {!recording ? (
+                    <View
+                      style={[
+                        s.composer,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                      ]}
+                      testID="deal-chat-composer"
+                    >
                       <TouchableOpacity
-                        style={s.composerCircle}
-                        onPress={sendCameraPhoto}
-                        testID="deal-chat-camera"
-                      >
-                        <Feather name="camera" size={22} color="#202020" />
-                      </TouchableOpacity>
-                    ) : null}
-                    <View style={s.inputShell}>
-                      <TextInput
-                        ref={inputRef}
-                        value={input}
-                        onChangeText={(value) => {
-                          setInput(value);
-                          if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
-                          if (roomId) chatAPI.typing(roomId);
-                        }}
-                        onFocus={onComposerFocus}
-                        onBlur={onComposerBlur}
-                        onContentSizeChange={(event) => {
-                          const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
-                          setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
-                        }}
-                        multiline
-                        scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
-                        style={[s.input, { height: inputHeight, color: colors.text }]}
-                        placeholder=""
-                        placeholderTextColor="transparent"
-                        testID="deal-chat-input"
-                      />
-                    </View>
-                    {!composerFocused ? (
-                      <TouchableOpacity
-                        style={s.composerCircle}
-                        onPress={toggleEmojiMenu}
-                        testID="deal-chat-emoji"
-                      >
-                        <Feather name="smile" size={26} color="#202020" />
-                      </TouchableOpacity>
-                    ) : null}
-                    {!recording ? (
-                      input.trim() ? (
-                        <TouchableOpacity style={s.sendButton} onPress={sendText} testID="deal-chat-send"><FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid /></TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          style={s.composerCircle}
-                          onPress={toggleVoice}
-                          testID="deal-chat-voice"
-                        >
-                          <Feather name="volume-2" size={22} color="#202020" />
-                        </TouchableOpacity>
-                      )
-                    ) : null}
-                    {!recording ? (
-                      <TouchableOpacity
-                        style={s.composerCircle}
+                        style={[s.composerCircle, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
                         onPress={toggleAttachMenu}
-                        testID="deal-chat-attach"
+                        testID="deal-chat-plus"
+                        accessibilityLabel={ui.attachPhoto}
+                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                       >
-                        <Feather name="plus" size={27} color="#202020" />
+                        <Feather name="plus" size={27} color={colors.text} />
                       </TouchableOpacity>
-                    ) : null}
-                  </View>
+                      <View style={[s.inputShell, { backgroundColor: colors.surface }]}>
+                        <TextInput
+                          ref={inputRef}
+                          value={input}
+                          onChangeText={(value) => {
+                            setInput(value);
+                            if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+                            if (roomId) chatAPI.typing(roomId);
+                          }}
+                          onFocus={onComposerFocus}
+                          onContentSizeChange={(event) => {
+                            const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
+                            setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
+                          }}
+                          multiline
+                          scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
+                          style={[s.input, { height: inputHeight, color: colors.text }]}
+                          placeholder=""
+                          placeholderTextColor="transparent"
+                          testID="deal-chat-input"
+                        />
+                        <TouchableOpacity
+                          style={s.inputEmojiButton}
+                          onPress={toggleEmojiMenu}
+                          testID="deal-chat-emoji"
+                          accessibilityLabel={t('emoji')}
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                        >
+                          <Feather name="smile" size={22} color={colors.text} />
+                        </TouchableOpacity>
+                      </View>
+                      <TouchableOpacity
+                        style={[s.composerCircle, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
+                        onPress={toggleVoice}
+                        testID="deal-chat-voice"
+                        accessibilityLabel={ui.voiceMessage}
+                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                      >
+                        <Feather name="mic" size={22} color={colors.text} />
+                      </TouchableOpacity>
+                      {input.trim() ? (
+                        <TouchableOpacity
+                          style={[s.sendButton, { backgroundColor: colors.driver }]}
+                          onPress={sendText}
+                          testID="deal-chat-send"
+                          accessibilityLabel={t('send')}
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                        >
+                          <FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ) : null}
                 </View>
 
                 {emojiOpen ? (
-                  <View style={[s.emojiMenu, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 14, 22) }]} testID="deal-chat-emoji-menu">
+                  <View style={[s.emojiMenu, { backgroundColor: colors.bg, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 14, 22) }]} testID="deal-chat-emoji-menu">
                     <View style={s.emojiGrid}>
                       {EMOJI_MENU.map((emoji, index) => (
                         <TouchableOpacity
@@ -1408,22 +1559,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 ) : null}
 
                 {attachOpen ? (
-                  <View style={[s.attachMenu, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 18, 26) }]} testID="deal-chat-attach-menu">
+                  <View style={[s.attachMenu, { backgroundColor: colors.bg, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 18, 26) }]} testID="deal-chat-attach-menu">
                     <TouchableOpacity style={s.attachHandleHit} onPress={collapseComposer} testID="deal-chat-attach-collapse" activeOpacity={0.8}>
-                      <View style={s.attachHandle} />
+                      <View style={[s.attachHandle, { backgroundColor: colors.border }]} />
                     </TouchableOpacity>
                     {PLUS_MENU.map((item) => (
                       <TouchableOpacity key={item.key} style={s.attachItem} onPress={item.onPress} testID={item.testID} disabled={item.busy}>
-                        <View style={s.attachIcon}>
-                          {item.busy ? <ActivityIndicator size="small" color="#168759" /> : <FontAwesome5 name={item.icon} size={30} color="#686868" solid />}
+                        <View style={[s.attachIcon, { backgroundColor: colors.surface }]}>
+                          {item.busy ? <ActivityIndicator size="small" color="#168759" /> : <FontAwesome5 name={item.icon} size={30} color={colors.textMuted} solid />}
                         </View>
-                        <Text style={s.attachLabel} numberOfLines={1}>{item.label}</Text>
+                        <Text style={[s.attachLabel, { color: colors.textMuted }]} numberOfLines={1}>{item.label}</Text>
                       </TouchableOpacity>
                     ))}
-                    <View style={s.attachPager} pointerEvents="none">
-                      <View style={s.attachPagerDotActive} />
-                      <View style={s.attachPagerDot} />
-                    </View>
                   </View>
                 ) : null}
               </>
@@ -1431,7 +1578,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           </View>
         ) : (
           <View style={s.mapFullscreen} testID="deal-map-fullscreen">
-            <View style={s.mapArea} testID="deal-map-first-area">
+            <View style={[s.mapArea, { backgroundColor: colors.driverSoft }]} testID="deal-map-first-area">
               {showLiveMap ? (
                 <TruckMap
                   lat={hasLivePoint ? lat : undefined}
@@ -1441,10 +1588,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   planned={!hasLivePoint}
                   showBadge={false}
                   onRouteSummary={onRouteSummary}
+                  vehicle={vehicle}
                 />
               ) : (
                 <View style={[s.finishedMap, { backgroundColor: colors.surface }]} testID="deal-inactive-map-summary">
-                  <View style={s.finishedIcon}><Feather name={visibleDealStatus === 'delivered' ? 'package' : 'check-circle'} size={28} color="#168759" /></View>
+                  <View style={[s.finishedIcon, { backgroundColor: colors.driverSoft }]}><Feather name={visibleDealStatus === 'delivered' ? 'package' : 'check-circle'} size={28} color="#168759" /></View>
                   <Text style={[s.finishedTitle, { color: colors.text }]}>{inactiveTitle}</Text>
                   <Text style={[s.finishedRoute, { color: colors.text }]}>{routeLabel}</Text>
                   {inactiveSubtitle ? <Text style={[s.finishedSubtitle, { color: colors.text }]}>{inactiveSubtitle}</Text> : null}
@@ -1483,7 +1631,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             </View>
 
             <TouchableOpacity style={[s.chatDock, { backgroundColor: colors.bg, borderColor: colors.border }]} onPress={closeMap} testID="deal-chat-dock">
-              <View style={[s.chatIconBox]}><Feather name="message-circle" size={18} color="#168759" /></View>
+              <View style={[s.chatIconBox, { backgroundColor: colors.driverSoft }]}><Feather name="message-circle" size={18} color="#168759" /></View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={s.sheetTitleRow}>
                   <Text style={[s.sheetTitle, { color: colors.text }]}>{ui.messages}</Text>
@@ -1556,15 +1704,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 contentContainerStyle={{ paddingBottom: 12 }}
               />
               {nextAction ? (
-                <TouchableOpacity
-                  style={[s.statusNextBtn, { opacity: nextAction.disabled || statusLoading || trackingLoading ? 0.6 : 1 }]}
+                <Button
+                  title={statusLoading || trackingLoading ? '…' : nextAction.label}
+                  icon={nextAction.icon}
                   onPress={runNextAction}
                   disabled={nextAction.disabled || statusLoading || trackingLoading}
                   testID={nextActionTestId || 'deal-status-next-action'}
-                >
-                  <Feather name={nextAction.icon} size={17} color="#FFFFFF" />
-                  <Text style={s.statusNextText}>{statusLoading || trackingLoading ? '…' : nextAction.label}</Text>
-                </TouchableOpacity>
+                  fullWidth
+                  style={{ marginBottom: 8 }}
+                />
               ) : null}
               {deal?.status === 'accepted' ? (
                 <TouchableOpacity style={s.cancelLink} onPress={cancelDeal} testID="deal-cancel-link"><Text style={s.cancelLinkText}>{ui.cancelDeal}</Text></TouchableOpacity>
@@ -1595,18 +1743,22 @@ const s = StyleSheet.create({
   backButton: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center', marginTop: 3 },
   headerText: { flex: 1, minWidth: 0, paddingRight: 6 },
   headerActions: { flexDirection: 'row', gap: 5, marginTop: 3 },
+  // Design v1 Commit 4: canonical chrome — 44dp target, surface bg,
+  // hairline border, textSecondary icon (third style, replaces the
+  // 32dp #F7F7F7/#202020 hardcoded fork).
   headerIconBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F7F7F7',
-    borderWidth: 1.5,
-    borderColor: '#202020',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   routeHeaderRow: { flexDirection: 'row', alignItems: 'center', minHeight: 25 },
-  routeTitle: { flex: 1, fontSize: 14.5, fontWeight: '900', letterSpacing: -0.05 },
+  // Design v1 Commit 4: compact header canon — route 16/900, second line
+  // «Сделка №… · price» 12/600.
+  routeTitle: { flex: 1, fontSize: 16, fontWeight: '900', letterSpacing: -0.05 },
+  dealNoLine: { fontSize: 12, fontWeight: '600', marginTop: 1 },
   metaPrimary: { fontSize: 11.7, fontWeight: '800', marginTop: 1 },
   metaSecondary: { fontSize: 10.8, fontWeight: '650', marginTop: 2 },
   partnerText: { fontSize: 10.8, fontWeight: '650', marginTop: 2 },
@@ -1622,14 +1774,21 @@ const s = StyleSheet.create({
   messageMine: { alignItems: 'flex-end' },
   messageThem: { alignItems: 'flex-start' },
   bubble: { maxWidth: '84%', borderRadius: 16, paddingHorizontal: 11, paddingVertical: 8 },
-  bubbleMine: { backgroundColor: '#168759', borderBottomRightRadius: 5 },
+  // Bubble fills come from getBubbleColors via the inline bubbleSurfaceFor
+  // override — these static styles only own the corner radius canon.
+  bubbleMine: { borderBottomRightRadius: 5 },
   bubbleThem: { borderWidth: 1, borderBottomLeftRadius: 5 },
   messageText: { fontSize: 14.5, lineHeight: 20 },
-  messageTime: { fontSize: 10.5, marginTop: 4, textAlign: 'right' },
+  // Timestamp canon: micro token 11/14·600 (was 10.5). Colour is applied
+  // inline — outgoing uses the bubble text colour at ~62% alpha, incoming
+  // uses textMuted, so both match their surface.
+  messageTime: { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.2, marginTop: 4, textAlign: 'right' },
+  datePillRow: { alignItems: 'center', marginTop: 2, marginBottom: 10 },
+  datePill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  datePillText: { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.2 },
   systemRow: { alignItems: 'center', marginVertical: 5 },
   systemText: { fontSize: 11.5, fontWeight: '650', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: 'rgba(124,139,130,0.12)', borderRadius: 999 },
   photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
-  voiceRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 8 },
   translateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   translateText: { fontSize: 11, fontWeight: '700' },
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
@@ -1653,33 +1812,31 @@ const s = StyleSheet.create({
   recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   recordSendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
-  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth },
+  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, borderTopWidth: StyleSheet.hairlineWidth },
   attachHandleHit: { position: 'absolute', top: 0, left: 0, right: 0, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  attachHandle: { width: 48, height: 5, borderRadius: 3, backgroundColor: '#D5D8DA' },
+  attachHandle: { width: 48, height: 5, borderRadius: 3 },
   attachItem: { width: '25%', alignItems: 'center', gap: 11, marginBottom: 24 },
-  attachIcon: { width: 64, height: 64, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  attachLabel: { color: '#737373', fontSize: 13.5, fontWeight: '400', textAlign: 'center' },
-  attachPager: { position: 'absolute', left: 0, right: 0, bottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 13 },
-  attachPagerDotActive: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7A7A7A' },
-  attachPagerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E0E0E0' },
+  attachIcon: { width: 64, height: 64, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  attachLabel: { fontSize: 13.5, fontWeight: '400', textAlign: 'center' },
 
-  emojiMenu: { backgroundColor: '#F4F4F4', borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 12 },
+  emojiMenu: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 12 },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
   emojiItem: { width: '12.5%', height: 42, alignItems: 'center', justifyContent: 'center' },
   emojiText: { fontSize: 26, lineHeight: 32 },
 
-  composerDock: { paddingHorizontal: 8, paddingTop: 5, backgroundColor: '#F3F3F3', borderTopWidth: StyleSheet.hairlineWidth },
-  composer: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 30, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDE8E2', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
-  composerFocused: { backgroundColor: '#FFFFFF' },
-  composerCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F7', borderWidth: 2, borderColor: '#202020' },
-  composerCircleDisabled: { borderColor: '#8A8A8A', opacity: 0.55 },
-  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, backgroundColor: '#FFFFFF', justifyContent: 'center', position: 'relative' },
-  input: { minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
-  sendButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#168759' },
-  recordingButton: { backgroundColor: '#168759' },
+  composerDock: { paddingHorizontal: 8, paddingTop: 5, borderTopWidth: StyleSheet.hairlineWidth },
+  composer: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 30, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  // Action circles: 40dp visual + 4dp hitSlop (48dp total target, ≥44 canon).
+  // The legacy 2px #202020 ring is a 1px hairline token border now; the fill
+  // and icon colours come from tokens inline (surfaceMuted / text).
+  composerCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth },
+  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, flexDirection: 'row', alignItems: 'flex-end' },
+  input: { flex: 1, minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 8, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  inputEmojiButton: { flexShrink: 0, marginRight: 4, marginBottom: 3, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 
   mapFullscreen: { flex: 1 },
-  mapArea: { flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#EAF1ED' },
+  mapArea: { flex: 1, position: 'relative', overflow: 'hidden' },
   updatedPill: { position: 'absolute', left: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   updatedText: { fontSize: 11.5, fontWeight: '800' },
   mapCollapse: { position: 'absolute', right: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 13, borderRadius: 20, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3, zIndex: 8 },
@@ -1690,7 +1847,7 @@ const s = StyleSheet.create({
   metricValue: { fontSize: 18, fontWeight: '900' },
   metricDivider: { width: 1, alignSelf: 'stretch', marginHorizontal: 14 },
   finishedMap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
-  finishedIcon: { width: 58, height: 58, borderRadius: 20, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
+  finishedIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   finishedTitle: { fontSize: 20, fontWeight: '900', marginTop: 14 },
   finishedRoute: { fontSize: 14, fontWeight: '800', textAlign: 'center', marginTop: 6 },
   finishedSubtitle: { fontSize: 15, fontWeight: '800', textAlign: 'center', lineHeight: 20, marginTop: 13 },
@@ -1698,7 +1855,7 @@ const s = StyleSheet.create({
   finishedGpsHint: { fontSize: 11, textAlign: 'center', lineHeight: 16, marginTop: 8, opacity: 0.82 },
 
   chatDock: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 66, paddingHorizontal: 14, borderTopWidth: 1 },
-  chatIconBox: { width: 38, height: 38, borderRadius: 13, backgroundColor: '#E9F6EF', alignItems: 'center', justifyContent: 'center' },
+  chatIconBox: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   sheetTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sheetTitle: { fontSize: 16, fontWeight: '900' },
   newCount: { color: '#168759', fontSize: 12, fontWeight: '800' },
@@ -1717,8 +1874,6 @@ const s = StyleSheet.create({
 
   statusModalCard: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 14, paddingTop: 14 },
   statusModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  statusNextBtn: { minHeight: 50, borderRadius: 16, backgroundColor: '#168759', marginHorizontal: 2, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  statusNextText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
   cancelLink: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, marginTop: 4, marginBottom: 8 },
   cancelLinkText: { color: '#EF4444', fontSize: 12.5, fontWeight: '750' },
 });

@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS trips (
   to_city TEXT NOT NULL,
   transit TEXT,
   truck_type TEXT DEFAULT 'tent',
+  vehicle_id TEXT,
   capacity_tons REAL DEFAULT 20,
   available_m3 REAL DEFAULT 82,
   price INTEGER DEFAULT 0,

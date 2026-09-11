@@ -4,7 +4,7 @@ import Feather from '@expo/vector-icons/Feather';
 
 import { useI18n } from '../../utils/useI18n';
 import { localizePlace } from '../../utils/places';
-import { useV1Colors } from '../../theme/designV1';
+import { useV1Colors, getStatusColor } from '../../theme/designV1';
 import { systemEventText } from './DealRoom';
 
 const COPY = {
@@ -24,9 +24,33 @@ const ICON_BY_EVENT = {
   at_border: 'map-pin',
   border_crossed: 'check-square',
   delivered: 'package',
+  // received vs completed must differ BOTH by icon (check-square vs flag)
+  // AND by colour (accentDeep vs archive grey) — see STATUS_BY_EVENT.
+  received: 'check-square',
   completed: 'flag',
   cancelled: 'x-circle',
   rejected: 'x-circle',
+};
+
+// Design v1 Commit 4: every event key maps onto a deal-status role so the
+// dot/icon colour comes from v1StatusColors (theme-aware). Non-status
+// events (deal created, bid accepted, border crossed) ride the role of the
+// status they represent. Unknown keys fall back to `accepted` — the list
+// stays a history feed; FSM semantics are untouched.
+const STATUS_BY_EVENT = {
+  bid_accepted: 'accepted',
+  deal_created: 'accepted',
+  created: 'accepted',
+  accepted: 'accepted',
+  in_progress: 'in_progress',
+  trip_started: 'in_progress',
+  at_border: 'at_border',
+  border_crossed: 'at_border',
+  delivered: 'delivered',
+  received: 'received',
+  completed: 'completed',
+  cancelled: 'cancelled',
+  rejected: 'cancelled',
 };
 
 function textValue(value) {
@@ -106,7 +130,7 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
   if (!events.length) {
     return (
       <View style={s.empty} testID="deal-status-timeline-empty">
-        <Feather name="activity" size={22} color="#168759" />
+        <Feather name="activity" size={22} color={colors.statusAccepted} />
         <Text style={[s.emptyTitle, { color: colors.text }]}>{fallbackStatus || ui.empty}</Text>
         {fallbackStatus ? <Text style={[s.emptyHint, { color: colors.textMuted }]}>{ui.empty}</Text> : null}
       </View>
@@ -126,21 +150,27 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
         const moment = formatMoment(ev, lang);
         const localizedPlace = meta.place ? (localizePlace(meta.place, lang) || meta.place) : '';
         const last = index === sortedEvents.length - 1;
+        // Dot/icon colour per status role (accepted / in_progress /
+        // at_border / delivered / received / completed / cancelled) via
+        // v1StatusColors — received rides accentDeep, completed rides
+        // archive grey, so the two are distinguishable at a glance.
+        const roleColor = getStatusColor(colors, STATUS_BY_EVENT[key] || 'accepted');
+        const isCurrent = index === 0;
         return (
           <View key={String(ev?.id || `${key}-${index}`)} style={s.item} testID="deal-status-timeline-item">
             <View style={s.rail}>
-              <View style={[s.dot, { borderColor: '#168759', backgroundColor: '#FFFFFF' }]}>
-                <Feather name={ICON_BY_EVENT[key] || 'circle'} size={12} color="#168759" />
+              <View style={[s.dot, { borderColor: roleColor, backgroundColor: colors.surface }]}>
+                <Feather name={ICON_BY_EVENT[key] || 'circle'} size={12} color={roleColor} />
               </View>
-              {!last ? <View style={s.line} /> : null}
+              {!last ? <View style={[s.line, { backgroundColor: colors.border }]} /> : null}
             </View>
 
-            <View style={[s.card, index === 0 ? s.currentCard : null, { backgroundColor: index === 0 ? '#E9F6EF' : colors.surface, borderColor: index === 0 ? '#A8DCC4' : colors.border }]}>
+            <View style={[s.card, isCurrent ? s.currentCard : null, { backgroundColor: isCurrent ? colors.driverSoft : colors.surface, borderColor: isCurrent ? colors.borderStrong : colors.border }]}>
               <Text style={[s.title, { color: colors.text }]}>{title}</Text>
               {moment ? <Text style={[s.moment, { color: colors.textMuted }]}>{moment}</Text> : null}
               {localizedPlace ? (
                 <View style={s.metaRow}>
-                  <Feather name="map-pin" size={13} color="#168759" />
+                  <Feather name="map-pin" size={13} color={roleColor} />
                   <Text style={[s.metaText, { color: colors.text }]}>{localizedPlace}</Text>
                 </View>
               ) : null}
@@ -164,7 +194,7 @@ const s = StyleSheet.create({
   item: { flexDirection: 'row', alignItems: 'stretch', minHeight: 82 },
   rail: { width: 34, alignItems: 'center' },
   dot: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  line: { width: 2, flex: 1, minHeight: 52, backgroundColor: '#CFE9DB', marginVertical: -1 },
+  line: { width: 2, flex: 1, minHeight: 52, marginVertical: -1 },
   card: { flex: 1, borderWidth: 1, borderRadius: 15, paddingHorizontal: 13, paddingVertical: 11, marginBottom: 12 },
   currentCard: { borderWidth: 1.5 },
   title: { fontSize: 14, fontWeight: '900', lineHeight: 19 },

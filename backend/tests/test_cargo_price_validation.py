@@ -29,6 +29,7 @@ def _fake_require_level(_min):
 
 
 verification_gate.require_level = _fake_require_level
+verification_gate.require_driver_trip_publication = _fake_require_level(1)
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -57,6 +58,7 @@ def _as(uid=OWNER):
         "full_name": "Owner",
         "phone": "+700",
         "verification_level": 1,
+        "basic_onboarding_completed": 1,
     })
 
 

@@ -14,7 +14,7 @@ from pydantic import BaseModel, field_validator
 from typing import Optional, List
 
 from database.db import get_conn, new_id
-from api.verification_gate import require_level, get_user, _extract_driver
+from api.verification_gate import require_level, require_driver_trip_publication, get_user, _extract_driver
 from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
@@ -271,6 +271,10 @@ def _init():
     # и НЕ роняем boot, только логируем (чинить дубли отдельно). Идемпотентно.
     try:
         with get_conn() as c:
+            trip_cols = {row["name"] for row in c.execute("PRAGMA table_info(trips)").fetchall()}
+            if "vehicle_id" not in trip_cols:
+                c.execute("ALTER TABLE trips ADD COLUMN vehicle_id TEXT")
+                c.commit()
             dup = c.execute(
                 "SELECT bid_id, COUNT(*) n FROM deals WHERE bid_id IS NOT NULL "
                 "GROUP BY bid_id HAVING n > 1 LIMIT 1"
@@ -466,6 +470,7 @@ class TripIn(BaseModel):
     to_city: str
     transit: Optional[str] = None
     truck_type: Optional[str] = "tent"
+    vehicle_id: Optional[str] = None
     # Stage 7: stop sending fake 20/82 defaults from the publish flow —
     # accept None and let the column default kick in if the user left
     # the field blank.
@@ -1118,7 +1123,7 @@ def republish_cargo(cargo_id: str, user=Depends(require_level(1))):
 # ═══ Trips ═══
 
 @mp_router.post("/trips")
-def create_trip(body: TripIn, user=Depends(require_level(1))):
+def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
     # Stage 52 / P1-8: дата выезда не может быть в прошлом.
@@ -1133,13 +1138,13 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
     with get_conn() as c:
         c.execute("""
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
-              from_city, to_city, transit, truck_type,
+              from_city, to_city, transit, truck_type, vehicle_id,
               capacity_tons, available_m3, price, currency, departure, arrival,
               from_country, from_point_type, from_point_name,
               to_country, to_point_type, to_point_name, published_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         """, (tid, user["id"], user.get("phone"), user.get("full_name"),
-              body.from_city, body.to_city, body.transit, body.truck_type,
+              body.from_city, body.to_city, body.transit, body.truck_type, body.vehicle_id,
               body.capacity_tons, body.available_m3, body.price, currency,
               body.departure, body.arrival,
               fc, fpt, fpn, tc, tpt, tpn))

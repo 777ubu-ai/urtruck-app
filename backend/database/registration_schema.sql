@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS drivers_registration (
   vehicle_year INTEGER,
   vehicle_vin TEXT,
   vehicle_photo_url TEXT,
+  vehicle_registration_country TEXT,
+
+  -- Базовый водительский онбординг без обязательной Pro-проверки.
+  basic_onboarding_completed INTEGER DEFAULT 0,
+  basic_onboarding_completed_at TEXT,
 
   -- Статусы
   current_step INTEGER DEFAULT 1,      -- 1-5

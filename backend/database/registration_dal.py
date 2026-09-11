@@ -31,6 +31,9 @@ def _migrate(c):
         ("personal_photo_url", "TEXT"),
         ("residence_status", "TEXT"),
         ("citizenship_country", "TEXT"),
+        ("driver_citizenship_country_code", "TEXT"),
+        ("vehicle_registration_country_code", "TEXT"),
+        ("vehicle_registration_country", "TEXT"),
         ("id_doc_type", "TEXT"),
         ("id_front_url", "TEXT"),
         ("id_back_url", "TEXT"),
@@ -55,6 +58,8 @@ def _migrate(c):
         ("has_straps", "INTEGER DEFAULT 0"),
         ("draft_json", "TEXT"),
         ("submitted_at", "TEXT"),
+        ("basic_onboarding_completed", "INTEGER DEFAULT 0"),
+        ("basic_onboarding_completed_at", "TEXT"),
     ]
     for name, ddl in additions:
         if name not in cols:

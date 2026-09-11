@@ -85,18 +85,19 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   assert.doesNotMatch(workspace, /open_route_btn|Открыть маршрут|navigation\.navigate\('TrackTruck'/);
 });
 
-test('deal workspace uses bright header action buttons instead of large map/status cards', () => {
+test('deal workspace uses canonical header action buttons instead of large map/status cards', () => {
   assert.match(workspace, /testID="deal-header-map"/);
   assert.match(workspace, /testID="deal-status-open"/);
   assert.match(workspace, /headerIconBtn: \{/);
-  assert.match(workspace, /backgroundColor: '#F7F7F7'/);
-  assert.match(workspace, /borderWidth: 1\.5/);
-  assert.match(workspace, /borderColor: '#202020'/);
-  assert.match(workspace, /<Feather name="map" size=\{17\} color="#111827"/);
-  assert.match(workspace, /<Feather name=\{statusActionIcon\} size=\{17\} color="#111827"/);
-  assert.match(workspace, /width: 32/);
-  assert.match(workspace, /borderRadius: 16/);
-  assert.match(workspace, /routeTitle: \{ flex: 1, fontSize: 14\.5/);
+  assert.match(workspace, /width: 44/);
+  assert.match(workspace, /borderRadius: 22/);
+  assert.match(workspace, /borderWidth: StyleSheet\.hairlineWidth/);
+  assert.match(workspace, /backgroundColor: colors\.surface, borderColor: colors\.border/);
+  assert.match(workspace, /<Feather name="map" size=\{17\} color=\{colors\.textMuted\}/);
+  assert.match(workspace, /<Feather name=\{statusActionIcon\} size=\{17\} color=\{colors\.textMuted\}/);
+  assert.match(workspace, /routeTitle: \{ flex: 1, fontSize: 16, fontWeight: '900'/);
+  assert.match(workspace, /dealNoLine: \{ fontSize: 12, fontWeight: '600'/);
+  assert.match(workspace, /\$\{t\('deal_no'\)\} \$\{dealNumber\}/);
   assert.doesNotMatch(workspace, /style=\{s\.statusPill\}/);
   assert.doesNotMatch(workspace, /testID="deal-top-quick-actions"/);
   assert.doesNotMatch(workspace, /testID="deal-map-card-open"/);
@@ -168,7 +169,7 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
   assert.match(workspace, /testID="deal-chat-emoji"/);
-  assert.match(workspace, /testID="deal-chat-attach"/);
+  assert.match(workspace, /testID="deal-chat-plus"/);
   assert.match(workspace, /inputShell/);
   assert.match(workspace, /composerCircle/);
   assert.match(workspace, /sendPhoto\(false\)/);
@@ -186,7 +187,12 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /const sendDealShare = React\.useCallback/);
   assert.match(workspace, /const sendContactCard = React\.useCallback/);
   assert.match(workspace, /attachIcon: \{ width: 64, height: 64/);
-  assert.match(workspace, /backgroundColor: '#F4F4F4'/);
+  assert.match(workspace, /s\.attachMenu, \{ backgroundColor: colors\.bg, borderTopColor: colors\.border/);
+  assert.doesNotMatch(workspace, /backgroundColor: '#EAF1ED'/);
+  assert.doesNotMatch(workspace, /backgroundColor: '#E9F6EF'/);
+  assert.match(workspace, /s\.mapArea, \{ backgroundColor: colors\.driverSoft \}/);
+  assert.match(workspace, /s\.finishedIcon, \{ backgroundColor: colors\.driverSoft \}/);
+  assert.match(workspace, /s\.chatIconBox, \{ backgroundColor: colors\.driverSoft \}/);
   assert.match(workspace, /testID="deal-chat-composer-dock"/);
   assert.match(workspace, /composerDock: \{ paddingHorizontal: 8, paddingTop: 5/);
   assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'center'/);
@@ -198,11 +204,12 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
 });
 
 test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
-  assert.match(workspace, /const \[composerFocused, setComposerFocused\] = React\.useState\(false\)/);
+  assert.match(workspace, /backgroundColor: colors\.bg,\s*borderTopColor: colors\.border/);
   assert.doesNotMatch(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
   assert.doesNotMatch(workspace, /testID="deal-chat-composer-collapsed"/);
   assert.doesNotMatch(workspace, /composerCollapsedHandle/);
-  assert.match(workspace, /\{!composerFocused \? \(/);
+  assert.match(workspace, /testID="deal-chat-emoji"/);
+  assert.match(workspace, /inputEmojiButton/);
   assert.match(workspace, /testID="deal-chat-attach-collapse"/);
   assert.match(workspace, /attachHandle/);
   assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
@@ -267,11 +274,11 @@ test('deal status actions use the shared canonical role FSM and GPS starts with 
   assert.match(workspace, /marketAPI\.sendDealLocation/);
 });
 
-test('short onboarding requires name, phone and company for both roles and cannot skip', () => {
+test('short onboarding requires name and phone; company remains editable but optional for drivers', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /const validCompany = company\.trim\(\)\.length >= 2/);
+  assert.match(profile, /const validCompany = role === 'driver' \|\| company\.trim\(\)\.length >= 2/);
   assert.match(profile, /const formValid = validName && validPhone && validCompany && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
