@@ -51,15 +51,29 @@ CGR_SETTINGS_FIELDS = [
 ]
 CGR_ENV_VARS = {f"CGR_{f.upper()}" for f in CGR_SETTINGS_FIELDS}
 
+# Only repository-owned runtime Python is part of this contract.  A local
+# virtualenv may contain third-party packages whose examples legitimately read
+# host/tooling variables (PATH, PYTEST_*, WEBSOCKETS_*, etc.); treating those
+# as UrTruck configuration creates false failures and makes the result depend
+# on which developer environment happens to be installed.
+IGNORED_DIR_NAMES = {
+    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    "node_modules", "build", "dist", "coverage", "artifacts",
+    "tmp", "temp",
+}
+
+
+def _is_generated_or_external(path: Path) -> bool:
+    return any(
+        part in IGNORED_DIR_NAMES or part.startswith(".venv")
+        for part in path.parts
+    )
+
 
 def _code_vars():
     found = set()
     for path in ROOT.rglob("*.py"):
-        if "__pycache__" in path.parts or "/tests/" in str(path) or path.parts[-2:-1] == ("tests",):
-            continue
-        # Skip this test file's own directory explicitly (belt-and-suspenders
-        # in case the rglob pruning above ever misses a nested tests/ dir).
-        if "tests" in path.parts:
+        if _is_generated_or_external(path) or "tests" in path.parts:
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
         for m in VAR_PATTERN.finditer(text):
