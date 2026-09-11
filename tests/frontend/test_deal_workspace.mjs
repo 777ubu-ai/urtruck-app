@@ -308,11 +308,11 @@ test('deal status actions use the shared canonical role FSM and GPS starts with 
   assert.match(workspace, /marketAPI\.sendDealLocation/);
 });
 
-test('short onboarding requires name, phone and company for both roles and cannot skip', () => {
+test('short onboarding requires name and phone; company remains editable but optional for drivers', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /const validCompany = company\.trim\(\)\.length >= 2/);
+  assert.match(profile, /const validCompany = role === 'driver' \|\| company\.trim\(\)\.length >= 2/);
   assert.match(profile, /const formValid = validName && validPhone && validCompany && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);

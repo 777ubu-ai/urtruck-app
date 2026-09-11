@@ -1,8 +1,11 @@
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
+from uuid import uuid4
 
 from api import driver_registration, registration, verification_gate
 from api.marketplace import TripIn, create_trip
+from database import registration_dal
 
 
 def _basic_driver(**overrides):
@@ -106,3 +109,79 @@ def test_register_me_exposes_basic_completion(monkeypatch):
     result = registration.get_me("basic-driver")
 
     assert result["basic_onboarding_completed"] is True
+
+
+def _http_driver(**overrides):
+    from database.db import get_conn
+
+    driver_id = "http-basic-driver-" + uuid4().hex[:8]
+    driver = _basic_driver(id=driver_id, phone=driver_id, **overrides)
+    fields = {
+        "id": driver["id"], "phone": driver["phone"], "role": driver["role"],
+        "status": driver["status"], "verification_level": driver["verification_level"],
+        "citizenship_country": driver["citizenship_country"], "full_name": driver["full_name"],
+        "birth_date": driver["birth_date"], "iin": driver["iin"],
+        "vehicle_registration_country": driver["vehicle_registration_country"],
+        "truck_kind": driver["truck_kind"], "body_type": driver["body_type"],
+        "vehicle_brand": driver["vehicle_brand"], "vehicle_plate": driver["vehicle_plate"],
+        "capacity_tons": driver["capacity_tons"], "volume_m3": driver["volume_m3"],
+        "basic_onboarding_completed": driver.get("basic_onboarding_completed", 0),
+    }
+    columns = ", ".join(fields)
+    placeholders = ", ".join("?" for _ in fields)
+    with get_conn() as conn:
+        conn.execute(f"INSERT INTO drivers_registration ({columns}) VALUES ({placeholders})", tuple(fields.values()))
+    token = registration_dal.create_session(driver_id)
+    return driver_id, token
+
+
+def test_http_complete_basic_and_trip_publication_contract():
+    from main import app
+
+    client = TestClient(app)
+    _, incomplete_token = _http_driver(iin="123")
+    incomplete = client.post(
+        "/api/v1/driver/registration/complete-basic",
+        headers={"Authorization": f"Bearer {incomplete_token}"},
+    )
+    assert incomplete.status_code == 400
+    assert incomplete.json()["detail"]["error"] == "BASIC_ONBOARDING_INCOMPLETE"
+
+    _, blocked_token = _http_driver(basic_onboarding_completed=0)
+    blocked = client.post(
+        "/api/v1/market/trips",
+        headers={"Authorization": f"Bearer {blocked_token}"},
+        json={"from_city": "Алматы", "to_city": "Урумчи", "departure": "2099-01-01"},
+    )
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"]["error"] == "basic_onboarding_required"
+
+    _, ready_token = _http_driver(basic_onboarding_completed=0)
+    completed = client.post(
+        "/api/v1/driver/registration/complete-basic",
+        headers={"Authorization": f"Bearer {ready_token}"},
+    )
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "basic"
+    assert completed.json()["verification_level"] != 3
+    ready = client.post(
+        "/api/v1/market/trips",
+        headers={"Authorization": f"Bearer {ready_token}"},
+        json={"from_city": "Алматы", "to_city": "Урумчи", "departure": "2099-01-01"},
+    )
+    assert ready.status_code == 200, ready.text
+
+
+def test_http_basic_completion_never_promotes_status_or_level():
+    from main import app
+
+    client = TestClient(app)
+    driver_id, token = _http_driver(status="pending", verification_level=1)
+    response = client.post(
+        "/api/v1/driver/registration/complete-basic",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    stored = registration_dal.get_driver(driver_id)
+    assert stored["status"] == "basic"
+    assert stored["verification_level"] == 1

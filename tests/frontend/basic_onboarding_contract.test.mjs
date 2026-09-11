@@ -9,6 +9,7 @@ const registration = read('backend/api/registration.py');
 const client = read('src/utils/registration.js');
 const success = read('src/screens/vehicle/VehicleSetupSuccessScreen.js');
 const review = read('src/screens/vehicle/VehicleSetupReviewScreen.js');
+const profile = read('src/screens/onboarding/ProfileV2Screen.js');
 const trips = read('src/screens/MyTripsScreen.js');
 const proDocs = read('src/navigation/AppNavigator.js');
 
@@ -39,6 +40,30 @@ test('VehicleSetupSuccess completes basic onboarding before opening trip creatio
   assert.match(success, /navigation\.replace\('CreateTrip'/);
   assert.match(review, /truck_kind: d\.vehicle_type/);
   assert.match(review, /vehicle_registration_country: d\.vehicle_registration_country_code/);
+});
+
+test('driver profile continues to vehicle setup and does not commit driver role early', () => {
+  assert.match(profile, /navigation\.replace\('VehicleSetupCountry', \{ role: 'driver', origin: 'basic_onboarding' \}\)/);
+  const driverContinue = profile.slice(profile.indexOf("if (role === 'driver') {\n        navigation.replace('VehicleSetupCountry'"), profile.indexOf('setRole(role)'));
+  assert.doesNotMatch(driverContinue, /setRole\(/);
+  assert.doesNotMatch(driverContinue, /Main/);
+});
+
+test('vehicle save without publication still completes basic onboarding and errors have retry', () => {
+  assert.match(review, /if \(!publish\) \{ const completed = await regAPI\.completeBasic\(\)/);
+  assert.match(review, /setRole\('driver'\)/);
+  assert.match(review, /testID="vehicle-setup-retry"/);
+  assert.doesNotMatch(review, /c\.documents/);
+  assert.match(success, /testID="basic-onboarding-retry"/);
+  assert.match(success, /const completionStarted = useRef\(false\)/);
+  assert.match(success, /if \(completionStarted\.current\) return undefined/);
+  assert.match(success, /basicState !== 'done'/);
+  assert.match(success, /navigation\.replace\('Main', \{ role: 'driver' \}\)/);
+});
+
+test('driver basic profile leaves company and messenger optional', () => {
+  assert.match(profile, /const validCompany = role === 'driver' \|\| company\.trim\(\)\.length >= 2/);
+  assert.match(profile, /const validMessenger = role === 'driver' \|\| !messengerType/);
 });
 
 test('Pro documents remain separate stack routes', () => {

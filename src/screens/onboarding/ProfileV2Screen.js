@@ -1,6 +1,7 @@
 // ProfileV2Screen — шаг 2 из 2 после выбора роли.
-// Канон onboarding: имя + основной телефон + компания обязательны для обеих
-// ролей; preferred messenger — необязательные контактные данные.
+// Канон onboarding: имя + основной телефон обязательны для обеих ролей;
+// для водителя дата рождения + ИИН нужны basic onboarding, а компания и
+// preferred messenger остаются необязательными контактными данными.
 // Email принадлежит auth-identity и повторно у пользователя не спрашивается.
 
 import React, { useMemo, useState } from 'react';
@@ -37,8 +38,10 @@ const COPY = {
     iinPlaceholder: '12 цифр',
     iinRequired: 'ИИН должен содержать 12 цифр',
     companyLabel: 'Компания / ИП *',
+    companyOptionalLabel: 'Компания / ИП',
     companyPlaceholder: 'Название компании или ИП',
     companyHint: 'Обязательно для порядка в сделках и документах',
+    companyOptionalHint: 'Можно добавить позже в профиле',
     companyRequired: 'Укажите компанию или ИП',
     messengerLabel: 'Предпочтительный мессенджер',
     messengerContact: 'Контакт в мессенджере',
@@ -63,8 +66,10 @@ const COPY = {
     iinPlaceholder: '12 digits',
     iinRequired: 'IIN must contain 12 digits',
     companyLabel: 'Company / business *',
+    companyOptionalLabel: 'Company / business',
     companyPlaceholder: 'Company or sole trader name',
     companyHint: 'Required to keep deals and documents clean',
+    companyOptionalHint: 'Can be added later in profile',
     companyRequired: 'Enter company or business name',
     messengerLabel: 'Preferred messenger',
     messengerContact: 'Messenger contact',
@@ -89,8 +94,10 @@ const COPY = {
     iinPlaceholder: '12位数字',
     iinRequired: '个人识别号必须为12位数字',
     companyLabel: '公司 / 个体经营 *',
+    companyOptionalLabel: '公司 / 个体经营',
     companyPlaceholder: '公司或个体经营名称',
     companyHint: '交易和文件中必须填写',
+    companyOptionalHint: '可稍后在个人资料中添加',
     companyRequired: '请输入公司或个体经营名称',
     messengerLabel: '首选即时通讯',
     messengerContact: '即时通讯联系方式',
@@ -115,8 +122,10 @@ const COPY = {
     iinPlaceholder: '12 сан',
     iinRequired: 'ЖСН 12 саннан тұруы керек',
     companyLabel: 'Компания / ЖК *',
+    companyOptionalLabel: 'Компания / ЖК',
     companyPlaceholder: 'Компания немесе ЖК атауы',
     companyHint: 'Мәмілелер мен құжаттар реті үшін міндетті',
+    companyOptionalHint: 'Профильде кейінірек қосуға болады',
     companyRequired: 'Компания немесе ЖК атауын көрсетіңіз',
     messengerLabel: 'Қалаулы мессенджер',
     messengerContact: 'Мессенджердегі байланыс',
@@ -275,8 +284,8 @@ export default function ProfileV2Screen({ navigation, route }) {
   const validPhone = isRealPhone(phone);
   const validBirthDate = role !== 'driver' || /^\d{2}\.\d{2}\.\d{4}$/.test(birthDate.trim());
   const validIin = role !== 'driver' || /^\d{12}$/.test(digitsOnly(iin));
-  const validCompany = company.trim().length >= 2;
-  const validMessenger = !messengerType
+  const validCompany = role === 'driver' || company.trim().length >= 2;
+  const validMessenger = role === 'driver' || !messengerType
     || (messengerType === 'whatsapp' && sameAsPhone && validPhone)
     || messengerId.trim().length >= 2;
   const formValid = validName && validPhone && validCompany && validMessenger;
@@ -344,10 +353,15 @@ export default function ProfileV2Screen({ navigation, route }) {
         if (!draftSaved?.ok) throw new Error('basic_profile_save_failed');
       }
 
-      // Критический инвариант: AppNavigator считает session.user.role признаком
-      // завершённого onboarding. Поэтому записываем роль в AuthContext только
-      // ПОСЛЕ успешного PATCH /users/me; иначе при сетевой ошибке шага 2
-      // пользователь мог бы попасть в Main с незаполненным профилем.
+      // Водительский basic onboarding продолжается на двух обязательных
+      // шагах: личные данные → автомобиль. Роль driver и Main появляются
+      // только после complete-basic на экране успешного сохранения машины.
+      if (role === 'driver') {
+        navigation.replace('VehicleSetupCountry', { role: 'driver', origin: 'basic_onboarding' });
+        return;
+      }
+
+      // Для не-driver ролей сохраняем прежний переход после профиля.
       setRole(role);
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
     } catch {
@@ -455,7 +469,7 @@ export default function ProfileV2Screen({ navigation, route }) {
 
           <ProfileField
             id="company"
-            label={ui.companyLabel}
+            label={role === 'driver' ? ui.companyOptionalLabel : ui.companyLabel}
             value={company}
             onChange={setCompany}
             placeholder={ui.companyPlaceholder}
@@ -467,7 +481,7 @@ export default function ProfileV2Screen({ navigation, route }) {
             errors={errors}
             setErrors={setErrors}
           />
-          <Text style={s.helperText}>{ui.companyHint}</Text>
+          <Text style={s.helperText}>{role === 'driver' ? ui.companyOptionalHint : ui.companyHint}</Text>
 
           <View style={s.section}>
             <Text style={s.sectionLabel}>{ui.messengerLabel}</Text>

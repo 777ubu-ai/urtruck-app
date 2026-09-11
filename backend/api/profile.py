@@ -210,7 +210,7 @@ def get_counterparty_profile(other_user_id: str, user=Depends(require_level(1)))
 
 @profile_router.patch("/me")
 def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
-    """Обновить профиль. Имя, телефон и компания обязательны для обеих ролей."""
+    """Обновить профиль. В basic onboarding водитель может оставить компанию пустой."""
     _ensure_columns()
     updates = {}
     if body.name is not None:
@@ -271,14 +271,14 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
             raise HTTPException(status_code=400, detail={"error": "NAME_REQUIRED", "message": "Для завершения регистрации укажите имя"})
 
         effective_company = updates.get("company_name") or (current.get("company_name") or "").strip() or None
-        if not effective_company or len(effective_company) < 2:
+        if role_norm == "client" and (not effective_company or len(effective_company) < 2):
             raise HTTPException(status_code=400, detail={"error": "COMPANY_REQUIRED", "message": "Для завершения регистрации укажите компанию или ИП"})
 
-        # Messenger is optional, but once a channel is selected its address is
-        # required at the authoritative API boundary. This prevents old clients
-        # or direct API calls from storing e.g. `wechat` with an empty ID.
+        # Messenger is optional for the basic driver path. For clients, once a
+        # channel is selected its address is required at the authoritative API
+        # boundary, preventing old clients from storing e.g. `wechat` empty.
         selected_messenger = updates.get("messenger_type")
-        if selected_messenger:
+        if selected_messenger and role_norm != "driver":
             effective_messenger_id = updates.get("messenger_id") or (current.get("messenger_id") or "").strip()
             if len(effective_messenger_id) < 2:
                 raise HTTPException(
