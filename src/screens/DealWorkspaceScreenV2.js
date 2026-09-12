@@ -1120,6 +1120,41 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     }
   }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
 
+  const retryFailedVoice = React.useCallback(async (item) => {
+    if (!item?.voiceUri || !roomId || !recipientId) return;
+    setMessages((items) => items.map((message) => (
+      message.id === item.id ? { ...message, sendStatus: 'sending', sendError: null } : message
+    )));
+    try {
+      const upload = await chatAPI.uploadChatVoice(item.voiceUri, {
+        blob: item.voiceBlob || null,
+        type: item.voiceMime || null,
+      });
+      if (!upload?.voice_key) throw new Error('voice upload did not return a key');
+      await chatAPI.send({
+        roomId,
+        toUserId: recipientId,
+        text: `🎤 ${ui.voiceMessage}`,
+        photoUrl: upload.voice_key,
+        isVoice: true,
+        voiceDuration: item.voiceDuration,
+        cargoId: deal?.cargo_id || params.cargoId || null,
+        tripId: deal?.trip_id || params.tripId || null,
+        clientMsgId: item.clientMsgId || item.id,
+      });
+      setMessages((items) => items.map((message) => (
+        message.id === item.id ? { ...message, sendStatus: 'sent', sendError: null } : message
+      )));
+      setTimeout(loadMessages, 120);
+    } catch (error) {
+      const message = error?.isNetwork ? t('no_connection') : t('voice_error_send');
+      setMessages((items) => items.map((current) => (
+        current.id === item.id ? { ...current, sendStatus: 'failed', sendError: message } : current
+      )));
+      toast(message, 'error');
+    }
+  }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
+
   // The timer effect uses a ref so the 60-second hard stop always invokes the
   // latest callback without restarting the timer on every render.
   finishRecordingRef.current = toggleVoice;
@@ -1283,20 +1318,20 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             </TouchableOpacity>
           ) : item.sendStatus === 'failed' && item.voice ? (
             <TouchableOpacity
-              disabled
+              onPress={() => retryFailedVoice(item)}
               style={s.errorRow}
               testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
             >
               <Feather name="alert-circle" size={12} color="#EF4444" />
               <Text style={s.errorText} numberOfLines={2}>
-                {item.sendError || t('voice_error_send')}
+                {item.sendError || t('voice_error_send')} · {t('chat_attach_retry')}
               </Text>
             </TouchableOpacity>
           ) : null}
         </View>
       </React.Fragment>
     );
-  }, [colors, translations, translating, voiceTranscripts, voiceTranscribing, t, lang, toast, retryDocument, retryFailedText, toggleVoiceTranscript, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
+  }, [colors, translations, translating, voiceTranscripts, voiceTranscribing, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, toggleVoiceTranscript, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
