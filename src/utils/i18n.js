@@ -1,4 +1,4 @@
-import { localizeCargoName } from './places';
+import { localizeCargoName } from './places.js';
 
 // Переводы UrTruck — RU / EN / KZ / CN
 // Все остальные языки (UZ / KG / DE / FR / TJ / GE / TM …) убраны из
@@ -8,6 +8,7 @@ import { localizeCargoName } from './places';
 
 const translations = {
   RU: {
+    emoji: 'Эмодзи', send: 'Отправить',
     // Splash & Auth
     welcome: 'Войти или создать аккаунт',
 
@@ -224,17 +225,17 @@ const translations = {
     my_work_sub_driver: 'Рейсы, ставки и заказы',
     my_work_sub_client: 'Грузы, отклики и заказы',
     my_trips_tab: 'Мои рейсы',
-    my_bids_tab: 'Мои ставки',
-    my_cargos_tab: 'Мои грузы',
+
+
     responses_tab: 'Отклики',
     orders_tab: 'Заказы',
     order_label: 'ЗАКАЗ',
     bid_pending: 'Ожидает',
     bid_accepted: 'Принята',
-    bid_rejected: 'Отклонена',
+
     accept_bid_btn: 'Принять',
     accept_bid_confirm: 'Принять эту ставку на {sum} и создать сделку? Остальные ставки будут отклонены.',
-    open_chat: 'Открыть чат',
+
     no_trips_yet: 'Пока нет рейсов',
     no_cargos_yet: 'Пока нет грузов',
     no_bids_yet_driver: 'Пока нет ставок',
@@ -251,6 +252,7 @@ const translations = {
     place_cargo: 'Разместить груз',
     gate_login: 'Войдите, чтобы продолжить',
     gate_login_desc: 'Регистрация нужна для сделок, ставок, чата и контактов.',
+    gate_push_desc: 'Настройки уведомлений доступны после входа в аккаунт.',
     gate_publish: 'Войдите, чтобы опубликовать',
     gate_publish_desc: 'Для публикации грузов и маршрутов нужна регистрация.',
     gate_driver: 'Войдите как перевозчик',
@@ -340,7 +342,7 @@ const translations = {
     apply_filters: 'Применить',
     filter_status: 'Статус',
     filter_body_type: 'Тип кузова',
-    filter_date_from: 'Дата с',
+
     filter_unread_only: 'Только непрочитанные',
     deals_tab_completed: 'Завершённые',
     deals_offers_count: 'предложений',
@@ -381,7 +383,7 @@ const translations = {
     chat_system_event: 'Событие сделки',
     chat_flag_urgent: 'Срочно',
     chat_flag_dispute: 'Спор',
-    role_driver: 'Водитель',
+
     role_client: 'Клиент',
     role_support: 'Поддержка',
     deal_event_bid_created: 'Создано предложение',
@@ -398,7 +400,8 @@ const translations = {
     deal_event_status_in_progress: '🚛 Рейс начался',
     deal_event_status_at_border: '🛂 Груз на границе',
     deal_event_status_delivered: '✅ Груз доставлен',
-    deal_event_status_completed: '✅ Получение подтверждено',
+    deal_event_status_received: '✅ Получение подтверждено',
+    deal_event_status_completed: '🤝 Сделка завершена',
     deal_event_status_cancelled: '❌ Сделка отменена',
     deal_event_status_accepted: '🤝 Сделка подтверждена',
     tab_my_work: 'Моя работа',
@@ -418,7 +421,7 @@ const translations = {
     filter_apply: 'Применить',
     // Common
     driver_fallback: 'Водитель',
-    val_price_positive: 'Цена должна быть больше 0',
+
     val_from_required: 'Укажите город отправления',
     val_to_required: 'Укажите город назначения',
     val_departure_required: 'Укажите дату выезда',
@@ -434,7 +437,7 @@ const translations = {
     val_truck_type_required: 'Выберите тип кузова',
     val_cargo_desc_required: 'Опишите груз',
     val_pickup_date_required: 'Укажите дату загрузки',
-    val_weight_positive: 'Вес должен быть больше 0',
+
     val_weight_or_volume_required: 'Укажите вес или объём',
     val_price_required: 'Укажите цену',
     fill_required_fields: 'Заполните обязательные поля',
@@ -447,7 +450,7 @@ const translations = {
     payment_fixed: 'Указать цену',
     edit_btn: 'Изменить',
     edit_trip_compact: 'Изменить рейс',
-    save_changes: 'Сохранить изменения',
+
     edit_locked_deal: 'Нельзя редактировать — есть принятая ставка/сделка',
     trip_updated_toast: 'Маршрут обновлён',
     share_copy_link: 'Ссылка',
@@ -642,9 +645,9 @@ const translations = {
     publish_trip_action: 'Опубликовать маршрут',
     publish_cargo_action: 'Опубликовать груз',
     trip_published: 'Маршрут опубликован',
-    cargo_published: 'Груз опубликован',
+
     amount_label: 'Сумма',
-    currency_label: 'Валюта',
+
     comment_label: 'Комментарий',
     cargo_photos_label: 'Фото груза (необязательно)',
     cargo_photos_sub: 'Добавьте фото для большей наглядности',
@@ -676,7 +679,7 @@ const translations = {
     bank_account: 'Банковский счёт',
     bank_account_desc: 'Приём платежей',
     // Edit profile sections
-    section_transport: 'Транспорт',
+
     // Trip detail
     trip_title: 'Рейс',
     trip_route: 'Маршрут',
@@ -693,8 +696,8 @@ const translations = {
     trip_delete_q: 'Снять рейс с публикации?',
     trip_deleted_toast: 'Рейс снят с публикации',
     chat_opened_toast: 'Чат открыт с водителем',
-    cancel: 'Отмена',
-    delete: 'Удалить',
+
+
     days_short: 'дн.',
     km_short: 'км',
     // Chats extras
@@ -712,7 +715,7 @@ const translations = {
     // Driver detail extras
     reliability_section: 'НАДЁЖНОСТЬ',
     review_after_trip: 'Отзыв после завершения перевозки',
-    anonymous: 'Аноним',
+
     report_driver: 'Пожаловаться на водителя',
     report_choose_reason: 'Причина жалобы',
     report_reason_fraud: 'Мошенничество / обман',
@@ -772,7 +775,6 @@ const translations = {
     role_feature_routes: 'Международные маршруты',
     // Гостевой режим
     browse_as_guest: 'Смотреть грузы без регистрации',
-    browse_as_guest_sub: '',
     guest_tab_cargos: 'Грузы',
     guest_tab_trips: 'Рейсы',
     guest_subtitle: 'Просмотр без регистрации',
@@ -888,7 +890,9 @@ const translations = {
     reg_client_welcome: 'Добро пожаловать',
     reg_client_finish: 'Завершить',
     // Push filter screen
-    push_title: 'Уведомления',
+    push_title: 'Уведомления', route_direction: 'Направление',
+    push_route_driver_hint: 'Выберите направление рейса', push_route_shipper_hint: 'Выберите направление груза',
+    saved_routes: 'Сохранённые маршруты', saved_routes_empty: 'Пока нет сохранённых маршрутов.', push_any_cargo: 'Любой груз',
     push_categories: 'Категории',
     push_filter_cargos: 'Фильтр грузов',
     push_only_my_routes: 'Только мои маршруты',
@@ -934,7 +938,7 @@ const translations = {
     my_bid_status_pending: 'Ожидает ответа второй стороны',
     my_bid_status_countered: 'Пришло встречное предложение',
     edit_bid_short: 'Изменить',
-    open_chat: 'Чат',
+
     bid_discount_sent: 'Скидка отправлена',
     bid_cancelled_toast: 'Предложение отменено',
     bid_rejected_toast: 'Предложение отклонено',
@@ -947,7 +951,7 @@ const translations = {
     current_price_label: 'Текущая цена',
     comment_optional: 'Комментарий (необязательно)',
     you_marker: '(вы)',
-    driver_chosen: 'Водитель выбран',
+
     // Counter-offer + chat-before-accept
     bid_countered: 'Встречная цена',
     counter_offer: 'Своя цена',
@@ -963,9 +967,9 @@ const translations = {
     chat_open_failed: 'Не удалось открыть чат',
     driver_offered: 'Водитель предложил',
     // Deal/order actions
-    start_delivery: 'Начать',
+
     mark_arrived: 'Доставлен',
-    confirm_delivery: 'Подтвердить доставку',
+
     cancel_deal: 'Отменить сделку',
     cancel_deal_confirm: 'Отменить сделку?',
     deal_cancelled_toast: 'Сделка отменена',
@@ -1197,7 +1201,7 @@ const translations = {
     update_btn: 'Обновить',
     compressing: 'Сжатие...',
     uploading: 'Загрузка...',
-    submit_review: 'Отправить отзыв',
+
     update_app: 'Обновить приложение',
     // ── Sprint 3 i18n ──
     server_unavailable: 'Сервер недоступен. Проверьте интернет.',
@@ -1211,6 +1215,7 @@ const translations = {
     bid_failed: 'Не удалось отправить предложение',
     driver_selected: 'Водитель выбран!',
     deal_created: 'Сделка создана',
+    deal_no: 'Сделка №',
     accept_failed: 'Не удалось принять предложение',
     status_updated: 'Статус обновлён',
     update_failed: 'Не удалось обновить',
@@ -1231,7 +1236,7 @@ const translations = {
     privacy_link: 'Конфиденциальность',
     offer_link: 'Оферта',
     continue_registration: 'Продолжить',
-    thanks_for_review: 'Спасибо за оценку!',
+
     review_failed: 'Не удалось отправить',
     submit_rating: 'Отправить оценку',
     rate_driver: 'Оцените водителя',
@@ -1245,7 +1250,7 @@ const translations = {
     delete_cargo: 'Удалить мой груз',
     delete_confirm: 'Удалить груз?',
     cancel: 'Отмена',
-    delete: 'Удалить',
+
     cargo_deleted: 'Груз удалён',
     no_bids_be_first: 'Пока нет предложений. Будьте первым!',
     bids_confidential_hint: 'Ставки скрыты. Вы видите только свою — предложите свою цену.',
@@ -1312,6 +1317,8 @@ const translations = {
     translate: 'Перевести',
     voice_send: 'Отправить голосовое',
     voice_to_text: 'В текст',
+    chat_day_today: 'Сегодня',
+    chat_day_yesterday: 'Вчера',
     voice_show_text: 'Показать текст',
     voice_hide_text: 'Скрыть текст',
     voice_original_label: 'Оригинал',
@@ -1632,7 +1639,7 @@ const translations = {
     track_left: 'Осталось',
     track_speed_label: 'Скорость',
     track_eta_label: 'В пути',
-    track_stopped: 'Стоит',
+
     track_near_border: 'На границе',
     track_min: 'мин',
     track_hour: 'ч',
@@ -1823,6 +1830,8 @@ const translations = {
     track_disable_all: '🔒 Полностью выключить отслеживание',
     track_driver_consent: 'Разрешите передачу геопозиции по этой сделке. После забора груза отслеживание фиксируется до завершения перевозки.',
     track_permission_needed: 'Разрешите UrTruck доступ к геопозиции в настройках телефона или браузера.',
+    gps_system_disabled: 'Включите геолокацию в настройках телефона.',
+    gps_no_fix: 'Не удалось получить сигнал GPS. Выйдите на открытое место и повторите попытку.',
     track_native_required: 'Фоновый GPS можно включить только в приложении UrTruck на iPhone или Android.',
     track_active: 'GPS-отслеживание включено',
     track_declined: 'GPS-отслеживание отклонено',
@@ -2084,127 +2093,130 @@ const translations = {
     verification_rejected_title: 'Нужно исправить документы',
     verification_rejected_subtitle: 'Модератор попросил переснять отмеченные пункты. Остальные документы остаются одобренными.',
     verification_rejected_empty: 'Сейчас нет отклонённых документов.',
+    a11y_rating_star: 'Оценка {n} из 5',
+    a11y_toggle_favorite: 'В избранное',
     verification_rejected_generic_reason: 'Модератор попросил переснять документ.',
 
 },
 
   KK: {
+    emoji: 'Эмодзи', send: 'Жіберу',
     // i18n-fill 26.07.2026: недостающие живые ключи (симметрия с RU)
-    accept_bid_btn: 'Қабылдау',
-    accept_bid_confirm: '{sum} ставканы қабылдап, мәміле жасайсыз ба? Қалған ставкалар қабылданбайды.',
-    accept_failed: 'Ұсынысты қабылдау мүмкін болмады',
-    add_to_favorites: 'Таңдаулыға қосу',
-    anonymous: 'Аноним',
-    back_short: 'Артқа',
-    badge_trip: 'РЕЙС',
-    bid_accepted: 'Қабылданды',
-    bid_discount_sent: 'Жеңілдік жіберілді',
-    bid_rejected: 'Қабылданбады',
-    bid_rejected_toast: 'Ұсыныс қабылданбады',
-    cancel: 'Болдырмау',
-    cancel_bid: 'Болдырмау',
-    cancel_deal_confirm: 'Мәмілені болдырмайсыз ба?',
-    chat_open_failed: 'Чатты ашу мүмкін болмады',
-    chats_empty: 'Біреуге жазыңыз — чат осында пайда болады',
-    comment_optional: 'Пікір (міндетті емес)',
-    confirm_delivery: 'Жеткізуді растау',
-    counter_declined: 'Қарсы баға қабылданбады',
-    counter_offer: 'Өз бағам',
-    counter_sent: 'Қарсы баға жіберілді',
-    counter_sent_status: 'Қарсы баға жіберілді',
-    days_short: 'күн',
-    deal_price: 'Мәміле бағасы',
-    deal_updated_toast: 'Статус жаңартылды',
-    decline_counter: 'Қарсы бағадан бас тарту',
-    desc_not_specified: 'Сипаттама көрсетілмеген',
-    details: 'Толығырақ',
-    driver_chosen: 'Жүргізуші таңдалды',
-    edit_bid: 'Өзгерту',
-    error_desc: 'Қате пайда болды. Қолданбаны қайта жүктеп көріңіз.',
-    error_reload: 'Қайта жүктеу',
-    favorites_empty: 'Сақталған тасымалдаушылар осында пайда болады',
-    favorites_title: 'Таңдаулылар',
-    find_cargos: 'Жүктерді табу',
-    gate_login_desc: 'Мәмілелер, ставкалар, чат және контактілер үшін тіркелу қажет.',
-    give_discount: 'Жеңілдік беру',
-    in_favorites: 'Таңдаулыда',
-    incomplete_data: 'Рейс деректері толық емес',
-    km_short: 'км',
-    mark_arrived: 'Жеткізілді',
-    no_cargos_yet: 'Әзірге жүктер жоқ',
-    no_reviews_yet: 'Әзірге пікірлер жоқ',
-    order_label: 'ТАПСЫРЫС',
-    order_next_step: 'Келесі қадам',
-    per_km_short: 'Ставка/км',
-    place_cargo: 'Жүк орналастыру',
-    push_categories: 'Санаттар',
-    push_filter_cargos: 'Жүк сүзгісі',
-    push_min_price: 'Ең төменгі баға ($)',
-    push_min_tons: 'Ең аз тонна',
-    push_save_btn: 'Баптауларды сақтау',
-    push_saved: 'Баптаулар сақталды',
-    reg_doc_format_hint: 'JPG/PNG, 10 МБ дейін',
-    reg_selfie_bad_photo: 'Фото сапасыз. Жарық жақсы жерде қайталап көріңіз',
-    reg_selfie_manual_review: 'Шықпай жатыр ма? Қолмен тексеруге жіберу',
-    reg_selfie_retake: 'Селфиді қайта түсіру',
-    reject_btn: 'Қабылдамау',
-    reject_failed: 'Ұсынысты қабылдамау мүмкін болмады',
-    removeBlacklist: 'Алып тастау',
-    removed_from_favorites: 'Таңдаулыдан жойылды',
-    report_choose_reason: 'Шағым себебі',
-    report_driver: 'Жүргізушіге шағымдану',
-    report_sent: 'Шағым модераторларға жіберілді',
-    review_after_trip: 'Пікір тасымал аяқталған соң қалдырылады',
-    role_client_desc: 'Өтінім орналастырып, тасымалдаушылардан ұсыныс алыңыз',
-    role_driver_desc: 'Халықаралық тасымалға рейстер табыңыз',
-    role_shipper: 'Жүк жөнелтуші',
-    route_saved: 'Маршрут сақталды — жаңа жүктер туралы push жібереміз',
-    saveSettings: 'Баптаулар сақталды',
-    save_route_notify: 'Маршрут бойынша жүктер туралы хабарлау',
-    saved_locally: 'Жергілікті сақталды',
-    security_avoid_cancel_desc: 'Болдырмау үшін −5 ұпай',
-    security_avoid_ignore_desc: 'Жауап бермесеңіз −10 ұпай',
-    security_avoid_late_desc: 'Мерзімді бұзғаны үшін −5 ұпай',
-    security_tip_complete_trips_desc: 'Әр сәтті рейс үшін +2 ұпай',
-    security_tip_confirm_account_desc: 'Банк байланыстырғаны үшін +5 ұпай',
-    security_tip_get_reviews_desc: 'Оң пікір үшін +1 ұпай',
-    security_tip_verify_docs_desc: 'Растау үшін +10 ұпай',
-    security_what_to_avoid: 'НЕДЕН АУЛАҚ БОЛУ КЕРЕК',
-    send_counter_offer: 'Қарсы бағаны жіберу',
-    send_discount: 'Жеңілдік жіберу',
-    shipper_label: 'Жүк жөнелтуші',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     profile_incomplete: 'Профиль толтырылмаған',
     rating_label: 'Рейтинг',
-    status_accepted: 'Қабылданды',
-    status_cancelled: 'Болдырылмады',
-    status_delivered: 'Жеткізілді',
+
+
+
     status_awaiting_receipt: 'Растауды күтуде',
     status_received: 'Қабылдау расталды',
     complete_deal: 'Мәмілені аяқтау',
     confirm_complete_deal: 'Мәмілені аяқтайсыз ба? Бұл мәртебе соңғы.',
-    status_in_progress: 'Жұмыста',
-    status_unknown: 'Көрсетілмеген',
-    tab_profile: 'Профиль',
-    tab_queue: 'Кезек',
+
+
+
+
     tab_border: 'Шекара',
-    theme_dark: 'Қараңғы',
-    theme_light: 'Жарық',
-    transitOptional: 'Мысалы: Қазақстан, Өзбекстан',
-    trip_arr: 'Жету',
-    trip_current_status: 'Ағымдағы статус',
-    trip_dates: 'Күндер',
-    trip_delete: 'Жариялаудан алу',
-    trip_delete_q: 'Рейсті жариялаудан аласыз ба?',
-    trip_deleted_toast: 'Рейс жариялаудан алынды',
-    trip_dep: 'Шығу',
-    trip_driver: 'Жүргізуші',
-    trip_mark: 'Белгілеу',
-    trip_route: 'Маршрут',
-    trip_transport: 'Көлік',
-    trip_truck_body: 'Шанақ',
-    trip_via: 'арқылы',
-    verified_short: 'Тексерілген',
-    voicePlaying: 'Ойнатылуда...',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     welcome: 'Кіру немесе тіркелу',
 
     // i18n-fix: вынесенные хардкод-строки
@@ -2322,33 +2334,33 @@ const translations = {
     noChats: 'Чаттар жоқ', noArchive: 'Архив бос', noTrips: 'Белсенді рейс жоқ',
     noBlacklist: 'Қара тізім бос', addToBlacklist: 'Қара тізімге қосу', removeBlacklist: 'Алып тастау',
     watchVideo: 'Көру', tutorial: 'Сабақ', edu_youtube_search: 'YouTube-тен тақырып бойынша іздеу',
-    notifOnlyMyRoutes: 'Менің маршруттарым', notifMinTons: 'X тоннадан', notifPrice: 'Баға $ дан',
-    savePushSettings: 'Сақтау', pushSaved: 'Сақталды', voicePlaying: 'Ойнатуда...',
+    notifOnlyMyRoutes: 'Менің маршруттарым',
+    savePushSettings: 'Сақтау',voicePlaying: 'Ойнатуда...',
     phrLoading: 'Тиеудемін', phrDelay: 'Шекарада кідіремін', phrDeparting: 'Бір сағаттан кейін шығамын',
     phrLoaded: 'Жүк алынды, шықтым', phrSendAddr: 'Қойма мекенжайын жіберіңіз',
     phrPallets: 'Қанша паллет?', phrWeight: 'Нақты салмағы қанша?', phrCustoms: 'Кедендік ресімдеу керек пе?',
-    replyOK: 'Жақсы, талқылаймыз', replyReady: 'Түсінікті, жүкті дайындап жатырмын',
-    edu1: 'UrTruck-ке тіркелу', edu2: 'Бірінші жүкті жариялау', edu3: 'Баға ұсыну (сауда)',
-    edu4: 'Кедендік ережелер', edu5: 'Халықаралық тасымалдау құжаттары', edu6: 'Клиенттермен жұмыс',
-    edu7: 'Шекарадағы қауіпсіздік', edu8: 'Маршрут бағасын есептеу',
-    shareLink: 'Сілтеме', shareError: 'Бөлісу қатесі', fillRequired: 'Міндетті өрістерді толтырыңыз',
-    youPlaceholder: 'Сіз', searchRoute: 'Маршрут бойынша іздеу...', filters: 'Сүзгілер', clearFilters: 'Тазалау', all: 'Барлығы',
-    addCargoPhoto: 'Жүк суретін қосу', cargoPhoto: 'Жүк суреті', mapRoute: 'Картадағы маршрут', saveSettings: 'Сақталды',
-    postTrip: 'Рейсті жариялау', tripRoute: 'Рейс маршруты', fromCountry: 'Қайдан (ел, қала)', toCountry: 'Қайда (ел, қала)',
-    availableFrom: 'Қолжетімді', availableTo: 'дейін', dateRange: 'Жүктеу кезеңі',
-    datePlusMinus: '± күн', pickupDate: 'Жүктеу күні', departure: 'Шығу', arrival: 'Келу',
+    replyOK: 'Жақсы, талқылаймыз',
+    edu1: 'UrTruck-ке тіркелу',
+    edu4: 'Кедендік ережелер',
+    edu7: 'Шекарадағы қауіпсіздік',
+    shareLink: 'Сілтеме', shareError: 'Бөлісу қатесі',
+    youPlaceholder: 'Сіз',
+    addCargoPhoto: 'Жүк суретін қосу',saveSettings: 'Сақталды',
+    postTrip: 'Рейсті жариялау', tripRoute: 'Рейс маршруты',
+    availableFrom: 'Қолжетімді',
+    datePlusMinus: '± күн',
     transit: 'Транзит елдер', transitOptional: 'Мысалы: Қазақстан', through: 'арқылы',
     youPublish: 'Жолда мәртебені өзіңіз жаңартасыз', whoFills: 'Жүргізуші маршрутты толтырады',
     sendReview: 'Пікір жіберу', reviewSent: 'Пікір жіберілді!',
-    allReviews: 'Барлық пікірлер', myReviews: 'Менің пікірлерім', noReviews: 'Пікірлер жоқ', favorites_title: 'Таңдаулылар', favorites_empty: 'Мұнда сақталған тасымалдаушылар мен жүктер шығады', favorites_remove: 'Таңдаулыдан алып тастау', favorites_remove_failed: 'Таңдаулыдан алып тастау сәтсіз аяқталды', add_to_favorites: 'Таңдаулыға', in_favorites: 'Таңдаулыда', removed_from_favorites: 'Таңдаулыдан жойылды',
+    allReviews: 'Барлық пікірлер',favorites_title: 'Таңдаулылар', favorites_empty: 'Мұнда сақталған тасымалдаушылар мен жүктер шығады', favorites_remove: 'Таңдаулыдан алып тастау', favorites_remove_failed: 'Таңдаулыдан алып тастау сәтсіз аяқталды', add_to_favorites: 'Таңдаулыға', in_favorites: 'Таңдаулыда', removed_from_favorites: 'Таңдаулыдан жойылды',
     cargos: 'Жүктер',
     trucks: 'Машиналар',
     active: 'белсенді',
     goingToChina: 'Қытайға барамын',
     postCargo: 'Орналастыру',
     bids: 'ұсыныс',
-    from: 'Қайдан',
-    to: 'Қайда',
+
+
     cargoDesc: 'Жүк сипаттамасы',
     weight: 'Салмақ (т)',
     price: 'Баға $', deal_price: 'Мәміле бағасы', price_optional_placeholder: 'Мысалы 4500 (бос қалдыруға болады)',
@@ -2451,7 +2463,7 @@ const translations = {
     menu_my_cargos_sub: 'Жарияланған · Мұрағат',
     editProfileTitle: 'Профильді өңдеу',
     section_main: 'НЕГІЗГІ',
-    section_transport: '🚛 КӨЛІК',
+
     section_verification: '🔐 ТЕКСЕРУ',
     avatar_change_hint: 'Фотоны өзгерту үшін басыңыз',
     field_name: 'Аты',
@@ -2476,7 +2488,7 @@ const translations = {
     val_iin_12: 'ЖСН 12 саннан тұруы керек',
     val_iin_digits: 'ЖСН тек сандардан тұруы керек',
     val_phone_invalid: 'Дұрыс емес телефон форматы',
-    val_price_positive: 'Баға 0-ден үлкен болуы керек',
+
     val_weight_positive: 'Салмақ 0-ден үлкен болуы керек',
     photo_source: 'Фото көзін таңдаңыз',
     photo_camera: '📸 Сурет түсіру',
@@ -2503,18 +2515,18 @@ const translations = {
     update_btn: 'Жаңарту',
     compressing: 'Сығу...',
     uploading: 'Жүктелуде...',
-    submit_review: 'Пікірді жіберу',
+
     update_app: 'Қосымшаны жаңарту',
     negotiable: 'Келісімді', desc_not_specified: 'Сипаттама көрсетілмеген',
     my_work: 'Менің жұмысым', my_work_sub_driver: 'Рейстер, баға ұсыныстары және тапсырыстар', my_work_sub_client: 'Жүктер, жауаптар және тапсырыстар',
     my_trips_tab: 'Менің рейстерім', my_bids_tab: 'Менің ұсыныстарым', my_cargos_tab: 'Менің жүктерім', responses_tab: 'Жауаптар', orders_tab: 'Тапсырыстар', order_label: 'ТАПСЫРЫС',
-    bid_pending: 'Күтуде', bid_accepted: 'Қабылданды', bid_rejected: 'Қабылданбады', accept_bid_btn: 'Қабылдау', accept_bid_confirm: 'Осы {sum} ставканы қабылдап, мәміле жасайсыз ба? Қалған ставкалар қабылданбайды.', open_chat: 'Чатты ашу',
+    bid_pending: 'Күтуде', bid_accepted: 'Қабылданды', bid_rejected: 'Қабылданбады', accept_bid_btn: 'Қабылдау', accept_bid_confirm: 'Осы {sum} ставканы қабылдап, мәміле жасайсыз ба? Қалған ставкалар қабылданбайды.',
     no_trips_yet: 'Әзірге рейстер жоқ', no_cargos_yet: 'Әзірге жүктер жоқ', no_bids_yet_driver: 'Әзірге ұсыныстар жоқ', no_responses_yet: 'Әзірге жауаптар жоқ', no_orders_yet: 'Әзірге тапсырыстар жоқ',
     no_trips_desc: 'Маршрутты жариялаңыз, сонда жүк иелері сізге жүк ұсына алады.', no_cargos_desc: 'Жүк орналастырыңыз, тасымалдаушылардан жауап алыңыз.',
     no_bids_desc: 'Қолайлы жүк тауып, баға ұсыныңыз.', no_responses_desc: 'Жүк жарияланғаннан кейін жауаптар пайда болады.',
     no_orders_desc_driver: 'Тапсырыстар тасымал расталғаннан кейін пайда болады.', no_orders_desc_client: 'Тапсырыстар тасымалдаушы таңдалғаннан кейін пайда болады.',
     publish_route: 'Маршрут жариялау', find_cargos: 'Жүктерді табу', place_cargo: 'Жүк орналастыру',
-    gate_login: 'Жалғастыру үшін кіріңіз', gate_login_desc: 'Мәмілелер, ұсыныстар, чат және байланыстар үшін тіркелу қажет.',
+    gate_login: 'Жалғастыру үшін кіріңіз', gate_login_desc: 'Мәмілелер, ұсыныстар, чат және байланыстар үшін тіркелу қажет.', gate_push_desc: 'Хабарландыру параметрлері аккаунтқа кіргеннен кейін қолжетімді.',
     gate_publish: 'Жариялау үшін кіріңіз', gate_publish_desc: 'Жүктер мен маршруттарды жариялау үшін тіркелу қажет.',
     gate_driver: 'Тасымалдаушы ретінде кіріңіз', gate_driver_desc: 'Жүктер мен ұсыныстарға қол жеткізу үшін кіру қажет.',
     gate_bid: 'Баға ұсыну үшін кіріңіз', gate_bid_desc: 'Ұсыныс жіберу үшін тіркелу қажет.',
@@ -2567,7 +2579,7 @@ const translations = {
     prem_reg_existing_account: 'Бұл нөмір бұрыннан тіркелген. Бар аккаунтқа кіреміз.',
     editProfile: 'Профильді өзгерту',
     error_title: 'Бір нәрсе дұрыс болмады', error_desc: 'Қате орын алды. Қосымшаны қайта жүктеп көріңіз.', error_reload: 'Қайта жүктеу',
-    add_name: 'Атыңызды қосыңыз', role_driver: 'Жүргізуші', role_shipper: 'Жүк иесі',
+    add_name: 'Атыңызды қосыңыз',role_shipper: 'Жүк иесі',
     theme_label: 'Тема', theme_light: 'Жарық', theme_dark: 'Қараңғы',
     tab_feed: 'Жүктер', tab_feed_client: 'Машиналар', tab_my_work: 'Менің жұмысым', tab_profile: 'Профиль', tab_queue: 'Кезек',
     chat_title: 'Мәмілелер',
@@ -2592,7 +2604,7 @@ const translations = {
     apply_filters: 'Қолдану',
     filter_status: 'Мәртебе',
     filter_body_type: 'Кузов түрі',
-    filter_date_from: 'Күн бастап',
+
     filter_unread_only: 'Тек оқылмағандар',
     deals_tab_completed: 'Аяқталған',
     deals_offers_count: 'ұсыныс',
@@ -2650,22 +2662,23 @@ const translations = {
     deal_event_status_in_progress: '🚛 Рейс басталды',
     deal_event_status_at_border: '🛂 Жүк шекарада',
     deal_event_status_delivered: '✅ Жүк жеткізілді',
-    deal_event_status_completed: '✅ Жүк қабылданды',
+    deal_event_status_received: '✅ Жүк қабылданды',
+    deal_event_status_completed: '🤝 Мәміле аяқталды',
     deal_event_status_cancelled: '❌ Мәміле бас тартылды',
     deal_event_status_accepted: '🤝 Мәміле расталды',
     status_active: 'Белсенді', status_booked: 'Брондалған', status_taken: 'Жұмыста', status_in_transit: 'Жолда', status_completed: 'Аяқталды', status_cancelled: 'Бас тартылды', status_unknown: 'Белгісіз',
-    status_pending: 'Күтуде', status_accepted: 'Қабылданды', status_in_progress: 'Жұмыста', status_delivered: 'Аяқталды', status_rejected: 'Қабылданбады', status_expired: 'Мерзімі өтті', status_unpublished: 'Жариялаудан алынды', clarify_route: 'Бағытты нақтылау', republish: 'Қайта жариялау', cargo_unpublished_by_owner: 'Жүк иесі жариялаудан алды', has_active_deal: 'Алу мүмкін емес: тасымалдау басталды',
+    status_pending: 'Күтуде', status_accepted: 'Қабылданды', status_in_progress: 'Жұмыста', status_delivered: 'Жеткізілді', status_rejected: 'Қабылданбады', status_expired: 'Мерзімі өтті', status_unpublished: 'Жариялаудан алынды', clarify_route: 'Бағытты нақтылау', republish: 'Қайта жариялау', cargo_unpublished_by_owner: 'Жүк иесі жариялаудан алды', has_active_deal: 'Алу мүмкін емес: тасымалдау басталды',
     badge_cargo: 'ЖҮК', badge_trip: 'РЕЙС', details: 'Толығырақ', available_trips: 'қолжетімді рейстер',
-    filter_title: 'Сүзгілер', filter_rating: 'РЕЙТИНГ', filter_truck_type: 'КӨЛІК ТҮРІ', filter_sort: 'СҰРЫПТАУ',
+    filter_title: 'Сүзгілер',
     truck_more_types: 'Басқа түрлері',
-    filter_all: 'Барлығы', filter_newest: 'Жаңа', filter_price_asc: 'Баға ↑', filter_price_desc: 'Баға ↓', filter_rating_sort: 'Рейтинг', filter_reset: 'Тазалау', filter_apply: 'Қолдану',
+    filter_all: 'Барлығы',
     driver_fallback: 'Жүргізуші', val_price_positive: 'Баға 0-ден көп болуы керек',
     chats_title: 'Чаттар', always_online: 'ӘРҚАШАН ОНЛАЙН', dialogs: 'Диалогтар', support_desc: 'Қолдау — кез келген сұраққа жауап береміз', test_driver_desc: 'Тест жүргізуші — чат жұмысын тексеріңіз',
     write_driver: 'Жүргізушіге жазу', leave_review: 'Пікір қалдыру',
     trip_status: 'Рейс мәртебесі', trip_planned: 'Жоспарланған', trip_current_status: 'Ағымдағы мәртебе', trip_cargo_accepted: 'Жүк қабылданды', trip_in_transit: 'Жолда', trip_delivered: 'Жеткізілді',
     biometry: 'Биометрия (FaceID)', biometry_desc: 'Бет арқылы жылдам авторизация', iin_check: 'ЖСН / СТН', iin_check_desc: 'Мемлекеттік база арқылы тексеру', bank_account: 'Банк шоты', bank_account_desc: 'Төлемдерді қабылдау',
     section_transport: 'Көлік', trip_route: 'Маршрут', trip_dates: 'Күндер', trip_transport: 'Көлік',
-    trip_title: 'Рейс', trip_dep: 'Шығу', trip_arr: 'Келу', trip_truck_body: 'Шанақ', trip_driver: 'Жүргізуші', trip_free: 'Бос орын', trip_via: 'арқылы', trip_mark: 'Белгілеу', trip_delete: 'Жариялаудан алу', trip_delete_q: 'Рейсті жариялаудан аласыз ба?', trip_deleted_toast: 'Рейс жариялаудан алынды', chat_opened_toast: 'Жүргізушімен чат ашылды', cancel: 'Бас тарту', delete: 'Жою', days_short: 'күн', km_short: 'км',
+    trip_title: 'Рейс', trip_dep: 'Шығу', trip_arr: 'Келу', trip_truck_body: 'Шанақ', trip_driver: 'Жүргізуші', trip_free: 'Бос орын', trip_via: 'арқылы', trip_mark: 'Белгілеу', trip_delete: 'Жариялаудан алу', trip_delete_q: 'Рейсті жариялаудан аласыз ба?', trip_deleted_toast: 'Рейс жариялаудан алынды', chat_opened_toast: 'Жүргізушімен чат ашылды', cancel: 'Бас тарту',days_short: 'күн', km_short: 'км',
     chat_partner_fallback: 'UrTruck қолданушысы', chats_empty: 'Біреуге жазыңыз — чат осында пайда болады',
     deals_empty: 'Әзірге мәмілелер жоқ — жүргізушілердің ұсыныстары осында пайда болады',
     deals_no_offers: 'Жаңа ұсыныстар жоқ — олар осында пайда болып, қызғылт сары түспен жанады',
@@ -2700,7 +2713,7 @@ const translations = {
     role_feature_verified: 'Расталған тасымалдаушылар', role_feature_deals: 'Мәмілелер мен мәртебелер',
     role_feature_chat: 'Аудармасы бар чат', role_feature_routes: 'Халықаралық бағыттар',
     // Stage 45: қонақ режим
-    browse_as_guest: 'Тіркелусіз жүктерді қарау', browse_as_guest_sub: '',
+    browse_as_guest: 'Тіркелусіз жүктерді қарау',
     guest_tab_cargos: 'Жүктер', guest_tab_trips: 'Рейстер',
     guest_subtitle: 'Тіркелусіз қарау',
     language_label: 'Тіл', onboarding_trust_count: 'расталған тасымалдаушылар',
@@ -2745,7 +2758,7 @@ const translations = {
     reg_client_title: 'Компания профилі', reg_client_company_name: 'Компания атауы', reg_client_city: 'Қала', reg_client_business_type: 'Бизнес түрі',
     reg_client_importer: 'Импорттаушы', reg_client_forwarder: 'Экспедитор', reg_client_shop: 'Интернет-дүкен',
     reg_client_enter_name: 'Атауды енгізіңіз', reg_client_welcome: 'Қош келдіңіз', reg_client_finish: 'Аяқтау',
-    push_title: 'Хабарламалар', push_categories: 'Санаттар', push_filter_cargos: 'Жүк сүзгісі',
+    push_title: 'Хабарламалар', route_direction: 'Бағыт', from: 'Қайдан', to: 'Қайда', push_route_driver_hint: 'Рейс бағытын таңдаңыз', push_route_shipper_hint: 'Жүк бағытын таңдаңыз', saved_routes: 'Сақталған бағыттар', saved_routes_empty: 'Сақталған бағыттар әзірге жоқ.', push_any_cargo: 'Кез келген жүк', push_categories: 'Санаттар', push_filter_cargos: 'Жүк сүзгісі',
     push_only_my_routes: 'Тек менің бағыттарым', push_min_tons: 'Минимум тонна', push_min_price: 'Минимум баға ($)',
     push_truck_types: 'Шанақ түрлері', push_save_btn: 'Параметрлерді сақтау', push_saved: 'Параметрлер сақталды',
     push_cat_new_cargos: 'Бағыт бойынша жаңа жүктер', push_cat_new_cargos_desc: 'Сақталған бағыт бойынша жүк пайда болғанда push',
@@ -3069,6 +3082,7 @@ const translations = {
     bid_sent: 'Ұсыныс жіберілді',
     driver_selected: 'Жүргізуші таңдалды!',
     deal_created: 'Мәміле жасалды',
+    deal_no: 'Мәміле №',
     status_updated: 'Күй жаңартылды',
     update_failed: 'Жаңарту мүмкін болмады',
     no_connection: 'Сервермен байланыс жоқ',
@@ -3088,7 +3102,7 @@ const translations = {
     privacy_link: 'Құпиялылық',
     offer_link: 'Оферта',
     continue_registration: 'Жалғастыру',
-    thanks_for_review: 'Бағаңыз үшін рахмет!',
+
     review_failed: 'Жіберу мүмкін болмады',
     submit_rating: 'Бағаны жіберу',
     rate_driver: 'Жүргізушіні бағалаңыз',
@@ -3155,6 +3169,8 @@ const translations = {
     translate: 'Аудару',
     voice_send: 'Дауыстық хабарламаны жіберу',
     voice_to_text: 'Мәтінге',
+    chat_day_today: 'Бүгін',
+    chat_day_yesterday: 'Кеше',
     voice_show_text: 'Мәтінді көрсету',
     voice_hide_text: 'Мәтінді жасыру',
     voice_original_label: 'Түпнұсқа',
@@ -3466,7 +3482,7 @@ const translations = {
     track_left: 'Қалды',
     track_speed_label: 'Жылдамдық',
     track_eta_label: 'Жолда',
-    track_stopped: 'Тұр',
+
     track_near_border: 'Шекарада',
     track_min: 'мин',
     track_hour: 'сағ',
@@ -3655,6 +3671,8 @@ const translations = {
     track_disable_all: '🔒 Бақылауды толық өшіру',
     track_driver_consent: 'Осы мәміле үшін геолокацияны беруге рұқсат етіңіз. Жүк алынғаннан кейін бақылау тасымал аяқталғанша бекітіледі.',
     track_permission_needed: 'Телефон немесе браузер баптауларында UrTruck қолданбасына геолокацияға рұқсат беріңіз.',
+    gps_system_disabled: 'Телефон баптауларында геолокацияны қосыңыз.',
+    gps_no_fix: 'GPS сигналы алынбады. Ашық жерге шығып, қайталап көріңіз.',
     track_native_required: 'Фондық GPS-ті тек iPhone немесе Android-тағы UrTruck қолданбасында қосуға болады.',
     track_active: 'GPS-бақылау қосылды',
     track_declined: 'GPS-бақылау қабылданбады',
@@ -3909,137 +3927,140 @@ const translations = {
 
     verification_rejected_title: 'Құжаттарды түзету қажет',
     verification_rejected_subtitle: 'Модератор белгіленген тармақтарды қайта түсіруді сұрады. Қалған құжаттар расталған күйінде қалады.',
+    a11y_rating_star: '{n}/5 баға',
+    a11y_toggle_favorite: 'Таңдаулылар',
     verification_rejected_empty: 'Қазір қабылданбаған құжаттар жоқ.',
     verification_rejected_generic_reason: 'Модератор құжатты қайта түсіруді сұрады.',
 
 },
 
   ZH: {
+    emoji: '表情', send: '发送',
     // i18n-fill 26.07.2026: недостающие живые ключи (симметрия с RU)
-    accept_bid_btn: '接受',
-    accept_bid_confirm: '接受这个 {sum} 的报价并创建交易？其他报价将被拒绝。',
-    accept_failed: '无法接受报价',
-    add_to_favorites: '加入收藏',
-    anonymous: '匿名',
-    arrival: '到达日期',
-    back_short: '返回',
-    badge_trip: '行程',
-    bid_accepted: '已接受',
-    bid_discount_sent: '折扣已发送',
-    bid_rejected: '已拒绝',
-    bid_rejected_toast: '报价已被拒绝',
-    cancel: '取消',
-    cancel_bid: '取消',
-    cancel_deal_confirm: '取消交易？',
-    chat_open_failed: '无法打开聊天',
-    chats_empty: '给某人发消息——聊天会出现在这里',
-    comment_optional: '评论（可选）',
-    confirm_delivery: '确认送达',
-    counter_declined: '还价已被拒绝',
-    counter_offer: '自定义价格',
-    counter_sent: '还价已发送',
-    counter_sent_status: '还价已发送',
-    days_short: '天',
-    deal_price: '交易价格',
-    deal_updated_toast: '状态已更新',
-    decline_counter: '拒绝还价',
-    delete: '删除',
-    departure: '出发日期',
-    desc_not_specified: '未填写描述',
-    details: '详情',
-    driver_chosen: '已选择司机',
-    edit_bid: '修改',
-    error_desc: '发生错误。请尝试重新加载应用。',
-    error_reload: '重新加载',
-    favorites_empty: '收藏的承运人会显示在这里',
-    favorites_title: '收藏',
-    find_cargos: '查找货物',
-    fromCountry: '出发地（国家、城市）',
-    gate_login_desc: '交易、报价、聊天和联系方式需要注册。',
-    give_discount: '给予折扣',
-    in_favorites: '已收藏',
-    incomplete_data: '行程数据不完整',
-    km_short: '公里',
-    mark_arrived: '已送达',
-    myReviews: '我的评价',
-    no_cargos_yet: '暂无货物',
-    no_reviews_yet: '暂无评价',
-    order_label: '订单',
-    order_next_step: '下一步',
-    per_km_short: '价格/公里',
-    pickupDate: '装货日期',
-    place_cargo: '发布货物',
-    push_categories: '类别',
-    push_filter_cargos: '货物筛选',
-    push_min_price: '最低价格（$）',
-    push_min_tons: '最低吨数',
-    push_save_btn: '保存设置',
-    push_saved: '设置已保存',
-    reg_doc_format_hint: 'JPG/PNG，最大 10 MB',
-    reg_selfie_bad_photo: '照片质量差。请在光线良好处重试',
-    reg_selfie_manual_review: '不成功？提交人工审核',
-    reg_selfie_retake: '重拍自拍',
-    reject_btn: '拒绝',
-    reject_failed: '无法拒绝报价',
-    removeBlacklist: '移除',
-    removed_from_favorites: '已从收藏中移除',
-    report_choose_reason: '投诉原因',
-    report_driver: '投诉司机',
-    report_sent: '投诉已发送给审核员',
-    review_after_trip: '运输完成后可留下评价',
-    role_client_desc: '发布需求，获取承运人的报价',
-    role_driver_desc: '寻找国际运输行程',
-    role_shipper: '货主',
-    route_saved: '路线已保存——有新货物时会推送通知',
-    saveSettings: '设置已保存',
-    save_route_notify: '按路线推送货物通知',
-    saved_locally: '已本地保存',
-    searchRoute: '搜索货物或路线...',
-    security_avoid_cancel_desc: '取消订单 −5 分',
-    security_avoid_ignore_desc: '不回复 −10 分',
-    security_avoid_late_desc: '延误 −5 分',
-    security_tip_complete_trips_desc: '每次成功运输 +2 分',
-    security_tip_confirm_account_desc: '绑定银行 +5 分',
-    security_tip_get_reviews_desc: '每条好评 +1 分',
-    security_tip_verify_docs_desc: '证件认证 +10 分',
-    security_what_to_avoid: '应避免的行为',
-    send_counter_offer: '发送还价',
-    send_discount: '发送折扣',
-    shipper_label: '货主',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     profile_incomplete: '资料未完善',
     rating_label: '评分',
-    status_accepted: '已接受',
-    status_cancelled: '已取消',
-    status_delivered: '已送达',
+
+
+
     status_awaiting_receipt: '等待确认',
     status_received: '已确认收货',
     complete_deal: '完成交易',
     confirm_complete_deal: '确认完成交易？此状态为最终状态。',
-    status_in_progress: '进行中',
-    status_unknown: '未指定',
-    tab_feed_client: '车辆',
-    tab_profile: '我的',
-    tab_queue: '排队',
+
+
+
+
+
     tab_border: '边境',
-    theme_dark: '深色',
-    theme_light: '浅色',
-    toCountry: '目的地（国家、城市）',
-    transitOptional: '例如：哈萨克斯坦、乌兹别克斯坦',
-    trip_arr: '到达',
-    trip_current_status: '当前状态',
-    trip_dates: '日期',
-    trip_delete: '取消发布',
-    trip_delete_q: '取消发布此行程？',
-    trip_deleted_toast: '行程已取消发布',
-    trip_dep: '出发',
-    trip_driver: '司机',
-    trip_mark: '标记',
-    trip_route: '路线',
-    trip_transport: '车辆',
-    trip_truck_body: '车厢',
-    trip_via: '途经',
-    verified_short: '已认证',
-    voicePlaying: '播放中...',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     welcome: '登录或创建账户',
 
     // i18n-fix: вынесенные хардкод-строки
@@ -4183,8 +4204,8 @@ const translations = {
     goingToChina: '前往中国',
     postCargo: '发布',
     bids: '出价',
-    from: '起点',
-    to: '终点',
+
+
     cargoDesc: '货物描述',
     weight: '重量 (吨)',
     price: '价格 $', deal_price: '成交价', price_optional_placeholder: '例如 4500（可留空）',
@@ -4287,7 +4308,7 @@ const translations = {
     menu_my_cargos_sub: '已发布 · 归档',
     editProfileTitle: '编辑个人资料',
     section_main: '基本信息',
-    section_transport: '🚛 车辆',
+
     section_verification: '🔐 验证',
     avatar_change_hint: '点击更换照片',
     field_name: '姓名',
@@ -4312,7 +4333,7 @@ const translations = {
     val_iin_12: 'IIN 必须是 12 位数字',
     val_iin_digits: 'IIN 只能包含数字',
     val_phone_invalid: '电话号码格式无效',
-    val_price_positive: '价格必须大于 0',
+
     val_weight_positive: '重量必须大于 0',
     photo_source: '选择照片来源',
     photo_camera: '📸 拍照',
@@ -4339,18 +4360,18 @@ const translations = {
     update_btn: '更新',
     compressing: '压缩中...',
     uploading: '上传中...',
-    submit_review: '提交评价',
+
     update_app: '更新应用',
     negotiable: '面议', desc_not_specified: '未填写描述',
     my_work: '我的工作', my_work_sub_driver: '线路、报价和订单', my_work_sub_client: '货物、回复和订单',
     my_trips_tab: '我的线路', my_bids_tab: '我的报价', my_cargos_tab: '我的货物', responses_tab: '回复', orders_tab: '订单', order_label: '订单',
-    bid_pending: '待处理', bid_accepted: '已接受', bid_rejected: '已拒绝', accept_bid_btn: '接受', accept_bid_confirm: '接受这个 {sum} 的报价并创建交易？其他报价将被拒绝。', open_chat: '打开聊天',
+    bid_pending: '待处理', bid_accepted: '已接受', bid_rejected: '已拒绝', accept_bid_btn: '接受', accept_bid_confirm: '接受这个 {sum} 的报价并创建交易？其他报价将被拒绝。',
     no_trips_yet: '暂无线路', no_cargos_yet: '暂无货物', no_bids_yet_driver: '暂无报价', no_responses_yet: '暂无回复', no_orders_yet: '暂无订单',
     no_trips_desc: '发布线路后，货主可以向你推荐货物。', no_cargos_desc: '发布货物后，你将收到承运人的回复。',
     no_bids_desc: '找到合适的货物并提交报价。', no_responses_desc: '发布货物后，这里会显示回复。',
     no_orders_desc_driver: '运输确认后，这里会显示订单。', no_orders_desc_client: '选择承运人后，这里会显示订单。',
     publish_route: '发布线路', find_cargos: '查找货物', place_cargo: '发布货物',
-    gate_login: '请登录后继续', gate_login_desc: '交易、报价、聊天和联系方式需要注册。',
+    gate_login: '请登录后继续', gate_login_desc: '交易、报价、聊天和联系方式需要注册。', gate_push_desc: '登录账户后即可使用通知设置。',
     gate_publish: '请登录后发布', gate_publish_desc: '发布货物和线路需要注册。',
     gate_driver: '请以承运人身份登录', gate_driver_desc: '查看货物和报价需要登录。',
     gate_bid: '请登录后报价', gate_bid_desc: '提交报价需要注册。',
@@ -4403,7 +4424,7 @@ const translations = {
     prem_reg_existing_account: '该号码已注册。正在登录现有账号。',
     editProfile: '编辑资料',
     error_title: '出现问题', error_desc: '发生错误，请尝试重新加载应用。', error_reload: '重新加载',
-    add_name: '添加您的姓名', role_driver: '司机', role_shipper: '货主',
+    add_name: '添加您的姓名',role_shipper: '货主',
     theme_label: '主题', theme_light: '浅色', theme_dark: '深色',
     tab_feed: '货物', tab_feed_client: '车辆', tab_my_work: '我的工作', tab_profile: '个人资料', tab_queue: '排队',
     chat_title: '交易',
@@ -4428,7 +4449,7 @@ const translations = {
     apply_filters: '应用',
     filter_status: '状态',
     filter_body_type: '车型',
-    filter_date_from: '起始日期',
+
     filter_unread_only: '仅未读',
     deals_tab_completed: '已完成',
     deals_offers_count: '个报价',
@@ -4486,15 +4507,16 @@ const translations = {
     deal_event_status_in_progress: '🚛 运输开始',
     deal_event_status_at_border: '🛂 货物在边境',
     deal_event_status_delivered: '✅ 货物已送达',
-    deal_event_status_completed: '✅ 已确认收货',
+    deal_event_status_received: '✅ 已确认收货',
+    deal_event_status_completed: '🤝 交易已完成',
     deal_event_status_cancelled: '❌ 交易已取消',
     deal_event_status_accepted: '🤝 交易已确认',
     status_active: '活跃', status_booked: '已预订', status_taken: '进行中', status_in_transit: '运输中', status_completed: '已完成', status_cancelled: '已取消', status_unknown: '未知',
-    status_pending: '待处理', status_accepted: '已接受', status_in_progress: '运输中', status_delivered: '已完成', status_rejected: '已拒绝', status_expired: '已过期', status_unpublished: '已下架', clarify_route: '确认路线', republish: '重新发布', cargo_unpublished_by_owner: '货物已被货主下架', has_active_deal: '无法下架：运输已开始',
+    status_pending: '待处理', status_accepted: '已接受', status_in_progress: '运输中', status_delivered: '已送达', status_rejected: '已拒绝', status_expired: '已过期', status_unpublished: '已下架', clarify_route: '确认路线', republish: '重新发布', cargo_unpublished_by_owner: '货物已被货主下架', has_active_deal: '无法下架：运输已开始',
     badge_cargo: '货物', badge_trip: '线路', details: '详情', available_trips: '条可用线路',
-    filter_title: '筛选', filter_rating: '评分', filter_truck_type: '车型', filter_sort: '排序',
+    filter_title: '筛选',
     truck_more_types: '其他类型',
-    filter_all: '全部', filter_newest: '最新', filter_price_asc: '价格 ↑', filter_price_desc: '价格 ↓', filter_rating_sort: '评分', filter_reset: '重置', filter_apply: '确定',
+    filter_all: '全部',
     driver_fallback: '司机', val_price_positive: '价格必须大于0',
     chats_title: '聊天', always_online: '全天在线', dialogs: '对话', support_desc: '客服——随时为您解答', test_driver_desc: '测试司机——查看聊天功能',
     write_driver: '联系司机', leave_review: '留下评价',
@@ -4536,7 +4558,7 @@ const translations = {
     role_feature_verified: '已验证的承运人', role_feature_deals: '订单与状态',
     role_feature_chat: '带翻译的聊天', role_feature_routes: '国际线路',
     // Stage 45: 访客模式
-    browse_as_guest: '无需注册查看货物', browse_as_guest_sub: '',
+    browse_as_guest: '无需注册查看货物',
     guest_tab_cargos: '货物', guest_tab_trips: '车辆',
     guest_subtitle: '无需注册即可浏览',
     language_label: '语言', onboarding_trust_count: '位已验证的承运人',
@@ -4581,7 +4603,7 @@ const translations = {
     reg_client_title: '公司资料', reg_client_company_name: '公司名称', reg_client_city: '城市', reg_client_business_type: '业务类型',
     reg_client_importer: '进口商', reg_client_forwarder: '货代', reg_client_shop: '网店',
     reg_client_enter_name: '请输入名称', reg_client_welcome: '欢迎', reg_client_finish: '完成',
-    push_title: '通知', push_categories: '类别', push_filter_cargos: '货物筛选',
+    push_title: '通知', route_direction: '路线方向', from: '出发地', to: '目的地', push_route_driver_hint: '选择行程方向', push_route_shipper_hint: '选择货物方向', saved_routes: '已保存路线', saved_routes_empty: '暂无已保存路线。', push_any_cargo: '任意货物', push_categories: '类别', push_filter_cargos: '货物筛选',
     push_only_my_routes: '仅我的线路', push_min_tons: '最小吨数', push_min_price: '最低价格 ($)',
     push_truck_types: '车型', push_save_btn: '保存设置', push_saved: '设置已保存',
     push_cat_new_cargos: '线路上的新货物', push_cat_new_cargos_desc: '当保存的线路上出现货物时推送',
@@ -4878,6 +4900,7 @@ const translations = {
     bid_sent: '报价已发送',
     driver_selected: '已选择司机!',
     deal_created: '交易已创建',
+    deal_no: '交易 №',
     status_updated: '状态已更新',
     update_failed: '更新失败',
     no_connection: '无法连接服务器',
@@ -4964,6 +4987,8 @@ const translations = {
     translate: '翻译',
     voice_send: '发送语音消息',
     voice_to_text: '转文字',
+    chat_day_today: '今天',
+    chat_day_yesterday: '昨天',
     voice_show_text: '显示文字',
     voice_hide_text: '隐藏文字',
     voice_original_label: '原文',
@@ -5275,7 +5300,7 @@ const translations = {
     track_left: '剩余',
     track_speed_label: '速度',
     track_eta_label: '预计',
-    track_stopped: '停止',
+
     track_near_border: '在口岸',
     track_min: '分',
     track_hour: '小时',
@@ -5464,6 +5489,8 @@ const translations = {
     track_disable_all: '🔒 完全关闭追踪',
     track_driver_consent: '请为这笔交易允许位置传输。提货后，追踪将固定至运输完成。',
     track_permission_needed: '请在手机或浏览器设置中允许 UrTruck 访问位置。',
+    gps_system_disabled: '请在手机设置中开启定位服务。',
+    gps_no_fix: '无法获取 GPS 信号。请到开阔处后重试。',
     track_native_required: '后台 GPS 只能在 iPhone 或 Android 的 UrTruck 应用中开启。',
     track_active: 'GPS 追踪已开启',
     track_declined: 'GPS 追踪已拒绝',
@@ -5716,6 +5743,8 @@ const translations = {
     verification_review_complete_hint: '完成所有必填项后才能提交审核。',
 
     verification_rejected_title: '需要修正文件',
+    a11y_rating_star: '评分 {n}/5',
+    a11y_toggle_favorite: '收藏',
     verification_rejected_subtitle: '审核员要求重新拍摄标记的项目。其他文件保持已通过状态。',
     verification_rejected_empty: '目前没有被拒绝的文件。',
     verification_rejected_generic_reason: '审核员要求重新拍摄文件。',
@@ -5723,143 +5752,144 @@ const translations = {
 },
 
   EN: {
+    emoji: 'Emoji', send: 'Send',
     // i18n-fill 26.07.2026: недостающие живые ключи (симметрия с RU)
-    accept_bid_confirm: 'Accept this bid of {sum} and create a deal? Other bids will be rejected.',
-    add_to_favorites: 'Add to favorites',
-    allReviews: 'All reviews',
-    arrival: 'Arrival date',
-    back_short: 'Back',
-    badge_trip: 'TRIP',
-    bidSent: 'Offer sent!',
-    bid_accepted: 'Accepted',
-    bid_discount_sent: 'Discount sent',
-    bid_rejected_toast: 'Offer rejected',
-    bids: 'bids',
-    cancel_bid: 'Cancel',
-    cancel_deal_confirm: 'Cancel the deal?',
-    cargo_type_unknown: 'Not specified',
-    chatOpened: 'Chat opened',
-    chat_open_failed: 'Failed to open chat',
-    chats_empty: 'Write to someone — chat will appear here',
-    comment_optional: 'Comment (optional)',
-    configure: 'Configure',
-    contactOpened: 'Contact opened',
-    counter_declined: 'Counter-offer declined',
-    counter_offer: 'Custom price',
-    counter_sent: 'Counter-offer sent',
-    counter_sent_status: 'Counter-offer sent',
-    currency: 'CURRENCY',
-    days_short: 'd.',
-    deal_price: 'Deal price',
-    deal_updated_toast: 'Status updated',
-    decline_counter: 'Decline counter',
-    desc_not_specified: 'No description',
-    edit_bid: 'Edit',
-    error_desc: 'An error occurred. Try reloading the app.',
-    error_reload: 'Reload',
-    favorites_empty: 'Saved carriers will appear here',
-    favorites_title: 'Favorites',
-    find_cargos: 'Find cargos',
-    fromCountry: 'From (country, city)',
-    gate_login_desc: 'Registration is required for deals, bids, chat and contacts.',
-    give_discount: 'Give a discount',
-    in_favorites: 'In favorites',
-    incomplete_data: 'Trip data is incomplete',
-    km_short: 'km',
-    logout: 'Log out',
-    mark_arrived: 'Delivered',
-    message: 'Message...',
-    no_cargos_yet: 'No cargos yet',
-    no_reviews_yet: 'No reviews yet',
-    order_label: 'ORDER',
-    order_next_step: 'Next step',
-    ownPrice: 'My price',
-    pending: 'Under review',
-    per_km_short: 'Rate/km',
-    pickupDate: 'Pickup date',
-    place_cargo: 'Post cargo',
-    postCargo: 'Post cargo',
-    price: 'Price $',
-    pushFilter: 'Push filter',
-    push_categories: 'Categories',
-    push_filter_cargos: 'Cargo filter',
-    push_min_price: 'Minimum price ($)',
-    push_min_tons: 'Minimum tons',
-    push_save_btn: 'Save settings',
-    push_saved: 'Settings saved',
-    reg_doc_format_hint: 'JPG/PNG up to 10 MB',
-    reg_selfie_bad_photo: 'Poor photo. Try again in good lighting',
-    reg_selfie_manual_review: 'Not working? Send for manual review',
-    reg_selfie_retake: 'Retake selfie',
-    reject_btn: 'Reject',
-    reject_failed: 'Failed to reject the offer',
-    removeBlacklist: 'Remove',
-    removed_from_favorites: 'Removed from favorites',
-    report_choose_reason: 'Report reason',
-    report_driver: 'Report driver',
-    report_sent: 'Report sent to moderators',
-    review_after_trip: 'Review is left after the delivery is completed',
-    reviews: 'REVIEWS',
-    role_client_desc: 'Post a request and get offers from carriers',
-    role_driver_desc: 'Find trips for international haulage',
-    route_saved: 'Route saved — we will push new cargos',
-    saveSettings: 'Settings saved',
-    save_route_notify: 'Notify about cargos on this route',
-    saved_locally: 'Saved locally',
-    searchRoute: 'Search cargo or route...',
-    security_avoid_cancel_desc: '−5 points for cancellation',
-    security_avoid_ignore_desc: '−10 points for not responding',
-    security_avoid_late_desc: '−5 points for missing a deadline',
-    security_tip_complete_trips_desc: '+2 points for each successful trip',
-    security_tip_confirm_account_desc: '+5 points for linking a bank',
-    security_tip_get_reviews_desc: '+1 point per positive review',
-    security_tip_verify_docs_desc: '+10 points for verification',
-    security_what_to_avoid: 'WHAT TO AVOID',
-    send_counter_offer: 'Send counter-offer',
-    send_discount: 'Send discount',
-    share: 'Share',
-    shipper_label: 'Shipper',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     profile_incomplete: 'Profile not filled in',
     rating_label: 'Rating',
-    status_accepted: 'Accepted',
-    status_cancelled: 'Cancelled',
-    status_delivered: 'Delivered',
+
+
+
     status_awaiting_receipt: 'Awaiting confirmation',
     status_received: 'Receipt confirmed',
     complete_deal: 'Complete deal',
     confirm_complete_deal: 'Complete the deal? This status is final.',
-    status_in_progress: 'In progress',
-    status_unknown: 'Not specified',
-    tab_feed_client: 'Trucks',
-    tab_profile: 'Profile',
-    tab_queue: 'Queue',
+
+
+
+
+
     tab_border: 'Border',
-    to: 'To',
-    toCountry: 'To (country, city)',
-    transit: 'Transit (countries en route)',
-    transitOptional: 'E.g.: Kazakhstan, Uzbekistan',
-    translation: 'Translation',
-    transport: 'TRANSPORT',
-    trip_arr: 'Arrival',
-    trip_current_status: 'Current status',
-    trip_dates: 'Dates',
-    trip_delete: 'Unpublish',
-    trip_delete_q: 'Unpublish this trip?',
-    trip_deleted_toast: 'Trip unpublished',
-    trip_dep: 'Departure',
-    trip_driver: 'Driver',
-    trip_mark: 'Mark',
-    trip_route: 'Route',
-    trip_transport: 'Transport',
-    trip_truck_body: 'Truck body',
-    trip_via: 'via',
-    trucks: 'Trucks',
-    val_to_required: 'Specify the destination city',
-    verified_short: 'Verified',
-    voicePlaying: 'Playing...',
-    wallet_beta_desc: 'All features are free for now. We will warn you about paid plans in advance — nothing is charged without your consent.',
-    wallet_beta_title: 'Free pilot',
-    weight: 'Weight (t)',
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     welcome: 'Sign in or create account',
 
     // i18n-fix: extracted hardcoded strings
@@ -5993,20 +6023,20 @@ const translations = {
     active_cargos: 'active cargos', available_trips: 'available trips',
     badge_cargo: 'CARGO', badge_trip: 'TRIP',
     status_active: 'Active', status_booked: 'Booked', status_taken: 'In progress', status_in_transit: 'In transit', status_completed: 'Completed', status_cancelled: 'Cancelled', status_unknown: 'Unknown',
-    status_pending: 'Pending', status_accepted: 'Accepted', status_in_progress: 'In progress', status_delivered: 'Completed', status_rejected: 'Rejected', status_expired: 'Expired', status_unpublished: 'Unpublished', clarify_route: 'Clarify route', republish: 'Republish', cargo_unpublished_by_owner: 'Cargo unpublished by owner', has_active_deal: 'Cannot unpublish: delivery already started',
+    status_pending: 'Pending', status_accepted: 'Accepted', status_in_progress: 'In progress', status_delivered: 'Delivered', status_rejected: 'Rejected', status_expired: 'Expired', status_unpublished: 'Unpublished', clarify_route: 'Clarify route', republish: 'Republish', cargo_unpublished_by_owner: 'Cargo unpublished by owner', has_active_deal: 'Cannot unpublish: delivery already started',
     general: 'General cargo', fragile: 'Fragile', food: 'Food', electronics: 'Electronics', cargo_type_unknown: 'Not specified',
     suggest_cargo: 'Offer cargo',
     negotiable: 'Negotiable', desc_not_specified: 'No description',
     my_work: 'My work', my_work_sub_driver: 'Trips, bids & orders', my_work_sub_client: 'Cargos, responses & orders',
-    my_trips_tab: 'My trips', my_bids_tab: 'My bids', my_cargos_tab: 'My cargos', responses_tab: 'Responses', orders_tab: 'Orders', order_label: 'ORDER',
-    bid_pending: 'Pending', bid_accepted: 'Accepted', bid_rejected: 'Rejected',
-    accept_bid_btn: 'Accept', accept_bid_confirm: 'Accept this bid of {sum} and create a deal? Other bids will be declined.', open_chat: 'Open chat',
+    my_trips_tab: 'My trips',responses_tab: 'Responses', orders_tab: 'Orders', order_label: 'ORDER',
+    bid_pending: 'Pending', bid_accepted: 'Accepted',
+    accept_bid_btn: 'Accept', accept_bid_confirm: 'Accept this bid of {sum} and create a deal? Other bids will be declined.',
     no_trips_yet: 'No trips yet', no_cargos_yet: 'No cargos yet', no_bids_yet_driver: 'No bids yet', no_responses_yet: 'No responses yet', no_orders_yet: 'No orders yet',
     no_trips_desc: 'Publish a route so shippers can offer cargo.', no_cargos_desc: 'Post a cargo to get offers from drivers.',
     no_bids_desc: 'Find a cargo and offer your price.', no_responses_desc: 'Responses will appear after posting cargo.',
     no_orders_desc_driver: 'Orders appear after confirmed delivery.', no_orders_desc_client: 'Orders appear after choosing a driver.',
     publish_route: 'Publish route', find_cargos: 'Find cargos', place_cargo: 'Post cargo',
-    gate_login: 'Sign in to continue', gate_login_desc: 'Registration is needed for deals, bids, chat and contacts.',
+    gate_login: 'Sign in to continue', gate_login_desc: 'Registration is needed for deals, bids, chat and contacts.', gate_push_desc: 'Notification settings are available after signing in.',
     gate_publish: 'Sign in to publish', gate_publish_desc: 'Registration is needed to post cargos and routes.',
     gate_driver: 'Sign in as driver', gate_driver_desc: 'Sign in to access cargos and bids.',
     gate_bid: 'Sign in to place bid', gate_bid_desc: 'Registration is needed to send bids.',
@@ -6059,8 +6089,8 @@ const translations = {
     prem_reg_existing_account: 'This number is already registered. Signing into the existing account.',
     editProfile: 'Edit profile',
     error_title: 'Something went wrong', error_desc: 'An error occurred. Try reloading the app.', error_reload: 'Reload',
-    add_name: 'Add your name', role_driver: 'Driver', role_shipper: 'Shipper',
-    theme_label: 'Theme', theme_light: 'Light', theme_dark: 'Dark',
+
+
     tab_feed: 'Cargos', tab_feed_client: 'Trucks', tab_my_work: 'My work', tab_profile: 'Profile', tab_queue: 'Queue',
     chat_title: 'Deals',
     chat_no_messages: 'No messages',
@@ -6084,7 +6114,7 @@ const translations = {
     apply_filters: 'Apply',
     filter_status: 'Status',
     filter_body_type: 'Body type',
-    filter_date_from: 'Date from',
+
     filter_unread_only: 'Unread only',
     deals_tab_completed: 'Completed',
     deals_offers_count: 'offers',
@@ -6125,7 +6155,7 @@ const translations = {
     chat_system_event: 'Deal event',
     chat_flag_urgent: 'Urgent',
     chat_flag_dispute: 'Dispute',
-    role_driver: 'Driver',
+
     role_client: 'Client',
     role_support: 'Support',
     deal_event_bid_created: 'Bid created',
@@ -6142,13 +6172,14 @@ const translations = {
     deal_event_status_in_progress: '🚛 Shipment started',
     deal_event_status_at_border: '🛂 Cargo at border',
     deal_event_status_delivered: '✅ Cargo delivered',
-    deal_event_status_completed: '✅ Receipt confirmed',
+    deal_event_status_received: '✅ Receipt confirmed',
+    deal_event_status_completed: '🤝 Deal completed',
     deal_event_status_cancelled: '❌ Deal cancelled',
     deal_event_status_accepted: '🤝 Deal confirmed',
-    filter_title: 'Filters', filter_rating: 'RATING', filter_truck_type: 'VEHICLE TYPE', filter_sort: 'SORT',
+    filter_title: 'Filters',
     truck_more_types: 'Other types',
-    filter_all: 'All', filter_newest: 'Newest', filter_price_asc: 'Price ↑', filter_price_desc: 'Price ↓', filter_rating_sort: 'Rating', filter_reset: 'Reset', filter_apply: 'Apply',
-    driver_fallback: 'Driver', val_price_positive: 'Price must be greater than 0',
+    filter_all: 'All',
+    driver_fallback: 'Driver',
     val_from_required: 'Enter departure city', val_to_required: 'Enter destination city',
     val_departure_required: 'Enter departure date',
     val_date_invalid: 'Invalid date format (use DD.MM.YYYY)',
@@ -6163,7 +6194,7 @@ const translations = {
     val_truck_type_required: 'Select truck body type',
     val_cargo_desc_required: 'Describe the cargo',
     val_pickup_date_required: 'Set pickup date',
-    val_weight_positive: 'Weight must be greater than 0',
+
     val_weight_or_volume_required: 'Set weight or volume',
     val_price_required: 'Enter a price',
     fill_required_fields: 'Fill the required fields',
@@ -6176,7 +6207,7 @@ const translations = {
     payment_fixed: 'Set price',
     edit_btn: 'Edit',
     edit_trip_compact: 'Edit trip',
-    save_changes: 'Save changes',
+
     edit_locked_deal: "Can't edit — bid/deal already accepted",
     trip_updated_toast: 'Trip updated',
     share_copy_link: 'Link',
@@ -6368,9 +6399,9 @@ const translations = {
     publish_trip_action: 'Publish trip',
     publish_cargo_action: 'Publish cargo',
     trip_published: 'Trip published',
-    cargo_published: 'Cargo published',
+
     amount_label: 'Amount',
-    currency_label: 'Currency',
+
     comment_label: 'Comment',
     cargo_photos_label: 'Cargo photos (optional)',
     cargo_photos_sub: 'Add photos for clarity',
@@ -6383,8 +6414,8 @@ const translations = {
     write_driver: 'Write to driver', leave_review: 'Leave review',
     trip_status: 'Trip status', trip_planned: 'Planned', trip_current_status: 'Current status', trip_cargo_accepted: 'Cargo accepted', trip_in_transit: 'In transit', trip_delivered: 'Delivered',
     biometry: 'Biometrics (FaceID)', biometry_desc: 'Quick face authorization', iin_check: 'Tax ID', iin_check_desc: 'Government database check', bank_account: 'Bank account', bank_account_desc: 'Payment receiving',
-    section_transport: 'Transport', trip_route: 'Route', trip_dates: 'Dates', trip_transport: 'Transport',
-    trip_title: 'Trip', trip_dep: 'Departure', trip_arr: 'Arrival', trip_truck_body: 'Body', trip_driver: 'Driver', trip_free: 'Free', trip_via: 'via', trip_mark: 'Mark', trip_delete: 'Unpublish', trip_delete_q: 'Unpublish this trip?', trip_deleted_toast: 'Trip unpublished', chat_opened_toast: 'Chat opened with the driver', cancel: 'Cancel', delete: 'Delete', days_short: 'd', km_short: 'km',
+trip_route: 'Route', trip_dates: 'Dates', trip_transport: 'Transport',
+    trip_title: 'Trip', trip_dep: 'Departure', trip_arr: 'Arrival', trip_truck_body: 'Body', trip_driver: 'Driver', trip_free: 'Free', trip_via: 'via', trip_mark: 'Mark', trip_delete: 'Unpublish', trip_delete_q: 'Unpublish this trip?', trip_deleted_toast: 'Trip unpublished', chat_opened_toast: 'Chat opened with the driver',days_short: 'd', km_short: 'km',
     chat_partner_fallback: 'UrTruck user', chats_empty: 'Write to someone — chat will appear here',
     deals_empty: 'No deals yet — driver offers will appear here',
     deals_no_offers: 'No new offers — they will appear here highlighted in orange',
@@ -6395,7 +6426,7 @@ const translations = {
     deals_offer_new: 'New offer',
     deals_offer_waiting: 'Awaiting reply',
     deals_offer_bargain: 'Bargaining',
-    reliability_section: 'RELIABILITY', review_after_trip: 'Review available after trip completion', anonymous: 'Anonymous', report_driver: 'Report driver', report_driver_prompt: 'Describe the problem with the driver:', report_sent: 'Report sent to moderators', report_choose_reason: 'Reason for report', report_reason_fraud: 'Fraud / scam', report_reason_noshow: 'No-show / abandoned trip', report_reason_rude: 'Rudeness / threats', report_reason_other: 'Other', verified_short: 'Verified', no_reviews_yet: 'No reviews yet', shipper_label: 'Shipper', per_km_short: 'Rate/km', save_route_notify: 'Notify me about loads on this route', route_saved: 'Route saved — we will push you about new loads', incomplete_data: 'Trip data is incomplete', back_short: 'Back',
+    reliability_section: 'RELIABILITY', review_after_trip: 'Review available after trip completion',report_driver: 'Report driver', report_driver_prompt: 'Describe the problem with the driver:', report_sent: 'Report sent to moderators', report_choose_reason: 'Reason for report', report_reason_fraud: 'Fraud / scam', report_reason_noshow: 'No-show / abandoned trip', report_reason_rude: 'Rudeness / threats', report_reason_other: 'Other', verified_short: 'Verified', no_reviews_yet: 'No reviews yet', shipper_label: 'Shipper', per_km_short: 'Rate/km', save_route_notify: 'Notify me about loads on this route', route_saved: 'Route saved — we will push you about new loads', incomplete_data: 'Trip data is incomplete', back_short: 'Back',
     soon_badge: 'Soon', saved_locally: 'Saved locally',
     security_my_status: 'My status',
     security_hero_hint: 'Raise your score — close deals,\nget positive reviews',
@@ -6419,7 +6450,7 @@ const translations = {
     role_feature_verified: 'Verified carriers', role_feature_deals: 'Deals & statuses',
     role_feature_chat: 'Chat with translation', role_feature_routes: 'International routes',
     // Stage 45: guest mode
-    browse_as_guest: 'Browse cargo without sign-up', browse_as_guest_sub: '',
+    browse_as_guest: 'Browse cargo without sign-up',
     guest_tab_cargos: 'Cargos', guest_tab_trips: 'Trips',
     guest_subtitle: 'Browse without signup',
     language_label: 'Language', onboarding_trust_count: 'verified carriers',
@@ -6464,7 +6495,7 @@ const translations = {
     reg_client_title: 'Company profile', reg_client_company_name: 'Company name', reg_client_city: 'City', reg_client_business_type: 'Business type',
     reg_client_importer: 'Importer', reg_client_forwarder: 'Forwarder', reg_client_shop: 'Online store',
     reg_client_enter_name: 'Enter the name', reg_client_welcome: 'Welcome', reg_client_finish: 'Finish',
-    push_title: 'Notifications', push_categories: 'Categories', push_filter_cargos: 'Cargo filter',
+    push_title: 'Notifications', route_direction: 'Route direction',push_route_driver_hint: 'Choose trip direction', push_route_shipper_hint: 'Choose cargo direction', saved_routes: 'Saved routes', saved_routes_empty: 'No saved routes yet.', push_any_cargo: 'Any cargo', push_categories: 'Categories', push_filter_cargos: 'Cargo filter',
     push_only_my_routes: 'Only my routes', push_min_tons: 'Min tons', push_min_price: 'Min price ($)',
     push_truck_types: 'Body types', push_save_btn: 'Save settings', push_saved: 'Settings saved',
     push_cat_new_cargos: 'New cargos on route', push_cat_new_cargos_desc: 'Push when a cargo appears on a saved route',
@@ -6480,21 +6511,21 @@ const translations = {
     vsb_rejected_title: 'Rejected', vsb_rejected_body: 'Open the registration form, fix the documents or photos and submit again.',
     bid_cancelled: 'Cancelled', edit_bid: 'Edit', give_discount: 'Give discount', cancel_bid: 'Cancel', withdraw_bid_link: 'Withdraw bid',
     cancel_bid_confirm: 'Withdraw your bid?', reject_btn: 'Reject',
-    bid_updated: 'Bid updated', bid_switched_to_edit: 'You already have a bid — editing it', my_bid_label: 'My bid', my_bid_status_pending: 'Waiting for the other side', my_bid_status_countered: 'Counter-offer received', edit_bid_short: 'Edit', open_chat: 'Chat', bid_discount_sent: 'Discount sent',
+    bid_updated: 'Bid updated', bid_switched_to_edit: 'You already have a bid — editing it', my_bid_label: 'My bid', my_bid_status_pending: 'Waiting for the other side', my_bid_status_countered: 'Counter-offer received', edit_bid_short: 'Edit',bid_discount_sent: 'Discount sent',
     bid_cancelled_toast: 'Bid cancelled', bid_rejected_toast: 'Bid rejected',
     cancel_failed: 'Failed to cancel bid', reject_failed: 'Failed to reject bid',
     bid_not_pending: 'Action unavailable: bid status changed',
     bid_amount_invalid: 'Price must be greater than 0',
     save_changes: 'Save', send_discount: 'Send discount',
     current_price_label: 'Current price', comment_optional: 'Comment (optional)',
-    you_marker: '(you)', driver_chosen: 'Driver chosen',
+    you_marker: '(you)',
     bid_countered: 'Counter-offer', counter_offer: 'Custom price', send_counter_offer: 'Send counter-offer',
     counter_amount: 'Counter price', counter_sent: 'Counter-offer sent', counter_sent_status: 'Counter-offer sent',
     counter_accepted: 'Counter-offer accepted', counter_declined: 'Counter-offer declined',
     accept_counter: 'Accept counter', decline_counter: 'Decline counter',
     open_bid_chat: 'Open chat', chat_open_failed: 'Failed to open chat',
     driver_offered: 'Driver offered',
-    start_delivery: 'Start', mark_arrived: 'Delivered', confirm_delivery: 'Confirm delivery',
+mark_arrived: 'Delivered',
     cancel_deal: 'Cancel order', cancel_deal_confirm: 'Cancel this order?',
     deal_cancelled_toast: 'Order cancelled', deal_updated_toast: 'Status updated',
     open_order: 'Open order', order_next_step: 'Next step',
@@ -6624,7 +6655,7 @@ const translations = {
     update_btn: 'Update',
     compressing: 'Compressing...',
     uploading: 'Uploading...',
-    submit_review: 'Submit review',
+
     update_app: 'Update app',
     server_unavailable: 'Server unavailable. Check your internet.',
     connection_failed: 'Connection failed',
@@ -6637,6 +6668,7 @@ const translations = {
     bid_failed: 'Failed to send bid',
     driver_selected: 'Driver selected!',
     deal_created: 'Deal created',
+    deal_no: 'Deal №',
     accept_failed: 'Failed to accept bid',
     status_updated: 'Status updated',
     update_failed: 'Failed to update',
@@ -6738,6 +6770,8 @@ const translations = {
     translate: 'Translate',
     voice_send: 'Send voice message',
     voice_to_text: 'To text',
+    chat_day_today: 'Today',
+    chat_day_yesterday: 'Yesterday',
     voice_show_text: 'Show text',
     voice_hide_text: 'Hide text',
     voice_original_label: 'Original',
@@ -7063,7 +7097,7 @@ const translations = {
     track_left: 'Left',
     track_speed_label: 'Speed',
     track_eta_label: 'ETA',
-    track_stopped: 'Stopped',
+
     track_near_border: 'At border',
     track_min: 'min',
     track_hour: 'h',
@@ -7251,6 +7285,8 @@ const translations = {
     track_disable_all: '🔒 Disable tracking completely',
     track_driver_consent: 'Allow location sharing for this deal. After pickup, tracking is locked until the transport is completed.',
     track_permission_needed: 'Allow UrTruck to access location in your phone or browser settings.',
+    gps_system_disabled: 'Turn on location services in your phone settings.',
+    gps_no_fix: 'Could not get a GPS fix. Move to an open area and try again.',
     track_native_required: 'Background GPS can only be enabled in the UrTruck iPhone or Android app.',
     track_active: 'GPS tracking is on',
     track_declined: 'GPS tracking was declined',
@@ -7502,6 +7538,8 @@ const translations = {
     verification_review_edit: 'Edit',
     verification_review_complete_hint: 'Complete all required items to submit for review.',
 
+    a11y_rating_star: 'Rate {n} of 5',
+    a11y_toggle_favorite: 'Toggle favorite',
     verification_rejected_title: 'Documents need correction',
     verification_rejected_subtitle: 'The reviewer asked you to retake the marked items. Other documents stay approved.',
     verification_rejected_empty: 'No documents are currently rejected.',
@@ -7510,8 +7548,27 @@ const translations = {
 },
 };
 
-import { storage } from './storage';
-import { Platform, NativeModules } from 'react-native';
+// Track B / B4: `storage`/`react-native` used to be static top-level
+// imports. That's fine inside the app bundle, but it means nothing could
+// ever import this file's `translations` data from plain Node tooling
+// (an i18n symmetry/raw-key checker, for example) without react-native's
+// native-module bridging throwing outside Metro — and it meant a failure
+// inside `storage.js` on ANY platform would produce an unhandled promise
+// rejection from the IIFE below (no .catch() existed). Lazily required,
+// same pattern as `getLocalization()` right below, which already did this
+// correctly for expo-localization.
+let _storage;
+function getStorage() {
+  if (_storage !== undefined) return _storage;
+  try { _storage = require('./storage').storage; } catch { _storage = null; }
+  return _storage;
+}
+let _RN;
+function getRN() {
+  if (_RN !== undefined) return _RN;
+  try { _RN = require('react-native'); } catch { _RN = null; }
+  return _RN;
+}
 // PR-C2 (Task C auto-detect): expo-localization выдаёт надёжный locale
 // на iOS/Android — лучше чем NativeModules.SettingsManager.AppleLocale
 // (deprecated в новых RN). Лоадим лениво чтобы web-bundle не тащил
@@ -7573,7 +7630,9 @@ function detectSystemLang() {
     // PR-C2: предпочитаем expo-localization (Localization.getLocales() в
     // SDK 52, или Localization.locale в legacy). Это работает на новых
     // iOS / Android без NativeModules deprecation warnings.
-    if (Platform.OS !== 'web') {
+    const RN = getRN();
+    const platformOS = RN?.Platform?.OS;
+    if (platformOS !== 'web') {
       const Loc = getLocalization();
       if (Loc) {
         try {
@@ -7589,13 +7648,13 @@ function detectSystemLang() {
       }
     }
     if (!code) {
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
+      if (platformOS === 'web' && typeof navigator !== 'undefined') {
         code = (navigator.language || navigator.userLanguage || '').toLowerCase();
       } else {
         const locale =
-          NativeModules.SettingsManager?.settings?.AppleLocale ||
-          NativeModules.SettingsManager?.settings?.AppleLanguages?.[0] ||
-          NativeModules.I18nManager?.localeIdentifier ||
+          RN?.NativeModules?.SettingsManager?.settings?.AppleLocale ||
+          RN?.NativeModules?.SettingsManager?.settings?.AppleLanguages?.[0] ||
+          RN?.NativeModules?.I18nManager?.localeIdentifier ||
           '';
         code = locale.toLowerCase().replace('_', '-');
       }
@@ -7614,28 +7673,43 @@ function detectSystemLang() {
 // Load saved language on start; если не выбран — авто из системы.
 // PR-C2: если detect ничего не нашёл — устанавливаем EN (универсальный
 // fallback для приграничных пользователей с экзотическими locale).
+//
+// Track B / B4: this used to have no try/catch and no .catch() on the IIFE
+// itself — any failure inside storage.get/set (any platform, any reason)
+// produced an unhandled promise rejection with no fallback. Now: any
+// failure just keeps the sync-detected `currentLang` from module load
+// (never worse than before this ran), and is caught rather than left
+// unhandled — which also happens to be what makes this file safely
+// importable from plain Node tooling (a symmetry/raw-key checker) where
+// storage is unavailable at all.
 (async () => {
-  let saved = await storage.get(KEY);
-  // Legacy fix-up: rewrite `KZ` → `KK`, `CN` → `ZH` for users
-  // upgrading from a Stage 5 build.
-  if (saved && LEGACY_LANG_FIX[saved]) {
-    saved = LEGACY_LANG_FIX[saved];
-    storage.set(KEY, saved);
-  }
-  if (saved && translations[saved]) {
-    currentLang = saved;
-  } else {
-    const sys = detectSystemLang();
-    if (sys && translations[sys]) {
-      currentLang = sys;
-      storage.set(KEY, sys); // сохраняем выбор авто
-    } else if (!translations[currentLang]) {
-      currentLang = 'EN';
-      storage.set(KEY, 'EN');
+  try {
+    const store = getStorage();
+    let saved = await store?.get(KEY);
+    // Legacy fix-up: rewrite `KZ` → `KK`, `CN` → `ZH` for users
+    // upgrading from a Stage 5 build.
+    if (saved && LEGACY_LANG_FIX[saved]) {
+      saved = LEGACY_LANG_FIX[saved];
+      store?.set(KEY, saved);
     }
+    if (saved && translations[saved]) {
+      currentLang = saved;
+    } else {
+      const sys = detectSystemLang();
+      if (sys && translations[sys]) {
+        currentLang = sys;
+        store?.set(KEY, sys); // сохраняем выбор авто
+      } else if (!translations[currentLang]) {
+        currentLang = 'EN';
+        store?.set(KEY, 'EN');
+      }
+    }
+    syncDocumentLanguage(currentLang);
+    listeners.forEach(cb => cb(currentLang));
+  } catch {
+    // Best-effort: keep whatever currentLang the synchronous detect at
+    // module load already picked.
   }
-  syncDocumentLanguage(currentLang);
-  listeners.forEach(cb => cb(currentLang));
 })();
 
 const HTML_LANG = { RU: 'ru', KK: 'kk', ZH: 'zh-CN', EN: 'en' };
@@ -7650,7 +7724,7 @@ const syncDocumentLanguage = (lang) => {
 
 export const setLanguage = (lang) => {
   currentLang = translations[lang] ? lang : 'EN';
-  storage.set(KEY, currentLang);
+  getStorage()?.set(KEY, currentLang);
   syncDocumentLanguage(currentLang);
   listeners.forEach(cb => cb(currentLang));
 };
@@ -7663,6 +7737,14 @@ export const subscribeToLanguage = (cb) => {
 };
 
 export const t = (key) => {
+  // Track B / B4 (2026-09-08): a prior audit flagged this as "should also
+  // fall back to RU for KK/ZH, not just EN" and it was briefly changed that
+  // way here — reverted. qa/utils/zhLocalizationSmoke.js encodes this as a
+  // deliberate, tested product rule: "Chinese UI uses Chinese system copy
+  // ...; it must never fall back to Russian" — the same policy applies to
+  // KK. EN is the intentional universal fallback, not an oversight. Do not
+  // add a translations.RU[key] step here without updating/removing that
+  // rule (and the same one in useI18n.js) first, with product sign-off.
   const lang = translations[currentLang];
   if (lang && lang[key]) return lang[key];
   if (currentLang !== 'RU') return translations.EN[key] || key;

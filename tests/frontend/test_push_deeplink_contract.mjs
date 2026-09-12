@@ -11,7 +11,7 @@ const appJson = JSON.parse(read('app.json'));
 const aasa = JSON.parse(read('web/apple-app-site-association'));
 const wellKnownAasa = JSON.parse(read('web/.well-known/apple-app-site-association'));
 const assetlinks = JSON.parse(read('web/.well-known/assetlinks.json'));
-const secureDeploy = read('.github/workflows/secure-production-deploy.yml');
+const productionDeploy = read('.github/workflows/production-deploy-execute.yml');
 const deployScript = read('deploy.sh');
 
 test('native push tap routing keeps canonical deep-links for cargo, trip, deal, chat, profile and notifications', () => {
@@ -20,7 +20,10 @@ test('native push tap routing keeps canonical deep-links for cargo, trip, deal, 
   assert.match(app, /if \(kind === 'trips' && id\)/);
   assert.match(app, /navigate\('TripDetail', \{ tripId: id, bidId: params\.bid \|\| null, role \}\)/);
   assert.match(app, /if \(kind === 'deals' && id\)/);
-  assert.match(app, /navigate\('Chat', \{ dealId: id, role \}\)/);
+  // action is threaded through (Track: Claude harness fix, P1) — backend's
+  // tracking-request/approved/declined/stopped pushes set
+  // url=/deals/{id}?action=tracking and it must not be dropped here.
+  assert.match(app, /navigate\('Chat', \{ dealId: id, role, action: params\.action \|\| null \}\)/);
   assert.match(app, /if \(kind === 'chats' && id\)/);
   assert.match(app, /navigate\('Chat', \{ roomId: id, role \}\)/);
   assert.match(app, /else if \(kind === 'profile'\)/);
@@ -35,7 +38,7 @@ test('notifications screen uses the same deep-link families as native push tap r
   assert.match(notifications, /if \(kind === "trips" && id\)/);
   assert.match(notifications, /navigation\.navigate\("TripDetail", \{/);
   assert.match(notifications, /if \(kind === "deals" && id\)/);
-  assert.match(notifications, /navigation\.navigate\("Chat", \{ dealId: id, role \}\)/);
+  assert.match(notifications, /navigation\.navigate\("Chat", \{ dealId: id, role, action: params\.action \|\| null \}\)/);
   assert.match(notifications, /else if \(\(kind === "chats" \|\| kind === "chat"\) && id\)/);
   assert.match(notifications, /navigation\.navigate\("Chat", \{ roomId: id, role \}\)/);
 });
@@ -59,6 +62,13 @@ test('auth and notification cold-start deeplinks are queued until nav and auth a
   assert.match(app, /if \(pendingUrlRef\.current && navReadyRef\.current && authedForDeepLink\)/);
   assert.match(app, /Notifications\.getLastNotificationResponseAsync/);
   assert.match(app, /Notifications\.addNotificationResponseReceivedListener/);
+});
+
+test('chat notification tap prefers its structured room_id over an aggregated display URL', () => {
+  assert.match(app, /function notificationResponseUrl\(response\)/);
+  assert.match(app, /data\.type === 'chat_message' \|\| data\.type === 'chat_attachment'/);
+  assert.match(app, /return `\/chats\/\$\{encodeURIComponent\(roomId\)\}`/);
+  assert.match(app, /const url = notificationResponseUrl\(response\);/);
 });
 
 test('custom-scheme and universal-link notification entrypoints are parsed as Notifications', () => {
@@ -93,7 +103,7 @@ test('release web bundle ships apple-app-site-association and assetlinks for not
 });
 
 test('deploy paths keep .well-known release files instead of dropping hidden entries', () => {
-  assert.match(secureDeploy, /scp -C -r dist\/\. "\$SERVER_USER@\$SERVER_HOST:\$REMOTE_DIR\/"/);
+  assert.match(productionDeploy, /scp -C -r dist\/\. "\$SERVER_USER@\$SERVER_HOST:\$REMOTE_DIR\/"/);
   assert.match(deployScript, /scp -i ~\/\.ssh\/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist\/\. "\$\{SERVER\}:\$\{REMOTE_DIR\}\/"/);
   assert.match(deployScript, /scp -i ~\/\.ssh\/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist\/\. "\$\{SERVER\}:\$\{VERSIONS_DIR\}\/v\$NEW_VERSION\/"/);
 });

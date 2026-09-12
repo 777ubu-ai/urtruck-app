@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-nati
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { cleanPlaceName, localizePlace } from '../utils/places';
-import { countryFlag } from '../utils/countryFlags';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
@@ -11,6 +11,7 @@ import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
+import StickyCTABar from '../components/ui/v1/StickyCTABar';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import LocationPickerModal from '../components/LocationPickerModal';
 import CargoTypeInput from '../components/CargoTypeInput';
@@ -18,7 +19,7 @@ import { addCustomCargoType } from '../utils/cargoTypes';
 import DatePicker from '../components/DatePicker';
 import { normalizeDateInput } from '../utils/dateInput';
 import { PhotoPicker } from '../components/PhotoGallery';
-import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
+import {v1Colors, useV1Colors, useShipperCeramicColors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import TruckTypeGrid from '../components/TruckTypeGrid';
 
@@ -36,7 +37,7 @@ import TruckTypeGrid from '../components/TruckTypeGrid';
 // Mirrors CreateTripScreen structurally, with three differences:
 //   - extra "Описание груза" dropdown (CargoTypeInput overlay)
 //   - photo picker (collapsible "Фото груза (необязательно)")
-//   - orange brand accent
+//   - client role accent from v1AccentFor('client') (token-driven, дозированно)
 
 // Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY only.
 // Removed: UZS / KGS / EUR / AED. Old persisted cargo with a removed
@@ -60,7 +61,9 @@ const normalizeDecimal = (v) => {
 };
 
 export default function CreateCargoScreen({ navigation, route }) {
-  const v1 = useV1Colors();
+  const baseV1 = useV1Colors();
+  const shipper = useShipperCeramicColors();
+  const v1 = (route?.params?.role || 'client') === 'client' ? shipper : baseV1;
   const s = React.useMemo(() => StyleSheet.create({
 
   title: { ...v1Typography.h1, fontSize: 19, fontWeight: '700', letterSpacing: -0.2, marginTop: v1Spacing.sm },
@@ -100,7 +103,7 @@ export default function CreateCargoScreen({ navigation, route }) {
 
   }), [v1]);
   const role = route?.params?.role || 'client';
-  const accent = v1AccentFor('client');
+  const accent = (route?.params?.role || 'client') === 'client' ? shipper : v1AccentFor('driver');
   const { t, lang } = useI18n();
   const { toast } = useToast();
   const { session } = useAuth();
@@ -108,8 +111,7 @@ export default function CreateCargoScreen({ navigation, route }) {
   const displayRoutePoint = (raw, point) => {
     const canonical = point?.name || cleanPlaceName(raw || '');
     const localized = localizePlace(canonical, lang) || canonical;
-    const flag = point?.country ? countryFlag(point.country) : '';
-    return [localized, flag].filter(Boolean).join(', ');
+    return localized;
   };
 
   const [from, setFrom] = useState('');
@@ -236,16 +238,35 @@ export default function CreateCargoScreen({ navigation, route }) {
     }
   };
 
+  // Design v1 Commit 2: submit CTA lives in a sticky footer (Screen's
+  // `footer` slot → KeyboardSafeLayout), directly above the IME — not
+  // at the bottom of the scroll content. Scroll container itself is
+  // unchanged (same Screen + canonical keyboard-safe scroll).
   return (
-    <Screen contentStyle={{ paddingBottom: 80 }}>
-      <BrandHeader onBack={() => navigation.goBack()} accent={accent.main} />
+    <Screen ceramic
+      contentStyle={{ paddingBottom: 24 }}
+      footer={(
+        <StickyCTABar>
+          <PrimaryButton ceramic
+            label={t('publish_cargo_action')}
+            onPress={submit}
+            loading={submitting}
+            accent="cargo"
+            testID="cargo-submit-button"
+            style={{ minHeight: 52, borderRadius: 14, alignSelf: 'stretch' }}
+          />
+        </StickyCTABar>
+      )}
+    >
+      <BrandHeader ceramic onBack={() => navigation.goBack()} accent={accent.main} />
 
       <Text style={s.title}>{t('postCargo')}</Text>
       <Text style={s.subtitle}>{t('create_cargo_subtitle')}</Text>
 
-      <Field
+      <Field ceramic
         variant="dropdown"
         featherIcon="map-pin"
+        leading={fromPoint?.country ? <CountryFlag code={fromPoint.country} width={23} /> : null}
         label={t('fromCountry')}
         value={displayRoutePoint(from, fromPoint)}
         placeholder={t('create_field_from_placeholder_cargo')}
@@ -253,9 +274,10 @@ export default function CreateCargoScreen({ navigation, route }) {
       />
       {errors.from ? <Text style={s.err}>⚠️ {errors.from}</Text> : null}
 
-      <Field
+      <Field ceramic
         variant="dropdown"
         featherIcon="map-pin"
+        leading={toPoint?.country ? <CountryFlag code={toPoint.country} width={23} /> : null}
         label={t('toCountry')}
         value={displayRoutePoint(to, toPoint)}
         placeholder={t('create_field_to_placeholder_cargo')}
@@ -318,7 +340,7 @@ export default function CreateCargoScreen({ navigation, route }) {
 
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
-          <Field
+          <Field ceramic
             variant="dropdown"
             featherIcon="truck"
             label={t('truckType')}
@@ -327,7 +349,7 @@ export default function CreateCargoScreen({ navigation, route }) {
           />
         </View>
         <View style={{ flex: 1 }}>
-          <Field
+          <Field ceramic
             variant="dropdown"
             featherIcon="calendar"
             label={t('pickupDate')}
@@ -376,7 +398,7 @@ export default function CreateCargoScreen({ navigation, route }) {
           непонятно, где вес, где кубатура. */}
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
-          <Field
+          <Field ceramic
             label={t('weight_label')}
             value={tons}
             onChangeText={(v) => { setTons(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
@@ -386,7 +408,7 @@ export default function CreateCargoScreen({ navigation, route }) {
           />
         </View>
         <View style={{ flex: 1 }}>
-          <Field
+          <Field ceramic
             label={t('volume_label')}
             value={m3}
             onChangeText={(v) => { setM3(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
@@ -407,7 +429,7 @@ export default function CreateCargoScreen({ navigation, route }) {
         </View>
         <View style={s.row2}>
           <View style={{ flex: 1 }}>
-            <Field
+            <Field ceramic
               featherIcon="credit-card"
               label={t('amount_label')}
               value={price}
@@ -418,7 +440,7 @@ export default function CreateCargoScreen({ navigation, route }) {
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Field
+            <Field ceramic
               variant="dropdown"
               featherIcon="dollar-sign"
               label={t('currency_label')}
@@ -465,7 +487,7 @@ export default function CreateCargoScreen({ navigation, route }) {
 
       {/* Фото груза — collapsible */}
       <TouchableOpacity onPress={() => setShowPhotos((v) => !v)} activeOpacity={0.85} style={[s.photoToggle, { borderColor: v1.border }]}>
-        <Text style={s.photoIcon}>🖼</Text>
+        <Feather name="image" size={17} color={v1.textMuted} style={{ width: 20, textAlign: 'center' }} />
         <View style={{ flex: 1 }}>
           <Text style={s.photoLabel}>{t('cargo_photos_label')}</Text>
           <Text style={s.photoSub}>{t('cargo_photos_sub')}</Text>
@@ -483,19 +505,12 @@ export default function CreateCargoScreen({ navigation, route }) {
           вверху файла. */}
 
       <View style={[s.infoBox, { backgroundColor: accent.soft, borderColor: accent.main }]}>
-        <Text style={[s.infoText, { color: accent.main }]} numberOfLines={3}>
-          🛡  {t('create_cargo_visibility')}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+          <Feather name="shield" size={14} color={accent.main} />
+          <Text style={[s.infoText, { color: accent.main, flex: 1 }]} numberOfLines={3}>{t('create_cargo_visibility')}</Text>
+        </View>
       </View>
 
-      <PrimaryButton
-        label={t('publish_cargo_action')}
-        onPress={submit}
-        loading={submitting}
-        accent="cargo"
-        testID="cargo-submit-button"
-        style={{ marginTop: v1Spacing.sm, minHeight: 52, borderRadius: 14 }}
-      />
       {/* «Сохранить черновик» убран (2026-06-13): кнопка только тостила
           feature_coming_soon — мёртвое действие на экране публикации. Вернём,
           когда черновики будут реально сохраняться. */}

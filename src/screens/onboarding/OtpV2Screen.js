@@ -24,12 +24,10 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   AppState,
   Linking,
-  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -38,6 +36,7 @@ import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import { push } from '../../utils/push';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 
 const CODE_LEN = 4;
@@ -239,10 +238,7 @@ export default function OtpV2Screen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="otp-v2-screen">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
+      <KeyboardSafeLayout>
         <View style={s.header}>
           <Pressable
             onPress={() => navigation.goBack()}
@@ -255,7 +251,7 @@ export default function OtpV2Screen({ navigation, route }) {
           </Pressable>
         </View>
 
-        <ScrollView
+        <KeyboardSafeScrollView
           contentContainerStyle={s.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -389,8 +385,8 @@ export default function OtpV2Screen({ navigation, route }) {
           </View>
 
           <Text style={s.helpText}>{t('otp_v2_help')}</Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardSafeScrollView>
+      </KeyboardSafeLayout>
     </SafeAreaView>
   );
 }
@@ -478,7 +474,7 @@ const makeStyles = (brand) => StyleSheet.create({
     opacity: 0,
   },
   errorText: {
-    color: brand.error,
+    color: brand.errorText,
     ...typography.bodySmall,
     fontWeight: '600',
     marginBottom: 4,

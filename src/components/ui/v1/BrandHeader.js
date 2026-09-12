@@ -11,10 +11,12 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useV1Colors, v1Typography, v1Spacing } from '../../../theme/designV1';
+import { useV1Colors, useShipperCeramicColors, v1Typography, v1Spacing } from '../../../theme/designV1';
 
-export default function BrandHeader({ onBack, accent, compact = false }) {
-  const colors = useV1Colors();
+export default function BrandHeader({ onBack, accent, compact = false, ceramic = false }) {
+  const baseColors = useV1Colors();
+  const shipperColors = useShipperCeramicColors();
+  const colors = ceramic ? shipperColors : baseColors;
   const arrowColor = accent || colors.driver;
   return (
     <View style={[s.row, compact && { paddingTop: 8 }]}>

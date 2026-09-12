@@ -1,20 +1,20 @@
 import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { colors, radius, spacing, typography } from '../../theme/theme';
+import { v1Colors, v1Radius, v1Spacing, v1Typography } from '../../theme/designV1';
 
 export default function PrimaryButton({
   label, onPress, variant = 'primary', loading = false, disabled = false, style,
 }) {
   const isDisabled = disabled || loading;
   // Светлая тема: у secondary фон — зелёный тинт, текст — тёмно-зелёный.
-  // Белый текст на surface2 (#F0F4F2) был невидим после light-флипа.
-  const bg = variant === 'primary' ? colors.green
-    : variant === 'secondary' ? colors.greenMuted
+  // Белый текст на surfaceMuted (#F0F4F2) был невидим после light-флипа.
+  const bg = variant === 'primary' ? v1Colors.driver
+    : variant === 'secondary' ? v1Colors.driverSoft
     : 'transparent';
-  const textColor = variant === 'ghost' ? colors.textMuted
-    : variant === 'secondary' ? colors.greenDeep
+  const textColor = variant === 'ghost' ? v1Colors.textMuted
+    : variant === 'secondary' ? v1Colors.driverDeep
     : '#fff';
-  const borderColor = variant === 'ghost' ? colors.border : 'transparent';
+  const borderColor = variant === 'ghost' ? v1Colors.border : 'transparent';
 
   return (
     <TouchableOpacity
@@ -34,15 +34,17 @@ export default function PrimaryButton({
 
 const s = StyleSheet.create({
   btn: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.md,
+    paddingVertical: v1Spacing.md,
+    paddingHorizontal: v1Spacing.xl,
+    borderRadius: v1Radius.button,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     minHeight: 50,
   },
   label: {
-    ...typography.title,
+    // v3 title was { fontSize: 15, fontWeight: '600', lineHeight: 20 }.
+    ...v1Typography.button,
+    lineHeight: 20,
   },
 });

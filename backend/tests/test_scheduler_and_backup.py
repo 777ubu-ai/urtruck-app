@@ -41,10 +41,15 @@ def test_scheduler_singleton_idempotent():
         assert s1 is not None, "первый start должен подняться"
         s2 = jobs.start_scheduler()
         assert s2 is s1, "повторный start должен вернуть тот же scheduler (без второго процесса джоб)"
-        # все 6 джоб зарегистрированы ровно один раз
+        # все 9 джоб зарегистрированы ровно один раз (push-recovery track:
+        # push_outbox_drain дренирует push_outbox, gps_heartbeat_check шлёт
+        # gps_lost/gps_restored, push_receipts_poll сверяет отложенные Expo
+        # receipts — см. scheduler/jobs.py).
         ids = sorted(j.id for j in s1.get_jobs())
         assert ids == sorted(["telegram_parse", "monthly_rescore", "db_backup",
-                              "push_reminders", "expired_notify", "no_bids_notify"]), ids
+                              "push_reminders", "expired_notify", "no_bids_notify",
+                              "push_outbox_drain", "gps_heartbeat_check",
+                              "push_receipts_poll"]), ids
     finally:
         jobs.stop_scheduler()
         os.environ.pop("URTRUCK_SCHEDULER_LOCK", None)

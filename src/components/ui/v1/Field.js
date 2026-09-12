@@ -11,7 +11,8 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
-import { useV1Colors, v1Radius, v1Spacing, v1Typography } from '../../../theme/designV1';
+import { useV1Colors, useShipperCeramicColors, v1Radius, v1Spacing, v1Typography } from '../../../theme/designV1';
+import { useKeyboardSafeFocus } from './KeyboardSafeLayout';
 
 export default function Field(props) {
   if (props.variant === 'dropdown') return <DropdownRow {...props} />;
@@ -20,7 +21,8 @@ export default function Field(props) {
 
 // Ведущая иконка поля. Приоритет — профессиональная Feather-иконка (монохром,
 // серый), эмодзи оставлен как fallback для ещё не мигрированных экранов.
-function FieldIcon({ featherIcon, icon, color }) {
+function FieldIcon({ leading, featherIcon, icon, color }) {
+  if (leading) return leading;
   if (featherIcon) {
     return <Feather name={featherIcon} size={18} color={color} style={{ width: 20, textAlign: 'center' }} />;
   }
@@ -29,16 +31,27 @@ function FieldIcon({ featherIcon, icon, color }) {
 }
 
 function InputRow({
-  icon, featherIcon, label, value, onChangeText, placeholder,
+  icon, featherIcon, leading, label, value, onChangeText, placeholder,
   secureTextEntry, onTogglePassword, isPasswordVisible,
   keyboardType, autoCapitalize = 'sentences', maxLength, error, helper,
   // Stage 21: pass-through editable so callers can render a
   // read-only row (country during the KZ-only pilot) without
   // resorting to the dropdown variant.
   editable = true,
-  testID,
+  testID, onFocus, onBlur, ceramic = false,
 }) {
-  const colors = useV1Colors();
+  const baseColors = useV1Colors();
+  const shipperColors = useShipperCeramicColors();
+  const colors = ceramic ? shipperColors : baseColors;
+  const [focused, setFocused] = React.useState(false);
+  const handleFocus = useKeyboardSafeFocus((event) => {
+    setFocused(true);
+    onFocus?.(event);
+  });
+  const handleBlur = (event) => {
+    setFocused(false);
+    onBlur?.(event);
+  };
   return (
     <View style={{ marginBottom: v1Spacing.sm }}>
       {/* Stage 28: label теперь рендерится ВСЕГДА сверху row,
@@ -46,19 +59,23 @@ function InputRow({
           в пустом поле и пользователь видел только placeholder
           "Например: 22" — непонятно, где вес, где объём. Теперь
           label «Вес, т» / «Объём, м³» всегда видим, placeholder
-          служит подсказкой формата. */}
+          служит подсказкой формата.
+          Design v1 Commit 2: label 11 → 13sp (weight 600, textDim —
+          the `label` typography step), the canonical field-label size. */}
       {label ? (
-        <Text style={[v1Typography.small, { color: colors.textDim, marginBottom: 6, marginLeft: 4 }]}>
+        <Text style={[v1Typography.label, { color: colors.textDim, marginBottom: 6, marginLeft: 4 }]}>
           {label}
         </Text>
       ) : null}
       <View
         style={[
           s.row,
-          { backgroundColor: colors.surface, borderColor: error ? colors.error : colors.border },
+          { backgroundColor: colors.surface,
+            borderColor: error ? colors.error : focused ? colors.driver : colors.border,
+            borderWidth: focused && !error ? 2 : 1 },
         ]}
       >
-        <FieldIcon featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
+        <FieldIcon leading={leading} featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
         <View style={{ flex: 1 }}>
           <TextInput
             style={[s.input, { color: colors.text }, value ? s.inputFilled : null, !editable && { opacity: 0.7 }]}
@@ -71,6 +88,8 @@ function InputRow({
             autoCapitalize={autoCapitalize}
             maxLength={maxLength}
             editable={editable}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             testID={testID}
           />
         </View>
@@ -87,15 +106,17 @@ function InputRow({
   );
 }
 
-function DropdownRow({ icon, featherIcon, label, value, onPress, placeholder, testID }) {
-  const colors = useV1Colors();
+function DropdownRow({ icon, featherIcon, leading, label, value, onPress, placeholder, testID, ceramic = false }) {
+  const baseColors = useV1Colors();
+  const shipperColors = useShipperCeramicColors();
+  const colors = ceramic ? shipperColors : baseColors;
   return (
     <View style={{ marginBottom: v1Spacing.sm }}>
       {/* Stage 28: dropdown тоже выносит label наружу — единый
           паттерн форм. Раньше label был внутри row, сжимался,
           и при пустом value читался как placeholder. */}
       {label ? (
-        <Text style={[v1Typography.small, { color: colors.textDim, marginBottom: 6, marginLeft: 4 }]}>
+        <Text style={[v1Typography.label, { color: colors.textDim, marginBottom: 6, marginLeft: 4 }]}>
           {label}
         </Text>
       ) : null}
@@ -108,7 +129,7 @@ function DropdownRow({ icon, featherIcon, label, value, onPress, placeholder, te
         ]}
         testID={testID}
       >
-        <FieldIcon featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
+        <FieldIcon leading={leading} featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
         <View style={{ flex: 1 }}>
           <Text style={[s.input, value ? s.inputFilled : null, { color: value ? colors.text : colors.placeholder }]} numberOfLines={1}>
             {value || placeholder || '—'}
@@ -133,9 +154,12 @@ const s = StyleSheet.create({
   },
   icon: { fontSize: 16, width: 20, textAlign: 'center' },
   input: { fontSize: 16, fontWeight: '400', paddingVertical: 0, margin: 0 },
-  inputFilled: { fontWeight: '800' },
+  // Design v1 Commit 2: filled-state weight 800 → 700 (still bold, no
+  // layout shift — same glyph metrics slot, calmer hierarchy).
+  inputFilled: { fontWeight: '700' },
   eye: { fontSize: 16, paddingHorizontal: 4 },
   caret: { fontSize: 16, paddingHorizontal: 4 },
-  errText: { fontSize: 11, marginTop: 4, marginLeft: 6 },
-  helperText: { fontSize: 11, marginTop: 4, marginLeft: 6 },
+  // Design v1 Commit 2: error/helper 11 → 12sp for legibility.
+  errText: { fontSize: 12, marginTop: 4, marginLeft: 6 },
+  helperText: { fontSize: 12, marginTop: 4, marginLeft: 6 },
 });

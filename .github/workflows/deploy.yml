@@ -18,7 +18,23 @@ permissions:
   contents: read
 
 jobs:
+  # Release hardening track A (2026-09-10): this release gate used to run
+  # ONLY the 4 Yandex-map regression checks below — a push to main (or a
+  # manual workflow_dispatch of THIS workflow) could reach the point of
+  # triggering UrTruck Secure Production Deploy having never run the
+  # backend suite, the frontend suite, lint, the static release gate, or
+  # the mandatory E2E subset. quality-gate is the exact same reusable
+  # workflow pr-quality-gate.yml calls for every PR (backend tests +
+  # P0/P1 security regression subset + Push/Bell critical subset,
+  # frontend tests + lint + static release gate, mandatory E2E) — the
+  # map-specific `release-gate` job below now `needs` it, so it cannot
+  # start (and therefore UrTruck Secure Production Deploy cannot trigger
+  # via workflow_run) unless the full suite passed first.
+  quality-gate:
+    uses: ./.github/workflows/quality-gate-reusable.yml
+
   release-gate:
+    needs: [quality-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -68,8 +84,11 @@ jobs:
       - name: Build production web with Yandex Maps
         env:
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          EXPO_PUBLIC_IS_BETA: 'false'
+          EAS_BUILD_PROFILE: production
         run: |
           set -euo pipefail
+          npm run release:check-config
           npm run build:web
           node scripts/injectYandexMaps.mjs
           test -s dist/index.html

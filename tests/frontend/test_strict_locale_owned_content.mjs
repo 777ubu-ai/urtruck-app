@@ -13,7 +13,7 @@ const normalizers = read('src/utils/normalizers.js');
 const createCargo = read('src/screens/CreateCargoScreen.js');
 const createTrip = read('src/screens/CreateTripScreen.js');
 const workspace = read('src/screens/DealWorkspaceScreenV2.js');
-const queue = read('src/screens/QueueScreenLazy.js');
+const queue = read('src/screens/QueueScreenLazyV2.js');
 const dealRoom = read('src/components/deal/DealRoom.js');
 const timeline = read('src/components/deal/DealStatusTimeline.js');
 const notifications = read('src/screens/NotificationsScreen.js');
@@ -47,7 +47,7 @@ test('translation fallback can never jump from non-RU locale to RU', () => {
 });
 
 test('generic cargo formatter uses canonical locale dictionary instead of raw Russian fallback', () => {
-  assert.match(i18n, /import \{ localizeCargoName \} from '\.\/places'/);
+  assert.match(i18n, /import \{ localizeCargoName \} from '\.\/places(?:\.js)?'/);
   assert.match(i18n, /return localizeCargoName\(raw, currentLang\) \|\| raw/);
 });
 
@@ -87,11 +87,13 @@ test('deal workspace localizes dynamic cargo, body type, units and legacy system
 });
 
 test('border catalog and notifications localize server-owned legacy text', () => {
-  assert.match(queue, /localizeCheckpointName\(cp\.name, lang\)/);
-  assert.match(queue, /localizeCheckpointName\(live\.name \|\| selected\.name, lang\)/);
-  assert.match(queue, /active \? L\.selected : L\.open/);
+  // QueueScreenLazy.js was deleted in Commit 8; the live border screen is
+  // QueueScreenLazyV2.js (checkpoint objects carry their own names).
+  assert.match(queue, /localizeCheckpointName\(checkpoint, lang\)/);
+  assert.match(queue, /localizeCheckpointName\(\{ \.\.\.selected, name: live\.name \|\| selected\.name \}, lang\)/);
+  assert.match(queue, /active \? L\.selected : L\.tapToOpen/);
   assert.doesNotMatch(queue, /\? L\.selected : 'Нажать'/);
-  assert.match(queue, /localizedQueueStatus\(lookup, L, lang\)/);
+  assert.match(queue, /lookupStatusLabel\(lookup\.status, lang\)/);
   assert.doesNotMatch(queue, /\{lookup\.status_raw \|\| lookup\.status\}/);
   assert.match(notifications, /localizeSystemMessage\(cleanNotifText\(item\.title\), lang\)/);
 });

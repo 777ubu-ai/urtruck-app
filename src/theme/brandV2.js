@@ -34,6 +34,12 @@ const brandLight = {
   accent: '#FF8400',
   accentHover: '#EA8A00',
   accentSoft: '#FEF3C7',
+  // Track B, 2026-09-08: `accent` measures 2.46:1 on `bg` (2.21:1 on
+  // `surfaceMuted`, its actual render surface in RoleScreen.js) — below
+  // the 3:1 WCAG non-text/icon threshold. Use for backgrounds, badges,
+  // decorative marks (unchanged, still bright); use `accentIcon` instead
+  // wherever `accent` colors a meaningful icon/glyph a user reads.
+  accentIcon: '#D26D00',
 
   // Borders / dividers
   border: '#E5ECE8',
@@ -45,6 +51,17 @@ const brandLight = {
   warning: '#FF8400',
   error: '#EF4444',
   info: '#3478D4',
+  // Track B, 2026-09-08: `error`/`info` above are correct and unchanged
+  // for backgrounds/borders (RoleScreen.js badge, input error borders) —
+  // both already clear the 3:1 non-text threshold there. As small TEXT
+  // (typography.caption/bodySmall in registration/onboarding error
+  // messages) they fail 4.5:1 (`error` 3.76:1, `info` 4.39:1). Use
+  // `errorText`/`infoText` for any text color, `error`/`info` for
+  // everything else (background/border/icon) — do not repoint the base
+  // tokens themselves, that would also (unnecessarily) darken every
+  // existing background/border use of them.
+  errorText: '#D03B3B',
+  infoText: '#3273CC',
 
   // Map/illustration assist
   mapGray: '#E5E7EB',
@@ -106,6 +123,11 @@ export const brandDark = {
   accent: '#FF9A3D',
   accentHover: '#E06D00',
   accentSoft: 'rgba(255,154,61,0.16)',
+  // Track B, 2026-09-08: dark-mode `accent`/`error`/`info` already clear
+  // their real-context thresholds (8.75:1 / 6.80:1 / 6.50:1) — no color
+  // change needed here, only adding the matching token names so callers
+  // can use accentIcon/errorText/infoText regardless of theme.
+  accentIcon: '#FF9A3D',
 
   border: '#2A3930',
   borderStrong: '#3A4C41',
@@ -115,6 +137,8 @@ export const brandDark = {
   warning: '#F5B75B',
   error: '#FF7B7B',
   info: '#5BA3F5',
+  errorText: '#FF7B7B',
+  infoText: '#5BA3F5',
 
   mapGray: '#2A3930',
   routeOrange: '#FF9A3D',

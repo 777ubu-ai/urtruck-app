@@ -23,6 +23,7 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import CountryFlag from './ui/v1/CountryFlag';
 import { useV1Colors, v1Radius } from '../theme/designV1';
 import { useI18n } from '../utils/useI18n';
 import { localizePlace } from '../utils/places';
@@ -102,7 +103,7 @@ export default function RoutePointPicker({
     rowName: { fontSize: 14, fontWeight: '700' },
     rowMeta: { fontSize: 11, marginTop: 2 },
     groupLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', color: v1.textMuted, paddingHorizontal: 10, paddingTop: 10, paddingBottom: 4 },
-    icon: { fontSize: 18 },
+    icon: { width: 28, alignItems: 'center' },
     fallback: {
       paddingHorizontal: 14, paddingVertical: 10,
       borderTopWidth: 1, borderTopColor: v1.border,
@@ -242,7 +243,7 @@ export default function RoutePointPicker({
                   style={s.row}
                   testID={`route-country-${code}`}
                 >
-                  <Text style={s.icon}>{country.flag}</Text>
+                  <View style={s.icon}><CountryFlag code={code} width={28} /></View>
                   <Text style={[s.rowName, { color: v1.text, flex: 1 }]}>{localName}</Text>
                   <Text style={{ color: v1.textMuted, fontSize: 16 }}>›</Text>
                 </TouchableOpacity>
@@ -309,7 +310,7 @@ export default function RoutePointPicker({
                 {i18nLabel(t, 'route_use_free_text', 'Использовать как есть')}
                 {' · '}
                 {query.trim()}
-                {c ? ` · ${c.flag} ${cName}` : ` · ${i18nLabel(t, 'route_pick_country_first', 'Сначала выберите страну')}`}
+                {c ? ` · ${cName}` : ` · ${i18nLabel(t, 'route_pick_country_first', 'Сначала выберите страну')}`}
               </Text>
             </TouchableOpacity>
           );
@@ -331,9 +332,7 @@ function PointRow({ p, v1, s, onPick }) {
     : localizePlace(p.name, lang);
   return (
     <TouchableOpacity onPress={onPick} style={s.row} testID={`route-point-${p.name}`}>
-      <Text style={s.icon}>
-        {p.type === 'border' ? '🛂' : p.type === 'terminal' ? '🏗' : country.flag || '📍'}
-      </Text>
+      <View style={s.icon}><CountryFlag code={p.country} width={28} /></View>
       <View style={{ flex: 1 }}>
         <Text style={[s.rowName, { color: v1.text }]} numberOfLines={1}>
           {displayName}

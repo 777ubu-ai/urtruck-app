@@ -21,11 +21,15 @@ import TruckParamsScreen from '../screens/registration/TruckParamsScreen';
 import VehicleDocsScreen from '../screens/registration/VehicleDocsScreen';
 import IdentityStepScreen from '../screens/registration/IdentityStepScreen';
 import CitizenshipScreen from '../screens/registration/CitizenshipScreen';
+import VehicleSetupCountryScreen from '../screens/vehicle/VehicleSetupCountryScreen';
+import VehicleSetupMachineScreen from '../screens/vehicle/VehicleSetupMachineScreen';
+import VehicleSetupReviewScreen from '../screens/vehicle/VehicleSetupReviewScreen';
+import VehicleSetupSuccessScreen from '../screens/vehicle/VehicleSetupSuccessScreen';
+import VehicleChooserScreen from '../screens/vehicle/VehicleChooserScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoFeedScreen from '../screens/CargoFeedScreen';
 import CargoDetailV2 from '../screens/CargoDetailV2';
-import TrackTruckScreen from '../screens/TrackTruckScreen';
 import DriverDetail from '../screens/DriverDetail';
 import ChatScreenV2 from '../screens/ChatScreenV2';
 import WalletScreen from '../screens/WalletScreen';
@@ -111,7 +115,9 @@ function MainTabs({ route }) {
   //   Обе роли (4): рабочий каталог · своя работа · Сделки · Граница.
   //   Queue — электронная очередь/граница; Profile остаётся только в верхнем
   //   меню и stack-навигации, чтобы не дублировать его в bottom bar.
-  // BottomNav красит неон по роли: driver #168759, client #FF8400.
+  // BottomNav красит акцент по роли: driver #168759 (icon+label); client —
+  // pill #FF8400, а icon/label #D26D00 (контрастная пара, см. BottomNav
+  // ROLE_ACCENT / LABEL_ACCENT).
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}
@@ -194,7 +200,11 @@ export default function AppNavigator() {
         <Stack.Screen name="EditTrip" component={EditTripScreen} />
         <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
         <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
-        <Stack.Screen name="TrackTruck" component={TrackTruckScreen} />
+        <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
+        <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
+        <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
+        <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
+        <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
       </Stack.Navigator>
@@ -247,6 +257,11 @@ export default function AppNavigator() {
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
+          <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
+          <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
+          <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
+          <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
         </>
       ) : (
         // Полностью в приложении
@@ -277,7 +292,11 @@ export default function AppNavigator() {
           <Stack.Screen name="EditTrip" component={EditTripScreen} />
           <Stack.Screen name="CreateTrip" component={CreateTripScreen} />
           <Stack.Screen name="CreateCargo" component={CreateCargoScreen} />
-          <Stack.Screen name="TrackTruck" component={TrackTruckScreen} />
+          <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
+          <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
+          <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
+          <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
+          <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
         <Stack.Screen name="Citizenship" component={CitizenshipScreen} />
         <Stack.Screen name="Identity" component={IdentityStepScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
@@ -285,7 +304,8 @@ export default function AppNavigator() {
           {/* КАНОНИЧЕСКИЙ PRO-flow верификации водителя (4 шага):
               Citizenship 1 → Identity 2 → VehicleDocs 3 → TruckParams 4 →
               submit. TOTAL_STEPS=4 во всех четырёх экранах. Legacy-экраны
-              SelfieStepScreen/VehiclePhotosScreen не смонтированы.
+              SelfieStepScreen/VehiclePhotosScreen удалены (Commit 8) — не
+              были смонтированы и ниоткуда не импортировались.
 
               Reg/RegOtp/RegProfile (Premium) ниже — это ОБЩИЙ профиль
               (имя + город), а НЕ документная верификация. Оставлены как legacy

@@ -53,10 +53,16 @@ curl http://185.22.65.11:8001/api/v1/system/info   # статус OTP/face/stora
 | `session && !hasRole` | Только Role → Reg (выбор роли после OTP) |
 | `session && hasRole` | Полный стек: MainTabs + все детали/настройки |
 
-`MainTabs` = Feed · Track · Wallet · Profile. Цвет акцента таббара зависит от роли: driver — `#2563EB` (синий), client — `#F59E0B` (жёлтый). Бейдж непрочитанных на Feed тянется из `getUnreadNotifications()` в `store.js`.
+> ⚠️ **DEPRECATED (2026-09-08, Track B).** `MainTabs`, акцентные цвета и
+> бейдж-механизм ниже не соответствуют коду — см. актуальное описание в
+> `docs/CURRENT_PRODUCT_CANON.md` (навигация) и `docs/CURRENT_ENGINEERING_CANON.md`
+> (бейдж считается через `useUnreadNotifications()` + `computeDealsUnread()`
+> в `src/components/ui/v1/BottomNav.js`, не через `getUnreadNotifications()`).
+>
+> ~~`MainTabs` = Feed · Track · Wallet · Profile. Цвет акцента таббара зависит от роли: driver — `#2563EB` (синий), client — `#F59E0B` (жёлтый). Бейдж непрочитанных на Feed тянется из `getUnreadNotifications()` в `store.js`.~~
 
 ### Слой данных
-- `src/config/supabase.js` — клиент Supabase. **`IS_BETA = true`** делает всё платное бесплатным (проверять этот флаг перед любой монетизацией).
+- `src/config/supabase.js` — клиент Supabase. **`IS_BETA = true`** делает всё платное бесплатным (проверять этот флаг перед любой монетизацией). ⚠️ *Уточнение 2026-09-08 (Track B): реальной монетизационной логики, читающей этот флаг, в коде сейчас не найдено — единственный живой потребитель показывает текстовую плашку в `ProfileScreen.js`. Также существует второй, независимый `IS_BETA` в `src/config/env.js` (мёртвый код, нигде не импортируется). Детали — `docs/CURRENT_PRODUCT_CANON.md`, п.4.*
 - `src/utils/store.js` — in-memory стор для демо-данных (trips, chats, notifications) + pub/sub через `subscribe()`. Используется параллельно с серверным API.
 - `src/utils/marketAPI.js` — REST-клиент к `/api/v1/market` (грузы, рейсы, ставки). BASE автоматически переключается: `http://185.22.65.11:8001/api/v1/market` для localhost dev, `/security/api/v1/market` в продакшене (nginx проксирует `/security/*` → `:8001`).
 - Регистрационный токен хранится в `storage` под ключом `ur_reg_token` и автоматически добавляется в `Authorization: Bearer`.
@@ -65,21 +71,21 @@ curl http://185.22.65.11:8001/api/v1/system/info   # статус OTP/face/stora
 ### UI-слои
 - `src/utils/ThemeContext.js` — РАБОЧИЙ переключатель light/dark (P1-фикс 08-2026). `themeMode` = `'system'|'light'|'dark'` (ручной выбор в приоритете над OS, `resolveTheme()` — чистая, юнит-тестируется в `tests/unit/themeResolve.test.mjs`), персист в `storage['ur_theme']`, синхронный no-flash boot в `<head>` (deploy.yml) + `data-theme`/`meta[theme-color]`. Экраны берут цвета через `useV1Colors()` (designV1) / `useTheme()` / `useBrand()` (brandV2) — реагируют в рантайме. Обе палитры WCAG-чистые (`qa/utils/themeContrastSmoke.js`). DARK-канон: bg `#0F1512`, surface `#151E19`, text `#F3F7F4`, зелёный CTA `#168759`+белый (4.52:1), accent-текст `#2FBE7E`.
 - `src/utils/AuthContext.js` — источник истины для `session`, `hasToken`, `hasRole`, `loading`.
-- `src/utils/i18n.js` + `useI18n.js` — 4 языка (RU/KK/ZH/EN), ~1575 ключей (симметрично по всем языкам). Все пользовательские тексты обязаны идти через `t(...)`.
+- `src/utils/i18n.js` + `useI18n.js` — 4 языка (RU/KK/ZH/EN), 1963 ключа на 2026-09-08 (число росло, но симметрия подтверждена — `Object.keys()` на реально загруженном модуле, ноль расхождений; проверяется `node qa/utils/i18nSmoke.js`, уже включён в `npm run qa:i18n`). Все пользовательские тексты обязаны идти через `t(...)`. ⚠️ *7 живых экранов дополнительно держат собственные локальные `COPY`-словари в обход этого файла — не баг, но известный архитектурный долг, см. `docs/CURRENT_ENGINEERING_CANON.md`, п.5.*
 - `src/components/` — переиспользуемые компоненты (Toast, ShimmerButton, PressableScale, BidModal, RatingModal, ShareModal, VerificationGate, SecurityBadge, RouteMap и т.д.).
 
 ### Правила UI (из CURSOR_INSTRUCTIONS.md — соблюдать строго)
 - Только React Native, **никаких web-only API** (`document`, `window`, `localStorage`). Для веба используется `react-native-web`.
 - Стили — через `StyleSheet.create()`, не inline.
 - Каждый экран оборачивается в `SafeAreaView`.
-- Цвета (редизайн 08.08.2026, единая светлая зелёная B2B-тема): bg `#F6F8F7`, card `#FFFFFF`, border `#E5ECE8`, text `#14221C`, muted `#617067`; бренд-зелёный ОБЕИХ ролей `#168759` (WCAG: 4.52:1 с белым текстом), deep `#0F6B47`, тинт `#E8F6EF`; оранжевый `#FF8400`/`#F59E0B` — ТОЛЬКО фоны/плашки цены-ожидания-предупреждений, как ТЕКСТ на белом — `#E06D00`; error `#D64545`/`#EF4444`; info `#3478D4`; рейтинг `#D97706` (янтарь, 3.19:1); placeholder `#6B7A71`.
+- Цвета (редизайн 08.08.2026, единая светлая зелёная B2B-тема): bg `#F6F8F7`, card `#FFFFFF`, border `#E5ECE8`, text `#14221C`, muted `#617067`; бренд-зелёный ОБЕИХ ролей `#168759` (WCAG: 4.52:1 с белым текстом), deep `#0F6B47`, тинт `#E8F6EF`; оранжевый `#FF8400`/`#F59E0B` — ТОЛЬКО фоны/плашки цены-ожидания-предупреждений, как ТЕКСТ на белом — `#B45800` (⚠️ *обновлено 2026-09-08, Track B: `#E06D00` не проходил WCAG AA для мелкого текста, 3.30:1 при пороге 4.5:1 — заменён на `#B45800`, 4.84:1, тот же цветовой тон; `#E06D00` остаётся допустимым для фонов/плашек/иконок, см. `docs/CURRENT_ENGINEERING_CANON.md`*); error `#D64545`/`#EF4444` как фон/плашка, как ТЕКСТ на белом — `#D03B3B` (4.81:1); info `#3478D4` как фон/плашка, как ТЕКСТ на белом — `#3273CC` (4.71:1); рейтинг `#D97706` (янтарь, 3.19:1); placeholder `#6B7A71`.
 - Текст поверх зелёных кнопок (`#168759`) — белый `#FFFFFF` (4.52:1, AA). Крупные CTA — на deep `#0F6B47` (6.5:1). Источник истины: `v1AccentFor(role)` в `theme/designV1.js` (в LIGHT обе роли дают один зелёный).
 - Типы кузовов: `tent`, `ref`, `platform`, `auto`, `izoterm` + свободное поле «другое».
 - Emoji вместо SVG-иконок (быстрее, меньше бандл).
 
 ## Архитектура бэкенда
 
-`backend/main.py` — точка входа FastAPI, грузит `.env` вручную, монтирует 18 роутеров под префиксами `/api/v1/...`:
+`backend/main.py` — точка входа FastAPI, грузит `.env` вручную, монтирует 23 роутера (проверено `grep -c "app.include_router" backend/main.py`, 2026-09-08; было 18 на момент написания этого раздела) под префиксами `/api/v1/...`:
 
 ```
 /api/v1/...              routes (скоринг, отметки, базовое)
@@ -135,6 +141,7 @@ Background hook не запрашивает permissions самостоятель
 **Google Play:** перед выпуском AAB с `ACCESS_BACKGROUND_LOCATION` обязательны актуальные Background location declaration, FGS location declaration, privacy policy/store listing и Android demo-video, совпадающие с реальным flow. Не отключать/включать permissions отдельно от `app.json`, manifest, disclosure, QA и release-документации — это единый контракт.
 
 ## Сопутствующие документы (читать при крупных задачах)
+- `docs/CURRENT_PRODUCT_CANON.md` / `docs/CURRENT_ENGINEERING_CANON.md` / `docs/CURRENT_RELEASE_GATE.md` — актуализация этого файла от 2026-09-08 (Track B инженерного спринта) там, где код разошёлся с текстом ниже. Читать в дополнение к этому файлу, не вместо него — большая часть `CLAUDE.md` остаётся верной.
 - `SECURITY_ARCHITECTURE.md` — детальная архитектура скоринга, blacklist, верификации (24 KB).
 - `ROADMAP.md` — план фич по фазам (12 KB).
 - `AGENTS_PLAN.md` — план 7 AI-агентов (модератор, переводчик, ценовой аналитик, push-диспетчер, антифрод, FAQ-бот, контент-генератор).
@@ -164,12 +171,18 @@ Background hook не запрашивает permissions самостоятель
 Инструмент: пакет `graphifyy` (PyPI, MIT), команда `graphify`, ставится изолированно (`uv tool install graphifyy`, без extras → без LLM/egress).
 
 ### Канон UrTruck (нерушимо — проверять перед каждым касанием навигации)
+> ⚠️ **Уточнение 2026-09-08 (Track B):** число вкладок клиента ниже
+> устарело — код и тест `tests/frontend/test_navigation_tabs.mjs` (комментарий
+> "Owner-approved IA") сходятся на том, что у ОБЕИХ ролей 4 вкладки, включая
+> Queue. Порядок в коде (`AppNavigator.js`): driver — Feed/MyWork/Deals/Queue;
+> client — MyWork/Feed/Deals/Queue. Подробности и остальные проверенные
+> факты навигации — `docs/CURRENT_PRODUCT_CANON.md`, п.1.
+
 Обе роли живут по ОДНОЙ логике (приказ владельца 2026-07-26, обе волны):
 «Сделки» = единый инбокс, чат внутри сделки, размещение внутри «моего меню».
 - **Driver tab-bar = 4 вкладки**: `Feed` («Грузы») / `MyWork` («Рейсы») /
   `Queue` («Очередь» — инструмент границы, не дубль) / `Deals` («Сделки»).
-- **Client tab-bar = 3 вкладки**: `MyWork` («Грузы») / `Feed` («Машины») /
-  `Deals` («Сделки»).
+- ~~**Client tab-bar = 3 вкладки**: `MyWork` («Грузы») / `Feed` («Машины») / `Deals` («Сделки»).~~ *(устарело — фактически 4 вкладки, см. врезку выше)*
 - **Вкладок «Чаты» и «Разместить» НЕТ ни у одной роли.** Переписка живёт
   внутри «Сделок»; размещение — кнопка ВНУТРИ `MyWork` («Опубликовать
   маршрут» у driver с verification-gate, «Разместить груз» у client).

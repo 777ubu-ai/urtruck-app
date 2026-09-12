@@ -98,3 +98,17 @@ export const ThemeProvider = ({ children }) => {
 };
 
 export const useTheme = () => useContext(ThemeContext);
+
+// ThemeScope — locally forces light/dark for a subtree regardless of the
+// global themeMode. Used by DesignPreviewScreen (?qa=design) to render the
+// same component in BOTH themes side by side on one canvas. Not a user
+// control: the global toggle stays the only real theme switch.
+export const ThemeScope = ({ dark = false, children }) => {
+  const parent = useContext(ThemeContext);
+  const value = React.useMemo(() => ({
+    ...parent,
+    isDark: dark,
+    theme: dark ? darkTheme : lightTheme,
+  }), [parent, dark]);
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+};

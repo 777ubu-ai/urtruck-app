@@ -10,9 +10,10 @@
 // else. Deals/chat/GPS therefore keep one authorization model.
 //
 // Keyboard/layout rule: the whole form INCLUDING legal consent lives inside
-// one KeyboardAvoidingView + ScrollView. The previous fixed consent block was
-// outside the shrinking content area and collided with the email form when the
-// keyboard opened (owner screenshot 22 Aug).
+// one KeyboardSafeLayout + KeyboardSafeScrollView (canonical primitive;
+// replaced the local KAV fork in Commit 6). The previous fixed consent
+// block was outside the shrinking content area and collided with the email
+// form when the keyboard opened (owner screenshot 22 Aug).
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -21,11 +22,9 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Linking,
-  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -48,6 +47,7 @@ import {
 } from '../../utils/socialAuth';
 import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 import { WEB_URL } from '../../config/env';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const LEGAL_BASE = WEB_URL || 'https://urtruck.kz';
 const SHOW_APPLE_AUTH = false;
@@ -337,10 +337,7 @@ export default function PhoneV2Screen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="auth-v2-screen">
-      <KeyboardAvoidingView
-        style={s.keyboard}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardSafeLayout style={s.keyboard}>
         <View style={s.headerRow}>
           {navigation.canGoBack() ? (
             <Pressable
@@ -356,7 +353,7 @@ export default function PhoneV2Screen({ navigation, route }) {
           ) : <View style={s.backBtn} />}
         </View>
 
-        <ScrollView
+        <KeyboardSafeScrollView
           style={s.scroll}
           contentContainerStyle={s.scrollContent}
           keyboardShouldPersistTaps="handled"
@@ -468,8 +465,8 @@ export default function PhoneV2Screen({ navigation, route }) {
               </Text>
             </Text>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardSafeScrollView>
+      </KeyboardSafeLayout>
     </SafeAreaView>
   );
 }
@@ -490,7 +487,7 @@ const makeStyles = (brand) => StyleSheet.create({
   socialIconWrap: { width: 36, alignItems: 'center', justifyContent: 'center' },
   socialRightSpacer: { width: 36 },
   socialText: { flex: 1, textAlign: 'center', ...typography.button, color: brand.textPrimary },
-  socialErrorText: { ...typography.bodySmall, color: brand.error, marginTop: 10, textAlign: 'center' },
+  socialErrorText: { ...typography.bodySmall, color: brand.errorText, marginTop: 10, textAlign: 'center' },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 20 },
   dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: brand.border },
   dividerLabel: { ...typography.caption, color: brand.textSecondary, fontWeight: '700' },
@@ -498,7 +495,7 @@ const makeStyles = (brand) => StyleSheet.create({
   inputError: { borderColor: brand.error },
   mailIcon: { marginLeft: 14, marginRight: 6 },
   emailInput: { flex: 1, minHeight: 56, paddingHorizontal: 8, paddingRight: 14, ...typography.bodyLarge, color: brand.textPrimary },
-  error: { ...typography.bodySmall, color: brand.error, marginTop: 8, textAlign: 'center' },
+  error: { ...typography.bodySmall, color: brand.errorText, marginTop: 8, textAlign: 'center' },
   ctaPrimary: { height: 56, borderRadius: radius.lg, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', marginTop: 14 },
   ctaPrimaryText: { ...typography.button, color: brand.textOnPrimary },
   infoBlock: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 14 },

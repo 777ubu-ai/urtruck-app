@@ -1,0 +1,15 @@
+{
+  "generatedFrom": "package.json and .github/workflows",
+  "entries": [
+    {"suite": "backend/tests/**/*.py", "command": "./scripts/run_backend_tests.sh", "workflow": "pr-quality-gate.yml,full-qa-audit.yml", "runsAutomatically": true, "failureBlocks": true},
+    {"suite": "tests/frontend/*.mjs", "command": "npm run test:unit", "workflow": "pr-quality-gate.yml,full-qa-audit.yml", "runsAutomatically": true, "failureBlocks": true},
+    {"suite": "tests/unit/*.mjs", "command": "npm run test:unit", "workflow": "pr-quality-gate.yml,full-qa-audit.yml", "runsAutomatically": true, "failureBlocks": true},
+    {"suite": "qa/utils/*Smoke.js", "command": "npm run qa:center:quick", "workflow": "qa-center.yml,full-qa-audit.yml", "runsAutomatically": true, "failureBlocks": true},
+    {"suite": "tests/e2e/urtruck-email-login.spec.js,urtruck-deal-mvp.spec.js,urtruck-full-e2e-web.spec.js", "command": "npx playwright test --config playwright.config.js <files>", "workflow": "pr-quality-gate.yml", "runsAutomatically": true, "failureBlocks": true},
+    {"suite": "tests/e2e/** (remaining/live/legacy candidates)", "command": "npm run test:e2e", "workflow": "manual or dedicated live workflows", "runsAutomatically": false, "failureBlocks": false},
+    {"suite": "qa/agents/**", "command": "npm run qa:full", "workflow": "manual only", "runsAutomatically": false, "failureBlocks": false},
+    {"suite": "qa/maestro/**", "command": "npm run qa:maestro-contract", "workflow": "qa-center.yml,full-qa-audit.yml", "runsAutomatically": true, "failureBlocks": true},
+    {"suite": "deal FSM", "command": "npm run test:unit", "workflow": "pr-quality-gate.yml,full-qa-audit.yml", "runsAutomatically": true, "failureBlocks": true},
+    {"suite": "dependency audit", "command": "npm audit --omit=dev --audit-level=moderate", "workflow": "not configured", "runsAutomatically": false, "failureBlocks": false}
+  ]
+}

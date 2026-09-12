@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
@@ -13,6 +13,7 @@ import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import TruckTypeGrid from '../components/TruckTypeGrid';
 import Feather from '@expo/vector-icons/Feather';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../components/ui/v1/KeyboardSafeLayout';
 
 const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'mega', 'curtain', 'lowloader', 'tanker', 'dumptruck', 'grain', 'livestock', 'logger', 'hazmat', 'open_truck', 'closed', 'longliner', 'microvan'];
 const TRUCK_ICONS = {
@@ -175,7 +176,8 @@ export default function EditTripScreen({ navigation, route }) {
           <Text style={[s.title, { color: v1.text }]}>{t('edit_btn')}</Text>
         </View>
       </View>
-      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <KeyboardSafeLayout>
+      <KeyboardSafeScrollView ref={scrollRef} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         {/* Stage 11: bring EditTrip onto the same RoutePointPicker
             that Create-flows already use. Same country → type → point
             stages, same auto-close, same theme. Transit stays a free
@@ -260,7 +262,7 @@ export default function EditTripScreen({ navigation, route }) {
             value={price}
             onChangeText={(v) => setPrice(String(v || '').replace(/[^\d]/g, ''))}
           />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} style={{ flex: 3 }}>
+          <KeyboardSafeScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} style={{ flex: 3 }}>
             {/* Stage 11: pilot whitelist matches Create flows (RUB / USD / KZT / CNY). */}
             {['KZT', 'USD', 'RUB', 'CNY'].map(k => (
               <TouchableOpacity
@@ -271,7 +273,7 @@ export default function EditTripScreen({ navigation, route }) {
                 <Text style={[s.currChipText, { color: theme.textSecondary }, currency === k && { color: '#fff' }]}>{CURRENCY_SYMBOLS[k]} {k}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </KeyboardSafeScrollView>
         </View>
 
         <Text style={[s.label, { color: truckType ? theme.textMuted : '#EF4444' }]}>
@@ -330,7 +332,8 @@ export default function EditTripScreen({ navigation, route }) {
             </View>
           )}
         </TouchableOpacity>
-      </ScrollView>
+      </KeyboardSafeScrollView>
+      </KeyboardSafeLayout>
     </SafeAreaView>
   );
 }

@@ -4,14 +4,16 @@
 
 import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { useV1Colors, v1Radius } from '../../../theme/designV1';
+import { useV1Colors, useDriverCeramicColors, v1Radius } from '../../../theme/designV1';
 
 // variant='underline' — промпт-дизайн клиента: активная вкладка = текст
 // акцентом + полоса 3px снизу, без заливки. По умолчанию 'pill' (водитель
 // остаётся как был).
-export default function SegmentTabs({ items = [], value, onChange, accent, variant = 'pill' }) {
+export default function SegmentTabs({ items = [], value, onChange, accent, variant = 'pill', tone = 'default' }) {
   const colors = useV1Colors();
-  const activeAccent = accent || colors.driver;
+  const ceramic = useDriverCeramicColors();
+  const palette = tone === 'driver' ? ceramic : colors;
+  const activeAccent = accent || palette.active || palette.driver;
   const underline = variant === 'underline';
   // QA-аудит P2-5: на 390px длинные RU/KK-лейблы (4 driver-вкладки —
   // «Предложения»/«Завершённые») усекались в «Предложе…». Масштабируем
@@ -38,7 +40,7 @@ export default function SegmentTabs({ items = [], value, onChange, accent, varia
                     backgroundColor: 'transparent' }
                 : active
                 ? { backgroundColor: activeAccent, borderColor: activeAccent }
-                : { backgroundColor: 'transparent', borderColor: colors.border },
+                : { backgroundColor: 'transparent', borderColor: palette.border },
             ]}
           >
             <View style={s.labelRow}>
@@ -46,7 +48,7 @@ export default function SegmentTabs({ items = [], value, onChange, accent, varia
                 style={[s.label, {
                   color: underline
                     ? (active ? activeAccent : colors.textMuted)
-                    : (active ? '#FFFFFF' : colors.textMuted),
+                    : (active ? (tone === 'driver' ? palette.activeText : '#FFFFFF') : palette.textMuted),
                   fontSize, letterSpacing,
                 }]}
                 numberOfLines={1}

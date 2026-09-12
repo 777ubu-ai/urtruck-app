@@ -36,6 +36,7 @@ import {
   modelsForBrand,
 } from '../../utils/truckConstants';
 import { brand, radius, typography } from '../../theme/brandV2';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 // Канонический PRO-flow = 4 экрана: Identity → Selfie → VehicleDocs →
 // этот экран → submit. Финальный шаг 4/4 (PR-V3 добавил Identity+Selfie).
@@ -107,6 +108,18 @@ export default function TruckParamsScreen({ navigation, route }) {
   const [subStep, setSubStep] = useState(0); // 0 «Транспорт» | 1 «Параметры»
   const scrollRef = useRef(null);
 
+  // Снапшот начального состояния (useState-инициализаторы уже учли route
+  // params из OCR прошлого шага; async-подгрузки на этом экране нет). Любое
+  // расхождение = пользователь ввёл данные, Back должен предложить draft.
+  const baselineRef = useRef({ vehicleType, bodyType, residence, brandName, modelName, colorKey, tonnage, volume, dimL, dimW, dimH, adr, straps, trailerPlate });
+  const b0 = baselineRef.current;
+  const isDirty = vehicleType !== b0.vehicleType || bodyType !== b0.bodyType
+    || residence !== b0.residence || brandName !== b0.brandName
+    || modelName !== b0.modelName || colorKey !== b0.colorKey
+    || tonnage !== b0.tonnage || volume !== b0.volume
+    || dimL !== b0.dimL || dimW !== b0.dimW || dimH !== b0.dimH
+    || adr !== b0.adr || straps !== b0.straps || trailerPlate !== b0.trailerPlate;
+
   const showTrailer = useMemo(
     () => TYPES_WITH_TRAILER.includes(vehicleType),
     [vehicleType],
@@ -148,8 +161,9 @@ export default function TruckParamsScreen({ navigation, route }) {
   };
 
   const goPrev = () => {
-    if (subStep > 0) goToSub(subStep - 1);
-    else navigation.goBack();
+    if (subStep > 0) { goToSub(subStep - 1); return; }
+    if (isDirty) { setCloseVisible(true); return; }
+    navigation.goBack();
   };
 
   const buildPayload = () => ({
@@ -264,7 +278,8 @@ export default function TruckParamsScreen({ navigation, route }) {
         </Pressable>
       </View>
 
-      <ScrollView ref={scrollRef} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <KeyboardSafeLayout>
+      <KeyboardSafeScrollView ref={scrollRef} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <Text style={s.title}>{t('truck_params_title')}</Text>
 
         {subStep === 0 ? (
@@ -401,7 +416,7 @@ export default function TruckParamsScreen({ navigation, route }) {
         </View>
         </>
         ) : null}
-      </ScrollView>
+      </KeyboardSafeScrollView>
 
       <View style={s.ctaWrap}>
         {subStep < SUB_COUNT - 1 ? (
@@ -423,6 +438,7 @@ export default function TruckParamsScreen({ navigation, route }) {
           </Pressable>
         )}
       </View>
+      </KeyboardSafeLayout>
 
       {/* Bottom-sheet выбора марки / модели / цвета */}
       <Modal visible={!!sheet} transparent animationType="slide" onRequestClose={() => setSheet(null)}>

@@ -13,7 +13,9 @@ from database.db import get_conn, new_id
 from api.verification_gate import require_level
 from services import file_signing
 from services import storage_service as storage
+from services import upload_validation
 from api.push import send_to_user
+from api.notifications import create_notification, mark_notifications_read_by_urls
 
 chat_router = APIRouter()
 
@@ -153,7 +155,9 @@ def _init():
             _ensure_columns(c)
             _migrate_canonical_rooms(c)  # Variant B: канонические комнаты сделок
             c.commit()
-    _ensure_special_users()
+    # drivers_registration — часть базовой registration-схемы. Этот модуль
+    # импортируется до её инициализации на новой БД, поэтому special users
+    # создаются из main.startup после init_registration_schema().
 
 
 def _deal_key(cargo_id, trip_id, p1: str, p2: str) -> str:
@@ -392,8 +396,27 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
             # Гонка двух одновременных ретраев с одним client_msg_id —
             # уникальный индекс отсёк дубль. Это успех (идемпотентность).
             return {"ok": True, "room_id": room_id, "deduped": True}
+        message_id = cursor.lastrowid
         preview = (body.text or "📷 Фото")[:50]
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
+
+    event_key = f"chat:{room_id}:msg:{message_id}"
+    # Bell is a durable inbox, independent of provider delivery. Persist the
+    # event before the asynchronous push attempt; the event key makes a
+    # retried client request idempotent along with client_msg_id above.
+    try:
+        sender_name = user.get("full_name") or user.get("phone") or "Пользователь"
+        create_notification(
+            recipient_id,
+            "chat_message",
+            f"💬 {sender_name}",
+            preview,
+            "💬",
+            url=f"/chats/{room_id}",
+            event_key=event_key,
+        )
+    except Exception as exc:
+        print(f"[chat-notification] failed room={room_id}: {type(exc).__name__}", flush=True)
 
     # Push получателю
     # PR-C2 (P0-2): kind='chat' — push_sender вычислит unread badge
@@ -401,8 +424,14 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     # data.type='chat_message' позволит фронту в onNotificationReceived
     # отличить chat push от bid push и не дублировать banner если
     # пользователь сейчас открыл эту же комнату.
+    # Push-closure track: event_key uses the PERSISTED message row id
+    # (message_id, message text itself is user-generated and never passed
+    # through push_i18n) — every real message gets a fresh, unique,
+    # server-assigned id, and a retry that reaches this line twice for the
+    # SAME already-inserted row cannot happen (the client_msg_id dedup /
+    # IntegrityError guards above already return before this point on any
+    # retry of an already-committed message).
     try:
-        sender_name = user.get("full_name") or user.get("phone") or "Пользователь"
         send_to_user(
             recipient_id,
             f"💬 {sender_name}",
@@ -417,6 +446,8 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
                 "bid_id": room_bid,
                 "sender_id": user["id"],
                 "recipient_id": recipient_id,
+                "event_key": event_key,
+                "event": "chat.message",
             },
         )
     except Exception:
@@ -712,6 +743,14 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
             (room_id, uid),
         )
 
+    # Opening a room consumes its durable Bell records as well as the raw
+    # chat rows. Without this, a user who reads a chat directly keeps a stale
+    # Bell badge until they separately open the notification center.
+    try:
+        mark_notifications_read_by_urls(uid, [f"/chats/{room_id}"])
+    except Exception:
+        pass
+
     # mine — серверный признак «это моё сообщение». Клиент НЕ должен
     # определять авторство по локальному id (он может быть фейковым после
     # signIn до синка с бэком) — иначе своё сообщение выглядит как чужое
@@ -793,18 +832,16 @@ async def upload_chat_photo(file: UploadFile = File(...), user=Depends(require_l
     Само сообщение шлётся через POST /chat/send с photo_url=этот ключ; на
     чтении сервер подписывает ключ (см. sign в list-messages). Так фото видно
     и получателю (раньше слался локальный uri устройства — не резолвился)."""
-    data = await file.read()
+    data = await file.read(upload_validation.MAX_CHAT_PHOTO_BYTES + 1)
     if not data:
         raise HTTPException(status_code=400, detail="Пустой файл")
-    if len(data) > 8 * 1024 * 1024:
+    if len(data) > upload_validation.MAX_CHAT_PHOTO_BYTES:
         raise HTTPException(status_code=413, detail="Файл слишком большой")
-    if data[:3] == b"\xff\xd8\xff":
-        ext, content_type = "jpg", "image/jpeg"
-    elif data[:8] == b"\x89PNG\r\n\x1a\n":
-        ext, content_type = "png", "image/png"
-    else:
+    mime = upload_validation.sniff_image_mime(data)
+    if mime is None:
         raise HTTPException(status_code=415, detail="Неподдерживаемый тип фото")
-    key = storage.save_file(data, "chat_photos", ext=ext, content_type=content_type)
+    ext = "jpg" if mime == upload_validation.JPEG_MIME else "png"
+    key = storage.save_file(data, "chat_photos", ext=ext, content_type=mime)
     return {"photo_key": key}
 
 
@@ -814,25 +851,18 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
     Само сообщение шлётся через POST /chat/send с photo_url=этот ключ и
     is_voice=true (ключ живёт в том же поле, подпись на чтении общая —
     см. get_messages). Web пишет audio/webm, native (expo-av) — m4a."""
-    data = await file.read()
+    data = await file.read(upload_validation.MAX_CHAT_VOICE_BYTES + 1)
     if not data:
         raise HTTPException(status_code=400, detail="Пустой файл")
-    if len(data) > 10 * 1024 * 1024:
+    if len(data) > upload_validation.MAX_CHAT_VOICE_BYTES:
         raise HTTPException(status_code=413, detail="Файл слишком большой")
-    name = (file.filename or "").lower()
-    ext = "m4a"
-    for cand in ("webm", "m4a", "mp3", "aac", "ogg", "wav"):
-        if name.endswith("." + cand):
-            ext = cand
-            break
-    audio_mime = {
-        "webm": "audio/webm",
-        "m4a": "audio/mp4",
-        "mp3": "audio/mpeg",
-        "aac": "audio/aac",
-        "ogg": "audio/ogg",
-        "wav": "audio/wav",
-    }.get(ext, "application/octet-stream")
+    # Magic bytes are authoritative. Root cause of the audit finding: the
+    # extension was derived from the client filename, so a renamed arbitrary
+    # binary was stored and served with an audio MIME.
+    sniffed = upload_validation.sniff_audio_mime(data)
+    if sniffed is None:
+        raise HTTPException(status_code=415, detail="Неподдерживаемый тип аудио")
+    ext, audio_mime = sniffed
     try:
         key = storage.save_file(data, "chat_voice", ext=ext, content_type=audio_mime)
     except Exception as exc:

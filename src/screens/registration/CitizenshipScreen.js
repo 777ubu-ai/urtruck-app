@@ -1,14 +1,19 @@
 // Шаг 1 верификации водителя — выбор гражданства (новый порядок).
 // От страны зависит список принимаемых документов и дальнейшая проверка.
 // Сохраняем citizenship_country в черновик и переходим к шагу 2 (удостоверение).
+//
+// Design v1 Commit 6: тот же token family, что и остальная верификация
+// (IdentityStep / VehicleDocs / TruckParams) — brandV2 `brand`/`radius`/
+// `typography` + KeyboardSafeLayout. Никаких hex/темных хардкодов.
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
-import { useTheme } from '../../utils/ThemeContext';
-import { useV1Colors } from '../../theme/designV1';
 import { regAPI } from '../../utils/registration';
+import { brand, radius, typography } from '../../theme/brandV2';
+import BackButton from '../../components/ui/v1/BackButton';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const TOTAL_STEPS = 4;
 const STEP = 1;
@@ -24,9 +29,7 @@ const COUNTRIES = [
 
 export default function CitizenshipScreen({ navigation }) {
   const { t } = useI18n();
-  const { theme } = useTheme();
-  const v1 = useV1Colors();
-  const accent = '#168759';               // роль водителя — изумрудный неон
+  const accent = brand.primary;
   const [selected, setSelected] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -51,70 +54,69 @@ export default function CitizenshipScreen({ navigation }) {
   const progress = STEP / TOTAL_STEPS;
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
-      {/* Header + прогресс */}
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} testID="citizenship-back" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Feather name="arrow-left" size={24} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[s.stepLabel, { color: theme.textMuted }]}>{`${t('reg_step') || 'Шаг'} ${STEP} ${t('reg_of') || 'из'} ${TOTAL_STEPS}`}</Text>
-        <View style={{ width: 24 }} />
-      </View>
-      <View style={[s.progressTrack, { backgroundColor: theme.border }]}>
-        <View style={[s.progressFill, { width: `${progress * 100}%`, backgroundColor: accent }]} />
-      </View>
-
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
-        <Text style={[s.title, { color: theme.text }]}>{t('cit_step_title')}</Text>
-        <Text style={[s.subtitle, { color: theme.textMuted }]}>{t('cit_step_subtitle')}</Text>
-
-        <View style={{ gap: 10, marginTop: 20 }}>
-          {COUNTRIES.map((c) => {
-            const active = selected === c.code;
-            return (
-              <TouchableOpacity
-                key={c.code}
-                testID={`citizenship-${c.code}`}
-                onPress={() => setSelected(c.code)}
-                style={[s.option, {
-                  backgroundColor: active ? accent + '18' : theme.card,
-                  borderColor: active ? accent : theme.border,
-                }]}
-              >
-                <Text style={[s.optionText, { color: theme.text }]}>{t(c.key)}</Text>
-                {active ? <Feather name="check-circle" size={20} color={accent} /> : null}
-              </TouchableOpacity>
-            );
-          })}
+    <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="citizenship-screen">
+      <KeyboardSafeLayout>
+        <View style={s.header}>
+          <BackButton onPress={() => navigation.goBack()} label={t('back')} testID="citizenship-back" />
+          <View style={s.progressTrack}>
+            <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
+          </View>
+          <Text style={s.stepLabel}>{`${t('reg_step')} ${STEP} ${t('reg_of')} ${TOTAL_STEPS}`}</Text>
         </View>
-      </ScrollView>
 
-      <View style={[s.footer, { borderTopColor: theme.border, backgroundColor: v1.bg }]}>
-        <TouchableOpacity
-          testID="citizenship-continue"
-          disabled={!selected || saving}
-          onPress={onNext}
-          style={[s.cta, { backgroundColor: accent, opacity: (!selected || saving) ? 0.5 : 1 }]}
-        >
-          {saving ? <ActivityIndicator color="#0C0A09" />
-                  : <Text style={s.ctaText}>{t('cit_continue')}</Text>}
-        </TouchableOpacity>
-      </View>
+        <KeyboardSafeScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+          <Text style={s.title}>{t('cit_step_title')}</Text>
+          <Text style={s.subtitle}>{t('cit_step_subtitle')}</Text>
+
+          <View style={{ gap: 10, marginTop: 20 }}>
+            {COUNTRIES.map((c) => {
+              const active = selected === c.code;
+              return (
+                <Pressable
+                  key={c.code}
+                  testID={`citizenship-${c.code}`}
+                  onPress={() => setSelected(c.code)}
+                  style={[s.option, active && s.optionActive]}
+                >
+                  <Text style={[s.optionText, { color: brand.textPrimary }]}>{t(c.key)}</Text>
+                  {active ? <Feather name="check-circle" size={20} color={accent} /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </KeyboardSafeScrollView>
+
+        <View style={s.ctaWrap}>
+          <Pressable
+            testID="citizenship-continue"
+            disabled={!selected || saving}
+            onPress={onNext}
+            style={[s.cta, { opacity: (!selected || saving) ? 0.5 : 1 }]}
+          >
+            {saving ? <ActivityIndicator color={brand.textOnPrimary} />
+                    : <Text style={s.ctaText}>{t('cit_continue')}</Text>}
+          </Pressable>
+        </View>
+      </KeyboardSafeLayout>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
-  stepLabel: { fontSize: 14, fontWeight: '700' },
-  progressTrack: { height: 4, borderRadius: 2, marginHorizontal: 16 },
-  progressFill: { height: 4, borderRadius: 2 },
-  title: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  subtitle: { fontSize: 14, marginTop: 6, lineHeight: 20 },
-  option: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 16, minHeight: 56 },
-  optionText: { fontSize: 16, fontWeight: '700' },
-  footer: { padding: 16, borderTopWidth: 1 },
-  cta: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', minHeight: 52 },
-  ctaText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
+  safe: { flex: 1, backgroundColor: brand.bg },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
+  progressTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
+  progressFill: { height: 6, borderRadius: 3, backgroundColor: brand.primary },
+  stepLabel: { ...typography.bodySmall, color: brand.textSecondary },
+  content: { paddingHorizontal: 20, paddingBottom: 24 },
+  title: { ...typography.h1, color: brand.textPrimary, marginBottom: 4 },
+  subtitle: { ...typography.bodySmall, color: brand.textSecondary, marginBottom: 16 },
+  // List rows — одинаковые с опциями docType в IdentityStepScreen: 56h, radius 14,
+  // selected = accent soft bg (primarySoft ≈ primary 8%) + check в brand.primary.
+  option: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 56, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface },
+  optionActive: { borderColor: brand.primary, backgroundColor: brand.primarySoft },
+  optionText: { ...typography.body, fontWeight: '700' },
+  ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
+  cta: { height: 56, borderRadius: radius.lg, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center' },
+  ctaText: { ...typography.button, color: brand.textOnPrimary },
 });

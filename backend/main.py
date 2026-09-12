@@ -98,6 +98,7 @@ from api.admin import admin_router
 from api.registration import reg_router
 from api.social_auth import social_auth_router
 from api.driver_registration import driver_reg_router
+from api.vehicles import router as vehicles_router
 from api.reviews import reviews_router
 from api.push import push_router
 from api.qr import qr_router
@@ -166,6 +167,7 @@ app.include_router(router, prefix="/api/v1")
 app.include_router(reg_router, prefix="/api/v1/register")
 app.include_router(social_auth_router, prefix="/api/v1/register/social")
 app.include_router(driver_reg_router, prefix="/api/v1/driver/registration")
+app.include_router(vehicles_router, prefix="/api/v1/driver/vehicles")
 app.include_router(reviews_router, prefix="/api/v1/reviews")
 app.include_router(push_router, prefix="/api/v1/push")
 app.include_router(qr_router, prefix="/api/v1/qr")
@@ -228,6 +230,13 @@ def startup():
         print(f"[env-check] guard failed: {e}", flush=True)
     db.init_db()
     registration_dal.init_registration_schema()
+    from database import vehicles_dal
+    vehicles_dal.init_vehicles_schema()
+    # api.chat импортируется при регистрации роутеров, когда новая БД ещё не
+    # имеет registration-схему. Создаём special users только после неё;
+    # операция идемпотентна для существующих БД.
+    from api.chat import _ensure_special_users
+    _ensure_special_users()
     reviews_dal.init_reviews_schema()
     consent_dal.init_consent_schema()
     blacklist_mgr.seed_demo_blacklist()
@@ -236,17 +245,23 @@ def startup():
     # ТОЛЬКО при выключенном CGR. При включённом CGR авторитетный список с
     # парными именами даёт seed_checkpoints_from_cgr() (scheduler), а легаси
     # дал бы дубли («Нуржолы» + «Нур Жолы - Хоргос»).
+    from database import cgr_dal
+    # Queue API требует эту схему даже когда optional CGR workers не могут
+    # стартовать из-за неполной runtime-конфигурации.
+    cgr_dal.init_cgr_schema()
     try:
-        from database import cgr_dal
         from cgr.settings import cgr_settings
-        cgr_dal.init_cgr_schema()
         if cgr_settings.feature_enabled:
             print("[startup] CGR enabled — legacy checkpoint seed skipped (CGR is source)", flush=True)
         else:
             n = cgr_dal.seed_border_checkpoints_from_legacy()
             print(f"[startup] CGR schema applied, border_checkpoints seeded: +{n}", flush=True)
     except Exception as e:
-        print(f"[startup] CGR schema init failed (continuing): {e}", flush=True)
+        # Отсутствие CGR-секрета не должно оставлять Queue без таблиц. Legacy
+        # catalogue локален, идемпотентен и сохраняет read-only просмотр
+        # границ до настройки CGR.
+        n = cgr_dal.seed_border_checkpoints_from_legacy()
+        print(f"[startup] CGR config unavailable; legacy catalogue seeded: +{n}; {e}", flush=True)
 
     # Deal Room foundation — схема + backfill участников из chat_rooms.
     # Идемпотентно, безопасно при повторе; старый чат не затрагивается.

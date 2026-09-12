@@ -6,14 +6,21 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
+// Track B/B6 moved the palette data into designV1Palette.js (zero-import
+// module, safe for plain Node); designV1.js re-exports LIGHT/DARK from there.
+// Read the palette from its real home — grepping designV1.js for the object
+// literals broke the smoke the day the extraction landed.
 const DESIGN_V1 = path.join(ROOT, 'src', 'theme', 'designV1.js');
+const DESIGN_V1_PALETTE = path.join(ROOT, 'src', 'theme', 'designV1Palette.js');
 const THEME_CONTEXT = path.join(ROOT, 'src', 'utils', 'ThemeContext.js');
 
 const FRAME_COMPONENTS = [
   'Screen.js', 'BottomNav.js', 'BottomSheet.js',
   'BrandHeader.js', 'BrandBarWithShare.js',
   'FilterChips.js', 'SearchBar.js',
-  'FeedCard.js', 'GlassCard.js',
+  // Commit 8: FeedCard.js deleted (0 importers). MarketplaceCard.js is the
+  // live canonical card family and takes its slot in the frame check.
+  'MarketplaceCard.js', 'GlassCard.js',
   'Field.js', 'Textarea.js',
   'OutlineButton.js', 'Checkbox.js',
   'RoleTabs.js', 'SegmentTabs.js',
@@ -45,18 +52,25 @@ if (!/storage\.set\(KEY,\s*mode\)/.test(contextSrc)) {
 }
 
 // 2. Tokens — both variants and render-time hooks must exist.
-const tokensSrc = fs.readFileSync(DESIGN_V1, 'utf8');
-if (!/export const useV1Colors/.test(tokensSrc)) {
+const tokensSrc = fs.readFileSync(DESIGN_V1_PALETTE, 'utf8');
+const designV1Src = fs.readFileSync(DESIGN_V1, 'utf8');
+if (!/export const useV1Colors/.test(designV1Src)) {
   failures.push('designV1.js missing `useV1Colors` export');
 }
-if (!/export const useV1Typography/.test(tokensSrc)) {
+if (!/export const useV1Typography/.test(designV1Src)) {
   failures.push('designV1.js missing `useV1Typography` export');
 }
-if (!/const LIGHT = \{[\s\S]*?bg:\s*'#F6F8F7'/.test(tokensSrc)) {
-  failures.push('designV1.js LIGHT.bg is not the expected light surface');
+if (!/export const LIGHT\s*=/.test(tokensSrc)) {
+  failures.push('designV1Palette.js missing LIGHT export');
 }
-if (!/const DARK = \{[\s\S]*?bg:\s*'#0F1512'/.test(tokensSrc)) {
-  failures.push('designV1.js DARK.bg is not the approved dark surface');
+if (!/export const DARK\s*=/.test(tokensSrc)) {
+  failures.push('designV1Palette.js missing DARK export');
+}
+if (!/export const LIGHT = \{[\s\S]*?bg:\s*'#F6F8F7'/.test(tokensSrc)) {
+  failures.push('designV1Palette.js LIGHT.bg is not the expected light surface');
+}
+if (!/export const DARK = \{[\s\S]*?bg:\s*'#0F1512'/.test(tokensSrc)) {
+  failures.push('designV1Palette.js DARK.bg is not the approved dark surface');
 }
 
 // 3. Frame components consume the hook.

@@ -23,6 +23,13 @@ const translate = (key) => {
   return translations.RU?.[resolvedKey] || translations.EN?.[resolvedKey] || resolvedKey;
 };
 
+// CJK legibility floor (Design v1 Commit 7): Chinese glyphs are dense —
+// below 12sp they blur on device. `sp(size)` raises any font size to 12 when
+// the active UI language is ZH; other languages get the design value as-is.
+// Exported standalone so theme-adjacent style factories (not just components)
+// can apply the same rule.
+export const spFor = (lang, size) => (lang === 'ZH' ? Math.max(Number(size) || 0, 12) : size);
+
 // Хук для реактивного обновления текстов при смене языка
 export const useI18n = () => {
   const [lang, setLang] = useState(getLanguage());
@@ -32,5 +39,5 @@ export const useI18n = () => {
     return () => unsub();
   }, []);
 
-  return { t: translate, lang };
+  return { t: translate, lang, sp: (size) => spFor(lang, size) };
 };

@@ -310,6 +310,46 @@ export const regAPI = {
     return { ok: r.ok, ...data };
   },
 
+  // Безопасная смена телефона: generic PATCH намеренно не принимает phone.
+  async requestPhoneChange(phone, channel = 'whatsapp') {
+    const token = await this.getToken();
+    if (!token) return { ok: false, detail: 'no_token' };
+    try {
+      const r = await fetch(`${API_BASE}/users/me/phone-change/request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ phone, channel }),
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
+  },
+
+  async confirmPhoneChange(phone, code) {
+    const token = await this.getToken();
+    if (!token) return { ok: false, detail: 'no_token' };
+    try {
+      const r = await fetch(`${API_BASE}/users/me/phone-change/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ phone, code }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (data.token) await storage.set(TOKEN_KEY, data.token);
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
+  },
+
   async uploadProDoc(kind, uri, onProgress) {
     const token = await this.getToken();
     if (!token) return { ok: false, detail: 'no_token' };
@@ -581,6 +621,21 @@ export const regAPI = {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(payload),
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, detail: e?.message || 'network_error' };
+    }
+  },
+
+  async completeBasic() {
+    const token = await this.getToken();
+    if (!token) return { ok: false, detail: 'no_token' };
+    try {
+      const r = await fetch(`${DRIVER_REG_BASE}/complete-basic`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
       });
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };

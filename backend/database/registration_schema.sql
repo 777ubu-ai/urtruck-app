@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS drivers_registration (
   face_verified INTEGER DEFAULT 0,
   face_quality REAL,
   face_match_score REAL,
+  verification_provider_status TEXT DEFAULT 'unavailable',
 
   -- Документы (этап 3)
   license_url TEXT,
@@ -30,6 +31,13 @@ CREATE TABLE IF NOT EXISTS drivers_registration (
   passport_url TEXT,
   passport_ocr TEXT,                   -- JSON: plate, VIN, brand, year
   passport_verified INTEGER DEFAULT 0,
+
+  -- Базовый водительский онбординг без Pro-документов
+  citizenship_country TEXT,
+  birth_date TEXT,
+  vehicle_registration_country TEXT,
+  basic_onboarding_completed INTEGER DEFAULT 0,
+  basic_onboarding_completed_at TEXT,
 
   -- Транспорт (этап 4)
   vehicle_type TEXT,                   -- car | van | truck | tent | ref | platform
@@ -75,6 +83,32 @@ CREATE TABLE IF NOT EXISTS reg_sessions (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Authenticated phone-change challenges. OTP is stored as a keyed digest,
+-- never as plaintext. `purpose` is explicit so this table cannot be reused
+-- accidentally for login or registration verification.
+CREATE TABLE IF NOT EXISTS phone_change_challenges (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  new_phone TEXT NOT NULL,
+  purpose TEXT NOT NULL DEFAULT 'phone_change',
+  code_digest TEXT NOT NULL,
+  attempts INTEGER DEFAULT 0,
+  max_attempts INTEGER DEFAULT 5,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS phone_change_audit (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  phone_masked TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_reg_phone ON drivers_registration(phone);
 CREATE INDEX IF NOT EXISTS idx_reg_status ON drivers_registration(status);
 CREATE INDEX IF NOT EXISTS idx_reg_step ON drivers_registration(current_step);
+CREATE INDEX IF NOT EXISTS idx_phone_change_active
+  ON phone_change_challenges(user_id, purpose, new_phone, consumed_at);

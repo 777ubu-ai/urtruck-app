@@ -6,7 +6,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { setLanguage, getLanguage } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
-import { useV1Colors } from '../theme/designV1';
+import { useV1Colors, useShipperCeramicColors } from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
 import { getProfile, saveProfile } from '../utils/store';
 import { storage } from '../utils/storage';
@@ -18,13 +18,15 @@ import HelpButton from '../components/HelpButton';
 import { API_BASE } from '../config/env';
 import { IS_BETA } from '../config/supabase';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
+import Button from '../components/ui/v1/Button';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 import { localizePlace } from '../utils/places';
 
 const LANGS = [
-  { code: 'RU', flag: '🇷🇺' },
-  { code: 'EN', flag: '🇬🇧' },
-  { code: 'KK', flag: '🇰🇿' },
-  { code: 'ZH', flag: '🇨🇳' },
+  { code: 'RU', country: 'RU' },
+  { code: 'EN', country: 'GB' },
+  { code: 'KK', country: 'KZ' },
+  { code: 'ZH', country: 'CN' },
 ];
 
 const QA_HOOK_ALLOWED = (() => {
@@ -55,10 +57,12 @@ const APP_VERSION_LABEL = (() => {
 export default function ProfileScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#168759' : '#FF8400';
+  const baseV1 = useV1Colors();
+  const shipper = useShipperCeramicColors();
+  const accent = isDriver ? '#168759' : shipper.active;
   const onAccent = '#0C0A09';
   const { isDark, toggleTheme } = useTheme();
-  const v1 = useV1Colors();
+  const v1 = isDriver ? baseV1 : shipper;
   const theme = {
     ...v1,
     card: v1.surface,
@@ -186,7 +190,7 @@ export default function ProfileScreen({ navigation, route }) {
                 <Feather name="arrow-left" size={24} color={theme.text} />
               </TouchableOpacity>
             ) : null}
-            <GradientText style={s.title} colors={isDriver ? ['#168759', '#00C766'] : ['#FF8400', '#EF4444']}>{t('profile')}</GradientText>
+            <GradientText style={s.title} colors={[accent, accent]}>{t('profile')}</GradientText>
           </View>
           <HelpButton accent={accent} />
         </View>
@@ -254,13 +258,17 @@ export default function ProfileScreen({ navigation, route }) {
             </View>
             <View style={[s.proTrack, { backgroundColor: theme.bg }]}><View style={[s.proFill, { width: `${proPercent}%`, backgroundColor: accent }]} /></View>
             {!proActive ? (
-              <TouchableOpacity style={[s.proCta, { backgroundColor: accent }]} onPress={() => {
-                if ((verificationLevel || 0) >= 2) navigation.navigate('EditProfile', { role, focus: 'pro' });
-                else navigation.navigate('Citizenship');
-              }} activeOpacity={0.85} testID="profile-pro-cta" accessibilityLabel={t('pro_become_btn')}>
-                <Text style={[s.proCtaText, { color: onAccent }]}>{t('pro_become_btn')}</Text>
-                <Feather name="chevron-right" size={18} color={onAccent} />
-              </TouchableOpacity>
+              <Button
+                title={t('pro_become_btn')}
+                fullWidth
+                onPress={() => {
+                  if ((verificationLevel || 0) >= 2) navigation.navigate('EditProfile', { role, focus: 'pro' });
+                  else navigation.navigate('Citizenship');
+                }}
+                testID="profile-pro-cta"
+                accessibilityLabel={t('pro_become_btn')}
+                style={{ marginTop: 12 }}
+              />
             ) : null}
           </View>
         ) : null}
@@ -306,17 +314,13 @@ export default function ProfileScreen({ navigation, route }) {
             <View style={s.langGrid}>
               {LANGS.map(l => (
                 <TouchableOpacity key={l.code} style={[s.langCard, { backgroundColor: theme.bg, borderColor: theme.border }, lang === l.code && { backgroundColor: accent, borderColor: accent }]} onPress={() => { setLang(l.code); setLanguage(l.code); }}>
-                  <Text style={{ fontSize: 22 }}>{l.flag}</Text>
-                  <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: onAccent }]} numberOfLines={1}>{l.name}</Text>
+                  <CountryFlag code={l.country} width={28} />
+                  <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: onAccent }]} numberOfLines={1}>{l.code}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
 
-          <TouchableOpacity style={[s.pushBtn, { backgroundColor: theme.bg, borderColor: theme.border }]} onPress={() => navigation.navigate('PushFilter', { role })} testID="profile-push-filter" accessibilityLabel={t('pushFilter')}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Feather name="bell" size={14} color={theme.text} /><Text style={[s.settingLabel, { color: theme.text }]}>{t('pushFilter')}</Text></View>
-            <Text style={[s.configureBtn, { color: accent }]}>{t('configure')} →</Text>
-          </TouchableOpacity>
         </View>
 
         {Platform.OS === 'web' ? (
@@ -376,8 +380,6 @@ const s = StyleSheet.create({
   proStatusBadgeText: { fontSize: 12, fontWeight: '900' },
   proTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   proFill: { height: '100%', borderRadius: 3 },
-  proCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, paddingVertical: 11, borderRadius: 10, marginTop: 12 },
-  proCtaText: { fontSize: 13, fontWeight: '700' },
   becomeDriverBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14 },
   becomeDriverText: { color: '#FFF', fontSize: 14, fontWeight: '800', flex: 1 },
   profileCard: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 14, borderWidth: 1, marginBottom: 14, position: 'relative' },

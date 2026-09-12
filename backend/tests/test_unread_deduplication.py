@@ -10,11 +10,11 @@ import sys
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_unread_dedup.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
+    Path(TEST_DB).unlink(missing_ok=True)
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-
-from api import verification_gate
 
 _current_user = contextvars.ContextVar("user", default=None)
 
@@ -30,8 +30,6 @@ def fake_require_level(_min_level):
 
     return dep
 
-
-verification_gate.require_level = fake_require_level
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -51,11 +49,13 @@ import api.marketplace as marketplace_api
 from api.marketplace import mp_router
 from api.chat import chat_router
 from api.notifications import notif_router
+from tests.auth_harness import override_require_level
 
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
 app.include_router(chat_router, prefix="/api/v1/chat")
 app.include_router(notif_router, prefix="/api/v1/notifications")
+override_require_level(app, fake_require_level(1))
 client = TestClient(app)
 
 
@@ -71,12 +71,16 @@ DRIVER_ID, DRIVER_TOKEN = _real_user()
 TOKENS = {CLIENT_ID: CLIENT_TOKEN, DRIVER_ID: DRIVER_TOKEN}
 
 
-def as_user(uid: str):
+def as_user(uid: str, role: str = "client"):
+    """Track B (2026-09-10): create_cargo()/create_bid() now enforce
+    server-side role direction -- default "client" matches CLIENT_ID's own
+    calls here; create_bid() passes role="driver" explicitly for DRIVER_ID."""
     _current_user.set({
         "id": uid,
         "full_name": uid,
         "phone": "+70000000000",
         "verification_level": 1,
+        "role": role,
     })
 
 
@@ -135,7 +139,7 @@ def create_cargo(description: str, price: int = 3000) -> str:
 
 
 def create_bid(cargo_id: str, amount: int) -> str:
-    as_user(DRIVER_ID)
+    as_user(DRIVER_ID, role="driver")
     response = client.post("/api/v1/market/bids", json={
         "cargo_id": cargo_id,
         "amount": amount,

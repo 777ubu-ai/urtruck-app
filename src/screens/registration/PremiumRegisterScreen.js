@@ -16,9 +16,6 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -29,6 +26,7 @@ import { regAPI } from '../../utils/registration';
 import ConsentRow from '../../components/ConsentRow';
 import { formatCooldown } from '../../utils/formatCooldown';
 import { formatPhoneForDisplay, normalizePhoneInput, toAsciiDigits } from '../../utils/phone';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const ACCENT = {
   driver: { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF' },
@@ -150,11 +148,8 @@ export default function PremiumRegisterScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="prem-reg-phone-screen">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={s.flex}
-      >
-        <ScrollView
+      <KeyboardSafeLayout>
+        <KeyboardSafeScrollView
           contentContainerStyle={s.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -284,8 +279,8 @@ export default function PremiumRegisterScreen({ navigation, route }) {
               <Text style={[s.loginLink, { color: accent.main }]}>{t('prem_reg_login_link')}</Text>
             </Text>
           </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardSafeScrollView>
+      </KeyboardSafeLayout>
     </SafeAreaView>
   );
 }

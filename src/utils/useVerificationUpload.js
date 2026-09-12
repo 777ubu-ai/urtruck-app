@@ -7,10 +7,12 @@
 //      (uploadSelfie / uploadLicense / uploadVehiclePhoto / etc.).
 //
 // Используется НОВЫМИ verification-screens (см. src/screens/verification/*).
-// Существующие IdentityStepScreen / SelfieStepScreen / VehicleDocsScreen /
-// VehiclePhotosScreen НЕ тронуты — у них есть собственная работающая
+// Смонтированные PRO-flow шаги IdentityStepScreen / VehicleDocsScreen
+// НЕ тронуты — у них есть собственная работающая
 // upload-логика, которая остаётся источником истины для production-flow.
 // Эти new screens — обёртка с новой версткой (PR #105 design references).
+// (SelfieStepScreen / VehiclePhotosScreen удалены в Commit 8: не были
+// смонтированы и ниоткуда не импортировались.)
 //
 // Behavior contract:
 //   const { busy, localUri, openCamera, openGallery, error } =

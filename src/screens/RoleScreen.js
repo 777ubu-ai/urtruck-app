@@ -148,7 +148,7 @@ export default function RoleScreen({ navigation }) {
             {/* Card 1 — Перевезти груз (client / cargo owner) */}
             <RoleCard
               icon="package"
-              iconColor={brand.accent}
+              iconColor={brand.accentIcon}
               title={t('role_client_title')}
               description={t('role_client_desc')}
               onPress={() => enterAs('client')}

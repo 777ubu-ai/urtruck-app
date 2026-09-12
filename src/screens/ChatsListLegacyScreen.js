@@ -14,7 +14,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../utils/useI18n';
 import { formatStatus } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
-import { useV1Colors } from '../theme/designV1';
+import { useV1Colors, useShipperCeramicColors } from '../theme/designV1';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import { chatAPI } from '../utils/chatAPI';
@@ -23,7 +23,8 @@ import { storage } from '../utils/storage';
 import { useToast } from '../components/Toast';
 import { formatPrice } from '../utils/normalizers';
 import { localizePlace, localizeCargoName } from '../utils/places';
-import { countryFlag } from '../utils/countryFlags';
+import { countryCode } from '../utils/countryFlags';
+import RouteLine from '../components/ui/v1/RouteLine';
 import { prettifyPartnerName } from '../utils/displayName';
 import { accentFor } from '../components/deal/DealRoom';
 import { isBidActionable } from '../utils/dealsUnread';
@@ -52,12 +53,15 @@ const compactStatusLabel = (status, t) => {
 };
 
 export default function ChatsListScreen({ navigation, route }) {
-  const v1 = useV1Colors();
+  const v1Base = useV1Colors();
+  const shipper = useShipperCeramicColors();
   const { t, lang } = useI18n();
-  const { theme } = useTheme();
+  const { theme: baseTheme } = useTheme();
   const { toast } = useToast();
   const role = route?.params?.role || 'client';
-  const accent = accentFor(role);
+  const theme = role === 'driver' ? baseTheme : { ...shipper, card: shipper.surface, textSecondary: shipper.textMuted };
+  const v1 = role === 'driver' ? v1Base : shipper;
+  const accent = role === 'driver' ? accentFor(role) : { main: shipper.active, soft: shipper.activeSoft };
   const dealsMode = route?.name === 'Deals';
 
   // ═══ Общее состояние ═══
@@ -259,9 +263,12 @@ export default function ChatsListScreen({ navigation, route }) {
         </View>
         <View style={{ flex: 1 }}>
           <View style={s.row}>
-            <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
-              {countryFlag(cargo.from_country)} {localizePlace(cargo.from_city || '—', lang)} → {countryFlag(cargo.to_country)} {localizePlace(cargo.to_city || '—', lang)}
-            </Text>
+            <RouteLine
+              from={localizePlace(cargo.from_city || '—', lang)}
+              to={localizePlace(cargo.to_city || '—', lang)}
+              fromFlag={countryCode(cargo.from_country)}
+              toFlag={countryCode(cargo.to_country)}
+            />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
               <Feather name="clock" size={11} color={theme.textDim} />
               <Text style={[s.time, { color: theme.textDim }]}>{time}</Text>
@@ -323,9 +330,12 @@ export default function ChatsListScreen({ navigation, route }) {
         </View>
         <View style={{ flex: 1 }}>
           <View style={s.row}>
-            <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>
-              {countryFlag(bid.from_country)} {localizePlace(bid.cargo_from || bid.trip_from || '—', lang)} → {countryFlag(bid.to_country)} {localizePlace(bid.cargo_to || bid.trip_to || '—', lang)}
-            </Text>
+            <RouteLine
+              from={localizePlace(bid.cargo_from || bid.trip_from || '—', lang)}
+              to={localizePlace(bid.cargo_to || bid.trip_to || '—', lang)}
+              fromFlag={countryCode(bid.from_country)}
+              toFlag={countryCode(bid.to_country)}
+            />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
               <Feather name="clock" size={11} color={theme.textDim} />
               <Text style={[s.time, { color: theme.textDim }]}>{time}</Text>
@@ -399,9 +409,12 @@ export default function ChatsListScreen({ navigation, route }) {
           </View>
           {/* Строка 2: Маршрут                  Непрочитанные */}
           <View style={s.row}>
-            <Text style={[s.route, { color: theme.textMuted }]} numberOfLines={1}>
-              {countryFlag(deal.from_country)} {localizePlace(deal.from_city || '—', lang)} → {countryFlag(deal.to_country)} {localizePlace(deal.to_city || '—', lang)}
-            </Text>
+            <RouteLine
+              from={localizePlace(deal.from_city || '—', lang)}
+              to={localizePlace(deal.to_city || '—', lang)}
+              fromFlag={countryCode(deal.from_country)}
+              toFlag={countryCode(deal.to_country)}
+            />
             {unread > 0 ? (
               <View style={[s.badge, { backgroundColor: '#D64545' }]}>
                 <Text style={s.badgeTxt}>{unread > 9 ? '9+' : unread}</Text>

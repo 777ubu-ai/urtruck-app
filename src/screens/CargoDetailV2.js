@@ -6,14 +6,16 @@ import DealWorkspaceRoute from '../components/deal/DealWorkspaceRoute';
 import { marketAPI } from '../utils/marketAPI';
 import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
-import { useV1Colors } from '../theme/designV1';
+import { useV1Colors, useShipperCeramicColors } from '../theme/designV1';
 
 const ACTIVE = new Set(['accepted', 'in_progress', 'at_border', 'delivered', 'received']);
 
 export default function CargoDetailV2(props) {
   const { route } = props;
   const params = route?.params || {};
-  const colors = useV1Colors();
+  const baseColors = useV1Colors();
+  const shipperColors = useShipperCeramicColors();
+  const colors = params.role === 'driver' ? baseColors : shipperColors;
   const cargoId = params.cargoId || params.cargo?.id || null;
   const [target, setTarget] = React.useState(() => params.dealId ? { dealId: params.dealId, roomId: params.roomId || null, partner: params.partner || null } : null);
   const [checked, setChecked] = React.useState(Boolean(params.dealId && params.partner));
@@ -63,7 +65,7 @@ export default function CargoDetailV2(props) {
   if (!checked) {
     return (
       <SafeAreaView style={[s.loading, { backgroundColor: colors.bg }]} edges={['top']}>
-        <ActivityIndicator color="#168759" />
+        <ActivityIndicator color={colors.active || colors.driver} />
       </SafeAreaView>
     );
   }

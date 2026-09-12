@@ -14,11 +14,14 @@ from pydantic import BaseModel, field_validator
 from typing import Optional, List
 
 from database.db import get_conn, new_id
-from api.verification_gate import require_level, get_user, _extract_driver
+from api.verification_gate import require_level, require_active_level, require_driver_trip_publication, get_user, _extract_driver
 from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
 from services.geo_normalize import normalize_country, is_international_route
+from services import push_gateway
+from services import push_i18n
+from config import IS_PRODUCTION
 
 
 def _reject_negative_price(value):
@@ -44,6 +47,11 @@ def _sign_cargo_photos(photos):
     return out
 
 mp_router = APIRouter()
+
+
+def _driver_verified(driver: dict | None) -> bool:
+    """Marketplace trust badge requires the canonical approved state."""
+    return bool(driver and driver.get("status") == "approved")
 
 
 def _maybe_user(authorization: Optional[str]) -> Optional[dict]:
@@ -77,6 +85,7 @@ DIRTY_TOKENS = (
 # pickup_date — anything older than this with no pickup is treated as stale
 # pre-pilot leftover.
 PUBLIC_CUTOFF_DATE = "2026-05-01"
+QA_RECORD_MARKER = "[ar-"
 
 
 def _parse_iso_date(s):
@@ -214,8 +223,11 @@ def _is_dirty_text(*fields) -> bool:
     incidentally matches a dirty token (e.g. "QA" inside an agent name).
     """
     blob = " ".join(str(f or "") for f in fields).lower()
-    if "[ar-" in blob:
-        return False
+    # QA records are visible only from an explicitly non-production backend.
+    # The old exception made QA runs against the default production URL leak
+    # fixtures into the ordinary user feed.
+    if QA_RECORD_MARKER in blob:
+        return bool(IS_PRODUCTION)
     return any(tok in blob for tok in DIRTY_TOKENS)
 
 
@@ -271,6 +283,10 @@ def _init():
     # и НЕ роняем boot, только логируем (чинить дубли отдельно). Идемпотентно.
     try:
         with get_conn() as c:
+            cols = {row["name"] for row in c.execute("PRAGMA table_info(trips)").fetchall()}
+            if "vehicle_id" not in cols:
+                c.execute("ALTER TABLE trips ADD COLUMN vehicle_id TEXT")
+                c.commit()
             dup = c.execute(
                 "SELECT bid_id, COUNT(*) n FROM deals WHERE bid_id IS NOT NULL "
                 "GROUP BY bid_id HAVING n > 1 LIMIT 1"
@@ -284,6 +300,43 @@ def _init():
                 c.commit()
     except Exception as e:
         print(f"[startup] deals.bid_id UNIQUE index migration skipped: {e}", flush=True)
+    # P0 (аудит 2026-09-10): defense-in-depth — «одна АКТИВНАЯ сделка на
+    # груз/рейс». Приложенческий guard (conditional UPDATE + rowcount в
+    # _finalize_accept_inline и во всех bid-мутирующих эндпоинтах, см. правки
+    # той же даты) уже закрывает известный TOCTOU-путь ко второй deals-записи
+    # на тот же cargo_id/trip_id, но, в отличие от deals.bid_id (у которого
+    # одна ставка физически не может породить два разных deal.id при верном
+    # guard), у cargo_id/trip_id НЕТ отдельной естественной уникальности —
+    # это ДВЕ разные ставки на один груз, и только бизнес-инвариант
+    # «активная сделка одна» делает вторую недопустимой. Partial UNIQUE
+    # индекс — не по всем статусам, а только по нетерминальным ('completed'
+    # и 'cancelled' исключены: завершённая/отменённая сделка не блокирует
+    # повторную продажу того же груза, ровно как остальной код это уже
+    # трактует, см. active-deal проверки в unpublish_cargo/unpublish_trip).
+    # Тот же fail-closed паттерн: если в истории УЖЕ есть дубли — НЕ создаём
+    # индекс и НЕ роняем boot, только логируем (продовые данные не трогаем,
+    # чинить отдельно). Идемпотентно — безопасно перезапускать на каждом
+    # старте и на уже существующей БД.
+    for _col, _idx_name in (("cargo_id", "idx_deals_active_cargo_unique"),
+                             ("trip_id", "idx_deals_active_trip_unique")):
+        try:
+            with get_conn() as c:
+                dup = c.execute(
+                    f"SELECT {_col}, COUNT(*) n FROM deals "
+                    f"WHERE {_col} IS NOT NULL AND status NOT IN ('completed', 'cancelled') "
+                    f"GROUP BY {_col} HAVING n > 1 LIMIT 1"
+                ).fetchone()
+                if dup:
+                    print(f"[startup] deals.{_col} active-UNIQUE index SKIPPED — "
+                          f"есть дубли активных сделок ({_col}={dup[_col]}), чинить отдельно", flush=True)
+                else:
+                    c.execute(
+                        f"CREATE UNIQUE INDEX IF NOT EXISTS {_idx_name} ON deals({_col}) "
+                        f"WHERE {_col} IS NOT NULL AND status NOT IN ('completed', 'cancelled')"
+                    )
+                    c.commit()
+        except Exception as e:
+            print(f"[startup] deals.{_col} active-UNIQUE index migration skipped: {e}", flush=True)
     # Часть 3 (история цены): таблица price_events + связь chat_messages.event_id.
     # Аддитивно и идемпотентно. Бэкфилл старых ставок НЕ делаем.
     with get_conn() as c:
@@ -466,6 +519,7 @@ class TripIn(BaseModel):
     to_city: str
     transit: Optional[str] = None
     truck_type: Optional[str] = "tent"
+    vehicle_id: Optional[str] = None
     # Stage 7: stop sending fake 20/82 defaults from the publish flow —
     # accept None and let the column default kick in if the user left
     # the field blank.
@@ -534,7 +588,12 @@ class BidCounterIn(BaseModel):
 # ═══ Cargos ═══
 
 @mp_router.post("/cargos")
-def create_cargo(body: CargoIn, user=Depends(require_level(1))):
+def create_cargo(body: CargoIn, user=Depends(require_active_level(1))):
+    # Track B (2026-09-10): a cargo listing is a client/shipper action —
+    # server-side role enforcement (see _require_role above), not just a UI
+    # affordance. Confirmed gap: a driver-role account could previously
+    # publish a client cargo listing directly via the API.
+    _require_role(user, ("client",), "разместить груз")
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите откуда и куда")
     if not body.cargo_desc:
@@ -600,6 +659,11 @@ def list_cargos(
     offset: int = 0,
 ):
     """Публичный список грузов. Demo-контент скрыт по умолчанию."""
+    _require_public_listing_status(status)
+    # Cap пагинации: без верхней границы limit=10**9 заставляет SQLite
+    # материализовать всю таблицу (DoS-вектор аудита C1.4).
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
     where = ["status = ?"]
     params = [status]
     if from_city:
@@ -661,7 +725,7 @@ def list_cargos(
 
 
 @mp_router.post("/cargos/photo")
-async def upload_cargo_photo(file: UploadFile = File(...), user=Depends(require_level(1))):
+async def upload_cargo_photo(file: UploadFile = File(...), user=Depends(require_active_level(1))):
     """Фото груза → storage, возвращаем КЛЮЧ (как у /chat/photo). Ключ кладётся
     в cargos.photos; на выдаче подписывается (_sign_cargo_photos). Раньше фронт
     сохранял локальный uri устройства — у других он не открывался."""
@@ -721,7 +785,7 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
                     _ph = "".join(ch for ch in (orow["phone"] or "") if ch.isdigit())
                     _nm = f"+{_ph[-4:]}" if len(_ph) >= 4 else "Пользователь UrTruck"
                 d["owner_name"] = _nm
-                d["owner_verified"] = (orow["status"] == "approved")
+                d["owner_verified"] = _driver_verified(dict(orow))
             summary = reviews_dal.get_rating_summary(owner_id)
             d["owner_rating"] = summary.get("average", 0) or 0
             d["owner_reviews_count"] = summary.get("count", 0) or 0
@@ -730,14 +794,104 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     return d
 
 
+# Track B (2026-09-10): confirmed gap (Block 2 audit) -- list_cargos()/
+# list_trips() took `status` as a free-form, UNAUTHENTICATED query param
+# with no whitelist. Anyone could request status=unpublished/cancelled/
+# taken/completed/expired and enumerate every user's non-active listings
+# (price, description, route, owner_id) -- the official app client only
+# ever requests status=active (own listings by any status are served
+# separately, through the authenticated /market/my endpoint). Shared by
+# both list_cargos and list_trips so the same public-vs-private boundary
+# can't drift between the two symmetric endpoints.
+_PUBLIC_LISTING_STATUSES = frozenset({"active"})
+
+
+def _require_public_listing_status(status: str) -> None:
+    if status not in _PUBLIC_LISTING_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "STATUS_NOT_PUBLIC",
+                "message": "Публичный список доступен только для активных объявлений",
+                "allowed": sorted(_PUBLIC_LISTING_STATUSES),
+            },
+        )
+
+
+# Track B (2026-09-10): shared "is there still a live delivery in progress
+# for this listing" check. Previously hand-copied as an identical literal
+# tuple into delete_cargo/unpublish_cargo/unpublish_trip (and missing
+# entirely from the legacy update_trip_status, the confirmed gap this
+# track closes) -- factored out once so a future active-deal guard doesn't
+# risk drifting from this list. Deliberately NOT reused by update_cargo/
+# update_trip, which enforce a DIFFERENT, stricter invariant
+# (`status NOT IN ('cancelled')` -- also blocks editing a *completed*
+# deal's listing, not just an in-progress one); that's an intentional
+# product distinction, not duplication to clean up.
+_ACTIVE_DEAL_STATUSES = (
+    "accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received",
+)
+
+
+def _active_deal_exists(c, *, cargo_id: str = None, trip_id: str = None) -> bool:
+    placeholders = ",".join("?" for _ in _ACTIVE_DEAL_STATUSES)
+    if cargo_id:
+        row = c.execute(
+            f"SELECT id FROM deals WHERE cargo_id = ? AND status IN ({placeholders}) LIMIT 1",
+            (cargo_id, *_ACTIVE_DEAL_STATUSES),
+        ).fetchone()
+        return bool(row)
+    if trip_id:
+        row = c.execute(
+            f"SELECT id FROM deals WHERE trip_id = ? AND status IN ({placeholders}) LIMIT 1",
+            (trip_id, *_ACTIVE_DEAL_STATUSES),
+        ).fetchone()
+        return bool(row)
+    return False
+
+
+# Track B (2026-09-10): server-side role enforcement for the marketplace's
+# two directions (a cargo listing/bid is a client-side action; a trip
+# listing/bid is a driver-side action). Previously enforced ONLY by the UI
+# (dealActionResolver.js et al) -- create_cargo/create_trip/create_bid had
+# no user["role"] check at all, so a client account could publish a driver
+# trip (or bid on another client's cargo) directly via the API, and
+# vice versa. `role` is normalized the same way api/profile.py already
+# does when a user sets it (bare "shipper" -> "client"; drivers_registration
+# itself never stores literal "shipper") -- matched here in case an older
+# token/row predates that normalization.
+def _require_role(user: dict, allowed: tuple, action: str) -> None:
+    role = (user.get("role") or "").strip().lower()
+    if role == "shipper":
+        role = "client"
+    if role not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "ROLE_NOT_ALLOWED",
+                "message": f"Действие «{action}» недоступно для вашей роли",
+                "your_role": role or "not_set",
+                "allowed_roles": list(allowed),
+            },
+        )
+
+
 @mp_router.delete("/cargos/{cargo_id}")
-def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
+def delete_cargo(cargo_id: str, user=Depends(require_active_level(1))):
     with get_conn() as c:
         row = c.execute("SELECT owner_id FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404)
         if row["owner_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Можно удалять только свои грузы")
+        # P0 (аудит 2026-09-10): unpublish_cargo уже блокирует снятие груза с
+        # публикации, если по нему есть активная (незавершённая) сделка —
+        # delete_cargo той же проверки не имело и молча ставило status=
+        # 'cancelled' на груз, у которого перевозка уже шла (accepted и
+        # дальше). Тот же canonical active-deal guard, что и в unpublish
+        # (Track B: теперь общий _active_deal_exists() helper).
+        if _active_deal_exists(c, cargo_id=cargo_id):
+            raise HTTPException(status_code=409, detail="Нельзя удалить: перевозка уже началась")
         c.execute("UPDATE cargos SET status = 'cancelled' WHERE id = ?", (cargo_id,))
         # Ревизия 26.07: живые ставки удалённого груза отменяем каскадом —
         # иначе у водителей вечно висели «мёртвые» предложения без груза.
@@ -749,7 +903,7 @@ def delete_cargo(cargo_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.patch("/cargos/{cargo_id}/unpublish")
-def unpublish_cargo(cargo_id: str, user=Depends(require_level(1))):
+def unpublish_cargo(cargo_id: str, user=Depends(require_active_level(1))):
     """Снять груз с публикации. Ставит status=unpublished, отклоняет pending-ставки."""
     with get_conn() as c:
         row = c.execute("SELECT owner_id, status FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
@@ -759,13 +913,10 @@ def unpublish_cargo(cargo_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=403, detail="Можно снять только свой груз")
         if row["status"] not in (None, "active", "draft", "expired"):
             raise HTTPException(status_code=409, detail="Груз уже не активен")
-        active_deal = c.execute(
-            "SELECT id FROM deals WHERE cargo_id = ? AND status IN ('accepted','in_progress','at_border','awaiting_confirmation','delivered','received') LIMIT 1",
-            (cargo_id,)).fetchone()
-        if active_deal:
+        if _active_deal_exists(c, cargo_id=cargo_id):
             raise HTTPException(status_code=409, detail="Нельзя снять с публикации: перевозка уже началась")
         cancelled_bids = c.execute(
-            "SELECT bidder_id FROM bids WHERE cargo_id = ? AND status IN ('pending', 'countered')",
+            "SELECT id, bidder_id FROM bids WHERE cargo_id = ? AND status IN ('pending', 'countered')",
             (cargo_id,)).fetchall()
         c.execute("UPDATE cargos SET status = 'unpublished', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (cargo_id,))
         c.execute(
@@ -775,8 +926,12 @@ def unpublish_cargo(cargo_id: str, user=Depends(require_level(1))):
     try:
         from api.notifications import create_notification
         for bid in cancelled_bids:
-            send_to_user(bid["bidder_id"], "📋 Груз снят с публикации",
-                         "Грузовладелец снял груз с публикации", url=f"/cargos/{cargo_id}")
+            event_key = f"bid:{bid['id']}:withdrawn"
+            loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+            title, text = push_i18n.push_text("bid_withdrawn", loc)
+            send_to_user(bid["bidder_id"], title, text, url=f"/cargos/{cargo_id}",
+                         kind="bid", data={"event_key": event_key, "event": "bid.withdrawn",
+                                            "bid_id": bid["id"], "i18n_event": "bid_withdrawn", "i18n_params": {}})
             create_notification(bid["bidder_id"], "bid_cancelled",
                                 "Груз снят с публикации", "Грузовладелец снял груз с публикации", "📋")
     except Exception:
@@ -801,7 +956,7 @@ class CargoPatchIn(BaseModel):
 
 
 @mp_router.patch("/cargos/{cargo_id}")
-def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_level(1))):
+def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_active_level(1))):
     """Частичное обновление СВОЕГО активного груза (задача A): цена/описание/
     вес/объём/тип/дата. 403 — не владелец; 404 — нет груза; 409 — груз уже
     не active или есть принятая (не отменённая) сделка."""
@@ -1012,7 +1167,7 @@ td:first-child{{color:#666;width:42%}}.head{{display:flex;justify-content:space-
 # Дата загрузки/выезда сбрасывается на сегодня → публикация снова живёт
 # 3 дня и возвращается в общую ленту. Без ручного ввода даты.
 @mp_router.post("/cargos/{cargo_id}/extend")
-def extend_cargo(cargo_id: str, user=Depends(require_level(1))):
+def extend_cargo(cargo_id: str, user=Depends(require_active_level(1))):
     new_date = datetime.utcnow().date().isoformat()
     with get_conn() as c:
         row = c.execute("SELECT owner_id, status FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
@@ -1027,7 +1182,7 @@ def extend_cargo(cargo_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.post("/trips/{trip_id}/extend")
-def extend_trip(trip_id: str, user=Depends(require_level(1))):
+def extend_trip(trip_id: str, user=Depends(require_active_level(1))):
     new_date = datetime.utcnow().date().isoformat()
     with get_conn() as c:
         row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
@@ -1042,7 +1197,7 @@ def extend_trip(trip_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.patch("/trips/{trip_id}/unpublish")
-def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
+def unpublish_trip(trip_id: str, user=Depends(require_active_level(1))):
     """Снять рейс с публикации. Ставит status=unpublished, отклоняет pending-ставки."""
     with get_conn() as c:
         row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
@@ -1058,7 +1213,7 @@ def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
         if active_deal:
             raise HTTPException(status_code=409, detail="Нельзя снять с публикации: перевозка уже началась")
         cancelled_bids = c.execute(
-            "SELECT bidder_id, cargo_id FROM bids WHERE trip_id = ? AND status IN ('pending', 'countered')",
+            "SELECT id, bidder_id, cargo_id FROM bids WHERE trip_id = ? AND status IN ('pending', 'countered')",
             (trip_id,)).fetchall()
         c.execute("UPDATE trips SET status = 'unpublished', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (trip_id,))
         c.execute(
@@ -1068,8 +1223,12 @@ def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
     try:
         from api.notifications import create_notification
         for bid in cancelled_bids:
-            send_to_user(bid["bidder_id"], "📋 Рейс снят с публикации",
-                         "Водитель снял рейс с публикации", url=f"/trips/{trip_id}")
+            event_key = f"bid:{bid['id']}:withdrawn"
+            loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+            title, text = push_i18n.push_text("bid_withdrawn", loc)
+            send_to_user(bid["bidder_id"], title, text, url=f"/trips/{trip_id}",
+                         kind="bid", data={"event_key": event_key, "event": "bid.withdrawn",
+                                            "bid_id": bid["id"], "i18n_event": "bid_withdrawn", "i18n_params": {}})
             create_notification(bid["bidder_id"], "bid_cancelled",
                                 "Рейс снят с публикации", "Водитель снял рейс с публикации", "📋")
     except Exception:
@@ -1078,7 +1237,7 @@ def unpublish_trip(trip_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.patch("/trips/{trip_id}/republish")
-def republish_trip(trip_id: str, user=Depends(require_level(1))):
+def republish_trip(trip_id: str, user=Depends(require_driver_trip_publication)):
     """Опубликовать снова снятый рейс. Обновляет дату выезда на сегодня."""
     with get_conn() as c:
         row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
@@ -1097,7 +1256,7 @@ def republish_trip(trip_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.patch("/cargos/{cargo_id}/republish")
-def republish_cargo(cargo_id: str, user=Depends(require_level(1))):
+def republish_cargo(cargo_id: str, user=Depends(require_active_level(1))):
     """Опубликовать снова снятый груз. Обновляет дату подачи на сегодня."""
     with get_conn() as c:
         row = c.execute("SELECT owner_id, status FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
@@ -1118,7 +1277,11 @@ def republish_cargo(cargo_id: str, user=Depends(require_level(1))):
 # ═══ Trips ═══
 
 @mp_router.post("/trips")
-def create_trip(body: TripIn, user=Depends(require_level(1))):
+def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
+    # Track B (2026-09-10): symmetric to create_cargo -- a trip listing is a
+    # driver action. Confirmed gap: a client-role account could previously
+    # publish a driver trip listing directly via the API.
+    _require_role(user, ("driver",), "разместить рейс")
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
     # Stage 52 / P1-8: дата выезда не может быть в прошлом.
@@ -1133,13 +1296,13 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
     with get_conn() as c:
         c.execute("""
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
-              from_city, to_city, transit, truck_type,
+              from_city, to_city, transit, truck_type, vehicle_id,
               capacity_tons, available_m3, price, currency, departure, arrival,
               from_country, from_point_type, from_point_name,
               to_country, to_point_type, to_point_name, published_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         """, (tid, user["id"], user.get("phone"), user.get("full_name"),
-              body.from_city, body.to_city, body.transit, body.truck_type,
+              body.from_city, body.to_city, body.transit, body.truck_type, body.vehicle_id,
               body.capacity_tons, body.available_m3, body.price, currency,
               body.departure, body.arrival,
               fc, fpt, fpn, tc, tpt, tpn))
@@ -1147,7 +1310,7 @@ def create_trip(body: TripIn, user=Depends(require_level(1))):
 
 
 @mp_router.patch("/trips/{trip_id}")
-def update_trip(trip_id: str, body: TripPatchIn, user=Depends(require_level(1))):
+def update_trip(trip_id: str, body: TripPatchIn, user=Depends(require_active_level(1))):
     """Partial update of own active trip. Locked once a deal exists.
 
     - 403 if not owner; 404 if trip missing
@@ -1240,6 +1403,10 @@ def list_trips(
     limit: int = 50,
     offset: int = 0,
 ):
+    _require_public_listing_status(status)
+    # Cap пагинации — та же защита, что в list_cargos (аудит C1.4).
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
     where = ["status = ?"]
     params = [status]
     if from_city:
@@ -1304,7 +1471,7 @@ def list_trips(
                     "SELECT status FROM drivers_registration WHERE id = ?",
                     (did,),
                 ).fetchone() if did else None
-                t["driver_verified"] = bool(drow and drow["status"] == "approved")
+                t["driver_verified"] = _driver_verified(dict(drow) if drow else None)
         for t in trips:
             did = t.get("driver_id")
             summary = reviews_dal.get_rating_summary(did) if did else {}
@@ -1356,7 +1523,7 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
                     _ph = "".join(ch for ch in (drow["phone"] or "") if ch.isdigit())
                     _nm = f"+{_ph[-4:]}" if len(_ph) >= 4 else "Пользователь UrTruck"
                 d["driver_display_name"] = _nm
-                d["driver_verified"] = (drow["status"] == "approved")
+                d["driver_verified"] = _driver_verified(dict(drow))
             summary = reviews_dal.get_rating_summary(drv_id)
             d["driver_rating"] = summary.get("average", 0) or 0
             d["driver_reviews_count"] = summary.get("count", 0) or 0
@@ -1408,9 +1575,24 @@ def _record_price_event(c, bid_id, actor_id, actor_role, amount, kind, comment=N
 
 
 @mp_router.post("/bids")
-def create_bid(body: BidIn, user=Depends(require_level(1))):
+def create_bid(body: BidIn, user=Depends(require_active_level(1))):
     # cargo_id или trip_id — хотя бы один (для серверных грузов)
     # Если оба null — разрешаем (для demo/local грузов), ставка просто без привязки
+
+    # Track B (2026-09-10): bid direction enforcement. A bid ON a cargo is
+    # only meaningful coming from a driver (offering to carry it); a bid ON
+    # a trip is only meaningful coming from a client (offering cargo for
+    # that driver's route). Confirmed gap: neither direction was enforced
+    # server-side -- a client could bid on another client's cargo, and
+    # symmetrically a driver on another driver's trip. Only checked when
+    # the bid is actually bound to a listing -- an unbound bid (both IDs
+    # null, the pre-existing "demo/local cargo" case above) has no
+    # direction to validate against, and can never be accepted anyway
+    # (see _finalize_accept_inline's own fail-closed check on that case).
+    if body.cargo_id:
+        _require_role(user, ("driver",), "сделать ставку на груз")
+    elif body.trip_id:
+        _require_role(user, ("client",), "сделать ставку на рейс")
 
     # PR-B (P0-E): hard 400 на невалидный amount. Раньше backend принимал
     # 0 / отрицательные значения, защищён был только frontend (BidModal:61-64).
@@ -1492,32 +1674,39 @@ def create_bid(body: BidIn, user=Depends(require_level(1))):
             if row:
                 money = _money(body.amount, row["currency"])
                 bid_url = f"/cargos/{body.cargo_id}?bid={bid_id}"
-                title = f"💰 Ставка {money}"
-                text = f"{money} · {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["owner_id"], title, text, "💰", bid_url, True))
+                route = f"{row['from_city']}→{row['to_city']}"
+                post_notifs.append((row["owner_id"], money, route, "💰", bid_url, True))
 
         if body.trip_id:
             row = c.execute("SELECT driver_id, from_city, to_city, currency FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if row:
                 money = _money(body.amount, row["currency"])
                 bid_url = f"/trips/{body.trip_id}?bid={bid_id}"
-                title = f"📦 Заказ {money}"
-                text = f"{money} · {row['from_city']}→{row['to_city']}"
-                post_notifs.append((row["driver_id"], title, text, "📦", bid_url, True))
+                route = f"{row['from_city']}→{row['to_city']}"
+                post_notifs.append((row["driver_id"], money, route, "💰", bid_url, True))
 
     # PR-B: post-commit notifications — connection с bid INSERT уже закрыт,
     # create_notification открывает свой conn без conflict'а с транзакцией.
     # Раздельные try/except: push и InApp независимы — failure одного не
     # должен подавлять другое.
-    for recipient, title, text, icon, url, want_push in post_notifs:
+    # Push-closure track: stable event_key = bid:{bid_id}:created — a bid is
+    # created exactly once, so this can never legitimately repeat; a retried
+    # request that somehow reached here twice would be deduped, not double-
+    # sent. Localized via push_i18n (recipient's push_devices.locale).
+    for recipient, amount, route, icon, url, want_push in post_notifs:
+        loc = push_gateway.get_recipient_locale(recipient)
+        title, text = push_i18n.push_text("bid_created", loc, amount=amount, route=route)
+        event_key = f"bid:{bid_id}:created"
         if want_push:
             try:
-                send_to_user(recipient, title, text, url=url)
+                send_to_user(recipient, title, text, url=url, kind="bid",
+                             data={"event_key": event_key, "event": "bid.created", "bid_id": bid_id,
+                                   "i18n_event": "bid_created", "i18n_params": {"amount": amount, "route": route}})
             except Exception:
                 pass
         try:
             from api.notifications import create_notification
-            create_notification(recipient, "bid_created", title, text, icon, url=url)
+            create_notification(recipient, "bid_created", title, text, icon, url=url, event_key=event_key)
         except Exception:
             pass
 
@@ -1663,7 +1852,7 @@ def list_bids(
                     "SELECT status FROM drivers_registration WHERE id = ?",
                     (did,),
                 ).fetchone() if did else None
-                b["bidder_verified"] = bool(drow and drow["status"] == "approved")
+                b["bidder_verified"] = _driver_verified(dict(drow) if drow else None)
         for b in bids:
             did = b.get("bidder_id")
             summary = reviews_dal.get_rating_summary(did) if did else {}
@@ -1880,7 +2069,7 @@ def list_drivers(truck_type: str = "", limit: int = 30):
 # ═══ Trip Status ═══
 
 @mp_router.patch("/trips/{trip_id}/status")
-def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level(1))):
+def update_trip_status(trip_id: str, new_status: str, user=Depends(require_active_level(1))):
     """Обновить статус рейса: active → booked → in_transit → delivered.
 
     Пре-мёрдж ревью (05.08.2026, P0-БЛОКЕР, независимый adversarial review):
@@ -1904,6 +2093,26 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_level
             raise HTTPException(status_code=404)
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Только водитель может менять статус")
+        # Track B (2026-09-10): confirmed gap (found during the independent
+        # P0 re-review of fix/p0-deal-bid-race-20260910) -- "active" and
+        # "booked" are NOT in _TRIP_TO_DEAL below, so they never went
+        # through _transition_deal()'s FSM/actor validation at all; the
+        # unconditional UPDATE two lines below would let a driver silently
+        # reset an already-dealt trip back to "active", re-listing it in
+        # the public feed while the deal is still live. A second shipper's
+        # subsequent accept_bid would then only be stopped by the raw
+        # deals.trip_id UNIQUE index as an unhandled sqlite3.IntegrityError
+        # (500), not a clean rejection. Same canonical active-deal guard as
+        # unpublish_trip/delete_cargo/unpublish_cargo -- fail closed with a
+        # real 409 before the trip status can move at all.
+        if new_status in ("active", "booked") and _active_deal_exists(c, trip_id=trip_id):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "ACTIVE_DEAL_EXISTS",
+                    "message": "Нельзя вернуть рейс в этот статус: сделка уже в работе",
+                },
+            )
         c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_status, trip_id))
         _TRIP_TO_DEAL = {"in_transit": "in_progress", "delivered": "delivered", "cancelled": "cancelled"}
         if new_status in _TRIP_TO_DEAL:
@@ -2062,12 +2271,28 @@ def _notify_rejected_siblings(rejected_siblings):
             pass
 
 
-def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
+def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: str = "pending"):
     """Shared accept logic used by accept_bid and counter/accept.
 
     Runs inside an open SQLite transaction (`with get_conn() as c:`).
     Authorises the user, updates linked cargo/trip, marks the winning bid
     as accepted (auto-rejecting siblings), creates a chat_room and a deal.
+
+    `expected_status` (P0, аудит 2026-09-10): the ONE status the caller
+    itself already verified via its own precondition check just before
+    calling in — accept_bid only ever calls this with a bid it just saw as
+    'pending' (it explicitly 409s on 'countered' bids earlier); accept_counter
+    only ever calls it with a bid it just saw as 'countered'. The write guard
+    below must match that SAME precondition, not a blanket
+    "pending OR countered" for both callers — that blanket guard was itself
+    a race: decline_counter/cancel_counter_as_owner concurrently flipping a
+    'countered' bid back to 'pending' (also fixed this same date, see their
+    conditional UPDATEs) would let a racing accept_counter's write still
+    match `status IN ('pending','countered')` and silently "accept" a
+    counter-offer round that had just been withdrawn/declined by the other
+    side — found via the concurrency regression matrix (scenario F/G), not
+    the original report. Matrix scenarios F/G in
+    tests/test_p0_deal_bid_race.py regression-cover exactly this.
 
     Returns: dict(deal_id, chat_room_id, from_city, to_city, shipper_id, driver_id)
     """
@@ -2082,10 +2307,25 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
         ).fetchone()
         if not cargo or cargo["owner_id"] != user["id"]:
             raise HTTPException(status_code=403)
-        c.execute(
-            "UPDATE cargos SET status = 'taken', taken_by = ? WHERE id = ?",
+        # P0 (аудит 2026-09-10): раньше это был безусловный UPDATE — полагались
+        # ИСКЛЮЧИТЕЛЬНО на то, что guarded UPDATE ниже по bids.status (и полный
+        # rollback транзакции при его провале) в итоге откатит и эту запись
+        # тоже. Верно для простого double-accept, но не для восстановления
+        # через TOCTOU-гонку в counter_bid/cancel_bid/decline_counter/
+        # cancel_counter_as_owner (P0 fix выше): та гонка могла откатить
+        # bids.status обратно в 'pending'/'countered' уже ПОСЛЕ того, как
+        # cargo стал 'taken' в первом accept — второй, «легитимный на вид»
+        # accept_counter/accept_bid тогда проходил guarded UPDATE bids (статус
+        # снова pending/countered) и пытался создать ВТОРУЮ deals-запись на
+        # уже занятый груз. Явный guard на родительском статусе останавливает
+        # это на первом же шаге, а не полагается на то, что где-то ниже
+        # что-то ещё упадёт.
+        cur = c.execute(
+            "UPDATE cargos SET status = 'taken', taken_by = ? WHERE id = ? AND status = 'active'",
             (bid["bidder_id"], bid["cargo_id"]),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Груз уже занят другой сделкой")
         from_city, to_city = cargo["from_city"], cargo["to_city"]
 
     if bid["trip_id"]:
@@ -2103,10 +2343,13 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
         driver_id = trip["driver_id"]
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403)
-        c.execute(
-            "UPDATE trips SET status = 'booked', booked_by = ? WHERE id = ?",
+        # P0 (аудит 2026-09-10): тот же guard, что и для cargo выше.
+        cur = c.execute(
+            "UPDATE trips SET status = 'booked', booked_by = ? WHERE id = ? AND status = 'active'",
             (bid["bidder_id"], bid["trip_id"]),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Рейс уже занят другой сделкой")
 
     # P0 (аудит 2026-08-21, обход авторизации): вся проверка «я владелец
     # объявления» жила ТОЛЬКО внутри двух `if` выше, а create_bid явно
@@ -2129,13 +2372,38 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
     # сделки на один груз. Conditional UPDATE + rowcount закрывает гонку:
     # проигравшая транзакция получает rowcount=0 → 409 → полный rollback
     # (включая UPDATE cargos/trips выше по функции).
-    cur = c.execute(
-        "UPDATE bids SET amount = ?, status = 'accepted', updated_at = CURRENT_TIMESTAMP "
-        "WHERE id = ? AND status IN ('pending', 'countered')",
-        (final_amount, bid_id),
-    )
+    # P0 (аудит 2026-09-10, найдено concurrency-матрицей, сценарий E — не из
+    # исходного отчёта): accept_bid зовёт эту функцию с final_amount,
+    # прочитанным ДО открытия транзакции (bid["amount"] в самом начале
+    # accept_bid). Если update_bid (тоже P0-guarded теперь, но он не трогает
+    # status) успевает изменить сумму МЕЖДУ тем чтением и этим UPDATE, старый
+    # код тут слепо перезаписывал amount обратно на устаревшее значение —
+    # ответ update_bid говорил «успех», а реально созданная сделка молча
+    # фиксировала цену ДО правки автора ставки. final_amount=None — сигнал
+    # «принять по текущей, а не по когда-то прочитанной цене»: guarded UPDATE
+    # трогает только status (держит write lock), а сумму берём СВЕЖЕЙ SELECT
+    # сразу после — это гарантированно либо строка ДО гонки (мы победили и
+    # держим лок первыми), либо уже применённая чужая правка (она победила и
+    # закоммитилась раньше нас). Для accept_counter final_amount всегда
+    # конкретное число (согласованная сумма контроффера) — там семантика
+    # другая: контроффер — не редактируемое пользователем поле, его пишем
+    # как раньше.
+    if final_amount is None:
+        cur = c.execute(
+            "UPDATE bids SET status = 'accepted', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = ?",
+            (bid_id, expected_status),
+        )
+    else:
+        cur = c.execute(
+            "UPDATE bids SET amount = ?, status = 'accepted', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = ?",
+            (final_amount, bid_id, expected_status),
+        )
     if cur.rowcount == 0:
         raise HTTPException(status_code=409, detail="Ставка уже обработана")
+    if final_amount is None:
+        final_amount = c.execute("SELECT amount FROM bids WHERE id = ?", (bid_id,)).fetchone()["amount"]
     # Auto-decline siblings: anything still pending OR countered on the same parent.
     # Сначала собираем перебитые ставки (id/bidder/amount) — их авторов надо
     # уведомить после коммита (см. _notify_rejected_siblings).
@@ -2218,11 +2486,17 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
         "shipper_id": shipper_id,
         "driver_id": driver_id,
         "rejected_siblings": rejected_siblings,
+        # P0: the amount actually committed to the deal -- may differ from
+        # whatever the caller read before opening the transaction when
+        # final_amount was passed as None (see the comment above the guarded
+        # UPDATE). Callers must use THIS value for post-commit push/notification
+        # text, not a pre-transaction read of bid["amount"].
+        "amount": final_amount,
     }
 
 
 @mp_router.post("/bids/{bid_id}/accept")
-def accept_bid(bid_id: str, user=Depends(require_level(1))):
+def accept_bid(bid_id: str, user=Depends(require_active_level(1))):
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
         # Owner cannot accept a bid that is currently countered — driver must
@@ -2237,9 +2511,15 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
                 status_code=409,
                 detail=f"Ставку нельзя принять в статусе {bid['status']}",
             )
-        result = _finalize_accept_inline(c, user, bid, bid["amount"])
+        # final_amount=None: принять по актуальной (не устаревшей) сумме —
+        # см. комментарий P0 внутри _finalize_accept_inline.
+        result = _finalize_accept_inline(c, user, bid, None)
+        # P0: используем реально закоммиченную сумму (могла отличаться от
+        # bid["amount"], прочитанного ДО транзакции, если бид успел
+        # обновиться гонкой с update_bid — см. _finalize_accept_inline).
+        committed_amount = result["amount"]
         # Часть 3: событие — владелец принял ставку (actor=owner).
-        _record_price_event(c, bid_id, user["id"], "owner", bid["amount"], "accepted", None)
+        _record_price_event(c, bid_id, user["id"], "owner", committed_amount, "accepted", None)
         _cur = _bid_currency(c, bid)   # валюта ставки для текста уведомления
 
     # «Дом заказа» (02.08.2026): пуш о принятой ставке ведёт в карточку
@@ -2252,15 +2532,21 @@ def accept_bid(bid_id: str, user=Depends(require_level(1))):
         deal_url = f"/trips/{bid['trip_id']}"
     else:
         deal_url = f"/deals/{result['deal_id']}"
-    title = "✅ Ставка принята!"
-    text = f"Ваше предложение {_money(bid['amount'], _cur)} принято! Сделка создана."
+    # Push-closure track: event_key=bid:{bid_id}:accepted — a bid can only
+    # be accepted once (guarded by the status!='pending' check above), so
+    # this key is inherently stable/unique; localized via push_i18n.
+    loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+    title, text = push_i18n.push_text("bid_accepted", loc, amount=_money(committed_amount, _cur))
+    event_key = f"bid:{bid_id}:accepted"
     try:
-        send_to_user(bid["bidder_id"], title, text, url=deal_url)
+        send_to_user(bid["bidder_id"], title, text, url=deal_url, kind="bid",
+                     data={"event_key": event_key, "event": "bid.accepted", "bid_id": bid_id,
+                           "i18n_event": "bid_accepted", "i18n_params": {"amount": _money(committed_amount, _cur)}})
     except Exception:
         pass
     try:
         from api.notifications import create_notification
-        create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url)
+        create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url, event_key=event_key)
     except Exception:
         pass
 
@@ -2293,7 +2579,7 @@ def _cargo_or_trip_owner_id(c, bid: dict):
 
 
 @mp_router.patch("/bids/{bid_id}")
-def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
+def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_active_level(1))):
     """Bidder edits their own pending bid (amount and/or message)."""
     if body.amount is None and body.message is None:
         raise HTTPException(status_code=400, detail="Укажите amount или message для обновления")
@@ -2319,10 +2605,21 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
             )
         new_message = body.message if body.message is not None else bid.get("message")
 
-        c.execute(
-            "UPDATE bids SET amount = ?, message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        # P0 (аудит 2026-09-10, TOCTOU race): раньше это был безусловный
+        # UPDATE ... WHERE id=? — читали статус отдельным SELECT'ом выше,
+        # проверяли в Python, а писали без повторной проверки. Конкурентный
+        # accept_bid/accept_counter/cancel_bid, прошедший гонку между тем же
+        # чтением и этой записью, тихо перезаписывался — принятая (и уже
+        # привязанная к deals-записи) ставка могла снова стать «pending» с
+        # чужими amount/message. Conditional UPDATE + rowcount закрывает
+        # гонку тем же приёмом, что уже используется в _finalize_accept_inline.
+        cur = c.execute(
+            "UPDATE bids SET amount = ?, message = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = 'pending'",
             (new_amount, new_message, bid_id),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже изменена — обновите экран")
         # Часть 3: событие — bidder изменил свою ставку.
         _record_price_event(c, bid_id, user["id"], "bidder", new_amount, "updated", new_message)
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
@@ -2368,7 +2665,7 @@ def update_bid(bid_id: str, body: BidUpdateIn, user=Depends(require_level(1))):
 
 
 @mp_router.post("/bids/{bid_id}/cancel")
-def cancel_bid(bid_id: str, user=Depends(require_level(1))):
+def cancel_bid(bid_id: str, user=Depends(require_active_level(1))):
     """Bidder cancels their own pending or countered bid."""
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
@@ -2377,12 +2674,19 @@ def cancel_bid(bid_id: str, user=Depends(require_level(1))):
         if bid["status"] not in ("pending", "countered"):
             raise HTTPException(status_code=409, detail=f"Ставку нельзя отменить в статусе {bid['status']}")
 
-        c.execute(
-            "UPDATE bids SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        # P0 (аудит 2026-09-10, TOCTOU race): conditional UPDATE + rowcount —
+        # тот же класс гонки, что и в update_bid выше: без повторной проверки
+        # статуса при записи cancel_bid мог отменить уже принятую (accepted)
+        # ставку, для которой уже создана deals-запись.
+        cur = c.execute(
+            "UPDATE bids SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status IN ('pending', 'countered')",
             (bid_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите экран")
         # P3-fix: финал в ценовом timeline — раньше отмена не оставляла события.
-        _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "cancelled", None)
+        cancel_event_id = _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "cancelled", None)
         # Decrement bids_count safely (never below 0).
         if bid.get("cargo_id"):
             c.execute(
@@ -2404,10 +2708,13 @@ def cancel_bid(bid_id: str, user=Depends(require_level(1))):
                 back_url = f"/trips/{bid['trip_id']}"
             else:
                 back_url = "/"
-            title = "↩️ Ставка отозвана"
-            body_text = f"Предложение {_money(bid['amount'], _cur)} отозвано автором"
+            amount = _money(bid['amount'], _cur)
+            title, body_text = push_i18n.push_text("bid_cancelled", push_gateway.get_recipient_locale(owner_id), amount=amount)
+            event_key = f"bid:{bid_id}:cancelled:{cancel_event_id or 'persisted'}"
             try:
-                send_to_user(owner_id, title, body_text, url=back_url)
+                send_to_user(owner_id, title, body_text, url=back_url, kind="bid",
+                             data={"event_key": event_key, "event": "bid.cancelled", "bid_id": bid_id,
+                                   "i18n_event": "bid_cancelled", "i18n_params": {"amount": amount}})
             except Exception:
                 pass
             try:
@@ -2422,7 +2729,7 @@ def cancel_bid(bid_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.post("/bids/{bid_id}/reject")
-def reject_bid(bid_id: str, user=Depends(require_level(1))):
+def reject_bid(bid_id: str, user=Depends(require_active_level(1))):
     """Cargo owner or trip owner explicitly rejects a pending or countered bid."""
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
@@ -2432,10 +2739,14 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
         if bid["status"] not in ("pending", "countered"):
             raise HTTPException(status_code=409, detail=f"Ставку нельзя отклонить в статусе {bid['status']}")
 
-        c.execute(
-            "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        # P0 (аудит 2026-09-10, TOCTOU race): conditional UPDATE + rowcount.
+        cur = c.execute(
+            "UPDATE bids SET status = 'rejected', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status IN ('pending', 'countered')",
             (bid_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите экран")
         # Часть 3: событие — владелец отклонил (actor=owner).
         _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "rejected", None)
         # M2: «отклики» (bids_count) = активные ставки. cancel уже уменьшал
@@ -2448,7 +2759,6 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
             )
 
     # Notify the bidder. Часть 4: deeplink ведёт в чат сделки (не на лист).
-    title = "❌ Ставка отклонена"
     with get_conn() as _cc:
         _cur = _bid_currency(_cc, bid)
         try:
@@ -2469,14 +2779,21 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
         back_url = f"/chats/{_rr}"
     else:
         back_url = "/"
-    body_text = f"Ваше предложение {_money(bid['amount'], _cur)} отклонено"
+    # Push-closure track: event_key=bid:{bid_id}:rejected — terminal
+    # transition (status can only ever leave 'rejected' never re-enter it),
+    # inherently unique/stable.
+    loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+    title, body_text = push_i18n.push_text("bid_rejected", loc, amount=_money(bid['amount'], _cur))
+    event_key = f"bid:{bid_id}:rejected"
     try:
-        send_to_user(bid["bidder_id"], title, body_text, url=back_url)
+        send_to_user(bid["bidder_id"], title, body_text, url=back_url, kind="bid",
+                     data={"event_key": event_key, "event": "bid.rejected", "bid_id": bid_id,
+                           "i18n_event": "bid_rejected", "i18n_params": {"amount": _money(bid['amount'], _cur)}})
     except Exception:
         pass
     try:
         from api.notifications import create_notification
-        create_notification(bid["bidder_id"], "bid_rejected", title, body_text, "❌", url=back_url)
+        create_notification(bid["bidder_id"], "bid_rejected", title, body_text, "❌", url=back_url, event_key=event_key)
     except Exception:
         pass
 
@@ -2486,7 +2803,7 @@ def reject_bid(bid_id: str, user=Depends(require_level(1))):
 # ═══ Counter-offer + chat-before-accept ═══
 
 @mp_router.post("/bids/{bid_id}/counter")
-def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1))):
+def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_active_level(1))):
     """Cargo/trip owner sends a counter-offer to a pending bid."""
     if body.amount is None or body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount должен быть > 0")
@@ -2498,14 +2815,26 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
         if bid["status"] != "pending":
             raise HTTPException(status_code=409, detail=f"Контр-оффер нельзя отправить в статусе {bid['status']}")
 
-        c.execute(
+        # P0 (аудит 2026-09-10, TOCTOU race — исходная находка): раньше этот
+        # UPDATE ничего не проверял при записи. Конкурентный accept_bid мог
+        # принять ставку между SELECT-проверкой выше и этой записью — тогда
+        # counter_bid тихо откатывал только что созданную (deal-backed)
+        # accepted-ставку обратно в 'countered', а следующий accept_counter()
+        # по тому же bid_id мог создать вторую deals-запись на тот же груз.
+        # Conditional UPDATE + rowcount закрывает гонку: проигравший запрос
+        # получает чистый 409 и не производит НИКАКИХ побочных эффектов
+        # (push/notification блок ниже не выполняется, т.к. исключение
+        # прерывает функцию раньше).
+        cur = c.execute(
             "UPDATE bids SET status = 'countered', counter_amount = ?, counter_message = ?, "
             "counter_by = 'owner', counter_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP "
-            "WHERE id = ?",
+            "WHERE id = ? AND status = 'pending'",
             (body.amount, body.message, bid_id),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите экран")
         # Часть 3: событие — владелец прислал контр (actor=owner).
-        _record_price_event(c, bid_id, user["id"], "owner", body.amount, "countered", body.message)
+        counter_event_id = _record_price_event(c, bid_id, user["id"], "owner", body.amount, "countered", body.message)
         updated = dict(c.execute("SELECT * FROM bids WHERE id = ?", (bid_id,)).fetchone())
 
     # «Дом заказа»: контр-оффер ведёт биддера в карточку заказа (там сверху
@@ -2519,19 +2848,20 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
         counter_url = "/"
     with get_conn() as c2:
         cur = _bid_currency(c2, bid)
-    title = f"🔁 Контр-оффер: {_money(body.amount, cur)}"
-    # Роль-зависимый текст: для bid на груз контр шлёт владелец груза; для bid
-    # на рейс — владелец рейса (водитель). Иначе биддеру на рейс приходило
-    # неверное «Владелец груза предложил».
-    _owner_word = "Владелец груза" if bid.get("cargo_id") else "Владелец рейса"
-    text = f"{_owner_word} предложил {_money(body.amount, cur)} вместо {_money(bid['amount'], cur)}"
+    # A persisted price-event id identifies this counter round even when a
+    # counter/cancel/counter cycle happens within one SQLite timestamp tick.
+    loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+    title, text = push_i18n.push_text("bid_countered", loc, amount=_money(body.amount, cur))
+    event_key = f"bid:{bid_id}:countered:{counter_event_id or updated.get('counter_at')}"
     try:
-        send_to_user(bid["bidder_id"], title, text, url=counter_url)
+        send_to_user(bid["bidder_id"], title, text, url=counter_url, kind="bid",
+                     data={"event_key": event_key, "event": "bid.countered", "bid_id": bid_id,
+                           "i18n_event": "bid_countered", "i18n_params": {"amount": _money(body.amount, cur)}})
     except Exception:
         pass
     try:
         from api.notifications import create_notification
-        create_notification(bid["bidder_id"], "bid_countered", title, text, "🔁", url=counter_url)
+        create_notification(bid["bidder_id"], "bid_countered", title, text, "🔁", url=counter_url, event_key=event_key)
     except Exception:
         pass
 
@@ -2539,7 +2869,7 @@ def counter_bid(bid_id: str, body: BidCounterIn, user=Depends(require_level(1)))
 
 
 @mp_router.post("/bids/{bid_id}/counter/accept")
-def accept_counter(bid_id: str, user=Depends(require_level(1))):
+def accept_counter(bid_id: str, user=Depends(require_active_level(1))):
     """Bidder accepts the counter-offer; deal/chat are created."""
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
@@ -2557,7 +2887,7 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
         if not owner_id:
             raise HTTPException(status_code=409, detail="Не найден владелец груза/рейса")
         owner_user = {"id": owner_id}
-        result = _finalize_accept_inline(c, owner_user, bid, counter)
+        result = _finalize_accept_inline(c, owner_user, bid, counter, expected_status="countered")
         # Часть 3: событие — bidder принял контр-оффер (actor=bidder).
         _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
 
@@ -2602,7 +2932,7 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
 
 
 @mp_router.post("/bids/{bid_id}/counter/cancel")
-def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
+def cancel_counter_as_owner(bid_id: str, user=Depends(require_active_level(1))):
     """Cargo/trip owner отменяет СВОЮ встречную цену. Ставка возвращается в
     pending — теперь owner может принять оригинал одной кнопкой. Дизайн-
     система 2026 (приказ владельца 02.08): «две кнопки: Принять и Отклонить,
@@ -2615,17 +2945,57 @@ def cancel_counter_as_owner(bid_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=403, detail="Только владелец груза/рейса может отменить свою встречную")
         if bid["status"] != "countered":
             raise HTTPException(status_code=409, detail=f"Нет активной встречной (статус {bid['status']})")
-        c.execute(
+        # P0 (аудит 2026-09-10, TOCTOU race): conditional UPDATE + rowcount.
+        cur = c.execute(
             "UPDATE bids SET status = 'pending', counter_amount = NULL, counter_message = NULL, "
-            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = 'countered'",
             (bid_id,),
         )
-        _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "counter_cancelled", None)
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите экран")
+        cancel_counter_event_id = _record_price_event(c, bid_id, user["id"], "owner", bid.get("amount"), "counter_cancelled", None)
+
+    # Counter cancellation changes the bidder's actionable state back to
+    # pending. Keep the durable Bell record and push in parity with the other
+    # bid transitions; the old endpoint changed only the database row.
+    #
+    # Push-closure track fix: this previously set data={"event": ...} — but
+    # _event_key() in services/push_sender.py reads data["event_key"]
+    # specifically ("event" only ever feeds enqueue_event's separate
+    # event_type label). That made this call LOOK wired into the durable-
+    # outbox/dedup path while never actually being so — enqueue_event's
+    # `if event_key:` guard stayed False. Fixed to the correct field name
+    # below. `bid['counter_at']` (captured from the ORIGINAL row, before the
+    # UPDATE above cleared it) is the same per-round identifier counter_bid()
+    # used when this round was created — stable across retries of this
+    # exact cancellation, distinct from any later round. Also restores the
+    # specific amount the old (pre-53ff5a8f) text included.
+    try:
+        if bid.get("cargo_id"):
+            counter_url = f"/cargos/{bid['cargo_id']}?bid={bid_id}"
+        elif bid.get("trip_id"):
+            counter_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
+        else:
+            counter_url = "/"
+        with get_conn() as c2:
+            _cur = _bid_currency(c2, bid)
+        loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+        title, body = push_i18n.push_text("bid_counter_cancelled", loc, amount=_money(bid.get("amount"), _cur))
+        event_key = f"bid:{bid_id}:counter_cancelled:{cancel_counter_event_id or bid.get('counter_at')}"
+        send_to_user(bid["bidder_id"], title, body, url=counter_url,
+                     kind="bid_counter_cancelled",
+                     data={"event_key": event_key, "event": "bid.counter_cancelled", "bid_id": bid_id,
+                           "i18n_event": "bid_counter_cancelled", "i18n_params": {"amount": _money(bid.get("amount"), _cur)}})
+        from api.notifications import create_notification
+        create_notification(bid["bidder_id"], "bid_countered", title, body, "↩️", url=counter_url, event_key=event_key)
+    except Exception:
+        pass
     return {"ok": True, "bid_id": bid_id, "status": "pending"}
 
 
 @mp_router.post("/bids/{bid_id}/counter/decline")
-def decline_counter(bid_id: str, user=Depends(require_level(1))):
+def decline_counter(bid_id: str, user=Depends(require_active_level(1))):
     """Bidder declines the counter; bid returns to 'pending', counter fields cleared."""
     with get_conn() as c:
         bid = _load_bid_or_404(c, bid_id)
@@ -2633,11 +3003,15 @@ def decline_counter(bid_id: str, user=Depends(require_level(1))):
             raise HTTPException(status_code=403, detail="Только автор ставки может отклонить контр-оффер")
         if bid["status"] != "countered":
             raise HTTPException(status_code=409, detail=f"Нет активного контр-оффера (статус {bid['status']})")
-        c.execute(
+        # P0 (аудит 2026-09-10, TOCTOU race): conditional UPDATE + rowcount.
+        cur = c.execute(
             "UPDATE bids SET status = 'pending', counter_amount = NULL, counter_message = NULL, "
-            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "counter_by = NULL, counter_at = NULL, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = 'countered'",
             (bid_id,),
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите экран")
         # P3-fix: фиксируем отказ от контр-оффера в ценовом timeline.
         _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "declined", None)
 
@@ -2984,7 +3358,7 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
 
 
 @mp_router.patch("/deals/{deal_id}/status")
-def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level(1))):
+def update_deal_status(deal_id: str, new_status: str, user=Depends(require_active_level(1))):
     # Этап-хаб заказа: добавлен промежуточный статус at_border («На границе») —
     # ключевой для коридора Китай↔КЗ. Порядок: accepted → in_progress →
     # at_border → delivered (cancelled — из любого рабочего).
@@ -3018,22 +3392,24 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
     # сумма в валюте груза/рейса, deep-link на /deals/{id}.
     try:
         other_id = deal["driver_id"] if uid == deal["shipper_id"] else deal["shipper_id"]
-        labels = {
-            "in_progress": "🚛 Рейс начался",
-            "at_border": "🛂 На границе",
-            "delivered": "✅ Доставлен — ожидается подтверждение получения",
-            "received": "✅ Получение подтверждено",
-            "completed": "🤝 Сделка завершена",
-            "cancelled": "❌ Отменено",
+        # Push-closure track: labels keys map 1:1 onto push_i18n event names
+        # ("in_progress" -> "deal_status_in_progress" etc).
+        push_events = {
+            "in_progress": "deal_status_in_progress",
+            "at_border": "deal_status_at_border",
+            "delivered": "deal_status_delivered",
+            "received": "deal_status_received",
+            "completed": "deal_status_completed",
+            "cancelled": "deal_status_cancelled",
         }
-        if new_status in labels:
+        if new_status in push_events:
             cur = "USD"
             with get_conn() as c2:
                 src = ("cargos", deal["cargo_id"]) if deal.get("cargo_id") else (("trips", deal["trip_id"]) if deal.get("trip_id") else None)
                 if src:
                     r = c2.execute(f"SELECT currency FROM {src[0]} WHERE id = ?", (src[1],)).fetchone()
                     cur = ((dict(r).get("currency") if r else None) or "USD")
-            body_txt = f"{deal['from_city']}→{deal['to_city']} · {_money(deal['amount'], cur)}"
+            route = f"{deal['from_city']}→{deal['to_city']} · {_money(deal['amount'], cur)}"
             # «Дом заказа»: смена статуса ведёт в карточку заказа с прогресс-
             # баром отслеживания. Раньше — в Deal Room (чат), но статус ≠
             # переписка.
@@ -3043,13 +3419,21 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_level
                 deal_url = f"/trips/{deal['trip_id']}"
             else:
                 deal_url = f"/deals/{deal_id}"
+            # Each status is reached at most once per deal (linear FSM,
+            # DealTransitionError guards non-forward moves) — deal_id+status
+            # is inherently a stable, unique-per-occurrence event key.
+            loc = push_gateway.get_recipient_locale(other_id)
+            title, body_txt = push_i18n.push_text(push_events[new_status], loc, route=route)
+            event_key = f"deal:{deal_id}:status:{new_status}"
             try:
-                send_to_user(other_id, labels[new_status], body_txt, url=deal_url)
+                send_to_user(other_id, title, body_txt, url=deal_url, kind="deal_status",
+                             data={"event_key": event_key, "event": f"deal.status.{new_status}", "deal_id": deal_id,
+                                   "i18n_event": push_events[new_status], "i18n_params": {"route": route}})
             except Exception:
                 pass
             try:
                 from api.notifications import create_notification
-                create_notification(other_id, "deal_status", labels[new_status], body_txt, "🚛", url=deal_url)
+                create_notification(other_id, "deal_status", title, body_txt, "🚛", url=deal_url, event_key=event_key)
             except Exception:
                 pass
     except Exception:
@@ -3153,23 +3537,35 @@ def _tracking_system_message(deal: dict, text: str) -> None:
         pass
 
 
-def _tracking_notify(user_id: str, title: str, body: str, deal_id: str, kind: str) -> None:
-    """Create in-app + native/web push after the DB transaction is committed."""
+def _tracking_notify(user_id: str, event: str, deal_id: str, kind: str, event_key: str) -> None:
+    """Create in-app + native/web push after the DB transaction is committed.
+
+    Push-closure track: `title`/`body` are now looked up via push_i18n
+    (localized to the recipient) instead of being passed in pre-built RU
+    text by every caller. `event_key` is REQUIRED (no default) — every
+    caller below derives it from a freshly-inserted deal_tracking_events row
+    id, since request/approve/decline/stop can each legitimately happen
+    more than once per deal (comment previously here: "Do not reuse a
+    permanent key by deal: a later, explicit re-request must create a fresh
+    notification" — still true, just now satisfied via a real per-event
+    identity instead of no dedup key at all).
+    A tap must open the exact Deal Room with the consent controls, not a
+    general list where the driver has to guess where to continue.
+    """
+    loc = push_gateway.get_recipient_locale(user_id)
+    title, body = push_i18n.push_text(event, loc)
     try:
         from api.notifications import create_notification
-        # The callers invoke this only for a real state transition (the
-        # repeated-pending / repeated-stopped paths return before here). Do
-        # not reuse a permanent key by deal: a later, explicit re-request
-        # must create a fresh notification for the driver.
-        # A tap must open the exact Deal Room with the consent controls, not a
-        # general list where the driver has to guess where to continue.
-        create_notification(user_id, kind, title, body, "📍", url=f"/deals/{deal_id}?action=tracking")
+        create_notification(user_id, kind, title, body, "📍", url=f"/deals/{deal_id}?action=tracking",
+                            event_key=event_key)
     except Exception:
         pass
     try:
         from services import push_sender
         push_sender.send(user_id, title, body, kind=kind,
-                         data={"deal_id": deal_id, "action": "tracking"},
+                         data={"deal_id": deal_id, "action": "tracking",
+                               "event_key": event_key, "event": event,
+                               "i18n_event": event, "i18n_params": {}},
                          url=f"/deals/{deal_id}?action=tracking")
     except Exception:
         pass
@@ -3177,6 +3573,51 @@ def _tracking_notify(user_id: str, title: str, body: str, deal_id: str, kind: st
 
 class TrackingDecisionIn(BaseModel):
     decision: str
+
+
+# GPS loss notifications are derived only from the real deal_tracking
+# last_signal_at heartbeat written by update_deal_location(). The threshold is
+# intentionally a QA/product value until the deployed background interval is
+# confirmed; it is not enabled by changing the provider mode.
+GPS_LOST_THRESHOLD_MINUTES = 20
+
+
+def _latest_gps_signal_marker(c, deal_id: str) -> Optional[str]:
+    row = c.execute(
+        "SELECT event_type FROM deal_tracking_events WHERE deal_id=? AND event_type IN ('gps_lost','gps_restored') ORDER BY id DESC LIMIT 1",
+        (deal_id,),
+    ).fetchone()
+    return row["event_type"] if row else None
+
+
+def check_gps_heartbeats_job() -> dict:
+    """Emit one lost event per stale active-trip episode."""
+    fired = 0
+    with get_conn() as c:
+        stale = c.execute(
+            """SELECT dt.deal_id, d.shipper_id FROM deal_tracking dt
+               JOIN deals d ON d.id = dt.deal_id
+               WHERE dt.status = 'active' AND d.status IN ('in_progress', 'at_border')
+                 AND dt.last_signal_at IS NOT NULL
+                 AND dt.last_signal_at <= datetime(CURRENT_TIMESTAMP, ?)""",
+            (f"-{GPS_LOST_THRESHOLD_MINUTES} minutes",),
+        ).fetchall()
+        to_notify = []
+        for row in stale:
+            if _latest_gps_signal_marker(c, row["deal_id"]) == "gps_lost":
+                continue
+            _ev = c.execute(
+                "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'gps_lost', NULL)",
+                (row["deal_id"],),
+            )
+            to_notify.append((row["deal_id"], row["shipper_id"], _ev.lastrowid))
+        c.commit()
+    for deal_id, shipper_id, ev_id in to_notify:
+        if shipper_id:
+            _tracking_notify(shipper_id, "gps_lost", deal_id, "gps_lost",
+                             event_key=f"deal:{deal_id}:gps_lost:{ev_id}")
+            fired += 1
+    return {"checked": len(stale), "fired": fired}
 
 
 @mp_router.get("/deals/{deal_id}/tracking")
@@ -3241,13 +3682,15 @@ def request_deal_tracking(deal_id: str, user=Depends(require_level(1))):
         # Before pickup a renewed consent starts cleanly. After pickup this
         # path is blocked above, so protected evidence can never be erased.
         c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
-        c.execute(
+        _ev = c.execute(
             "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'tracking_requested', ?)",
             (deal_id, user["id"]),
         )
+        _ev_id = _ev.lastrowid
         tracking = _tracking_payload(c, deal_id)
     _tracking_system_message(deal, "📍 Грузоотправитель запросил GPS-отслеживание. Водитель должен подтвердить его в приложении.")
-    _tracking_notify(deal["driver_id"], "Запрос GPS-отслеживания", "Грузоотправитель просит показать местоположение машины по сделке.", deal_id, "tracking_request")
+    _tracking_notify(deal["driver_id"], "tracking_request", deal_id, "tracking_request",
+                     event_key=f"deal:{deal_id}:tracking_requested:{_ev_id}")
     return {"ok": True, "tracking": tracking}
 
 
@@ -3281,17 +3724,20 @@ def respond_deal_tracking(deal_id: str, body: TrackingDecisionIn, user=Depends(r
         )
         if new_status != "active":
             c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
-        c.execute(
+        _ev = c.execute(
             "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, ?, ?)",
             (deal_id, "tracking_approved" if new_status == "active" else "tracking_declined", user["id"]),
         )
+        _ev_id = _ev.lastrowid
         tracking = _tracking_payload(c, deal_id)
     if decision == "approve":
         _tracking_system_message(deal, "✅ Водитель разрешил GPS-отслеживание. Местоположение будет видно только участникам этой сделки.")
-        _tracking_notify(deal["shipper_id"], "GPS-отслеживание включено", "Водитель разрешил показывать местоположение машины.", deal_id, "tracking_approved")
+        _tracking_notify(deal["shipper_id"], "tracking_approved", deal_id, "tracking_approved",
+                         event_key=f"deal:{deal_id}:tracking_approved:{_ev_id}")
     else:
         _tracking_system_message(deal, "ℹ️ Водитель не разрешил GPS-отслеживание по этой сделке.")
-        _tracking_notify(deal["shipper_id"], "GPS-отслеживание отклонено", "Водитель не разрешил передачу геопозиции.", deal_id, "tracking_declined")
+        _tracking_notify(deal["shipper_id"], "tracking_declined", deal_id, "tracking_declined",
+                         event_key=f"deal:{deal_id}:tracking_declined:{_ev_id}")
     return {"ok": True, "tracking": tracking}
 
 
@@ -3317,13 +3763,15 @@ def stop_deal_tracking(deal_id: str, user=Depends(require_level(1))):
             (deal_id,),
         )
         c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
-        c.execute(
+        _ev = c.execute(
             "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'tracking_stopped_before_pickup', ?)",
             (deal_id, user["id"]),
         )
+        _ev_id = _ev.lastrowid
         tracking = _tracking_payload(c, deal_id)
     _tracking_system_message(deal, "🔒 Водитель отменил GPS-отслеживание до забора груза.")
-    _tracking_notify(deal["shipper_id"], "GPS-отслеживание отменено", "Водитель отменил передачу местоположения до забора груза.", deal_id, "tracking_stopped")
+    _tracking_notify(deal["shipper_id"], "tracking_stopped", deal_id, "tracking_stopped",
+                     event_key=f"deal:{deal_id}:tracking_stopped:{_ev_id}")
     return {"ok": True, "tracking": tracking}
 
 class DealLocationIn(BaseModel):
@@ -3348,6 +3796,7 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
         tracking = _tracking_payload(c, deal_id)
         if tracking.get("status") != "active":
             raise HTTPException(status_code=409, detail="GPS не разрешён водителем для этой сделки")
+        was_lost = _latest_gps_signal_marker(c, deal_id) == "gps_lost"
         c.execute(
             "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, updated_at) "
             "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP) "
@@ -3359,6 +3808,19 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
             "UPDATE deal_tracking SET last_signal_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE deal_id=?",
             (deal_id,),
         )
+        shipper_id = None
+        ev_id = None
+        if was_lost:
+            _ev = c.execute(
+                "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'gps_restored', ?)",
+                (deal_id, user["id"]),
+            )
+            ev_id = _ev.lastrowid
+            row = c.execute("SELECT shipper_id FROM deals WHERE id=?", (deal_id,)).fetchone()
+            shipper_id = row["shipper_id"] if row else None
+    if was_lost and shipper_id:
+        _tracking_notify(shipper_id, "gps_restored", deal_id, "gps_restored",
+                         event_key=f"deal:{deal_id}:gps_restored:{ev_id}")
     return {"ok": True}
 
 

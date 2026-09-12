@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, AppState, Linking } from 'react-native';
+import { Platform, AppState, Linking, BackHandler } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
@@ -132,7 +132,16 @@ function navigateFromUrl(navRef, url, role) {
     } else if (kind === 'deals' && id) {
       // BUG-002: deals → Deal Room (ChatScreen с dealId), как в
       // NotificationsScreen. Раньше кидало в общий список чатов без контекста.
-      navRef.current.navigate('Chat', { dealId: id, role });
+      // GPS-consent P1 fix: backend's tracking-request/approved/declined/
+      // stopped pushes all send url=/deals/{id}?action=tracking
+      // (backend/api/marketplace.py:_tracking_notify) — params.action used
+      // to be parsed here and then silently dropped, so tapping that push
+      // opened the deal at its default chat view with no indication a GPS
+      // decision needed attention. Threaded through unchanged;
+      // ChatScreenV2/DealWorkspaceRoute already forward the full params
+      // object (spread, not a named allow-list), so this alone is enough
+      // for DealWorkspaceScreenV2 to see it on mount.
+      navRef.current.navigate('Chat', { dealId: id, role, action: params.action || null });
     } else if (kind === 'chats' && id) {
       navRef.current.navigate('Chat', { roomId: id, role });
     } else if (kind === 'chat' || kind === 'chats') {
@@ -157,6 +166,18 @@ function navigateFromUrl(navRef, url, role) {
   }
 }
 
+// Chat push already carries the authoritative room_id in its structured data
+// (backend/api/chat.py). Prefer it to the display URL on a notification tap:
+// Android may retain a stale notification URL while replacing an aggregated
+// FCM record, whereas room_id identifies the exact accepted-deal conversation.
+function notificationResponseUrl(response) {
+  const data = response?.notification?.request?.content?.data || {};
+  const isChat = data.type === 'chat_message' || data.type === 'chat_attachment';
+  const roomId = typeof data.room_id === 'string' ? data.room_id.trim() : '';
+  if (isChat && roomId) return `/chats/${encodeURIComponent(roomId)}`;
+  return typeof data.url === 'string' ? data.url : null;
+}
+
 // Welcome-splash показывает НАТИВНЫЙ splash (app.json → splash.image), он сам
 // уходит, когда отрисован первый кадр JS. JS-оверлей убран (баг: всплывал ПОВЕРХ
 // уже загруженной ленты → «двоение UrTruck», как и в предыдущий раз 14.06).
@@ -172,6 +193,22 @@ function AppInner() {
   const pendingUrlRef = useRef(null);
   const { session, hasToken } = useAuth();
   const { theme, isDark } = useTheme();
+
+  // Android hardware Back must pop the in-app stack before allowing the
+  // Activity to finish. This is intentionally global: detail/deal/chat/map
+  // routes are all pushed on the same root stack, while tab changes stay
+  // inside MainTabs and must not exit the app from a child screen.
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    const onHardwareBackPress = () => {
+      const navigator = navRef.current;
+      if (!navigator?.isReady?.() || !navigator.canGoBack()) return false;
+      navigator.goBack();
+      return true;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onHardwareBackPress);
+    return () => subscription?.remove?.();
+  }, []);
 
   // Фон САМОГО навигатора (не только сцены). Без theme у NavigationContainer
   // берётся DefaultTheme с БЕЛЫМ фоном — и он просвечивал снизу, под прозрачным
@@ -257,7 +294,7 @@ function AppInner() {
         if (handled.has(rid)) return;
         handled.add(rid);
       }
-      const url = response?.notification?.request?.content?.data?.url;
+      const url = notificationResponseUrl(response);
       if (url) routeFromUrl(url);
     };
     Notifications.getLastNotificationResponseAsync?.()

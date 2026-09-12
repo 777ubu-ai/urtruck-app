@@ -6,9 +6,10 @@ import { chatAPI } from '../utils/chatAPI';
 import { getDealCounterpartyProfile, compactCounterpartyName } from '../utils/dealCounterpartyAPI';
 import { useV1Colors } from '../theme/designV1';
 
-// Accepted deal rooms use the canonical gated workspace route. Support/general
-// conversations may keep the mature legacy ChatScreen, but a partner/profile
-// entry must never create or expose a pre-deal chat.
+// Accepted deal rooms use the canonical gated workspace route. The legacy
+// messenger (src/screens/ChatScreen.js) was deleted in Commit 8 as dead code:
+// every entry through this screen converges on DealWorkspaceRoute, and a
+// partner/profile entry must never create or expose a pre-deal chat.
 export default function ChatScreenV2(props) {
   const { route, navigation } = props;
   const params = route?.params || {};
@@ -24,7 +25,7 @@ export default function ChatScreenV2(props) {
 
     // A direct route with an explicit deal is already canonical. A route with
     // neither a room nor a concrete partner is a support/general conversation
-    // and may keep using the legacy ChatScreen below.
+    // and falls through to the canonical workspace below.
     if (!roomId && !partnerId) {
       setResolvedDealId(params.dealId || null);
       setResolvedPartner(params.partner || null);
@@ -42,7 +43,7 @@ export default function ChatScreenV2(props) {
 
         // DriverDetail historically opened Chat with { partner } only. That
         // bypassed room/deal resolution and always fell through to the old
-        // ChatScreen even when this driver was already the accepted carrier.
+        // messenger even when this driver was already the accepted carrier.
         // Resolve a deal-linked room by partner id so every accepted-deal
         // entry point converges on DealWorkspaceRoute.
         const room = roomId

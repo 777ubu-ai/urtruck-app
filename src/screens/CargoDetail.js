@@ -35,7 +35,8 @@ import { localizePlace } from '../utils/places';
 import { formatDateForDisplay } from '../utils/dateInput';
 import { buildCargoShareText } from '../utils/share';
 import { WEB_URL } from '../config/env';
-import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
+import {v1Colors, useV1Colors, useShipperCeramicColors, v1Radius, v1AccentFor} from '../theme/designV1';
+import { SHIPPER_CERAMIC } from '../theme/designV1Palette';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
@@ -60,7 +61,10 @@ const sanitizeDesc = (s) => {
 };
 
 export default function CargoDetail({ navigation, route }) {
-  const v1 = useV1Colors();
+  const baseV1 = useV1Colors();
+  const shipper = useShipperCeramicColors();
+  const roleHint = route?.params?.role || 'client';
+  const v1 = roleHint === 'driver' ? baseV1 : shipper;
   const s = React.useMemo(() => StyleSheet.create({
 
   container: { flex: 1 },
@@ -69,7 +73,7 @@ export default function CargoDetail({ navigation, route }) {
   // shareIcon styles were removed as part of stage 3E cleanup.
   pageTitle: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2, marginVertical: 12 },
   priceLabelV1: { fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  priceValueV1: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, color: '#E06D00', fontVariant: ['tabular-nums'] },
+  priceValueV1: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, color: SHIPPER_CERAMIC.text, fontVariant: ['tabular-nums'] },
   // Legacy local styles still used by deal-block / bid cards / reviews
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
@@ -84,12 +88,12 @@ export default function CargoDetail({ navigation, route }) {
   gridItem: { width: '50%', marginBottom: 10 },
   gridLabel: { fontSize: 11 },
   gridValue: { fontSize: 13, fontWeight: '600', marginTop: 2 },
-  priceBlock: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#E8F6EF', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#C8D8CF', marginBottom: 16 },
-  priceLabel: { color: '#0F6B47', fontSize: 11 },
-  priceValue: { color: '#168759', fontSize: 28, fontWeight: '900' },
+  priceBlock: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderRadius: 16, padding: 18, borderWidth: 1, borderColor: SHIPPER_CERAMIC.border, marginBottom: 16 },
+  priceLabel: { color: SHIPPER_CERAMIC.textMuted, fontSize: 11 },
+  priceValue: { color: SHIPPER_CERAMIC.text, fontSize: 28, fontWeight: '900' },
   beta: { color: '#57534E', fontSize: 11 },
-  bidBtn: { backgroundColor: '#168759', borderRadius: 14, paddingHorizontal: 22, paddingVertical: 14 },
-  bidBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  bidBtn: { backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderColor: SHIPPER_CERAMIC.border, borderWidth: 1, borderRadius: 14, paddingHorizontal: 22, paddingVertical: 14 },
+  bidBtnText: { color: SHIPPER_CERAMIC.text, fontSize: 14, fontWeight: '800' },
   bidsTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
   // 27.07: было flexDirection:'row' → кнопки справа съедали ширину и имя/
   // сообщение схлопывались в вертикальный столбик по букве. Теперь колонка:
@@ -103,7 +107,7 @@ export default function CargoDetail({ navigation, route }) {
   // не оранжевая: та же карточка показывает и цену груза владельца
   // (priceValueV1, оранжевая), совпадение цвета читалось как одна цена
   // (05.08.2026, п.16 ТЗ).
-  bidAmt: { color: '#00C766', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  bidAmt: { color: SHIPPER_CERAMIC.text, fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   confirmBanner: { backgroundColor: '#16875920', borderWidth: 1, borderColor: '#168759', borderRadius: 12, padding: 14, marginBottom: 12, alignItems: 'center' },
   confirmText: { color: '#168759', fontSize: 14, fontWeight: '800' },
   photoWrap: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, marginBottom: 12, position: 'relative' },
@@ -111,8 +115,8 @@ export default function CargoDetail({ navigation, route }) {
   photoBadge: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   photoBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   // «Для перчаток и солнца»: крупные тап-цели (≥44pt) и читаемый текст.
-  acceptBtn: { backgroundColor: '#168759', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
-  acceptBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  acceptBtn: { backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderColor: SHIPPER_CERAMIC.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
+  acceptBtnText: { color: SHIPPER_CERAMIC.text, fontSize: 14, fontWeight: '800' },
   rejectBtn: { backgroundColor: 'rgba(239,68,68,0.10)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center', borderWidth: 0 },
   rejectBtnText: { color: '#EF4444', fontSize: 14, fontWeight: '700' },
   miniBtn: { backgroundColor: 'rgba(148,163,184,0.14)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center', borderWidth: 0 },
@@ -122,7 +126,7 @@ export default function CargoDetail({ navigation, route }) {
   reviewTitle: { fontSize: 15, fontWeight: '700' },
   starsRow: { flexDirection: 'row', gap: 8 },
   reviewInput: { width: '100%', borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 13 },
-  reviewSubmitBtn: { backgroundColor: '#168759', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+  reviewSubmitBtn: { backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderColor: SHIPPER_CERAMIC.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   reviewSubmitText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   dealBlock: { borderWidth: 1, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
   myBidCard: { padding: 14, borderRadius: 10, borderWidth: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
@@ -135,19 +139,19 @@ export default function CargoDetail({ navigation, route }) {
   myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
   dealStatusLabel: { fontSize: 15, fontWeight: '700' },
-  dealActionBtn: { backgroundColor: '#168759', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center', maxWidth: '100%', flexShrink: 1 },
+  dealActionBtn: { backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderColor: SHIPPER_CERAMIC.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center', maxWidth: '100%', flexShrink: 1 },
   // Ghost-стиль (обводка) для акцентных действий сделки — вместо сплошной заливки.
   dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700', flexShrink: 1 },
-  chatBtn: { backgroundColor: '#168759', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  chatBtn: { backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderColor: SHIPPER_CERAMIC.border, borderWidth: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  chatBtnText: { color: SHIPPER_CERAMIC.text, fontSize: 15, fontWeight: '700' },
   // Дизайн 2026 v3 (03.08): «Удалить груз» — редкое действие, не должно
   // «кричать» красным контуром. Text-only серый, красным только при нажатии.
   deleteMyBtn: { paddingVertical: 10, alignItems: 'center' },
   deleteMyBtnText: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
 
   }), [v1]);
-  const { cargo: paramCargo, cargoId, role, dealId: routeDealId } = route.params || {};
+  const { cargo: paramCargo, cargoId, role = roleHint, dealId: routeDealId } = route.params || {};
   // Canonical cargo: locale is explicit so normalizers stay pure and Node-testable.
   const { t, lang } = useI18n();
   const editBidLabel = ({
@@ -434,11 +438,11 @@ export default function CargoDetail({ navigation, route }) {
   // открывая свой груз, видел зелёный driver-акцент (решение владельца
   // 2026-06-13: клиент везде оранжевый).
   const isDriverViewing = role === 'driver' || (driverId && driverId === myUserId);
-  const v1Accent = v1AccentFor('client');
+  const v1Accent = isDriverSide ? v1AccentFor('driver') : shipper;
   // Кнопки сделки (чат/подтвердить/старт) — действия текущего зрителя, поэтому
   // акцент роль-семантический: client → жёлтый #FF8400, driver → неон #168759.
   // Раньше был хардкод #168759 (зелёный) на всех поверхностях, в т.ч. клиентских.
-  const dealAccent = v1AccentFor(isDriverSide ? 'driver' : 'client');
+  const dealAccent = isDriverSide ? v1AccentFor('driver') : shipper;
   const insets = useSafeAreaInsets();
 
   return (
@@ -502,7 +506,7 @@ export default function CargoDetail({ navigation, route }) {
               <Feather name="dollar-sign" size={12} color={theme.textMuted} />
               <Text testID="cargo-price-label" style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('price')}</Text>
             </View>
-            <Text testID="cargo-price-value" style={{ color: '#E06D00', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1, minWidth: 0, textAlign: 'right' }} numberOfLines={1} ellipsizeMode="tail">{priceDisplay}</Text>
+            <Text testID="cargo-price-value" style={{ color: v1.text, fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1, minWidth: 0, textAlign: 'right' }} numberOfLines={1} ellipsizeMode="tail">{priceDisplay}</Text>
           </View>
         </GlassCard>
 

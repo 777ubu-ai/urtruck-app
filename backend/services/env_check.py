@@ -37,8 +37,23 @@ def collect_issues() -> List[str]:
     wa_token = os.getenv("WHATSAPP_TOKEN") or os.getenv("WHATSAPP_ACCESS_TOKEN")
     wa_phone = os.getenv("WHATSAPP_PHONE_ID") or os.getenv("WHATSAPP_PHONE_NUMBER_ID")
     sms_provider = (os.getenv("SMS_PROVIDER") or "mock").lower()
+    # Hardening A final repair (2026-09-10), P1: this used to treat Twilio as
+    # "real" the moment TWILIO_ACCOUNT_SID alone was set -- but
+    # services/otp_service.py's actual Twilio call needs all three
+    # (TWILIO_ACCOUNT_SID for the URL + basic-auth username, TWILIO_AUTH_TOKEN
+    # for the basic-auth password, TWILIO_FROM as the sender number Twilio's
+    # API itself requires). A SID-only config passed this check ("OTP channel
+    # configured, production env OK") while every real SMS send would fail at
+    # request time -- no mock fallback exists in that code path, so users
+    # would just silently never receive a code. Require the complete triple
+    # before treating Twilio as configured; see the dedicated Twilio-specific
+    # issue below for the actionable message when it's chosen but incomplete.
+    twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
+    twilio_from = os.getenv("TWILIO_FROM")
+    twilio_real = bool(twilio_sid and twilio_token and twilio_from)
     sms_real = sms_provider != "mock" and (
-        os.getenv("MOBIZON_API_KEY") or os.getenv("TWILIO_ACCOUNT_SID")
+        os.getenv("MOBIZON_API_KEY") or twilio_real
     )
     tg_real = bool(os.getenv("TELEGRAM_BOT_TOKEN"))
     if not (wa_token and wa_phone) and not sms_real and not tg_real:
@@ -77,6 +92,30 @@ def collect_issues() -> List[str]:
             "Set the API key from https://mobizon.kz → API."
         )
 
+    # Hardening A final repair (2026-09-10), P1: symmetric to the Mobizon
+    # check above. SMS_PROVIDER=twilio requires TWILIO_ACCOUNT_SID +
+    # TWILIO_AUTH_TOKEN + TWILIO_FROM together -- a partial set (e.g. only
+    # the SID, which used to be all `sms_real` above checked) fails closed
+    # here rather than silently falling back to mock OTP or a different
+    # channel; there is no such fallback in services/otp_service.py's
+    # Twilio call path, so an incomplete config means real users simply
+    # never receive a code, with no other symptom until they complain.
+    if sms_provider == "twilio" and not twilio_real:
+        missing = [
+            name for name, val in (
+                ("TWILIO_ACCOUNT_SID", twilio_sid),
+                ("TWILIO_AUTH_TOKEN", twilio_token),
+                ("TWILIO_FROM", twilio_from),
+            ) if not val
+        ]
+        issues.append(
+            "Twilio: SMS_PROVIDER=twilio but the credential set is incomplete "
+            f"(missing: {', '.join(missing)}). All three of TWILIO_ACCOUNT_SID, "
+            "TWILIO_AUTH_TOKEN, and TWILIO_FROM are required together -- set the "
+            "missing value(s). There is no mock fallback for a partial Twilio "
+            "config in production; OTP delivery would fail for every user."
+        )
+
     # Storage — local FS in production loses uploads on redeploy.
     provider = (os.getenv("STORAGE_PROVIDER") or "local").lower()
     if provider == "local":
@@ -97,9 +136,17 @@ def collect_issues() -> List[str]:
 
     # Admin auth — never ship the placeholder password to production.
     # Fix (B3): admin.py reads URTRUCK_ADMIN_PASS, not ADMIN_PASSWORD — the old
-    # check looked at the wrong var and never fired. Check the real var (with
-    # legacy ADMIN_PASSWORD as fallback) and reject the committed default too.
-    admin_pass = os.getenv("URTRUCK_ADMIN_PASS") or os.getenv("ADMIN_PASSWORD", "")
+    # check looked at the wrong var and never fired.
+    # Release hardening track A (2026-09-10): the legacy ADMIN_PASSWORD
+    # fallback that used to sit here was a FALSE sense of security —
+    # api/admin.py's actual auth check never reads ADMIN_PASSWORD at all,
+    # only URTRUCK_ADMIN_PASS. An operator who set only the (unread) legacy
+    # name would see "production env OK" from this check, while the real
+    # admin panel auth silently used its own committed default underneath
+    # (admin.py separately disables the panel with a 503 in that case, so
+    # it wasn't directly exploitable — but the boot-time signal was wrong).
+    # Check the exact variable admin.py actually authenticates against.
+    admin_pass = os.getenv("URTRUCK_ADMIN_PASS", "")
     if _is_unsafe_password(admin_pass) or admin_pass == "urtruck-admin-2026":
         issues.append(
             "Admin: URTRUCK_ADMIN_PASS is empty or a default placeholder "
@@ -123,6 +170,31 @@ def collect_issues() -> List[str]:
     cors = os.getenv("CORS_ORIGINS", "")
     if "*" in cors.split(","):
         issues.append("CORS: wildcard '*' in CORS_ORIGINS — restrict to known frontends.")
+
+    # Release hardening track A (2026-09-10): App Store/Play reviewer demo
+    # login (config.py's REVIEWER_DEMO_EMAIL/REVIEWER_DEMO_CODE) has its own
+    # committed default code ("1975"). A prior audit (28.08.2026) already
+    # made the bypass request-time fail-closed in production
+    # (api/registration.py's `_reviewer_allowed_here`) -- so this specific
+    # default is currently inert, not exploitable -- but that neutering
+    # never surfaced HERE, meaning an operator got zero boot-time signal,
+    # unlike every other committed-default check in this file (admin
+    # password, API key, admin token). Same treatment: fail closed the same
+    # way those do. This is deliberate, not an oversight -- if reviewer
+    # demo login is genuinely needed in this environment, the fix is to set
+    # a real REVIEWER_DEMO_CODE in the server's .env, not to leave the
+    # inert default in place. If the feature isn't needed at all, set
+    # REVIEWER_DEMO_EMAIL="" to disable it outright (see .env.example).
+    _reviewer_code_default = "1975"
+    if (os.getenv("REVIEWER_DEMO_CODE") or _reviewer_code_default) == _reviewer_code_default \
+            and (os.getenv("REVIEWER_DEMO_EMAIL", "appreview@urtruck.kz").strip()):
+        issues.append(
+            "Reviewer demo login: REVIEWER_DEMO_CODE is still the committed default "
+            '("1975"). The app-level guard already refuses this bypass in production, '
+            "so this is not currently exploitable — but set REVIEWER_DEMO_CODE to a "
+            "real value if App Store/Play reviewer demo login is actually used here, "
+            'or set REVIEWER_DEMO_EMAIL="" to disable the feature explicitly.'
+        )
 
     return issues
 

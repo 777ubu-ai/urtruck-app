@@ -53,14 +53,15 @@ test('accepted deal details keep message CTA and hide external call handoff', ()
   }
 });
 
-test('deal workspace has scroll-away compact information header and no repeated UrTruck brand bar', () => {
+test('deal workspace has a fixed compact information header and no repeated UrTruck brand bar', () => {
   assert.match(workspace, /testID="deal-compact-header"/);
   assert.match(workspace, /testID="deal-workspace-back"/);
   assert.match(workspace, /cargoMeta/);
   assert.match(workspace, /scheduleMeta/);
   assert.match(workspace, /counterpartyMeta/);
   assert.match(workspace, /const compactHeader = \(/);
-  assert.match(workspace, /ListHeaderComponent=\{compactHeader\}/);
+  assert.match(workspace, /\{compactHeader\}/);
+  assert.doesNotMatch(workspace, /ListHeaderComponent=\{compactHeader\}/);
   assert.doesNotMatch(workspace, /BrandBarWithShare|>UrTruck</);
   assert.doesNotMatch(brand, />UrTruck</);
   assert.match(brand, /compact-child-header/);
@@ -85,18 +86,22 @@ test('deal workspace is chat-first by default; the map is a deliberate, button-t
   assert.doesNotMatch(workspace, /open_route_btn|Открыть маршрут|navigation\.navigate\('TrackTruck'/);
 });
 
-test('deal workspace uses bright header action buttons instead of large map/status cards', () => {
+test('deal workspace uses canonical header action buttons instead of large map/status cards', () => {
   assert.match(workspace, /testID="deal-header-map"/);
   assert.match(workspace, /testID="deal-status-open"/);
+  // Design v1 Commit 4: chrome canon — 44dp targets, surface bg, hairline
+  // border token, textSecondary icon (the 32dp #F7F7F7/#202020 fork is gone).
   assert.match(workspace, /headerIconBtn: \{/);
-  assert.match(workspace, /backgroundColor: '#F7F7F7'/);
-  assert.match(workspace, /borderWidth: 1\.5/);
-  assert.match(workspace, /borderColor: '#202020'/);
-  assert.match(workspace, /<Feather name="map" size=\{17\} color="#111827"/);
-  assert.match(workspace, /<Feather name=\{statusActionIcon\} size=\{17\} color="#111827"/);
-  assert.match(workspace, /width: 32/);
-  assert.match(workspace, /borderRadius: 16/);
-  assert.match(workspace, /routeTitle: \{ flex: 1, fontSize: 14\.5/);
+  assert.match(workspace, /width: 44/);
+  assert.match(workspace, /borderRadius: 22/);
+  assert.match(workspace, /borderWidth: StyleSheet\.hairlineWidth/);
+  assert.match(workspace, /backgroundColor: colors\.surface, borderColor: colors\.border/);
+  assert.match(workspace, /<Feather name="map" size=\{17\} color=\{colors\.textMuted\}/);
+  assert.match(workspace, /<Feather name=\{statusActionIcon\} size=\{17\} color=\{colors\.textMuted\}/);
+  // Compact header canon: route 16/900 + «Сделка №… · price» second line.
+  assert.match(workspace, /routeTitle: \{ flex: 1, fontSize: 16, fontWeight: '900'/);
+  assert.match(workspace, /dealNoLine: \{ fontSize: 12, fontWeight: '600'/);
+  assert.match(workspace, /\$\{t\('deal_no'\)\} \$\{dealNumber\}/);
   assert.doesNotMatch(workspace, /style=\{s\.statusPill\}/);
   assert.doesNotMatch(workspace, /testID="deal-top-quick-actions"/);
   assert.doesNotMatch(workspace, /testID="deal-map-card-open"/);
@@ -168,7 +173,7 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
   assert.match(workspace, /testID="deal-chat-emoji"/);
-  assert.match(workspace, /testID="deal-chat-attach"/);
+  assert.match(workspace, /testID="deal-chat-plus"/);
   assert.match(workspace, /inputShell/);
   assert.match(workspace, /composerCircle/);
   assert.match(workspace, /sendPhoto\(false\)/);
@@ -186,7 +191,17 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /const sendDealShare = React\.useCallback/);
   assert.match(workspace, /const sendContactCard = React\.useCallback/);
   assert.match(workspace, /attachIcon: \{ width: 64, height: 64/);
-  assert.match(workspace, /backgroundColor: '#F4F4F4'/);
+  // Attach/emoji menus and the composer surfaces are theme-tokenized now
+  // (P2-1 dark composer): colours come from designV1 tokens inline, not from
+  // hardcoded light hex.
+  assert.match(workspace, /s\.attachMenu, \{ backgroundColor: colors\.bg, borderTopColor: colors\.border/);
+  // Light-only map/summary surfaces must be theme-tokenized (driverSoft), not
+  // hardcoded light hex that glows in dark mode.
+  assert.doesNotMatch(workspace, /backgroundColor: '#EAF1ED'/);
+  assert.doesNotMatch(workspace, /backgroundColor: '#E9F6EF'/);
+  assert.match(workspace, /s\.mapArea, \{ backgroundColor: colors\.driverSoft \}/);
+  assert.match(workspace, /s\.finishedIcon, \{ backgroundColor: colors\.driverSoft \}/);
+  assert.match(workspace, /s\.chatIconBox, \{ backgroundColor: colors\.driverSoft \}/);
   assert.match(workspace, /testID="deal-chat-composer-dock"/);
   assert.match(workspace, /composerDock: \{ paddingHorizontal: 8, paddingTop: 5/);
   assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'center'/);
@@ -198,11 +213,14 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
 });
 
 test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
-  assert.match(workspace, /const \[composerFocused, setComposerFocused\] = React\.useState\(false\)/);
+  // Structural marker: composer state exists and the dock is theme-tokenized
+  // (no hardcoded light surface). The old composerCollapsed fork must stay gone.
+  assert.match(workspace, /backgroundColor: colors\.bg,\s*borderTopColor: colors\.border/);
   assert.doesNotMatch(workspace, /const \[composerCollapsed, setComposerCollapsed\] = React\.useState\(false\)/);
   assert.doesNotMatch(workspace, /testID="deal-chat-composer-collapsed"/);
   assert.doesNotMatch(workspace, /composerCollapsedHandle/);
-  assert.match(workspace, /\{!composerFocused \? \(/);
+  assert.match(workspace, /testID="deal-chat-emoji"/);
+  assert.match(workspace, /inputEmojiButton/);
   assert.match(workspace, /testID="deal-chat-attach-collapse"/);
   assert.match(workspace, /attachHandle/);
   assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
@@ -222,6 +240,30 @@ test('emoji button opens a real bottom emoji picker instead of a coming-soon toa
   assert.match(workspace, /onPress=\{toggleEmojiMenu\}/);
   assert.doesNotMatch(workspace, /showEmojiComingSoon/);
   assert.doesNotMatch(workspace, /toast\(ui\.comingSoon/);
+});
+
+test('toggleAttachMenu dismisses the keyboard and blurs input before opening the sheet', () => {
+  // Rebase-prep contract: the canonical toggle must close emoji/call menus,
+  // dismiss the IME and blur the input, then toggle the attachment sheet.
+  // The removed composerFocused state must NOT come back.
+  const block = workspace.match(/const toggleAttachMenu = React\.useCallback\(\(\) => \{([\s\S]*?)\}, \[\]\);/);
+  assert.ok(block, 'toggleAttachMenu definition not found');
+  const body = block[1];
+  const closeEmoji = body.indexOf('setEmojiOpen(false)');
+  const dismiss = body.indexOf('Keyboard.dismiss()');
+  const blur = body.indexOf('inputRef.current?.blur?.()');
+  const toggle = body.indexOf('setAttachOpen((value) => !value)');
+  assert.ok(closeEmoji !== -1 && dismiss !== -1 && blur !== -1 && toggle !== -1,
+    'toggleAttachMenu must close menus, dismiss keyboard, blur input, then toggle the sheet');
+  assert.ok(closeEmoji < dismiss && dismiss < blur && blur < toggle,
+    'toggleAttachMenu ordering must be: close menus → Keyboard.dismiss → input blur → toggle sheet');
+  assert.doesNotMatch(body, /setComposerFocused/, 'removed composerFocused state must not return');
+  assert.doesNotMatch(workspace, /setComposerFocused/);
+  // Multiline/emoji contract must survive: multiline input with emoji gutter.
+  assert.match(workspace, /multiline/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 74/);
+  assert.match(workspace, /testID="deal-chat-emoji"/);
+  assert.match(workspace, /testID="deal-chat-composer"/);
 });
 
 test('every plus-menu tile has a real handler — no decorative buttons', () => {
@@ -267,11 +309,11 @@ test('deal status actions use the shared canonical role FSM and GPS starts with 
   assert.match(workspace, /marketAPI\.sendDealLocation/);
 });
 
-test('short onboarding requires name, phone and company for both roles and cannot skip', () => {
+test('short onboarding requires name and phone; company remains editable but optional for drivers', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /const validCompany = company\.trim\(\)\.length >= 2/);
+  assert.match(profile, /const validCompany = role === 'driver' \|\| company\.trim\(\)\.length >= 2/);
   assert.match(profile, /const formValid = validName && validPhone && validCompany && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);

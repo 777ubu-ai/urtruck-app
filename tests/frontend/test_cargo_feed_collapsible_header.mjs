@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const src = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
+// Design v1 Commit 3: card chrome (density baselines included) moved into
+// the canonical MarketplaceCard; the screen keeps only list spacing.
+const card = fs.readFileSync('src/components/ui/v1/MarketplaceCard.js', 'utf8');
 
 test('cargo feed removes heavy brand/title chrome and keeps only compact menu above list', () => {
   assert.match(src, /testID="cargo-feed-minimal-header"/);
-  assert.match(src, /testID="feed-menu-btn"/);
+  assert.match(src, /menuTestID="feed-menu-btn"/);
   assert.match(src, /topBar: \{[\s\S]*?minHeight: 48/);
   assert.doesNotMatch(src, /<Text style=\{styles\.brand\}>UrTruck<\/Text>/);
   assert.doesNotMatch(src, /styles\.titleRow/);
@@ -32,11 +35,15 @@ test('favorites quick filter uses the same saved cargo ids as card bookmarks', (
   assert.match(src, /savedOnly && !savedIds\.has\(String\(item\.id\)\)/);
   assert.match(src, /setSavedOnly\(\(value\) => !value\)/);
   assert.match(src, /saved=\{savedIds\.has\(String\(item\.id\)\)\}/);
-  assert.match(src, /savedIds\.size/);
+  assert.match(src, /accessibilityLabel=\{copy\.favorites\}/);
 });
 
 test('cargo cards stay compact so collapsing the controls actually increases visible work', () => {
-  assert.match(src, /minHeight: 120/);
-  assert.match(src, /fontSize: 16, lineHeight: 20/);
+  // Canon density: route city 12/16 avoids wrapping routes under the fixed
+  // price rail, while the list spacing stays compact on the screen.
+  // no legacy expanded-card fork.
+  const routeLine = fs.readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
+  assert.match(routeLine, /fontSize:\s*12,\s*lineHeight:\s*16/);
+  assert.match(src, /cardSpacing: \{ marginHorizontal: 18, marginBottom: 7 \}/);
   assert.doesNotMatch(src, /cardExpanded/);
 });

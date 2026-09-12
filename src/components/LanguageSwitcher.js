@@ -16,6 +16,7 @@ import {
 import { setLanguage, getLanguage, subscribeToLanguage } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
+import CountryFlag from './ui/v1/CountryFlag';
 
 // Список совпадает с translations в utils/i18n.js — добавляя сюда
 // новый код, не забудь и там. UZ/KG/DE/… отброшены в i18n (см. шапку
@@ -29,10 +30,10 @@ import { useTheme } from '../utils/ThemeContext';
 // видел рус-текст после выбора казахского/китайского, хотя pill
 // менялся. Reload спасал благодаря LEGACY_LANG_FIX в i18n.js.
 const LANGS = [
-  { code: 'RU', display: 'RU', label: 'Русский', flag: '🇷🇺' },
-  { code: 'KK', display: 'KZ', label: 'Қазақша', flag: '🇰🇿' },
-  { code: 'EN', display: 'EN', label: 'English', flag: '🇬🇧' },
-  { code: 'ZH', display: 'CN', label: '中文',      flag: '🇨🇳' },
+  { code: 'RU', display: 'RU', label: 'Русский', country: 'RU' },
+  { code: 'KK', display: 'KZ', label: 'Қазақша', country: 'KZ' },
+  { code: 'EN', display: 'EN', label: 'English', country: 'GB' },
+  { code: 'ZH', display: 'CN', label: '中文',      country: 'CN' },
 ];
 
 export default function LanguageSwitcher({ style, testID = 'language-switcher', compact = false }) {
@@ -61,7 +62,7 @@ export default function LanguageSwitcher({ style, testID = 'language-switcher', 
         accessibilityRole="button"
         accessibilityLabel={t('language_label') || 'Language'}
       >
-        <Text style={{ fontSize: 14 }}>{current.flag}</Text>
+        <CountryFlag code={current.country} width={21} />
         {!compact && (
           <Text style={[s.code, { color: theme.text }]}>{current.display}</Text>
         )}
@@ -102,7 +103,7 @@ export default function LanguageSwitcher({ style, testID = 'language-switcher', 
                     // ломать существующие Stage 45 Playwright spec'и.
                     testID={`lang-${l.display.toLowerCase()}`}
                   >
-                    <Text style={{ fontSize: 22 }}>{l.flag}</Text>
+                    <CountryFlag code={l.country} width={30} />
                     <Text style={[s.rowText, { color: theme.text }]}>{l.label}</Text>
                     {active && <Text style={{ color: '#168759', fontSize: 16, fontWeight: '700' }}>✓</Text>}
                   </TouchableOpacity>

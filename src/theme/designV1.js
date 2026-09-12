@@ -4,75 +4,23 @@
 // brand/status constants that do not need to change with the theme.
 
 import { useTheme } from '../utils/ThemeContext';
-
-const DARK = {
-  bg: '#0F1512',
-  bgDeep: '#0B100D',
-  surface: '#151E19',
-  surfaceLift: '#1B2620',
-  surfaceMuted: '#202C25',
-
-  border: '#2A3930',
-  borderStrong: '#3A4B40',
-
-  // Keep one UrTruck green identity in both roles. #168759 with white text
-  // remains WCAG-AA for normal CTA text (~4.5:1) and avoids neon glare.
-  driver: '#168759',
-  driverDeep: '#0F6B47',
-  driverGlow: 'rgba(22,135,89,0.30)',
-  driverSoft: 'rgba(22,135,89,0.18)',
-  driverOnAccent: '#FFFFFF',
-
-  cargoOwner: '#168759',
-  cargoOwnerDeep: '#0F6B47',
-  cargoOwnerGlow: 'rgba(22,135,89,0.30)',
-  cargoOwnerSoft: 'rgba(22,135,89,0.18)',
-
-  text: '#F3F7F4',
-  textMuted: '#B7C3BB',
-  textDim: '#9EAAA2',
-  placeholder: '#9EAAA2',
-
-  error: '#FF7B7B',
-  success: '#63D69A',
-  warning: '#F5B75B',
-};
-
-const LIGHT = {
-  bg: '#F6F8F7',
-  bgDeep: '#FFFFFF',
-  surface: '#FFFFFF',
-  surfaceLift: '#F3FBF7',
-  surfaceMuted: '#F0F4F2',
-
-  border: '#E5ECE8',
-  borderStrong: '#C8D8CF',
-
-  driver: '#168759',
-  driverDeep: '#0F6B47',
-  driverGlow: 'rgba(22,135,89,0.18)',
-  driverSoft: '#E8F6EF',
-  driverOnAccent: '#FFFFFF',
-
-  cargoOwner: '#168759',
-  cargoOwnerDeep: '#0F6B47',
-  cargoOwnerGlow: 'rgba(22,135,89,0.18)',
-  cargoOwnerSoft: '#E8F6EF',
-
-  text: '#14221C',
-  textMuted: '#617067',
-  textDim: '#7C8B82',
-  placeholder: '#6B7A71',
-
-  error: '#D64545',
-  success: '#168759',
-  warning: '#B76B00',
-};
+// Track B / B6: palette data now lives in designV1Palette.js (zero
+// dependencies, importable from plain Node tooling) so
+// qa/utils/themeContrastSmoke.js can import the real values instead of a
+// hand-copy that had already drifted (see that file's own comment). This
+// file adds nothing but the theme-aware hook on top of the same data.
+import { LIGHT, DARK, DRIVER_CERAMIC, SHIPPER_CERAMIC, withAlpha } from './designV1Palette';
 
 // Backwards compatibility. User-facing surfaces/text should not consume
 // theme-dependent keys from this frozen object; qa/utils/themeSmoke.js guards
 // screens against doing so.
 export const v1Colors = LIGHT;
+export { withAlpha };
+export { DRIVER_CERAMIC };
+export { SHIPPER_CERAMIC };
+
+export const useDriverCeramicColors = () => DRIVER_CERAMIC;
+export const useShipperCeramicColors = () => SHIPPER_CERAMIC;
 
 export const useV1Colors = () => {
   const { isDark } = useTheme();
@@ -83,7 +31,7 @@ export const v1Radius = {
   field: 12,
   card: 16,
   pill: 999,
-  button: 12,
+  button: 14,
 };
 
 export const v1Spacing = {
@@ -108,17 +56,53 @@ const typographyFor = (c) => ({
   caption: { fontSize: 12, fontWeight: '500', color: c.textMuted },
   small:   { fontSize: 11, fontWeight: '600', letterSpacing: 0.2, color: c.textDim },
   button:  { fontSize: 15, fontWeight: '600', color: c.driverOnAccent },
+  // ── Design Bible "Direction B" (2026-09-09, Commit 1) — additive only.
+  label:   { fontSize: 13, lineHeight: 18, fontWeight: '600', color: c.textMuted },
+  micro:   { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.2, color: c.textDim },
+  price:   { fontSize: 17, lineHeight: 22, fontWeight: '800', color: c.text },
 });
 
 export const v1Typography = typographyFor(LIGHT);
 export const useV1Typography = () => typographyFor(useV1Colors());
 
-export const v1Shadow = {
-  glowEmerald: { shadowColor: v1Colors.driver, shadowOpacity: 0.45, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
-  glowOrange:  { shadowColor: v1Colors.cargoOwner, shadowOpacity: 0.45, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
-};
-
 export const v1AccentFor = (role) =>
   role === 'driver'
     ? { main: v1Colors.driver, deep: v1Colors.driverDeep, glow: v1Colors.driverGlow, soft: v1Colors.driverSoft, onAccent: v1Colors.driverOnAccent }
     : { main: v1Colors.cargoOwner, deep: v1Colors.cargoOwnerDeep, glow: v1Colors.cargoOwnerGlow, soft: v1Colors.cargoOwnerSoft, onAccent: v1Colors.driverOnAccent };
+
+// ── Design Bible "Direction B" (owner-approved 2026-09-09, Commit 1) ──
+// Status role colors per theme. `cancelled` has no LIGHT-key counterpart in
+// the approved additions — the palette's pre-existing `warning`-era grey
+// `#718078` is the LIGHT value; DARK shifts it to textDim-family `#7C8B82`.
+export const v1StatusColors = (c) => ({
+  accepted: c.statusAccepted,
+  in_progress: c.statusInProgress,
+  at_border: c.statusAtBorder,
+  delivered: c.statusDelivered,
+  received: c.statusReceived,
+  completed: c.statusCompleted,
+  cancelled: c.statusCancelled,
+});
+
+export const getStatusColor = (c, status) =>
+  v1StatusColors(c)[status] || c.textDim;
+
+// Chat bubble color contract: outgoing uses the approved WhatsApp-family
+// green (light `#D9FDD3` / dark `#005C4B`); incoming is surface/border + text.
+export const getBubbleColors = (isMine, isDark) => {
+  const c = isDark ? DARK : LIGHT;
+  const outgoing = isDark
+    ? { backgroundColor: DARK.outgoingDark, textColor: DARK.outgoingDarkText }
+    : { backgroundColor: LIGHT.outgoing, textColor: LIGHT.outgoingText };
+  return isMine
+    ? { ...outgoing, borderColor: outgoing.backgroundColor }
+    : { backgroundColor: c.surface, textColor: c.text, borderColor: c.border };
+};
+
+// `v1BubbleColors` — the full per-theme bubble contract (both directions).
+export const v1BubbleColors = (isDark) => ({
+  outgoing: isDark
+    ? { backgroundColor: DARK.outgoingDark, textColor: DARK.outgoingDarkText }
+    : { backgroundColor: LIGHT.outgoing, textColor: LIGHT.outgoingText },
+  incoming: { backgroundColor: (isDark ? DARK : LIGHT).surface, textColor: (isDark ? DARK : LIGHT).text, borderColor: (isDark ? DARK : LIGHT).border },
+});

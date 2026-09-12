@@ -13,7 +13,9 @@ from pathlib import Path
 import pytest
 
 os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_unread_badge.db")
-Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
+    Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
 
 from database import db as dbm
 from database import registration_dal
@@ -174,7 +176,7 @@ def test_inv6_only_chat_kind_sets_badge():
 
     def fake_native(uid, title, body, data, badge=None):
         captured["badge"] = badge
-        return 0
+        return 0, 0  # (sent, total_devices) — push-closure track signature
 
     orig_web, orig_native = push_sender._send_web, push_sender._send_native
     push_sender._send_web, push_sender._send_native = fake_web, fake_native

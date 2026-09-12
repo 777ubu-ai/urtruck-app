@@ -8,6 +8,7 @@
 CI-контракт: top-level `def test_*` (не класс). Схему БД (включая UNIQUE-
 индекс, создаваемый marketplace._init) поднимает conftest — своей init нет.
 """
+import os
 import re
 import uuid
 
@@ -57,32 +58,71 @@ def test_unknown_ip_not_limited():
 
 # ── reviewer bypass gating ──────────────────────────────
 
-def test_reviewer_default_code_disabled_in_production(monkeypatch):
+def test_reviewer_default_code_disabled_in_production():
+    # 2026-09-08 harness fix: this used to take a `monkeypatch` fixture and
+    # rely on `monkeypatch.setenv(...)` + a same-test `finally:
+    # importlib.reload(config)` to "not contaminate other tests". That
+    # doesn't actually work — pytest's monkeypatch fixture restores
+    # os.environ in ITS OWN teardown, which runs AFTER this function
+    # returns; the `finally` block here ran while URTRUCK_ENV was still
+    # "production", so the reload inside it reloaded config right back into
+    # the *production* state, and nothing ever reloaded it again afterward.
+    # `config` (imported via `import config`, i.e. live attribute access,
+    # not `from config import IS_PRODUCTION`) stayed IS_PRODUCTION=True for
+    # the rest of the pytest session — confirmed by bisection to be the
+    # root cause of an order-dependent "no such table: drivers_registration"
+    # a long way downstream, in unrelated test files.
+    #
+    # Fix: manage os.environ directly (not via monkeypatch) so the ORIGINAL
+    # values are restored, and config is reloaded back to the correct state,
+    # before this function returns — not relying on fixture teardown order.
     import importlib
-    monkeypatch.delenv("REVIEWER_DEMO_CODE", raising=False)
-    monkeypatch.setenv("URTRUCK_ENV", "production")
     import config
-    importlib.reload(config)
+
+    orig_reviewer_code = os.environ.pop("REVIEWER_DEMO_CODE", None)
+    orig_env = os.environ.get("URTRUCK_ENV")
+    os.environ["URTRUCK_ENV"] = "production"
     try:
+        importlib.reload(config)
         assert config.REVIEWER_DEMO_CODE_IS_DEFAULT is True
         assert config.IS_PRODUCTION is True
         allowed = not (config.IS_PRODUCTION and config.REVIEWER_DEMO_CODE_IS_DEFAULT)
         assert allowed is False, "дефолтный reviewer-код принят на проде"
     finally:
-        importlib.reload(config)  # не заражаем другие тесты
+        if orig_env is None:
+            os.environ.pop("URTRUCK_ENV", None)
+        else:
+            os.environ["URTRUCK_ENV"] = orig_env
+        if orig_reviewer_code is not None:
+            os.environ["REVIEWER_DEMO_CODE"] = orig_reviewer_code
+        importlib.reload(config)  # now genuinely back to the test-session state
 
 
-def test_reviewer_overridden_code_enabled_in_production(monkeypatch):
+def test_reviewer_overridden_code_enabled_in_production():
+    # Same fix as test_reviewer_default_code_disabled_in_production above —
+    # see that test's comment for why `monkeypatch` + same-test `finally`
+    # reload was not actually restoring state.
     import importlib
-    monkeypatch.setenv("REVIEWER_DEMO_CODE", "rot-" + uuid.uuid4().hex[:8])
-    monkeypatch.setenv("URTRUCK_ENV", "production")
     import config
-    importlib.reload(config)
+
+    orig_reviewer_code = os.environ.get("REVIEWER_DEMO_CODE")
+    orig_env = os.environ.get("URTRUCK_ENV")
+    os.environ["REVIEWER_DEMO_CODE"] = "rot-" + uuid.uuid4().hex[:8]
+    os.environ["URTRUCK_ENV"] = "production"
     try:
+        importlib.reload(config)
         assert config.REVIEWER_DEMO_CODE_IS_DEFAULT is False
         allowed = not (config.IS_PRODUCTION and config.REVIEWER_DEMO_CODE_IS_DEFAULT)
         assert allowed is True, "явно заданный reviewer-код не принят на проде"
     finally:
+        if orig_env is None:
+            os.environ.pop("URTRUCK_ENV", None)
+        else:
+            os.environ["URTRUCK_ENV"] = orig_env
+        if orig_reviewer_code is None:
+            os.environ.pop("REVIEWER_DEMO_CODE", None)
+        else:
+            os.environ["REVIEWER_DEMO_CODE"] = orig_reviewer_code
         importlib.reload(config)
 
 
