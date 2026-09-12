@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
+import translations, { getLanguage } from './i18n';
 
 const BASE = `${API_BASE}/market`;
 
@@ -44,11 +45,32 @@ async function headers() {
 // отрендерить object в <Text> → краш всего приложения с белым экраном.
 // Этот хелпер всегда возвращает string — для object с `hint` или
 // `error` поле, для других — JSON.stringify fallback.
+// I18N-16 / item 7 (2026-09-12): backend already returns a stable machine
+// code alongside its (RU-only) human message — {"error": CODE, "message":
+// "..."}. Before this, normalizeDetail() preferred that RU `message` over
+// the machine `error` code, so ANY non-RU UI (all 16 locales, not just the
+// 12 newly added ones) showed raw Russian server text for these errors.
+// `err_<CODE>` keys exist in every locale's dictionary (src/utils/i18n.js)
+// for the closed set of codes this audit covered (ERROR_CODE_KEYS below);
+// preferring that translation over the raw RU message closes the leak for
+// exactly those codes without touching the backend response shape at all.
+// An error code outside that set still falls through to the old RU
+// `message` (never worse than before) — full backend-error-code coverage
+// beyond this set is flagged as a follow-up in the i18n-16 track report.
+function localizedErrorCode(code) {
+  if (!code || typeof code !== 'string') return null;
+  const lang = getLanguage();
+  const key = `err_${code}`;
+  return translations[lang]?.[key] || translations.EN?.[key] || null;
+}
+
 function normalizeDetail(d, status) {
   if (d == null) return `Ошибка ${status}`;
   if (typeof d === 'string') return d;
   if (typeof d === 'object') {
     if (d.hint && typeof d.hint === 'string' && d.hint.length) return d.hint;
+    const localized = localizedErrorCode(d.error);
+    if (localized) return localized;
     if (d.message && typeof d.message === 'string' && d.message.length) return d.message;
     if (d.error && typeof d.error === 'string' && d.error.length) return d.error;
     try { return JSON.stringify(d); } catch { return `Ошибка ${status}`; }
