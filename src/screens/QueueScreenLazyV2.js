@@ -295,7 +295,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: v1.bg }]} edges={['top']} testID="border-screen-v2">
       <DriverRouteBackdrop />
-      <RootHeader ceramic navigation={navigation} role={role} testID="queue-root-header" onBellPress={async () => {
+      <RootHeader ceramic hideBell={!isDriver} navigation={navigation} role={role} testID="queue-root-header" onBellPress={async () => {
         const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
         if (ok) navigation.navigate('PushFilter', { role });
       }} />

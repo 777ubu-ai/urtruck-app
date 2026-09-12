@@ -5,6 +5,14 @@ const { test, expect } = require('@playwright/test');
 const BASE = (process.env.E2E_BASE_URL || 'https://urtruck.kz') + '/?v=playwright-safe-smoke';
 
 async function mockDriverBackend(page) {
+  await page.route('**/api/v1/register/me', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ id: 'playwright-driver', role: 'driver', verification_level: 1 }),
+    });
+  });
+
   await page.route('**/api/v1/register/guest', async route => {
     await route.fulfill({
       status: 200,
@@ -68,17 +76,28 @@ async function mockDriverBackend(page) {
   });
 }
 
+async function enterDriverApp(page) {
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await page.evaluate(() => {
+    localStorage.setItem('ur_reg_token', 'playwright-driver-token');
+    localStorage.setItem('ur_session', JSON.stringify({ user: {
+      id: 'playwright-driver', role: 'driver', phone: null,
+    } }));
+    localStorage.setItem('ur_verification_level', '1');
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await expect(page.getByTestId('bottom-nav')).toBeVisible({ timeout: 15000 });
+}
+
 test('open app and check main screen', async ({ page }) => {
   await page.goto(BASE, { waitUntil: 'networkidle' });
-  await expect(page.getByText('UrTruck')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(/Прямые рейсы|Direct routes|直达路线|Тікелей рейстер/)).toBeVisible({ timeout: 15000 });
 });
 
 test('driver flow opens feed without live backend', async ({ page }) => {
   await mockDriverBackend(page);
-
-  await page.goto(BASE, { waitUntil: 'networkidle' });
-  await page.getByText(/Я водитель|I'm a driver|我是司机|Мен жүргізушімін|Я перевозчик|carrier/i).click();
-  await page.waitForTimeout(2500);
+  await enterDriverApp(page);
 
   await expect(page.getByText(/Грузы|Cargos/).first()).toBeVisible({ timeout: 15000 });
   await expect(page.getByText('Playwright тестовый груз')).toBeVisible({ timeout: 15000 });
@@ -86,10 +105,7 @@ test('driver flow opens feed without live backend', async ({ page }) => {
 
 test('click first cargo card does not crash without live backend', async ({ page }) => {
   await mockDriverBackend(page);
-
-  await page.goto(BASE, { waitUntil: 'networkidle' });
-  await page.getByText(/Я водитель|I'm a driver|我是司机|Мен жүргізушімін|Я перевозчик|carrier/i).click();
-  await page.waitForTimeout(2500);
+  await enterDriverApp(page);
 
   await page.getByText('Playwright тестовый груз').click();
   await page.waitForTimeout(2500);

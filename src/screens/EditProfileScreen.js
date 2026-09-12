@@ -126,11 +126,10 @@ export default function EditProfileScreen({ navigation, route }) {
   const [avatar, setAvatar] = useState(profile.avatar_url || null);
   const [firstName, setFirstName] = useState(profile.first_name || (profile.display_name || '').split(' ')[0] || '');
   const [lastName, setLastName] = useState(profile.last_name || (profile.display_name || '').split(' ').slice(1).join(' ') || '');
-  const [phone] = useState(session?.user?.phone || '+7 (***) ***-**-**');
+  const [phone, setPhone] = useState(session?.user?.phone || '+7 (***) ***-**-**');
   const [city, setCity] = useState(profile.city || '');
   const [email, setEmail] = useState(profile.email || '');
   const [company, setCompany] = useState(profile.company || profile.company_name || '');
-  const [binInn, setBinInn] = useState(profile.bin_inn || '');
   // Предпочтительный мессенджер грузоотправителя + ID (WeChat важен для Китая).
   const [messengerType, setMessengerType] = useState(profile.messenger_type || '');
   const [messengerId, setMessengerId] = useState(profile.messenger_id || '');
@@ -161,7 +160,6 @@ export default function EditProfileScreen({ navigation, route }) {
       if (data.legal_form) setLegalForm(data.legal_form);
       if (data.china_experience_years != null) setChinaExp(String(data.china_experience_years));
       if (data.company_name) setCompany(data.company_name);
-      if (data.bin_inn) setBinInn(data.bin_inn);
       if (data.messenger_type) setMessengerType(data.messenger_type);
       if (data.messenger_id) setMessengerId(data.messenger_id);
       if (Array.isArray(data.favorite_borders) && data.favorite_borders.length) setFavBorders(data.favorite_borders);
@@ -179,8 +177,8 @@ export default function EditProfileScreen({ navigation, route }) {
   const draftKey = `edit_profile_${userId || 'guest'}_${role || 'na'}`;
   useDraft(
     draftKey,
-    { firstName, lastName, city, email, company, binInn, messengerType, messengerId, legalForm, chinaExp, favBorders, emergency },
-    { setFirstName, setLastName, setCity, setEmail, setCompany, setBinInn, setMessengerType, setMessengerId, setLegalForm, setChinaExp, setFavBorders, setEmergency },
+    { firstName, lastName, city, email, company, messengerType, messengerId, legalForm, chinaExp, favBorders, emergency },
+    { setFirstName, setLastName, setCity, setEmail, setCompany, setMessengerType, setMessengerId, setLegalForm, setChinaExp, setFavBorders, setEmergency },
   );
 
   const toggleBorder = (b) => {
@@ -265,10 +263,9 @@ export default function EditProfileScreen({ navigation, route }) {
       city,
       email: email.trim(),
       company: company.trim(),
-      // грузоотправитель: компания/БИН/мессенджер
+      // грузоотправитель: компания/мессенджер
       ...(!isDriver ? {
         company_name: company.trim(),
-        bin_inn: binInn.trim(),
         messenger_type: messengerType,
         messenger_id: messengerId.trim(),
       } : {}),
@@ -303,9 +300,8 @@ export default function EditProfileScreen({ navigation, route }) {
         if (tirUrl)           payload.tir_book_url       = tirUrl;
         if (cmrUrl)           payload.cmr_insurance_url  = cmrUrl;
       } else {
-        // грузоотправитель: компания, БИН/ИНН, мессенджер + ID
+        // грузоотправитель: компания, мессенджер + ID
         payload.company_name = company.trim();
-        payload.bin_inn = binInn.trim();
         payload.messenger_type = messengerType;
         payload.messenger_id = messengerId.trim();
       }
@@ -371,7 +367,15 @@ export default function EditProfileScreen({ navigation, route }) {
 
       <Field ceramic={!isDriver} featherIcon="user" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} placeholder={t('signup_field_first_name')} />
       <Field ceramic={!isDriver} featherIcon="user" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} placeholder={t('signup_field_last_name')} />
-      <Field ceramic={!isDriver} featherIcon="phone" label={t('signup_field_phone')} value={phone} onChangeText={() => {}} editable={false} />
+      <Field
+        ceramic={!isDriver}
+        featherIcon="phone"
+        label={t('signup_field_phone')}
+        value={phone}
+        onChangeText={setPhone}
+        keyboardType="phone-pad"
+        helper={t('phone_v2_send_hint') || t('reg_phone_hint')}
+      />
       {/* Stage 21: previously these were `Field variant="dropdown"`
           with `onPress={() => {}}` — taps did nothing, so users
           reported "страна не выбирается" and "город не выбирается".
