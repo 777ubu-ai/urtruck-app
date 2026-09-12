@@ -21,7 +21,9 @@ implementation comments):
 2. `_require_public_listing_status()` -- list_cargos()/list_trips() now
    whitelist the public `status` query param to {"active"} (400 otherwise),
    shared by both symmetric endpoints.
-3. `_require_role(user, ("driver",), ...)` in create_trip().
+3. `require_driver_trip_publication` is the canonical create-trip
+   dependency: it combines active-level, driver-role, and basic-onboarding /
+   approved publication gating.
 4. `_require_role(user, ("client",), ...)` in create_cargo().
 5. `_require_role(...)` in create_bid(), keyed off which of cargo_id/
    trip_id the bid targets.
@@ -166,14 +168,13 @@ def test_active_status_still_works_publicly():
 def test_client_role_cannot_create_trip():
     client_id = new_id()
     seed_driver(client_id, role="client", verification_level=1, status="approved")
-    body = marketplace.TripIn(
-        from_city="Almaty", to_city="Moscow", truck_type="tent",
-        capacity_tons=20, price=5000,
-    )
+    token = make_token(client_id)
+    from api.verification_gate import require_driver_trip_publication
+
     with pytest.raises(HTTPException) as exc_info:
-        marketplace.create_trip(body=body, user={"id": client_id, "role": "client", "phone": "+700"})
+        require_driver_trip_publication(authorization=f"Bearer {token}")
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail["error"] == "ROLE_NOT_ALLOWED"
+    assert exc_info.value.detail["error"] == "driver_role_required"
 
 
 def test_driver_role_can_still_create_trip():
