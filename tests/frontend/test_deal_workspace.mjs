@@ -53,14 +53,15 @@ test('accepted deal details keep message CTA and hide external call handoff', ()
   }
 });
 
-test('deal workspace has scroll-away compact information header and no repeated UrTruck brand bar', () => {
+test('deal workspace has a fixed compact information header and no repeated UrTruck brand bar', () => {
   assert.match(workspace, /testID="deal-compact-header"/);
   assert.match(workspace, /testID="deal-workspace-back"/);
   assert.match(workspace, /cargoMeta/);
   assert.match(workspace, /scheduleMeta/);
   assert.match(workspace, /counterpartyMeta/);
   assert.match(workspace, /const compactHeader = \(/);
-  assert.match(workspace, /ListHeaderComponent=\{compactHeader\}/);
+  assert.match(workspace, /\{compactHeader\}/);
+  assert.doesNotMatch(workspace, /ListHeaderComponent=\{compactHeader\}/);
   assert.doesNotMatch(workspace, /BrandBarWithShare|>UrTruck</);
   assert.doesNotMatch(brand, />UrTruck</);
   assert.match(brand, /compact-child-header/);

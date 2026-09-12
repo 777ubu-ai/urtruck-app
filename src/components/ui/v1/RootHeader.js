@@ -7,7 +7,7 @@ import { useAuth } from '../../../utils/AuthContext';
 import { useUnreadNotifications } from '../../../utils/useUnreadNotifications';
 
 /** Canonical root header: notifications left, profile/menu right. */
-export default function RootHeader({ navigation, role, onBellPress, bellCount, testID = 'root-header', bellTestID, menuTestID, ceramic = false }) {
+export default function RootHeader({ navigation, role, onBellPress, bellCount, testID = 'root-header', bellTestID, menuTestID, ceramic = false, hideBell = false }) {
   const colors = useV1Colors();
   const ceramicColors = useDriverCeramicColors();
   const palette = ceramic ? ceramicColors : colors;
@@ -18,7 +18,7 @@ export default function RootHeader({ navigation, role, onBellPress, bellCount, t
   const visibleBellCount = Number.isFinite(Number(bellCount)) ? Number(bellCount) : unread;
   return (
     <View style={[s.row, { backgroundColor: palette.bg }]} testID={testID}>
-      <BellBadge onPress={onBellPress} count={visibleBellCount} ceramic={ceramic} testID={bellTestID || `${testID}-bell`} />
+      {hideBell ? null : <BellBadge onPress={onBellPress} count={visibleBellCount} ceramic={ceramic} testID={bellTestID || `${testID}-bell`} />}
       <HeaderMenuButton navigation={navigation} role={role} color={palette.text} testID={menuTestID || `${testID}-menu`} />
     </View>
   );

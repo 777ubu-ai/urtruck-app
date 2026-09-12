@@ -12,7 +12,7 @@ import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import { localizePlace, localizeCargoName } from '../utils/places';
 import EmptyState from '../components/ui/EmptyState';
 import EditCargoModal from '../components/EditCargoModal';
-import {v1Colors, useV1Colors, useDriverCeramicColors, v1AccentFor, v1StatusColors, v1Spacing, v1Typography} from '../theme/designV1';
+import {v1Colors, useV1Colors, useDriverCeramicColors, useShipperCeramicColors, v1AccentFor, v1StatusColors, v1Spacing, v1Typography} from '../theme/designV1';
 import { useMountedRef } from '../hooks/useMountedRef';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import FadeInUp from '../components/ui/FadeInUp';
@@ -51,9 +51,10 @@ const myItemStatusColor = (colors, st) => {
 export default function MyTripsScreen({ navigation, route }) {
   const v1Base = useV1Colors();
   const ceramic = useDriverCeramicColors();
+  const shipper = useShipperCeramicColors();
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const v1 = isDriver ? ceramic : v1Base;
+  const v1 = isDriver ? ceramic : shipper;
   const s = React.useMemo(() => StyleSheet.create({
 
   // v1 brand bar (mirrors FeedScreen)
@@ -114,9 +115,16 @@ export default function MyTripsScreen({ navigation, route }) {
   editBtnText: { color: v1.active || v1.driver, fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
   extendBtn: { flex: 1, backgroundColor: v1.active || v1.driver, borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
   extendBtnText: { color: v1.activeText || v1.driverOnAccent || '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
+  clientTopRow: { minHeight: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: v1.bg },
+  clientTopTitle: { flex: 1, color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
+  clientCreateBtn: { width: 144, height: 40, borderRadius: 14, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surfaceMuted, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, shadowColor: v1.shadow, shadowOpacity: 0.12, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  clientCreateText: { color: v1.text, fontSize: 13, fontWeight: '700' },
+  clientTabsRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  clientTab: { flex: 1, minHeight: 40, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  clientTabText: { fontSize: 13, fontWeight: '700' },
 
   }), [v1]);
-  const accent = isDriver ? DRIVER_CERAMIC.active : '#FF8400';
+  const accent = isDriver ? DRIVER_CERAMIC.active : shipper.active;
   const { t, lang } = useI18n();
   const { requireLevel, Gate } = useVerificationGate();
   const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
@@ -383,7 +391,7 @@ export default function MyTripsScreen({ navigation, route }) {
 
     return (
       <MarketplaceCard
-        variant={isDriver ? 'driver' : 'default'}
+        variant={isDriver ? 'driver' : 'shipper'}
         testID={isCargo ? 'my-cargo-card' : 'my-trip-card'}
         style={s.cardSpacing}
         onPress={() => {
@@ -621,11 +629,29 @@ export default function MyTripsScreen({ navigation, route }) {
 
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      {isDriver ? <DriverRouteBackdrop /> : null}
-      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={async () => {
+      <DriverRouteBackdrop />
+      {isDriver ? <RootHeader ceramic navigation={navigation} role={role} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
             if (ok) navigation.navigate('PushFilter', { role });
-          }} />
+          }} /> : (
+        <View style={s.clientTopRow} testID="mywork-minimal-header">
+          <Text style={s.clientTopTitle}>{t('my_cargos_title')}</Text>
+          <BellBadge onPress={async () => {
+            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
+            if (ok) navigation.navigate('PushFilter', { role });
+          }} testID="mywork-notification-settings-btn" ceramic />
+          <TouchableOpacity
+            testID="mytrips-place-cargo"
+            style={s.clientCreateBtn}
+            onPress={() => navigation.navigate('CreateCargo', { role })}
+            activeOpacity={0.78}
+          >
+            <Feather name="plus" size={14} color={shipper.text} />
+            <Text style={s.clientCreateText}>{t('place_cargo')}</Text>
+          </TouchableOpacity>
+          <HeaderMenuButton navigation={navigation} role={role} testID="mywork-menu-btn" color={shipper.text} />
+        </View>
+      )}
 
       <FlatList
         data={listData}
@@ -633,11 +659,11 @@ export default function MyTripsScreen({ navigation, route }) {
         renderItem={listRender}
         ListHeaderComponent={(
           <>
-            <View style={s.titleBlock}>
+            <View style={[s.titleBlock, !isDriver && { display: 'none' }]}>
               <Text style={s.titleHero}>{isDriver ? t('my_trips_title') : t('my_cargos_title')}</Text>
               <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
             </View>
-            <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+            <View style={[{ paddingHorizontal: 16, marginBottom: 10 }, !isDriver && { display: 'none' }]}>
               <TouchableOpacity
                 testID={isDriver ? 'mytrips-publish-route' : 'mytrips-place-cargo'}
                 onPress={isDriver ? onPublishRoute : () => navigation.navigate('CreateCargo', { role })}
@@ -650,7 +676,7 @@ export default function MyTripsScreen({ navigation, route }) {
                 </View>
               </TouchableOpacity>
             </View>
-            <View style={{ paddingHorizontal: 16 }}>
+            <View style={[{ paddingHorizontal: 16 }, !isDriver && { display: 'none' }]}>
               <TouchableOpacity
                 testID="my-work-archive-toggle"
                 onPress={() => setTab(tab === 'archive' ? (isDriver ? 'routes' : 'searching') : 'archive')}
@@ -662,6 +688,25 @@ export default function MyTripsScreen({ navigation, route }) {
                 </Text>
               </TouchableOpacity>
             </View>
+            {!isDriver ? (
+              <View style={s.clientTabsRow} testID="my-work-tabs">
+                {[
+                  ['searching', t('tab_active') || t('my_cargos_title'), clientSearching.length],
+                  ['archive', t('tab_archive'), clientArchive.length],
+                ].map(([key, label, count]) => (
+                  <TouchableOpacity
+                    key={key}
+                    testID={`my-work-tab-${key}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: tab === key }}
+                    onPress={() => setTab(key)}
+                    style={[s.clientTab, { borderColor: tab === key ? shipper.active : shipper.border, backgroundColor: tab === key ? shipper.activeSoft : shipper.surface }]}
+                  >
+                    <Text style={[s.clientTabText, { color: tab === key ? shipper.text : shipper.textMuted }]}>{label} {count}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
           </>
         )}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
@@ -672,6 +717,7 @@ export default function MyTripsScreen({ navigation, route }) {
       <EditCargoModal
         visible={!!editCargo}
         cargo={editCargo}
+        role={role}
         onClose={() => setEditCargo(null)}
         onSaved={() => load()}
       />

@@ -19,7 +19,7 @@ import { addCustomCargoType } from '../utils/cargoTypes';
 import DatePicker from '../components/DatePicker';
 import { normalizeDateInput } from '../utils/dateInput';
 import { PhotoPicker } from '../components/PhotoGallery';
-import {v1Colors, useV1Colors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
+import {v1Colors, useV1Colors, useShipperCeramicColors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import TruckTypeGrid from '../components/TruckTypeGrid';
 
@@ -61,7 +61,9 @@ const normalizeDecimal = (v) => {
 };
 
 export default function CreateCargoScreen({ navigation, route }) {
-  const v1 = useV1Colors();
+  const baseV1 = useV1Colors();
+  const shipper = useShipperCeramicColors();
+  const v1 = (route?.params?.role || 'client') === 'client' ? shipper : baseV1;
   const s = React.useMemo(() => StyleSheet.create({
 
   title: { ...v1Typography.h1, fontSize: 19, fontWeight: '700', letterSpacing: -0.2, marginTop: v1Spacing.sm },
@@ -101,7 +103,7 @@ export default function CreateCargoScreen({ navigation, route }) {
 
   }), [v1]);
   const role = route?.params?.role || 'client';
-  const accent = v1AccentFor('client');
+  const accent = (route?.params?.role || 'client') === 'client' ? shipper : v1AccentFor('driver');
   const { t, lang } = useI18n();
   const { toast } = useToast();
   const { session } = useAuth();
@@ -241,11 +243,11 @@ export default function CreateCargoScreen({ navigation, route }) {
   // at the bottom of the scroll content. Scroll container itself is
   // unchanged (same Screen + canonical keyboard-safe scroll).
   return (
-    <Screen
+    <Screen ceramic
       contentStyle={{ paddingBottom: 24 }}
       footer={(
         <StickyCTABar>
-          <PrimaryButton
+          <PrimaryButton ceramic
             label={t('publish_cargo_action')}
             onPress={submit}
             loading={submitting}
@@ -256,12 +258,12 @@ export default function CreateCargoScreen({ navigation, route }) {
         </StickyCTABar>
       )}
     >
-      <BrandHeader onBack={() => navigation.goBack()} accent={accent.main} />
+      <BrandHeader ceramic onBack={() => navigation.goBack()} accent={accent.main} />
 
       <Text style={s.title}>{t('postCargo')}</Text>
       <Text style={s.subtitle}>{t('create_cargo_subtitle')}</Text>
 
-      <Field
+      <Field ceramic
         variant="dropdown"
         featherIcon="map-pin"
         leading={fromPoint?.country ? <CountryFlag code={fromPoint.country} width={23} /> : null}
@@ -272,7 +274,7 @@ export default function CreateCargoScreen({ navigation, route }) {
       />
       {errors.from ? <Text style={s.err}>⚠️ {errors.from}</Text> : null}
 
-      <Field
+      <Field ceramic
         variant="dropdown"
         featherIcon="map-pin"
         leading={toPoint?.country ? <CountryFlag code={toPoint.country} width={23} /> : null}
@@ -338,7 +340,7 @@ export default function CreateCargoScreen({ navigation, route }) {
 
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
-          <Field
+          <Field ceramic
             variant="dropdown"
             featherIcon="truck"
             label={t('truckType')}
@@ -347,7 +349,7 @@ export default function CreateCargoScreen({ navigation, route }) {
           />
         </View>
         <View style={{ flex: 1 }}>
-          <Field
+          <Field ceramic
             variant="dropdown"
             featherIcon="calendar"
             label={t('pickupDate')}
@@ -396,7 +398,7 @@ export default function CreateCargoScreen({ navigation, route }) {
           непонятно, где вес, где кубатура. */}
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
-          <Field
+          <Field ceramic
             label={t('weight_label')}
             value={tons}
             onChangeText={(v) => { setTons(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
@@ -406,7 +408,7 @@ export default function CreateCargoScreen({ navigation, route }) {
           />
         </View>
         <View style={{ flex: 1 }}>
-          <Field
+          <Field ceramic
             label={t('volume_label')}
             value={m3}
             onChangeText={(v) => { setM3(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
@@ -427,7 +429,7 @@ export default function CreateCargoScreen({ navigation, route }) {
         </View>
         <View style={s.row2}>
           <View style={{ flex: 1 }}>
-            <Field
+            <Field ceramic
               featherIcon="credit-card"
               label={t('amount_label')}
               value={price}
@@ -438,7 +440,7 @@ export default function CreateCargoScreen({ navigation, route }) {
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Field
+            <Field ceramic
               variant="dropdown"
               featherIcon="dollar-sign"
               label={t('currency_label')}
@@ -485,7 +487,7 @@ export default function CreateCargoScreen({ navigation, route }) {
 
       {/* Фото груза — collapsible */}
       <TouchableOpacity onPress={() => setShowPhotos((v) => !v)} activeOpacity={0.85} style={[s.photoToggle, { borderColor: v1.border }]}>
-        <Text style={s.photoIcon}>🖼</Text>
+        <Feather name="image" size={17} color={v1.textMuted} style={{ width: 20, textAlign: 'center' }} />
         <View style={{ flex: 1 }}>
           <Text style={s.photoLabel}>{t('cargo_photos_label')}</Text>
           <Text style={s.photoSub}>{t('cargo_photos_sub')}</Text>
@@ -503,9 +505,10 @@ export default function CreateCargoScreen({ navigation, route }) {
           вверху файла. */}
 
       <View style={[s.infoBox, { backgroundColor: accent.soft, borderColor: accent.main }]}>
-        <Text style={[s.infoText, { color: accent.main }]} numberOfLines={3}>
-          🛡  {t('create_cargo_visibility')}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+          <Feather name="shield" size={14} color={accent.main} />
+          <Text style={[s.infoText, { color: accent.main, flex: 1 }]} numberOfLines={3}>{t('create_cargo_visibility')}</Text>
+        </View>
       </View>
 
       {/* «Сохранить черновик» убран (2026-06-13): кнопка только тостила

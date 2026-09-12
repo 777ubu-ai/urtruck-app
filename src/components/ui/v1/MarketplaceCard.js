@@ -55,7 +55,7 @@ export default function MarketplaceCard({
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       style={[s.card, dimmed && s.dimmed, style]}
-      ceramic={variant === 'driver'}
+      ceramic={variant === 'driver' || variant === 'shipper'}
     >
       <View style={s.topRow}>
         {structured ? (

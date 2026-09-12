@@ -6,7 +6,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { setLanguage, getLanguage } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
-import { useV1Colors } from '../theme/designV1';
+import { useV1Colors, useShipperCeramicColors } from '../theme/designV1';
 import { useAuth } from '../utils/AuthContext';
 import { getProfile, saveProfile } from '../utils/store';
 import { storage } from '../utils/storage';
@@ -57,10 +57,12 @@ const APP_VERSION_LABEL = (() => {
 export default function ProfileScreen({ navigation, route }) {
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const accent = isDriver ? '#168759' : '#FF8400';
+  const baseV1 = useV1Colors();
+  const shipper = useShipperCeramicColors();
+  const accent = isDriver ? '#168759' : shipper.active;
   const onAccent = '#0C0A09';
   const { isDark, toggleTheme } = useTheme();
-  const v1 = useV1Colors();
+  const v1 = isDriver ? baseV1 : shipper;
   const theme = {
     ...v1,
     card: v1.surface,
@@ -188,7 +190,7 @@ export default function ProfileScreen({ navigation, route }) {
                 <Feather name="arrow-left" size={24} color={theme.text} />
               </TouchableOpacity>
             ) : null}
-            <GradientText style={s.title} colors={isDriver ? ['#168759', '#00C766'] : ['#FF8400', '#EF4444']}>{t('profile')}</GradientText>
+            <GradientText style={s.title} colors={[accent, accent]}>{t('profile')}</GradientText>
           </View>
           <HelpButton accent={accent} />
         </View>

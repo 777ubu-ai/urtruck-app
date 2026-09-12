@@ -14,7 +14,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../utils/useI18n';
 import { formatStatus } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
-import { useV1Colors } from '../theme/designV1';
+import { useV1Colors, useShipperCeramicColors } from '../theme/designV1';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import SegmentTabs from '../components/ui/v1/SegmentTabs';
 import { chatAPI } from '../utils/chatAPI';
@@ -53,12 +53,15 @@ const compactStatusLabel = (status, t) => {
 };
 
 export default function ChatsListScreen({ navigation, route }) {
-  const v1 = useV1Colors();
+  const v1Base = useV1Colors();
+  const shipper = useShipperCeramicColors();
   const { t, lang } = useI18n();
-  const { theme } = useTheme();
+  const { theme: baseTheme } = useTheme();
   const { toast } = useToast();
   const role = route?.params?.role || 'client';
-  const accent = accentFor(role);
+  const theme = role === 'driver' ? baseTheme : { ...shipper, card: shipper.surface, textSecondary: shipper.textMuted };
+  const v1 = role === 'driver' ? v1Base : shipper;
+  const accent = role === 'driver' ? accentFor(role) : { main: shipper.active, soft: shipper.activeSoft };
   const dealsMode = route?.name === 'Deals';
 
   // ═══ Общее состояние ═══

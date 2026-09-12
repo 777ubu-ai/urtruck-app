@@ -51,17 +51,18 @@ export default function BottomNav({ state, navigation }) {
   const { t, sp } = useI18n();
   const role = session?.user?.role || state.routes[0]?.params?.role || 'client';
   const isDriver = role === 'driver';
+  const isCeramic = isDriver || role === 'client';
   // Client values are palette tokens (see the comment above DRIVER_ACCENT);
   // `?? '#FF8400'` is a defensive fallback only — DARK also declares it.
-  const accent = isDriver
+  const accent = isCeramic
     ? { main: ceramic.active, soft: ceramic.activeSoft }
     : { main: colors.clientAccent ?? '#FF8400', soft: colors.clientNavPill ?? '#FFF3E6' };
-  const focusedIconColor = isDriver ? accent.main : (colors.clientNavIcon ?? '#C2410C');
-  const focusedLabelColor = isDriver ? accent.main : (colors.clientNavLabel ?? '#C2410C');
+  const focusedIconColor = isCeramic ? accent.main : (colors.clientNavIcon ?? '#C2410C');
+  const focusedLabelColor = isCeramic ? accent.main : (colors.clientNavLabel ?? '#C2410C');
   // Theme-aware inactive label: light resolves to the same #617067 the old
   // frozen designSystemV2 token carried; dark now resolves to the dark
   // textMuted instead of staying frozen light.
-  const inactiveColor = isDriver ? ceramic.textMuted : colors.textMuted;
+  const inactiveColor = isCeramic ? ceramic.textMuted : colors.textMuted;
 
   const [chatUnread, setChatUnread] = useState(0);
   const [dealsUnread, setDealsUnread] = useState(0);
@@ -165,8 +166,8 @@ export default function BottomNav({ state, navigation }) {
   // не графитовый хардкод #111827 из прежней темы. Светлая плашка —
   // colors.surface (тот же #FFFFFF; токен, а не хардкод, чтобы QA smoke
   // проверял именно рендер-поверхность).
-  const barBg = isDriver ? ceramic.surface : (isDark ? colors.bg : colors.surface);
-  const barBorder = isDriver ? ceramic.border : (isDark ? 'rgba(255,255,255,0.08)' : '#E5ECE8');
+  const barBg = isCeramic ? ceramic.surface : (isDark ? colors.bg : colors.surface);
+  const barBorder = isCeramic ? ceramic.border : (isDark ? 'rgba(255,255,255,0.08)' : '#E5ECE8');
 
   return (
     <View style={[styles.wrap, { paddingBottom: bottomPad }]} pointerEvents="box-none" testID="bottom-nav">
@@ -209,7 +210,7 @@ export default function BottomNav({ state, navigation }) {
                   <Feather name={iconName} size={22} color={iconColor} />
                 )}
                 {showBadge ? (
-                  <View style={[styles.iconBadge, { backgroundColor: isDriver ? ceramic.error : colors.error, borderColor: barBg }]} testID={badgeTestID}>
+                    <View style={[styles.iconBadge, { backgroundColor: isCeramic ? ceramic.error : colors.error, borderColor: barBg }]} testID={badgeTestID}>
                     <Text style={styles.iconBadgeText}>{badgeLabel}</Text>
                   </View>
                 ) : null}

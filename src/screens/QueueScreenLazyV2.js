@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
-import { useV1Colors, useDriverCeramicColors } from '../theme/designV1';
+import { useV1Colors, useDriverCeramicColors, useShipperCeramicColors } from '../theme/designV1';
 import { DRIVER_CERAMIC } from '../theme/designV1Palette';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
@@ -176,12 +176,13 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const { theme: themeBase } = useTheme();
   const v1Base = useV1Colors();
   const ceramic = useDriverCeramicColors();
+  const shipper = useShipperCeramicColors();
   const { t, lang, sp } = useI18n();
   const L = COPY[lang] || COPY.RU;
   const role = route?.params?.role || 'driver';
   const isDriver = role === 'driver';
-  const activeColor = isDriver ? DRIVER_CERAMIC.active : '#168759';
-  const v1 = isDriver ? ceramic : v1Base;
+  const activeColor = isDriver ? DRIVER_CERAMIC.active : shipper.active;
+  const v1 = isDriver ? ceramic : shipper;
   const theme = isDriver ? {
     ...themeBase,
     bg: DRIVER_CERAMIC.bg,
@@ -191,7 +192,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     textMuted: DRIVER_CERAMIC.textMuted,
     textDim: DRIVER_CERAMIC.textDim,
     border: DRIVER_CERAMIC.border,
-  } : themeBase;
+  } : { ...themeBase, bg: shipper.bg, card: shipper.surface, surface: shipper.surface, text: shipper.text, textMuted: shipper.textMuted, textDim: shipper.textDim, border: shipper.border };
   const { requireLevel } = useVerificationGate();
 
   const [catalog, setCatalog] = useState([]);
@@ -293,8 +294,8 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: v1.bg }]} edges={['top']} testID="border-screen-v2">
-      {isDriver ? <DriverRouteBackdrop /> : null}
-      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="queue-root-header" onBellPress={async () => {
+      <DriverRouteBackdrop />
+      <RootHeader ceramic navigation={navigation} role={role} testID="queue-root-header" onBellPress={async () => {
         const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
         if (ok) navigation.navigate('PushFilter', { role });
       }} />

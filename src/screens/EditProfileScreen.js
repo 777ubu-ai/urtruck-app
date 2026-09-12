@@ -9,15 +9,23 @@ import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
+import BottomSheet from '../components/ui/v1/BottomSheet';
 import HelpButton from '../components/HelpButton';
 import { useDraft, clearDraft } from '../utils/useDraft';
 import { regAPI } from '../utils/registration';
 import { uploadProDoc } from '../utils/proDocs';
-import {v1Colors, useV1Colors, v1Spacing, v1Typography, v1AccentFor, v1Radius} from '../theme/designV1';
+import {v1Colors, useV1Colors, useShipperCeramicColors, v1Spacing, v1Typography, v1AccentFor, v1Radius} from '../theme/designV1';
+import Feather from '@expo/vector-icons/Feather';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { localizePlace } from '../utils/places';
 
 const BORDERS = ['Нур Жолы', 'Калжат', 'Достык', 'Бахты', 'Майкапчагай', 'Хоргос'];
+const MESSENGERS = [
+  { k: 'wechat', label: 'WeChat', icon: 'message-circle' },
+  { k: 'whatsapp', label: 'WhatsApp', icon: 'phone' },
+  { k: 'telegram', label: 'Telegram', icon: 'send' },
+  { k: 'viber', label: 'Viber', icon: 'phone-call' },
+];
 
 // EditProfileScreen — design v1, screens 05 (driver) & 06 (cargo owner).
 //
@@ -30,7 +38,11 @@ const BORDERS = ['Нур Жолы', 'Калжат', 'Достык', 'Бахты'
 // stage-2 "Transport" screen will edit them. Nothing is lost.
 
 export default function EditProfileScreen({ navigation, route }) {
-  const v1 = useV1Colors();
+  const baseV1 = useV1Colors();
+  const shipper = useShipperCeramicColors();
+  const { role } = route.params || {};
+  const isDriver = role === 'driver';
+  const v1 = isDriver ? baseV1 : shipper;
   const s = React.useMemo(() => StyleSheet.create({
 
   title: { ...v1Typography.h1, textAlign: 'center', marginTop: v1Spacing.md },
@@ -78,6 +90,10 @@ export default function EditProfileScreen({ navigation, route }) {
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1,
   },
   borderChipText: { fontSize: 12, fontWeight: '600' },
+  messengerSelector: { minHeight: 52, borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  messengerSelectorText: { flex: 1, fontSize: 15, fontWeight: '600' },
+  messengerOption: { minHeight: 52, borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  messengerOptionText: { flex: 1, fontSize: 15, fontWeight: '600' },
   helpRow: { position: 'absolute', top: 8, right: 8, zIndex: 10 },
   docRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -94,9 +110,7 @@ export default function EditProfileScreen({ navigation, route }) {
   docRowStatus: { fontSize: 11, marginTop: 2 },
 
   }), [v1]);
-  const { role } = route.params || {};
-  const isDriver = role === 'driver';
-  const accent = v1AccentFor(role);
+  const accent = isDriver ? v1AccentFor(role) : { main: shipper.active, soft: shipper.activeSoft };
   const accentKey = isDriver ? 'driver' : 'cargo';
   const { t, lang } = useI18n();
   const { session, signOut } = useAuth();
@@ -120,6 +134,7 @@ export default function EditProfileScreen({ navigation, route }) {
   // Предпочтительный мессенджер грузоотправителя + ID (WeChat важен для Китая).
   const [messengerType, setMessengerType] = useState(profile.messenger_type || '');
   const [messengerId, setMessengerId] = useState(profile.messenger_id || '');
+  const [messengerOpen, setMessengerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // PR-D1: PRO-секция (только водитель). Минимальный набор по спеке
@@ -325,8 +340,8 @@ export default function EditProfileScreen({ navigation, route }) {
   };
 
   return (
-    <Screen>
-      <BrandHeader onBack={() => navigation.goBack()} accent={accent.main} compact />
+    <Screen ceramic={!isDriver}>
+      <BrandHeader ceramic={!isDriver} onBack={() => navigation.goBack()} accent={accent.main} compact />
       <View style={s.helpRow}>
         <HelpButton accent={accent.main} />
       </View>
@@ -344,19 +359,19 @@ export default function EditProfileScreen({ navigation, route }) {
             <Image source={{ uri: avatar }} style={[s.avatar, { borderColor: accent.main }]} />
           ) : (
             <View style={[s.avatar, { borderColor: accent.main, backgroundColor: accent.soft }]}>
-              <Text style={s.avatarPlaceholder}>👤</Text>
+              <Feather name="user" size={32} color={accent.main} />
             </View>
           )}
           <View style={[s.cameraBadge, { backgroundColor: accent.main }]}>
-            <Text style={s.cameraIcon}>📷</Text>
+            <Feather name="camera" size={13} color={v1.text} />
           </View>
         </TouchableOpacity>
         <Text style={[s.avatarHint, { color: accent.main }]}>{t('profile_setup_add_photo')}</Text>
       </View>
 
-      <Field featherIcon="user" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} placeholder={t('signup_field_first_name')} />
-      <Field featherIcon="user" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} placeholder={t('signup_field_last_name')} />
-      <Field featherIcon="phone" label={t('signup_field_phone')} value={phone} onChangeText={() => {}} editable={false} />
+      <Field ceramic={!isDriver} featherIcon="user" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} placeholder={t('signup_field_first_name')} />
+      <Field ceramic={!isDriver} featherIcon="user" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} placeholder={t('signup_field_last_name')} />
+      <Field ceramic={!isDriver} featherIcon="phone" label={t('signup_field_phone')} value={phone} onChangeText={() => {}} editable={false} />
       {/* Stage 21: previously these were `Field variant="dropdown"`
           with `onPress={() => {}}` — taps did nothing, so users
           reported "страна не выбирается" and "город не выбирается".
@@ -365,13 +380,13 @@ export default function EditProfileScreen({ navigation, route }) {
           field — same shape as RegScreen for the client flow.
           Picker UI for multi-country onboarding is tracked
           separately. */}
-      <Field
+      <Field ceramic={!isDriver}
         featherIcon="globe"
         label={t('signup_field_country')}
         value={t('country_kazakhstan')}
         editable={false}
       />
-      <Field
+      <Field ceramic={!isDriver}
         featherIcon="map-pin"
         label={t('signup_field_city')}
         value={city}
@@ -380,24 +395,16 @@ export default function EditProfileScreen({ navigation, route }) {
       />
       {!isDriver ? (
         <>
-          <Field
+          <Field ceramic={!isDriver}
             featherIcon="briefcase"
             label={t('signup_field_company')}
             placeholder={t('signup_field_company_optional')}
             value={company}
             onChangeText={setCompany}
           />
-          <Field
-            featherIcon="hash"
-            label={t('bin_inn_label')}
-            placeholder={t('bin_inn_ph')}
-            value={binInn}
-            onChangeText={(v) => setBinInn(v.replace(/[^\d]/g, '').slice(0, 12))}
-            keyboardType="number-pad"
-          />
         </>
       ) : null}
-      <Field
+      <Field ceramic={!isDriver}
         featherIcon="mail"
         label={t('signup_field_email_optional')}
         value={email}
@@ -415,32 +422,33 @@ export default function EditProfileScreen({ navigation, route }) {
           <Text style={[v1Typography.small, { color: v1.textMuted, marginBottom: 6, marginLeft: 4 }]}>
             {t('messenger_pref')}
           </Text>
-          <View style={s.bordersWrap}>
-            {[
-              { k: 'wechat', label: '💚 WeChat' },
-              { k: 'whatsapp', label: '📱 WhatsApp' },
-              { k: 'telegram', label: '💬 Telegram' },
-              { k: 'viber', label: '☎️ Viber' },
-            ].map((m) => {
-              const active = messengerType === m.k;
-              return (
-                <TouchableOpacity
-                  key={m.k}
-                  style={[s.borderChip, {
-                    backgroundColor: active ? accent.soft : v1.bg,
-                    borderColor: active ? accent.main : v1.border,
-                  }]}
-                  onPress={() => setMessengerType(active ? '' : m.k)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[s.borderChipText, { color: active ? accent.main : v1.textMuted }]}>{m.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <TouchableOpacity
+            style={[s.messengerSelector, { backgroundColor: v1.surface, borderColor: v1.border }]}
+            onPress={() => setMessengerOpen(true)}
+            testID="messenger-selector"
+          >
+            <Feather name="message-circle" size={18} color={v1.textMuted} />
+            <Text style={[s.messengerSelectorText, { color: messengerType ? v1.text : v1.textMuted }]}>
+              {MESSENGERS.find((item) => item.k === messengerType)?.label || t('messenger_pref')}
+            </Text>
+            <Feather name="chevron-down" size={17} color={v1.textMuted} />
+          </TouchableOpacity>
+          <BottomSheet visible={messengerOpen} onClose={() => setMessengerOpen(false)} title={t('messenger_pref')}>
+            {MESSENGERS.map((messenger) => (
+              <TouchableOpacity
+                key={messenger.k}
+                style={[s.messengerOption, { borderColor: v1.border, backgroundColor: messengerType === messenger.k ? v1.surfaceMuted : v1.surface }]}
+                onPress={() => { setMessengerType(messenger.k); setMessengerOpen(false); }}
+              >
+                <Feather name={messenger.icon} size={18} color={v1.textMuted} />
+                <Text style={[s.messengerOptionText, { color: v1.text }]}>{messenger.label}</Text>
+                {messengerType === messenger.k ? <Feather name="check" size={18} color={accent.main} /> : null}
+              </TouchableOpacity>
+            ))}
+          </BottomSheet>
           {messengerType ? (
             <View style={{ marginTop: 8 }}>
-              <Field
+              <Field ceramic={!isDriver}
                 featherIcon="at-sign"
                 label={t('messenger_id_label')}
                 placeholder={t('messenger_id_ph')}
@@ -479,7 +487,7 @@ export default function EditProfileScreen({ navigation, route }) {
           })}
 
           <Text style={s.proSectionTitle}>{t('pro_section_routes')}</Text>
-          <Field
+          <Field ceramic={!isDriver}
             featherIcon="map"
             label={t('pro_field_china_experience')}
             value={chinaExp}
@@ -512,7 +520,7 @@ export default function EditProfileScreen({ navigation, route }) {
           </View>
 
           <Text style={s.proSectionTitle}>{t('pro_section_emergency')}</Text>
-          <Field
+          <Field ceramic={!isDriver}
             featherIcon="alert-triangle"
             label={t('pro_field_emergency_contact')}
             value={emergency}
@@ -574,7 +582,7 @@ export default function EditProfileScreen({ navigation, route }) {
         </Text>
       </View>
 
-      <PrimaryButton
+      <PrimaryButton ceramic={!isDriver}
         label={t('profile_setup_save')}
         onPress={save}
         loading={saving}
@@ -605,4 +613,3 @@ export default function EditProfileScreen({ navigation, route }) {
     </Screen>
   );
 }
-

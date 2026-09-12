@@ -9,7 +9,7 @@ import { useTheme } from '../utils/ThemeContext';
 // qa/utils/themeContrastSmoke.js can import the real values instead of a
 // hand-copy that had already drifted (see that file's own comment). This
 // file adds nothing but the theme-aware hook on top of the same data.
-import { LIGHT, DARK, DRIVER_CERAMIC, withAlpha } from './designV1Palette';
+import { LIGHT, DARK, DRIVER_CERAMIC, SHIPPER_CERAMIC, withAlpha } from './designV1Palette';
 
 // Backwards compatibility. User-facing surfaces/text should not consume
 // theme-dependent keys from this frozen object; qa/utils/themeSmoke.js guards
@@ -17,8 +17,10 @@ import { LIGHT, DARK, DRIVER_CERAMIC, withAlpha } from './designV1Palette';
 export const v1Colors = LIGHT;
 export { withAlpha };
 export { DRIVER_CERAMIC };
+export { SHIPPER_CERAMIC };
 
 export const useDriverCeramicColors = () => DRIVER_CERAMIC;
+export const useShipperCeramicColors = () => SHIPPER_CERAMIC;
 
 export const useV1Colors = () => {
   const { isDark } = useTheme();

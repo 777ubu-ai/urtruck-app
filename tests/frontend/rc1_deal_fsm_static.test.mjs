@@ -24,13 +24,13 @@ const trackSrc = fs.readFileSync(new URL('../../src/screens/TrackTruckScreen.js'
 const webMapSrc = fs.readFileSync(new URL('../../src/components/TruckMap.web.js', import.meta.url), 'utf8');
 const geoSrc = fs.readFileSync(new URL('../../src/utils/geo.js', import.meta.url), 'utf8');
 
-test('opening the map hides the chat header (and everything in it) instead of leaving it visible', () => {
-  // compactHeader (which holds the map/status header buttons) is only
-  // wired in as the chat FlatList's ListHeaderComponent, itself gated on
-  // viewMode === VIEW_CHAT — so switching to the map view unmounts it
-  // entirely rather than layering the map on top of it.
+test('opening the map hides the fixed chat header (and everything in it)', () => {
+  // compactHeader (which holds the map/status header buttons) is mounted
+  // inside the chat branch, above the messages list. Switching to the map
+  // view unmounts the complete chat branch rather than layering the map on it.
   assert.match(dealWorkspace, /viewMode === VIEW_CHAT \? \(/);
-  assert.match(dealWorkspace, /ListHeaderComponent=\{compactHeader\}/);
+  assert.match(dealWorkspace, /\{compactHeader\}/);
+  assert.doesNotMatch(dealWorkspace, /ListHeaderComponent=\{compactHeader\}/);
 });
 
 test('the deal workspace opens its map in place, not by navigating to a separate screen', () => {

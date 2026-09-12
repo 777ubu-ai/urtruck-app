@@ -35,7 +35,7 @@ import { getLanguage, formatStatus, formatTruckType } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useAuth } from '../utils/AuthContext';
 import { useToast } from '../components/Toast';
-import { useV1Colors, getBubbleColors, withAlpha } from '../theme/designV1';
+import { useV1Colors, useShipperCeramicColors, getBubbleColors, withAlpha } from '../theme/designV1';
 import { useTheme } from '../utils/ThemeContext';
 import { formatPrice } from '../utils/normalizers';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
@@ -244,23 +244,27 @@ const yandexMapsLink = (lat, lng) => `https://yandex.ru/maps/?pt=${lng},${lat}&z
 export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { t, lang, sp } = useI18n();
   const ui = COPY[lang] || COPY.RU;
-  const colors = useV1Colors();
+  const params = route?.params || {};
+  const { session } = useAuth();
+  const roleHint = params.role || session?.user?.role || 'client';
+  const baseColors = useV1Colors();
+  const shipperColors = useShipperCeramicColors();
+  const colors = roleHint === 'driver' ? baseColors : shipperColors;
   const { isDark } = useTheme();
   // Chat bubble canon (Commit 5): outgoing = WhatsApp-family green from
   // getBubbleColors, incoming = surface + hairline border. Everything that
   // lives ON a bubble (text, timestamps, translate link, doc icons) derives
   // from these — no standalone hardcoded fork.
-  const bubbleMineColors = getBubbleColors(true, !!isDark);
+  const bubbleMineColors = roleHint === 'driver'
+    ? getBubbleColors(true, !!isDark)
+    : { backgroundColor: shipperColors.surfaceMuted, borderColor: shipperColors.border, textColor: shipperColors.text };
   const bubbleSurfaceFor = React.useCallback((mine) => (mine
     ? { backgroundColor: bubbleMineColors.backgroundColor, borderColor: bubbleMineColors.borderColor }
     : { backgroundColor: colors.surface, borderColor: colors.border }), [bubbleMineColors, colors]);
-  const { session } = useAuth();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
   const chatKeyboardInset = useKeyboardDockInset(window.height, insets.top);
-  const params = route?.params || {};
-
   const [dealId, setDealId] = React.useState(params.dealId || null);
   const [roomId, setRoomId] = React.useState(params.roomId || null);
   const [deal, setDeal] = React.useState(() => ({
@@ -314,7 +318,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // is never remounted/flashed (PR #255 review item 4: "не должно быть
   // мигания фото при polling"; ported from the same fix in ChatScreen.js).
   const attachmentUrlCache = React.useRef(new Map());
-  const role = params.role || session?.user?.role || 'client';
+  const role = roleHint;
   const isDriver = role === 'driver';
   const isShipper = !isDriver;
   const language = getLanguage();
@@ -1409,6 +1413,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             ) : (
               <>
                 <View style={s.chatBody}>
+                  {compactHeader}
                   <FlatList
                     ref={listRef}
                     data={messages}
@@ -1416,7 +1421,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     keyExtractor={(item) => item.id}
                     style={s.messageList}
                     contentContainerStyle={s.messageContent}
-                    ListHeaderComponent={compactHeader}
                     keyboardShouldPersistTaps="handled"
                     onScroll={(event) => {
                       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -1562,14 +1566,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     <TouchableOpacity style={s.attachHandleHit} onPress={collapseComposer} testID="deal-chat-attach-collapse" activeOpacity={0.8}>
                       <View style={[s.attachHandle, { backgroundColor: colors.border }]} />
                     </TouchableOpacity>
-                    {PLUS_MENU.map((item) => (
-                      <TouchableOpacity key={item.key} style={s.attachItem} onPress={item.onPress} testID={item.testID} disabled={item.busy}>
-                        <View style={[s.attachIcon, { backgroundColor: colors.surface }]}>
-                          {item.busy ? <ActivityIndicator size="small" color="#168759" /> : <FontAwesome5 name={item.icon} size={30} color={colors.textMuted} solid />}
-                        </View>
-                        <Text style={[s.attachLabel, { color: colors.textMuted }]} numberOfLines={1}>{item.label}</Text>
-                      </TouchableOpacity>
-                    ))}
+                    {PLUS_MENU.map((item) => {
+                      if (isShipper && item.key === 'camera') return null;
+                      return (
+                        <TouchableOpacity key={item.key} style={s.attachItem} onPress={item.onPress} testID={item.testID} disabled={item.busy}>
+                          <View style={[s.attachIcon, { backgroundColor: colors.surface }]}>
+                            {item.busy ? <ActivityIndicator size="small" color={colors.active || colors.driver} /> : <FontAwesome5 name={item.icon} size={30} color={colors.textMuted} solid />}
+                          </View>
+                          <Text style={[s.attachLabel, { color: colors.textMuted }]} numberOfLines={1}>{item.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 ) : null}
               </>
