@@ -23,10 +23,12 @@ test('composer: collapsed-режим полностью убран из чата
   assert.match(src, /testID="deal-chat-input"/);
 });
 
-test('Android chat dock uses the canonical measured IME overlap and voice failures stay observable', () => {
-  assert.match(src, /useKeyboardDockInset\(window\.height, insets\.top\)/);
+test('Android chat dock relies on adjustResize without a second measured inset', () => {
+  assert.doesNotMatch(src, /useKeyboardDockInset/);
   assert.match(src, /Platform\.OS === 'ios' \? 'padding' : undefined/);
-  assert.match(src, /marginBottom: chatKeyboardInset/);
+  assert.doesNotMatch(src, /marginBottom: chatKeyboardInset/);
+  assert.match(src, /keyboardDidShow/);
+  assert.match(src, /keyboardDidHide/);
   assert.match(src, /testID="deal-chat-composer-dock"/);
   assert.match(src, /errorText: t\('voice_transcription_unavailable'\)/);
   assert.match(src, /<VoiceMessageBubble[\s\S]*t=\{t\}/);
@@ -34,6 +36,17 @@ test('Android chat dock uses the canonical measured IME overlap and voice failur
   assert.match(bubble, /testID="voice-transcription-loading"/);
   assert.match(bubble, /testID="voice-transcription-error"/);
   assert.match(bubble, /t\('voice_to_text'\)/);
+  assert.match(bubble, /testID="voice-translation-btn"/);
+});
+
+test('composer switches controls by input state and protects rapid send', () => {
+  assert.match(src, /const hasComposerText = input\.length > 0/);
+  assert.match(src, /\{!hasComposerText \? \(/);
+  assert.match(src, /\{hasComposerText \? \(/);
+  assert.match(src, /textSendBusyRef\.current/);
+  assert.match(src, /blurOnSubmit=\{false\}/);
+  assert.match(src, /returnKeyType="default"/);
+  assert.match(src, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
 });
 
 test('emoji control is a visible sibling of the multiline native input', () => {

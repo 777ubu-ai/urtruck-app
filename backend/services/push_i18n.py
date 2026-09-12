@@ -44,6 +44,12 @@ def normalize_locale(raw: Optional[str]) -> str:
 # things a caller is allowed to interpolate: route/amount/reason-style
 # opaque values, never free text.
 TEMPLATES: dict[str, dict[str, tuple[str, str]]] = {
+    "chat_voice": {
+        "RU": ("🎤 Голосовое сообщение", "Новое голосовое сообщение"),
+        "KK": ("🎤 Дауыстық хабарлама", "Жаңа дауыстық хабарлама"),
+        "ZH": ("🎤 语音消息", "收到新的语音消息"),
+        "EN": ("🎤 Voice message", "New voice message"),
+    },
     "bid_created": {
         "RU": ("📋 Новая ставка", "{amount} за {route}"),
         "KK": ("📋 Жаңа баға", "{route} үшін {amount}"),

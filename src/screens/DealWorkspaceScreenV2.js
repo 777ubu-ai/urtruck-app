@@ -55,14 +55,14 @@ import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
 import { SERVER_URL } from '../config/env';
-import { useKeyboardDockInset } from '../components/ui/v1/KeyboardSafeLayout';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
 const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected', 'expired'];
 const COMPOSER_INPUT_MIN_HEIGHT = 32;
-const COMPOSER_INPUT_MAX_HEIGHT = 74;
+const COMPOSER_INPUT_MAX_HEIGHT = 88;
 const COMPOSER_INPUT_VERTICAL_PADDING = 8;
+const VOICE_MAX_DURATION_SEC = 60;
 
 // WhatsApp-style chat is the default view; the trip map is a deliberate,
 // button-triggered secondary view (PR #255 review: "map-first бардак" was the
@@ -259,7 +259,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
-  const chatKeyboardInset = useKeyboardDockInset(window.height, insets.top);
   const params = route?.params || {};
 
   const [dealId, setDealId] = React.useState(params.dealId || null);
@@ -281,6 +280,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [input, setInput] = React.useState('');
   const [inputHeight, setInputHeight] = React.useState(COMPOSER_INPUT_MIN_HEIGHT);
+  const [keyboardVisible, setKeyboardVisible] = React.useState(false);
+  const [textSending, setTextSending] = React.useState(false);
   const [timeline, setTimeline] = React.useState([]);
   const [location, setLocation] = React.useState(null);
   const [locationLoading, setLocationLoading] = React.useState(false);
@@ -309,6 +310,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const inputRef = React.useRef(null);
   const mounted = React.useRef(true);
   const recordStartRef = React.useRef(0);
+  const textSendBusyRef = React.useRef(false);
+  const finishRecordingRef = React.useRef(null);
   const nearBottomRef = React.useRef(true);
   const lastCountRef = React.useRef(0);
   // A signed attachment URL may be reissued on every 3s poll. Keep the first
@@ -320,6 +323,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const isDriver = role === 'driver';
   const isShipper = !isDriver;
   const language = getLanguage();
+
+  // Android uses the app-wide adjustResize contract. Applying a second
+  // measured keyboard inset here creates the physical screenshot defect: a
+  // blank spacer between the composer and the IME. iOS keeps KAV padding below;
+  // this flag only controls safe-area padding while the IME is visible.
+  React.useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
     new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
@@ -355,7 +370,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   React.useEffect(() => {
     if (!recording) { setRecordSecs(0); return undefined; }
-    const timer = setInterval(() => setRecordSecs(Math.max(0, Math.floor((Date.now() - recordStartRef.current) / 1000))), 500);
+    const timer = setInterval(() => {
+      const elapsed = Math.max(0, Math.floor((Date.now() - recordStartRef.current) / 1000));
+      setRecordSecs(Math.min(VOICE_MAX_DURATION_SEC, elapsed));
+      if (elapsed >= VOICE_MAX_DURATION_SEC) finishRecordingRef.current?.();
+    }, 500);
     return () => clearInterval(timer);
   }, [recording]);
 
@@ -463,6 +482,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           voice: isVoice,
           mediaUrl,
           voiceDuration: Number(message.voice_duration || 0),
+          transcript: message.voice_transcript || null,
+          transcriptLang: message.voice_transcript_lang || null,
+          transcriptProvider: message.voice_transcript_provider || null,
           time: fmtMessageTime(message.created_at),
           createdAt: message.created_at,
           read: !!message.is_read,
@@ -600,6 +622,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           transcriptText: message.transcript,
           sourceLang: message.transcriptLang || null,
           provider: message.transcriptProvider || null,
+          translatedText: current?.translatedText || null,
         };
         changed = true;
       }
@@ -616,7 +639,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: null } }));
     setVoiceTranscribing(item.id);
     try {
-      const result = await chatAPI.transcribe(item.id, getLanguage().toLowerCase());
+      // Transcription and translation are separate actions. This call must
+      // never silently turn a successful STT result into a translation error.
+      const result = await chatAPI.transcribe(item.id);
       if (!result?.transcript_text) {
         setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('voice_transcription_unavailable') } }));
         toast(t('voice_transcription_unavailable'), 'info');
@@ -624,13 +649,39 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       }
       setVoiceTranscripts((previous) => ({
         ...previous,
-        [item.id]: { visible: true, transcriptText: result.transcript_text, sourceLang: result.source_lang || null, provider: result.provider || null, translatedText: result.translated_text || null },
+        [item.id]: { visible: true, transcriptText: result.transcript_text, sourceLang: result.source_lang || null, provider: result.provider || null, translatedText: null },
       }));
     } catch {
       setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('voice_transcription_unavailable') } }));
       toast(t('voice_transcription_unavailable'), 'info');
     } finally {
       setVoiceTranscribing(null);
+    }
+  }, [voiceTranscripts, toast, t]);
+
+  const translateVoiceTranscript = React.useCallback(async (item) => {
+    const current = voiceTranscripts[item.id];
+    if (!current?.transcriptText || current.translating) return;
+    if (current.translatedText) {
+      setVoiceTranscripts((previous) => ({
+        ...previous,
+        [item.id]: { ...current, showTranslated: !current.showTranslated },
+      }));
+      return;
+    }
+    setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], translating: true, errorText: null } }));
+    try {
+      const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
+      if (!result?.translated_text) throw new Error('translation_empty');
+      setVoiceTranscripts((previous) => ({
+        ...previous,
+        [item.id]: { ...previous[item.id], translatedText: result.translated_text, showTranslated: true, translationProvider: result.provider || null },
+      }));
+    } catch {
+      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('translation_unavailable') } }));
+      toast(t('translation_unavailable'), 'error');
+    } finally {
+      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], translating: false } }));
     }
   }, [voiceTranscripts, toast, t]);
 
@@ -803,13 +854,21 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     }
   }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, loadMessages, session?.user?.id, toast, t]);
 
-  const sendText = React.useCallback(() => {
+  const sendText = React.useCallback(async () => {
+    if (textSendBusyRef.current) return;
     const body = input.trim();
     if (!body) return;
+    textSendBusyRef.current = true;
+    setTextSending(true);
     setInput('');
-    setInputHeight(40);
+    setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
     setEmojiOpen(false);
-    sendRawText(body);
+    try {
+      await sendRawText(body);
+    } finally {
+      textSendBusyRef.current = false;
+      setTextSending(false);
+    }
   }, [input, sendRawText]);
 
   const retryFailedText = React.useCallback((item) => {
@@ -1061,6 +1120,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     }
   }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
 
+  // The timer effect uses a ref so the 60-second hard stop always invokes the
+  // latest callback without restarting the timer on every render.
+  finishRecordingRef.current = toggleVoice;
+
   const toggleAttachMenu = React.useCallback(() => {
     setCallMenuOpen(false);
     setEmojiOpen(false);
@@ -1158,6 +1221,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 transcript={voiceTranscripts[item.id]}
                 transcribing={voiceTranscribing === item.id}
                 onToggleTranscript={() => toggleVoiceTranscript(item)}
+                onTranslateTranscript={() => translateVoiceTranscript(item)}
+                onRetryTranscript={() => toggleVoiceTranscript(item)}
                 t={t}
                 onError={() => toast(t('voice_play_fail'), 'error')}
               />
@@ -1231,7 +1296,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         </View>
       </React.Fragment>
     );
-  }, [colors, translations, translating, voiceTranscripts, voiceTranscribing, t, lang, toast, retryDocument, retryFailedText, toggleVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
+  }, [colors, translations, translating, voiceTranscripts, voiceTranscribing, t, lang, toast, retryDocument, retryFailedText, toggleVoiceTranscript, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
@@ -1384,6 +1449,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     { key: 'translate', icon: 'language', label: ui.attachTranslate, onPress: toggleAutoTranslate, testID: 'deal-chat-attach-translate' },
   ];
 
+  const hasComposerText = input.length > 0;
+
   const compactHeader = (
     <View style={[s.compactHeader, { borderBottomColor: colors.border, backgroundColor: colors.bg }]} testID="deal-compact-header">
       <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} testID="deal-workspace-back">
@@ -1482,8 +1549,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     {
                       backgroundColor: colors.bg,
                       borderTopColor: colors.border,
-                      paddingBottom: attachOpen || emojiOpen ? 6 : Math.max(insets.bottom, 8),
-                      marginBottom: chatKeyboardInset,
+                      paddingBottom: attachOpen || emojiOpen || keyboardVisible ? 6 : Math.max(insets.bottom, 8),
                     },
                   ]}
                   testID="deal-chat-composer-dock"
@@ -1524,38 +1590,47 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                           multiline
                           scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
                           style={[s.input, { height: inputHeight, color: colors.text }]}
-                          placeholder=""
-                          placeholderTextColor="transparent"
+                          returnKeyType="default"
+                          blurOnSubmit={false}
+                          placeholder={isDriver ? ui.writeShipper : ui.write}
+                          placeholderTextColor={colors.textMuted}
                           testID="deal-chat-input"
                         />
+                        {!hasComposerText ? (
+                          <TouchableOpacity
+                            style={s.inputEmojiButton}
+                            onPress={toggleEmojiMenu}
+                            testID="deal-chat-emoji"
+                            accessibilityLabel={t('emoji')}
+                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                          >
+                            <Feather name="smile" size={22} color={colors.text} />
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                      {!hasComposerText ? (
                         <TouchableOpacity
-                          style={s.inputEmojiButton}
-                          onPress={toggleEmojiMenu}
-                          testID="deal-chat-emoji"
-                          accessibilityLabel={t('emoji')}
+                          style={[s.composerCircle, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
+                          onPress={toggleVoice}
+                          testID="deal-chat-voice"
+                          accessibilityLabel={ui.voiceMessage}
                           hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                         >
-                          <Feather name="smile" size={22} color={colors.text} />
+                          <Feather name="mic" size={22} color={colors.text} />
                         </TouchableOpacity>
-                      </View>
-                      <TouchableOpacity
-                        style={[s.composerCircle, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
-                        onPress={toggleVoice}
-                        testID="deal-chat-voice"
-                        accessibilityLabel={ui.voiceMessage}
-                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                      >
-                        <Feather name="mic" size={22} color={colors.text} />
-                      </TouchableOpacity>
-                      {input.trim() ? (
+                      ) : null}
+                      {hasComposerText ? (
                         <TouchableOpacity
                           style={[s.sendButton, { backgroundColor: colors.driver }]}
                           onPress={sendText}
+                          disabled={textSending}
                           testID="deal-chat-send"
                           accessibilityLabel={t('send')}
                           hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                         >
-                          <FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid />
+                          {textSending
+                            ? <ActivityIndicator size="small" color="#FFFFFF" />
+                            : <FontAwesome5 name="paper-plane" size={15} color="#FFFFFF" solid />}
                         </TouchableOpacity>
                       ) : null}
                     </View>
@@ -1853,7 +1928,7 @@ const s = StyleSheet.create({
   // Composer surfaces take their colours from designV1 tokens inline below so
   // the dock/pill/input stay canonical in dark mode (P2-1). Geometry untouched.
   composerDock: { paddingHorizontal: 8, paddingTop: 5, borderTopWidth: StyleSheet.hairlineWidth },
-  composer: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 30, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  composer: { minHeight: 52, flexDirection: 'row', alignItems: 'flex-end', gap: 7, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 30, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   // Action circles: 40dp visual + 4dp hitSlop (48dp total target, ≥44 canon).
   // The legacy 2px #202020 ring is a 1px hairline token border now; the fill
   // and icon colours come from tokens inline (surfaceMuted / text).
@@ -1862,8 +1937,8 @@ const s = StyleSheet.create({
   // siblings, even with zIndex/elevation. Keep the emoji in the same visual
   // input area but make it a flex sibling instead: it can never be painted
   // over by four lines of text and stays visibly available at every height.
-  inputShell: { flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999, flexDirection: 'row', alignItems: 'flex-end' },
-  input: { flex: 1, minHeight: 32, maxHeight: 74, paddingLeft: 12, paddingRight: 8, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  inputShell: { flex: 1, minHeight: 32, maxHeight: 88, borderRadius: 999, flexDirection: 'row', alignItems: 'flex-end' },
+  input: { flex: 1, minHeight: 32, maxHeight: 88, paddingLeft: 12, paddingRight: 8, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
   inputEmojiButton: { flexShrink: 0, marginRight: 4, marginBottom: 3, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 

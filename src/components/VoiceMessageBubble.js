@@ -44,6 +44,8 @@ export default function VoiceMessageBubble({
   transcript,
   transcribing = false,
   onToggleTranscript,
+  onTranslateTranscript,
+  onRetryTranscript,
   t = (key) => key,
   testID = 'voice-bubble',
   // QA-only (DesignPreviewScreen): показать пилюлю скорости/активное
@@ -168,7 +170,34 @@ export default function VoiceMessageBubble({
       ) : null}
       {textVisible ? <View style={[s.transcriptDivider, { backgroundColor: dividerColor }]} testID="voice-transcription-divider" /> : null}
       {textVisible ? <Text style={[s.transcriptText, { color: baseText }]}>{transcript.transcriptText}</Text> : null}
-      {transcript?.errorText ? <Text style={[s.transcriptError, { color: baseMuted }]} testID="voice-transcription-error">{transcript.errorText}</Text> : null}
+      {textVisible && onTranslateTranscript ? (
+        <TouchableOpacity
+          onPress={onTranslateTranscript}
+          disabled={transcript.translating}
+          style={s.translationButton}
+          accessibilityRole="button"
+          testID="voice-translation-btn"
+        >
+          <Feather name="globe" size={12} color={baseMuted} />
+          {transcript.translating ? <ActivityIndicator size="small" color={baseMuted} testID="voice-translation-loading" /> : null}
+          <Text style={[s.transcriptLabel, { color: baseMuted, fontSize: sp(11) }]}>
+            {transcript.translating ? '…' : transcript.translatedText && transcript.showTranslated ? t('voice_show_original') : t('voice_translate')}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+      {textVisible && transcript.translatedText && transcript.showTranslated ? (
+        <Text style={[s.transcriptText, s.translatedText, { color: baseText }]} testID="voice-translation-text">{transcript.translatedText}</Text>
+      ) : null}
+      {transcript?.errorText ? (
+        <View style={s.transcriptionErrorRow}>
+          <Text style={[s.transcriptError, { color: baseMuted }]} testID="voice-transcription-error">{transcript.errorText}</Text>
+          {onRetryTranscript ? (
+            <TouchableOpacity onPress={onRetryTranscript} style={s.retryTranscriptButton} testID="voice-transcription-retry">
+              <Text style={[s.transcriptLabel, { color: baseMuted, fontSize: sp(11) }]}>{t('repeat_action')}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -196,10 +225,14 @@ const s = StyleSheet.create({
   },
   rateText: { fontWeight: '700' },
   transcriptButton: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  translationButton: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
   transcriptLabel: { fontWeight: '700' },
   // Разделитель над блоком расшифровки (регрессия против legacy-чата,
   // где визуальной границы между «В текст» и текстом не было).
   transcriptDivider: { height: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginTop: 4, marginBottom: 2 },
   transcriptText: { marginTop: 2, fontSize: 13, lineHeight: 18 },
+  translatedText: { marginTop: 4, fontStyle: 'italic' },
   transcriptError: { marginTop: 3, fontSize: 12, lineHeight: 16 },
+  transcriptionErrorRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  retryTranscriptButton: { minHeight: 28, justifyContent: 'center' },
 });

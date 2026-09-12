@@ -150,7 +150,7 @@ test('no draggable multi-state bottom sheet remains — chat is a plain fullscre
   assert.doesNotMatch(workspace, /PanResponder\.create/);
   assert.doesNotMatch(workspace, /sheetState/);
   assert.doesNotMatch(workspace, /setSheet\(/);
-  assert.doesNotMatch(workspace, /keyboardWillShow|keyboardDidShow/);
+  assert.doesNotMatch(workspace, /useKeyboardDockInset/);
 });
 
 test('chat has no permanent second tab — status/history lives behind one icon-triggered modal', () => {
@@ -169,7 +169,7 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
   assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 32/);
-  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 74/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
   assert.match(workspace, /Math\.min\(COMPOSER_INPUT_MAX_HEIGHT/);
   assert.match(workspace, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
@@ -207,11 +207,11 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   // intentionally not part of this composer contract.
   assert.match(workspace, /testID="deal-chat-composer-dock"/);
   assert.match(workspace, /composerDock: \{ paddingHorizontal: 8, paddingTop: 5/);
-  assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'center'/);
+  assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'flex-end'/);
   assert.match(workspace, /borderRadius: 30/);
   assert.match(workspace, /shadowOpacity: 0\.1/);
-  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999/);
-  assert.match(workspace, /placeholder=""/);
+  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 88, borderRadius: 999/);
+  assert.match(workspace, /placeholder=\{isDriver \? ui\.writeShipper : ui\.write\}/);
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
 });
 
@@ -228,8 +228,8 @@ test('composer stays visible while scrolling and avoids duplicate emoji while ty
   assert.match(workspace, /attachHandle/);
   assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
   assert.match(workspace, /Keyboard\.dismiss\(\)/);
-  assert.doesNotMatch(workspace, /Keyboard\.addListener/);
-  assert.doesNotMatch(workspace, /keyboardWillShow|keyboardDidShow/);
+  assert.match(workspace, /Keyboard\.addListener/);
+  assert.match(workspace, /keyboardWillShow|keyboardDidShow/);
 });
 
 test('emoji button opens a real bottom emoji picker instead of a coming-soon toast', () => {
@@ -264,7 +264,7 @@ test('toggleAttachMenu dismisses the keyboard and blurs input before opening the
   assert.doesNotMatch(workspace, /setComposerFocused/);
   // Multiline/emoji contract must survive: multiline input with emoji gutter.
   assert.match(workspace, /multiline/);
-  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 74/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
   assert.match(workspace, /testID="deal-chat-emoji"/);
   assert.match(workspace, /testID="deal-chat-composer"/);
 });

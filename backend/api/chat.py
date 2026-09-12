@@ -397,7 +397,7 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
             # уникальный индекс отсёк дубль. Это успех (идемпотентность).
             return {"ok": True, "room_id": room_id, "deduped": True}
         message_id = cursor.lastrowid
-        preview = (body.text or "📷 Фото")[:50]
+        preview = (("🎤 Голосовое сообщение" if body.is_voice else (body.text or "📷 Фото")))[:50]
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
 
     event_key = f"chat:{room_id}:msg:{message_id}"
@@ -437,7 +437,7 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
             f"💬 {sender_name}",
             preview,
             url=f"/chats/{room_id}",
-            kind="chat",
+            kind="chat.voice" if body.is_voice else "chat",
             # Variant B: payload с полным контекстом для deep-link и фильтрации.
             data={
                 "type": "chat_message",
@@ -447,7 +447,8 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
                 "sender_id": user["id"],
                 "recipient_id": recipient_id,
                 "event_key": event_key,
-                "event": "chat.message",
+                "event": "chat.voice" if body.is_voice else "chat.message",
+                **({"i18n_event": "chat_voice", "i18n_params": {}} if body.is_voice else {}),
             },
         )
     except Exception:
