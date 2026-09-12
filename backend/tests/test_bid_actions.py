@@ -542,7 +542,7 @@ if __name__ == "__main__":
     test_reject_by_cargo_owner()
     test_reject_403_for_non_owner()
     test_reject_409_if_not_pending()
-    test_list_bids_shows_cancelled_and_rejected_statuses()
+    test_cancelled_and_rejected_statuses_persist()
     test_my_dashboard_empty_user()
     test_my_dashboard_driver_with_bids()
     test_my_dashboard_owner_with_cargos_and_incoming()

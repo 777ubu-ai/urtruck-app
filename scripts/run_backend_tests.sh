@@ -22,7 +22,9 @@ if [[ "${1:-}" == "--isolated" ]]; then
     count=$((count + 1))
     module_db="${DB_PATH%.db}-${count}.db"
     rm -f "$module_db" "$module_db-wal" "$module_db-shm"
-    if rg -q '^def test_' "$test_file"; then
+    # GitHub-hosted runners do not guarantee ripgrep is installed.  grep is
+    # part of the base POSIX toolchain and is sufficient for this selector.
+    if grep -q '^def test_' "$test_file"; then
       DB_PATH="$module_db" URTRUCK_DB_PATH="$module_db" \
         "$PYTHON_BIN" -m pytest "$test_file" "$@"
     else
