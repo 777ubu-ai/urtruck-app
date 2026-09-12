@@ -4,17 +4,17 @@ import Feather from '@expo/vector-icons/Feather';
 import CountryFlag from './CountryFlag';
 import { useV1Colors, useDriverCeramicColors } from '../../../theme/designV1';
 
-export default function RouteLine({ from, to, fromFlag, toFlag, numberOfLines = 1, testID, ceramic = false }) {
+export default function RouteLine({ from, to, fromFlag, toFlag, numberOfLines = 1, testID, ceramic = false, compact = false }) {
   const colors = useV1Colors();
   const ceramicColors = useDriverCeramicColors();
   const palette = ceramic ? ceramicColors : colors;
   return (
     <View style={s.row} testID={testID}>
-      {fromFlag ? <CountryFlag code={fromFlag} width={ceramic ? 24 : 18} round={ceramic} style={s.flag} /> : null}
-      <Text style={[s.city, { color: palette.text }]} numberOfLines={numberOfLines}>{from || '—'}</Text>
-      <Feather name="arrow-right" size={16} color={palette.textMuted} style={s.arrow} />
-      {toFlag ? <CountryFlag code={toFlag} width={ceramic ? 24 : 18} round={ceramic} style={s.flag} /> : null}
-      <Text style={[s.city, { color: palette.text }]} numberOfLines={numberOfLines}>{to || '—'}</Text>
+      {fromFlag ? <CountryFlag code={fromFlag} width={compact ? 28 : (ceramic ? 24 : 18)} height={compact ? 18 : undefined} compact={compact} round={ceramic && !compact} style={[s.flag, compact && s.compactFlag]} /> : null}
+      <Text style={[s.city, compact && s.compactCity, { color: palette.text }]} numberOfLines={numberOfLines}>{from || '—'}</Text>
+      <Feather name="arrow-right" size={compact ? 15 : 16} color={palette.textMuted} style={[s.arrow, compact && s.compactArrow]} />
+      {toFlag ? <CountryFlag code={toFlag} width={compact ? 28 : (ceramic ? 24 : 18)} height={compact ? 18 : undefined} compact={compact} round={ceramic && !compact} style={[s.flag, compact && s.compactFlag]} /> : null}
+      <Text style={[s.city, compact && s.compactCity, { color: palette.text }]} numberOfLines={numberOfLines}>{to || '—'}</Text>
     </View>
   );
 }
@@ -24,5 +24,8 @@ const s = StyleSheet.create({
   // 12sp is the CJK readability floor and keeps long international routes on
   // one line beside a complete price on the 390dp compact card.
   city: { flexShrink: 1, minWidth: 0, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: -0.05 },
+  compactCity: { fontSize: 12, lineHeight: 16 },
   arrow: { marginHorizontal: 4, flexShrink: 0 },
+  compactArrow: { marginHorizontal: 2 },
+  compactFlag: { marginRight: 4, borderRadius: 5 },
 });

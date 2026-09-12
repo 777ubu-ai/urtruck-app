@@ -18,6 +18,7 @@ import { useV1Colors, useDriverCeramicColors, useShipperCeramicColors } from '..
 import { DRIVER_CERAMIC } from '../theme/designV1Palette';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
 import { API_BASE } from '../config/env';
 import { localizeCheckpointName } from '../utils/checkpointNames';
@@ -32,12 +33,12 @@ const COUNTRY_ORDER = ['CN', 'KG', 'RU', 'UZ', 'TM', 'CASPIAN'];
 const MCI_KZT_2026 = 4325;
 
 const COUNTRY = {
-  CN: { flag: '🇨🇳', RU: 'Китай', KK: 'Қытай', EN: 'China', ZH: '中国' },
-  KG: { flag: '🇰🇬', RU: 'Кыргызстан', KK: 'Қырғызстан', EN: 'Kyrgyzstan', ZH: '吉尔吉斯斯坦' },
-  RU: { flag: '🇷🇺', RU: 'Россия', KK: 'Ресей', EN: 'Russia', ZH: '俄罗斯' },
-  UZ: { flag: '🇺🇿', RU: 'Узбекистан', KK: 'Өзбекстан', EN: 'Uzbekistan', ZH: '乌兹别克斯坦' },
-  TM: { flag: '🇹🇲', RU: 'Туркменистан', KK: 'Түрікменстан', EN: 'Turkmenistan', ZH: '土库曼斯坦' },
-  CASPIAN: { flag: '⚓️', RU: 'Каспий', KK: 'Каспий', EN: 'Caspian', ZH: '里海' },
+  CN: { RU: 'Китай', KK: 'Қытай', EN: 'China', ZH: '中国' },
+  KG: { RU: 'Кыргызстан', KK: 'Қырғызстан', EN: 'Kyrgyzstan', ZH: '吉尔吉斯斯坦' },
+  RU: { RU: 'Россия', KK: 'Ресей', EN: 'Russia', ZH: '俄罗斯' },
+  UZ: { RU: 'Узбекистан', KK: 'Өзбекстан', EN: 'Uzbekistan', ZH: '乌兹别克斯坦' },
+  TM: { RU: 'Туркменистан', KK: 'Түрікменстан', EN: 'Turkmenistan', ZH: '土库曼斯坦' },
+  CASPIAN: { RU: 'Каспий', KK: 'Каспий', EN: 'Caspian', ZH: '里海' },
 };
 
 const COPY = {
@@ -211,8 +212,8 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const checkpointCarouselX = useRef(0);
 
   const countryName = useCallback((code) => {
-    const meta = COUNTRY[code] || { flag: '🌐', RU: code, KK: code, EN: code, ZH: code };
-    return `${meta.flag || '🌐'} ${meta[lang] || meta.RU || code}`;
+    const meta = COUNTRY[code] || { RU: code, KK: code, EN: code, ZH: code };
+    return meta[lang] || meta.RU || code;
   }, [lang]);
 
   const loadCatalog = useCallback(async () => {
@@ -309,12 +310,14 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             const active = selectedCountry === code;
             return (
               <TouchableOpacity key={code} onPress={() => selectCountry(code)} style={[s.countryChip, { borderColor: active ? activeColor : theme.border, backgroundColor: active ? activeColor : theme.card }]} testID={`border-country-${code}`}>
+                <CountryFlag code={code === 'CASPIAN' ? 'CS' : code} width={28} height={18} compact />
                 <Text style={[s.countryText, { color: active ? '#FFFFFF' : theme.text }]}>{countryName(code)}</Text>
               </TouchableOpacity>
             );
           })}
           <TouchableOpacity onPress={() => selectCountry('ALL')} style={[s.countryChip, { borderColor: selectedCountry === 'ALL' ? activeColor : theme.border, backgroundColor: selectedCountry === 'ALL' ? activeColor : theme.card }]} testID="border-country-ALL">
-            <Text style={[s.countryText, { color: selectedCountry === 'ALL' ? '#FFFFFF' : theme.text }]}>🌐 {L.all}</Text>
+            <CountryFlag code="ALL" width={28} height={18} compact />
+            <Text style={[s.countryText, { color: selectedCountry === 'ALL' ? '#FFFFFF' : theme.text }]}>{L.all}</Text>
           </TouchableOpacity>
         </ScrollView>
 

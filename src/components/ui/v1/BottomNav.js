@@ -167,7 +167,9 @@ export default function BottomNav({ state, navigation }) {
   // colors.surface (тот же #FFFFFF; токен, а не хардкод, чтобы QA smoke
   // проверял именно рендер-поверхность).
   const barBg = isCeramic ? ceramic.surface : (isDark ? colors.bg : colors.surface);
-  const barBorder = isCeramic ? ceramic.border : (isDark ? 'rgba(255,255,255,0.08)' : '#E5ECE8');
+  // The approved nav is a floating surface, not an outlined block. Keep the
+  // theme surface and shadow, but never draw a dark perimeter around it.
+  const barBorder = 'transparent';
 
   return (
     <View style={[styles.wrap, { paddingBottom: bottomPad }]} pointerEvents="box-none" testID="bottom-nav">
@@ -233,7 +235,7 @@ const styles = StyleSheet.create({
   wrap: { paddingHorizontal: 12, paddingTop: 4, backgroundColor: 'transparent' },
   bar: {
     flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    paddingHorizontal: 6, paddingTop: 5, paddingBottom: 4, borderRadius: 20, borderWidth: 1,
+    height: 70, minHeight: 70, paddingHorizontal: 6, paddingTop: 5, paddingBottom: 4, borderRadius: 30, borderWidth: 0,
     shadowColor: '#8998A6', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5,
   },
   cell: {

@@ -220,8 +220,8 @@ const s = StyleSheet.create({
   status: { fontSize: 13, marginBottom: 24 },
   section: { fontSize: 17, fontWeight: '800', marginBottom: 10, marginTop: 16 },
   body: { fontSize: 14, lineHeight: 21 },
-  cta: { backgroundColor: '#FF8400', padding: 16, borderRadius: 14, alignItems: 'center', marginTop: 24 },
-  ctaText: { color: '#0A0A0A', fontWeight: '800', fontSize: 14 },
+  cta: { backgroundColor: '#168759', padding: 16, borderRadius: 14, alignItems: 'center', marginTop: 24 },
+  ctaText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
   cpRow: {
     flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12,
     borderWidth: 1, borderRadius: 12, marginBottom: 8,

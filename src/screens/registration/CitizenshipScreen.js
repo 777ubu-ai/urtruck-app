@@ -14,9 +14,11 @@ import { regAPI } from '../../utils/registration';
 import { brand, radius, typography } from '../../theme/brandV2';
 import BackButton from '../../components/ui/v1/BackButton';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
+import CountryFlag from '../../components/ui/v1/CountryFlag';
 
 const TOTAL_STEPS = 4;
 const STEP = 1;
+const stripLegacyFlag = (value) => String(value || '').replace(/[\u{1F1E6}-\u{1F1FF}]\u{FE0F}?/gu, '').trim();
 
 const COUNTRIES = [
   { code: 'KZ', key: 'cit_kz' },
@@ -78,7 +80,10 @@ export default function CitizenshipScreen({ navigation }) {
                   onPress={() => setSelected(c.code)}
                   style={[s.option, active && s.optionActive]}
                 >
-                  <Text style={[s.optionText, { color: brand.textPrimary }]}>{t(c.key)}</Text>
+                  <View style={s.optionLabel}>
+                    <CountryFlag code={c.code === 'other' ? 'XX' : c.code} width={28} height={18} compact />
+                    <Text style={[s.optionText, { color: brand.textPrimary }]}>{stripLegacyFlag(t(c.key))}</Text>
+                  </View>
                   {active ? <Feather name="check-circle" size={20} color={accent} /> : null}
                 </Pressable>
               );
@@ -114,6 +119,7 @@ const s = StyleSheet.create({
   // List rows — одинаковые с опциями docType в IdentityStepScreen: 56h, radius 14,
   // selected = accent soft bg (primarySoft ≈ primary 8%) + check в brand.primary.
   option: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 56, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface },
+  optionLabel: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   optionActive: { borderColor: brand.primary, backgroundColor: brand.primarySoft },
   optionText: { ...typography.body, fontWeight: '700' },
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
