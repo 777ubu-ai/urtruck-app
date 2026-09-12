@@ -106,6 +106,13 @@ def _legacy_database_after_session_harness():
             ("legacy-user", "legacy", "Legacy notification", "/cargos/legacy"),
         )
         conn.commit()
+        legacy_notification = conn.execute(
+            "SELECT user_id, type, title, url FROM notifications WHERE title=?",
+            ("Legacy notification",),
+        ).fetchone()
+        assert legacy_notification == (
+            "legacy-user", "legacy", "Legacy notification", "/cargos/legacy"
+        )
 
     push_api._init_schema()
     notifications_api._init()

@@ -663,19 +663,21 @@ export default function MyTripsScreen({ navigation, route }) {
               <Text style={s.titleHero}>{isDriver ? t('my_trips_title') : t('my_cargos_title')}</Text>
               <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
             </View>
-            <View style={[{ paddingHorizontal: 16, marginBottom: 10 }, !isDriver && { display: 'none' }]}>
-              <TouchableOpacity
-                testID={isDriver ? 'mytrips-publish-route' : 'mytrips-place-cargo'}
-                onPress={isDriver ? onPublishRoute : () => navigation.navigate('CreateCargo', { role })}
-                activeOpacity={0.75}
-                style={[s.publishRouteBtn, { borderColor: v1Accent.main }]}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Feather name="plus" size={14} color={v1Accent.main} />
-                  <Text style={[s.publishRouteText, { color: v1Accent.main }]}>{isDriver ? t('publish_route') : t('place_cargo')}</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
+            {isDriver ? (
+              <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+                <TouchableOpacity
+                  testID="mytrips-publish-route"
+                  onPress={onPublishRoute}
+                  activeOpacity={0.75}
+                  style={[s.publishRouteBtn, { borderColor: v1Accent.main }]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Feather name="plus" size={14} color={v1Accent.main} />
+                    <Text style={[s.publishRouteText, { color: v1Accent.main }]}>{t('publish_route')}</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <View style={[{ paddingHorizontal: 16 }, !isDriver && { display: 'none' }]}>
               <TouchableOpacity
                 testID="my-work-archive-toggle"

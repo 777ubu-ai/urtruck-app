@@ -217,7 +217,11 @@ test.describe.serial('D. Клиент — регрессия + кросс-рол
     await expect(page.locator(tid('bottom-nav-chats'))).toHaveCount(0);
     await expect(page.locator(tid('bottom-nav-profile'))).toHaveCount(0);
     await page.locator(tid('bottom-nav-mywork')).click();
-    await expect(page.locator(tid('mytrips-place-cargo'))).toBeVisible({ timeout: 10000 });
+    const placeCargo = page.locator(tid('mytrips-place-cargo'));
+    await expect(placeCargo).toHaveCount(1);
+    await expect(placeCargo).toBeVisible({ timeout: 10000 });
+    await placeCargo.click();
+    await expect(page.locator(tid('cargo-desc-input'))).toBeVisible({ timeout: 10000 });
     await shot(page, 'D4_01_client_mywork');
   });
 });

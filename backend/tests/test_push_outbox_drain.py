@@ -32,6 +32,8 @@ import sys
 import uuid
 from pathlib import Path
 
+import pytest
+
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_push_outbox_drain.db")
 if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
     Path(TEST_DB).unlink(missing_ok=True)
@@ -51,6 +53,32 @@ import api.push as push_api  # noqa: F401  — import runs _init_schema() (push_
 
 
 # ───────────────────────── fixtures / helpers ─────────────────────────
+_PUSH_STATE_TABLES = (
+    "push_outbox",
+    "push_delivery_log",
+    "push_devices",
+    "push_tokens_native",
+    "push_subscriptions",
+    "push_token_audit",
+    "push_log",
+)
+
+
+def _clear_push_state():
+    """Keep outbox tests independent when pytest reuses one SQLite database."""
+    with get_conn() as c:
+        for table in _PUSH_STATE_TABLES:
+            c.execute(f"DELETE FROM {table}")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_push_state():
+    """Prevent pending/sent rows and device data leaking between test cases."""
+    _clear_push_state()
+    yield
+    _clear_push_state()
+
+
 def _make_user_with_device(provider="expo"):
     guest = reg_dal.create_guest()
     uid = guest["id"] if isinstance(guest, dict) else guest
