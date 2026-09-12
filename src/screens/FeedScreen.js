@@ -110,9 +110,10 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
         to: display.to,
         fromFlag: item.fromCountry || null,
         toFlag: item.toCountry || null,
-        numberOfLines: 2,
+        numberOfLines: 1,
       }}
       price={display.price}
+      compact
       priceMeta={copy.perTrip}
       meta={[[item.departure ? `${copy.departure}: ${display.departure}` : null, specs || null].filter(Boolean).join(' · ')]}
       description={display.driverName !== notSpecified ? display.driverName : null}
@@ -152,7 +153,7 @@ export default function FeedScreen({ navigation }) {
   const [filterType, setFilterType] = useState(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [sortBy, setSortBy] = useState('newest');
+  const [capacityFilter, setCapacityFilter] = useState('all');
   const [savedIds, setSavedIds] = useState(() => new Set());
   const [savedOnly, setSavedOnly] = useState(false);
   const savedBusyRef = React.useRef(new Set());
@@ -259,19 +260,16 @@ export default function FeedScreen({ navigation }) {
         const toCountry = String(item.toCountry || '').toUpperCase();
         if (!(toCountry === dirToCountry)) return false;
       }
+      const tons = Number(item.capacityTons || item.capacity_tons || 0);
+      if (capacityFilter === 'light' && tons > 10) return false;
+      if (capacityFilter === 'medium' && (tons <= 10 || tons > 20)) return false;
+      if (capacityFilter === 'heavy' && tons <= 20) return false;
       if (savedOnly && !savedIds.has(String(item.id))) return false;
       return true;
     });
-
-    if (sortBy === 'price-asc') {
-      data = [...data].sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
-    } else if (sortBy === 'price-desc') {
-      data = [...data].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
-    } else {
-      data = [...data].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-    }
+    data = [...data].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     return data;
-  }, [items, dateFrom, dateTo, dirFromCountry, dirToCountry, sortBy, savedOnly, savedIds]);
+  }, [items, dateFrom, dateTo, dirFromCountry, dirToCountry, capacityFilter, savedOnly, savedIds]);
 
   const openTrip = async (item) => {
     const ok = await requireLevel(LEVELS.PHONE, 'open_detail', 'client');
@@ -424,7 +422,7 @@ export default function FeedScreen({ navigation }) {
       >
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
-        {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
+        {filterPill('capacity', t('filter_capacity'), 'truck', capacityFilter !== 'all')}
         <CompactFilterChip icon="bookmark" active={savedOnly} onPress={toggleSavedOnly} testID="trip-filter-favorites" accessibilityLabel={copy.favorites} />
       </ScrollView>
     </View>
@@ -437,7 +435,7 @@ export default function FeedScreen({ navigation }) {
       testID="trip-feed-screen"
     >
       <DriverRouteBackdrop />
-      <RootHeader ceramic navigation={navigation} role={role} testID="trip-feed-minimal-header" bellTestID="feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
+      <RootHeader ceramic navigation={navigation} role={role} title={t('tab_feed_client')} testID="trip-feed-minimal-header" bellTestID="feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
             if (ok) navigation.navigate('PushFilter', { role });
           }} />
@@ -597,40 +595,41 @@ export default function FeedScreen({ navigation }) {
       </BottomSheet>
 
       <BottomSheet
-        visible={activeFilter === 'price'}
+        visible={activeFilter === 'capacity'}
         onClose={() => setActiveFilter(null)}
-        title={t('filter_price')}
+        title={t('filter_capacity')}
       >
         {[
-          ['newest', t('filter_newest')],
-          ['price-asc', t('filter_price_asc')],
-          ['price-desc', t('filter_price_desc')],
+          ['all', t('capacity_all')],
+          ['light', t('capacity_light')],
+          ['medium', t('capacity_medium')],
+          ['heavy', t('capacity_heavy')],
         ].map(([value, label]) => (
           <TouchableOpacity
             key={value}
             style={[
               styles.sortRow,
               { backgroundColor: colors.surface, borderColor: colors.border },
-              sortBy === value && { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+              capacityFilter === value && { backgroundColor: colors.accentSoft, borderColor: colors.accent },
             ]}
-            onPress={() => setSortBy(value)}
+            onPress={() => setCapacityFilter(value)}
           >
             <Text
               style={[
                 styles.sortRowText,
                 { color: colors.textSecondary },
-                sortBy === value && styles.sortRowTextActive,
+                capacityFilter === value && styles.sortRowTextActive,
               ]}
             >
               {label}
             </Text>
-            {sortBy === value ? <Feather name="check" size={18} color={ACCENT} /> : null}
+            {capacityFilter === value ? <Feather name="check" size={18} color={ACCENT} /> : null}
           </TouchableOpacity>
         ))}
         <View style={styles.sheetActions}>
           <TouchableOpacity
             style={[styles.sheetSecondary, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={() => setSortBy('newest')}
+            onPress={() => setCapacityFilter('all')}
           >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
@@ -661,11 +660,11 @@ const styles = StyleSheet.create({
   routeSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 68,
+    minHeight: 60,
     marginHorizontal: 18,
     marginBottom: 6,
     paddingHorizontal: 13,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
@@ -682,12 +681,12 @@ const styles = StyleSheet.create({
   routeValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
   routeLabel: { fontSize: 11.5, lineHeight: 15, fontWeight: '600' },
   routeValue: { fontSize: 15, lineHeight: 19, fontWeight: '700' },
-  filtersScroll: { flexGrow: 0, minHeight: 50, maxHeight: 50 },
-  filters: { paddingHorizontal: 18, paddingVertical: 4, gap: 7, alignItems: 'center' },
+  filtersScroll: { flexGrow: 0, minHeight: 44, maxHeight: 44 },
+  filters: { paddingHorizontal: 18, paddingVertical: 3, gap: 6, alignItems: 'center' },
   filterPill: {
-    height: 40,
+    height: 38,
     paddingHorizontal: 12,
-    borderRadius: 20,
+    borderRadius: 14,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -705,7 +704,7 @@ const styles = StyleSheet.create({
   // Design v1 Commit 3: the card itself is the canonical MarketplaceCard
   // (radius 16, border, no shadow, no green rail) — the screen only keeps
   // its list spacing.
-  cardSpacing: { marginHorizontal: 18, marginBottom: 7 },
+  cardSpacing: { marginHorizontal: 18, marginBottom: 5 },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
   emptyTitle: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
   retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center' },

@@ -196,7 +196,7 @@ function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
         fromFlag,
         toFlag,
         testID: `cargo-card-route-${item.id}`,
-        numberOfLines: 2,
+        numberOfLines: 1,
       }}
       price={formatMoney(item.price, item.currency, copy)}
       priceTestID={`cargo-card-price-${item.id}`}
@@ -204,6 +204,7 @@ function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
       meta={[specs || formatTruckType(item.type)]}
       description={cargo}
       variant="driver"
+      compact
       bookmark={{
         saved,
         onToggle: onToggleSaved,
@@ -236,7 +237,7 @@ export default function CargoFeedScreen({ navigation }) {
   const [filterType, setFilterType] = useState(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [sortBy, setSortBy] = useState('newest');
+  const [capacityFilter, setCapacityFilter] = useState('all');
   const [savedIds, setSavedIds] = useState(() => new Set());
   const [savedOnly, setSavedOnly] = useState(false);
   const savedBusyRef = React.useRef(new Set());
@@ -288,14 +289,16 @@ export default function CargoFeedScreen({ navigation }) {
       const pickup = toIso(item.pickup);
       if (dateStart && pickup && pickup < dateStart) return false;
       if (dateEnd && pickup && pickup > dateEnd) return false;
+      const tons = Number(item.tons || 0);
+      if (capacityFilter === 'light' && tons > 10) return false;
+      if (capacityFilter === 'medium' && (tons <= 10 || tons > 20)) return false;
+      if (capacityFilter === 'heavy' && tons <= 20) return false;
       if (savedOnly && !savedIds.has(String(item.id))) return false;
       return true;
     });
-    if (sortBy === 'price-asc') data = [...data].sort((a, b) => a.price - b.price);
-    if (sortBy === 'price-desc') data = [...data].sort((a, b) => b.price - a.price);
-    if (sortBy === 'newest') data = [...data].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    data = [...data].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     return data;
-  }, [items, dateFrom, dateTo, sortBy, savedOnly, savedIds]);
+  }, [items, dateFrom, dateTo, capacityFilter, savedOnly, savedIds]);
 
   const openCargo = async (item) => {
     const ok = await requireLevel(LEVELS.PHONE, 'open_detail', 'driver');
@@ -417,7 +420,7 @@ export default function CargoFeedScreen({ navigation }) {
       >
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
-        {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
+        {filterPill('capacity', t('filter_capacity'), 'truck', capacityFilter !== 'all')}
         <CompactFilterChip variant="driver" icon="bookmark" active={savedOnly} onPress={toggleSavedOnly} testID="cargo-filter-favorites" accessibilityLabel={copy.favorites} />
       </ScrollView>
     </View>
@@ -426,7 +429,7 @@ export default function CargoFeedScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
       <DriverRouteBackdrop />
-      <RootHeader ceramic navigation={navigation} role={role} testID="cargo-feed-minimal-header" bellTestID="cargo-feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
+      <RootHeader ceramic navigation={navigation} role={role} title={t('tab_feed')} testID="cargo-feed-minimal-header" bellTestID="cargo-feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
             if (ok) navigation.navigate('PushFilter', { role });
           }} />
@@ -542,23 +545,24 @@ export default function CargoFeedScreen({ navigation }) {
         </View>
       </BottomSheet>
 
-      <BottomSheet visible={activeFilter === 'price'} onClose={() => setActiveFilter(null)} title={t('filter_price')}>
+      <BottomSheet visible={activeFilter === 'capacity'} onClose={() => setActiveFilter(null)} title={t('filter_capacity')}>
         {[
-          ['newest', t('filter_newest')],
-          ['price-asc', t('filter_price_asc')],
-          ['price-desc', t('filter_price_desc')],
+          ['all', t('capacity_all')],
+          ['light', t('capacity_light')],
+          ['medium', t('capacity_medium')],
+          ['heavy', t('capacity_heavy')],
         ].map(([key, label]) => (
           <TouchableOpacity
             key={key}
-            style={[styles.sortRow, { backgroundColor: palette.surface, borderColor: palette.border }, sortBy === key && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
-            onPress={() => setSortBy(key)}
+            style={[styles.sortRow, { backgroundColor: palette.surface, borderColor: palette.border }, capacityFilter === key && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
+            onPress={() => setCapacityFilter(key)}
           >
-            <Text style={[styles.sortText, { color: palette.textSecondary }, sortBy === key && styles.sortTextActive]}>{label}</Text>
-            {sortBy === key ? <Feather name="check" size={18} color={ACCENT} /> : null}
+            <Text style={[styles.sortText, { color: palette.textSecondary }, capacityFilter === key && styles.sortTextActive]}>{label}</Text>
+            {capacityFilter === key ? <Feather name="check" size={18} color={ACCENT} /> : null}
           </TouchableOpacity>
         ))}
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => setSortBy('newest')}>
+          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => setCapacityFilter('all')}>
             <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
@@ -588,11 +592,11 @@ const styles = StyleSheet.create({
   routeSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 68,
+    minHeight: 60,
     marginHorizontal: 18,
     marginBottom: 6,
     paddingHorizontal: 13,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: BORDER,
@@ -610,12 +614,12 @@ const styles = StyleSheet.create({
   routeLabel: { fontSize: 11.5, lineHeight: 15, fontWeight: '600', color: TEXT_SECONDARY },
   routeValue: { fontSize: 15, lineHeight: 19, fontWeight: '700', color: TEXT },
   placeholder: { color: '#727D77' },
-  filtersScroll: { flexGrow: 0, minHeight: 50, maxHeight: 50 },
-  filters: { paddingHorizontal: 18, paddingVertical: 4, gap: 7, alignItems: 'center' },
+  filtersScroll: { flexGrow: 0, minHeight: 44, maxHeight: 44 },
+  filters: { paddingHorizontal: 18, paddingVertical: 3, gap: 6, alignItems: 'center' },
   filterPill: {
-    height: 40,
+    height: 38,
     paddingHorizontal: 12,
-    borderRadius: 20,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: BORDER,
     backgroundColor: SURFACE,
@@ -640,7 +644,7 @@ const styles = StyleSheet.create({
   // Design v1 Commit 3: the card itself is the canonical MarketplaceCard
   // (radius 16, border, no shadow, no green rail) — the screen only keeps
   // its list spacing.
-  cardSpacing: { marginHorizontal: 18, marginBottom: 7 },
+  cardSpacing: { marginHorizontal: 18, marginBottom: 5 },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
   emptyTitle: { fontSize: 14, lineHeight: 20, color: TEXT_MUTED, textAlign: 'center' },
   retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: ACCENT_SOFT },

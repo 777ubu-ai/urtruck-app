@@ -7,16 +7,17 @@ const card = fs.readFileSync('src/components/ui/v1/MarketplaceCard.js', 'utf8');
 const bottomNav = fs.readFileSync('src/components/ui/v1/BottomNav.js', 'utf8');
 
 test('cargo feed keeps the first screen dense enough for narrow mobile browsers', () => {
-  assert.match(cargoFeed, /routeSelector:\s*\{[\s\S]*minHeight:\s*68/);
-  assert.match(cargoFeed, /filtersScroll:\s*\{ flexGrow:\s*0,\s*minHeight:\s*50,\s*maxHeight:\s*50 \}/);
-  assert.match(cargoFeed, /filterPill:\s*\{[\s\S]*height:\s*40/);
-  // Unified Lists contract: a compact card has the common 108dp floor and
-  // delegates shrink-safe endpoint layout to RouteLine (12/16 city type).
-  assert.match(card, /card:\s*\{\s*padding:\s*12,\s*minHeight:\s*108/);
+  assert.match(cargoFeed, /routeSelector:\s*\{[\s\S]*minHeight:\s*60/);
+  assert.match(cargoFeed, /filtersScroll:\s*\{ flexGrow:\s*0,\s*minHeight:\s*44,\s*maxHeight:\s*44 \}/);
+  assert.match(cargoFeed, /filterPill:\s*\{[\s\S]*height:\s*38/);
+  // Unified Lists canon: the marketplace feed opts into a fixed 60dp compact
+  // card, while detail/deal adapters may retain the normal card floor.
+  assert.match(card, /compactCard:\s*\{\s*padding:\s*0,\s*minHeight:\s*60,\s*height:\s*60/);
   const routeLine = fs.readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
   assert.match(routeLine, /fontSize:\s*12,\s*lineHeight:\s*16/);
   assert.doesNotMatch(card, /shadowOpacity/);
-  // Price canon comes from v1Typography.price (17/22/800 tabular-nums).
+  assert.match(cargoFeed, /filter_capacity/);
+  // Price canon remains 17/22/800 tabular-nums inside the compact card.
   const designV1 = fs.readFileSync('src/theme/designV1.js', 'utf8');
   assert.match(designV1, /price:\s*\{\s*fontSize:\s*17,\s*lineHeight:\s*22,\s*fontWeight:\s*'800'/);
 });

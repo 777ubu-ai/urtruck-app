@@ -24,7 +24,7 @@ test('route selector and all filter chips scroll away with cargo list like a mes
   assert.match(src, /testID=\{`cargo-filter-\$\{key\}`\}/);
   assert.match(src, /filterPill\('date'/);
   assert.match(src, /filterPill\('body'/);
-  assert.match(src, /filterPill\('price'/);
+  assert.match(src, /filterPill\('capacity'/);
   assert.match(src, /testID="cargo-filter-favorites"/);
   assert.doesNotMatch(src, /stickyHeaderIndices/);
   assert.doesNotMatch(src, /position:\s*['"]sticky['"]/);
@@ -44,6 +44,6 @@ test('cargo cards stay compact so collapsing the controls actually increases vis
   // no legacy expanded-card fork.
   const routeLine = fs.readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
   assert.match(routeLine, /fontSize:\s*12,\s*lineHeight:\s*16/);
-  assert.match(src, /cardSpacing: \{ marginHorizontal: 18, marginBottom: 7 \}/);
+  assert.match(src, /cardSpacing: \{ marginHorizontal: 18, marginBottom: 5 \}/);
   assert.doesNotMatch(src, /cardExpanded/);
 });
