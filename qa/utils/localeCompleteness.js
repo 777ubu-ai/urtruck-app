@@ -60,7 +60,14 @@ const CANONICAL_NATIVE_NAMES = {
   RO: 'Română',
 };
 
-const PLACEHOLDER_MARKERS = /\b(TODO|TRANSLATE|FIXME|XXX|LOREM IPSUM)\b/i;
+// Case-SENSITIVE and all-caps on purpose: this app has a real, legitimate
+// "auto-translate" chat feature (autotranslate_on/off, the `translate`
+// button label itself), so a case-insensitive bare "translate" match
+// flagged genuine English copy as an untranslated placeholder. Real
+// placeholder markers left by a translator are conventionally shouted in
+// caps ("TODO", "FIXME", "[TRANSLATE ME]"), never plain sentence-case
+// prose — this keeps the same intent without that false-positive class.
+const PLACEHOLDER_MARKERS = /\b(TODO|TRANSLATE ME|FIXME|XXX|LOREM IPSUM)\b/;
 
 (async () => {
   const i18nUrl = pathToFileURL(path.join(ROOT, 'src/utils/i18n.js')).href;
@@ -169,12 +176,88 @@ const PLACEHOLDER_MARKERS = /\b(TODO|TRANSLATE|FIXME|XXX|LOREM IPSUM)\b/i;
     identicalToEn.forEach((l) => console.log('  ~', l));
   }
 
+  // --- I18N-16 COMPLETION PASS (2026-09-13) — item 4/7 of the completion
+  // spec: report REAL production coverage, not just the bounded CORE_KEYS
+  // set above. Scans every literal t('...')/tGlobal('...') call site in
+  // src/ (same extraction i18nSmoke.js uses) and classifies each of the
+  // 12 new locales' resolution for every one of those keys as:
+  //   translated — the locale's own dictionary has this key
+  //   fallback   — resolves through the approved EN fallback (never RU)
+  //   missing    — neither the locale nor EN has it (would render the
+  //                raw key — a real gap, always a hard failure here)
+  // A short, explicitly-documented set of keys is excluded from the
+  // denominator: two are useI18n.js KEY_ALIASES pseudo-keys (the ALIAS
+  // TARGET is checked instead, under its real name) and five are
+  // language-neutral by content (numeric placeholders / universal
+  // technical acronyms — see the inline reasons below), never bare
+  // "we didn't get to it" exclusions.
+  const SRC = path.join(ROOT, 'src');
+  function walkSrc(dir, out = []) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) walkSrc(p, out);
+      else if (/\.(js|jsx|ts|tsx)$/.test(entry.name)) out.push(p);
+    }
+    return out;
+  }
+  function extractTKeys(filepath) {
+    const src = fs.readFileSync(filepath, 'utf8');
+    const keys = new Set();
+    const re = /\bt(?:Global)?\(\s*['"]([a-zA-Z0-9_:.-]+)['"]/g;
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      const k = m[1];
+      if (k.endsWith('_')) continue;
+      keys.add(k);
+    }
+    return keys;
+  }
+  const productionKeys = new Set();
+  for (const f of walkSrc(SRC)) extractTKeys(f).forEach((k) => productionKeys.add(k));
+
+  const KEY_ALIASES = { confirm_mark_delivered: 'mark_arrived', confirm_receipt: 'confirm_delivery' };
+  const EXCLUDE_NEUTRAL = {
+    email_v2_placeholder: 'language-neutral: example placeholder ("you@example.com") is an international convention, not natural-language content',
+    prem_reg_phone_placeholder: 'language-neutral: numeric phone-format example, no translatable words',
+    vdocs_field_vin: 'language-neutral: "VIN" is a universal technical acronym (like GPS/SMS), unchanged across all 16 locales',
+    volume_placeholder: 'language-neutral: pure numeric example value',
+    weight_placeholder: 'language-neutral: pure numeric example value',
+  };
+
+  console.log(`\n[i18n-16] production t()-keys found in src/: ${productionKeys.size}`);
+  console.log(`[i18n-16] excluded (language-neutral, documented): ${Object.keys(EXCLUDE_NEUTRAL).length}`);
+  console.log(`[i18n-16] excluded (KEY_ALIASES pseudo-keys, target checked instead): ${Object.keys(KEY_ALIASES).length}`);
+
+  const coverageTable = [];
+  for (const code of NEW_LOCALES) {
+    let translated = 0, fallback = 0, missing = 0;
+    const missingKeys = [];
+    for (const key of productionKeys) {
+      if (EXCLUDE_NEUTRAL[key]) continue;
+      const resolvedKey = KEY_ALIASES[key] || key;
+      if (translations[code]?.[resolvedKey] !== undefined) translated++;
+      else if (translations.EN?.[resolvedKey] !== undefined) fallback++;
+      else { missing++; missingKeys.push(key); }
+    }
+    coverageTable.push({ code, translated, fallback, missing });
+    if (missing > 0) {
+      failures.push(`${code}: ${missing} production key(s) resolve through NEITHER the locale NOR EN (would render the raw key): ${missingKeys.slice(0, 10).join(', ')}${missingKeys.length > 10 ? '…' : ''}`);
+    }
+  }
+
+  console.log('\n[i18n-16] Translation coverage table (production keys):');
+  console.log('  locale | translated | fallback(EN) | missing');
+  for (const row of coverageTable) {
+    console.log(`  ${row.code.padEnd(6)} | ${String(row.translated).padStart(10)} | ${String(row.fallback).padStart(12)} | ${String(row.missing).padStart(7)}`);
+  }
+
   if (failures.length) {
     console.error(`\n[i18n-16] FAIL (${failures.length})`);
     failures.forEach((f) => console.error('  -', f));
     process.exit(1);
   }
-  console.log('\n[i18n-16] OK — 16-locale registry + CORE_KEYS coverage verified, 0 missing/empty/placeholder, 0 placeholder-interpolation mismatches');
+  console.log('\n[i18n-16] OK — 16-locale registry + CORE_KEYS coverage verified, 0 missing/empty/placeholder, 0 placeholder-interpolation mismatches, 0 missing production keys (locale nor EN)');
 })().catch((error) => {
   console.error('[i18n-16] loader/runtime failure:', error);
   process.exit(1);

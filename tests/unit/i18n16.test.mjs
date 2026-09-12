@@ -158,5 +158,46 @@ function i18n_KEY_from_source(src) {
   }
 }
 
+// --- 11. I18N-16 completion pass (item 3): a foreign locale must never
+//         surface the backend's RU-only verification_required `hint` —
+//         it must resolve via the structured `required_name` field
+//         instead. Proves this against the actual normalizeDetail() used
+//         by every marketAPI call, not a re-implementation of it. -------
+{
+  const { __testables } = await import('../../src/utils/marketAPI.js');
+  const { normalizeDetail } = __testables;
+  // KK/KY/TG/BE are LEGITIMATELY Cyrillic-script languages — the leak this
+  // guards against is showing RUSSIAN prose to a locale that isn't Russian,
+  // not the Cyrillic alphabet itself. So the strict "no Cyrillic at all"
+  // check only applies to Latin-script/Chinese locales; every locale gets
+  // the stronger, universal check: the shown text must exactly match this
+  // locale's own translations.<key> value, never the raw RU hint.
+  const CYRILLIC_SCRIPT_LOCALES = new Set(['RU', 'KK', 'KY', 'TG', 'BE']);
+  const CYRILLIC = /[Ѐ-ӿ]/;
+  const detail = {
+    error: 'verification_required',
+    current_level: 0,
+    required_level: 3,
+    required_name: 'driver_verified',
+    hint: 'Нужно подтвердить документы водителя (права + тех.паспорт)',
+  };
+  for (const code of ['DE', 'FR', 'PL', 'LT', 'LV', 'IT', 'TR', 'BE', 'RO', 'UZ', 'KY', 'TG', 'EN', 'ZH', 'KK']) {
+    i18n.setLanguage(code);
+    const shown = normalizeDetail(detail, 403);
+    ok(`${code}: verification_required hint is not the raw Russian text`, shown !== detail.hint, shown);
+    check(`${code}: verification_required hint matches this locale's own translation`, shown, i18n.default[code].verification_hint_driver_verified);
+    if (!CYRILLIC_SCRIPT_LOCALES.has(code)) {
+      ok(`${code}: verification_required hint has no Cyrillic leakage`, !CYRILLIC.test(shown), shown);
+    }
+    ok(`${code}: verification_required hint is non-empty`, !!shown && shown.length > 0);
+  }
+  // A code with no matching translation (or no required_name at all)
+  // must still fall back to the raw hint rather than crash/return empty —
+  // never worse than before this fix.
+  i18n.setLanguage('EN');
+  const noNameDetail = { error: 'verification_required', hint: 'Нужно...' };
+  check('detail with no required_name falls back to raw hint (no regression)', normalizeDetail(noNameDetail, 403), 'Нужно...');
+}
+
 console.log(failed === 0 ? '\nAll i18n-16 behavioral tests passed.' : `\n${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
