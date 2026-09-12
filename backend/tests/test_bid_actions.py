@@ -369,6 +369,20 @@ def test_counter_schema_columns():
         expect(col in cols, f"bids.{col} present")
 
 
+def _seed_ru_push_locale(uid):
+    """I18N-16 (2026-09-12): DEFAULT_LOCALE changed from RU to EN (a real
+    international user must never see Russian just because their device
+    reported no locale — i18n expansion spec item 2). A test asserting RU
+    push copy specifically must now register that intent explicitly
+    instead of relying on the old accidental default."""
+    with _get_conn_for_setup() as c:
+        c.execute(
+            "INSERT INTO push_devices (user_id, device_id, platform, push_provider, push_token, locale, enabled) "
+            "VALUES (?,?,?,?,?,?,1)",
+            (uid, f"test-device-{uid}", "android", "expo", f"ExponentPushToken[{uid}]", "RU"),
+        )
+
+
 def _new_pending_bid(owner: str, driver: str, amount: int = 1000):
     cargo_id = seed_cargo(owner_id=owner)
     as_user(driver, role="driver")
@@ -697,6 +711,7 @@ def test_counter_cancel_by_owner_notifies_bidder():
     owner = "owner-cc-1"
     driver = "driver-cc-1"
     cargo_id, bid_id = _new_pending_bid(owner, driver, 1000)
+    _seed_ru_push_locale(driver)
     as_user(owner)
     client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 800})
     expect(get_bid(bid_id)["status"] == "countered", "bid is countered before cancel")
@@ -722,3 +737,20 @@ def test_counter_cancel_by_owner_notifies_bidder():
     r2 = client.post(f"/api/v1/market/bids/{bid_id}/counter/cancel")
     expect(r2.status_code == 409, f"repeat cancel on pending bid → 409 (got {r2.status_code})")
     expect(len(query_notifications(driver)) == len(notifs), "repeat cancel must not create a second notification")
+
+    # I18N-16 (2026-09-13): _seed_ru_push_locale(driver) above gives the
+    # bidder a REAL push_devices row (needed for the RU push-copy assertion
+    # to have something to render against) — before that fixture existed,
+    # this test's push send was a harmless no-op (no device to target,
+    # nothing enqueued). With a real device, services.push_sender.send()
+    # now enqueues a durable push_outbox row, and the fake ExponentPushToken
+    # can't be delivered for real, so it stays 'pending'. Other files in
+    # this suite assert a GLOBAL zero-pending-rows invariant (e.g.
+    # test_push_outbox_drain.py's `stats["picked"] == 0`); confirmed by
+    # direct reproduction that this cross-file leak already reproduces on
+    # the pre-i18n-16 base commit once ANY test registers a real device
+    # here — it was just never triggered before. Clean up this test's own
+    # row so it keeps the "no devices means no side effects for other test
+    # files" invariant those tests were relying on.
+    with _get_conn_for_setup() as c:
+        c.execute("DELETE FROM push_outbox WHERE recipient_user_id = ?", (driver,))

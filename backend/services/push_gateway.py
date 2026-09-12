@@ -293,8 +293,9 @@ def get_recipient_locale(user_id: str) -> str:
     user should be written in. Reads `push_devices.locale` (most recently
     active device wins — ORDER BY last_seen_at DESC from active_devices())
     and normalizes it via push_i18n.normalize_locale(). Falls back to the
-    app-wide default (RU) when the user has no device with a locale on file
-    (older client, or a client that never sent one)."""
+    app-wide default (EN — never RU, per i18n-16 item 2) when the user has
+    no device with a locale on file (older client, or a client that never
+    sent one)."""
     from services.push_i18n import normalize_locale
     for device in active_devices(user_id):
         if device.get("locale"):
