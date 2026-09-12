@@ -135,6 +135,34 @@ def get_user(authorization: str = Header(None)) -> dict:
     return _extract_driver(authorization)
 
 
+# Track B (2026-09-10), moved here in Vehicle Security & Trip Integrity
+# Repair Round 2 (2026-09-11): the CANONICAL server-side role-direction
+# guard. Originally lived as a private helper inside api/marketplace.py
+# (create_cargo/create_trip/create_bid had no user["role"] check at all --
+# a client account could publish a driver trip, or vice versa). Promoted
+# here, public, once api/vehicles.py needed the identical check and
+# duplicating it there would have been exactly the "second incompatible
+# role mechanism" this project's own conventions warn against (see Round 2
+# audit item 5). `role` is normalized the same way api/profile.py already
+# does when a user sets it (bare "shipper" -> "client"; drivers_registration
+# itself never stores literal "shipper") -- matched here in case an older
+# token/row predates that normalization.
+def require_role(user: dict, allowed: tuple, action: str) -> None:
+    role = (user.get("role") or "").strip().lower()
+    if role == "shipper":
+        role = "client"
+    if role not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "ROLE_NOT_ALLOWED",
+                "message": f"Действие «{action}» недоступно для вашей роли",
+                "your_role": role or "not_set",
+                "allowed_roles": list(allowed),
+            },
+        )
+
+
 def require_admin(authorization: str = Header(None)) -> dict:
     """Только admin / support роли. Для blacklist/add, report, alerts."""
     driver = _extract_driver(authorization)

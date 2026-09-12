@@ -80,6 +80,15 @@ def _rebuild_all_schemas():
     import api.favorites as favorites
     favorites._init()
 
+    # Track: Vehicle Security & Trip Integrity Repair (2026-09-11). Same
+    # class of bug as CGR/favorites above: database.vehicles_dal.
+    # init_vehicles_schema() is only ever called from main.py's startup
+    # event, which pytest never runs -- without it here, `vehicles` simply
+    # doesn't exist for a full-suite run (only an isolated single-file run
+    # that happens to call it itself at module level survives).
+    from database import vehicles_dal
+    vehicles_dal.init_vehicles_schema()
+
     # deal_events immutable timeline schema used by status-FSM tests.
     _deal_room_schema = Path(__file__).resolve().parent.parent / "database" / "schemas" / "deal_room_schema.sql"
     if _deal_room_schema.exists():

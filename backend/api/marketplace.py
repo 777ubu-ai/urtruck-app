@@ -5,6 +5,9 @@
 import sys
 import json
 import re
+import sqlite3
+import time
+import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -14,14 +17,15 @@ from pydantic import BaseModel, field_validator
 from typing import Optional, List
 
 from database.db import get_conn, new_id
-from api.verification_gate import require_level, require_active_level, require_driver_trip_publication, get_user, _extract_driver
+from api.verification_gate import require_level, require_active_level, require_driver_trip_publication, get_user, _extract_driver, require_role
 from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
 from services.geo_normalize import normalize_country, is_international_route
 from services import push_gateway
 from services import push_i18n
-from config import IS_PRODUCTION
+from config import IS_PRODUCTION, IDEMPOTENCY_INTENT_TTL_HOURS
+from database import vehicles_dal
 
 
 def _reject_negative_price(value):
@@ -466,6 +470,67 @@ def _init():
         c.execute("CREATE INDEX IF NOT EXISTS idx_deal_tracking_events_deal ON deal_tracking_events(deal_id, created_at)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_deal_tracking_status ON deal_tracking(status, updated_at)")
         c.commit()
+    # Track: Vehicle Security & Trip Integrity Repair, Round 2 (2026-09-11),
+    # items 1-4. Round 1 used a 20s-bucketed heuristic key (driver + route +
+    # truck_type + vehicle_id + price) -- independent review correctly
+    # rejected it as not production-safe: two GENUINELY different user
+    # intents with those same 5 fields (capacity_tons/available_m3/currency/
+    # departure/etc all differing) were indistinguishable, and the window
+    # boundary (a retry at 19s vs 21s) changed the outcome for reasons that
+    # have nothing to do with user intent. Replaced with a real client-
+    # supplied Idempotency-Key: the caller names its own attempt, retries
+    # of the SAME attempt reuse that name, and the server compares a
+    # canonical fingerprint of the FULL request against what that key
+    # already claimed -- see _canonical_request_fingerprint() and
+    # create_trip() below.
+    #
+    # Deliberately a SEPARATE, dedicated table rather than a UNIQUE index on
+    # trips itself (this choice survives from round 1 for the same reason):
+    # a pre-existing, unrelated backfill two lines above this ("UPDATE
+    # {table} SET published_at = created_at WHERE published_at IS NULL",
+    # run on EVERY _init() call, including the per-test autouse fixture)
+    # can touch many rows in one statement, and test fixtures across this
+    # codebase routinely INSERT trips directly via raw SQL with generic,
+    # repeated dummy values -- a UNIQUE index directly on trips() sharing
+    # any of those columns risked exactly the same class of unrelated
+    # suite-wide breakage round 1 hit and reverted. A dedicated table this
+    # migration creates AND this feature exclusively reads/writes cannot be
+    # touched by any existing raw-SQL seed helper or backfill.
+    with get_conn() as c:
+        # Round 1's shape (intent_key TEXT PRIMARY KEY, trip_id NOT NULL, no
+        # owner_user_id/action/fingerprint/expires_at) never shipped past an
+        # unmerged, undeployed branch -- no production data exists in it.
+        # Detect and replace it rather than silently keeping the old,
+        # weaker table under CREATE TABLE IF NOT EXISTS (which would no-op
+        # against it forever). Purely bookkeeping data -- dropping it only
+        # means a handful of very recent dev-only idempotency keys stop
+        # being recognized as duplicates; the trips they already produced
+        # are untouched (a separate table).
+        table_exists = c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_publish_intents'"
+        ).fetchone()
+        if table_exists:
+            cols = {r["name"] for r in c.execute("PRAGMA table_info(trip_publish_intents)").fetchall()}
+            if "owner_user_id" not in cols:
+                c.execute("DROP TABLE trip_publish_intents")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS trip_publish_intents (
+                owner_user_id        TEXT NOT NULL,
+                action               TEXT NOT NULL,
+                idempotency_key      TEXT NOT NULL,
+                request_fingerprint  TEXT NOT NULL,
+                trip_id              TEXT,
+                created_at           TEXT DEFAULT CURRENT_TIMESTAMP,
+                expires_at           TEXT NOT NULL,
+                PRIMARY KEY (owner_user_id, action, idempotency_key)
+            )
+        """)
+        # Cleanup (item 4) scans by expiry, not by the primary key.
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_trip_publish_intents_expires "
+            "ON trip_publish_intents(expires_at)"
+        )
+        c.commit()
     # One-time migration: picked_up → in_progress (status removed from code).
     with get_conn() as c:
         c.execute("UPDATE deals SET status = 'in_progress' WHERE status = 'picked_up'")
@@ -590,10 +655,10 @@ class BidCounterIn(BaseModel):
 @mp_router.post("/cargos")
 def create_cargo(body: CargoIn, user=Depends(require_active_level(1))):
     # Track B (2026-09-10): a cargo listing is a client/shipper action —
-    # server-side role enforcement (see _require_role above), not just a UI
+    # server-side role enforcement (see verification_gate.require_role), not just a UI
     # affordance. Confirmed gap: a driver-role account could previously
     # publish a client cargo listing directly via the API.
-    _require_role(user, ("client",), "разместить груз")
+    require_role(user, ("client",), "разместить груз")
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите откуда и куда")
     if not body.cargo_desc:
@@ -850,30 +915,11 @@ def _active_deal_exists(c, *, cargo_id: str = None, trip_id: str = None) -> bool
     return False
 
 
-# Track B (2026-09-10): server-side role enforcement for the marketplace's
-# two directions (a cargo listing/bid is a client-side action; a trip
-# listing/bid is a driver-side action). Previously enforced ONLY by the UI
-# (dealActionResolver.js et al) -- create_cargo/create_trip/create_bid had
-# no user["role"] check at all, so a client account could publish a driver
-# trip (or bid on another client's cargo) directly via the API, and
-# vice versa. `role` is normalized the same way api/profile.py already
-# does when a user sets it (bare "shipper" -> "client"; drivers_registration
-# itself never stores literal "shipper") -- matched here in case an older
-# token/row predates that normalization.
-def _require_role(user: dict, allowed: tuple, action: str) -> None:
-    role = (user.get("role") or "").strip().lower()
-    if role == "shipper":
-        role = "client"
-    if role not in allowed:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "error": "ROLE_NOT_ALLOWED",
-                "message": f"Действие «{action}» недоступно для вашей роли",
-                "your_role": role or "not_set",
-                "allowed_roles": list(allowed),
-            },
-        )
+# Track B (2026-09-10)'s role-direction guard now lives in
+# api/verification_gate.py as the public require_role() -- promoted there
+# in Vehicle Security & Trip Integrity Repair Round 2 (2026-09-11) once
+# api/vehicles.py needed the identical check (see that module's import and
+# verification_gate.require_role's docstring for why).
 
 
 @mp_router.delete("/cargos/{cargo_id}")
@@ -1276,14 +1322,101 @@ def republish_cargo(cargo_id: str, user=Depends(require_active_level(1))):
 
 # ═══ Trips ═══
 
+# Vehicle Security & Trip Integrity Repair, Round 2 (2026-09-11), items 1-4.
+IDEMPOTENCY_ACTION_CREATE_TRIP = "create_trip"
+
+
+def _canonical_request_fingerprint(payload: dict) -> str:
+    """Item 2: a deterministic fingerprint of the FULL business payload, not
+    a hand-picked subset. `payload` must already be the complete pydantic
+    model_dump() of the request body -- every field the client actually
+    controls, nothing the server assigns (TripIn itself carries no id/
+    timestamp field; those only exist on the `trips` row created AFTER
+    this fingerprint is computed, so there is nothing server-generated to
+    accidentally include here). sort_keys + fixed separators make the JSON
+    string byte-identical regardless of client key ordering or whitespace;
+    the sha256 hex digest keeps the stored value small and constant-size."""
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def cleanup_expired_trip_publish_intents(c=None) -> int:
+    """Item 4: deletes only the dedup bookkeeping row -- the Trip an intent
+    produced (trips.id) is a completely separate table and is never
+    touched here. Callable directly (tests, an ops script) or via a
+    provided connection to share a transaction; returns rows deleted."""
+    if c is not None:
+        return c.execute(
+            "DELETE FROM trip_publish_intents WHERE expires_at <= CURRENT_TIMESTAMP"
+        ).rowcount
+    with get_conn() as conn:
+        n = conn.execute(
+            "DELETE FROM trip_publish_intents WHERE expires_at <= CURRENT_TIMESTAMP"
+        ).rowcount
+        conn.commit()
+    return n
+
+
+_INTENT_CLEANUP_INTERVAL_SECONDS = 300  # opportunistic, at most once per 5 min
+_intent_cleanup_last_run = 0.0
+
+
+def _maybe_cleanup_trip_publish_intents(c) -> None:
+    """Same throttled-opportunistic shape as database.db._maybe_expire_
+    marketplace -- runs inline with normal request traffic instead of
+    needing a dedicated scheduler job, cheap because it's a no-op between
+    intervals and an indexed DELETE (idx_trip_publish_intents_expires)
+    when it does run."""
+    global _intent_cleanup_last_run
+    now = time.monotonic()
+    if now - _intent_cleanup_last_run < _INTENT_CLEANUP_INTERVAL_SECONDS:
+        return
+    _intent_cleanup_last_run = now
+    try:
+        n = cleanup_expired_trip_publish_intents(c)
+        if n:
+            print(f"[trip-publish-intents] cleaned up {n} expired rows", flush=True)
+    except Exception as e:
+        print(f"[trip-publish-intents] cleanup skipped: {e}", flush=True)
+
+
 @mp_router.post("/trips")
-def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
+def create_trip(
+    body: TripIn,
+    user=Depends(require_driver_trip_publication),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+):
+    # This codebase's own test suite has an established pattern of calling
+    # FastAPI endpoint functions directly (marketplace.create_trip(body=...,
+    # user=...)) rather than through TestClient/real HTTP for several
+    # "spec" tests -- Depends(...) values are passed as plain kwargs there,
+    # but a Header(...) default is never resolved by FastAPI's DI in that
+    # path, so idempotency_key would otherwise still be that Header(...)
+    # FieldInfo object, not the None it represents. Normalize defensively
+    # rather than require every such existing test to start passing one.
+    if not isinstance(idempotency_key, (str, type(None))):
+        idempotency_key = None
     # Track B (2026-09-10): symmetric to create_cargo -- a trip listing is a
     # driver action. Confirmed gap: a client-role account could previously
     # publish a driver trip listing directly via the API.
-    _require_role(user, ("driver",), "разместить рейс")
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
+    # Track: Vehicle Security & Trip Integrity Repair (2026-09-11), P0.
+    # Overnight forensic audit reproduced this live: create_trip stored
+    # ANY vehicle_id verbatim -- no check that it exists, none that it
+    # belongs to the calling driver. body.vehicle_id="<someone else's id>"
+    # created a real trip row pointing at another driver's vehicle. Same
+    # unified 404 as the vehicles API (existence vs ownership must not be
+    # distinguishable) -- see vehicles_dal.vehicle_owned_by /
+    # VehicleNotOwned. require_active_level(1) above already establishes
+    # "this is a driver, not rejected"; this is specifically about THIS
+    # vehicle_id belonging to THIS driver, which is a per-request check the
+    # role gate cannot make.
+    if body.vehicle_id and not vehicles_dal.vehicle_owned_by(user["id"], body.vehicle_id):
+        raise HTTPException(status_code=404, detail={
+            "error": "VEHICLE_NOT_FOUND",
+            "message": "Машина не найдена",
+        })
     # Stage 52 / P1-8: дата выезда не может быть в прошлом.
     _validate_future_date(body.departure, "departure")
     # Same pilot whitelist as create_cargo — see note there.
@@ -1293,7 +1426,101 @@ def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
     tid = new_id()
     fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
     tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
+
+    # Vehicle Security & Trip Integrity Repair, Round 2 (2026-09-11),
+    # items 1-3. Real client-supplied Idempotency-Key, not the round-1 20s
+    # bucket heuristic (see _init()'s comment on trip_publish_intents for
+    # why that was rejected). No key -> no dedup for this request (an
+    # older/uninstrumented caller behaves exactly as before this feature
+    # existed); src/utils/marketAPI.js now always sends one for the real
+    # app (item 9).
+    fingerprint = _canonical_request_fingerprint(body.model_dump())
+    if idempotency_key:
+        with get_conn() as c:
+            _maybe_cleanup_trip_publish_intents(c)
+            existing = c.execute(
+                "SELECT request_fingerprint, trip_id FROM trip_publish_intents "
+                "WHERE owner_user_id = ? AND action = ? AND idempotency_key = ? "
+                "AND expires_at > CURRENT_TIMESTAMP",
+                (user["id"], IDEMPOTENCY_ACTION_CREATE_TRIP, idempotency_key),
+            ).fetchone()
+        if existing:
+            if existing["request_fingerprint"] != fingerprint:
+                # Item 1: same key, different payload -- this is NOT the
+                # same attempt being retried, it's a caller reusing a key
+                # it should not reuse. Refuse rather than silently return
+                # either the old trip (wrong result for THIS request) or a
+                # new one (defeats the key's purpose).
+                raise HTTPException(status_code=409, detail={
+                    "error": "IDEMPOTENCY_KEY_REUSED",
+                    "message": "Этот idempotency-key уже использован для другого запроса",
+                })
+            if existing["trip_id"]:
+                # Item 1: same key + same fingerprint -> this IS a retry of
+                # an attempt that already succeeded. Same response shape as
+                # the success path, so no frontend change is needed to
+                # consume it.
+                return {"id": existing["trip_id"], "ok": True}
+            # A claim row exists (same key+fingerprint) but trip_id is still
+            # NULL. Under this function's own atomic design (claim + trip
+            # INSERT + backfill all in ONE transaction below) a committed
+            # row can only ever reach here with trip_id already set -- this
+            # branch exists purely as a fail-loud guard against a future
+            # change accidentally breaking that invariant, not a case this
+            # endpoint can currently produce.
+            raise HTTPException(status_code=409, detail={
+                "error": "IDEMPOTENCY_KEY_INCOMPLETE",
+                "message": "Незавершённая попытка для этого idempotency-key, повторите позже",
+            })
+
     with get_conn() as c:
+        if idempotency_key:
+            # An EXPIRED row for this exact key may still be sitting in the
+            # table (the periodic sweep runs at most every 5 minutes, not
+            # instantly on expiry) -- delete it first so a key reused after
+            # its TTL claims cleanly instead of colliding with its own
+            # stale row below and incorrectly resurrecting the old trip_id.
+            c.execute(
+                "DELETE FROM trip_publish_intents "
+                "WHERE owner_user_id = ? AND action = ? AND idempotency_key = ? "
+                "AND expires_at <= CURRENT_TIMESTAMP",
+                (user["id"], IDEMPOTENCY_ACTION_CREATE_TRIP, idempotency_key),
+            )
+            try:
+                c.execute(
+                    "INSERT INTO trip_publish_intents "
+                    "(owner_user_id, action, idempotency_key, request_fingerprint, trip_id, expires_at) "
+                    "VALUES (?, ?, ?, ?, ?, datetime('now', ?))",
+                    (user["id"], IDEMPOTENCY_ACTION_CREATE_TRIP, idempotency_key, fingerprint, tid,
+                     f"+{IDEMPOTENCY_INTENT_TTL_HOURS} hours"),
+                )
+            except sqlite3.IntegrityError:
+                # Raced with a concurrent request bearing the identical key
+                # (same owner_user_id/action/idempotency_key PRIMARY KEY).
+                # SQLite serializes the two INSERTs at commit time
+                # regardless of thread interleaving, so whichever one loses
+                # this race deterministically sees the winner's already-
+                # committed row here -- not a "sometimes both get through"
+                # race. See test_trip_publish_idempotency.py's concurrency
+                # tests.
+                existing = c.execute(
+                    "SELECT request_fingerprint, trip_id FROM trip_publish_intents "
+                    "WHERE owner_user_id = ? AND action = ? AND idempotency_key = ?",
+                    (user["id"], IDEMPOTENCY_ACTION_CREATE_TRIP, idempotency_key),
+                ).fetchone()
+                if not existing or existing["request_fingerprint"] != fingerprint:
+                    raise HTTPException(status_code=409, detail={
+                        "error": "IDEMPOTENCY_KEY_REUSED",
+                        "message": "Этот idempotency-key уже использован для другого запроса",
+                    })
+                return {"id": existing["trip_id"], "ok": True}
+        # Item 7 (rollback / no orphan state): the claim row above and this
+        # INSERT share the SAME transaction -- if this INSERT raises for any
+        # reason, the exception propagates out of the `with get_conn()`
+        # block below, get_conn() skips its own commit(), and SQLite rolls
+        # back the whole transaction (claim row included) on connection
+        # close. No poisoned idempotency-key state can survive a failed
+        # trip write.
         c.execute("""
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
               from_city, to_city, transit, truck_type, vehicle_id,
@@ -1590,9 +1817,9 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
     # direction to validate against, and can never be accepted anyway
     # (see _finalize_accept_inline's own fail-closed check on that case).
     if body.cargo_id:
-        _require_role(user, ("driver",), "сделать ставку на груз")
+        require_role(user, ("driver",), "сделать ставку на груз")
     elif body.trip_id:
-        _require_role(user, ("client",), "сделать ставку на рейс")
+        require_role(user, ("client",), "сделать ставку на рейс")
 
     # PR-B (P0-E): hard 400 на невалидный amount. Раньше backend принимал
     # 0 / отрицательные значения, защищён был только frontend (BidModal:61-64).

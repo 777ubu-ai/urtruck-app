@@ -49,6 +49,14 @@ REVIEWER_DEMO_CODE_IS_DEFAULT = (REVIEWER_DEMO_CODE == _REVIEWER_DEMO_CODE_DEFAU
 # На сервере DB лежит в /home/ubuntu/urtruck/backend/database/security.db
 DB_PATH = os.getenv("DB_PATH", "/home/ubuntu/urtruck/backend/database/security.db")
 
+# Vehicle Security & Trip Integrity Repair, Round 2 (2026-09-11): single
+# source of truth for how long an Idempotency-Key request-dedup record
+# (trip_publish_intents) stays valid. A retry within this window with the
+# same key returns the original result; the bookkeeping row itself (never
+# the Trip it produced) is deleted once expired -- see
+# api/marketplace.py's cleanup_expired_trip_publish_intents().
+IDEMPOTENCY_INTENT_TTL_HOURS = int(os.getenv("IDEMPOTENCY_INTENT_TTL_HOURS", "24"))
+
 # Redis
 REDIS_URL = "redis://localhost:6379/0"
 CACHE_TTL_SECONDS = 3600
