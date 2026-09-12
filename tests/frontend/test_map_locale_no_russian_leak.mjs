@@ -111,12 +111,17 @@ test('no component anywhere in src/ renders Cyrillic as a JSX text node', () => 
 });
 
 test('every new map/security key exists in all four languages', () => {
+  // I18N-16 (2026-09-12): 12 more locales were added alongside RU/KK/ZH/EN
+  // (feat/claude-i18n-16-locales-20260912), so a key defined everywhere now
+  // matches 16 times, not 4 — a strict `=== 4` would fail on the very
+  // completeness this test exists to guard. The floor of 4 (RU/KK/ZH/EN
+  // must never regress) is what actually matters here.
   const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
   for (const key of ['map_point_start', 'map_point_destination', 'map_point_waypoint',
     'security_badge_problems', 'map_loading', 'map_unavailable_title', 'map_reconnecting',
     'map_road_route_unavailable', 'map_not_configured_title', 'map_not_configured_hint',
     'map_building_route']) {
     const count = [...i18n.matchAll(new RegExp(`^\\s+${key}:`, 'gm'))].length;
-    assert.equal(count, 4, `${key} must be defined in RU/KK/ZH/EN (found ${count})`);
+    assert.ok(count >= 4, `${key} must be defined in at least RU/KK/ZH/EN (found ${count})`);
   }
 });
