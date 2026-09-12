@@ -231,9 +231,14 @@ test('i18n: social auth error copy exists symmetrically in all 4 languages', () 
     'auth_error_ambiguous_email',
   ];
   for (const lang of ['RU', 'KK', 'ZH', 'EN']) {
-    const blockMatch = new RegExp(`\\n  ${lang}: \\{[\\s\\S]*?\\n\\},\\n\\};`, 'm').test(i18n)
-      ? new RegExp(`\\n  ${lang}: \\{[\\s\\S]*?(?=\\n  [A-Z]{2}: \\{|\\n\\};)`, 'm').exec(i18n)
-      : null;
+    // I18N-16 (2026-09-12): this used to gate on a literal "\n},\n};"
+    // immediately after the block, which only ever matched because EN
+    // happened to be the LAST locale in translations. Now that 12 more
+    // locales (UZ..RO) follow EN (feat/claude-i18n-16-locales-20260912),
+    // that gate never fires for any of the four — the lookahead-based
+    // regex below is sufficient on its own and doesn't care what comes
+    // after the block (another locale key, a comment, or the true close).
+    const blockMatch = new RegExp(`\\n  ${lang}: \\{[\\s\\S]*?(?=\\n  [A-Z]{2}: \\{|\\n\\};)`, 'm').exec(i18n);
     assert.ok(blockMatch, `i18n block ${lang} not found`);
     const block = blockMatch[0];
     for (const key of keys) {
