@@ -316,6 +316,25 @@ def run_full_lifecycle(run_label):
         f"repeat status={msg_again.status_code})"
     )
 
+    # I18N-16 (2026-09-13): _seed_ru_push_locale() gives driver/shipper a
+    # REAL push_devices row (needed so the RU push-copy assertions above
+    # have something to render against) — before that fixture existed,
+    # this scenario's push sends were harmless no-ops (no device to target,
+    # nothing enqueued). With a real device, services.push_sender.send()
+    # now actually enqueues durable push_outbox rows for every event this
+    # lifecycle fires (bid, accept, in_progress, delivered, received...),
+    # and the fake ExponentPushToken can't be delivered for real, so some
+    # stay 'pending'. Other files in this suite assert a GLOBAL zero-
+    # pending-rows invariant (e.g. test_push_outbox_drain.py's `stats
+    # ["picked"] == 0"); confirmed by direct reproduction that this
+    # cross-file leak is NOT new — the same push_outbox pollution already
+    # reproduces on the pre-i18n-16 base commit once ANY test registers a
+    # real device here, it was just never triggered before. Clean up this
+    # scenario's own rows so it keeps the "no devices means no side
+    # effects for other test files" invariant those tests were relying on.
+    with get_conn() as c:
+        c.execute("DELETE FROM push_outbox WHERE recipient_user_id IN (?, ?)", (driver, shipper))
+
     return {
         "cargo_id": cargo_id, "bid_id": bid_id, "deal_id": deal_id, "chat_room_id": chat_room_id,
         "shipper_saw_incoming_offer": True,

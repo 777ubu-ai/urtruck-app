@@ -111,6 +111,40 @@ def _force_due(event_key):
         c.execute("UPDATE push_outbox SET next_attempt_at=CURRENT_TIMESTAMP WHERE event_id=?", (event_key,))
 
 
+# I18N-16 (2026-09-13): every test in this file shares one process-wide
+# SQLite DB with every other backend test file (same pattern documented in
+# tests/test_durable_event_delivery.py's own _reset_outbox() helper), and
+# several tests below call process_pending_once() with NO per-recipient
+# filter — `stats["picked"]`/`stats["failed"]` reflect the ENTIRE outbox
+# table, not just rows this test created. Any other test file that enqueues
+# a real push_outbox row (any user with a real push_devices row + an
+# event_key'd send — e.g. test_bid_actions.py, test_live_deal_push_
+# lifecycle.py) and happens to run before this file, in whatever order the
+# full suite collects tests, can leave a stray 'pending' row that a test
+# here then trips over. Confirmed by direct bisection against the
+# pre-i18n-16 base commit (72fb8217) that this cross-file leak already
+# existed before this track touched anything — e.g. `pytest
+# tests/test_live_deal_push_lifecycle.py tests/test_push_outbox_drain.py`
+# alone already failed on that base commit. The reason the full suite
+# passed clean there is incidental: test_durable_event_delivery.py's own
+# _reset_outbox() (same rationale, same fix) happens to run between the
+# polluting files and this one in default alphabetical collection order —
+# this file must not depend on that coincidence to pass. Not a workaround
+# for a product bug — the actual delivery-ownership contract these tests
+# verify is real and untouched; this is purely test-hygiene for the shared
+# SQLite harness, matching test_durable_event_delivery.py's own established
+# convention instead of inventing a new one.
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _clean_outbox_before_each_test():
+    with get_conn() as c:
+        c.execute("DELETE FROM push_outbox")
+        c.execute("DELETE FROM push_delivery_log")
+    yield
+
+
 # ───────────────────────── tests ─────────────────────────
 def test_1_pending_event_is_delivered():
     uid, _ = _make_user_with_device()
