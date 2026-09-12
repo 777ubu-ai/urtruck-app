@@ -95,3 +95,5 @@ jobs:
         env:
           CI: 'true'
         run: npm run build:web
+      - name: Local build-info contract
+        run: node scripts/verifyWebBuildInfo.mjs

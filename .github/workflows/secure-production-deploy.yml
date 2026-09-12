@@ -74,9 +74,7 @@ jobs:
           cp .version dist/.version
           cp .version dist/version.txt
           python3 scripts/postprocess_web_release.py
-          BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          printf '{"commit":"%s","short":"%s","built_at":"%s","version":%s}\n' \
-            "$DEPLOY_SHA" "${DEPLOY_SHA::7}" "$BUILT_AT" "$(cat .version)" > dist/build-info.json
+          BUILD_INFO_SHA="$DEPLOY_SHA" node scripts/writeWebBuildInfo.mjs
           test -s dist/index.html
           test -s dist/build-info.json
           grep -q 'api-maps.yandex.ru/2.1/' dist/index.html

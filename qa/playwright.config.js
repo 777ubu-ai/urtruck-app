@@ -11,6 +11,8 @@ const path = require('path');
 
 const AGENTS_DIR = path.resolve(__dirname, 'agents');
 const captureAll = process.env.QA_CAPTURE_ALL === '1';
+const qaBaseUrl = process.env.QA_BASE_URL || process.env.E2E_BASE_URL || '';
+const isLocalArtifactRun = /^https?:\/\/(127\.0\.0\.1|localhost)(?::\d+)?(?:\/|$)/i.test(qaBaseUrl);
 
 module.exports = defineConfig({
   testDir: AGENTS_DIR,
@@ -51,7 +53,11 @@ module.exports = defineConfig({
     // became the real initial route. Keep one release contract on the live
     // flow instead of treating removed UI as a product regression.
     { name: 'onboarding-v2',   testMatch: /onboarding\.v2\.release\.spec\.js$/ },
-    { name: 'production-smoke', testMatch: /production\.smoke\.spec\.js$/ },
+    ...(isLocalArtifactRun ? [
+      { name: 'local-production-smoke', testMatch: /local-production\.smoke\.spec\.js$/ },
+    ] : [
+      { name: 'production-smoke', testMatch: /production\.smoke\.spec\.js$/ },
+    ]),
     { name: 'cargo-desc',      testMatch: /cargo\.description\.spec\.js$/ },
     { name: 'trip-clicks',         testMatch: /trip\.detail\.clicks\.spec\.js$/ },
     { name: 'shipper-trip-crash',  testMatch: /shipper\.trip\.crash\.spec\.js$/ },
