@@ -2,24 +2,31 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 
 const PROD = 'https://urtruck.kz';
-const EXPECTED_COMMIT = process.env.PRODUCTION_EXPECTED_COMMIT;
+const AUDIT_BASE = (process.env.QA_BASE_URL || process.env.E2E_BASE_URL || '').replace(/\/$/, '');
+const EXPECTED_LOCAL_COMMIT = process.env.LOCAL_BUILD_EXPECTED_COMMIT || process.env.GITHUB_SHA || '';
 
 async function expectHealthy(response, label) {
   expect(response.status(), `${label} returned server error`).toBeLessThan(500);
   return response;
 }
 
-test('production serves the merged build and public critical APIs', async ({ request }) => {
-  expect(EXPECTED_COMMIT).toMatch(/^[0-9a-f]{40}$/);
+test('PR audit serves the local or preview build artifact', async ({ request }) => {
+  test.skip(!AUDIT_BASE, 'deployed production build-info is verified only by the production deploy workflow');
 
-  const build = await expectHealthy(await request.get(`${PROD}/build-info.json`), 'build-info');
+  const build = await expectHealthy(await request.get(`${AUDIT_BASE}/build-info.json`), 'local build-info');
   expect(build.status()).toBe(200);
   const buildInfo = await build.json();
-  expect(buildInfo.commit).toBe(EXPECTED_COMMIT);
+  expect(buildInfo.commit).toMatch(/^[0-9a-f]{40}$/);
+  expect(buildInfo.short).toBe(buildInfo.commit.slice(0, 7));
+  expect(buildInfo.version).toBeDefined();
+  if (EXPECTED_LOCAL_COMMIT) expect(buildInfo.commit).toBe(EXPECTED_LOCAL_COMMIT);
 
-  const root = await expectHealthy(await request.get(`${PROD}/`), 'frontend');
+  const root = await expectHealthy(await request.get(`${AUDIT_BASE}/`), 'frontend');
   expect(root.status()).toBe(200);
   expect(await root.text()).toMatch(/<html|<!doctype/i);
+});
+
+test('production public critical APIs remain available', async ({ request }) => {
 
   const system = await expectHealthy(
     await request.get(`${PROD}/security/api/v1/system/info`),

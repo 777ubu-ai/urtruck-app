@@ -11,9 +11,15 @@ from pathlib import Path
 
 import pytest
 
-TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_production_like_migrations.db")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+import config
+
+# `config.DB_PATH` is captured before individual test modules can mutate the
+# process environment during collection. Using it here keeps the legacy seed
+# and the real migration calls on the same isolated database in a shared run.
+TEST_DB = config.DB_PATH
 
 
 LEGACY_SCHEMA = """
@@ -116,6 +122,16 @@ def _legacy_database_after_session_harness():
 
     push_api._init_schema()
     notifications_api._init()
+    with get_conn() as conn:
+        migrated_notification = conn.execute(
+            "SELECT user_id, type, title, url, event_key FROM notifications WHERE title=?",
+            ("Legacy notification",),
+        ).fetchone()
+    assert migrated_notification is not None, "notification migration must preserve legacy rows"
+    assert migrated_notification[0:4] == (
+        "legacy-user", "legacy", "Legacy notification", "/cargos/legacy"
+    )
+    assert migrated_notification[4] is None
     yield
 
 
