@@ -18,6 +18,7 @@ import {v1Colors, useV1Colors, useShipperCeramicColors, v1Spacing, v1Typography,
 import Feather from '@expo/vector-icons/Feather';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { localizePlace } from '../utils/places';
+import { sanitizeDisplayName } from '../utils/displayName';
 
 const BORDERS = ['Нур Жолы', 'Калжат', 'Достык', 'Бахты', 'Майкапчагай', 'Хоргос'];
 const MESSENGERS = [
@@ -124,9 +125,10 @@ export default function EditProfileScreen({ navigation, route }) {
   const profile = getProfile(userId) || {};
 
   const [avatar, setAvatar] = useState(profile.avatar_url || null);
-  const [firstName, setFirstName] = useState(profile.first_name || (profile.display_name || '').split(' ')[0] || '');
-  const [lastName, setLastName] = useState(profile.last_name || (profile.display_name || '').split(' ').slice(1).join(' ') || '');
-  const [phone, setPhone] = useState(session?.user?.phone || '+7 (***) ***-**-**');
+  const safeProfileName = sanitizeDisplayName(profile.display_name || profile.full_name, '');
+  const [firstName, setFirstName] = useState(profile.first_name || safeProfileName.split(' ')[0] || '');
+  const [lastName, setLastName] = useState(profile.last_name || safeProfileName.split(' ').slice(1).join(' ') || '');
+  const [phone, setPhone] = useState(session?.user?.phone || '');
   const [city, setCity] = useState(profile.city || '');
   const [email, setEmail] = useState(profile.email || '');
   const [company, setCompany] = useState(profile.company || profile.company_name || '');
@@ -442,7 +444,7 @@ export default function EditProfileScreen({ navigation, route }) {
       />
       <Field ceramic={!isDriver}
         featherIcon="map-pin"
-        label={t('signup_field_city')}
+        label={t('signup_city_pick')}
         value={city}
         onChangeText={setCity}
         placeholder={t('signup_city_pick')}
@@ -654,7 +656,7 @@ export default function EditProfileScreen({ navigation, route }) {
           setPhoneChangeError('');
           setPhoneChangeMockCode('');
         }}
-        title="Подтвердите новый номер"
+        title={t('reg_change_phone')}
         scroll={false}
         footer={(
           <PrimaryButton
@@ -668,13 +670,11 @@ export default function EditProfileScreen({ navigation, route }) {
           />
         )}
       >
-        <Text style={{ color: v1.textMuted, marginBottom: 10 }}>
-          Код отправлен на новый номер. Старый номер останется активным до подтверждения.
-        </Text>
+        <Text style={{ color: v1.textMuted, marginBottom: 10 }}>{t('reg_phone_hint')}</Text>
         <Field
           ceramic={!isDriver}
           featherIcon="shield"
-          label="Код подтверждения"
+          label={t('reg_confirm_btn')}
           value={phoneChangeCode}
           onChangeText={(value) => setPhoneChangeCode(value.replace(/\D/g, '').slice(0, 4))}
           keyboardType="number-pad"

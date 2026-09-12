@@ -82,10 +82,11 @@ export default function MarketplaceCard({
         {chevron ? <Feather name="chevron-right" size={18} color={colors.textDim} style={s.chevron} /> : null}
       </View>
 
-      {firstMeta ? <Text style={[s.meta, compact && s.compactMeta, { color: palette.textMuted }]} numberOfLines={1}>{firstMeta}</Text> : null}
-      {body || status || rightMeta || bookmark || unread > 0 ? (
+      {!compact && firstMeta ? <Text style={[s.meta, { color: palette.textMuted }]} numberOfLines={1}>{firstMeta}</Text> : null}
+      {body || status || rightMeta || bookmark || unread > 0 || (compact && firstMeta) ? (
         <View style={[s.bottomRow, compact && s.compactBottomRow]}>
           <View style={s.bottomText}>
+            {compact && firstMeta ? <Text style={[s.compactMeta, { color: palette.textMuted }]} numberOfLines={1}>{firstMeta}</Text> : null}
             {body && !compact ? <Text style={[s.description, { color: palette.textMuted }]} numberOfLines={1}>{body}</Text> : null}
             {status ? <StatusPill status={status.key} label={status.label} color={status.color} testID={status.testID} /> : null}
           </View>
@@ -103,7 +104,10 @@ const s = StyleSheet.create({
   card: { padding: 12, minHeight: 108, borderRadius: 15 },
   // Marketplace feed canon: three dense rows at 390dp. The normal card is
   // retained for detail/deal adapters that intentionally contain actions.
-  compactCard: { padding: 0, minHeight: 60, height: 60, borderRadius: 14 },
+  // 74dp is the smallest readable compact card: 28x18 flags, 12sp route and
+  // metadata remain legible on 360dp screens without collapsing the card into
+  // a touch target that is visually dense but unusable.
+  compactCard: { paddingHorizontal: 10, paddingVertical: 6, minHeight: 74, height: 74, borderRadius: 14 },
   dimmed: { opacity: 0.62 },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 0 },
   compactTopRow: { minHeight: 17 },
@@ -113,12 +117,12 @@ const s = StyleSheet.create({
   price: { textAlign: 'right', fontVariant: ['tabular-nums'], letterSpacing: -0.1 },
   compactPrice: { fontSize: 14, lineHeight: 16, fontWeight: '800' },
   priceMeta: { fontSize: 12, lineHeight: 16, fontWeight: '600', marginTop: 1, textAlign: 'right' },
-  compactPriceMeta: { fontSize: 10, lineHeight: 12 },
+  compactPriceMeta: { fontSize: 12, lineHeight: 16 },
   chevron: { marginLeft: 4, marginTop: 1, flexShrink: 0 },
   meta: { marginTop: 6, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  compactMeta: { marginTop: 0, fontSize: 10, lineHeight: 12, fontWeight: '600' },
+  compactMeta: { marginTop: 0, fontSize: 12, lineHeight: 16, fontWeight: '600' },
   bottomRow: { flexDirection: 'row', alignItems: 'center', minHeight: 40, marginTop: 2, gap: 8 },
-  compactBottomRow: { minHeight: 20, marginTop: 0, gap: 5 },
+  compactBottomRow: { minHeight: 22, marginTop: 0, gap: 5 },
   bottomText: { flex: 1, minWidth: 0, justifyContent: 'center' },
   description: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
   compactDescription: { fontSize: 11, lineHeight: 14, fontWeight: '500' },

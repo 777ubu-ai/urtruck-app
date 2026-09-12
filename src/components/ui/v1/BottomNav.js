@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
   wrap: { paddingHorizontal: 12, paddingTop: 4, backgroundColor: 'transparent' },
   bar: {
     flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    paddingHorizontal: 6, paddingTop: 5, paddingBottom: 4, borderRadius: 30, borderWidth: 0,
+    height: 70, minHeight: 70, paddingHorizontal: 6, paddingTop: 5, paddingBottom: 4, borderRadius: 30, borderWidth: 0,
     shadowColor: '#8998A6', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5,
   },
   cell: {

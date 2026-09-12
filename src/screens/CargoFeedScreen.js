@@ -392,7 +392,7 @@ export default function CargoFeedScreen({ navigation }) {
               routeHalf column; clipped to "Например, Алм…". t('city') is
               short and reads naturally under the "Откуда" label above. */}
           <Text style={[styles.routeValue, { color: palette.text }, !dirFrom && { color: palette.textMuted }]} numberOfLines={1}>
-            {dirFrom ? localizePlace(dirFrom, lang) : t('city')}
+            {dirFrom ? localizePlace(dirFrom, lang) : t('signup_city_pick')}
           </Text>
         </TouchableOpacity>
         <Feather name="arrow-right" size={24} color={ACCENT} />
@@ -402,7 +402,7 @@ export default function CargoFeedScreen({ navigation }) {
             <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('to')}</Text>
           </View>
           <Text style={[styles.routeValue, { color: palette.text }, !dirTo && { color: palette.textMuted }]} numberOfLines={1}>
-            {dirTo ? localizePlace(dirTo, lang) : t('city')}
+            {dirTo ? localizePlace(dirTo, lang) : t('signup_city_pick')}
           </Text>
         </TouchableOpacity>
         {(dirFrom || dirTo) ? (

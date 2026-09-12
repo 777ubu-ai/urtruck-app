@@ -41,8 +41,8 @@ test('compact card keeps route and right-aligned price as siblings without absol
   const priceColumn = walk(tree).find((el) => flatten(el.props?.style).width === 96);
   assert.ok(priceColumn, 'fixed right price rail exists');
   assert.equal(flatten(priceColumn.props.style).alignItems, 'flex-end');
-  const card = walk(tree).find((el) => flatten(el.props?.style).minHeight === 60);
-  assert.ok(card, 'compact card fits seven-list density');
+  const card = walk(tree).find((el) => flatten(el.props?.style).minHeight === 74);
+  assert.ok(card, 'compact render branch uses the readable 74dp card');
 });
 
 test('route passes both ISO endpoints to shared CountryFlag renderer', () => {
@@ -53,7 +53,7 @@ test('route passes both ISO endpoints to shared CountryFlag renderer', () => {
   assert.equal(route.props.toFlag, 'KZ');
   assert.ok(countryFlagXml(route.props.fromFlag));
   assert.ok(countryFlagXml(route.props.toFlag));
-  assert.match(countryFlagXml('KZ'), /#36B6CC/i);
+  assert.match(countryFlagXml('KZ'), /#00AFCA/i);
 });
 
 test('cargo type label is deliberately not rendered and bookmark remains a separate control', () => {

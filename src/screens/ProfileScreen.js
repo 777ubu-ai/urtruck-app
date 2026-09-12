@@ -21,6 +21,7 @@ import AppConfirmModal from '../components/ui/AppConfirmModal';
 import Button from '../components/ui/v1/Button';
 import CountryFlag from '../components/ui/v1/CountryFlag';
 import { localizePlace } from '../utils/places';
+import { sanitizeDisplayName } from '../utils/displayName';
 
 const LANGS = [
   { code: 'RU', country: 'RU' },
@@ -205,7 +206,7 @@ export default function ProfileScreen({ navigation, route }) {
           )}
           <View style={s.profileInfo}>
             <View style={s.profileNameRow}>
-              <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>{profile.display_name || profile.full_name || t('add_name')}</Text>
+            <Text style={[s.name, { color: theme.text }]} numberOfLines={1}>{sanitizeDisplayName(profile.display_name || profile.full_name, t('add_name'))}</Text>
               {profile.is_verified ? (
                 <View style={[s.verifiedDot, { backgroundColor: '#168759' }]}>
                   <Feather name="check" size={10} color="#fff" />

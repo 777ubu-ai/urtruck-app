@@ -10,11 +10,13 @@ test('cargo feed keeps the first screen dense enough for narrow mobile browsers'
   assert.match(cargoFeed, /routeSelector:\s*\{[\s\S]*minHeight:\s*60/);
   assert.match(cargoFeed, /filtersScroll:\s*\{ flexGrow:\s*0,\s*minHeight:\s*44,\s*maxHeight:\s*44 \}/);
   assert.match(cargoFeed, /filterPill:\s*\{[\s\S]*height:\s*38/);
-  // Unified Lists canon: the marketplace feed opts into a fixed 60dp compact
-  // card, while detail/deal adapters may retain the normal card floor.
-  assert.match(card, /compactCard:\s*\{\s*padding:\s*0,\s*minHeight:\s*60,\s*height:\s*60/);
+  // Compact cards keep 12sp route/meta and the real 28x18 flag floor while
+  // still fitting seven complete rows on the narrow fixture viewport.
+  assert.match(card, /compactCard:\s*\{\s*paddingHorizontal:\s*10,\s*paddingVertical:\s*6,\s*minHeight:\s*74,\s*height:\s*74/);
   const routeLine = fs.readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
   assert.match(routeLine, /fontSize:\s*12,\s*lineHeight:\s*16/);
+  assert.match(routeLine, /width=\{compact \? 28/);
+  assert.match(routeLine, /height=\{compact \? 18/);
   assert.doesNotMatch(card, /shadowOpacity/);
   assert.match(cargoFeed, /filter_capacity/);
   // Price canon remains 17/22/800 tabular-nums inside the compact card.

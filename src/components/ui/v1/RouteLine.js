@@ -10,10 +10,10 @@ export default function RouteLine({ from, to, fromFlag, toFlag, numberOfLines = 
   const palette = ceramic ? ceramicColors : colors;
   return (
     <View style={s.row} testID={testID}>
-      {fromFlag ? <CountryFlag code={fromFlag} width={compact ? 18 : (ceramic ? 24 : 18)} round={ceramic && !compact} style={[s.flag, compact && s.compactFlag]} /> : null}
+      {fromFlag ? <CountryFlag code={fromFlag} width={compact ? 28 : (ceramic ? 24 : 18)} height={compact ? 18 : undefined} compact={compact} round={ceramic && !compact} style={[s.flag, compact && s.compactFlag]} /> : null}
       <Text style={[s.city, compact && s.compactCity, { color: palette.text }]} numberOfLines={numberOfLines}>{from || '—'}</Text>
-      <Feather name="arrow-right" size={compact ? 14 : 16} color={palette.textMuted} style={[s.arrow, compact && s.compactArrow]} />
-      {toFlag ? <CountryFlag code={toFlag} width={compact ? 18 : (ceramic ? 24 : 18)} round={ceramic && !compact} style={[s.flag, compact && s.compactFlag]} /> : null}
+      <Feather name="arrow-right" size={compact ? 15 : 16} color={palette.textMuted} style={[s.arrow, compact && s.compactArrow]} />
+      {toFlag ? <CountryFlag code={toFlag} width={compact ? 28 : (ceramic ? 24 : 18)} height={compact ? 18 : undefined} compact={compact} round={ceramic && !compact} style={[s.flag, compact && s.compactFlag]} /> : null}
       <Text style={[s.city, compact && s.compactCity, { color: palette.text }]} numberOfLines={numberOfLines}>{to || '—'}</Text>
     </View>
   );
@@ -24,8 +24,8 @@ const s = StyleSheet.create({
   // 12sp is the CJK readability floor and keeps long international routes on
   // one line beside a complete price on the 390dp compact card.
   city: { flexShrink: 1, minWidth: 0, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: -0.05 },
-  compactCity: { fontSize: 10, lineHeight: 12 },
+  compactCity: { fontSize: 12, lineHeight: 16 },
   arrow: { marginHorizontal: 4, flexShrink: 0 },
   compactArrow: { marginHorizontal: 2 },
-  compactFlag: { marginRight: 2 },
+  compactFlag: { marginRight: 4, borderRadius: 5 },
 });

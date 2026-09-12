@@ -10,7 +10,10 @@ import { useV1Colors } from '../../../theme/designV1';
 
 export default function BrandBarWithShare({ onBack, onShare, accent, rightTestID, rightIcon, rightSlot }) {
   const colors = useV1Colors();
-  const arrowColor = accent || colors.driver;
+  // Detail-screen navigation actions use the shared UrTruck green CTA token;
+  // callers may still provide a role accent for surrounding content, but the
+  // actionable back/share affordance must not fall back to slate/orange.
+  const arrowColor = colors.driver || '#168759';
   return (
     <View style={s.row} testID="compact-child-header">
       {onBack ? (

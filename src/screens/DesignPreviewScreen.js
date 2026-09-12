@@ -267,6 +267,10 @@ function DesignV1Gallery() {
                 <Text style={{ fontSize: 10, fontWeight: '700' }}>{code}</Text>
               </View>
             ))}
+            <View style={{ alignItems: 'center', gap: 3 }}>
+              <CountryFlag code="XX" width={36} testID="qa-country-flag-xx" />
+              <Text style={{ fontSize: 10, fontWeight: '700' }}>XX</Text>
+            </View>
           </View>
         )}
       </GalleryPair>

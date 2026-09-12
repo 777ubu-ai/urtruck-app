@@ -371,7 +371,7 @@ export default function FeedScreen({ navigation }) {
               style={[styles.routeValue, { color: (dirFrom || dirFromCountry) ? colors.text : colors.textMuted, flex: 1 }]}
               numberOfLines={1}
             >
-              {routeValue(dirFrom, dirFromCountry, t('city'))}
+              {routeValue(dirFrom, dirFromCountry, t('signup_city_pick'))}
             </Text>
           </View>
         </TouchableOpacity>
@@ -393,7 +393,7 @@ export default function FeedScreen({ navigation }) {
               style={[styles.routeValue, { color: (dirTo || dirToCountry) ? colors.text : colors.textMuted, flex: 1 }]}
               numberOfLines={1}
             >
-              {routeValue(dirTo, dirToCountry, t('city'))}
+              {routeValue(dirTo, dirToCountry, t('signup_city_pick'))}
             </Text>
           </View>
         </TouchableOpacity>
