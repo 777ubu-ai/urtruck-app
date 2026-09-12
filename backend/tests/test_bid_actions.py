@@ -369,6 +369,20 @@ def test_counter_schema_columns():
         expect(col in cols, f"bids.{col} present")
 
 
+def _seed_ru_push_locale(uid):
+    """I18N-16 (2026-09-12): DEFAULT_LOCALE changed from RU to EN (a real
+    international user must never see Russian just because their device
+    reported no locale — i18n expansion spec item 2). A test asserting RU
+    push copy specifically must now register that intent explicitly
+    instead of relying on the old accidental default."""
+    with _get_conn_for_setup() as c:
+        c.execute(
+            "INSERT INTO push_devices (user_id, device_id, platform, push_provider, push_token, locale, enabled) "
+            "VALUES (?,?,?,?,?,?,1)",
+            (uid, f"test-device-{uid}", "android", "expo", f"ExponentPushToken[{uid}]", "RU"),
+        )
+
+
 def _new_pending_bid(owner: str, driver: str, amount: int = 1000):
     cargo_id = seed_cargo(owner_id=owner)
     as_user(driver, role="driver")
@@ -697,6 +711,7 @@ def test_counter_cancel_by_owner_notifies_bidder():
     owner = "owner-cc-1"
     driver = "driver-cc-1"
     cargo_id, bid_id = _new_pending_bid(owner, driver, 1000)
+    _seed_ru_push_locale(driver)
     as_user(owner)
     client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 800})
     expect(get_bid(bid_id)["status"] == "countered", "bid is countered before cancel")

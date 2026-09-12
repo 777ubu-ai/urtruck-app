@@ -107,8 +107,17 @@ test('ZH and EN translation string literals contain no Cyrillic leakage', () => 
   const zhStart = i18n.indexOf('  ZH: {');
   const enStart = i18n.indexOf('  EN: {', zhStart);
   assert.ok(zhStart >= 0 && enStart > zhStart, 'ZH/EN blocks must be found');
-  const end = i18n.indexOf('\n},\n};', enStart);
-  assert.ok(end > enStart, 'EN block end must be found');
+  // I18N-16 (2026-09-12): this used to look for the literal "\n},\n};"
+  // sequence, which only existed because EN happened to be the LAST
+  // locale block in translations. 12 more locales (UZ..RO, all appended
+  // after EN — feat/claude-i18n-16-locales-20260912) now follow it,
+  // three of which (KY/TG/BE) are legitimately written in Cyrillic
+  // script, so EN's slice must stop at the NEXT locale block's start —
+  // not at the translations object's true final close, which would pull
+  // those Cyrillic-script blocks into "EN" and produce a false positive.
+  const nextBlockMatch = /\n {2}[A-Z]{2}: \{/.exec(i18n.slice(enStart + '  EN: {'.length));
+  assert.ok(nextBlockMatch, 'next locale block after EN must be found');
+  const end = enStart + '  EN: {'.length + nextBlockMatch.index;
   const blocks = {
     ZH: i18n.slice(zhStart, enStart),
     EN: i18n.slice(enStart, end),

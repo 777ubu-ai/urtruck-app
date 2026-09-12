@@ -76,14 +76,21 @@ def _always_ok(tokens, title, body, data, badge=None):
 # ───────────────────────── 1. Localization ─────────────────────────
 
 def test_01_push_text_covers_all_four_supported_locales():
-    assert set(SUPPORTED_LOCALES) == {"RU", "KK", "ZH", "EN"}
+    # I18N-16 (2026-09-12): expanded from 4 to 16 supported locales
+    # (feat/claude-i18n-16-locales-20260912) — SUPPORTED_LOCALES now
+    # mirrors src/utils/localeRegistry.js exactly. The name kept below for
+    # git-blame continuity; the assertions cover all 16.
+    assert set(SUPPORTED_LOCALES) == {
+        "RU", "EN", "ZH", "KK", "UZ", "KY", "TG", "DE",
+        "FR", "PL", "LT", "LV", "IT", "TR", "BE", "RO",
+    }
     seen_titles = set()
     for loc in SUPPORTED_LOCALES:
         title, body = push_text("bid_accepted", loc, amount="$100")
         assert title and body, f"locale {loc} produced empty text"
         assert "$100" in body
         seen_titles.add(title)
-    assert len(seen_titles) == 4, "all four locales must render genuinely different text, not one reused for all"
+    assert len(seen_titles) == 16, "all sixteen locales must render genuinely different text, not one reused for all"
 
 
 def test_02_normalize_locale_maps_bcp47_variants_correctly():
@@ -92,7 +99,15 @@ def test_02_normalize_locale_maps_bcp47_variants_correctly():
         "kk": "KK", "kk-KZ": "KK", "KZ": "KK",
         "zh-Hans-CN": "ZH", "zh": "ZH", "CN": "ZH",
         "en-US": "EN", "en": "EN",
-        "fr-FR": "RU", None: "RU", "": "RU",  # unsupported/missing -> explicit default, not silent EN/garbage
+        # I18N-16 (2026-09-12): 'fr-FR' used to be an "unsupported"
+        # example (French wasn't a supported locale yet) — it is now a
+        # real supported locale (FR), so it moved out of the
+        # unsupported/missing group below. DEFAULT_LOCALE itself changed
+        # from RU to EN in the same track (never silently fall back to
+        # Russian for an international user — i18n expansion spec item 2).
+        "fr-FR": "FR", "fr": "FR",
+        "de-CH": "DE",  # a region subtag never drives the mapping alone (item 9) — resolves via the 'de' base subtag
+        None: "EN", "": "EN", "xx-unsupported": "EN",  # truly unsupported/missing -> explicit EN default, never RU
     }
     for raw, expected in cases.items():
         assert normalize_locale(raw) == expected, f"{raw!r} -> expected {expected}, got {normalize_locale(raw)}"
@@ -133,9 +148,12 @@ def test_04_get_recipient_locale_reads_the_users_own_device():
 
 def test_05_get_recipient_locale_defaults_only_when_truly_no_data():
     uid = _new_user()  # no device registered at all
-    assert push_gateway.get_recipient_locale(uid) == "RU", (
+    # I18N-16 (2026-09-12): DEFAULT_LOCALE changed from RU to EN — a real
+    # international user must never see Russian just because their
+    # device reported no locale at all (i18n expansion spec item 2).
+    assert push_gateway.get_recipient_locale(uid) == "EN", (
         "the documented DEFAULT_LOCALE is an explicit, named fallback for "
-        "the zero-data case — not an accidental one"
+        "the zero-data case (EN, never RU) — not an accidental one"
     )
 
 

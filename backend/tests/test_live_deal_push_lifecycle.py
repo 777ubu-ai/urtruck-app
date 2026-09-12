@@ -131,6 +131,25 @@ def as_user(uid, name="Test User", phone="+70000000000", role="client"):
     _current_user.set({"id": uid, "full_name": name, "phone": phone, "verification_level": 1, "role": role})
 
 
+def _seed_ru_push_locale(uid):
+    """I18N-16 (2026-09-12): this scenario's push-copy assertions ("Рейс
+    начался", "Получение подтверждено", etc.) check for RU text
+    specifically — that's the point of those assertions, not an accident.
+    Before the 16-locale expansion, an actor with no push_devices row at
+    all still got RU text because DEFAULT_LOCALE was RU; now that the
+    default is EN (never RU, per i18n expansion spec item 2 — a real
+    international user must never see Russian just because their device
+    reported no locale), a fixture that wants to verify RU push copy has
+    to say so explicitly rather than lean on the old accidental default.
+    """
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO push_devices (user_id, device_id, platform, push_provider, push_token, locale, enabled) "
+            "VALUES (?,?,?,?,?,?,1)",
+            (uid, f"test-device-{uid}", "android", "expo", f"ExponentPushToken[{uid}]", "RU"),
+        )
+
+
 def seed_cargo(owner_id, price=1234):
     cargo_id = new_id()
     with get_conn() as c:
@@ -186,6 +205,8 @@ def run_full_lifecycle(run_label):
     function twice in one process) is the genuine double-check."""
     driver = f"drv_{run_label}_{uuid.uuid4().hex[:6]}"
     shipper = f"shp_{run_label}_{uuid.uuid4().hex[:6]}"
+    _seed_ru_push_locale(driver)
+    _seed_ru_push_locale(shipper)
 
     # ── 1. Shipper's cargo exists, driver bids ──────────────────────────
     cargo_id = seed_cargo(shipper)
