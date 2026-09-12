@@ -90,7 +90,13 @@ def _rebuild_all_schemas():
 
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_full_schema():
-    Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
+    # Some standalone-compatible modules assign os.environ["DB_PATH"] during
+    # collection.  The imported config module is the source used by get_conn()
+    # and has already captured the canonical path, so keep the harness and
+    # runtime connections on that same file for the whole session.
+    canonical_db_path = _collection_db.config.DB_PATH
+    os.environ["DB_PATH"] = canonical_db_path
+    Path(canonical_db_path).unlink(missing_ok=True)
     _rebuild_all_schemas()
     yield
 

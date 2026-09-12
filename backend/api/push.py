@@ -47,6 +47,22 @@ _DEVICE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:_-]{7,127}$")
 def _init_schema():
     schema = Path(__file__).resolve().parent.parent / "database" / "push_schema.sql"
     with get_conn() as c:
+        # The receipt index is part of push_schema.sql.  On a legacy database
+        # the table already exists without this column, so the script must
+        # add it before CREATE INDEX is evaluated.  Fresh databases still get
+        # the column from the CREATE TABLE statement in the schema file.
+        delivery_tables = {
+            row["name"]
+            for row in c.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'push_delivery_log'"
+            ).fetchall()
+        }
+        if "push_delivery_log" in delivery_tables:
+            delivery_cols = {
+                row["name"] for row in c.execute("PRAGMA table_info(push_delivery_log)").fetchall()
+            }
+            if "receipt_checked_at" not in delivery_cols:
+                c.execute("ALTER TABLE push_delivery_log ADD COLUMN receipt_checked_at TEXT")
         c.executescript(schema.read_text(encoding="utf-8"))
         c.commit()
     _migrate_ownership_columns()
