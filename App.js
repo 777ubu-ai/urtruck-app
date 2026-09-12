@@ -33,6 +33,21 @@ import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import * as Sentry from '@sentry/react-native';
 
+// Yandex MapKit is a native-only provider. The key is supplied by the native
+// build environment (EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY), never committed to
+// source. Web keeps its own Yandex JS key and never loads this module.
+if (Platform.OS !== 'web') {
+  const mapKitKey = String(process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY || '').trim();
+  if (mapKitKey) {
+    try {
+      const YaMap = require('react-native-yamap').default;
+      YaMap.init(mapKitKey).catch((error) => console.warn('[yamap] init skipped:', error?.message || error));
+    } catch (error) {
+      console.warn('[yamap] native module unavailable:', error?.message || error);
+    }
+  }
+}
+
 // Глобально убираем браузерную синюю обводку фокуса (outline) с полей ввода и
 // нажимаемых элементов на web/PWA. react-native-web рендерит TextInput как
 // <input>/<textarea>, и браузер рисует свою рамку ПОВЕРХ нашей — жалоба

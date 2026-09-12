@@ -1,46 +1,30 @@
-// TruckMap (native) — embedded map with planned route + live truck point.
-// Preferred road geometry/metrics come from the authenticated UrTruck backend.
+// Native TruckMap — Yandex MapKit renderer.
+// Route geometry comes from the authenticated UrTruck routing endpoint. The
+// MapKit instance stays mounted while GPS updates move only the truck marker.
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { NativeModules, StyleSheet, Text, View } from 'react-native';
+import YaMap, { Marker, Polyline } from 'react-native-yamap';
 import { routingAPI } from '../utils/routingAPI';
+import { routeProgress } from '../utils/routeProgress';
 import { useI18n } from '../utils/useI18n';
 
-// Native screens render the route inside UrTruck. Viewing a planned/live map
-// never requests the driver's GPS permission and never opens an external maps
-// app. Active-trip permission is owned exclusively by the Start trip action.
-// The browser key is injected by CI and is not stored in source.
-const YANDEX_MAPS_JS_API_KEY = String(process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY || '').trim();
-
-const buildYandexMapHtml = (apiKey) => `<!doctype html><html><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<style>html,body,#map{width:100%;height:100%;margin:0;background:#eef3f0}</style>
-<script src="https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(apiKey)}&lang=ru_RU"></script>
-</head><body><div id="map"></div><script>(function(){
-var map,objects;function send(type,detail){window.ReactNativeWebView.postMessage(JSON.stringify({type:type,detail:detail||''}));}
-function valid(p){return Array.isArray(p)&&p.length===2&&isFinite(p[0])&&isFinite(p[1]);}
-window.urtruckUpdateMap=function(p){if(!map)return;try{objects.removeAll();var planned=(p.planned||[]).filter(valid),live=valid(p.live)?p.live:null,road=(p.road||[]).filter(valid);
-if(road.length>1)objects.add(new ymaps.Polyline(road,{}, {strokeColor:p.hasRoad?'#168759':'#6B7B73',strokeWidth:p.hasRoad?6:3,strokeStyle:p.hasRoad?'solid':'dash',opacity:.96}));
-planned.forEach(function(x,i){objects.add(new ymaps.Placemark(x,{hintContent:i===0?p.startLabel:(i===planned.length-1?p.destinationLabel:p.waypointLabel)},{preset:'islands#greenCircleDotIcon'}));});
-if(live)objects.add(new ymaps.Placemark(live,{iconContent:'🚚',hintContent:p.truckLabel},{preset:'islands#greenStretchyIcon',zIndex:1000}));
-var bounds=objects.getBounds();if(bounds)map.setBounds(bounds,{checkZoomRange:true,zoomMargin:44});}catch(e){send('update-error',String(e&&e.message||e));}};
-if(!window.ymaps){send('api-error','Yandex Maps API script did not load');return;}ymaps.ready(function(){try{map=new ymaps.Map('map',{center:[43.2389,76.8897],zoom:5,controls:['zoomControl']},{suppressMapOpenBlock:true});objects=map.geoObjects;send('ready');}catch(e){send('init-error',String(e&&e.message||e));}});
-window.addEventListener('error',function(e){send('js-error',e.message||'JavaScript error');});})();</script></body></html>`;
+const YANDEX_MAPKIT_API_KEY = String(process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY || '').trim();
+const MAPKIT_AVAILABLE = Boolean(NativeModules?.yamap);
 
 const asPoint = (value) => {
   if (Array.isArray(value) && value.length >= 2) {
-    const latitude = Number(value[0]);
-    const longitude = Number(value[1]);
-    return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
+    const lat = Number(value[0]);
+    const lon = Number(value[1]);
+    return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
   }
-  const latitude = Number(value?.lat ?? value?.latitude);
-  const longitude = Number(value?.lng ?? value?.longitude);
-  return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
+  const lat = Number(value?.lat ?? value?.latitude);
+  const lon = Number(value?.lon ?? value?.lng ?? value?.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
 };
 
-const toPair = (point) => point ? [point.latitude, point.longitude] : null;
+const toPair = (point) => (point ? [point.lat, point.lon] : null);
 const routeKey = (points) => (points || [])
-  .map((point) => `${Number(point?.[0]).toFixed(4)}:${Number(point?.[1]).toFixed(4)}`)
+  .map((point) => `${Number(point?.lat).toFixed(4)}:${Number(point?.lon).toFixed(4)}`)
   .join('|');
 
 const distanceTextFromMeters = (value, t) => {
@@ -66,40 +50,40 @@ const durationTextFromSeconds = (value, t) => {
   return `${minutes} ${m}`;
 };
 
+function EndpointMarker({ label }) {
+  return (
+    <View style={s.endpointMarkerWrap}>
+      <View style={s.endpointMarker}><View style={s.endpointInner} /></View>
+      {label ? <View style={s.endpointLabel}><Text style={s.endpointLabelText} numberOfLines={1}>{label}</Text></View> : null}
+    </View>
+  );
+}
+
+function TruckMarker({ label }) {
+  return <View style={s.truckMarker} accessibilityLabel={label}><Text style={s.truckEmoji}>🚚</Text></View>;
+}
+
 export default function TruckMap({
   lat, lng, title, routePoints = [], externalRoute = null, onRouteSummary,
-  vehicle = null,
+  vehicle = null, startLabel = null, endLabel = null,
 }) {
   const { t, lang } = useI18n();
   const live = asPoint([lat, lng]);
   const planned = React.useMemo(() => (routePoints || []).map(asPoint).filter(Boolean), [routePoints]);
-  const destination = planned.length ? planned[planned.length - 1] : null;
-  const effectivePairs = React.useMemo(() => {
-    const pairs = live && destination ? [toPair(live), toPair(destination)] : planned.map(toPair);
-    return pairs.filter(Boolean);
-  }, [live?.latitude, live?.longitude, destination?.latitude, destination?.longitude, planned.length]);
-  const effectiveKey = routeKey(effectivePairs);
+  const effectiveKey = routeKey(planned);
   const vehicleKey = vehicle ? JSON.stringify(vehicle) : '';
   const [serverRoute, setServerRoute] = React.useState(null);
-  const webViewRef = React.useRef(null);
-  // P0-hotfix 28.08.2026 (TestFlight build 17, §5): раньше ЛЮБАЯ причина —
-  // отсутствующий ключ, обрыв сети, HTTP-ошибка, поломка Yandex JS API —
-  // схлопывалась в один статус 'error' с общим текстом «Карта недоступна».
-  // Теперь состояния различимы: 'provider_not_configured' (ключ не задан на
-  // билд-тайме — реальная причина в TestFlight build 17, см. отчёт),
-  // 'network_error' (WebView не достучался до сети/Yandex), 'unknown_error'
-  // (сам Yandex JS API вернул ошибку инициализации). В __DEV__ дополнительно
-  // печатается техническая причина для отладки.
-  const [mapStatus, setMapStatus] = React.useState(YANDEX_MAPS_JS_API_KEY ? 'loading' : 'provider_not_configured');
-  const [mapError, setMapError] = React.useState(YANDEX_MAPS_JS_API_KEY ? '' : 'Yandex Maps JS API key is not configured (EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY missing at build time)');
+  const mapRef = React.useRef(null);
+  const truckMarkerRef = React.useRef(null);
+  const previousLiveRef = React.useRef(null);
 
   React.useEffect(() => {
     let cancelled = false;
-    if (externalRoute || effectivePairs.length < 2) {
+    if (externalRoute || planned.length < 2) {
       setServerRoute(null);
       return () => { cancelled = true; };
     }
-    routingAPI.roadRoute(effectivePairs, vehicle).then((result) => {
+    routingAPI.roadRoute(planned.map(toPair), vehicle).then((result) => {
       if (cancelled) return;
       if (result?.ok && Array.isArray(result.geometry) && result.geometry.length >= 2) {
         setServerRoute({ ...result, routeKey: effectiveKey });
@@ -115,15 +99,34 @@ export default function TruckMap({
     () => (resolvedRoute?.geometry || []).map(asPoint).filter(Boolean),
     [resolvedRoute?.routeKey],
   );
-  const road = roadGeometry.length >= 2 ? roadGeometry : planned;
+  // Never paint planned city coordinates as a solid route: until the
+  // authenticated road geometry arrives, keep the map in its loading state.
+  const road = roadGeometry.length >= 2 ? roadGeometry : [];
+  const fitTarget = road.length >= 2 ? road : planned;
+  const progress = React.useMemo(
+    () => routeProgress(road.map(toPair), live ? toPair(live) : null),
+    [road, live?.lat, live?.lon],
+  );
 
   React.useEffect(() => {
-    const distanceText = distanceTextFromMeters(resolvedRoute?.distance_m, t);
-    const durationText = durationTextFromSeconds(resolvedRoute?.duration_s, t);
-    if (roadGeometry.length >= 2 && distanceText && durationText) {
+    const totalMeters = Number(resolvedRoute?.distance_m) || progress.totalMeters;
+    const totalDuration = Number(resolvedRoute?.duration_s) || 0;
+    const totalDistanceText = distanceTextFromMeters(totalMeters, t);
+    const remainingText = distanceTextFromMeters(live ? progress.remainingMeters : totalMeters, t);
+    const passedDistanceText = distanceTextFromMeters(progress.passedMeters, t);
+    const totalDurationText = durationTextFromSeconds(totalDuration, t);
+    const durationText = durationTextFromSeconds(
+      live && totalDuration ? totalDuration * (progress.remainingMeters / Math.max(1, progress.totalMeters)) : totalDuration,
+      t,
+    );
+    if (roadGeometry.length >= 2 && remainingText) {
       onRouteSummary?.({
-        distanceText,
-        durationText,
+        distanceText: remainingText,
+        durationText: durationText || totalDurationText,
+        totalDistanceText,
+        passedDistanceText,
+        totalDurationText,
+        progressPercent: live ? progress.progressPercent : 0,
         blocked: false,
         isRemaining: Boolean(live),
         provider: resolvedRoute?.provider || 'server-road',
@@ -131,88 +134,81 @@ export default function TruckMap({
     } else {
       onRouteSummary?.(null);
     }
-  }, [onRouteSummary, resolvedRoute?.routeKey, resolvedRoute?.distance_m, resolvedRoute?.duration_s, live?.latitude, live?.longitude, roadGeometry.length, lang, t]);
-
-  const mapPayload = React.useMemo(() => ({
-    live: live ? toPair(live) : null, planned: planned.map(toPair), road: road.map(toPair),
-    hasRoad: roadGeometry.length >= 2, startLabel: t('map_point_start'),
-    destinationLabel: t('map_point_destination'), waypointLabel: t('map_point_waypoint'),
-    truckLabel: title || t('track_truck_marker'),
-  }), [live?.latitude, live?.longitude, planned, road, roadGeometry.length, title, lang, t]);
+  }, [onRouteSummary, resolvedRoute?.routeKey, resolvedRoute?.distance_m, resolvedRoute?.duration_s, live?.lat, live?.lon, roadGeometry.length, progress.totalMeters, progress.remainingMeters, progress.passedMeters, progress.progressPercent, lang, t]);
 
   React.useEffect(() => {
-    if (mapStatus === 'ready') {
-      webViewRef.current?.injectJavaScript(`window.urtruckUpdateMap(${JSON.stringify(mapPayload)});true;`);
+    if (mapRef.current && fitTarget.length >= 2) mapRef.current.fitMarkers(fitTarget);
+  }, [resolvedRoute?.routeKey, fitTarget.length]);
+
+  React.useEffect(() => {
+    const previous = previousLiveRef.current;
+    if (live && previous && truckMarkerRef.current?.animatedMoveTo) {
+      truckMarkerRef.current.animatedMoveTo({ lat: live.lat, lon: live.lon }, 450);
     }
-  }, [mapPayload, mapStatus]);
+    previousLiveRef.current = live ? { lat: live.lat, lon: live.lon } : null;
+  }, [live?.lat, live?.lon]);
 
-  const onMapMessage = React.useCallback((event) => {
-    try {
-      const message = JSON.parse(event.nativeEvent.data);
-      if (message.type === 'ready') { setMapStatus('ready'); setMapError(''); return; }
-      const detail = `${message.type}: ${message.detail || 'unknown Yandex Maps error'}`;
-      console.error('[TruckMap/Yandex]', detail);
-      setMapError(detail);
-      // 'api-error' — сам скрипт api-maps.yandex.ru не загрузился (обычно
-      // сеть/CDN недоступны); остальные ('init-error', 'update-error',
-      // 'js-error') — Yandex API загрузился, но упал изнутри — это уже не
-      // сетевая, а неопознанная ошибка провайдера.
-      setMapStatus(message.type === 'api-error' ? 'network_error' : 'unknown_error');
-    } catch (error) { console.error('[TruckMap/Yandex] Invalid WebView message', error); }
-  }, []);
-
-  // P0-hotfix 28.08.2026 (§5): нет ни живой точки, ни ≥2 плановых координат —
-  // грузить WebView незачем, честно показываем причину вместо пустой карты.
   const hasNothingToShow = !live && planned.length < 2;
+  const mapReady = MAPKIT_AVAILABLE && Boolean(YANDEX_MAPKIT_API_KEY);
+  if (hasNothingToShow) {
+    return <View style={s.shell}><View style={s.mapFallback} testID="truck-map-native-unavailable-no_route_coordinates"><Text style={s.mapFallbackText}>{t('map_no_route_coordinates')}</Text></View></View>;
+  }
+  if (!mapReady) {
+    return (
+      <View style={s.shell}>
+        <View style={s.mapFallback} testID="truck-map-native-unavailable-provider_not_configured">
+          <Text style={s.mapFallbackText}>{t('map_unavailable')}</Text>
+          {__DEV__ ? <Text style={s.mapDebugError}>{MAPKIT_AVAILABLE ? 'EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY is missing' : 'Yandex MapKit native module is not linked'}</Text> : null}
+        </View>
+      </View>
+    );
+  }
 
-  // P0-hotfix 28.08.2026 (§2/§4): раньше WebView оставался СМОНТИРОВАННЫМ
-  // под fallback-текстом при любой ошибке (условие рендера зависело только
-  // от наличия ключа, не от mapStatus) — сломанный WKWebView со своим
-  // gesture recognizer'ом мог продолжать перехватывать тачи поверх видимого
-  // текста (кандидат в первопричину «X не реагирует», §4) и оставался живым
-  // native-компонентом без веской причины (кандидат в нестабильность при
-  // резких жестах, §2 — не подтверждено device-логом, но это правильный
-  // defensive fix независимо от подтверждения). Теперь WebView монтируется
-  // ТОЛЬКО пока карта реально грузится/показана; в любом fallback-состоянии
-  // он полностью размонтирован — на его месте ничего не может перехватывать
-  // тачи.
-  const webViewMounted = !hasNothingToShow && !!YANDEX_MAPS_JS_API_KEY
-    && (mapStatus === 'loading' || mapStatus === 'ready');
+      const initial = road[0] || planned[0] || live || { lat: 43.2389, lon: 76.8897 };
+  const polylinePoints = road.map((point) => ({ lat: point.lat, lon: point.lon }));
+  const routePointLabel = (index) => index === 0
+    ? (startLabel || t('map_point_start'))
+    : index === planned.length - 1
+      ? (endLabel || t('map_point_destination'))
+      : t('map_point_waypoint');
+  const endpointPoints = planned.length >= 2 ? [
+    { point: planned[0], label: routePointLabel(0) },
+    { point: planned[planned.length - 1], label: routePointLabel(planned.length - 1) },
+  ] : [];
 
   return (
-    <View style={s.shell}>
-      {hasNothingToShow ? (
-        <View style={s.mapFallback} testID="truck-map-native-unavailable-no_route_coordinates">
-          <Text style={s.mapFallbackText}>{t('map_no_route_coordinates')}</Text>
-        </View>
-      ) : webViewMounted ? <WebView ref={webViewRef} style={s.map}
-        source={{ html: buildYandexMapHtml(YANDEX_MAPS_JS_API_KEY), baseUrl: 'https://urtruck.kz' }}
-        originWhitelist={['https://*']} javaScriptEnabled domStorageEnabled mixedContentMode="never"
-        onMessage={onMapMessage}
-        onError={(event) => { const detail = event.nativeEvent?.description || 'WebView network error'; console.error('[TruckMap/Yandex]', detail); setMapError(detail); setMapStatus('network_error'); }}
-        onHttpError={(event) => { const detail = `HTTP ${event.nativeEvent?.statusCode || 'error'}`; console.error('[TruckMap/Yandex]', detail, event.nativeEvent?.url); setMapError(detail); setMapStatus('network_error'); }}
-        testID="truck-map-yandex-webview" /> : null}
-      {mapStatus === 'loading' && !hasNothingToShow ? <View style={s.mapOverlay} pointerEvents="none"><Text style={s.mapFallbackText}>{t('map_loading')}</Text></View> : null}
-      {!hasNothingToShow && (mapStatus === 'provider_not_configured' || mapStatus === 'network_error' || mapStatus === 'unknown_error') ? (
-        <View style={s.mapFallback} testID={`truck-map-native-unavailable-${mapStatus}`}>
-          <Text style={s.mapFallbackText}>
-            {t(mapStatus === 'network_error' ? 'map_network_error' : 'map_unavailable')}
-          </Text>
-          {__DEV__ ? <Text style={s.mapDebugError}>{mapError}</Text> : null}
-        </View>
-      ) : null}
+    <View style={s.shell} testID="truck-map-yandex-mapkit">
+      <YaMap
+        ref={mapRef}
+        style={s.map}
+        initialRegion={{ lat: initial.lat, lon: initial.lon, zoom: road.length > 1 ? 4 : 10 }}
+        showUserPosition={false}
+        followUser={false}
+        logoPosition={{ horizontal: 'right', vertical: 'bottom' }}
+        logoPadding={{ horizontal: 12, vertical: 10 }}
+            onMapLoaded={() => mapRef.current?.fitMarkers?.(fitTarget)}
+      >
+        {polylinePoints.length >= 2 ? <Polyline points={polylinePoints} strokeColor="#168759" strokeWidth={5} zIndex={1} /> : null}
+        {endpointPoints.map(({ point, label }, index) => <Marker key={`endpoint-${index}`} point={{ lat: point.lat, lon: point.lon }} zIndex={5}><EndpointMarker label={label} /></Marker>)}
+            {live ? <Marker ref={truckMarkerRef} point={{ lat: live.lat, lon: live.lon }} zIndex={20} anchor={{ x: 0.5, y: 0.5 }}><TruckMarker label={title || t('track_truck_marker')} /></Marker> : null}
+      </YaMap>
+      {!resolvedRoute && planned.length >= 2 ? <View style={s.mapOverlay} pointerEvents="none"><Text style={s.mapFallbackText}>{t('map_building_route')}</Text></View> : null}
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  shell: { flex: 1, position: 'relative' },
+  shell: { flex: 1, position: 'relative', backgroundColor: '#EEF3F0' },
   map: { flex: 1 },
-  mapFallback: {
-    ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 24, backgroundColor: '#EEF3F0',
-  },
-  mapOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF3F0' },
+  mapFallback: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, backgroundColor: '#EEF3F0' },
+  mapOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(238,243,240,0.72)' },
   mapFallbackText: { color: '#617067', fontSize: 15, fontWeight: '700', textAlign: 'center' },
   mapDebugError: { marginTop: 8, color: '#9B2C2C', fontSize: 11, textAlign: 'center' },
+  endpointMarker: { width: 24, height: 24, borderRadius: 12, borderWidth: 4, borderColor: '#168759', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(20,34,28,0.18)' },
+  endpointMarkerWrap: { alignItems: 'center', justifyContent: 'center' },
+  endpointLabel: { marginTop: 4, maxWidth: 120, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: '#FFFFFF', boxShadow: '0 2px 5px rgba(20,34,28,0.14)' },
+  endpointLabelText: { color: '#14221C', fontSize: 11, fontWeight: '800' },
+  endpointInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#168759' },
+  truckMarker: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#168759', boxShadow: '0 2px 7px rgba(20,34,28,0.20)' },
+  truckEmoji: { fontSize: 18 },
 });

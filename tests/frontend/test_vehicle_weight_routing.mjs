@@ -91,7 +91,7 @@ test('TrackTruckScreen builds a vehicle spec (payload_t, not weight_t) from the 
 
 test('both TruckMap platforms accept a vehicle prop and forward it to the authenticated road-routing call', () => {
   assert.match(webMap, /routingAPI\.roadRoute\(effectivePoints, vehicle\)/);
-  assert.match(nativeMap, /routingAPI\.roadRoute\(effectivePairs, vehicle\)/);
+  assert.match(nativeMap, /routingAPI\.roadRoute\(planned\.map\(toPair\), vehicle\)/);
 });
 
 test('capacityTons never reaches vehicle.weight_t anywhere in the frontend (round-2 review regression guard)', () => {

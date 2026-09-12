@@ -61,6 +61,17 @@ jobs:
             npx patch-package
           fi
 
+      - name: Materialize native Yandex MapKit key
+        env:
+          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}" || {
+            echo "::error::YANDEX_MAPKIT_API_KEY is required for native Android dev builds."
+            exit 1
+          }
+          printf 'EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY=%s\n' "$EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY" >> "$GITHUB_ENV"
+
       - name: Materialize Android Firebase config (best-effort — не блокирует dev-сборку)
         env:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}

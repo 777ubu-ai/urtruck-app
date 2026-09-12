@@ -24,6 +24,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 
 import TruckMap from '../components/TruckMap';
+import TripMapInfoSheet from '../components/deal/TripMapInfoSheet';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import Button from '../components/ui/v1/Button';
@@ -92,7 +93,7 @@ const COPY = {
     callSchedule: 'Запланировать звонок', comingSoon: 'Скоро добавим',
     recording: 'Идёт запись…', voiceMessage: 'Голосовое сообщение',
     cancelDeal: 'Отменить сделку', cancelDealConfirm: 'Отменить эту сделку?', loading: 'Загрузка сделки…',
-    loadingDate: 'Загрузка', deliveryDate: 'Доставка', collapseMap: 'Свернуть карту',
+    loadingDate: 'Загрузка', deliveryDate: 'Доставка', expandMap: 'Развернуть карту', collapseMap: 'Свернуть карту', tripNumber: 'Рейс №', progress: 'Прогресс маршрута', totalDistance: 'Общее расстояние', drivingTime: 'Время движения', passed: 'Пройдено', lastGps: 'Последнее GPS', weatherNow: 'Погода сейчас', weatherAhead: 'Впереди по маршруту', weatherUnavailable: 'Погода временно недоступна', nextPoint: 'Следующая точка', nextPointUnavailable: 'Данные о следующей точке недоступны',
     tripFinished: 'Сделка завершена', tripDelivered: 'Груз доставлен', awaitingReceiptStatus: 'Ожидает подтверждения', tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя', tripAwaitingReceiptHint: 'Водитель отметил груз как доставленный. Сделка завершится после подтверждения получения.', tripReceived: 'Получение подтверждено', mapFinishedHint: 'Live GPS для этого рейса больше не используется.',
     jumpLatest: 'Новые сообщения', statuses: 'Статусы и история',
   },
@@ -109,7 +110,7 @@ const COPY = {
     callSchedule: 'Schedule a call', comingSoon: 'Coming soon',
     recording: 'Recording…', voiceMessage: 'Voice message',
     cancelDeal: 'Cancel deal', cancelDealConfirm: 'Cancel this deal?', loading: 'Loading deal…',
-    loadingDate: 'Pickup', deliveryDate: 'Delivery', collapseMap: 'Collapse map',
+    loadingDate: 'Pickup', deliveryDate: 'Delivery', expandMap: 'Expand map', collapseMap: 'Collapse map', tripNumber: 'Trip №', progress: 'Route progress', totalDistance: 'Total distance', drivingTime: 'Driving time', passed: 'Passed', lastGps: 'Last GPS', weatherNow: 'Weather now', weatherAhead: 'Ahead on route', weatherUnavailable: 'Weather temporarily unavailable', nextPoint: 'Next point', nextPointUnavailable: 'Next point data unavailable',
     tripFinished: 'Deal completed', tripDelivered: 'Cargo delivered', awaitingReceiptStatus: 'Awaiting confirmation', tripAwaitingReceipt: 'Awaiting shipper confirmation', tripAwaitingReceiptHint: 'The driver marked the cargo as delivered. The deal is completed after receipt is confirmed.', tripReceived: 'Receipt confirmed', mapFinishedHint: 'Live GPS is no longer used for this trip.',
     jumpLatest: 'New messages', statuses: 'Status & history',
   },
@@ -126,7 +127,7 @@ const COPY = {
     callSchedule: '安排通话', comingSoon: '即将推出',
     recording: '正在录音…', voiceMessage: '语音消息',
     cancelDeal: '取消交易', cancelDealConfirm: '确认取消这笔交易？', loading: '正在加载交易…',
-    loadingDate: '装货', deliveryDate: '送达', collapseMap: '收起地图',
+    loadingDate: '装货', deliveryDate: '送达', expandMap: '展开地图', collapseMap: '收起地图', tripNumber: '行程 №', progress: '路线进度', totalDistance: '总距离', drivingTime: '行驶时间', passed: '已行驶', lastGps: '最后 GPS', weatherNow: '当前天气', weatherAhead: '路线前方', weatherUnavailable: '天气暂时不可用', nextPoint: '下一站', nextPointUnavailable: '暂无下一站数据',
     tripFinished: '交易已完成', tripDelivered: '货物已送达', awaitingReceiptStatus: '等待确认', tripAwaitingReceipt: '等待货主确认收货', tripAwaitingReceiptHint: '司机已标记货物送达。货主确认收货后，交易才能完成。', tripReceived: '已确认收货', mapFinishedHint: '本次运输已停止实时 GPS。',
     jumpLatest: '新消息', statuses: '状态与历史',
   },
@@ -143,7 +144,7 @@ const COPY = {
     callSchedule: 'Қоңырауды жоспарлау', comingSoon: 'Жақында қосамыз',
     recording: 'Жазылып жатыр…', voiceMessage: 'Дауыстық хабарлама',
     cancelDeal: 'Мәмілені болдырмау', cancelDealConfirm: 'Осы мәмілені болдырмау керек пе?', loading: 'Мәміле жүктелуде…',
-    loadingDate: 'Тиеу', deliveryDate: 'Жеткізу', collapseMap: 'Картаны жию',
+    loadingDate: 'Тиеу', deliveryDate: 'Жеткізу', expandMap: 'Картаны жаю', collapseMap: 'Картаны жию', tripNumber: 'Рейс №', progress: 'Бағыт прогресі', totalDistance: 'Жалпы қашықтық', drivingTime: 'Жолдағы уақыт', passed: 'Өтілді', lastGps: 'Соңғы GPS', weatherNow: 'Қазіргі ауа райы', weatherAhead: 'Бағыт бойынша алда', weatherUnavailable: 'Ауа райы уақытша қолжетімсіз', nextPoint: 'Келесі нүкте', nextPointUnavailable: 'Келесі нүкте дерегі жоқ',
     tripFinished: 'Мәміле аяқталды', tripDelivered: 'Жүк жеткізілді', awaitingReceiptStatus: 'Растауды күтуде', tripAwaitingReceipt: 'Жүк иесінің қабылдауды растауын күтеміз', tripAwaitingReceiptHint: 'Жүргізуші жүкті жеткізілді деп белгіледі. Жүк иесі қабылдауды растағаннан кейін мәміле аяқталады.', tripReceived: 'Қабылдау расталды', mapFinishedHint: 'Бұл рейсте live GPS енді қолданылмайды.',
     jumpLatest: 'Жаңа хабарламалар', statuses: 'Мәртебе және тарих',
   },
@@ -287,6 +288,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [statusLoading, setStatusLoading] = React.useState(false);
   const [trackingLoading, setTrackingLoading] = React.useState(false);
   const [viewMode, setViewMode] = React.useState(VIEW_CHAT);
+  const [mapExpanded, setMapExpanded] = React.useState(false);
   const [attachOpen, setAttachOpen] = React.useState(false);
   const [callMenuOpen, setCallMenuOpen] = React.useState(false);
   const [statusModalOpen, setStatusModalOpen] = React.useState(false);
@@ -1289,14 +1291,34 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       : ui.tripFinished;
   const inactiveSubtitle = visibleDealStatus === 'delivered' ? ui.tripAwaitingReceipt : '';
   const inactiveHint = visibleDealStatus === 'delivered' ? ui.tripAwaitingReceiptHint : '';
+  const weatherSource = deal?.weather || trip?.weather || params.weather || null;
+  const mapWeather = weatherSource?.localized?.[lang] || (weatherSource?.current ? weatherSource : null);
+  const checkpointSource = deal?.next_checkpoint || trip?.next_checkpoint || params.nextCheckpoint || null;
+  const localizedCheckpoint = checkpointSource?.localized?.[lang] || checkpointSource;
+  const mapMetrics = [
+    { key: 'total', icon: 'navigation', label: ui.totalDistance, value: routeSummary?.totalDistanceText || routeSummary?.distanceText || '—' },
+    { key: 'remaining', icon: 'refresh-cw', label: ui.remaining, value: routeSummary?.isRemaining ? routeSummary.distanceText : routeSummary?.distanceText || '—', accent: true },
+    { key: 'time', icon: 'clock', label: ui.drivingTime, value: routeSummary?.totalDurationText || routeSummary?.durationText || '—' },
+    { key: 'eta', icon: 'calendar', label: ui.eta, value: delivery ? compactDate(delivery, lang) : '—' },
+    { key: 'passed', icon: 'map-pin', label: ui.passed, value: routeSummary?.passedDistanceText || '—', accent: true },
+    { key: 'gps', icon: 'activity', label: ui.lastGps, value: updatedText || (locationLoading ? ui.updatedNow : '—'), accent: true },
+  ];
+  const mapWeatherCard = mapWeather ? {
+    current: mapWeather.current_label || mapWeather.current || mapWeather.now || null,
+    ahead: mapWeather.ahead_label || mapWeather.ahead || mapWeather.next || null,
+  } : null;
+  const mapNextPointCard = localizedCheckpoint ? {
+    name: localizedCheckpoint.name || localizedCheckpoint.label || localizedCheckpoint,
+    meta: localizedCheckpoint.meta || localizedCheckpoint.distance || '',
+  } : null;
 
   const cancelDeal = async () => {
     const ok = await askConfirm(ui.cancelDeal, ui.cancelDealConfirm, ui.cancelDeal, true);
     if (ok) { setStatusModalOpen(false); await changeDealStatus('cancelled'); }
   };
 
-  const openMap = () => { setAttachOpen(false); setCallMenuOpen(false); setViewMode(VIEW_MAP); };
-  const closeMap = () => setViewMode(VIEW_CHAT);
+  const openMap = () => { setAttachOpen(false); setCallMenuOpen(false); setMapExpanded(false); setViewMode(VIEW_MAP); };
+  const closeMap = () => { setMapExpanded(false); setViewMode(VIEW_CHAT); };
 
   // GPS deep-link P1 fix: backend's tracking-request/approved/declined/
   // stopped pushes set url=/deals/{id}?action=tracking
@@ -1576,14 +1598,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             )}
           </View>
         ) : (
-          <View style={s.mapFullscreen} testID="deal-map-fullscreen">
-            <View style={[s.mapArea, { backgroundColor: colors.driverSoft }]} testID="deal-map-first-area">
+          <View style={[s.mapFullscreen, { backgroundColor: colors.bg }]} testID="deal-map-fullscreen">
+            <View style={[s.mapArea, { backgroundColor: colors.driverSoft, flex: mapExpanded ? 1 : 0.42 }]} testID="deal-map-first-area">
               {showLiveMap ? (
                 <TruckMap
                   lat={hasLivePoint ? lat : undefined}
                   lng={hasLivePoint ? lng : undefined}
                   title={partnerName || t('track_truck_marker')}
                   routePoints={routePoints}
+                  startLabel={localizePlace(from, language)}
+                  endLabel={localizePlace(to, language)}
                   planned={!hasLivePoint}
                   showBadge={false}
                   onRouteSummary={onRouteSummary}
@@ -1600,9 +1624,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 </View>
               )}
 
-              <TouchableOpacity style={[s.mapCollapse, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={closeMap} testID="deal-map-collapse">
-                <Feather name="minimize-2" size={17} color={colors.text} />
-                <Text style={[s.mapCollapseText, { color: colors.text }]}>{ui.collapseMap}</Text>
+              <TouchableOpacity style={[s.mapBack, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={closeMap} testID="deal-map-back" accessibilityLabel={ui.messages}>
+                <Feather name="arrow-left" size={17} color={colors.text} />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[s.mapCollapse, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setMapExpanded((value) => !value)} testID="deal-map-collapse">
+                <Feather name={mapExpanded ? 'minimize-2' : 'maximize-2'} size={17} color={colors.text} />
+                <Text style={[s.mapCollapseText, { color: colors.text }]}>{mapExpanded ? ui.collapseMap : ui.expandMap}</Text>
               </TouchableOpacity>
 
               {showLiveMap && updatedText ? (
@@ -1614,32 +1642,31 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 <View style={[s.updatedPill, { backgroundColor: colors.surface, borderColor: colors.border }]} pointerEvents="none"><ActivityIndicator size="small" color="#168759" /></View>
               ) : null}
 
-              {showLiveMap && routeSummary ? (
-                <View style={[s.metricsCard, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="deal-route-metrics" pointerEvents="none">
-                  <View style={s.metricCell}>
-                    <Text style={[s.metricLabel, { color: colors.textMuted }]}>{routeSummary.isRemaining ? ui.remaining : ui.distance}</Text>
-                    <Text style={[s.metricValue, { color: colors.text }]} numberOfLines={1}>{routeSummary.distanceText}</Text>
-                  </View>
-                  <View style={[s.metricDivider, { backgroundColor: colors.border }]} />
-                  <View style={s.metricCell}>
-                    <Text style={[s.metricLabel, { color: colors.textMuted }]}>{routeSummary.isRemaining ? ui.eta : ui.travelTime}</Text>
-                    <Text style={[s.metricValue, { color: colors.text }]} numberOfLines={1}>{routeSummary.durationText}</Text>
-                  </View>
-                </View>
+              {mapExpanded ? (
+                <TripMapInfoSheet
+                  compact
+                  copy={ui}
+                  colors={{ surface: colors.surface, surfaceMuted: colors.surfaceMuted, border: colors.border, text: colors.text, textMuted: colors.textMuted, accent: colors.driver }}
+                  tripNumber={dealNumber || '—'}
+                  routeLabel={routeLabel}
+                  statusLabel={statusLabel}
+                  metrics={mapMetrics}
+                />
               ) : null}
             </View>
-
-            <TouchableOpacity style={[s.chatDock, { backgroundColor: colors.bg, borderColor: colors.border }]} onPress={closeMap} testID="deal-chat-dock">
-              <View style={[s.chatIconBox, { backgroundColor: colors.driverSoft }]}><Feather name="message-circle" size={18} color="#168759" /></View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <View style={s.sheetTitleRow}>
-                  <Text style={[s.sheetTitle, { color: colors.text }]}>{ui.messages}</Text>
-                  {unreadCount > 0 ? <Text style={s.newCount}>{unreadCount}</Text> : null}
-                </View>
-                <Text style={[s.preview, { color: colors.textMuted }]} numberOfLines={1}>{latestPreview}</Text>
-              </View>
-              <Feather name="chevron-up" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
+            {!mapExpanded ? (
+              <TripMapInfoSheet
+                copy={ui}
+                colors={{ bg: colors.bg, surface: colors.surface, surfaceMuted: colors.surfaceMuted, border: colors.border, text: colors.text, textMuted: colors.textMuted, accent: colors.driver }}
+                tripNumber={dealNumber || '—'}
+                routeLabel={routeLabel}
+                statusLabel={statusLabel}
+                progress={routeSummary?.progressPercent || 0}
+                metrics={mapMetrics}
+                weather={mapWeatherCard}
+                nextPoint={mapNextPointCard}
+              />
+            ) : null}
           </View>
         )}
 
@@ -1844,7 +1871,8 @@ const s = StyleSheet.create({
   mapArea: { flex: 1, position: 'relative', overflow: 'hidden' },
   updatedPill: { position: 'absolute', left: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   updatedText: { fontSize: 11.5, fontWeight: '800' },
-  mapCollapse: { position: 'absolute', right: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 13, borderRadius: 20, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3, zIndex: 8 },
+  mapBack: { position: 'absolute', left: 12, top: 12, width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, boxShadow: '0 2px 8px rgba(20,34,28,0.10)', zIndex: 8 },
+  mapCollapse: { position: 'absolute', right: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 40, height: 40, paddingHorizontal: 13, borderRadius: 14, borderWidth: 1, boxShadow: '0 2px 8px rgba(20,34,28,0.10)', zIndex: 8 },
   mapCollapseText: { fontSize: 12.5, fontWeight: '800' },
   metricsCard: { position: 'absolute', left: 12, right: 12, bottom: 12, minHeight: 68, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 4 },
   metricCell: { flex: 1, minWidth: 0 },

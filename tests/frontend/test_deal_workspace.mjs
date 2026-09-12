@@ -122,14 +122,17 @@ test('the map is never mounted underneath the chat — chat and map are mutually
 });
 
 test('distance and ETA remain real Yandex route properties and fail closed', () => {
-  assert.match(workspace, /testID="deal-route-metrics"/);
-  assert.match(workspace, /routeSummary\.distanceText/);
-  assert.match(workspace, /routeSummary\.durationText/);
-  assert.match(workspace, /routeSummary\.isRemaining/);
+  assert.match(workspace, /<TripMapInfoSheet/);
+  assert.match(workspace, /metrics=\{mapMetrics\}/);
+  assert.match(workspace, /progress=\{routeSummary\?\.progressPercent \|\| 0\}/);
+  assert.match(workspace, /routeSummary\?\.distanceText/);
+  assert.match(workspace, /routeSummary\?\.durationText/);
+  assert.match(workspace, /routeSummary\?\.isRemaining/);
   assert.match(webMap, /multiRoute\.getActiveRoute/);
   assert.match(webMap, /get\?\.\(["']distance["']\)/);
   assert.match(webMap, /get\?\.\(["']duration["']\)/);
-  assert.match(webMap, /\[livePoint, destination\]/);
+  assert.match(webMap, /const routingPoints = plannedPoints/);
+  assert.doesNotMatch(webMap, /\[livePoint, destination\]/);
   assert.match(webMap, /emitSummary\(null\)/);
 });
 
@@ -198,9 +201,10 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   // hardcoded light hex that glows in dark mode.
   assert.doesNotMatch(workspace, /backgroundColor: '#EAF1ED'/);
   assert.doesNotMatch(workspace, /backgroundColor: '#E9F6EF'/);
-  assert.match(workspace, /s\.mapArea, \{ backgroundColor: colors\.driverSoft \}/);
+  assert.match(workspace, /s\.mapArea, \{ backgroundColor: colors\.driverSoft, flex:/);
   assert.match(workspace, /s\.finishedIcon, \{ backgroundColor: colors\.driverSoft \}/);
-  assert.match(workspace, /s\.chatIconBox, \{ backgroundColor: colors\.driverSoft \}/);
+  // The map no longer renders the legacy chat dock; its visual styles are
+  // intentionally not part of this composer contract.
   assert.match(workspace, /testID="deal-chat-composer-dock"/);
   assert.match(workspace, /composerDock: \{ paddingHorizontal: 8, paddingTop: 5/);
   assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'center'/);

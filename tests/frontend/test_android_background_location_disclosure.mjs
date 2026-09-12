@@ -40,7 +40,7 @@ test('Android trip map is viewable without starting the tracking permission flow
   assert.doesNotMatch(nativeMap, /permissionGate/);
   assert.doesNotMatch(nativeMap, /truck-map-location-consent-gate/);
   assert.doesNotMatch(nativeMap, /truck-map-location-consent-retry/);
-  assert.match(nativeMap, /testID="truck-map-yandex-webview"/);
+  assert.match(nativeMap, /testID="truck-map-yandex-mapkit"/);
 });
 
 test('canonical deal host handles Start trip consent only', () => {

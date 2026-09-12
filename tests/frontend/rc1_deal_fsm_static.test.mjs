@@ -34,8 +34,8 @@ test('opening the map hides the chat header (and everything in it) instead of le
 });
 
 test('the deal workspace opens its map in place, not by navigating to a separate screen', () => {
-  assert.match(dealWorkspace, /const openMap = \(\) => \{ setAttachOpen\(false\); setCallMenuOpen\(false\); setViewMode\(VIEW_MAP\); \};/);
-  assert.match(dealWorkspace, /const closeMap = \(\) => setViewMode\(VIEW_CHAT\);/);
+  assert.match(dealWorkspace, /const openMap = \(\) => \{ setAttachOpen\(false\); setCallMenuOpen\(false\); setMapExpanded\(false\); setViewMode\(VIEW_MAP\); \};/);
+  assert.match(dealWorkspace, /const closeMap = \(\) => \{ setMapExpanded\(false\); setViewMode\(VIEW_CHAT\); \};/);
   assert.match(dealWorkspace, /testID="deal-header-map"/);
   assert.match(dealWorkspace, /testID="deal-map-fullscreen"/);
   // Neither role's entry point should navigate away for the live map —
@@ -46,8 +46,9 @@ test('the deal workspace opens its map in place, not by navigating to a separate
 
 test('the embedded map is a modal-like overlay you explicitly collapse back to chat, not a permanent split view', () => {
   assert.match(dealWorkspace, /testID="deal-map-collapse"/);
-  assert.match(dealWorkspace, /onPress=\{closeMap\}\s+testID="deal-map-collapse"/);
-  assert.match(dealWorkspace, /onPress=\{closeMap\}\s+testID="deal-chat-dock"/);
+  assert.match(dealWorkspace, /setMapExpanded\(\(value\) => !value\)/);
+  assert.match(dealWorkspace, /testID="deal-map-back"/);
+  assert.doesNotMatch(dealWorkspace, /deal-chat-dock/);
 });
 
 test('deal route map is visible before first GPS point', () => {
