@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT))
 
 from database import db as ddb
 from database import cgr_dal
+from services.border_service import BORDERS
 
 ddb.init_db()
 cgr_dal.init_cgr_schema()
@@ -34,6 +35,18 @@ def test_catalog_is_specific_route_and_network_free_contract():
     assert isinstance(data["checkpoints"], list)
     assert data["checkpoints"], "catalog may use DB seed or local legacy fallback, but must not be empty"
     assert all({"id", "name", "country"}.issubset(row) for row in data["checkpoints"])
+
+
+def test_catalog_falls_back_to_the_complete_legacy_catalog_when_seed_is_empty():
+    with ddb.get_conn() as conn:
+        conn.execute("DELETE FROM border_checkpoints")
+
+    response = client.get("/api/v1/borders/catalog")
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert {row["id"] for row in data["checkpoints"]} == {row["id"] for row in BORDERS}
+    assert {row["country"] for row in data["checkpoints"]} >= {"CN", "RU", "UZ", "KG", "TM"}
+    assert sum(item["count"] for item in data["countries"]) == len(data["checkpoints"])
 
 
 def test_live_route_registered_before_legacy_dynamic_route():

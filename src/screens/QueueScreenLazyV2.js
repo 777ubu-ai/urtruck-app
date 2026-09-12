@@ -145,6 +145,28 @@ function formatKztAmount(mci) {
   return `${Math.round(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ₸`;
 }
 
+function normalizeCatalogRows(rows) {
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => {
+      const id = row?.id || row?.code;
+      if (!id || seen.has(String(id))) return false;
+      seen.add(String(id));
+      return true;
+    })
+    .map((row) => ({
+      ...row,
+      id: row.id || row.code,
+      code: row.code || row.id,
+      name: row.name || row.name_ru,
+      name_ru: row.name_ru || row.name,
+      name_kk: row.name_kk || row.name_kz,
+      name_en: row.name_en,
+      name_zh: row.name_zh || row.name_cn,
+      country: row.country || row.country_to,
+    }));
+}
+
 // The nearest booking fields are also official backend data. Defensively merge
 // them into the horizontal calendar so the hero can never say "20 Sep" while
 // the carousel visually ends on "17 Sep" because an upstream grid omitted a row.
@@ -203,6 +225,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const [liveLoading, setLiveLoading] = useState(false);
   const [liveError, setLiveError] = useState('');
   const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
   const [favorites, setFavorites] = useState([]);
   const [plate, setPlate] = useState('');
   const [lookup, setLookup] = useState(null);
@@ -217,12 +240,41 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   const loadCatalog = useCallback(async () => {
     setCatalogLoading(true);
+    setCatalogError('');
     try {
-      const data = await fetchJson(`${BASE}/catalog`);
-      setCatalog(Array.isArray(data?.checkpoints) ? data.checkpoints : []);
-      setCountries(Array.isArray(data?.countries) ? data.countries : []);
+      let data;
+      try {
+        data = await fetchJson(`${BASE}/catalog`);
+      } catch {
+        data = null;
+      }
+
+      let rows = normalizeCatalogRows(data?.checkpoints);
+      let countryRows = Array.isArray(data?.countries) ? data.countries : [];
+
+      // Keep the existing scoreboard route as a compatibility fallback for
+      // deployments where the catalog seed is still catching up. This does
+      // not fetch live details for every checkpoint; that remains an explicit
+      // tap action in loadLive().
+      if (!rows.length) {
+        const legacy = await fetchJson(`${BASE}?country=ALL`);
+        rows = normalizeCatalogRows(legacy?.borders);
+        const counts = new Map();
+        rows.forEach((row) => {
+          if (row.country) counts.set(row.country, (counts.get(row.country) || 0) + 1);
+        });
+        countryRows = [...counts.entries()].map(([country, count]) => ({ country, count }));
+      }
+
+      if (!rows.length) throw new Error('checkpoint catalog is empty');
+      setCatalog(rows);
+      setCountries(countryRows);
+    } catch {
+      setCatalog([]);
+      setCountries([]);
+      setCatalogError(L.sourceError);
     } finally { setCatalogLoading(false); }
-  }, []);
+  }, [L.sourceError]);
 
   useEffect(() => {
     loadCatalog().catch(() => setCatalogLoading(false));
@@ -230,7 +282,10 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   }, [loadCatalog]);
 
   const countryCodes = useMemo(() => {
-    const available = new Set(countries.map((item) => item.country).filter(Boolean));
+    const available = new Set([
+      ...countries.map((item) => item.country),
+      ...catalog.map((item) => item.country),
+    ].filter(Boolean));
     const ordered = COUNTRY_ORDER.filter((code) => available.has(code) || ['CN', 'KG', 'RU'].includes(code));
     for (const code of available) if (!ordered.includes(code)) ordered.push(code);
     return ordered;
@@ -343,7 +398,8 @@ export default function QueueScreenLazyV2({ navigation, route }) {
           </ScrollView>
         )}
 
-        {!selected ? <View style={[s.promptCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-lazy-prompt"><Feather name="mouse-pointer" size={20} color={activeColor} /><Text style={[s.promptText, { color: theme.textMuted }]}>{L.tap}</Text></View> : null}
+        {catalogError ? <View style={[s.errorCard, { backgroundColor: theme.card }]} testID="border-catalog-error"><Feather name="alert-circle" size={20} color="#B42318" /><Text style={[s.errorText, { color: theme.textMuted }]}>{catalogError}</Text><TouchableOpacity onPress={loadCatalog}><Text style={s.retry}>{L.refresh}</Text></TouchableOpacity></View> : null}
+        {!selected && !catalogError ? <View style={[s.promptCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-lazy-prompt"><Feather name="mouse-pointer" size={20} color={activeColor} /><Text style={[s.promptText, { color: theme.textMuted }]}>{L.tap}</Text></View> : null}
         {selected && liveLoading && !live ? <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: DRIVER_CERAMIC.border }]} testID="border-live-loading"><ActivityIndicator color={activeColor} size="large" /><Text style={[s.loadingText, { color: theme.textMuted }]}>{L.loading}</Text></View> : null}
         {selected && liveError ? <View style={[s.errorCard, { backgroundColor: theme.card }]}><Feather name="alert-circle" size={20} color="#B42318" /><Text style={[s.errorText, { color: theme.textMuted }]}>{liveError}</Text><TouchableOpacity onPress={() => loadLive(selected, true)}><Text style={s.retry}>{L.refresh}</Text></TouchableOpacity></View> : null}
 
