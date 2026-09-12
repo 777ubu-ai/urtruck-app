@@ -43,8 +43,21 @@ PUSH_MOCK = not (VAPID_PUBLIC and VAPID_PRIVATE)
 
 _DEVICE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:_-]{7,127}$")
 
+_RECEIPT_INDEX_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_push_delivery_receipt_pending\n"
+    "  ON push_delivery_log(provider, status, receipt_checked_at, sent_at);"
+)
+_RECEIPT_INDEX_PATTERN = re.compile(
+    r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_push_delivery_receipt_pending\s+"
+    r"ON\s+push_delivery_log\s*\(\s*provider\s*,\s*status\s*,\s*receipt_checked_at\s*,\s*sent_at\s*\)\s*;",
+    re.IGNORECASE,
+)
+_deferred_receipt_index = False
+_deferred_receipt_index_started = False
+
 
 def _init_schema():
+    global _deferred_receipt_index
     schema = Path(__file__).resolve().parent.parent / "database" / "push_schema.sql"
     with get_conn() as c:
         # The receipt index is part of push_schema.sql.  On a legacy database
@@ -57,15 +70,50 @@ def _init_schema():
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'push_delivery_log'"
             ).fetchall()
         }
+        defer_receipt_index = False
         if "push_delivery_log" in delivery_tables:
             delivery_cols = {
                 row["name"] for row in c.execute("PRAGMA table_info(push_delivery_log)").fetchall()
             }
             if "receipt_checked_at" not in delivery_cols:
                 c.execute("ALTER TABLE push_delivery_log ADD COLUMN receipt_checked_at TEXT")
-        c.executescript(schema.read_text(encoding="utf-8"))
+            receipt_index = c.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'index' "
+                "AND name = 'idx_push_delivery_receipt_pending'"
+            ).fetchone()
+            # Building this index can scan a large legacy production table.
+            # Do not hold uvicorn before it binds; finish it in the background
+            # after FastAPI startup. Fresh databases still run the complete
+            # schema synchronously below.
+            defer_receipt_index = receipt_index is None
+
+        schema_sql = schema.read_text(encoding="utf-8")
+        if defer_receipt_index:
+            schema_sql = _RECEIPT_INDEX_PATTERN.sub("", schema_sql, count=1)
+        c.executescript(schema_sql)
         c.commit()
+    _deferred_receipt_index = defer_receipt_index
     _migrate_ownership_columns()
+
+
+def start_deferred_migrations():
+    """Start expensive legacy-only indexes after the API has become healthy."""
+    global _deferred_receipt_index_started
+    if not _deferred_receipt_index or _deferred_receipt_index_started:
+        return
+    _deferred_receipt_index_started = True
+
+    def create_receipt_index():
+        try:
+            with get_conn() as c:
+                c.execute(_RECEIPT_INDEX_SQL)
+                c.commit()
+            print("[migration] deferred receipt index created", flush=True)
+        except Exception as exc:
+            # A later process restart can retry the idempotent index creation.
+            print(f"[migration] deferred receipt index postponed: {exc}", flush=True)
+
+    threading.Thread(target=create_receipt_index, name="receipt-index-migration", daemon=True).start()
 
 
 def _migrate_ownership_columns():
@@ -206,10 +254,11 @@ def _migrate_ownership_columns():
             WHERE event_id IS NOT NULL AND status = 'sent'
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_delivery_event ON push_delivery_log(event_id)")
-        c.execute("""
-            CREATE INDEX IF NOT EXISTS idx_push_delivery_receipt_pending
-            ON push_delivery_log(provider, status, receipt_checked_at, sent_at)
-        """)
+        if not _deferred_receipt_index:
+            c.execute("""
+                CREATE INDEX IF NOT EXISTS idx_push_delivery_receipt_pending
+                ON push_delivery_log(provider, status, receipt_checked_at, sent_at)
+            """)
         # PR#187 reconciliation: на legacy-БД (без event_key) добавляем колонку
         # ПЕРЕД созданием уникального индекса — иначе индекс по несуществующей
         # колонке падает. Тот же порядок, что и в notifications._migrate_event_key.
