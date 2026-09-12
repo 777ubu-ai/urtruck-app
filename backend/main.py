@@ -100,7 +100,7 @@ from api.social_auth import social_auth_router
 from api.driver_registration import driver_reg_router
 from api.vehicles import router as vehicles_router
 from api.reviews import reviews_router
-from api.push import push_router
+from api.push import push_router, start_deferred_migrations
 from api.qr import qr_router
 from api.telegram_webhook import tg_webhook_router
 from api.documents import docs_router
@@ -334,6 +334,10 @@ def startup():
     print("  Docs:       http://localhost:8001/docs")
     print("  Admin:      http://localhost:8001/admin")
     print("=" * 50)
+    # Legacy push_delivery_log indexes can be large. Start their idempotent
+    # completion only after the FastAPI startup hook returns, so the health
+    # endpoint can bind before the background DDL scans old production data.
+    start_deferred_migrations()
 
 
 @app.on_event("shutdown")
