@@ -4,6 +4,7 @@ const fs = require('fs');
 const PROD = 'https://urtruck.kz';
 const AUDIT_BASE = (process.env.QA_BASE_URL || process.env.E2E_BASE_URL || '').replace(/\/$/, '');
 const EXPECTED_LOCAL_COMMIT = process.env.LOCAL_BUILD_EXPECTED_COMMIT || process.env.GITHUB_SHA || '';
+const POST_DEPLOY = process.env.PRODUCTION_POST_DEPLOY === '1';
 
 async function expectHealthy(response, label) {
   expect(response.status(), `${label} returned server error`).toBeLessThan(500);
@@ -27,6 +28,7 @@ test('PR audit serves the local or preview build artifact', async ({ request }) 
 });
 
 test('production public critical APIs remain available', async ({ request }) => {
+  test.skip(!POST_DEPLOY, 'production API proof runs only after the production deploy workflow succeeds');
 
   const system = await expectHealthy(
     await request.get(`${PROD}/security/api/v1/system/info`),
@@ -60,6 +62,8 @@ test('production public critical APIs remain available', async ({ request }) => 
 });
 
 test('production auth, deals, chat, documents and favorites routes are live and guarded', async ({ request }) => {
+  test.skip(!POST_DEPLOY, 'production route proof runs only after the production deploy workflow succeeds');
+
   // This suite intentionally validates the ALREADY DEPLOYED current main.
   // PR-only endpoints belong in local PR tests; requiring them from production
   // before merge would make every feature PR false-red by construction.
