@@ -69,12 +69,18 @@ if grep -iqE 'passenger|пассажир|такси|taxi' src/utils/i18n.js; the
   fail "passenger/taxi wording present in i18n.js"
 else pass "no passenger/taxi wording in i18n"; fi
 
-# 8) 24-48h presence (verification timing unified).
-# Литеральный поиск: en-dash «–» — многобайтовый, regex `.` в C-локали
-# матчит байты, поэтому ищем обе формы тире как литералы.
-if LC_ALL=C grep -qF -e '24–48' -e '24-48' src/utils/i18n.js; then
-  pass "24–48h copy present"
-else fail "24–48h copy missing"; fi
+# 8) Access timing contract. The current approved onboarding opens basic
+# access immediately; the old 24–48h promise was removed in e84116bb.
+# Check the canonical success key in all four enabled locales instead of
+# reintroducing stale review-time copy.
+SUCCESS_COPY_COUNT=$(grep -c '^[[:space:]]*registration_success_text:' src/utils/i18n.js || true)
+if [ "$SUCCESS_COPY_COUNT" -eq 4 ] \
+  && grep -q 'доступ открыт' src/utils/i18n.js \
+  && grep -q 'қолжетімділік ашық' src/utils/i18n.js \
+  && grep -q '已开放使用' src/utils/i18n.js \
+  && grep -q 'access is open' src/utils/i18n.js; then
+  pass "immediate-access success copy present in all four locales"
+else fail "immediate-access success copy is incomplete"; fi
 
 # 9) gate keys exist (Queue + CreateTrip progressive gates)
 if grep -q 'queue_gate_locked_title:' src/utils/i18n.js && grep -q 'trips_gate_title:' src/utils/i18n.js; then
