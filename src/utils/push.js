@@ -437,6 +437,53 @@ export const push = {
     };
   },
 
+  // Push/Outbox/Localization repair (2026-09-11): registerNative() only
+  // ever runs from push.autoRegister(), called once per OTP/login (see
+  // OtpV2Screen.js/PremiumOtpScreen.js/PhoneV2Screen.js) — never again for
+  // the rest of that session. `locale` is captured into push_devices at
+  // that ONE moment and never refreshed afterwards, so a user who logs in
+  // once and later changes the in-app language (Profile → language picker)
+  // keeps receiving system push text in whatever language was active at
+  // login, silently, for the rest of that session (confirmed root cause of
+  // "device locale = KK, bid push arrived RU": the stored push_devices row
+  // was never wrong about the device, it was just stale about the
+  // language). Deliberately NOT calling the full registerNative() here —
+  // that touches Notifications.getPermissionsAsync/requestPermissionsAsync
+  // and would re-prompt a user who had previously denied permission, which
+  // must never happen as a side effect of switching UI language. Reuses
+  // the SAME idempotent /register-native upsert
+  // (ON CONFLICT(push_provider, push_token) DO UPDATE SET locale =
+  // COALESCE(excluded.locale, locale) — api/push.py) with the tokens
+  // registerNative() already obtained and cached, so this is a pure
+  // locale-only PATCH in practice, not a re-registration.
+  async refreshLocale() {
+    if (!this.isNative()) return { ok: false, reason: 'web' };
+    const authToken = await storage.get(TOKEN_KEY);
+    const deviceId = await getOrCreateDeviceId();
+    const locale = await storage.get(LANG_KEY);
+    const expoToken = await storage.get(NATIVE_TOKEN_KEY);
+    const rawToken = await storage.get(NATIVE_RAW_TOKEN_KEY);
+    const jobs = [];
+    if (expoToken) {
+      jobs.push({ token: expoToken, provider: 'expo' });
+    }
+    if (rawToken) {
+      jobs.push({ token: rawToken, provider: Platform.OS === 'android' ? 'fcm' : 'apns' });
+    }
+    if (!jobs.length) return { ok: false, reason: 'not_registered' };
+    const results = await Promise.all(jobs.map(({ token, provider }) =>
+      fetch(`${BASE}/register-native`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authToken ? `Bearer ${authToken}` : '',
+        },
+        body: JSON.stringify({ token, provider, platform: Platform.OS, device_id: deviceId, locale: locale || null }),
+      }).then((r) => r.ok).catch(() => false)
+    ));
+    return { ok: results.some(Boolean), locale: locale || null };
+  },
+
   // ── Единый автозапуск: web.subscribe() если PWA, иначе registerNative() ──
   async autoRegister() {
     if (this.isSupported()) return this.subscribe({ requestPermission: false });

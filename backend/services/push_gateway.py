@@ -256,6 +256,25 @@ class APNsProvider(PushProvider):
         return ProviderResult("apns", "failed", response=body_json, error_code=code, retryable=retryable)
 
 
+# Push/Outbox/Localization repair (2026-09-11), item 3 ("error
+# classification" applies here as much as it does to FCM). Expo's own
+# documented ticket-level error codes
+# (https://docs.expo.dev/push-notifications/sending-notifications/#individual-errors) —
+# only these two are permanent (retrying can never succeed): a token Expo
+# has confirmed dead, or a request too large for Expo to ever accept
+# regardless of retry. Everything else (rate limiting, Expo's own
+# transient failures, an unrecognized/future code) defaults to
+# retryable=True — the safe direction to be wrong in, since a row
+# process_pending_once wrongly keeps retrying just costs a few more
+# bounded attempts before going dead anyway, while wrongly marking a
+# transient failure permanent throws away a delivery that could have
+# succeeded on retry. Previously this was hardcoded retryable=False for
+# EVERY Expo failure with no classification at all — confirmed via
+# test_push_outbox_drain.py's own transient-failure fixture, which this
+# fix keeps passing.
+_EXPO_PERMANENT_ERRORS = {"DeviceNotRegistered", "MessageTooBig"}
+
+
 class ExpoProvider(PushProvider):
     name = "expo"
 
@@ -270,7 +289,8 @@ class ExpoProvider(PushProvider):
         ticket = (result.get("tickets") or [{}])[0]
         details = ticket.get("details") or {}
         error_code = result.get("error") or details.get("error") or ticket.get("message") or "send_failed"
-        return ProviderResult("expo", "failed", response=ticket, error_code=str(error_code), retryable=False)
+        retryable = str(details.get("error") or "") not in _EXPO_PERMANENT_ERRORS
+        return ProviderResult("expo", "failed", response=ticket, error_code=str(error_code), retryable=retryable)
 
 
 def active_devices(user_id: str) -> list[dict[str, Any]]:
@@ -430,6 +450,19 @@ def send_to_devices(
     sent = 0
     already_delivered = 0
     by_provider: dict[str, int] = {}
+    # Push/Outbox/Localization repair (2026-09-11), item 2/1: ProviderResult.
+    # retryable existed and was correctly set by every provider (e.g.
+    # FCMProvider returns retryable=False for provider_not_configured/
+    # invalid_credentials/invalid_token) but nothing downstream ever read
+    # it — process_pending_once retried EVERY non-fully-delivered row
+    # through the full exponential-backoff ladder regardless, so a
+    # permanently-misconfigured provider (FCM with no real credentials —
+    # the "FCM mode = MOCK" runtime state) burned all 5 attempts (~150s)
+    # for every single event before finally going 'dead', instead of
+    # failing fast. Track it here so process_pending_once can skip straight
+    # to 'dead' when nothing about a retry could ever succeed.
+    undelivered_all_permanent = True
+    attempted_any = False
     event_id = (data or {}).get("event_id") or (data or {}).get("event_key")
     for device in devices:
         if _already_sent_to_device(event_id, device.get("id")):
@@ -451,6 +484,7 @@ def send_to_devices(
         provider = providers.get(provider_name)
         if not provider:
             continue
+        attempted_any = True
         token = device.get("push_token") or ""
         platform = device.get("platform")
         if not provider.supports_platform(platform) or not provider.validate_token(token):
@@ -461,12 +495,22 @@ def send_to_devices(
         if result.status == "sent":
             sent += 1
             by_provider[provider_name] = by_provider.get(provider_name, 0) + 1
+        elif result.retryable:
+            undelivered_all_permanent = False
     return {
         "sent": sent,
         "already_delivered": already_delivered,
         "providers": by_provider,
         "devices": len(devices),
         "mode": mode,
+        # True only when at least one device was actually attempted, none
+        # of them delivered, and every failure among them was non-retryable
+        # — i.e. retrying this exact row again cannot ever change the
+        # outcome. False (never "give up early") when nothing was attempted
+        # at all (e.g. every device already delivered on a prior attempt,
+        # or none matched a configured provider) so an ambiguous case never
+        # short-circuits a row that might still legitimately succeed.
+        "permanent_failure": attempted_any and sent == 0 and undelivered_all_permanent,
     }
 
 
@@ -509,11 +553,22 @@ def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
         return dict(row) if row else None
 
 
-def _finish_row(row_id: int, attempt: int, sent: bool, error: Optional[str]) -> str:
+def _finish_row(row_id: int, attempt: int, sent: bool, error: Optional[str], permanent: bool = False) -> str:
     """Apply the terminal/retry decision for one claimed row. Shared by both
     the normal (no delivery) and exception (poison event) paths so a handler
     that always raises still hits the same MAX_OUTBOX_ATTEMPTS→dead ceiling
-    instead of retrying forever with no backoff."""
+    instead of retrying forever with no backoff.
+
+    `permanent` (item 1/2 of the push/outbox repair): when every device this
+    attempt touched failed with a non-retryable provider error (see
+    send_to_devices's "permanent_failure"), go straight to 'dead' instead of
+    burning through the remaining backoff attempts first — nothing about
+    retrying an unconfigured/invalid-credential provider or an invalid
+    token can change on its own between now and attempt 5. Never applies
+    to a poison-event/exception path (permanent defaults False there) — an
+    exception says nothing about whether THIS specific failure would recur,
+    so that path keeps the full backoff ladder.
+    """
     with get_conn() as c:
         if sent:
             c.execute(
@@ -521,7 +576,7 @@ def _finish_row(row_id: int, attempt: int, sent: bool, error: Optional[str]) -> 
                 (attempt, row_id),
             )
             return "sent"
-        if attempt >= MAX_OUTBOX_ATTEMPTS:
+        if permanent or attempt >= MAX_OUTBOX_ATTEMPTS:
             c.execute(
                 "UPDATE push_outbox SET status='dead', failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL WHERE id=?",
                 (attempt, (error or "delivery_not_confirmed")[:500], row_id),
@@ -611,12 +666,18 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
             total_devices = int(result.get("devices", 0) or 0)
             confirmed = int(result.get("sent", 0) or 0) + int(result.get("already_delivered", 0) or 0)
             fully_delivered = total_devices > 0 and confirmed >= total_devices
-            outcome = _finish_row(row["id"], attempt, sent=fully_delivered, error=None)
+            permanent = (not fully_delivered) and bool(result.get("permanent_failure"))
+            error = None
+            if permanent:
+                error = f"permanent_provider_failure (mode={result.get('mode')})"
+            outcome = _finish_row(row["id"], attempt, sent=fully_delivered, error=error, permanent=permanent)
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside
             # its own try/except, etc.) — must not crash the worker or loop
             # forever without backoff; goes through the exact same
             # attempt/backoff/dead ladder as an ordinary delivery failure.
+            # permanent stays False here deliberately — see _finish_row's
+            # docstring on why an exception must not skip the backoff ladder.
             outcome = _finish_row(row["id"], attempt, sent=False, error=str(exc))
         stats[outcome] += 1
     return stats

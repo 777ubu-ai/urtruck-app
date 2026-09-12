@@ -342,9 +342,48 @@ def _send_fcm(tokens: list[str], title: str, body: str, data: dict) -> int:
     return sent
 
 
+def _backfill_push_devices_from_legacy(user_id: str, tokens: list[dict]) -> None:
+    """Push/Outbox/Localization repair (2026-09-11), item 4 (secondary
+    cause). This fallback exists specifically for a token that predates
+    push_devices (api/push.py's register_native() has unconditionally
+    dual-written both tables for a while now — see _upsert_push_device —
+    so reaching here today means a genuinely historical row, or one whose
+    push_devices side got disabled independently). push_tokens_native has
+    no locale column at all, so nothing here can recover the CURRENT
+    message's language — but leaving the gap open means EVERY future send
+    to this token repeats the same blind, un-retryable, un-deduped legacy
+    path forever. Best-effort, silent: the device still gets today's
+    (unavoidably default-locale) push either way; this only means the
+    NEXT one goes through the real gateway once the app re-registers or a
+    push.refreshLocale() call fills in the locale properly.
+    """
+    try:
+        with get_conn() as c:
+            for t in tokens:
+                c.execute(
+                    """
+                    INSERT INTO push_devices(user_id, platform, push_provider, push_token)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(push_provider, push_token) DO NOTHING
+                    """,
+                    (user_id, t.get("platform"), t.get("provider") or "expo", t.get("token")),
+                )
+    except Exception:
+        pass  # best-effort data hygiene, never allowed to affect delivery
+
+
 def _send_native_legacy(user_id: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> tuple[int, int]:
     """Returns (sent, total_devices_targeted) — see _send_native's docstring
-    for why the caller needs both, not just `sent`."""
+    for why the caller needs both, not just `sent`.
+
+    Structural gap (push/outbox/localization repair, 2026-09-11): unlike
+    push_gateway.send_to_devices(), nothing here can localize per-device
+    (push_tokens_native has no locale column), retry with backoff, dedupe
+    per-device, or classify errors as retryable/permanent — it is a plain,
+    best-effort blast. See _backfill_push_devices_from_legacy() above: this
+    function now also opportunistically migrates whatever tokens it just
+    used into push_devices so they stop needing this path going forward.
+    """
     tokens = _native_tokens(user_id)
     if not tokens:
         return 0, 0
@@ -360,6 +399,7 @@ def _send_native_legacy(user_id: str, title: str, body: str, data: dict, badge: 
 
     if FCM_MOCK and PUSH_MOCK_WEB and not expo_tokens and not fcm_tokens:
         print(f"[PUSH·NATIVE MOCK] {user_id}: {title} · {body}")
+    _backfill_push_devices_from_legacy(user_id, tokens)
     return sent, len(tokens)
 
 
@@ -635,12 +675,35 @@ def info() -> dict:
             ).fetchone()[0])
     except Exception as e:
         log.warning("push diagnostics count failed: %s", e)
+    # Push/Outbox/Localization repair (2026-09-11), item 3 root cause: this
+    # "fcm.mode" field used to report FCM_MOCK (this file's OWN dead legacy
+    # flag — gated on FCM_SERVER_KEY, the FCM Legacy HTTP API Google
+    # deprecated and shut down in June 2024; _send_fcm() below it is only
+    # ever reached as _send_native_legacy's fallback, itself only reached
+    # when push_devices has zero rows for the user). The gateway actually
+    # used in "native"/"dual" mode is push_gateway.FCMProvider (HTTP v1,
+    # OAuth2 service account) — its OWN, separate, already-correct
+    # configured-state has always been available at push_gateway.info()
+    # ["fcm"]["configured"], just never surfaced as the headline answer to
+    # "is FCM mode real or mock". Report that here instead: "REAL" means
+    # the modern gateway has credentials it can actually use, "MOCK" means
+    # it does not — regardless of whether the dead legacy key is set
+    # (setting it does nothing today; the API it talked to no longer
+    # exists).
+    # Two separate calls (not a shared local) deliberately — cheap (env/dict
+    # reads, no I/O) and keeps the literal `"gateway": push_gateway.info()`
+    # expression test_push_delivery_release_gate.py's own release-gate test
+    # greps source text for.
+    fcm_configured = bool((push_gateway.info().get("fcm") or {}).get("configured"))
     return {
         "web": {"mode": "MOCK" if PUSH_MOCK_WEB else "REAL", "vapid_public": bool(VAPID_PUBLIC),
                 "subject": VAPID_SUBJECT},
         "native": {
             "expo": {"endpoint": EXPO_ENDPOINT, "access_token_set": bool(EXPO_TOKEN)},
-            "fcm": {"mode": "MOCK" if FCM_MOCK else "REAL"},
+            "fcm": {
+                "mode": "REAL" if fcm_configured else "MOCK",
+                "legacy_fcm_server_key_set": bool(FCM_SERVER_KEY),
+            },
             "gateway": push_gateway.info(),
         },
         "registrations": counts,
