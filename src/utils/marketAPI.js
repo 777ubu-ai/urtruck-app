@@ -64,10 +64,25 @@ function localizedErrorCode(code) {
   return translations[lang]?.[key] || translations.EN?.[key] || null;
 }
 
+// I18N-16 / item 3 completion (2026-09-13): verification_required's `hint`
+// is RU-only prose (api/verification_gate.py's LEVEL_REQUIREMENTS), but the
+// same response carries a stable structured `required_name` (guest/
+// phone_verified/identity_verified/driver_verified). Translate that via
+// verification_hint_<required_name> (all 16 locales) instead of showing the
+// raw RU hint — see the matching fix in Toast.js.
+function localizedVerificationHint(d) {
+  if (!d || d.error !== 'verification_required' || !d.required_name) return null;
+  const lang = getLanguage();
+  const key = `verification_hint_${d.required_name}`;
+  return translations[lang]?.[key] || translations.EN?.[key] || null;
+}
+
 function normalizeDetail(d, status) {
   if (d == null) return `Ошибка ${status}`;
   if (typeof d === 'string') return d;
   if (typeof d === 'object') {
+    const verificationHint = localizedVerificationHint(d);
+    if (verificationHint) return verificationHint;
     if (d.hint && typeof d.hint === 'string' && d.hint.length) return d.hint;
     const localized = localizedErrorCode(d.error);
     if (localized) return localized;
@@ -77,6 +92,11 @@ function normalizeDetail(d, status) {
   }
   return String(d);
 }
+
+// Exported for the i18n-16 behavioral test (tests/unit/i18n16.test.mjs) that
+// proves a non-RU locale never surfaces the backend's raw RU hint text —
+// not part of the public marketAPI surface used by screens.
+export const __testables = { normalizeDetail, localizedVerificationHint, localizedErrorCode };
 
 export const marketAPI = {
   // ─── Сохранённые маршруты (подписка «грузы по моему маршруту») ───
