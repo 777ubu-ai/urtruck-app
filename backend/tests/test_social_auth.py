@@ -160,11 +160,13 @@ def test_social_login_reuses_same_account_after_real_phone_saved(monkeypatch):
 
     # ProfileV2 later replaces the placeholder phone with the real logistics
     # contact. This used to destroy the only email lookup key.
-    reg_dal.update_driver(first_id, {"phone": "+77011234567"})
+    # Keep this fixture-specific phone distinct from the email/phone contract
+    # test when the full suite shares its canonical harness database.
+    reg_dal.update_driver(first_id, {"phone": "+77011234568"})
 
     second = post()
     assert second.status_code == 200, second.text
     assert second.json()["user_id"] == first_id
     driver = reg_dal.get_driver(first_id)
     assert driver["email"] == email
-    assert driver["phone"] == "+77011234567"
+    assert driver["phone"] == "+77011234568"

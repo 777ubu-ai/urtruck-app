@@ -71,6 +71,24 @@ CREATE TABLE notifications (
   is_read INTEGER DEFAULT 0,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE push_delivery_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id TEXT,
+  recipient_user_id TEXT,
+  device_registry_id INTEGER,
+  device_id TEXT,
+  provider TEXT NOT NULL,
+  attempt INTEGER NOT NULL DEFAULT 1,
+  provider_message_id TEXT,
+  status TEXT NOT NULL,
+  provider_response TEXT,
+  sent_at TEXT,
+  delivered_at TEXT,
+  error_code TEXT,
+  token_masked TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 # Imported during collection. The module fixture below deliberately rebuilds a
@@ -97,6 +115,7 @@ def _legacy_database_after_session_harness():
             DROP TABLE IF EXISTS push_tokens_native;
             DROP TABLE IF EXISTS push_log;
             DROP TABLE IF EXISTS notifications;
+            DROP TABLE IF EXISTS push_delivery_log;
         """)
         conn.executescript(LEGACY_SCHEMA)
         conn.execute(
@@ -110,6 +129,12 @@ def _legacy_database_after_session_harness():
         conn.execute(
             "INSERT INTO notifications(user_id,type,title,url) VALUES(?,?,?,?)",
             ("legacy-user", "legacy", "Legacy notification", "/cargos/legacy"),
+        )
+        conn.execute(
+            """INSERT INTO push_delivery_log(
+                event_id, recipient_user_id, provider, status, provider_message_id
+            ) VALUES(?,?,?,?,?)""",
+            ("legacy-delivery", "legacy-user", "expo", "sent", "legacy-message"),
         )
         conn.commit()
         legacy_notification = conn.execute(
@@ -241,6 +266,24 @@ def test_06_notification_event_key_added_without_data_loss():
     assert row["user_id"] == "legacy-user"
     assert row["url"] == "/cargos/legacy"
     assert row["event_key"] is None
+
+
+def test_06b_receipt_checked_at_added_without_data_loss():
+    assert "receipt_checked_at" in _columns("push_delivery_log")
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT event_id, recipient_user_id, provider, status, provider_message_id, receipt_checked_at "
+            "FROM push_delivery_log WHERE event_id='legacy-delivery'"
+        ).fetchone()
+    assert row is not None, "push delivery migration must preserve legacy rows"
+    assert tuple(row[:5]) == (
+        "legacy-delivery",
+        "legacy-user",
+        "expo",
+        "sent",
+        "legacy-message",
+    )
+    assert row["receipt_checked_at"] is None
 
 
 def test_07_notification_unique_partial_index_exists():
