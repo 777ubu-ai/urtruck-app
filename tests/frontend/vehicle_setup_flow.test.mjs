@@ -33,3 +33,8 @@ test('machine form has dependent body options and numeric validation', () => {
   assert.match(machine, /Number\(draft\.payload_tons\) <= 0/);
   assert.match(machine, /draft\.make === 'Other'/);
 });
+
+test('machine selectors persist dependent values atomically', () => {
+  assert.match(machine, /onSelect=\{\(v\) => setValues\(\{ vehicle_type: v, body_type: '' \}\)\}/);
+  assert.doesNotMatch(machine, /setValue\('vehicle_type', v\); setValue\('body_type', ''\)/);
+});
