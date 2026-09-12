@@ -10,7 +10,7 @@ All screenshots use local Expo web builds and read-only Playwright fixture respo
 ## After
 
 - Driver cargo list: RU/EN/KK/ZH at `390x844` and `360x800`.
-- Shipper list: RU at `390x844` and `360x800`.
+- Shipper list: RU/EN/KK/ZH at `390x844` and `360x800`.
 - `after/driver-trips-ru-390x844.png` — Driver → Рейсы.
 - `after/driver-cargo-long-route-shymkent-ekaterinburg-390x844.png` — long route fixture.
 - `after/country-flags-kz-cn-ru-390x844.png` — shared local ISO SVG fixture; KZ/CN/RU are present.
