@@ -10,7 +10,23 @@ test('shipper EditProfile has no BIN/IIN UI or payload field', () => {
   assert.match(source, /const \[phone, setPhone\] = useState/);
   assert.match(source, /onChangeText=\{setPhone\}/);
   assert.match(source, /helper=\{t\('phone_v2_send_hint'\) \|\| t\('reg_phone_hint'\)\}/);
-  assert.doesNotMatch(source, /updateProfile\([\s\S]{0,500}phone/);
+  // The screen may mention phone-change request/confirm after this call;
+  // assert the actual PATCH payload, rather than using a distance-based
+  // regex that becomes stale as the secure flow grows.
+  assert.doesNotMatch(source, /payload\.phone/);
+  assert.doesNotMatch(source, /updateProfile\(\s*\{[^}]*phone/);
+  assert.match(source, /requestPhoneChange\(/);
+  assert.match(source, /confirmPhoneChange\(/);
+  assert.match(source, /phone-change-confirm/);
+  assert.ok(source.indexOf('setSavedPhone(phone.trim())') > source.indexOf('confirmPhoneChange('), 'новый номер фиксируется только после confirm');
+});
+
+test('registration client exposes the authenticated phone-change flow', () => {
+  const source = read('src/utils/registration.js');
+  assert.match(source, /users\/me\/phone-change\/request/);
+  assert.match(source, /users\/me\/phone-change\/confirm/);
+  assert.match(source, /async requestPhoneChange/);
+  assert.match(source, /async confirmPhoneChange/);
 });
 
 test('shipper Queue hides the bell while driver Queue keeps it', () => {

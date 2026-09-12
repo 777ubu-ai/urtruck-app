@@ -51,6 +51,19 @@ def limit_otp_verify(phone: str):
     check_rate(f"otp_verify:{phone}", max_per_window=5, window_sec=600)
 
 
+def limit_phone_change_request(user_id: str, phone: str, ip: str = None):
+    """Separate anti-abuse limits for authenticated phone changes."""
+    check_rate(f"phone_change_user:{user_id}", max_per_window=1, window_sec=60)
+    check_rate(f"phone_change_phone:{phone}", max_per_window=5, window_sec=3600)
+    limit_otp_send_ip(ip)
+
+
+def limit_phone_change_verify(user_id: str, phone: str):
+    """Keep both account and destination-number verification attempts bounded."""
+    check_rate(f"phone_change_verify_user:{user_id}", max_per_window=5, window_sec=600)
+    check_rate(f"phone_change_verify_phone:{phone}", max_per_window=5, window_sec=600)
+
+
 def limit_guest_create(ip: str):
     """Не больше 20 guest-сессий в час с одного IP."""
     check_rate(f"guest:{ip}", max_per_window=20, window_sec=3600)

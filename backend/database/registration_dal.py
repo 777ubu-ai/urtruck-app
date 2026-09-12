@@ -416,6 +416,15 @@ def delete_session(token: str) -> bool:
         return cur.rowcount > 0
 
 
+def revoke_sessions_for_driver(driver_id: str) -> int:
+    """Отозвать все текущие сессии пользователя после чувствительной смены."""
+    if not driver_id:
+        return 0
+    with get_conn() as c:
+        cur = c.execute("DELETE FROM reg_sessions WHERE driver_id = ?", (driver_id,))
+        return cur.rowcount
+
+
 def get_driver_by_token(token: str) -> str | None:
     with get_conn() as c:
         row = c.execute(

@@ -113,7 +113,7 @@ export default function EditProfileScreen({ navigation, route }) {
   const accent = isDriver ? v1AccentFor(role) : { main: shipper.active, soft: shipper.activeSoft };
   const accentKey = isDriver ? 'driver' : 'cargo';
   const { t, lang } = useI18n();
-  const { session, signOut } = useAuth();
+  const { session, signOut, refreshLevel } = useAuth();
   const { toast } = useToast();
   const [deleting, setDeleting] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
@@ -135,6 +135,12 @@ export default function EditProfileScreen({ navigation, route }) {
   const [messengerId, setMessengerId] = useState(profile.messenger_id || '');
   const [messengerOpen, setMessengerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [phoneChangeOpen, setPhoneChangeOpen] = useState(false);
+  const [phoneChangeCode, setPhoneChangeCode] = useState('');
+  const [phoneChangePending, setPhoneChangePending] = useState(false);
+  const [phoneChangeError, setPhoneChangeError] = useState('');
+  const [phoneChangeMockCode, setPhoneChangeMockCode] = useState('');
+  const [savedPhone, setSavedPhone] = useState(session?.user?.phone || '');
 
   // PR-D1: PRO-секция (только водитель). Минимальный набор по спеке
   // driver_onboarding §2/Экран 3 + загрузка документов в Supabase Storage
@@ -158,6 +164,10 @@ export default function EditProfileScreen({ navigation, route }) {
       const data = await regAPI.profile();
       if (cancelled || !data) return;
       if (data.legal_form) setLegalForm(data.legal_form);
+      if (data.phone) {
+        setPhone(data.phone);
+        setSavedPhone(data.phone);
+      }
       if (data.china_experience_years != null) setChinaExp(String(data.china_experience_years));
       if (data.company_name) setCompany(data.company_name);
       if (data.messenger_type) setMessengerType(data.messenger_type);
@@ -249,10 +259,10 @@ export default function EditProfileScreen({ navigation, route }) {
     }
   };
 
-  const save = async () => {
-    if (saving) return;
-    setSaving(true);
-    const fullName = [firstName, lastName].map((s) => (s || '').trim()).filter(Boolean).join(' ');
+  const normalizePhone = (value) => String(value || '').replace(/[^\d+]/g, '');
+
+  const persistProfile = async () => {
+    const fullName = [firstName, lastName].map((value) => (value || '').trim()).filter(Boolean).join(' ');
     const chinaExpNum = parseInt(chinaExp, 10);
     saveProfile(userId, {
       avatar_url: avatar,
@@ -263,16 +273,11 @@ export default function EditProfileScreen({ navigation, route }) {
       city,
       email: email.trim(),
       company: company.trim(),
-      // грузоотправитель: компания/мессенджер
       ...(!isDriver ? {
         company_name: company.trim(),
         messenger_type: messengerType,
         messenger_id: messengerId.trim(),
       } : {}),
-      // PR-D1: PRO-поля. Сохраняются локально (store) — серверный sync
-      // /users/me пока принимает только {name, city, about}, расширенные
-      // PRO-поля live на фронте до тех пор, пока backend не получит
-      // отдельный endpoint /api/v1/drivers/pro (вне scope этого PR).
       ...(isDriver ? {
         legal_form: legalForm,
         china_experience_years: Number.isFinite(chinaExpNum) ? chinaExpNum : null,
@@ -280,38 +285,83 @@ export default function EditProfileScreen({ navigation, route }) {
         emergency_contact: emergency.trim(),
       } : {}),
     });
+    const payload = { name: fullName, city, about: profile.bio || '' };
+    if (isDriver) {
+      payload.legal_form = legalForm;
+      payload.china_experience_years = Number.isFinite(chinaExpNum) ? chinaExpNum : null;
+      payload.favorite_borders = favBorders;
+      payload.emergency_contact = emergency.trim();
+      if (passportIntlUrl) payload.passport_intl_url = passportIntlUrl;
+      if (tirUrl) payload.tir_book_url = tirUrl;
+      if (cmrUrl) payload.cmr_insurance_url = cmrUrl;
+    } else {
+      payload.company_name = company.trim();
+      payload.messenger_type = messengerType;
+      payload.messenger_id = messengerId.trim();
+    }
+    return regAPI.updateProfile(payload);
+  };
+
+  const requestPhoneChange = async () => {
+    const nextPhone = phone.trim();
+    if (!nextPhone || normalizePhone(nextPhone) === normalizePhone(savedPhone)) return false;
+    setPhoneChangePending(true);
+    setPhoneChangeError('');
+    const result = await regAPI.requestPhoneChange(nextPhone);
+    setPhoneChangePending(false);
+    if (!result.ok) {
+      setPhoneChangeError(result.detail?.message || result.detail || 'Не удалось отправить код');
+      return false;
+    }
+    setPhoneChangeMockCode(result.code || '');
+    setPhoneChangeCode('');
+    setPhoneChangeOpen(true);
+    return true;
+  };
+
+  const confirmPhoneChange = async () => {
+    if (phoneChangePending || phoneChangeCode.trim().length !== 4) return;
+    setPhoneChangePending(true);
+    setPhoneChangeError('');
+    const result = await regAPI.confirmPhoneChange(phone.trim(), phoneChangeCode.trim());
+    if (!result.ok) {
+      setPhoneChangePending(false);
+      setPhoneChangeError(result.detail?.message || result.detail || 'Неверный или истёкший код');
+      return;
+    }
+    // The new number becomes visible only after the server confirms it.
+    setSavedPhone(phone.trim());
+    saveProfile(userId, { phone: phone.trim() });
+    setPhoneChangeOpen(false);
+    setPhoneChangePending(false);
+    setPhoneChangeCode('');
+    setPhoneChangeMockCode('');
+    try { await refreshLevel?.(); } catch {}
+    await finishSave(true);
+  };
+
+  const finishSave = async (phoneConfirmed = false) => {
     let serverOk = false;
     try {
-      // PR-D1: один регулируемый PATCH /users/me — включает и базовые
-      // поля, и PRO. Backend игнорирует поля, которых не знает.
-      const payload = {
-        name: fullName,
-        city,
-        about: profile.bio || '',
-      };
-      if (isDriver) {
-        payload.legal_form = legalForm;
-        payload.china_experience_years = Number.isFinite(chinaExpNum) ? chinaExpNum : null;
-        payload.favorite_borders = favBorders;
-        payload.emergency_contact = emergency.trim();
-        // URL'ы уже улетели в момент uploadProDoc, но шлём повторно
-        // чтобы сервер был in sync даже если до save был edge-case.
-        if (passportIntlUrl) payload.passport_intl_url = passportIntlUrl;
-        if (tirUrl)           payload.tir_book_url       = tirUrl;
-        if (cmrUrl)           payload.cmr_insurance_url  = cmrUrl;
-      } else {
-        // грузоотправитель: компания, мессенджер + ID
-        payload.company_name = company.trim();
-        payload.messenger_type = messengerType;
-        payload.messenger_id = messengerId.trim();
-      }
-      const r = await regAPI.updateProfile(payload);
-      serverOk = !!r.ok;
+      const result = await persistProfile();
+      serverOk = !!result?.ok;
     } catch {}
     setSaving(false);
     await clearDraft(draftKey);
     toast(serverOk ? '✓ ' + t('saveSettings') : '✓ ' + t('saved_locally'), serverOk ? 'success' : 'warn');
     navigation.goBack();
+    return phoneConfirmed;
+  };
+
+  const save = async () => {
+    if (saving) return;
+    if (normalizePhone(phone) !== normalizePhone(savedPhone)) {
+      const requested = await requestPhoneChange();
+      if (requested) return;
+      return;
+    }
+    setSaving(true);
+    await finishSave();
   };
 
   // App Store Guideline 5.1.1(v): удаление аккаунта из приложения.
@@ -594,6 +644,64 @@ export default function EditProfileScreen({ navigation, route }) {
         testID="profile-save"
         style={{ marginTop: v1Spacing.sm }}
       />
+
+      <BottomSheet
+        visible={phoneChangeOpen}
+        onClose={() => {
+          setPhoneChangeOpen(false);
+          setPhone(savedPhone);
+          setPhoneChangeCode('');
+          setPhoneChangeError('');
+          setPhoneChangeMockCode('');
+        }}
+        title="Подтвердите новый номер"
+        scroll={false}
+        footer={(
+          <PrimaryButton
+            ceramic={!isDriver}
+            label={t('reg_confirm_btn') || 'Подтвердить'}
+            onPress={confirmPhoneChange}
+            loading={phoneChangePending}
+            disabled={phoneChangeCode.trim().length !== 4}
+            accent={accentKey}
+            testID="phone-change-confirm"
+          />
+        )}
+      >
+        <Text style={{ color: v1.textMuted, marginBottom: 10 }}>
+          Код отправлен на новый номер. Старый номер останется активным до подтверждения.
+        </Text>
+        <Field
+          ceramic={!isDriver}
+          featherIcon="shield"
+          label="Код подтверждения"
+          value={phoneChangeCode}
+          onChangeText={(value) => setPhoneChangeCode(value.replace(/\D/g, '').slice(0, 4))}
+          keyboardType="number-pad"
+          placeholder="0000"
+          maxLength={4}
+          testID="phone-change-code"
+          error={phoneChangeError}
+        />
+        {phoneChangeMockCode ? (
+          <Text testID="phone-change-mock-code" style={{ color: v1.textMuted, fontSize: 12 }}>
+            {t('reg_mock_label') || 'Код для тестового режима'}: {phoneChangeMockCode}
+          </Text>
+        ) : null}
+        <TouchableOpacity
+          onPress={() => {
+            setPhoneChangeOpen(false);
+            setPhone(savedPhone);
+            setPhoneChangeCode('');
+            setPhoneChangeError('');
+            setPhoneChangeMockCode('');
+          }}
+          style={s.skipRow}
+          testID="phone-change-cancel"
+        >
+          <Text style={[s.skipText, { color: accent.main }]}>{t('cancel') || 'Отмена'}</Text>
+        </TouchableOpacity>
+      </BottomSheet>
 
       <TouchableOpacity onPress={() => navigation.goBack()} style={s.skipRow} activeOpacity={0.7}>
         <Text style={[s.skipText, { color: accent.main }]}>{t('profile_setup_skip')}</Text>
