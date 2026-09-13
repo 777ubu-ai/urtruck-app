@@ -1344,7 +1344,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             ) : null}
             <Text style={[s.messageTime, { color: item.mine ? withAlpha(bubbleMineColors.textColor, 0.62) : colors.textMuted, fontSize: sp(11) }]}>{item.time}</Text>
           </View>
-          {item.sendStatus === 'failed' && !item.voice ? (
+          {item.sendStatus === 'queued' ? (
+            <View style={s.queuedRow} testID="deal-chat-message-queued">
+              <Feather name="clock" size={12} color="#B7791F" />
+              <Text style={s.queuedText} numberOfLines={2}>{t('chat_queued')}</Text>
+            </View>
+          ) : item.sendStatus === 'failed' && !item.voice ? (
             <TouchableOpacity
               onPress={() => retryFailedText(item)}
               style={s.errorRow}
@@ -1985,6 +1990,8 @@ const s = StyleSheet.create({
 
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3, maxWidth: '84%' },
   errorText: { color: '#EF4444', fontSize: 11, fontWeight: '700', flexShrink: 1 },
+  queuedRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3, maxWidth: '84%' },
+  queuedText: { color: '#B7791F', fontSize: 11, fontWeight: '700', flexShrink: 1 },
 
   docBubble: { maxWidth: '84%', minWidth: 220, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, paddingHorizontal: 11, paddingVertical: 9 },
   docIconBox: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
