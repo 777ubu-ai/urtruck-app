@@ -150,7 +150,8 @@ test('no draggable multi-state bottom sheet remains — chat is a plain fullscre
   assert.doesNotMatch(workspace, /PanResponder\.create/);
   assert.doesNotMatch(workspace, /sheetState/);
   assert.doesNotMatch(workspace, /setSheet\(/);
-  assert.doesNotMatch(workspace, /useKeyboardDockInset/);
+  assert.match(workspace, /useKeyboardDockInset/);
+  assert.match(workspace, /bottom: keyboardDockInset/);
 });
 
 test('chat has no permanent second tab — status/history lives behind one icon-triggered modal', () => {

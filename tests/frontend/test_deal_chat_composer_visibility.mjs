@@ -23,10 +23,12 @@ test('composer: collapsed-режим полностью убран из чата
   assert.match(src, /testID="deal-chat-input"/);
 });
 
-test('Android chat dock relies on adjustResize without a second measured inset', () => {
-  assert.doesNotMatch(src, /useKeyboardDockInset/);
+test('Android chat dock uses the shared measured IME overlap only when resize is bypassed', () => {
+  assert.match(src, /useKeyboardDockInset/);
+  assert.match(src, /const keyboardDockInset = useKeyboardDockInset\(window\.height, insets\.top\)/);
+  assert.match(src, /position: 'absolute'/);
+  assert.match(src, /bottom: keyboardDockInset/);
   assert.match(src, /Platform\.OS === 'ios' \? 'padding' : undefined/);
-  assert.doesNotMatch(src, /marginBottom: chatKeyboardInset/);
   assert.match(src, /keyboardDidShow/);
   assert.match(src, /keyboardDidHide/);
   assert.match(src, /testID="deal-chat-composer-dock"/);

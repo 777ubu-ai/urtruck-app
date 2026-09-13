@@ -28,6 +28,7 @@ import TripMapInfoSheet from '../components/deal/TripMapInfoSheet';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import Button from '../components/ui/v1/Button';
+import { useKeyboardDockInset } from '../components/ui/v1/KeyboardSafeLayout';
 import { chatAPI, documentKindFromFile } from '../utils/chatAPI';
 import { marketAPI } from '../utils/marketAPI';
 import { parseRouteCities } from '../utils/geo';
@@ -259,6 +260,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
+  const keyboardDockInset = useKeyboardDockInset(window.height, insets.top);
   const params = route?.params || {};
 
   const [dealId, setDealId] = React.useState(params.dealId || null);
@@ -324,10 +326,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const isShipper = !isDriver;
   const language = getLanguage();
 
-  // Android uses the app-wide adjustResize contract. Applying a second
-  // measured keyboard inset here creates the physical screenshot defect: a
-  // blank spacer between the composer and the IME. iOS keeps KAV padding below;
-  // this flag only controls safe-area padding while the IME is visible.
+  // iOS keeps KAV padding below. Android 15/16 can keep the React root at full
+  // height despite adjustResize, so the shared dock hook moves only the
+  // composer overlay by the measured IME overlap. It returns zero on resized
+  // windows and on iOS, avoiding a second inset.
   React.useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -1539,7 +1541,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     renderItem={renderMessage}
                     keyExtractor={(item) => item.id}
                     style={s.messageList}
-                    contentContainerStyle={s.messageContent}
+                    contentContainerStyle={[
+                      s.messageContent,
+                      keyboardDockInset > 0 ? { paddingBottom: COMPOSER_INPUT_MAX_HEIGHT + 52 } : null,
+                    ]}
                     ListHeaderComponent={compactHeader}
                     keyboardShouldPersistTaps="handled"
                     onScroll={(event) => {
@@ -1581,10 +1586,20 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 <View
                   style={[
                     s.composerDock,
+                    keyboardDockInset > 0 ? {
+                      position: 'absolute',
+                      left: 0,
+                      right: 0,
+                      bottom: keyboardDockInset,
+                      zIndex: 30,
+                      elevation: 30,
+                    } : null,
                     {
                       backgroundColor: colors.bg,
                       borderTopColor: colors.border,
-                      paddingBottom: attachOpen || emojiOpen || keyboardVisible ? 6 : Math.max(insets.bottom, 8),
+                      paddingBottom: keyboardDockInset > 0
+                        ? 0
+                        : (attachOpen || emojiOpen || keyboardVisible ? 6 : Math.max(insets.bottom, 8)),
                     },
                   ]}
                   testID="deal-chat-composer-dock"
