@@ -13,6 +13,20 @@ permissions:
   contents: read
 
 jobs:
+  routing-provider-forensic:
+    name: Routing provider forensic
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe exact backend ORS contract
+        run: |
+          set -euo pipefail
+          test -n "${OPENROUTESERVICE_API_KEY:-}"
+          python3 scripts/routing_provider_forensic.py
+
   quick-gate:
     name: QA Center quick gate
     runs-on: ubuntu-latest
