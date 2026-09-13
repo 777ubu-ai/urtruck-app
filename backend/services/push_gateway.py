@@ -33,12 +33,26 @@ APNS_BUNDLE_ID = os.getenv("APNS_BUNDLE_ID", "")
 APNS_AUTH_KEY_P8 = os.getenv("APNS_AUTH_KEY_P8", "")
 APNS_USE_SANDBOX = (os.getenv("APNS_USE_SANDBOX") or "").lower() in ("1", "true", "yes")
 
+# Push-forensic finding (STT/push-hardening track): this set is read by
+# enqueue_event() (below) to classify outbox priority — it must contain the
+# ACTUAL `event_type` strings producers pass, not an aspirational catalog.
+# It previously listed "trip.*"/"deal.cancelled" names that no caller has
+# ever emitted (deal-status pushes use f"deal.status.{new_status}", GPS
+# pushes use the bare "gps_lost"/"gps_restored", see api/marketplace.py's
+# _transition_deal / _tracking_notify) — meaning every event except
+# "bid.accepted" silently fell through to "normal" priority since this set
+# was introduced, undetected because nothing asserted outbox priority for
+# them (test_gps_lost_restored.py's own docstring already flagged the
+# "declared but nothing ever produced them" half of this; this fixes the
+# producer-string mismatch that made the flag matter). Corrected 1:1 to the
+# real strings for the same events this set always intended to cover
+# (trip start / GPS lost / delivered / completed) — no new events added.
 CRITICAL_EVENTS = {
     "bid.accepted",
-    "trip.started",
-    "trip.gps_lost",
-    "trip.delivered",
-    "trip.completed",
+    "deal.status.in_progress",
+    "gps_lost",
+    "deal.status.delivered",
+    "deal.status.completed",
 }
 
 PUSH_EVENT_CATALOG = {
@@ -49,14 +63,13 @@ PUSH_EVENT_CATALOG = {
     "bid.withdrawn",
     "chat.message",
     "chat.voice",
-    "trip.started",
-    "trip.status_changed",
-    "trip.border",
-    "trip.gps_lost",
-    "trip.gps_restored",
-    "trip.delivered",
-    "trip.completed",
-    "deal.cancelled",
+    "deal.status.in_progress",
+    "deal.status.at_border",
+    "gps_lost",
+    "gps_restored",
+    "deal.status.delivered",
+    "deal.status.completed",
+    "deal.status.cancelled",
 }
 
 
