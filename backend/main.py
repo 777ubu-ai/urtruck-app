@@ -198,7 +198,11 @@ app.include_router(admin_router, prefix="/admin")
 if storage_service.PROVIDER == "local":
     storage_service.LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
 
+    # Production nginx exposes this handler under /security/storage; keep the
+    # same signed endpoint available when the isolated QA backend is reached
+    # directly on :8001.
     @app.get("/storage/{path:path}")
+    @app.get("/security/storage/{path:path}")
     def serve_signed_storage(path: str, exp: Optional[str] = None, sig: Optional[str] = None):
         from services import file_signing
         # Path-traversal: резолвим и требуем, чтобы путь остался внутри LOCAL_ROOT.
