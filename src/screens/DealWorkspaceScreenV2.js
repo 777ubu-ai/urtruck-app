@@ -1606,6 +1606,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
                       const nearBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 80;
                       nearBottomRef.current = nearBottom;
+                      if (nearBottom) userScrolledAwayRef.current = false;
                       if (nearBottom && showJumpLatest) setShowJumpLatest(false);
                     }}
                     onScrollBeginDrag={() => { userScrolledAwayRef.current = true; }}

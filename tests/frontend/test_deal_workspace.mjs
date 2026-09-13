@@ -303,6 +303,7 @@ test('chat distinguishes a user scroll from programmatic receiver updates', () =
   assert.match(workspace, /userScrolledAwayRef/);
   assert.match(workspace, /onScrollBeginDrag=\{\(\) => \{ userScrolledAwayRef\.current = true; \}\}/);
   assert.match(workspace, /!userScrolledAwayRef\.current \|\| nearBottomRef\.current/);
+  assert.match(workspace, /if \(nearBottom\) userScrolledAwayRef\.current = false/);
 });
 
 test('statuses render a detailed vertical timeline instead of compact system chips', () => {
