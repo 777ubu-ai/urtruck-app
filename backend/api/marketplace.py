@@ -62,6 +62,41 @@ def _maybe_user(authorization: Optional[str]) -> Optional[dict]:
     QA/agent bidders that the public dirty-filter hides)."""
     if not authorization:
         return None
+
+
+def _can_view_non_public_listing(c, *, table: str, listing_id: str, row: dict,
+                                 owner_field: str, caller: Optional[dict]) -> bool:
+    """Fail closed for direct IDs while preserving owner/deal access.
+
+    Public detail URLs may expose only active, feed-eligible listings. Owners
+    and participants of an existing deal may still open their historical
+    record, including after unpublish/completion. A stranger never gets a
+    confirmation that a private ID exists.
+    """
+    is_public = str(row.get("status") or "") == "active"
+    if is_public:
+        if table == "cargos":
+            return _public_cargo_ok(row)
+        departure = _parse_iso_date(row.get("departure"))
+        if _is_dirty_text(row.get("driver_name"), row.get("from_city"),
+                          row.get("to_city"), row.get("truck_type")):
+            return False
+        if departure and departure < (datetime.utcnow().date() - timedelta(days=2)):
+            return False
+        return True
+
+    caller_id = caller.get("id") if caller else None
+    if not caller_id:
+        return False
+    if caller_id == row.get(owner_field):
+        return True
+    deal = c.execute(
+        f"SELECT 1 FROM deals WHERE {table[:-1]}_id = ? "
+        "AND (shipper_id = ? OR driver_id = ?) "
+        "AND status <> 'cancelled' LIMIT 1",
+        (listing_id, caller_id, caller_id),
+    ).fetchone()
+    return bool(deal)
     try:
         return _extract_driver(authorization)
     except HTTPException:
@@ -745,6 +780,11 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     if not row:
         raise HTTPException(status_code=404, detail="Груз не найден")
     d = dict(row)
+    caller = _maybe_user(authorization)
+    with get_conn() as c:
+        if not _can_view_non_public_listing(c, table="cargos", listing_id=cargo_id,
+                                            row=d, owner_field="owner_id", caller=caller):
+            raise HTTPException(status_code=404, detail="Груз не найден")
     try:
         d["photos"] = _sign_cargo_photos(json.loads(d.get("photos") or "[]"))
     except Exception:
@@ -753,7 +793,6 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     # листинга. Раньше detail-эндпоинт делал SELECT * и возвращал телефон всем —
     # аноним перебором id мог собрать базу телефонов грузовладельцев. Список
     # /cargos телефон уже вырезал (:462), теперь и карточка тоже.
-    caller = _maybe_user(authorization)
     if not (caller and caller.get("id") == d.get("owner_id")):
         d.pop("owner_phone", None)
     # Блок 5 аудита (P1-2): пользователь реально открыл карточку груза —
@@ -1492,9 +1531,13 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
     if not row:
         raise HTTPException(status_code=404)
     d = dict(row)
+    caller = _maybe_user(authorization)
+    with get_conn() as c:
+        if not _can_view_non_public_listing(c, table="trips", listing_id=trip_id,
+                                            row=d, owner_field="driver_id", caller=caller):
+            raise HTTPException(status_code=404)
     # Security (B2): driver_phone — только владельцу рейса. Аноним/чужой по id
     # телефон водителя не получает (сбор базы контактов перебором).
-    caller = _maybe_user(authorization)
     if not (caller and caller.get("id") == d.get("driver_id")):
         d.pop("driver_phone", None)
     # Блок 5 аудита (P1-2): аналогично get_cargo — гасим уведомления,
@@ -2172,7 +2215,7 @@ def driver_profile(driver_id: str):
     # Активные рейсы
     with get_conn() as c:
         trips = c.execute(
-            "SELECT id, from_city, to_city, truck_type, price, departure, status FROM trips WHERE driver_id = ? ORDER BY created_at DESC LIMIT 10",
+            "SELECT id, from_city, to_city, truck_type, price, departure, status FROM trips WHERE driver_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 10",
             (driver_id,),
         ).fetchall()
     d["trips"] = [dict(t) for t in trips]

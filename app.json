@@ -59,6 +59,16 @@
               "scheme": "https",
               "host": "urtruck.kz",
               "pathPrefix": "/notifications"
+            },
+            {
+              "scheme": "https",
+              "host": "urtruck.kz",
+              "pathPrefix": "/cargos"
+            },
+            {
+              "scheme": "https",
+              "host": "urtruck.kz",
+              "pathPrefix": "/trips"
             }
           ],
           "category": [

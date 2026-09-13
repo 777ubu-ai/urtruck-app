@@ -119,6 +119,9 @@ function parseNotifUrl(url) {
   const segments = pathPart.split('/').filter(Boolean);
   if (segments.length === 0) return null;
   const kind = segments[0].toLowerCase();
+  // Старые share links были singular. Нормализуем их на входе, чтобы уже
+  // опубликованные ссылки продолжили открывать canonical listing screen.
+  const canonicalKind = ({ cargo: 'cargos', trip: 'trips' })[kind] || kind;
   const id = segments[1] || null;
   const params = {};
   if (queryPart) {
@@ -130,7 +133,7 @@ function parseNotifUrl(url) {
       catch { params[rawK] = rawV; }
     }
   }
-  return { kind, id, params };
+  return { kind: canonicalKind, id, params };
 }
 
 function navigateFromUrl(navRef, url, role) {

@@ -33,7 +33,7 @@ import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { normalizeCargo, cargoDisplay, sanitizeForDisplay, formatPrice } from '../utils/normalizers';
 import { localizePlace } from '../utils/places';
 import { formatDateForDisplay } from '../utils/dateInput';
-import { buildCargoShareText } from '../utils/share';
+import { buildCargoShareText, publicListingPath } from '../utils/share';
 import { WEB_URL } from '../config/env';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
@@ -1066,8 +1066,8 @@ export default function CargoDetail({ navigation, route }) {
       <ShareModal
         visible={shareModal}
         onClose={() => setShareModal(false)}
-        shareText={buildCargoShareText(c, `${WEB_URL || 'https://urtruck.kz'}/cargo/${c.id}`, lang)}
-        url={`${WEB_URL || 'https://urtruck.kz'}/cargo/${c.id}`}
+        shareText={buildCargoShareText(c, `${WEB_URL || 'https://urtruck.kz'}${publicListingPath('cargo', c.id)}`, lang)}
+        url={`${WEB_URL || 'https://urtruck.kz'}${publicListingPath('cargo', c.id)}`}
       />
       <AppConfirmModal
         visible={!!confirmDialog}

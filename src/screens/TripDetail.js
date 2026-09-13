@@ -18,7 +18,7 @@ import { LEVELS, useAuth } from '../utils/AuthContext';
 import BidModal from '../components/BidModal';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay, formatPrice } from '../utils/normalizers';
-import { buildTripShareText } from '../utils/share';
+import { buildTripShareText, publicListingPath } from '../utils/share';
 import { WEB_URL } from '../config/env';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
@@ -1051,8 +1051,8 @@ export default function TripDetail({ navigation, route }) {
       <ShareModal
         visible={shareModal}
         onClose={() => setShareModal(false)}
-        shareText={buildTripShareText({ ...trip, truckTypeLabel: view.truckType }, `${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`, lang)}
-        url={`${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`}
+        shareText={buildTripShareText({ ...trip, truckTypeLabel: view.truckType }, `${WEB_URL || 'https://urtruck.kz'}${publicListingPath('trip', trip.id)}`, lang)}
+        url={`${WEB_URL || 'https://urtruck.kz'}${publicListingPath('trip', trip.id)}`}
       />
       {/* Stage 17: RatingModal removed alongside the inline
           "Оставить отзыв" CTA. Reviews live on CargoDetail's
