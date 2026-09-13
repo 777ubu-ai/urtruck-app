@@ -180,6 +180,25 @@ def complete_basic_onboarding(driver_id: str = Depends(get_current_driver)):
     driver = reg_dal.get_driver(driver_id)
     if not driver:
         raise HTTPException(status_code=404, detail="Водитель не найден")
+
+    # P0 fix (2026-09-13, registration/roles audit): second role-mutation
+    # vector alongside PATCH /users/me (see api/profile.py). /draft accepts
+    # any whitelisted driver field with no role check (by design — it must
+    # work before a role exists), so an already-registered CLIENT account
+    # could fill the driver fields via /draft and then call this endpoint to
+    # get role silently flipped to "driver" (confirmed live: client -> driver
+    # via draft+complete-basic, bypassing the PATCH /users/me role lock
+    # entirely). Fail closed the same way: an account that already chose
+    # "client" cannot complete driver onboarding into a different role.
+    if (driver.get("role") or "").strip().lower() == "client":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "ROLE_ALREADY_SET",
+                "message": "Роль уже выбрана и не может быть изменена",
+            },
+        )
+
     missing = _basic_onboarding_missing(driver)
     if missing:
         raise HTTPException(
@@ -226,6 +245,23 @@ def submit_registration(driver_id: str = Depends(get_current_driver)):
     driver = reg_dal.get_driver(driver_id)
     if not driver:
         raise HTTPException(status_code=404, detail="Водитель не найден")
+
+    # P0 fix (2026-09-13, registration/roles audit): third occurrence of the
+    # same role-mutation gap (see /complete-basic above and PATCH /users/me
+    # in api/profile.py) — /submit also unconditionally wrote role="driver"
+    # with no check, and does not even require /complete-basic or any
+    # driver-field completeness first. Confirmed live: a client-role account
+    # could call this endpoint directly (no draft, no fields) and have its
+    # role flipped to "driver" on an empty/zero-score profile. Fail closed
+    # the same way as the other two vectors.
+    if (driver.get("role") or "").strip().lower() == "client":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "ROLE_ALREADY_SET",
+                "message": "Роль уже выбрана и не может быть изменена",
+            },
+        )
 
     scoring = compute_start_score(driver)
 
