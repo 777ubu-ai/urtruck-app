@@ -228,3 +228,52 @@ def test_mine_flag_regression():
             assert m["mine"] is True
         if m["text"] == "from-driver":
             assert m["mine"] is False
+
+
+def test_inv8_three_text_plus_voice_while_outside_room_then_single_clear():
+    """QA release-pass regression (chat/voice track, explicit spec item 6):
+    3 text + 1 voice message from the same sender while the receiver is
+    outside the room must increment unread by exactly 4 (voice counts the
+    same as text — unread_count/my_rooms have no is_voice filter), opening
+    the room must clear it to exactly 0 in one shot (no double-decrement,
+    no negative count), and re-opening the SAME already-read room must stay
+    at 0 (not go negative), while a DIFFERENT room's unread is untouched by
+    either open."""
+    o, d = _ids()
+    cargo_a = "cgA_" + uuid.uuid4().hex[:6]
+    room_a = get_or_create_deal_room(cargo_a, o, d)
+    _mk_accepted_deal(cargo_a, o, d, room_a)
+    cargo_b = "cgB_" + uuid.uuid4().hex[:6]
+    room_b = get_or_create_deal_room(cargo_b, o, d)
+    _mk_accepted_deal(cargo_b, o, d, room_b)
+
+    # A sibling room's unread must stay untouched throughout this test.
+    send_message(SendMessageIn(room_id=room_b, text="sibling room noise"), user=_u(d))
+
+    before = unread_count(user=_u(o))["unread"]
+    send_message(SendMessageIn(room_id=room_a, text="t1"), user=_u(d))
+    send_message(SendMessageIn(room_id=room_a, text="t2"), user=_u(d))
+    send_message(SendMessageIn(room_id=room_a, text="t3"), user=_u(d))
+    send_message(SendMessageIn(room_id=room_a, text="🎤 voice", is_voice=True, voice_duration=12), user=_u(d))
+    after_send = unread_count(user=_u(o))["unread"]
+    assert after_send == before + 4, "3 text + 1 voice from a sender outside the room must add exactly 4 unread"
+
+    # Opening the room clears exactly this room's unread, exactly once.
+    get_messages(room_a, user=_u(o))
+    after_first_open = unread_count(user=_u(o))["unread"]
+    assert after_first_open == before, (
+        "opening room_a must clear only room_a's 4 (leaving room_b's already-counted sibling message untouched)"
+    )
+
+    # Re-opening the same (already-read) room must not go negative or
+    # otherwise change the count — a second "clear" of nothing is a no-op.
+    get_messages(room_a, user=_u(o))
+    after_second_open = unread_count(user=_u(o))["unread"]
+    assert after_second_open == after_first_open >= 0, "re-opening an already-read room must not double-decrement"
+
+    # Now clear the sibling room too and confirm the badge lands exactly at
+    # zero net new messages (not negative from any cross-room bleed).
+    get_messages(room_b, user=_u(o))
+    final = unread_count(user=_u(o))["unread"]
+    assert final == before - 1, "clearing the sibling room must remove exactly its own 1 message"
+    assert final >= 0

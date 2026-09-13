@@ -32,6 +32,8 @@ import sys
 import uuid
 from pathlib import Path
 
+import pytest
+
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_push_outbox_drain.db")
 if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
     Path(TEST_DB).unlink(missing_ok=True)
@@ -48,6 +50,26 @@ reg_dal.init_registration_schema()
 from database.db import get_conn
 from services import push_gateway
 import api.push as push_api  # noqa: F401  — import runs _init_schema() (push_outbox etc.)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_outbox():
+    """Under the shared cross-file test DB (backend/tests/conftest.py unifies
+    DB_PATH across the whole suite so schema stays in sync), other test
+    modules that run earlier in the same pytest session enqueue push_outbox
+    rows and never drain them. process_pending_once() orders by priority then
+    created_at with a caller-supplied LIMIT (see services/push_gateway.py) —
+    exactly like the real worker would — so those older leftover 'pending'
+    rows silently crowd out the row this test just enqueued whenever the
+    accumulated backlog exceeds the test's `limit=10`, making assertions
+    like stats["sent"] == 1 order-dependent (fails only when run after other
+    push-emitting suites, passes in isolation). This file's tests are about
+    drain-worker mechanics, not backlog volume, so give every test a clean
+    push_outbox — this does not touch any other test file's DB tables.
+    """
+    with get_conn() as c:
+        c.execute("DELETE FROM push_outbox")
+    yield
 
 
 # ───────────────────────── fixtures / helpers ─────────────────────────
