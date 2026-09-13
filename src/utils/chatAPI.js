@@ -43,11 +43,16 @@ function chatApiError(detail, fallbackKey) {
   const fallback = translations[getLanguage()]?.[fallbackKey] || translations.EN?.[fallbackKey] || fallbackKey;
   if (detail && typeof detail === 'object') {
     const localized = localizedChatErrorCode(detail.error);
-    const error = new Error(localized || detail.hint || fallback);
+    // Never surface provider/backend text directly: it can contain raw
+    // upstream errors, internal hints, or implementation details. Only a
+    // known localized error code may override the generic localized fallback.
+    const error = new Error(localized || fallback);
     error.code = detail.error || null;
     return error;
   }
-  const error = new Error((typeof detail === 'string' && detail) || fallback);
+  // String `detail` is intentionally not shown to users either. The backend
+  // may return a provider body or a Russian-only implementation message.
+  const error = new Error(fallback);
   error.code = null;
   return error;
 }

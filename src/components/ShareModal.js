@@ -85,6 +85,7 @@ export default function ShareModal({
     const ok = await copyToClipboard(fullShareText);
     if (ok) toast('✅ ' + t('share_copied_open_wechat'), 'success', 4000);
     else toast(fullShareText, 'info', 6000);
+    onClose();
   };
 
   const copyLink = async () => {
