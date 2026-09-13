@@ -209,6 +209,51 @@ def test_china_corridor_prefers_global_hgv_when_configured(monkeypatch):
     assert calls == [("global", "global-test-key")]
 
 
+def test_ors_distance_limit_is_retried_as_real_road_segments(monkeypatch):
+    body = routing.RoadRouteRequest(
+        points=[
+            routing.RoutePoint(lat=29.3079, lng=120.0762),
+            routing.RoutePoint(lat=55.7558, lng=37.6176),
+        ],
+    )
+    calls = []
+
+    async def fake_ors(segment_body, _api_key):
+        calls.append([(p.lat, p.lng) for p in segment_body.points])
+        if len(calls) == 1:
+            raise routing._ProviderRouteError(
+                "global_router_http_400: distance limit",
+                status=400,
+                code=2004,
+            )
+        start, end = segment_body.points
+        return {
+            "ok": True,
+            "provider": "openrouteservice",
+            "profile": "driving-hgv",
+            "distance_m": 4_000_000,
+            "duration_s": 100_000,
+            "geometry": [[start.lat, start.lng], [end.lat, end.lng]],
+            "cached": False,
+        }
+
+    monkeypatch.setattr(routing, "_request_ors", fake_ors)
+    result = __import__("asyncio").run(
+        routing._request_ors_with_limit_fallback(body, "global-test-key")
+    )
+
+    assert result["ok"] is True
+    assert result["segmented"] is True
+    assert result["segments"] == 2
+    assert len(result["geometry"]) == 3
+    assert len(calls) == 3  # failed direct call + two provider-backed segments
+    assert calls[0] == [(29.3079, 120.0762), (55.7558, 37.6176)]
+    assert calls[1][0] == calls[0][0]
+    assert calls[1][1] == calls[2][0]
+    assert calls[2][1][0] == pytest.approx(calls[0][1][0])
+    assert calls[2][1][1] == pytest.approx(calls[0][1][1])
+
+
 def test_yandex_failure_can_fall_back_to_real_global_road(monkeypatch):
     os.environ["YANDEX_ROUTER_API_KEY"] = "yandex-test-key"
     os.environ["OPENROUTESERVICE_API_KEY"] = "global-test-key"
