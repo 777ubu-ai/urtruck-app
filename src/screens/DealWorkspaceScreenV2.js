@@ -1620,7 +1620,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     }}
                     scrollEventThrottle={80}
                     onContentSizeChange={() => {
-                      if (pendingAutoScrollRef.current || nearBottomRef.current) {
+                      if (!userScrolledAwayRef.current || pendingAutoScrollRef.current || nearBottomRef.current) {
                         listRef.current?.scrollToEnd?.({ animated: false });
                         pendingAutoScrollRef.current = false;
                       }
