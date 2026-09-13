@@ -14,6 +14,9 @@ module.exports = {
     },
     android: {
       ...baseExpoConfig.android,
+      // Local physical QA uses adb reverse to an isolated HTTP backend. Keep
+      // cleartext disabled everywhere else, especially production builds.
+      usesCleartextTraffic: false,
       ...(isQa2
         ? {
             package: 'com.urtruck.app.qa2',
@@ -21,5 +24,9 @@ module.exports = {
           }
         : {}),
     },
+    plugins: [
+      ...(baseExpoConfig.plugins || []),
+      ...(isQa2 ? ['./plugins/withQaLocalCleartext'] : []),
+    ],
   },
 };
