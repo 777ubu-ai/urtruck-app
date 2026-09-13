@@ -993,10 +993,19 @@ def translate_message(body: TranslateIn, user=Depends(require_level(1))):
                 "cached": True,
             }
 
-    # Переводим
-    result = translate_text(source_text, target_lang, source_lang=source_lang)
+    # Переводим. Release-hardening track 2, item 4: translate_text() (for
+    # the "openai" provider) now RAISES TranslationError on failure instead
+    # of returning the original text disguised as a translation — must not
+    # be caught-and-ignored here: a failed translation is a real error
+    # response, never a fake 200 with translated_text == original_text.
+    from services.translate_service import TranslationError
+    try:
+        result = translate_text(source_text, target_lang, source_lang=source_lang)
+    except TranslationError as exc:
+        status = 503 if exc.retryable else 422
+        raise HTTPException(status_code=status, detail={"error": exc.code, "hint": str(exc)}) from exc
 
-    # Сохраняем в кэш
+    # Сохраняем в кэш — only a genuine success reaches this point.
     with get_conn() as c:
         c.execute(
             "INSERT OR REPLACE INTO chat_translations (message_id, target_lang, translated_text, provider) VALUES (?,?,?,?)",
@@ -1113,20 +1122,32 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
     translated_text = None
     translation_provider = None
     translation_cached = False
+    translation_error = None
     if target_lang:
         if cached_translation:
             translated_text = cached_translation["translated_text"]
             translation_provider = cached_translation["provider"]
             translation_cached = True
         elif target_lang != transcript_lang:
-            result = translate_text(transcript_text, target_lang, transcript_lang)
-            translated_text = result["translated_text"]
-            translation_provider = result["provider"]
-            with get_conn() as c:
-                c.execute(
-                    "INSERT OR REPLACE INTO chat_translations (message_id, target_lang, translated_text, provider) VALUES (?,?,?,?)",
-                    (body.message_id, target_lang, translated_text, translation_provider),
-                )
+            # Release-hardening track 2, item 4: translation here is a
+            # SECONDARY, best-effort attachment to an already-successful
+            # transcription — a translation failure must not fail the whole
+            # /chat/transcribe response (the transcript itself is still
+            # good), but it must also never silently masquerade as a
+            # successful translation. translated_text stays None and
+            # translation_error carries the code; nothing gets cached.
+            from services.translate_service import TranslationError
+            try:
+                result = translate_text(transcript_text, target_lang, transcript_lang)
+                translated_text = result["translated_text"]
+                translation_provider = result["provider"]
+                with get_conn() as c:
+                    c.execute(
+                        "INSERT OR REPLACE INTO chat_translations (message_id, target_lang, translated_text, provider) VALUES (?,?,?,?)",
+                        (body.message_id, target_lang, translated_text, translation_provider),
+                    )
+            except TranslationError as exc:
+                translation_error = exc.code
 
     return {
         "message_id": body.message_id,
@@ -1138,4 +1159,5 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
         "target_lang": target_lang,
         "translation_provider": translation_provider,
         "translation_cached": translation_cached,
+        "translation_error": translation_error,
     }

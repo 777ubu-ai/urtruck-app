@@ -6,6 +6,19 @@ OPENAI_API_KEY хранится ТОЛЬКО в backend .env.
 import os
 import json
 
+# Release-hardening track 2, item 4: TranslationError mirrors
+# speech_to_text_service.SpeechToTextError's contract — `code` is the
+# stable, translatable machine code (err_<CODE> in src/utils/i18n.js),
+# `message` is a RU-language fallback for callers that don't localize it,
+# never raw provider text.
+class TranslationError(RuntimeError):
+    def __init__(self, message: str, *, provider: str = "", retryable: bool = False, code: str = "TRANSLATION_FAILED"):
+        super().__init__(message)
+        self.provider = provider
+        self.retryable = retryable
+        self.code = code
+
+
 LANG_NAMES = {
     "ru": "Russian", "en": "English", "kk": "Kazakh", "kz": "Kazakh",
     "zh": "Chinese", "cn": "Chinese", "uz": "Uzbek", "kg": "Kyrgyz",
@@ -80,42 +93,76 @@ def translate_text(text: str, target_lang: str, source_lang: str = None) -> dict
 
 
 def _translate_openai(text, target_lang, source_lang, api_key):
+    import socket
+    import urllib.error
+    import urllib.request
+
+    lang_name = LANG_NAMES.get(target_lang.lower(), target_lang)
+    user_msg = f"Translate to {lang_name}:\n{text}"
+
+    body = json.dumps({
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_msg},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 500,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+    )
+    # Release-hardening track 2, item 4 ("translation fail-silent"): this
+    # used to catch EVERY exception and return {"translated_text": text,
+    # "provider": "openai_error", ...} — i.e. silently hand back the
+    # ORIGINAL, untranslated text disguised as a successful translation. A
+    # user could not tell "translated (and happens to read the same)" from
+    # "translation failed" except by inspecting an internal `provider`
+    # field the UI never showed. Now raises a structured TranslationError
+    # (mirrors SpeechToTextError) instead — the caller (chat.py) must
+    # surface this as a real failure, never cache it as a successful
+    # translation, and never fall back to displaying the source text as if
+    # it were the requested translation.
     try:
-        import urllib.request
-
-        lang_name = LANG_NAMES.get(target_lang.lower(), target_lang)
-        user_msg = f"Translate to {lang_name}:\n{text}"
-
-        body = json.dumps({
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_msg},
-            ],
-            "temperature": 0.1,
-            "max_tokens": 500,
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            "https://api.openai.com/v1/chat/completions",
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-            },
-        )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        detail_body = ""
+        try:
+            detail_body = exc.read().decode("utf-8", errors="replace")[:300]
+        except Exception:
+            pass
+        print(f"[translate] OpenAI HTTP {status}: {detail_body}", flush=True)
+        is_server_error = status >= 500
+        raise TranslationError(
+            "Перевод временно недоступен" if is_server_error else "Не удалось перевести текст",
+            provider="openai",
+            retryable=is_server_error,
+            code="TRANSLATION_TIMEOUT" if is_server_error else "TRANSLATION_FAILED",
+        ) from exc
+    except (urllib.error.URLError, socket.timeout) as exc:
+        print(f"[translate] OpenAI network error: {exc}", flush=True)
+        raise TranslationError("Перевод временно недоступен", provider="openai", retryable=True, code="TRANSLATION_TIMEOUT") from exc
 
+    try:
+        data = json.loads(raw)
         translated = data["choices"][0]["message"]["content"].strip()
-        return {
-            "translated_text": translated,
-            "provider": "openai",
-            "source_lang": source_lang or "auto",
-        }
-    except Exception as e:
-        print(f"[translate] OpenAI error: {e}")
-        return {"translated_text": text, "provider": "openai_error", "source_lang": source_lang}
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
+        print(f"[translate] OpenAI returned an unparsable response: {raw[:300]!r}", flush=True)
+        raise TranslationError("Перевод вернул некорректный ответ", provider="openai", code="TRANSLATION_FAILED") from exc
+
+    return {
+        "translated_text": translated,
+        "provider": "openai",
+        "source_lang": source_lang or "auto",
+    }
 
 
 def _translate_google(text, target_lang, source_lang):
