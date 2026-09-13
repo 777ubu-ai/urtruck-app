@@ -51,6 +51,13 @@ import api.push as push_api  # noqa: F401  — import runs _init_schema() (push_
 
 
 # ───────────────────────── fixtures / helpers ─────────────────────────
+def setup_function(_function):
+    """Isolate durable outbox rows from earlier tests in the shared DB."""
+    with get_conn() as c:
+        c.execute("DELETE FROM push_outbox")
+        c.execute("DELETE FROM push_devices")
+
+
 def _make_user_with_device(provider="expo"):
     guest = reg_dal.create_guest()
     uid = guest["id"] if isinstance(guest, dict) else guest

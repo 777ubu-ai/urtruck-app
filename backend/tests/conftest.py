@@ -80,6 +80,13 @@ def _rebuild_all_schemas():
     import api.favorites as favorites
     favorites._init()
 
+    # Saved-search notification tests import the router before the session
+    # fixture rebuilds the shared SQLite file. Recreate this schema here too,
+    # otherwise the full suite depends on collection order while the test
+    # passes in isolation.
+    import api.saved_searches as saved_searches
+    saved_searches._init()
+
     # deal_events immutable timeline schema used by status-FSM tests.
     _deal_room_schema = Path(__file__).resolve().parent.parent / "database" / "schemas" / "deal_room_schema.sql"
     if _deal_room_schema.exists():
