@@ -232,7 +232,10 @@ export default function CreateCargoScreen({ navigation, route }) {
         toast(r.detail || t('send_error'), 'error');
       }
     } catch (e) {
-      toast(t('network_error') + ': ' + (e?.message || ''), 'error');
+      // P1 UI-аудит 2026-09-13: не показывать сырой e.message (часто
+      // непереведённая браузерная строка вроде "Failed to fetch") — только
+      // локализованный текст, как во всех остальных catch-блоках рядом.
+      toast(t('network_error'), 'error');
     } finally {
       setSubmitting(false);
     }
