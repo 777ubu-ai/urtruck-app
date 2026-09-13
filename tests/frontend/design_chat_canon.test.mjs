@@ -95,9 +95,13 @@ test('DWSV2: render-level day grouping renders a localized date separator pill',
 });
 
 test('i18n: chat_day_today / chat_day_yesterday exist in all four locales', () => {
+  // I18N-16 (2026-09-13): both keys are now also translated for the 12
+  // newly added locales (UZ/KY/TG/DE/FR/PL/LT/LV/IT/TR/BE/RO), so a
+  // strict `=== 4` regresses on the very completeness this guards — the
+  // floor of 4 (RU/KK/ZH/EN must never regress) is what actually matters.
   for (const key of ['chat_day_today', 'chat_day_yesterday']) {
     const count = (i18nSrc.match(new RegExp(`    ${key}:`, 'g')) || []).length;
-    assert.equal(count, 4, `${key} must exist in RU/KK/ZH/EN`);
+    assert.ok(count >= 4, `${key} must exist in at least RU/KK/ZH/EN (found ${count})`);
   }
   assert.match(i18nSrc, /chat_day_today: 'Сегодня'/);
   assert.match(i18nSrc, /chat_day_yesterday: 'Вчера'/);
