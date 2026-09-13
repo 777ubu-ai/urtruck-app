@@ -145,11 +145,18 @@ jobs:
           ls -la android/gradle/wrapper/ 2>/dev/null || true
 
       - name: Build Release APK with Gradle
+        # Release-hardening track 2, item 2: android/app/build.gradle's
+        # `release` buildType now fails closed without real Play upload-key
+        # properties (never silently falls back to debug signing). This
+        # QA2-flavor APK intentionally has no such key (it's never uploaded
+        # to Play) — the explicit opt-in flag below is the one sanctioned
+        # exception to that fail-closed default.
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary \
-            -PURTRUCK_VERSION_CODE="$URTRUCK_VERSION_CODE"
+            -PURTRUCK_VERSION_CODE="$URTRUCK_VERSION_CODE" \
+            -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true
 
       - name: Verify Firebase runtime resources in build output
         run: python3 scripts/verify_android_firebase_config.py --check-resources android/app/build
