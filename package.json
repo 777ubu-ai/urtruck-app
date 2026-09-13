@@ -49,7 +49,8 @@
     "test:unit": "node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/*.mjs tests/unit/*.mjs",
     "qa:report-gate": "node scripts/check_qa_report_gate.js",
     "release:check-config": "node scripts/check-production-config.mjs",
-    "lint": "node scripts/lint-source.mjs"
+    "lint": "node scripts/lint-source.mjs",
+    "qa:chat-final": "npm run lint && npm run test:unit && node scripts/qa-chat-final-backend.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",

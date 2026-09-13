@@ -16,6 +16,7 @@
 //
 // Usage: node qa/utils/runtimeLocaleLeakProbe.mjs [baseUrl]
 import { chromium } from 'playwright';
+import fs from 'node:fs';
 
 const BASE = process.argv[2] || process.env.QA_BASE_URL || 'http://127.0.0.1:4173';
 const CYRILLIC = /[А-Яа-яЁё]/;
@@ -55,7 +56,16 @@ async function textFor(page, lang, route) {
 }
 
 const failures = [];
-const browser = await chromium.launch();
+// This QA container pre-installs only the full chromium binary under
+// PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers (not the headless_shell variant
+// Playwright's default launch() resolves to), so the bare launch() call
+// fails with "Executable doesn't exist ... chromium_headless_shell...".
+// Fall back to the provisioned binary when present so this probe is
+// actually runnable in that environment; unaffected elsewhere.
+const localChromium = '/opt/pw-browsers/chromium';
+const browser = await chromium.launch(
+  fs.existsSync(localChromium) ? { executablePath: localChromium } : {},
+);
 
 for (const lang of ['RU', 'EN', 'ZH', 'KK']) {
   for (const route of ROUTES) {
