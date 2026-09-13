@@ -326,6 +326,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const finishRecordingRef = React.useRef(null);
   const nearBottomRef = React.useRef(true);
   const userScrolledAwayRef = React.useRef(false);
+  const pendingAutoScrollRef = React.useRef(false);
   const initialMessagesLoadedRef = React.useRef(false);
   const lastCountRef = React.useRef(0);
   // A signed attachment URL may be reissued on every 3s poll. Keep the first
@@ -539,6 +540,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         const dy = parseServerDate(y.createdAt)?.getTime() || 0;
         return dx - dy;
       });
+      if (merged.length > lastCountRef.current
+        && (!userScrolledAwayRef.current || nearBottomRef.current)) {
+        pendingAutoScrollRef.current = true;
+      }
       setMessages((previous) => {
         const optimisticRemaining = previous.filter((item) => {
           if (!item.optimistic) return false;
@@ -1609,9 +1614,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       if (nearBottom) userScrolledAwayRef.current = false;
                       if (nearBottom && showJumpLatest) setShowJumpLatest(false);
                     }}
-                    onScrollBeginDrag={() => { userScrolledAwayRef.current = true; }}
+                    onScrollBeginDrag={() => {
+                      userScrolledAwayRef.current = true;
+                      pendingAutoScrollRef.current = false;
+                    }}
                     scrollEventThrottle={80}
-                    onContentSizeChange={() => { if (nearBottomRef.current) listRef.current?.scrollToEnd?.({ animated: false }); }}
+                    onContentSizeChange={() => {
+                      if (pendingAutoScrollRef.current || nearBottomRef.current) {
+                        listRef.current?.scrollToEnd?.({ animated: false });
+                        pendingAutoScrollRef.current = false;
+                      }
+                    }}
                     ListEmptyComponent={<Text style={[s.emptyText, { color: colors.textMuted }]}>{ui.noMessages}</Text>}
                   />
                   {showJumpLatest ? (

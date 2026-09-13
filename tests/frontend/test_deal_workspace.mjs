@@ -301,9 +301,11 @@ test('chat anchors the first loaded history to the latest message', () => {
 
 test('chat distinguishes a user scroll from programmatic receiver updates', () => {
   assert.match(workspace, /userScrolledAwayRef/);
-  assert.match(workspace, /onScrollBeginDrag=\{\(\) => \{ userScrolledAwayRef\.current = true; \}\}/);
+  assert.match(workspace, /pendingAutoScrollRef/);
+  assert.match(workspace, /userScrolledAwayRef\.current = true;\s+pendingAutoScrollRef\.current = false/);
   assert.match(workspace, /!userScrolledAwayRef\.current \|\| nearBottomRef\.current/);
   assert.match(workspace, /if \(nearBottom\) userScrolledAwayRef\.current = false/);
+  assert.match(workspace, /pendingAutoScrollRef\.current \|\| nearBottomRef\.current/);
 });
 
 test('statuses render a detailed vertical timeline instead of compact system chips', () => {
