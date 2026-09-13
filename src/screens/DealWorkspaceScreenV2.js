@@ -64,6 +64,9 @@ const COMPOSER_INPUT_MIN_HEIGHT = 32;
 const COMPOSER_INPUT_MAX_HEIGHT = 88;
 const COMPOSER_INPUT_VERTICAL_PADDING = 8;
 const VOICE_MAX_DURATION_SEC = 60;
+// Stop slightly before the contract boundary: native stop/unload is async and
+// can otherwise make a nominal 60s recording persist as 60.xs / 61s.
+const VOICE_AUTO_STOP_GUARD_MS = 500;
 
 // WhatsApp-style chat is the default view; the trip map is a deliberate,
 // button-triggered secondary view (PR #255 review: "map-first бардак" was the
@@ -317,6 +320,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const inputRef = React.useRef(null);
   const mounted = React.useRef(true);
   const recordStartRef = React.useRef(0);
+  const recordStopRequestedRef = React.useRef(false);
   const textSendBusyRef = React.useRef(false);
   const finishRecordingRef = React.useRef(null);
   const nearBottomRef = React.useRef(true);
@@ -378,9 +382,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   React.useEffect(() => {
     if (!recording) { setRecordSecs(0); return undefined; }
     const timer = setInterval(() => {
-      const elapsed = Math.max(0, Math.floor((Date.now() - recordStartRef.current) / 1000));
+      const elapsedMs = Math.max(0, Date.now() - recordStartRef.current);
+      const elapsed = Math.floor(elapsedMs / 1000);
       setRecordSecs(Math.min(VOICE_MAX_DURATION_SEC, elapsed));
-      if (elapsed >= VOICE_MAX_DURATION_SEC) finishRecordingRef.current?.();
+      if (elapsedMs >= (VOICE_MAX_DURATION_SEC * 1000) - VOICE_AUTO_STOP_GUARD_MS
+        && !recordStopRequestedRef.current) {
+        recordStopRequestedRef.current = true;
+        finishRecordingRef.current?.();
+      }
     }, 500);
     return () => clearInterval(timer);
   }, [recording]);
@@ -1054,17 +1063,21 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         const ok = await voice.startRecording();
         if (!ok) { toast(t('voice_error_record'), 'error'); return; }
         recordStartRef.current = Date.now();
+        recordStopRequestedRef.current = false;
         setRecording(true);
       } catch { toast(t('voice_permission'), 'warn'); }
       return;
     }
     setRecording(false);
+    recordStopRequestedRef.current = true;
     let result;
     try {
       result = await voice.stopRecording();
     } catch { toast(t('voice_error_record'), 'error'); return; }
     if (!result?.uri) { toast(t('voice_error_record'), 'error'); return; }
-    const duration = result.duration || Math.max(1, Math.round((Date.now() - recordStartRef.current) / 1000));
+    const measuredDurationMs = Number(result.durationMillis)
+      || Math.max(0, Date.now() - recordStartRef.current);
+    const duration = result.duration || Math.ceil(measuredDurationMs / 1000);
     const clientId = newClientId('voice');
     const voiceItem = {
       id: clientId,

@@ -157,6 +157,26 @@ def test_02_real_voice_upload_then_send_succeeds():
     assert STATE["message_id"]
 
 
+def test_02b_voice_duration_boundary_rejects_over_60_seconds():
+    """The API must enforce the voice-duration contract server-side."""
+    _as(B)
+    for duration in (0, 60):
+        r = client.post("/api/v1/chat/send", json={
+            "room_id": STATE["room_id"], "is_voice": True,
+            "photo_url": STATE["voice_key"], "voice_duration": duration,
+            "client_msg_id": f"voice-boundary-{duration}-{uuid.uuid4().hex}",
+        })
+        assert r.status_code == 200, f"{duration}s should be accepted: {r.status_code} {r.text}"
+
+    for duration in (61,):
+        r = client.post("/api/v1/chat/send", json={
+            "room_id": STATE["room_id"], "is_voice": True,
+            "photo_url": STATE["voice_key"], "voice_duration": duration,
+            "client_msg_id": f"voice-boundary-{duration}-{uuid.uuid4().hex}",
+        })
+        assert r.status_code == 422, f"{duration}s must be rejected: {r.status_code} {r.text}"
+
+
 # ───────────────────────── 2. access control ────────────────────────────
 
 def test_03_stranger_cannot_transcribe():

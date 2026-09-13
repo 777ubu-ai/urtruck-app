@@ -29,6 +29,7 @@ VOLODYA_NAME = "ИИ Володя (Тест)"
 # enabled. Required by the chat hygiene step: real users must not see test
 # personas, but devs can flip the flag to keep the chat plumbing test-friendly.
 ENABLE_DEMO_CHAT = os.getenv("ENABLE_DEMO_CHAT", "false").lower() in ("1", "true", "yes")
+MAX_CHAT_VOICE_DURATION_SEC = 60
 
 
 def _ensure_special_users():
@@ -359,6 +360,10 @@ def _assert_chat_is_accepted(sender_id, recipient_id, *, room_id=None, cargo_id=
 def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     if not body.text and not body.photo_url:
         raise HTTPException(status_code=400, detail="text или photo_url обязателен")
+    if body.is_voice and body.voice_duration is not None and (
+        body.voice_duration < 0 or body.voice_duration > MAX_CHAT_VOICE_DURATION_SEC
+    ):
+        raise HTTPException(status_code=422, detail="Голосовое сообщение не может быть длиннее 60 секунд")
     # Security audit finding (STT-hardening track, P0): photo_url used to be
     # persisted verbatim with zero validation — a client could set it to an
     # arbitrary local filesystem path (later read by /chat/transcribe's STT

@@ -78,9 +78,13 @@ export const voice = {
       await _recording.stopAndUnloadAsync();
       const uri = _recording.getURI();
       const status = await _recording.getStatusAsync();
-      const duration = Math.round((status.durationMillis || 0) / 1000);
+      const durationMillis = Math.max(0, Math.round(status.durationMillis || 0));
+      // A voice message is accepted only when its measured duration is within
+      // the 60-second contract. `ceil` keeps 60.1s from being rounded down to
+      // 60 and then silently accepted by the server.
+      const duration = Math.ceil(durationMillis / 1000);
       _recording = null;
-      return { uri, duration };
+      return { uri, duration, durationMillis };
     } catch (e) {
       console.warn('[voice] stop failed:', e);
       _recording = null;
@@ -341,7 +345,8 @@ export const voice = {
       if (!this._webRecorder) { resolve(null); return; }
       this._webRecorder.onstop = () => {
         const blob = new Blob(this._webChunks, { type: this._webRecorder.mimeType });
-        const duration = Math.round((Date.now() - (this._startTime || Date.now())) / 1000);
+        const durationMillis = Math.max(0, Date.now() - (this._startTime || Date.now()));
+        const duration = Math.ceil(durationMillis / 1000);
         this._webRecorder.stream.getTracks().forEach(t => t.stop());
         this._webRecorder = null;
         this._webChunks = [];
@@ -349,7 +354,7 @@ export const voice = {
         // не получает «пустое» голосовое, а отправитель видит понятную ошибку.
         if (!blob || blob.size === 0) { resolve(null); return; }
         const uri = URL.createObjectURL(blob);
-        resolve({ uri, duration, blob });
+        resolve({ uri, duration, durationMillis, blob });
       };
       // requestData() форсит отдачу накопленных чанков ДО onstop — на part
       // мобильных браузеров (iOS Safari) без этого ondataavailable иногда
