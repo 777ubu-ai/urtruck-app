@@ -476,6 +476,28 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         if role_norm not in ("driver", "client"):
             raise HTTPException(status_code=400, detail={"error": "INVALID_ROLE", "message": "role должен быть driver|client"})
 
+        # P0 fix (2026-09-13, registration/roles audit): this generic PATCH
+        # was the ONLY server-side gate for role assignment — RoleV2/legacy
+        # Role screens are unmounted from navigation once hasRole is true,
+        # but nothing stopped an already-registered driver/client account
+        # from calling this endpoint directly to flip its own role at will
+        # (confirmed live: driver -> client via a single authenticated PATCH,
+        # no re-verification, no re-onboarding). That is exactly the
+        # "роль меняется после relaunch" case CLAUDE.md §5-6 forbids, except
+        # it does not even need a relaunch. No current UI call site (grep:
+        # EditProfileScreen never sends role; only the pre-role onboarding
+        # screens do) relies on changing an already-set role, so failing
+        # closed here has no legitimate-flow cost.
+        current_role = (current.get("role") or "").strip().lower()
+        if current_role in ("driver", "client") and current_role != role_norm:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "ROLE_ALREADY_SET",
+                    "message": "Роль уже выбрана и не может быть изменена",
+                },
+            )
+
         stored_phone = current.get("phone")
         effective_phone = body_phone or (stored_phone if _is_real_phone(stored_phone) else None)
         if not effective_phone:
