@@ -40,6 +40,7 @@ const PROD_API = 'https://urtruck.kz';
 // point at a staging backend). Empty string => fall through to
 // the production default below.
 const ENV_OVERRIDE = (typeof process !== 'undefined' && process?.env?.EXPO_PUBLIC_API_URL) || '';
+const CONFIG_OVERRIDE = Constants?.expoConfig?.extra?.urtruckApiUrl || '';
 
 // Build-profile signal from EAS / app.json `extra.eas.profile`.
 // Stays undefined inside `expo start`, where __DEV__ is true.
@@ -57,7 +58,9 @@ export const APP_ENV =
 
 const RESOLVED_API = (() => {
   if (IS_WEB) return ''; // web hits the same origin via nginx
-  if (ENV_OVERRIDE) return ENV_OVERRIDE.replace(/\/+$/, '');
+  if (ENV_OVERRIDE || CONFIG_OVERRIDE) {
+    return (ENV_OVERRIDE || CONFIG_OVERRIDE).replace(/\/+$/, '');
+  }
   // No override → production HTTPS for both `production` and
   // `preview` builds. Local Metro / Expo Go dev sessions can set
   // EXPO_PUBLIC_API_URL=http://<lan-ip>:8001 to point at a
