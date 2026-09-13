@@ -230,6 +230,8 @@ export default function CargoFeedScreen({ navigation }) {
   const [pageLimit, setPageLimit] = useState(50);
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
+  const [dirFromCountry, setDirFromCountry] = useState('');
+  const [dirToCountry, setDirToCountry] = useState('');
   const [showDirFromPicker, setShowDirFromPicker] = useState(false);
   const [showDirToPicker, setShowDirToPicker] = useState(false);
   const [activeFilter, setActiveFilter] = useState(null);
@@ -258,6 +260,8 @@ export default function CargoFeedScreen({ navigation }) {
       const result = await marketAPI.listCargos({
         fromCity: dirFrom.trim() || '',
         toCity: dirTo.trim() || '',
+        fromCountry: dirFromCountry,
+        toCountry: dirToCountry,
         cargoType: filterType || '',
         limit: pageLimit,
       });
@@ -272,7 +276,7 @@ export default function CargoFeedScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [dirFrom, dirTo, filterType, pageLimit, myUserId]);
+  }, [dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, pageLimit, myUserId]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
@@ -371,7 +375,7 @@ export default function CargoFeedScreen({ navigation }) {
         style={[
           styles.routeSelector,
           {
-            borderColor: (dirFrom || dirTo) ? palette.accent : palette.border,
+            borderColor: (dirFrom || dirTo || dirFromCountry || dirToCountry) ? palette.accent : palette.border,
             backgroundColor: palette.surface,
             shadowColor: palette.shadow,
           },
@@ -389,7 +393,7 @@ export default function CargoFeedScreen({ navigation }) {
               routeHalf column; clipped to "Например, Алм…". t('city') is
               short and reads naturally under the "Откуда" label above. */}
           <Text style={[styles.routeValue, { color: palette.text }, !dirFrom && { color: palette.textMuted }]} numberOfLines={1}>
-            {dirFrom ? localizePlace(dirFrom, lang) : t('city')}
+            {dirFrom ? localizePlace(dirFrom, lang) : dirFromCountry ? t(`country_${dirFromCountry}`) : t('city')}
           </Text>
         </TouchableOpacity>
         <Feather name="arrow-right" size={24} color={ACCENT} />
@@ -399,11 +403,11 @@ export default function CargoFeedScreen({ navigation }) {
             <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('to')}</Text>
           </View>
           <Text style={[styles.routeValue, { color: palette.text }, !dirTo && { color: palette.textMuted }]} numberOfLines={1}>
-            {dirTo ? localizePlace(dirTo, lang) : t('city')}
+            {dirTo ? localizePlace(dirTo, lang) : dirToCountry ? t(`country_${dirToCountry}`) : t('city')}
           </Text>
         </TouchableOpacity>
-        {(dirFrom || dirTo) ? (
-          <TouchableOpacity onPress={() => { setDirFrom(''); setDirTo(''); }} hitSlop={10} testID="feed-route-clear">
+        {(dirFrom || dirTo || dirFromCountry || dirToCountry) ? (
+          <TouchableOpacity onPress={() => { setDirFrom(''); setDirTo(''); setDirFromCountry(''); setDirToCountry(''); }} hitSlop={10} testID="feed-route-clear">
             <Feather name="x" size={17} color={palette.textMuted} />
           </TouchableOpacity>
         ) : null}
@@ -479,13 +483,21 @@ export default function CargoFeedScreen({ navigation }) {
         onClose={() => setShowDirFromPicker(false)}
         title={t('loc_from_title')}
         showGeo
-        onSelect={(value, point) => setDirFrom((point && point.name) || value || '')}
+        allowCountryOnly
+        onSelect={(value, point) => {
+          setDirFrom(point?.countryOnly ? '' : ((point && point.name) || value || ''));
+          setDirFromCountry(point?.country && point.country !== 'XX' ? point.country : '');
+        }}
       />
       <LocationPickerModal
         visible={showDirToPicker}
         onClose={() => setShowDirToPicker(false)}
         title={t('loc_to_title')}
-        onSelect={(value, point) => setDirTo((point && point.name) || value || '')}
+        allowCountryOnly
+        onSelect={(value, point) => {
+          setDirTo(point?.countryOnly ? '' : ((point && point.name) || value || ''));
+          setDirToCountry(point?.country && point.country !== 'XX' ? point.country : '');
+        }}
       />
 
       {/* P1 (27.08.2026, владелец): sheetSecondary/bodyChip/sortRow — все три

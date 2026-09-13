@@ -208,6 +208,8 @@ export default function FeedScreen({ navigation }) {
       const result = await marketAPI.listTrips({
         fromCity: dirFrom.trim() || '',
         toCity: dirTo.trim() || '',
+        fromCountry: dirFromCountry,
+        toCountry: dirToCountry,
         truckType: filterType || '',
         limit: pageLimit,
       });

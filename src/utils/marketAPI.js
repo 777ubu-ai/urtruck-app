@@ -140,11 +140,20 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listCargos({ status = 'active', fromCity = '', toCity = '', cargoType = '', limit = 50, offset = 0 } = {}) {
+  async listCargos({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', cargoType = '', limit = 50, offset = 0 } = {}) {
     // Never inject demo data on failure — empty list + serverError flag so
     // FeedScreen renders the proper empty state instead of stale fallback.
     try {
-      const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, cargo_type: cargoType, limit, offset });
+      const params = new URLSearchParams({
+        status,
+        from_city: fromCity,
+        to_city: toCity,
+        from_country: fromCountry,
+        to_country: toCountry,
+        cargo_type: cargoType,
+        limit,
+        offset,
+      });
       const r = await authedFetch(`${BASE}/cargos?${params}`);
       if (!r.ok) return { cargos: [], total: 0, serverError: true, status: r.status };
       return r.json();
@@ -264,9 +273,17 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listTrips({ status = 'active', fromCity = '', toCity = '', truckType = '', limit = 50 } = {}) {
+  async listTrips({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', truckType = '', limit = 50 } = {}) {
     try {
-      const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, truck_type: truckType, limit });
+      const params = new URLSearchParams({
+        status,
+        from_city: fromCity,
+        to_city: toCity,
+        from_country: fromCountry,
+        to_country: toCountry,
+        truck_type: truckType,
+        limit,
+      });
       const r = await authedFetch(`${BASE}/trips?${params}`);
       if (!r.ok) return { trips: [], total: 0, serverError: true, status: r.status };
       return r.json();
