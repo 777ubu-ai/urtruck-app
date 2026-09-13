@@ -22,18 +22,25 @@ const ICONS = {
   Queue:   { driver: 'map-pin', client: 'map-pin' },
 };
 
-// Role accent (Design Bible "Direction B", 2026-09-09, Commit 2). Driver
-// keeps the frozen emerald constants — NOT touched by the client contrast
-// closure. Client focused-tab colors come from the palette (single source
-// of truth; qa/utils/themeContrastSmoke.js checks them against the real
-// render surfaces):
-//   pill    — clientNavPill (#FFF3E6, both themes)
-//   icon    — clientNavIcon (#C2410C, deep orange; 4.7:1 on the pill).
-//             The bright clientAccent #FF8400 stays a pill/shadow accent
-//             ONLY: ~2.2:1 as icon on the pill (fails 1.4.11).
-//   label   — clientNavLabel, theme-aware: #C2410C on the white bar (5.2:1)
-//             and #FB923C on the dark bar (7.9:1) — one value cannot serve
-//             both themes at the 11sp 4.5:1 bar.
+// BottomNav canon restore (2026-09-13, P1): the focused tab used to split
+// by role — driver got a frozen grey-blue "ceramic" accent, client got a
+// bright/deep orange (clientAccent/clientNavIcon/clientNavLabel) — plus
+// each pill carried its OWN drop shadow, coloured with that same accent
+// when focused. Net effect: an orange active tab for client, and what
+// read as four separate floating buttons (each with its own shadow) for
+// everyone, instead of one shared floating capsule. Both are gone now:
+//
+//   - ONE navigation active-state for both roles, sourced from the same
+//     UrTruck brand green already used everywhere else (`driver`/
+//     `driverSoft`/`driverDeep` — designV1Palette.js's "Keep one UrTruck
+//     green identity in both roles" tokens). `driverDeep` already clears
+//     4.5:1 on the light mint pill (qa/utils/themeContrastSmoke.js's own
+//     'deep green on soft tint' check); on the dark bar it drops to
+//     ~2.8:1, so DARK uses `navActiveOnDark` instead — same "one value
+//     can't serve both themes" reasoning this file already documents for
+//     `outgoingDark`/`errorDark`, just applied to green.
+//   - Per-tab shadows are gone — the shadow belongs to the shared capsule
+//     (`styles.bar`) alone, never to an individual `styles.pill`.
 function syncAppIconBadge(total) {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
   let Notifications;
@@ -51,13 +58,11 @@ export default function BottomNav({ state, navigation }) {
   const { t, sp } = useI18n();
   const role = session?.user?.role || state.routes[0]?.params?.role || 'client';
   const isDriver = role === 'driver';
-  // Client values are palette tokens (see the comment above DRIVER_ACCENT);
-  // `?? '#FF8400'` is a defensive fallback only — DARK also declares it.
-  const accent = isDriver
-    ? { main: ceramic.active, soft: ceramic.activeSoft }
-    : { main: colors.clientAccent ?? '#FF8400', soft: colors.clientNavPill ?? '#FFF3E6' };
-  const focusedIconColor = isDriver ? accent.main : (colors.clientNavIcon ?? '#C2410C');
-  const focusedLabelColor = isDriver ? accent.main : (colors.clientNavLabel ?? '#C2410C');
+  // One shared active state for both roles — see the comment above.
+  const focusedPillBg = colors.driverSoft;
+  const focusedColor = isDark ? colors.navActiveOnDark : colors.driverDeep;
+  const focusedIconColor = focusedColor;
+  const focusedLabelColor = focusedColor;
   // Theme-aware inactive label: light resolves to the same #617067 the old
   // frozen designSystemV2 token carried; dark now resolves to the dark
   // textMuted instead of staying frozen light.
@@ -200,7 +205,7 @@ export default function BottomNav({ state, navigation }) {
               <View
                 style={[
                   styles.pill,
-                  isFocused && { backgroundColor: accent.soft, shadowColor: accent.main },
+                  isFocused && { backgroundColor: focusedPillBg },
                 ]}
               >
                 {route.name === 'Deals' ? (
@@ -240,8 +245,11 @@ const styles = StyleSheet.create({
     minHeight: PILL_H + LABEL_H + 3,
   },
   pill: {
+    // No shadow here — the floating capsule (styles.bar) owns the one
+    // shared shadow. An individual tab pill must never carry its own
+    // (that's what made 4 tabs read as 4 separate floating buttons).
     height: PILL_H, minWidth: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 10, shadowOpacity: 0.28, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 3,
+    paddingHorizontal: 10,
   },
   label: {
     height: LABEL_H, fontSize: 11, fontWeight: '700', marginTop: 2,
