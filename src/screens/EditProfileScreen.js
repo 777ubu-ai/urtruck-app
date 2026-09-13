@@ -654,7 +654,7 @@ export default function EditProfileScreen({ navigation, route }) {
           setPhoneChangeError('');
           setPhoneChangeMockCode('');
         }}
-        title="Подтвердите новый номер"
+        title={t('edit_phone_change_title')}
         scroll={false}
         footer={(
           <PrimaryButton
@@ -669,12 +669,12 @@ export default function EditProfileScreen({ navigation, route }) {
         )}
       >
         <Text style={{ color: v1.textMuted, marginBottom: 10 }}>
-          Код отправлен на новый номер. Старый номер останется активным до подтверждения.
+          {t('edit_phone_change_desc')}
         </Text>
         <Field
           ceramic={!isDriver}
           featherIcon="shield"
-          label="Код подтверждения"
+          label={t('edit_phone_change_code_label')}
           value={phoneChangeCode}
           onChangeText={(value) => setPhoneChangeCode(value.replace(/\D/g, '').slice(0, 4))}
           keyboardType="number-pad"
