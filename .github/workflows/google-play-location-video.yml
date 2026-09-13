@@ -43,9 +43,19 @@ jobs:
 
       - name: Resolve exact app source SHA
         shell: bash
+        # Security audit finding (STT-hardening track, P2): `inputs.source_sha`
+        # is free-text supplied by whoever triggers this workflow_dispatch —
+        # interpolating it directly into the run: block (as this used to do)
+        # lets GitHub Actions substitute it BEFORE the shell parses the
+        # script, the same script-injection class already hardened against
+        # in break-glass-production-deploy.yml. Passed via `env:` instead so
+        # it only ever reaches the shell as a variable's VALUE, never as
+        # script text the shell parses.
+        env:
+          SOURCE_SHA_INPUT: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
-          source_sha="${{ inputs.source_sha }}"
+          source_sha="$SOURCE_SHA_INPUT"
           if [[ -z "$source_sha" ]]; then
             source_sha="${GITHUB_SHA}"
           fi
