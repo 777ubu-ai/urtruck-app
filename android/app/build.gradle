@@ -123,10 +123,40 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Подпись релиза upload-ключом, если заданы свойства подписи в
-            // android/gradle.properties; иначе — безопасный фолбэк на debug
-            // (чтобы dev-сборки без секретов не падали). Прод-.aab для Google
-            // Play ОБЯЗАН собираться со свойствами URTRUCK_UPLOAD_* (см. выше).
+            // Release-hardening track 2, item 2: this used to silently fall
+            // back to signingConfigs.debug whenever URTRUCK_UPLOAD_STORE_FILE
+            // was absent — a release build with no production signing config
+            // available would quietly produce a debug-signed artifact
+            // instead of failing, so a misconfigured/secret-less CI run (or
+            // a plain local `./gradlew bundleRelease`) could silently ship
+            // (or attempt to ship) something that isn't actually signed for
+            // production. Google Play's own upload-certificate check would
+            // eventually reject a debug-signed AAB, but that's a downstream
+            // safety net, not this build failing closed at the point of the
+            // actual misconfiguration.
+            //
+            // Fixed: a release build now REQUIRES the real upload-key
+            // properties by default and fails immediately if they're
+            // missing. The one legitimate exception is the internal QA2
+            // APK build (build-android-apk.yml) — that workflow builds the
+            // `release` buildType (for R8/shrink parity with what ships)
+            // but is never uploaded to Play, so it explicitly opts into the
+            // old debug-signing fallback via
+            // -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true. Nothing else may
+            // opt in without the same explicit flag — the default is
+            // fail-closed.
+            if (!project.hasProperty('URTRUCK_UPLOAD_STORE_FILE')) {
+                def allowDebugFallback = project.hasProperty('URTRUCK_ALLOW_DEBUG_SIGNED_RELEASE') &&
+                    URTRUCK_ALLOW_DEBUG_SIGNED_RELEASE.toString().toBoolean()
+                if (!allowDebugFallback) {
+                    throw new GradleException(
+                        "release build requires URTRUCK_UPLOAD_STORE_FILE (+ _STORE_PASSWORD/_KEY_ALIAS/_KEY_PASSWORD) " +
+                        "for production signing. A build that intentionally does not need Play-store signing (e.g. an " +
+                        "internal QA APK) must explicitly pass -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true to opt into " +
+                        "debug signing — this is never the silent default."
+                    )
+                }
+            }
             signingConfig project.hasProperty('URTRUCK_UPLOAD_STORE_FILE') ? signingConfigs.release : signingConfigs.debug
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
