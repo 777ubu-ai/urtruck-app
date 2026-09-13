@@ -321,6 +321,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const mounted = React.useRef(true);
   const recordStartRef = React.useRef(0);
   const recordStopRequestedRef = React.useRef(false);
+  const recordAutoStoppedRef = React.useRef(false);
   const textSendBusyRef = React.useRef(false);
   const finishRecordingRef = React.useRef(null);
   const nearBottomRef = React.useRef(true);
@@ -387,6 +388,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       setRecordSecs(Math.min(VOICE_MAX_DURATION_SEC, elapsed));
       if (elapsedMs >= (VOICE_MAX_DURATION_SEC * 1000) - VOICE_AUTO_STOP_GUARD_MS
         && !recordStopRequestedRef.current) {
+        recordAutoStoppedRef.current = true;
         recordStopRequestedRef.current = true;
         finishRecordingRef.current?.();
       }
@@ -1064,11 +1066,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         if (!ok) { toast(t('voice_error_record'), 'error'); return; }
         recordStartRef.current = Date.now();
         recordStopRequestedRef.current = false;
+        recordAutoStoppedRef.current = false;
         setRecording(true);
       } catch { toast(t('voice_permission'), 'warn'); }
       return;
     }
     setRecording(false);
+    const wasAutoStopped = recordAutoStoppedRef.current;
     recordStopRequestedRef.current = true;
     let result;
     try {
@@ -1077,7 +1081,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     if (!result?.uri) { toast(t('voice_error_record'), 'error'); return; }
     const measuredDurationMs = Number(result.durationMillis)
       || Math.max(0, Date.now() - recordStartRef.current);
-    const duration = result.duration || Math.ceil(measuredDurationMs / 1000);
+    const measuredDuration = result.duration || Math.ceil(measuredDurationMs / 1000);
+    // expo-av may report codec/container tail time slightly above the actual
+    // file duration after our guarded auto-stop. That file is already below
+    // the boundary; keep it accepted without allowing a manual 60.1s stop to
+    // round down into the contract.
+    const duration = wasAutoStopped
+      ? Math.min(VOICE_MAX_DURATION_SEC, measuredDuration)
+      : measuredDuration;
     const clientId = newClientId('voice');
     const voiceItem = {
       id: clientId,
