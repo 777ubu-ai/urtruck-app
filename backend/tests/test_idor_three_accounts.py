@@ -249,3 +249,45 @@ def test_19_stranger_cannot_edit_foreign_cargo():
     r = client.patch(f"/api/v1/market/cargos/{STATE['cargo_id']}",
                      json={"price": 1})
     assert r.status_code in (403, 404, 409), f"C отредактировал чужой груз: {r.status_code}"
+
+
+# ── сделка: GET и геолокация (release-hardening QA, 2026-09-13) ────────
+# Дополняет test_15-17 (tracking status/request/stop) двумя соседними
+# эндпоинтами того же семейства, которые раньше не были прямо проверены на
+# уровне HTTP-запроса постороннего: сама карточка сделки (GET /deals/{id})
+# и GPS-локация (GET/POST /deals/{id}/location).
+
+def test_20_stranger_cannot_read_deal_card():
+    _as(C)
+    r = client.get(f"/api/v1/market/deals/{STATE['deal_id']}")
+    assert r.status_code == 403, f"C прочитал чужую сделку: {r.status_code} {r.text}"
+
+
+def test_21_participant_reads_deal_card_ok():
+    _as(A)
+    r = client.get(f"/api/v1/market/deals/{STATE['deal_id']}")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == STATE["deal_id"]
+
+
+def test_22_stranger_cannot_read_deal_location():
+    _as(C)
+    r = client.get(f"/api/v1/market/deals/{STATE['deal_id']}/location")
+    assert r.status_code == 403, f"C прочитал чужую геопозицию: {r.status_code} {r.text}"
+
+
+def test_23_stranger_cannot_post_deal_location():
+    _as(C)
+    r = client.post(f"/api/v1/market/deals/{STATE['deal_id']}/location",
+                    json={"lat": 43.2, "lng": 76.9})
+    assert r.status_code == 403, f"C отправил геопозицию за водителя: {r.status_code} {r.text}"
+
+
+def test_24_shipper_cannot_post_deal_location_for_driver():
+    """A — грузоотправитель, участник сделки, но НЕ водитель: location шлёт
+    только водитель (root cause класса бага — 'участник' != 'нужная роль',
+    см. _DRIVER_ONLY_TRANSITIONS чуть выше в api/marketplace.py)."""
+    _as(A)
+    r = client.post(f"/api/v1/market/deals/{STATE['deal_id']}/location",
+                    json={"lat": 43.2, "lng": 76.9})
+    assert r.status_code == 403, f"A (не водитель) отправил геопозицию: {r.status_code} {r.text}"
