@@ -113,6 +113,27 @@ jobs:
       - name: Verify Google Services Gradle plugin wired after prebuild
         run: python3 scripts/verify_android_firebase_config.py --check-plugin android
 
+      - name: Preserve MapKit native dependency resolution
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('android/build.gradle')
+          text = path.read_text()
+          marker = 'allprojects {\n'
+          pin = """allprojects {
+              configurations.configureEach {
+                  resolutionStrategy.force 'com.google.android.gms:play-services-location:21.0.1'
+              }
+          """
+          if "play-services-location:21.0.1" not in text:
+              if marker not in text:
+                  raise SystemExit('allprojects block not found in generated android/build.gradle')
+              text = text.replace(marker, pin, 1)
+              path.write_text(text)
+          print('MapKit dependency pin: play-services-location=21.0.1')
+          PY
+
       - name: Target API 36 (Google Play требование с 31.08.2026)
         run: |
           printf '\nandroid.minSdkVersion=26\nandroid.compileSdkVersion=36\nandroid.targetSdkVersion=36\nandroid.buildToolsVersion=36.0.0\n' >> android/gradle.properties
