@@ -115,7 +115,7 @@ jobs:
 
       - name: Target API 36 (Google Play требование с 31.08.2026)
         run: |
-          printf '\nandroid.compileSdkVersion=36\nandroid.targetSdkVersion=36\nandroid.buildToolsVersion=36.0.0\n' >> android/gradle.properties
+          printf '\nandroid.minSdkVersion=26\nandroid.compileSdkVersion=36\nandroid.targetSdkVersion=36\nandroid.buildToolsVersion=36.0.0\n' >> android/gradle.properties
 
       - name: Show generated android/ structure (debug)
         run: |
