@@ -13,6 +13,10 @@ ROUTES = {
     "intra_country_almaty_horgos": [[76.8512, 43.2220], [80.4137, 44.2113]],
     "international_yiwu_almaty": [[120.0762, 29.3079], [76.8512, 43.2220]],
     "phone_baseline_yiwu_moscow": [[120.0762, 29.3079], [37.6176, 55.7558]],
+    "segment_yiwu_urumqi": [[120.0762, 29.3079], [87.6168, 43.8256]],
+    "segment_urumqi_moscow": [[87.6168, 43.8256], [37.6176, 55.7558]],
+    "segment_yiwu_almaty": [[120.0762, 29.3079], [76.8512, 43.2220]],
+    "segment_almaty_moscow": [[76.8512, 43.2220], [37.6176, 55.7558]],
 }
 
 
