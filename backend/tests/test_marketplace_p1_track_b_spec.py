@@ -40,6 +40,26 @@ import api.marketplace as marketplace
 from database.db import get_conn, new_id
 
 
+def test_optional_marketplace_auth_resolves_owner_and_fails_closed(monkeypatch):
+    """Owner enrichment on GET /market/bids must not silently degrade to the
+    public filtered view when a valid bearer token is present.
+
+    This helper is intentionally tested at its boundary: the endpoint is also
+    used anonymously, so invalid/missing auth must remain fail-closed rather
+    than raising or exposing owner-only data.
+    """
+    expected = {"id": "owner-1", "role": "client"}
+    monkeypatch.setattr(marketplace, "_extract_driver", lambda _auth: expected)
+    assert marketplace._maybe_user("Bearer valid-token") == expected
+
+    def reject(_auth):
+        raise HTTPException(status_code=401, detail="invalid")
+
+    monkeypatch.setattr(marketplace, "_extract_driver", reject)
+    assert marketplace._maybe_user("Bearer invalid-token") is None
+    assert marketplace._maybe_user(None) is None
+
+
 def seed_cargo(owner_id: str, price: int = 1000, status: str = "active") -> str:
     cargo_id = new_id()
     with get_conn() as c:

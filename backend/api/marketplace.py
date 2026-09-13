@@ -62,6 +62,10 @@ def _maybe_user(authorization: Optional[str]) -> Optional[dict]:
     QA/agent bidders that the public dirty-filter hides)."""
     if not authorization:
         return None
+    try:
+        return _extract_driver(authorization)
+    except HTTPException:
+        return None
 
 
 def _can_view_non_public_listing(c, *, table: str, listing_id: str, row: dict,
