@@ -19,6 +19,22 @@ from api.notifications import create_notification, mark_notifications_read_by_ur
 
 chat_router = APIRouter()
 
+# QA release-pass finding (chat/voice track): voice_duration was accepted and
+# persisted with ZERO server-side validation — any value the client reported
+# (negative, zero, or an arbitrarily large number of seconds) was stored
+# verbatim. The app's recorder (DealWorkspaceScreenV2's VOICE_MAX_DURATION_SEC)
+# hard-stops recording at 60s, but that is a CLIENT-ONLY guard: a modified
+# client or a direct API call could report any duration. There is no audio
+# metadata parser in this codebase (no mutagen/ffprobe dependency) to derive
+# the real duration from the uploaded bytes server-side, so this bounds the
+# self-reported field to match the product's own 60s cap (+1s tolerance for
+# stop-timer/encoding rounding on real devices) rather than trusting it
+# unbounded. This does not replace real audio-duration verification — it
+# closes the "obviously wrong reported value" gap within what this service
+# can check without a new binary dependency.
+VOICE_MAX_DURATION_SEC = 60
+VOICE_DURATION_TOLERANCE_SEC = 1
+
 # Специальные юзеры
 SUPPORT_ID = "urtruck-support-bot"
 SUPPORT_NAME = "Поддержка UrTruck"
@@ -368,6 +384,13 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     # /chat/voice actually returned — never an arbitrary client string.
     if body.photo_url and not storage.is_owned_storage_ref(body.photo_url):
         raise HTTPException(status_code=400, detail="Некорректная ссылка на файл")
+    # QA release-pass finding: bound the self-reported voice_duration — see
+    # VOICE_MAX_DURATION_SEC docstring above. Only enforced for voice
+    # messages that actually report a duration; older/text/photo sends are
+    # unaffected.
+    if body.is_voice and body.voice_duration is not None:
+        if body.voice_duration <= 0 or body.voice_duration > VOICE_MAX_DURATION_SEC + VOICE_DURATION_TOLERANCE_SEC:
+            raise HTTPException(status_code=400, detail="Недопустимая длительность голосового сообщения")
     _LAST_SEEN[user["id"]] = _time.time()   # активность для «онлайн»
 
     # Variant B: комната и получатель. Предпочтительно room_id (каноническая
