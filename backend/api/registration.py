@@ -430,7 +430,17 @@ def wa_verify(req: VerifyCodeRequest, request: Request = None):
             updates["full_name"] = tester_name
         if (driver.get("verification_level") or 0) < 2:
             updates["verification_level"] = 2
-        if driver.get("role") in (None, "guest", "client"):
+        # Security audit fix (2026-09-13, same root cause as the 3 P0 role-flip
+        # fixes elsewhere in this session, b9ea7527/3dcaf1b6): this used to
+        # include "client" here, so the universal BETA_OTP_CODE could silently
+        # flip an ALREADY-registered client account to driver too, not just
+        # provision a fresh guest/None-role tester. email_verify()'s equivalent
+        # block below never included "client" in this set — narrowed to match
+        # (defense-in-depth: BETA_MODE is already off-by-default and
+        # boot-time-guarded in production, see services/env_check.py + this
+        # session's test_beta_mode_production_boot_gate.py, but the auto-role
+        # logic itself must not depend solely on that outer guard).
+        if driver.get("role") in (None, "guest"):
             updates["role"] = "driver"
         if not driver.get("security_score"):
             updates["security_score"] = 75
