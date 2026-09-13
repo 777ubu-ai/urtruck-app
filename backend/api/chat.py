@@ -139,6 +139,20 @@ def _ensure_columns(c):
         c.execute("ALTER TABLE chat_messages ADD COLUMN voice_transcript_provider TEXT")
     if "voice_transcribed_at" not in cols:
         c.execute("ALTER TABLE chat_messages ADD COLUMN voice_transcribed_at TEXT")
+    if "voice_transcribe_claimed_at" not in cols:
+        # STT-hardening spec item 11 (idempotency): a bare "does a transcript
+        # already exist" check (below) only prevents duplicate WORK once one
+        # attempt has finished — a double-tap/retry that lands WHILE the
+        # first call is still waiting on the provider (up to 60s, see
+        # speech_to_text_service's timeout) still passed that check and fired
+        # a second concurrent OpenAI call. This column lets transcribe_message
+        # atomically CLAIM the in-flight attempt (UPDATE ... WHERE not already
+        # claimed, check rowcount) so a second concurrent request gets a
+        # distinct 409 instead of paying for its own provider call. A claim
+        # older than STT_CLAIM_STALE_SECONDS is treated as abandoned (crashed
+        # request) so a genuinely stuck row self-heals instead of blocking
+        # retries forever.
+        c.execute("ALTER TABLE chat_messages ADD COLUMN voice_transcribe_claimed_at TEXT")
     # Уникальность в рамках отправителя (client id генерируется на устройстве).
     # Partial index — NULL-значения (старые сообщения) не конфликтуют.
     c.execute(
@@ -345,6 +359,15 @@ def _assert_chat_is_accepted(sender_id, recipient_id, *, room_id=None, cargo_id=
 def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     if not body.text and not body.photo_url:
         raise HTTPException(status_code=400, detail="text или photo_url обязателен")
+    # Security audit finding (STT-hardening track, P0): photo_url used to be
+    # persisted verbatim with zero validation — a client could set it to an
+    # arbitrary local filesystem path (later read by /chat/transcribe's STT
+    # pipeline and exfiltrated to the OpenAI API) or an attacker-controlled
+    # http(s) URL (rendered client-side as a tracking pixel on the OTHER
+    # participant's device). It must be exactly what /chat/photo or
+    # /chat/voice actually returned — never an arbitrary client string.
+    if body.photo_url and not storage.is_owned_storage_ref(body.photo_url):
+        raise HTTPException(status_code=400, detail="Некорректная ссылка на файл")
     _LAST_SEEN[user["id"]] = _time.time()   # активность для «онлайн»
 
     # Variant B: комната и получатель. Предпочтительно room_id (каноническая
@@ -942,6 +965,17 @@ def translate_message(body: TranslateIn, user=Depends(require_level(1))):
         room = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (msg["room_id"],)).fetchone()
         if not room or user["id"] not in (room["participant_1"], room["participant_2"]):
             raise HTTPException(status_code=403)
+        # STT-hardening spec item 6/security audit finding: GET /messages
+        # re-validates the deal is still in a chat-eligible status
+        # (_assert_chat_is_accepted) before returning message content —
+        # /translate (and /transcribe, below) previously only checked room
+        # participancy, so a participant of a deal that later left the
+        # eligible-status set (cancelled, disputed, ...) could still
+        # translate/transcribe old messages via these two routes after
+        # losing read access to the room itself. Matches the stricter gate.
+        partner_id = room["participant_2"] if room["participant_1"] == user["id"] else room["participant_1"]
+        _assert_chat_is_accepted(user["id"], partner_id, room_id=room["id"],
+                                 cargo_id=room["cargo_id"], trip_id=room["trip_id"])
         source_text = (msg["voice_transcript"] or "") if msg["is_voice"] else (msg["text"] or "")
         source_lang = _normalize_lang_code(msg["voice_transcript_lang"]) if msg["is_voice"] else None
 
@@ -996,6 +1030,11 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
         room = c.execute("SELECT * FROM chat_rooms WHERE id = ?", (msg["room_id"],)).fetchone()
         if not room or user["id"] not in (room["participant_1"], room["participant_2"]):
             raise HTTPException(status_code=403)
+        # Security audit finding, see /chat/translate's identical gate above
+        # for the full rationale.
+        partner_id = room["participant_2"] if room["participant_1"] == user["id"] else room["participant_1"]
+        _assert_chat_is_accepted(user["id"], partner_id, room_id=room["id"],
+                                 cargo_id=room["cargo_id"], trip_id=room["trip_id"])
         transcript_text = (msg["voice_transcript"] or "").strip()
         transcript_lang = _normalize_lang_code(msg["voice_transcript_lang"]) or None
         transcript_provider = msg["voice_transcript_provider"] or None
@@ -1008,21 +1047,66 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
             ).fetchone()
 
     if not transcript_text:
+        # Security audit finding (P0): photo_url is validated as an
+        # owned storage reference at /chat/send time (see send_message),
+        # but this defends messages persisted before that fix existed —
+        # never hand an arbitrary string to the STT pipeline (local file
+        # read + exfiltration to the provider), even for old rows.
+        from services import storage_service as _storage
+        if not _storage.is_owned_storage_ref(msg["photo_url"]):
+            raise HTTPException(status_code=422, detail={"error": "TRANSCRIPTION_FAILED", "hint": "Голосовой файл не найден"})
+
+        # STT-hardening spec item 11 (idempotency): atomically claim this
+        # attempt so a double-tap/retry that lands WHILE the first call is
+        # still waiting on the provider (up to 60s) gets a distinct 409
+        # instead of also paying for its own provider call. A claim older
+        # than STT_CLAIM_STALE_SECONDS is treated abandoned (crashed
+        # request) and can be reclaimed — never permanently stuck.
+        STT_CLAIM_STALE_SECONDS = 90
+        with get_conn() as c:
+            claim = c.execute(
+                "UPDATE chat_messages SET voice_transcribe_claimed_at = CURRENT_TIMESTAMP "
+                "WHERE id = ? AND (voice_transcript IS NULL OR voice_transcript = '') "
+                "AND (voice_transcribe_claimed_at IS NULL "
+                "OR voice_transcribe_claimed_at < datetime('now', ?))",
+                (body.message_id, f"-{STT_CLAIM_STALE_SECONDS} seconds"),
+            )
+            claimed = claim.rowcount == 1
+        if not claimed:
+            raise HTTPException(status_code=409, detail={
+                "error": "TRANSCRIPTION_IN_PROGRESS",
+                "hint": "Распознавание уже выполняется, повторите через несколько секунд",
+            })
         try:
             guessed_name = Path(str(msg["photo_url"] or "")).name or f"voice-{body.message_id}.m4a"
             transcript = transcribe_audio_ref(msg["photo_url"], filename=guessed_name)
         except SpeechToTextError as exc:
+            # Release the claim so a retry isn't forced to wait out the
+            # stale-claim TTL after a real (non-transient) failure.
+            with get_conn() as c:
+                c.execute(
+                    "UPDATE chat_messages SET voice_transcribe_claimed_at = NULL "
+                    "WHERE id = ? AND (voice_transcript IS NULL OR voice_transcript = '')",
+                    (body.message_id,),
+                )
             status = 503 if exc.retryable else 422
-            raise HTTPException(status_code=status, detail=str(exc)) from exc
+            raise HTTPException(status_code=status, detail={"error": exc.code, "hint": str(exc)}) from exc
         transcript_text = str(transcript.get("transcript_text") or "").strip()
         if not transcript_text:
-            raise HTTPException(status_code=422, detail="Не удалось распознать речь в голосовом")
+            with get_conn() as c:
+                c.execute(
+                    "UPDATE chat_messages SET voice_transcribe_claimed_at = NULL "
+                    "WHERE id = ? AND (voice_transcript IS NULL OR voice_transcript = '')",
+                    (body.message_id,),
+                )
+            raise HTTPException(status_code=422, detail={"error": "TRANSCRIPTION_FAILED", "hint": "Не удалось распознать речь в голосовом"})
         transcript_lang = _normalize_lang_code(transcript.get("source_lang")) or "auto"
         transcript_provider = transcript.get("provider") or "unknown"
         with get_conn() as c:
             c.execute(
                 "UPDATE chat_messages SET voice_transcript = ?, voice_transcript_lang = ?, "
-                "voice_transcript_provider = ?, voice_transcribed_at = CURRENT_TIMESTAMP WHERE id = ?",
+                "voice_transcript_provider = ?, voice_transcribed_at = CURRENT_TIMESTAMP, "
+                "voice_transcribe_claimed_at = NULL WHERE id = ?",
                 (transcript_text, transcript_lang, transcript_provider, body.message_id),
             )
 

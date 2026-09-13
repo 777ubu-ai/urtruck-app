@@ -653,9 +653,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         ...previous,
         [item.id]: { visible: true, transcriptText: result.transcript_text, sourceLang: result.source_lang || null, provider: result.provider || null, translatedText: null },
       }));
-    } catch {
-      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('voice_transcription_unavailable') } }));
-      toast(t('voice_transcription_unavailable'), 'info');
+    } catch (err) {
+      // STT/voice-hardening track: chatAPI.transcribe() now throws a
+      // localized Error carrying `.code` for a known backend error (403/
+      // 409/422/503, see chatAPI.js's chatApiError) — show that distinct
+      // text so "already in progress" reads differently from "access
+      // denied" or "timed out". A raw network/parse exception has no
+      // `.code` and falls back to the same generic message as before.
+      const message = (err && err.code && err.message) || t('voice_transcription_unavailable');
+      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: message } }));
+      toast(message, 'info');
     } finally {
       setVoiceTranscribing(null);
     }
@@ -679,9 +686,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         ...previous,
         [item.id]: { ...previous[item.id], translatedText: result.translated_text, showTranslated: true, translationProvider: result.provider || null },
       }));
-    } catch {
-      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('translation_unavailable') } }));
-      toast(t('translation_unavailable'), 'error');
+    } catch (err) {
+      const message = (err && err.code && err.message) || t('translation_unavailable');
+      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: message } }));
+      toast(message, 'error');
     } finally {
       setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], translating: false } }));
     }

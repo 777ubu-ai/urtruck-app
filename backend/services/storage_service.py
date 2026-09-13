@@ -210,6 +210,41 @@ def save_image(data: bytes, category: str, ext: str = "jpg") -> str:
     return save_file(data, category, ext=ext, content_type=mime)
 
 
+def is_owned_storage_ref(value: Optional[str]) -> bool:
+    """True iff `value` has the exact shape a ref THIS service issued would
+    have (supabase://<bucket>/<key>, {LOCAL_PUBLIC_BASE}/<key> resolving
+    under LOCAL_ROOT, or the S3 https URL this service's own `_save_s3`
+    builds) — never true for an arbitrary absolute filesystem path or an
+    attacker-chosen http(s) URL.
+
+    Security audit finding (STT-hardening track, P0): `chat.py`'s
+    `SendMessageIn.photo_url` is a free-form client-supplied string with no
+    server-side validation before being persisted and later handed to
+    `materialize_for_processing()` for STT — which, for any value that
+    isn't a recognized `supabase://` ref, falls back to treating the raw
+    string as a local filesystem path (`get_local_path`'s permissive
+    fallback below, kept for legitimate device-local paths in other
+    callers). Combined, a client could set `photo_url` to an arbitrary
+    absolute path (e.g. "/etc/passwd") or an attacker-controlled URL and
+    have the backend read/fetch it — this validator is the gate that
+    closes that: callers that accept a client-supplied storage reference
+    for content THIS backend must later read (STT, attachment display)
+    should reject anything that doesn't pass this check, at write time.
+    """
+    if not value or not isinstance(value, str):
+        return False
+    if _split_supabase_ref(value) is not None:
+        return True
+    if value.startswith(LOCAL_PUBLIC_BASE):
+        return get_local_path(value) is not None
+    if S3_BUCKET:
+        s3_prefix = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/"
+        if value.startswith(s3_prefix):
+            key = value[len(s3_prefix):]
+            return bool(key) and ".." not in key.split("/") and not key.startswith("/")
+    return False
+
+
 def get_local_path(url_or_path: str) -> Optional[str]:
     if not url_or_path:
         return None
