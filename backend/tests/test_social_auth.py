@@ -1,5 +1,6 @@
 """Regression tests for Google/Apple -> Supabase -> UrTruck token exchange."""
 import os
+import uuid
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_social_auth.db")
@@ -145,6 +146,7 @@ def test_guest_session_is_upgraded_not_duplicated(monkeypatch):
 
 def test_social_login_reuses_same_account_after_real_phone_saved(monkeypatch):
     email = "stable.identity@example.com"
+    phone = "+7" + str(uuid.uuid4().int)[:10]
     monkeypatch.setattr(
         social_auth.httpx,
         "get",
@@ -160,11 +162,11 @@ def test_social_login_reuses_same_account_after_real_phone_saved(monkeypatch):
 
     # ProfileV2 later replaces the placeholder phone with the real logistics
     # contact. This used to destroy the only email lookup key.
-    reg_dal.update_driver(first_id, {"phone": "+77011234567"})
+    reg_dal.update_driver(first_id, {"phone": phone})
 
     second = post()
     assert second.status_code == 200, second.text
     assert second.json()["user_id"] == first_id
     driver = reg_dal.get_driver(first_id)
     assert driver["email"] == email
-    assert driver["phone"] == "+77011234567"
+    assert driver["phone"] == phone
