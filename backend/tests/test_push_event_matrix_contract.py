@@ -56,7 +56,12 @@ def test_counter_cancellation_reaches_bidder_via_push_and_bell():
 
 
 def test_chat_message_push_payload_keeps_room_sender_recipient_context():
-    assert 'kind="chat"' in CHAT
+    # fix(chat): repair composer voice and push flow (3b66627d) split the
+    # push kind so voice messages get their own "chat.voice" kind instead of
+    # sharing the plain "chat" one — text still resolves to "chat", just via
+    # a conditional expression rather than the literal 'kind="chat"' this
+    # test used to grep for. Assert the real, current shape instead.
+    assert 'kind="chat.voice" if body.is_voice else "chat"' in CHAT
     assert '"type": "chat_message"' in CHAT
     assert '"room_id": room_id' in CHAT
     assert '"sender_id": user["id"]' in CHAT
