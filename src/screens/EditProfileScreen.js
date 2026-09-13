@@ -605,4 +605,3 @@ export default function EditProfileScreen({ navigation, route }) {
     </Screen>
   );
 }
-
