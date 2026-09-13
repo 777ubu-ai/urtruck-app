@@ -39,7 +39,10 @@ const PROD_API = 'https://urtruck.kz';
 // by `eas build --profile preview` / `--profile development` to
 // point at a staging backend). Empty string => fall through to
 // the production default below.
-const ENV_OVERRIDE = (typeof process !== 'undefined' && process?.env?.EXPO_PUBLIC_API_URL) || '';
+// Keep the EXPO_PUBLIC_* access statically recognisable to Expo's Metro
+// inliner. Optional chaining around process.env is not reliably replaced in
+// release bundles, which can silently drop the QA endpoint override.
+const ENV_OVERRIDE = process.env.EXPO_PUBLIC_API_URL || '';
 const CONFIG_OVERRIDE = Constants?.expoConfig?.extra?.urtruckApiUrl || '';
 
 // Build-profile signal from EAS / app.json `extra.eas.profile`.
