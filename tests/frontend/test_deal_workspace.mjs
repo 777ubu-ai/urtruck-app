@@ -299,6 +299,12 @@ test('chat anchors the first loaded history to the latest message', () => {
   assert.match(workspace, /scrollToEnd\?\.\(\{ animated: false \}\)/);
 });
 
+test('chat distinguishes a user scroll from programmatic receiver updates', () => {
+  assert.match(workspace, /userScrolledAwayRef/);
+  assert.match(workspace, /onScrollBeginDrag=\{\(\) => \{ userScrolledAwayRef\.current = true; \}\}/);
+  assert.match(workspace, /!userScrolledAwayRef\.current \|\| nearBottomRef\.current/);
+});
+
 test('statuses render a detailed vertical timeline instead of compact system chips', () => {
   assert.match(workspace, /<DealStatusTimeline/);
   assert.match(workspace, /testID="deal-status-panel"/);

@@ -325,6 +325,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const textSendBusyRef = React.useRef(false);
   const finishRecordingRef = React.useRef(null);
   const nearBottomRef = React.useRef(true);
+  const userScrolledAwayRef = React.useRef(false);
   const initialMessagesLoadedRef = React.useRef(false);
   const lastCountRef = React.useRef(0);
   // A signed attachment URL may be reissued on every 3s poll. Keep the first
@@ -559,6 +560,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       // once, so a new receiver message is visible without a manual swipe.
       if (!initialMessagesLoadedRef.current) {
         initialMessagesLoadedRef.current = true;
+        userScrolledAwayRef.current = false;
         nearBottomRef.current = true;
         setShowJumpLatest(false);
         setTimeout(() => listRef.current?.scrollToEnd?.({ animated: false }), 0);
@@ -609,7 +611,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   React.useEffect(() => {
     if (messages.length > lastCountRef.current) {
-      if (nearBottomRef.current) setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 40);
+      if (!userScrolledAwayRef.current || nearBottomRef.current) {
+        setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 40);
+      }
       else setShowJumpLatest(true);
     }
     lastCountRef.current = messages.length;
@@ -1604,6 +1608,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       nearBottomRef.current = nearBottom;
                       if (nearBottom && showJumpLatest) setShowJumpLatest(false);
                     }}
+                    onScrollBeginDrag={() => { userScrolledAwayRef.current = true; }}
                     scrollEventThrottle={80}
                     onContentSizeChange={() => { if (nearBottomRef.current) listRef.current?.scrollToEnd?.({ animated: false }); }}
                     ListEmptyComponent={<Text style={[s.emptyText, { color: colors.textMuted }]}>{ui.noMessages}</Text>}
