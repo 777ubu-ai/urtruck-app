@@ -260,7 +260,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
-  const keyboardDockInset = useKeyboardDockInset(window.height, insets.top);
+  // The dock is positioned in the SafeAreaView's content coordinate space.
+  // Passing insets.top here applies the top safe-area twice on Android 15/16:
+  // the IME overlap is already measured in screen coordinates by the shared
+  // hook, while this screen starts below the top safe area. The second offset
+  // creates the blank band seen between the composer and the keyboard.
+  const keyboardDockInset = useKeyboardDockInset(window.height);
   const params = route?.params || {};
 
   const [dealId, setDealId] = React.useState(params.dealId || null);

@@ -25,7 +25,9 @@ test('composer: collapsed-режим полностью убран из чата
 
 test('Android chat dock uses the shared measured IME overlap only when resize is bypassed', () => {
   assert.match(src, /useKeyboardDockInset/);
-  assert.match(src, /const keyboardDockInset = useKeyboardDockInset\(window\.height, insets\.top\)/);
+  assert.match(src, /const keyboardDockInset = useKeyboardDockInset\(window\.height\)/);
+  assert.doesNotMatch(src, /useKeyboardDockInset\(window\.height, insets\.top\)/,
+    'the top safe-area must not be applied a second time to the IME dock');
   assert.match(src, /position: 'absolute'/);
   assert.match(src, /bottom: keyboardDockInset/);
   assert.match(src, /Platform\.OS === 'ios' \? 'padding' : undefined/);
