@@ -325,6 +325,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const textSendBusyRef = React.useRef(false);
   const finishRecordingRef = React.useRef(null);
   const nearBottomRef = React.useRef(true);
+  const initialMessagesLoadedRef = React.useRef(false);
   const lastCountRef = React.useRef(0);
   // A signed attachment URL may be reissued on every 3s poll. Keep the first
   // valid URL per immutable message/attachment id so an already-shown photo
@@ -552,6 +553,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         });
         return [...merged, ...optimisticRemaining];
       });
+      // The first server payload can trigger FlatList's scroll callback before
+      // its content height is known, leaving nearBottomRef=false even though
+      // the user has not scrolled. Anchor an opened chat to its latest message
+      // once, so a new receiver message is visible without a manual swipe.
+      if (!initialMessagesLoadedRef.current) {
+        initialMessagesLoadedRef.current = true;
+        nearBottomRef.current = true;
+        setShowJumpLatest(false);
+        setTimeout(() => listRef.current?.scrollToEnd?.({ animated: false }), 0);
+      }
       setUnreadCount(0);
       notifyChatRead();
       refreshAppIconBadge();

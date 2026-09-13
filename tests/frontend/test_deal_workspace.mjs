@@ -291,6 +291,14 @@ test('chat history scroll does not yank user from old messages when new messages
   assert.match(workspace, /contentOffset/);
 });
 
+test('chat anchors the first loaded history to the latest message', () => {
+  assert.match(workspace, /initialMessagesLoadedRef/);
+  assert.match(workspace, /once, so a new receiver message is visible without a manual swipe/);
+  assert.match(workspace, /initialMessagesLoadedRef\.current = true/);
+  assert.match(workspace, /nearBottomRef\.current = true/);
+  assert.match(workspace, /scrollToEnd\?\.\(\{ animated: false \}\)/);
+});
+
 test('statuses render a detailed vertical timeline instead of compact system chips', () => {
   assert.match(workspace, /<DealStatusTimeline/);
   assert.match(workspace, /testID="deal-status-panel"/);
