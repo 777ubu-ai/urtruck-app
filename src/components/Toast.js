@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated, TouchableOpacity, Platform } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
+import translations, { getLanguage } from '../utils/i18n';
 
 const ToastContext = createContext({ toast: () => {} });
 
@@ -19,11 +20,27 @@ export const ToastProvider = ({ children }) => {
     // PR-C2 defence-in-depth: если кто-то случайно передал object вместо
     // string (например `error.detail` от FastAPI 403 verification_required),
     // не падаем с React error #31. Делаем JSON.stringify fallback.
+    //
+    // I18N-16 / item 3 (2026-09-13): backend's `hint` field on
+    // verification_required is RU-only prose — showing it directly here
+    // leaked Russian text into every non-RU locale's toast. The response
+    // also carries a stable structured `required_name` (guest/
+    // phone_verified/identity_verified/driver_verified — see
+    // api/verification_gate.py's LEVEL_NAMES); when present, translate
+    // that instead via verification_hint_<required_name> (all 16
+    // locales). Falls through to the raw RU hint only if no translation
+    // exists — never worse than before.
     let safeText;
     if (text == null) safeText = '';
     else if (typeof text === 'string') safeText = text;
     else if (typeof text === 'object') {
-      safeText = text.hint || text.error || text.message
+      let localizedHint = null;
+      if (text.error === 'verification_required' && text.required_name) {
+        const lang = getLanguage();
+        const key = `verification_hint_${text.required_name}`;
+        localizedHint = translations[lang]?.[key] || translations.EN?.[key] || null;
+      }
+      safeText = localizedHint || text.hint || text.error || text.message
         || (() => { try { return JSON.stringify(text); } catch { return ''; } })();
     } else {
       safeText = String(text);
