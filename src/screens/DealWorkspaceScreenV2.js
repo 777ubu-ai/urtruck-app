@@ -662,7 +662,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       const result = await chatAPI.transcribe(item.id);
       if (!result?.transcript_text) {
         setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('voice_transcription_unavailable') } }));
-        toast(t('voice_transcription_unavailable'), 'info');
         return;
       }
       setVoiceTranscripts((previous) => ({
@@ -678,11 +677,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       // `.code` and falls back to the same generic message as before.
       const message = (err && err.code && err.message) || t('voice_transcription_unavailable');
       setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: message } }));
-      toast(message, 'info');
     } finally {
       setVoiceTranscribing(null);
     }
-  }, [voiceTranscripts, toast, t]);
+  }, [voiceTranscripts, t]);
 
   const translateVoiceTranscript = React.useCallback(async (item) => {
     const current = voiceTranscripts[item.id];
