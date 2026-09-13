@@ -327,6 +327,19 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const nearBottomRef = React.useRef(true);
   const userScrolledAwayRef = React.useRef(false);
   const pendingAutoScrollRef = React.useRef(false);
+  // Android can dispatch FlatList's content-size callback before the newly
+  // received row has been measured. A single immediate scrollToEnd then
+  // leaves the receiver one row behind until a manual swipe.
+  const scheduleAutoScrollRef = React.useRef(null);
+  scheduleAutoScrollRef.current = () => {
+    const scroll = () => {
+      if (!mounted.current || (userScrolledAwayRef.current && !nearBottomRef.current)) return;
+      listRef.current?.scrollToEnd?.({ animated: false });
+    };
+    scroll();
+    setTimeout(scroll, 80);
+    setTimeout(scroll, 220);
+  };
   const initialMessagesLoadedRef = React.useRef(false);
   const lastCountRef = React.useRef(0);
   // A signed attachment URL may be reissued on every 3s poll. Keep the first
@@ -568,7 +581,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         userScrolledAwayRef.current = false;
         nearBottomRef.current = true;
         setShowJumpLatest(false);
-        setTimeout(() => listRef.current?.scrollToEnd?.({ animated: false }), 0);
+        scheduleAutoScrollRef.current?.();
       }
       setUnreadCount(0);
       notifyChatRead();
@@ -617,7 +630,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   React.useEffect(() => {
     if (messages.length > lastCountRef.current) {
       if (!userScrolledAwayRef.current || nearBottomRef.current) {
-        setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 40);
+        scheduleAutoScrollRef.current?.();
       }
       else setShowJumpLatest(true);
     }
@@ -1621,7 +1634,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     scrollEventThrottle={80}
                     onContentSizeChange={() => {
                       if (!userScrolledAwayRef.current || pendingAutoScrollRef.current || nearBottomRef.current) {
-                        listRef.current?.scrollToEnd?.({ animated: false });
+                        scheduleAutoScrollRef.current?.();
                         pendingAutoScrollRef.current = false;
                       }
                     }}

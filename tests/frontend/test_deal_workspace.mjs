@@ -216,6 +216,20 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
 });
 
+test('receiver auto-scroll retries after native FlatList layout settles', () => {
+  // Android can report the new content size before the appended message cell
+  // is measured. The deferred retries keep a realtime text/voice message
+  // visible without requiring a manual swipe, while preserving the explicit
+  // user-scrolled-away guard.
+  assert.match(workspace, /const scheduleAutoScrollRef = React\.useRef\(null\)/);
+  assert.match(workspace, /scheduleAutoScrollRef\.current = \(\) =>/);
+  assert.match(workspace, /setTimeout\(scroll, 80\)/);
+  assert.match(workspace, /setTimeout\(scroll, 220\)/);
+  assert.match(workspace, /userScrolledAwayRef\.current && !nearBottomRef\.current/);
+  assert.match(workspace, /onContentSizeChange=\{\(\) => \{/);
+  assert.match(workspace, /scheduleAutoScrollRef\.current\?\.\(\)/);
+});
+
 test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
   // Structural marker: composer state exists and the dock is theme-tokenized
   // (no hardcoded light surface). The old composerCollapsed fork must stay gone.
