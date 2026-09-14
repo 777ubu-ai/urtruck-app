@@ -265,6 +265,19 @@ export default function CargoFeedScreen({ navigation }) {
         cargoType: filterType || '',
         limit: pageLimit,
       });
+      // Финальный аудит (§34 ERROR UX, 2026-09-14): marketAPI.listCargos НЕ
+      // бросает при сетевой ошибке / 5xx — он возвращает
+      // `{ cargos: [], serverError: true }` (src/utils/marketAPI.js), чтобы
+      // экран мог отличить «грузов нет» от «сервер недоступен». Этот флаг тут
+      // не проверялся: catch не срабатывал, `error` оставался false, и при
+      // HTTP 500 / 502 / offline / timeout водитель на своей ГЛАВНОЙ вкладке
+      // видел «Подходящих грузов пока нет» — ложное «грузов нет» вместо
+      // ошибки и без кнопки «Повторить». Ветка error в ListEmptyComponent
+      // (alert-circle + copy.loadError + retry, testID cargo-retry) была
+      // полностью мёртвой. Подтверждено рантаймом (Playwright: route abort и
+      // fulfill 500). FeedScreen.js делает ровно эту проверку — приводим
+      // ленту грузов к той же симметрии.
+      if (result?.serverError) throw new Error('cargo_feed_failed');
       const mapped = (result?.cargos || [])
         .filter((cargo) => !myUserId || cargo.owner_id !== myUserId)
         .map((cargo) => normalizeCargo(cargo, myUserId))

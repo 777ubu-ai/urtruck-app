@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Header, UploadFile, File
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 
 from database.db import get_conn, new_id
@@ -3822,8 +3822,20 @@ def stop_deal_tracking(deal_id: str, user=Depends(require_level(1))):
     return {"ok": True, "tracking": tracking}
 
 class DealLocationIn(BaseModel):
-    lat: float
-    lng: float
+    """Финальный аудит (§31, 2026-09-14): у lat/lng НЕ БЫЛО границ, в отличие
+    от RoutePoint в api/routing.py (там `Field(ge=-90, le=90)` /
+    `Field(ge=-180, le=180)` стоят с самого начала). Подтверждённый баг:
+    POST /deals/{id}/location с `{"lat": 0, "lng": 999}` отвечал 200 и
+    записывал 999 в deal_locations. Дальше эта точка уходила грузоотправителю
+    через GET /deals/{id}/location и рисовалась на карте как есть —
+    клиент диапазон тоже не проверяет (RouteMap.js / DealWorkspaceScreenV2 /
+    TrackTruckScreen читают location без валидации), а
+    POST /routing/road-route такую точку уже отвергает (422) — то есть
+    полилиния и ETA молча ломались. Валидируем на входе, единым правилом с
+    RoutePoint: сервер — единственное место, где это можно гарантировать для
+    любого клиента (web / Expo Go / нативная сборка / фоновый task)."""
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
     heading: Optional[float] = None
     speed: Optional[float] = None
 
