@@ -3,6 +3,11 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+// Native MapKit key is compiled into the JS bundle by Expo. A release build
+// without it still installs successfully but can only render "Map unavailable"
+// at runtime, so fail before Gradle starts the expensive bundle task.
+def isReleaseTask = gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
+def hasMapKitApiKey = (System.getenv('EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY') ?: '').trim().length() > 0
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -123,6 +128,12 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
+            if (isReleaseTask && !hasMapKitApiKey) {
+                throw new GradleException(
+                    'release build requires EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY. ' +
+                    'Without it the native QA2 MapKit renderer is compiled without YaMap.init and shows "Map unavailable".'
+                )
+            }
             // Release-hardening track 2, item 2: this used to silently fall
             // back to signingConfigs.debug whenever URTRUCK_UPLOAD_STORE_FILE
             // was absent — a release build with no production signing config
