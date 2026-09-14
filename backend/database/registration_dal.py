@@ -195,6 +195,52 @@ def check_code(phone: str, code: str) -> bool:
         return row["code"] == code
 
 
+def consume_code(phone: str, code: str) -> bool:
+    """Validate AND atomically consume an OTP code in one transaction.
+
+    §23 hardening (2026-09-14): api/registration.py's email_verify/wa_verify
+    used to call check_code(phone, code) and, only on a truthy result, call
+    delete_code(phone) as a SEPARATE follow-up call -- two independent
+    get_conn() transactions with an open window between them. Two concurrent
+    verify requests for the same phone/code (a client double-tap/retry, or a
+    deliberate race) could both pass check_code() before either deleted the
+    row, both proceed past the "invalid code" gate, and each mint its own
+    session token from the one OTP code -- violating one-time-use.
+
+    Fix: read, expiry/attempts validation, and consumption happen inside a
+    SINGLE get_conn() transaction, and the code is proven single-use by the
+    DELETE's rowcount, not by the earlier SELECT. SQLite serializes
+    concurrent writers on the same row (WAL + busy_timeout, see db.py); the
+    first transaction to reach the DELETE removes the row and commits, and
+    the second transaction's DELETE (whether its own preceding SELECT saw
+    the row or not) then always affects 0 rows and correctly returns False --
+    there is no window in which two callers can both observe "consumed
+    successfully". Callers should use this instead of the separate
+    check_code()+delete_code() pair; those two remain for any caller that
+    genuinely needs a non-consuming (or independently-timed) check, but the
+    real login endpoints below use consume_code() exclusively.
+    """
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT code, expires_at, attempts FROM verification_codes WHERE phone = ?",
+            (phone,),
+        ).fetchone()
+        if not row:
+            return False
+        c.execute("UPDATE verification_codes SET attempts = attempts + 1 WHERE phone = ?", (phone,))
+        if row["attempts"] >= 5:
+            return False
+        if row["expires_at"] < datetime.utcnow().isoformat():
+            return False
+        if row["code"] != code:
+            return False
+        cur = c.execute(
+            "DELETE FROM verification_codes WHERE phone = ? AND code = ?",
+            (phone, code),
+        )
+        return cur.rowcount > 0
+
+
 def delete_code(phone: str):
     with get_conn() as c:
         c.execute("DELETE FROM verification_codes WHERE phone = ?", (phone,))
