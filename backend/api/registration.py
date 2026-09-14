@@ -315,12 +315,19 @@ def email_send(req: EmailSendRequest, request: Request = None):
     reg_dal.save_code(email, code)
     result = otp_service.send_otp(email, code, channel="email")
     is_mock = bool(result.get("mock"))
+    is_beta = bool(result.get("beta"))
     delivered = bool(result.get("sent")) and not result.get("error")
     return {
         "sent": delivered or is_mock,
         "channel": "email",
         "mock": is_mock,
-        "code": result.get("code") if (is_mock and not IS_PRODUCTION) else None,
+        # FINAL 10/10 AUTH CANON CLOSURE (2026-09-14): mirrors the
+        # whatsapp/sms send endpoint below (`is_beta` in the response,
+        # `code` gated on `is_mock or is_beta`) — this was the actual root
+        # cause of `code: null` on the email channel in BETA_MODE, on top
+        # of otp_service.send_otp()'s own now-fixed mock:False falsehood.
+        "beta": is_beta,
+        "code": result.get("code") if ((is_mock or is_beta) and not IS_PRODUCTION) else None,
         "error": None if (delivered or is_mock) else (result.get("error") or "delivery_failed"),
     }
 
