@@ -1,5 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
@@ -86,6 +87,19 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
   const hasLivePoint = Number.isFinite(lat) && Number.isFinite(lng);
   const hasRoute = routePoints.length >= 2;
   const handleSummary = React.useCallback((summary) => setRouteSummary(summary || null), []);
+  const closeRoute = React.useCallback(() => setRouteOpen(false), []);
+
+  // A fullscreen Modal removes the regular navigation stack's Back target.
+  // Handle Android Back here, while the modal is open, so map never becomes a
+  // navigation trap if the system dispatch does not reach onRequestClose.
+  React.useEffect(() => {
+    if (!routeOpen || Platform.OS !== 'android') return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      closeRoute();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [closeRoute, routeOpen]);
 
   return (
     <>
@@ -155,10 +169,10 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
         visible={routeOpen}
         animationType="slide"
         presentationStyle="fullScreen"
-        onRequestClose={() => setRouteOpen(false)}
+        onRequestClose={closeRoute}
         testID="route-map-fullscreen-modal"
       >
-        <View style={[s.fullscreen, { backgroundColor: theme.bg }]} testID="route-map-fullscreen">
+        <SafeAreaView style={[s.fullscreen, { backgroundColor: theme.bg }]} edges={['top', 'left', 'right']} testID="route-map-fullscreen">
           <View style={[s.fullscreenHeader, { borderBottomColor: theme.border, backgroundColor: theme.card }]}>
             <View style={s.fullscreenTitleWrap}>
               <Text style={[s.fullscreenTitle, { color: theme.text }]}>{t('route_action')}</Text>
@@ -167,10 +181,12 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
               </Text>
             </View>
             <TouchableOpacity
-              onPress={() => setRouteOpen(false)}
+              onPress={closeRoute}
               style={[s.closeButton, { borderColor: theme.border }]}
               accessibilityRole="button"
               accessibilityLabel={t('close')}
+              accessibilityHint={t('back_short')}
+              hitSlop={8}
               testID="route-map-fullscreen-close"
             >
               <Feather name="x" size={22} color={theme.text} />
@@ -185,7 +201,7 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
               vehicle={vehicle}
             />
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
     </>
   );
@@ -222,7 +238,7 @@ const s = StyleSheet.create({
   fullscreenTitle: { fontSize: 18, fontWeight: '900' },
   fullscreenRoute: { marginTop: 3, fontSize: 12.5, fontWeight: '700' },
   closeButton: {
-    width: 44, height: 44, borderRadius: 22, borderWidth: 1,
+    width: 48, height: 48, borderRadius: 24, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
   fullscreenMap: { flex: 1, backgroundColor: '#EAF1ED' },
