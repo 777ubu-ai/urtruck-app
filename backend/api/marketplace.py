@@ -2018,7 +2018,7 @@ def my_dashboard(user=Depends(require_level(1))):
             "(SELECT m.created_at FROM chat_messages m WHERE m.room_id = d.chat_room_id "
             " ORDER BY m.created_at DESC LIMIT 1) AS last_message_at, "
             "(SELECT COUNT(*) FROM chat_messages m WHERE m.room_id = d.chat_room_id "
-            " AND m.is_read = 0 AND m.sender_id != ?) AS unread_count "
+            " AND m.is_read = 0 AND m.sender_id != ? AND m.sender_id != 'system') AS unread_count "
             "FROM deals d "
             "LEFT JOIN cargos c ON d.cargo_id = c.id "
             "LEFT JOIN trips t ON d.trip_id = t.id "

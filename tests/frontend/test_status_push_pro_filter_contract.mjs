@@ -15,7 +15,8 @@ test('foreground deal activity uses the Deals badge without a duplicate top bann
   assert.match(bottomNav, /computeDealsUnread/);
   assert.match(bottomNav, /setDealsUnread\(next\)/);
   assert.match(bottomNav, /bottom-nav-deals-badge/);
-  assert.match(bottomNav, /route\.name === 'Deals' \? Math\.max\(chatUnread, dealsUnread\) : 0/);
+  assert.match(bottomNav, /route\.name === 'Deals' \? dealsUnread : 0/);
+  assert.doesNotMatch(bottomNav, /Math\.max\(chatUnread, dealsUnread\)/);
   assert.doesNotMatch(bottomNav, /route\.name === 'Chats' \? chatUnread/);
   assert.doesNotMatch(bottomNav, /useToast/);
   assert.doesNotMatch(bottomNav, /новое событие/);

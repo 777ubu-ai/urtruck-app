@@ -837,13 +837,34 @@ def unread_count(user=Depends(require_level(1))):
     # событие живёт в общем счётчике только через notifications —
     # см. services/push_sender._compute_recipient_badge (тот же фильтр).
     uid = user["id"]
-    with get_conn() as c:
-        row = c.execute("""
+    # Только active deal rooms. Старые сообщения completed/cancelled/rejected
+    # сделок не должны возвращать phantom 9+ после relaunch. Комнаты без
+    # сделки (например, support) остаются валидным источником unread.
+    active_statuses = ("accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received")
+    placeholders = ",".join("?" for _ in active_statuses)
+    query = f"""
             SELECT COUNT(*) as cnt FROM chat_messages m
             JOIN chat_rooms r ON m.room_id = r.id
             WHERE (r.participant_1 = ? OR r.participant_2 = ?)
               AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0
-        """, (uid, uid, uid)).fetchone()
+              AND (
+                (r.cargo_id IS NULL AND r.trip_id IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM deals d0 WHERE d0.chat_room_id = r.id))
+                OR EXISTS (
+                  SELECT 1 FROM deals d
+                  WHERE d.status IN ({placeholders})
+                    AND (
+                      d.chat_room_id = r.id
+                      OR (d.chat_room_id IS NULL AND (
+                        (r.cargo_id IS NOT NULL AND d.cargo_id = r.cargo_id)
+                        OR (r.trip_id IS NOT NULL AND d.trip_id = r.trip_id)
+                      ))
+                    )
+                )
+              )
+        """
+    with get_conn() as c:
+        row = c.execute(query, (uid, uid, uid, *active_statuses)).fetchone()
     return {"unread": row["cnt"] if row else 0}
 
 

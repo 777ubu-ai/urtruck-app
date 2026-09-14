@@ -71,14 +71,14 @@ def _ids():
     return o, d
 
 
-def _mk_accepted_deal(cargo, owner, driver, room):
+def _mk_accepted_deal(cargo, owner, driver, room, status="accepted"):
     deal_id = "deal_" + uuid.uuid4().hex[:8]
     with get_conn() as c:
         c.execute(
             "INSERT INTO deals (id, cargo_id, trip_id, bid_id, shipper_id, driver_id, "
             "from_city, to_city, amount, status, chat_room_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (deal_id, cargo, None, "bid_" + uuid.uuid4().hex[:8], owner, driver,
-             "Almaty", "Astana", 1000, "accepted", room),
+             "Almaty", "Astana", 1000, status, room),
         )
     return deal_id
 
@@ -206,6 +206,21 @@ def test_inv7_idempotent_client_msg_id():
     send_message(SendMessageIn(room_id=room, text="dup", client_msg_id=cmid), user=_u(d))
     # владелец должен увидеть ровно 1 сообщение, не 2
     assert unread_count(user=_u(o))["unread"] == 1
+
+
+@pytest.mark.parametrize("status", ["completed", "cancelled", "rejected"])
+def test_closed_deal_room_cannot_create_phantom_badge(status):
+    """Closed/dead deal rooms are excluded from Bell and app-icon unread."""
+    o, d = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room, status=status)
+    # New messages are correctly rejected in a closed deal; emulate a stale
+    # historical row left by the old flow.
+    with get_conn() as c:
+        c.execute("INSERT INTO chat_messages (room_id, sender_id, text, is_read) VALUES (?,?,?,0)", (room, d, "stale"))
+    assert unread_count(user=_u(o))["unread"] == 0
+    assert push_sender._compute_recipient_badge(o) == 0
 
 
 def test_mine_flag_regression():
