@@ -395,9 +395,16 @@ def root():
     }
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+# §25 hardening (2026-09-14): a `@app.get("/health")` used to be defined
+# here too. It was PURE DEAD CODE: api/metrics.py's `metrics_router` (which
+# also defines GET /health) is include_router()'d above, before this point
+# in the file runs, and FastAPI/Starlette match routes in registration
+# order -- so metrics_router's handler has always been the one actually
+# serving every real /health request; this one never executed. Rather than
+# leave a second, silently-unreachable /health definition as a trap for the
+# next person who edits "the" health check and wonders why their change has
+# no effect, the DB-reachability check this handler was going to add lives
+# in api/metrics.py's health_detailed() instead -- the one that is live.
 
 
 @app.get("/api/v1/system/info")
