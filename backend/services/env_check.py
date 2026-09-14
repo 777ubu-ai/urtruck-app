@@ -132,6 +132,32 @@ def collect_issues() -> List[str]:
             "config in production; OTP delivery would fail for every user."
         )
 
+    # Database — main.py's own separate guard (top of main.py, runs before
+    # this module is even imported) already refuses ENV=test pointed at a
+    # server-like /home/ubuntu/... path. The gap this closes is the OPPOSITE
+    # direction: URTRUCK_ENV=production with a DB_PATH that is unset (fine —
+    # config.py's own default is a real persistent path) is NOT the risk;
+    # an explicitly-set DB_PATH pointing at ':memory:' (wiped the instant the
+    # process restarts) or a /tmp-style ephemeral path (wiped on reboot / by
+    # a tmp-cleaner cron) silently loses every driver/cargo/bid/message row
+    # with zero symptom until the next restart. Empty DB_PATH is left alone
+    # here -- config.py's own default already resolves it to a real path.
+    _db_path = os.getenv("DB_PATH", "")
+    if _db_path:
+        _db_path_norm = _db_path.strip()
+        if _db_path_norm in (":memory:", "file::memory:"):
+            issues.append(
+                "Database: DB_PATH is an in-memory SQLite database "
+                f"({_db_path_norm!r}) — every row is lost on process restart. "
+                "Set DB_PATH to a persistent path on disk."
+            )
+        elif _db_path_norm.startswith(("/tmp/", "/tmp", "/var/tmp/", "/var/tmp")):
+            issues.append(
+                f"Database: DB_PATH points into a temp directory ({_db_path_norm!r}) "
+                "— contents are wiped on reboot or by a tmp-cleaner cron. Set DB_PATH "
+                "to a persistent, backed-up path outside /tmp."
+            )
+
     # Storage — local FS in production loses uploads on redeploy.
     provider = (os.getenv("STORAGE_PROVIDER") or "local").lower()
     if provider == "local":
@@ -230,7 +256,7 @@ def enforce_production_env() -> None:
 
     issues = collect_issues()
     if not issues:
-        print("[env-check] production env OK (OTP/Storage/Admin/CORS all configured)", flush=True)
+        print("[env-check] production env OK (OTP/Database/Storage/Admin/CORS all configured)", flush=True)
         return
 
     print("[env-check] PRODUCTION CONFIG ISSUES:", flush=True)
