@@ -608,7 +608,10 @@ export default function MyTripsScreen({ navigation, route }) {
 
   const renderEmpty = () => {
     if (data?.authRequired) {
-      return <EmptyState title={t('gate_login')} description={t('gate_login_desc')} actionLabel={t('gate_enter')} onAction={() => navigation.navigate('Role')} />;
+      // FINAL 10/10 AUTH CANON CLOSURE (2026-09-14): route through the
+      // canonical AuthV2 entry, not the legacy 'Role' screen — see
+      // VerificationGate.js's handleProceed for the same rule.
+      return <EmptyState title={t('gate_login')} description={t('gate_login_desc')} actionLabel={t('gate_enter')} onAction={() => navigation.navigate('PhoneV2', { role: isDriver ? 'driver' : 'client' })} />;
     }
     if (isDriver) {
       if (tab === 'routes') return <EmptyState title={t('no_trips_yet')} description={t('no_trips_desc')} actionLabel={t('publish_route')} onAction={onPublishRoute} />;

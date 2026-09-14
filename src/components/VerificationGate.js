@@ -27,12 +27,6 @@ const getCopy = () => ({
   push_settings: { title: tGlobal('gate_login'), body: tGlobal('gate_push_desc') },
 });
 
-function pickTarget(currentLevel, requiredLevel) {
-  // Гость → Role (выбор роли). Phone-юзер → Reg (identity/driver).
-  if (currentLevel < 1) return 'Role';
-  return 'Reg';
-}
-
 export function useVerificationGate() {
   const { verificationLevel } = useAuth();
   const navigation = useNavigation();
@@ -58,23 +52,26 @@ export function useVerificationGate() {
 
   const handleProceed = useCallback(() => {
     if (!pending) return;
-    const { required, action, roleHint, resolve } = pending;
-    // Stage 32: если контекст знает роль (грузы→driver, рейсы→
-    // client) — идём СРАЗУ в Reg с этой ролью. Иначе — Role
-    // экран для выбора. Action='driver' оставляет совместимость
-    // со старыми callsite.
+    const { action, roleHint, resolve } = pending;
+    // FINAL 10/10 AUTH CANON CLOSURE (2026-09-14, owner decision): every
+    // guest-conversion gate leads to the ONE canonical entry point, PhoneV2
+    // (AuthV2) — never the legacy 'Role'/'Reg' phone-only screens directly.
+    // PhoneV2 itself offers phone/Google/Email/Apple and, for a brand-new
+    // identity, hands off to RoleV2 → ProfileV2. roleHint (grузы→driver,
+    // рейсы→client) still short-circuits the role CHOICE once identity is
+    // established — see PhoneV2Screen's route.params.role. Action='driver'
+    // kept for backward-compatible callsites.
     const inferredRole = roleHint || (action === 'driver' ? 'driver' : null);
-    const target = inferredRole ? 'Reg' : pickTarget(verificationLevel, required);
     setPending(null);
     resolve(false);
     setTimeout(() => {
       try {
-        navigation.navigate(target, inferredRole ? { role: inferredRole } : undefined);
+        navigation.navigate('PhoneV2', inferredRole ? { role: inferredRole } : undefined);
       } catch (e) {
         console.warn('[Gate] navigate failed:', e);
       }
     }, 150);
-  }, [pending, verificationLevel, navigation]);
+  }, [pending, navigation]);
 
   // Стабильный элемент — возвращается через useMemo
   const Gate = useMemo(() => (
