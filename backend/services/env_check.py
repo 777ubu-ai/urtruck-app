@@ -20,6 +20,7 @@ import os
 from typing import List
 
 from services.qa_token_guard import is_compromised_qa_agent_token
+from services import email_service
 
 
 def _is_unsafe_password(value: str) -> bool:
@@ -56,11 +57,26 @@ def collect_issues() -> List[str]:
         os.getenv("MOBIZON_API_KEY") or twilio_real
     )
     tg_real = bool(os.getenv("TELEGRAM_BOT_TOKEN"))
-    if not (wa_token and wa_phone) and not sms_real and not tg_real:
+    # Hardening B (2026-09-14): this used to check WhatsApp/SMS/Telegram only
+    # -- email (services/email_service.py, the China-reachable channel; see
+    # CLAUDE.md) was invisible to this guard entirely. Two distinct bugs
+    # resulted: (1) a deployment where email is the ONLY configured channel
+    # (a real, intended production shape -- WA/Telegram are blocked in China
+    # and international SMS to +86 is unreliable, per email_service.py's own
+    # module docstring) was wrongly flagged as "no real channel configured"
+    # and refused to boot, even though real OTP delivery worked fine; (2) a
+    # deployment where NOTHING is configured, including email, correctly
+    # still got a signal (this branch already fired due to WA/SMS/TG) but
+    # the message never named email as a valid fix, sending an operator
+    # trying to unblock a China-only deployment down the wrong path.
+    email_real = email_service.is_configured()
+    if not (wa_token and wa_phone) and not sms_real and not tg_real and not email_real:
         issues.append(
-            "OTP: no real channel configured (WhatsApp / SMS / Telegram all in MOCK). "
+            "OTP: no real channel configured (WhatsApp / SMS / Telegram / Email all in MOCK). "
             "Real users will not receive codes. Set WHATSAPP_TOKEN+WHATSAPP_PHONE_ID, "
-            "or SMS_PROVIDER=mobizon|twilio with credentials, or TELEGRAM_BOT_TOKEN."
+            "or SMS_PROVIDER=mobizon|twilio with credentials, or TELEGRAM_BOT_TOKEN, "
+            "or EMAIL_SMTP_HOST+EMAIL_SMTP_USER+EMAIL_SMTP_PASSWORD (email is the "
+            "recommended channel for China, where WhatsApp/Telegram are blocked)."
         )
 
     # Stage 22: BETA_MODE in production is a security hole — anyone
