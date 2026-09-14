@@ -45,6 +45,14 @@ def test_attachment_notifies_the_other_participant(monkeypatch):
     sent = []
     monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room_id: True)
     monkeypatch.setattr(deal_room.dr, "is_participant", lambda _room_id, _user_id: True)
+    # Third authorization step, added 2026-09-14 (P1 deal-room status gate).
+    # Stubbed for exactly the same reason room_exists/is_participant above
+    # are: this test isolates "a successful upload notifies the counterparty"
+    # and deliberately models no deals/chat_rooms rows (get_conn is the fake
+    # _Connection above). The gate's own behaviour — including that a
+    # cancelled/rejected deal must close this endpoint — is covered by
+    # tests/test_deal_room_status_gate.py.
+    monkeypatch.setattr(deal_room, "_assert_deal_room_open", lambda _room_id, _user_id: None)
     monkeypatch.setattr(deal_room.storage_service, "save_file", lambda *_args, **_kwargs: "/storage/document.pdf")
     monkeypatch.setattr(
         deal_room.dr,
