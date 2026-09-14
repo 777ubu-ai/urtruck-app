@@ -164,6 +164,13 @@ export default function TripDetail({ navigation, route }) {
   const [myActiveBid, setMyActiveBid] = React.useState(null);
   const [cancelling, setCancelling] = React.useState(false);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
+  // Deep-link audit P1 (2026-09-14): a shared /trips/{id} link (or push
+  // payload) with an unknown/removed id used to fall through silently —
+  // serverTrip stayed null forever and the screen rendered the empty
+  // placeholder `trip` object from the useMemo above with no explanation.
+  // Only fires for the deep-link entry (no rawTrip/serverTrip at all) — a
+  // normal in-app open always carries a trip object already.
+  const [tripNotFound, setTripNotFound] = React.useState(false);
   const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
     new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
   ), [t]);
@@ -265,7 +272,10 @@ export default function TripDetail({ navigation, route }) {
     if (!tid) return;
     // Свежий рейс с сервера — актуальная цена/статус + driver_rating/
     // driver_verified для карточки водителя (get_trip обогащает).
-    marketAPI.getTrip(tid).then(d => { if (d && !d.detail) setServerTrip(d); }).catch(() => {});
+    marketAPI.getTrip(tid).then(d => {
+      if (d && !d.detail) { setServerTrip(d); setTripNotFound(false); }
+      else if (!rawTrip) setTripNotFound(true);
+    }).catch(() => { if (!rawTrip) setTripNotFound(true); });
     loadBids();
     const seq = ++dealFetchSeq.current;
     // dealId (state) — авторитетнее routeDealId: если сделка создана уже
@@ -497,6 +507,21 @@ export default function TripDetail({ navigation, route }) {
   // shipper opens it (client-side flow).
   const v1Accent = v1AccentFor(role === 'client' || role === 'shipper' ? 'client' : 'driver');
   const insets = useSafeAreaInsets();
+
+  // Deep-link audit P1: invalid/removed trip id → explicit not-found state
+  // instead of the empty-fields placeholder card. All hooks above this
+  // point already ran unconditionally, so branching here is safe.
+  if (tripNotFound && !rawTrip) {
+    return (
+      <SafeAreaView style={[s.container, { backgroundColor: v1.bg, alignItems: 'center', justifyContent: 'center' }]} edges={['top']}>
+        <Text style={{ fontSize: 48 }}>🔍</Text>
+        <Text style={{ color: v1.text, fontSize: 15, fontWeight: '700', marginTop: 8 }}>{t('incomplete_data')}</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
+          <Text style={{ color: '#168759', fontSize: 14, fontWeight: '600' }}>← {t('back_short')}</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
