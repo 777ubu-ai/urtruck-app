@@ -56,8 +56,23 @@ print(f"[startup] ENV={_ENV_NAME} DB_PATH={_masked_db_path(_DB_PATH_RAW)}", flus
 # держим значением по умолчанию, чтобы мониторинг работал сразу после деплоя
 # без ручной правки .env на сервере. Через env SENTRY_DSN можно переопределить
 # (например, отключить, задав пустую строку).
+#
+# §24 hardening (2026-09-14): the committed default DSN used to apply
+# regardless of _ENV_NAME (computed above) — every `from main import app`
+# (every pytest run, every isolated/CI backend, every agent session in this
+# repo) sent real telemetry to the production Sentry project, and tagged it
+# environment="production" (also a hardcoded default, ignoring _ENV_NAME)
+# even when the process was actually ENV=test. That both floods the real
+# dashboard with CI/test noise and mislabels it as production, which is
+# actively misleading for anyone triaging real production errors there.
+# Fix: the committed default DSN is only used when _ENV_NAME is genuinely
+# "production"; test/dev/preview stay silent unless an operator explicitly
+# sets SENTRY_DSN (e.g. a staging project) — and in that opt-in case the
+# environment tag now defaults to the real _ENV_NAME instead of a hardcoded
+# "production", so events land correctly labeled either way.
 _DEFAULT_SENTRY_DSN = "https://18453143e7167ce08c98f2ce0d90bfd2@o4511743497273344.ingest.de.sentry.io/4511743527354448"
-_sentry_dsn = os.getenv("SENTRY_DSN", _DEFAULT_SENTRY_DSN).strip()
+_sentry_dsn_override = os.getenv("SENTRY_DSN", "").strip()
+_sentry_dsn = _sentry_dsn_override or (_DEFAULT_SENTRY_DSN if _ENV_NAME == "production" else "")
 if _sentry_dsn:
     try:
         import sentry_sdk
@@ -65,7 +80,7 @@ if _sentry_dsn:
 
         sentry_sdk.init(
             dsn=_sentry_dsn,
-            environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+            environment=os.getenv("SENTRY_ENVIRONMENT", _ENV_NAME),
             traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
             integrations=[FastApiIntegration()],
             send_default_pii=False,  # ИИН/ФИО водителей в Sentry не уходят
@@ -73,6 +88,8 @@ if _sentry_dsn:
         print("[sentry] initialized", flush=True)
     except Exception as e:
         print(f"[sentry] init failed (continuing without): {e}", flush=True)
+else:
+    print(f"[sentry] skipped (env={_ENV_NAME!r}, no SENTRY_DSN override)", flush=True)
 
 from typing import Optional
 
@@ -218,7 +235,18 @@ if storage_service.PROVIDER == "local":
             raise HTTPException(status_code=403, detail="Invalid or missing signature")
         if not full.is_file():
             raise HTTPException(status_code=404, detail="Not found")
-        return FileResponse(str(full))
+        # §21 hardening (2026-09-14): these are private per-user documents
+        # (driver license/selfie/vehicle docs, chat attachments) reached via
+        # a signature+exp query string, not an auth header — without an
+        # explicit no-store a shared/CDN cache sitting in front of this
+        # endpoint, or the requesting browser's own disk cache, could retain
+        # the bytes past the signature's TTL or hand them to a different
+        # client on a cache hit keyed loosely on the path. FileResponse sets
+        # no Cache-Control by default, so this must be explicit.
+        return FileResponse(
+            str(full),
+            headers={"Cache-Control": "private, no-store", "Pragma": "no-cache"},
+        )
 
 
 @app.on_event("startup")
