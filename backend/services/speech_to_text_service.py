@@ -122,12 +122,21 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
         status = exc.response.status_code if exc.response is not None else 0
         body = exc.response.text[:300] if exc.response is not None else ""
         print(f"[stt] OpenAI HTTP {status}: {body}", flush=True)
-        is_server_error = status >= 500
+        # Hardening B (2026-09-14): 429 (rate limit / quota exceeded) is a
+        # 4xx status but, unlike "this specific request/audio was rejected"
+        # 4xx codes (400 bad request, 401/403 bad key), it is transient —
+        # OpenAI's own guidance is to back off and retry. Previously only
+        # `status >= 500` was retryable, so a rate-limited request was
+        # reported to the user identically to "this recording can't be
+        # transcribed" (422, no retry hint) instead of "try again shortly"
+        # (503, retryable) — see test_12_5xx_is_retryable_4xx_is_not and its
+        # 429 sibling in test_stt_contract.py.
+        is_retryable = status >= 500 or status == 429
         raise SpeechToTextError(
-            "Распознавание голоса временно недоступно" if is_server_error else "Не удалось распознать голосовое сообщение",
+            "Распознавание голоса временно недоступно" if is_retryable else "Не удалось распознать голосовое сообщение",
             provider="openai",
-            retryable=is_server_error,
-            code="TRANSCRIPTION_TIMEOUT" if is_server_error else "TRANSCRIPTION_FAILED",
+            retryable=is_retryable,
+            code="TRANSCRIPTION_TIMEOUT" if is_retryable else "TRANSCRIPTION_FAILED",
         ) from exc
     except httpx.HTTPError as exc:
         raise SpeechToTextError("Сервис распознавания голоса недоступен", provider="openai", retryable=True, code="TRANSCRIPTION_UNAVAILABLE") from exc

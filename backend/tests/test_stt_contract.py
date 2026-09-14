@@ -464,6 +464,54 @@ def test_12_5xx_is_retryable_4xx_is_not(monkeypatch):
         os.unlink(path)
 
 
+def test_12b_429_rate_limit_is_retryable_not_treated_as_bad_audio(monkeypatch):
+    """Hardening B (2026-09-14): 429 (OpenAI rate limit / quota exceeded) is
+    a 4xx status code, but unlike '400 this request is malformed' or '401/403
+    bad key' it is TRANSIENT — OpenAI's own guidance is back off and retry.
+    Before this fix `is_server_error = status >= 500` alone decided
+    retryable, so a rate-limited transcription was reported to the driver
+    identically to 'this recording can't be transcribed' (422, no retry
+    hint) instead of 'try again shortly' (503, retryable) — see the sibling
+    test_12 for the 5xx/4xx baseline this extends."""
+    import httpx
+    from services import speech_to_text_service as stt_mod
+
+    def _raise_429():
+        request = httpx.Request("POST", stt_mod.OPENAI_TRANSCRIPT_URL)
+        response = httpx.Response(429, request=request, text="rate limit exceeded, account internals here")
+
+        class _R:
+            status_code = 429
+
+            def raise_for_status(self_inner):
+                raise httpx.HTTPStatusError("boom", request=request, response=response)
+
+        return _R()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake")
+    import tempfile
+    fd, path = tempfile.mkstemp(suffix=".m4a")
+    os.write(fd, b"\x00" * 16)
+    os.close(fd)
+    try:
+        monkeypatch.setattr(stt_mod.httpx, "post", lambda *a, **kw: _raise_429())
+        try:
+            stt_mod._transcribe_openai(path, filename="voice.m4a", api_key="sk-test-fake")
+            assert False, "must raise for a 429 response"
+        except stt_mod.SpeechToTextError as exc:
+            assert exc.retryable is True, "429 (rate limit) must be retryable, not reported as bad audio"
+            assert exc.code == "TRANSCRIPTION_TIMEOUT"
+            assert "rate limit exceeded" not in str(exc), "raw provider body must not leak"
+            assert "account internals" not in str(exc)
+    finally:
+        os.unlink(path)
+    # A 429-shaped SpeechToTextError (code=TRANSCRIPTION_TIMEOUT,
+    # retryable=True — exactly what the assertions above just confirmed
+    # _transcribe_openai constructs for a 429) reaches POST /chat/transcribe
+    # as 503, not 422 — already exercised end-to-end for this exact
+    # (code, retryable) shape by test_08's TRANSCRIPTION_TIMEOUT/503 case.
+
+
 # ───────────────────── 8. storage_service.is_owned_storage_ref ─────────────
 
 def test_13_is_owned_storage_ref_shapes():
