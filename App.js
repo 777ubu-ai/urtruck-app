@@ -162,6 +162,16 @@ function navigateFromUrl(navRef, url, role) {
       navRef.current.navigate('Chat', { dealId: id, role, action: params.action || null });
     } else if (kind === 'chats' && id) {
       navRef.current.navigate('Chat', { roomId: id, role });
+    } else if (kind === 'driver' && id) {
+      // Deep-link audit P1 (2026-09-14): ShareModal builds
+      // `${WEB_URL}/driver/{id}` for a shared driver profile (src/components/
+      // ShareModal.js), but this router never had a 'driver' branch — the
+      // link fell through silently. DriverDetail already tolerates a
+      // minimal `{ id }` object: it hydrates rating/vehicle from
+      // marketAPI.listDrivers() and shows a friendly placeholder while the
+      // id is unresolved (see DriverDetail.js `_profileMissing`/`!driver`
+      // guards), so no extra backend endpoint is needed here.
+      navRef.current.navigate('DriverDetail', { driver: { id, _server: true, _isDriver: true }, role });
     } else if (kind === 'chat' || kind === 'chats') {
       navRef.current.navigate('ChatsList');
     } else if (kind === 'profile') {
@@ -246,7 +256,7 @@ function AppInner() {
   const routeFromUrl = (url) => {
     if (!url) return;
     const parsed = parseNotifUrl(url);
-    const needsAuth = parsed && ['chats', 'chat', 'deals', 'cargos', 'trips', 'profile', 'notifications'].includes(parsed.kind);
+    const needsAuth = parsed && ['chats', 'chat', 'deals', 'cargos', 'trips', 'driver', 'profile', 'notifications'].includes(parsed.kind);
     if (!navReadyRef.current || !navRef.current || (needsAuth && !authedForDeepLink)) {
       pendingUrlRef.current = url;  // отложить
       return;
