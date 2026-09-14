@@ -624,10 +624,7 @@ export default function MyTripsScreen({ navigation, route }) {
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       {isDriver ? <DriverRouteBackdrop /> : null}
-      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={async () => {
-            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-            if (ok) navigation.navigate('PushFilter', { role });
-          }} />
+      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={() => navigation.navigate('Notifications', { role })} />
 
       <FlatList
         data={listData}

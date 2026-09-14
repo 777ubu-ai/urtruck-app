@@ -302,10 +302,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: v1.bg }]} edges={['top']} testID="border-screen-v2">
       {isDriver ? <DriverRouteBackdrop /> : null}
-      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="queue-root-header" onBellPress={async () => {
-        const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-        if (ok) navigation.navigate('PushFilter', { role });
-      }} />
+      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="queue-root-header" onBellPress={() => navigation.navigate('Notifications', { role })} />
 
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
         <Text style={[s.topTitle, s.scrollTitle, { color: theme.text }]} testID="queue-title">{L.title}</Text>

@@ -22,17 +22,13 @@ const loadTranslations = () => {
   return eval(`(${match[1].slice(0, -1)})`);
 };
 
-test('Bell always routes authenticated root screens to PushFilter', () => {
+test('Bell always routes root screens to the notification center', () => {
   for (const file of ROOT_SCREENS) {
     const source = read(file);
-    assert.match(source, /onBellPress=\{async \(\) => \{/,
-      `${file}: RootHeader must own Bell navigation`);
-    assert.match(source, /requireLevel\(LEVELS\.PHONE, 'push_settings', role\)/,
-      `${file}: Bell must preserve the phone-level gate`);
-    assert.match(source, /if \(ok\) navigation\.navigate\('PushFilter', \{ role \}\)/,
-      `${file}: Bell must enter PushFilter after the gate`);
-    assert.doesNotMatch(source, /onBellPress=[\s\S]{0,300}navigation\.navigate\('Notifications'/,
-      `${file}: Bell must not reopen the legacy notification center`);
+    assert.match(source, /onBellPress=\{\(\) => navigation\.navigate\('Notifications', \{ role \}\)\}/,
+      `${file}: Bell must open the notification center`);
+    assert.doesNotMatch(source, /onBellPress=[\s\S]{0,300}navigation\.navigate\('PushFilter'/,
+      `${file}: Bell must not open push settings`);
   }
 });
 
