@@ -346,9 +346,11 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
     # BETA bypass — для тестеров, когда включён BETA_MODE (на проде выключен).
     is_beta_login = BETA_MODE and req.code.strip() == BETA_OTP_CODE
     if not (is_beta_login or is_reviewer):
-        if not reg_dal.check_code(email, req.code):
+        # §23 hardening (2026-09-14): consume_code() validates AND deletes
+        # in one atomic transaction so a concurrent duplicate request for
+        # the same email/code cannot also pass -- see its docstring.
+        if not reg_dal.consume_code(email, req.code):
             raise HTTPException(status_code=400, detail="Неверный или истёкший код")
-        reg_dal.delete_code(email)
     guest_id = reg_dal.get_driver_by_token(req.guest_token) if req.guest_token else None
     try:
         driver = reg_dal.get_or_create_driver(email, upgrade_guest_id=guest_id)
@@ -412,9 +414,11 @@ def wa_verify(req: VerifyCodeRequest, request: Request = None):
     # ── BETA BYPASS ──────────────────────────────────────────
     is_beta_login = BETA_MODE and req.code.strip() == BETA_OTP_CODE
     if not is_beta_login:
-        if not reg_dal.check_code(phone_clean, req.code):
+        # §23 hardening (2026-09-14): consume_code() validates AND deletes
+        # in one atomic transaction so a concurrent duplicate request for
+        # the same phone/code cannot also pass -- see its docstring.
+        if not reg_dal.consume_code(phone_clean, req.code):
             raise HTTPException(status_code=400, detail="Неверный или истёкший код")
-        reg_dal.delete_code(phone_clean)
 
     # Если пришёл guest-токен — апгрейдим существующую сессию
     guest_id = None
