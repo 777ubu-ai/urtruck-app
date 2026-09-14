@@ -33,9 +33,9 @@ jobs:
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.8" >> "$GITHUB_ENV"
           # Must be strictly newer than the currently installed QA2 artifact.
-          # Phone QA2 currently has 211039996; keep the final RC strictly newer
-          # so the artifact installs as an update on both physical devices.
-          echo "URTRUCK_VERSION_CODE=211040001" >> "$GITHUB_ENV"
+          # Phone QA2 currently has 211040008; keep the next artifact strictly
+          # newer so it installs as a safe in-place update on both devices.
+          echo "URTRUCK_VERSION_CODE=211040009" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
 
       - name: Materialize QA2 native MapKit build contract
