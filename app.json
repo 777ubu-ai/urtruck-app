@@ -24,7 +24,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.urtruck.app",
-      "buildNumber": "27",
+      "buildNumber": "49",
       "usesAppleSignIn": true,
       "associatedDomains": [
         "applinks:urtruck.kz"
