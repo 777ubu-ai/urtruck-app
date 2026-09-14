@@ -1,8 +1,18 @@
-// PhoneV2Screen — canonical sign-in / registration entry.
+// PhoneV2Screen — the ONE canonical sign-in / registration entry (AuthV2).
 //
-// Product rule (22 Aug 2026): Google + Apple + Email are the only login
-// methods shown here. Phone is NOT an authentication tab anymore; it remains
-// a required logistics contact collected on ProfileV2 for email/social users.
+// FINAL 10/10 AUTH CANON CLOSURE (2026-09-14, owner decision): every guest
+// conversion path in the app (VerificationGate + every real bypass) leads
+// HERE, and only here. Four auth methods live under this one entry:
+//   1. Google      — always shown.
+//   2. Email + OTP — always shown.
+//   3. Apple       — iOS only, and only when provider/config are valid; see
+//      isApplePlatformSupported()/appleConfigStatus in ../../utils/socialAuth
+//      for the explicit platform/config gate (no more silent SHOW_APPLE_AUTH
+//      flag — a genuinely-unavailable Apple surfaces its exact reason).
+//   4. Phone + SMS/OTP — "Continue with phone" below hands off to the
+//      internal phone flow (route 'Login' → PremiumLoginScreen). That
+//      screen is an implementation detail of AuthV2, not a second, parallel
+//      auth architecture — nothing outside AuthV2 links to it directly.
 //
 // Google/Apple use Supabase OAuth only for identity proof. After the provider
 // returns, backend /register/social/verify validates the Supabase access token
@@ -38,6 +48,7 @@ import {
   AUTH_ERROR_CODES,
   clearPendingProvider,
   completeSocialAuth,
+  getAppleAuthGate,
   getPendingProviderState,
   isPendingProviderStale,
   isSocialAuthCallback,
@@ -52,7 +63,6 @@ import { WEB_URL } from '../../config/env';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const LEGAL_BASE = WEB_URL || 'https://urtruck.kz';
-const SHOW_APPLE_AUTH = false;
 
 // BUG FIX (logout → мгновенный молчаливый повторный вход): Linking.
 // getInitialURL() отдаёт URL, которым процесс приложения был запущен
@@ -148,12 +158,23 @@ export default function PhoneV2Screen({ navigation, route }) {
   // validation message, and vice versa.
   const [emailError, setEmailError] = useState(null);
   const [socialError, setSocialError] = useState(null);
+  // FINAL 10/10 AUTH CANON CLOSURE (2026-09-14): explicit platform/config
+  // gate for Apple — see getAppleAuthGate() in ../../utils/socialAuth for
+  // the full reason taxonomy. `reason` is exposed via a testID below so a
+  // hidden button can never silently be read as "Apple checked, PASS".
+  const [appleGate, setAppleGate] = useState({ show: false, reason: 'PENDING' });
   const finishingSocialRef = useRef(false);
   const role = route?.params?.role || null;
   const routedSocialUrl = route?.params?.socialAuthUrl || null;
 
   const emailOk = isValidEmail(email);
   const anyBusy = emailBusy || !!socialBusy;
+
+  useEffect(() => {
+    let mounted = true;
+    getAppleAuthGate().then((gate) => { if (mounted) setAppleGate(gate); });
+    return () => { mounted = false; };
+  }, []);
 
   // Восстанавливаем только живую OAuth-попытку. Legacy-строка и истёкшая
   // метаинформация означают прерванный flow и не должны блокировать Email.
@@ -383,7 +404,15 @@ export default function PhoneV2Screen({ navigation, route }) {
 
             <View style={s.socialStack} testID="auth-social-providers">
               <SocialButton provider="google" icon="google" testID="auth-google" />
-              {SHOW_APPLE_AUTH ? <SocialButton provider="apple" icon="apple" testID="auth-apple" /> : null}
+              {appleGate.show ? <SocialButton provider="apple" icon="apple" testID="auth-apple" /> : null}
+              {/* Exact BLOCKED reason for Apple, always queryable even when
+                  the button itself is absent — see getAppleAuthGate() for
+                  the taxonomy. A dynamic testID (unlike a bare custom DOM
+                  attribute on a RN View, which react-native-web does not
+                  reliably forward) is guaranteed to render, on every
+                  platform, so "Apple hidden" can never be read as "Apple
+                  PASS" from a screenshot alone. */}
+              <View testID={`auth-apple-gate-${appleGate.reason ? appleGate.reason.toLowerCase() : 'available'}`} />
             </View>
 
             {/* #P1-C: social error lives here, next to the buttons that
@@ -453,6 +482,22 @@ export default function PhoneV2Screen({ navigation, route }) {
               <Feather name="shield" size={14} color={brand.textSecondary} />
               <Text style={s.infoText}>{t('email_v2_send_hint')}</Text>
             </View>
+
+            {/* FINAL 10/10 AUTH CANON CLOSURE (2026-09-14, owner decision):
+                phone stays a first-class AuthV2 method, reached FROM here —
+                never the other way around. This is the only entry point
+                into the phone+SMS flow (route 'Login' → PremiumLoginScreen);
+                nothing outside AuthV2 links there directly anymore. */}
+            <Pressable
+              onPress={() => navigation.navigate('Login', role ? { role } : undefined)}
+              disabled={anyBusy}
+              accessibilityRole="button"
+              testID="phone-v2-continue-with-phone"
+              style={({ pressed }) => [s.phoneLinkRow, pressed && !anyBusy && { opacity: 0.7 }]}
+            >
+              <Feather name="phone" size={16} color={brand.textSecondary} />
+              <Text style={s.phoneLinkText}>{t('phone_v2_continue_with_phone')}</Text>
+            </Pressable>
           </View>
 
           <View style={s.consentBlock} testID="auth-legal-consent">
@@ -512,6 +557,8 @@ const makeStyles = (brand) => StyleSheet.create({
   ctaPrimaryText: { ...typography.button, color: brand.textOnPrimary },
   infoBlock: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 14 },
   infoText: { ...typography.caption, color: brand.textSecondary, textAlign: 'center', flexShrink: 1 },
+  phoneLinkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, marginTop: 4 },
+  phoneLinkText: { ...typography.bodySmall, color: brand.textSecondary, fontWeight: '600' },
   consentBlock: { width: '100%', maxWidth: 560, alignSelf: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: brand.border, marginTop: 22, paddingTop: 16, paddingHorizontal: 10, paddingBottom: 8 },
   consent: { ...typography.caption, color: brand.textSecondary, textAlign: 'center', lineHeight: 19 },
   consentLink: { color: brand.textPrimary, fontWeight: '700', textDecorationLine: 'underline' },
