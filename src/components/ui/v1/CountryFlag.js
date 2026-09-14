@@ -73,7 +73,7 @@ export default function CountryFlag({
           testID={testID}
           accessibilityLabel={label}
           accessibilityRole="image"
-          style={[s.roundRoot, { width: resolvedWidth, height: resolvedHeight }, style]}
+          style={[s.roundRoot, s.unknownRoot, { width: resolvedWidth, height: resolvedHeight }, style]}
         >
           <View pointerEvents="none" style={s.depthDisc} />
           <View style={s.roundShell}>
@@ -132,6 +132,7 @@ const s = StyleSheet.create({
     overflow: 'visible',
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 999,
   },
   depthDisc: {
     position: 'absolute',
@@ -174,6 +175,9 @@ const s = StyleSheet.create({
   },
   unknownRound: {
     margin: 1,
+    backgroundColor: '#DDE6E0',
+  },
+  unknownRoot: {
     backgroundColor: '#DDE6E0',
   },
   rectFrame: {
