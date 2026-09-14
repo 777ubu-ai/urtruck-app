@@ -6,18 +6,25 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useI18n } from '../../utils/useI18n';
 
 const SUCCESS_GREEN = '#168759';
 const SUCCESS_BG = 'rgba(34, 197, 94, 0.14)';
 
+// Группировка разрядов по языку интерфейса, а не по локали устройства.
+const NUMBER_LOCALE = { RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-US' };
+
 export default function PriceSavingsBadge({ listingPrice, bidPrice, currency = 'USD' }) {
+  const { t, lang } = useI18n();
   if (listingPrice == null || bidPrice == null) return null;
   const savings = Number(listingPrice) - Number(bidPrice);
   if (!(savings > 0)) return null;
   const cur = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : (currency + ' ');
   return (
     <View style={s.badge}>
-      <Text style={s.text}>↓ экономия {cur}{savings.toLocaleString('ru-RU')}</Text>
+      <Text style={s.text}>
+        ↓ {t('price_savings_label')} {cur}{savings.toLocaleString(NUMBER_LOCALE[lang] || 'en-US')}
+      </Text>
     </View>
   );
 }
