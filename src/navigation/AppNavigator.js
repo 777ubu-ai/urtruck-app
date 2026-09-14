@@ -181,7 +181,6 @@ export default function AppNavigator() {
         <Stack.Screen name="ProfileV2" component={ProfileV2Screen} />
         {/* Legacy экраны — оставлены только для qaPreview-галереи. */}
         {/* Premium flow */}
-        <Stack.Screen name="Auth" component={PremiumLoginScreen} />
         <Stack.Screen name="Login" component={PremiumLoginScreen} />
         <Stack.Screen name="Reg" component={PremiumRegisterScreen} />
         <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
@@ -243,7 +242,6 @@ export default function AppNavigator() {
           <Stack.Screen name="RoleV2" component={RoleScreenV2} />
           <Stack.Screen name="ProfileV2" component={ProfileV2Screen} />
           <Stack.Screen name="Role" component={RoleScreen} />
-          <Stack.Screen name="Auth" component={PremiumLoginScreen} />
           <Stack.Screen name="Login" component={PremiumLoginScreen} />
           <Stack.Screen name="Reg" component={PremiumRegisterScreen} />
           <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
