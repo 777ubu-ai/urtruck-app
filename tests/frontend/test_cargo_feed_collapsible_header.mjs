@@ -39,11 +39,11 @@ test('favorites quick filter uses the same saved cargo ids as card bookmarks', (
 });
 
 test('cargo cards stay compact so collapsing the controls actually increases visible work', () => {
-  // Canon density: route city 12/16 avoids wrapping routes under the fixed
-  // price rail, while the list spacing stays compact on the screen.
+  // Canon density: one clamped, stronger 16/20 route line stays beside the
+  // fixed price rail while the list spacing stays compact on the screen.
   // no legacy expanded-card fork.
   const routeLine = fs.readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
-  assert.match(routeLine, /fontSize:\s*12,\s*lineHeight:\s*16/);
-  assert.match(src, /cardSpacing: \{ marginHorizontal: 18, marginBottom: 7 \}/);
+  assert.match(routeLine, /fontSize:\s*16,\s*lineHeight:\s*20/);
+  assert.match(src, /cardSpacing: \{ marginHorizontal: 18, marginBottom: 8 \}/);
   assert.doesNotMatch(src, /cardExpanded/);
 });

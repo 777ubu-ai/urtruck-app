@@ -108,7 +108,7 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
         to: display.to,
         fromFlag: item.fromCountry || null,
         toFlag: item.toCountry || null,
-        numberOfLines: 2,
+        numberOfLines: 1,
       }}
       price={display.price}
       priceMeta={copy.perTrip}
@@ -701,7 +701,7 @@ const styles = StyleSheet.create({
   // Design v1 Commit 3: the card itself is the canonical MarketplaceCard
   // (radius 16, border, no shadow, no green rail) — the screen only keeps
   // its list spacing.
-  cardSpacing: { marginHorizontal: 18, marginBottom: 7 },
+  cardSpacing: { marginHorizontal: 18, marginBottom: 8 },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
   emptyTitle: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
   retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center' },

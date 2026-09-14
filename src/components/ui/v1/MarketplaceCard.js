@@ -9,8 +9,8 @@ import BookmarkButton from './BookmarkButton';
 import StatusPill from './StatusPill';
 import { useV1Colors, useDriverCeramicColors, useV1Typography } from '../../../theme/designV1';
 
-// 108dp protects a complete price/currency; the route renderer owns the
-// complementary compact type scale for 390dp phones.
+// The fixed price rail keeps amounts/dates readable without pushing the route
+// onto a second line on compact phones.
 const PRICE_COLUMN_WIDTH = 108;
 
 export default function MarketplaceCard({
@@ -80,11 +80,11 @@ export default function MarketplaceCard({
         {chevron ? <Feather name="chevron-right" size={18} color={colors.textDim} style={s.chevron} /> : null}
       </View>
 
-      {firstMeta ? <Text style={[s.meta, { color: palette.textMuted }]} numberOfLines={1}>{firstMeta}</Text> : null}
-      {body || status || rightMeta || bookmark || unread > 0 ? (
+      {firstMeta || body || status || rightMeta || bookmark || unread > 0 ? (
         <View style={s.bottomRow}>
           <View style={s.bottomText}>
-            {body ? <Text style={[s.description, { color: palette.textMuted }]} numberOfLines={1}>{body}</Text> : null}
+            {firstMeta ? <Text style={[s.meta, { color: palette.textMuted }]} numberOfLines={1}>{firstMeta}</Text> : null}
+            {body ? <Text style={[s.description, { color: palette.textMuted }]} numberOfLines={2} ellipsizeMode="tail">{body}</Text> : null}
             {status ? <StatusPill status={status.key} label={status.label} color={status.color} testID={status.testID} /> : null}
           </View>
           {rightMeta ? <Text style={[s.rightMeta, { color: palette.textMuted }]} numberOfLines={1}>{rightMeta}</Text> : null}
@@ -98,7 +98,7 @@ export default function MarketplaceCard({
 }
 
 const s = StyleSheet.create({
-  card: { padding: 12, minHeight: 108, borderRadius: 15 },
+  card: { padding: 14, minHeight: 110, borderRadius: 20 },
   dimmed: { opacity: 0.62 },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 0 },
   routeText: { flex: 1, minWidth: 0, fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.15 },
@@ -106,10 +106,10 @@ const s = StyleSheet.create({
   price: { textAlign: 'right', fontVariant: ['tabular-nums'], letterSpacing: -0.1 },
   priceMeta: { fontSize: 12, lineHeight: 16, fontWeight: '600', marginTop: 1, textAlign: 'right' },
   chevron: { marginLeft: 4, marginTop: 1, flexShrink: 0 },
-  meta: { marginTop: 6, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  bottomRow: { flexDirection: 'row', alignItems: 'center', minHeight: 40, marginTop: 2, gap: 8 },
+  meta: { fontSize: 12, lineHeight: 16, fontWeight: '600' },
+  bottomRow: { flexDirection: 'row', alignItems: 'center', minHeight: 38, marginTop: 3, gap: 8 },
   bottomText: { flex: 1, minWidth: 0, justifyContent: 'center' },
-  description: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  description: { fontSize: 13, lineHeight: 17, fontWeight: '500' },
   rightMeta: { fontSize: 12, lineHeight: 16, fontWeight: '600', flexShrink: 0 },
   unread: { minWidth: 19, height: 19, paddingHorizontal: 5, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   unreadText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },

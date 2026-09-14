@@ -21,8 +21,8 @@ export default function RouteLine({ from, to, fromFlag, toFlag, numberOfLines = 
 const s = StyleSheet.create({
   row: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' },
   flag: { marginRight: 3, flexShrink: 0 },
-  // 12sp is the CJK readability floor and keeps long international routes on
-  // one line beside a complete price on the 390dp compact card.
-  city: { flexShrink: 1, minWidth: 0, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: -0.05 },
+  // A single clamped row makes cities the primary signal while the fixed
+  // price rail in MarketplaceCard keeps the card compact.
+  city: { flexShrink: 1, minWidth: 0, fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.15 },
   arrow: { marginHorizontal: 4, flexShrink: 0 },
 });
