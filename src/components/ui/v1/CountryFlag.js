@@ -1,10 +1,35 @@
 // CountryFlag — the single, offline country-flag renderer for UrTruck.
 // SVG artwork comes from `country-flag-icons` and is bundled with the app.
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { SvgXml } from 'react-native-svg';
-import * as FLAG_XML from 'country-flag-icons/string/3x2';
+import { View, StyleSheet, Image, Platform } from 'react-native';
+import * as ReactNativeSvg from 'react-native-svg';
+import * as FLAG_XML from 'country-flag-icons/string/1x1';
 import { countryCode } from '../../../utils/countryFlags';
+
+const { SvgXml, SvgUri } = ReactNativeSvg;
+
+// `country-flag-icons` is the bundled ISO source for every country. Its KZ
+// artwork, however, omits the eagle and reduces the ornament to blocks. Keep
+// one vendored, square official KZ SVG so the round badge retains the complete
+// national symbol on every platform. `require` is deliberately guarded: the
+// Node visual-contract tests do not have Metro's asset loader.
+const KZ_FULL_FLAG_ASSET = typeof require === 'function'
+  ? require('../../../assets/flags/kz.svg')
+  : null;
+const KZ_FULL_FLAG_URI = (() => {
+  try {
+    if (!KZ_FULL_FLAG_ASSET) return null;
+    if (Platform.OS === 'web') {
+      const { resolveAssetUri } = require('react-native-svg/lib/module/lib/resolveAssetUri');
+      return resolveAssetUri(KZ_FULL_FLAG_ASSET)?.uri || null;
+    }
+    return typeof Image.resolveAssetSource === 'function'
+      ? Image.resolveAssetSource(KZ_FULL_FLAG_ASSET)?.uri || null
+      : null;
+  } catch {
+    return null;
+  }
+})();
 
 // The package exposes the complete standards-based SVG set. Keeping the
 // namespace bundled makes every country picker deterministic and offline.
@@ -39,12 +64,13 @@ const numericSize = (value, fallback = 24) => {
  * Round mode intentionally uses three separate layers:
  *  1) a soft offset depth disc (visible on web/iOS/Android),
  *  2) a clean white circular shell,
- *  3) an inner SVG crop.
+ *  3) a square SVG artwork layer.
  *
  * Keeping the shadow outside the clipped SVG fixes the old issue where a
  * round flag could lose its depth because `overflow: hidden` clipped the
- * shadow on iOS/web. The result matches the product reference: circular,
- * white rim, compact depth, no emoji and no rectangular country chips.
+ * shadow on iOS/web. Square ISO artwork preserves full symbols inside the
+ * circular badge: no emoji, no rectangular country chips and no stretched
+ * flags.
  */
 export default function CountryFlag({
   code,
@@ -107,6 +133,7 @@ export default function CountryFlag({
   }
 
   const rim = Math.max(1, Math.round(resolvedWidth * 0.055));
+  const useFullKzArtwork = normalized === 'KZ' && KZ_FULL_FLAG_URI;
 
   return (
     <View
@@ -118,7 +145,11 @@ export default function CountryFlag({
       <View pointerEvents="none" style={s.depthDisc} />
       <View style={s.roundShell}>
         <View style={[s.roundClip, { margin: rim }]}>
-          <SvgXml xml={xml} width="100%" height="100%" preserveAspectRatio="xMidYMid slice" />
+          {useFullKzArtwork ? (
+            <SvgUri uri={KZ_FULL_FLAG_URI} width="100%" height="100%" />
+          ) : (
+            <SvgXml xml={xml} width="100%" height="100%" />
+          )}
         </View>
         <View pointerEvents="none" style={s.highlightRing} />
       </View>
