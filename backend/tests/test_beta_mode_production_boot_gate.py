@@ -48,9 +48,11 @@ def _reload_config():
 
 @pytest.fixture()
 def clean_env(monkeypatch):
-    """Isolate just the vars this file cares about; leave everything else
-    (DB_PATH, etc.) untouched -- collect_issues()/config.py only read
-    os.getenv."""
+    """Isolate the vars this file cares about -- collect_issues()/config.py
+    only read os.getenv. Hardening E (2026-09-14): DB_PATH is included (and
+    saved/restored) too, since collect_issues() grew a DB_PATH ephemeral-
+    storage check and this file's "boots clean" cases must not depend on
+    whatever DB_PATH the ambient test-runner environment happens to have."""
     keys = [
         "BETA_MODE", "URTRUCK_ENV", "ENV",
         "REVIEWER_DEMO_CODE", "REVIEWER_DEMO_EMAIL",
@@ -59,7 +61,7 @@ def clean_env(monkeypatch):
         "FILE_SIGNING_KEY", "STORAGE_PROVIDER", "SUPABASE_URL",
         "SUPABASE_SERVICE_KEY", "S3_BUCKET", "URTRUCK_ADMIN_PASS",
         "ADMIN_PASSWORD", "URTRUCK_API_KEY", "URTRUCK_ADMIN_TOKEN",
-        "QA_AGENT_TOKEN", "CORS_ORIGINS",
+        "QA_AGENT_TOKEN", "CORS_ORIGINS", "DB_PATH",
     ]
     saved = {k: os.environ.get(k) for k in keys}
     for k in keys:
@@ -87,6 +89,7 @@ def _set_otherwise_safe_production_env():
     os.environ["URTRUCK_ADMIN_TOKEN"] = "a-genuinely-random-admin-token-4e2"
     os.environ["CORS_ORIGINS"] = "https://urtruck.kz"
     os.environ["REVIEWER_DEMO_CODE"] = "9d4e7a21"
+    os.environ["DB_PATH"] = "/home/ubuntu/urtruck/backend/database/security.db"
     os.environ.pop("QA_AGENT_TOKEN", None)
 
 
