@@ -100,6 +100,7 @@ const COPY = {
     loadingDate: 'Загрузка', deliveryDate: 'Доставка', expandMap: 'Развернуть карту', collapseMap: 'Свернуть карту', tripNumber: 'Рейс №', progress: 'Прогресс маршрута', totalDistance: 'Общее расстояние', drivingTime: 'Время движения', passed: 'Пройдено', lastGps: 'Последнее GPS', weatherNow: 'Погода сейчас', weatherAhead: 'Впереди по маршруту', weatherUnavailable: 'Погода временно недоступна', nextPoint: 'Следующая точка', nextPointUnavailable: 'Данные о следующей точке недоступны',
     tripFinished: 'Сделка завершена', tripDelivered: 'Груз доставлен', awaitingReceiptStatus: 'Ожидает подтверждения', tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя', tripAwaitingReceiptHint: 'Водитель отметил груз как доставленный. Сделка завершится после подтверждения получения.', tripReceived: 'Получение подтверждено', mapFinishedHint: 'Live GPS для этого рейса больше не используется.',
     jumpLatest: 'Новые сообщения', statuses: 'Статусы и история',
+    dealNotFound: 'Сделка не найдена или недоступна', backToDeals: 'К сделкам',
   },
   EN: {
     messages: 'Messages',
@@ -117,6 +118,7 @@ const COPY = {
     loadingDate: 'Pickup', deliveryDate: 'Delivery', expandMap: 'Expand map', collapseMap: 'Collapse map', tripNumber: 'Trip №', progress: 'Route progress', totalDistance: 'Total distance', drivingTime: 'Driving time', passed: 'Passed', lastGps: 'Last GPS', weatherNow: 'Weather now', weatherAhead: 'Ahead on route', weatherUnavailable: 'Weather temporarily unavailable', nextPoint: 'Next point', nextPointUnavailable: 'Next point data unavailable',
     tripFinished: 'Deal completed', tripDelivered: 'Cargo delivered', awaitingReceiptStatus: 'Awaiting confirmation', tripAwaitingReceipt: 'Awaiting shipper confirmation', tripAwaitingReceiptHint: 'The driver marked the cargo as delivered. The deal is completed after receipt is confirmed.', tripReceived: 'Receipt confirmed', mapFinishedHint: 'Live GPS is no longer used for this trip.',
     jumpLatest: 'New messages', statuses: 'Status & history',
+    dealNotFound: 'Deal not found or unavailable', backToDeals: 'Back to deals',
   },
   ZH: {
     messages: '消息',
@@ -134,6 +136,7 @@ const COPY = {
     loadingDate: '装货', deliveryDate: '送达', expandMap: '展开地图', collapseMap: '收起地图', tripNumber: '行程 №', progress: '路线进度', totalDistance: '总距离', drivingTime: '行驶时间', passed: '已行驶', lastGps: '最后 GPS', weatherNow: '当前天气', weatherAhead: '路线前方', weatherUnavailable: '天气暂时不可用', nextPoint: '下一站', nextPointUnavailable: '暂无下一站数据',
     tripFinished: '交易已完成', tripDelivered: '货物已送达', awaitingReceiptStatus: '等待确认', tripAwaitingReceipt: '等待货主确认收货', tripAwaitingReceiptHint: '司机已标记货物送达。货主确认收货后，交易才能完成。', tripReceived: '已确认收货', mapFinishedHint: '本次运输已停止实时 GPS。',
     jumpLatest: '新消息', statuses: '状态与历史',
+    dealNotFound: '交易未找到或无法访问', backToDeals: '返回交易列表',
   },
   KK: {
     messages: 'Хабарламалар',
@@ -151,6 +154,7 @@ const COPY = {
     loadingDate: 'Тиеу', deliveryDate: 'Жеткізу', expandMap: 'Картаны жаю', collapseMap: 'Картаны жию', tripNumber: 'Рейс №', progress: 'Бағыт прогресі', totalDistance: 'Жалпы қашықтық', drivingTime: 'Жолдағы уақыт', passed: 'Өтілді', lastGps: 'Соңғы GPS', weatherNow: 'Қазіргі ауа райы', weatherAhead: 'Бағыт бойынша алда', weatherUnavailable: 'Ауа райы уақытша қолжетімсіз', nextPoint: 'Келесі нүкте', nextPointUnavailable: 'Келесі нүкте дерегі жоқ',
     tripFinished: 'Мәміле аяқталды', tripDelivered: 'Жүк жеткізілді', awaitingReceiptStatus: 'Растауды күтуде', tripAwaitingReceipt: 'Жүк иесінің қабылдауды растауын күтеміз', tripAwaitingReceiptHint: 'Жүргізуші жүкті жеткізілді деп белгіледі. Жүк иесі қабылдауды растағаннан кейін мәміле аяқталады.', tripReceived: 'Қабылдау расталды', mapFinishedHint: 'Бұл рейсте live GPS енді қолданылмайды.',
     jumpLatest: 'Жаңа хабарламалар', statuses: 'Мәртебе және тарих',
+    dealNotFound: 'Мәміле табылмады немесе қолжетімсіз', backToDeals: 'Мәмілелерге',
   },
 };
 
@@ -273,6 +277,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const [dealId, setDealId] = React.useState(params.dealId || null);
   const [roomId, setRoomId] = React.useState(params.roomId || null);
+  // Deep-link audit P1 (2026-09-14): a `/deals/{id}` or `/chats/{id}` link
+  // whose id doesn't resolve to one of the current user's own rooms (foreign
+  // id, typo, since-deleted deal) used to fall through silently — dealId/
+  // roomId stayed null forever and this rendered a blank-looking chat shell
+  // with no messages and no way to tell it apart from a real empty deal.
+  // Captured once at mount: only an EXPLICIT deep-link target (dealId or
+  // roomId passed in) should ever trip the not-found state below — the
+  // legitimate partner-only/support-chat entry (no target at all) is
+  // handled separately by ChatScreenV2's blockedPartnerEntry redirect.
+  const hadExplicitTargetRef = React.useRef(Boolean(params.dealId || params.roomId));
   const [deal, setDeal] = React.useState(() => ({
     status: params.dealStatus || 'accepted',
     from_city: params.fromCity || null,
@@ -1604,6 +1618,27 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               <View style={[s.center, { backgroundColor: colors.bg }]}>
                 <ActivityIndicator color="#168759" />
                 <Text style={[s.loadingText, { color: colors.textMuted }]}>{ui.loading}</Text>
+              </View>
+            ) : !dealId && hadExplicitTargetRef.current ? (
+              // Deep-link audit P1: the room/deal-resolution effect below
+              // finished (dealLoading is false) but never found a matching
+              // room for the id this screen was explicitly opened with —
+              // foreign id, typo, or a since-deleted deal. Fail closed with
+              // a clear state instead of a blank chat shell; no other
+              // user's data is ever fetched (chatAPI.rooms() only returns
+              // rooms this user participates in), so this is a UX fix, not
+              // an access-control one — access is already enforced server-
+              // side (chat.py/deal_room.py return 403/404 to a direct API
+              // call for a room the caller isn't a participant of).
+              <View style={[s.center, { backgroundColor: colors.bg }]} testID="deal-chat-not-found">
+                <Text style={{ fontSize: 40 }}>🔍</Text>
+                <Text style={[s.loadingText, { color: colors.textMuted, marginTop: 8 }]}>{ui.dealNotFound}</Text>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('Deals', { role: params.role })}
+                  style={{ marginTop: 14 }}
+                >
+                  <Text style={{ color: '#168759', fontSize: 14, fontWeight: '700' }}>← {ui.backToDeals}</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <>
