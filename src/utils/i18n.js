@@ -406,6 +406,10 @@ const translations = {
     deal_event_status_accepted: '🤝 Сделка подтверждена',
     tab_my_work: 'Моя работа',
     tab_profile: 'Профиль',
+    // a11y-подпись кнопки ☰ (HeaderMenuButton). Кнопка стоит в шапке ВСЕХ
+    // основных вкладок обеих ролей, а подпись была захардкожена по-русски —
+    // screen reader читал русский текст на ZH/EN/KK-экранах.
+    header_menu_a11y: 'Профиль и меню',
     // Filter modal
     filter_title: 'Фильтры',
     filter_rating: 'РЕЙТИНГ',
@@ -936,6 +940,9 @@ const translations = {
     cancel_bid_confirm: 'Отозвать своё предложение?',
     reject_btn: 'Отклонить',
     bid_updated: 'Предложение обновлено',
+    // Бейдж экономии в списке ставок (CargoDetail / TripDetail). Текст был
+    // захардкожен по-русски в PriceSavingsBadge.js и тёк на ZH/EN/KK-экраны.
+    price_savings_label: 'экономия',
     bid_switched_to_edit: 'У вас уже есть ставка — меняем её',
     my_bid_label: 'Моя ставка',
     my_bid_status_pending: 'Ожидает ответа второй стороны',
@@ -2594,6 +2601,7 @@ const translations = {
     add_name: 'Атыңызды қосыңыз',role_shipper: 'Жүк иесі',
     theme_label: 'Тема', theme_light: 'Жарық', theme_dark: 'Қараңғы',
     tab_feed: 'Жүктер', tab_feed_client: 'Машиналар', tab_my_work: 'Менің жұмысым', tab_profile: 'Профиль', tab_queue: 'Кезек',
+    header_menu_a11y: 'Профиль және мәзір',
     chat_title: 'Мәмілелер',
     chat_no_messages: 'Хабарлама жоқ',
     chat_search_placeholder: 'Іздеу: аты, компания, бағыт, жүк, мемлекеттік нөмір',
@@ -2786,7 +2794,7 @@ const translations = {
     vsb_rejected_title: 'Бас тартылды', vsb_rejected_body: 'Тіркеу формасын ашып, құжаттар мен фотоны түзетіп, өтінімді қайта жіберіңіз.',
     bid_cancelled: 'Тоқтатылды', edit_bid: 'Өзгерту', give_discount: 'Жеңілдік беру', cancel_bid: 'Тоқтату', withdraw_bid_link: 'Ставканы кері қайтару',
     cancel_bid_confirm: 'Өз ұсынысыңызды кері қайтарасыз ба?', reject_btn: 'Бас тарту',
-    bid_updated: 'Ұсыныс жаңартылды', bid_switched_to_edit: 'Ставкаңыз бар — өзгертеміз', my_bid_label: 'Менің ұсынысым', my_bid_status_pending: 'Екінші жақтың жауабын күтуде', my_bid_status_countered: 'Қарсы ұсыныс келді', edit_bid_short: 'Өзгерту', open_chat: 'Чат', bid_discount_sent: 'Жеңілдік жіберілді',
+    bid_updated: 'Ұсыныс жаңартылды', price_savings_label: 'үнемдеу', bid_switched_to_edit: 'Ставкаңыз бар — өзгертеміз', my_bid_label: 'Менің ұсынысым', my_bid_status_pending: 'Екінші жақтың жауабын күтуде', my_bid_status_countered: 'Қарсы ұсыныс келді', edit_bid_short: 'Өзгерту', open_chat: 'Чат', bid_discount_sent: 'Жеңілдік жіберілді',
     bid_cancelled_toast: 'Ұсыныс тоқтатылды', bid_rejected_toast: 'Ұсыныс бас тартылды',
     cancel_failed: 'Ұсынысты тоқтату мүмкін болмады', reject_failed: 'Ұсынысты бас тарту мүмкін болмады',
     bid_not_pending: 'Әрекет қолжетімсіз: ұсыныстың мәртебесі өзгерді',
@@ -4451,6 +4459,7 @@ const translations = {
     add_name: '添加您的姓名',role_shipper: '货主',
     theme_label: '主题', theme_light: '浅色', theme_dark: '深色',
     tab_feed: '货物', tab_feed_client: '车辆', tab_my_work: '我的工作', tab_profile: '个人资料', tab_queue: '排队',
+    header_menu_a11y: '个人资料与菜单',
     chat_title: '交易',
     chat_no_messages: '暂无消息',
     chat_search_placeholder: '搜索：姓名、公司、路线、货物、车牌',
@@ -4643,7 +4652,7 @@ const translations = {
     vsb_rejected_title: '已拒绝', vsb_rejected_body: '请打开注册表单，修正证件或照片后重新提交。',
     bid_cancelled: '已撤销', edit_bid: '修改', give_discount: '让价', cancel_bid: '撤销', withdraw_bid_link: '撤回报价',
     cancel_bid_confirm: '撤回您的报价吗？', reject_btn: '拒绝',
-    bid_updated: '报价已更新', bid_switched_to_edit: '您已出价 — 将进行修改', my_bid_label: '我的出价', my_bid_status_pending: '等待对方回复', my_bid_status_countered: '对方已还价', edit_bid_short: '修改', open_chat: '聊天', bid_discount_sent: '让价已发送',
+    bid_updated: '报价已更新', price_savings_label: '节省', bid_switched_to_edit: '您已出价 — 将进行修改', my_bid_label: '我的出价', my_bid_status_pending: '等待对方回复', my_bid_status_countered: '对方已还价', edit_bid_short: '修改', open_chat: '聊天', bid_discount_sent: '让价已发送',
     bid_cancelled_toast: '报价已撤销', bid_rejected_toast: '报价已拒绝',
     cancel_failed: '撤销报价失败', reject_failed: '拒绝报价失败',
     bid_not_pending: '操作不可用：报价状态已变更',
@@ -6128,6 +6137,7 @@ const translations = {
 
 
     tab_feed: 'Cargos', tab_feed_client: 'Trucks', tab_my_work: 'My work', tab_profile: 'Profile', tab_queue: 'Queue',
+    header_menu_a11y: 'Profile and menu',
     chat_title: 'Deals',
     chat_no_messages: 'No messages',
     chat_search_placeholder: 'Search: name, company, route, cargo, plate',
@@ -6550,7 +6560,7 @@ trip_route: 'Route', trip_dates: 'Dates', trip_transport: 'Transport',
     vsb_rejected_title: 'Rejected', vsb_rejected_body: 'Open the registration form, fix the documents or photos and submit again.',
     bid_cancelled: 'Cancelled', edit_bid: 'Edit', give_discount: 'Give discount', cancel_bid: 'Cancel', withdraw_bid_link: 'Withdraw bid',
     cancel_bid_confirm: 'Withdraw your bid?', reject_btn: 'Reject',
-    bid_updated: 'Bid updated', bid_switched_to_edit: 'You already have a bid — editing it', my_bid_label: 'My bid', my_bid_status_pending: 'Waiting for the other side', my_bid_status_countered: 'Counter-offer received', edit_bid_short: 'Edit',bid_discount_sent: 'Discount sent',
+    bid_updated: 'Bid updated', price_savings_label: 'saved', bid_switched_to_edit: 'You already have a bid — editing it', my_bid_label: 'My bid', my_bid_status_pending: 'Waiting for the other side', my_bid_status_countered: 'Counter-offer received', edit_bid_short: 'Edit',bid_discount_sent: 'Discount sent',
     bid_cancelled_toast: 'Bid cancelled', bid_rejected_toast: 'Bid rejected',
     cancel_failed: 'Failed to cancel bid', reject_failed: 'Failed to reject bid',
     bid_not_pending: 'Action unavailable: bid status changed',
