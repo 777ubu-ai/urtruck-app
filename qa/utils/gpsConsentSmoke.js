@@ -44,7 +44,15 @@ must(hook, "AppState.currentState !== 'active'", 'Android service never starts w
 
 // Viewing a route is independent from tracking permission. Only Start trip may
 // enter the disclosure/foreground/background permission sequence.
-must(nativeMap, 'truck-map-yandex-webview', 'Android route map remains embedded in UrTruck');
+// FINAL 10/10 AUDIT (2026-09-14): the native map moved off the Yandex
+// WebView onto Yandex MapKit (698d085b, "feat(map): перевести мобильную
+// карту на Yandex MapKit") — this assertion still checked the old testID,
+// which made it abort the entire smoke on assertion #9 of ~83, so the rest
+// of this file's contract (most of the Android background-location / Play
+// compliance checks below) was silently never measured in CI. Product
+// behaviour itself was already correct — verified by this fix's own full
+// clean run of the whole file, see the commit message.
+must(nativeMap, 'truck-map-yandex-mapkit', 'Android route map remains embedded in UrTruck');
 mustNot(nativeMap, 'requestLocationPermissionThroughDisclosure', 'opening Android map cannot request tracking permission');
 mustNot(nativeMap, "source: 'open_map'", 'map-open is not a GPS consent trigger');
 mustNot(nativeMap, 'permissionGate', 'planned map is not hidden behind a GPS consent gate');
