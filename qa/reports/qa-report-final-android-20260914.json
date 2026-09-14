@@ -3,8 +3,9 @@
   "finishedAt": "2026-09-14",
   "environment": "https://urtruck.kz",
   "requestedBaselineSha": "508de03c7e4658f222b3027729b20ad60e1fafec",
-  "actualSourceSha": "d4852cd79430bf68363e0ccfb70a224a697ea2fc",
-  "baselineNote": "Remote branch was already one descendant ahead of requested baseline; the published Bell routing fix was preserved.",
+  "actualSourceSha": "c11fba52b5e40c758bb3eb8b1a6b10d160a6835c",
+  "buildSourceSha": "d4852cd79430bf68363e0ccfb70a224a697ea2fc",
+  "baselineNote": "Remote branch was already one descendant ahead of requested baseline; the published Bell routing fix was preserved. The final c11fba52 commit contains only QA/CGR documentation and reports after the physical APK build.",
   "counts": {"P0": 0, "P1": 0, "blocked": 12, "pass": 14, "info": 0},
   "suites": {
     "backend": {"status": "BLOCKED", "reason": "./scripts/run_backend_tests.sh cannot start: system Python has no pytest module."},
@@ -21,7 +22,7 @@
   },
   "automated": {"lint": "PASS: 350 active JavaScript files", "buildWeb": "PASS", "gitDiffCheck": "PASS", "targetedBell": "PASS: 14/14", "i18nSmoke": "PASS", "geoSmoke": "PASS", "navContract": "PASS", "gpsConsent": "PASS", "keystoreGuard": "PASS"},
   "catalog": {"endpoint": "GET https://urtruck.kz/api/v1/borders/catalog", "httpStatus": 200, "checkpoints": 51, "countries": 6, "uniqueIds": 51, "duplicateNames": 0, "active": 51, "authoritative": true, "ids": ["port_kuryk", "bahty_pokitu", "dostyk_alashankou", "kalzhat_dulaty", "maikapchagai_zimunai", "nur_zholy_horgos", "aisha_bibi_chon_kakpa", "auhatty_kenbulyn", "karasu_ak_tilek", "kegen_karkyra", "kordai_ak_zhol", "sartobe_tokmok", "sypatai_batyr_chaldybar", "akbalshyk_voskresenskoe", "aksai_ilek", "alimbet_orsk", "amangeldy_nevolnoe", "auyl_veseloyarsk", "ayat_nikolaevka", "baitanat_topolnoe", "bidaik_odesskoe", "kairak_bugristoe", "karakoga_isilkul", "karashatau_svetlyi", "kondybai_komsomolskii", "kosak_pavlovka", "koyanbai_malinovoe_ozero", "kurmangazy_karauzek", "kyzyl_zhar_kazanskoe", "naiza_pavlovka_slavgorod", "orda_polynnyi", "shagan_teploe", "sharbakty_kulunda", "syrym_mashtakovo", "taskala_ozinki", "ubagan_zverinogolovskoe", "ube_mihailovka", "urlyutobe_olhovka", "zhaisan_sagarchin", "zhana_zhol_petuhovo", "zhanybek_vishnevka", "zhelkuar_mariinskii", "zhezkent_gornyak", "temir_baba_karabugaz", "atameken_gulistan", "b_konysbaeva_yallama", "celinnyi_ok_oltin", "kaplanbek_navoi", "kazygurt_maiskii", "syrdarya_malik", "tazhen_karakalpakstan"]},
-  "artifact": {"classification": "LOCAL RELEASE-LIKE QA ARTIFACT; DEBUG PHYSICAL SMOKE ONLY", "package": "com.urtruck.app.qa2", "version": "1.0.8", "versionCode": 211040002, "apkSha256": "594c8f41e9f677dc8e9dda777660143b32cae2e76b93d4e4b407621ea8d25308", "signCertSha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c", "ci": "BLOCKED_GITHUB_BILLING"},
+  "artifact": {"classification": "LOCAL RELEASE-LIKE QA ARTIFACT; DEBUG PHYSICAL SMOKE ONLY", "buildSourceSha": "d4852cd79430bf68363e0ccfb70a224a697ea2fc", "package": "com.urtruck.app.qa2", "version": "1.0.8", "versionCode": 211040002, "apkSha256": "594c8f41e9f677dc8e9dda777660143b32cae2e76b93d4e4b407621ea8d25308", "signCertSha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c", "ci": "BLOCKED_GITHUB_BILLING"},
   "providers": {"smtp": {"status": "BLOCKED_NO_SMTP_CREDENTIAL", "required": ["EMAIL_SMTP_HOST", "EMAIL_SMTP_PORT", "EMAIL_SMTP_USER", "EMAIL_SMTP_PASSWORD", "EMAIL_FROM"]}, "stt": {"status": "BLOCKED_NO_STT_PROVIDER", "required": ["OPENAI_API_KEY", "TRANSCRIBE_PROVIDER", "TRANSCRIBE_MODEL"]}, "push": {"status": "BLOCKED_NO_QA_PUSH_CREDENTIAL", "required": ["PUSH_PROVIDER_MODE", "FCM_PROJECT_ID", "FCM_SERVICE_ACCOUNT_JSON"]}, "routing": {"status": "BLOCKED_NO_ROUTER_CREDENTIAL", "requiredAny": ["YANDEX_ROUTER_API_KEY", "OPENROUTESERVICE_API_KEY"]}},
   "evidence": {"driverBell": "qa/final-rc/android-driver/bell-notifications-center.png", "shipperBell": "qa/final-rc/android-shipper/bell-notifications-center.png", "borderSelected": "qa/final-rc/border/guest-border-selected.png", "webLanding": "qa/final-rc/web/final-rc-landing.png"},
   "verdict": "ANDROID_RC_BLOCKED"
