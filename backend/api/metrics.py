@@ -10,8 +10,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from api.admin import check_admin
+from database import db
 
 metrics_router = APIRouter()
 
@@ -179,13 +181,41 @@ def recent_errors(_admin: str = Depends(check_admin)):
 
 @metrics_router.get("/health")
 def health_detailed():
-    """Расширенный health с метриками."""
+    """Расширенный health с метриками.
+
+    §25 hardening (2026-09-14): this used to return "status": "ok"
+    unconditionally, regardless of whether the DB was actually reachable --
+    a process that is alive but whose SQLite file is unreachable/corrupted
+    (disk full, permissions, a bad path) still passed every liveness/
+    readiness probe while every real request 500s. Root-cause note: main.py
+    ALSO defined its own `@app.get("/health")` (added, then found to be
+    dead code, in the same pass that added this check) -- FastAPI/Starlette
+    match routes in registration order, and metrics_router is included
+    before that later definition runs, so this handler here is the ONE that
+    actually ever serves real /health traffic; the duplicate in main.py was
+    removed rather than left as an unreachable trap for the next reader.
+
+    Deliberately NOT checked here: OTP/storage/face/routing/email/push
+    providers -- those are optional and degrade gracefully to MOCK/disabled
+    per services/*.info(), not core-backend-down. Mixing an optional
+    provider outage into this endpoint would make a load balancer pull a
+    healthy instance out of rotation over e.g. an OCR/WhatsApp hiccup. Full
+    per-subsystem MOCK/REAL diagnostics stay on GET /api/v1/system/info.
+    """
+    try:
+        with db.get_conn() as c:
+            c.execute("SELECT 1")
+        db_ok = True
+    except Exception:
+        db_ok = False
+
     uptime = time.time() - _startup_time
     total_req = sum(_request_count.values())
     total_err = sum(_request_errors.values())
     total_client_err = sum(_request_client_errors.values())
-    return {
-        "status": "ok",
+    body = {
+        "status": "ok" if db_ok else "degraded",
+        "db": "ok" if db_ok else "unreachable",
         "uptime_hours": round(uptime / 3600, 1),
         "total_requests": total_req,
         "total_errors": total_err,
@@ -194,3 +224,6 @@ def health_detailed():
         "client_error_rate": f"{(total_client_err / max(total_req, 1)) * 100:.1f}%",
         "top_endpoints": dict(sorted(_request_count.items(), key=lambda x: -x[1])[:5]),
     }
+    if not db_ok:
+        return JSONResponse(status_code=503, content=body)
+    return body
