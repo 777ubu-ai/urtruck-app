@@ -2,7 +2,7 @@
 import { Platform } from 'react-native';
 import { storage } from './storage';
 import { compressImage } from './imageCompress';
-import { getLanguage } from './i18n';
+import { getLanguage, t as tGlobal } from './i18n';
 import { API_BASE } from '../config/env';
 
 const BASE = `${API_BASE}/register`;
@@ -223,7 +223,14 @@ export const regAPI = {
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      // §15 i18n P2 fix: this used to return the raw `e.message` (a native
+      // fetch/runtime error, always in English/untranslated, e.g. "Network
+      // request failed") straight to callers, which display `detail`
+      // verbatim (EditProfileScreen's delete-account toast, VehicleSetup-
+      // CountryScreen's inline error) — bypassing the app's language
+      // entirely. `network_error` is localized in all 4 locales; route
+      // through it instead of leaking the raw runtime message.
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 
@@ -585,7 +592,14 @@ export const regAPI = {
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      // §15 i18n P2 fix: this used to return the raw `e.message` (a native
+      // fetch/runtime error, always in English/untranslated, e.g. "Network
+      // request failed") straight to callers, which display `detail`
+      // verbatim (EditProfileScreen's delete-account toast, VehicleSetup-
+      // CountryScreen's inline error) — bypassing the app's language
+      // entirely. `network_error` is localized in all 4 locales; route
+      // through it instead of leaking the raw runtime message.
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 
@@ -600,7 +614,14 @@ export const regAPI = {
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      // §15 i18n P2 fix: this used to return the raw `e.message` (a native
+      // fetch/runtime error, always in English/untranslated, e.g. "Network
+      // request failed") straight to callers, which display `detail`
+      // verbatim (EditProfileScreen's delete-account toast, VehicleSetup-
+      // CountryScreen's inline error) — bypassing the app's language
+      // entirely. `network_error` is localized in all 4 locales; route
+      // through it instead of leaking the raw runtime message.
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 
@@ -616,7 +637,14 @@ export const regAPI = {
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      // §15 i18n P2 fix: this used to return the raw `e.message` (a native
+      // fetch/runtime error, always in English/untranslated, e.g. "Network
+      // request failed") straight to callers, which display `detail`
+      // verbatim (EditProfileScreen's delete-account toast, VehicleSetup-
+      // CountryScreen's inline error) — bypassing the app's language
+      // entirely. `network_error` is localized in all 4 locales; route
+      // through it instead of leaking the raw runtime message.
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 };
