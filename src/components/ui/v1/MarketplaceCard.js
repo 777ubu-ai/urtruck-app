@@ -105,8 +105,10 @@ const s = StyleSheet.create({
   topRow: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 0 },
   routeText: { flex: 1, minWidth: 0, fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.15 },
   priceColumn: { width: PRICE_COLUMN_WIDTH, marginLeft: 8, alignItems: 'flex-end', flexShrink: 0 },
-  price: { textAlign: 'right', fontVariant: ['tabular-nums'], letterSpacing: -0.1 },
-  priceMeta: { fontSize: 11, lineHeight: 13, fontWeight: '600', textAlign: 'right' },
+  // Stretch the two labels across the fixed rail. On Android this prevents
+  // an intrinsic-width Text node from ellipsizing a short price such as $8 000.
+  price: { alignSelf: 'stretch', textAlign: 'right', fontVariant: ['tabular-nums'], letterSpacing: -0.1 },
+  priceMeta: { alignSelf: 'stretch', fontSize: 11, lineHeight: 13, fontWeight: '600', textAlign: 'right' },
   chevron: { marginLeft: 4, marginTop: 1, flexShrink: 0 },
   meta: { fontSize: 12, lineHeight: 14, fontWeight: '600' },
   bottomRow: { flexDirection: 'row', alignItems: 'center', minHeight: 34, marginTop: 1, gap: 7 },
