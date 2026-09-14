@@ -30,7 +30,7 @@ test('CountryFlag keeps standards-based SVG artwork and ISO lookup', () => {
   assert.match(source, /normalizeCountryCode/);
   assert.match(source, /countryCode\(raw\)/);
   assert.match(source, /COUNTRY_FLAG_CODES/);
-  assert.match(source, /assets\/flags\/kz\.svg/);
+  assert.match(source, /KZ_FULL_FLAG_BASE64/);
 });
 
 test('KZ keeps its full official square artwork instead of the simplified sun-only icon', () => {
@@ -51,7 +51,7 @@ test('round CountryFlag uses a separate depth, white shell and complete circular
   assert.match(source, /roundShell/);
   assert.match(source, /roundClip/);
   assert.match(source, /highlightRing/);
-  assert.match(source, /SvgUri/);
+  assert.match(source, /SvgXml xml=\{KZ_FULL_FLAG_XML\}/);
   assert.match(source, /useFullKzArtwork/);
   assert.match(source, /backgroundColor: '#FFFFFF'/);
   assert.match(source, /shadowOpacity:/);
