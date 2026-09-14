@@ -12,4 +12,4 @@ export default function BookmarkButton({ saved, onPress, testID, accessibilityLa
     </TouchableOpacity>
   );
 }
-const s = StyleSheet.create({ button: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 19 } });
+const s = StyleSheet.create({ button: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 17 } });

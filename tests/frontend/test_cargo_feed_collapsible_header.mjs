@@ -38,12 +38,12 @@ test('favorites quick filter uses the same saved cargo ids as card bookmarks', (
   assert.match(src, /accessibilityLabel=\{copy\.favorites\}/);
 });
 
-test('cargo cards stay compact so collapsing the controls actually increases visible work', () => {
-  // Canon density: one clamped, stronger 16/20 route line stays beside the
-  // fixed price rail while the list spacing stays compact on the screen.
-  // no legacy expanded-card fork.
+test('cargo cards are dense without changing the controls above the list', () => {
+  // The 84dp card is independent of the preserved route selector and filters.
+  // A one-line 15/19 route remains beside the fixed price rail.
   const routeLine = fs.readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
-  assert.match(routeLine, /fontSize:\s*16,\s*lineHeight:\s*20/);
-  assert.match(src, /cardSpacing: \{ marginHorizontal: 18, marginBottom: 8 \}/);
+  assert.match(routeLine, /fontSize:\s*15,\s*lineHeight:\s*19/);
+  assert.match(card, /minHeight:\s*84/);
+  assert.match(src, /cardSpacing: \{ marginHorizontal: 18, marginBottom: 7 \}/);
   assert.doesNotMatch(src, /cardExpanded/);
 });

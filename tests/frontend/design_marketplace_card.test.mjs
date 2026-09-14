@@ -40,8 +40,8 @@ test('compact card keeps route and right-aligned price as siblings without absol
   const priceColumn = walk(tree).find((el) => flatten(el.props?.style).width === 108);
   assert.ok(priceColumn, 'fixed right price rail exists');
   assert.equal(flatten(priceColumn.props.style).alignItems, 'flex-end');
-  const card = walk(tree).find((el) => flatten(el.props?.style).minHeight === 110);
-  assert.ok(card, 'card stays within the compact 108–118dp target');
+  const card = walk(tree).find((el) => flatten(el.props?.style).minHeight === 84);
+  assert.ok(card, 'card stays within the compact 82–88dp target');
 });
 
 test('route passes both ISO endpoints to shared CountryFlag renderer', () => {
