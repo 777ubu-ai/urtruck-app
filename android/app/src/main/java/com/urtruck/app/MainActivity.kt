@@ -1,6 +1,4 @@
 package com.urtruck.app
-import expo.modules.splashscreen.SplashScreenManager
-
 import android.os.Build
 import android.os.Bundle
 
@@ -15,11 +13,10 @@ class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     // Set the theme to AppTheme BEFORE onCreate to support
     // coloring the background, status bar, and navigation bar.
-    // This is required for expo-splash-screen.
-    // setTheme(R.style.AppTheme);
-    // @generated begin expo-splashscreen - expo prebuild (DO NOT MODIFY) sync-f3ff59a738c56c9a6119210cb55f0b613eb8b6af
-    SplashScreenManager.registerOnActivity(this)
-    // @generated end expo-splashscreen
+    // Android system splash is deliberately short and image-free. The
+    // full-size branded artwork is rendered once by AndroidBrandedLaunchSplash
+    // after React Native is ready; keeping Expo's legacy splash manager here
+    // would hold the old contain-mode poster above that layer.
     super.onCreate(null)
   }
 

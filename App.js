@@ -9,6 +9,7 @@ import { ToastProvider } from './src/components/Toast';
 import OfflineBanner from './src/components/OfflineBanner';
 import PushPermissionBanner from './src/components/PushPermissionBanner';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import AndroidBrandedLaunchSplash from './src/components/AndroidBrandedLaunchSplash';
 import AppNavigator from './src/navigation/AppNavigator';
 import { flushOutbox } from './src/utils/outbox';
 // Фоновый GPS: сам импорт регистрирует TaskManager-таску (обязательно на
@@ -206,10 +207,9 @@ function notificationResponseUrl(response) {
   return typeof data.url === 'string' ? data.url : null;
 }
 
-// Welcome-splash показывает НАТИВНЫЙ splash (app.json → splash.image), он сам
-// уходит, когда отрисован первый кадр JS. JS-оверлей убран (баг: всплывал ПОВЕРХ
-// уже загруженной ленты → «двоение UrTruck», как и в предыдущий раз 14.06).
-// Нативного splash достаточно во всех прод-сборках.
+// Android 12+ системный splash поддерживает только компактную иконку. Полный
+// UrTruck poster показывается один раз поверх первого кадра JS в
+// AndroidBrandedLaunchSplash; iOS продолжает использовать свой native splash.
 
 // AppInner живёт ПОД AuthProvider — поэтому знает состояние сессии и может
 // (а) откладывать deep-link до готовности навигатора и авторизованного стека,
@@ -390,13 +390,15 @@ function AppInner() {
 
 function App() {
   return (
-    <ErrorBoundary>
-    <ThemeProvider>
-      <AuthProvider>
-        <AppInner />
-      </AuthProvider>
-    </ThemeProvider>
-    </ErrorBoundary>
+    <AndroidBrandedLaunchSplash>
+      <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppInner />
+        </AuthProvider>
+      </ThemeProvider>
+      </ErrorBoundary>
+    </AndroidBrandedLaunchSplash>
   );
 }
 

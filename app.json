@@ -47,6 +47,11 @@
     },
     "android": {
       "package": "com.urtruck.app",
+      "splash": {
+        "image": "./assets/icon.png",
+        "backgroundColor": "#070B14",
+        "resizeMode": "contain"
+      },
       "softwareKeyboardLayoutMode": "resize",
       "versionCode": 9,
       "googleServicesFile": "./google-services.json",
