@@ -11,7 +11,6 @@ import RouteMap from '../components/RouteMap';
 import { localizePlace } from '../utils/places';
 import GradientText from '../components/GradientText';
 import ShareModal from '../components/ShareModal';
-import { routeStats } from '../utils/geo';
 import { TRIP_STATES, TRIP_STATE_INFO } from '../utils/store';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
@@ -481,7 +480,6 @@ export default function TripDetail({ navigation, route }) {
     );
   }
 
-  const stats = routeStats(trip.from, trip.to, trip.transit);
   const view = tripDisplay(trip, t, lang);
   // Принятая ставка → в блоке цены показываем сумму сделки, не листинг.
   const acceptedBid = bids.find(b => b.status === 'accepted');
@@ -568,16 +566,6 @@ export default function TripDetail({ navigation, route }) {
             <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.to, lang)}</Text>
           </View>
 
-          {stats && (
-            <View style={s.statsRow}>
-              <View style={[s.statPill, { backgroundColor: theme.border }]}>
-                <Text style={[s.statText, { color: theme.text }]}>📏 {stats.km} {t('km_short')}</Text>
-              </View>
-              <View style={[s.statPill, { backgroundColor: theme.border }]}>
-                <Text style={[s.statText, { color: theme.text }]}>⏱ ~{stats.days} {t('days_short')}</Text>
-              </View>
-            </View>
-          )}
         </GlassCard>
 
         {/* Даты */}
