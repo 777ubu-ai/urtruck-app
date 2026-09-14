@@ -1441,6 +1441,7 @@ const translations = {
     phone_v2_cta: 'Продолжить',
     phone_v2_send_hint: 'Мы отправим SMS с кодом\nдля входа или регистрации',
     phone_v2_send_failed: 'Не удалось отправить код. Попробуйте ещё раз.',
+    phone_v2_continue_with_phone: 'Продолжить по номеру телефона',
 
     // ─── Email-вход (канал для Китая + резерв) ────────────────────
     auth_tab_phone: 'Телефон',
@@ -3301,6 +3302,7 @@ const translations = {
     phone_v2_cta: 'Жалғастыру',
     phone_v2_send_hint: 'Кіру немесе тіркелу үшін\nSMS-код жібереміз',
     phone_v2_send_failed: 'Кодты жіберу мүмкін болмады. Қайта көріңіз.',
+    phone_v2_continue_with_phone: 'Телефон нөмірі арқылы жалғастыру',
 
     // ─── Email-кіру (Қытайға арналған канал + резерв) ─────────────
     auth_tab_phone: 'Телефон',
@@ -5132,6 +5134,7 @@ const translations = {
     phone_v2_cta: '继续',
     phone_v2_send_hint: '我们将发送 SMS 验证码\n用于登录或注册',
     phone_v2_send_failed: '发送验证码失败,请重试。',
+    phone_v2_continue_with_phone: '使用手机号继续',
 
     // ─── 邮箱登录(中国渠道 + 备用) ──────────────────────────────
     auth_tab_phone: '手机',
@@ -6942,6 +6945,7 @@ mark_arrived: 'Delivered',
     phone_v2_cta: 'Continue',
     phone_v2_send_hint: "We'll send an SMS code\nto sign in or sign up",
     phone_v2_send_failed: 'Failed to send code. Please try again.',
+    phone_v2_continue_with_phone: 'Continue with phone',
 
     // ─── Email sign-in (channel for China + fallback) ─────────────
     auth_tab_phone: 'Phone',

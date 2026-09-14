@@ -211,6 +211,47 @@ export async function getSocialProviderAvailability() {
   }
 }
 
+/** Explicit platform/config gate for Apple sign-in (FINAL 10/10 AUTH CANON
+ * CLOSURE, 2026-09-14 — replaces the old bare `SHOW_APPLE_AUTH = false`
+ * constant that hid the button unconditionally, on every platform, with no
+ * recorded reason).
+ *
+ * Product/platform contract (owner decision): Apple sign-in is offered ONLY
+ * on iOS — Android/web deliberately never show it, which is a platform
+ * decision, not a config problem, so it short-circuits without a network
+ * call. On iOS the button appears ONLY when Supabase's own Apple provider
+ * config is confirmed live; every other outcome is a distinct, named
+ * BLOCKED reason — never a silent, unexplained absence:
+ *
+ *   PLATFORM_NOT_IOS    — Android/web; by design, not queried further.
+ *   PROVIDER_UNAVAILABLE — iOS, but Supabase confirms Apple is off.
+ *   CHECK_UNREACHABLE   — iOS, but availability could not be verified
+ *                          (network/CORS/Supabase down) — fails closed,
+ *                          same philosophy as startSocialAuth() itself.
+ *   null (show: true)   — iOS AND Supabase confirms Apple is live.
+ *
+ * Every resolution is logged via logAuthStage so "Apple PASS because the
+ * button is hidden" can never be claimed from a screenshot alone — the
+ * exact reason is always in the log.
+ */
+export async function getAppleAuthGate() {
+  if (Platform.OS !== 'ios') {
+    logAuthStage('apple_gate_resolved', { code: 'PLATFORM_NOT_IOS' });
+    return { show: false, reason: 'PLATFORM_NOT_IOS' };
+  }
+  const availability = await getSocialProviderAvailability();
+  if (!availability.checked) {
+    logAuthStage('apple_gate_resolved', { code: 'CHECK_UNREACHABLE' });
+    return { show: false, reason: 'CHECK_UNREACHABLE' };
+  }
+  if (availability.apple !== true) {
+    logAuthStage('apple_gate_resolved', { code: 'PROVIDER_UNAVAILABLE' });
+    return { show: false, reason: 'PROVIDER_UNAVAILABLE' };
+  }
+  logAuthStage('apple_gate_resolved', { code: 'AVAILABLE' });
+  return { show: true, reason: null };
+}
+
 export async function startSocialAuth(provider) {
   if (!['google', 'apple'].includes(provider)) {
     throw new SocialAuthError(AUTH_ERROR_CODES.PROVIDER_CONFIG_INVALID, 'unsupported_social_provider', { provider });
