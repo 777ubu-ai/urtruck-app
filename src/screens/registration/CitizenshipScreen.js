@@ -14,6 +14,7 @@ import { regAPI } from '../../utils/registration';
 import { brand, radius, typography } from '../../theme/brandV2';
 import BackButton from '../../components/ui/v1/BackButton';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
+import CountryFlag from '../../components/ui/v1/CountryFlag';
 
 const TOTAL_STEPS = 4;
 const STEP = 1;
@@ -78,7 +79,7 @@ export default function CitizenshipScreen({ navigation }) {
                   onPress={() => setSelected(c.code)}
                   style={[s.option, active && s.optionActive]}
                 >
-                  <Text style={[s.optionText, { color: brand.textPrimary }]}>{t(c.key)}</Text>
+                  <View style={s.optionLeft}>{c.code === 'other' ? <Feather name="globe" size={22} color={brand.textSecondary} /> : <CountryFlag code={c.code} width={28} />}<Text style={[s.optionText, { color: brand.textPrimary }]}>{t(c.key)}</Text></View>
                   {active ? <Feather name="check-circle" size={20} color={accent} /> : null}
                 </Pressable>
               );
@@ -114,6 +115,7 @@ const s = StyleSheet.create({
   // List rows — одинаковые с опциями docType в IdentityStepScreen: 56h, radius 14,
   // selected = accent soft bg (primarySoft ≈ primary 8%) + check в brand.primary.
   option: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 56, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface },
+  optionLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   optionActive: { borderColor: brand.primary, backgroundColor: brand.primarySoft },
   optionText: { ...typography.body, fontWeight: '700' },
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },

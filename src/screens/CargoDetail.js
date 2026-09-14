@@ -38,6 +38,7 @@ import { WEB_URL } from '../config/env';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import StickyCTABar from '../components/ui/v1/StickyCTABar';
 import PrimaryCTA from '../components/ui/actions/PrimaryCTA';
@@ -46,7 +47,6 @@ import DestructiveButton from '../components/ui/actions/DestructiveButton';
 import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 
-const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
 // HOT-003: скрываем техмусор из description (остатки init_db, стектрейсы и т.п.)
 const TRASH_RE = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
@@ -580,7 +580,7 @@ export default function CargoDetail({ navigation, route }) {
             }]}>
               <View style={s.bidLeft}>
                 <View style={[s.bidFlag, { backgroundColor: b.status === 'accepted' ? '#168759' : b.isMine ? '#168759' : theme.border }]}>
-                  <Text style={{ fontSize: 14 }}>{b.isMine ? '🫵' : b.status === 'accepted' ? '✅' : isCountered ? '🔁' : (FLAGS[b.co] || '🏳️')}</Text>
+                  {b.isMine ? <Feather name="user" size={15} color="#FFFFFF" /> : b.status === 'accepted' ? <Feather name="check" size={15} color="#FFFFFF" /> : isCountered ? <Feather name="repeat" size={15} color="#FFFFFF" /> : <CountryFlag code={b.co} width={24} />}
                 </View>
                 <View style={{ flex: 1 }}>
                   <TouchableOpacity

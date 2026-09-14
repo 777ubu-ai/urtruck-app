@@ -15,33 +15,19 @@
 //     other side. We use it both for visualisation ("Хоргос → Нур Жолы")
 //     and for graph queries (eventual "find all KZ ↔ CN borders").
 //   * Backwards compatibility: the picker emits a free-form string
-//     formatted as "<name>, <flag>" so the existing backend that
+//     containing only the point name so the existing backend that
 //     only stores `from_city` keeps working unchanged. The richer
 //     point object is also returned via the second arg to `onChange`
 //     for screens that want it.
 
 export const COUNTRIES = {
-  CN: { flag: '🇨🇳', name: 'Китай' },
-  KZ: { flag: '🇰🇿', name: 'Казахстан' },
-  UZ: { flag: '🇺🇿', name: 'Узбекистан' },
-  KG: { flag: '🇰🇬', name: 'Кыргызстан' },
-  RU: { flag: '🇷🇺', name: 'Россия' },
-  BY: { flag: '🇧🇾', name: 'Беларусь' },
-  TJ: { flag: '🇹🇯', name: 'Таджикистан' },
-  TM: { flag: '🇹🇲', name: 'Туркменистан' },
-  AM: { flag: '🇦🇲', name: 'Армения' },
-  GE: { flag: '🇬🇪', name: 'Грузия' },
-  AZ: { flag: '🇦🇿', name: 'Азербайджан' },
-  PL: { flag: '🇵🇱', name: 'Польша' },
-  LT: { flag: '🇱🇹', name: 'Литва' },
-  LV: { flag: '🇱🇻', name: 'Латвия' },
-  EE: { flag: '🇪🇪', name: 'Эстония' },
-  HU: { flag: '🇭🇺', name: 'Венгрия' },
-  RO: { flag: '🇷🇴', name: 'Румыния' },
-  SK: { flag: '🇸🇰', name: 'Словакия' },
-  TR: { flag: '🇹🇷', name: 'Турция' },
-  BG: { flag: '🇧🇬', name: 'Болгария' },
-  GR: { flag: '🇬🇷', name: 'Греция' },
+  CN: { name: 'Китай' }, KZ: { name: 'Казахстан' }, UZ: { name: 'Узбекистан' },
+  KG: { name: 'Кыргызстан' }, RU: { name: 'Россия' }, BY: { name: 'Беларусь' },
+  TJ: { name: 'Таджикистан' }, TM: { name: 'Туркменистан' }, AM: { name: 'Армения' },
+  GE: { name: 'Грузия' }, AZ: { name: 'Азербайджан' }, PL: { name: 'Польша' },
+  LT: { name: 'Литва' }, LV: { name: 'Латвия' }, EE: { name: 'Эстония' },
+  HU: { name: 'Венгрия' }, RO: { name: 'Румыния' }, SK: { name: 'Словакия' },
+  TR: { name: 'Турция' }, BG: { name: 'Болгария' }, GR: { name: 'Греция' },
 };
 
 // Stable order in pickers — corridor matters: CN/KZ on top, then CIS,
@@ -264,8 +250,7 @@ export const searchPoints = (query, { country, type } = {}) => {
 // `partner` field if a caller wants it.
 export const formatPoint = (point) => {
   if (!point) return '';
-  const flag = COUNTRIES[point.country]?.flag || '';
-  return `${point.name}${flag ? `, ${flag}` : ''}`;
+  return point.name || '';
 };
 
 // Convenience: return only the points belonging to one country, useful

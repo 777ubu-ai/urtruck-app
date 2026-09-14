@@ -53,11 +53,11 @@ BORDERS = [
 # Порядок стран для accordion (ТЗ §0.2): CN, RU, UZ, KG, TM.
 COUNTRY_ORDER = ["CN", "RU", "UZ", "KG", "TM"]
 COUNTRY_NAMES = {
-    "CN": {"name": "Китай", "flag": "🇨🇳"},
-    "RU": {"name": "Россия", "flag": "🇷🇺"},
-    "UZ": {"name": "Узбекистан", "flag": "🇺🇿"},
-    "KG": {"name": "Кыргызстан", "flag": "🇰🇬"},
-    "TM": {"name": "Туркменистан", "flag": "🇹🇲"},
+    "CN": {"name": "Китай"},
+    "RU": {"name": "Россия"},
+    "UZ": {"name": "Узбекистан"},
+    "KG": {"name": "Кыргызстан"},
+    "TM": {"name": "Туркменистан"},
 }
 
 
@@ -107,7 +107,7 @@ def get_borders_grouped(query: str = None) -> list:
     """ТЗ §0.2 — переходы, сгруппированные по стране-соседу (accordion).
 
     Возвращает список групп в порядке COUNTRY_ORDER:
-      [{ country, name, flag, crossings: [ {…border, …queue} ] }]
+      [{ country, name, crossings: [ {…border, …queue} ] }]
     query — необязательный поиск по названию перехода (по подстроке).
     """
     q = (query or "").strip().lower()
@@ -125,7 +125,6 @@ def get_borders_grouped(query: str = None) -> list:
             groups.append({
                 "country": code,
                 "name": meta["name"],
-                "flag": meta["flag"],
                 "crossings": items,
             })
     return groups

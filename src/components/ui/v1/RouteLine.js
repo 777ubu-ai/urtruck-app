@@ -10,10 +10,10 @@ export default function RouteLine({ from, to, fromFlag, toFlag, numberOfLines = 
   const palette = ceramic ? ceramicColors : colors;
   return (
     <View style={s.row} testID={testID}>
-      {fromFlag ? <CountryFlag code={fromFlag} width={ceramic ? 24 : 18} round={ceramic} style={s.flag} /> : null}
+      {fromFlag ? <CountryFlag code={fromFlag} width={ceramic ? 24 : 18} style={s.flag} /> : null}
       <Text style={[s.city, { color: palette.text }]} numberOfLines={numberOfLines}>{from || '—'}</Text>
       <Feather name="arrow-right" size={16} color={palette.textMuted} style={s.arrow} />
-      {toFlag ? <CountryFlag code={toFlag} width={ceramic ? 24 : 18} round={ceramic} style={s.flag} /> : null}
+      {toFlag ? <CountryFlag code={toFlag} width={ceramic ? 24 : 18} style={s.flag} /> : null}
       <Text style={[s.city, { color: palette.text }]} numberOfLines={numberOfLines}>{to || '—'}</Text>
     </View>
   );

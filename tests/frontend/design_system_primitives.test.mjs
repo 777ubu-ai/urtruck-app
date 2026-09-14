@@ -228,6 +228,7 @@ test('CountryFlag renders an SVG frame and a clear unknown fallback', () => {
   const ru = CountryFlag({ code: 'RU' });
   assert.equal(typeName(ru), 'View');
   assert.equal(ru.props.accessibilityRole, 'image');
+  assert.equal(flatten(ru.props.style).borderRadius, 999, 'country flags are round by default');
   const unknown = CountryFlag({ code: 'XX' });
   const unknownBg = flatten(unknown.props.style).backgroundColor;
   assert.equal(unknownBg, '#DDE6E0', 'unknown flag = grey fallback');

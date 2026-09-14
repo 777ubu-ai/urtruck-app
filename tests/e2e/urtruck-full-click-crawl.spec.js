@@ -296,12 +296,12 @@ test.describe('Full app click crawl (safe / non-destructive)', () => {
 
     // 6e. Language switch (visible flag chips on Profile). Click each but
     //     immediately switch back to RU to keep assertions stable.
-    for (const flag of ['🇬🇧', '🇨🇳', '🇰🇿', '🇷🇺']) {
-      const langChip = page.getByText(flag).first();
+    for (const code of ['EN', 'ZH', 'KK', 'RU']) {
+      const langChip = page.getByText(code, { exact: true }).first();
       if (await langChip.isVisible().catch(() => false)) {
         await langChip.click().catch(() => {});
         await page.waitForTimeout(500);
-        clicked.push('Language: ' + flag);
+        clicked.push('Language: ' + code);
       }
     }
 

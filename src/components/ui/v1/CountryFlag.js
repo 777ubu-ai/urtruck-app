@@ -57,7 +57,7 @@ export const normalizeCountryCode = (value) => (typeof value === 'string' ? valu
 export const isKnownCountryFlag = (value) => Boolean(FLAG_XML[normalizeCountryCode(value)]);
 export const countryFlagXml = (value) => FLAG_XML[normalizeCountryCode(value)] || null;
 
-export default function CountryFlag({ code, width = 24, height, round = false, style, testID, accessibilityLabel }) {
+export default function CountryFlag({ code, width = 24, height, round = true, style, testID, accessibilityLabel }) {
   const normalized = normalizeCountryCode(code);
   const xml = countryFlagXml(normalized);
   const resolvedHeight = round ? Number(width) : (height || Math.round(Number(width) * 2 / 3));
