@@ -108,7 +108,7 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
         to: display.to,
         fromFlag: item.fromCountry || null,
         toFlag: item.toCountry || null,
-        numberOfLines: 2,
+        numberOfLines: 1,
       }}
       price={display.price}
       priceMeta={copy.perTrip}

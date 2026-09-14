@@ -196,7 +196,7 @@ function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
         fromFlag,
         toFlag,
         testID: `cargo-card-route-${item.id}`,
-        numberOfLines: 2,
+        numberOfLines: 1,
       }}
       price={formatMoney(item.price, item.currency, copy)}
       priceTestID={`cargo-card-price-${item.id}`}
