@@ -32,4 +32,10 @@ test('machine form has dependent body options and numeric validation', () => {
   assert.match(machine, /decimal-pad/);
   assert.match(machine, /Number\(draft\.payload_tons\) <= 0/);
   assert.match(machine, /draft\.make === 'Other'/);
+  assert.match(machine, /search hideIcons/);
+});
+
+test('country setup renders the selected ISO as the shared round flag', () => {
+  assert.match(country, /countryCode=\{draft\.driver_citizenship_country_code\}/);
+  assert.match(country, /countryCode=\{draft\.vehicle_registration_country_code\}/);
 });

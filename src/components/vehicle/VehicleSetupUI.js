@@ -41,9 +41,9 @@ export function ProgressHeader({ navigation, step, c }) {
   </View>;
 }
 
-export function SelectRow({ icon, value, placeholder, onPress, testID }) {
+export function SelectRow({ icon, value, placeholder, onPress, testID, countryCode }) {
   return <Pressable testID={testID} onPress={onPress} style={({ pressed }) => [styles.select, pressed && { opacity: 0.75 }]} accessibilityRole="button">
-    <View style={styles.iconBox}><Feather name={icon} size={22} color={brand.textSecondary} /></View>
+    <View style={styles.iconBox}>{countryCode ? <CountryFlag code={countryCode} width={28} /> : <Feather name={icon} size={22} color={brand.textSecondary} />}</View>
     <Text style={[styles.selectText, !value && styles.empty]} numberOfLines={1}>{value || placeholder || ''}</Text>
     <Feather name="chevron-down" size={22} color={brand.textSecondary} />
   </Pressable>;
@@ -61,12 +61,12 @@ export function CountrySheet({ visible, onClose, onSelect, title }) {
   </BottomSheet>;
 }
 
-export function OptionSheet({ visible, onClose, title, options, value, onSelect, search = false, searchPlaceholder }) {
+export function OptionSheet({ visible, onClose, title, options, value, onSelect, search = false, searchPlaceholder, hideIcons = false }) {
   const [query, setQuery] = useState('');
   const filtered = options.filter((item) => !query || item.label.toLowerCase().includes(query.toLowerCase()));
   return <BottomSheet visible={visible} onClose={() => { setQuery(''); onClose(); }} title={title}>
     {search ? <View style={styles.search}><Feather name="search" size={18} color={brand.textTertiary} /><TextInput value={query} onChangeText={setQuery} placeholder={searchPlaceholder || title} placeholderTextColor={brand.textTertiary} style={styles.searchInput} /></View> : null}
-    {filtered.map((item) => <Pressable key={item.value} style={[styles.option, value === item.value && styles.optionSelected]} onPress={() => { onSelect(item.value); setQuery(''); onClose(); }}><Feather name={item.icon || 'truck'} size={21} color={brand.textSecondary} /><Text style={styles.optionText}>{item.label}</Text>{value === item.value ? <Feather name="check" size={20} color={brand.primary} /> : null}</Pressable>)}
+    {filtered.map((item) => <Pressable key={item.value} style={[styles.option, value === item.value && styles.optionSelected]} onPress={() => { onSelect(item.value); setQuery(''); onClose(); }}>{hideIcons ? null : <Feather name={item.icon || 'truck'} size={21} color={brand.textSecondary} />}<Text style={styles.optionText}>{item.label}</Text>{value === item.value ? <Feather name="check" size={20} color={brand.primary} /> : null}</Pressable>)}
   </BottomSheet>;
 }
 

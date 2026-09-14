@@ -79,7 +79,7 @@ export default function CitizenshipScreen({ navigation }) {
                   onPress={() => setSelected(c.code)}
                   style={[s.option, active && s.optionActive]}
                 >
-                  <View style={s.optionLeft}>{c.code === 'other' ? <Feather name="globe" size={22} color={brand.textSecondary} /> : <CountryFlag code={c.code} width={28} />}<Text style={[s.optionText, { color: brand.textPrimary }]}>{t(c.key)}</Text></View>
+                  <View style={s.optionLeft}>{c.code === 'other' ? <Feather name="globe" size={22} color={brand.textSecondary} /> : <CountryFlag code={c.code} width={28} />}<Text style={[s.optionText, { color: brand.textPrimary }]}>{t(c.key)}</Text>{c.code !== 'other' ? <Text style={s.iso}>{c.code}</Text> : null}</View>
                   {active ? <Feather name="check-circle" size={20} color={accent} /> : null}
                 </Pressable>
               );
@@ -118,6 +118,7 @@ const s = StyleSheet.create({
   optionLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   optionActive: { borderColor: brand.primary, backgroundColor: brand.primarySoft },
   optionText: { ...typography.body, fontWeight: '700' },
+  iso: { ...typography.caption, color: brand.textSecondary, fontWeight: '700' },
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
   cta: { height: 56, borderRadius: radius.lg, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center' },
   ctaText: { ...typography.button, color: brand.textOnPrimary },

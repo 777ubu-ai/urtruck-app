@@ -38,6 +38,7 @@ const Row = ({ s, country, label, onPress }) => (
   >
     <CountryFlag code={country.iso} width={27} />
     <Text style={s.countryName}>{label}</Text>
+    <Text style={s.iso}>{country.iso}</Text>
     <Text style={s.dial}>+{country.dial}</Text>
     <Feather name="chevron-right" size={18} color={brand.textTertiary} />
   </Pressable>
@@ -239,6 +240,12 @@ const makeStyles = (brand) => StyleSheet.create({
     color: brand.textSecondary,
     fontWeight: '600',
     marginRight: 8,
+  },
+  iso: {
+    ...typography.caption,
+    color: brand.textTertiary,
+    fontWeight: '700',
+    marginRight: 4,
   },
   footer: {
     position: 'absolute',

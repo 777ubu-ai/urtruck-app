@@ -224,7 +224,7 @@ test('CountryFlag uses bundled standards SVG and resolves ISO codes only', () =>
   assert.equal(isKnownCountryFlag('XX'), false);
 });
 
-test('CountryFlag renders an SVG frame and a clear unknown fallback', () => {
+test('CountryFlag renders an SVG frame and a clear circular unknown fallback', () => {
   const ru = CountryFlag({ code: 'RU' });
   assert.equal(typeName(ru), 'View');
   assert.equal(ru.props.accessibilityRole, 'image');
@@ -232,8 +232,8 @@ test('CountryFlag renders an SVG frame and a clear unknown fallback', () => {
   const unknown = CountryFlag({ code: 'XX' });
   const unknownBg = flatten(unknown.props.style).backgroundColor;
   assert.equal(unknownBg, '#DDE6E0', 'unknown flag = grey fallback');
-  const mark = findByType(unknown, 'Text')[0];
-  assert.equal(mark.children[0], '?');
+  assert.equal(flatten(unknown.props.style).borderRadius, 999, 'unknown flag remains circular');
+  assert.equal(findByType(unknown, 'Text').length, 0, 'unknown flag has no question-mark glyph');
 });
 
 // ══ 5. Chat bubble colors ════════════════════════════════════════════
