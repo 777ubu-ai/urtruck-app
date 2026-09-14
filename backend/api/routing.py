@@ -477,3 +477,33 @@ async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
     if not yandex_key and not ors_key:
         raise HTTPException(status_code=503, detail="road_routing_not_configured")
     raise HTTPException(status_code=502, detail="road_route_unavailable")
+
+
+def info() -> dict:
+    """Preflight/diagnostics snapshot for GET /api/v1/system/info.
+
+    Hardening B (2026-09-14): mirrors email_service.info() — presence
+    booleans only, never the key value itself (a leaked Yandex/ORS key is a
+    billable-quota incident, same class of risk as a leaked SMTP password).
+    Read live from os.getenv() (not module-load-time globals) so it reflects
+    the current process env even if a test or operator changes it without a
+    restart, matching build_road_route's own lookup style.
+    """
+    yandex_configured = bool((os.getenv("YANDEX_ROUTER_API_KEY") or "").strip())
+    ors_configured = bool((os.getenv("OPENROUTESERVICE_API_KEY") or os.getenv("ORS_API_KEY") or "").strip())
+    if yandex_configured and ors_configured:
+        provider = "yandex+openrouteservice"
+    elif yandex_configured:
+        provider = "yandex"
+    elif ors_configured:
+        provider = "openrouteservice"
+    else:
+        provider = "none"
+    return {
+        "provider": provider,
+        "yandex_configured": yandex_configured,
+        "ors_configured": ors_configured,
+        "configured": yandex_configured or ors_configured,
+        "cache_ttl_seconds": _CACHE_TTL_SECONDS,
+        "cache_items": len(_route_cache),
+    }
