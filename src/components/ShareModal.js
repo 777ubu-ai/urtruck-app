@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Platform, Share } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { useI18n } from '../utils/useI18n';
@@ -31,6 +31,8 @@ export default function ShareModal({
   const baseUrl = WEB_URL || 'https://urtruck.kz';
   const finalUrl = url || (driverId ? `${baseUrl}/driver/${driverId}` : baseUrl);
   const fullShareText = shareText.includes(finalUrl) ? shareText : `${shareText}\n${finalUrl}`;
+  const escapedFinalUrl = finalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const shareBody = fullShareText.replace(new RegExp(`\\n?${escapedFinalUrl}\\s*$`), '').trim();
 
   const handleWhatsApp = () => {
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
@@ -44,9 +46,7 @@ export default function ShareModal({
     // Telegram's share/url endpoint takes URL + text separately. Including
     // the URL inside `text` too would duplicate it in the preview, so strip
     // the trailing URL line from the body if present.
-    const escaped = finalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const body = fullShareText.replace(new RegExp(`\\n?${escaped}\\s*$`), '').trim();
-    const link = `https://t.me/share/url?url=${encodeURIComponent(finalUrl)}&text=${encodeURIComponent(body)}`;
+    const link = `https://t.me/share/url?url=${encodeURIComponent(finalUrl)}&text=${encodeURIComponent(shareBody)}`;
     Linking.openURL(link).catch(() => toast(t('generic_error'), 'error'));
     onClose();
   };
@@ -72,16 +72,36 @@ export default function ShareModal({
   };
 
   const handleWeChat = async () => {
-    // WeChat не принимает произвольные HTTPS deep-link'и из браузера, но
-    // если установлено нативное приложение — пробуем открыть `weixin://`.
-    // Иначе honest path: копируем полный share text и подсказываем
-    // вставить в WeChat вручную.
-    try {
-      const canOpen = await Linking.canOpenURL('weixin://');
-      if (canOpen) {
-        await Linking.openURL('weixin://');
+    // Web Share passes text and URL as separate fields so the system share
+    // sheet (including WeChat) receives a real payload without a duplicate
+    // URL in the body.
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        try {
+          await navigator.share({ title: 'UrTruck', text: shareBody, url: finalUrl });
+          onClose();
+          return;
+        } catch (e) {
+          // A user cancellation is not an error. Keep the sheet available.
+          if (e?.name === 'AbortError') return;
+        }
       }
-    } catch {}
+    } else if (typeof Share?.share === 'function') {
+      try {
+        // iOS supports a separate URL item; Android needs the URL in message
+        // because its native share implementation ignores content.url. Keep
+        // one URL representation per platform to avoid duplicate previews.
+        const content = Platform.OS === 'ios'
+          ? { message: shareBody, url: finalUrl }
+          : { message: fullShareText };
+        await Share.share(content, { dialogTitle: t('share') });
+        onClose();
+        return;
+      } catch {}
+    }
+
+    // Honest fallback when the browser/native share sheet is unavailable:
+    // preserve the complete body and URL for manual paste into WeChat.
     const ok = await copyToClipboard(fullShareText);
     if (ok) toast('✅ ' + t('share_copied_open_wechat'), 'success', 4000);
     else toast(fullShareText, 'info', 6000);
