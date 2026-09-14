@@ -193,6 +193,14 @@ export default function CargoDetail({ navigation, route }) {
   const [reviewSent, setReviewSent] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [acceptedDriverId, setAcceptedDriverId] = useState(null);
+  // Deep-link audit P1 (2026-09-14): a shared /cargos/{id} link (or a push
+  // payload) with an unknown/removed id used to fall through silently —
+  // fullCargo stayed null forever and the screen rendered a near-empty card
+  // instead of a clear error. Only matters for the deep-link entry (no
+  // paramCargo.from means CargoDetail was opened with just an id) — a normal
+  // in-app open always carries the full card already and must never flash a
+  // false not-found while refreshDeal's periodic poll is in flight.
+  const [cargoNotFound, setCargoNotFound] = useState(false);
   const askConfirm = useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
     new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
   ), [t]);
@@ -361,7 +369,10 @@ export default function CargoDetail({ navigation, route }) {
   // экрана + лёгкий поллинг раз в 15с, пока экран открыт (как в чате/сделках).
   const refreshDeal = useCallback(() => {
     if (!cid) return;
-    marketAPI.getCargo(cid).then(d => { if (d && d.id) setFullCargo(d); }).catch(() => {});
+    marketAPI.getCargo(cid).then(d => {
+      if (d && d.id) { setFullCargo(d); setCargoNotFound(false); }
+      else if (!cargo.from) setCargoNotFound(true);
+    }).catch(() => { if (!cargo.from) setCargoNotFound(true); });
     loadBids();
     const seq = ++dealFetchSeq.current;
     // dealId (state) авторитетнее routeDealId — тот навсегда фиксирован
@@ -440,6 +451,22 @@ export default function CargoDetail({ navigation, route }) {
   // Раньше был хардкод #168759 (зелёный) на всех поверхностях, в т.ч. клиентских.
   const dealAccent = v1AccentFor(isDriverSide ? 'driver' : 'client');
   const insets = useSafeAreaInsets();
+
+  // Deep-link audit P1: invalid/removed cargo id → explicit not-found state
+  // instead of the near-empty card the missing guard used to render. All
+  // hooks above this point already ran unconditionally, so branching here
+  // is safe (no hook-order risk vs. the `!cid && !c.from` early return above).
+  if (cargoNotFound && !c.from) {
+    return (
+      <SafeAreaView style={[s.container, { backgroundColor: v1.bg, alignItems: 'center', justifyContent: 'center' }]} edges={['top']}>
+        <Text style={{ fontSize: 48 }}>🔍</Text>
+        <Text style={{ color: v1.text, fontSize: 15, fontWeight: '700', marginTop: 8 }}>{t('incomplete_data')}</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
+          <Text style={{ color: '#168759', fontSize: 14, fontWeight: '600' }}>← {t('back_short')}</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
