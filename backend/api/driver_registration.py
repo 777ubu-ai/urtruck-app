@@ -174,6 +174,22 @@ def can_publish_driver_trip(driver: dict) -> bool:
     )
 
 
+def reconcile_basic_onboarding(driver: dict) -> dict:
+    """Признаёт старый полный basic-профиль без запуска Pro-гейта.
+
+    До появления отдельного флага legacy-аккаунты могли иметь все личные и
+    транспортные поля, но ``basic_onboarding_completed`` оставался пустым.
+    Reconciliation меняет только derived-флаг публикации, не роль и не
+    moderation-статус.
+    """
+    if not driver or driver.get("role") != "driver":
+        return driver
+    if can_publish_driver_trip(driver) or _basic_onboarding_missing(driver):
+        return driver
+    reg_dal.update_driver(driver["id"], {"basic_onboarding_completed": 1})
+    return {**driver, "basic_onboarding_completed": 1}
+
+
 @driver_reg_router.post("/complete-basic")
 def complete_basic_onboarding(driver_id: str = Depends(get_current_driver)):
     """Закрыть базовый водительский онбординг без Pro-верификации."""

@@ -166,8 +166,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // Источник статуса — regAPI.me(); UI не должен открывать CreateTrip всем
   // водителям подряд, потому что backend повторяет этот gate.
   // ({status, verification_level}). verState: loading|approved|review|
-  // rejected|unverified. Без fake-approved: CreateTrip открывается только
-  // при approved, иначе показываем gate-модалку → 5-шаговая проверка.
+  // rejected|unverified. Basic-профиль допускает публикацию без Pro-документов.
   const [verState, setVerState] = useState('loading');
   const [canPublish, setCanPublish] = useState(false);
   const [pubGateVisible, setPubGateVisible] = useState(false);
@@ -694,25 +693,25 @@ export default function MyTripsScreen({ navigation, route }) {
             <Text style={s.pgTitle}>
               {verState === 'review' ? t('trips_gate_pending_title')
                 : verState === 'rejected' ? t('trips_gate_rejected_title')
-                : t('trips_gate_title')}
+                : t(verState === 'unverified' ? 'trips_gate_basic_title' : 'trips_gate_title')}
             </Text>
             <Text style={s.pgText}>
               {verState === 'review' ? t('trips_gate_pending_text')
                 : verState === 'rejected' ? t('trips_gate_rejected_text')
-                : t('trips_gate_text')}
+                : t(verState === 'unverified' ? 'trips_gate_basic_text' : 'trips_gate_text')}
             </Text>
             <TouchableOpacity
               style={s.pgBtn}
               testID="trips-publish-gate-cta"
               onPress={() => {
                 setPubGateVisible(false);
-                navigation.navigate(verState === 'review' ? 'Security' : verState === 'rejected' ? 'Citizenship' : 'ProfileV2', { role: 'driver' });
+                navigation.navigate(verState === 'review' ? 'Security' : verState === 'rejected' ? 'Citizenship' : 'VehicleSetupCountry', { role: 'driver', origin: 'CreateTrip' });
               }}
             >
               <Text style={s.pgBtnText}>
                 {verState === 'review' ? t('trips_gate_pending_btn')
                   : verState === 'rejected' ? t('trips_gate_rejected_btn')
-                  : t('trips_gate_btn')}
+                  : t(verState === 'unverified' ? 'trips_gate_basic_btn' : 'trips_gate_btn')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.pgCancel} onPress={() => setPubGateVisible(false)}>

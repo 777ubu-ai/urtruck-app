@@ -166,6 +166,9 @@ def get_me(driver_id: str = Depends(get_current_driver)):
     driver = reg_dal.get_driver(driver_id)
     if not driver:
         raise HTTPException(status_code=404, detail="Не найден")
+    if driver.get("role") == "driver":
+        from api.driver_registration import reconcile_basic_onboarding
+        driver = reconcile_basic_onboarding(driver)
     return {
         "id": driver["id"],
         "phone": driver.get("phone"),

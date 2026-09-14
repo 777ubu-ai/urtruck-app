@@ -63,7 +63,7 @@ def test_complete_basic_rejects_incomplete_profile(monkeypatch):
 
 def test_basic_driver_is_allowed_to_publish_but_incomplete_driver_is_not():
     complete = _basic_driver(basic_onboarding_completed=1, status="basic")
-    incomplete = _basic_driver()
+    incomplete = _basic_driver(vehicle_brand="")
     assert driver_registration.can_publish_driver_trip(complete)
     assert not driver_registration.can_publish_driver_trip(incomplete)
 
@@ -79,6 +79,15 @@ def test_basic_driver_is_allowed_to_publish_but_incomplete_driver_is_not():
         assert exc.value.detail["error"] == "basic_onboarding_required"
     finally:
         gate_module._extract_driver = original
+
+
+def test_legacy_complete_driver_is_reconciled_without_pro_gate(monkeypatch):
+    legacy = _basic_driver(basic_onboarding_completed=0)
+    updates = {}
+    monkeypatch.setattr(driver_registration.reg_dal, "update_driver", lambda _, fields: updates.update(fields))
+    result = driver_registration.reconcile_basic_onboarding(legacy)
+    assert result["basic_onboarding_completed"] == 1
+    assert updates == {"basic_onboarding_completed": 1}
 
 
 def test_complete_basic_driver_can_create_trip():
@@ -147,7 +156,7 @@ def test_http_complete_basic_and_trip_publication_contract():
     assert incomplete.status_code == 400
     assert incomplete.json()["detail"]["error"] == "BASIC_ONBOARDING_INCOMPLETE"
 
-    _, blocked_token = _http_driver(basic_onboarding_completed=0)
+    _, blocked_token = _http_driver(basic_onboarding_completed=0, vehicle_brand="")
     blocked = client.post(
         "/api/v1/market/trips",
         headers={"Authorization": f"Bearer {blocked_token}"},

@@ -115,6 +115,8 @@ def require_driver_trip_publication(authorization: str = Header(None)) -> dict:
     driver = require_active_level(1)(authorization)
     if driver.get("role") != "driver":
         raise HTTPException(status_code=403, detail={"error": "driver_role_required"})
+    from api.driver_registration import reconcile_basic_onboarding
+    driver = reconcile_basic_onboarding(driver)
     if not (
         driver.get("basic_onboarding_completed")
         or driver.get("status") == "approved"
