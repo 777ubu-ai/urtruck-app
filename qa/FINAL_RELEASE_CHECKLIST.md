@@ -1,7 +1,7 @@
 # UrTruck — FINAL RELEASE CHECKLIST
 
 Generated: 2026-09-14, session "CLAUDE FINAL CODE HARDENING".
-Branch: `claude/final-code-hardening-20260914`. Base: `origin/codex/chat-voice-map-qa`.
+Branch: `integration/urtruck-final-rc-20260914`. Base: `d4852cd79430bf68363e0ccfb70a224a697ea2fc`; final source: `99bc537150d407b1c4c7e8cb093f61c70b46eeb5`.
 
 Purpose: a machine-checkable split between what Claude proved at the CODE level
 (no physical device, no production secrets, no real provider credentials) and
@@ -99,10 +99,10 @@ environment, named so nobody claims PASS by omission.
 - [x] Found and fixed a route-shadowing bug: `GET /health` was defined twice, `main.py`'s copy was dead code, never executed
 - [x] Live handler now does a real DB-reachability check (`SELECT 1`, 503 on failure), deliberately excludes optional providers so one hiccup doesn't pull a healthy instance from a load balancer — `test_health_endpoint.py` 4/4
 
-### Final automated gate (this session, on the final reordered HEAD)
-- [x] Backend: **805/805 PASS**
-- [x] Frontend: **565/565 PASS**
-- [x] Lint: **PASS** (351 files)
+### Final automated gate (integration verification)
+- [ ] Backend: **BLOCKED** — system Python has no `pytest` module in this environment
+- [x] Frontend: **576/576 PASS**
+- [x] Lint: **PASS** (352 files)
 - [x] Web build: **PASS**, exit 0
 - [x] `git diff --check` (whole branch vs base): **PASS**
 - [x] Secret scan (pattern-based, whole branch diff): **0 findings**
@@ -110,8 +110,8 @@ environment, named so nobody claims PASS by omission.
 - [x] Workflow YAML validation (19 files): **PASS**
 - [x] `release:check-config`: **PASS**
 
-### Pre-existing gap, NOT introduced or duplicated this session
-- GPS consent contract (`npm run qa:gps-consent`) still fails on **this base** (`codex/chat-voice-map-qa`) at the same stale `truck-map-yandex-webview` literal — the fix (commit `826bf1c0`, `qa/utils/gpsConsentSmoke.js`) already exists and is proven 82/82 on the sibling branch `claude/final-1010-audit-20260914`, just not yet cherry-picked into this base by Codex. Task 6's ownership matrix did not assign this file to any agent (it belongs to the separate auth-canon handoff package) — not re-fixed here to avoid a duplicate/conflicting fix landing from two different branches.
+### Integration verification update
+- GPS consent contract is included in the final integration (`826bf1c0` was patch-equivalent and already present); `npm run qa:gps-consent` passes the complete local contract suite.
 
 ---
 
@@ -138,5 +138,5 @@ environment, named so nobody claims PASS by omission.
 
 ## Build this checklist evaluates
 
-BASE: `origin/codex/chat-voice-map-qa` @ `27aba8188981314a84fd6c6548a3ec26ef0baa8f`
-FINAL: `claude/final-code-hardening-20260914` (see final report for exact SHA)
+BASE: `integration/urtruck-final-rc-20260914` @ `d4852cd79430bf68363e0ccfb70a224a697ea2fc`
+FINAL: `integration/urtruck-final-rc-20260914` @ `99bc537150d407b1c4c7e8cb093f61c70b46eeb5`
