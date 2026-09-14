@@ -245,21 +245,19 @@ def startup():
     consent_dal.init_consent_schema()
     blacklist_mgr.seed_demo_blacklist()
 
-    # CGR schema всегда; легаси-сид border_checkpoints (короткие имена) —
-    # ТОЛЬКО при выключенном CGR. При включённом CGR авторитетный список с
-    # парными именами даёт seed_checkpoints_from_cgr() (scheduler), а легаси
-    # дал бы дубли («Нуржолы» + «Нур Жолы - Хоргос»).
+    # CGR schema всегда. Каталог КПП — локальный authoritative baseline и
+    # обязан существовать независимо от доступности live-CGR. CGR может
+    # дополнить/обновить его позже, но не должен оставлять Queue пустым на
+    # свежей QA/production-БД.
     from database import cgr_dal
     # Queue API требует эту схему даже когда optional CGR workers не могут
     # стартовать из-за неполной runtime-конфигурации.
     cgr_dal.init_cgr_schema()
     try:
         from cgr.settings import cgr_settings
-        if cgr_settings.feature_enabled:
-            print("[startup] CGR enabled — legacy checkpoint seed skipped (CGR is source)", flush=True)
-        else:
-            n = cgr_dal.seed_border_checkpoints_from_legacy()
-            print(f"[startup] CGR schema applied, border_checkpoints seeded: +{n}", flush=True)
+        n = cgr_dal.seed_border_checkpoints_from_legacy()
+        mode = "CGR live update enabled" if cgr_settings.feature_enabled else "CGR live update disabled"
+        print(f"[startup] CGR schema applied, authoritative border catalogue seeded: +{n}; {mode}", flush=True)
     except Exception as e:
         # Отсутствие CGR-секрета не должно оставлять Queue без таблиц. Legacy
         # catalogue локален, идемпотентен и сохраняет read-only просмотр
