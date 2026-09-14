@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, AppState, Linking, BackHandler } from 'react-native';
+import { Platform, AppState, Linking, BackHandler, ImageBackground, StyleSheet, View } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
@@ -32,6 +32,53 @@ if (Platform.OS !== 'web') {
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import * as Sentry from '@sentry/react-native';
+import * as SplashScreen from 'expo-splash-screen';
+
+// Android 12+ always renders the native splash artwork as a constrained icon.
+// Keep that platform-owned phase short, then crossfade into our full-screen
+// branded artwork once React is ready. iOS retains its established native
+// splash presentation unchanged.
+if (Platform.OS === 'android') {
+  SplashScreen.preventAutoHideAsync().catch(() => {});
+  SplashScreen.setOptions?.({ duration: 160, fade: true });
+}
+
+const ANDROID_BRANDED_SPLASH_MIN_MS = 420;
+
+function AndroidBrandedSplash({ children }) {
+  const [visible, setVisible] = React.useState(Platform.OS === 'android');
+  const didLayout = React.useRef(false);
+
+  const finish = React.useCallback(() => {
+    if (Platform.OS !== 'android' || didLayout.current) return;
+    didLayout.current = true;
+    SplashScreen.hideAsync()
+      .catch(() => {})
+      .finally(() => setTimeout(() => setVisible(false), ANDROID_BRANDED_SPLASH_MIN_MS));
+  }, []);
+
+  return (
+    <View style={launchStyles.root}>
+      {children}
+      {visible ? (
+        <View style={launchStyles.overlay} onLayout={finish} pointerEvents="none" testID="android-branded-launch-splash">
+          <ImageBackground
+            source={require('./assets/splash/urtruck-splash.png')}
+            resizeMode="cover"
+            style={launchStyles.artwork}
+            accessibilityIgnoresInvertColors
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const launchStyles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#070B14' },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#070B14' },
+  artwork: { flex: 1 },
+});
 
 // Yandex MapKit is a native-only provider. The key is supplied by the native
 // build environment (EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY), never committed to
@@ -206,10 +253,9 @@ function notificationResponseUrl(response) {
   return typeof data.url === 'string' ? data.url : null;
 }
 
-// Welcome-splash показывает НАТИВНЫЙ splash (app.json → splash.image), он сам
-// уходит, когда отрисован первый кадр JS. JS-оверлей убран (баг: всплывал ПОВЕРХ
-// уже загруженной ленты → «двоение UrTruck», как и в предыдущий раз 14.06).
-// Нативного splash достаточно во всех прод-сборках.
+// На Android native system splash даёт лишь короткий icon-phase, а
+// AndroidBrandedSplash удерживает полноэкранный брендированный кадр только
+// до готовности React. Оверлей не появляется повторно при background/relaunch.
 
 // AppInner живёт ПОД AuthProvider — поэтому знает состояние сессии и может
 // (а) откладывать deep-link до готовности навигатора и авторизованного стека,
@@ -391,11 +437,13 @@ function AppInner() {
 function App() {
   return (
     <ErrorBoundary>
-    <ThemeProvider>
-      <AuthProvider>
-        <AppInner />
-      </AuthProvider>
-    </ThemeProvider>
+      <AndroidBrandedSplash>
+        <ThemeProvider>
+          <AuthProvider>
+            <AppInner />
+          </AuthProvider>
+        </ThemeProvider>
+      </AndroidBrandedSplash>
     </ErrorBoundary>
   );
 }
