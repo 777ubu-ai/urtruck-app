@@ -14,11 +14,15 @@ const kzAsset = fs.readFileSync(
   path.resolve(here, '../../src/assets/flags/kz.svg'),
   'utf8'
 );
+const locationPickerSource = fs.readFileSync(
+  path.resolve(here, '../../src/components/LocationPickerModal.js'),
+  'utf8'
+);
 
 const REQUIRED_ROUTE_CODES = [
   'CN', 'KZ', 'UZ', 'KG', 'RU', 'BY', 'TJ', 'TM', 'AM', 'AZ', 'GE', 'TR',
   'UA', 'PL', 'CZ', 'RO', 'HU', 'BG', 'LT', 'LV', 'EE', 'DE', 'FR', 'IT',
-  'ES', 'US', 'GB', 'JP', 'KR', 'IN',
+  'ES', 'US', 'GB', 'JP', 'KR', 'IN', 'AE',
 ];
 
 test('CountryFlag keeps standards-based SVG artwork and ISO lookup', () => {
@@ -56,4 +60,10 @@ test('round CountryFlag uses a separate depth, white shell and complete circular
 test('CountryFlag defaults to round rendering without emoji fallback', () => {
   assert.match(source, /round = true/);
   assert.doesNotMatch(source, /getUnicodeFlagIcon/);
+});
+
+test('country picker leaves CountryFlag directly on the screen without a square holder', () => {
+  assert.match(locationPickerSource, /<CountryFlag code=\{code\} width=\{25\}/);
+  const leadStyle = locationPickerSource.match(/lead:\s*\{([^}]*)\}/)?.[1] || '';
+  assert.doesNotMatch(leadStyle, /backgroundColor|borderWidth|borderColor/);
 });
