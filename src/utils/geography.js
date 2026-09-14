@@ -245,7 +245,7 @@ export const searchPoints = (query, { country, type } = {}) => {
 };
 
 // Format a point object the way the legacy backend expects: "<name>,
-// <flag>". When the user picks a border crossing we keep just the
+// country metadata. When the user picks a border crossing we keep just the
 // KZ-side label visible, but the partner spelling is kept on the
 // `partner` field if a caller wants it.
 export const formatPoint = (point) => {

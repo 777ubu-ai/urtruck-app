@@ -228,9 +228,6 @@ const makeStyles = (brand) => StyleSheet.create({
     borderBottomColor: brand.divider,
     gap: 12,
   },
-  flag: {
-    fontSize: 24,
-  },
   countryName: {
     flex: 1,
     ...typography.bodyLarge,
