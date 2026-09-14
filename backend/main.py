@@ -377,6 +377,7 @@ def system_info():
     """Режимы работы подсистем MVP."""
     import os
     from services import otp_service
+    from api import routing as routing_api
     from biometrics.liveness import info as face_info
     from config import BETA_MODE
     env = os.getenv("URTRUCK_ENV", "").strip().lower() or "unset"
@@ -391,6 +392,9 @@ def system_info():
         "otp": otp_service.info(),
         "face": face_info(),
         "storage": storage_service.info(),
+        # Hardening B (2026-09-14): routing provider config presence (no
+        # key values) — see backend/api/routing.py's info().
+        "routing": routing_api.info(),
     }
 
 
