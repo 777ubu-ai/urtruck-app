@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
+import { t as tGlobal } from './i18n';
 
 const BASE = `${API_BASE}/market`;
 
@@ -36,13 +37,18 @@ async function headers() {
 // Этот хелпер всегда возвращает string — для object с `hint` или
 // `error` поле, для других — JSON.stringify fallback.
 function normalizeDetail(d, status) {
-  if (d == null) return `Ошибка ${status}`;
+  // §15 i18n P2 fix: this fallback used to be a hardcoded Russian
+  // "error N" string, shown verbatim to ZH/KK/EN users whenever the
+  // backend detail was empty/non-string. i18n.js's `error_with_status` key
+  // exists in all 4 locales — route through it instead.
+  const errWithStatus = () => tGlobal('error_with_status').replace('{status}', status);
+  if (d == null) return errWithStatus();
   if (typeof d === 'string') return d;
   if (typeof d === 'object') {
     if (d.hint && typeof d.hint === 'string' && d.hint.length) return d.hint;
     if (d.message && typeof d.message === 'string' && d.message.length) return d.message;
     if (d.error && typeof d.error === 'string' && d.error.length) return d.error;
-    try { return JSON.stringify(d); } catch { return `Ошибка ${status}`; }
+    try { return JSON.stringify(d); } catch { return errWithStatus(); }
   }
   return String(d);
 }

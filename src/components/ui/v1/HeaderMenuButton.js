@@ -32,7 +32,7 @@ export default function HeaderMenuButton({
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       testID={testID}
       accessibilityRole="button"
-      accessibilityLabel={t("header_menu_a11y")}
+      accessibilityLabel={t('menu_profile_a11y')}
     >
       <Feather name="menu" size={24} color={color || colors.text} />
     </TouchableOpacity>

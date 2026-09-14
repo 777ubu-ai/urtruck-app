@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { getActiveRoom } from './activeRoom';  // QA-аудит P2-2
+import { t as tGlobal } from './i18n';
 
 const BASE = `${API_BASE}/push`;
 
@@ -286,9 +287,14 @@ export const push = {
     if (status !== 'granted') return { ok: false, reason: 'denied' };
 
     // Android channel
+    // §15 i18n P2 fix: this name is user-visible (Android Settings → Apps
+    // → UrTruck → Notifications → channel list) and was hardcoded RU
+    // regardless of the app's language. `push_channel_name` exists in all
+    // 4 locales; tGlobal() reflects whatever language the user has already
+    // picked by the time this runs (after permission grant, post-onboarding).
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync(NATIVE_PUSH_CHANNEL_ID, {
-        name: 'UrTruck сообщения',
+        name: tGlobal('push_channel_name'),
         importance: Notifications.AndroidImportance.MAX,
         sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
