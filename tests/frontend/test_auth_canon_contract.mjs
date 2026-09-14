@@ -1,34 +1,44 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
 
-// FINAL 10/10 audit (2026-09-14) — AUTH CANON contract.
+// FINAL 10/10 audit — AUTH CANON contract.
 //
-// Two contradictory product rules for "how does a user sign in" are
-// simultaneously live in this tree. This file does two different jobs:
+// 2026-09-14: owner decision closed the fork this file used to only
+// characterize. There is now exactly ONE canonical entry — PhoneV2
+// (AuthV2) — and every real guest-conversion path leads there. This file
+// now has three jobs:
 //
-//   1. INVARIANTS — assertions that hold regardless of which auth canon the
-//      owner ultimately picks (the backend social-auth security boundary).
-//      These are real regression guards.
+//   1. INVARIANTS — backend social-auth security boundary. Unchanged by the
+//      canon decision; still real regression guards.
 //
-//   2. CHARACTERIZATION — assertions that pin the CURRENT, DIVERGENT routing
-//      so it cannot drift further silently while the product fork is open.
-//      They are deliberately descriptive, not prescriptive: when the owner
-//      resolves AUTH_CANON (see the audit report), the characterization block
-//      must be UPDATED ON PURPOSE to describe the chosen canon. A failure
-//      there means "someone changed auth routing" — look, decide, re-pin.
+//   2. CLOSURE — positive assertions that the ONE canonical entry is wired
+//      correctly (VerificationGate, the one direct-navigate bypass fixed
+//      alongside it, phone as a first-class AuthV2 method, explicit Apple
+//      platform/config gating instead of a bare hidden flag).
 //
-// Do not "fix" the characterization block by relaxing it. Resolve the fork.
+//   3. REACHABILITY SWEEP — "ни один normal product gate не навигирует
+//      напрямую в legacy Reg" as a standing, repo-wide guarantee, not a
+//      one-time read: every screen/component file OUTSIDE the internal
+//      AuthV2 phone-flow implementation itself is scanned for a direct
+//      navigate() into a legacy route. A new bypass anywhere in the tree
+//      fails this test, not just the handful of files read explicitly
+//      above.
 
 const navigator = readFileSync('src/navigation/AppNavigator.js', 'utf8');
 const gate = readFileSync('src/components/VerificationGate.js', 'utf8');
 const phoneV2 = readFileSync('src/screens/onboarding/PhoneV2Screen.js', 'utf8');
 const legacyRegister = readFileSync('src/screens/registration/PremiumRegisterScreen.js', 'utf8');
+const legacyLogin = readFileSync('src/screens/registration/PremiumLoginScreen.js', 'utf8');
+const legacyOtp = readFileSync('src/screens/registration/PremiumOtpScreen.js', 'utf8');
+const myTrips = readFileSync('src/screens/MyTripsScreen.js', 'utf8');
 const socialAuth = readFileSync('backend/api/social_auth.py', 'utf8');
+const socialAuthJs = readFileSync('src/utils/socialAuth.js', 'utf8');
 
 // ── 1. INVARIANTS — backend social-auth security boundary ────────────────
-// These are fork-independent: whichever screen ends up canonical, Google/
-// Apple identity proof must stay server-validated.
+// These are fork-independent: whichever screen is canonical, Google/Apple
+// identity proof must stay server-validated.
 
 test('social verify never accepts a client-supplied identity', () => {
   // The request model carries ONLY the provider access token + consent +
@@ -67,35 +77,122 @@ test('social auth never logs the provider access token', () => {
   }
 });
 
-// ── 2. CHARACTERIZATION — the currently divergent auth routing ───────────
-// UPDATE THESE DELIBERATELY once AUTH_CANON is decided.
+// ── 2. CLOSURE — the ONE canonical entry, positively asserted ────────────
 
-test('CHARACTERIZATION: PhoneV2 still declares social+email as the canon', () => {
-  assert.match(phoneV2, /canonical sign-in \/ registration entry/);
-  assert.match(phoneV2, /Google \+ Apple \+ Email are the only login/);
-  assert.match(phoneV2, /Phone is NOT an authentication tab anymore/);
+test('CLOSURE: VerificationGate always routes to PhoneV2, never legacy Role/Reg', () => {
+  assert.match(gate, /navigation\.navigate\('PhoneV2'/);
+  assert.doesNotMatch(gate, /navigation\.navigate\('Role'/);
+  assert.doesNotMatch(gate, /navigation\.navigate\('Reg'/);
+  // The old two-branch pickTarget(currentLevel, requiredLevel) helper that
+  // produced the divergence is gone, not just unused.
+  assert.doesNotMatch(gate, /function pickTarget/);
 });
 
-test('CHARACTERIZATION: Apple is hidden behind an in-code flag, not a config', () => {
-  // Backend already allowlists apple; only this UI constant hides it.
-  assert.match(phoneV2, /const SHOW_APPLE_AUTH = false/);
-  assert.match(socialAuth, /"apple"/);
+test('CLOSURE: MyTripsScreen\'s own direct gate bypass also routes to PhoneV2', () => {
+  assert.doesNotMatch(myTrips, /navigation\.navigate\('Role'\)/);
+  assert.match(myTrips, /navigation\.navigate\('PhoneV2'/);
 });
 
-test('CHARACTERIZATION: legacy phone-only registration is still mounted for guests', () => {
-  // The unauthenticated / no-role stack still registers the legacy Premium
-  // screens alongside the V2 onboarding ones.
-  assert.match(navigator, /<Stack\.Screen name="PhoneV2"/);
-  assert.match(navigator, /<Stack\.Screen name="Reg" component=\{PremiumRegisterScreen\}/);
+test('CLOSURE: PhoneV2 exposes phone as a first-class AuthV2 method', () => {
+  assert.match(phoneV2, /the ONE canonical sign-in \/ registration entry/);
+  assert.match(phoneV2, /testID="phone-v2-continue-with-phone"/);
+  assert.match(phoneV2, /navigation\.navigate\('Login'/);
+  // The old exclusionary product rule is gone from the header.
+  assert.doesNotMatch(phoneV2, /Phone is NOT an authentication tab anymore/);
+});
+
+test('CLOSURE: Apple availability is an explicit platform/config gate, not a bare flag', () => {
+  assert.doesNotMatch(phoneV2, /const SHOW_APPLE_AUTH/);
+  assert.match(phoneV2, /getAppleAuthGate/);
+  assert.match(phoneV2, /appleGate\.show/);
+  // Every resolution path is a named reason, not a silent boolean.
+  assert.match(socialAuthJs, /PLATFORM_NOT_IOS/);
+  assert.match(socialAuthJs, /PROVIDER_UNAVAILABLE/);
+  assert.match(socialAuthJs, /CHECK_UNREACHABLE/);
+  assert.match(socialAuthJs, /Platform\.OS !== 'ios'/);
+});
+
+test('CLOSURE: the internal phone flow hands a role-less user to canonical RoleV2, not legacy Role', () => {
+  // PremiumOtpScreen's login-mode, no-role branch used to reset into
+  // legacy 'Role'. It must now match every other AuthV2 method.
+  assert.doesNotMatch(legacyOtp, /routes: \[\{ name: 'Role' \}\]/);
+  assert.match(legacyOtp, /routes: \[\{ name: 'RoleV2'/);
+});
+
+test('CLOSURE: PremiumLoginScreen\'s "no account" link returns to AuthV2, not legacy Role', () => {
+  assert.doesNotMatch(legacyLogin, /navigation\.navigate\('Role'\)/);
+  assert.match(legacyLogin, /navigation\.navigate\('PhoneV2'\)/);
+});
+
+test('CLOSURE: legacy Premium screens remain registered (internal AuthV2 implementation / qaPreview), not deleted', () => {
+  // §8 of the closure brief: internal canonical phone flow and qaPreview
+  // backward-compat are explicitly ALLOWED — only direct product-screen
+  // navigation into them is forbidden (checked by the sweep below).
   assert.match(navigator, /<Stack\.Screen name="Login" component=\{PremiumLoginScreen\}/);
-  // ...and that legacy screen is explicitly phone+SMS only.
+  assert.match(navigator, /<Stack\.Screen name="Reg" component=\{PremiumRegisterScreen\}/);
   assert.match(legacyRegister, /НЕТ Apple\/Google/);
 });
 
-test('CHARACTERIZATION: the verification gate routes converts into the legacy stack', () => {
-  // This is the divergence: every gated action with a role hint sends the
-  // user to 'Reg' (legacy phone-only), never to PhoneV2/OnboardingV2.
-  assert.match(gate, /const target = inferredRole \? 'Reg' : pickTarget\(/);
-  assert.match(gate, /if \(currentLevel < 1\) return 'Role';/);
-  assert.doesNotMatch(gate, /PhoneV2/);
+// ── 3. REACHABILITY SWEEP — repo-wide, not just the files read above ─────
+// "ни один normal product gate не навигирует напрямую в legacy Reg" as a
+// standing guarantee. A NEW bypass introduced anywhere in src/screens or
+// src/components fails this test, not just the specific files this audit
+// already found and fixed.
+
+const LEGACY_TARGETS = /navigate\(\s*['"](Role|Reg|RegOtp|RegProfile|Auth)['"]/;
+
+// Internal-implementation exemptions, matching §8 of the closure brief
+// exactly: the phone flow's OWN screens (they legitimately navigate each
+// other — send → OtpV2/RegOtp, complete → RegProfile), the orphaned legacy
+// chooser itself (RoleScreen.js, reachable only from qaPreview + its own
+// try/catch fallback if navigate('PhoneV2') itself throws), and the
+// qaPreview gallery (DesignPreviewScreen.js, explicitly allowed as QA
+// preview, per §8).
+const EXEMPT_FILES = new Set([
+  path.normalize('src/screens/RoleScreen.js'),
+  path.normalize('src/screens/DesignPreviewScreen.js'),
+]);
+const EXEMPT_DIR = path.normalize('src/screens/registration') + path.sep;
+
+function listJsFiles(root) {
+  const out = [];
+  for (const entry of readdirSync(root, { recursive: true, withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith('.js')) {
+      const rel = path.join(path.relative('.', entry.parentPath ?? entry.path), entry.name);
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+test('REACHABILITY SWEEP: no product screen/component navigates directly into legacy Role/Reg/Auth', () => {
+  const roots = ['src/screens', 'src/components'];
+  const offenders = [];
+  for (const root of roots) {
+    for (const file of listJsFiles(root)) {
+      const norm = path.normalize(file);
+      if (EXEMPT_FILES.has(norm)) continue;
+      if (norm.startsWith(EXEMPT_DIR)) continue;
+      const content = readFileSync(file, 'utf8');
+      const lines = content.split('\n');
+      lines.forEach((line, i) => {
+        if (LEGACY_TARGETS.test(line)) {
+          offenders.push(`${file}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+  }
+  assert.deepEqual(offenders, [], `direct navigation into legacy auth routes found:\n${offenders.join('\n')}`);
+});
+
+test('REACHABILITY SWEEP: the sweep itself is not vacuous (it does scan a non-trivial number of files)', () => {
+  // Guards against the sweep test silently scanning zero files after a
+  // future directory rename — deepEqual([], []) would pass even then.
+  const total = ['src/screens', 'src/components']
+    .flatMap((root) => listJsFiles(root))
+    .filter((f) => {
+      const norm = path.normalize(f);
+      return !EXEMPT_FILES.has(norm) && !norm.startsWith(EXEMPT_DIR);
+    }).length;
+  assert.ok(total > 50, `expected the sweep to cover well over 50 files, got ${total}`);
 });
