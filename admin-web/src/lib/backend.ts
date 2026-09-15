@@ -1,4 +1,4 @@
-const DEFAULT_BACKEND = 'https://api.urtruck.kz';
+const DEFAULT_BACKEND = 'https://urtruck.kz';
 
 export type Snapshot = {
   generatedAt: string;
