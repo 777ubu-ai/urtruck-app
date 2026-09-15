@@ -44,13 +44,13 @@ const HERO_SLIDE_1 = require('../../../assets/onboarding/slide-1-hero.jpg');
 const HERO_SLIDE_2 = require('../../../assets/onboarding/slide-2-driver-1.jpg');
 const HERO_SLIDE_3 = require('../../../assets/onboarding/slide-2-driver-2.jpg');
 
-const ASPECT_S1 = 709 / 650;
-const ASPECT_S2 = 709 / 650;
-const ASPECT_S3 = 709 / 700;
+const ONBOARDING_IMAGE_ASPECT = 864 / 1536;
 
-const WINDOW_S1 = { from: 0, to: 1 };
-const WINDOW_S2 = { from: 0, to: 1 };
-const WINDOW_S3 = { from: 0, to: 1 };
+// The approved assets reserve their lower portion for the separate UI copy.
+// Keep the important upper composition and crop only the unused lower margin.
+const WINDOW_S1 = { from: 0, to: 0.8 };
+const WINDOW_S2 = { from: 0, to: 0.8 };
+const WINDOW_S3 = { from: 0, to: 0.8 };
 
 const HeroWindow = ({ source, imageAspect, win }) => {
   const imgHeight = SCREEN_W / imageAspect;
@@ -65,6 +65,7 @@ const HeroWindow = ({ source, imageAspect, win }) => {
       <Image
         source={source}
         pointerEvents="none"
+        resizeMode="contain"
         style={{
           width: SCREEN_W,
           height: imgHeight,
@@ -77,8 +78,18 @@ const HeroWindow = ({ source, imageAspect, win }) => {
   );
 };
 
+const BrandLogo = ({ s }) => (
+  <Text style={s.logo} accessibilityRole="header" testID="onb-v2-brand-logo">
+    <Text style={{ color: brand.logoDark }}>Ur</Text>
+    <Text style={{ color: brand.logoAccent }}>Truck</Text>
+  </Text>
+);
+
 const Slide = ({ s, source, imageAspect, win, title, subtitle }) => (
   <View style={s.slide}>
+    <View style={s.logoWrap}>
+      <BrandLogo s={s} />
+    </View>
     <HeroWindow source={source} imageAspect={imageAspect} win={win} />
     <View style={s.captionBlock}>
       <Text style={s.title}>{title}</Text>
@@ -223,7 +234,7 @@ export default function OnboardingV2Screen({ navigation }) {
           <Slide
             s={s}
             source={HERO_SLIDE_1}
-            imageAspect={ASPECT_S1}
+            imageAspect={ONBOARDING_IMAGE_ASPECT}
             win={WINDOW_S1}
             title={t('onb_v2_slide1_title')}
             subtitle={t('onb_v2_slide1_subtitle')}
@@ -233,7 +244,7 @@ export default function OnboardingV2Screen({ navigation }) {
           <Slide
             s={s}
             source={HERO_SLIDE_2}
-            imageAspect={ASPECT_S2}
+            imageAspect={ONBOARDING_IMAGE_ASPECT}
             win={WINDOW_S2}
             title={t('onb_v2_slide2_title')}
             subtitle={t('onb_v2_slide2_subtitle')}
@@ -243,7 +254,7 @@ export default function OnboardingV2Screen({ navigation }) {
           <Slide
             s={s}
             source={HERO_SLIDE_3}
-            imageAspect={ASPECT_S3}
+            imageAspect={ONBOARDING_IMAGE_ASPECT}
             win={WINDOW_S3}
             title={t('onb_v2_slide3_title')}
             subtitle={t('onb_v2_slide3_subtitle')}
@@ -308,6 +319,8 @@ export default function OnboardingV2Screen({ navigation }) {
 const makeStyles = (brand) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: brand.bg },
   slide: { flex: 1, paddingHorizontal: 0, paddingTop: 6, alignItems: 'stretch' },
+  logoWrap: { height: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  logo: { fontSize: 32, lineHeight: 38, fontWeight: '800', letterSpacing: -1.1 },
   captionBlock: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 4, alignItems: 'center' },
   title: { ...typography.h1, color: brand.textPrimary, textAlign: 'center', marginBottom: 6 },
   subtitle: { ...typography.body, color: brand.textSecondary, textAlign: 'center', paddingHorizontal: 4 },
