@@ -256,7 +256,16 @@ export default function CargoDetail({ navigation, route }) {
     if (!cid) return;
     marketAPI.listBids({ cargoId: cid })
       .then(d => {
-        const mapped = (d.bids || []).map(b => ({
+        // Backend may return the caller's own active bid separately as
+        // `my_bid` even when the public/dirty-bid filter intentionally omits
+        // it from `bids` (QA actors, confidential mode). CargoDetail used to
+        // ignore that field, so the driver saw a fresh "Предложить цену"
+        // CTA after already bidding and could not see/accept a counter-offer.
+        // Merge only the caller's own row back into the render set; this does
+        // not expose any other bidder and mirrors TripDetail's contract.
+        const rawBids = [...(d.bids || [])];
+        if (d.my_bid && !rawBids.some((b) => b.id === d.my_bid.id)) rawBids.push(d.my_bid);
+        const mapped = rawBids.map(b => ({
           id: b.id, bidderId: b.bidder_id,
           name: b.bidder_name || b.bidder_phone || t('driver'),
           // Реальные данные оферента с бэка (list_bids обогащает) —

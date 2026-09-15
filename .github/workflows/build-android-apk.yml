@@ -35,8 +35,10 @@ jobs:
           # Must be strictly newer than the currently installed QA2 artifact.
           # Physical QA2 currently has 211040037; keep this artifact strictly newer
           # so the artifact installs as an update on both physical devices.
-          echo "URTRUCK_VERSION_CODE=211040038" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_CODE=211040046" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
+          # Physical QA branch: devices reach the isolated Mac backend through adb reverse.
+          echo "EXPO_PUBLIC_API_URL=http://127.0.0.1:18001" >> "$GITHUB_ENV"
 
       - name: Materialize QA2 native MapKit build contract
         # Keep the native key out of source and separate from the web JS key.

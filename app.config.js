@@ -11,6 +11,7 @@ module.exports = {
     extra: {
       ...(baseExpoConfig.extra || {}),
       ...(apiOverride ? { urtruckApiUrl: apiOverride } : {}),
+      urtruckBuildFlavor: isQa2 ? 'qa2' : 'production',
     },
     android: {
       ...baseExpoConfig.android,

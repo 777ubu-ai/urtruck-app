@@ -26,13 +26,18 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { isSocialAuthCallback, takeBufferedSocialCallbackUrl } from '../../utils/socialAuth';
 import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { API_BASE } from '../../config/env';
 
 const QA_HOOK_ALLOWED = (() => {
-  if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
-  if (process.env.EXPO_PUBLIC_QA_HOOKS !== '1') return false;
   try {
     const Constants = require('expo-constants').default;
-    return Constants?.appOwnership !== 'standalone';
+    // Physical QA2 hook is legal only against an explicit non-production
+    // backend. A QA2 APK pointed at urtruck.kz must never expose actor login.
+    const flavor = Constants?.expoConfig?.extra?.urtruckBuildFlavor;
+    const apiOverride = Constants?.expoConfig?.extra?.urtruckApiUrl || process.env.EXPO_PUBLIC_API_URL || '';
+    const localQaApi = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(apiOverride);
+    if (flavor === 'qa2' && localQaApi) return true;
+    return !!(typeof __DEV__ !== 'undefined' && __DEV__ && process.env.EXPO_PUBLIC_QA_HOOKS === '1');
   } catch {
     return false;
   }
@@ -103,6 +108,13 @@ const QaLoginHook = ({ s }) => {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
+  const completeLogin = async (value) => {
+    await signIn('qa-actor', 3, value);
+    const me = await refreshLevel().catch(() => null);
+    const role = me?.role && me.role !== 'guest' ? me.role : 'client';
+    setRole(role);
+  };
+
   const onSubmit = async () => {
     const value = (token || '').trim();
     if (!value) {
@@ -112,10 +124,7 @@ const QaLoginHook = ({ s }) => {
     setErr('');
     setBusy(true);
     try {
-      await signIn('qa-actor', 3, value);
-      const me = await refreshLevel().catch(() => null);
-      const role = me?.role && me.role !== 'guest' ? me.role : 'client';
-      setRole(role);
+      await completeLogin(value);
     } catch {
       setErr('login failed');
     } finally {
@@ -124,9 +133,46 @@ const QaLoginHook = ({ s }) => {
     }
   };
 
+  const onActor = async (actor) => {
+    setErr('');
+    setBusy(true);
+    try {
+      const r = await fetch(`${API_BASE}/qa/ensure-actor`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok || !data?.token) throw new Error('actor session failed');
+      await completeLogin(data.token);
+    } catch {
+      setErr(`actor login failed: ${actor}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <View style={s.qaBlock} testID="qa-debug-block">
       <Text style={s.qaLabel}>QA login (dev only)</Text>
+      <View style={s.qaActorRow}>
+        {[
+          ['boris', 'Boris · shipper'],
+          ['serik', 'Serik · driver'],
+          ['askar', 'Askar · driver'],
+        ].map(([actor, label]) => (
+          <Pressable
+            key={actor}
+            testID={`qa-actor-${actor}`}
+            accessibilityLabel={`QA actor ${actor}`}
+            disabled={busy}
+            onPress={() => onActor(actor)}
+            style={[s.qaActorButton, busy && { opacity: 0.5 }]}
+          >
+            <Text style={s.qaActorText}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
       <TextInput
         style={s.qaInput}
         value={token}
@@ -285,7 +331,9 @@ export default function OnboardingV2Screen({ navigation }) {
           ]}
         >
           <Text style={s.ctaPrimaryText}>{t('phone_v2_title')}</Text>
-          <Feather name="arrow-right" size={20} color="#FFF" />
+          <View style={s.ctaArrowBubble}>
+            <Feather name="arrow-right" size={24} color="#FFF" />
+          </View>
         </Pressable>
         <Pressable
           onPress={goGuest}
@@ -322,14 +370,42 @@ const makeStyles = (brand) => StyleSheet.create({
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 10, zIndex: 5, elevation: 5 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   ctaWrap: { paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10, backgroundColor: brand.bg, zIndex: 10, elevation: 10 },
-  ctaPrimary: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24 },
-  ctaPrimaryText: { ...typography.button, color: brand.textOnPrimary, flex: 1, textAlign: 'center' },
+  ctaPrimary: {
+    height: 58,
+    borderRadius: 29,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 24,
+    paddingRight: 7,
+    backgroundColor: '#0A9B57',
+    borderWidth: 1,
+    borderColor: '#17B86A',
+    shadowColor: '#087B47',
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+  },
+  ctaPrimaryText: { ...typography.button, color: '#FFFFFF', flex: 1, textAlign: 'center', fontWeight: '800' },
+  ctaArrowBubble: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
   ctaOutline: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, marginTop: 8, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface },
   ctaOutlineText: { ...typography.button, color: brand.textPrimary, flex: 1, textAlign: 'center', fontWeight: '700' },
   consent: { fontSize: 12, color: brand.textSecondary, textAlign: 'center', marginTop: 8 },
   consentLink: { color: brand.textPrimary, textDecorationLine: 'underline', fontWeight: '600' },
   qaBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: brand.borderStrong, gap: 6 },
   qaLabel: { fontSize: 11, color: brand.textSecondary, textAlign: 'center', fontWeight: '600' },
+  qaActorRow: { flexDirection: 'row', gap: 6 },
+  qaActorButton: { flex: 1, minHeight: 34, borderRadius: radius.md, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  qaActorText: { color: brand.textPrimary, fontSize: 9, fontWeight: '700', textAlign: 'center' },
   qaInput: { height: 36, borderRadius: radius.md, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface, paddingHorizontal: 10, color: brand.textPrimary, fontSize: 12 },
   qaSubmit: { height: 36, borderRadius: radius.md, backgroundColor: brand.borderStrong, alignItems: 'center', justifyContent: 'center' },
   qaSubmitText: { color: brand.textPrimary, fontSize: 12, fontWeight: '700' },
