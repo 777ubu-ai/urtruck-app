@@ -1772,8 +1772,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                           style={[s.input, { height: inputHeight, color: colors.text }]}
                           returnKeyType="default"
                           blurOnSubmit={false}
-                          placeholder={isDriver ? ui.writeShipper : ui.write}
-                          placeholderTextColor={colors.textMuted}
+                          accessibilityLabel={isDriver ? ui.writeShipper : ui.write}
+                          accessibilityHint={t('chat_message_input_hint')}
                           testID="deal-chat-input"
                         />
                         {!hasComposerText ? (
