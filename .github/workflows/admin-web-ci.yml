@@ -1,0 +1,31 @@
+name: Admin Web CI
+
+on:
+  pull_request:
+    paths:
+      - 'admin-web/**'
+      - '.github/workflows/admin-web-ci.yml'
+  push:
+    branches:
+      - 'feature/urtruck-admin-control-center-20260915'
+    paths:
+      - 'admin-web/**'
+      - '.github/workflows/admin-web-ci.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: admin-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: admin-web/package.json
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
