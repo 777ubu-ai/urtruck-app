@@ -48,9 +48,9 @@ const ONBOARDING_IMAGE_ASPECT = 864 / 1536;
 
 // The approved assets reserve their lower portion for the separate UI copy.
 // Keep the important upper composition and crop only the unused lower margin.
-const WINDOW_S1 = { from: 0, to: 0.8 };
-const WINDOW_S2 = { from: 0, to: 0.8 };
-const WINDOW_S3 = { from: 0, to: 0.8 };
+const WINDOW_S1 = { from: 0, to: 0.42 };
+const WINDOW_S2 = { from: 0, to: 0.42 };
+const WINDOW_S3 = { from: 0, to: 0.42 };
 
 const HeroWindow = ({ source, imageAspect, win }) => {
   const imgHeight = SCREEN_W / imageAspect;
@@ -322,8 +322,8 @@ const makeStyles = (brand) => StyleSheet.create({
   logoWrap: { height: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
   logo: { fontSize: 32, lineHeight: 38, fontWeight: '800', letterSpacing: -1.1 },
   captionBlock: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 4, alignItems: 'center' },
-  title: { ...typography.h1, color: brand.textPrimary, textAlign: 'center', marginBottom: 6 },
-  subtitle: { ...typography.body, color: brand.textSecondary, textAlign: 'center', paddingHorizontal: 4 },
+  title: { fontSize: 24, lineHeight: 29, fontWeight: '800', color: brand.textPrimary, textAlign: 'center', marginBottom: 5 },
+  subtitle: { fontSize: 14, lineHeight: 20, fontWeight: '500', color: brand.textSecondary, textAlign: 'center', paddingHorizontal: 4 },
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 10, zIndex: 5, elevation: 5 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   ctaWrap: { paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10, backgroundColor: brand.bg, zIndex: 10, elevation: 10 },
