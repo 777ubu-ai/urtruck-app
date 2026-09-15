@@ -1,37 +1,24 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Image, Platform, StatusBar as NativeStatusBar, StyleSheet, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Image, NativeModules, Platform, StatusBar as NativeStatusBar, StyleSheet, View } from 'react-native';
 // Android 12+ всегда рисует native splash как иконку, поэтому большой poster
 // нельзя передавать в системный SplashScreen API. После короткого native фона
 // этот полноэкранный React Native слой становится единственным branded launch.
 const isAndroid = Platform.OS === 'android';
+const { UrTruckSystemBars } = NativeModules;
 
 export default function AndroidBrandedLaunchSplash({ children }) {
   const [visible, setVisible] = useState(isAndroid);
-  const [imageReady, setImageReady] = useState(!isAndroid);
-  const dismissTimerRef = useRef(null);
 
   useEffect(() => {
     if (!isAndroid) return undefined;
 
-    NativeStatusBar.setHidden(visible, 'fade');
+    NativeStatusBar.setHidden(visible, 'none');
+    UrTruckSystemBars?.setLaunchMode(visible);
     return () => {
-      NativeStatusBar.setHidden(false, 'fade');
+      NativeStatusBar.setHidden(false, 'none');
+      UrTruckSystemBars?.setLaunchMode(false);
     };
   }, [visible]);
-
-  useEffect(() => () => {
-    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-  }, []);
-
-  useEffect(() => {
-    if (!isAndroid || !imageReady) return undefined;
-
-    // Ждём decode именно нового poster. До него остаётся только короткий
-    // тёмный native фон, а после — полноценный branded frame без старого
-    // Expo artwork и без пустого промежуточного экрана.
-    dismissTimerRef.current = setTimeout(() => setVisible(false), 850);
-    return undefined;
-  }, [imageReady]);
 
   if (!isAndroid) return children;
 
@@ -47,9 +34,9 @@ export default function AndroidBrandedLaunchSplash({ children }) {
           testID="android-branded-launch-splash"
         >
           <Image
-            onError={() => setImageReady(true)}
-            onLoadEnd={() => setImageReady(true)}
-            resizeMode="cover"
+            onError={() => setVisible(false)}
+            onLoadEnd={() => requestAnimationFrame(() => setVisible(false))}
+            resizeMode="contain"
             source={require('../../assets/splash/urtruck-splash-fullscreen.png')}
             style={styles.image}
           />
