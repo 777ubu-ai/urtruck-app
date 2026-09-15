@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Platform, AppState } from 'react-native';
 import { marketAPI } from '../utils/marketAPI';
-import { setActiveDealIds, startBackgroundTracking, stopBackgroundTracking } from '../utils/backgroundLocation';
+import { pushLocationToDeals, setActiveDealIds, startBackgroundTracking, stopBackgroundTracking } from '../utils/backgroundLocation';
 
 const INTERVAL_MS = 25000;
 
@@ -88,7 +88,7 @@ export function useDealLocationBroadcast(activeDealIds) {
           heading: c.heading != null && c.heading >= 0 ? c.heading : null,
           speed: c.speed != null && c.speed >= 0 ? c.speed : null,
         };
-        for (const id of idsRef.current) marketAPI.sendDealLocation(id, payload);
+        await pushLocationToDeals({ ...payload, timestamp: Date.now() }, idsRef.current);
       } catch {}
     };
 

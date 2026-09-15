@@ -13,7 +13,14 @@ export { openLocationSettings } from './locationSettings';
 
 export const BG_LOCATION_TASK = 'urtruck-deal-location';
 const BG_DEALS_KEY = 'ur_bg_deal_ids';
+export const BG_LOCATION_QUEUE_KEY = 'ur_bg_location_queue_v1';
 const TOKEN_KEY = 'ur_reg_token';
+const MAX_QUEUED_LOCATIONS = 256;
+
+// A background task can overlap with a foreground tick or a second OS task
+// callback. Serialize the queue read/flush/write cycle so one sample cannot be
+// lost by two callers writing stale snapshots over each other.
+let locationPushChain = Promise.resolve();
 
 let TaskManager = null;
 let Location = null;
@@ -35,28 +42,106 @@ async function resolveLocationModule() {
   }
 }
 
-// Send coordinates only for server-approved active deal IDs.
-export async function pushLocationToDeals(coords) {
+function sampleForDeal(dealId, coords) {
+  const lat = Number(coords?.latitude ?? coords?.lat);
+  const lng = Number(coords?.longitude ?? coords?.lng);
+  if (!dealId || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const capturedAt = Number.isFinite(Number(coords?.timestamp))
+    ? Number(coords.timestamp)
+    : Date.now();
+  return {
+    dealId,
+    lat,
+    lng,
+    heading: coords?.heading != null && coords.heading >= 0 ? coords.heading : null,
+    speed: coords?.speed != null && coords.speed >= 0 ? coords.speed : null,
+    capturedAt,
+  };
+}
+
+const sampleKey = (sample) => [
+  sample?.dealId, sample?.capturedAt, sample?.lat, sample?.lng,
+].join(':');
+
+async function readLocationQueue() {
+  try {
+    const raw = await storage.get(BG_LOCATION_QUEUE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.dealId && Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lng))) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeLocationQueue(queue) {
+  const unique = [];
+  const seen = new Set();
+  for (const sample of queue || []) {
+    const key = sampleKey(sample);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(sample);
+  }
+  await storage.set(BG_LOCATION_QUEUE_KEY, JSON.stringify(unique.slice(-MAX_QUEUED_LOCATIONS)));
+}
+
+async function postLocationSample(sample, token) {
+  try {
+    const response = await fetch(`${API_BASE}/market/deals/${sample.dealId}/location`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        lat: sample.lat,
+        lng: sample.lng,
+        heading: sample.heading,
+        speed: sample.speed,
+      }),
+    });
+    return response?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+async function pushLocationToDealsNow(coords, explicitDealIds = null) {
   try {
     const [rawIds, token] = await Promise.all([
       storage.get(BG_DEALS_KEY), storage.get(TOKEN_KEY),
     ]);
-    const ids = rawIds ? JSON.parse(rawIds) : [];
+    const storedIds = rawIds ? JSON.parse(rawIds) : [];
+    const ids = Array.isArray(explicitDealIds) ? explicitDealIds : storedIds;
     if (!Array.isArray(ids) || !ids.length || !token) return;
-    const payload = JSON.stringify({
-      lat: coords.latitude,
-      lng: coords.longitude,
-      heading: coords.heading != null && coords.heading >= 0 ? coords.heading : null,
-      speed: coords.speed != null && coords.speed >= 0 ? coords.speed : null,
-    });
-    await Promise.all(ids.map((id) =>
-      fetch(`${API_BASE}/market/deals/${id}/location`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: payload,
-      }).catch(() => {})
-    ));
+
+    let queue = await readLocationQueue();
+    for (const id of ids) {
+      // Flush each deal FIFO. If the oldest sample is still unavailable,
+      // retain it and do not move a newer point ahead of it.
+      const pending = queue.filter((sample) => sample.dealId === id);
+      for (const sample of pending) {
+        if (!await postLocationSample(sample, token)) break;
+        queue = queue.filter((item) => sampleKey(item) !== sampleKey(sample));
+      }
+
+      const current = sampleForDeal(id, coords);
+      if (!current) continue;
+      if (await postLocationSample(current, token)) {
+        queue = queue.filter((item) => sampleKey(item) !== sampleKey(current));
+      } else {
+        queue = [...queue, current];
+      }
+      await writeLocationQueue(queue);
+    }
+    await writeLocationQueue(queue);
   } catch { /* background task must never crash the app */ }
+}
+
+// Send coordinates only for server-approved active deal IDs. Failed samples
+// are persisted and retried on the next callback/foreground tick; they are
+// never silently discarded as a successful-looking delivery.
+export function pushLocationToDeals(coords, explicitDealIds = null) {
+  const job = locationPushChain.then(() => pushLocationToDealsNow(coords, explicitDealIds));
+  locationPushChain = job.catch(() => {});
+  return job;
 }
 
 if (TaskManager) {
@@ -71,7 +156,12 @@ if (TaskManager) {
 }
 
 export async function setActiveDealIds(ids) {
-  try { await storage.set(BG_DEALS_KEY, JSON.stringify(ids || [])); } catch {}
+  try {
+    const nextIds = Array.isArray(ids) ? ids : [];
+    await storage.set(BG_DEALS_KEY, JSON.stringify(nextIds));
+    const queue = await readLocationQueue();
+    await writeLocationQueue(queue.filter((sample) => nextIds.includes(sample.dealId)));
+  } catch {}
 }
 
 export async function getBackgroundLocationPermissionState() {
