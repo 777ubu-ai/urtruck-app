@@ -1,2 +1,4 @@
-import SectionPage from '@/components/SectionPage';
-export default function Page() { return <SectionPage title="Пользователи" subtitle="Водители и грузоотправители" body="Поиск, роль, регистрация, модерация, последняя активность, сделки и support-history. Существующую ручную модерацию переносим сюда без изменения её бизнес-правил." />; }
+import DataPage from '@/components/DataPage';
+export default function Page() { return <DataPage title="Пользователи" subtitle="Водители и грузоотправители — без гостевых сессий" endpoint="/api/admin/control/users" dataKey="users" emptyText="Пользователи не найдены." columns={[
+  { key:'full_name', label:'Имя' }, { key:'role', label:'Роль' }, { key:'phone_masked', label:'Телефон' }, { key:'status', label:'Статус' }, { key:'verification_level', label:'Уровень' }, { key:'basic_onboarding_completed', label:'Онбординг', format:'boolean' }, { key:'updated_at', label:'Обновлён' }
+]} />; }

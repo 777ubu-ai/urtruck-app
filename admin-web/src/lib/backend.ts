@@ -1,19 +1,15 @@
 const DEFAULT_BACKEND = 'https://urtruck.kz';
 
+export type ControlSummary = {
+  presence: { available: boolean; online: number | null; by_role: Record<string, number>; by_platform: Record<string, number>; window_seconds: number };
+  stats: Record<string, number | null>;
+};
+
 export type Snapshot = {
   generatedAt: string;
-  backend: { ok: boolean; status: string; uptimeHours: number | null; errorRate: string | null };
-  stats: {
-    onlineNow: number | null;
-    usersTotal: number | null;
-    approvedDrivers: number | null;
-    pendingModeration: number | null;
-    reviewsTotal: number | null;
-    blacklistActive: number | null;
-    telegramMentions: number | null;
-    requestsTotal: number | null;
-    serverErrorsTotal: number | null;
-  };
+  backend: { ok: boolean; status: string };
+  stats: Record<string, number | null>;
+  presence: ControlSummary['presence'];
   limitations: string[];
 };
 
@@ -21,23 +17,21 @@ function baseUrl() {
   return (process.env.URTRUCK_BACKEND_URL || DEFAULT_BACKEND).replace(/\/$/, '');
 }
 
-function adminHeader() {
-  const user = process.env.URTRUCK_ADMIN_USER || '';
-  const pass = process.env.URTRUCK_ADMIN_PASS || '';
+function basicHeader(user = process.env.URTRUCK_ADMIN_USER || '', pass = process.env.URTRUCK_ADMIN_PASS || '') {
   return `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
 }
 
-async function fetchText(path: string) {
+async function backendFetch(path: string, auth = basicHeader()) {
   return fetch(`${baseUrl()}${path}`, {
     cache: 'no-store',
-    headers: { Authorization: adminHeader(), Accept: 'text/plain, application/json' },
+    headers: { Authorization: auth, Accept: 'application/json' },
     signal: AbortSignal.timeout(8000)
   });
 }
 
-async function fetchJson<T>(path: string): Promise<T | null> {
+export async function fetchControl<T>(path: string): Promise<T | null> {
   try {
-    const r = await fetchText(path);
+    const r = await backendFetch(`/api/v1/admin/control${path}`);
     if (!r.ok) return null;
     return await r.json() as T;
   } catch {
@@ -45,74 +39,28 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   }
 }
 
-function metricNumber(text: string, name: string): number | null {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = text.match(new RegExp(`^${escaped}(?:\\{[^}]*\\})?\\s+([0-9.eE+-]+)$`, 'm'));
-  if (!match) return null;
-  const n = Number(match[1]);
-  return Number.isFinite(n) ? n : null;
-}
-
-function sumMetric(text: string, name: string): number | null {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`^${escaped}(?:\\{[^}]*\\})?\\s+([0-9.eE+-]+)$`, 'gm');
-  let found = false;
-  let total = 0;
-  for (const match of text.matchAll(re)) {
-    const n = Number(match[1]);
-    if (Number.isFinite(n)) { found = true; total += n; }
-  }
-  return found ? total : null;
-}
-
 export async function validateBackendAdmin(user: string, pass: string): Promise<boolean> {
   try {
-    const r = await fetch(`${baseUrl()}/metrics`, {
-      cache: 'no-store',
-      headers: { Authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}` },
-      signal: AbortSignal.timeout(8000)
-    });
-    return r.ok;
+    const r = await backendFetch('/api/v1/admin/control/ping', basicHeader(user, pass));
+    if (!r.ok) return false;
+    const data = await r.json() as { ok?: boolean };
+    return data.ok === true;
   } catch {
     return false;
   }
 }
 
 export async function loadSnapshot(): Promise<Snapshot> {
-  const limitations = [
-    'Realtime online/presence ещё не подключён: число online не подменяется приблизительными данными.',
-    'Бизнес-счётчики грузов, ставок, сделок, чатов и GPS появятся после отдельного read-only /admin/control API.'
-  ];
-
-  let metrics = '';
-  try {
-    const r = await fetchText('/metrics');
-    if (r.ok) metrics = await r.text();
-  } catch {}
-
-  const health = await fetchJson<{ status?: string; uptime_hours?: number; error_rate?: string }>('/health');
-  const pending = await fetchJson<{ pending?: unknown[] }>('/admin/data/pending');
-  const mentions = await fetchJson<{ mentions?: unknown[] }>('/admin/data/mentions');
-
+  const summary = await fetchControl<ControlSummary>('/summary');
+  const presence = summary?.presence || { available: false, online: null, by_role: {}, by_platform: {}, window_seconds: 90 };
   return {
     generatedAt: new Date().toISOString(),
-    backend: {
-      ok: health?.status === 'ok',
-      status: health?.status || (metrics ? 'authenticated' : 'unavailable'),
-      uptimeHours: typeof health?.uptime_hours === 'number' ? health.uptime_hours : null,
-      errorRate: health?.error_rate || null
-    },
-    stats: {
-      onlineNow: null,
-      usersTotal: metricNumber(metrics, 'urtruck_drivers_total'),
-      approvedDrivers: metricNumber(metrics, 'urtruck_drivers_approved'),
-      pendingModeration: Array.isArray(pending?.pending) ? pending!.pending!.length : null,
-      reviewsTotal: metricNumber(metrics, 'urtruck_reviews_total'),
-      blacklistActive: metricNumber(metrics, 'urtruck_blacklist_active'),
-      telegramMentions: Array.isArray(mentions?.mentions) ? mentions!.mentions!.length : null,
-      requestsTotal: sumMetric(metrics, 'urtruck_requests_total'),
-      serverErrorsTotal: sumMetric(metrics, 'urtruck_errors_total')
-    },
-    limitations
+    backend: { ok: !!summary, status: summary ? 'operational' : 'unavailable' },
+    stats: { ...(summary?.stats || {}), onlineNow: presence.online },
+    presence,
+    limitations: [
+      presence.available ? 'Presence подключён: online считается только по heartbeat за последние 90 секунд.' : 'Redis presence недоступен или backend ещё не обновлён — online не подменяется приблизительным значением.',
+      'Текст чужих сообщений намеренно не отдаётся общим Control API; support-content требует отдельного audit-доступа.'
+    ]
   };
 }
