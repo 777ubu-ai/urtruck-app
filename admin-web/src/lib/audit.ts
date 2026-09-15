@@ -1,4 +1,4 @@
-import { appendFileSync, chmodSync, mkdirSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 function auditPath() {
@@ -31,4 +31,12 @@ export function audit(event: {
   } catch (error) {
     console.error('[admin-audit] write failed', error instanceof Error ? error.message : 'unknown');
   }
+}
+
+export function readAudit(limit = 200) {
+  const path = auditPath();
+  if (!existsSync(path)) return [];
+  try {
+    return readFileSync(path,'utf8').trim().split('\n').filter(Boolean).slice(-Math.max(1,Math.min(limit,500))).reverse().map(line => JSON.parse(line));
+  } catch { return []; }
 }

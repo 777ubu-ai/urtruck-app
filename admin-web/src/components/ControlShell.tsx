@@ -7,7 +7,7 @@ import { can, type Permission, type StaffRole } from '@/lib/rbac';
 
 const NAV: readonly [string, string, Permission][] = [
   ['/', 'Обзор', 'dashboard'], ['/online', 'Онлайн', 'online'], ['/users', 'Пользователи', 'users'],
-  ['/deals', 'Сделки', 'deals'], ['/chats', 'Чаты', 'chats'], ['/system', 'Система', 'system'], ['/staff', 'Сотрудники', 'staff_read']
+  ['/deals', 'Сделки', 'deals'], ['/chats', 'Чаты', 'chats'], ['/system', 'Система', 'system'], ['/staff', 'Сотрудники', 'staff_read'], ['/audit', 'Аудит', 'audit_read']
 ];
 
 type Me = { username: string; role: StaffRole; roleLabel: string };

@@ -6,11 +6,11 @@ export const STAFF_ROLES = [
 export type StaffRole = typeof STAFF_ROLES[number];
 export type Permission =
   | 'dashboard' | 'online' | 'users' | 'deals' | 'chats' | 'system'
-  | 'staff_read' | 'staff_manage';
+  | 'staff_read' | 'staff_manage' | 'audit_read';
 
 const MATRIX: Record<StaffRole, ReadonlySet<Permission>> = {
-  owner: new Set(['dashboard','online','users','deals','chats','system','staff_read','staff_manage']),
-  super_admin: new Set(['dashboard','online','users','deals','chats','system','staff_read']),
+  owner: new Set(['dashboard','online','users','deals','chats','system','staff_read','staff_manage','audit_read']),
+  super_admin: new Set(['dashboard','online','users','deals','chats','system','staff_read','audit_read']),
   operations: new Set(['dashboard','online','users','deals','chats','system']),
   support: new Set(['dashboard','online','users','deals','chats']),
   moderator: new Set(['dashboard','users']),

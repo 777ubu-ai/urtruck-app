@@ -7,6 +7,7 @@ import {
   verifyStaffLogin, verifyStaffPassword
 } from '@/lib/staff';
 import { audit, requestIp } from '@/lib/audit';
+import { LoginGuardUnavailable, loginAllowed, loginFailure, loginSuccess } from '@/lib/loginGuard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,10 +28,18 @@ export async function POST(request: NextRequest) {
   const ip = requestIp(request);
   if (!username || !password) return NextResponse.json({ ok: false, error: 'Введите логин и пароль' }, { status: 400 });
 
+  let gate;
+  try { gate = loginAllowed(ip, username); } catch (error) {
+    if (error instanceof LoginGuardUnavailable) return NextResponse.json({ ok:false, error:'Сервис входа временно недоступен' }, { status:503 });
+    throw error;
+  }
+  if (!gate.allowed) return NextResponse.json({ ok:false, error:'Слишком много неудачных попыток. Попробуйте позже.' }, { status:429, headers:{ 'Retry-After': String(gate.retryAfter) } });
+
   let staff = null;
   if (staffCount() === 0) {
     const legacyOk = await validateBackendAdmin(username, password);
     if (!legacyOk) {
+      loginFailure(ip, username);
       audit({ actor: username, action: 'auth.bootstrap_failed', success: false, ip });
       return NextResponse.json({ ok: false, error: 'Неверные данные или backend недоступен' }, { status: 401 });
     }
@@ -40,6 +49,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!staff) {
+    loginFailure(ip, username);
     audit({ actor: username, action: 'auth.password_failed', success: false, ip });
     return NextResponse.json({ ok: false, error: 'Неверные данные' }, { status: 401 });
   }
@@ -64,10 +74,12 @@ export async function POST(request: NextRequest) {
   if (!otp) return NextResponse.json({ ok: false, mfaRequired: true });
   const verified = verifyStaffLogin(username, password, otp);
   if (!verified) {
+    loginFailure(ip, username);
     audit({ actor: username, role: staff.role, action: 'auth.mfa_failed', success: false, ip });
     return NextResponse.json({ ok: false, error: 'Неверный код Authenticator' }, { status: 401 });
   }
 
+  loginSuccess(ip, username);
   const response = NextResponse.json({ ok: true, role: verified.role });
   sessionCookie(response, createAdminSession(verified.username, verified.role));
   audit({ actor: verified.username, role: verified.role, action: 'auth.login', ip });

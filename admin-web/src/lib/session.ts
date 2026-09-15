@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { StaffRole } from './rbac';
+import { findStaff } from './staff';
 
 const TTL_SECONDS = 8 * 60 * 60;
 const ENROLL_TTL_SECONDS = 10 * 60;
@@ -43,7 +44,10 @@ export function createAdminSession(username: string, role: StaffRole): string {
 
 export function verifyAdminSession(value?: string | null): AdminSession | null {
   const payload = decode<AdminSession>(value);
-  return payload?.kind === 'admin' && payload.role ? payload : null;
+  if (!payload || payload.kind !== 'admin' || !payload.role) return null;
+  const staff = findStaff(payload.u);
+  if (!staff || !staff.active || staff.role !== payload.role) return null;
+  return payload;
 }
 
 export function createEnrollmentSession(username: string): string {
