@@ -84,12 +84,17 @@ def translate_text(text: str, target_lang: str, source_lang: str = None) -> dict
 
     if provider == "openai" and api_key:
         return _translate_openai(text, target_lang, source_lang, api_key)
-    elif provider == "google":
-        return _translate_google(text, target_lang, source_lang)
-    elif provider == "deepl":
-        return _translate_deepl(text, target_lang, source_lang)
-    else:
-        return {"translated_text": text, "provider": "stub", "source_lang": source_lang or "unknown"}
+
+    # A provider stub must never return the source text as a successful
+    # translation. That made an unconfigured deployment look healthy and
+    # cached untranslated logistics messages as if they were translated.
+    # Keep legacy provider names selectable for diagnostics, but fail closed
+    # until a real provider is configured.
+    raise TranslationError(
+        "Перевод не настроен",
+        provider=provider or "stub",
+        code="TRANSLATION_UNAVAILABLE",
+    )
 
 
 def _translate_openai(text, target_lang, source_lang, api_key):

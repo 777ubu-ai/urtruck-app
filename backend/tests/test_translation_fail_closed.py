@@ -119,6 +119,19 @@ def test_00_setup():
     STATE["message_id"] = message_id
 
 
+def test_00_stub_provider_fails_closed_instead_of_returning_source(monkeypatch):
+    from services import translate_service as ts
+
+    monkeypatch.delenv("TRANSLATE_PROVIDER", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    try:
+        ts.translate_text("Привет", "zh", source_lang="ru")
+        assert False, "an unconfigured provider must not return the source as a translation"
+    except ts.TranslationError as exc:
+        assert exc.code == "TRANSLATION_UNAVAILABLE"
+        assert exc.provider == "stub"
+
+
 # ─────────────────── 1. translate_service unit contract ───────────────────
 
 def _fake_urlopen_http_error(status, body=b"provider said no"):

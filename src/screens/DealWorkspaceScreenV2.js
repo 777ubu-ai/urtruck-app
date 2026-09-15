@@ -704,16 +704,28 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: null } }));
     setVoiceTranscribing(item.id);
     try {
-      // Transcription and translation are separate actions. This call must
-      // never silently turn a successful STT result into a translation error.
-      const result = await chatAPI.transcribe(item.id);
+      // Restore the historical one-tap voice flow from 16b7e06b: the
+      // existing endpoint performs STT and, when configured, attaches a
+      // translation for the current UI language. The original transcript
+      // remains visible; translation is supplemental.
+      const result = await chatAPI.transcribe(item.id, getLanguage().toLowerCase());
       if (!result?.transcript_text) {
         setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('voice_transcription_unavailable') } }));
         return;
       }
       setVoiceTranscripts((previous) => ({
         ...previous,
-        [item.id]: { visible: true, transcriptText: result.transcript_text, sourceLang: result.source_lang || null, provider: result.provider || null, translatedText: null },
+        [item.id]: {
+          visible: true,
+          transcriptText: result.transcript_text,
+          sourceLang: result.source_lang || null,
+          provider: result.provider || null,
+          translatedText: result.translation_provider && !String(result.translation_provider).endsWith('_stub')
+            ? (result.translated_text || null)
+            : null,
+          translationProvider: result.translation_provider || null,
+          errorText: result.translation_error ? t('translation_unavailable') : null,
+        },
       }));
     } catch (err) {
       // STT/voice-hardening track: chatAPI.transcribe() now throws a

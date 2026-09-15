@@ -10,9 +10,10 @@ const workflow = readFileSync('.github/workflows/production-deploy-execute.yml',
 const bootstrap = readFileSync('scripts/remote_bootstrap_secure_env.sh', 'utf8');
 const i18n = readFileSync('src/utils/i18n.js', 'utf8');
 
-test('voice STT and translation are separate actions and retryable', () => {
-  assert.match(workspace, /chatAPI\.transcribe\(item\.id\)/);
-  assert.doesNotMatch(workspace, /chatAPI\.transcribe\(item\.id, getLanguage\(\)\.toLowerCase\(\)\)/);
+test('voice one-tap STT attaches the current-language translation and remains retryable', () => {
+  assert.match(workspace, /chatAPI\.transcribe\(item\.id, getLanguage\(\)\.toLowerCase\(\)\)/);
+  assert.match(workspace, /translation_provider/);
+  assert.match(workspace, /translation_error/);
   assert.match(workspace, /const translateVoiceTranscript = React\.useCallback/);
   assert.match(bubble, /testID="voice-transcription-retry"/);
   assert.match(bubble, /testID="voice-translation-btn"/);
