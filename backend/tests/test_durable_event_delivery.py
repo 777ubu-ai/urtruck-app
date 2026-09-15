@@ -25,6 +25,8 @@ import sys
 import uuid
 from pathlib import Path
 
+import pytest
+
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_durable_delivery.db")
 if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
     Path(TEST_DB).unlink(missing_ok=True)
@@ -82,6 +84,16 @@ import api.marketplace as marketplace_module
 import api.chat as chat_module
 
 
+@pytest.fixture(autouse=True)
+def _explicit_legacy_provider_for_this_legacy_path_suite(monkeypatch):
+    """These tests intentionally exercise the retained Expo legacy path.
+
+    The production default is native now, so make the old-provider intent
+    explicit instead of relying on an implicit module default.
+    """
+    monkeypatch.setattr(push_gateway, "PUSH_PROVIDER_MODE", "expo")
+
+
 def _synchronous_send_to_user(user_id, title, body, url="/", kind="info", data=None):
     """api.push.send_to_user() (the real production entry point) spawns a
     daemon Thread and returns immediately — correct for a live server (an
@@ -122,8 +134,7 @@ def seed_cargo(owner_id, price=1234):
 
 def seed_device(user_id, locale=None):
     """Register an active push_devices row so send_to_devices() actually
-    targets this user (mode='expo' default only sees push_provider='expo'
-    devices — with none registered, nothing is attempted at all)."""
+    targets this user in the explicitly selected legacy Expo mode."""
     with get_conn() as c:
         c.execute(
             "INSERT INTO push_devices (user_id, device_id, platform, push_provider, push_token, locale, enabled) "
@@ -524,7 +535,7 @@ def test_system_push_is_localized_per_device_not_per_last_seen():
     result = push_gateway.send_to_devices(user, "fallback", "fallback", {
         "event_key": "event:mixed-locale-final", "i18n_event": "bid_created",
         "i18n_params": {"amount": "$1", "route": "A→B"},
-    }, badge=1, expo_send_one=capture)
+    }, badge=1, expo_send_one=capture, mode="expo")
     assert result["sent"] == 2
     texts = " ".join(f"{title} {body}" for _, title, body in captured)
     assert "New bid" in texts and "新报价" in texts

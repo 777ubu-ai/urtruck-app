@@ -1,4 +1,4 @@
-"""Native push gateway: FCM/APNs primary, Expo fallback.
+"""Native push gateway: FCM/APNs primary, Expo legacy path.
 
 This module is deliberately additive. Existing business call-sites still call
 services.push_sender.send(), while the sender delegates native delivery here
@@ -7,6 +7,9 @@ according to PUSH_PROVIDER_MODE:
   expo   -> legacy Expo Push only
   native -> direct FCM/APNs only
   dual   -> direct FCM/APNs first, Expo only for devices without native token
+
+The canonical default is ``native``. Expo is only selected when the operator
+explicitly sets ``PUSH_PROVIDER_MODE=expo`` (or ``dual``).
 """
 from __future__ import annotations
 
@@ -20,7 +23,8 @@ import httpx
 
 from database.db import get_conn
 
-PUSH_PROVIDER_MODE = (os.getenv("PUSH_PROVIDER_MODE") or "expo").strip().lower()
+PUSH_PROVIDER_MODE = (os.getenv("PUSH_PROVIDER_MODE") or "native").strip().lower()
+SUPPORTED_PUSH_PROVIDER_MODES = {"expo", "native", "dual"}
 NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
 
 FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "")
@@ -418,9 +422,10 @@ def send_to_devices(
     mode: Optional[str] = None,
     provider_filter: Optional[str] = None,
 ) -> dict[str, Any]:
-    mode = (mode or PUSH_PROVIDER_MODE or "expo").lower()
-    if mode not in ("expo", "native", "dual"):
-        mode = "expo"
+    mode = (mode or PUSH_PROVIDER_MODE or "native").lower()
+    if mode not in SUPPORTED_PUSH_PROVIDER_MODES:
+        # Never turn a typo/misconfiguration into an implicit Expo delivery.
+        return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "error": "invalid_provider_mode"}
 
     devices = active_devices(user_id)
     if not devices:
@@ -754,9 +759,44 @@ def info() -> dict[str, Any]:
             counts["outbox_dead"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'dead'").fetchone()[0])
     except Exception:
         pass
+    service_account = _service_account_info()
+    fcm_configured = bool(
+        (FCM_PROJECT_ID or (service_account or {}).get("project_id"))
+        and service_account
+        and service_account.get("client_email")
+        and service_account.get("private_key")
+    )
+    fcm_errors = []
+    if not (FCM_PROJECT_ID or (service_account or {}).get("project_id")):
+        fcm_errors.append("project_id_missing")
+    if not service_account:
+        fcm_errors.append("service_account_missing_or_invalid")
+    else:
+        if not service_account.get("client_email"):
+            fcm_errors.append("service_account_client_email_missing")
+        if not service_account.get("private_key"):
+            fcm_errors.append("service_account_private_key_missing")
+    try:
+        import jwt  # noqa: F401
+    except Exception:
+        fcm_errors.append("pyjwt_missing")
+
+    apns_configured = bool(APNS_KEY_ID and APNS_TEAM_ID and APNS_AUTH_KEY_P8 and APNS_BUNDLE_ID)
+    apns_errors = [] if apns_configured else ["apns_credentials_missing"]
+    config_errors = []
+    if PUSH_PROVIDER_MODE not in SUPPORTED_PUSH_PROVIDER_MODES:
+        config_errors.append("invalid_provider_mode")
+    elif PUSH_PROVIDER_MODE in ("native", "dual"):
+        if not fcm_configured:
+            config_errors.append("fcm_not_configured")
+        if not apns_configured:
+            config_errors.append("apns_not_configured")
+
     return {
         "mode": PUSH_PROVIDER_MODE,
-        "fcm": {"configured": bool((FCM_PROJECT_ID or (_service_account_info() or {}).get("project_id")) and _service_account_info())},
-        "apns": {"configured": bool(APNS_KEY_ID and APNS_TEAM_ID and APNS_AUTH_KEY_P8 and APNS_BUNDLE_ID), "sandbox": APNS_USE_SANDBOX},
+        "ready": not config_errors,
+        "config_errors": config_errors,
+        "fcm": {"configured": fcm_configured, "errors": fcm_errors},
+        "apns": {"configured": apns_configured, "errors": apns_errors, "sandbox": APNS_USE_SANDBOX},
         "registry": counts,
     }

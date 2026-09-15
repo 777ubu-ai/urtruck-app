@@ -2,9 +2,9 @@
 
 Два канала:
   1. Web Push — через pywebpush + VAPID (браузер, PWA).
-  2. Native — через Push Gateway. По умолчанию Expo Push Service
-     сохраняется как legacy-path, но PUSH_PROVIDER_MODE=native|dual включает
-     прямой FCM/APNs через services.push_gateway.
+  2. Native — через Push Gateway. По умолчанию используется прямой
+     FCM/APNs; Expo сохраняется только как явно выбранный legacy-path
+     через PUSH_PROVIDER_MODE=expo|dual.
 
 ENV (.env):
   VAPID_PUBLIC_KEY    — публичный VAPID-ключ (base64url, без паддинга)
@@ -392,6 +392,12 @@ def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optiona
     )
     if gateway_result.get("devices", 0) > 0:
         return int(gateway_result.get("sent", 0) or 0), int(gateway_result.get("devices", 0) or 0)
+    # Native is the production default. If the new registry has no target,
+    # do not silently fall back to legacy Expo/FCM tokens. Legacy delivery is
+    # retained for an explicitly selected expo/dual mode and diagnostics.
+    configured_mode = (os.getenv("PUSH_PROVIDER_MODE") or "native").strip().lower()
+    if configured_mode not in ("expo", "dual"):
+        return 0, 0
     return _send_native_legacy(user_id, title, body, data, badge=badge)
 
 

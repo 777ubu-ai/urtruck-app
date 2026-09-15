@@ -24,8 +24,9 @@ and a real (temp) SQLite push_outbox/push_devices — not source-regex — that:
 
 Provider responses are simulated via a fake `expo_send_one` callback — the
 exact seam services.push_sender._send_native already hands push_gateway in
-production for the Expo path (see push_gateway.ExpoProvider.send()) — so no
-real network call is made and no Expo/FCM/APNs behavior is invented.
+production for the explicitly selected Expo legacy path (see
+push_gateway.ExpoProvider.send()) — so no real network call is made and no
+Expo/FCM/APNs behavior is invented.
 """
 import os
 import sys
@@ -53,6 +54,9 @@ import api.push as push_api  # noqa: F401  — import runs _init_schema() (push_
 # ───────────────────────── fixtures / helpers ─────────────────────────
 def setup_function(_function):
     """Isolate durable outbox rows from earlier tests in the shared DB."""
+    # This suite is specifically the retained Expo legacy-path contract. The
+    # production default is native, so the test intent must be explicit.
+    push_gateway.PUSH_PROVIDER_MODE = "expo"
     with get_conn() as c:
         c.execute("DELETE FROM push_outbox")
         c.execute("DELETE FROM push_devices")
