@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  turbopack: { root: process.cwd() },
   async headers() {
     return [
       {
