@@ -720,7 +720,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           transcriptText: result.transcript_text,
           sourceLang: result.source_lang || null,
           provider: result.provider || null,
-          translatedText: result.translation_provider && !String(result.translation_provider).endsWith('_stub')
+          translatedText: result.translation_provider && !['stub', 'google_stub', 'deepl_stub'].includes(String(result.translation_provider))
             ? (result.translated_text || null)
             : null,
           translationProvider: result.translation_provider || null,
