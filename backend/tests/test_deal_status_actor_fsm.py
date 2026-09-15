@@ -489,6 +489,61 @@ def test_cargo_is_not_completed_before_deal_completed():
     assert _cargo_status_for_deal(d) == "completed"
 
 
+def test_completed_stops_tracking_without_erasing_last_gps_point():
+    d = seed_deal("accepted", from_country="KZ", to_country="KZ")
+    assert patch_status(d, "in_progress", DRIVER).status_code == 200
+
+    as_user(DRIVER)
+    assert client.post(
+        f"/api/v1/market/deals/{d}/location", json={"lat": 43.2, "lng": 76.9}
+    ).status_code == 200
+
+    assert patch_status(d, "delivered", DRIVER).status_code == 200
+    assert patch_status(d, "received", SHIPPER).status_code == 200
+    assert patch_status(d, "completed", SHIPPER).status_code == 200
+
+    with get_conn() as c:
+        tracking = c.execute(
+            "SELECT status, stopped_at, completed_at FROM deal_tracking WHERE deal_id = ?", (d,)
+        ).fetchone()
+        location = c.execute(
+            "SELECT lat, lng FROM deal_locations WHERE deal_id = ?", (d,)
+        ).fetchone()
+
+    assert tracking["status"] == "stopped"
+    assert tracking["stopped_at"] is not None
+    assert tracking["completed_at"] is not None
+    assert location is not None
+    assert (location["lat"], location["lng"]) == (43.2, 76.9)
+    as_user(DRIVER)
+    tracking_api = client.get(f"/api/v1/market/deals/{d}/tracking")
+    assert tracking_api.status_code == 200
+    assert tracking_api.json()["tracking"]["status"] == "stopped"
+    active_ids = client.get("/api/v1/market/tracking/active").json()["deal_ids"]
+    assert d not in active_ids
+
+
+def test_mid_transit_cancellation_stops_tracking_without_erasing_last_point():
+    d = seed_deal("accepted", from_country="KZ", to_country="KZ")
+    assert patch_status(d, "in_progress", DRIVER).status_code == 200
+    as_user(DRIVER)
+    assert client.post(
+        f"/api/v1/market/deals/{d}/location", json={"lat": 43.2, "lng": 76.9}
+    ).status_code == 200
+
+    assert patch_status(d, "cancelled", SHIPPER).status_code == 200
+    with get_conn() as c:
+        tracking = c.execute(
+            "SELECT status, stopped_at FROM deal_tracking WHERE deal_id = ?", (d,)
+        ).fetchone()
+        location = c.execute(
+            "SELECT lat, lng FROM deal_locations WHERE deal_id = ?", (d,)
+        ).fetchone()
+    assert tracking["status"] == "stopped"
+    assert tracking["stopped_at"] is not None
+    assert location is not None
+
+
 def test_completed_is_terminal():
     d = seed_deal("completed", from_country="KZ", to_country="KZ")
     assert patch_status(d, "in_progress", DRIVER).status_code == 409

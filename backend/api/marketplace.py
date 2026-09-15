@@ -3387,17 +3387,32 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
     if deal.get("trip_id") and new_status in _DEAL_TO_TRIP:
         c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                    (_DEAL_TO_TRIP[new_status], deal["trip_id"]))
-    # Once cargo is picked up, GPS evidence belongs to the deal. Delivery or
-    # an in-transit cancellation stops new updates but never deletes the last
-    # point or consent record. A pre-pickup cancellation stays private.
+    # Once cargo is picked up, GPS evidence belongs to the deal. Delivery keeps
+    # the tracking row active long enough for both parties to inspect the last
+    # point, but terminal completion/cancellation must stop tracking
+    # semantically as well. In all cases preserve the last point and consent
+    # record as evidence. A pre-pickup cancellation stays private.
     if new_status in ("delivered", "cancelled"):
         c.execute(
             "UPDATE deal_tracking SET completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP "
             "WHERE deal_id = ? AND locked_at IS NOT NULL",
             (deal_id,),
         )
+        if new_status == "cancelled":
+            c.execute(
+                "UPDATE deal_tracking SET status='stopped', stopped_at=COALESCE(stopped_at, CURRENT_TIMESTAMP), "
+                "updated_at=CURRENT_TIMESTAMP WHERE deal_id = ? AND locked_at IS NOT NULL",
+                (deal_id,),
+            )
         if cur_status == "accepted":
             c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
+    if new_status == "completed":
+        c.execute(
+            "UPDATE deal_tracking SET status='stopped', stopped_at=COALESCE(stopped_at, CURRENT_TIMESTAMP), "
+            "completed_at=COALESCE(completed_at, CURRENT_TIMESTAMP), updated_at=CURRENT_TIMESTAMP "
+            "WHERE deal_id = ? AND locked_at IS NOT NULL",
+            (deal_id,),
+        )
     event_payload = {"status": new_status, "old_status": cur_status, "request_id": request_id}
     if new_status == "cancelled" and cur_status in ("in_progress", "at_border"):
         event_payload["mid_transit_cancel"] = True
