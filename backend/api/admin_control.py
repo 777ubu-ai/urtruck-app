@@ -4,6 +4,9 @@ This module must not mutate deals, chat, GPS, marketplace or user state.
 Operational write actions stay in their existing, separately audited routes.
 """
 from fastapi import APIRouter, Depends, Query
+from datetime import datetime
+from pathlib import Path
+import os
 
 from api.admin import check_admin
 from database.db import get_conn
@@ -178,3 +181,25 @@ def users(
             d["phone_masked"] = ""
         result.append(d)
     return {"users": result}
+
+@control_router.get("/system")
+def system_state(_admin: str = Depends(check_admin)):
+    release_file = Path(__file__).resolve().parent.parent / "RELEASE_SHA"
+    try:
+        release_sha = release_file.read_text(encoding="utf-8").strip()[:40]
+    except Exception:
+        release_sha = "unknown"
+    presence = presence_service.snapshot()
+    with get_conn() as c:
+        return {
+            "environment": os.getenv("URTRUCK_ENV", os.getenv("ENV", "production")),
+            "release_sha": release_sha,
+            "server_time_utc": datetime.utcnow().isoformat() + "Z",
+            "presence_available": presence.get("available", False),
+            "online": presence.get("online"),
+            "push_pending": _count(c, "push_outbox", "status IN ('pending','processing')"),
+            "push_dead": _count(c, "push_outbox", "status='dead'"),
+            "active_deals": _count(c, "deals", "status NOT IN ('completed','cancelled')"),
+            "gps_fresh": _count(c, "deal_locations", "datetime(updated_at)>=datetime('now','-20 minutes')"),
+            "gps_stale": _count(c, "deal_locations", "datetime(updated_at)<datetime('now','-20 minutes')"),
+        }

@@ -25,6 +25,7 @@ export default function DataPage({ title, subtitle, endpoint, dataKey, columns, 
     try {
       const r = await fetch(endpoint, { cache: 'no-store' });
       if (r.status === 401) { router.replace('/login'); return; }
+      if (r.status === 403) { setError('У вашей роли нет доступа к этому разделу'); return; }
       const data = await r.json();
       if (!r.ok) { setError(data.error || 'Не удалось получить данные'); return; }
       const list = Array.isArray(data[dataKey]) ? data[dataKey] : [];

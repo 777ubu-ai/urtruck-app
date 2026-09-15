@@ -93,3 +93,11 @@ def test_deals_returns_last_gps_point_read_only():
 def test_control_requires_admin_basic():
     r = client.get("/admin/control/summary")
     assert r.status_code == 401
+
+
+def test_system_state_is_read_only_and_reports_operational_keys():
+    r = client.get("/admin/control/system", auth=AUTH)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    for key in ("environment", "release_sha", "server_time_utc", "presence_available", "push_pending", "push_dead", "active_deals", "gps_fresh", "gps_stale"):
+        assert key in body
