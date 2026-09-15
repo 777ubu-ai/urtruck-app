@@ -212,7 +212,10 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /borderRadius: 30/);
   assert.match(workspace, /shadowOpacity: 0\.1/);
   assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 88, borderRadius: 999/);
-  assert.match(workspace, /placeholder=\{isDriver \? ui\.writeShipper : ui\.write\}/);
+  // The approved composer is visually empty in its idle state; the localized
+  // copy remains available to screen readers through accessibilityLabel.
+  assert.doesNotMatch(workspace, /placeholder=\{isDriver \? ui\.writeShipper : ui\.write\}/);
+  assert.match(workspace, /accessibilityLabel=\{isDriver \? ui\.writeShipper : ui\.write\}/);
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
 });
 
