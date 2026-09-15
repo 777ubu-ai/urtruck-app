@@ -83,7 +83,8 @@ jobs:
           fi
 
       - name: Expo prebuild (Android, non-interactive)
-        run: npx expo prebuild --platform android --clean --no-install --non-interactive
+        # Preserve the approved native splash resources and launch wiring.
+        run: npx expo prebuild --platform android --no-install --non-interactive
         env:
           EXPO_NO_TELEMETRY: 1
           CI: 1

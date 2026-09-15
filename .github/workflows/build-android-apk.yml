@@ -107,13 +107,23 @@ jobs:
             python3 scripts/verify_android_firebase_config.py --check-source google-services.json
 
       - name: Expo prebuild (Android, non-interactive)
-        run: npx expo prebuild --platform android --clean --no-install --non-interactive
+        # The tracked Android tree contains the approved full-screen splash and
+        # its native launch wiring. --clean deletes those native files before
+        # the build and silently restores Expo's tiny centered icon splash.
+        run: npx expo prebuild --platform android --no-install --non-interactive
         env:
           EXPO_NO_TELEMETRY: 1
           CI: 1
 
       - name: Verify Google Services Gradle plugin wired after prebuild
         run: python3 scripts/verify_android_firebase_config.py --check-plugin android
+
+      - name: Verify canonical Android splash survived prebuild
+        run: |
+          test -f android/app/src/main/res/drawable-nodpi/urtruck_splash_fullscreen.png
+          test -f android/app/src/main/res/drawable/urtruck_splash_window_background.xml
+          grep -F 'android:windowBackground">@drawable/urtruck_splash_window_background' android/app/src/main/res/values/styles.xml
+          grep -F 'windowSplashScreenAnimatedIcon">@android:color/transparent' android/app/src/main/res/values/styles.xml
 
       - name: Preserve MapKit native dependency resolution
         run: |

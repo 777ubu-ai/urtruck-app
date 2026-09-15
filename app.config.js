@@ -26,6 +26,7 @@ module.exports = {
     },
     plugins: [
       ...(baseExpoConfig.plugins || []),
+      './plugins/withAndroidFullscreenSplash',
       ...(isQa2 ? ['./plugins/withQaLocalCleartext'] : []),
     ],
   },

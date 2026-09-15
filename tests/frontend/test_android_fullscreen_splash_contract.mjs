@@ -8,6 +8,9 @@ const splash = read('src/components/AndroidBrandedLaunchSplash.js');
 const root = read('App.js');
 const nativeStyle = read('android/app/src/main/res/values/styles.xml');
 const mainActivity = read('android/app/src/main/java/com/urtruck/app/MainActivity.kt');
+const appConfig = read('app.config.js');
+const androidBuildWorkflow = read('.github/workflows/build-android-apk.yml');
+const androidDevClientWorkflow = read('.github/workflows/build-android-dev-client.yml');
 
 test('Android native launch window uses the branded background without a tiny poster', () => {
   assert.equal(app.android.splash.image, './assets/icon.png');
@@ -42,4 +45,11 @@ test('Android branded launch splash preserves the logo and owns system bars duri
 test('application root wraps only the launch phase; iOS and existing app logic remain inside', () => {
   assert.match(root, /import AndroidBrandedLaunchSplash/);
   assert.match(root, /<AndroidBrandedLaunchSplash>[\s\S]*<AuthProvider>[\s\S]*<AppInner \/>[\s\S]*<\/AndroidBrandedLaunchSplash>/);
+});
+
+test('Expo prebuild cannot silently replace the approved native splash', () => {
+  assert.match(appConfig, /withAndroidFullscreenSplash/);
+  assert.doesNotMatch(androidBuildWorkflow, /expo prebuild[^\n]*--clean/);
+  assert.doesNotMatch(androidDevClientWorkflow, /expo prebuild[^\n]*--clean/);
+  assert.match(androidBuildWorkflow, /Verify canonical Android splash survived prebuild/);
 });
