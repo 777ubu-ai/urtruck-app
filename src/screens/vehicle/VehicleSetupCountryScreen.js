@@ -11,7 +11,24 @@ const KEY = 'ur_vehicle_setup_draft';
 export default function VehicleSetupCountryScreen({ navigation, route }) {
   const { lang, c } = useVehicleCopy();
   const [draft, setDraft] = useState({}); const [sheet, setSheet] = useState(null); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
-  useEffect(() => { (async () => { const local = JSON.parse((await storage.get(KEY)) || '{}'); const status = await regAPI.status().catch(() => null); setDraft({ ...local, ...(status?.driver_citizenship_country_code ? { driver_citizenship_country_code: status.driver_citizenship_country_code } : {}), ...(status?.vehicle_registration_country_code ? { vehicle_registration_country_code: status.vehicle_registration_country_code } : {}) }); setLoading(false); })(); }, []);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const local = JSON.parse((await storage.get(KEY)) || '{}');
+      if (!mounted) return;
+      // The picker is backed by the bundled ISO catalogue. Render it from the
+      // local draft immediately; server status is only a background merge.
+      setDraft(local);
+      setLoading(false);
+      const status = await regAPI.status().catch(() => null);
+      if (!mounted || !status) return;
+      setDraft((current) => ({ ...current,
+        ...(status.driver_citizenship_country_code ? { driver_citizenship_country_code: status.driver_citizenship_country_code } : {}),
+        ...(status.vehicle_registration_country_code ? { vehicle_registration_country_code: status.vehicle_registration_country_code } : {}),
+      }));
+    })();
+    return () => { mounted = false; };
+  }, []);
   const setValue = async (key, value) => { const next = { ...draft, [key]: value }; setDraft(next); await storage.set(KEY, JSON.stringify(next)); };
   const next = async () => { if (!draft.driver_citizenship_country_code || !draft.vehicle_registration_country_code) { setError(c.invalid); return; } setError(''); const saved = await regAPI.saveDriverDraft({ citizenship_country: draft.driver_citizenship_country_code, driver_citizenship_country_code: draft.driver_citizenship_country_code, vehicle_registration_country: draft.vehicle_registration_country_code, vehicle_registration_country_code: draft.vehicle_registration_country_code }); if (!saved.ok) { setError(saved.detail || c.saveError); return; } navigation.navigate('VehicleSetupMachine', { ...route?.params }); };
   if (loading) return <SafeAreaView style={styles.safe}><DriverRouteBackdrop /><ActivityIndicator color={DRIVER_CERAMIC.active} style={{ marginTop: 80 }} /></SafeAreaView>;
