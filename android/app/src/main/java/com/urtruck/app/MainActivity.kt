@@ -17,6 +17,7 @@ class MainActivity : ReactActivity() {
     // full-size branded artwork is rendered once by AndroidBrandedLaunchSplash
     // after React Native is ready; keeping Expo's legacy splash manager here
     // would hold the old contain-mode poster above that layer.
+    setTheme(R.style.AppTheme)
     super.onCreate(null)
   }
 
