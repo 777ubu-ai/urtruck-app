@@ -31,6 +31,7 @@ if (Platform.OS !== 'web') {
 }
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
+import { sendPresenceHeartbeat } from './src/utils/presence';
 import * as Sentry from '@sentry/react-native';
 
 // Глобально убираем браузерную синюю обводку фокуса (outline) с полей ввода и
@@ -191,6 +192,7 @@ function AppInner() {
   const navRef = useRef();
   const navReadyRef = useRef(false);
   const pendingUrlRef = useRef(null);
+  const currentScreenRef = useRef('app');
   const { session, hasToken } = useAuth();
   const { theme, isDark } = useTheme();
 
@@ -320,6 +322,24 @@ function AppInner() {
     return () => sub?.remove?.();
   }, [hasToken, session?.user?.id]);
 
+  // Control Center presence: lightweight best-effort heartbeat while the app is
+  // foregrounded. No coordinates, message text or deal payloads are sent here.
+  // Redis/backend failure must never block product flows.
+  useEffect(() => {
+    if (!hasToken) return undefined;
+    const beat = (force = false) => {
+      if (AppState.currentState === 'active') {
+        sendPresenceHeartbeat(currentScreenRef.current, force).catch(() => {});
+      }
+    };
+    beat(true);
+    const timer = setInterval(() => beat(false), 30_000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') beat(true);
+    });
+    return () => { clearInterval(timer); sub?.remove?.(); };
+  }, [hasToken]);
+
   // P5: пере-регистрация push-токена на запуске для уже залогиненного юзера.
   // Раньше autoRegister звался только сразу после OTP — при ротации Expo-токена
   // (обновление/переустановка приложения) пуши переставали доходить до
@@ -350,7 +370,8 @@ function AppInner() {
         <NavigationContainer
           ref={navRef}
           theme={navTheme}
-          onReady={() => { navReadyRef.current = true; if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current); }}
+          onReady={() => { navReadyRef.current = true; currentScreenRef.current = navRef.current?.getCurrentRoute?.()?.name || 'app'; if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current); }}
+          onStateChange={() => { currentScreenRef.current = navRef.current?.getCurrentRoute?.()?.name || 'app'; if (hasToken) sendPresenceHeartbeat(currentScreenRef.current, true).catch(() => {}); }}
         >
           <StatusBar style="light" />
           <AppNavigator />

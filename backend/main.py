@@ -117,6 +117,8 @@ from api.profile import profile_router
 from api.auth_otp import auth_otp_router
 from api.qa import qa_router
 from api.routing import routing_router
+from api.presence import presence_router
+from api.admin_control import control_router
 from database import db
 from database import registration_dal
 from database import reviews_dal
@@ -187,8 +189,10 @@ app.include_router(auth_otp_router, prefix="/api/auth")
 app.include_router(ss_router, prefix="/api/v1/searches")
 app.include_router(qa_router, prefix="/api/v1/qa")
 app.include_router(routing_router, prefix="/api/v1/routing")
+app.include_router(presence_router, prefix="/api/v1/presence")
 app.include_router(metrics_router, prefix="")
 app.include_router(admin_router, prefix="/admin")
+app.include_router(control_router, prefix="/api/v1/admin/control")
 
 # Приватная раздача локального storage (только provider=local).
 # Публичный StaticFiles УБРАН: документы водителя и вложения больше не
