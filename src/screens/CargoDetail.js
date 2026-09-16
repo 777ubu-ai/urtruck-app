@@ -1036,7 +1036,7 @@ export default function CargoDetail({ navigation, route }) {
       {/* Sticky CTA — только «Предложить цену». Свободный чат до сделки убран
           (решение владельца 03.08): переговоры ведутся через ставку/контрпредложение,
           чат создаётся автоматически после accept. */}
-      {!c.isMine && !dealStatus && !myPendingBid ? (
+      {!c.isMine && c.status === 'active' && !dealStatus && !myPendingBid ? (
         <StickyCTABar
           accent={v1Accent.main}
           primary={{
