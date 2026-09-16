@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const workspace = readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
 const bubble = readFileSync('src/components/VoiceMessageBubble.js', 'utf8');
+const voiceTextState = readFileSync('src/utils/voiceTranscriptState.js', 'utf8');
 const chatApi = readFileSync('backend/api/chat.py', 'utf8');
 const pushI18n = readFileSync('backend/services/push_i18n.py', 'utf8');
 const workflow = readFileSync('.github/workflows/production-deploy-execute.yml', 'utf8');
@@ -11,9 +12,10 @@ const bootstrap = readFileSync('scripts/remote_bootstrap_secure_env.sh', 'utf8')
 const i18n = readFileSync('src/utils/i18n.js', 'utf8');
 
 test('voice one-tap STT attaches the current-language translation and remains retryable', () => {
-  assert.match(workspace, /chatAPI\.transcribe\(item\.id, getLanguage\(\)\.toLowerCase\(\)\)/);
-  assert.match(workspace, /translation_provider/);
-  assert.match(workspace, /translation_error/);
+  assert.match(workspace, /voiceText\.toggle\(item, lang\)/);
+  assert.match(voiceTextState, /api\.transcribe\(entry\.id, lang\)/);
+  assert.match(voiceTextState, /translation_provider/);
+  assert.match(voiceTextState, /translation_error/);
   assert.match(workspace, /const toggleVoiceOriginal = React\.useCallback/);
   assert.match(workspace, /onRetryTranslation=\{\(\) => translateVoiceTranscript\(item\)\}/);
   assert.match(bubble, /const primaryTranscript = hasTranslation/);

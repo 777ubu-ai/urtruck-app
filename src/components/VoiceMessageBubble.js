@@ -113,8 +113,12 @@ export default function VoiceMessageBubble({
   const timeColor = mine ? bubble.textColor : baseMuted;
   const rateColor = mine ? withAlpha(bubble.textColor, 0.78) : baseAccent;
   const dividerColor = mine ? withAlpha(bubble.textColor, 0.24) : palette.border;
-  const textVisible = !!transcript?.visible && !!transcript?.transcriptText;
+  // Во время перевода не показываем original как якобы готовый результат.
+  // При ошибке он доступен, но явно подписан как оригинал.
+  const textVisible = !!transcript?.visible && !!transcript?.transcriptText
+    && (!transcript.needsTranslation || !!transcript.translatedText || !!transcript.translationError);
   const hasTranslation = textVisible && !!transcript?.translatedText;
+  const originalFallback = textVisible && transcript.needsTranslation && !hasTranslation;
   const primaryTranscript = hasTranslation && !transcript?.showOriginal
     ? transcript.translatedText
     : transcript?.transcriptText;
@@ -174,6 +178,7 @@ export default function VoiceMessageBubble({
         </TouchableOpacity>
       ) : null}
       {textVisible ? <View style={[s.transcriptDivider, { backgroundColor: dividerColor }]} testID="voice-transcription-divider" /> : null}
+      {originalFallback ? <Text style={[s.transcriptLabel, { color: baseMuted }]} testID="voice-original-fallback-label">{t('voice_show_original')}</Text> : null}
       {textVisible ? <Text style={[s.transcriptText, { color: baseText }]} testID="voice-transcription-text">{primaryTranscript}</Text> : null}
       {hasTranslation && onToggleOriginal ? (
         <TouchableOpacity
@@ -192,7 +197,7 @@ export default function VoiceMessageBubble({
         <View style={s.transcriptionErrorRow}>
           <Text style={[s.transcriptError, { color: baseMuted }]} testID="voice-transcription-error">{transcript.errorText}</Text>
           {(transcript?.translationError ? onRetryTranslation : onRetryTranscript) ? (
-            <TouchableOpacity onPress={transcript?.translationError ? onRetryTranslation : onRetryTranscript} style={s.retryTranscriptButton} testID="voice-transcription-retry">
+            <TouchableOpacity onPress={transcript?.translationError ? onRetryTranslation : onRetryTranscript} disabled={transcribing} style={s.retryTranscriptButton} testID="voice-transcription-retry">
               <Text style={[s.transcriptLabel, { color: baseMuted, fontSize: sp(11) }]}>{t('repeat_action')}</Text>
             </TouchableOpacity>
           ) : null}

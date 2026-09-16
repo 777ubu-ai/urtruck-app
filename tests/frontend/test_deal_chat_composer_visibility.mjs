@@ -10,6 +10,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createVoiceTranscriptState } from '../../src/utils/voiceTranscriptState.js';
 
 const src = readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
 
@@ -34,7 +35,6 @@ test('Android chat dock uses the shared measured IME overlap only when resize is
   assert.match(src, /keyboardDidShow/);
   assert.match(src, /keyboardDidHide/);
   assert.match(src, /testID="deal-chat-composer-dock"/);
-  assert.match(src, /errorText: t\('voice_transcription_unavailable'\)/);
   assert.match(src, /<VoiceMessageBubble[\s\S]*t=\{t\}/);
   const bubble = readFileSync('src/components/VoiceMessageBubble.js', 'utf8');
   assert.match(bubble, /testID="voice-transcription-loading"/);
@@ -43,6 +43,20 @@ test('Android chat dock uses the shared measured IME overlap only when resize is
   assert.match(bubble, /testID="voice-original-btn"/);
   assert.match(bubble, /const primaryTranscript = hasTranslation/);
   assert.doesNotMatch(bubble, /voice-translation-btn/);
+});
+
+test('ошибка распознавания остаётся локализованной после выделения состояния голоса', async () => {
+  assert.match(src, /voiceText\.view\(item\.id, lang, t\)/);
+  const state = createVoiceTranscriptState({
+    transcribe: async () => { throw new Error('private provider response'); },
+    translate: async () => assert.fail('после ошибки STT перевод не вызывается'),
+  });
+  await state.toggle({ id: 'voice-error' }, 'RU');
+  const calls = [];
+  const view = state.view('voice-error', 'RU', (key) => { calls.push(key); return 'Не удалось распознать'; });
+  assert.deepEqual(calls, ['voice_transcription_unavailable']);
+  assert.equal(view.errorText, 'Не удалось распознать');
+  assert.equal(view.transcribing, false);
 });
 
 test('composer switches controls by input state and protects rapid send', () => {

@@ -51,6 +51,7 @@ import {
 import { compressImage } from '../utils/imageCompress';
 import { voice } from '../utils/voiceRecorder';
 import VoiceMessageBubble from '../components/VoiceMessageBubble';
+import { createVoiceTranscriptState } from '../utils/voiceTranscriptState';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
@@ -327,8 +328,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [translations, setTranslations] = React.useState({});
   const [translating, setTranslating] = React.useState(null);
   const [autoTranslate, setAutoTranslate] = React.useState(false);
-  const [voiceTranscripts, setVoiceTranscripts] = React.useState({});
-  const [voiceTranscribing, setVoiceTranscribing] = React.useState(null);
+  const [voiceRevision, setVoiceRevision] = React.useState(0);
+  const voiceScope = JSON.stringify([roomId, session?.user?.id || null]);
+  const voiceText = React.useMemo(() => createVoiceTranscriptState(chatAPI), [voiceScope]);
+  const voiceStateRef = React.useRef(voiceText);
+  voiceStateRef.current = voiceText;
+  const voiceTranscripts = React.useMemo(() => Object.fromEntries(messages
+    .filter((item) => item.voice && item.voiceScope === voiceScope)
+    .map((item) => [item.id, voiceText.view(item.id, lang, t)])),
+  [messages, voiceText, voiceScope, voiceRevision, lang, t]);
 
   const listRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -509,7 +517,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         chatAPI.messages(roomId),
         chatAPI.listAttachments(roomId).catch(() => ({ attachments: [] })),
       ]);
-      if (!mounted.current) return;
+      // Ответ старой комнаты/сессии не восстанавливает приватный voice cache.
+      if (!mounted.current || voiceStateRef.current !== voiceText) return;
       const mapped = (result?.messages || []).map((message) => {
         const mine = typeof message.mine === 'boolean' ? message.mine : message.sender_id === session?.user?.id;
         const isVoice = !!message.is_voice;
@@ -528,6 +537,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           text: system ? localizeSystemMessage(message.text || '', lang) : (message.text || ''),
           photo: !!message.photo_url && !isVoice,
           voice: isVoice,
+          voiceScope: isVoice ? voiceScope : null,
           mediaUrl,
           voiceDuration: Number(message.voice_duration || 0),
           transcript: message.voice_transcript || null,
@@ -538,6 +548,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           read: !!message.is_read,
         };
       });
+      voiceText.hydrate(mapped);
       const serverDocs = (attachResult?.attachments || [])
         .filter((a) => a.kind === 'document')
         .map((a) => {
@@ -601,7 +612,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       notifyChatRead();
       refreshAppIconBadge();
     } catch { /* preserve messages */ }
-  }, [roomId, session?.user?.id, lang]);
+  }, [roomId, session?.user?.id, lang, voiceText, voiceScope]);
 
   React.useEffect(() => {
     if (!roomId) return undefined;
@@ -672,115 +683,27 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     return () => { cancelled = true; };
   }, [autoTranslate, messages, translations]);
 
+  React.useEffect(() => voiceText.connect(() => setVoiceRevision((value) => value + 1)), [voiceText]);
+
   React.useEffect(() => {
-    setVoiceTranscripts((previous) => {
-      let next = previous;
-      let changed = false;
-      for (const message of messages) {
-        if (!message?.voice || !message?.transcript) continue;
-        const current = previous[message.id];
-        if (current?.transcriptText === message.transcript) continue;
-        if (!changed) next = { ...previous };
-        next[message.id] = {
-          ...current,
-          visible: current?.visible ?? false,
-          transcriptText: message.transcript,
-          sourceLang: message.transcriptLang || null,
-          provider: message.transcriptProvider || null,
-          translatedText: current?.translatedText || null,
-        };
-        changed = true;
-      }
-      return changed ? next : previous;
-    });
-  }, [messages]);
+    // Уже раскрытый голос при смене языка получает новый перевод из original.
+    voiceText.ensureVisible(lang);
+  }, [voiceText, lang]);
 
   const toggleVoiceTranscript = React.useCallback(async (item) => {
-    const current = voiceTranscripts[item.id];
-    if (current?.transcriptText) {
-      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...current, visible: !current.visible } }));
-      return;
-    }
-    setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: null } }));
-    setVoiceTranscribing(item.id);
-    try {
-      // Restore the historical one-tap voice flow from 16b7e06b: the
-      // existing endpoint performs STT and, when configured, attaches a
-      // translation for the current UI language. The original transcript
-      // remains visible; translation is supplemental.
-      const result = await chatAPI.transcribe(item.id, getLanguage().toLowerCase());
-      if (!result?.transcript_text) {
-        setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: t('voice_transcription_unavailable') } }));
-        return;
-      }
-      setVoiceTranscripts((previous) => ({
-        ...previous,
-        [item.id]: {
-          visible: true,
-          transcriptText: result.transcript_text,
-          sourceLang: result.source_lang || null,
-          provider: result.provider || null,
-          translatedText: result.translation_provider && !['stub', 'google_stub', 'deepl_stub'].includes(String(result.translation_provider))
-            ? (result.translated_text || null)
-            : null,
-          showOriginal: false,
-          translationProvider: result.translation_provider || null,
-          translationError: result.translation_error || null,
-          errorText: result.translation_error ? t('translation_unavailable') : null,
-        },
-      }));
-    } catch (err) {
-      // STT/voice-hardening track: chatAPI.transcribe() now throws a
-      // localized Error carrying `.code` for a known backend error (403/
-      // 409/422/503, see chatAPI.js's chatApiError) — show that distinct
-      // text so "already in progress" reads differently from "access
-      // denied" or "timed out". A raw network/parse exception has no
-      // `.code` and falls back to the same generic message as before.
-      const message = (err && err.code && err.message) || t('voice_transcription_unavailable');
-      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: message } }));
-    } finally {
-      setVoiceTranscribing(null);
-    }
-  }, [voiceTranscripts, t]);
+    if (item.voiceScope !== voiceScope) return;
+    await voiceText.toggle(item, lang);
+  }, [voiceText, voiceScope, lang]);
 
   const toggleVoiceOriginal = React.useCallback((item) => {
-    const current = voiceTranscripts[item.id];
-    if (!current?.translatedText) return;
-    setVoiceTranscripts((previous) => ({
-      ...previous,
-      [item.id]: { ...current, showOriginal: !current.showOriginal },
-    }));
-  }, [voiceTranscripts]);
+    if (item.voiceScope !== voiceScope) return;
+    voiceText.toggleOriginal(item.id, lang);
+  }, [voiceText, voiceScope, lang]);
 
   const translateVoiceTranscript = React.useCallback(async (item) => {
-    const current = voiceTranscripts[item.id];
-    if (!current?.transcriptText || current.translating) return;
-    // This callback is used only after a translation-stage error. A successful
-    // one-tap result is already the primary text; `Оригинал` is a local toggle.
-    if (current.translatedText) return;
-    setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], translating: true, errorText: null } }));
-    try {
-      const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
-      if (!result?.translated_text) throw new Error('translation_empty');
-      setVoiceTranscripts((previous) => ({
-        ...previous,
-        [item.id]: {
-          ...previous[item.id],
-          translatedText: result.translated_text,
-          showOriginal: false,
-          translationProvider: result.provider || null,
-          translationError: null,
-          errorText: null,
-        },
-      }));
-    } catch (err) {
-      const message = (err && err.code && err.message) || t('translation_unavailable');
-      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], translationError: true, errorText: message } }));
-      toast(message, 'error');
-    } finally {
-      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], translating: false } }));
-    }
-  }, [voiceTranscripts, toast, t]);
+    if (item.voiceScope !== voiceScope) return;
+    await voiceText.retry(item, lang);
+  }, [voiceText, voiceScope, lang]);
 
   const trackingActive = Boolean(dealId && LIVE_TRACKING_STATUSES.includes(deal?.status));
   const refreshLocation = React.useCallback(async () => {
@@ -1367,7 +1290,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 fallbackDurationSec={item.voiceDuration}
                 mine={item.mine}
                 transcript={voiceTranscripts[item.id]}
-                transcribing={voiceTranscribing === item.id}
+                transcribing={!!voiceTranscripts[item.id]?.transcribing}
                 onToggleTranscript={() => toggleVoiceTranscript(item)}
                 onToggleOriginal={() => toggleVoiceOriginal(item)}
                 onRetryTranscript={() => toggleVoiceTranscript(item)}
@@ -1450,7 +1373,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         </View>
       </React.Fragment>
     );
-  }, [colors, translations, translating, voiceTranscripts, voiceTranscribing, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
+  }, [colors, translations, translating, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage

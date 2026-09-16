@@ -82,7 +82,12 @@ test('deal workspace localizes dynamic cargo, body type, units and legacy system
   assert.match(workspace, /localizeCargoName\(rawCargoName, lang\)/);
   assert.match(workspace, /formatTruckType\(rawTruckType\)/);
   assert.match(workspace, /if \(lang === 'ZH'\) return `\$\{amount\} 吨`/);
-  assert.match(workspace, /\[roomId, session\?\.user\?\.id, lang\]/);
+  const loaderDependencies = workspace.match(/const loadMessages = React\.useCallback\([\s\S]*?\}, \[([^\]]*)\]\);/);
+  assert.ok(loaderDependencies, 'зависимости загрузчика сообщений должны быть найдены');
+  const dependencies = loaderDependencies[1].split(',').map((item) => item.trim());
+  for (const required of ['roomId', 'session?.user?.id', 'lang']) {
+    assert.ok(dependencies.includes(required), `loadMessages должен обновляться при изменении ${required}`);
+  }
   assert.match(timeline, /localizePlace\(meta\.place, lang\)/);
 });
 
