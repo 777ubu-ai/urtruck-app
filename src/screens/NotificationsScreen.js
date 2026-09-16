@@ -154,6 +154,8 @@ export default function NotificationsScreen({ navigation }) {
         navigation.navigate("CargoDetail", { cargoId: id, bidId: params.bid || null, role });
       } else if (kind === "trips" && id) {
         navigation.navigate("TripDetail", { tripId: id, bidId: params.bid || null, role });
+      } else if (kind === "deals" && !id) {
+        navigation.navigate("Main", { screen: "Deals", params: { role } });
       } else if (kind === "deals" && id) {
         // Same fix as App.js's navigateFromUrl (this is a separate, in-app
         // copy of the same parser, for tapping a notification without a

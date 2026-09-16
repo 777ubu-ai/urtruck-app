@@ -148,6 +148,12 @@ function navigateFromUrl(navRef, url, role) {
       navRef.current.navigate('CargoDetail', { cargoId: id, bidId: params.bid || null, role });
     } else if (kind === 'trips' && id) {
       navRef.current.navigate('TripDetail', { tripId: id, bidId: params.bid || null, role });
+    } else if (kind === 'deals' && !id) {
+      // Root Deals push/deeplink: open the canonical bottom-tab destination,
+      // not a standalone child route. This preserves meaningful Back/tab
+      // semantics and prevents a /deals notification tap from silently
+      // leaving the user on whatever root screen happened to be active.
+      navRef.current.navigate('Main', { screen: 'Deals', params: { role } });
     } else if (kind === 'deals' && id) {
       // BUG-002: deals → Deal Room (ChatScreen с dealId), как в
       // NotificationsScreen. Раньше кидало в общий список чатов без контекста.
