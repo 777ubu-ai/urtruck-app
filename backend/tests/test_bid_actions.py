@@ -418,21 +418,32 @@ def test_counter_amount_must_be_positive():
 
 def test_counter_accept_creates_deal_and_chat():
     print("\n=== test_counter_accept_creates_deal_and_chat ===")
-    cargo_id, bid_id = _new_pending_bid("co-owner-5", "co-driver-5", 1500)
+    # Canonical owner scenario: listing 8000, driver proposes 7600,
+    # shipper counters 7800. Accepting the counter MUST create the deal at
+    # 7800 — never at the stale original bid 7600.
+    cargo_id, bid_id = _new_pending_bid("co-owner-5", "co-driver-5", 7600)
     as_user("co-owner-5")
-    client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 1300})
+    counter_r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 7800})
+    expect(counter_r.status_code == 200, f"counter 200 (got {counter_r.status_code} {counter_r.text})")
+    expect(counter_r.json()["bid"]["counter_amount"] == 7800, "counter amount stored = 7800")
 
     as_user("co-driver-5")
     r = client.post(f"/api/v1/market/bids/{bid_id}/counter/accept")
     expect(r.status_code == 200, f"counter/accept 200 (got {r.status_code} {r.text})")
     body = r.json()
-    expect(body["amount"] == 1300, "amount echoed = 1300")
+    expect(body["amount"] == 7800, "accepted amount echoed = counter 7800")
     expect(bool(body.get("deal_id")), "deal_id returned")
     expect(bool(body.get("chat_room_id")), "chat_room_id returned")
 
     final = get_bid(bid_id)
     expect(final["status"] == "accepted", "bid is accepted")
-    expect(final["amount"] == 1300, "bid.amount overwritten with counter_amount")
+    expect(final["amount"] == 7800, "bid.amount overwritten with accepted counter 7800")
+
+    from database.db import get_conn
+    with get_conn() as c:
+        deal = c.execute("SELECT amount FROM deals WHERE id = ?", (body["deal_id"],)).fetchone()
+    expect(deal is not None, "deal row exists")
+    expect(deal["amount"] == 7800, "deal.amount = accepted counter 7800, not original 7600")
 
 
 def test_counter_accept_403_for_non_bidder():

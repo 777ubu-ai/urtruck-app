@@ -742,67 +742,33 @@ export default function CargoDetail({ navigation, route }) {
                   </View>
                 )}
 
-                {/* Клиент + countered: те же 2 кнопки. «Принять $X» под капотом
-                    отменяет свою встречку и принимает оригинал водителя одним
-                    нажатием (см. cancelOwnCounter → acceptBid). Требование
-                    владельца: две кнопки во всех состояниях, без «отменить
-                    встречную». */}
+                {/* Клиент уже отправил встречную цену. Финансово опасно
+                    одновременно показывать counterAmount и кнопку принятия
+                    исходной b.amount: пользователь не должен видеть две
+                    разные суммы рядом и гадать, какая создаст сделку. Пока
+                    водитель решает контр-оффер, владелец может только
+                    отклонить предложение целиком. */}
                 {c.isMine && isCountered && (
                   <View style={{ marginTop: 10, gap: 6, alignSelf: 'stretch' }}>
-                      <PrimaryCTA
-                        testID="bid-accept"
-                        role="client"
-                        icon="✓"
-                        label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
-                        numberOfLines={2}
-                        loading={accepting === b.id}
-                        disabled={!!accepting || !!rejecting}
-                        onPress={async () => {
-                          // Confirm сначала — под капотом два вызова, дороже отменить нельзя.
-                          const sum = formatPrice(b.amount, c.currency);
-                          const msg = t('accept_bid_confirm').replace('{sum}', sum);
-                          const ok = await askConfirm(t('accept_bid_confirm_title'), msg, t('accept_bid_btn'));
-                          if (!ok) return;
-                          setAccepting(b.id);
-                          try {
-                            // Шаг 1: отменяем свою встречку (ставка → pending).
-                            const c1 = await marketAPI.cancelOwnCounter(b.id);
-                            if (!c1.ok) { toast(c1.detail || t('accept_failed'), 'error'); setAccepting(null); return; }
-                            // Шаг 2: принимаем оригинальную сумму водителя.
-                            const r = await marketAPI.acceptBid(b.id);
-                            if (r.ok) {
-                              toast('✓ ' + t('driver_chosen'), 'success');
-                              if (r.chat_room_id) setChatRoomId(r.chat_room_id);
-                              if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
-                              loadBids();
-                              // WhatsApp-упрощение (04.08.2026, п.9 ТЗ): сразу в чат сделки.
-                              if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
-                            } else {
-                              toast(r.detail || t('accept_failed'), 'error');
-                            }
-                          } catch { toast(t('no_connection'), 'error'); }
-                          setAccepting(null);
-                        }}
-                      />
-                      <TouchableOpacity
-                        testID="bid-reject"
-                        onPress={async () => {
-                          setRejecting(b.id);
-                          try {
-                            const r = await marketAPI.rejectBid(b.id);
-                            if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); loadBids(); }
-                            else toast(r.detail || t('reject_failed'), 'error');
-                          } catch { toast(t('no_connection'), 'error'); }
-                          setRejecting(null);
-                        }}
-                        disabled={!!rejecting || !!accepting}
-                        style={{ alignSelf: 'center', maxWidth: '100%', paddingVertical: 6, paddingHorizontal: 10 }}
-                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      >
-                        <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1, flexShrink: 1 }} numberOfLines={1} ellipsizeMode="tail">
-                          {rejecting === b.id ? '…' : t('reject_btn')}
-                        </Text>
-                      </TouchableOpacity>
+                    <TouchableOpacity
+                      testID="bid-reject"
+                      onPress={async () => {
+                        setRejecting(b.id);
+                        try {
+                          const r = await marketAPI.rejectBid(b.id);
+                          if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); loadBids(); }
+                          else toast(r.detail || t('reject_failed'), 'error');
+                        } catch { toast(t('no_connection'), 'error'); }
+                        setRejecting(null);
+                      }}
+                      disabled={!!rejecting || !!accepting}
+                      style={{ alignSelf: 'center', maxWidth: '100%', paddingVertical: 6, paddingHorizontal: 10 }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1, flexShrink: 1 }} numberOfLines={1} ellipsizeMode="tail">
+                        {rejecting === b.id ? '…' : t('reject_btn')}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 )}
 
