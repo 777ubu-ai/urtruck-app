@@ -201,6 +201,11 @@ export default function CargoDetail({ navigation, route }) {
   // in-app open always carries the full card already and must never flash a
   // false not-found while refreshDeal's periodic poll is in flight.
   const [cargoNotFound, setCargoNotFound] = useState(false);
+  // A route snapshot may stay mounted after another driver wins. The server then
+  // deliberately stops exposing the cargo as a public active listing (404).
+  // Track that separately from deep-link not-found so a stale `status=active`
+  // snapshot can never offer a second bid after the listing has closed.
+  const [listingUnavailable, setListingUnavailable] = useState(false);
   const askConfirm = useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
     new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
   ), [t]);
@@ -379,9 +384,20 @@ export default function CargoDetail({ navigation, route }) {
   const refreshDeal = useCallback(() => {
     if (!cid) return;
     marketAPI.getCargo(cid).then(d => {
-      if (d && d.id) { setFullCargo(d); setCargoNotFound(false); }
-      else if (!cargo.from) setCargoNotFound(true);
-    }).catch(() => { if (!cargo.from) setCargoNotFound(true); });
+      if (d && d.id) {
+        setFullCargo(d);
+        setCargoNotFound(false);
+        setListingUnavailable(false);
+      } else {
+        // HTTP 404/non-public response after accept/expiry/delete is
+        // authoritative even when navigation params still carry an old card.
+        setListingUnavailable(true);
+        if (!cargo.from) setCargoNotFound(true);
+      }
+    }).catch(() => {
+      // A transport error is not evidence that the listing was closed.
+      if (!cargo.from) setCargoNotFound(true);
+    });
     loadBids();
     const seq = ++dealFetchSeq.current;
     // dealId (state) авторитетнее routeDealId — тот навсегда фиксирован
@@ -1036,7 +1052,14 @@ export default function CargoDetail({ navigation, route }) {
       {/* Sticky CTA — только «Предложить цену». Свободный чат до сделки убран
           (решение владельца 03.08): переговоры ведутся через ставку/контрпредложение,
           чат создаётся автоматически после accept. */}
-      {!c.isMine && c.status === 'active' && !dealStatus && !myPendingBid ? (
+      {!c.isMine && listingUnavailable && !dealStatus ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }} testID="cargo-listing-closed">
+          <Text style={{ color: theme.textMuted, fontSize: 14, fontWeight: '600', textAlign: 'center' }}>
+            {t('cargo_unavailable_for_bids')}
+          </Text>
+        </View>
+      ) : null}
+      {!c.isMine && !listingUnavailable && c.status === 'active' && !dealStatus && !myPendingBid ? (
         <StickyCTABar
           accent={v1Accent.main}
           primary={{
