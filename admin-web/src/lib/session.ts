@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { StaffRole } from './rbac';
 import { findStaff } from './staff';
 
-const TTL_SECONDS = 8 * 60 * 60;
+export const ADMIN_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const ENROLL_TTL_SECONDS = 10 * 60;
 
 export type AdminSession = { u: string; role: StaffRole; exp: number; kind: 'admin' };
@@ -39,7 +39,7 @@ function decode<T extends AdminSession | EnrollmentSession>(value?: string | nul
 }
 
 export function createAdminSession(username: string, role: StaffRole): string {
-  return encode({ u: username, role, kind: 'admin', exp: Math.floor(Date.now() / 1000) + TTL_SECONDS });
+  return encode({ u: username, role, kind: 'admin', exp: Math.floor(Date.now() / 1000) + ADMIN_SESSION_MAX_AGE_SECONDS });
 }
 
 export function verifyAdminSession(value?: string | null): AdminSession | null {

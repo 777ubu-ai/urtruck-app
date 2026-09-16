@@ -19,8 +19,10 @@ USER_KEY_PREFIX = "urtruck:presence:user:"
 ONLINE_WINDOW_SECONDS = 90
 USER_TTL_SECONDS = 180
 INDEX_RETENTION_SECONDS = 24 * 60 * 60
+PASSIVE_TOUCH_MIN_SECONDS = 20
 
 _client = None
+_last_passive_touch: dict[str, float] = {}
 
 
 def _redis():
@@ -61,6 +63,41 @@ def heartbeat(user: dict, *, platform: str = "unknown", app_version: str = "", s
         return {"ok": True, "presence_available": True}
     except Exception:
         # Presence is observability, never a blocker for the transport flow.
+        return {"ok": False, "presence_available": False}
+
+
+def touch_authenticated(user: dict) -> dict:
+    """Best-effort presence fallback for clients without heartbeat support.
+
+    Called from the common bearer-token auth path. It never overwrites richer
+    platform/screen/locale fields written by explicit mobile heartbeat and is
+    process-locally throttled to avoid Redis writes on every API request.
+    """
+    uid = str(user.get("id") or "").strip()
+    if not uid:
+        return {"ok": False, "presence_available": False}
+    now = time.time()
+    previous = _last_passive_touch.get(uid, 0.0)
+    if now - previous < PASSIVE_TOUCH_MIN_SECONDS:
+        return {"ok": True, "presence_available": True, "throttled": True}
+    _last_passive_touch[uid] = now
+    try:
+        r = _redis()
+        key = f"{USER_KEY_PREFIX}{uid}"
+        payload = {
+            "user_id": uid,
+            "role": str(user.get("role") or "guest")[:24],
+            "last_seen": datetime.now(timezone.utc).isoformat(),
+            "presence_source": "api_activity",
+        }
+        pipe = r.pipeline(transaction=False)
+        pipe.hset(key, mapping=payload)
+        pipe.expire(key, USER_TTL_SECONDS)
+        pipe.zadd(INDEX_KEY, {uid: now})
+        pipe.zremrangebyscore(INDEX_KEY, 0, now - INDEX_RETENTION_SECONDS)
+        pipe.execute()
+        return {"ok": True, "presence_available": True}
+    except Exception:
         return {"ok": False, "presence_available": False}
 
 

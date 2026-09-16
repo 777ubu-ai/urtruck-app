@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
 import QRCode from 'qrcode';
 import { activateStaffPasswordOnly, bootstrapOwner, provisioningUri, resetOwnerPassword, staffCount } from '@/lib/staff';
-import { createAdminSession, createEnrollmentSession } from '@/lib/session';
+import { ADMIN_SESSION_MAX_AGE_SECONDS, createAdminSession, createEnrollmentSession } from '@/lib/session';
 import { audit, requestIp } from '@/lib/audit';
 import { clearLoginGuard } from '@/lib/loginGuard';
 
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       audit({ actor:'admin', role:'owner', action:'auth.owner_password_reset', ip });
       if (!mfaRequired) {
         const response = NextResponse.json({ ok:true, username:'admin', loggedIn:true });
-        response.cookies.set('urtruck_admin_session', createAdminSession(staff.username, staff.role), { httpOnly:true, secure:process.env.NODE_ENV==='production', sameSite:'strict', path:'/', maxAge:8*60*60 });
+        response.cookies.set('urtruck_admin_session', createAdminSession(staff.username, staff.role), { httpOnly:true, secure:process.env.NODE_ENV==='production', sameSite:'strict', path:'/', maxAge:ADMIN_SESSION_MAX_AGE_SECONDS });
         return response;
       }
       return NextResponse.json({ ok:true, username:'admin', resetComplete:true });
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     if (!mfaRequired) {
       const activeStaff = activateStaffPasswordOnly(staff.username) || staff;
       const response = NextResponse.json({ ok:true, username:'admin', loggedIn:true });
-      response.cookies.set('urtruck_admin_session', createAdminSession(activeStaff.username, activeStaff.role), { httpOnly:true, secure:process.env.NODE_ENV==='production', sameSite:'strict', path:'/', maxAge:8*60*60 });
+      response.cookies.set('urtruck_admin_session', createAdminSession(activeStaff.username, activeStaff.role), { httpOnly:true, secure:process.env.NODE_ENV==='production', sameSite:'strict', path:'/', maxAge:ADMIN_SESSION_MAX_AGE_SECONDS });
       return response;
     }
     const qrDataUrl = await QRCode.toDataURL(provisioningUri(staff), { width:260, margin:1, errorCorrectionLevel:'M' });

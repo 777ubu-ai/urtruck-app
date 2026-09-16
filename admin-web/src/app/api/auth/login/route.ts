@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import QRCode from 'qrcode';
-import { createAdminSession, createEnrollmentSession } from '@/lib/session';
+import { ADMIN_SESSION_MAX_AGE_SECONDS, createAdminSession, createEnrollmentSession } from '@/lib/session';
 import { validateBackendAdmin } from '@/lib/backend';
 import {
   activateStaffPasswordOnly, bootstrapOwner, provisioningUri, staffCount,
@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 function sessionCookie(response: NextResponse, token: string) {
   response.cookies.set('urtruck_admin_session', token, {
     httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict',
-    path: '/', maxAge: 8 * 60 * 60
+    path: '/', maxAge: ADMIN_SESSION_MAX_AGE_SECONDS
   });
 }
 

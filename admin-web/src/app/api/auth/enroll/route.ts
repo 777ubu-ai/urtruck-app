@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminSession, verifyEnrollmentSession } from '@/lib/session';
+import { ADMIN_SESSION_MAX_AGE_SECONDS, createAdminSession, verifyEnrollmentSession } from '@/lib/session';
 import { activateStaff } from '@/lib/staff';
 import { audit, requestIp } from '@/lib/audit';
 import { LoginGuardUnavailable, loginAllowed, loginFailure, loginSuccess } from '@/lib/loginGuard';
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({ ok: true, role: staff.role });
   response.cookies.set('urtruck_admin_session', createAdminSession(staff.username, staff.role), {
     httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict',
-    path: '/', maxAge: 8 * 60 * 60
+    path: '/', maxAge: ADMIN_SESSION_MAX_AGE_SECONDS
   });
   response.cookies.set('urtruck_admin_enroll', '', { httpOnly: true, path: '/api/auth', maxAge: 0, sameSite: 'strict', secure: process.env.NODE_ENV === 'production' });
   audit({ actor: staff.username, role: staff.role, action: 'auth.mfa_enrolled', ip });
