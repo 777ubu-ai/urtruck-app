@@ -29,15 +29,14 @@ import { brand, useBrand, radius, typography } from '../../theme/brandV2';
 import { API_BASE } from '../../config/env';
 
 const QA_HOOK_ALLOWED = (() => {
+  // Product rule 2026-09-16: no dev auth controls in any standalone APK,
+  // including QA2. Keep the harness available only in an explicit dev
+  // environment (Expo/dev client) with the opt-in flag enabled.
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
+  if (process.env.EXPO_PUBLIC_QA_HOOKS !== '1') return false;
   try {
     const Constants = require('expo-constants').default;
-    // Physical QA2 hook is legal only against an explicit non-production
-    // backend. A QA2 APK pointed at urtruck.kz must never expose actor login.
-    const flavor = Constants?.expoConfig?.extra?.urtruckBuildFlavor;
-    const apiOverride = Constants?.expoConfig?.extra?.urtruckApiUrl || process.env.EXPO_PUBLIC_API_URL || '';
-    const localQaApi = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(apiOverride);
-    if (flavor === 'qa2' && localQaApi) return true;
-    return !!(typeof __DEV__ !== 'undefined' && __DEV__ && process.env.EXPO_PUBLIC_QA_HOOKS === '1');
+    return Constants?.appOwnership !== 'standalone';
   } catch {
     return false;
   }
@@ -367,39 +366,42 @@ const makeStyles = (brand) => StyleSheet.create({
   logo: { fontSize: 32, lineHeight: 38, fontWeight: '800', letterSpacing: -1.1 },
   captionBlock: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 4, alignItems: 'center' },
   title: { fontSize: 30, lineHeight: 36, fontWeight: '800', color: brand.textPrimary, textAlign: 'center', paddingHorizontal: 0 },
-  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 10, zIndex: 5, elevation: 5 },
+  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 20, zIndex: 5, elevation: 5 },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  ctaWrap: { paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10, backgroundColor: brand.bg, zIndex: 10, elevation: 10 },
+  ctaWrap: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 10, backgroundColor: brand.bg, zIndex: 10, elevation: 10, alignItems: 'center' },
   ctaPrimary: {
-    height: 58,
-    borderRadius: 29,
+    height: 52,
+    width: '86%',
+    maxWidth: 540,
+    borderRadius: 26,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 24,
+    alignSelf: 'center',
+    paddingLeft: 22,
     paddingRight: 7,
     backgroundColor: '#0A9B57',
     borderWidth: 1,
     borderColor: '#17B86A',
     shadowColor: '#087B47',
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
+    shadowOpacity: 0.18,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
-  ctaPrimaryText: { ...typography.button, color: '#FFFFFF', flex: 1, textAlign: 'center', fontWeight: '800' },
+  ctaPrimaryText: { ...typography.button, color: '#FFFFFF', flex: 1, textAlign: 'center', fontWeight: '700', fontSize: 18 },
   ctaArrowBubble: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
   },
-  ctaOutline: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, marginTop: 8, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface },
-  ctaOutlineText: { ...typography.button, color: brand.textPrimary, flex: 1, textAlign: 'center', fontWeight: '700' },
-  consent: { fontSize: 12, color: brand.textSecondary, textAlign: 'center', marginTop: 8 },
+  ctaOutline: { height: 48, width: '76%', maxWidth: 480, borderRadius: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'center', paddingHorizontal: 20, marginTop: 15, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface },
+  ctaOutlineText: { ...typography.button, color: brand.textPrimary, flex: 1, textAlign: 'center', fontWeight: '700', fontSize: 17 },
+  consent: { fontSize: 12, color: brand.textSecondary, textAlign: 'center', marginTop: 20 },
   consentLink: { color: brand.textPrimary, textDecorationLine: 'underline', fontWeight: '600' },
   qaBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: brand.borderStrong, gap: 6 },
   qaLabel: { fontSize: 11, color: brand.textSecondary, textAlign: 'center', fontWeight: '600' },
