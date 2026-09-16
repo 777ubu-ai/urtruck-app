@@ -14,6 +14,7 @@ export { openLocationSettings } from './locationSettings';
 export const BG_LOCATION_TASK = 'urtruck-deal-location';
 const BG_DEALS_KEY = 'ur_bg_deal_ids';
 export const BG_LOCATION_QUEUE_KEY = 'ur_bg_location_queue_v1';
+const BG_LAST_LOCATION_KEY = 'ur_bg_last_location_v1';
 const TOKEN_KEY = 'ur_reg_token';
 const MAX_QUEUED_LOCATIONS = 256;
 
@@ -46,20 +47,45 @@ async function resolveLocationModule() {
   }
 }
 
-function sampleForDeal(dealId, coords) {
+function normalizeLocationSnapshot(coords) {
   const lat = Number(coords?.latitude ?? coords?.lat);
   const lng = Number(coords?.longitude ?? coords?.lng);
-  if (!dealId || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const capturedAt = Number.isFinite(Number(coords?.timestamp))
-    ? Number(coords.timestamp)
-    : Date.now();
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   return {
-    dealId,
-    lat,
-    lng,
+    latitude: lat,
+    longitude: lng,
     heading: coords?.heading != null && coords.heading >= 0 ? coords.heading : null,
     speed: coords?.speed != null && coords.speed >= 0 ? coords.speed : null,
-    capturedAt,
+    timestamp: Number.isFinite(Number(coords?.timestamp)) ? Number(coords.timestamp) : Date.now(),
+  };
+}
+
+async function rememberLastKnownLocation(coords) {
+  const snapshot = normalizeLocationSnapshot(coords);
+  if (!snapshot) return null;
+  try { await storage.set(BG_LAST_LOCATION_KEY, JSON.stringify(snapshot)); } catch {}
+  return snapshot;
+}
+
+async function readLastKnownLocation() {
+  try {
+    const raw = await storage.get(BG_LAST_LOCATION_KEY);
+    return raw ? normalizeLocationSnapshot(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function sampleForDeal(dealId, coords) {
+  const snapshot = normalizeLocationSnapshot(coords);
+  if (!dealId || !snapshot) return null;
+  return {
+    dealId,
+    lat: snapshot.latitude,
+    lng: snapshot.longitude,
+    heading: snapshot.heading,
+    speed: snapshot.speed,
+    capturedAt: snapshot.timestamp,
   };
 }
 
@@ -131,6 +157,10 @@ async function refreshBackgroundActiveDealIds(token, fallbackIds = []) {
 
 async function pushLocationToDealsNow(coords, explicitDealIds = null) {
   try {
+    // Expo can wake the Android task without a new location while stationary.
+    // Persist the most recent genuine point so that wake still creates a real
+    // server heartbeat, retaining that point's original capture timestamp.
+    await rememberLastKnownLocation(coords);
     const [rawIds, token] = await Promise.all([
       storage.get(BG_DEALS_KEY), storage.get(TOKEN_KEY),
     ]);
@@ -176,11 +206,19 @@ export function pushLocationToDeals(coords, explicitDealIds = null) {
 
 if (TaskManager) {
   try {
-    TaskManager.defineTask(BG_LOCATION_TASK, async ({ data, error }) => {
-      if (error || !data) return;
-      const { locations } = data;
+    TaskManager.defineTask(BG_LOCATION_TASK, async ({ data, error } = {}) => {
+      if (error) return;
+      const locations = data?.locations;
       const last = locations && locations[locations.length - 1];
-      if (last && last.coords) await pushLocationToDeals(last.coords);
+      // Expo's Android task can legitimately wake without `locations` while a
+      // vehicle is stationary. Reuse only a persisted, genuine last point so
+      // the POST is a heartbeat, not invented geometry or a new capture time.
+      const freshCoords = last?.coords && {
+        ...last.coords,
+        timestamp: last.timestamp ?? last.coords.timestamp,
+      };
+      const coords = freshCoords || await readLastKnownLocation();
+      if (coords) await pushLocationToDeals(coords);
     });
   } catch { /* duplicate definition during hot reload is safe */ }
 }

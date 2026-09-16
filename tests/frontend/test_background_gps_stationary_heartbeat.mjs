@@ -12,8 +12,12 @@ test('active-trip Android tracking keeps a time heartbeat while stationary', () 
   assert.match(block, /foregroundService:/);
 });
 
-test('background task still posts through persistent retry queue', () => {
+test('stationary Android wake posts a persisted genuine point through the retry queue', () => {
   assert.match(src, /defineTask\(BG_LOCATION_TASK/);
-  assert.match(src, /pushLocationToDeals\(last\.coords\)/);
+  assert.match(src, /BG_LAST_LOCATION_KEY/);
+  assert.match(src, /await rememberLastKnownLocation\(coords\)/);
+  assert.match(src, /timestamp: last\.timestamp \?\? last\.coords\.timestamp/);
+  assert.match(src, /const coords = freshCoords \|\| await readLastKnownLocation\(\)/);
+  assert.match(src, /if \(coords\) await pushLocationToDeals\(coords\)/);
   assert.match(src, /BG_LOCATION_QUEUE_KEY/);
 });
