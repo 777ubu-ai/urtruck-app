@@ -285,7 +285,7 @@ async def upload_attachment(
             return {"attachment": _sign_attachment(existing), "deduplicated": True}
         raise HTTPException(status_code=409, detail="Файл уже загружается")
 
-    raw = await file.read()
+    raw = await file.read(_MAX_ATTACH_BYTES + 1)
     if not raw:
         raise HTTPException(status_code=400, detail="Пустой файл")
     if len(raw) > _MAX_ATTACH_BYTES:

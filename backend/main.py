@@ -98,6 +98,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
+from services.form_limits import FormLimitsMiddleware
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -160,6 +161,7 @@ ALLOWED_ORIGINS = os.getenv(
     "http://localhost:8081,http://localhost:19006,http://185.22.65.11:8080,https://185.22.65.11:8443"
 ).split(",")
 
+app.add_middleware(FormLimitsMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
