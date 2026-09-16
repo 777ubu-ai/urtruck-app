@@ -40,7 +40,9 @@ test('Android chat dock uses the shared measured IME overlap only when resize is
   assert.match(bubble, /testID="voice-transcription-loading"/);
   assert.match(bubble, /testID="voice-transcription-error"/);
   assert.match(bubble, /t\('voice_to_text'\)/);
-  assert.match(bubble, /testID="voice-translation-btn"/);
+  assert.match(bubble, /testID="voice-original-btn"/);
+  assert.match(bubble, /const primaryTranscript = hasTranslation/);
+  assert.doesNotMatch(bubble, /voice-translation-btn/);
 });
 
 test('composer switches controls by input state and protects rapid send', () => {

@@ -24,13 +24,14 @@ const trackSrc = fs.readFileSync(new URL('../../src/screens/TrackTruckScreen.js'
 const webMapSrc = fs.readFileSync(new URL('../../src/components/TruckMap.web.js', import.meta.url), 'utf8');
 const geoSrc = fs.readFileSync(new URL('../../src/utils/geo.js', import.meta.url), 'utf8');
 
-test('opening the map hides the chat header (and everything in it) instead of leaving it visible', () => {
-  // compactHeader (which holds the map/status header buttons) is only
-  // wired in as the chat FlatList's ListHeaderComponent, itself gated on
-  // viewMode === VIEW_CHAT — so switching to the map view unmounts it
-  // entirely rather than layering the map on top of it.
+test('deal chat keeps its only Back control fixed outside the scrolling message list', () => {
+  // The approved navigation canon supersedes the obsolete scroll-away header:
+  // a long chat must never scroll the Back control away.
   assert.match(dealWorkspace, /viewMode === VIEW_CHAT \? \(/);
-  assert.match(dealWorkspace, /ListHeaderComponent=\{compactHeader\}/);
+  assert.match(dealWorkspace, /testID="deal-compact-header"/);
+  assert.match(dealWorkspace, /testID="deal-workspace-back"/);
+  assert.match(dealWorkspace, /Navigation chrome is fixed OUTSIDE the scrolling message list/);
+  assert.doesNotMatch(dealWorkspace, /ListHeaderComponent=\{compactHeader\}/);
 });
 
 test('the deal workspace opens its map in place, not by navigating to a separate screen', () => {

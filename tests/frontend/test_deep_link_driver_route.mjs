@@ -97,7 +97,8 @@ test('CargoDetail.js: an unresolved deep-link cargo id renders an explicit not-f
   // The fetch-failure branch must only trip when this was a bare deep link
   // (no paramCargo.from carried by navigation) — never for a normal in-app
   // open where fullCargo simply hasn't refreshed yet.
-  assert.match(cargoDetail, /else if \(!cargo\.from\) setCargoNotFound\(true\);/);
+  assert.match(cargoDetail, /setListingUnavailable\(true\);/);
+  assert.match(cargoDetail, /if \(!cargo\.from\) setCargoNotFound\(true\);/);
 });
 
 test('TripDetail.js: an unresolved deep-link trip id renders an explicit not-found state, not the empty placeholder', () => {

@@ -723,7 +723,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           translatedText: result.translation_provider && !['stub', 'google_stub', 'deepl_stub'].includes(String(result.translation_provider))
             ? (result.translated_text || null)
             : null,
+          showOriginal: false,
           translationProvider: result.translation_provider || null,
+          translationError: result.translation_error || null,
           errorText: result.translation_error ? t('translation_unavailable') : null,
         },
       }));
@@ -741,27 +743,39 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     }
   }, [voiceTranscripts, t]);
 
+  const toggleVoiceOriginal = React.useCallback((item) => {
+    const current = voiceTranscripts[item.id];
+    if (!current?.translatedText) return;
+    setVoiceTranscripts((previous) => ({
+      ...previous,
+      [item.id]: { ...current, showOriginal: !current.showOriginal },
+    }));
+  }, [voiceTranscripts]);
+
   const translateVoiceTranscript = React.useCallback(async (item) => {
     const current = voiceTranscripts[item.id];
     if (!current?.transcriptText || current.translating) return;
-    if (current.translatedText) {
-      setVoiceTranscripts((previous) => ({
-        ...previous,
-        [item.id]: { ...current, showTranslated: !current.showTranslated },
-      }));
-      return;
-    }
+    // This callback is used only after a translation-stage error. A successful
+    // one-tap result is already the primary text; `Оригинал` is a local toggle.
+    if (current.translatedText) return;
     setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], translating: true, errorText: null } }));
     try {
       const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
       if (!result?.translated_text) throw new Error('translation_empty');
       setVoiceTranscripts((previous) => ({
         ...previous,
-        [item.id]: { ...previous[item.id], translatedText: result.translated_text, showTranslated: true, translationProvider: result.provider || null },
+        [item.id]: {
+          ...previous[item.id],
+          translatedText: result.translated_text,
+          showOriginal: false,
+          translationProvider: result.provider || null,
+          translationError: null,
+          errorText: null,
+        },
       }));
     } catch (err) {
       const message = (err && err.code && err.message) || t('translation_unavailable');
-      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], errorText: message } }));
+      setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], translationError: true, errorText: message } }));
       toast(message, 'error');
     } finally {
       setVoiceTranscripts((previous) => ({ ...previous, [item.id]: { ...previous[item.id], translating: false } }));
@@ -1355,8 +1369,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 transcript={voiceTranscripts[item.id]}
                 transcribing={voiceTranscribing === item.id}
                 onToggleTranscript={() => toggleVoiceTranscript(item)}
-                onTranslateTranscript={() => translateVoiceTranscript(item)}
+                onToggleOriginal={() => toggleVoiceOriginal(item)}
                 onRetryTranscript={() => toggleVoiceTranscript(item)}
+                onRetryTranslation={() => translateVoiceTranscript(item)}
                 t={t}
                 onError={() => toast(t('voice_play_fail'), 'error')}
               />
@@ -1435,7 +1450,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         </View>
       </React.Fragment>
     );
-  }, [colors, translations, translating, voiceTranscripts, voiceTranscribing, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, toggleVoiceTranscript, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
+  }, [colors, translations, translating, voiceTranscripts, voiceTranscribing, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage

@@ -14,9 +14,12 @@ test('voice one-tap STT attaches the current-language translation and remains re
   assert.match(workspace, /chatAPI\.transcribe\(item\.id, getLanguage\(\)\.toLowerCase\(\)\)/);
   assert.match(workspace, /translation_provider/);
   assert.match(workspace, /translation_error/);
-  assert.match(workspace, /const translateVoiceTranscript = React\.useCallback/);
+  assert.match(workspace, /const toggleVoiceOriginal = React\.useCallback/);
+  assert.match(workspace, /onRetryTranslation=\{\(\) => translateVoiceTranscript\(item\)\}/);
+  assert.match(bubble, /const primaryTranscript = hasTranslation/);
+  assert.match(bubble, /testID="voice-original-btn"/);
   assert.match(bubble, /testID="voice-transcription-retry"/);
-  assert.match(bubble, /testID="voice-translation-btn"/);
+  assert.doesNotMatch(bubble, /voice-translation-btn/);
 });
 
 test('persisted transcript reaches the second participant through the message API', () => {

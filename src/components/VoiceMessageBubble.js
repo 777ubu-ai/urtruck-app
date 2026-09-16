@@ -44,8 +44,9 @@ export default function VoiceMessageBubble({
   transcript,
   transcribing = false,
   onToggleTranscript,
-  onTranslateTranscript,
+  onToggleOriginal,
   onRetryTranscript,
+  onRetryTranslation,
   t = (key) => key,
   testID = 'voice-bubble',
   // QA-only (DesignPreviewScreen): показать пилюлю скорости/активное
@@ -113,6 +114,10 @@ export default function VoiceMessageBubble({
   const rateColor = mine ? withAlpha(bubble.textColor, 0.78) : baseAccent;
   const dividerColor = mine ? withAlpha(bubble.textColor, 0.24) : palette.border;
   const textVisible = !!transcript?.visible && !!transcript?.transcriptText;
+  const hasTranslation = textVisible && !!transcript?.translatedText;
+  const primaryTranscript = hasTranslation && !transcript?.showOriginal
+    ? transcript.translatedText
+    : transcript?.transcriptText;
   const transcriptLabel = transcribing ? '…' : textVisible ? t('voice_hide_text') : transcript?.transcriptText ? t('voice_show_text') : t('voice_to_text');
 
   return (
@@ -169,30 +174,25 @@ export default function VoiceMessageBubble({
         </TouchableOpacity>
       ) : null}
       {textVisible ? <View style={[s.transcriptDivider, { backgroundColor: dividerColor }]} testID="voice-transcription-divider" /> : null}
-      {textVisible ? <Text style={[s.transcriptText, { color: baseText }]}>{transcript.transcriptText}</Text> : null}
-      {textVisible && onTranslateTranscript ? (
+      {textVisible ? <Text style={[s.transcriptText, { color: baseText }]} testID="voice-transcription-text">{primaryTranscript}</Text> : null}
+      {hasTranslation && onToggleOriginal ? (
         <TouchableOpacity
-          onPress={onTranslateTranscript}
-          disabled={transcript.translating}
+          onPress={onToggleOriginal}
           style={s.translationButton}
           accessibilityRole="button"
-          testID="voice-translation-btn"
+          testID="voice-original-btn"
         >
           <Feather name="globe" size={12} color={baseMuted} />
-          {transcript.translating ? <ActivityIndicator size="small" color={baseMuted} testID="voice-translation-loading" /> : null}
           <Text style={[s.transcriptLabel, { color: baseMuted, fontSize: sp(11) }]}>
-            {transcript.translating ? '…' : transcript.translatedText && transcript.showTranslated ? t('voice_show_original') : t('voice_translate')}
+            {transcript.showOriginal ? t('voice_translation_label') : t('voice_show_original')}
           </Text>
         </TouchableOpacity>
-      ) : null}
-      {textVisible && transcript.translatedText && transcript.showTranslated ? (
-        <Text style={[s.transcriptText, s.translatedText, { color: baseText }]} testID="voice-translation-text">{transcript.translatedText}</Text>
       ) : null}
       {transcript?.errorText ? (
         <View style={s.transcriptionErrorRow}>
           <Text style={[s.transcriptError, { color: baseMuted }]} testID="voice-transcription-error">{transcript.errorText}</Text>
-          {onRetryTranscript ? (
-            <TouchableOpacity onPress={onRetryTranscript} style={s.retryTranscriptButton} testID="voice-transcription-retry">
+          {(transcript?.translationError ? onRetryTranslation : onRetryTranscript) ? (
+            <TouchableOpacity onPress={transcript?.translationError ? onRetryTranslation : onRetryTranscript} style={s.retryTranscriptButton} testID="voice-transcription-retry">
               <Text style={[s.transcriptLabel, { color: baseMuted, fontSize: sp(11) }]}>{t('repeat_action')}</Text>
             </TouchableOpacity>
           ) : null}
