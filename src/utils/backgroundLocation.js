@@ -108,14 +108,39 @@ async function postLocationSample(sample, token) {
   }
 }
 
+async function refreshBackgroundActiveDealIds(token, fallbackIds = []) {
+  const fallback = Array.isArray(fallbackIds) ? fallbackIds : [];
+  if (!token) return fallback;
+  try {
+    const response = await fetch(`${API_BASE}/market/tracking/active`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response?.ok) return fallback;
+    const data = await response.json().catch(() => ({}));
+    const ids = Array.isArray(data?.deal_ids) ? data.deal_ids.filter(Boolean) : [];
+    await storage.set(BG_DEALS_KEY, JSON.stringify(ids));
+    const queue = await readLocationQueue();
+    await writeLocationQueue(queue.filter((sample) => ids.includes(sample.dealId)));
+    return ids;
+  } catch {
+    // Offline is not the same as "no active deals". Keep the last server-
+    // approved IDs so samples continue entering the persistent FIFO.
+    return fallback;
+  }
+}
+
 async function pushLocationToDealsNow(coords, explicitDealIds = null) {
   try {
     const [rawIds, token] = await Promise.all([
       storage.get(BG_DEALS_KEY), storage.get(TOKEN_KEY),
     ]);
     const storedIds = rawIds ? JSON.parse(rawIds) : [];
-    const ids = Array.isArray(explicitDealIds) ? explicitDealIds : storedIds;
-    if (!Array.isArray(ids) || !ids.length || !token) return;
+    let ids = Array.isArray(explicitDealIds) ? explicitDealIds : storedIds;
+    if (!token) return;
+    if (!Array.isArray(explicitDealIds)) {
+      ids = await refreshBackgroundActiveDealIds(token, ids);
+    }
+    if (!Array.isArray(ids) || !ids.length) return;
 
     let queue = await readLocationQueue();
     for (const id of ids) {
