@@ -21,6 +21,10 @@ const MAX_QUEUED_LOCATIONS = 256;
 // callback. Serialize the queue read/flush/write cycle so one sample cannot be
 // lost by two callers writing stale snapshots over each other.
 let locationPushChain = Promise.resolve();
+// Expo persists background-task registrations across process restarts and app
+// updates. Re-register once per fresh JS process so changed canonical options
+// (heartbeat/distance policy) actually replace an older installed contract.
+let backgroundTrackingConfiguredThisProcess = false;
 
 let TaskManager = null;
 let Location = null;
@@ -382,7 +386,14 @@ export async function startBackgroundTracking() {
 
   try {
     const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
-    if (started) return { ok: true, already: true };
+    if (started && backgroundTrackingConfiguredThisProcess) return { ok: true, already: true };
+    // A package update can leave Expo's persisted registration alive with the
+    // OLD options. Stop/start once per process to migrate it to the current
+    // one-minute stationary-heartbeat contract. Subsequent refreshes keep the
+    // same service and do not churn it.
+    if (started) {
+      await locationModule.stopLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => {});
+    }
     await locationModule.startLocationUpdatesAsync(BG_LOCATION_TASK, {
       accuracy: locationModule.Accuracy.Balanced,
       // Active-trip tracking needs a time heartbeat even while the truck is
@@ -399,7 +410,8 @@ export async function startBackgroundTracking() {
         notificationBody: t('bg_location_body'),
       },
     });
-    return { ok: true, foregroundService: Platform.OS === 'android' };
+    backgroundTrackingConfiguredThisProcess = true;
+    return { ok: true, foregroundService: Platform.OS === 'android', reconfigured: started };
   } catch (error) {
     return { ok: false, reason: String(error?.message || error || 'background_start_failed') };
   }
