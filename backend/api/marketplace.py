@@ -484,6 +484,16 @@ def _init():
         if "captured_at_ms" not in location_cols:
             c.execute("ALTER TABLE deal_locations ADD COLUMN captured_at_ms INTEGER")
 
+        # Журнал подтверждённых измерений: повтор после потерянного HTTP-ответа
+        # не создаёт дубль, а старая FIFO-точка сохраняется без отката маркера.
+        c.execute("""CREATE TABLE IF NOT EXISTS deal_location_samples (
+            deal_id TEXT NOT NULL, sample_id TEXT NOT NULL,
+            captured_at_ms INTEGER NOT NULL, lat REAL NOT NULL, lng REAL NOT NULL,
+            heading REAL, speed REAL, received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (deal_id, sample_id)
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_location_samples_capture ON deal_location_samples(deal_id,captured_at_ms)")
+
         c.execute("""
             CREATE TABLE IF NOT EXISTS deal_tracking (
                 deal_id      TEXT PRIMARY KEY,
@@ -3674,6 +3684,8 @@ def check_gps_heartbeats_job() -> dict:
     """Emit one lost event per stale active-trip episode."""
     fired = 0
     with get_conn() as c:
+        if not c.in_transaction:
+            c.execute("BEGIN IMMEDIATE")
         stale = c.execute(
             """SELECT dt.deal_id, d.shipper_id FROM deal_tracking dt
                JOIN deals d ON d.id = dt.deal_id
@@ -3873,6 +3885,7 @@ class DealLocationIn(BaseModel):
     speed: Optional[float] = None
     # Client capture time survives the persistent offline FIFO. Unix ms.
     captured_at_ms: Optional[int] = Field(default=None, ge=946684800000, le=4102444800000)
+    sample_id: Optional[str] = Field(default=None, min_length=1, max_length=300)
 
 
 @mp_router.post("/deals/{deal_id}/location")
@@ -3880,6 +3893,8 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
     """Водитель сделки шлёт свою гео-позицию. Только driver сделки и только
     только после забора груза (in_progress/at_border)."""
     with get_conn() as c:
+        if not c.in_transaction:
+            c.execute("BEGIN IMMEDIATE")
         d = c.execute("SELECT driver_id, status FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not d:
             raise HTTPException(status_code=404, detail="Сделка не найдена")
@@ -3896,6 +3911,22 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
         # Reject clocks far in the future instead of making GPS look healthy forever.
         if captured_ms > now_ms + 5 * 60 * 1000:
             raise HTTPException(status_code=422, detail="Некорректное время GPS-точки")
+        import hashlib
+        sample_id = body.sample_id or hashlib.sha256(
+            f"{captured_ms}:{body.lat}:{body.lng}".encode()
+        ).hexdigest()
+        recorded = c.execute(
+            "SELECT captured_at_ms,lat,lng FROM deal_location_samples WHERE deal_id=? AND sample_id=?",
+            (deal_id, sample_id),
+        ).fetchone()
+        if recorded:
+            if (recorded["captured_at_ms"], recorded["lat"], recorded["lng"]) != (captured_ms, body.lat, body.lng):
+                raise HTTPException(status_code=409, detail="Идентификатор GPS-точки уже использован")
+            return {"ok": True, "deduplicated": True, "sample_id": sample_id}
+        c.execute(
+            "INSERT INTO deal_location_samples (deal_id,sample_id,captured_at_ms,lat,lng,heading,speed) VALUES (?,?,?,?,?,?,?)",
+            (deal_id, sample_id, captured_ms, body.lat, body.lng, body.heading, body.speed),
+        )
         captured_sql = datetime.fromtimestamp(captured_ms / 1000.0, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         existing = c.execute(
             "SELECT captured_at_ms FROM deal_locations WHERE deal_id=?", (deal_id,)
@@ -3932,7 +3963,7 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
     if was_lost and shipper_id:
         _tracking_notify(shipper_id, "gps_restored", deal_id, "gps_restored",
                          event_key=f"deal:{deal_id}:gps_restored:{ev_id}")
-    return {"ok": True}
+    return {"ok": True, "sample_id": sample_id}
 
 
 @mp_router.get("/deals/{deal_id}/location")

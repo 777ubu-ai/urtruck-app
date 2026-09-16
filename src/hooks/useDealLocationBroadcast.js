@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Platform, AppState } from 'react-native';
 import { marketAPI } from '../utils/marketAPI';
+import { storage } from '../utils/storage';
 import { pushLocationToDeals, setActiveDealIds, startBackgroundTracking, stopBackgroundTracking } from '../utils/backgroundLocation';
 
 const INTERVAL_MS = 25000;
@@ -24,9 +25,12 @@ export function useDealLocationBroadcast(activeDealIds) {
   useEffect(() => {
     let alive = true;
     const refresh = async () => {
+      const token = await storage.get('ur_reg_token');
       const r = await marketAPI.activeTrackingDeals();
       if (!alive || r?.ok === false) return;
-      setPermittedIds(Array.isArray(r?.deal_ids) ? r.deal_ids : []);
+      if (!token || await storage.get('ur_reg_token') !== token || r?.ok !== true
+          || !Array.isArray(r.deal_ids) || !r.deal_ids.every((id) => typeof id === 'string' && id.length > 0)) return;
+      setPermittedIds(r.deal_ids);
     };
     // Server truth must be queried even when the local dashboard has not yet
     // hydrated. Clearing persisted IDs before this response used to kill a
@@ -84,6 +88,7 @@ export function useDealLocationBroadcast(activeDealIds) {
     const push = async () => {
       if (!granted || !Location || !idsRef.current.length) return;
       try {
+        const token = await storage.get('ur_reg_token');
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         const c = pos.coords || {};
         const payload = {
@@ -91,7 +96,8 @@ export function useDealLocationBroadcast(activeDealIds) {
           heading: c.heading != null && c.heading >= 0 ? c.heading : null,
           speed: c.speed != null && c.speed >= 0 ? c.speed : null,
         };
-        await pushLocationToDeals({ ...payload, timestamp: Date.now() }, idsRef.current);
+        if (!mounted || !token || await storage.get('ur_reg_token') !== token) return;
+        await pushLocationToDeals({ ...payload, timestamp: pos.timestamp }, idsRef.current);
       } catch {}
     };
 

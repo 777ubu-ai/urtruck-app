@@ -5,7 +5,8 @@
 // Web показывает тот же per-trip disclosure перед browser location permission.
 // iOS сохраняет отдельный background-location flow.
 import { Platform } from 'react-native';
-import { storage } from './storage';
+import { storage, durableStorage } from './storage';
+import { createLocationQueue, locationSampleId } from './locationQueue';
 import { t } from './i18n';
 import { API_BASE } from '../config/env';
 import { requestLocationPermissionThroughDisclosure } from './locationPermissionCoordinator';
@@ -16,7 +17,7 @@ const BG_DEALS_KEY = 'ur_bg_deal_ids';
 export const BG_LOCATION_QUEUE_KEY = 'ur_bg_location_queue_v1';
 const BG_LAST_LOCATION_KEY = 'ur_bg_last_location_v1';
 const TOKEN_KEY = 'ur_reg_token';
-const MAX_QUEUED_LOCATIONS = 256;
+const locationQueue = createLocationQueue(durableStorage);
 
 // A background task can overlap with a foreground tick or a second OS task
 // callback. Serialize the queue read/flush/write cycle so one sample cannot be
@@ -50,13 +51,15 @@ async function resolveLocationModule() {
 function normalizeLocationSnapshot(coords) {
   const lat = Number(coords?.latitude ?? coords?.lat);
   const lng = Number(coords?.longitude ?? coords?.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const timestamp = Number(coords?.timestamp);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180
+      || !Number.isFinite(timestamp) || timestamp < 946684800000 || timestamp > Date.now() + 300000) return null;
   return {
     latitude: lat,
     longitude: lng,
     heading: coords?.heading != null && coords.heading >= 0 ? coords.heading : null,
     speed: coords?.speed != null && coords.speed >= 0 ? coords.speed : null,
-    timestamp: Number.isFinite(Number(coords?.timestamp)) ? Number(coords.timestamp) : Date.now(),
+    timestamp,
   };
 }
 
@@ -65,15 +68,6 @@ async function rememberLastKnownLocation(coords) {
   if (!snapshot) return null;
   try { await storage.set(BG_LAST_LOCATION_KEY, JSON.stringify(snapshot)); } catch {}
   return snapshot;
-}
-
-async function readLastKnownLocation() {
-  try {
-    const raw = await storage.get(BG_LAST_LOCATION_KEY);
-    return raw ? normalizeLocationSnapshot(JSON.parse(raw)) : null;
-  } catch {
-    return null;
-  }
 }
 
 function sampleForDeal(dealId, coords) {
@@ -89,36 +83,13 @@ function sampleForDeal(dealId, coords) {
   };
 }
 
-const sampleKey = (sample) => [
-  sample?.dealId, sample?.capturedAt, sample?.lat, sample?.lng,
-].join(':');
-
-async function readLocationQueue() {
-  try {
-    const raw = await storage.get(BG_LOCATION_QUEUE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((item) => item?.dealId && Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lng))) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function writeLocationQueue(queue) {
-  const unique = [];
-  const seen = new Set();
-  for (const sample of queue || []) {
-    const key = sampleKey(sample);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(sample);
-  }
-  await storage.set(BG_LOCATION_QUEUE_KEY, JSON.stringify(unique.slice(-MAX_QUEUED_LOCATIONS)));
-}
-
 async function postLocationSample(sample, token) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
   try {
     const response = await fetch(`${API_BASE}/market/deals/${sample.dealId}/location`, {
       method: 'POST',
+      signal: controller.signal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         lat: sample.lat,
@@ -126,73 +97,94 @@ async function postLocationSample(sample, token) {
         heading: sample.heading,
         speed: sample.speed,
         captured_at_ms: sample.capturedAt,
+        sample_id: locationSampleId(sample),
       }),
     });
-    return response?.ok === true;
+    if ([400, 403, 404, 409, 422].includes(response?.status)) {
+      return { quarantine: response.status };
+    }
+    if (!response?.ok) return false;
+    const ack = await response.json();
+    return ack?.ok === true && ack.sample_id === locationSampleId(sample);
   } catch {
     return false;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 async function refreshBackgroundActiveDealIds(token, fallbackIds = []) {
   const fallback = Array.isArray(fallbackIds) ? fallbackIds : [];
   if (!token) return fallback;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
   try {
     const response = await fetch(`${API_BASE}/market/tracking/active`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
     });
     if (!response?.ok) return fallback;
     const data = await response.json().catch(() => ({}));
-    const ids = Array.isArray(data?.deal_ids) ? data.deal_ids.filter(Boolean) : [];
+    if (data?.ok !== true || !Array.isArray(data.deal_ids)
+        || !data.deal_ids.every((id) => typeof id === 'string' && id.length > 0)) return fallback;
+    if (await storage.get(TOKEN_KEY) !== token) return [];
+    const ids = [...new Set(data.deal_ids)];
     await storage.set(BG_DEALS_KEY, JSON.stringify(ids));
-    const queue = await readLocationQueue();
-    await writeLocationQueue(queue.filter((sample) => ids.includes(sample.dealId)));
     return ids;
   } catch {
     // Offline is not the same as "no active deals". Keep the last server-
     // approved IDs so samples continue entering the persistent FIFO.
     return fallback;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 async function pushLocationToDealsNow(coords, explicitDealIds = null) {
   try {
-    // Expo can wake the Android task without a new location while stationary.
-    // Persist the most recent genuine point so that wake still creates a real
-    // server heartbeat, retaining that point's original capture timestamp.
-    await rememberLastKnownLocation(coords);
+    // Время сохранённого измерения не заменяется временем доставки.
+    const captured = Array.isArray(coords) ? coords : [coords];
+    await rememberLastKnownLocation(captured[captured.length - 1]);
     const [rawIds, token] = await Promise.all([
       storage.get(BG_DEALS_KEY), storage.get(TOKEN_KEY),
     ]);
     const storedIds = rawIds ? JSON.parse(rawIds) : [];
     let ids = Array.isArray(explicitDealIds) ? explicitDealIds : storedIds;
     if (!token) return;
+    const ownerId = JSON.parse(await storage.get('ur_session') || 'null')?.user?.id;
+    if (!ownerId) return;
+    if (!await durableStorage.get(BG_LOCATION_QUEUE_KEY + ':migrated')) {
+      await locationQueue.migrate(BG_LOCATION_QUEUE_KEY, ownerId);
+    }
+    const persist = async (dealIds) => {
+      for (const id of dealIds || []) {
+        for (const point of captured) {
+          const current = sampleForDeal(id, point);
+          if (current) await locationQueue.append({ ...current, ownerId });
+        }
+      }
+    };
+    // Весь callback записан до первого сетевого ожидания, даже offline.
+    if (await storage.get(TOKEN_KEY) !== token) return;
+    await persist(ids);
     if (!Array.isArray(explicitDealIds)) {
       ids = await refreshBackgroundActiveDealIds(token, ids);
     }
     if (!Array.isArray(ids) || !ids.length) return;
-
-    let queue = await readLocationQueue();
+    if (await storage.get(TOKEN_KEY) !== token) return;
+    await persist(ids);
     for (const id of ids) {
-      // Flush each deal FIFO. If the oldest sample is still unavailable,
-      // retain it and do not move a newer point ahead of it.
-      const pending = queue.filter((sample) => sample.dealId === id);
-      for (const sample of pending) {
-        if (!await postLocationSample(sample, token)) break;
-        queue = queue.filter((item) => sampleKey(item) !== sampleKey(sample));
-      }
-
-      const current = sampleForDeal(id, coords);
-      if (!current) continue;
-      if (await postLocationSample(current, token)) {
-        queue = queue.filter((item) => sampleKey(item) !== sampleKey(current));
-      } else {
-        queue = [...queue, current];
-      }
-      await writeLocationQueue(queue);
+      await locationQueue.drain(id, (sample) => postLocationSample(sample, token), async () => {
+        if (await storage.get(TOKEN_KEY) !== token) return false;
+        const active = JSON.parse(await storage.get(BG_DEALS_KEY) || '[]');
+        return active.includes(id);
+      }, ownerId);
     }
-    await writeLocationQueue(queue);
-  } catch { /* background task must never crash the app */ }
+    return { ok: true };
+  } catch {
+    console.warn('[GPS] Очередь не обработана; сохранённые точки оставлены для повтора');
+    return { ok: false, code: 'GPS_QUEUE_FAILURE' };
+  }
 }
 
 // Send coordinates only for server-approved active deal IDs. Failed samples
@@ -209,26 +201,23 @@ if (TaskManager) {
     TaskManager.defineTask(BG_LOCATION_TASK, async ({ data, error } = {}) => {
       if (error) return;
       const locations = data?.locations;
-      const last = locations && locations[locations.length - 1];
-      // Expo's Android task can legitimately wake without `locations` while a
-      // vehicle is stationary. Reuse only a persisted, genuine last point so
-      // the POST is a heartbeat, not invented geometry or a new capture time.
-      const freshCoords = last?.coords && {
-        ...last.coords,
-        timestamp: last.timestamp ?? last.coords.timestamp,
-      };
-      const coords = freshCoords || await readLastKnownLocation();
-      if (coords) await pushLocationToDeals(coords);
+      if (Array.isArray(locations) && locations.length) {
+        await pushLocationToDeals(locations.map((item) => ({ ...item.coords, timestamp: item.timestamp ?? item.coords?.timestamp })));
+      } else {
+        // Пустой callback только повторяет очередь. Старый GPS не становится
+        // новым heartbeat: свежесть подтверждается настоящим измерением ОС.
+        await pushLocationToDeals(null);
+      }
     });
   } catch { /* duplicate definition during hot reload is safe */ }
 }
 
 export async function setActiveDealIds(ids) {
   try {
-    const nextIds = Array.isArray(ids) ? ids : [];
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string' && id.length > 0)) return;
+    const nextIds = [...new Set(ids)];
     await storage.set(BG_DEALS_KEY, JSON.stringify(nextIds));
-    const queue = await readLocationQueue();
-    await writeLocationQueue(queue.filter((sample) => nextIds.includes(sample.dealId)));
+    // Неактивные точки остаются в архиве очереди, но больше не отправляются.
   } catch {}
 }
 
@@ -404,6 +393,8 @@ export async function getCurrentLocationPayload() {
       lng: c.longitude,
       heading: c.heading != null && c.heading >= 0 ? c.heading : null,
       speed: c.speed != null && c.speed >= 0 ? c.speed : null,
+      timestamp: pos.timestamp,
+      captured_at_ms: pos.timestamp,
     };
   } catch { return null; }
 }
