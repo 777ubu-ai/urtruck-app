@@ -100,7 +100,19 @@ def _can_view_non_public_listing(c, *, table: str, listing_id: str, row: dict,
         "AND status <> 'cancelled' LIMIT 1",
         (listing_id, caller_id, caller_id),
     ).fetchone()
-    return bool(deal)
+    if deal:
+        return True
+    # A bidder must be able to reopen their own archived offer after the
+    # listing becomes taken/closed. DealsScreen deliberately keeps rejected
+    # bids in Archive; without this participant grant, tapping that row hit
+    # the non-public listing guard and rendered a misleading not-found screen.
+    # This reveals no extra contact data: get_cargo/get_trip still strip owner
+    # phone/contact fields for every non-owner caller. Strangers remain 404.
+    bid = c.execute(
+        f"SELECT 1 FROM bids WHERE {table[:-1]}_id = ? AND bidder_id = ? LIMIT 1",
+        (listing_id, caller_id),
+    ).fetchone()
+    return bool(bid)
     try:
         return _extract_driver(authorization)
     except HTTPException:

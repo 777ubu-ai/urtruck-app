@@ -197,3 +197,22 @@ def test_07_cancelled_deal_still_allows_the_safe_card_by_design():
     assert r.status_code == 200
     leaked = _FORBIDDEN_KEYS & set(r.json().keys())
     assert not leaked
+
+
+def test_archived_bidder_can_reopen_taken_cargo_but_stranger_still_cannot():
+    """Archive rows must remain navigable after another driver wins."""
+    from database.db import get_conn
+    import uuid
+    cargo_id = f"cargo-archive-{uuid.uuid4().hex[:8]}"
+    bidder_id = f"bidder-archive-{uuid.uuid4().hex[:8]}"
+    stranger_id = f"stranger-archive-{uuid.uuid4().hex[:8]}"
+    owner_id = f"owner-archive-{uuid.uuid4().hex[:8]}"
+    with get_conn() as c:
+        c.execute("INSERT INTO cargos (id, owner_id, from_city, to_city, cargo_desc, status, price) VALUES (?, ?, 'Иу', 'Алматы', 'Archive cargo', 'taken', 9000)", (cargo_id, owner_id))
+        c.execute("INSERT INTO bids (id, cargo_id, bidder_id, bidder_name, amount, status) VALUES (?, ?, ?, 'Archived bidder', 8500, 'rejected')", (f'bid-{uuid.uuid4().hex[:8]}', cargo_id, bidder_id))
+    # The helper under test is the security source of truth for GET /cargos/{id}.
+    from api.marketplace import _can_view_non_public_listing
+    with get_conn() as c:
+        row = dict(c.execute("SELECT * FROM cargos WHERE id = ?", (cargo_id,)).fetchone())
+        assert _can_view_non_public_listing(c, table='cargos', listing_id=cargo_id, row=row, owner_field='owner_id', caller={'id': bidder_id}) is True
+        assert _can_view_non_public_listing(c, table='cargos', listing_id=cargo_id, row=row, owner_field='owner_id', caller={'id': stranger_id}) is False
