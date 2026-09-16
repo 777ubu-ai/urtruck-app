@@ -5,7 +5,8 @@
 import sys
 import json
 import re
-from datetime import datetime, timedelta
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -470,6 +471,7 @@ def _init():
                 lng        REAL NOT NULL,
                 heading    REAL,
                 speed      REAL,
+                captured_at_ms INTEGER,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -478,6 +480,10 @@ def _init():
         # тогда приложение имеет право посылать координаты. Одна строка на
         # сделку сохраняет последнее решение и не оставляет согласие только в
         # клиентском AsyncStorage.
+        location_cols = {r["name"] for r in c.execute("PRAGMA table_info(deal_locations)").fetchall()}
+        if "captured_at_ms" not in location_cols:
+            c.execute("ALTER TABLE deal_locations ADD COLUMN captured_at_ms INTEGER")
+
         c.execute("""
             CREATE TABLE IF NOT EXISTS deal_tracking (
                 deal_id      TEXT PRIMARY KEY,
@@ -3865,6 +3871,8 @@ class DealLocationIn(BaseModel):
     lng: float = Field(ge=-180, le=180)
     heading: Optional[float] = None
     speed: Optional[float] = None
+    # Client capture time survives the persistent offline FIFO. Unix ms.
+    captured_at_ms: Optional[int] = Field(default=None, ge=946684800000, le=4102444800000)
 
 
 @mp_router.post("/deals/{deal_id}/location")
@@ -3883,20 +3891,37 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
         if tracking.get("status") != "active":
             raise HTTPException(status_code=409, detail="GPS не разрешён водителем для этой сделки")
         was_lost = _latest_gps_signal_marker(c, deal_id) == "gps_lost"
-        c.execute(
-            "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, updated_at) "
-            "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP) "
-            "ON CONFLICT(deal_id) DO UPDATE SET lat=excluded.lat, lng=excluded.lng, "
-            "heading=excluded.heading, speed=excluded.speed, updated_at=CURRENT_TIMESTAMP",
-            (deal_id, body.lat, body.lng, body.heading, body.speed),
-        )
-        c.execute(
-            "UPDATE deal_tracking SET last_signal_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE deal_id=?",
-            (deal_id,),
-        )
+        now_ms = int(time.time() * 1000)
+        captured_ms = int(body.captured_at_ms or now_ms)
+        # Reject clocks far in the future instead of making GPS look healthy forever.
+        if captured_ms > now_ms + 5 * 60 * 1000:
+            raise HTTPException(status_code=422, detail="Некорректное время GPS-точки")
+        captured_sql = datetime.fromtimestamp(captured_ms / 1000.0, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        existing = c.execute(
+            "SELECT captured_at_ms FROM deal_locations WHERE deal_id=?", (deal_id,)
+        ).fetchone()
+        existing_ms = int(existing["captured_at_ms"] or 0) if existing else 0
+        # Retry/drain is idempotent and monotonic: an older queued sample never
+        # overwrites a newer location that already reached the server.
+        if captured_ms >= existing_ms:
+            c.execute(
+                "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, captured_at_ms, updated_at) "
+                "VALUES (?,?,?,?,?,?,?) "
+                "ON CONFLICT(deal_id) DO UPDATE SET lat=excluded.lat, lng=excluded.lng, "
+                "heading=excluded.heading, speed=excluded.speed, captured_at_ms=excluded.captured_at_ms, updated_at=excluded.updated_at",
+                (deal_id, body.lat, body.lng, body.heading, body.speed, captured_ms, captured_sql),
+            )
+            c.execute(
+                "UPDATE deal_tracking SET last_signal_at=?, updated_at=CURRENT_TIMESTAMP WHERE deal_id=? "
+                "AND (last_signal_at IS NULL OR last_signal_at <= ?)",
+                (captured_sql, deal_id, captured_sql),
+            )
+        # A historical FIFO sample may be valid route evidence but must not
+        # resurrect GPS health. Only a near-live sample clears gps_lost.
+        fresh_for_restore = (now_ms - captured_ms) <= 180 * 1000
         shipper_id = None
         ev_id = None
-        if was_lost:
+        if was_lost and fresh_for_restore:
             _ev = c.execute(
                 "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'gps_restored', ?)",
                 (deal_id, user["id"]),
@@ -3924,7 +3949,7 @@ def get_deal_location(deal_id: str, user=Depends(require_level(1))):
         if tracking.get("status") != "active":
             return {"ok": True, "has_location": False, "tracking_status": tracking.get("status", "not_requested")}
         loc = c.execute(
-            "SELECT lat, lng, heading, speed, updated_at FROM deal_locations WHERE deal_id = ?",
+            "SELECT lat, lng, heading, speed, captured_at_ms, updated_at FROM deal_locations WHERE deal_id = ?",
             (deal_id,),
         ).fetchone()
     if not loc:

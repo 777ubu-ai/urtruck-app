@@ -817,14 +817,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const onRouteSummary = React.useCallback((summary) => setRouteSummary(summary || null), []);
 
   const updatedText = React.useMemo(() => {
-    const date = parseServerDate(location?.updated_at);
+    const capturedMs = Number(location?.captured_at_ms);
+    const date = Number.isFinite(capturedMs) && capturedMs > 0
+      ? new Date(capturedMs)
+      : parseServerDate(location?.updated_at);
     if (!date) return null;
     const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
     if (minutes === 0) return ui.updatedNow;
     if (minutes < 60) return `${ui.updated} ${minutes} ${ui.min} ${ui.ago}`;
     if (minutes < 1440) return `${ui.updated} ${Math.floor(minutes / 60)} ${ui.hour} ${ui.ago}`;
     return `${ui.updated} ${Math.floor(minutes / 1440)} ${ui.day} ${ui.ago}`;
-  }, [location?.updated_at, ui]);
+  }, [location?.captured_at_ms, location?.updated_at, ui]);
 
   const changeDealStatus = React.useCallback(async (nextStatus) => {
     if (!dealId || statusLoading) return null;

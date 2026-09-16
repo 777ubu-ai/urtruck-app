@@ -95,6 +95,7 @@ async function postLocationSample(sample, token) {
         lng: sample.lng,
         heading: sample.heading,
         speed: sample.speed,
+        captured_at_ms: sample.capturedAt,
       }),
     });
     return response?.ok === true;

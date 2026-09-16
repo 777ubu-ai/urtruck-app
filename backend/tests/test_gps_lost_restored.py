@@ -194,3 +194,49 @@ if __name__ == "__main__":
             traceback.print_exc()
     print(f"\n{len(tests) - failed}/{len(tests)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_offline_fifo_old_capture_does_not_fake_restore_then_fresh_capture_restores():
+    d = seed_deal("in_progress")
+    approve_tracking(d)
+    assert send_ping(d).status_code == 200
+    make_stale(d)
+    check_gps_heartbeats_job()
+    assert gps_events(d) == ["gps_lost"]
+
+    import time
+    old_ms = int((time.time() - 10 * 60) * 1000)
+    as_user(DRIVER)
+    old = client.post(
+        f"/api/v1/market/deals/{d}/location",
+        json={"lat": 43.21, "lng": 76.91, "captured_at_ms": old_ms},
+    )
+    assert old.status_code == 200, old.text
+    assert gps_events(d) == ["gps_lost"], "historical FIFO sample must not fake gps_restored"
+
+    fresh_ms = int(time.time() * 1000)
+    fresh = client.post(
+        f"/api/v1/market/deals/{d}/location",
+        json={"lat": 43.22, "lng": 76.92, "captured_at_ms": fresh_ms},
+    )
+    assert fresh.status_code == 200, fresh.text
+    assert gps_events(d) == ["gps_lost", "gps_restored"]
+    with get_conn() as c:
+        row = c.execute("SELECT captured_at_ms, updated_at FROM deal_locations WHERE deal_id=?", (d,)).fetchone()
+    assert row["captured_at_ms"] == fresh_ms
+
+
+def test_location_capture_time_is_monotonic_during_retry_drain():
+    d = seed_deal("in_progress")
+    approve_tracking(d)
+    import time
+    now_ms = int(time.time() * 1000)
+    as_user(DRIVER)
+    newer = client.post(f"/api/v1/market/deals/{d}/location", json={"lat": 44.0, "lng": 77.0, "captured_at_ms": now_ms})
+    assert newer.status_code == 200
+    older = client.post(f"/api/v1/market/deals/{d}/location", json={"lat": 1.0, "lng": 2.0, "captured_at_ms": now_ms - 60_000})
+    assert older.status_code == 200
+    with get_conn() as c:
+        row = c.execute("SELECT lat,lng,captured_at_ms FROM deal_locations WHERE deal_id=?", (d,)).fetchone()
+    assert row["captured_at_ms"] == now_ms
+    assert row["lat"] == 44.0 and row["lng"] == 77.0
