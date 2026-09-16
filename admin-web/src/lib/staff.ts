@@ -150,6 +150,16 @@ export function bootstrapOwner(username: string, password: string) {
   return createStaff(username, password, 'owner');
 }
 
+export function resetOwnerPassword(username: string, password: string) {
+  if (password.length < 12) throw new Error('password_too_short');
+  const store = readStore();
+  const record = store.users.find((user) => user.username === normalizeUsername(username) && user.role === 'owner');
+  if (!record) throw new Error('owner_not_found');
+  Object.assign(record, passwordFields(password));
+  record.active = true; record.updatedAt = new Date().toISOString();
+  writeStore(store); return record;
+}
+
 export function activateStaffPasswordOnly(username: string) {
   const store = readStore();
   const record = store.users.find((user) => user.username === normalizeUsername(username));

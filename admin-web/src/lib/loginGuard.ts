@@ -66,3 +66,7 @@ export function loginFailure(ip:string,username:string){
 export function loginSuccess(ip:string,username:string){
   const s=read(); delete s[accountKey(ip,username)]; write(s);
 }
+
+export function clearLoginGuard(ip:string,username:string){
+  const s=read(); delete s[ipKey(ip)]; delete s[accountKey(ip,username)]; write(s);
+}
