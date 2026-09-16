@@ -155,6 +155,13 @@ function navigateFromUrl(navRef, url, role) {
       // leaving the user on whatever root screen happened to be active.
       navRef.current.navigate('Main', { screen: 'Deals', params: { role } });
     } else if (kind === 'deals' && id) {
+      // A push target is a nested screen. First make Deals the meaningful
+      // parent tab, then push the exact deal. Hardware Back must never return
+      // to an unrelated root (for example Cargo Feed) just because that was
+      // foreground before the notification arrived.
+      navRef.current.navigate('Main', { screen: 'Deals', params: { role } });
+      setTimeout(() => navRef.current?.navigate('Chat', { dealId: id, role, action: params.action || null }), 0);
+      return;
       // BUG-002: deals → Deal Room (ChatScreen с dealId), как в
       // NotificationsScreen. Раньше кидало в общий список чатов без контекста.
       // GPS-consent P1 fix: backend's tracking-request/approved/declined/
@@ -166,9 +173,10 @@ function navigateFromUrl(navRef, url, role) {
       // ChatScreenV2/DealWorkspaceRoute already forward the full params
       // object (spread, not a named allow-list), so this alone is enough
       // for DealWorkspaceScreenV2 to see it on mount.
-      navRef.current.navigate('Chat', { dealId: id, role, action: params.action || null });
     } else if (kind === 'chats' && id) {
-      navRef.current.navigate('Chat', { roomId: id, role });
+      navRef.current.navigate('Main', { screen: 'Deals', params: { role } });
+      setTimeout(() => navRef.current?.navigate('Chat', { roomId: id, role }), 0);
+      return;
     } else if (kind === 'driver' && id) {
       // Deep-link audit P1 (2026-09-14): ShareModal builds
       // `${WEB_URL}/driver/{id}` for a shared driver profile (src/components/

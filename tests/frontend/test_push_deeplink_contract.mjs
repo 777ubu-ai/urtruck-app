@@ -25,9 +25,10 @@ test('native push tap routing keeps canonical deep-links for cargo, trip, deal, 
   // action is threaded through (Track: Claude harness fix, P1) — backend's
   // tracking-request/approved/declined/stopped pushes set
   // url=/deals/{id}?action=tracking and it must not be dropped here.
-  assert.match(app, /navigate\('Chat', \{ dealId: id, role, action: params\.action \|\| null \}\)/);
+  assert.match(app, /navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
+  assert.match(app, /setTimeout\(\(\) => navRef\.current\?\.navigate\('Chat', \{ dealId: id, role, action: params\.action \|\| null \}\), 0\)/);
   assert.match(app, /if \(kind === 'chats' && id\)/);
-  assert.match(app, /navigate\('Chat', \{ roomId: id, role \}\)/);
+  assert.match(app, /setTimeout\(\(\) => navRef\.current\?\.navigate\('Chat', \{ roomId: id, role \}\), 0\)/);
   assert.match(app, /else if \(kind === 'profile'\)/);
   assert.match(app, /navigate\('Profile'\)/);
   assert.match(app, /else if \(kind === 'notifications'\)/);
@@ -110,4 +111,14 @@ test('deploy paths keep .well-known release files instead of dropping hidden ent
   assert.match(productionDeploy, /scp -C -r dist\/\. "\$SERVER_USER@\$SERVER_HOST:\$REMOTE_DIR\/"/);
   assert.match(deployScript, /scp -i ~\/\.ssh\/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist\/\. "\$\{SERVER\}:\$\{REMOTE_DIR\}\/"/);
   assert.match(deployScript, /scp -i ~\/\.ssh\/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist\/\. "\$\{SERVER\}:\$\{VERSIONS_DIR\}\/v\$NEW_VERSION\/"/);
+});
+
+
+test('push chat/deal targets establish Deals as their Back parent', () => {
+  const dealBranch = app.slice(app.indexOf("kind === 'deals' && id"), app.indexOf("kind === 'chats' && id"));
+  const chatBranch = app.slice(app.indexOf("kind === 'chats' && id"), app.indexOf("kind === 'driver' && id"));
+  for (const block of [dealBranch, chatBranch]) {
+    assert.match(block, /navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
+    assert.match(block, /setTimeout\(/);
+  }
 });
