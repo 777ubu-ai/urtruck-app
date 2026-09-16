@@ -395,7 +395,7 @@ export async function getLocationHealth() {
 // Background hook may call this after the deal becomes active. It MUST NOT
 // trigger a permission dialog by itself. On Android it starts the visible
 // foreground service only after foreground + background permissions are granted.
-export async function startBackgroundTracking() {
+export async function startBackgroundTracking({ forceReconfigure = false } = {}) {
   if (Platform.OS === 'web') return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
   const locationModule = await resolveLocationModule();
   if (!locationModule) return { ok: false, reason: 'unsupported' };
@@ -411,11 +411,12 @@ export async function startBackgroundTracking() {
 
   try {
     const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
-    if (started && backgroundTrackingConfiguredThisProcess) return { ok: true, already: true };
+    if (started && backgroundTrackingConfiguredThisProcess && !forceReconfigure) return { ok: true, already: true };
     // A package update can leave Expo's persisted registration alive with the
-    // OLD options. Stop/start once per process to migrate it to the current
-    // one-minute stationary-heartbeat contract. Subsequent refreshes keep the
-    // same service and do not churn it.
+    // OLD options. A user may also return from Android's system Location
+    // settings after the provider was disabled: force one visible stop/start
+    // so Expo re-subscribes instead of retaining a silent stale registration.
+    // Ordinary refreshes keep the same service and do not churn it.
     if (started) {
       await locationModule.stopLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => {});
     }

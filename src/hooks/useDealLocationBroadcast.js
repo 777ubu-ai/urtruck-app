@@ -47,7 +47,7 @@ export function useDealLocationBroadcast(activeDealIds) {
     if (Platform.OS === 'web' || key === null) return undefined;
 
     let alive = true;
-    const syncTracking = async () => {
+    const syncTracking = async ({ forceReconfigure = false } = {}) => {
       const ids = idsRef.current;
       await setActiveDealIds(ids);
       if (!alive) return;
@@ -56,12 +56,15 @@ export function useDealLocationBroadcast(activeDealIds) {
         return;
       }
       if (Platform.OS === 'android' && AppState.currentState !== 'active') return;
-      await startBackgroundTracking();
+      await startBackgroundTracking({ forceReconfigure });
     };
 
     syncTracking();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && idsRef.current.length) syncTracking();
+      // Returning from Android system Location settings must replace an
+      // existing-but-silent Expo registration. This stays strictly visible:
+      // a background transition never starts/restarts the foreground service.
+      if (state === 'active' && idsRef.current.length) syncTracking({ forceReconfigure: true });
     });
 
     return () => {
