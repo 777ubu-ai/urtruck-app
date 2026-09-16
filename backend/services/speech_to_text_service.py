@@ -67,6 +67,15 @@ def transcribe_audio_ref(audio_ref: str, *, filename: str | None = None, languag
 
 def transcribe_audio_path(path: str, *, filename: str | None = None, language: str | None = None) -> dict:
     provider = _provider()
+    if provider == "local_whisper":
+        from services.local_speech_service import LocalSpeechError, transcribe
+        try:
+            return transcribe(path)
+        except LocalSpeechError as exc:
+            raise SpeechToTextError(
+                "Распознавание голоса временно недоступно", provider=provider,
+                retryable=exc.retryable, code=exc.code,
+            ) from exc
     if provider != "openai":
         # Fail-closed (i18n-16/STT-hardening spec item 7): no configured
         # provider means no fake transcript — a controlled, canonical error
