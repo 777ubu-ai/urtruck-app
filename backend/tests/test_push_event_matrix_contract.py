@@ -37,7 +37,14 @@ def test_bid_accepted_and_deal_created_keep_canonical_order_card_links():
     # localized via push_i18n instead of hardcoded RU.
     assert 'create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url, event_key=event_key)' in MARKET
     assert 'push_i18n.push_text("bid_accepted", loc, amount=_money' in MARKET
-    assert 'create_notification(uid_, "deal_created", title_, text_, "✅", url=deal_url)' in MARKET
+    # Новый contract сохраняет event_key внутри транзакции сделки.
+    import ast
+    calls = [node for node in ast.walk(ast.parse(MARKET)) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Name) and node.func.id == "create_notification"
+             and len(node.args) > 1 and isinstance(node.args[1], ast.Constant)
+             and node.args[1].value == "deal_created"]
+    assert any({kw.arg: ast.unparse(kw.value) for kw in node.keywords}
+               == {"url": "deal_url", "event_key": "event_key", "conn": "c"} for node in calls)
     assert 'deal_url = f"/cargos/{bid[\'cargo_id\']}"' in MARKET or 'deal_url = f"/cargos/{bid["cargo_id"]}"' in MARKET
     assert 'deal_url = f"/trips/{bid[\'trip_id\']}"' in MARKET or 'deal_url = f"/trips/{bid["trip_id"]}"' in MARKET
 
