@@ -150,6 +150,14 @@ export function bootstrapOwner(username: string, password: string) {
   return createStaff(username, password, 'owner');
 }
 
+export function activateStaffPasswordOnly(username: string) {
+  const store = readStore();
+  const record = store.users.find((user) => user.username === normalizeUsername(username));
+  if (!record) return null;
+  record.active = true; record.updatedAt = new Date().toISOString(); record.lastLoginAt = record.updatedAt;
+  writeStore(store); return record;
+}
+
 export function activateStaff(username: string, code: string) {
   const store = readStore();
   const record = store.users.find((user) => user.username === normalizeUsername(username));

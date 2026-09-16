@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { createAdminSession, createEnrollmentSession } from '@/lib/session';
 import { validateBackendAdmin } from '@/lib/backend';
 import {
-  bootstrapOwner, provisioningUri, staffCount,
+  activateStaffPasswordOnly, bootstrapOwner, provisioningUri, staffCount,
   verifyStaffLogin, verifyStaffPassword
 } from '@/lib/staff';
 import { audit, requestIp } from '@/lib/audit';
@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
   const password = String(body.password || '');
   const otp = String(body.otp || '').trim();
   const ip = requestIp(request);
+  const mfaRequiredByPolicy = String(process.env.ADMIN_REQUIRE_MFA || 'true').toLowerCase() !== 'false';
   if (!username || !password) return NextResponse.json({ ok: false, error: 'Введите логин и пароль' }, { status: 400 });
 
   let gate;
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Неверные данные' }, { status: 401 });
   }
 
-  if (!staff.mfaEnrolledAt) {
+  if (!staff.mfaEnrolledAt && mfaRequiredByPolicy) {
     const uri = provisioningUri(staff);
     const qrDataUrl = await QRCode.toDataURL(uri, { width: 260, margin: 1, errorCorrectionLevel: 'M' });
     const response = NextResponse.json({ ok: false, mfaSetupRequired: true, qrDataUrl });
@@ -66,9 +67,21 @@ export async function POST(request: NextRequest) {
     return response;
   }
 
-  if (!staff.active) {
-    audit({ actor: staff.username, role: staff.role, action: 'auth.disabled_account', success: false, ip });
+  if (!mfaRequiredByPolicy && !staff.active) {
+    staff = activateStaffPasswordOnly(staff.username);
+  }
+
+  if (!staff || !staff.active) {
+    audit({ actor: username, role: staff?.role || '', action: 'auth.disabled_account', success: false, ip });
     return NextResponse.json({ ok: false, error: 'Доступ отключён администратором' }, { status: 403 });
+  }
+
+  if (!mfaRequiredByPolicy) {
+    loginSuccess(ip, username);
+    const response = NextResponse.json({ ok: true, role: staff.role });
+    sessionCookie(response, createAdminSession(staff.username, staff.role));
+    audit({ actor: staff.username, role: staff.role, action: 'auth.login_password_only', ip });
+    return response;
   }
 
   if (!otp) return NextResponse.json({ ok: false, mfaRequired: true });

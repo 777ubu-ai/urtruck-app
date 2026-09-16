@@ -40,7 +40,7 @@ export default function LoginPage() {
   return <main className="login-wrap"><div className="login-grid-bg" /><section className="login-card">
     <div className="brand login-brand"><div className="brand-mark">U</div><div><strong>UrTruck</strong><span>CONTROL CENTER</span></div></div>
     <p className="eyebrow">SECURE OPERATOR ACCESS</p><h1>Управление UrTruck</h1>
-    <p className="subtitle">Вход только для сотрудников. Пароль + код Authenticator.</p>
+    <p className="subtitle">Вход для сотрудников UrTruck. Временно используется логин и пароль.</p>
     {setupQr ? <form onSubmit={enroll}>
       <div className="mfa-setup"><b>Подключите двухфакторную защиту</b><p>Отсканируйте QR в Google Authenticator, Microsoft Authenticator или 1Password. Затем введите 6-значный код.</p><Image src={setupQr} alt="UrTruck MFA QR" width={220} height={220} unoptimized /></div>
       <label>Код Authenticator<input name="otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required autoFocus /></label>
