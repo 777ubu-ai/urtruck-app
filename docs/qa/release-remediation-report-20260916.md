@@ -9,6 +9,7 @@
 - Ветка: qa/master-hard-qa-20260916, без merge/rebase main.
 - Начало этого пакета: ba2835d682a079e676f07cc588ddd9c6cbe65942.
 - Исходники QA APK: 103473497d0656d989d14b1db2de2989d0ad88c2.
+- Финальный backend code commit: cbaf7fff9957df533aa86802cfeaaf4ac57366af. После SHA APK изменялись только backend и отчёты; клиентские исходники совпадают.
 - Старый headless recovery 07013b6e остаётся ancestor.
 - Worktree: /private/tmp/urtruck-master-hard-qa-20260916; изменения сохранены в origin.
 - Production, .env, платежи, рабочая БД и телефоны не изменялись. OPPO и GPS 15/30 min не запускались по последнему поручению владельца.
@@ -24,6 +25,7 @@
 | a4b94f7f | Дополнительный local_whisper STT через существующий сервис, без вызова OpenAI API | 21/21 adapter + STT contract; реальные RU/ZH inference, quality-ограничения ниже |
 | b0e4b1a9 | Достоверные неизвестные метрики карты; нет fake ETA/0%; null-координаты не превращаются в 0,0; live freshness обновляется | 4 новых проверки и полный frontend 663/663 |
 | d9ac615d | AST-контракт transactional notification вместо старой literal-string проверки | Полный backend 838/838 |
+| cbaf7fff | Counter accepted включён в каталог событий и critical priority | Повторный backend full 838/838 |
 | 10347349 | Версия нового QA2 APK 211040057, прежняя безопасная injection MapKit secret | CI run 35160059710 |
 
 До этого пакета уже сохранены 41d2569f (one-tap voice state/cache/retry) и ba2835d6 (web fail-fast). Они включены в текущий HEAD; не представлены как повторно сделанная работа.
@@ -32,7 +34,7 @@
 
 | Проверка | Результат |
 |---|---|
-| Полный backend | **838 passed, 0 failed**, 264 deprecation warnings, 30.83 s |
+| Полный backend | **838 passed, 0 failed**, 264 deprecation warnings, 30.88 s |
 | Полный frontend | **663 passed, 0 failed**, skipped 0 |
 | Lint | PASS, 377 active JS |
 | i18n RU/EN/KK/ZH | PASS, 2003 keys на язык, missing 0 |
@@ -42,6 +44,7 @@
 | pip check основного backend | PASS |
 | SCA основного установленного backend/test-графа | 0 известных уязвимостей; ignore не использовался |
 | Чистая установка backend + optional local STT | PASS; pip check PASS; SCA 0 известных уязвимостей |
+| Android GitHub Actions | PASS: APK 211040057, manifest/signature/MapKit/Firebase configuration checks |
 | git diff --check | PASS |
 
 Backend тестировался в отдельном venv Python 3.12 и новой SQLite БД. В тестовой копии один hardcoded DB_PATH переведён на уникальный путь окружения; assertions не ослаблялись. Копия содержит актуальные изменённые backend-файлы и requirements. Хранилище файлов также изолировано.
@@ -101,7 +104,13 @@ Renderer прежний: react-native-yamap / Yandex MapKit. Ключ: EXPO_PUBL
 - versionCode: 211040057.
 - Source: 103473497d0656d989d14b1db2de2989d0ad88c2.
 - Workflow: https://github.com/777ubu-ai/urtruck-app/actions/runs/35160059710 .
-- Build/SHA256/signing certificate: будет дополнено по завершению CI.
+- Build: SUCCESS. Metadata ниже проверены CI посредством aapt/apksigner/shasum.
+- APK SHA-256: 8b6fc4714f490033121b1062655b3efeb21e7b3101d3b369e39f4948213ba7d7.
+- Signing certificate SHA-256: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c.
+- targetSdk: 36.
+- Артефакт: https://github.com/777ubu-ai/urtruck-app/actions/runs/35160059710/artifacts/10472454696 .
+- Retention CI: 30 дней. Хэш ZIP-артефакта отличается от APK: 687187017af0ef39190c19da6a92c83ef22254b18492722c1dd2cd800d98d1b7.
+- Manifest сохранён в docs/qa/evidence/android057-manifest.json.
 - Это QA2 с явным debug-signing opt-in по существующему workflow. Не Play production artifact.
 - Установка на телефоны не выполнялась. Совместимость установленной подписи не утверждается без проверки перед install -r.
 
