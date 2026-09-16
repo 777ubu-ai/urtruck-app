@@ -384,9 +384,14 @@ export async function startBackgroundTracking() {
     if (started) return { ok: true, already: true };
     await locationModule.startLocationUpdatesAsync(BG_LOCATION_TASK, {
       accuracy: locationModule.Accuracy.Balanced,
+      // Active-trip tracking needs a time heartbeat even while the truck is
+      // stopped at a warehouse/border. A 400 m distance gate let Android keep
+      // the FGS alive but stop callbacks for a stationary device, so the
+      // backend incorrectly aged `last_signal_at` into gps_lost. Keep the
+      // one-minute cadence authoritative; movement is not required.
       timeInterval: 60000,
-      distanceInterval: 400,
-      pausesUpdatesAutomatically: true,
+      distanceInterval: 0,
+      pausesUpdatesAutomatically: false,
       showsBackgroundLocationIndicator: true,
       foregroundService: {
         notificationTitle: t('bg_location_title'),
