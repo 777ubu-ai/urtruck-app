@@ -125,10 +125,10 @@ test('the map is never mounted underneath the chat — chat and map are mutually
 test('distance and ETA remain real Yandex route properties and fail closed', () => {
   assert.match(workspace, /<TripMapInfoSheet/);
   assert.match(workspace, /metrics=\{mapMetrics\}/);
-  assert.match(workspace, /progress=\{routeSummary\?\.progressPercent \|\| 0\}/);
-  assert.match(workspace, /routeSummary\?\.distanceText/);
-  assert.match(workspace, /routeSummary\?\.durationText/);
-  assert.match(workspace, /routeSummary\?\.isRemaining/);
+  assert.match(workspace, /progress=\{metrics\.progress\}/);
+  assert.match(workspace, /routeMetricValues\(routeSummary,/);
+  assert.match(workspace, /value: metrics\.remaining/);
+  assert.match(workspace, /value: metrics\.estimatedTime/);
   assert.match(webMap, /multiRoute\.getActiveRoute/);
   assert.match(webMap, /get\?\.\(["']distance["']\)/);
   assert.match(webMap, /get\?\.\(["']duration["']\)/);

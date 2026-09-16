@@ -12,6 +12,11 @@ const YANDEX_MAPKIT_API_KEY = String(process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_K
 const MAPKIT_AVAILABLE = Boolean(NativeModules?.yamap);
 
 const asPoint = (value) => {
+  const rawLat = Array.isArray(value) ? value[0] : value?.lat ?? value?.latitude;
+  const rawLon = Array.isArray(value) ? value[1] : value?.lon ?? value?.lng ?? value?.longitude;
+  if (rawLat == null || rawLon == null || String(rawLat).trim() === '' || String(rawLon).trim() === ''
+      || !Number.isFinite(Number(rawLat)) || !Number.isFinite(Number(rawLon))
+      || Math.abs(Number(rawLat)) > 90 || Math.abs(Number(rawLon)) > 180) return null;
   if (Array.isArray(value) && value.length >= 2) {
     const lat = Number(value[0]);
     const lon = Number(value[1]);
@@ -29,7 +34,7 @@ const routeKey = (points) => (points || [])
 
 const distanceTextFromMeters = (value, t) => {
   const meters = Number(value);
-  if (!Number.isFinite(meters) || meters <= 0) return null;
+  if (value == null || !Number.isFinite(meters) || meters < 0) return null;
   const km = meters / 1000;
   const rounded = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
   return `${String(rounded).replace('.', ',')} ${t('km_short')}`;
@@ -97,7 +102,7 @@ export default function TruckMap({
   const resolvedRoute = externalRoute || serverRoute;
   const roadGeometry = React.useMemo(
     () => (resolvedRoute?.geometry || []).map(asPoint).filter(Boolean),
-    [resolvedRoute?.routeKey],
+    [resolvedRoute?.geometry],
   );
   // Never paint planned city coordinates as a solid route: until the
   // authenticated road geometry arrives, keep the map in its loading state.
@@ -126,7 +131,7 @@ export default function TruckMap({
         totalDistanceText,
         passedDistanceText,
         totalDurationText,
-        progressPercent: live ? progress.progressPercent : 0,
+        progressPercent: live ? progress.progressPercent : null,
         blocked: false,
         isRemaining: Boolean(live),
         provider: resolvedRoute?.provider || 'server-road',

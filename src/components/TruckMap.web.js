@@ -10,6 +10,11 @@ import { routeProgress } from "../utils/routeProgress";
 import { useI18n } from "../utils/useI18n";
 
 const asPoint = (p) => {
+  const rawLat = Array.isArray(p) ? p[0] : p?.lat ?? p?.latitude;
+  const rawLon = Array.isArray(p) ? p[1] : p?.lng ?? p?.lng ?? p?.longitude;
+  if (rawLat == null || rawLon == null || String(rawLat).trim() === '' || String(rawLon).trim() === ''
+      || !Number.isFinite(Number(rawLat)) || !Number.isFinite(Number(rawLon))
+      || Math.abs(Number(rawLat)) > 90 || Math.abs(Number(rawLon)) > 180) return null;
   if (Array.isArray(p) && p.length >= 2) {
     const lat = Number(p[0]);
     const lng = Number(p[1]);
@@ -33,7 +38,7 @@ const routeKey = (points) =>
 // Russian and leaked into ZH/EN/KK UI. Uses existing km_short / track_* keys.
 const distanceTextFromMeters = (value, t) => {
   const meters = Number(value);
-  if (!Number.isFinite(meters) || meters <= 0) return null;
+  if (value == null || !Number.isFinite(meters) || meters < 0) return null;
   const km = meters / 1000;
   const rounded = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
   return `${String(rounded).replace(".", ",")} ${t('km_short')}`;
@@ -285,7 +290,7 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
           totalDistanceText: distanceText,
           passedDistanceText: passedText,
           totalDurationText: durationText,
-          progressPercent: livePoint ? progress.progressPercent : 0,
+          progressPercent: livePoint ? progress.progressPercent : null,
           blocked: false,
           isRemaining: Boolean(livePoint),
             provider: serverRoute?.provider || 'server-road',
@@ -354,7 +359,8 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
             distanceText: String(distance.text),
             durationText: String(duration.text),
             blocked: Boolean(activeRoute?.properties?.get?.("blocked")),
-            isRemaining: Boolean(livePoint),
+            // MultiRoute построен по plannedPoints: это полный маршрут.
+            isRemaining: false,
             provider: "yandex-js",
           });
         } catch {

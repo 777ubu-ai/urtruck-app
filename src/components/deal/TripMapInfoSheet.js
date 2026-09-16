@@ -23,7 +23,7 @@ export default function TripMapInfoSheet({
   tripNumber,
   routeLabel,
   statusLabel,
-  progress = 0,
+  progress = null,
   metrics = [],
   weather = null,
   nextPoint = null,
@@ -31,7 +31,8 @@ export default function TripMapInfoSheet({
   compact = false,
 }) {
   const palette = { ...DEFAULT_COLORS, ...colors };
-  const safeProgress = Math.max(0, Math.min(100, Number(progress) || 0));
+  const safeProgress = typeof progress === 'number' && Number.isFinite(progress)
+    ? Math.max(0, Math.min(100, progress)) : null;
   const weatherLabel = weather?.current || copy.weatherUnavailable;
   const weatherAhead = weather?.ahead || copy.weatherUnavailable;
   const nextPointLabel = nextPoint?.name || copy.nextPointUnavailable;
@@ -78,10 +79,10 @@ export default function TripMapInfoSheet({
 
         <View style={s.progressHeader}>
           <Text style={[s.progressLabel, { color: palette.textMuted }]}>{copy.progress}</Text>
-          <Text style={[s.progressValue, { color: palette.text }]}>{safeProgress}%</Text>
+          <Text style={[s.progressValue, { color: palette.text }]}>{safeProgress === null ? '—' : `${safeProgress}%`}</Text>
         </View>
         <View style={[s.progressTrack, { backgroundColor: palette.border }]}>
-          <View style={[s.progressFill, { width: `${safeProgress}%`, backgroundColor: palette.accent }]} />
+          {safeProgress !== null ? <View style={[s.progressFill, { width: `${safeProgress}%`, backgroundColor: palette.accent }]} /> : null}
         </View>
 
         <View style={s.metricGrid}>

@@ -52,6 +52,7 @@ import { compressImage } from '../utils/imageCompress';
 import { voice } from '../utils/voiceRecorder';
 import VoiceMessageBubble from '../components/VoiceMessageBubble';
 import { createVoiceTranscriptState } from '../utils/voiceTranscriptState';
+import { routeMetricValues } from '../utils/routeMetricValues';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
@@ -98,7 +99,7 @@ const COPY = {
     callSchedule: 'Запланировать звонок', comingSoon: 'Скоро добавим',
     recording: 'Идёт запись…', voiceMessage: 'Голосовое сообщение',
     cancelDeal: 'Отменить сделку', cancelDealConfirm: 'Отменить эту сделку?', loading: 'Загрузка сделки…',
-    loadingDate: 'Загрузка', deliveryDate: 'Доставка', expandMap: 'Развернуть карту', collapseMap: 'Свернуть карту', tripNumber: 'Рейс №', progress: 'Прогресс маршрута', totalDistance: 'Общее расстояние', drivingTime: 'Время движения', passed: 'Пройдено', lastGps: 'Последнее GPS', weatherNow: 'Погода сейчас', weatherAhead: 'Впереди по маршруту', weatherUnavailable: 'Погода временно недоступна', nextPoint: 'Следующая точка', nextPointUnavailable: 'Данные о следующей точке недоступны',
+    loadingDate: 'Загрузка', deliveryDate: 'Доставка', expandMap: 'Развернуть карту', collapseMap: 'Свернуть карту', tripNumber: 'Рейс №', progress: 'Прогресс маршрута', totalDistance: 'Общее расстояние', drivingTime: 'В пути (оценка)', passed: 'Пройдено', lastGps: 'Последнее GPS', weatherNow: 'Погода сейчас', weatherAhead: 'Впереди по маршруту', weatherUnavailable: 'Погода временно недоступна', nextPoint: 'Следующая точка', nextPointUnavailable: 'Данные о следующей точке недоступны',
     tripFinished: 'Сделка завершена', tripDelivered: 'Груз доставлен', awaitingReceiptStatus: 'Ожидает подтверждения', tripAwaitingReceipt: 'Ожидаем подтверждения грузоотправителя', tripAwaitingReceiptHint: 'Водитель отметил груз как доставленный. Сделка завершится после подтверждения получения.', tripReceived: 'Получение подтверждено', mapFinishedHint: 'Live GPS для этого рейса больше не используется.',
     jumpLatest: 'Новые сообщения', statuses: 'Статусы и история',
     dealNotFound: 'Сделка не найдена или недоступна', backToDeals: 'К сделкам',
@@ -116,7 +117,7 @@ const COPY = {
     callSchedule: 'Schedule a call', comingSoon: 'Coming soon',
     recording: 'Recording…', voiceMessage: 'Voice message',
     cancelDeal: 'Cancel deal', cancelDealConfirm: 'Cancel this deal?', loading: 'Loading deal…',
-    loadingDate: 'Pickup', deliveryDate: 'Delivery', expandMap: 'Expand map', collapseMap: 'Collapse map', tripNumber: 'Trip №', progress: 'Route progress', totalDistance: 'Total distance', drivingTime: 'Driving time', passed: 'Passed', lastGps: 'Last GPS', weatherNow: 'Weather now', weatherAhead: 'Ahead on route', weatherUnavailable: 'Weather temporarily unavailable', nextPoint: 'Next point', nextPointUnavailable: 'Next point data unavailable',
+    loadingDate: 'Pickup', deliveryDate: 'Delivery', expandMap: 'Expand map', collapseMap: 'Collapse map', tripNumber: 'Trip №', progress: 'Route progress', totalDistance: 'Total distance', drivingTime: 'Travel time (est.)', passed: 'Passed', lastGps: 'Last GPS', weatherNow: 'Weather now', weatherAhead: 'Ahead on route', weatherUnavailable: 'Weather temporarily unavailable', nextPoint: 'Next point', nextPointUnavailable: 'Next point data unavailable',
     tripFinished: 'Deal completed', tripDelivered: 'Cargo delivered', awaitingReceiptStatus: 'Awaiting confirmation', tripAwaitingReceipt: 'Awaiting shipper confirmation', tripAwaitingReceiptHint: 'The driver marked the cargo as delivered. The deal is completed after receipt is confirmed.', tripReceived: 'Receipt confirmed', mapFinishedHint: 'Live GPS is no longer used for this trip.',
     jumpLatest: 'New messages', statuses: 'Status & history',
     dealNotFound: 'Deal not found or unavailable', backToDeals: 'Back to deals',
@@ -134,7 +135,7 @@ const COPY = {
     callSchedule: '安排通话', comingSoon: '即将推出',
     recording: '正在录音…', voiceMessage: '语音消息',
     cancelDeal: '取消交易', cancelDealConfirm: '确认取消这笔交易？', loading: '正在加载交易…',
-    loadingDate: '装货', deliveryDate: '送达', expandMap: '展开地图', collapseMap: '收起地图', tripNumber: '行程 №', progress: '路线进度', totalDistance: '总距离', drivingTime: '行驶时间', passed: '已行驶', lastGps: '最后 GPS', weatherNow: '当前天气', weatherAhead: '路线前方', weatherUnavailable: '天气暂时不可用', nextPoint: '下一站', nextPointUnavailable: '暂无下一站数据',
+    loadingDate: '装货', deliveryDate: '送达', expandMap: '展开地图', collapseMap: '收起地图', tripNumber: '行程 №', progress: '路线进度', totalDistance: '总距离', drivingTime: '预计行驶时间', passed: '已行驶', lastGps: '最后 GPS', weatherNow: '当前天气', weatherAhead: '路线前方', weatherUnavailable: '天气暂时不可用', nextPoint: '下一站', nextPointUnavailable: '暂无下一站数据',
     tripFinished: '交易已完成', tripDelivered: '货物已送达', awaitingReceiptStatus: '等待确认', tripAwaitingReceipt: '等待货主确认收货', tripAwaitingReceiptHint: '司机已标记货物送达。货主确认收货后，交易才能完成。', tripReceived: '已确认收货', mapFinishedHint: '本次运输已停止实时 GPS。',
     jumpLatest: '新消息', statuses: '状态与历史',
     dealNotFound: '交易未找到或无法访问', backToDeals: '返回交易列表',
@@ -152,7 +153,7 @@ const COPY = {
     callSchedule: 'Қоңырауды жоспарлау', comingSoon: 'Жақында қосамыз',
     recording: 'Жазылып жатыр…', voiceMessage: 'Дауыстық хабарлама',
     cancelDeal: 'Мәмілені болдырмау', cancelDealConfirm: 'Осы мәмілені болдырмау керек пе?', loading: 'Мәміле жүктелуде…',
-    loadingDate: 'Тиеу', deliveryDate: 'Жеткізу', expandMap: 'Картаны жаю', collapseMap: 'Картаны жию', tripNumber: 'Рейс №', progress: 'Бағыт прогресі', totalDistance: 'Жалпы қашықтық', drivingTime: 'Жолдағы уақыт', passed: 'Өтілді', lastGps: 'Соңғы GPS', weatherNow: 'Қазіргі ауа райы', weatherAhead: 'Бағыт бойынша алда', weatherUnavailable: 'Ауа райы уақытша қолжетімсіз', nextPoint: 'Келесі нүкте', nextPointUnavailable: 'Келесі нүкте дерегі жоқ',
+    loadingDate: 'Тиеу', deliveryDate: 'Жеткізу', expandMap: 'Картаны жаю', collapseMap: 'Картаны жию', tripNumber: 'Рейс №', progress: 'Бағыт прогресі', totalDistance: 'Жалпы қашықтық', drivingTime: 'Жол уақыты (болжам)', passed: 'Өтілді', lastGps: 'Соңғы GPS', weatherNow: 'Қазіргі ауа райы', weatherAhead: 'Бағыт бойынша алда', weatherUnavailable: 'Ауа райы уақытша қолжетімсіз', nextPoint: 'Келесі нүкте', nextPointUnavailable: 'Келесі нүкте дерегі жоқ',
     tripFinished: 'Мәміле аяқталды', tripDelivered: 'Жүк жеткізілді', awaitingReceiptStatus: 'Растауды күтуде', tripAwaitingReceipt: 'Жүк иесінің қабылдауды растауын күтеміз', tripAwaitingReceiptHint: 'Жүргізуші жүкті жеткізілді деп белгіледі. Жүк иесі қабылдауды растағаннан кейін мәміле аяқталады.', tripReceived: 'Қабылдау расталды', mapFinishedHint: 'Бұл рейсте live GPS енді қолданылмайды.',
     jumpLatest: 'Жаңа хабарламалар', statuses: 'Мәртебе және тарих',
     dealNotFound: 'Мәміле табылмады немесе қолжетімсіз', backToDeals: 'Мәмілелерге',
@@ -311,6 +312,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [location, setLocation] = React.useState(null);
   const [locationLoading, setLocationLoading] = React.useState(false);
   const [routeSummary, setRouteSummary] = React.useState(null);
+  const [gpsClock, setGpsClock] = React.useState(Date.now);
+  React.useEffect(() => {
+    const timer = setInterval(() => setGpsClock(Date.now()), 15000);
+    return () => clearInterval(timer);
+  }, []);
   const [statusLoading, setStatusLoading] = React.useState(false);
   const [trackingLoading, setTrackingLoading] = React.useState(false);
   const [viewMode, setViewMode] = React.useState(VIEW_CHAT);
@@ -748,8 +754,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     const tons = Number(deal?.trip_capacity_tons);
     return Number.isFinite(tons) && tons > 0 ? { payload_t: tons } : null;
   }, [deal?.trip_capacity_tons]);
-  const lat = location ? Number(location.lat) : null;
-  const lng = location ? Number(location.lng) : null;
+  const lat = location?.lat != null ? Number(location.lat) : null;
+  const lng = location?.lng != null ? Number(location.lng) : null;
   const hasLivePoint = Number.isFinite(lat) && Number.isFinite(lng);
   const onRouteSummary = React.useCallback((summary) => setRouteSummary(summary || null), []);
 
@@ -759,12 +765,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       ? new Date(capturedMs)
       : parseServerDate(location?.updated_at);
     if (!date) return null;
-    const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+    const minutes = Math.max(0, Math.round((gpsClock - date.getTime()) / 60000));
     if (minutes === 0) return ui.updatedNow;
     if (minutes < 60) return `${ui.updated} ${minutes} ${ui.min} ${ui.ago}`;
     if (minutes < 1440) return `${ui.updated} ${Math.floor(minutes / 60)} ${ui.hour} ${ui.ago}`;
     return `${ui.updated} ${Math.floor(minutes / 1440)} ${ui.day} ${ui.ago}`;
-  }, [location?.captured_at_ms, location?.updated_at, ui]);
+  }, [location?.captured_at_ms, location?.updated_at, ui, gpsClock]);
+  const capturedMs = Number(location?.captured_at_ms) || parseServerDate(location?.updated_at)?.getTime();
+  const metrics = routeMetricValues(routeSummary, hasLivePoint && capturedMs > 0
+    && gpsClock - capturedMs >= -5000 && gpsClock - capturedMs <= 180000);
 
   const changeDealStatus = React.useCallback(async (nextStatus) => {
     if (!dealId || statusLoading) return null;
@@ -1438,12 +1447,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const checkpointSource = deal?.next_checkpoint || trip?.next_checkpoint || params.nextCheckpoint || null;
   const localizedCheckpoint = checkpointSource?.localized?.[lang] || checkpointSource;
   const mapMetrics = [
-    { key: 'total', icon: 'navigation', label: ui.totalDistance, value: routeSummary?.totalDistanceText || routeSummary?.distanceText || '—' },
-    { key: 'remaining', icon: 'refresh-cw', label: ui.remaining, value: routeSummary?.isRemaining ? routeSummary.distanceText : routeSummary?.distanceText || '—', accent: true },
-    { key: 'time', icon: 'clock', label: ui.drivingTime, value: routeSummary?.totalDurationText || routeSummary?.durationText || '—' },
-    { key: 'eta', icon: 'calendar', label: ui.eta, value: delivery ? compactDate(delivery, lang) : '—' },
-    { key: 'passed', icon: 'map-pin', label: ui.passed, value: routeSummary?.passedDistanceText || '—', accent: true },
-    { key: 'gps', icon: 'activity', label: ui.lastGps, value: updatedText || (locationLoading ? ui.updatedNow : '—'), accent: true },
+    { key: 'total', icon: 'navigation', label: ui.totalDistance, value: metrics.total },
+    { key: 'remaining', icon: 'refresh-cw', label: ui.remaining, value: metrics.remaining, accent: true },
+    { key: 'time', icon: 'clock', label: ui.drivingTime, value: metrics.estimatedTime },
+    { key: 'eta', icon: 'calendar', label: ui.eta, value: metrics.eta },
+    { key: 'passed', icon: 'map-pin', label: ui.passed, value: metrics.passed, accent: true },
+    { key: 'gps', icon: 'activity', label: ui.lastGps, value: updatedText || '—', accent: true },
   ];
   const mapWeatherCard = mapWeather ? {
     current: mapWeather.current_label || mapWeather.current || mapWeather.now || null,
@@ -1859,7 +1868,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 tripNumber={dealNumber || '—'}
                 routeLabel={routeLabel}
                 statusLabel={statusLabel}
-                progress={routeSummary?.progressPercent || 0}
+                progress={metrics.progress}
                 metrics={mapMetrics}
                 weather={mapWeatherCard}
                 nextPoint={mapNextPointCard}
