@@ -59,6 +59,7 @@ Whisper изначально разработан OpenAI, но локально�
 
 - RU 8.57 s и ZH 9.34 s: язык определён правильно, сумма 7800 сохранена; первый smoke 4.9/4.18 s. В чистой STT-only среде холодный RU-запуск занял 22.73 s, следующий ZH — 4.16 s.
 - Настоящий adapter обработал 58-секундные синтетические fixtures: RU 59.53 s, ZH 55.82 s. RU добавил лишнюю фразу на обрезанном конце: **quality FAIL**. Это не принятие 60-second native voice.
+- Дополнительные цельные TTS-записи: RU 55.08 s / inference 14.09 s; ZH 59.8 s / inference 18.72 s. Сумма 7800 сохранена, но RU исказил «из Алматы», ZH записал Иу неверными иероглифами. Quality gate остаётся открыт; это не телефонный acceptance.
 - Argos Translate: RU→ZH сохранил смысл; ZH→RU превратил Иу в Италию и потерял часть сообщения. **В приложение этот переводчик не подключён.**
 - Экспериментальная Argos-venv дополнительно имеет advisory в stanza 1.10.1; она не используется в requirements-local-voice.txt и не поставляется в production. Отдельная чистая STT-only установка без Argos проходит SCA.
 - OpenAI сохранён как selectable/default provider. Реальные обращения работающего backend дали HTTP 429 credit_balance_exhausted для STT и translation. Баланс GitHub не оплачивает OpenAI API.
