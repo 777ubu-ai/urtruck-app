@@ -712,7 +712,7 @@ export default function DealsScreen({ navigation, route }) {
       ]}
       testID="deals-minimal-header"
     >
-      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="deals-minimal-header" bellTestID="deals-notification-settings-btn" menuTestID="deals-menu-btn" onBellPress={() => navigation.navigate('Notifications', { role })} />
+      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="deals-minimal-header" menuTestID="deals-menu-btn" />
 
       <View style={styles.tabsRow} testID="deals-primary-tabs">
         <TabChip

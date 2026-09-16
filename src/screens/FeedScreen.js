@@ -436,7 +436,7 @@ export default function FeedScreen({ navigation }) {
       edges={['top']}
       testID="trip-feed-screen"
     >
-      <RootHeader navigation={navigation} role={role} testID="trip-feed-minimal-header" bellTestID="feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={() => navigation.navigate('Notifications', { role })} />
+      <RootHeader navigation={navigation} role={role} testID="trip-feed-minimal-header" menuTestID="feed-menu-btn" />
 
       <FlatList
         style={[styles.list, { backgroundColor: colors.pageBg }]}
