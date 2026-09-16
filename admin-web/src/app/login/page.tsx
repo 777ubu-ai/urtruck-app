@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -10,6 +10,16 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [mfaRequired, setMfaRequired] = useState(false);
   const [setupQr, setSetupQr] = useState('');
+
+  useEffect(() => {
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json().catch(() => ({}));
+        if (data.ok) { router.replace('/'); router.refresh(); }
+      })
+      .catch(() => {});
+  }, [router]);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault(); setBusy(true); setError('');
