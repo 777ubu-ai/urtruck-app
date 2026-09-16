@@ -39,8 +39,17 @@ const localizedCountryName = (iso, lang = 'RU') => {
 
 export const ALL_COUNTRIES = ALL_ISO.map((iso) => ({
   iso,
-  name: COUNTRY_NAMES.RU[iso],
-  names: { RU: COUNTRY_NAMES.RU[iso], ZH: COUNTRY_NAMES.ZH[iso], KK: COUNTRY_NAMES.KK[iso], EN: COUNTRY_NAMES.EN[iso] },
+  // Use the same bundled fallback that the UI renders. On Android/Hermes
+  // Intl.DisplayNames may be unavailable; COUNTRY_NAMES then contains only
+  // bare ISO codes, which previously made the visible "Казахстан/Россия"
+  // rows impossible to find by typing their names.
+  name: localizedCountryName(iso, 'RU'),
+  names: {
+    RU: localizedCountryName(iso, 'RU'),
+    ZH: localizedCountryName(iso, 'ZH'),
+    KK: localizedCountryName(iso, 'KK'),
+    EN: localizedCountryName(iso, 'EN'),
+  },
   dial: '',
 }));
 
@@ -96,7 +105,9 @@ export const searchAllCountries = (query, lang = 'RU') => {
   const q = (query || '').trim().toLowerCase();
   if (!q) return ALL_COUNTRIES;
   return ALL_COUNTRIES.filter((country) => {
-    const names = ['RU', 'EN', 'ZH', 'KK'].map((locale) => country.names?.[locale].toLowerCase());
+    const names = ['RU', 'EN', 'ZH', 'KK']
+      .map((locale) => String(country.names?.[locale] || '').toLowerCase())
+      .filter(Boolean);
     return names.some((name) => name.includes(q)) || country.iso.toLowerCase().includes(q);
   });
 };
