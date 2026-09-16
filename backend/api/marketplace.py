@@ -2978,14 +2978,14 @@ def accept_counter(bid_id: str, user=Depends(require_active_level(1))):
         money = _money(counter, _bid_currency(c, bid))
         from api.notifications import create_notification
         event_key = f"bid:{bid_id}:counter_accepted:{result['deal_id']}"
-        data = {"event_key": event_key, "event": "counter_accepted",
+        data = {"event_key": event_key, "event": "bid.counter_accepted",
                 "deal_id": result["deal_id"], "kind": "deal_created", "url": deal_url}
         recipients = (
             (owner_id, "✅ Контр-оффер принят", f"{agreed_word} согласился на {money}. Сделка создана."),
             (bid["bidder_id"], "✅ Сделка создана", f"Цена: {money}"),
         )
         for uid_, title_, text_ in recipients:
-            push_gateway.enqueue_event(event_key, "counter_accepted", uid_,
+            push_gateway.enqueue_event(event_key, "bid.counter_accepted", uid_,
                 {"title": title_, "body": text_, "url": deal_url, "kind": "bid", "data": data},
                 conn=c)
             create_notification(uid_, "deal_created", title_, text_, "✅",

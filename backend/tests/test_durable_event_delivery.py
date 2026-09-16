@@ -587,6 +587,11 @@ def test_counter_accept_persists_before_inline_send_and_retries_both(monkeypatch
     assert response.status_code == 200, response.text
     assert response.json()["amount"] == 7800
     assert observed == [2, 2]
+    for uid in (owner, driver):
+        row = outbox_rows(uid)[0]
+        assert row["event_type"] == "bid.counter_accepted"
+        assert row["event_type"] in push_gateway.PUSH_EVENT_CATALOG
+        assert row["priority"] == "critical"
     flaky = _FlakyExpo(fail_times=0)
     for uid in (owner, driver):
         assert outbox_rows(uid)[0]["status"] == "pending"

@@ -54,6 +54,7 @@ APNS_USE_SANDBOX = (os.getenv("APNS_USE_SANDBOX") or "").lower() in ("1", "true"
 # (trip start / GPS lost / delivered / completed) — no new events added.
 CRITICAL_EVENTS = {
     "bid.accepted",
+    "bid.counter_accepted",
     "deal.status.in_progress",
     "gps_lost",
     "deal.status.delivered",
@@ -63,6 +64,7 @@ CRITICAL_EVENTS = {
 PUSH_EVENT_CATALOG = {
     "bid.created",
     "bid.countered",
+    "bid.counter_accepted",
     "bid.accepted",
     "bid.rejected",
     "bid.withdrawn",
