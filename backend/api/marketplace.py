@@ -2966,38 +2966,36 @@ def accept_counter(bid_id: str, user=Depends(require_active_level(1))):
         # Часть 3: событие — bidder принял контр-оффер (actor=bidder).
         _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
 
-    # Push to both sides.
-    # M3: роль того, кто согласился, зависит от типа ставки. cargo-bid →
-    # bidder это водитель; trip-bid → bidder это грузовладелец. Иначе
-    # владельцу рейса приходило неверное «Водитель согласился».
-    agreed_word = "Водитель" if bid.get("cargo_id") else "Грузовладелец"
-    # «Дом заказа»: пуш о сделке ведёт в карточку заказа, а не в Deal Room.
-    if bid.get("cargo_id"):
-        deal_url = f"/cargos/{bid['cargo_id']}"
-    elif bid.get("trip_id"):
-        deal_url = f"/trips/{bid['trip_id']}"
-    else:
-        deal_url = f"/deals/{result['deal_id']}"
-    with get_conn() as c2:
-        cur = _bid_currency(c2, bid)
-    money = _money(counter, cur)
-    from api.notifications import create_notification
-    # 🔴 fix: раньше accept_counter слал ТОЛЬКО push (ненадёжный) и НЕ создавал
-    # in-app уведомление → при недоставленном пуше сторона о сделке не узнавала
-    # («наверх приходит, вниз нет»). Теперь и push, и надёжный колокольчик обеим
-    # сторонам + deep-link на /deals/{id} + сумма в валюте листинга.
-    recipients = (
-        (owner_id, "✅ Контр-оффер принят", f"{agreed_word} согласился на {money}. Сделка создана."),
-        (bid["bidder_id"], "✅ Сделка создана", f"Цена: {money}"),
-    )
+        # Сначала сохраняем обе доставки в той же транзакции, что и сделку.
+        # Сбой процесса после commit не должен терять уведомления.
+        agreed_word = "Водитель" if bid.get("cargo_id") else "Грузовладелец"
+        if bid.get("cargo_id"):
+            deal_url = f"/cargos/{bid['cargo_id']}"
+        elif bid.get("trip_id"):
+            deal_url = f"/trips/{bid['trip_id']}"
+        else:
+            deal_url = f"/deals/{result['deal_id']}"
+        money = _money(counter, _bid_currency(c, bid))
+        from api.notifications import create_notification
+        event_key = f"bid:{bid_id}:counter_accepted:{result['deal_id']}"
+        data = {"event_key": event_key, "event": "counter_accepted",
+                "deal_id": result["deal_id"], "kind": "deal_created", "url": deal_url}
+        recipients = (
+            (owner_id, "✅ Контр-оффер принят", f"{agreed_word} согласился на {money}. Сделка создана."),
+            (bid["bidder_id"], "✅ Сделка создана", f"Цена: {money}"),
+        )
+        for uid_, title_, text_ in recipients:
+            push_gateway.enqueue_event(event_key, "counter_accepted", uid_,
+                {"title": title_, "body": text_, "url": deal_url, "kind": "bid", "data": data},
+                conn=c)
+            create_notification(uid_, "deal_created", title_, text_, "✅",
+                                url=deal_url, event_key=event_key, conn=c)
+
     for uid_, title_, text_ in recipients:
         try:
-            send_to_user(uid_, title_, text_, url=deal_url)
+            send_to_user(uid_, title_, text_, url=deal_url, kind="bid", data=data)
         except Exception:
-            pass
-        try:
-            create_notification(uid_, "deal_created", title_, text_, "✅", url=deal_url)
-        except Exception:
+            # Надёжный worker повторит сохранённое событие.
             pass
 
     # Уведомляем авторов перебитых ставок (auto-reject внутри _finalize).

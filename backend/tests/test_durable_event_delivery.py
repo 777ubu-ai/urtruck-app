@@ -560,6 +560,65 @@ def test_counter_rounds_within_one_timestamp_have_distinct_event_keys(monkeypatc
     assert len(keys) == 2 and len(set(keys)) == 2
 
 
+def _prepare_counter(monkeypatch):
+    monkeypatch.setattr(marketplace_module, "send_to_user", lambda *a, **k: None)
+    owner, driver = "owner-" + uuid.uuid4().hex, "driver-" + uuid.uuid4().hex
+    cargo = seed_cargo(owner, 7600)
+    as_user(driver, role="driver")
+    bid = client.post("/api/v1/market/bids", json={"cargo_id": cargo, "amount": 7600}).json()["id"]
+    as_user(owner)
+    assert client.post(f"/api/v1/market/bids/{bid}/counter", json={"amount": 7800}).status_code == 200
+    _reset_outbox()
+    as_user(driver, role="driver")
+    return owner, driver, bid
+
+
+def test_counter_accept_persists_before_inline_send_and_retries_both(monkeypatch):
+    owner, driver, bid = _prepare_counter(monkeypatch)
+    for uid in (owner, driver):
+        seed_device(uid)
+    observed = []
+    def stopped_send(*args, **kwargs):
+        # Читаем отдельным соединением: commit уже завершён до отправки.
+        observed.append(len(outbox_rows(owner)) + len(outbox_rows(driver)))
+        raise RuntimeError("имитация сбоя inline delivery")
+    monkeypatch.setattr(marketplace_module, "send_to_user", stopped_send)
+    response = client.post(f"/api/v1/market/bids/{bid}/counter/accept")
+    assert response.status_code == 200, response.text
+    assert response.json()["amount"] == 7800
+    assert observed == [2, 2]
+    flaky = _FlakyExpo(fail_times=0)
+    for uid in (owner, driver):
+        assert outbox_rows(uid)[0]["status"] == "pending"
+        _force_due(uid)
+    assert push_gateway.process_pending_once(flaky, limit=10)["sent"] == 2
+    assert len(flaky.successful_payloads) == 2
+    assert all(p["data"]["deal_id"] == response.json()["deal_id"] for p in flaky.successful_payloads)
+    assert client.post(f"/api/v1/market/bids/{bid}/counter/accept").status_code == 409
+    for uid in (owner, driver):
+        assert len(outbox_rows(uid)) == 1
+        assert len([n for n in notifications(uid) if n["event_key"] == outbox_rows(uid)[0]["event_id"]]) == 1
+
+
+def test_counter_accept_rolls_back_if_durable_event_cannot_be_saved(monkeypatch):
+    owner, driver, bid = _prepare_counter(monkeypatch)
+    calls = 0
+    original = push_gateway.enqueue_event
+    def unavailable(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("имитация ошибки outbox storage")
+        return original(*args, **kwargs)
+    monkeypatch.setattr(push_gateway, "enqueue_event", unavailable)
+    with pytest.raises(RuntimeError, match="outbox storage"):
+        client.post(f"/api/v1/market/bids/{bid}/counter/accept")
+    with get_conn() as c:
+        assert c.execute("SELECT status FROM bids WHERE id=?", (bid,)).fetchone()[0] == "countered"
+        assert c.execute("SELECT COUNT(*) FROM deals WHERE bid_id=?", (bid,)).fetchone()[0] == 0
+    assert not outbox_rows(owner) and not outbox_rows(driver)
+
+
 if __name__ == "__main__":
     import traceback
 

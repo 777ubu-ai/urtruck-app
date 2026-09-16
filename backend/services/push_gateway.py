@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -319,12 +320,12 @@ def get_recipient_locale(user_id: str) -> str:
     return normalize_locale(None)
 
 
-def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payload: dict, priority: Optional[str] = None) -> bool:
+def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payload: dict, priority: Optional[str] = None, *, conn=None) -> bool:
     if not (event_id and event_type and recipient_user_id):
         return False
     prio = priority or ("critical" if event_type in CRITICAL_EVENTS else "normal")
-    with get_conn() as c:
-        c.execute(
+    with (nullcontext(conn) if conn is not None else get_conn()) as c:
+        cursor = c.execute(
             """
             INSERT INTO push_outbox(event_id, event_type, recipient_user_id, payload, priority)
             VALUES(?,?,?,?,?)
@@ -332,7 +333,7 @@ def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payloa
             """,
             (event_id, event_type, recipient_user_id, _json_dumps(payload), prio),
         )
-        return c.total_changes > 0
+        return cursor.rowcount > 0
 
 
 def log_delivery(event_id: Optional[str], user_id: str, device: dict, result: ProviderResult, attempt: int = 1) -> None:
