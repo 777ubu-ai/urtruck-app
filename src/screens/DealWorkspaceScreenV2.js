@@ -1629,6 +1629,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
         {viewMode === VIEW_CHAT ? (
           <View style={s.chatFullscreen} testID="deal-chat-fullscreen">
+            {/* Navigation chrome is fixed OUTSIDE the scrolling message list.
+                A long chat must never scroll the only Back control off-screen. */}
+            {compactHeader}
             {dealLoading && !dealId ? (
               <View style={[s.center, { backgroundColor: colors.bg }]}>
                 <ActivityIndicator color="#168759" />
@@ -1668,7 +1671,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       s.messageContent,
                       keyboardDockInset > 0 ? { paddingBottom: COMPOSER_INPUT_MAX_HEIGHT + 52 } : null,
                     ]}
-                    ListHeaderComponent={compactHeader}
                     keyboardShouldPersistTaps="handled"
                     onScroll={(event) => {
                       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
