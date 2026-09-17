@@ -281,6 +281,7 @@ test('actual workspace message loader игнорирует поздний отв
   const load = screenCallback('loadMessages', {
     roomId: 'old', session: { user: { id: 'old' } }, lang: 'RU', voiceScope: 'old',
     voiceText: capturedState, voiceStateRef: currentRef, mounted: { current: true },
+    historyRequestRef: { current: null },
     chatAPI: { messages: () => wait.promise, listAttachments: async () => ({ attachments: [] }) },
   });
   const pending = load();

@@ -303,6 +303,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [partner, setPartner] = React.useState(params.partner || null);
   const [dealLoading, setDealLoading] = React.useState(!params.dealId);
   const [messages, setMessages] = React.useState([]);
+  const [historyState, setHistoryState] = React.useState(null);
+  const historyRequestRef = React.useRef(null);
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [input, setInput] = React.useState('');
   const [inputHeight, setInputHeight] = React.useState(COMPOSER_INPUT_MIN_HEIGHT);
@@ -336,6 +338,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [autoTranslate, setAutoTranslate] = React.useState(false);
   const [voiceRevision, setVoiceRevision] = React.useState(0);
   const voiceScope = JSON.stringify([roomId, session?.user?.id || null]);
+  const historyStatus = historyState?.scope === voiceScope ? historyState.status : 'loading';
   const voiceText = React.useMemo(() => createVoiceTranscriptState(chatAPI), [voiceScope]);
   const voiceStateRef = React.useRef(voiceText);
   voiceStateRef.current = voiceText;
@@ -518,6 +521,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // deliberately NOT a chat_messages schema change (see commit message).
   const loadMessages = React.useCallback(async () => {
     if (!roomId) return;
+    // Один poll на комнату/сессию: медленный storage не создаёт очередь
+    // параллельных запросов и ответов, перезаписывающих свежую историю.
+    if (historyRequestRef.current?.owner === voiceText) return;
+    const request = { owner: voiceText };
+    historyRequestRef.current = request;
     try {
       const [result, attachResult] = await Promise.all([
         chatAPI.messages(roomId),
@@ -525,6 +533,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       ]);
       // Ответ старой комнаты/сессии не восстанавливает приватный voice cache.
       if (!mounted.current || voiceStateRef.current !== voiceText) return;
+      if (!Array.isArray(result?.messages)) throw new Error('Invalid chat history response');
       const mapped = (result?.messages || []).map((message) => {
         const mine = typeof message.mine === 'boolean' ? message.mine : message.sender_id === session?.user?.id;
         const isVoice = !!message.is_voice;
@@ -541,7 +550,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           clientMsgId: message.client_msg_id || null,
           mine, system,
           text: system ? localizeSystemMessage(message.text || '', lang) : (message.text || ''),
-          photo: !!message.photo_url && !isVoice,
+          photo: (!!message.photo_url || !!message.attachment_unavailable) && !isVoice,
+          attachmentUnavailable: !!message.attachment_unavailable,
           voice: isVoice,
           voiceScope: isVoice ? voiceScope : null,
           mediaUrl,
@@ -617,7 +627,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       setUnreadCount(0);
       notifyChatRead();
       refreshAppIconBadge();
-    } catch { /* preserve messages */ }
+      setHistoryState({ scope: voiceScope, status: 'ready' });
+    } catch {
+      // Сохраняем уже загруженное, но не выдаём ошибку за пустую комнату.
+      if (mounted.current && voiceStateRef.current === voiceText) {
+        setHistoryState({ scope: voiceScope, status: 'error' });
+      }
+    } finally {
+      if (historyRequestRef.current === request) historyRequestRef.current = null;
+    }
   }, [roomId, session?.user?.id, lang, voiceText, voiceScope]);
 
   React.useEffect(() => {
@@ -1288,6 +1306,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         {datePill}
         <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
           <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}>
+            {item.attachmentUnavailable ? (
+              <Text style={[s.messageText, { color: item.mine ? bubbleMineColors.textColor : colors.text }]}>
+                {t('chat_attachment_unavailable')}
+              </Text>
+            ) : null}
             {item.photo && item.mediaUrl ? (
               <TouchableOpacity onPress={() => setFullImage(item.mediaUrl)} testID="deal-chat-photo-bubble">
                 <Image source={{ uri: item.mediaUrl }} style={s.photo} />
@@ -1609,6 +1632,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             ) : (
               <>
                 <View style={s.chatBody}>
+                  {historyStatus === 'error' ? (
+                    <TouchableOpacity onPress={loadMessages} style={s.historyNotice} testID="deal-chat-history-retry" accessibilityRole="button">
+                      <Text style={[s.loadingText, { color: colors.text }]}>
+                        {t('chat_history_load_failed')} · {t('chat_attach_retry')}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <FlatList
                     ref={listRef}
                     data={messages}
@@ -1638,7 +1668,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         pendingAutoScrollRef.current = false;
                       }
                     }}
-                    ListEmptyComponent={<Text style={[s.emptyText, { color: colors.textMuted }]}>{ui.noMessages}</Text>}
+                    ListEmptyComponent={historyStatus === 'error' ? null : (
+                      <Text style={[s.emptyText, { color: colors.textMuted }]} testID="deal-chat-history-state">
+                        {historyStatus === 'ready' ? ui.noMessages : t('chat_history_loading')}
+                      </Text>
+                    )}
                   />
                   {showJumpLatest ? (
                     <TouchableOpacity style={s.jumpLatest} onPress={jumpLatest} testID="deal-chat-jump-latest">
@@ -1972,6 +2006,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 }
 
 const s = StyleSheet.create({
+  historyNotice: { minHeight: 44, paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center' },
   safe: { flex: 1 },
   compactHeader: { minHeight: 96, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 8, paddingTop: 6, paddingBottom: 7, borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 20 },
   backButton: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center', marginTop: 3 },
