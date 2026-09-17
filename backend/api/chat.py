@@ -532,6 +532,8 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
                 "event_key": event_key,
                 "event": "chat.voice" if body.is_voice else "chat.message",
                 **({"i18n_event": "chat_voice", "i18n_params": {}} if body.is_voice else {}),
+                **({"i18n_event": "chat_photo", "i18n_params": {}}
+                   if body.photo_url and not body.is_voice and not body.text else {}),
             },
         )
     except Exception:

@@ -418,6 +418,8 @@ async def upload_attachment(
                     "recipient_id": recipient_id,
                     "event_key": event_key,
                     "event": "chat.attachment",
+                    "i18n_event": "chat_attachment" if resolved_kind == "document" else "chat_photo",
+                    "i18n_params": {"filename": original_name} if resolved_kind == "document" else {},
                 },
             )
     except Exception as exc:

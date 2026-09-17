@@ -90,4 +90,17 @@ def test_attachment_notifies_the_other_participant(monkeypatch):
         "recipient_id": "shipper-1",
         "event_key": "chat:room-1:attachment:attachment-1",
         "event": "chat.attachment",
+        "i18n_event": "chat_attachment",
+        "i18n_params": {"filename": "invoice.pdf"},
     }
+
+
+def test_attachment_push_uses_recipient_language_without_translating_filename():
+    from services.push_i18n import push_text
+    name = "Накладная №17 {invoice}.pdf"
+    expected = {"RU": "Новый документ", "KK": "Жаңа құжат", "ZH": "新文件", "EN": "New document"}
+    for locale, title in expected.items():
+        result = push_text("chat_attachment", locale, filename=name)
+        assert title in result[0]
+        assert result[1] == name
+    assert push_text("chat_photo", "zh-Hans-CN") == ("📷 照片", "收到新照片")
