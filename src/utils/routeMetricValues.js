@@ -6,7 +6,8 @@ export function routeMetricValues(summary, freshLocation) {
   return {
     total: usable?.totalDistanceText || (!usable?.isRemaining && usable?.distanceText) || '—',
     remaining: live ? usable.distanceText || '—' : '—',
-    estimatedTime: usable?.totalDurationText || (!usable?.isRemaining && usable?.durationText) || '—',
+    estimatedTime: usable?.drivingDurationText || '—',
+    totalTravelTime: usable?.totalDurationText || (!usable?.isRemaining && usable?.durationText) || '—',
     // Дата доставки — обещанный срок. Подтверждённого ETA в контракте пока нет.
     eta: '—',
     passed: live ? usable.passedDistanceText || '—' : '—',

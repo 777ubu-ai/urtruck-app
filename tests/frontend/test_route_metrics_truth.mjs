@@ -7,7 +7,8 @@ import { routeMetricValues } from '../../src/utils/routeMetricValues.js';
 test('нет GPS: общий маршрут не превращается в остаток и прогресс 0%', () => {
   const v = routeMetricValues({ distanceText: '200 km', durationText: '3 h', isRemaining: false }, false);
   assert.equal(v.total, '200 km');
-  assert.equal(v.estimatedTime, '3 h');
+  assert.equal(v.estimatedTime, '—');
+  assert.equal(v.totalTravelTime, '3 h');
   assert.equal(v.remaining, '—');
   assert.equal(v.progress, null);
   assert.equal(v.eta, '—');
@@ -20,6 +21,13 @@ test('свежая точка показывает нулевой остаток
   assert.equal(routeMetricValues(summary, false).remaining, '—');
   assert.equal(routeMetricValues(summary, false).passed, '—');
   assert.equal(routeMetricValues({ ...summary, blocked: true }, true).total, '—');
+});
+
+test('чистое время движения не смешивается с отдыхом', () => {
+  const value = routeMetricValues({ totalDurationText: '39 h', drivingDurationText: '24 h' }, false);
+  assert.equal(value.estimatedTime, '24 h');
+  assert.equal(value.totalTravelTime, '39 h');
+  assert.equal(value.eta, '—');
 });
 
 test('native/web не превращают null/пустые координаты в 0,0', () => {

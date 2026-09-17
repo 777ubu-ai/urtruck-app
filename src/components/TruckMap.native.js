@@ -6,6 +6,7 @@ import { NativeModules, StyleSheet, Text, View } from 'react-native';
 import YaMap, { Marker, Polyline } from 'react-native-yamap';
 import { routingAPI } from '../utils/routingAPI';
 import { routeProgress } from '../utils/routeProgress';
+import { routeMetricNumbers } from '../utils/routeMetricNumbers';
 import { useI18n } from '../utils/useI18n';
 
 const YANDEX_MAPKIT_API_KEY = String(process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY || '').trim();
@@ -88,10 +89,11 @@ export default function TruckMap({
       setServerRoute(null);
       return () => { cancelled = true; };
     }
+    setServerRoute(null);
     routingAPI.roadRoute(planned.map(toPair), vehicle).then((result) => {
       if (cancelled) return;
       if (result?.ok && Array.isArray(result.geometry) && result.geometry.length >= 2) {
-        setServerRoute({ ...result, routeKey: effectiveKey });
+        setServerRoute({ ...result, routeKey: effectiveKey, vehicleKey });
       } else {
         setServerRoute(null);
       }
@@ -99,7 +101,7 @@ export default function TruckMap({
     return () => { cancelled = true; };
   }, [effectiveKey, externalRoute, vehicleKey]);
 
-  const resolvedRoute = externalRoute || serverRoute;
+  const resolvedRoute = externalRoute || (serverRoute?.routeKey === effectiveKey && serverRoute?.vehicleKey === vehicleKey ? serverRoute : null);
   const roadGeometry = React.useMemo(
     () => (resolvedRoute?.geometry || []).map(asPoint).filter(Boolean),
     [resolvedRoute?.geometry],
@@ -114,32 +116,30 @@ export default function TruckMap({
   );
 
   React.useEffect(() => {
-    const totalMeters = Number(resolvedRoute?.distance_m) || progress.totalMeters;
-    const totalDuration = Number(resolvedRoute?.duration_s) || 0;
-    const totalDistanceText = distanceTextFromMeters(totalMeters, t);
-    const remainingText = distanceTextFromMeters(live ? progress.remainingMeters : totalMeters, t);
-    const passedDistanceText = distanceTextFromMeters(progress.passedMeters, t);
-    const totalDurationText = durationTextFromSeconds(totalDuration, t);
-    const durationText = durationTextFromSeconds(
-      live && totalDuration ? totalDuration * (progress.remainingMeters / Math.max(1, progress.totalMeters)) : totalDuration,
-      t,
-    );
-    if (roadGeometry.length >= 2 && remainingText) {
+    const numbers = routeMetricNumbers(resolvedRoute, progress);
+    const totalDistanceText = distanceTextFromMeters(numbers.totalMeters, t);
+    const remainingText = distanceTextFromMeters(numbers.remainingMeters, t);
+    const passedDistanceText = distanceTextFromMeters(numbers.passedMeters, t);
+    const totalDurationText = durationTextFromSeconds(numbers.totalDurationSeconds, t);
+    const drivingDurationText = durationTextFromSeconds(numbers.drivingDurationSeconds, t);
+    if (roadGeometry.length >= 2 && totalDistanceText) {
       onRouteSummary?.({
-        distanceText: remainingText,
-        durationText: durationText || totalDurationText,
+        distanceText: numbers.isRemaining ? remainingText : totalDistanceText,
+        durationText: totalDurationText,
         totalDistanceText,
         passedDistanceText,
         totalDurationText,
-        progressPercent: live ? progress.progressPercent : null,
+        drivingDurationText,
+        progressPercent: numbers.progressPercent,
+        progressReason: progress.reason,
         blocked: false,
-        isRemaining: Boolean(live),
+        isRemaining: numbers.isRemaining,
         provider: resolvedRoute?.provider || 'server-road',
       });
     } else {
       onRouteSummary?.(null);
     }
-  }, [onRouteSummary, resolvedRoute?.routeKey, resolvedRoute?.distance_m, resolvedRoute?.duration_s, live?.lat, live?.lon, roadGeometry.length, progress.totalMeters, progress.remainingMeters, progress.passedMeters, progress.progressPercent, lang, t]);
+  }, [onRouteSummary, resolvedRoute?.routeKey, resolvedRoute?.distance_m, resolvedRoute?.duration_s, resolvedRoute?.driving_duration_s, live?.lat, live?.lon, roadGeometry.length, progress.totalMeters, progress.remainingMeters, progress.passedMeters, progress.progressPercent, progress.matched, progress.reason, lang, t]);
 
   React.useEffect(() => {
     if (mapRef.current && fitTarget.length >= 2) mapRef.current.fitMarkers(fitTarget);

@@ -7,6 +7,7 @@ import React from "react";
 import { View, Text, StyleSheet, findNodeHandle } from "react-native";
 import { routingAPI } from "../utils/routingAPI";
 import { routeProgress } from "../utils/routeProgress";
+import { routeMetricNumbers } from "../utils/routeMetricNumbers";
 import { useI18n } from "../utils/useI18n";
 
 const asPoint = (p) => {
@@ -275,27 +276,8 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
       );
       addMarkers();
       fitBounds();
-      const distanceText = distanceTextFromMeters(serverRoute?.distance_m, t);
-      const durationText = durationTextFromSeconds(serverRoute?.duration_s, t);
-      if (distanceText && durationText) {
-        const progress = routeProgress(geometry, livePoint);
-        const remainingText = distanceTextFromMeters(livePoint ? progress.remainingMeters : serverRoute?.distance_m, t) || distanceText;
-        const passedText = distanceTextFromMeters(progress.passedMeters, t);
-        const remainingDuration = livePoint
-          ? durationTextFromSeconds(serverRoute.duration_s * (progress.remainingMeters / Math.max(1, progress.totalMeters)), t)
-          : durationText;
-        emitSummary({
-          distanceText: remainingText,
-          durationText: remainingDuration || durationText,
-          totalDistanceText: distanceText,
-          passedDistanceText: passedText,
-          totalDurationText: durationText,
-          progressPercent: livePoint ? progress.progressPercent : null,
-          blocked: false,
-          isRemaining: Boolean(livePoint),
-            provider: serverRoute?.provider || 'server-road',
-        });
-      }
+      // Живые метрики обновляются отдельным effect, без перерисовки
+      // дороги и сброса масштаба при каждом GPS callback.
       return () => {
         cancelled = true;
       };
@@ -383,12 +365,36 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
     status,
     JSON.stringify(plannedPoints),
     serverRoute?.routeKey,
+    serverRoute?.geometry,
     serverRoute?.distance_m,
     serverRoute?.duration_s,
     onRouteSummary,
     lang,
     t,
   ]);
+
+  React.useEffect(() => {
+    if (status !== 'ready') return;
+    const geometry = serverRoute?.geometry;
+    if (!Array.isArray(geometry) || geometry.length < 2) return;
+    const progress = routeProgress(geometry, livePoint);
+    const numbers = routeMetricNumbers(serverRoute, progress);
+    const totalDistanceText = distanceTextFromMeters(numbers.totalMeters, t);
+    const totalDurationText = durationTextFromSeconds(numbers.totalDurationSeconds, t);
+    onRouteSummary?.(totalDistanceText ? {
+      distanceText: numbers.isRemaining ? distanceTextFromMeters(numbers.remainingMeters, t) : totalDistanceText,
+      durationText: totalDurationText,
+      totalDistanceText,
+      passedDistanceText: distanceTextFromMeters(numbers.passedMeters, t),
+      totalDurationText,
+      drivingDurationText: durationTextFromSeconds(numbers.drivingDurationSeconds, t),
+      progressPercent: numbers.progressPercent,
+      progressReason: progress.reason,
+      blocked: false,
+      isRemaining: numbers.isRemaining,
+      provider: serverRoute?.provider || 'server-road',
+    } : null);
+  }, [status, serverRoute, pointKey(livePoint), onRouteSummary, lang, t]);
 
   React.useEffect(() => {
     const map = mapRef.current;
@@ -514,6 +520,7 @@ export default function TruckMap({
       };
     }
     setServerLoading(true);
+    setServerRoute(null);
     routingAPI.roadRoute(effectivePoints, vehicle).then((result) => {
       if (cancelled) return;
       setServerLoading(false);
@@ -522,7 +529,7 @@ export default function TruckMap({
         Array.isArray(result.geometry) &&
         result.geometry.length >= 2
       ) {
-        setServerRoute({ ...result, routeKey: effectiveKey });
+        setServerRoute({ ...result, routeKey: effectiveKey, vehicleKey });
       } else {
         setServerRoute(null);
       }
@@ -532,7 +539,7 @@ export default function TruckMap({
     };
   }, [effectiveKey, externalRoute, vehicleKey]);
 
-  const resolvedRoute = externalRoute || serverRoute;
+  const resolvedRoute = externalRoute || (serverRoute?.routeKey === effectiveKey && serverRoute?.vehicleKey === vehicleKey ? serverRoute : null);
 
   return (
     <View style={s.shell}>

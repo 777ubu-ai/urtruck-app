@@ -1,52 +1,63 @@
 const EARTH_RADIUS_M = 6371000;
-
-const toRadians = (value) => (Number(value) * Math.PI) / 180;
-
-export const distanceBetweenPoints = (a, b) => {
-  if (!Array.isArray(a) || !Array.isArray(b)) return 0;
-  const lat1 = Number(a[0]);
-  const lng1 = Number(a[1]);
-  const lat2 = Number(b[0]);
-  const lng2 = Number(b[1]);
-  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return 0;
-  const dLat = toRadians(lat2 - lat1);
-  const dLng = toRadians(lng2 - lng1);
-  const phi1 = toRadians(lat1);
-  const phi2 = toRadians(lat2);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLng / 2) ** 2;
-  return 2 * EARTH_RADIUS_M * Math.atan2(Math.sqrt(h), Math.sqrt(Math.max(0, 1 - h)));
+const toRadians = value => value * Math.PI / 180;
+const validPoint = p => Array.isArray(p) && p.length >= 2
+  && p.slice(0, 2).every(v => v != null && String(v).trim() !== '' && Number.isFinite(Number(v)))
+  && Math.abs(Number(p[0])) <= 90 && Math.abs(Number(p[1])) <= 180;
+const vector = p => {
+  const lat = toRadians(Number(p[0])), lon = toRadians(Number(p[1]));
+  return [Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat)];
 };
-const closestVertexIndex = (route, point) => {
-  if (!Array.isArray(route) || !route.length || !Array.isArray(point)) return 0;
-  let closest = 0;
-  let closestDistance = Number.POSITIVE_INFINITY;
-  route.forEach((candidate, index) => {
-    const distance = distanceBetweenPoints(candidate, point);
-    if (distance < closestDistance) {
-      closest = index;
-      closestDistance = distance;
-    }
+const dot = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0);
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm = a => Math.hypot(...a);
+const angle = (a, b) => Math.atan2(norm(cross(a, b)), dot(a, b));
+
+export const distanceBetweenPoints = (a, b) => validPoint(a) && validPoint(b)
+  ? EARTH_RADIUS_M * angle(vector(a), vector(b)) : 0;
+
+// Геометрия [lat, lon] получена от road provider. Проекция на каждый
+// сегмент большой окружности не зависит от плотности вершин полилинии.
+// Без истории движения развязку/петлю нельзя надёжно разрешить: вблизи
+// нескольких далёких по пробегу участков возвращаем unknown, а не 100%.
+export const routeProgress = (geometry, livePoint, { maxOffsetMeters = 100 } = {}) => {
+  const unknown = (totalMeters, reason, offsetMeters = null) => ({
+    totalMeters, passedMeters: null, remainingMeters: null, progressPercent: null,
+    matched: false, reason, offsetMeters,
   });
-  return closest;
-};
-
-export const routeProgress = (geometry, livePoint) => {
-  const route = (geometry || []).filter((point) => Array.isArray(point) && point.length >= 2);
-  if (route.length < 2) return { totalMeters: 0, passedMeters: 0, remainingMeters: 0, progressPercent: 0 };
-
-  const segments = route.slice(1).map((point, index) => distanceBetweenPoints(route[index], point));
-  const totalMeters = segments.reduce((sum, value) => sum + value, 0);
-  if (!Array.isArray(livePoint) || livePoint.length < 2 || totalMeters <= 0) {
-    return { totalMeters, passedMeters: 0, remainingMeters: totalMeters, progressPercent: 0 };
+  if (!Array.isArray(geometry) || geometry.length < 2 || !geometry.every(validPoint)) {
+    return unknown(0, 'invalid_geometry');
   }
-
-  const vertexIndex = closestVertexIndex(route, livePoint);
-  const passedMeters = Math.max(0, Math.min(totalMeters, segments.slice(0, vertexIndex).reduce((sum, value) => sum + value, 0)));
+  const route = geometry.map(vector);
+  const lengths = route.slice(1).map((p, i) => angle(route[i], p));
+  const totalMeters = lengths.reduce((sum, v) => sum + v * EARTH_RADIUS_M, 0);
+  if (totalMeters <= 0 || lengths.some(v => Math.PI - v < 1e-8)) return unknown(0, 'invalid_geometry');
+  if (!validPoint(livePoint)) return unknown(totalMeters, 'no_location');
+  const p = vector(livePoint), candidates = [];
+  let before = 0;
+  for (let i = 0; i < lengths.length; i++) {
+    const length = lengths[i];
+    if (length < 1e-12) continue;
+    const a = route[i], b = route[i + 1];
+    const tangent = b.map((v, j) => (v - Math.cos(length) * a[j]) / Math.sin(length));
+    const along = Math.max(0, Math.min(length, Math.atan2(dot(p, tangent), dot(p, a))));
+    const projected = a.map((v, j) => Math.cos(along) * v + Math.sin(along) * tangent[j]);
+    candidates.push({ passed: before + along * EARTH_RADIUS_M, offset: angle(p, projected) * EARTH_RADIUS_M });
+    before += length * EARTH_RADIUS_M;
+  }
+  candidates.sort((a, b) => a.offset - b.offset);
+  const best = candidates[0];
+  if (!best || best.offset > maxOffsetMeters) return unknown(totalMeters, 'off_route', best?.offset ?? null);
+  // 25 м — допуск шума; 200 м вдоль маршрута отличают разные проезды
+  // через одну развязку от соседних сегментов одного поворота.
+  if (candidates.some(c => c.offset <= best.offset + 25 && Math.abs(c.passed - best.passed) > 200)) {
+    return unknown(totalMeters, 'ambiguous', best.offset);
+  }
+  const passedMeters = Math.max(0, Math.min(totalMeters, best.passed));
   const remainingMeters = Math.max(0, totalMeters - passedMeters);
+  const arrived = remainingMeters < 1 && best.offset <= 20;
   return {
-    totalMeters,
-    passedMeters,
-    remainingMeters,
-    progressPercent: Math.round((passedMeters / totalMeters) * 100),
+    totalMeters, passedMeters, remainingMeters,
+    progressPercent: arrived ? 100 : Math.min(99, Math.floor(100 * passedMeters / totalMeters)),
+    matched: true, reason: null, offsetMeters: best.offset,
   };
 };
