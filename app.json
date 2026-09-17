@@ -106,6 +106,7 @@
     },
     "plugins": [
       "./plugins/withAndroidBackCompatibility",
+      "./plugins/withAndroidSingleFcmHandler",
       [
         "expo-av",
         {
