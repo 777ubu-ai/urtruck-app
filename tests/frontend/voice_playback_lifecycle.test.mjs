@@ -126,6 +126,21 @@ test('Android terminal status without didJustFinish resets 0:59 to full duration
   assert.equal(soundA.positionMillis, 0, 'native sound is rewound for immediate replay');
 });
 
+test('Android missing terminal callback is recovered by native status poll', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+
+  // Натив закончил звук, но намеренно НЕ вызывает _emit/callback — точный
+  // physical QA064 сценарий. Независимый poll обязан заметить idle/end.
+  soundA.playing = false;
+  soundA.positionMillis = soundA.durationMillis - 1200;
+  await new Promise((resolve) => setTimeout(resolve, 350));
+
+  assert.equal(voice.getState().isPlaying, false);
+  assert.equal(voice.getState().positionMillis, 0);
+  assert.equal(soundA.positionMillis, 0);
+});
+
 test('manual pause before the terminal window preserves playback position', async () => {
   await voice.play(URI_A);
   const soundA = lastSound();

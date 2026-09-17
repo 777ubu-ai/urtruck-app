@@ -16,6 +16,7 @@ let _webAudio = null;
 let _playingUri = null;
 let _playPromise = null;
 let _webTick = null;
+let _nativePoll = null;
 // Поколение активного play(): инкрементируется на каждый запуск play()/stop().
 // run() сверяет свой номер после await createAsync — если за время создания
 // звука юзер тапнул другой бабл (или stop), опоздавший звук выгружается и
@@ -40,6 +41,55 @@ const _setState = (patch) => {
 
 // Скорость сохраняется между треками (как в WhatsApp), позиция — нет.
 const _resetState = () => _setState({ uri: null, isPlaying: false, positionMillis: 0, durationMillis: 0 });
+
+const _stopNativePoll = () => {
+  if (_nativePoll) clearInterval(_nativePoll);
+  _nativePoll = null;
+};
+
+const _applyNativePlaybackStatus = (sound, uri, status) => {
+  if (!status?.isLoaded || _sound !== sound) return;
+  const positionMillis = status.positionMillis || 0;
+  const durationMillis = status.durationMillis || _state.durationMillis || 0;
+  const stoppedAtEnd = !status.isPlaying
+    && durationMillis > 0
+    && positionMillis >= Math.max(0, durationMillis - Math.max(1500, durationMillis * 0.025));
+
+  if (status.didJustFinish || stoppedAtEnd) {
+    _stopNativePoll();
+    sound.setPositionAsync(0).catch(() => {});
+    sound.pauseAsync().catch(() => {});
+    _setState({ isPlaying: false, positionMillis: 0, durationMillis });
+    return;
+  }
+
+  _setState({
+    uri,
+    isPlaying: !!status.isPlaying,
+    positionMillis,
+    durationMillis,
+  });
+  if (!status.isPlaying) _stopNativePoll();
+};
+
+const _startNativePoll = (sound, uri) => {
+  _stopNativePoll();
+  let busy = false;
+  _nativePoll = setInterval(async () => {
+    if (busy) return;
+    if (_sound !== sound) { _stopNativePoll(); return; }
+    busy = true;
+    try {
+      const status = await sound.getStatusAsync();
+      _applyNativePlaybackStatus(sound, uri, status);
+    } catch {
+      // Нативный callback остаётся основным источником прогресса; poll —
+      // страховка Android, поэтому единичная ошибка чтения не ломает звук.
+    } finally {
+      busy = false;
+    }
+  }, 250);
+};
 
 export const voice = {
   // ─── Запись ───
@@ -126,6 +176,7 @@ export const voice = {
       } else if (_sound) {
         await _sound.pauseAsync();
       }
+      _stopNativePoll();
       _setState({ isPlaying: false });
       return true;
     } catch (e) {
@@ -142,6 +193,7 @@ export const voice = {
       } else {
         if (!_sound) return this.play(_playingUri);
         await _sound.playAsync();
+        _startNativePoll(_sound, _playingUri);
       }
       _setState({ isPlaying: true });
       return true;
@@ -212,6 +264,7 @@ export const voice = {
     try {
       if (_sound) {
         const prev = _sound;
+        _stopNativePoll();
         // Ссылку обязаны скинуть ДО await: пока идёт unload, completion-
         // колбэк prev проверяет `_sound !== sound` и молчит корректно, а
         // error-путь catch ниже никогда не видит stale _sound.
@@ -253,35 +306,14 @@ export const voice = {
       _playingUri = uri;
       _setState({ uri, isPlaying: true, positionMillis: 0, durationMillis: 0 });
       sound.setOnPlaybackStatusUpdate((status) => {
-        if (!status?.isLoaded) return;
-        if (_sound !== sound) return;
-        const positionMillis = status.positionMillis || 0;
-        const durationMillis = status.durationMillis || _state.durationMillis || 0;
-        // На части Android/Expo AV финальный status приходит без
-        // didJustFinish: isPlaying уже false, но position остаётся на
-        // последнем тике (физически наблюдалось 0:59 у voice 1:00). Без
-        // fallback кнопка возвращалась в Play, а таймер навсегда оставался
-        // на 0:59. Считаем это естественным завершением только в самом конце
-        // трека; обычная пауза в середине должна сохранять позицию.
-        const stoppedAtEnd = !status.isPlaying
-          && durationMillis > 0
-          && positionMillis >= Math.max(0, durationMillis - Math.max(1500, durationMillis * 0.025));
-        if (status.didJustFinish || stoppedAtEnd) {
-          // WhatsApp: по окончании трек сбрасывается в начало, кнопка снова
-          // «play» — но НЕ выгружаем звук, чтобы повторный тап играл сразу.
-          sound.setPositionAsync(0).catch(() => {});
-          sound.pauseAsync().catch(() => {});
-          _setState({ isPlaying: false, positionMillis: 0 });
-          return;
-        }
-        _setState({
-          uri,
-          isPlaying: !!status.isPlaying,
-          positionMillis,
-          durationMillis,
-        });
+        _applyNativePlaybackStatus(sound, uri, status);
       });
       await sound.playAsync();
+      // Некоторые Xiaomi/Expo AV не присылают вообще никакого финального
+      // callback: живой прогресс идёт, затем UI остаётся на 0:59. Poll не
+      // заменяет 80ms callback, а раз в 250ms страхует именно пропущенный
+      // terminal status и гарантирует reset/replay после конца.
+      _startNativePoll(sound, uri);
       return true;
     } catch (e) {
       console.warn('[voice] play failed:', e);
@@ -310,6 +342,7 @@ export const voice = {
     // Инвалидируем in-flight play(): его run() после createAsync увидит
     // устаревший номер поколения и выгрузит свой звук вместо восстановления.
     _playSeq += 1;
+    _stopNativePoll();
     if (_webAudio) {
       _webAudio.pause();
       if (_webTick) { clearInterval(_webTick); _webTick = null; }
