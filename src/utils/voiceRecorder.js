@@ -236,7 +236,11 @@ export const voice = {
         { uri },
         // progressUpdateIntervalMillis: полоса прогресса и таймер в бабле
         // должны идти плавно, как в WhatsApp; дефолт (500мс) даёт рывки.
-        { shouldPlay: true, progressUpdateIntervalMillis: 80, rate: _state.rate, shouldCorrectPitch: true },
+        // Сначала создаём звук на паузе. На части Android/Expo AV устройств
+        // callback, установленный уже ПОСЛЕ shouldPlay/playAsync, получает
+        // только первый тик: звук идёт до конца, а UI навсегда остаётся на
+        // 0:01. Поэтому listener обязан быть подключён до первого playAsync.
+        { shouldPlay: false, progressUpdateIntervalMillis: 80, rate: _state.rate, shouldCorrectPitch: true },
       );
       sound = created;
       if (seq !== _playSeq) {
@@ -248,7 +252,6 @@ export const voice = {
       _sound = sound;
       _playingUri = uri;
       _setState({ uri, isPlaying: true, positionMillis: 0, durationMillis: 0 });
-      await sound.playAsync();
       sound.setOnPlaybackStatusUpdate((status) => {
         if (!status?.isLoaded) return;
         if (_sound !== sound) return;
@@ -267,6 +270,7 @@ export const voice = {
           durationMillis: status.durationMillis || _state.durationMillis || 0,
         });
       });
+      await sound.playAsync();
       return true;
     } catch (e) {
       console.warn('[voice] play failed:', e);

@@ -19,6 +19,7 @@ export function installExpoAvRequireShim() {
     createAsyncThrows: null, // Error | null — force Sound.createAsync to reject
     playAsyncThrows: null,   // Error | null — force sound.playAsync() to reject
     nextDurationMillis: 5000,
+    events: [],
   };
 
   function makeSound(uri, initialStatus) {
@@ -45,8 +46,12 @@ export function installExpoAvRequireShim() {
           });
         } catch { /* тестовый подписчик не должен ломать эмиттер */ }
       },
-      setOnPlaybackStatusUpdate(cb) { this.onStatusUpdate = cb; },
+      setOnPlaybackStatusUpdate(cb) {
+        state.events.push('setOnPlaybackStatusUpdate');
+        this.onStatusUpdate = cb;
+      },
       async playAsync() {
+        state.events.push('playAsync');
         if (state.playAsyncThrows) throw state.playAsyncThrows;
         this.playing = true;
         this._emit();
@@ -83,6 +88,7 @@ export function installExpoAvRequireShim() {
     Sound: {
       async createAsync(source, initialStatus) {
         if (state.createAsyncThrows) throw state.createAsyncThrows;
+        state.events.push(`createAsync:${String(initialStatus?.shouldPlay)}`);
         const sound = makeSound(source?.uri, initialStatus);
         state.sounds.push(sound);
         return { sound };

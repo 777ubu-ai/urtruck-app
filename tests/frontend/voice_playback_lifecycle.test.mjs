@@ -33,6 +33,16 @@ test.beforeEach(async () => {
   shim.state.audioModeCalls.length = 0;
   shim.state.createAsyncThrows = null;
   shim.state.playAsyncThrows = null;
+  shim.state.events.length = 0;
+});
+
+test('progress listener is attached before native playback starts', async () => {
+  assert.equal(await voice.play(URI_A), true);
+  assert.deepEqual(
+    shim.state.events.slice(0, 3),
+    ['createAsync:false', 'setOnPlaybackStatusUpdate', 'playAsync'],
+    'Android must not start audio before the progress listener is attached',
+  );
 });
 
 // ─── REPRODUCE (P1): play A → natural completion → play B ───
