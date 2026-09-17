@@ -962,6 +962,32 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     }
   }, [locationSending, sendRawText, toast, t]);
 
+  const photoSendingRef = React.useRef(new Set());
+  const uploadPhoto = React.useCallback(async (item) => {
+    if (photoSendingRef.current.has(item.id)) return;
+    photoSendingRef.current.add(item.id);
+    setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, sendStatus: 'uploading', sendError: null } : m)));
+    try {
+      const photoKey = item.photoKey || (await chatAPI.uploadChatPhoto(item.mediaUrl))?.photo_key;
+      if (!photoKey) throw new Error('photo_upload');
+      // После успешной загрузки Retry повторяет только доставку сообщения.
+      setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, photoKey, sendStatus: 'sending' } : m)));
+      await chatAPI.send({
+        roomId, toUserId: recipientId, photoUrl: photoKey,
+        cargoId: deal?.cargo_id || params.cargoId || null,
+        tripId: deal?.trip_id || params.tripId || null,
+        clientMsgId: item.id,
+      });
+      setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, sendStatus: 'sent' } : m)));
+      setTimeout(loadMessages, 120);
+    } catch (error) {
+      const sendError = error?.isNetwork ? t('no_connection') : t('chat_send_failed');
+      setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, sendStatus: 'failed', sendError } : m)));
+    } finally {
+      photoSendingRef.current.delete(item.id);
+    }
+  }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, loadMessages, t]);
+
   const sendPhoto = React.useCallback(async (camera) => {
     try {
       if (camera) {
@@ -972,31 +998,24 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         if (permission.status !== 'granted') return;
       }
       const pick = camera
-        ? await ImagePicker.launchCameraAsync({ quality: 0.75 })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.75 });
+        ? await ImagePicker.launchCameraAsync({ quality: 1 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1 });
       if (pick.canceled || !pick.assets?.[0]?.uri) return;
       const source = pick.assets[0].uri;
       let uri = source;
-      try { uri = await compressImage(source, { maxSide: 1200, quality: 0.75 }); } catch {}
+      try { uri = await compressImage(source, { preset: 'chat' }); } catch {}
       const clientId = newClientId();
-      setMessages((items) => [...items, {
+      const item = {
         id: clientId, mine: true, text: '', photo: true, mediaUrl: uri,
-        time: nowTime(), optimistic: true,
-      }]);
+        time: nowTime(), optimistic: true, sendStatus: 'uploading',
+      };
+      setMessages((items) => [...items, item]);
       setAttachOpen(false);
-      const upload = await chatAPI.uploadChatPhoto(uri);
-      if (!upload?.photo_key) throw new Error('photo_upload');
-      await chatAPI.send({
-        roomId, toUserId: recipientId, photoUrl: upload.photo_key,
-        cargoId: deal?.cargo_id || params.cargoId || null,
-        tripId: deal?.trip_id || params.tripId || null,
-        clientMsgId: clientId,
-      });
-      setTimeout(loadMessages, 120);
+      await uploadPhoto(item);
     } catch (error) {
       toast(error?.isNetwork ? t('no_connection') : t('chat_send_failed'), 'error');
     }
-  }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, loadMessages, toast, t]);
+  }, [uploadPhoto, toast, t]);
 
   const sendGalleryPhoto = React.useCallback(() => sendPhoto(false), [sendPhoto]);
   const sendCameraPhoto = React.useCallback(() => sendPhoto(true), [sendPhoto]);
@@ -1374,6 +1393,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             ) : null}
             <Text style={[s.messageTime, { color: item.mine ? withAlpha(bubbleMineColors.textColor, 0.62) : colors.textMuted, fontSize: sp(11) }]}>{item.time}</Text>
           </View>
+          {item.photo && ['uploading', 'sending'].includes(item.sendStatus) ? (
+            <ActivityIndicator size="small" color={colors.textMuted} testID="deal-chat-photo-uploading" />
+          ) : null}
           {item.sendStatus === 'queued' ? (
             <View style={s.queuedRow} testID="deal-chat-message-queued">
               <Feather name="clock" size={12} color="#B7791F" />
@@ -1381,7 +1403,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             </View>
           ) : item.sendStatus === 'failed' && !item.voice ? (
             <TouchableOpacity
-              onPress={() => retryFailedText(item)}
+              onPress={() => item.photo ? uploadPhoto(item) : retryFailedText(item)}
               style={s.errorRow}
               testID={item.voice ? 'deal-chat-voice-error' : 'deal-chat-message-retry'}
             >
@@ -1405,7 +1427,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         </View>
       </React.Fragment>
     );
-  }, [colors, translations, translating, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
+  }, [colors, translations, translating, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage

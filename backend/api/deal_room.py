@@ -16,6 +16,7 @@ from database import deal_room_dal as dr
 from services import storage_service
 from services import file_signing
 from api.push import send_to_user
+from starlette.concurrency import run_in_threadpool
 from api.notifications import create_notification
 from database.db import get_conn, new_id
 
@@ -282,7 +283,7 @@ async def upload_attachment(
     existing = _existing_attachment(conversation_id, user["id"], normalized_client_id)
     if existing:
         if existing.get("url") and existing.get("upload_status") == "uploaded":
-            return {"attachment": _sign_attachment(existing), "deduplicated": True}
+            return {"attachment": await run_in_threadpool(_sign_attachment, existing), "deduplicated": True}
         raise HTTPException(status_code=409, detail="Файл уже загружается")
 
     raw = await file.read(_MAX_ATTACH_BYTES + 1)
@@ -321,11 +322,12 @@ async def upload_attachment(
         )
         if not created:
             if reservation.get("url") and reservation.get("upload_status") == "uploaded":
-                return {"attachment": _sign_attachment(reservation), "deduplicated": True}
+                return {"attachment": await run_in_threadpool(_sign_attachment, reservation), "deduplicated": True}
             raise HTTPException(status_code=409, detail="Файл уже загружается")
 
     try:
-        url = storage_service.save_file(
+        url = await run_in_threadpool(
+            storage_service.save_file,
             raw,
             "chat_attachments",
             ext=ext,
@@ -368,7 +370,7 @@ async def upload_attachment(
             row = c.execute("SELECT * FROM message_attachments WHERE id = ?", (att["id"],)).fetchone()
             att = dict(row) if row else att
 
-    att = _sign_attachment(att)
+    att = await run_in_threadpool(_sign_attachment, att)
 
     try:
         with get_conn() as c:

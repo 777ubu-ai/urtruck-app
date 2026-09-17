@@ -2,6 +2,7 @@
 import os
 import sys
 import sqlite3
+from starlette.concurrency import run_in_threadpool
 import hashlib
 import unicodedata
 from pathlib import Path
@@ -956,7 +957,7 @@ async def upload_chat_photo(file: UploadFile = File(...), user=Depends(require_l
     if mime is None:
         raise HTTPException(status_code=415, detail="Неподдерживаемый тип фото")
     ext = "jpg" if mime == upload_validation.JPEG_MIME else "png"
-    key = storage.save_file(data, "chat_photos", ext=ext, content_type=mime)
+    key = await run_in_threadpool(storage.save_file, data, "chat_photos", ext=ext, content_type=mime)
     return {"photo_key": key}
 
 
@@ -979,7 +980,7 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
         raise HTTPException(status_code=415, detail="Неподдерживаемый тип аудио")
     ext, audio_mime = sniffed
     try:
-        key = storage.save_file(data, "chat_voice", ext=ext, content_type=audio_mime)
+        key = await run_in_threadpool(storage.save_file, data, "chat_voice", ext=ext, content_type=audio_mime)
     except Exception as exc:
         storage_status = getattr(exc, "status_code", None)
         storage_detail = str(getattr(exc, "detail", "") or "")
