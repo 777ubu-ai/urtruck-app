@@ -34,6 +34,8 @@ LANG_ALIAS = {
     "kk-kz": "kk",
 }
 
+TRANSLATION_PROMPT_VERSION = "logistics-v1"
+
 SYSTEM_PROMPT = (
     "You are a logistics translation engine. "
     "Translate the text exactly and neutrally. "
@@ -49,6 +51,18 @@ def _get_provider():
 
 def _get_api_key():
     return os.environ.get("OPENAI_API_KEY", "")
+
+
+def _get_model():
+    return os.environ.get("TRANSLATE_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+
+
+def get_cache_identity():
+    return {
+        "provider": (_get_provider() or "stub").strip().lower(),
+        "model": _get_model() if _get_provider() == "openai" else "",
+        "prompt_version": TRANSLATION_PROMPT_VERSION,
+    }
 
 
 def _normalize_lang_code(value: str | None) -> str | None:
@@ -67,6 +81,8 @@ def get_info():
     key = _get_api_key()
     return {
         "provider": _get_provider(),
+        "model": _get_model() if _get_provider() == "openai" else "",
+        "prompt_version": TRANSLATION_PROMPT_VERSION,
         "openai_key_exists": bool(key and len(key) > 5),
     }
 
@@ -106,7 +122,7 @@ def _translate_openai(text, target_lang, source_lang, api_key):
     user_msg = f"Translate to {lang_name}:\n{text}"
 
     body = json.dumps({
-        "model": "gpt-4o-mini",
+        "model": _get_model(),
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_msg},
