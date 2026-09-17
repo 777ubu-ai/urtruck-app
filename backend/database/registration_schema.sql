@@ -83,6 +83,32 @@ CREATE TABLE IF NOT EXISTS reg_sessions (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Authenticated phone-change challenges. OTP is stored as a keyed digest,
+-- never as plaintext. `purpose` is explicit so this table cannot be reused
+-- accidentally for login or registration verification.
+CREATE TABLE IF NOT EXISTS phone_change_challenges (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  new_phone TEXT NOT NULL,
+  purpose TEXT NOT NULL DEFAULT 'phone_change',
+  code_digest TEXT NOT NULL,
+  attempts INTEGER DEFAULT 0,
+  max_attempts INTEGER DEFAULT 5,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS phone_change_audit (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  phone_masked TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_reg_phone ON drivers_registration(phone);
 CREATE INDEX IF NOT EXISTS idx_reg_status ON drivers_registration(status);
 CREATE INDEX IF NOT EXISTS idx_reg_step ON drivers_registration(current_step);
+CREATE INDEX IF NOT EXISTS idx_phone_change_active
+  ON phone_change_challenges(user_id, purpose, new_phone, consumed_at);

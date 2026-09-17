@@ -103,6 +103,17 @@ def _ensure_full_schema():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_presence_redis(monkeypatch):
+    # Unit-тесты не пишут пользовательскую активность в настоящий Redis.
+    from services import presence_service
+
+    def unavailable():
+        raise ConnectionError("Redis отключён в unit-тестах")
+
+    monkeypatch.setattr(presence_service, "_redis", unavailable)
+
+
+@pytest.fixture(autouse=True)
 def _reassert_schema_before_each_test(_ensure_full_schema):
     # 2026-09-08 harness fix: the session-scoped rebuild above runs exactly
     # once. In investigating the 92 order-dependent failures, one concrete

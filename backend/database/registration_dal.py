@@ -462,6 +462,29 @@ def delete_session(token: str) -> bool:
         return cur.rowcount > 0
 
 
+def revoke_sessions_for_driver(driver_id: str) -> int:
+    """Отозвать все сессии пользователя."""
+    if not driver_id:
+        return 0
+    with get_conn() as c:
+        return c.execute("DELETE FROM reg_sessions WHERE driver_id = ?", (driver_id,)).rowcount
+
+
+def rotate_sessions_for_driver(driver_id: str, *, connection=None) -> str:
+    """Отозвать старые сессии и выдать новую в общей транзакции."""
+    if connection is None:
+        with get_conn() as c:
+            return rotate_sessions_for_driver(driver_id, connection=c)
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.utcnow() + timedelta(days=30)).isoformat()
+    connection.execute("DELETE FROM reg_sessions WHERE driver_id = ?", (driver_id,))
+    connection.execute(
+        "INSERT INTO reg_sessions (token, driver_id, expires_at) VALUES (?, ?, ?)",
+        (token, driver_id, expires),
+    )
+    return token
+
+
 def get_driver_by_token(token: str) -> str | None:
     with get_conn() as c:
         row = c.execute(

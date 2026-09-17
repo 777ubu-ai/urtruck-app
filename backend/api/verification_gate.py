@@ -9,6 +9,7 @@
 from fastapi import Depends, Header, HTTPException
 from database import registration_dal as reg_dal
 from config import BETA_MODE
+from services import presence_service
 
 
 LEVEL_NAMES = {
@@ -36,6 +37,8 @@ def _extract_driver(authorization: str) -> dict:
     driver = reg_dal.get_driver(driver_id)
     if not driver:
         raise HTTPException(status_code=401, detail="Пользователь не найден")
+    # Сохраняем совместимость со старыми клиентами без heartbeat.
+    presence_service.touch_authenticated(driver)
     return driver
 
 

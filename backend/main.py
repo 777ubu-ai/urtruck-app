@@ -113,12 +113,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 from api.routes import router
 from api.admin import admin_router
+from api.admin_control import control_router
+from api.presence import presence_router
 from api.registration import reg_router
 from api.social_auth import social_auth_router
 from api.driver_registration import driver_reg_router
 from api.vehicles import router as vehicles_router
 from api.reviews import reviews_router
-from api.push import push_router
+from api.push import push_router, start_deferred_migrations
 from api.qr import qr_router
 from api.telegram_webhook import tg_webhook_router
 from api.documents import docs_router
@@ -207,6 +209,8 @@ app.include_router(ss_router, prefix="/api/v1/searches")
 app.include_router(qa_router, prefix="/api/v1/qa")
 app.include_router(routing_router, prefix="/api/v1/routing")
 app.include_router(metrics_router, prefix="")
+app.include_router(control_router, prefix="/api/v1/admin/control")
+app.include_router(presence_router, prefix="/api/v1/presence")
 app.include_router(admin_router, prefix="/admin")
 
 # Приватная раздача локального storage (только provider=local).
@@ -366,6 +370,12 @@ def startup():
     print("  Docs:       http://localhost:8001/docs")
     print("  Admin:      http://localhost:8001/admin")
     print("=" * 50)
+
+
+@app.on_event("startup")
+def finish_deferred_push_migrations():
+    # Тяжёлый индекс старой БД не задерживает открытие HTTP-порта.
+    start_deferred_migrations()
 
 
 @app.on_event("shutdown")
