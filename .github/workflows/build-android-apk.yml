@@ -33,9 +33,9 @@ jobs:
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.8" >> "$GITHUB_ENV"
           # Must be strictly newer than the currently installed QA2 artifact.
-          # QA066: terminal idle после реального playback сбрасывает ранний Xiaomi 0:59 state.
+          # QA067: единый physical-кандидат — long voice completion, large XLSX и один native FCM handler.
           # Перед установкой отдельно сверить версию и подпись устройства.
-          echo "URTRUCK_VERSION_CODE=211040066" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_CODE=211040067" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           # Restore the live service endpoint. The isolated adb-reverse harness
           # has stub STT/translation and no native FCM credentials.
