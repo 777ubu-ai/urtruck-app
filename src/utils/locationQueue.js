@@ -2,9 +2,19 @@
 // перезаписывают общий JSON-массив и не теряют чужие добавления/подтверждения.
 export const LOCATION_SAMPLE_PREFIX = 'ur_bg_sample_v2:';
 export const LOCATION_QUARANTINE_PREFIX = 'ur_bg_sample_quarantine_v2:';
+export const LOCATION_RETRY_PREFIX = 'ur_bg_retry_v1:';
 export const locationSampleId = (sample) => [sample.ownerId || '', sample.dealId, sample.capturedAt, sample.lat, sample.lng].join(':');
 
-export function createLocationQueue(store) {
+// Retry-After бывает количеством секунд или HTTP-датой. Некорректное
+// значение не отменяет обычный backoff; верхняя граница ожидания — сутки.
+export function locationRetryAfterMs(value, now) {
+  if (value == null || String(value).trim() === '') return 0;
+  const raw = String(value).trim();
+  const delay = /^\d+(\.\d+)?$/.test(raw) ? Number(raw) * 1000 : Date.parse(raw) - now;
+  return Number.isFinite(delay) ? Math.max(0, Math.min(86400000, delay)) : 0;
+}
+
+export function createLocationQueue(store, { now = Date.now, random = Math.random } = {}) {
   const keyOf = (sample) => LOCATION_SAMPLE_PREFIX + locationSampleId(sample);
   return {
     async append(sample) {
@@ -31,11 +41,26 @@ export function createLocationQueue(store) {
         if (raw == null) continue;
         const head = JSON.parse(raw);
         if (!head) return;
-        const result = await post(head);
+        const retryKey = LOCATION_RETRY_PREFIX + locationSampleId(head);
+        const retry = JSON.parse(await store.get(retryKey) || 'null');
+        const clock = now();
+        // Состояние отдельно от sample: повторный append того же callback
+        // не сбрасывает паузу. Новый JS runtime читает ту же дату повтора.
+        if (retry?.nextAttemptAt > clock && retry.nextAttemptAt - clock <= 86400000) return;
+        if (!await stillAuthorized()) return;
+        let result;
+        try { result = await post(head); } catch { result = false; }
         if (result?.quarantine) {
           await store.set(LOCATION_QUARANTINE_PREFIX + locationSampleId(head), JSON.stringify({ sample: head, status: result.quarantine }));
-        } else if (result !== true) return;
+        } else if (result !== true) {
+          const failures = Math.min(20, Math.max(0, Number(retry?.failures) || 0) + 1);
+          const backoff = Math.min(300000, 30000 * 2 ** (failures - 1) * (0.8 + 0.4 * random()));
+          const failedAt = now();
+          await store.set(retryKey, JSON.stringify({ failures, nextAttemptAt: failedAt + Math.max(backoff, locationRetryAfterMs(result?.retryAfter, failedAt)) }));
+          return;
+        }
         await store.remove(keyOf(head));
+        await store.remove(retryKey);
       }
     },
     async migrate(legacyKey, ownerId) {

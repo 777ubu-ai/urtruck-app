@@ -20,11 +20,13 @@ test('очередь переживает новый runtime и хранит б�
 });
 
 test('ошибка головы запрещает обгон, затем FIFO подтверждает все точки', async () => {
-  const queue = createLocationQueue(memoryStore());
+  let clock = 1700000000000;
+  const queue = createLocationQueue(memoryStore(), { now: () => clock, random: () => 0.5 });
   await queue.append(sample(2)); await queue.append(sample(1));
   const posted = [];
   await queue.drain('deal', async s => { posted.push(s.capturedAt); return false; });
   assert.deepEqual(posted, [sample(1).capturedAt]);
+  clock += 30000;
   await queue.drain('deal', async s => { posted.push(s.capturedAt); return true; });
   assert.deepEqual(posted, [sample(1).capturedAt, sample(1).capturedAt, sample(2).capturedAt]);
   assert.deepEqual(await queue.pending('deal'), []);
@@ -38,17 +40,20 @@ test('параллельные runtimes не перетирают записи �
 });
 
 test('потерянный ответ повторяет стабильный идентификатор; ошибка хранения видна', async () => {
-  const store = memoryStore(), queue = createLocationQueue(store);
+  let clock = 1700000000000;
+  const options = { now: () => clock, random: () => 0.5 };
+  const store = memoryStore(), queue = createLocationQueue(store, options);
   await queue.append(sample(1));
   let calls = [];
   await queue.drain('deal', async s => { calls.push(locationSampleId(s)); return false; });
-  await createLocationQueue(store).drain('deal', async s => { calls.push(locationSampleId(s)); return true; });
+  clock += 30000;
+  await createLocationQueue(store, options).drain('deal', async s => { calls.push(locationSampleId(s)); return true; });
   assert.equal(calls[0], calls[1]);
   store.set = async () => { throw new Error('DISK_FULL'); };
   await assert.rejects(queue.append(sample(2)), /DISK_FULL/);
 });
 
-function backgroundHarness(reply, store = memoryStore()) {
+function backgroundHarness(reply, store = memoryStore(), postReply = null) {
   store.data.set('ur_reg_token', 'test-session');
   store.data.set('ur_session', '{"user":{"id":"driver"}}');
   store.data.set('ur_bg_deal_ids', '["deal"]');
@@ -65,6 +70,7 @@ function backgroundHarness(reply, store = memoryStore()) {
     fetch: async (url, options) => {
       if (url.endsWith('/active')) return reply(store);
       posts.push(JSON.parse(options.body));
+      if (postReply) return postReply();
       return { ok: true, json: async () => ({ ok: true, sample_id: JSON.parse(options.body).sample_id }) };
     },
   };
@@ -128,4 +134,19 @@ test('невалидная точка сохраняется в карантин
   const archive = [...store.data.values()].map(JSON.parse);
   assert.equal(archive[0].status, 422);
   assert.equal(archive[0].sample.capturedAt, sample(1).capturedAt);
+});
+
+test('реальный background adapter переносит Retry-After в durable очередь', async () => {
+  const h = backgroundHarness(async () => ({ ok: true, json: async () => ({ ok: true, deal_ids: ['deal'] }) }), memoryStore(),
+    () => ({ ok: false, status: 429, headers: { get: name => name === 'Retry-After' ? '120' : null } }));
+  const before = Date.now();
+  const point = { latitude: 43, longitude: 76, timestamp: before };
+  await h.pushLocationToDeals(point);
+  await h.pushLocationToDeals(point);
+  assert.equal(h.posts.length, 1);
+  const retry = JSON.parse([...h.store.data.entries()].find(([key]) => key.startsWith('ur_bg_retry_v1:'))[1]);
+  assert.ok(retry.nextAttemptAt >= before + 120000);
+  const pending = await createLocationQueue(h.store).pending('deal', 'driver');
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].capturedAt, before);
 });

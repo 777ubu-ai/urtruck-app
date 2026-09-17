@@ -103,7 +103,7 @@ async function postLocationSample(sample, token) {
     if ([400, 403, 404, 409, 422].includes(response?.status)) {
       return { quarantine: response.status };
     }
-    if (!response?.ok) return false;
+    if (!response?.ok) return { retryAfter: response?.headers?.get?.('Retry-After') };
     const ack = await response.json();
     return ack?.ok === true && ack.sample_id === locationSampleId(sample);
   } catch {
