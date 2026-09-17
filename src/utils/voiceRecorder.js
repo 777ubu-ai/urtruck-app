@@ -17,6 +17,11 @@ let _playingUri = null;
 let _playPromise = null;
 let _webTick = null;
 let _nativePoll = null;
+// Sound objects that have physically reported `isPlaying: true`.  This lets
+// us distinguish the harmless initial paused status (listener is attached
+// before playAsync) from Xiaomi/Expo AV's terminal idle status, which can be
+// reported 2-3 seconds before durationMillis and without didJustFinish.
+const _nativeSoundsObservedPlaying = new WeakSet();
 // Поколение активного play(): инкрементируется на каждый запуск play()/stop().
 // run() сверяет свой номер после await createAsync — если за время создания
 // звука юзер тапнул другой бабл (или stop), опоздавший звук выгружается и
@@ -51,15 +56,24 @@ const _applyNativePlaybackStatus = (sound, uri, status) => {
   if (!status?.isLoaded || _sound !== sound) return;
   const positionMillis = status.positionMillis || 0;
   const durationMillis = status.durationMillis || _state.durationMillis || 0;
+  if (status.isPlaying) _nativeSoundsObservedPlaying.add(sound);
   const stoppedAtEnd = !status.isPlaying
     && durationMillis > 0
     && positionMillis >= Math.max(0, durationMillis - Math.max(1500, durationMillis * 0.025));
+  const stoppedAfterPhysicalPlayback = !status.isPlaying
+    && !status.isBuffering
+    && _state.uri === uri
+    && _state.isPlaying
+    && _nativeSoundsObservedPlaying.has(sound);
 
-  if (status.didJustFinish || stoppedAtEnd) {
+  if (status.didJustFinish || stoppedAtEnd || stoppedAfterPhysicalPlayback) {
     _stopNativePoll();
+    // Update JS state first: expo-av may synchronously emit another status
+    // from setPositionAsync/pauseAsync.  Those callbacks must see an idle
+    // player, otherwise they recursively classify themselves as completion.
+    _setState({ isPlaying: false, positionMillis: 0, durationMillis });
     sound.setPositionAsync(0).catch(() => {});
     sound.pauseAsync().catch(() => {});
-    _setState({ isPlaying: false, positionMillis: 0, durationMillis });
     return;
   }
 
@@ -174,6 +188,11 @@ export const voice = {
       if (Platform.OS === 'web') {
         if (_webAudio) _webAudio.pause();
       } else if (_sound) {
+        // Mark the pause as user-requested before native emits isPlaying=false.
+        // Otherwise that callback is indistinguishable from Android's missing
+        // didJustFinish terminal status and would rewind instead of pausing.
+        _stopNativePoll();
+        _setState({ isPlaying: false });
         await _sound.pauseAsync();
       }
       _stopNativePoll();
@@ -181,6 +200,10 @@ export const voice = {
       return true;
     } catch (e) {
       console.warn('[voice] pause failed:', e);
+      if (_sound && _playingUri) {
+        _setState({ isPlaying: true });
+        _startNativePoll(_sound, _playingUri);
+      }
       return false;
     }
   },

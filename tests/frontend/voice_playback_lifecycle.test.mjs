@@ -141,15 +141,34 @@ test('Android missing terminal callback is recovered by native status poll', asy
   assert.equal(soundA.positionMillis, 0);
 });
 
+test('Xiaomi early terminal idle resets even when native position stops before threshold', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+
+  // Physical QA065: the sound was audibly complete and native returned to
+  // Play, but getStatusAsync froze around 0:59 for a 1:00 message.  The final
+  // position can fall outside a guessed duration tolerance, so a sound that
+  // was observed playing and then becomes idle must be treated as complete.
+  soundA.playing = false;
+  soundA.positionMillis = soundA.durationMillis - 2500;
+  await new Promise((resolve) => setTimeout(resolve, 350));
+
+  assert.equal(voice.getState().isPlaying, false);
+  assert.equal(voice.getState().positionMillis, 0);
+  assert.equal(soundA.positionMillis, 0);
+});
+
 test('manual pause before the terminal window preserves playback position', async () => {
   await voice.play(URI_A);
   const soundA = lastSound();
+  soundA.positionMillis = 2500;
   soundA._emit({
-    isPlaying: false,
+    isPlaying: true,
     positionMillis: 2500,
     durationMillis: soundA.durationMillis,
     didJustFinish: false,
   });
+  assert.equal(await voice.pause(), true);
 
   assert.equal(voice.getState().isPlaying, false);
   assert.equal(voice.getState().positionMillis, 2500);
