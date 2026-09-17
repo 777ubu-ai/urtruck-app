@@ -107,6 +107,39 @@ test('natural completion → replay of the SAME uri works instantly', async () =
   assert.equal(shim.state.sounds.length, 1, 'no sound re-created on replay');
 });
 
+test('Android terminal status without didJustFinish resets 0:59 to full duration', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+
+  // Реальный Xiaomi/Expo AV может закончить минутный файл так: кнопка уже
+  // Play, последний position=59s, didJustFinish отсутствует. UI не должен
+  // оставаться на 0:59 после физического окончания звука.
+  soundA._emit({
+    isPlaying: false,
+    positionMillis: soundA.durationMillis - 1200,
+    durationMillis: soundA.durationMillis,
+    didJustFinish: false,
+  });
+
+  assert.equal(voice.getState().isPlaying, false);
+  assert.equal(voice.getState().positionMillis, 0, 'terminal Android tick resets to start');
+  assert.equal(soundA.positionMillis, 0, 'native sound is rewound for immediate replay');
+});
+
+test('manual pause before the terminal window preserves playback position', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+  soundA._emit({
+    isPlaying: false,
+    positionMillis: 2500,
+    durationMillis: soundA.durationMillis,
+    didJustFinish: false,
+  });
+
+  assert.equal(voice.getState().isPlaying, false);
+  assert.equal(voice.getState().positionMillis, 2500);
+});
+
 test('repeat playback: full play → completion cycle works twice in a row', async () => {
   await voice.play(URI_A);
   finishNaturally(lastSound());

@@ -255,7 +255,18 @@ export const voice = {
       sound.setOnPlaybackStatusUpdate((status) => {
         if (!status?.isLoaded) return;
         if (_sound !== sound) return;
-        if (status.didJustFinish) {
+        const positionMillis = status.positionMillis || 0;
+        const durationMillis = status.durationMillis || _state.durationMillis || 0;
+        // На части Android/Expo AV финальный status приходит без
+        // didJustFinish: isPlaying уже false, но position остаётся на
+        // последнем тике (физически наблюдалось 0:59 у voice 1:00). Без
+        // fallback кнопка возвращалась в Play, а таймер навсегда оставался
+        // на 0:59. Считаем это естественным завершением только в самом конце
+        // трека; обычная пауза в середине должна сохранять позицию.
+        const stoppedAtEnd = !status.isPlaying
+          && durationMillis > 0
+          && positionMillis >= Math.max(0, durationMillis - Math.max(1500, durationMillis * 0.025));
+        if (status.didJustFinish || stoppedAtEnd) {
           // WhatsApp: по окончании трек сбрасывается в начало, кнопка снова
           // «play» — но НЕ выгружаем звук, чтобы повторный тап играл сразу.
           sound.setPositionAsync(0).catch(() => {});
@@ -266,8 +277,8 @@ export const voice = {
         _setState({
           uri,
           isPlaying: !!status.isPlaying,
-          positionMillis: status.positionMillis || 0,
-          durationMillis: status.durationMillis || _state.durationMillis || 0,
+          positionMillis,
+          durationMillis,
         });
       });
       await sound.playAsync();
