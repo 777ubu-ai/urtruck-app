@@ -1,5 +1,7 @@
 import os
 import sys
+import io
+import zipfile
 from pathlib import Path
 
 DB_PATH = "/tmp/urtruck_test_deal_attachment_upload.db"
@@ -43,12 +45,14 @@ def test_pdf_magic_bytes_are_authoritative():
 
 def test_excel_and_csv_magic_bytes_are_authoritative():
     assert deal_room._sniff_mime(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 32) == "application/vnd.ms-excel"
-    xlsx = (
-        b"PK\x03\x04"
-        + b"[Content_Types].xml"
-        + b"\x00" * 32
-        + b"xl/workbook.xml"
-    )
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_STORED) as archive:
+        # Put more than the old 200 KB sniff window before the workbook.  The
+        # central directory still identifies this as a valid XLSX package.
+        archive.writestr("xl/worksheets/sheet1.xml", b"x" * 300_000)
+        archive.writestr("[Content_Types].xml", b"<Types/>")
+        archive.writestr("xl/workbook.xml", b"<workbook/>")
+    xlsx = payload.getvalue()
     assert deal_room._sniff_mime(xlsx) == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert deal_room._sniff_mime("name,price\nA,10\n".encode("utf-8")) == "text/csv"
 

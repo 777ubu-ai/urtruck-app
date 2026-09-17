@@ -158,6 +158,42 @@ test('Xiaomi early terminal idle resets even when native position stops before t
   assert.equal(soundA.positionMillis, 0);
 });
 
+test('Xiaomi terminal idle may incorrectly retain isBuffering=true at 0:59', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+
+  soundA.playing = false;
+  soundA.positionMillis = Math.round(soundA.durationMillis * 0.9);
+  soundA._emit({
+    isPlaying: false,
+    isBuffering: true,
+    positionMillis: soundA.positionMillis,
+    durationMillis: soundA.durationMillis,
+    didJustFinish: false,
+  });
+
+  assert.equal(voice.getState().isPlaying, false);
+  assert.equal(voice.getState().positionMillis, 0);
+  assert.equal(soundA.positionMillis, 0);
+});
+
+test('early network buffering is not mistaken for natural completion', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+
+  soundA.positionMillis = Math.round(soundA.durationMillis * 0.25);
+  soundA._emit({
+    isPlaying: false,
+    isBuffering: true,
+    positionMillis: soundA.positionMillis,
+    durationMillis: soundA.durationMillis,
+    didJustFinish: false,
+  });
+
+  assert.equal(voice.getState().positionMillis, soundA.positionMillis);
+  assert.equal(soundA.positionMillis > 0, true);
+});
+
 test('manual pause before the terminal window preserves playback position', async () => {
   await voice.play(URI_A);
   const soundA = lastSound();

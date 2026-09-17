@@ -61,10 +61,14 @@ const _applyNativePlaybackStatus = (sound, uri, status) => {
     && durationMillis > 0
     && positionMillis >= Math.max(0, durationMillis - Math.max(1500, durationMillis * 0.025));
   const stoppedAfterPhysicalPlayback = !status.isPlaying
-    && !status.isBuffering
     && _state.uri === uri
     && _state.isPlaying
-    && _nativeSoundsObservedPlaying.has(sound);
+    && _nativeSoundsObservedPlaying.has(sound)
+    // Expo AV on the physical Xiaomi can leave `isBuffering=true` on the
+    // terminal status of an already completed remote voice.  Do not confuse
+    // an early network buffer with completion, but accept terminal idle once
+    // the real track has reached its final fifth.
+    && (!status.isBuffering || (durationMillis > 0 && positionMillis >= durationMillis * 0.8));
 
   if (status.didJustFinish || stoppedAtEnd || stoppedAfterPhysicalPlayback) {
     _stopNativePoll();
