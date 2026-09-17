@@ -33,3 +33,18 @@ CREATE TABLE IF NOT EXISTS contact_reveals (
     UNIQUE (user_id, deal_id)
 );
 CREATE INDEX IF NOT EXISTS idx_contact_reveals_period ON contact_reveals(user_id, period_key);
+
+-- Лимит принятия сделок (accept): одна строка на (user_id, deal_id) —
+-- повторный accept той же сделки лимит не тратит (idempotent). Запись
+-- создаётся в той же транзакции, что и INSERT в deals; отмена/завершение
+-- сделки её НЕ удаляет — месячный лимит не возвращается.
+-- period_key ('YYYY-MM') фиксирует, в каком месяце реально ушёл лимит.
+CREATE TABLE IF NOT EXISTS deal_accept_usage (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    deal_id     TEXT NOT NULL,
+    period_key  TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (user_id, deal_id)
+);
+CREATE INDEX IF NOT EXISTS idx_deal_accept_usage_period ON deal_accept_usage(user_id, period_key);

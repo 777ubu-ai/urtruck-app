@@ -161,7 +161,15 @@ export const chatAPI = {
       method: 'POST', headers: await headers(),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data?.detail || `accept failed ${r.status}`);
+    if (!r.ok) {
+      const message = typeof data?.detail === 'string' ? data.detail : `accept failed ${r.status}`;
+      const err = new Error(message);
+      // Код ошибки тащим в catch, чтобы чат мог отличить лимит сделок
+      // (deal_limit_exceeded) от прочих ошибок.
+      const code = data?.error || (data?.detail && typeof data.detail === 'object' ? data.detail.error : null);
+      if (code) err.code = code;
+      throw err;
+    }
     return data;
   },
 

@@ -358,6 +358,10 @@ def test_subscription_status_free_user_has_free_limit():
     body = r.json()
     assert body["active"] is False
     assert body["contacts_limit"] == config.FREE_CONTACT_LIMIT
+    # лимит принятия сделок: free-лимит, не израсходован, accept разрешён
+    assert body["deal_accept"]["used"] == 0
+    assert body["deal_accept"]["limit"] == config.FREE_DEAL_ACCEPT_LIMIT
+    assert body["deal_accept"]["can_accept"] is True
 
 
 def test_subscription_status_active_subscription_is_unlimited():
@@ -374,6 +378,9 @@ def test_subscription_status_active_subscription_is_unlimited():
     assert body["active"] is True
     assert body["contacts_limit"] is None, "подписчик с PREMIUM_CONTACT_LIMIT=0 — безлимит"
     assert body["auto_renewing"] is True
+    # лимит принятия сделок: подписчик получает PRO-лимит (30/мес)
+    assert body["deal_accept"]["limit"] == config.PRO_DEAL_ACCEPT_LIMIT
+    assert body["deal_accept"]["can_accept"] is True
 
 
 if __name__ == "__main__":

@@ -2062,15 +2062,20 @@ def _notify_rejected_siblings(rejected_siblings):
             pass
 
 
-def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
+def _finalize_accept_inline(c, user, bid: dict, final_amount: int, acceptor_id: str | None = None):
     """Shared accept logic used by accept_bid and counter/accept.
 
     Runs inside an open SQLite transaction (`with get_conn() as c:`).
     Authorises the user, updates linked cargo/trip, marks the winning bid
     as accepted (auto-rejecting siblings), creates a chat_room and a deal.
 
+    acceptor_id — сторона, которая ПРИНИМАЕТ сделку и тратит месячный лимит
+    (по умолчанию user — accept_bid; accept_counter передаёт bidder'а,
+    принимающего контр-оффер, т.к. авторизация там идёт от имени владельца).
+
     Returns: dict(deal_id, chat_room_id, from_city, to_city, shipper_id, driver_id)
     """
+    acceptor_id = acceptor_id or user["id"]
     bid_id = bid["id"]
     shipper_id = user["id"]
     driver_id = bid["bidder_id"]
@@ -2123,6 +2128,19 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
             detail="Ставку без привязки к грузу или рейсу принять нельзя",
         )
 
+    # Месячный лимит принятия сделок: лимит тратит СТОРОНА, которая принимает
+    # (acceptor_id). Проверка до любых мутаций — при 402 транзакция откатывается
+    # целиком, лимит не списывается. can_accept_deal() сама возвращает True,
+    # пока BETA_MODE или DEAL_ACCEPT_MONETIZATION_ENABLED=False.
+    from database import subscription_dal as _sub_dal
+    if not _sub_dal.can_accept_deal(acceptor_id):
+        _st = _sub_dal.get_deal_accept_limit(acceptor_id)
+        raise HTTPException(status_code=402, detail={
+            "error": "deal_limit_exceeded",
+            "used": _st["used"],
+            "limit": _st["limit"],
+        })
+
     # QA-аудит P0 (double-accept race): раньше WHERE id=? без guard —
     # два одновременных accept (двойной тап «Принять» или параллельный
     # accept двух ставок) оба проходили read-check выше и создавали ДВЕ
@@ -2170,6 +2188,11 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount: int):
          shipper_id, driver_id, from_city, to_city, final_amount,
          "accepted", chat_room_id),
     )
+    # Списание месячного лимита принятия — в той же транзакции, что и INSERT
+    # сделки (conn=c — иначе SQLite write-lock). INSERT OR IGNORE по
+    # UNIQUE(user_id, deal_id): повторный accept той же сделки не тратит
+    # лимит дважды; отмена сделки лимит не возвращает.
+    _sub_dal.record_deal_accept(acceptor_id, deal_id, conn=c)
 
     # PR4 — immutable юридическое событие сделки. actor = текущий пользователь
     # (из auth), created_at ставит сервер. Роль actor'а: тот, кто принял ставку,
@@ -2557,7 +2580,9 @@ def accept_counter(bid_id: str, user=Depends(require_level(1))):
         if not owner_id:
             raise HTTPException(status_code=409, detail="Не найден владелец груза/рейса")
         owner_user = {"id": owner_id}
-        result = _finalize_accept_inline(c, owner_user, bid, counter)
+        # acceptor — bidder, принимающий контр-оффер: именно он тратит
+        # месячный лимит принятия (авторизация идёт от имени владельца).
+        result = _finalize_accept_inline(c, owner_user, bid, counter, acceptor_id=user["id"])
         # Часть 3: событие — bidder принял контр-оффер (actor=bidder).
         _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
 

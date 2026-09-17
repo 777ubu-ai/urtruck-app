@@ -1353,7 +1353,13 @@ export default function ChatScreen({ navigation, route }) {
           .catch(() => {});
       }
     } catch (e) {
-      toast(t("accept_bid_failed"), "error");
+      if (e?.code === 'deal_limit_exceeded') {
+        // Месячный лимит принятия сделок — предлагаем экран тарифов.
+        toast(t("plans_limit_exceeded"), "error");
+        navigation.navigate("SubscriptionPlans");
+      } else {
+        toast(t("accept_bid_failed"), "error");
+      }
     } finally {
       setAccepting(false);
     }

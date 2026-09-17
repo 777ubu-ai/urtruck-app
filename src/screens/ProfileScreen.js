@@ -133,7 +133,8 @@ export default function ProfileScreen({ navigation, route }) {
     ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
     { icon: 'star', label: t('myReviews'), screen: 'Reviews', testID: 'profile-my-reviews' },
     { icon: 'heart', label: t('favorites_title'), screen: 'Favorites', testID: 'profile-favorites' },
-    { icon: 'zap', label: t('subscription_title'), screen: 'Subscription', testID: 'profile-subscription' },
+    ...(session ? [{ icon: 'zap', label: t('subscription_title'), screen: 'Subscription', testID: 'profile-subscription' }] : []),
+    ...(session ? [{ icon: 'award', label: t('plans_menu_title'), screen: 'SubscriptionPlans', testID: 'profile-plans' }] : []),
     { icon: 'help-circle', label: t('howit_header'), screen: 'HowItWorks', testID: 'profile-how-it-works' },
     { icon: 'info', label: t('about_title'), screen: 'About', testID: 'profile-about' },
   ];

@@ -6,7 +6,7 @@
 // Веб не продаёт подписку (Google Play Billing — Android-only) — на web
 // экран просто объясняет это и не трогает нативный IAP-модуль вовсе.
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useV1Colors } from '../theme/designV1';
@@ -26,7 +26,7 @@ if (Platform.OS !== 'web') {
 
 export default function SubscriptionScreen({ navigation, route }) {
   const v1 = useV1Colors();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { toast } = useToast();
   const role = route?.params?.role;
   const accent = role === 'driver' ? v1.driver : v1.cargoOwner;
@@ -158,6 +158,33 @@ export default function SubscriptionScreen({ navigation, route }) {
   // кнопку покупки не показываем вовсе.
   const isPilotFree = IS_BETA && !!status && !status.monetization_enabled;
 
+  // Отмена Google Play-подписки возможна только в интерфейсе Google Play
+  // (политика магазина) — открываем нативный экран управления подпиской,
+  // актуальный статус вернётся на сервер через RTDN-webhook.
+  const PLAY_SUBSCRIPTIONS_URL = 'https://play.google.com/store/account/subscriptions';
+  const manageSubscription = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      await Linking.openURL(PLAY_SUBSCRIPTIONS_URL);
+      return;
+    }
+    try {
+      await RNIap.deepLinkToSubscriptions({ sku: status?.google_product_id });
+    } catch {
+      try {
+        await Linking.openURL(PLAY_SUBSCRIPTIONS_URL);
+      } catch {
+        toast(t('subscription_manage_error'));
+      }
+    }
+  }, [status?.google_product_id, toast, t]);
+
+  const formatPeriodEnd = (value) => {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    const locale = lang === 'ZH' ? 'zh-CN' : lang === 'EN' ? 'en-GB' : lang === 'KK' ? 'kk-KZ' : 'ru-RU';
+    return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandHeader onBack={() => navigation.goBack()} accent={accent} compact />
@@ -193,7 +220,34 @@ export default function SubscriptionScreen({ navigation, route }) {
                 {(t('subscription_usage') || '').replace('{used}', used).replace('{limit}', limit)}
               </Text>
             )}
+            {isActive && status?.auto_renewing != null && (
+              <Text style={[s.cardSub, { color: v1.textMuted }]}>
+                {status.auto_renewing ? t('subscription_autorenew_on') : t('subscription_autorenew_off')}
+              </Text>
+            )}
+            {isActive && !!status?.period_end && (
+              <Text style={[s.cardSub, { color: v1.textMuted }]}>
+                {(t('subscription_valid_until') || '').replace('{date}', formatPeriodEnd(status.period_end))}
+              </Text>
+            )}
           </View>
+
+          {isActive && !isPilotFree && (Platform.OS === 'web' ? (
+            <TouchableOpacity onPress={manageSubscription} testID="subscription-manage-button">
+              <Text style={[s.manageLink, { color: accent }]}>{t('subscription_manage_cta')}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={s.manageBlock}>
+              <TouchableOpacity
+                style={[s.manageBtn, { borderColor: accent }]}
+                onPress={manageSubscription}
+                testID="subscription-manage-button"
+              >
+                <Text style={[s.manageBtnText, { color: accent }]}>{t('subscription_manage_cta')}</Text>
+              </TouchableOpacity>
+              <Text style={[s.manageHint, { color: v1.textMuted }]}>{t('subscription_cancel_hint')}</Text>
+            </View>
+          ))}
 
           {isPilotFree ? (
             <View style={[s.betaNote, { borderColor: v1.border, backgroundColor: v1.surface }]}>
@@ -239,4 +293,9 @@ const s = StyleSheet.create({
   retryBtnText: { fontSize: 15, fontWeight: '600' },
   betaNote: { borderRadius: 14, borderWidth: 1, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
   betaNoteText: { fontSize: 14, fontWeight: '600', flex: 1 },
+  manageBlock: { gap: 8 },
+  manageBtn: { borderRadius: 14, borderWidth: 1, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  manageBtnText: { fontSize: 16, fontWeight: '600' },
+  manageHint: { fontSize: 12, textAlign: 'center' },
+  manageLink: { fontSize: 14, fontWeight: '600', textAlign: 'center', textDecorationLine: 'underline' },
 });

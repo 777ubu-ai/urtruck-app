@@ -15,7 +15,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useI18n } from '../../utils/useI18n';
 import { useV1Colors, v1Radius } from '../../theme/designV1';
 import { marketAPI } from '../../utils/marketAPI';
@@ -26,6 +26,7 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
   const { t } = useI18n();
   const v1 = useV1Colors();
   const { toast } = useToast();
+  const navigation = useNavigation();
   const [bid, setBid] = useState(null);
   const [isOwner, setIsOwner] = useState(false);
   const [events, setEvents] = useState([]);
@@ -68,8 +69,15 @@ export default function BargainCard({ cargoId, tripId, myUserId, onOpenModal, on
     setBusy(true);
     try {
       const r = await fn();
-      if (r && r.ok === false) { toast(r.detail || t('send_error'), 'error'); }
-      else {
+      if (r && r.ok === false) {
+        if (r.dealLimitExceeded) {
+          // Лимит принятия сделок исчерпан — предлагаем экран тарифов.
+          toast(t('plans_limit_exceeded'), 'error');
+          navigation.navigate('SubscriptionPlans');
+        } else {
+          toast(r.detail || t('send_error'), 'error');
+        }
+      } else {
         if (okMsg) toast(okMsg, 'success');
         if (isDealClose && onDeal) onDeal(dealAmount);
       }

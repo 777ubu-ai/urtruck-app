@@ -369,6 +369,11 @@ export const marketAPI = {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
+    // Месячный лимит принятия сделок — отдельная ветка: UI предлагает
+    // экран тарифов вместо общей ошибки.
+    if (!r.ok && (d?.error === 'deal_limit_exceeded' || d?.detail?.error === 'deal_limit_exceeded')) {
+      return { ok: false, dealLimitExceeded: true, status: r.status };
+    }
     if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
@@ -425,6 +430,10 @@ export const marketAPI = {
       method: 'POST', headers: await headers(),
     });
     const d = await r.json();
+    // См. acceptBid: лимит принятия сделок выделяем отдельной веткой.
+    if (!r.ok && (d?.error === 'deal_limit_exceeded' || d?.detail?.error === 'deal_limit_exceeded')) {
+      return { ok: false, dealLimitExceeded: true, status: r.status };
+    }
     if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
