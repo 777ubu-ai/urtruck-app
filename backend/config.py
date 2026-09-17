@@ -120,7 +120,10 @@ PREMIUM_CONTACT_LIMIT = int(os.getenv("PREMIUM_CONTACT_LIMIT", "0"))  # 0 = бе
 # КОТОРАЯ ПРИНИМАЕТ сделку (accept_bid / accept_counter — и водитель, и
 # грузоотправитель). Отмена сделки лимит НЕ возвращает. В BETA_MODE и при
 # выключенном флаге лимит не действует (см. subscription_dal.can_accept_deal).
-DEAL_ACCEPT_MONETIZATION_ENABLED = os.getenv("DEAL_ACCEPT_MONETIZATION_ENABLED", "true").lower() in ("1", "true", "yes")
+# ВЫКЛЮЧЕН по умолчанию (решение владельца 2026-09-17), как и лимит
+# контактов выше: код на проде, покупка Pro тестируется, пользователей не
+# ограничиваем. Включается DEAL_ACCEPT_MONETIZATION_ENABLED=true в серверном .env.
+DEAL_ACCEPT_MONETIZATION_ENABLED = os.getenv("DEAL_ACCEPT_MONETIZATION_ENABLED", "false").lower() in ("1", "true", "yes")
 FREE_DEAL_ACCEPT_LIMIT = int(os.getenv("FREE_DEAL_ACCEPT_LIMIT", "5"))    # бесплатных принятий сделки в календарный месяц
 PRO_DEAL_ACCEPT_LIMIT = int(os.getenv("PRO_DEAL_ACCEPT_LIMIT", "30"))     # лимит при активной подписке (Pro)
 
