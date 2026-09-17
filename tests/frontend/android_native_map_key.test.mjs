@@ -24,7 +24,7 @@ test('native map uses Yandex MapKit with a separate native key', () => {
 test('native map keeps the MapKit instance stable and updates route data independently', () => {
   const map = read('src/components/TruckMap.native.js');
 
-  assert.match(map, /routingAPI\.roadRoute\(planned\.map\(toPair\), vehicle\)/);
+  assert.match(map, /routingAPI\.roadRoute\(planned\.map\(toPair\), vehicle, \{ signal: controller.signal \}\)/);
   assert.match(map, /const effectiveKey = routeKey\(planned\)/);
   assert.doesNotMatch(map, /routingAPI\.roadRoute\(\[live/);
   assert.match(map, /testID="truck-map-yandex-mapkit"/);

@@ -2,7 +2,7 @@
 // Route geometry comes from the authenticated UrTruck routing endpoint. The
 // MapKit instance stays mounted while GPS updates move only the truck marker.
 import React from 'react';
-import { NativeModules, StyleSheet, Text, View } from 'react-native';
+import { NativeModules, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import YaMap, { Marker, Polyline } from 'react-native-yamap';
 import { routingAPI } from '../utils/routingAPI';
 import { routeProgress } from '../utils/routeProgress';
@@ -29,6 +29,12 @@ const asPoint = (value) => {
 };
 
 const toPair = (point) => (point ? [point.lat, point.lon] : null);
+// Нельзя соединять соседние точки через повреждённый участок геометрии.
+const validPoints = (points) => {
+  if (!Array.isArray(points)) return [];
+  const parsed = points.map(asPoint);
+  return parsed.every(Boolean) ? parsed : [];
+};
 const routeKey = (points) => (points || [])
   .map((point) => `${Number(point?.lat).toFixed(4)}:${Number(point?.lon).toFixed(4)}`)
   .join('|');
@@ -75,35 +81,43 @@ export default function TruckMap({
 }) {
   const { t, lang } = useI18n();
   const live = asPoint([lat, lng]);
-  const planned = React.useMemo(() => (routePoints || []).map(asPoint).filter(Boolean), [routePoints]);
+  const planned = React.useMemo(() => validPoints(routePoints), [routePoints]);
   const effectiveKey = routeKey(planned);
   const vehicleKey = vehicle ? JSON.stringify(vehicle) : '';
   const [serverRoute, setServerRoute] = React.useState(null);
+  const [routeState, setRouteState] = React.useState('loading');
+  const [retry, setRetry] = React.useState(0);
   const mapRef = React.useRef(null);
   const truckMarkerRef = React.useRef(null);
   const previousLiveRef = React.useRef(null);
 
   React.useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     if (externalRoute || planned.length < 2) {
       setServerRoute(null);
       return () => { cancelled = true; };
     }
     setServerRoute(null);
-    routingAPI.roadRoute(planned.map(toPair), vehicle).then((result) => {
+    setRouteState('loading');
+    routingAPI.roadRoute(planned.map(toPair), vehicle, { signal: controller.signal }).then((result) => {
       if (cancelled) return;
-      if (result?.ok && Array.isArray(result.geometry) && result.geometry.length >= 2) {
+      if (result?.ok && validPoints(result.geometry).length >= 2) {
         setServerRoute({ ...result, routeKey: effectiveKey, vehicleKey });
+        setRouteState('ready');
       } else {
         setServerRoute(null);
+        setRouteState('error');
       }
+    }).catch(() => {
+      if (!cancelled) { setServerRoute(null); setRouteState('error'); }
     });
-    return () => { cancelled = true; };
-  }, [effectiveKey, externalRoute, vehicleKey]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [effectiveKey, externalRoute, vehicleKey, retry]);
 
   const resolvedRoute = externalRoute || (serverRoute?.routeKey === effectiveKey && serverRoute?.vehicleKey === vehicleKey ? serverRoute : null);
   const roadGeometry = React.useMemo(
-    () => (resolvedRoute?.geometry || []).map(asPoint).filter(Boolean),
+    () => validPoints(resolvedRoute?.geometry),
     [resolvedRoute?.geometry],
   );
   // Never paint planned city coordinates as a solid route: until the
@@ -197,7 +211,16 @@ export default function TruckMap({
         {endpointPoints.map(({ point, label }, index) => <Marker key={`endpoint-${index}`} point={{ lat: point.lat, lon: point.lon }} zIndex={5}><EndpointMarker label={label} /></Marker>)}
             {live ? <Marker ref={truckMarkerRef} point={{ lat: live.lat, lon: live.lon }} zIndex={20} anchor={{ x: 0.5, y: 0.5 }}><TruckMarker label={title || t('track_truck_marker')} /></Marker> : null}
       </YaMap>
-      {!resolvedRoute && planned.length >= 2 ? <View style={s.mapOverlay} pointerEvents="none"><Text style={s.mapFallbackText}>{t('map_building_route')}</Text></View> : null}
+      {road.length < 2 && planned.length >= 2 ? (
+        <View style={s.mapOverlay} pointerEvents="box-none">
+          <Text style={s.mapFallbackText}>{t(routeState === 'error' || externalRoute ? 'map_road_route_unavailable' : 'map_building_route')}</Text>
+          {routeState === 'error' && !externalRoute ? (
+            <TouchableOpacity style={s.retryButton} accessibilityRole="button" testID="truck-map-route-retry" onPress={() => setRetry((value) => value + 1)}>
+              <Text style={s.retryText}>{t('chat_attach_retry')}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -208,6 +231,8 @@ const s = StyleSheet.create({
   mapFallback: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, backgroundColor: '#EEF3F0' },
   mapOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(238,243,240,0.72)' },
   mapFallbackText: { color: '#617067', fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  retryButton: { minHeight: 44, minWidth: 100, marginTop: 12, paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: '#168759' },
+  retryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   mapDebugError: { marginTop: 8, color: '#9B2C2C', fontSize: 11, textAlign: 'center' },
   endpointMarker: { width: 24, height: 24, borderRadius: 12, borderWidth: 4, borderColor: '#168759', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(20,34,28,0.18)' },
   endpointMarkerWrap: { alignItems: 'center', justifyContent: 'center' },

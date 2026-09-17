@@ -14,21 +14,28 @@ async function headers() {
 
 const normalizePoint = (point) => {
   if (!Array.isArray(point) || point.length < 2) return null;
+  if (point[0] == null || point[1] == null || String(point[0]).trim() === '' || String(point[1]).trim() === '') return null;
   const lat = Number(point[0]);
   const lng = Number(point[1]);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   return { lat, lng };
 };
 
 export const routingAPI = {
-  async roadRoute(points, vehicle = null) {
-    const clean = (points || []).map(normalizePoint).filter(Boolean);
-    if (clean.length < 2) return { ok: false, detail: 'not_enough_points' };
+  async roadRoute(points, vehicle = null, { signal, timeoutMs = 90_000 } = {}) {
+    const clean = Array.isArray(points) ? points.map(normalizePoint) : [];
+    if (clean.length < 2 || clean.some((point) => !point)) return { ok: false, detail: 'invalid_route_points' };
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal?.addEventListener('abort', abort);
+    if (signal?.aborted) controller.abort();
+    const timer = setTimeout(abort, timeoutMs);
     try {
       const response = await authedFetch(`${API_BASE}/routing/road-route`, {
         method: 'POST',
         headers: await headers(),
         body: JSON.stringify({ points: clean, vehicle }),
+        signal: controller.signal,
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -40,7 +47,10 @@ export const routingAPI = {
       }
       return data;
     } catch (error) {
-      return { ok: false, detail: error?.message || 'network_error' };
+      return { ok: false, detail: controller.signal.aborted ? 'routing_cancelled_or_timeout' : error?.message || 'network_error' };
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
     }
   },
 };

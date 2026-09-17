@@ -29,6 +29,9 @@ routing_router = APIRouter(tags=["routing"])
 
 _YANDEX_URL = "https://api.routing.yandex.net/v2/route"
 _ORS_URL = "https://api.heigit.org/openrouteservice/v2/directions/driving-hgv/geojson"
+_ORS_SNAP_URL = "https://api.heigit.org/openrouteservice/v2/snap/driving-hgv/json"
+_ORS_SNAP_RADIUS_M = 2000
+_ORS_MAX_SEGMENTS = 16
 _CACHE_TTL_SECONDS = 15 * 60
 _CACHE_MAX_ITEMS = 256
 # HeiGIT/ORS rejects an individual request whose approximated route exceeds
@@ -363,7 +366,7 @@ async def _request_ors_with_limit_fallback(body: RoadRouteRequest, api_key: str)
         if not distance_limit:
             raise
 
-    split_points = _split_route_points(body.points)
+    split_points = await _snap_split_route_points(body.points, api_key)
     if len(split_points) <= len(body.points):
         raise RuntimeError("global_router_distance_limit_unsplittable")
 
@@ -377,6 +380,14 @@ async def _request_ors_with_limit_fallback(body: RoadRouteRequest, api_key: str)
             RoadRouteRequest(points=[start, end], vehicle=body.vehicle),
             api_key,
         )
+        incoming = segment.get("geometry") or []
+        if geometry and incoming:
+            gap = _approx_distance_m(
+                RoutePoint(lat=geometry[-1][0], lng=geometry[-1][1]),
+                RoutePoint(lat=incoming[0][0], lng=incoming[0][1]),
+            )
+            if gap > 5:
+                raise RuntimeError("global_router_discontinuous_segments")
         _append_polyline(geometry, segment.get("geometry") or [])
         distance_m += float(segment.get("distance_m") or 0)
         duration_s += float(segment.get("driving_duration_s") or segment.get("duration_s") or 0)
@@ -397,6 +408,67 @@ async def _request_ors_with_limit_fallback(body: RoadRouteRequest, api_key: str)
         "segmented": True,
         "segments": segment_count,
     }
+
+
+async def _snap_split_route_points(points: List[RoutePoint], api_key: str) -> list[RoutePoint]:
+    """Границы длинных участков должны лежать на сети HGV, а не в горах.
+
+    Проверяем максимум пять кандидатов около каждой границы одним snap-запросом.
+    Исходные адреса не сдвигаем. Snap-точки никогда не выдаём за геометрию дороги.
+    """
+    groups = []
+    coordinates = []
+    segment_count = 0
+    for start, end in zip(points, points[1:]):
+        pieces = max(1, math.ceil(_approx_distance_m(start, end) / _ORS_SEGMENT_TARGET_DISTANCE_M))
+        segment_count += pieces
+        if segment_count > _ORS_MAX_SEGMENTS:
+            raise RuntimeError("global_router_too_many_segments")
+        for index in range(1, pieces):
+            candidates = []
+            for offset in (0, -0.1, 0.1, -0.2, 0.2):
+                ratio = (index + offset) / pieces
+                candidate = RoutePoint(lat=start.lat + (end.lat-start.lat)*ratio,
+                                       lng=start.lng + (end.lng-start.lng)*ratio)
+                candidates.append(len(coordinates))
+                coordinates.append([candidate.lng, candidate.lat])
+            groups.append(candidates)
+        groups.append(end)
+    if not coordinates:
+        return list(points)
+    async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=7.0)) as client:
+        response = await client.post(_ORS_SNAP_URL, headers={"Authorization": api_key},
+                                     json={"locations": coordinates, "radius": _ORS_SNAP_RADIUS_M})
+    if response.status_code >= 400:
+        raise RuntimeError("global_router_snap_unavailable")
+    locations = response.json().get("locations")
+    if not isinstance(locations, list) or len(locations) != len(coordinates):
+        raise RuntimeError("global_router_snap_invalid_response")
+    result = [points[0]]
+    for group in groups:
+        if isinstance(group, RoutePoint):
+            result.append(group)
+            continue
+        snapped = None
+        for index in group:
+            item = locations[index]
+            if not isinstance(item, dict):
+                continue
+            location = item.get("location")
+            if not isinstance(location, list) or len(location) != 2:
+                continue
+            try:
+                candidate = RoutePoint(lat=location[1], lng=location[0])
+            except (ValueError, TypeError):
+                continue
+            original = RoutePoint(lat=coordinates[index][1], lng=coordinates[index][0])
+            if _approx_distance_m(original, candidate) <= _ORS_SNAP_RADIUS_M:
+                snapped = candidate
+                break
+        if snapped is None:
+            raise RuntimeError("global_router_boundary_not_on_road")
+        result.append(snapped)
+    return result
 
 
 # 2026-08-19 (owner, live production report: "3978 км за 2 дня 5 часов не
@@ -466,7 +538,7 @@ async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
         except Exception:
             pass
 
-    if ors_key:
+    if ors_key and not prefer_global:
         try:
             payload = _apply_realistic_duration(await _request_ors_with_limit_fallback(body, ors_key))
             _cache_put(key, payload)
