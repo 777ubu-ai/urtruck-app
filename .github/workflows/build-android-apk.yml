@@ -33,9 +33,9 @@ jobs:
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.8" >> "$GITHUB_ENV"
           # Must be strictly newer than the currently installed QA2 artifact.
-          # QA064: Android terminal playback без didJustFinish сбрасывает таймер в начало.
+          # QA065: независимый status poll восстанавливает пропущенный Android terminal callback.
           # Перед установкой отдельно сверить версию и подпись устройства.
-          echo "URTRUCK_VERSION_CODE=211040064" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_CODE=211040065" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           # Restore the live service endpoint. The isolated adb-reverse harness
           # has stub STT/translation and no native FCM credentials.
