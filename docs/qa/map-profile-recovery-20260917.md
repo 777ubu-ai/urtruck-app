@@ -38,3 +38,22 @@
 Документация ORS: https://giscience.github.io/openrouteservice/api-reference/endpoints/snapping/ ; https://openrouteservice.org/restrictions/ .
 Сборка 058: https://github.com/777ubu-ai/urtruck-app/actions/runs/35179129924 .
 Физические доказательства на Mac: `/private/tmp/urtruck-physical-058-20260917/`.
+
+
+## Post-build physical verification — APK 059
+
+Candidate source SHA: `12d7d6792abf62efcbf47093797d86efba0c9a1c`.
+GitHub Actions run: https://github.com/777ubu-ai/urtruck-app/actions/runs/35182811822 .
+APK: `com.urtruck.app.qa2`, versionName `1.0.8`, versionCode `211040059`.
+APK SHA256: `279ce682726f0516784bd667531699124cb6fb4c9e064bfa13a39ad063f45add`.
+Signer SHA256: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
+
+- Установлен одним и тем же APK через `adb install -r` на Xiaomi `4PYDDI4DHIXS5DD6` и `BUA6JB99T465Q49X`; очистки данных и uninstall не было.
+- На обоих устройствах `dumpsys package` подтверждает versionCode `211040059`.
+- Сессии Boris/shipper и Serik/driver пережили обновление и force-stop/relaunch; корневые вкладки обеих ролей отображаются.
+- На профиле Driver физически подтверждены закреплённый Back и строка `v1.0.8 (211040059)`.
+- На Shipper в той же активной сделке Иу→Москва нативная внутренняя карта загрузилась и реальный дорожный расчёт завершился: 9063 км, 4 дн 20 ч движения, 12 дн 8 ч с отдыхом. Ошибки `provider_not_configured` и «Карта недоступна» нет.
+- ETA/пройдено/прогресс не заявлены как PASS: фактический GPS находится вне коридора Иу→Москва, а ETA ещё не реализована.
+- Полный backend suite после route-fix: 858/858 PASS (изоляционный storage root для двух subprocess Sentry-тестов).
+
+Физические доказательства APK 059: `/private/tmp/urtruck-candidate-059-35182811822/`.
