@@ -29,8 +29,11 @@ test('Android chat dock uses the shared measured IME overlap only when resize is
   assert.match(src, /const keyboardDockInset = useKeyboardDockInset\(window\.height\)/);
   assert.doesNotMatch(src, /useKeyboardDockInset\(window\.height, insets\.top\)/,
     'the top safe-area must not be applied a second time to the IME dock');
-  assert.match(src, /position: 'absolute'/);
-  assert.match(src, /bottom: keyboardDockInset/);
+  assert.match(src, /style=\{\[s\.chatFullscreen, \{ paddingBottom: keyboardDockInset \}\]\}/);
+  const dock = src.slice(src.indexOf('s.composerDock,'), src.indexOf('testID="deal-chat-composer-dock"'));
+  assert.doesNotMatch(dock, /position: 'absolute'|bottom: keyboardDockInset/,
+    'composer должен занимать место в том же viewport, что и список сообщений');
+  assert.doesNotMatch(src, /paddingBottom: COMPOSER_INPUT_MAX_HEIGHT \+ 52/);
   assert.match(src, /Platform\.OS === 'ios' \? 'padding' : undefined/);
   assert.match(src, /keyboardDidShow/);
   assert.match(src, /keyboardDidHide/);
@@ -78,4 +81,29 @@ test('emoji control is a visible sibling of the multiline native input', () => {
     'the emoji must retain an independent, visible 40dp control at multiline height');
   assert.doesNotMatch(src, /inputEmojiButton: \{[^\n]*position: 'absolute'/,
     'an absolute emoji control can be painted below Android multiline TextInput');
+});
+
+test('изменение viewport прокручивает к последнему, но не отрывает чтение истории', () => {
+  const body = src.split('scheduleAutoScrollRef.current = () => {')[1].split('\n  };')[0];
+  let calls = 0;
+  const timers = [];
+  const mounted = { current: true };
+  const userScrolledAwayRef = { current: false };
+  const nearBottomRef = { current: true };
+  const run = new Function('mounted', 'userScrolledAwayRef', 'nearBottomRef', 'listRef', 'setTimeout', body)
+    .bind(null, mounted, userScrolledAwayRef, nearBottomRef,
+      { current: { scrollToEnd: () => calls++ } }, (fn) => timers.push(fn));
+  run();
+  assert.equal(calls, 1);
+  userScrolledAwayRef.current = true;
+  nearBottomRef.current = false;
+  for (const timer of timers.splice(0)) timer();
+  assert.equal(calls, 1, 'поздние layout callbacks не сдвигают открытую историю');
+  run();
+  assert.equal(calls, 1);
+  userScrolledAwayRef.current = false;
+  nearBottomRef.current = true;
+  mounted.current = false;
+  for (const timer of timers) timer();
+  assert.equal(calls, 1, 'после ухода с экрана callbacks не прокручивают список');
 });

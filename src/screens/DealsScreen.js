@@ -23,6 +23,7 @@ import { notificationsAPI } from '../utils/notificationsAPI';
 import { formatPrice } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
 import { countryCode } from '../utils/countryFlags';
+import { dealMessagePreview } from '../utils/dealMessagePreview';
 import { accentFor } from '../components/deal/DealRoom';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { isBidActionable } from '../utils/dealsUnread';
@@ -658,7 +659,7 @@ export default function DealsScreen({ navigation, route }) {
           ? t('tracking_action_required')
           : status.label;
       const statusColor = (needsReceiptConfirmation || trackingActionRequired) ? INFO : status.color;
-      const meta = [partnerName, data.last_message].filter(Boolean).join(' · ');
+      const meta = [partnerName, dealMessagePreview(data, lang)].filter(Boolean).join(' · ');
       const attentionRequired = needsReceiptConfirmation || trackingActionRequired ||
         unreadNotifPaths.includes(`/deals/${data.id}`) ||
         (data.cargo_id && unreadNotifPaths.includes(`/cargos/${data.cargo_id}`)) ||

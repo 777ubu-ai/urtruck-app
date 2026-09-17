@@ -1,0 +1,70 @@
+- STREAM_SYSTEM (aliased to: STREAM_RING):
+- STREAM_RING:
+   Volume Group: AUDIO_STREAM_RING
+- STREAM_NOTIFICATION (aliased to: STREAM_RING):
+   Volume Group: AUDIO_STREAM_NOTIFICATION
+- STREAM_SYSTEM_ENFORCED (aliased to: STREAM_RING):
+- STREAM_DTMF (aliased to: STREAM_RING):
+- VOLUME GROUP AUDIO_STREAM_NOTIFICATION:
+   Streams: STREAM_NOTIFICATION
+- VOLUME GROUP AUDIO_STREAM_RING:
+   Streams: STREAM_RING
+- ringer mode affected streams = 0x126 (STREAM_SYSTEM,STREAM_RING,STREAM_NOTIFICATION,STREAM_DTMF)
+09-05 01:20:24:345 rec update riid:11799 uid:10309 session:12673 src:MIC not silenced pack:com.urtruck.app.qa2
+09-05 01:20:28:414 rec stop riid:11799 uid:10309 session:12673 src:MIC not silenced pack:com.urtruck.app.qa2
+09-05 01:45:27:487 rec update riid:11807 uid:10309 session:12681 src:MIC not silenced pack:com.urtruck.app.qa2
+09-05 01:46:27:763 rec stop riid:11807 uid:10309 session:12681 src:MIC not silenced pack:com.urtruck.app.qa2
+09-05 01:48:47:634 rec update riid:11815 uid:10309 session:12689 src:MIC not silenced pack:com.urtruck.app.qa2
+09-05 01:49:06:138 rec stop riid:11815 uid:10309 session:12689 src:MIC not silenced pack:com.urtruck.app.qa2
+09-05 01:49:59:656 rec update riid:11823 uid:10309 session:12697 src:MIC not silenced pack:com.urtruck.app.qa2
+09-05 01:50:03:622 rec stop riid:11823 uid:10309 session:12697 src:MIC not silenced pack:com.urtruck.app.qa2
+09-05 23:57:42:300 rec update riid:12103 uid:10309 session:12993 src:MIC not silenced pack:com.urtruck.app.qa2
+09-05 23:57:58:573 rec stop riid:12103 uid:10309 session:12993 src:MIC not silenced pack:com.urtruck.app.qa2
+09-07 09:02:13:561 rec update riid:12383 uid:10309 session:13281 src:MIC not silenced pack:com.urtruck.app.qa2
+09-07 09:02:18:146 rec stop riid:12383 uid:10309 session:13281 src:MIC not silenced pack:com.urtruck.app.qa2
+09-07 22:56:17:201 rec update riid:12687 uid:10309 session:13585 src:MIC not silenced pack:com.urtruck.app.qa2
+09-07 22:56:59:401 rec stop riid:12687 uid:10309 session:13585 src:MIC not silenced pack:com.urtruck.app.qa2
+09-07 22:58:40:038 rec update riid:12695 uid:10309 session:13593 src:MIC not silenced pack:com.urtruck.app.qa2
+09-07 22:58:53:827 rec stop riid:12695 uid:10309 session:13593 src:MIC not silenced pack:com.urtruck.app.qa2
+09-07 22:59:48:184 rec update riid:12703 uid:10309 session:13601 src:MIC not silenced pack:com.urtruck.app.qa2
+09-07 23:00:14:828 rec stop riid:12703 uid:10309 session:13601 src:MIC not silenced pack:com.urtruck.app.qa2
+09-07 23:00:20:306 rec update riid:12711 uid:10309 session:13609 src:MIC not silenced pack:com.urtruck.app.qa2
+09-07 23:03:04:033 rec stop riid:12711 uid:10309 session:13609 src:MIC not silenced pack:com.urtruck.app.qa2
+09-08 19:50:00:408 rec update riid:12991 uid:10309 session:13897 src:MIC not silenced pack:com.urtruck.app.qa2
+09-08 20:04:37:105 rec stop riid:12991 uid:10309 session:13897 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 00:12:39:170 rec update riid:14119 uid:10309 session:15025 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 00:12:48:721 rec stop riid:14119 uid:10309 session:15025 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 11:51:10:732 rec update riid:14199 uid:10309 session:15121 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 11:51:34:706 rec stop riid:14199 uid:10309 session:15121 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 15:49:19:765 rec update riid:14271 uid:10309 session:15209 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 15:49:42:861 rec stop riid:14271 uid:10309 session:15209 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 21:31:28:243 rec update riid:14551 uid:10309 session:15481 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 21:31:49:226 rec stop riid:14551 uid:10309 session:15481 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 22:12:13:640 rec update riid:14567 uid:10309 session:15497 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 22:13:05:869 rec stop riid:14567 uid:10309 session:15497 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 22:26:29:665 rec update riid:14575 uid:10309 session:15505 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 22:26:56:896 rec stop riid:14575 uid:10309 session:15505 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 22:30:38:319 rec update riid:14583 uid:10309 session:15513 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 22:31:38:190 rec stop riid:14583 uid:10309 session:15513 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 22:33:10:782 rec update riid:14591 uid:10309 session:15521 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 22:33:13:529 rec stop riid:14591 uid:10309 session:15521 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 22:36:00:244 rec update riid:14599 uid:10309 session:15529 src:MIC not silenced pack:com.urtruck.app.qa2
+09-13 22:36:17:721 rec stop riid:14599 uid:10309 session:15529 src:MIC not silenced pack:com.urtruck.app.qa2
+09-14 01:41:53:038 rec update riid:14607 uid:10309 session:15537 src:MIC not silenced pack:com.urtruck.app.qa2
+09-14 01:42:07:382 rec stop riid:14607 uid:10309 session:15537 src:MIC not silenced pack:com.urtruck.app.qa2
+09-14 03:10:26:993 rec update riid:14623 uid:10309 session:15553 src:MIC not silenced pack:com.urtruck.app.qa2
+09-14 03:10:43:591 rec stop riid:14623 uid:10309 session:15553 src:MIC not silenced pack:com.urtruck.app.qa2
+09-15 22:02:41:284 rec update riid:15519 uid:10309 session:16449 src:MIC not silenced pack:com.urtruck.app.qa2
+09-15 22:03:02:040 rec stop riid:15519 uid:10309 session:16449 src:MIC not silenced pack:com.urtruck.app.qa2
+09-15 22:06:44:900 rec update riid:15527 uid:10309 session:16457 src:MIC not silenced pack:com.urtruck.app.qa2
+09-15 22:06:49:334 rec stop riid:15527 uid:10309 session:16457 src:MIC not silenced pack:com.urtruck.app.qa2
+09-16 11:48:35:192 rec update riid:15887 uid:10309 session:16785 src:MIC not silenced pack:com.urtruck.app.qa2
+09-16 11:49:35:259 rec stop riid:15887 uid:10309 session:16785 src:MIC not silenced pack:com.urtruck.app.qa2
+08-06 18:19:36:167 adjustStreamVolume(stream:STREAM_RING dir:ADJUST_SAME flags:0x4) from com.android.systemui
+08-19 14:36:49:788 adjustStreamVolume(stream:STREAM_RING dir:ADJUST_SAME flags:0x4) from com.android.systemui
+08-06 18:19:36:111 STREAM_NOTIFICATION muting by muteRingerModeStreams
+08-06 18:19:36:124 STREAM_RING muting by muteRingerModeStreams
+08-19 14:36:49:723 STREAM_NOTIFICATION unmuting by muteRingerModeStreams
+08-19 14:36:49:775 STREAM_RING unmuting by muteRingerModeStreams
+	AudioAttributes: usage=USAGE_NOTIFICATION_RINGTONE content=CONTENT_TYPE_UNKNOWN flags=0x800 tags= bundle=null forVolume: true stream: STREAM_RING(2)
+	AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_UNKNOWN flags=0x800 tags= bundle=null forVolume: true stream: STREAM_NOTIFICATION(5)

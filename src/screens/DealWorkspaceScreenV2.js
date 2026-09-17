@@ -384,8 +384,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const language = getLanguage();
 
   // iOS keeps KAV padding below. Android 15/16 can keep the React root at full
-  // height despite adjustResize, so the shared dock hook moves only the
-  // composer overlay by the measured IME overlap. It returns zero on resized
+  // height despite adjustResize. Reserve the measured IME overlap for the
+  // entire chat viewport, including its list and composer. Zero on resized
   // windows and on iOS, avoiding a second inset.
   React.useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -1599,7 +1599,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-workspace-screen">
       <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
         {viewMode === VIEW_CHAT ? (
-          <View style={s.chatFullscreen} testID="deal-chat-fullscreen">
+          <View style={[s.chatFullscreen, { paddingBottom: keyboardDockInset }]} testID="deal-chat-fullscreen">
             {/* Navigation chrome is fixed OUTSIDE the scrolling message list.
                 A long chat must never scroll the only Back control off-screen. */}
             {compactHeader}
@@ -1645,10 +1645,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     renderItem={renderMessage}
                     keyExtractor={(item) => item.id}
                     style={s.messageList}
-                    contentContainerStyle={[
-                      s.messageContent,
-                      keyboardDockInset > 0 ? { paddingBottom: COMPOSER_INPUT_MAX_HEIGHT + 52 } : null,
-                    ]}
+                    contentContainerStyle={s.messageContent}
+                    onLayout={() => {
+                      // После изменения IME-области показываем последнее сообщение,
+                      // сохраняя позицию пользователя, читающего старую историю.
+                      scheduleAutoScrollRef.current?.();
+                    }}
                     keyboardShouldPersistTaps="handled"
                     onScroll={(event) => {
                       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -1703,14 +1705,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 <View
                   style={[
                     s.composerDock,
-                    keyboardDockInset > 0 ? {
-                      position: 'absolute',
-                      left: 0,
-                      right: 0,
-                      bottom: keyboardDockInset,
-                      zIndex: 30,
-                      elevation: 30,
-                    } : null,
                     {
                       backgroundColor: colors.bg,
                       borderTopColor: colors.border,
