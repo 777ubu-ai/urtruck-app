@@ -33,9 +33,9 @@ jobs:
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.8" >> "$GITHUB_ENV"
           # Must be strictly newer than the currently installed QA2 artifact.
-          # Следующий QA-кандидат после успешного CI артефакта 211040056.
+          # Следующий QA-кандидат после успешного CI артефакта 211040057.
           # Перед установкой отдельно сверить версию и подпись устройства.
-          echo "URTRUCK_VERSION_CODE=211040057" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_CODE=211040058" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           # Restore the live service endpoint. The isolated adb-reverse harness
           # has stub STT/translation and no native FCM credentials.
