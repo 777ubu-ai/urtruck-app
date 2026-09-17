@@ -2348,7 +2348,7 @@ def _notify_rejected_siblings(rejected_siblings):
             pass
 
 
-def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: str = "pending"):
+def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: str = "pending", acceptor_id: str | None = None):
     """Shared accept logic used by accept_bid and counter/accept.
 
     Runs inside an open SQLite transaction (`with get_conn() as c:`).
@@ -2373,6 +2373,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
     Returns: dict(deal_id, chat_room_id, from_city, to_city, shipper_id, driver_id)
     """
+    acceptor_id = acceptor_id or user["id"]
     bid_id = bid["id"]
     shipper_id = user["id"]
     driver_id = bid["bidder_id"]
@@ -2442,6 +2443,15 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
             status_code=409,
             detail="Ставку без привязки к грузу или рейсу принять нельзя",
         )
+
+    from database import subscription_dal as _sub_dal
+    if not _sub_dal.can_accept_deal(acceptor_id):
+        _st = _sub_dal.get_deal_accept_limit(acceptor_id)
+        raise HTTPException(status_code=402, detail={
+            "error": "deal_limit_exceeded",
+            "used": _st["used"],
+            "limit": _st["limit"],
+        })
 
     # QA-аудит P0 (double-accept race): раньше WHERE id=? без guard —
     # два одновременных accept (двойной тап «Принять» или параллельный
@@ -2515,6 +2525,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
          shipper_id, driver_id, from_city, to_city, final_amount,
          "accepted", chat_room_id),
     )
+    _sub_dal.record_deal_accept(acceptor_id, deal_id, conn=c)
 
     # PR4 — immutable юридическое событие сделки. actor = текущий пользователь
     # (из auth), created_at ставит сервер. Роль actor'а: тот, кто принял ставку,
@@ -2964,7 +2975,7 @@ def accept_counter(bid_id: str, user=Depends(require_active_level(1))):
         if not owner_id:
             raise HTTPException(status_code=409, detail="Не найден владелец груза/рейса")
         owner_user = {"id": owner_id}
-        result = _finalize_accept_inline(c, owner_user, bid, counter, expected_status="countered")
+        result = _finalize_accept_inline(c, owner_user, bid, counter, expected_status="countered", acceptor_id=user["id"])
         # Часть 3: событие — bidder принял контр-оффер (actor=bidder).
         _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
 

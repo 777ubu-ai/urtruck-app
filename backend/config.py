@@ -116,6 +116,14 @@ CONTACTS_MONETIZATION_ENABLED = os.getenv("CONTACTS_MONETIZATION_ENABLED", "fals
 FREE_CONTACT_LIMIT = int(os.getenv("FREE_CONTACT_LIMIT", "3"))        # бесплатных раскрытий контакта в календарный месяц
 PREMIUM_CONTACT_LIMIT = int(os.getenv("PREMIUM_CONTACT_LIMIT", "0"))  # 0 = безлимит для подписчиков
 
+# Лимит принятия сделок (accept) — монетизация. Лимит тратит СТОРОНА,
+# КОТОРАЯ ПРИНИМАЕТ сделку (accept_bid / accept_counter — и водитель, и
+# грузоотправитель). Отмена сделки лимит НЕ возвращает. В BETA_MODE и при
+# выключенном флаге лимит не действует (см. subscription_dal.can_accept_deal).
+DEAL_ACCEPT_MONETIZATION_ENABLED = os.getenv("DEAL_ACCEPT_MONETIZATION_ENABLED", "true").lower() in ("1", "true", "yes")
+FREE_DEAL_ACCEPT_LIMIT = int(os.getenv("FREE_DEAL_ACCEPT_LIMIT", "5"))    # бесплатных принятий сделки в календарный месяц
+PRO_DEAL_ACCEPT_LIMIT = int(os.getenv("PRO_DEAL_ACCEPT_LIMIT", "30"))     # лимит при активной подписке (Pro)
+
 # Google Play Billing — верификация покупок подписки (Android Publisher API).
 # GOOGLE_PLAY_PACKAGE_NAME должен совпадать с app.json → android.package.
 # GOOGLE_PLAY_SERVICE_ACCOUNT_JSON пуст по умолчанию → MOCK-режим верификации

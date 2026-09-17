@@ -30,6 +30,7 @@ def subscription_status(user=Depends(require_level(1))):
         limit = None
     else:
         limit = config.PREMIUM_CONTACT_LIMIT if sub else config.FREE_CONTACT_LIMIT
+    deal_accept = sub_dal.get_deal_accept_limit(uid)
     return {
         "monetization_enabled": config.CONTACTS_MONETIZATION_ENABLED,
         "active": bool(sub),
@@ -38,6 +39,11 @@ def subscription_status(user=Depends(require_level(1))):
         "auto_renewing": bool(sub.get("auto_renewing")) if sub else None,
         "contacts_used_this_period": used,
         "contacts_limit": limit,
+        "deal_accept": {
+            "used": deal_accept["used"],
+            "limit": deal_accept["limit"],
+            "can_accept": sub_dal.can_accept_deal(uid),
+        },
         "google_product_id": config.GOOGLE_PLAY_CONTACTS_PRODUCT_ID,
     }
 

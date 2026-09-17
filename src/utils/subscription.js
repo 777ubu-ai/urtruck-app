@@ -19,12 +19,24 @@ async function headers() {
 
 export const subscriptionAPI = {
   // {monetization_enabled, active, plan, period_end, auto_renewing,
-  //  contacts_used_this_period, contacts_limit, google_product_id}
+  //  contacts_used_this_period, contacts_limit, google_product_id,
+  //  deal_accept: {used, limit, can_accept}}
   async status() {
     try {
       const r = await authedFetch(`${BASE}/subscription/status`, { headers: await headers() });
       const data = await r.json().catch(() => ({}));
-      return { ok: r.ok, ...data };
+      // Лимит принятия сделок приходит в deal_accept от нового бэкенда;
+      // старый бэкенд его не шлёт — фолбэк used=0, limit=5.
+      const dealAccept = data?.deal_accept && typeof data.deal_accept === 'object' ? data.deal_accept : {};
+      return {
+        ok: r.ok,
+        ...data,
+        deal_accept: {
+          used: Number.isFinite(dealAccept.used) ? dealAccept.used : 0,
+          limit: Number.isFinite(dealAccept.limit) ? dealAccept.limit : 5,
+          can_accept: dealAccept.can_accept !== false,
+        },
+      };
     } catch {
       return { ok: false };
     }

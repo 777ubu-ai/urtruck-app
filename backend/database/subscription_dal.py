@@ -155,3 +155,57 @@ def can_reveal_contact(user_id: str, deal_id: str) -> dict:
     limit = config.PREMIUM_CONTACT_LIMIT if sub else config.FREE_CONTACT_LIMIT
     used = count_reveals_this_period(user_id)
     return {"allowed": used < limit, "used": used, "limit": limit, "unlimited": False}
+
+
+# ----------------------------------------------------------------
+# Deal accept limit (принятие сделки — accept_bid / accept_counter)
+# ----------------------------------------------------------------
+def count_deal_accepts_this_period(user_id: str, period_key: str | None = None) -> int:
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT COUNT(*) AS n FROM deal_accept_usage WHERE user_id = ? AND period_key = ?",
+            (user_id, period_key or _current_period_key()),
+        ).fetchone()
+        return row["n"] if row else 0
+
+
+def get_deal_accept_limit(user_id: str) -> dict:
+    """Сколько принятий сделок использовано в текущем месяце и каков лимит.
+
+    limit = config.PRO_DEAL_ACCEPT_LIMIT при активной подписке, иначе
+    config.FREE_DEAL_ACCEPT_LIMIT. Возвращает {"used", "limit"}."""
+    sub = get_active_subscription(user_id)
+    limit = config.PRO_DEAL_ACCEPT_LIMIT if sub else config.FREE_DEAL_ACCEPT_LIMIT
+    return {"used": count_deal_accepts_this_period(user_id), "limit": limit}
+
+
+def can_accept_deal(user_id: str) -> bool:
+    """Единая точка правды по лимиту принятия сделок.
+
+    config.BETA_MODE или DEAL_ACCEPT_MONETIZATION_ENABLED=False → всегда
+    True (бета-тестеры и прод до явного включения флага не ограничиваются).
+    Иначе — True, пока used < limit в текущем месяце. Отмена сделки лимит
+    не возвращает (см. record_deal_accept)."""
+    if config.BETA_MODE or not config.DEAL_ACCEPT_MONETIZATION_ENABLED:
+        return True
+    st = get_deal_accept_limit(user_id)
+    return st["used"] < st["limit"]
+
+
+def record_deal_accept(user_id: str, deal_id: str, conn=None) -> None:
+    """Идемпотентно (UNIQUE(user_id, deal_id)) списать лимит принятия.
+
+    conn — опционально открытая транзакция accept (та же, что и INSERT в
+    deals): иначе второе SQLite-соединение упрётся в write-lock. Отмена/
+    завершение сделки запись НЕ удаляет — месячный лимит не возвращается."""
+    if conn is not None:
+        conn.execute(
+            "INSERT OR IGNORE INTO deal_accept_usage (id, user_id, deal_id, period_key) VALUES (?, ?, ?, ?)",
+            (new_id(), user_id, deal_id, _current_period_key()),
+        )
+        return
+    with get_conn() as c:
+        c.execute(
+            "INSERT OR IGNORE INTO deal_accept_usage (id, user_id, deal_id, period_key) VALUES (?, ?, ?, ?)",
+            (new_id(), user_id, deal_id, _current_period_key()),
+        )
