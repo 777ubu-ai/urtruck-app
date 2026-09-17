@@ -9,6 +9,9 @@ const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8'
 const trip = fs.readFileSync('src/screens/TripDetailV2.js', 'utf8');
 const cargo = fs.readFileSync('src/screens/CargoDetailV2.js', 'utf8');
 const feed = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
+// Design v1 Commit 3: the bookmark icon canon lives in MarketplaceCard;
+// the screen wires it per card via the `bookmark` prop.
+const card = fs.readFileSync('src/components/ui/v1/MarketplaceCard.js', 'utf8');
 const backend = fs.readFileSync('backend/api/marketplace.py', 'utf8');
 
 test('main tabs are four canonical tabs with Border and no Profile duplication', () => {
@@ -22,6 +25,11 @@ test('main tabs are four canonical tabs with Border and no Profile duplication',
   assert.doesNotMatch(bottom, /Profile:\s*\{/);
   assert.match(bottom, /name === 'Queue'\)\s+return t\('tab_border'\)/);
   assert.doesNotMatch(bottom, /route\.name === 'Publish'/);
+
+  const driverStart = tabs.indexOf('{isDriver ? (');
+  const driverTabs = tabs.slice(driverStart, tabs.indexOf(') : (', driverStart));
+  assert.match(driverTabs, /name="Feed"[\s\S]*name="MyWork"[\s\S]*name="Deals"[\s\S]*name="Queue"/,
+    'Driver order is Cargo → Trips → Deals → Border');
 });
 
 test('shared resolver enforces driver and shipper actions including explicit received', () => {
@@ -43,7 +51,10 @@ test('workspace and detail routers keep received in the active deal experience',
 
 test('driver save UI uses bookmark consistently', () => {
   assert.match(feed, /cargo-filter-favorites/);
-  assert.match(feed, /name="bookmark"/);
+  // Icon canon moved into the shared card (FeedCard/CargoCard forks are
+  // gone); the driver feed keeps its per-card bookmark testID wiring.
+  assert.match(card, /BookmarkButton/);
+  assert.match(feed, /testID: `cargo-card-bookmark-\$\{item\.id\}`/);
   assert.doesNotMatch(feed, /<Feather name="star"/);
 });
 

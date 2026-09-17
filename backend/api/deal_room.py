@@ -3,7 +3,6 @@
 Новые endpoints поверх существующего чата. Старые /chat/rooms и
 /chat/messages/{room_id} НЕ трогаются.
 """
-import re
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -17,104 +16,23 @@ from database import deal_room_dal as dr
 from services import storage_service
 from services import file_signing
 from api.push import send_to_user
+from api.notifications import create_notification
 from database.db import get_conn, new_id
 
-_MAX_ATTACH_BYTES = 12 * 1024 * 1024
-_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-_XLS_MIME = "application/vnd.ms-excel"
-_CSV_MIME = "text/csv"
-_ALLOWED = {
-    "image/jpeg": ("photo", "jpg"),
-    "image/png": ("photo", "png"),
-    "application/pdf": ("document", "pdf"),
-    _XLSX_MIME: ("document", "xlsx"),
-    _XLS_MIME: ("document", "xls"),
-    _CSV_MIME: ("document", "csv"),
-}
-_GENERIC_DECLARED_MIME = {
-    "",
-    "application/octet-stream",
-    "binary/octet-stream",
-    "application/x-download",
-}
-_DECLARED_ALIASES = {
-    "image/jpg": "image/jpeg",
-    "application/x-pdf": "application/pdf",
-    "application/acrobat": "application/pdf",
-    "application/vnd.ms-office": _XLS_MIME,
-    "application/xls": _XLS_MIME,
-    "application/x-excel": _XLS_MIME,
-    "application/msexcel": _XLS_MIME,
-    "application/x-msexcel": _XLS_MIME,
-    "application/csv": _CSV_MIME,
-    "text/comma-separated-values": _CSV_MIME,
-    "text/x-csv": _CSV_MIME,
-}
-# xlsx (and docx/pptx/any zip) all start with the same PK signature — a real
-# xlsx is a zip that additionally contains an OOXML spreadsheet part. Legacy
-# .xls is an OLE2 Compound File; that signature is unambiguous. CSV has no
-# magic bytes at all (it's plain text), so it can only be recognized by
-# "this isn't any known binary format and it decodes as text" — weaker than
-# the other checks by nature of the format, not an oversight.
-_ZIP_SIG = b"PK\x03\x04"
-_OLE2_SIG = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+# Sniffing/validation lives in services.upload_validation — single source of
+# truth shared with registration/profile/chat upload endpoints. These aliases
+# keep the deal-room tests and this module's call sites stable.
+from services import upload_validation as _uv
 
-
-def _looks_like_xlsx(raw: bytes) -> bool:
-    if raw[:4] != _ZIP_SIG:
-        return False
-    # A zip is xlsx only if it actually contains the OOXML spreadsheet parts,
-    # not just because it starts with PK (docx/pptx/plain .zip share that
-    # signature). Require BOTH the package manifest and a workbook part —
-    # either alone is not enough to rule out a same-signature docx/pptx.
-    head = raw[:8192]
-    body = raw[:200000]
-    return b"[Content_Types].xml" in head and (b"xl/workbook.xml" in body or b"xl/" in body)
-
-
-def _looks_like_text(raw: bytes) -> bool:
-    sample = raw[:8192]
-    if b"\x00" in sample:
-        return False
-    try:
-        text = sample.decode("utf-8")
-    except UnicodeDecodeError:
-        return False
-    # No CSV magic bytes exist. "Decodes as UTF-8" alone would misclassify
-    # any plain-text file (.txt, .json, source code) as a document upload —
-    # additionally require the newline + delimiter shape a real CSV has.
-    return "\n" in text and ("," in text or ";" in text or "\t" in text)
-
-
-def _sniff_mime(raw: bytes) -> str | None:
-    if raw[:3] == b"\xff\xd8\xff":
-        return "image/jpeg"
-    if raw[:8] == b"\x89PNG\r\n\x1a\n":
-        return "image/png"
-    if raw[:5] == b"%PDF-":
-        return "application/pdf"
-    if _looks_like_xlsx(raw):
-        return _XLSX_MIME
-    if raw[:8] == _OLE2_SIG:
-        # OLE2 covers legacy .xls/.doc/.ppt alike; only .xls is accepted here
-        # (declared-vs-sniffed cross-check below rejects a mislabeled .doc).
-        return _XLS_MIME
-    if _looks_like_text(raw):
-        # Text content plus a CSV-shaped declared MIME/extension (checked by
-        # the caller) is the honest floor here — there is nothing stronger
-        # to check for a format with no magic bytes at all.
-        return _CSV_MIME
-    return None
-
-
-def _safe_original_name(value: Optional[str], ext: str) -> str:
-    # Safari may send Unicode/spaces/parentheses — keep them, but strip paths,
-    # controls and excessive length. Never use this value as a storage key.
-    raw = str(value or "").replace("\\", "/").split("/")[-1].strip()
-    raw = re.sub(r"[\x00-\x1f\x7f]+", "", raw)
-    if not raw:
-        raw = f"document.{ext}"
-    return raw[:180]
+_MAX_ATTACH_BYTES = _uv.MAX_ATTACH_BYTES
+_XLSX_MIME = _uv.XLSX_MIME
+_XLS_MIME = _uv.XLS_MIME
+_CSV_MIME = _uv.CSV_MIME
+_ALLOWED = _uv.ALLOWED_ATTACHMENTS
+_GENERIC_DECLARED_MIME = _uv.GENERIC_DECLARED_MIME
+_DECLARED_ALIASES = _uv.DECLARED_ALIASES
+_sniff_mime = _uv.sniff_mime
+_safe_original_name = _uv.sanitize_original_name
 
 
 def _ensure_attachment_columns() -> None:
@@ -413,6 +331,23 @@ async def upload_attachment(
         if room:
             recipient_id = room["participant_2"] if room["participant_1"] == user["id"] else room["participant_1"]
             label = f"📄 {original_name}" if resolved_kind == "document" else "🖼 Фото"
+            attachment_id = att.get("id") if isinstance(att, dict) else None
+            event_key = f"chat:{conversation_id}:attachment:{attachment_id}"
+            # Bell remains available even if the asynchronous provider push
+            # is delayed or rejected. The persisted attachment id makes this
+            # write idempotent across upload retries.
+            create_notification(
+                recipient_id,
+                "chat_attachment",
+                "Новое вложение в сделке",
+                label,
+                "📄" if resolved_kind == "document" else "🖼",
+                url=f"/chats/{conversation_id}",
+                event_key=event_key,
+            )
+            # Push-closure track: event_key from the persisted attachment id —
+            # same family as chat text (message_id), a fresh attachment row
+            # is created for every real upload, never reused on retry.
             send_to_user(
                 recipient_id,
                 "Новое вложение в сделке",
@@ -422,9 +357,11 @@ async def upload_attachment(
                 data={
                     "type": "chat_attachment",
                     "room_id": conversation_id,
-                    "attachment_id": att.get("id") if isinstance(att, dict) else None,
+                    "attachment_id": attachment_id,
                     "sender_id": user["id"],
                     "recipient_id": recipient_id,
+                    "event_key": event_key,
+                    "event": "chat.attachment",
                 },
             )
     except Exception as exc:

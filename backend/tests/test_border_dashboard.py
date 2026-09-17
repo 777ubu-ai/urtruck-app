@@ -12,7 +12,9 @@ from pathlib import Path
 os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_border.db")
 os.environ.setdefault("CGR_FEATURE_ENABLED", "true")
 os.environ.setdefault("CGR_IIN_SALT", "test-salt")
-Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
+    Path(os.environ["DB_PATH"]).unlink(missing_ok=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))

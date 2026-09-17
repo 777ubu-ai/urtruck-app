@@ -18,6 +18,13 @@ const getCopy = () => ({
   driver: { title: tGlobal('gate_driver'), body: tGlobal('gate_driver_desc') },
   bid: { title: tGlobal('gate_bid'), body: tGlobal('gate_bid_desc') },
   open_detail: { title: tGlobal('gate_detail'), body: tGlobal('gate_detail_desc') },
+  // Bell → notification center is only registered in the full-access
+  // navigation stack (AppNavigator.js) —
+  // a guest/no-role user tapping Bell used to hit a route that doesn't
+  // exist in their stack (silent no-op). Gated the same way every other
+  // account-required action on this screen already is, instead of either
+  // leaving it broken or registering an inbox for a guest with no account.
+  push_settings: { title: tGlobal('gate_login'), body: tGlobal('gate_push_desc') },
 });
 
 function pickTarget(currentLevel, requiredLevel) {

@@ -4,20 +4,26 @@
 // - shipper saves a concrete published trip by trip.id (NOT the driver id);
 // - FavoritesScreen loads every type and routes cargo/trip/driver correctly;
 // - canonical saved icon is bookmark; repeated taps are guarded in-flight.
+//
+// 2026-09-09 (Design v1 Commit 3): FeedCard.js is dead (0 importers, deletion
+// scheduled for Commit 8). The canonical control now lives in BookmarkButton,
+// which MarketplaceCard composes for every marketplace list.
 
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
-const feedCard = fs.readFileSync('src/components/ui/v1/FeedCard.js', 'utf8');
+const marketplaceCard = fs.readFileSync('src/components/ui/v1/MarketplaceCard.js', 'utf8');
+const bookmarkButton = fs.readFileSync('src/components/ui/v1/BookmarkButton.js', 'utf8');
 const shipperFeed = fs.readFileSync('src/screens/FeedScreen.js', 'utf8');
 const driverFeed = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
 const favorites = fs.readFileSync('src/screens/FavoritesScreen.js', 'utf8');
 
 // Canonical icon remains a bookmark everywhere.
-assert.ok(/name="bookmark"/.test(feedCard), 'FeedCard bookmark icon required');
-assert.ok(!/name="heart"/.test(feedCard), 'FeedCard must not regress to a heart icon');
-assert.ok(/name="bookmark"/.test(driverFeed), 'Driver cargo feed bookmark icon required');
-assert.ok(/name="bookmark"/.test(shipperFeed), 'Shipper trip feed bookmark icon required');
+assert.ok(/BookmarkButton/.test(marketplaceCard), 'MarketplaceCard must compose the canonical bookmark control');
+assert.ok(/name="bookmark"/.test(bookmarkButton), 'BookmarkButton icon required');
+assert.ok(!/name="heart"/.test(bookmarkButton), 'BookmarkButton must not regress to a heart icon');
+assert.ok(/bookmark=\{[\s\S]*testID: `cargo-card-bookmark-\$\{item\.id\}`/.test(driverFeed), 'Driver cargo feed bookmark wiring required');
+assert.ok(/bookmark=\{[\s\S]*testID: `trip-card-bookmark-\$\{item\.id\}`/.test(shipperFeed), 'Shipper trip feed bookmark wiring required');
 assert.ok(/FontAwesome5 name="bookmark"/.test(favorites), 'FavoritesScreen bookmark icon required');
 
 // Driver side: each saved cargo is keyed by its own cargo id.

@@ -19,6 +19,7 @@ import { useI18n } from '../utils/useI18n';
 import { storage } from '../utils/storage';
 import { localizePlace } from '../utils/places';
 import { COUNTRIES, COUNTRY_ORDER, POINTS, searchPoints, formatPoint, pointsForCountry } from '../utils/geography';
+import CountryFlag from './ui/v1/CountryFlag';
 
 const RECENT_KEY = 'ur_recent_places';
 const FAV_KEY = 'ur_fav_places';
@@ -31,7 +32,6 @@ const POPULAR = POPULAR_NAMES.map((n) => POINTS.find((p) => p.name === n)).filte
 const BORDERS = POINTS.filter((p) => p.type === 'border').slice(0, 6);
 
 const pointKey = (p) => `${p.country}:${p.type}:${p.name}`;
-const iconFor = (p) => (p.type === 'border' ? '🛂' : p.type === 'terminal' ? '🏗' : (COUNTRIES[p.country]?.flag || '📍'));
 
 const loadList = async (key) => {
   try {
@@ -48,6 +48,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   const [recent, setRecent] = useState([]);
   const [favs, setFavs] = useState([]);
   const [geoLoading, setGeoLoading] = useState(false);
+  const [scope, setScope] = useState('all');
   // Выбранная страна для режима «страна → города». null = обычный список
   // (популярные/недавние/страны). Тап по стране раскрывает её города.
   const [country, setCountry] = useState(null);
@@ -62,6 +63,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     if (!visible) return;
     setQuery('');
     setCountry(null);
+    setScope('all');
     (async () => {
       setRecent(await loadList(RECENT_KEY));
       setFavs(await loadList(FAV_KEY));
@@ -121,8 +123,18 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     });
     const unique = new Map();
     [...primary, ...localized].forEach((p) => unique.set(pointKey(p), p));
-    return [...unique.values()].slice(0, 60);
-  }, [query]);
+    const pointHits = [...unique.values()]
+      .filter((p) => scope === 'all' || p.type === scope)
+      .slice(0, 60);
+    const countryHits = (scope === 'all' || scope === 'country')
+      ? COUNTRY_ORDER.filter((code) => {
+        const label = countryLabel(code).toLocaleLowerCase();
+        const fallback = String(COUNTRIES[code]?.name || '').toLocaleLowerCase();
+        return label.includes(q) || fallback.includes(q) || code.toLocaleLowerCase() === q;
+      })
+      : [];
+    return { countryHits, pointHits };
+  }, [query, scope, lang]);
 
   const s = useMemo(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: v1.bg },
@@ -133,6 +145,10 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     searchWrap: { paddingHorizontal: 16, paddingBottom: 10 },
     search: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: v1.surface, borderWidth: 1.5, borderColor: v1.driver, borderRadius: v1Radius.field, paddingHorizontal: 14, height: 50 },
     searchInput: { flex: 1, fontSize: 15, color: v1.text, paddingVertical: 0 },
+    scopes: { flexGrow: 0, marginTop: 10 },
+    scopesContent: { paddingHorizontal: 16, gap: 8 },
+    scope: { minHeight: 34, borderWidth: 1, borderColor: v1.border, borderRadius: 17, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+    scopeText: { fontSize: 12, fontWeight: '700' },
     sectLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', color: v1.textMuted, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
     sectRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
     sectLabelInline: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', color: v1.textMuted },
@@ -141,7 +157,6 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     leadText: { fontSize: 19 },
     name: { fontSize: 15, fontWeight: '700', color: v1.text },
     sub: { fontSize: 12, color: v1.textMuted, marginTop: 2 },
-    heart: { fontSize: 18, paddingHorizontal: 4 },
     chev: { fontSize: 18, color: v1.textMuted },
     geoLead: { backgroundColor: 'rgba(0,230,118,0.12)', borderColor: 'rgba(0,230,118,0.3)' },
     divider: { height: 1, backgroundColor: v1.border, marginHorizontal: 16, marginVertical: 6 },
@@ -160,7 +175,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     const isFav = favSet.has(pointKey(p));
     return (
       <TouchableOpacity style={s.row} onPress={() => pick(p)} testID={`loc-point-${p.name}`} activeOpacity={0.7}>
-        <View style={s.lead}><Text style={s.leadText}>{iconFor(p)}</Text></View>
+        <View style={s.lead}><CountryFlag code={p.country} width={25} /></View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={s.name} numberOfLines={1}>{localizePlace(p.name, lang)}</Text>
           <Text style={s.sub} numberOfLines={1}>
@@ -179,12 +194,35 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             testID={`loc-fav-${p.name}`}
           >
-            <Feather name="heart" size={18} color={isFav ? v1.driver : v1.textMuted} style={{ paddingHorizontal: 4 }} />
+            <Feather name="bookmark" size={18} color={isFav ? v1.driver : v1.textMuted} />
           </TouchableOpacity>
         ) : <Text style={s.chev}>›</Text>}
       </TouchableOpacity>
     );
   };
+
+  const CountryRow = ({ code, fromSearch = false }) => (
+    <TouchableOpacity
+      style={s.row}
+      onPress={() => {
+        if (fromSearch && allowCountryOnly) pickCountry(code);
+        else { setCountry(code); setQuery(''); }
+      }}
+      activeOpacity={0.7}
+      testID={`loc-country-${code}`}
+    >
+      <View style={s.lead}><CountryFlag code={code} width={25} /></View>
+      <View style={{ flex: 1 }}><Text style={s.name} numberOfLines={1}>{countryLabel(code)}</Text></View>
+      <Text style={s.chev}>›</Text>
+    </TouchableOpacity>
+  );
+
+  const scopeItems = [
+    ['all', t('filter_all')],
+    ['country', t('loc_countries')],
+    ['city', t('point_type_city')],
+    ['border', t('loc_borders')],
+  ];
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
@@ -220,14 +258,22 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
               testID="loc-search"
             />
           </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.scopes} contentContainerStyle={s.scopesContent}>
+            {scopeItems.map(([key, label]) => (
+              <TouchableOpacity key={key} onPress={() => setScope(key)} style={[s.scope, scope === key && { backgroundColor: v1.driverSoft, borderColor: v1.driver }]} testID={`loc-scope-${key}`}>
+                <Text style={[s.scopeText, { color: scope === key ? v1.driver : v1.textMuted }]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 24 }}>
           {hits ? (
             <>
-              {hits.length === 0 ? <Text style={s.empty}>{t('loc_no_results')}</Text> : null}
-              {hits.map((p, i) => <Row key={`hit:${pointKey(p)}:${i}`} p={p} />)}
-              {query.trim().length >= 2 ? (
+              {hits.countryHits.length === 0 && hits.pointHits.length === 0 ? <Text style={s.empty}>{t('loc_no_results')}</Text> : null}
+              {hits.countryHits.map((code) => <CountryRow key={`hit-country:${code}`} code={code} fromSearch />)}
+              {hits.pointHits.map((p, i) => <Row key={`hit:${pointKey(p)}:${i}`} p={p} />)}
+              {query.trim().length >= 2 && hits.countryHits.length === 0 && hits.pointHits.length === 0 ? (
                 <>
                   <View style={s.divider} />
                   <Row p={{ name: query.trim(), country: 'XX', type: 'city', custom: true }} showHeart={false} />
@@ -259,7 +305,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
                   <View style={s.divider} />
                 </>
               ) : null}
-              {pointsForCountry(country).map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
+              {pointsForCountry(country).filter((p) => scope === 'all' || scope === 'country' || p.type === scope).map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
             </>
           ) : (
             <>
@@ -278,36 +324,24 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
 
               {/* Порядок разделов по решению владельца: 1) Страны 2) Погран-
                   переходы 3) Избранное. Недавние/Популярные — ниже. */}
-              <Sect icon="globe">{t('loc_countries')}</Sect>
-              {COUNTRY_ORDER.map((code) => (
-                <TouchableOpacity key={`country:${code}`} style={s.row} onPress={() => setCountry(code)} activeOpacity={0.7} testID={`loc-country-${code}`}>
-                  <View style={s.lead}><Text style={s.leadText}>{COUNTRIES[code]?.flag || '🌐'}</Text></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.name} numberOfLines={1}>{countryLabel(code)}</Text>
-                  </View>
-                  <Text style={s.chev}>›</Text>
-                </TouchableOpacity>
-              ))}
+              {(scope === 'all' || scope === 'country') ? <><Sect icon="globe">{t('loc_countries')}</Sect>{COUNTRY_ORDER.map((code) => <CountryRow key={`country:${code}`} code={code} />)}</> : null}
+              {(scope === 'all' || scope === 'border') ? <><Sect icon="flag">{t('loc_borders')}</Sect>{BORDERS.map((p, i) => <Row key={`bord:${pointKey(p)}:${i}`} p={p} showHeart={false} />)}</> : null}
 
-              <Sect icon="flag">{t('loc_borders')}</Sect>
-              {BORDERS.map((p, i) => <Row key={`bord:${pointKey(p)}:${i}`} p={p} showHeart={false} />)}
-
-              {favs.length ? (
+              {(scope === 'all' || scope === 'city') && favs.length ? (
                 <>
                   <Sect icon="star">{t('loc_favorites')}</Sect>
                   {favs.map((p, i) => <Row key={`fav:${pointKey(p)}:${i}`} p={p} />)}
                 </>
               ) : null}
 
-              {recent.length ? (
+              {(scope === 'all' || scope === 'city') && recent.length ? (
                 <>
                   <Sect icon="clock">{t('loc_recent')}</Sect>
                   {recent.map((p, i) => <Row key={`rec:${pointKey(p)}:${i}`} p={p} />)}
                 </>
               ) : null}
 
-              <Sect icon="star">{t('route_popular')}</Sect>
-              {POPULAR.map((p, i) => <Row key={`pop:${pointKey(p)}:${i}`} p={p} />)}
+              {(scope === 'all' || scope === 'city') ? <><Sect icon="star">{t('route_popular')}</Sect>{POPULAR.map((p, i) => <Row key={`pop:${pointKey(p)}:${i}`} p={p} />)}</> : null}
             </>
           )}
         </ScrollView>

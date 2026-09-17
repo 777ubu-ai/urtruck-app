@@ -4,11 +4,13 @@
 import React, { useState } from 'react';
 import {
   Modal, View, Text, TextInput, TouchableOpacity, Pressable,
-  StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
+  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
+import { KeyboardSafeScrollView } from './ui/v1/KeyboardSafeLayout';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
+import { useShipperCeramicColors } from '../theme/designV1';
 import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { CURRENCY_SYMBOLS } from '../utils/normalizers';
@@ -19,13 +21,15 @@ import { formatDateForDisplay, normalizeDateInput } from '../utils/dateInput';
 
 const PAY_KEYS = ['cashless', 'cash', 'any'];
 
-export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
+export default function EditCargoModal({ visible, cargo, onClose, onSaved, role = 'client' }) {
   // P0-hotfix 28.08.2026 (§3): клавиатура на iOS перекрывала поле цены/
   // кнопку «Сохранить» — форма длинная (7 полей), у sheet статичный
   // maxHeight:'88%' и нижний padding БЕЗ учёта safe-area/клавиатуры.
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
-  const { theme } = useTheme();
+  const { theme: baseTheme } = useTheme();
+  const shipper = useShipperCeramicColors();
+  const theme = role === 'driver' ? baseTheme : shipper;
   const { toast } = useToast();
   // Символ валюты — из самого груза (USD→$, KZT→₸…), не хардкод ₸.
   const curSym = CURRENCY_SYMBOLS[String(cargo?.currency || 'USD').toUpperCase()] || '$';
@@ -106,7 +110,7 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
         <Pressable style={[s.backdrop, { backgroundColor: theme.overlay || 'rgba(0,0,0,0.5)' }]} onPress={onClose}>
           <Pressable style={[s.sheet, { backgroundColor: theme.cardElevated || theme.card }]} onPress={(e) => e.stopPropagation()}>
             <View style={[s.handle, { backgroundColor: theme.border }]} />
-            <ScrollView
+            <KeyboardSafeScrollView
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               contentInsetAdjustmentBehavior="automatic"
@@ -168,10 +172,10 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
                 {TRUCK_KEYS.map((k) => (
                   <TouchableOpacity
                     key={k}
-                    style={[s.chip, { borderColor: truckType === k ? '#FF8400' : theme.border, backgroundColor: truckType === k ? '#FF840022' : theme.bg }]}
+                    style={[s.chip, { borderColor: truckType === k ? theme.active : theme.border, backgroundColor: truckType === k ? theme.activeSoft : theme.bg }]}
                     onPress={() => setTruckType(k)}
                   >
-                    <Text style={[s.chipText, { color: truckType === k ? '#FF8400' : theme.textMuted }]}>{t(k)}</Text>
+                    <Text style={[s.chipText, { color: truckType === k ? theme.text : theme.textMuted }]}>{t(k)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -181,25 +185,25 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved }) {
                 {PAY_KEYS.map((k) => (
                   <TouchableOpacity
                     key={k}
-                    style={[s.chip, { borderColor: paymentType === k ? '#FF8400' : theme.border, backgroundColor: paymentType === k ? '#FF840022' : theme.bg }]}
+                    style={[s.chip, { borderColor: paymentType === k ? theme.active : theme.border, backgroundColor: paymentType === k ? theme.activeSoft : theme.bg }]}
                     onPress={() => setPaymentType(paymentType === k ? '' : k)}
                   >
-                    <Text style={[s.chipText, { color: paymentType === k ? '#FF8400' : theme.textMuted }]}>{t('pay_' + k)}</Text>
+                    <Text style={[s.chipText, { color: paymentType === k ? theme.text : theme.textMuted }]}>{t('pay_' + k)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
               <TouchableOpacity
                 onPress={onSave} disabled={saving}
-                style={[s.save, { backgroundColor: '#FF8400', opacity: saving ? 0.6 : 1 }]}
+                style={[s.save, { backgroundColor: theme.surfaceMuted, borderColor: theme.border, borderWidth: 1, opacity: saving ? 0.6 : 1 }]}
                 testID="edit-cargo-save"
               >
-                {saving ? <ActivityIndicator color="#0C0A09" /> : <Text style={s.saveText}>{t('edit_cargo_save')}</Text>}
+                {saving ? <ActivityIndicator color={theme.text} /> : <Text style={[s.saveText, { color: theme.text }]}>{t('edit_cargo_save')}</Text>}
               </TouchableOpacity>
               <TouchableOpacity onPress={onClose} style={s.cancel}>
                 <Text style={[s.cancelText, { color: theme.textMuted }]}>{t('cancel')}</Text>
               </TouchableOpacity>
-            </ScrollView>
+            </KeyboardSafeScrollView>
           </Pressable>
         </Pressable>
       </KeyboardAvoidingView>

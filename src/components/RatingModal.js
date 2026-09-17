@@ -122,6 +122,9 @@ export default function RatingModal({ visible, onClose, onSubmitted, targetId, t
                 onHoverIn={() => Platform.OS === 'web' && setHover(n)}
                 onHoverOut={() => Platform.OS === 'web' && setHover(0)}
                 style={s.starBtn}
+                accessibilityRole="button"
+                accessibilityLabel={t('a11y_rating_star').replace('{n}', String(n))}
+                accessibilityState={{ selected: rating === n }}
               >
                 <Feather
                   name="star"

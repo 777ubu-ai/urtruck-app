@@ -1,4 +1,4 @@
-import { canonicalDealStatus } from './dealStatusOrder';
+import { canonicalDealStatus } from './dealStatusOrder.js';
 
 const translated = (t, key, fallback) => {
   const value = typeof t === 'function' ? t(key) : null;

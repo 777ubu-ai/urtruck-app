@@ -15,6 +15,8 @@ test('foreground deal activity uses the Deals badge without a duplicate top bann
   assert.match(bottomNav, /computeDealsUnread/);
   assert.match(bottomNav, /setDealsUnread\(next\)/);
   assert.match(bottomNav, /bottom-nav-deals-badge/);
+  assert.match(bottomNav, /route\.name === 'Deals' \? Math\.max\(chatUnread, dealsUnread\) : 0/);
+  assert.doesNotMatch(bottomNav, /route\.name === 'Chats' \? chatUnread/);
   assert.doesNotMatch(bottomNav, /useToast/);
   assert.doesNotMatch(bottomNav, /новое событие/);
   assert.doesNotMatch(bottomNav, /actionLabel:\s*t\('open_action'\)/);
@@ -46,19 +48,24 @@ test('deal header uses map and status buttons, not the old call button', () => {
   assert.doesNotMatch(workspace, /testID="deal-header-call"/);
   assert.doesNotMatch(workspace, /testID="deal-map-card-open"/);
   assert.doesNotMatch(workspace, /testID="deal-status-compact-open"/);
+  // Design v1 Commit 4: canonical chrome — 44dp, surface bg, hairline
+  // border token (replaces the 32dp #F7F7F7/#202020 hardcoded fork).
   assert.match(workspace, /headerIconBtn: \{/);
-  assert.match(workspace, /backgroundColor: '#F7F7F7'/);
-  assert.match(workspace, /width: 32/);
-  assert.match(workspace, /borderRadius: 16/);
-  assert.match(workspace, /borderColor: '#202020'/);
+  assert.match(workspace, /width: 44/);
+  assert.match(workspace, /borderRadius: 22/);
+  assert.match(workspace, /backgroundColor: colors\.surface, borderColor: colors\.border/);
   assert.match(workspace, /statusActionIcon/);
 });
 
 test('status history opens from the status card and keeps the next status action at the bottom', () => {
   assert.match(workspace, /onPress=\{\(\) => setStatusModalOpen\(true\)\}/);
   assert.match(workspace, /<DealStatusTimeline events=\{timeline\} fallbackStatus=\{statusLabel\}/);
-  assert.match(workspace, /statusNextBtn/);
+  // Design v1 Commit 4: the next-action CTA is the canonical Button primary
+  // (dealActionResolver labels/transitions untouched, testID contract kept).
+  assert.match(workspace, /<Button/);
   assert.match(workspace, /testID=\{nextActionTestId \|\| 'deal-status-next-action'\}/);
+  assert.match(workspace, /disabled=\{nextAction\.disabled \|\| statusLoading \|\| trackingLoading\}/);
+  assert.doesNotMatch(workspace, /statusNextBtn/);
   assert.match(timeline, /const sortedEvents = \[\.\.\.events\]\.sort/);
   assert.match(timeline, /return eventTime\(b\) - eventTime\(a\)/);
   assert.match(timeline, /currentCard/);
@@ -84,4 +91,14 @@ test('route filter can select a whole country without forcing a city', () => {
   assert.match(locationPicker, /type:\s*'country'/);
   assert.match(locationPicker, /testID=\{`loc-country-only-\$\{country\}`\}/);
   assert.match(i18n, /loc_whole_country:\s*'Вся страна'/);
+});
+
+test('shared route picker searches countries and separates country, city, and border scopes', () => {
+  assert.match(locationPicker, /const \[scope, setScope\] = useState\('all'\)/);
+  assert.match(locationPicker, /countryHits/);
+  assert.match(locationPicker, /\['country', t\('loc_countries'\)\]/);
+  assert.match(locationPicker, /\['city', t\('point_type_city'\)\]/);
+  assert.match(locationPicker, /\['border', t\('loc_borders'\)\]/);
+  assert.match(locationPicker, /testID=\{`loc-scope-\$\{key\}`\}/);
+  assert.match(locationPicker, /hits\.countryHits\.length === 0 && hits\.pointHits\.length === 0/);
 });

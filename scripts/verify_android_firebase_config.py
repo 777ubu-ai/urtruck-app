@@ -51,7 +51,7 @@ import sys
 # to go unnoticed for as long as it did.
 KNOWN_BAD_PROJECT_IDS = {"bizchat-4d11d"}
 
-EXPECTED_PACKAGE = "com.urtruck.app"
+EXPECTED_PACKAGE = os.environ.get("URTRUCK_EXPECTED_ANDROID_PACKAGE", "com.urtruck.app")
 
 
 def fail(message):

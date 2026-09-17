@@ -24,9 +24,6 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../utils/useI18n';
@@ -35,6 +32,7 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import { formatCooldown } from '../../utils/formatCooldown';
 import { formatPhoneForDisplay, toAsciiDigits } from '../../utils/phone';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const ACCENT = { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF' };
 
@@ -125,11 +123,8 @@ export default function PremiumLoginScreen({ navigation }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="prem-login-screen">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={s.flex}
-      >
-        <ScrollView
+      <KeyboardSafeLayout>
+        <KeyboardSafeScrollView
           contentContainerStyle={s.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -233,8 +228,8 @@ export default function PremiumLoginScreen({ navigation }) {
               <Text style={[s.linkText, { color: accent.main }]}>{t('prem_login_register_link')}</Text>
             </Text>
           </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardSafeScrollView>
+      </KeyboardSafeLayout>
     </SafeAreaView>
   );
 }

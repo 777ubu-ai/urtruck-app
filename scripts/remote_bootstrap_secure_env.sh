@@ -32,6 +32,16 @@ set_env() {
   tmp=""
 }
 
+set_env_empty() {
+  local key="$1"
+  tmp="$(mktemp "${ENV_FILE}.tmp.XXXXXX")"
+  awk -v key="$key" 'index($0, key "=") != 1 { print }' "$ENV_FILE" > "$tmp"
+  printf '%s=\n' "$key" >> "$tmp"
+  chmod --reference="$ENV_FILE" "$tmp" 2>/dev/null || chmod 600 "$tmp"
+  mv "$tmp" "$ENV_FILE"
+  tmp=""
+}
+
 current_service="$(get_env SUPABASE_SERVICE_KEY "$ENV_FILE")"
 legacy_service="$(get_env SUPABASE_SERVICE_ROLE_KEY "$ENV_FILE")"
 [ -n "$legacy_service" ] || legacy_service="$(get_env SUPABASE_KEY "$ENV_FILE")"
@@ -71,6 +81,15 @@ fi
 set_env SUPABASE_URL 'https://pymddxenwtjcbmrafvnc.supabase.co'
 set_env STORAGE_PROVIDER 'supabase'
 [ -n "$(get_env SUPABASE_BUCKET "$ENV_FILE")" ] || set_env SUPABASE_BUCKET 'urtruck-docs'
+
+# Reviewer demo login is optional.  When no explicit production code is
+# provisioned, disable the email entry point instead of leaving config.py's
+# committed development fallback active and failing the production boot guard.
+# An explicitly configured code is preserved for deployments that need the
+# App Store / Play reviewer flow.
+if [ -z "$(get_env REVIEWER_DEMO_CODE "$ENV_FILE")" ]; then
+  set_env_empty REVIEWER_DEMO_EMAIL
+fi
 
 file_key="$(get_env FILE_SIGNING_KEY "$ENV_FILE")"
 [ "$(printf %s "$file_key" | wc -c)" -ge 32 ] || set_env FILE_SIGNING_KEY "$(openssl rand -hex 32)"

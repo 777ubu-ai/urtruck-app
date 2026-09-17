@@ -1,45 +1,46 @@
+// Track B / B1 migration (2026-09-08): originally read src/screens/ChatScreen.js
+// (dead — nothing imports it). Rewritten against DealWorkspaceScreenV2.js,
+// which replaced "chat has a button that navigates to a separate TrackTruck
+// screen" with a same-screen view toggle. The product intent this test
+// protects — the live/planned tracking map never renders inline inside the
+// scrollable conversation — still holds, just via a different mechanism
+// (two mutually exclusive render branches instead of two screens).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const chat = readFileSync('src/screens/ChatScreen.js', 'utf8');
-const dealRoom = readFileSync('src/components/deal/DealRoom.js', 'utf8');
-const track = readFileSync('src/screens/TrackTruckScreen.js', 'utf8');
+const dealRoom = readFileSync(new URL('../../src/components/deal/DealRoom.js', import.meta.url), 'utf8');
+const dealWorkspace = readFileSync(new URL('../../src/screens/DealWorkspaceScreenV2.js', import.meta.url), 'utf8');
+const track = readFileSync(new URL('../../src/screens/TrackTruckScreen.js', import.meta.url), 'utf8');
 
 assert.match(
   dealRoom,
   /const showAutomaticRouteMap = false/,
-  'deal room must keep the conversation compact instead of embedding a large map',
+  'deal room card must keep the deals list compact instead of embedding a large map',
 );
-assert.doesNotMatch(
-  chat,
-  /dealMapCard[\s\S]{0,2500}<TruckMap/,
-  'deal chat must not render the tracking map inside the conversation',
-);
-assert.match(
-  chat,
-  /testID="deal-track-truck"[\s\S]{0,700}onPress=\{openDealMap\}/,
-  'shipper must be able to open the dedicated tracking screen',
-);
-assert.match(
-  chat,
-  /testID="deal-open-driver-route"[\s\S]{0,700}onPress=\{openDealMap\}/,
-  'driver must be able to open the dedicated route screen',
-);
-assert.match(
-  chat,
-  /navigation\.navigate\('TrackTruck'/,
-  'map actions must navigate to the dedicated TrackTruck screen',
-);
-assert.match(track, /<TruckMap/, 'TrackTruckScreen must own the map rendering');
+
+// The chat branch (viewMode === VIEW_CHAT, which owns the scrollable
+// FlatList of messages) must not itself render TruckMap — the map only
+// exists in the sibling VIEW_MAP branch, mutually exclusive with chat.
+const chatBranchStart = dealWorkspace.indexOf('{viewMode === VIEW_CHAT ? (');
+const chatBranchEnd = dealWorkspace.indexOf(') : (', chatBranchStart);
+assert.ok(chatBranchStart > -1 && chatBranchEnd > chatBranchStart, 'could not locate the chat/map view-mode branches — DealWorkspaceScreenV2.js structure changed, re-check this test');
+const chatBranch = dealWorkspace.slice(chatBranchStart, chatBranchEnd);
+assert.doesNotMatch(chatBranch, /<TruckMap/, 'deal chat must not render the tracking map inside the conversation view');
+
+assert.match(dealWorkspace, /testID="deal-header-map"[\s\S]{0,50}accessibilityLabel/, 'there must be a control that opens the full-screen map');
+assert.match(dealWorkspace, /onPress=\{openMap\}/, 'the map control must open the map in place, not navigate elsewhere');
+assert.doesNotMatch(dealWorkspace, /navigation\.navigate\('TrackTruck'/, 'the live deal workspace must not navigate to the orphaned TrackTruck screen (see Track B report)');
+
+assert.match(track, /<TruckMap/, 'TrackTruckScreen still owns map rendering for whatever still points at it');
 assert.match(
   track,
   /cleanMapWrap: \{ flex: 1, marginHorizontal: 0, marginBottom: 0, borderRadius: 0/,
-  'tracking map must use the full available screen below the compact header',
+  'if TrackTruckScreen is ever reconnected, its map must still use the full available screen',
 );
 assert.match(
   track,
   /const iv = setInterval\(load, 10000\)/,
-  'live location polling must run only while the dedicated tracking screen is open',
+  'TrackTruckScreen live location polling must still be scoped to when that screen itself is mounted',
 );
 
 console.log('map/chat fullscreen integration contract: PASS');

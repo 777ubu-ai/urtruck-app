@@ -11,12 +11,13 @@ import sys
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_publish_time.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
+    Path(TEST_DB).unlink(missing_ok=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from api import verification_gate
 import contextvars
 
 _current_user = contextvars.ContextVar("user", default=None)
@@ -29,8 +30,6 @@ def fake_require_level(_min_level):
             raise HTTPException(status_code=401, detail="No test user set")
         return u
     return dep
-
-verification_gate.require_level = fake_require_level
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -51,13 +50,18 @@ if _notif_schema_path.exists():
     with _get_conn_for_setup() as _c_notif:
         _c_notif.executescript(_notif_schema_path.read_text(encoding="utf-8"))
 
+from tests.auth_harness import override_require_level
+
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
+override_require_level(app, fake_require_level(1))
 client = TestClient(app)
 
 
-def as_user(uid: str):
-    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1})
+def as_user(uid: str, role: str = "client"):
+    # Track B (2026-09-10): create_cargo/create_trip/create_bid now enforce
+    # server-side role direction -- see as_user() callers below for overrides.
+    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1, "role": role})
 
 
 def expect(cond, msg):
@@ -118,7 +122,7 @@ def test_unpublish_republish_cycle():
     }).json()["id"]
 
     # Живая ставка на груз — после unpublish должна стать cancelled.
-    as_user(driver)
+    as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1800}).json()["id"]
 
     as_user(owner)
@@ -160,7 +164,7 @@ def test_trip_republish_sets_published_at():
     from database.db import get_conn
 
     driver = "driver-pub-3"
-    as_user(driver)
+    as_user(driver, role="driver")
     trip_id = client.post("/api/v1/market/trips", json={
         "from_city": "Almaty", "to_city": "Astana", "truck_type": "tent", "price": 3000,
     }).json()["id"]

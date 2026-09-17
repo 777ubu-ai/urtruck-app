@@ -1,0 +1,19 @@
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { storage } from '../../utils/storage';
+import { regAPI } from '../../utils/registration';
+import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
+import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
+import { useVehicleCopy, ProgressHeader, SelectRow, Label, CountrySheet, countryLabel, styles } from '../../components/vehicle/VehicleSetupUI';
+
+const KEY = 'ur_vehicle_setup_draft';
+export default function VehicleSetupCountryScreen({ navigation, route }) {
+  const { lang, c } = useVehicleCopy();
+  const [draft, setDraft] = useState({}); const [sheet, setSheet] = useState(null); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
+  useEffect(() => { (async () => { const local = JSON.parse((await storage.get(KEY)) || '{}'); const status = await regAPI.status().catch(() => null); setDraft({ ...local, ...(status?.driver_citizenship_country_code ? { driver_citizenship_country_code: status.driver_citizenship_country_code } : {}), ...(status?.vehicle_registration_country_code ? { vehicle_registration_country_code: status.vehicle_registration_country_code } : {}) }); setLoading(false); })(); }, []);
+  const setValue = async (key, value) => { const next = { ...draft, [key]: value }; setDraft(next); await storage.set(KEY, JSON.stringify(next)); };
+  const next = async () => { if (!draft.driver_citizenship_country_code || !draft.vehicle_registration_country_code) { setError(c.invalid); return; } setError(''); const saved = await regAPI.saveDriverDraft({ citizenship_country: draft.driver_citizenship_country_code, driver_citizenship_country_code: draft.driver_citizenship_country_code, vehicle_registration_country: draft.vehicle_registration_country_code, vehicle_registration_country_code: draft.vehicle_registration_country_code }); if (!saved.ok) { setError(saved.detail || c.saveError); return; } navigation.navigate('VehicleSetupMachine', { ...route?.params }); };
+  if (loading) return <SafeAreaView style={styles.safe}><DriverRouteBackdrop /><ActivityIndicator color={DRIVER_CERAMIC.active} style={{ marginTop: 80 }} /></SafeAreaView>;
+  return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><DriverRouteBackdrop /><ProgressHeader navigation={navigation} step={1} c={c} /><ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled"><Text style={styles.title}>{c.basics}</Text><Text style={styles.subtitle}>{c.basicsSub}</Text><Label>{c.citizenship}</Label><SelectRow icon="globe" value={countryLabel(draft.driver_citizenship_country_code, lang)} onPress={() => setSheet('citizenship')} testID="vehicle-citizenship-selector" /><Label>{c.registration}</Label><SelectRow icon="globe" value={countryLabel(draft.vehicle_registration_country_code, lang)} onPress={() => setSheet('registration')} testID="vehicle-registration-selector" />{error ? <Text style={styles.error}>{error}</Text> : null}</ScrollView><View style={styles.footer}><Pressable disabled={!draft.driver_citizenship_country_code || !draft.vehicle_registration_country_code} onPress={next} style={[styles.cta, (!draft.driver_citizenship_country_code || !draft.vehicle_registration_country_code) && styles.ctaDisabled]}><Text style={[styles.ctaText, (!draft.driver_citizenship_country_code || !draft.vehicle_registration_country_code) && styles.disabledText]}>{c.next}</Text></Pressable></View><CountrySheet visible={!!sheet} title={sheet === 'citizenship' ? c.citizenshipSheet : c.registrationSheet} onClose={() => setSheet(null)} onSelect={(iso) => setValue(sheet === 'citizenship' ? 'driver_citizenship_country_code' : 'vehicle_registration_country_code', iso)} /></SafeAreaView>;
+}

@@ -20,13 +20,12 @@ import sys
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_mydash.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
+    Path(TEST_DB).unlink(missing_ok=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-
-# Патчим require_level ДО импорта marketplace (как в test_bid_actions).
-from api import verification_gate
 
 _current_user = contextvars.ContextVar("user", default=None)
 
@@ -38,8 +37,6 @@ def fake_require_level(_min_level):
             raise HTTPException(status_code=401, detail="No test user set")
         return u
     return dep
-
-verification_gate.require_level = fake_require_level
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -61,15 +58,20 @@ if _notif_sql.exists():
     with get_conn() as c:
         c.executescript(_notif_sql.read_text(encoding="utf-8"))
 
+from tests.auth_harness import override_require_level
+
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
+override_require_level(app, fake_require_level(1))
 client = TestClient(app)
 
 CLIENT_ID = "test-client-dash"
 DRIVER_ID = "test-driver-dash"
 
-def as_user(uid):
-    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1})
+def as_user(uid, role="client"):
+    # Track B (2026-09-10): create_cargo/create_trip/create_bid now enforce
+    # server-side role direction -- see as_user() callers below for overrides.
+    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1, "role": role})
 
 def _seed_deal_with_message(text: str | None):
     """Создаёт cargo(client) → bid(driver) → accept → deal + chat_room.
@@ -81,7 +83,7 @@ def _seed_deal_with_message(text: str | None):
         "cargo_desc": "dash test", "price": 4000, "currency": "USD"})
     assert r.status_code in (200, 201), r.text
     cargo_id = r.json()["id"]
-    as_user(DRIVER_ID)
+    as_user(DRIVER_ID, role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 3500})
     assert r.status_code in (200, 201), r.text
     bid_id = r.json()["id"]

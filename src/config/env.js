@@ -78,7 +78,15 @@ export const WEB_URL = IS_WEB
 // Beta pricing flag — keeps premium features free during the
 // pilot. Toggling to false enables paywalls; coordinate with
 // product before flipping.
-export const IS_BETA = true;
+const BETA_OVERRIDE = (typeof process !== 'undefined' && process?.env?.EXPO_PUBLIC_IS_BETA);
+export const IS_BETA = BETA_OVERRIDE === undefined
+  ? APP_ENV !== 'production'
+  : BETA_OVERRIDE !== 'false';
+
+if (APP_ENV === 'production' && IS_BETA) {
+  // eslint-disable-next-line no-console
+  console.error('[env] FATAL: production build resolved IS_BETA=true');
+}
 
 // Hard guard: if a production build somehow ended up with an
 // HTTP endpoint, fail loud at module-init so QA/the operator

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -10,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
-import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useI18n } from '../utils/useI18n';
@@ -27,15 +25,24 @@ import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
+import BellBadge from '../components/ui/v1/BellBadge';
+import RootHeader from '../components/ui/v1/RootHeader';
+import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
+import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
+import CompactFilterChip from '../components/ui/v1/CompactFilterChip';
+import CountryFlag from '../components/ui/v1/CountryFlag';
+import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
+import { SHIPPER_CERAMIC } from '../theme/designV1Palette';
 
-const ACCENT = '#34936B';
-const ACCENT_SOFT = '#EAF5EF';
-const PAGE_BG = '#F7F9F7';
-const SURFACE = '#FFFFFF';
-const TEXT = '#17221E';
-const TEXT_SECONDARY = '#606B66';
-const TEXT_MUTED = '#808A85';
-const BORDER = '#E5EAE7';
+// Canonical driver accent from the designV1 palette (identical value in
+// DARK.driver) — no local hardcoded green.
+const ACCENT = SHIPPER_CERAMIC.active;
+const PAGE_BG = SHIPPER_CERAMIC.bg;
+const SURFACE = SHIPPER_CERAMIC.surface;
+const TEXT = SHIPPER_CERAMIC.text;
+const TEXT_SECONDARY = SHIPPER_CERAMIC.textMuted;
+const TEXT_MUTED = SHIPPER_CERAMIC.textDim;
+const BORDER = SHIPPER_CERAMIC.border;
 
 const COPY = {
   RU: {
@@ -73,13 +80,19 @@ const feedPalette = (theme, isDark) => ({
   textMuted: theme.textMuted || TEXT_MUTED,
   border: theme.border || BORDER,
   shadow: isDark ? '#000000' : '#14211C',
-  accent: ACCENT,
-  accentSoft: ACCENT_SOFT,
+  // Canonical driver accent: no local hardcoded green. cardActiveBorder is
+  // #168759 in both themes; cardActive is the theme-aware soft surface
+  // (#E8F6EF light / #203329 dark) for active chips and favorites.
+  accent: SHIPPER_CERAMIC.active,
+  accentSoft: SHIPPER_CERAMIC.activeSoft,
   filterActive: isDark ? (theme.surfaceAlt || theme.card || theme.surface || SURFACE) : '#FAFDFC',
   favoriteBg: isDark ? (theme.surfaceAlt || theme.card || theme.surface || SURFACE) : '#F5FBF8',
 });
 
-function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }) {
+// TripCard — canonical MarketplaceCard (Design v1 Commit 3). Flags are
+// rendered from item.fromCountry/toCountry by the shared component; the
+// screen only maps data to display strings.
+function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
   const display = tripDisplay(item, t, lang);
   const notSpecified = t('not_specified');
   const specs = [display.truckType, display.availableM3, display.capacityTons]
@@ -87,57 +100,29 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress, colors }
     .join(' · ');
 
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.88}
-      style={[
-        styles.card,
-        {
-          borderColor: colors.border,
-          backgroundColor: colors.surface,
-          shadowColor: colors.shadow,
-        },
-      ]}
+    <MarketplaceCard
       testID={`trip-card-${item.id}`}
-      accessibilityRole="button"
-    >
-      <View style={styles.greenRail} />
-      <View style={styles.cardBody}>
-        <Text style={[styles.route, { color: colors.text }]} numberOfLines={2}>
-          {display.from} → {display.to}
-        </Text>
-        <Text style={[styles.meta, { color: colors.textMuted }]} numberOfLines={1}>
-          {[item.departure ? `${copy.departure}: ${display.departure}` : null, specs || null]
-            .filter(Boolean)
-            .join(' · ')}
-        </Text>
-      </View>
-
-      <View style={styles.priceWrap}>
-        <Text style={[styles.price, { color: colors.text }]} numberOfLines={1}>{display.price}</Text>
-        <Text style={[styles.perTrip, { color: colors.textMuted }]}>{copy.perTrip}</Text>
-      </View>
-
-      <Pressable
-        onPress={(event) => { event?.stopPropagation?.(); onToggleSaved(); }}
-        hitSlop={10}
-        style={[
-          styles.bookmarkBtn,
-          { backgroundColor: colors.favoriteBg },
-          saved && { backgroundColor: colors.accentSoft },
-        ]}
-        testID={`trip-card-bookmark-${item.id}`}
-        accessibilityRole="button"
-        accessibilityLabel={saved ? 'Remove saved trip' : 'Save trip'}
-        accessibilityState={{ selected: saved }}
-      >
-        {saved ? (
-          <FontAwesome5 name="bookmark" size={18} color={colors.accent} solid />
-        ) : (
-          <Feather name="bookmark" size={18} color={colors.accent} />
-        )}
-      </Pressable>
-    </TouchableOpacity>
+      onPress={onPress}
+      variant="shipper"
+      style={styles.cardSpacing}
+      route={{
+        from: display.from,
+        to: display.to,
+        fromFlag: item.fromCountry || null,
+        toFlag: item.toCountry || null,
+        numberOfLines: 2,
+      }}
+      price={display.price}
+      priceMeta={copy.perTrip}
+      meta={[[item.departure ? `${copy.departure}: ${display.departure}` : null, specs || null].filter(Boolean).join(' · ')]}
+      description={display.driverName !== notSpecified ? display.driverName : null}
+      bookmark={{
+        saved,
+        onToggle: onToggleSaved,
+        testID: `trip-card-bookmark-${item.id}`,
+        accessibilityLabel: saved ? t('in_favorites') : t('add_to_favorites'),
+      }}
+    />
   );
 }
 
@@ -180,9 +165,20 @@ export default function FeedScreen({ navigation }) {
       : (GEO_COUNTRIES[code]?.name || code);
   };
 
+  // Track: Claude harness fix, feed placeholder truncation. Callers used to
+  // pass t('create_field_from_placeholder')/t('create_field_to_placeholder')
+  // here ('Например, Алматы' / 'Например, Москва') — that text is sized for
+  // CreateTripScreen.js's full-width input, not this filter's ~50%-width
+  // routeHalf column with numberOfLines={1}; it visibly clipped to
+  // "Например, Алм…" / "Например, Мос…" (the routeLabel row right above
+  // already says "Откуда"/"Куда", so an "example city" hint is redundant
+  // here anyway). Callers now pass t('city') instead — short, fits the
+  // column, and reads naturally under the From/To label without repeating
+  // it. The two create_field_*_placeholder keys are unchanged (still used
+  // by the real forms) — this only changes what filter callers pass in.
   const routeValue = (city, countryCode, placeholder) => {
     if (city) return localizePlace(city, lang);
-    if (countryCode) return `${GEO_COUNTRIES[countryCode]?.flag || ''} ${countryLabel(countryCode)}`.trim();
+    if (countryCode) return countryLabel(countryCode);
     return placeholder;
   };
 
@@ -306,6 +302,8 @@ export default function FeedScreen({ navigation }) {
         : await marketAPI.favAdd('trip', id, {
             from: item.from,
             to: item.to,
+            from_country: item.fromCountry || '',
+            to_country: item.toCountry || '',
             departure: item.departure,
             truck_type: item.truckType,
             capacity_tons: item.capacityTons,
@@ -343,24 +341,7 @@ export default function FeedScreen({ navigation }) {
   };
 
   const filterPill = (key, label, icon, active) => (
-    <TouchableOpacity
-      key={key}
-      style={[
-        styles.filterPill,
-        {
-          borderColor: active ? '#BFDCCF' : colors.border,
-          backgroundColor: active ? colors.filterActive : colors.surface,
-          shadowColor: colors.shadow,
-        },
-      ]}
-      onPress={() => setActiveFilter(key)}
-      testID={`trip-filter-${key}`}
-      accessibilityRole="button"
-    >
-      <Feather name={icon} size={16} color={active ? ACCENT : colors.textSecondary} />
-      <Text style={[styles.filterPillText, { color: active ? ACCENT : colors.textSecondary }]}>{label}</Text>
-      <Feather name="chevron-down" size={15} color={colors.textSecondary} />
-    </TouchableOpacity>
+    <CompactFilterChip key={key} icon={icon} label={label} active={active} onPress={() => setActiveFilter(key)} testID={`trip-filter-${key}`} />
   );
 
   const feedControls = (
@@ -386,12 +367,15 @@ export default function FeedScreen({ navigation }) {
             <Feather name="map-pin" size={14} color={colors.textMuted} />
             <Text style={[styles.routeLabel, { color: colors.textSecondary }]}>{t('from')}</Text>
           </View>
-          <Text
-            style={[styles.routeValue, { color: (dirFrom || dirFromCountry) ? colors.text : colors.textMuted }]}
-            numberOfLines={1}
-          >
-            {routeValue(dirFrom, dirFromCountry, t('create_field_from_placeholder'))}
-          </Text>
+          <View style={styles.routeValueRow}>
+            {dirFromCountry ? <CountryFlag code={dirFromCountry} width={20} /> : null}
+            <Text
+              style={[styles.routeValue, { color: (dirFrom || dirFromCountry) ? colors.text : colors.textMuted, flex: 1 }]}
+              numberOfLines={1}
+            >
+              {routeValue(dirFrom, dirFromCountry, t('city'))}
+            </Text>
+          </View>
         </TouchableOpacity>
 
         <Feather name="arrow-right" size={24} color={ACCENT} />
@@ -405,12 +389,15 @@ export default function FeedScreen({ navigation }) {
             <Feather name="flag" size={14} color={colors.textMuted} />
             <Text style={[styles.routeLabel, { color: colors.textSecondary }]}>{t('to')}</Text>
           </View>
-          <Text
-            style={[styles.routeValue, { color: (dirTo || dirToCountry) ? colors.text : colors.textMuted }]}
-            numberOfLines={1}
-          >
-            {routeValue(dirTo, dirToCountry, t('create_field_to_placeholder'))}
-          </Text>
+          <View style={styles.routeValueRow}>
+            {dirToCountry ? <CountryFlag code={dirToCountry} width={20} /> : null}
+            <Text
+              style={[styles.routeValue, { color: (dirTo || dirToCountry) ? colors.text : colors.textMuted, flex: 1 }]}
+              numberOfLines={1}
+            >
+              {routeValue(dirTo, dirToCountry, t('city'))}
+            </Text>
+          </View>
         </TouchableOpacity>
 
         {(dirFrom || dirTo || dirFromCountry || dirToCountry) ? (
@@ -438,26 +425,7 @@ export default function FeedScreen({ navigation }) {
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
         {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
-        <TouchableOpacity
-          style={[
-            styles.filterPill,
-            {
-              borderColor: savedOnly ? '#A6D2BE' : '#CAE2D7',
-              backgroundColor: savedOnly ? colors.accentSoft : colors.favoriteBg,
-              shadowColor: colors.shadow,
-            },
-          ]}
-          onPress={toggleSavedOnly}
-          testID="trip-filter-favorites"
-          accessibilityRole="button"
-          accessibilityState={{ selected: savedOnly }}
-        >
-          <Feather name="bookmark" size={17} color={colors.accent} />
-          <Text style={[styles.filterPillText, { color: colors.accent }]}>{copy.favorites}</Text>
-          {savedIds.size > 0 ? (
-            <Text style={[styles.favoritesCount, { color: colors.textSecondary }]}>{savedIds.size}</Text>
-          ) : null}
-        </TouchableOpacity>
+        <CompactFilterChip icon="bookmark" active={savedOnly} onPress={toggleSavedOnly} testID="trip-filter-favorites" accessibilityLabel={copy.favorites} />
       </ScrollView>
     </View>
   );
@@ -468,20 +436,11 @@ export default function FeedScreen({ navigation }) {
       edges={['top']}
       testID="trip-feed-screen"
     >
-      <View
-        style={[styles.topBar, { backgroundColor: colors.pageBg }]}
-        testID="trip-feed-minimal-header"
-      >
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Profile', { role })}
-          style={styles.menuBtn}
-          hitSlop={8}
-          testID="feed-menu-btn"
-          accessibilityLabel={t('tab_profile')}
-        >
-          <Feather name="menu" size={27} color={colors.text} />
-        </TouchableOpacity>
-      </View>
+      <DriverRouteBackdrop />
+      <RootHeader ceramic navigation={navigation} role={role} testID="trip-feed-minimal-header" bellTestID="feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
+            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
+            if (ok) navigation.navigate('PushFilter', { role });
+          }} />
 
       <FlatList
         style={[styles.list, { backgroundColor: colors.pageBg }]}
@@ -496,7 +455,6 @@ export default function FeedScreen({ navigation }) {
             saved={savedIds.has(String(item.id))}
             onToggleSaved={() => toggleSaved(item)}
             onPress={() => openTrip(item)}
-            colors={colors}
           />
         )}
         ListHeaderComponent={feedControls}
@@ -589,7 +547,7 @@ export default function FeedScreen({ navigation }) {
             style={[
               styles.bodyChip,
               { backgroundColor: colors.surface, borderColor: colors.border },
-              !filterType && styles.bodyChipActive,
+              !filterType && { backgroundColor: colors.accentSoft, borderColor: colors.accent },
             ]}
             onPress={() => setFilterType(null)}
           >
@@ -609,7 +567,7 @@ export default function FeedScreen({ navigation }) {
               style={[
                 styles.bodyChip,
                 { backgroundColor: colors.surface, borderColor: colors.border },
-                filterType === key && styles.bodyChipActive,
+                filterType === key && { backgroundColor: colors.accentSoft, borderColor: colors.accent },
               ]}
               onPress={() => setFilterType(filterType === key ? null : key)}
             >
@@ -653,7 +611,7 @@ export default function FeedScreen({ navigation }) {
             style={[
               styles.sortRow,
               { backgroundColor: colors.surface, borderColor: colors.border },
-              sortBy === value && styles.sortRowActive,
+              sortBy === value && { backgroundColor: colors.accentSoft, borderColor: colors.accent },
             ]}
             onPress={() => setSortBy(value)}
           >
@@ -721,6 +679,7 @@ const styles = StyleSheet.create({
   },
   routeHalf: { flex: 1, minWidth: 0 },
   routeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
+  routeValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
   routeLabel: { fontSize: 11.5, lineHeight: 15, fontWeight: '600' },
   routeValue: { fontSize: 15, lineHeight: 19, fontWeight: '700' },
   filtersScroll: { flexGrow: 0, minHeight: 50, maxHeight: 50 },
@@ -743,39 +702,10 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { paddingTop: 0, paddingBottom: 28 },
   loadingWrap: { paddingHorizontal: 24, paddingTop: 5 },
-  card: {
-    minHeight: 104,
-    marginHorizontal: 18,
-    marginBottom: 7,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-    overflow: 'hidden',
-    shadowColor: '#15211C',
-    shadowOpacity: 0.035,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-    flexDirection: 'row',
-  },
-  greenRail: { width: 4, backgroundColor: '#3A9972' },
-  cardBody: { flex: 1, paddingLeft: 12, paddingRight: 145, paddingTop: 12, paddingBottom: 10 },
-  route: { fontSize: 15.5, lineHeight: 20, fontWeight: '700', letterSpacing: -0.1 },
-  meta: { fontSize: 12, lineHeight: 16, fontWeight: '500', marginTop: 7 },
-  priceWrap: { position: 'absolute', right: 58, bottom: 12, alignItems: 'flex-end', maxWidth: 130 },
-  price: { fontSize: 16.5, lineHeight: 20, fontWeight: '800' },
-  perTrip: { fontSize: 11.5, lineHeight: 15, marginTop: 1 },
-  bookmarkBtn: {
-    position: 'absolute',
-    right: 9,
-    bottom: 6,
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // Design v1 Commit 3: the card itself is the canonical MarketplaceCard
+  // (radius 16, border, no shadow, no green rail) — the screen only keeps
+  // its list spacing.
+  cardSpacing: { marginHorizontal: 18, marginBottom: 7 },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
   emptyTitle: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
   retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center' },
@@ -788,11 +718,9 @@ const styles = StyleSheet.create({
   sheetPrimaryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   bodyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   bodyChip: { minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  bodyChipActive: { borderColor: '#BFDCCF', backgroundColor: ACCENT_SOFT },
   bodyChipText: { fontSize: 13, fontWeight: '600' },
   bodyChipTextActive: { color: ACCENT },
   sortRow: { minHeight: 48, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sortRowActive: { borderColor: '#BFDCCF', backgroundColor: ACCENT_SOFT },
   sortRowText: { fontSize: 14, fontWeight: '600' },
   sortRowTextActive: { color: ACCENT },
 });

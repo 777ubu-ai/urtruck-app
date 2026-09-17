@@ -47,6 +47,10 @@ if [ -n "${SERVER_SSH_KEY:-}" ]; then
   SSH_AUTH=(ssh -i "$_keyfile" -o IdentitiesOnly=yes -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
   SCP_AUTH=(scp -i "$_keyfile" -o IdentitiesOnly=yes -o "UserKnownHostsFile=$_known" -o StrictHostKeyChecking=yes)
 else
+  if [ "${URTRUCK_REQUIRE_KEY:-0}" = "1" ]; then
+    echo "SERVER_SSH_KEY is required by this workflow; password SSH fallback is disabled" >&2
+    exit 1
+  fi
   MODE=pass
   : "${SERVER_PASS:?SERVER_PASS required when SERVER_SSH_KEY is not configured}"
   SSH_AUTH=(sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no)

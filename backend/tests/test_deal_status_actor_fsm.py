@@ -17,12 +17,14 @@ import sys
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_deal_fsm.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution (`python -m tests.test_deal_status_actor_fsm`) —
+    # own our DB file fully. Under pytest, tests/conftest.py already claimed
+    # DB_PATH and owns unlink+full-schema-rebuild — see auth_harness.py.
+    Path(TEST_DB).unlink(missing_ok=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-
-from api import verification_gate
 
 _current_user = contextvars.ContextVar("user", default=None)
 
@@ -37,8 +39,6 @@ def fake_require_level(_min_level):
         return u
     return dep
 
-
-verification_gate.require_level = fake_require_level
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -58,9 +58,14 @@ if _deal_room_schema.exists():
         _c.executescript(_deal_room_schema.read_text(encoding="utf-8"))
 
 from api.marketplace import mp_router  # _init() создаёт cargos/bids/deals
+from tests.auth_harness import override_require_level
 
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
+# App-scoped override (see tests/auth_harness.py) instead of mutating the
+# shared api.verification_gate module — that mutation was the confirmed
+# root cause of order-dependent 401/403 failures across the suite.
+override_require_level(app, fake_require_level(1))
 client = TestClient(app)
 
 SHIPPER = "test-shipper-fsm"

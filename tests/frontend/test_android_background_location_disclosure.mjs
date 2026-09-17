@@ -120,6 +120,14 @@ test('Android location foreground service starts only while app is visible', () 
   assert.match(hook, /startBackgroundTracking\(\)/);
 });
 
+test('completed trip cleanup resolves expo-location after a native task survives restart', () => {
+  const stopFn = tracker.split('export async function stopBackgroundTracking()')[1] || '';
+  assert.match(stopFn, /resolveLocationModule\(\)/);
+  assert.match(stopFn, /if \(!TaskManager \|\| !locationModule\) return/);
+  assert.match(stopFn, /locationModule\.stopLocationUpdatesAsync/);
+  assert.doesNotMatch(stopFn, /if \(!TaskManager \|\| !Location\) return/);
+});
+
 test('Android config declares background location and keeps location foreground service', () => {
   assert.equal(app.android.versionCode, 9);
   assert.ok(app.android.permissions.includes('android.permission.ACCESS_FINE_LOCATION'));

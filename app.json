@@ -86,6 +86,7 @@
       ]
     },
     "plugins": [
+      "./plugins/withAndroidBackCompatibility",
       [
         "expo-av",
         {

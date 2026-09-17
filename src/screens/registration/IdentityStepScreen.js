@@ -16,8 +16,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   Image,
   ActivityIndicator,
   Alert,
@@ -34,6 +32,8 @@ import PhotoGuide from '../../components/PhotoGuide';
 import QaStepSkip from '../../components/dev/QaStepSkip';
 import DateOfBirthSheet from '../../components/DateOfBirthSheet';
 import { brand, radius, typography } from '../../theme/brandV2';
+import BackButton from '../../components/ui/v1/BackButton';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const TOTAL_STEPS = 4;
 const STEP = 2;
@@ -59,6 +59,10 @@ export default function IdentityStepScreen({ navigation }) {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [closeVisible, setCloseVisible] = useState(false);
+  // Пользователь что-то ввёл/выбрал в этой сессии (отлично от подтянутого
+  // с сервера). Только тогда Back предлагает сохранить draft; на «чистом»
+  // экране возврат остаётся мгновенным.
+  const [dirty, setDirty] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
   const [dobSheetVisible, setDobSheetVisible] = useState(false);
   // Переделка верификации (решение владельца): личное фото/селфи убраны.
@@ -102,9 +106,15 @@ export default function IdentityStepScreen({ navigation }) {
     const payload = {};
     if (fullName) payload.full_name = fullName;
     if (birthDate.trim()) payload.birth_date = birthDate.trim();
+    if (iin.trim()) payload.iin = iin.trim();
     if (!Object.keys(payload).length) return;
     const res = await regAPI.saveDriverDraft(payload);
     if (!res.ok) throw new Error('save_failed');
+  };
+
+  const onBackPress = () => {
+    if (dirty) { setCloseVisible(true); return; }
+    navigation.goBack();
   };
 
   const validateName = (v, msgKey = 'val_name_short') => (!v || v.trim().length < 2 ? t(msgKey) : null);
@@ -142,6 +152,7 @@ export default function IdentityStepScreen({ navigation }) {
     const apply = (r) => {
       if (!r.canceled && r.assets?.[0]?.uri) {
         setter(r.assets[0].uri);
+        setDirty(true);
         if (errors[errKey]) setErrors((prev) => ({ ...prev, [errKey]: null }));
       }
     };
@@ -201,6 +212,7 @@ export default function IdentityStepScreen({ navigation }) {
       await regAPI.saveDriverDraft({
         full_name: fullName,
         birth_date: birthDate.trim(),
+        iin: iin.trim(),
         id_doc_type: docType,
       });
     } catch (err) {
@@ -224,14 +236,9 @@ export default function IdentityStepScreen({ navigation }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="identity-step-screen">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
+      <KeyboardSafeLayout>
         <View style={s.header}>
-          <Pressable onPress={() => navigation.goBack()} style={s.backBtn} testID="identity-back">
-            <Feather name="arrow-left" size={22} color={brand.textPrimary} />
-          </Pressable>
+          <BackButton onPress={onBackPress} label={t('back')} testID="identity-back" />
           <View style={s.progressTrack}>
             <View style={[s.progressFill, { width: `${progress * 100}%` }]} />
           </View>
@@ -244,7 +251,7 @@ export default function IdentityStepScreen({ navigation }) {
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+        <KeyboardSafeScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
           <Text style={s.title}>{t('identity_title')}</Text>
           <Text style={s.subtitle}>{t('identity_subtitle')}</Text>
 
@@ -252,7 +259,7 @@ export default function IdentityStepScreen({ navigation }) {
           <Text style={s.label}>{t('id_doc_type_label')}</Text>
           <View style={s.docTypeRow}>
             <Pressable
-              onPress={() => setDocType('id_card')}
+              onPress={() => { setDocType('id_card'); setDirty(true); }}
               style={[s.docTypeBtn, docType === 'id_card' && s.docTypeBtnActive]}
               testID="identity-doctype-id"
             >
@@ -260,7 +267,7 @@ export default function IdentityStepScreen({ navigation }) {
               <Text style={[s.docTypeText, docType === 'id_card' && s.docTypeTextActive]}>{t('id_doc_type_id')}</Text>
             </Pressable>
             <Pressable
-              onPress={() => setDocType('passport')}
+              onPress={() => { setDocType('passport'); setDirty(true); }}
               style={[s.docTypeBtn, docType === 'passport' && s.docTypeBtnActive]}
               testID="identity-doctype-passport"
             >
@@ -273,7 +280,7 @@ export default function IdentityStepScreen({ navigation }) {
           <Text style={s.label}>{docType === 'passport' ? t('id_doc_type_passport') : t('id_step_title')}</Text>
           <Text style={s.photoHint}>{t('id_photo_hint')}</Text>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Pressable onPress={() => pickIdSide(setIdFront, 'idFront')} style={[s.photoSlot, { flex: 1, width: undefined }]} testID="identity-id-front">
+            <Pressable onPress={() => pickIdSide(setIdFront, 'idFront')} style={s.photoSlot} testID="identity-id-front">
               {idFront ? (
                 <Image source={{ uri: idFront }} style={s.photoThumb} resizeMode="cover" />
               ) : hasIdFront ? (
@@ -282,7 +289,7 @@ export default function IdentityStepScreen({ navigation }) {
                 <><Feather name="credit-card" size={22} color={brand.textSecondary} /><Text style={s.photoText}>{t('id_front_label')}</Text></>
               )}
             </Pressable>
-            <Pressable onPress={() => pickIdSide(setIdBack, 'idBack')} style={[s.photoSlot, { flex: 1, width: undefined }]} testID="identity-id-back">
+            <Pressable onPress={() => pickIdSide(setIdBack, 'idBack')} style={s.photoSlot} testID="identity-id-back">
               {idBack ? (
                 <Image source={{ uri: idBack }} style={s.photoThumb} resizeMode="cover" />
               ) : hasIdBack ? (
@@ -298,7 +305,7 @@ export default function IdentityStepScreen({ navigation }) {
           <Text style={s.label}>{t('identity_first_name_label')}</Text>
           <TextInput
             value={firstName}
-            onChangeText={(v) => { setFirstName(v); if (errors.firstName) setErrors({ ...errors, firstName: null }); }}
+            onChangeText={(v) => { setFirstName(v); setDirty(true); if (errors.firstName) setErrors({ ...errors, firstName: null }); }}
             placeholder={t('identity_first_name_ph')}
             placeholderTextColor={brand.textTertiary}
             autoCapitalize="words"
@@ -311,7 +318,7 @@ export default function IdentityStepScreen({ navigation }) {
           <Text style={s.label}>{t('identity_last_name_label')}</Text>
           <TextInput
             value={lastName}
-            onChangeText={(v) => { setLastName(v); if (errors.lastName) setErrors({ ...errors, lastName: null }); }}
+            onChangeText={(v) => { setLastName(v); setDirty(true); if (errors.lastName) setErrors({ ...errors, lastName: null }); }}
             placeholder={t('identity_last_name_ph')}
             placeholderTextColor={brand.textTertiary}
             autoCapitalize="words"
@@ -341,6 +348,7 @@ export default function IdentityStepScreen({ navigation }) {
             onChangeText={(v) => {
               const digits = v.replace(/[^\d]/g, '').slice(0, 12);
               setIin(digits);
+              setDirty(true);
               if (errors.iin) setErrors({ ...errors, iin: null });
             }}
             keyboardType="numeric"
@@ -363,7 +371,7 @@ export default function IdentityStepScreen({ navigation }) {
               fromVerification: true,
             })}
           />
-        </ScrollView>
+        </KeyboardSafeScrollView>
 
         <View style={s.ctaWrap}>
           <Pressable onPress={onNext} disabled={saving} style={[s.cta, saving && { opacity: 0.6 }]} testID="identity-next">
@@ -374,7 +382,7 @@ export default function IdentityStepScreen({ navigation }) {
             )}
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardSafeLayout>
       <RegistrationCloseModal
         visible={closeVisible}
         onCancel={() => setCloseVisible(false)}
@@ -386,7 +394,7 @@ export default function IdentityStepScreen({ navigation }) {
         visible={dobSheetVisible}
         initial={birthDate}
         onCancel={() => setDobSheetVisible(false)}
-        onConfirm={(v) => { setBirthDate(v); setDobSheetVisible(false); if (errors.birth) setErrors({ ...errors, birth: null }); }}
+        onConfirm={(v) => { setBirthDate(v); setDirty(true); setDobSheetVisible(false); if (errors.birth) setErrors({ ...errors, birth: null }); }}
       />
     </SafeAreaView>
   );
@@ -404,7 +412,10 @@ const s = StyleSheet.create({
   subtitle: { ...typography.bodySmall, color: brand.textSecondary, marginBottom: 16 },
   label: { ...typography.bodySmall, fontWeight: '700', color: brand.textPrimary, marginTop: 18, marginBottom: 8 },
   photoHint: { ...typography.caption, color: brand.textSecondary, marginBottom: 8, lineHeight: 16 },
-  photoSlot: { alignSelf: 'flex-start', width: 120, height: 120, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: brand.border, alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
+  // Design v1 Commit 6: слоты документа — 4:3 (были квадратные 120×120).
+  // flex:1 в row из двух слотов + aspectRatio держат пропорцию при любой
+  // ширине экрана; cover/quality/tap-repick поведение не менялось.
+  photoSlot: { flex: 1, aspectRatio: 4 / 3, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: brand.border, alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: brand.surfaceMuted, overflow: 'hidden' },
   photoThumb: { width: '100%', height: '100%' },
   photoText: { ...typography.caption, color: brand.textSecondary },
   // Тумблер типа документа личности (удостоверение | паспорт)
@@ -420,7 +431,7 @@ const s = StyleSheet.create({
   dobField: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dobValue: { ...typography.body, color: brand.textPrimary },
   dobPlaceholder: { ...typography.body, color: brand.textTertiary },
-  err: { ...typography.caption, color: brand.error, marginTop: 6 },
+  err: { ...typography.caption, color: brand.errorText, marginTop: 6 },
   ctaWrap: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
   cta: { height: 56, borderRadius: radius.lg, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center' },
   ctaText: { ...typography.button, color: brand.textOnPrimary },

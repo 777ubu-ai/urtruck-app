@@ -16,9 +16,6 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -29,6 +26,7 @@ import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
 import { push } from '../../utils/push';
 import { formatCooldown } from '../../utils/formatCooldown';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const ACCENT = {
   driver: { main: '#168759', deep: '#0F6B47', soft: '#E8F6EF', glow: 'rgba(22,135,89,0.18)' },
@@ -205,11 +203,8 @@ export default function PremiumOtpScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="prem-reg-otp-screen">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={s.flex}
-      >
-        <ScrollView
+      <KeyboardSafeLayout>
+        <KeyboardSafeScrollView
           contentContainerStyle={s.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -349,8 +344,8 @@ export default function PremiumOtpScreen({ navigation, route }) {
               </Text>
             ) : null}
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardSafeScrollView>
+      </KeyboardSafeLayout>
     </SafeAreaView>
   );
 }

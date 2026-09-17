@@ -68,15 +68,22 @@ def _send_booking_change_push(booking: dict, parsed: dict | None,
 
     plate_or_booking = booking.get("cgr_booking_number") or "бронь"
     checkpoint = booking.get("checkpoint_code")
-    if parsed_code == "called":
-        title = "🚛 Ваша очередь подошла"
-        body = f"Бронь {plate_or_booking}: вас вызвали на пункт пропуска."
-    elif parsed_code == "crossed":
-        title = "✅ Граница пройдена"
-        body = f"Бронь {plate_or_booking}: пункт пропуска пройден."
-    elif parsed_code == "revoked":
-        title = "⚠️ Бронь отозвана"
-        body = f"Бронь {plate_or_booking}: проверьте статус в CarGoRuqsat."
+    # Push-closure track: called/crossed/revoked are localized (recipient's
+    # push_devices.locale) via push_i18n and durable — each happens at most
+    # once per booking, so booking_id+status_kind is inherently a stable,
+    # unique-per-occurrence event key (same key already used for the Bell
+    # entry below, kept unchanged). position_changed/generic status text
+    # stays RU-only and non-durable by design — that is the high-frequency
+    # telemetry case this track was told not to add durability/Bell entries
+    # for; localizing text that changes every few minutes is not worth the
+    # added surface here.
+    event_key = None
+    if status_kind in ("queue_called", "queue_crossed", "queue_revoked"):
+        from services import push_gateway, push_i18n
+        loc = push_gateway.get_recipient_locale(booking["urtruck_user_id"])
+        i18n_event = {"queue_called": "cgr_called", "queue_crossed": "cgr_crossed", "queue_revoked": "cgr_revoked"}[status_kind]
+        title, body = push_i18n.push_text(i18n_event, loc, booking=plate_or_booking)
+        event_key = f"{status_kind}:{booking['id']}"
     elif position_changed:
         title = "📍 Обновилась позиция в очереди"
         body = f"Бронь {plate_or_booking}: позиция {new_position}."
@@ -88,9 +95,29 @@ def _send_booking_change_push(booking: dict, parsed: dict | None,
 
     try:
         from api.push import send_to_user
+        push_data = {"booking_id": booking["id"], "status": parsed_code or new_status}
+        if event_key:
+            push_data["event_key"] = event_key
+            push_data["event"] = f"cgr.{status_kind}"
+            push_data["i18n_event"] = i18n_event
+            push_data["i18n_params"] = {"booking": plate_or_booking}
         send_to_user(booking["urtruck_user_id"], title, body,
-                     url="/queue", kind="queue",
-                     data={"booking_id": booking["id"], "status": parsed_code or new_status})
+                     url="/queue", kind="queue", data=push_data)
+        # Push-recovery track, Phase 4 (event-matrix audit finding): CGR
+        # events were push-only, never reaching the in-app Bell/notifications
+        # table. Only the 3 significant lifecycle events (called/crossed/
+        # revoked) get a Bell entry — position_changed / generic status
+        # updates are exactly the "high-frequency telemetry" this track was
+        # told NOT to add to Bell history (queue position can shift several
+        # times while a driver waits; called/crossed/revoked each happen at
+        # most once per booking).
+        if event_key:
+            try:
+                from api.notifications import create_notification
+                create_notification(booking["urtruck_user_id"], status_kind, title, body, "🛂",
+                                    url="/queue", event_key=event_key)
+            except Exception:
+                pass
         cgr_dal.log_push_sent(booking["id"], push_kind)
         return True
     except Exception:

@@ -68,7 +68,10 @@ from pathlib import Path
 import pytest
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_live_lifecycle.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution (this file is deliberately run twice by hand per
+    # its own docstring) — under pytest, conftest.py owns DB_PATH/schema.
+    Path(TEST_DB).unlink(missing_ok=True)
 
 from database import db as dbm
 from database import registration_dal
@@ -80,7 +83,6 @@ from database.db import get_conn, new_id
 # Stub require_level BEFORE importing marketplace/chat — same pattern as
 # test_bid_actions.py / test_deal_rooms.py.
 import contextvars
-from api import verification_gate
 
 _current_user = contextvars.ContextVar("user", default=None)
 
@@ -97,8 +99,6 @@ def _fake_require_level(_min_level):
     return dep
 
 
-verification_gate.require_level = _fake_require_level
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -113,17 +113,22 @@ for p in (_chat_schema, _notif_schema):
         with get_conn() as c:
             c.executescript(p.read_text(encoding="utf-8"))
 
+from tests.auth_harness import override_require_level
+
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
 app.include_router(chat_router, prefix="/api/v1/chat")
 app.include_router(notif_router, prefix="/api/v1/notifications")
+override_require_level(app, _fake_require_level(1))
 client = TestClient(app)
 
 from services.push_sender import _compute_recipient_badge
 
 
-def as_user(uid, name="Test User", phone="+70000000000"):
-    _current_user.set({"id": uid, "full_name": name, "phone": phone, "verification_level": 1})
+def as_user(uid, name="Test User", phone="+70000000000", role="client"):
+    # Track B (2026-09-10): create_cargo/create_trip/create_bid now enforce
+    # server-side role direction -- see as_user() callers below for overrides.
+    _current_user.set({"id": uid, "full_name": name, "phone": phone, "verification_level": 1, "role": role})
 
 
 def seed_cargo(owner_id, price=1234):
@@ -184,7 +189,7 @@ def run_full_lifecycle(run_label):
 
     # ── 1. Shipper's cargo exists, driver bids ──────────────────────────
     cargo_id = seed_cargo(shipper)
-    as_user(driver, "Driver QA")
+    as_user(driver, "Driver QA", role="driver")
     bid_res = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1100, "message": f"bid {run_label}"})
     assert bid_res.status_code == 200, bid_res.text
     bid_id = bid_res.json()["id"]
@@ -254,7 +259,9 @@ def run_full_lifecycle(run_label):
     delivered_res = client.patch(f"/api/v1/market/deals/{deal_id}/status", params={"new_status": "delivered"})
     assert delivered_res.status_code == 200, delivered_res.text
     shipper_notifs_after_delivered = get_notifications(shipper)
-    delivered_notif = [n for n in shipper_notifs_after_delivered if n["type"] == "deal_status" and "Доставлен" in (n["title"] or "")]
+    # Push-closure track: title localized via push_i18n ("✅ Груз доставлен" —
+    # lowercase mid-word, was "✅ Доставлен — ...").
+    delivered_notif = [n for n in shipper_notifs_after_delivered if n["type"] == "deal_status" and "доставлен" in (n["title"] or "").lower()]
     assert delivered_notif, "shipper must be notified when marked delivered"
 
     # ── 10. Shipper confirms received -> driver notified (final) ────────

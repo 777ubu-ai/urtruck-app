@@ -4,6 +4,9 @@ import fs from "node:fs";
 
 const wrapper = fs.readFileSync("src/screens/ChatsListScreen.js", "utf8");
 const deals = fs.readFileSync("src/screens/DealsScreen.js", "utf8");
+// Design v1 Commit 3: deal card chrome (radius 16, StatusPill, border-only)
+// lives in the canonical MarketplaceCard.
+const card = fs.readFileSync("src/components/ui/v1/MarketplaceCard.js", "utf8");
 const legacy = fs.readFileSync("src/screens/ChatsListLegacyScreen.js", "utf8");
 
 test("Deals route is isolated from the legacy standalone chat list", () => {
@@ -37,9 +40,12 @@ test("archive is separate and includes completed deals plus closed negotiations"
 
 test("cards are compact and do not use the old decorative avatar/dollar block", () => {
   assert.match(deals, /function CompactDealCard/);
-  assert.match(deals, /minHeight: 92/);
+  // CompactDealCard is now an adapter over the canonical MarketplaceCard
+  // (radius 17→16, no shadow); the old local minHeight-92 card fork is gone.
+  assert.match(deals, /<MarketplaceCard/);
   assert.match(deals, /routeLabel=\{routeFor/);
   assert.match(deals, /price=\{/);
+  assert.doesNotMatch(card, /shadowOpacity/);
   assert.doesNotMatch(deals, /name="dollar-sign"/);
   assert.doesNotMatch(deals, /styles?\.avatar/);
 });

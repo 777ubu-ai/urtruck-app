@@ -77,15 +77,6 @@ function parseNotifUrl(url) {
   return { kind, id, params };
 }
 
-// Deal lifecycle belongs only in the Deals hub. This legacy notification
-// center remains available for system/feed notifications and old deep-links,
-// but it must never duplicate accepted bids, deal statuses, or deal chat.
-function isDealLifecycleNotification(item) {
-  const parsed = parseNotifUrl(item?.url);
-  if (!parsed) return false;
-  return parsed.kind === 'deals' || parsed.kind === 'deal' || parsed.kind === 'chat' || parsed.kind === 'chats';
-}
-
 export default function NotificationsScreen({ navigation }) {
   const { session } = useAuth();
   const role = session?.user?.role || 'client';
@@ -118,7 +109,11 @@ export default function NotificationsScreen({ navigation }) {
     try {
       const d = await notificationsAPI.list(50);
       const all = Array.isArray(d?.notifications) ? d.notifications : [];
-      setItems(all.filter(item => !isDealLifecycleNotification(item)));
+      // Bell is the canonical cross-product inbox. Bid, deal, tracking and
+      // chat records are durable server notifications with their own deep
+      // links, so hiding lifecycle records here made a delivered push
+      // impossible to find or mark read in-app.
+      setItems(all);
     } catch {}
     if (showLoading) setLoading(false);
   }, []);
@@ -160,7 +155,12 @@ export default function NotificationsScreen({ navigation }) {
       } else if (kind === "trips" && id) {
         navigation.navigate("TripDetail", { tripId: id, bidId: params.bid || null, role });
       } else if (kind === "deals" && id) {
-        navigation.navigate("Chat", { dealId: id, role });
+        // Same fix as App.js's navigateFromUrl (this is a separate, in-app
+        // copy of the same parser, for tapping a notification without a
+        // native push/cold-start) — see that file for the full root-cause
+        // comment. GPS tracking-request/approved/declined/stopped pushes
+        // all set url=/deals/{id}?action=tracking; must not be dropped.
+        navigation.navigate("Chat", { dealId: id, role, action: params.action || null });
       } else if ((kind === "chats" || kind === "chat") && id) {
         navigation.navigate("Chat", { roomId: id, role });
       }

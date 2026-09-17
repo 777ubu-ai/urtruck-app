@@ -1,0 +1,116 @@
+name: 🚨 BREAK-GLASS Production Deploy
+
+# Release hardening track A (2026-09-10): the ONLY sanctioned way to deploy
+# to production outside the normal "UrTruck Deploy" release-gate ->
+# "UrTruck Secure Production Deploy" pipeline. Previously, that normal
+# pipeline's own workflow_dispatch trigger served as a silent, unnamed
+# bypass — anyone with repo write access could run it directly against any
+# ref with zero justification required and zero audit trail beyond "this
+# workflow ran". That trigger is gone; this file replaces it, deliberately
+# loud (name, required typed confirmation, required written reason) so it
+# can never be mistaken for routine deployment and always leaves a clear
+# record of who invoked it and why.
+#
+# Operational note for the repo owner (cannot be enforced from this YAML
+# file alone): attach GitHub's "required reviewers" protection rule to the
+# `production` environment referenced by production-deploy-execute.yml, so
+# a break-glass run additionally requires a second person's manual approval
+# before the deploy job executes, not just this workflow's own inputs.
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why does this need to bypass the normal release gate? (required, goes in the audit log)"
+        required: true
+      confirm:
+        description: 'Type exactly "DEPLOY" to confirm — this skips backend/frontend/E2E tests and the P0/P1 + Push/Bell subsets'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - name: Require typed confirmation
+        # Hardening A final repair (2026-09-10), P0: `inputs.reason`/
+        # `inputs.confirm` are free-text supplied by whoever triggers this
+        # workflow — a repo-write-access user, not necessarily trusted with
+        # arbitrary code execution. The OLD version interpolated
+        # `${{ inputs.confirm }}`/`${{ inputs.reason }}` directly into the
+        # run: script text — GitHub Actions substitutes `${{ }}` BEFORE the
+        # shell parses the script, so a reason/confirm value containing
+        # shell metacharacters (`$(...)`, backticks, quotes, `;`, `&&`, a
+        # newline) would have become literal shell source, not data, in a
+        # job that later (via the deploy job below) runs with production
+        # SSH/deploy secrets in scope. Passed through `env:` instead: `$VAR`
+        # expansion happens at shell RUNTIME, always as data.
+        env:
+          CONFIRM_INPUT: ${{ inputs.confirm }}
+          REASON_INPUT: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM_INPUT" != "DEPLOY" ]; then
+            printf '::error::Confirmation input must be exactly %s (got: %s). Aborting — nothing was deployed.\n' \
+              "'DEPLOY'" "'$CONFIRM_INPUT'"
+            exit 1
+          fi
+          if [ -z "$REASON_INPUT" ]; then
+            echo "::error::A reason is required for a break-glass deploy."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          # Break-glass is an emergency path, not an arbitrary-code runner.
+          # Both its guard and the executable reusable workflow are anchored
+          # to the protected main branch below, so production secrets can
+          # never be made available to code from an operator-supplied ref.
+          ref: refs/heads/main
+
+      - name: Resolve exact SHA and write audit record
+        id: resolve
+        env:
+          ACTOR: ${{ github.actor }}
+          REF_INPUT: refs/heads/main
+          REASON_INPUT: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          # Defense in depth beyond the env:/$VAR fix above (which already
+          # closes code-execution injection): a REASON_INPUT containing a
+          # literal newline could still spoof a fake ::error::/::warning::
+          # annotation in the Actions log, or break the markdown table row
+          # below, once printed — collapse embedded newlines to spaces first.
+          REASON_SAFE="${REASON_INPUT//$'\n'/ }"
+          {
+            echo "### 🚨 BREAK-GLASS PRODUCTION DEPLOY"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            printf '| Actor | `%s` |\n' "$ACTOR"
+            printf '| Ref requested | `%s` |\n' "$REF_INPUT"
+            echo "| Resolved SHA | \`$SHA\` |"
+            echo "| Timestamp (UTC) | \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\` |"
+            printf '| Reason | %s |\n' "$REASON_SAFE"
+            echo "| Normal release gate | **SKIPPED** — backend/frontend/E2E/P0-P1/Push-Bell suites did NOT run |"
+            echo ""
+            echo "This record is this workflow run's own permanent log — GitHub retains it exactly like any other Actions run history entry (Settings → Actions retention policy controls how long)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          printf '::warning::BREAK-GLASS DEPLOY by %s of %s — reason: %s\n' "$ACTOR" "$SHA" "$REASON_SAFE"
+
+  deploy:
+    needs: [guard]
+    # Do not resolve this local reusable workflow from the ref chosen in the
+    # Actions UI.  The immutable job definition must come from protected main.
+    uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main
+    with:
+      deploy_sha: ${{ needs.guard.outputs.sha }}
+      break_glass: true
+      break_glass_reason: ${{ inputs.reason }}
+    secrets: inherit

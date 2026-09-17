@@ -40,8 +40,8 @@ test('EditCargoModal: KeyboardAvoidingView получает явный keyboardV
 });
 
 test('EditCargoModal: ScrollView учитывает safe-area в нижнем padding и настроен под клавиатуру', () => {
-  const scrollIdx = src.indexOf('<ScrollView');
-  assert.ok(scrollIdx > 0, 'ScrollView с полями формы должен присутствовать');
+  const scrollIdx = src.indexOf('<KeyboardSafeScrollView');
+  assert.ok(scrollIdx > 0, 'keyboard-aware ScrollView с полями формы должен присутствовать');
   const scrollBlock = src.slice(scrollIdx, scrollIdx + 900);
   assert.match(scrollBlock, /keyboardShouldPersistTaps="handled"/,
     'тап по кнопке Сохранить не должен сначала закрывать клавиатуру вхолостую');

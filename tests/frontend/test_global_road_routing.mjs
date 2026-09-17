@@ -7,7 +7,7 @@ const nativeMap = fs.readFileSync('src/components/TruckMap.native.js', 'utf8');
 const client = fs.readFileSync('src/utils/routingAPI.js', 'utf8');
 const backend = fs.readFileSync('backend/api/routing.py', 'utf8');
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
-const deploy = fs.readFileSync('.github/workflows/secure-production-deploy.yml', 'utf8');
+const deploy = fs.readFileSync('.github/workflows/production-deploy-execute.yml', 'utf8');
 
 test('every deal route requests authenticated server road geometry, including Almaty-Moscow', () => {
   // 2026-08-19 (P1, независимый release review): roadRoute() теперь также

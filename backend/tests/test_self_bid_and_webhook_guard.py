@@ -11,7 +11,6 @@ CI-контракт: top-level `def test_*` (не класс) — иначе CI 
 import uuid
 
 import contextvars
-from api import verification_gate
 
 _cu = contextvars.ContextVar("u", default=None)
 
@@ -28,20 +27,24 @@ def _fake_require_level(_min):
     return dep
 
 
-verification_gate.require_level = _fake_require_level
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from api.marketplace import mp_router
 from database.db import get_conn, new_id
+from tests.auth_harness import override_require_level
 
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
+override_require_level(app, _fake_require_level(1))
 client = TestClient(app)
 
 
-def _as(uid):
-    _cu.set({"id": uid, "full_name": uid, "phone": "+700", "verification_level": 1})
+def _as(uid, role="client"):
+    """Track B (2026-09-10): create_bid() now enforces server-side role
+    direction (driver on a cargo bid, client/shipper on a trip bid) -- the
+    self-bid tests below must pass the matching role so the request reaches
+    the self-bid check itself instead of failing earlier on ROLE_NOT_ALLOWED."""
+    _cu.set({"id": uid, "full_name": uid, "phone": "+700", "verification_level": 1, "role": role})
 
 
 def _seed_cargo(owner):
@@ -73,7 +76,7 @@ def _seed_trip(driver):
 def test_owner_cannot_bid_own_cargo():
     owner = "own-" + uuid.uuid4().hex[:6]
     cid = _seed_cargo(owner)
-    _as(owner)
+    _as(owner, role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cid, "amount": 900})
     assert r.status_code == 403, f"self-bid прошёл: {r.status_code} {r.text}"
     assert "self_bid" in r.text
@@ -82,7 +85,7 @@ def test_owner_cannot_bid_own_cargo():
 def test_other_user_can_bid_cargo():
     owner = "own2-" + uuid.uuid4().hex[:6]
     cid = _seed_cargo(owner)
-    _as("driver-" + uuid.uuid4().hex[:6])
+    _as("driver-" + uuid.uuid4().hex[:6], role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cid, "amount": 900})
     assert r.status_code == 200, f"чужая ставка отклонена: {r.status_code} {r.text}"
 

@@ -36,13 +36,22 @@
 // the one number the app reliably knows (a trip's real payload capacity)
 // now reaches the router under the correct parameter name, and nothing
 // else masquerades as vehicle data.
+// Track B / B1 migration (2026-09-08): the 'ChatScreen threads only the
+// trip's real payload capacity into TrackTruck navigation params' test
+// below read src/screens/ChatScreen.js, which is dead — nothing imports it.
+// Worse than a stale test: DealWorkspaceScreenV2.js, the screen every real
+// deal actually mounts, had NO vehicle wiring at all — it called
+// <TruckMap ... /> with no `vehicle` prop, silently dropping payload-aware
+// routing in production while this test kept passing against dead code.
+// Fixed as part of this migration (see DealWorkspaceScreenV2.js's new
+// `vehicle` memo) and re-tested below against the live file.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const routeMap = fs.readFileSync('src/components/RouteMap.js', 'utf8');
 const tripDetail = fs.readFileSync('src/screens/TripDetail.js', 'utf8');
-const chatScreen = fs.readFileSync('src/screens/ChatScreen.js', 'utf8');
+const dealWorkspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
 const trackTruck = fs.readFileSync('src/screens/TrackTruckScreen.js', 'utf8');
 const webMap = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
 const nativeMap = fs.readFileSync('src/components/TruckMap.native.js', 'utf8');
@@ -60,17 +69,18 @@ test('TripDetail feeds the already-collected trip capacity into RouteMap (no new
   assert.match(tripDetail, /<RouteMap[\s\S]{0,300}capacityTons=\{trip\.capacityTons\}/);
 });
 
-test('ChatScreen threads only the trip\'s real payload capacity into TrackTruck navigation params — no cargo-weight fallback', () => {
-  assert.match(chatScreen, /cargo_weight_tons: prev\?\.cargo_weight_tons \?\? srv\.cargo_weight_tons/);
-  assert.match(chatScreen, /trip_capacity_tons: prev\?\.trip_capacity_tons \?\? srv\.trip_capacity_tons/);
-  // 2nd independent re-review (2026-08-19): capacityTons used to fall back
-  // to deal.cargo_weight_tons when no trip was linked yet. Yandex `payload`
-  // means the vehicle's maximum load capacity, not the mass of one
-  // specific cargo — cargo_weight_tons measures the latter, so it must
-  // NOT feed vehicle.payload_t. Source is strictly trip_capacity_tons now;
-  // no data beats wrong data here.
-  assert.match(chatScreen, /capacityTons: deal\?\.trip_capacity_tons \?\? null,/);
-  assert.doesNotMatch(chatScreen, /capacityTons:[^\n]*cargo_weight_tons/);
+test('DealWorkspaceScreenV2 builds vehicle.payload_t strictly from the trip\'s real capacity — no cargo-weight fallback', () => {
+  // 2nd independent re-review (2026-08-19, against the now-dead ChatScreen.js):
+  // capacityTons used to fall back to deal.cargo_weight_tons when no trip was
+  // linked yet. Yandex `payload` means the vehicle's maximum load capacity,
+  // not the mass of one specific cargo — cargo_weight_tons measures the
+  // latter, so it must NOT feed vehicle.payload_t. Re-asserted here against
+  // the live screen so this constraint survived the ChatScreen -> V2 rewrite.
+  assert.match(dealWorkspace, /const tons = Number\(deal\?\.trip_capacity_tons\);/);
+  assert.match(dealWorkspace, /Number\.isFinite\(tons\) && tons > 0 \? \{ payload_t: tons \} : null;/);
+  assert.doesNotMatch(dealWorkspace, /payload_t:[^\n]*cargo_weight_tons/);
+  assert.doesNotMatch(dealWorkspace, /\{ weight_t: tons \}/, 'round-2 review regression guard: capacityTons must never reach vehicle.weight_t');
+  assert.match(dealWorkspace, /<TruckMap[\s\S]{0,700}vehicle=\{vehicle\}/, 'the live embedded map must actually receive the computed vehicle spec');
 });
 
 test('TrackTruckScreen builds a vehicle spec (payload_t, not weight_t) from the navigated capacityTons and passes it to TruckMap', () => {

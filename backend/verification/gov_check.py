@@ -44,29 +44,31 @@ def check_iin_kz(iin: str) -> dict:
             import ssl
             import subprocess
             import tempfile
+            import shutil
             # Извлекаем cert+key из p12 через openssl (legacy для GOST)
             tmp = tempfile.mkdtemp()
-            cert_pem = f"{tmp}/cert.pem"
-            key_pem = f"{tmp}/key.pem"
-            subprocess.run([
-                "openssl", "pkcs12", "-in", EGOV_P12_PATH,
-                "-passin", f"pass:{EGOV_P12_PASSWORD}",
-                "-out", cert_pem, "-clcerts", "-nokeys", "-legacy",
-            ], capture_output=True, timeout=10)
-            subprocess.run([
-                "openssl", "pkcs12", "-in", EGOV_P12_PATH,
-                "-passin", f"pass:{EGOV_P12_PASSWORD}",
-                "-out", key_pem, "-nocerts", "-nodes", "-legacy",
-            ], capture_output=True, timeout=10)
-            # mTLS запрос
-            r = httpx.get(
-                f"https://data.egov.kz/api/v4/iin_check/{iin}",
-                cert=(cert_pem, key_pem),
-                timeout=15.0,
-            )
-            # Удаляем temp
-            import shutil
-            shutil.rmtree(tmp, ignore_errors=True)
+            try:
+                cert_pem = f"{tmp}/cert.pem"
+                key_pem = f"{tmp}/key.pem"
+                subprocess.run([
+                    "openssl", "pkcs12", "-in", EGOV_P12_PATH,
+                    "-passin", f"pass:{EGOV_P12_PASSWORD}",
+                    "-out", cert_pem, "-clcerts", "-nokeys", "-legacy",
+                ], capture_output=True, timeout=10)
+                subprocess.run([
+                    "openssl", "pkcs12", "-in", EGOV_P12_PATH,
+                    "-passin", f"pass:{EGOV_P12_PASSWORD}",
+                    "-out", key_pem, "-nocerts", "-nodes", "-legacy",
+                ], capture_output=True, timeout=10)
+                # mTLS запрос
+                r = httpx.get(
+                    f"https://data.egov.kz/api/v4/iin_check/{iin}",
+                    cert=(cert_pem, key_pem),
+                    timeout=15.0,
+                )
+            finally:
+                # Удаляем temp даже при исключении (subprocess/httpx)
+                shutil.rmtree(tmp, ignore_errors=True)
         else:
             return _mock_iin(iin)
 

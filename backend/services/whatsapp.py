@@ -23,6 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
 
+from services.log_redact import mask_phone
+
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "")
 WHATSAPP_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID", "")
 WHATSAPP_ACCOUNT_ID = os.getenv("WHATSAPP_ACCOUNT_ID", "")
@@ -55,7 +57,8 @@ def send_otp(phone: str, code: str) -> dict:
                 "code": str?, "error": str?, "message_id": str?}
     """
     if WA_MOCK:
-        print(f"[WA MOCK] {phone}: {code}")
+        # Release hardening track A: never print the raw code, even in mock.
+        print(f"[WA MOCK] {mask_phone(phone)}: (redacted)")
         return {
             "sent": True, "mock": True, "channel": "whatsapp",
             "code": code,

@@ -89,7 +89,7 @@ def _seed_cargo(owner_id: str) -> str:
 
 
 def _bid(driver_id: str, cargo_id: str, amount: int = 2500) -> str:
-    as_user(driver_id)
+    as_user(driver_id, role="driver")  # ставка на груз — только driver (track B)
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": amount})
     assert r.status_code == 200, r.text
     return r.json()["id"]
@@ -131,7 +131,7 @@ def test_accept_counter_spends_driver_limit_not_shipper():
         r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 2800})
         assert r.status_code == 200, r.text
 
-        as_user(driver)
+        as_user(driver, role="driver")
         r = client.post(f"/api/v1/market/bids/{bid_id}/counter/accept")
         assert r.status_code == 200, r.text
 

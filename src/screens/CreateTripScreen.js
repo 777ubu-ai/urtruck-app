@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-nati
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { cleanPlaceName, localizePlace } from '../utils/places';
-import { countryFlag } from '../utils/countryFlags';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
@@ -14,6 +14,7 @@ import Field from '../components/ui/v1/Field';
 // PR-C2: Textarea import удалён — comment field больше не используется
 // (backend TripIn не имеет comment, симметрия с CreateCargoScreen PR-C1).
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
+import StickyCTABar from '../components/ui/v1/StickyCTABar';
 import BottomSheet from '../components/ui/v1/BottomSheet';
 import LocationPickerModal from '../components/LocationPickerModal';
 import DatePicker from '../components/DatePicker';
@@ -47,6 +48,7 @@ const normalizeDecimal = (v) => {
   if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '');
   return s;
 };
+const vehicleBodyToMarketType = (body) => ({ curtain_sider: 'tent', refrigerated: 'ref', insulated: 'izoterm', flatbed: 'platform', container_platform: 'platform', dump_body: 'dump_truck', tanker: 'tanker', lowboy: 'platform', car_carrier: 'auto', van: 'van' }[body] || body);
 
 export default function CreateTripScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -92,8 +94,7 @@ export default function CreateTripScreen({ navigation, route }) {
   const displayRoutePoint = (raw, point) => {
     const canonical = point?.name || cleanPlaceName(raw || '');
     const localized = localizePlace(canonical, lang) || canonical;
-    const flag = point?.country ? countryFlag(point.country) : '';
-    return [localized, flag].filter(Boolean).join(', ');
+    return localized;
   };
 
   const [from, setFrom] = useState('');
@@ -115,6 +116,15 @@ export default function CreateTripScreen({ navigation, route }) {
   // CreateCargoScreen (PR-C1 fix).
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const vehicle = route?.params?.vehicle;
+
+  // Сохранённая машина подставляется один раз при открытии публикации.
+  React.useEffect(() => {
+    if (!vehicle) return;
+    setTruckType(vehicleBodyToMarketType(vehicle.body_type || vehicle.vehicle_type || null));
+    setTons(vehicle.payload_tons != null ? String(vehicle.payload_tons) : '');
+    setM3(vehicle.cargo_volume_m3 != null ? String(vehicle.cargo_volume_m3) : '');
+  }, [vehicle]);
 
   // City / date pickers reuse the existing standalone components: tapping
   // a Field row toggles the corresponding picker into a portal-like overlay.
@@ -156,6 +166,7 @@ export default function CreateTripScreen({ navigation, route }) {
       to_city: toPoint?.name || cleanPlaceName(to.trim()),
       transit: transit.trim() || null,
       truck_type: truckType,
+      vehicle_id: route?.params?.vehicleId || vehicle?.id || null,
       // Stage 7: stop silently injecting fake defaults (20t / 82m³).
       // The user explicitly leaves the field blank — the backend's
       // own column default is enough; we only send the number when
@@ -190,8 +201,25 @@ export default function CreateTripScreen({ navigation, route }) {
     }
   };
 
+  // Design v1 Commit 2: sticky footer CTA (same pattern as CreateCargoScreen)
+  // — the submit button renders in Screen's `footer` slot, above the IME,
+  // never inside the scroll content tree.
   return (
-    <Screen contentStyle={{ paddingBottom: 80 }}>
+    <Screen
+      contentStyle={{ paddingBottom: 24 }}
+      footer={(
+        <StickyCTABar>
+          <PrimaryButton
+            label={t('publish_trip_action')}
+            onPress={submit}
+            loading={submitting}
+            accent="driver"
+            testID="trip-submit-button"
+            style={{ minHeight: 52, borderRadius: 14, alignSelf: 'stretch' }}
+          />
+        </StickyCTABar>
+      )}
+    >
       <BrandHeader onBack={() => navigation.goBack()} accent={accent.main} />
 
       <Text style={s.title}>{t('postTrip')}</Text>
@@ -201,6 +229,7 @@ export default function CreateTripScreen({ navigation, route }) {
       <Field
         variant="dropdown"
         featherIcon="map-pin"
+        leading={fromPoint?.country ? <CountryFlag code={fromPoint.country} width={23} /> : null}
         label={t('signup_field_country')}
         value={displayRoutePoint(from, fromPoint)}
         placeholder={t('create_field_from_placeholder')}
@@ -211,6 +240,7 @@ export default function CreateTripScreen({ navigation, route }) {
       <Field
         variant="dropdown"
         featherIcon="map-pin"
+        leading={toPoint?.country ? <CountryFlag code={toPoint.country} width={23} /> : null}
         label={t('toCountry')}
         value={displayRoutePoint(to, toPoint)}
         placeholder={t('create_field_to_placeholder')}
@@ -373,15 +403,6 @@ export default function CreateTripScreen({ navigation, route }) {
           🛡  {t('create_route_visibility')}
         </Text>
       </View>
-
-      <PrimaryButton
-        label={t('publish_trip_action')}
-        onPress={submit}
-        loading={submitting}
-        accent="driver"
-        testID="trip-submit-button"
-        style={{ marginTop: v1Spacing.sm, minHeight: 52, borderRadius: 14 }}
-      />
 
       {/* Draft link — backend doesn't accept status='draft' yet, so this is
           a visual placeholder per the macro. */}

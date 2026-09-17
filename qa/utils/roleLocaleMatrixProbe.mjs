@@ -31,6 +31,7 @@ const LOCALES = ['RU', 'EN', 'ZH', 'KK'];
 const SCREENS = {
   driver: [
     ['qa-preview-role-default', 'onboarding-role'],
+    ['qa-preview-rolev2-default', 'onboarding-rolev2'],
     ['qa-preview-reg-driver', 'auth-phone'],
     ['qa-preview-regotp-driver', 'auth-otp'],
     ['qa-preview-regprofile-driver', 'auth-profile'],
@@ -50,6 +51,7 @@ const SCREENS = {
     ['qa-preview-main-client', 'my-cargo'],
     ['qa-preview-mytripslist-client', 'cargo-list'],
     ['qa-preview-createcargo-client', 'create-cargo'],
+    ['qa-preview-edittrip-default', 'edit-trip'],
     ['qa-preview-tripdetail-client', 'trip-detail+map'],
     ['qa-preview-driverdetail-client', 'driver-detail+badge'],
     ['qa-preview-editprofile-client', 'profile-edit'],
@@ -252,9 +254,22 @@ for (const lang of LOCALES) {
     await page.locator(`[data-testid="${BORDER_TAB_AFTER}"]`).first().click();
     await page.waitForTimeout(2500);
     // the Border tab is the last item of the bottom nav
-    const tab = page.locator('[data-testid="nav-Queue"], [data-testid="tab-Queue"]');
-    if (await tab.count()) {
-      await tab.first().click();
+    // (runtime contract: BottomNav emits `bottom-nav-${route.name.toLowerCase()}`
+    // and the route is `Queue` → `bottom-nav-queue`).
+    // React Navigation web keeps inactive tab screens mounted (aria-hidden,
+    // zero-size), so several bottom-nav-queue nodes exist; only the visible
+    // one is clickable.
+    const tab = page.locator('[data-testid="bottom-nav-queue"]:visible');
+    const visibleCount = await tab.count();
+    if (visibleCount === 1) {
+      await tab.click();
+    } else if (visibleCount > 1) {
+      // Hard guard against relying on .first(): multiple *visible* queue tabs
+      // mean the shell renders duplicates, which is a product defect, not a
+      // test artifact. Hidden React Navigation copies are aria-hidden /
+      // zero-size and must NOT be counted by the :visible engine.
+      ok = false;
+      note = `expected exactly one visible bottom-nav-queue, found ${visibleCount}`;
     } else {
       // fall back to the visible label in the active locale
       const labels = { RU: 'Граница', EN: 'Border', ZH: '边境', KK: 'Шекара' };

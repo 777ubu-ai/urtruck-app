@@ -10,9 +10,11 @@ from api.verification_gate import require_level
 
 notif_router = APIRouter()
 
-# Deal status, bid and tracking events are stored here as the durable source of
-# unread/app-icon badge truth. The public Notifications screen filters these
-# types client-side so they do not become a second visible deal center.
+# Deal status, bid, tracking and chat events are stored here as the durable
+# Bell inbox. Chat rows are visible in the inbox but excluded from this
+# endpoint's counter because chat/unread counts the same raw message for the
+# app icon and bottom navigation; RootHeader intentionally recombines both
+# sources once for the Bell badge.
 DEAL_NOTIFICATION_TYPES = {
     "bid",
     "bid_created",
@@ -136,7 +138,9 @@ def list_notifications(limit: int = 50, user=Depends(require_level(1))):
 def unread_count(user=Depends(require_level(1))):
     with get_conn() as c:
         row = c.execute(
-            "SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0",
+            "SELECT COUNT(*) as cnt FROM notifications "
+            "WHERE user_id = ? AND is_read = 0 "
+            "AND type NOT IN ('chat_message', 'chat_attachment')",
             (user["id"],),
         ).fetchone()
     return {"unread": row["cnt"] if row else 0}

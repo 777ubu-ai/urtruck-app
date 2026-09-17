@@ -88,7 +88,7 @@ export default function TrackTruckScreen({ navigation, route }) {
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('back')}>
           <Text style={[s.back, { color: theme.text }]}>‹</Text>
         </TouchableOpacity>
         <Text style={[s.title, { color: theme.text }]} numberOfLines={1}>{t('track_truck_title')}</Text>
@@ -200,7 +200,17 @@ const s = StyleSheet.create({
   badgeBorder: { color: '#168759', fontSize: 12, fontWeight: '800' },
   updated: { fontSize: 11, textAlign: 'right', flex: 1 },
   staleBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 8, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderRadius: 12 },
-  staleText: { flex: 1, fontSize: 12, color: '#F59E0B', fontWeight: '600', lineHeight: 16 },
+  // Track B / B6: '#F59E0B' was used as literal text color here, which
+  // CLAUDE.md's canon explicitly forbids ('#F59E0B'/'#FF8400' are
+  // background/badge-only; text must be '#E06D00') and which measures
+  // ~2.5:1 on white, well under WCAG AA. Corrected to the canonical text
+  // orange (still not fully AA-clean for 12px normal text — see
+  // qa/utils/themeContrastSmoke.js's documented known-failure for that
+  // pending owner decision — but no longer flatly wrong, and this file's
+  // whole `s` StyleSheet is static/non-theme-reactive regardless, which is
+  // a separate, larger issue given this screen is currently unreachable
+  // — see the Track B report's orphaned-route finding).
+  staleText: { flex: 1, fontSize: 12, color: '#E06D00', fontWeight: '600', lineHeight: 16 },
   driverCard: { marginHorizontal: 12, marginTop: 8, marginBottom: 10, padding: 12, borderWidth: 1, borderRadius: 16, gap: 10 },
   driverIdentity: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   driverAvatar: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F6EF' },

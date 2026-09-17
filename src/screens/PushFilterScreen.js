@@ -1,255 +1,53 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Switch, TextInput, ActivityIndicator } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
+import { useV1Colors, v1Radius } from '../theme/designV1';
 import { useI18n } from '../utils/useI18n';
-import { useTheme } from '../utils/ThemeContext';
-import {v1Colors, useV1Colors} from '../theme/designV1';
 import { useToast } from '../components/Toast';
 import { getPushSettings, setPushSettings } from '../utils/store';
 import { marketAPI } from '../utils/marketAPI';
-import Feather from '@expo/vector-icons/Feather';
+import { storage } from '../utils/storage';
+import LocationPickerModal from '../components/LocationPickerModal';
+import DatePicker from '../components/DatePicker';
+import BottomSheet from '../components/ui/v1/BottomSheet';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../components/ui/v1/KeyboardSafeLayout';
+import { TRUCK_KEYS } from '../utils/truckConstants';
 
-const TRUCK_KEYS = ['tent', 'ref', 'platform', 'auto', 'izoterm', 'cont20', 'cont40', 'jumbo', 'curtain', 'lowloader', 'tanker', 'dumptruck'];
+const DRAFT_KEY = 'ur_push_filter_draft_v2';
 
-const NOTIF_CATEGORIES = [
-  { key: 'new_cargos', icon: 'package' },
-  { key: 'bids',       icon: 'message-square' },
-  { key: 'moderation', icon: 'shield' },
-  { key: 'reviews',    icon: 'star' },
-  { key: 'trips',      icon: 'truck' },
-  { key: 'system',     icon: 'bell' },
-];
+const COPY = {
+  RU: { title: 'Уведомления', driverTitle: 'Уведомлять меня о новых грузах', shipperTitle: 'Уведомлять меня о подходящих машинах', hint: 'Настройте направление — UrTruck сообщит о подходящем предложении.', from: 'Откуда', to: 'Куда', place: 'Выберите страну, город или погранпереход', period: 'Период', weight: 'Вес от', capacity: 'Грузоподъёмность от', tons: 'т', body: 'Тип кузова', bodyNote: 'Уточнить тип кузова', keywords: 'Ключевые слова груза', cargoHint: 'Например, автозапчасти', save: 'Сохранить уведомление', saving: 'Сохраняем…', saved: 'Уведомление сохранено', mine: 'Мои уведомления', empty: 'У вас пока нет уведомлений', emptyHint: 'Создайте направление, и UrTruck сообщит, когда появится подходящий груз или машина.', create: 'Создать уведомление', enabled: 'Вкл', disabled: 'Выкл', edit: 'Изменить', remove: 'Удалить', cancel: 'Отмена', update: 'Сохранить изменения', required: 'Выберите откуда и куда', failed: 'Не удалось сохранить уведомление', deleted: 'Уведомление удалено', deleteTitle: 'Удалить уведомление?', deleteBody: 'Направление больше не будет присылать push-уведомления.', allBodies: 'Любой кузов', chooseBody: 'Выберите тип кузова', clearPeriod: 'Очистить период', dateFrom: 'Дата от', dateTo: 'Дата до' },
+  EN: { title: 'Notifications', driverTitle: 'Notify me about new cargo', shipperTitle: 'Notify me about matching trucks', hint: 'Set a route and UrTruck will notify you about matching offers.', from: 'From', to: 'To', place: 'Choose a country, city, or border crossing', period: 'Period', weight: 'Weight from', capacity: 'Capacity from', tons: 't', body: 'Body type', bodyNote: 'Specify body type', keywords: 'Cargo keywords', cargoHint: 'For example, auto parts', save: 'Save notification', saving: 'Saving…', saved: 'Notification saved', mine: 'My notifications', empty: 'You have no notifications yet', emptyHint: 'Create a route and UrTruck will notify you when matching cargo or a truck appears.', create: 'Create notification', enabled: 'On', disabled: 'Off', edit: 'Edit', remove: 'Delete', cancel: 'Cancel', update: 'Save changes', required: 'Choose origin and destination', failed: 'Could not save notification', deleted: 'Notification deleted', deleteTitle: 'Delete notification?', deleteBody: 'This route will no longer send push notifications.', allBodies: 'Any body type', chooseBody: 'Choose body type', clearPeriod: 'Clear period', dateFrom: 'Date from', dateTo: 'Date to' },
+  ZH: { title: '通知', driverTitle: '有新货源时通知我', shipperTitle: '有合适车辆时通知我', hint: '设置路线后，UrTruck 会通知您匹配的报价。', from: '出发地', to: '目的地', place: '选择国家、城市或口岸', period: '时间', weight: '最低重量', capacity: '最低载重', tons: '吨', body: '车身类型', bodyNote: '补充车身类型', keywords: '货物关键词', cargoHint: '例如：汽车配件', save: '保存通知', saving: '正在保存…', saved: '通知已保存', mine: '我的通知', empty: '您还没有通知', emptyHint: '创建路线后，出现合适货源或车辆时 UrTruck 会通知您。', create: '创建通知', enabled: '开启', disabled: '关闭', edit: '编辑', remove: '删除', cancel: '取消', update: '保存修改', required: '请选择出发地和目的地', failed: '无法保存通知', deleted: '通知已删除', deleteTitle: '删除通知？', deleteBody: '此路线将不再发送推送通知。', allBodies: '任何车身', chooseBody: '选择车身类型', clearPeriod: '清除日期', dateFrom: '开始日期', dateTo: '结束日期' },
+  KK: { title: 'Хабарламалар', driverTitle: 'Жаңа жүк туралы хабарлау', shipperTitle: 'Сәйкес көлік туралы хабарлау', hint: 'Бағытты баптаңыз — UrTruck сәйкес ұсыныс туралы хабарлайды.', from: 'Қайдан', to: 'Қайда', place: 'Елді, қаланы немесе шекара өткелін таңдаңыз', period: 'Кезең', weight: 'Салмақ бастап', capacity: 'Жүк көтергіштік бастап', tons: 'т', body: 'Шанақ түрі', bodyNote: 'Шанақ түрін нақтылау', keywords: 'Жүк кілтсөздері', cargoHint: 'Мысалы, автокөлік бөлшектері', save: 'Хабарламаны сақтау', saving: 'Сақталуда…', saved: 'Хабарлама сақталды', mine: 'Менің хабарламаларым', empty: 'Әзірге хабарламалар жоқ', emptyHint: 'Бағыт жасаңыз, сәйкес жүк не көлік шыққанда UrTruck хабарлайды.', create: 'Хабарлама жасау', enabled: 'Қосулы', disabled: 'Өшірулі', edit: 'Өзгерту', remove: 'Жою', cancel: 'Бас тарту', update: 'Өзгерістерді сақтау', required: 'Қайдан және қайда екенін таңдаңыз', failed: 'Хабарламаны сақтау мүмкін болмады', deleted: 'Хабарлама жойылды', deleteTitle: 'Хабарламаны жою керек пе?', deleteBody: 'Бұл бағыт push-хабарлама жібермейді.', allBodies: 'Кез келген шанақ', chooseBody: 'Шанақты таңдаңыз', clearPeriod: 'Кезеңді тазалау', dateFrom: 'Басталу күні', dateTo: 'Аяқталу күні' },
+};
+
+const initialForm = () => {
+  const saved = getPushSettings();
+  return { fromText: saved.fromCity || '', fromPoint: saved.fromPoint || null, toText: saved.toCity || '', toPoint: saved.toPoint || null, periodStart: saved.periodStart || '', periodEnd: saved.periodEnd || '', minimum: saved.minTons || '', truckType: saved.truckType || '', bodyNote: saved.bodyNote || '', keywords: saved.cargoType || '' };
+};
 
 export default function PushFilterScreen({ navigation, route }) {
-  const v1 = useV1Colors();
-  const { role } = route.params || {};
-  // 5.4: driver-акцент = бренд-зелёный #168759 (был индиго #4F46E5 —
-  // рассинхрон с ролью). Клиент — янтарный.
-  const accent = role === 'driver' ? '#168759' : '#FF8400';
-  const { t } = useI18n();
-  const { theme } = useTheme();
-  const { toast } = useToast();
-  const initial = getPushSettings();
+  const c = useV1Colors(); const { t, lang } = useI18n(); const { toast } = useToast();
+  const role = route?.params?.role === 'driver' ? 'driver' : 'client'; const l = COPY[lang] || COPY.EN;
+  const [form, setForm] = useState(initialForm); const [savedRoutes, setSavedRoutes] = useState([]); const [picker, setPicker] = useState(null); const [sheet, setSheet] = useState(null); const [saving, setSaving] = useState(false); const [loadingRoutes, setLoadingRoutes] = useState(true); const [editing, setEditing] = useState(null); const [hydrated, setHydrated] = useState(false);
+  const update = useCallback((key, value) => setForm((current) => ({ ...current, [key]: value })), []);
+  const loadRoutes = useCallback(async () => { setLoadingRoutes(true); const response = await marketAPI.listSavedRoutes(); setSavedRoutes(Array.isArray(response?.searches) ? response.searches : []); setLoadingRoutes(false); }, []);
 
-  const [onlyMyRoutes, setOnlyMyRoutes] = useState(initial.onlyMyRoutes);
-  const [minTons, setMinTons] = useState(initial.minTons);
-  const [minPrice, setMinPrice] = useState(initial.minPrice);
-  const [types, setTypes] = useState(initial.truckTypes || []);
-  const [categories, setCategories] = useState(initial.categories || NOTIF_CATEGORIES.map(c => c.key));
-  const [fromCity, setFromCity] = useState(initial.fromCity || '');
-  const [toCity, setToCity] = useState(initial.toCity || '');
-  const [savedRoutes, setSavedRoutes] = useState([]);
-  const [routesLoading, setRoutesLoading] = useState(true);
-  const [savingRoute, setSavingRoute] = useState(false);
+  useEffect(() => { let active = true; (async () => { const draft = await storage.get(DRAFT_KEY).catch(() => null); if (active && draft) { try { const parsed = JSON.parse(draft); if (parsed && typeof parsed === 'object') setForm((current) => ({ ...current, ...parsed })); } catch { /* corrupted local draft must not block settings */ } } if (active) setHydrated(true); })(); loadRoutes(); return () => { active = false; }; }, [loadRoutes]);
+  useEffect(() => { if (hydrated) storage.set(DRAFT_KEY, JSON.stringify(form)).catch(() => {}); }, [form, hydrated]);
 
-  const label = (key, fallback) => {
-    const value = t(key);
-    return value === key ? fallback : value;
-  };
+  const choosePoint = (kind, text, point) => { update(kind === 'from' ? 'fromText' : 'toText', text); update(kind === 'from' ? 'fromPoint' : 'toPoint', point || null); setPicker(null); };
+  const save = async () => { if (!form.fromText.trim() || !form.toText.trim()) { toast(l.required, 'error'); return; } setSaving(true); const response = await marketAPI.saveRoute({ from_city: form.fromText.trim(), to_city: form.toText.trim(), truck_type: form.truckType || form.bodyNote.trim() || null, notify: true }); if (response.ok && editing?.id) await marketAPI.deleteSavedRoute(editing.id); setSaving(false); if (!response.ok) { toast(response.detail || l.failed, 'error'); return; } setPushSettings({ fromCity: form.fromText, fromPoint: form.fromPoint, toCity: form.toText, toPoint: form.toPoint, periodStart: form.periodStart, periodEnd: form.periodEnd, minTons: form.minimum, truckType: form.truckType, bodyNote: form.bodyNote, cargoType: form.keywords, categories: ['new_cargos'] }); setEditing(null); await loadRoutes(); toast(`✓ ${l.saved}`, 'success'); };
+  const toggleRoute = async (item, notify) => { setSavedRoutes((current) => current.map((routeItem) => (routeItem.id === item.id ? { ...routeItem, notify: notify ? 1 : 0 } : routeItem))); const response = await marketAPI.saveRoute({ from_city: item.from_city, to_city: item.to_city, truck_type: item.truck_type || null, notify }); if (!response.ok) toast(l.failed, 'error'); await loadRoutes(); };
+  const editRoute = (item) => { setEditing(item); setForm((current) => ({ ...current, fromText: item.from_city || '', toText: item.to_city || '', truckType: item.truck_type || '' })); };
+  const deleteRoute = (item) => Alert.alert(l.deleteTitle, l.deleteBody, [{ text: l.cancel, style: 'cancel' }, { text: l.remove, style: 'destructive', onPress: async () => { const response = await marketAPI.deleteSavedRoute(item.id); if (!response.ok) { toast(l.failed, 'error'); return; } await loadRoutes(); toast(l.deleted, 'success'); } }]);
+  const pointField = (label, value, kind) => <TouchableOpacity style={[s.card, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => setPicker(kind)} activeOpacity={0.72} testID={`push-filter-${kind}`}><Text style={[s.label, { color: c.text }]}>{label}</Text><View style={s.fieldRow}><Feather name="map-pin" size={18} color={c.driver} /><Text style={[s.fieldValue, { color: value ? c.text : c.placeholder }]} numberOfLines={2}>{value || l.place}</Text><Feather name="chevron-right" size={18} color={c.textMuted} /></View></TouchableOpacity>;
+  const bodyOptions = useMemo(() => [{ key: '', label: l.allBodies }, ...TRUCK_KEYS.map((key) => ({ key, label: t(key) }))], [l.allBodies, t]);
+  const selectedBody = bodyOptions.find((item) => item.key === form.truckType)?.label || l.chooseBody;
 
-  const loadSavedRoutes = async () => {
-    setRoutesLoading(true);
-    const data = await marketAPI.listSavedRoutes();
-    setSavedRoutes(Array.isArray(data?.searches) ? data.searches : []);
-    setRoutesLoading(false);
-  };
-
-  useEffect(() => {
-    let alive = true;
-    setRoutesLoading(true);
-    marketAPI.listSavedRoutes().then((data) => {
-      if (!alive) return;
-      setSavedRoutes(Array.isArray(data?.searches) ? data.searches : []);
-      setRoutesLoading(false);
-    }).catch(() => {
-      if (!alive) return;
-      setSavedRoutes([]);
-      setRoutesLoading(false);
-    });
-    return () => { alive = false; };
-  }, []);
-
-  const toggleType = (k) => setTypes(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]);
-  const toggleCategory = (k) => setCategories(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]);
-
-  const save = async () => {
-    setPushSettings({ onlyMyRoutes, minTons, minPrice, truckTypes: types, categories, fromCity, toCity });
-    if (fromCity.trim() && toCity.trim()) {
-      setSavingRoute(true);
-      const r = await marketAPI.saveRoute({
-        from_city: fromCity.trim(),
-        to_city: toCity.trim(),
-        truck_type: types[0] || null,
-        min_price: minPrice ? Number(minPrice) : null,
-        notify: categories.includes('new_cargos'),
-      });
-      setSavingRoute(false);
-      if (!r.ok) {
-        toast(r.detail || t('send_error'), 'error');
-        return;
-      }
-      await loadSavedRoutes();
-    }
-    toast('✓ ' + t('push_saved'), 'success');
-    navigation.goBack();
-  };
-
-  const deleteRoute = async (id) => {
-    const before = savedRoutes;
-    setSavedRoutes((prev) => prev.filter((x) => String(x.id) !== String(id)));
-    const r = await marketAPI.deleteSavedRoute(id);
-    if (!r.ok) {
-      setSavedRoutes(before);
-      toast(t('send_error'), 'error');
-    }
-  };
-
-  return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[s.backBtn, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.backText, { color: theme.text }]}>‹</Text>
-        </TouchableOpacity>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Feather name="bell" size={20} color={theme.text} />
-          <Text style={[s.title, { color: theme.text }]}>{t('push_title')}</Text>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-        {/* Категории уведомлений */}
-        <Text style={[s.sectionTitle, { color: theme.text }]}>{t('push_categories')}</Text>
-        {NOTIF_CATEGORIES.map(cat => (
-          <View key={cat.key} style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={s.row}>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Feather name={cat.icon} size={15} color={theme.text} />
-                  <Text style={[s.label, { color: theme.text }]}>{t('push_cat_' + cat.key)}</Text>
-                </View>
-                <Text style={[s.desc, { color: theme.textMuted }]}>{t('push_cat_' + cat.key + '_desc')}</Text>
-              </View>
-              <Switch
-                value={categories.includes(cat.key)}
-                onValueChange={() => toggleCategory(cat.key)}
-                trackColor={{ false: theme.border, true: accent }}
-                thumbColor="#fff"
-              />
-            </View>
-          </View>
-        ))}
-
-        {/* Фильтры грузов */}
-        <Text style={[s.sectionTitle, { color: theme.text, marginTop: 16 }]}>{t('push_filter_cargos')}</Text>
-
-        <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={s.row}>
-            <Text style={[s.label, { color: theme.text }]}>{t('push_only_my_routes')}</Text>
-            <Switch value={onlyMyRoutes} onValueChange={setOnlyMyRoutes}
-              trackColor={{ false: theme.border, true: accent }} thumbColor="#fff" />
-          </View>
-        </View>
-
-        <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>{label('route_direction', 'Направление')}</Text>
-          <View style={s.routeInputs}>
-            <TextInput style={[s.input, s.routeInput, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-              placeholder={label('from', 'Откуда')} placeholderTextColor={theme.textMuted}
-              value={fromCity} onChangeText={setFromCity} autoCapitalize="words" />
-            <Feather name="arrow-right" size={18} color={theme.textMuted} />
-            <TextInput style={[s.input, s.routeInput, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-              placeholder={label('to', 'Куда')} placeholderTextColor={theme.textMuted}
-              value={toCity} onChangeText={setToCity} autoCapitalize="words" />
-          </View>
-          <Text style={[s.desc, { color: theme.textMuted, marginTop: 8 }]}>
-            {role === 'driver'
-              ? label('push_route_driver_hint', 'Водитель получит push, когда появится новый груз по этому направлению.')
-              : label('push_route_shipper_hint', 'Грузоотправитель сохранит нужное направление для поиска машин и заявок.')}
-          </Text>
-        </View>
-
-        <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>{t('push_min_tons')}</Text>
-          <TextInput style={[s.input, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-            placeholder="10" placeholderTextColor={theme.textMuted}
-            keyboardType="numeric" value={minTons} onChangeText={setMinTons} />
-        </View>
-
-        <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>{t('push_min_price')}</Text>
-          <TextInput style={[s.input, { backgroundColor: theme.bg, color: theme.text, borderColor: theme.border }]}
-            placeholder="2000" placeholderTextColor={theme.textMuted}
-            keyboardType="numeric" value={minPrice} onChangeText={setMinPrice} />
-        </View>
-
-        <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[s.label, { color: theme.text, marginBottom: 8 }]}>{t('push_truck_types')}</Text>
-          <View style={s.typesWrap}>
-            {TRUCK_KEYS.map(k => (
-              <TouchableOpacity key={k}
-                style={[s.typeChip, { backgroundColor: theme.bg, borderColor: theme.border },
-                  types.includes(k) && { backgroundColor: accent, borderColor: accent }]}
-                onPress={() => toggleType(k)}>
-                <Text style={[s.typeChipText, { color: theme.textSecondary },
-                  types.includes(k) && { color: '#0C0A09' }]}>{t(k)}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={[s.row, { marginBottom: 8 }]}>
-            <Text style={[s.label, { color: theme.text }]}>{label('saved_routes', 'Сохранённые маршруты')}</Text>
-            {routesLoading ? <ActivityIndicator color={accent} /> : null}
-          </View>
-          {!routesLoading && savedRoutes.length === 0 ? (
-            <Text style={[s.desc, { color: theme.textMuted }]}>{label('saved_routes_empty', 'Пока нет сохранённых маршрутов.')}</Text>
-          ) : null}
-          {savedRoutes.map((item) => (
-            <View key={item.id} style={[s.savedRoute, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.savedRouteText, { color: theme.text }]} numberOfLines={1}>
-                  {item.from_city || '—'} → {item.to_city || '—'}
-                </Text>
-                <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>
-                  {[item.truck_type, item.min_price ? `${item.min_price} USD+` : null].filter(Boolean).join(' · ') || label('push_any_cargo', 'Любой груз')}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => deleteRoute(item.id)} style={s.deleteRouteBtn} accessibilityLabel={label('delete', 'Удалить')}>
-                <Feather name="trash-2" size={17} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
-
-        <TouchableOpacity style={[s.saveBtn, { backgroundColor: accent }]} onPress={save} disabled={savingRoute}>
-          {savingRoute ? <ActivityIndicator color="#0C0A09" /> : <Text style={s.saveBtnText}>{t('push_save_btn')}</Text>}
-        </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
-  );
+  return <SafeAreaView style={[s.safe, { backgroundColor: c.bg }]} edges={['top', 'bottom']}><View style={[s.header, { borderBottomColor: c.border }]}><TouchableOpacity onPress={() => navigation.goBack()} style={s.back} accessibilityRole="button" accessibilityLabel={t('back')} testID="push-filter-back"><Feather name="arrow-left" size={23} color={c.text} /></TouchableOpacity><Text style={[s.title, { color: c.text }]}>{l.title}</Text><View style={s.headerSpacer} /></View><KeyboardSafeLayout><KeyboardSafeScrollView contentContainerStyle={s.content} testID="push-filter-screen"><View style={[s.intro, { backgroundColor: c.surface, borderColor: c.border }]}><View style={[s.introIcon, { backgroundColor: c.driverSoft }]}><Feather name="bell" size={19} color={c.driver} /></View><View style={{ flex: 1 }}><Text style={[s.introTitle, { color: c.text }]}>{role === 'driver' ? l.driverTitle : l.shipperTitle}</Text><Text style={[s.introHint, { color: c.textMuted }]}>{l.hint}</Text></View></View>{pointField(l.from, form.fromText, 'from')}{pointField(l.to, form.toText, 'to')}<View style={[s.card, { backgroundColor: c.surface, borderColor: c.border }]}><Text style={[s.label, { color: c.text }]}>{l.period}</Text><View style={s.dateRow}><View style={{ flex: 1 }}><Text style={[s.dateLabel, { color: c.textMuted }]}>{l.dateFrom}</Text><DatePicker value={form.periodStart} onChange={(value) => update('periodStart', value)} placeholder="DD.MM.YYYY" /></View><Feather name="arrow-right" size={17} color={c.textMuted} /><View style={{ flex: 1 }}><Text style={[s.dateLabel, { color: c.textMuted }]}>{l.dateTo}</Text><DatePicker value={form.periodEnd} onChange={(value) => update('periodEnd', value)} placeholder="DD.MM.YYYY" /></View></View>{(form.periodStart || form.periodEnd) ? <TouchableOpacity onPress={() => { update('periodStart', ''); update('periodEnd', ''); }}><Text style={[s.clear, { color: c.driver }]}>{l.clearPeriod}</Text></TouchableOpacity> : null}</View><View style={[s.card, { backgroundColor: c.surface, borderColor: c.border }]}><Text style={[s.label, { color: c.text }]}>{role === 'driver' ? l.weight : l.capacity}</Text><View style={[s.numberField, { borderColor: c.border, backgroundColor: c.bg }]}><TextInput value={form.minimum} onChangeText={(value) => update('minimum', value.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder="20" placeholderTextColor={c.placeholder} style={[s.numberInput, { color: c.text }]} testID="push-filter-minimum" /><Text style={[s.tons, { color: c.textMuted }]}>{l.tons}</Text></View></View><TouchableOpacity style={[s.card, s.selectCard, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => setSheet('body')} activeOpacity={0.72} testID="push-filter-body"><View style={{ flex: 1 }}><Text style={[s.label, { color: c.text }]}>{l.body}</Text><Text style={[s.fieldValue, { color: form.truckType ? c.text : c.textMuted }]}>{selectedBody}</Text></View><Feather name="chevron-right" size={18} color={c.textMuted} /></TouchableOpacity><View style={[s.card, { backgroundColor: c.surface, borderColor: c.border }]}><Text style={[s.label, { color: c.text }]}>{role === 'driver' ? l.keywords : l.bodyNote}</Text><TextInput value={role === 'driver' ? form.keywords : form.bodyNote} onChangeText={(value) => update(role === 'driver' ? 'keywords' : 'bodyNote', value)} placeholder={role === 'driver' ? l.cargoHint : l.bodyNote} placeholderTextColor={c.placeholder} style={[s.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.bg }]} multiline testID="push-filter-free-text" /></View><TouchableOpacity style={[s.primary, { backgroundColor: c.driver }]} onPress={save} disabled={saving} testID="push-filter-save">{saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.primaryText}>{editing ? l.update : l.save}</Text>}</TouchableOpacity><View style={s.sectionHeader}><Text style={[s.sectionTitle, { color: c.text }]}>{l.mine}</Text>{editing ? <TouchableOpacity onPress={() => setEditing(null)}><Text style={[s.clear, { color: c.driver }]}>{l.cancel}</Text></TouchableOpacity> : null}</View>{loadingRoutes ? <ActivityIndicator color={c.driver} style={{ marginVertical: 18 }} /> : null}{!loadingRoutes && savedRoutes.length === 0 ? <View style={[s.empty, { backgroundColor: c.surface, borderColor: c.border }]}><Feather name="bell-off" size={26} color={c.textMuted} /><Text style={[s.emptyTitle, { color: c.text }]}>{l.empty}</Text><Text style={[s.emptyHint, { color: c.textMuted }]}>{l.emptyHint}</Text><TouchableOpacity onPress={() => setForm(initialForm())}><Text style={[s.create, { color: c.driver }]}>{l.create}</Text></TouchableOpacity></View> : null}{!loadingRoutes && savedRoutes.map((item) => <View key={item.id} style={[s.savedCard, { backgroundColor: c.surface, borderColor: c.border }]} testID={`push-filter-saved-${item.id}`}><View style={s.savedTop}><View style={{ flex: 1 }}><Text style={[s.savedRoute, { color: c.text }]} numberOfLines={2}>{item.from_city} → {item.to_city}</Text><Text style={[s.savedMeta, { color: c.textMuted }]}>{item.truck_type ? t(item.truck_type) : l.allBodies}</Text></View><Switch value={Boolean(item.notify)} onValueChange={(value) => toggleRoute(item, value)} trackColor={{ false: c.border, true: c.driverSoft }} thumbColor={item.notify ? c.driver : c.textMuted} accessibilityLabel={`${item.from_city} ${item.to_city}: ${item.notify ? l.enabled : l.disabled}`} /></View><View style={s.actions}><TouchableOpacity onPress={() => editRoute(item)}><Text style={[s.action, { color: c.driver }]}>{l.edit}</Text></TouchableOpacity><TouchableOpacity onPress={() => deleteRoute(item)}><Text style={[s.action, { color: c.error || '#D03B3B' }]}>{l.remove}</Text></TouchableOpacity></View></View>)}</KeyboardSafeScrollView></KeyboardSafeLayout><LocationPickerModal visible={picker === 'from'} onClose={() => setPicker(null)} title={l.from} showGeo allowCountryOnly onSelect={(value, point) => choosePoint('from', value, point)} /><LocationPickerModal visible={picker === 'to'} onClose={() => setPicker(null)} title={l.to} allowCountryOnly onSelect={(value, point) => choosePoint('to', value, point)} /><BottomSheet visible={sheet === 'body'} onClose={() => setSheet(null)} title={l.body}>{bodyOptions.map((item) => <TouchableOpacity key={item.key || 'all'} style={[s.option, { borderBottomColor: c.border }]} onPress={() => { update('truckType', item.key); setSheet(null); }}><Text style={[s.optionText, { color: c.text }]}>{item.label}</Text>{form.truckType === item.key ? <Feather name="check" size={18} color={c.driver} /> : null}</TouchableOpacity>)}</BottomSheet></SafeAreaView>;
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  backText: { fontSize: 22 },
-  title: { fontSize: 22, fontWeight: '900' },
-  sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 10 },
-  card: { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { fontSize: 14, fontWeight: '700' },
-  desc: { fontSize: 11, marginTop: 2 },
-  input: { padding: 12, borderRadius: 10, fontSize: 14, borderWidth: 1 },
-  routeInputs: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  routeInput: { flex: 1, minWidth: 0 },
-  typesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  typeChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
-  typeChipText: { fontSize: 12, fontWeight: '600' },
-  savedRoute: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 10, marginTop: 8 },
-  savedRouteText: { fontSize: 13, fontWeight: '800' },
-  deleteRouteBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  saveBtn: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 14 },
-  saveBtnText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
-});
+const s = StyleSheet.create({ safe: { flex: 1 }, header: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 }, back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, headerSpacer: { width: 44 }, title: { fontSize: 18, fontWeight: '800' }, content: { padding: 16, paddingBottom: 40, gap: 10 }, intro: { borderWidth: 1, borderRadius: v1Radius.card, padding: 14, flexDirection: 'row', gap: 12, alignItems: 'flex-start' }, introIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, introTitle: { fontSize: 16, lineHeight: 21, fontWeight: '800' }, introHint: { fontSize: 13, lineHeight: 18, marginTop: 3 }, card: { borderWidth: 1, borderRadius: v1Radius.card, padding: 14 }, label: { fontSize: 13, lineHeight: 17, fontWeight: '800', marginBottom: 8 }, fieldRow: { minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 9 }, fieldValue: { flex: 1, fontSize: 14, lineHeight: 19, fontWeight: '600' }, dateRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 7 }, dateLabel: { fontSize: 11, fontWeight: '700', marginBottom: 4 }, clear: { fontSize: 13, fontWeight: '700', marginTop: 10 }, numberField: { minHeight: 48, borderWidth: 1, borderRadius: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13 }, numberInput: { flex: 1, fontSize: 16, paddingVertical: 9 }, tons: { fontSize: 15, fontWeight: '700' }, selectCard: { flexDirection: 'row', alignItems: 'center', gap: 10 }, textInput: { minHeight: 48, borderWidth: 1, borderRadius: 12, fontSize: 15, paddingHorizontal: 13, paddingVertical: 11, textAlignVertical: 'top', maxHeight: 92 }, primary: { minHeight: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 2 }, primaryText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' }, sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }, sectionTitle: { fontSize: 18, fontWeight: '800' }, empty: { borderWidth: 1, borderRadius: v1Radius.card, alignItems: 'center', padding: 22 }, emptyTitle: { fontSize: 16, fontWeight: '800', marginTop: 9 }, emptyHint: { fontSize: 13, lineHeight: 18, marginTop: 5, textAlign: 'center' }, create: { fontSize: 14, fontWeight: '800', marginTop: 14 }, savedCard: { borderWidth: 1, borderRadius: v1Radius.card, padding: 14, gap: 10 }, savedTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 }, savedRoute: { fontSize: 15, lineHeight: 20, fontWeight: '800' }, savedMeta: { fontSize: 13, marginTop: 3 }, actions: { flexDirection: 'row', gap: 18 }, action: { fontSize: 13, fontWeight: '800' }, option: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth }, optionText: { fontSize: 15, fontWeight: '600' } });

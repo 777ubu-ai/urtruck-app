@@ -5,13 +5,14 @@ import sys
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_price.db")
-if os.environ.get("URTRUCK_PYTEST_SHARED_DB") != "1":
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
+    # (Previously guarded by URTRUCK_PYTEST_SHARED_DB, which nothing ever
+    # actually set — that guard was always a no-op; this one is real.)
     Path(TEST_DB).unlink(missing_ok=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-
-from api import verification_gate
 
 _current_user = contextvars.ContextVar("user", default=None)
 
@@ -28,8 +29,6 @@ def _fake_require_level(_min):
     return dep
 
 
-verification_gate.require_level = _fake_require_level
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from database import db as ddb
@@ -44,19 +43,27 @@ if _notif_schema.exists():
     with get_conn() as _c:
         _c.executescript(_notif_schema.read_text(encoding="utf-8"))
 
+from tests.auth_harness import override_require_level
+
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
+override_require_level(app, _fake_require_level(1))
 client = TestClient(app)
 
 OWNER = "price-owner-1"
 
 
-def _as(uid=OWNER):
+def _as(uid=OWNER, role="client"):
+    """Track B (2026-09-10): create_cargo()/create_trip() now enforce
+    server-side role direction -- default "client" matches this file's
+    OWNER persona (cargo owner in most tests here); the trip-price test
+    below passes role="driver" explicitly since create_trip requires it."""
     _current_user.set({
         "id": uid,
         "full_name": "Owner",
         "phone": "+700",
         "verification_level": 1,
+        "role": role,
     })
 
 
@@ -119,7 +126,7 @@ def test_patch_cargo_negative_price_is_422_and_does_not_partial_update():
 
 
 def test_trip_create_and_patch_negative_price_are_422():
-    _as()
+    _as(role="driver")
     created = client.post("/api/v1/market/trips", json={
         "from_city": "Almaty",
         "to_city": "Moscow",

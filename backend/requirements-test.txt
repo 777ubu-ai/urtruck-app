@@ -1,0 +1,7 @@
+# Canonical backend test environment. Keep runtime pins in requirements.txt.
+-r requirements.txt
+pytest==8.3.5
+pytest-json-report==1.5.0
+# Release hardening track A (2026-09-10): test-only, used by
+# tests/test_deploy_workflow_static_validation.py to parse .github/workflows/*.yml.
+PyYAML==6.0.2

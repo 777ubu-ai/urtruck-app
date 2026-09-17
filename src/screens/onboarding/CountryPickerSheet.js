@@ -25,6 +25,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { brand, useBrand, radius, space, typography } from '../../theme/brandV2';
 import { COUNTRIES, POPULAR_ISO } from '../../utils/countries';
+import CountryFlag from '../../components/ui/v1/CountryFlag';
 
 const Row = ({ s, country, label, onPress }) => (
   <Pressable
@@ -35,7 +36,7 @@ const Row = ({ s, country, label, onPress }) => (
     ]}
     testID={`country-row-${country.iso}`}
   >
-    <Text style={s.flag}>{country.flag}</Text>
+    <CountryFlag code={country.iso} width={27} />
     <Text style={s.countryName}>{label}</Text>
     <Text style={s.dial}>+{country.dial}</Text>
     <Feather name="chevron-right" size={18} color={brand.textTertiary} />

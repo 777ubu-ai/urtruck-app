@@ -122,10 +122,27 @@ test('P1: все три входа в сделку идут через кано�
 
 test('P2: guard снятия с публикации знает про delivered/received', () => {
   const guards = [...marketPy.matchAll(/SELECT id FROM deals WHERE (?:cargo_id|trip_id) = \? AND status IN \(([^)]*)\)/g)];
-  assert.equal(guards.length, 2, 'ожидалось два guard-запроса (cargo + trip)');
-  for (const g of guards) {
-    for (const s of ['delivered', 'received']) {
-      assert.ok(g[1].includes(`'${s}'`), `guard не покрывает статус ${s}: ${g[1]}`);
-    }
+  // Track B добавил третий потребитель canonical active-deal guard:
+  // legacy update_trip_status. Два SQL-шаблона живут в shared helper
+  // (cargo + trip), ещё один сохраняется в unpublish_trip. Проверяем все
+  // существующие guard-запросы, а отдельно ниже — что legacy path вызывает
+  // helper, а не обходит FSM.
+  assert.equal(guards.length, 3, 'ожидалось три guard-запроса (shared cargo/trip + unpublish trip)');
+  const activeDealStatuses = marketPy.split('_ACTIVE_DEAL_STATUSES = (')[1].split(')')[0];
+  for (const s of ['delivered', 'received']) {
+    assert.ok(activeDealStatuses.includes(`"${s}"`),
+      `canonical _ACTIVE_DEAL_STATUSES не покрывает статус ${s}: ${activeDealStatuses}`);
   }
+  const sharedGuard = marketPy.split('def _active_deal_exists(')[1].split('\n\n# Track B')[0];
+  assert.match(sharedGuard, /status IN \(\{placeholders\}\)/,
+    'shared guard обязан применять canonical _ACTIVE_DEAL_STATUSES в SQL');
+  const directTripGuard = guards.find((g) => !g[1].includes('{placeholders}'));
+  assert.ok(directTripGuard, 'ожидался прямой unpublish_trip guard');
+  for (const s of ['delivered', 'received']) {
+    assert.ok(directTripGuard[1].includes(`'${s}'`),
+      `прямой trip guard не покрывает статус ${s}: ${directTripGuard[1]}`);
+  }
+  const legacyStatus = marketPy.split('def update_trip_status(')[1].split('\n@')[0];
+  assert.match(legacyStatus, /new_status in \("active", "booked"\) and _active_deal_exists\(c, trip_id=trip_id\)/,
+    'legacy update_trip_status должен использовать canonical active-deal guard до изменения статуса');
 });

@@ -33,8 +33,6 @@ os.environ.setdefault("URTRUCK_ENV", "test")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from api import verification_gate
-
 _current_user = contextvars.ContextVar("user", default=None)
 
 
@@ -49,9 +47,12 @@ def fake_require_level(_min_level):
     return dep
 
 
-# Патчим ДО импорта api.payments/api.marketplace — оба делают
-# `from api.verification_gate import require_level` на уровне модуля.
-verification_gate.require_level = fake_require_level
+# Auth подменяем через app.dependency_overrides (tests/auth_harness.py), а НЕ
+# мутацией api.verification_gate на уровне модуля: pytest импортирует все
+# тестовые модули до запуска, и module-level патч «побеждал» бы у случайного
+# файла (аудит 2026-09-08). override_require_level ниже перекрывает и
+# require_level, и require_active_level (main, track B) — все зависимости,
+# реально вшитые в роуты этого app.
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -74,16 +75,23 @@ marketplace._init()
 from api.marketplace import mp_router
 from api.payments import payments_router
 
+from tests.auth_harness import override_require_level
+
 app = FastAPI()
 app.include_router(payments_router, prefix="/api/v1/payments")
 app.include_router(mp_router, prefix="/api/v1/market")
+override_require_level(app, fake_require_level(1))  # level игнорируется фейком
 client = TestClient(app)
 
 PRODUCT_ID = config.GOOGLE_PLAY_CONTACTS_PRODUCT_ID
 
 
-def as_user(uid: str):
-    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1})
+def as_user(uid: str, role: str = "client"):
+    """Track B (main, 2026-09-10): create_cargo/create_trip/create_bid проверяют
+    роль на сервере (_require_role). По умолчанию client; для действий
+    водителя (ставка на груз, публикация рейса) передавать role="driver"."""
+    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000",
+                       "verification_level": 1, "role": role})
 
 
 def _rtdn(product_id: str, token: str, notif_type: int = 4) -> dict:

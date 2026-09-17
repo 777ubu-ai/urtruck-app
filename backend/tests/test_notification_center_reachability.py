@@ -24,7 +24,6 @@ conftest (см. предрелизный аудит 28.08.2026, тот же кл
 import uuid
 
 import contextvars
-from api import verification_gate
 
 _cu = contextvars.ContextVar("u", default=None)
 
@@ -41,14 +40,13 @@ def _fake_require_level(_min):
     return dep
 
 
-verification_gate.require_level = _fake_require_level
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from api.reviews import reviews_router
 from api.notifications import notif_router
 from database.db import get_conn, new_id
 from database import reviews_dal
+from tests.auth_harness import override_require_level
 
 # conftest.py's session-scoped autouse fixture recreates DB_PATH ПОСЛЕ
 # коллекции тестов (module-level код уже выполнен к этому моменту) —
@@ -61,6 +59,7 @@ def setup_module(module):
 app = FastAPI()
 app.include_router(reviews_router, prefix="/api/v1/reviews")
 app.include_router(notif_router, prefix="/api/v1/notifications")
+override_require_level(app, _fake_require_level(1))
 client = TestClient(app)
 
 

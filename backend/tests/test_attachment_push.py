@@ -72,10 +72,14 @@ def test_attachment_notifies_the_other_participant(monkeypatch):
     args, kwargs = sent[0]
     assert args[0] == "shipper-1"
     assert kwargs["kind"] == "chat"
+    # Push-closure track: data now also carries event_key/event for durable
+    # outbox retry (see api/deal_room.py upload_attachment).
     assert kwargs["data"] == {
         "type": "chat_attachment",
         "room_id": "room-1",
         "attachment_id": "attachment-1",
         "sender_id": "driver-1",
         "recipient_id": "shipper-1",
+        "event_key": "chat:room-1:attachment:attachment-1",
+        "event": "chat.attachment",
     }

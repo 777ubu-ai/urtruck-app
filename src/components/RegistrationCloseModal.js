@@ -65,7 +65,7 @@ const s = StyleSheet.create({
   title: { ...typography.h1, fontSize: 20, lineHeight: 26, color: brand.textPrimary, marginBottom: 8 },
   text: { ...typography.body, color: brand.textSecondary, marginBottom: 12 },
   saving: { ...typography.bodySmall, color: brand.textSecondary, marginBottom: 8 },
-  failed: { ...typography.bodySmall, color: brand.error || '#EF4444', marginBottom: 8 },
+  failed: { ...typography.bodySmall, color: brand.errorText || '#D03B3B', marginBottom: 8 },
   row: { flexDirection: 'row', gap: 10, marginTop: 6 },
   btn: { flex: 1, height: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   btnGhost: { borderWidth: 1, borderColor: brand.border, backgroundColor: brand.surface },

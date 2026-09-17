@@ -11,9 +11,15 @@ from pathlib import Path
 
 import pytest
 
-TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_production_like_migrations.db")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+import config
+
+# `config.DB_PATH` is captured before individual test modules can mutate the
+# process environment during collection. Using it here keeps the legacy seed
+# and the real migration calls on the same isolated database in a shared run.
+TEST_DB = config.DB_PATH
 
 
 LEGACY_SCHEMA = """
@@ -65,6 +71,24 @@ CREATE TABLE notifications (
   is_read INTEGER DEFAULT 0,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE push_delivery_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id TEXT,
+  recipient_user_id TEXT,
+  device_registry_id INTEGER,
+  device_id TEXT,
+  provider TEXT NOT NULL,
+  attempt INTEGER NOT NULL DEFAULT 1,
+  provider_message_id TEXT,
+  status TEXT NOT NULL,
+  provider_response TEXT,
+  sent_at TEXT,
+  delivered_at TEXT,
+  error_code TEXT,
+  token_masked TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 # Imported during collection. The module fixture below deliberately rebuilds a
@@ -91,6 +115,7 @@ def _legacy_database_after_session_harness():
             DROP TABLE IF EXISTS push_tokens_native;
             DROP TABLE IF EXISTS push_log;
             DROP TABLE IF EXISTS notifications;
+            DROP TABLE IF EXISTS push_delivery_log;
         """)
         conn.executescript(LEGACY_SCHEMA)
         conn.execute(
@@ -105,10 +130,33 @@ def _legacy_database_after_session_harness():
             "INSERT INTO notifications(user_id,type,title,url) VALUES(?,?,?,?)",
             ("legacy-user", "legacy", "Legacy notification", "/cargos/legacy"),
         )
+        conn.execute(
+            """INSERT INTO push_delivery_log(
+                event_id, recipient_user_id, provider, status, provider_message_id
+            ) VALUES(?,?,?,?,?)""",
+            ("legacy-delivery", "legacy-user", "expo", "sent", "legacy-message"),
+        )
         conn.commit()
+        legacy_notification = conn.execute(
+            "SELECT user_id, type, title, url FROM notifications WHERE title=?",
+            ("Legacy notification",),
+        ).fetchone()
+        assert legacy_notification == (
+            "legacy-user", "legacy", "Legacy notification", "/cargos/legacy"
+        )
 
     push_api._init_schema()
     notifications_api._init()
+    with get_conn() as conn:
+        migrated_notification = conn.execute(
+            "SELECT user_id, type, title, url, event_key FROM notifications WHERE title=?",
+            ("Legacy notification",),
+        ).fetchone()
+    assert migrated_notification is not None, "notification migration must preserve legacy rows"
+    assert migrated_notification[0:4] == (
+        "legacy-user", "legacy", "Legacy notification", "/cargos/legacy"
+    )
+    assert migrated_notification[4] is None
     yield
 
 
@@ -218,6 +266,24 @@ def test_06_notification_event_key_added_without_data_loss():
     assert row["user_id"] == "legacy-user"
     assert row["url"] == "/cargos/legacy"
     assert row["event_key"] is None
+
+
+def test_06b_receipt_checked_at_added_without_data_loss():
+    assert "receipt_checked_at" in _columns("push_delivery_log")
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT event_id, recipient_user_id, provider, status, provider_message_id, receipt_checked_at "
+            "FROM push_delivery_log WHERE event_id='legacy-delivery'"
+        ).fetchone()
+    assert row is not None, "push delivery migration must preserve legacy rows"
+    assert tuple(row[:5]) == (
+        "legacy-delivery",
+        "legacy-user",
+        "expo",
+        "sent",
+        "legacy-message",
+    )
+    assert row["receipt_checked_at"] is None
 
 
 def test_07_notification_unique_partial_index_exists():

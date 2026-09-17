@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Platform, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
-import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
+import { vehicleAPI } from '../utils/vehicleAPI';
 import { regAPI } from '../utils/registration';
 import { formatStatus, formatTruckType, formatBids } from '../utils/i18n';
 import { formatDateForDisplay } from '../utils/dateInput';
@@ -12,17 +12,49 @@ import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import { localizePlace, localizeCargoName } from '../utils/places';
 import EmptyState from '../components/ui/EmptyState';
 import EditCargoModal from '../components/EditCargoModal';
-import { colors, spacing, radius, typography } from '../theme/theme';
-import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
+import {v1Colors, useV1Colors, useDriverCeramicColors, useShipperCeramicColors, v1AccentFor, v1StatusColors, v1Spacing, v1Typography} from '../theme/designV1';
 import { useMountedRef } from '../hooks/useMountedRef';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import FadeInUp from '../components/ui/FadeInUp';
 import Feather from '@expo/vector-icons/Feather';
-import { countryFlag } from '../utils/countryFlags';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
+import BellBadge from '../components/ui/v1/BellBadge';
+import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
+import RootHeader from '../components/ui/v1/RootHeader';
+import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
+import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
+import { DRIVER_CERAMIC } from '../theme/designV1Palette';
+import { useVerificationGate } from '../components/VerificationGate';
+import { LEVELS } from '../utils/AuthContext';
+
+// Endpoint flag code for the v1 Flag component: backend from_country/
+// to_country are ISO codes; anything else (empty, emoji leftovers) renders
+// no flag rather than the grey «?» fallback.
+const flagCodeOrNull = (value) => {
+  const code = String(value || '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : null;
+};
+
+// Публикация/сделка → цвет v1-роли. Статусы сделки (accepted…received,
+// completed, cancelled) берутся из v1StatusColors; публикационные состояния
+// — из семантических токенов. Раньше received/неизвестные статусы падали в
+// дефолтный зелёный — теперь у каждого статуса явная маппинг-раскладка.
+const myItemStatusColor = (colors, st) => {
+  const role = v1StatusColors(colors)[st];
+  if (role) return role;
+  if (st === 'active') return colors.success;
+  if (st === 'draft' || st === 'pending' || st === 'unpublished') return colors.textMuted;
+  if (st === 'rejected' || st === 'expired') return colors.error;
+  return colors.textDim;
+};
 
 export default function MyTripsScreen({ navigation, route }) {
-  const v1 = useV1Colors();
+  const v1Base = useV1Colors();
+  const ceramic = useDriverCeramicColors();
+  const shipper = useShipperCeramicColors();
+  const { role } = route.params || {};
+  const isDriver = role === 'driver';
+  const v1 = isDriver ? ceramic : shipper;
   const s = React.useMemo(() => StyleSheet.create({
 
   // v1 brand bar (mirrors FeedScreen)
@@ -54,59 +86,49 @@ export default function MyTripsScreen({ navigation, route }) {
   pgIcon: { fontSize: 44, marginBottom: 12 },
   pgTitle: { color: v1.text, fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 10 },
   pgText: { color: v1.textMuted, fontSize: 14, lineHeight: 21, textAlign: 'center', marginBottom: 22 },
-  pgBtn: { height: 52, borderRadius: 14, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center', width: '100%' },
-  pgBtnText: { color: '#0C0A09', fontSize: 16, fontWeight: '800' },
+  pgBtn: { height: 48, borderRadius: 10, backgroundColor: v1.active || v1.driver, alignItems: 'center', justifyContent: 'center', width: '100%' },
+  pgBtnText: { color: v1.activeText || v1.driverOnAccent || '#FFFFFF', fontSize: 15, fontWeight: '800' },
   pgCancel: { marginTop: 10, paddingVertical: 8 },
   pgCancelText: { color: v1.textMuted, fontSize: 13, fontWeight: '600' },
   archiveToggle: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4, marginTop: 2 },
   archiveToggleText: { fontSize: 12, fontWeight: '700' },
 
-  // Дизайн 2026 v4: плотный ленточный формат карточки груза/рейса.
-  // Было: padding 16, margin 14, borderRadius 20, тень 16 — «карточки-кирпичи
-  // на весь экран, помещается 1-2 груза». Стало: padding 12x14, margin 8,
-  // borderRadius 10, лёгкая тень. Помещается в 2 раза больше.
-  card: { borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, marginBottom: 8, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  badge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5 },
-  badgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-  statusLabel: { fontSize: 11 },
-  route: { fontSize: 16, lineHeight: 20, fontWeight: '700', marginBottom: 4, letterSpacing: -0.15 },
-  desc: { fontSize: 12, marginBottom: 2 },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
-  metaItem: { fontSize: 11 },
-  metaDot: { color: '#94A3B8', fontSize: 10 },
-  cardBottom: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  // Цена: было 24pt жирный оранжевый — крик. Теперь 16pt, тёмный текст,
-  // оранжевый ушёл в мелкий label «$» перед суммой.
-  price: { fontSize: 18, lineHeight: 22, fontWeight: '700', color: v1.text, fontVariant: ['tabular-nums'], flexShrink: 1 },
-  bidsLabel: { ...typography.caption, flex: 1 },
+  // Design v1 Commit 3: карточка объявления — каноническая MarketplaceCard
+  // (radius 16, padding 16, border, без тени). Экран оставляет только
+  // ленточный spacing (marginBottom 8 — плотность списка сохранена).
+  cardSpacing: { marginBottom: 8 },
   // Дизайн 2026 v3: плашка «N предложений» — outline вместо заливки,
   // компактнее (меньше 32px), шрифт 12. Не «кричит».
-  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: '#FF8400', backgroundColor: 'transparent' },
-  offersCtaText: { color: '#E06D00', fontSize: 12, fontWeight: '700', flex: 1 },
-  offersCtaArrow: { color: '#E06D00', fontSize: 14, fontWeight: '700' },
+  offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: v1Spacing.sm, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: v1.clientAccent || v1.warning, backgroundColor: 'transparent' },
+  offersCtaText: { color: v1.warning, fontSize: 12, fontWeight: '700', flex: 1 },
+  offersCtaArrow: { color: v1.warning, fontSize: 14, fontWeight: '700' },
 
   // 27.07: кнопки действий сделки вылезали за карточку. Делаем их гибкими
   // (flexGrow/Shrink + minWidth) — в ряду с flexWrap они заполняют ширину и
   // аккуратно переносятся на след. строку, не вылезая за края.
-  acceptBtn: { backgroundColor: '#168759', borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130, maxWidth: '100%' },
-  acceptBtnText: { color: '#FFF', ...typography.title, flexShrink: 1, textAlign: 'center' },
+  acceptBtn: { backgroundColor: v1.active || v1.driver, borderRadius: 10, paddingVertical: v1Spacing.sm, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 130, maxWidth: '100%' },
+  acceptBtnText: { color: v1.activeText || v1.driverOnAccent || '#FFF', ...v1Typography.button, lineHeight: 20, flexShrink: 1, textAlign: 'center' },
   // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
-  miniBtn: { borderWidth: 0, borderRadius: radius.sm, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, maxWidth: '100%', backgroundColor: 'rgba(148,163,184,0.14)' },
+  miniBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, maxWidth: '100%', backgroundColor: 'rgba(148,163,184,0.14)' },
   miniBtnText: { fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
-  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
-  editBtnText: { color: '#168759', fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
-  extendBtn: { flex: 1, backgroundColor: '#168759', borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
-  extendBtnText: { color: '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
+  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: v1Spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
+  editBtnText: { color: v1.active || v1.driver, fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  extendBtn: { flex: 1, backgroundColor: v1.active || v1.driver, borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
+  extendBtnText: { color: v1.activeText || v1.driverOnAccent || '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
+  clientTopRow: { minHeight: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: v1.bg },
+  clientTopTitle: { flex: 1, color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
+  clientCreateBtn: { width: 144, height: 40, borderRadius: 14, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surfaceMuted, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, shadowColor: v1.shadow, shadowOpacity: 0.12, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  clientCreateText: { color: v1.text, fontSize: 13, fontWeight: '700' },
+  clientTabsRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  clientTab: { flex: 1, minHeight: 40, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  clientTabText: { fontSize: 13, fontWeight: '700' },
 
   }), [v1]);
-  const { role } = route.params || {};
-  const isDriver = role === 'driver';
-  const accent = isDriver ? '#168759' : '#FF8400';
+  const accent = isDriver ? DRIVER_CERAMIC.active : shipper.active;
   const { t, lang } = useI18n();
+  const { requireLevel, Gate } = useVerificationGate();
   const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
   const cubicMeterUnit = lang === 'ZH' ? '立方米' : 'м³';
-  const { theme } = useTheme();
   const { toast } = useToast();
 
   // Решение владельца (05.08.2026): «Грузы»/«Рейсы» — только управление
@@ -148,28 +170,32 @@ export default function MyTripsScreen({ navigation, route }) {
     finally { setExtending(null); }
   };
 
-  // Progressive verification: размещение рейса — trust-действие, доступно
-  // только одобренному водителю. Источник статуса — regAPI.me()
+  // Публикация рейса доступна после basic onboarding либо по legacy Pro-пути.
+  // Источник статуса — regAPI.me(); UI не должен открывать CreateTrip всем
+  // водителям подряд, потому что backend повторяет этот gate.
   // ({status, verification_level}). verState: loading|approved|review|
   // rejected|unverified. Без fake-approved: CreateTrip открывается только
   // при approved, иначе показываем gate-модалку → 5-шаговая проверка.
   const [verState, setVerState] = useState('loading');
+  const [canPublish, setCanPublish] = useState(false);
   const [pubGateVisible, setPubGateVisible] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
 
   useEffect(() => {
-    if (!isDriver) { setVerState('approved'); return; } // у клиента кнопки размещения рейса нет
+    if (!isDriver) { setVerState('approved'); setCanPublish(true); return; } // у клиента кнопки размещения рейса нет
     let alive = true;
     (async () => {
       try {
         const me = await regAPI.me();
         if (!alive) return;
-        if (me && (me.status === 'approved' || me.verification_level >= 3)) setVerState('approved');
+        const eligible = Boolean(me && (me.basic_onboarding_completed || me.status === 'approved' || Number(me.verification_level) >= 3));
+        setCanPublish(eligible);
+        if (eligible) setVerState('approved');
         else if (me && (me.status === 'pending' || me.status === 'under_review' || me.status === 'manual_review')) setVerState('review');
         else if (me && me.status === 'rejected') setVerState('rejected');
         else setVerState('unverified');
       } catch {
-        if (alive) setVerState('unverified');
+        if (alive) { setCanPublish(false); setVerState('unverified'); }
       }
     })();
     return () => { alive = false; };
@@ -179,9 +205,13 @@ export default function MyTripsScreen({ navigation, route }) {
   // (ChatsListScreen в dealsMode). Здесь ничего не гасим — иначе бейдж
   // пропадал бы от простого захода в «Мои рейсы»/«Мои грузы».
 
-  const onPublishRoute = () => {
-    if (verState === 'approved') navigation.navigate('CreateTrip', { role });
-    else setPubGateVisible(true);
+  const onPublishRoute = async () => {
+    if (!canPublish) { setPubGateVisible(true); return; }
+    const result = await vehicleAPI.list();
+    const vehicles = result.ok ? (result.vehicles || []) : [];
+    if (vehicles.length === 0) navigation.navigate('VehicleSetupCountry', { origin: 'CreateTrip', role });
+    else if (vehicles.length === 1) navigation.navigate('CreateTrip', { role, vehicle: vehicles[0], vehicleId: vehicles[0].id });
+    else navigation.navigate('VehicleChooser', { role });
   };
 
   const confirmAction = async (msg, confirmLabel = t('confirm'), destructive = false) => (
@@ -342,16 +372,28 @@ export default function MyTripsScreen({ navigation, route }) {
     const to = item.to_city || '—';
     const desc = item.cargo_desc || '';
     const isCargo = !!item.cargo_desc;
-    const badge = isCargo ? t('badge_cargo') : t('badge_trip');
-    const badgeColor = isCargo ? '#FF8400' : '#168759';
     // Edit/unpublish is allowed only for an own ACTIVE trip. Backend remains
     // authoritative and rejects removal once a deal has already taken it.
     const canEditTrip = !isCargo && (item.status || 'active') === 'active';
+    const st = item.status || 'active';
+
+    // RC2 hotfix (P0-3): для cargos показываем pickup_date, не created_at.
+    // Для trips остаётся departure || created_at. Вес/объём: cargo и trip
+    // используют разные имена полей, единицы локализуются вместе с карточкой.
+    const dateText = isCargo
+      ? formatDateForDisplay(item.pickup_date || item.departure || item.created_at)
+      : formatDateForDisplay(item.departure || item.created_at);
+    const specLine = [
+      formatTruckType(item.truck_type || item.cargo_type),
+      (isCargo ? item.weight_tons : item.capacity_tons) ? `${isCargo ? item.weight_tons : item.capacity_tons} ${tonUnit}` : null,
+      (isCargo ? item.volume_m3 : item.available_m3) ? `${isCargo ? item.volume_m3 : item.available_m3} ${cubicMeterUnit}` : null,
+    ].filter(Boolean).join(' · ');
 
     return (
-      <TouchableOpacity
+      <MarketplaceCard
+        variant={isDriver ? 'driver' : 'shipper'}
         testID={isCargo ? 'my-cargo-card' : 'my-trip-card'}
-        style={[s.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+        style={s.cardSpacing}
         onPress={() => {
           if (isCargo) {
             navigation.navigate('CargoDetail', { cargo: { ...item, from, to, cargo: desc, _server: true }, cargoId: item.id, role });
@@ -360,73 +402,33 @@ export default function MyTripsScreen({ navigation, route }) {
             navigation.navigate('TripDetail', { trip: normalizeTrip({ ...item, isMine: true, _server: true }), tripId: item.id, role });
           }
         }}
+        route={{
+          from: localizePlace(from, lang),
+          to: localizePlace(to, lang),
+          fromFlag: flagCodeOrNull(item.from_country),
+          toFlag: flagCodeOrNull(item.to_country),
+          numberOfLines: 2,
+        }}
+        price={formatPrice(item.price, item.currency, t)}
+        priceMeta={dateText}
+        meta={[specLine]}
+        description={desc ? localizeCargoName(desc, lang) : null}
+        status={item._expired
+          ? { key: 'expired', label: t('deadline_expired'), color: v1.error }
+          : { key: st, label: formatStatus(st), color: myItemStatusColor(v1, st) }}
+        rightMeta={item.bids_count > 0 && !(isCargo && !isDriver) ? formatBids(item.bids_count) : null}
       >
-        <View style={s.cardTop}>
-          <View style={[s.badge, { backgroundColor: badgeColor + '20' }]}>
-            <Text style={[s.badgeText, { color: badgeColor }]}>{badge}</Text>
-          </View>
-          {/* Stage DS-1: статус не должен быть плоско-зелёным для всех состояний.
-              Раньше cancelled / draft / pending тоже рендерились #168759,
-              что визуально врало пользователю (зелёное = "успешно"). Теперь
-              цвет подбирается по item.status. */}
-          {item._expired ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Feather name="clock" size={13} color="#EF4444" />
-              <Text style={[s.statusLabel, { color: '#EF4444' }]}>{t('deadline_expired')}</Text>
-            </View>
-          ) : (
-            <Text style={[s.statusLabel, { color: (() => {
-              const st = item.status || 'active';
-              if (st === 'cancelled') return '#94A3B8';        // серый
-              if (st === 'draft' || st === 'pending') return '#64748B'; // neutral waiting
-              if (st === 'rejected' || st === 'expired') return '#EF4444'; // красный
-              if (st === 'completed' || st === 'delivered') return '#168759'; // зелёный
-              return '#168759'; // active по умолчанию — зелёный
-            })() }]}>{formatStatus(item.status || 'active')}</Text>
-          )}
-        </View>
-        <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(from, lang)} → {countryFlag(item.to_country)} {localizePlace(to, lang)}</Text>
-        {desc ? <Text style={[s.desc, { color: theme.textMuted }]} numberOfLines={1}>{localizeCargoName(desc, lang)}</Text> : null}
-        <View style={s.cardMeta}>
-          <Text style={[s.metaItem, { color: theme.textDim }]}>{formatTruckType(item.truck_type || item.cargo_type)}</Text>
-          <Text style={s.metaDot}>·</Text>
-          {/* RC2 hotfix (P0-3): для cargos показываем pickup_date, не
-              created_at. Для trips остаётся departure || created_at. */}
-          <Text style={[s.metaItem, { color: theme.textDim }]}>
-            {isCargo
-              ? formatDateForDisplay(item.pickup_date || item.departure || item.created_at)
-              : formatDateForDisplay(item.departure || item.created_at)}
-          </Text>
-          {/* Вес/объём: cargo и trip используют разные имена полей,
-              а единицы локализуются вместе с карточкой. */}
-          {(isCargo ? item.weight_tons : item.capacity_tons) ? (
-            <>
-              <Text style={s.metaDot}>·</Text>
-              <Text style={[s.metaItem, { color: theme.textDim }]}>{isCargo ? item.weight_tons : item.capacity_tons} {tonUnit}</Text>
-            </>
-          ) : null}
-          {(isCargo ? item.volume_m3 : item.available_m3) ? (
-            <>
-              <Text style={s.metaDot}>·</Text>
-              <Text style={[s.metaItem, { color: theme.textDim }]}>{isCargo ? item.volume_m3 : item.available_m3} {cubicMeterUnit}</Text>
-            </>
-          ) : null}
-        </View>
-        <View style={s.cardBottom}>
-          <Text style={s.price} numberOfLines={1}>{formatPrice(item.price, item.currency, t)}</Text>
-          {item.bids_count > 0 && !(isCargo && !isDriver) && <Text style={[s.bidsLabel, { color: theme.textMuted }]}>{formatBids(item.bids_count)}</Text>}
-        </View>
         {/* Индикатор откликов на карточке груза. С 26.07.2026 работа со
             ставками живёт во вкладке «Сделки» — тап по плашке ведёт туда
             (витрина показывает «есть отклик», решение принимается в Сделках). */}
-        {isCargo && !isDriver && item.bids_count > 0 && (item.status || 'active') === 'active' && (
+        {isCargo && !isDriver && item.bids_count > 0 && st === 'active' && (
           <TouchableOpacity
             style={s.offersCta}
             testID="cargo-offers-cta"
             onPress={(e) => { e.stopPropagation && e.stopPropagation(); navigation.navigate('Deals'); }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-              <Feather name="message-square" size={14} color="#FF8400" />
+              <Feather name="message-square" size={14} color={v1.clientAccent || v1.warning} />
               <Text style={s.offersCtaText} numberOfLines={1}>{formatBids(item.bids_count)}</Text>
             </View>
             <Text style={s.offersCtaArrow}>›</Text>
@@ -443,8 +445,8 @@ export default function MyTripsScreen({ navigation, route }) {
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="edit-3" size={14} color="#168759" />
-                <Text style={[s.miniBtnText, { color: '#168759' }]}>{t('edit_btn')}</Text>
+                <Feather name="edit-3" size={14} color={v1.success} />
+                <Text style={[s.miniBtnText, { color: v1.success }]}>{t('edit_btn')}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity
@@ -459,8 +461,8 @@ export default function MyTripsScreen({ navigation, route }) {
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="trash-2" size={14} color="#EF4444" />
-                <Text style={[s.miniBtnText, { color: '#EF4444' }]}>{t('trip_delete')}</Text>
+                <Feather name="trash-2" size={14} color={v1.error} />
+                <Text style={[s.miniBtnText, { color: v1.error }]}>{t('trip_delete')}</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -469,7 +471,7 @@ export default function MyTripsScreen({ navigation, route }) {
             ОДНИМ ТАПОМ (дата = сегодня, снова живёт 3 дня и в ленте). Рядом —
             «Изменить дату», если нужна конкретная дата. */}
         {item._expired && (
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: v1Spacing.sm }}>
             <TouchableOpacity
               testID="extend-oneclick-btn"
               style={[s.extendBtn, extending === item.id && { opacity: 0.6 }]}
@@ -499,21 +501,21 @@ export default function MyTripsScreen({ navigation, route }) {
         )}
         {/* Задача A: управление СВОИМ грузом — Изменить (цена/описание) + Удалить.
             Только для активного груза (taken/принятый редактировать нельзя). */}
-        {isCargo && !isDriver && (item.status || 'active') === 'active' && (
+        {isCargo && !isDriver && st === 'active' && (
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
             <TouchableOpacity
               testID="my-cargo-edit-btn"
-              style={[s.miniBtn, { borderColor: '#FF8400', flex: 1 }]}
+              style={[s.miniBtn, { borderColor: v1.clientAccent || v1.warning, flex: 1 }]}
               onPress={(e) => { e.stopPropagation && e.stopPropagation(); setEditCargo(item); }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="edit-3" size={14} color="#FF8400" />
-                <Text style={[s.miniBtnText, { color: '#E06D00' }]}>{t('edit_btn')}</Text>
+                <Feather name="edit-3" size={14} color={v1.clientAccent || v1.warning} />
+                <Text style={[s.miniBtnText, { color: v1.warning }]}>{t('edit_btn')}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="my-cargo-delete-btn"
-              style={[s.miniBtn, { borderColor: '#EF4444', flex: 1 }]}
+              style={[s.miniBtn, { borderColor: v1.error, flex: 1 }]}
               onPress={async (e) => {
                 e.stopPropagation && e.stopPropagation();
                 if (!(await confirmAction(t('delete_cargo_confirm')))) return;
@@ -523,13 +525,13 @@ export default function MyTripsScreen({ navigation, route }) {
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="trash-2" size={14} color="#EF4444" />
-                <Text style={[s.miniBtnText, { color: '#EF4444' }]}>{t('delete_btn')}</Text>
+                <Feather name="trash-2" size={14} color={v1.error} />
+                <Text style={[s.miniBtnText, { color: v1.error }]}>{t('delete_btn')}</Text>
               </View>
             </TouchableOpacity>
           </View>
         )}
-      </TouchableOpacity>
+      </MarketplaceCard>
     );
   };
 
@@ -563,22 +565,29 @@ export default function MyTripsScreen({ navigation, route }) {
 
   // ─── Layout ───
 
-  const v1Accent = v1AccentFor(isDriver ? 'driver' : 'client');
+  const v1Accent = isDriver
+    ? { main: ceramic.active, deep: ceramic.driverDeep, soft: ceramic.activeSoft }
+    : v1AccentFor('client');
 
   const renderUnpublishedItem = ({ item }) => {
     const isCargo = !!item.cargo_desc;
     const from = item.from_city || '—';
     const to = item.to_city || '—';
     return (
-      <View style={[s.card, { backgroundColor: theme.card, borderColor: theme.border, opacity: 0.7 }]}>
-        <View style={s.cardTop}>
-          <View style={[s.badge, { backgroundColor: '#94A3B820' }]}>
-            <Text style={[s.badgeText, { color: '#94A3B8' }]}>{isCargo ? t('badge_cargo') : t('badge_trip')}</Text>
-          </View>
-          <Text style={[s.statusLabel, { color: '#94A3B8' }]}>{formatStatus(item.status || 'unpublished')}</Text>
-        </View>
-        <Text style={[s.route, { color: theme.text }]}>{countryFlag(item.from_country)} {localizePlace(from, lang)} → {countryFlag(item.to_country)} {localizePlace(to, lang)}</Text>
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
+      <MarketplaceCard
+        variant={isDriver ? 'driver' : 'default'}
+        dimmed
+        style={s.cardSpacing}
+        route={{
+          from: localizePlace(from, lang),
+          to: localizePlace(to, lang),
+          fromFlag: flagCodeOrNull(item.from_country),
+          toFlag: flagCodeOrNull(item.to_country),
+          numberOfLines: 2,
+        }}
+        status={{ key: 'unpublished', label: formatStatus(item.status || 'unpublished'), color: v1.textDim }}
+      >
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: v1Spacing.sm }}>
           <TouchableOpacity
             testID="republish-btn"
             style={[s.acceptBtn, { backgroundColor: accent, flex: 1 }]}
@@ -587,7 +596,7 @@ export default function MyTripsScreen({ navigation, route }) {
             <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('republish')}</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </MarketplaceCard>
     );
   };
 
@@ -620,17 +629,29 @@ export default function MyTripsScreen({ navigation, route }) {
 
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      <View style={[s.brandBar, { justifyContent: 'flex-end' }]} testID="mywork-minimal-header">
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Profile', { role })}
-          style={s.menuBtn}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          testID="mywork-menu-btn"
-          accessibilityLabel={t('tab_profile')}
-        >
-          <Feather name="menu" size={24} color={v1.text} />
-        </TouchableOpacity>
-      </View>
+      <DriverRouteBackdrop />
+      {isDriver ? <RootHeader ceramic navigation={navigation} role={role} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={async () => {
+            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
+            if (ok) navigation.navigate('PushFilter', { role });
+          }} /> : (
+        <View style={s.clientTopRow} testID="mywork-minimal-header">
+          <Text style={s.clientTopTitle}>{t('my_cargos_title')}</Text>
+          <BellBadge onPress={async () => {
+            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
+            if (ok) navigation.navigate('PushFilter', { role });
+          }} testID="mywork-notification-settings-btn" ceramic />
+          <TouchableOpacity
+            testID="mytrips-place-cargo"
+            style={s.clientCreateBtn}
+            onPress={() => navigation.navigate('CreateCargo', { role })}
+            activeOpacity={0.78}
+          >
+            <Feather name="plus" size={14} color={shipper.text} />
+            <Text style={s.clientCreateText}>{t('place_cargo')}</Text>
+          </TouchableOpacity>
+          <HeaderMenuButton navigation={navigation} role={role} testID="mywork-menu-btn" color={shipper.text} />
+        </View>
+      )}
 
       <FlatList
         data={listData}
@@ -638,24 +659,26 @@ export default function MyTripsScreen({ navigation, route }) {
         renderItem={listRender}
         ListHeaderComponent={(
           <>
-            <View style={s.titleBlock}>
+            <View style={[s.titleBlock, !isDriver && { display: 'none' }]}>
               <Text style={s.titleHero}>{isDriver ? t('my_trips_title') : t('my_cargos_title')}</Text>
               <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
             </View>
-            <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
-              <TouchableOpacity
-                testID={isDriver ? 'mytrips-publish-route' : 'mytrips-place-cargo'}
-                onPress={isDriver ? onPublishRoute : () => navigation.navigate('CreateCargo', { role })}
-                activeOpacity={0.75}
-                style={[s.publishRouteBtn, { borderColor: v1Accent.main }]}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Feather name="plus" size={14} color={v1Accent.main} />
-                  <Text style={[s.publishRouteText, { color: v1Accent.main }]}>{isDriver ? t('publish_route') : t('place_cargo')}</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-            <View style={{ paddingHorizontal: 16 }}>
+            {isDriver ? (
+              <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+                <TouchableOpacity
+                  testID="mytrips-publish-route"
+                  onPress={onPublishRoute}
+                  activeOpacity={0.75}
+                  style={[s.publishRouteBtn, { borderColor: v1Accent.main }]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Feather name="plus" size={14} color={v1Accent.main} />
+                    <Text style={[s.publishRouteText, { color: v1Accent.main }]}>{t('publish_route')}</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            <View style={[{ paddingHorizontal: 16 }, !isDriver && { display: 'none' }]}>
               <TouchableOpacity
                 testID="my-work-archive-toggle"
                 onPress={() => setTab(tab === 'archive' ? (isDriver ? 'routes' : 'searching') : 'archive')}
@@ -667,6 +690,25 @@ export default function MyTripsScreen({ navigation, route }) {
                 </Text>
               </TouchableOpacity>
             </View>
+            {!isDriver ? (
+              <View style={s.clientTabsRow} testID="my-work-tabs">
+                {[
+                  ['searching', t('tab_active') || t('my_cargos_title'), clientSearching.length],
+                  ['archive', t('tab_archive'), clientArchive.length],
+                ].map(([key, label, count]) => (
+                  <TouchableOpacity
+                    key={key}
+                    testID={`my-work-tab-${key}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: tab === key }}
+                    onPress={() => setTab(key)}
+                    style={[s.clientTab, { borderColor: tab === key ? shipper.active : shipper.border, backgroundColor: tab === key ? shipper.activeSoft : shipper.surface }]}
+                  >
+                    <Text style={[s.clientTabText, { color: tab === key ? shipper.text : shipper.textMuted }]}>{label} {count}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
           </>
         )}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
@@ -677,6 +719,7 @@ export default function MyTripsScreen({ navigation, route }) {
       <EditCargoModal
         visible={!!editCargo}
         cargo={editCargo}
+        role={role}
         onClose={() => setEditCargo(null)}
         onSaved={() => load()}
       />
@@ -711,7 +754,7 @@ export default function MyTripsScreen({ navigation, route }) {
               testID="trips-publish-gate-cta"
               onPress={() => {
                 setPubGateVisible(false);
-                navigation.navigate(verState === 'review' ? 'Security' : 'Citizenship');
+                navigation.navigate(verState === 'review' ? 'Security' : verState === 'rejected' ? 'Citizenship' : 'ProfileV2', { role: 'driver' });
               }}
             >
               <Text style={s.pgBtnText}>
@@ -726,6 +769,7 @@ export default function MyTripsScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
+      {Gate}
     </SafeAreaView>
   );
 }

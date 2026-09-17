@@ -44,7 +44,12 @@
     "qa:keystore": "node qa/utils/noTrackedKeystoreSmoke.js",
     "qa:favorites": "node qa/utils/favoritesContractSmoke.js",
     "qa:locale-runtime": "node qa/utils/runtimeLocaleLeakProbe.mjs",
-    "qa:role-locale": "node qa/utils/roleLocaleMatrixProbe.mjs"
+    "qa:i18n-duplicates": "node scripts/check-i18n-critical-duplicates.mjs",
+    "qa:role-locale": "node qa/utils/roleLocaleMatrixProbe.mjs",
+    "test:unit": "node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/*.mjs tests/unit/*.mjs",
+    "qa:report-gate": "node scripts/check_qa_report_gate.js",
+    "release:check-config": "node scripts/check-production-config.mjs",
+    "lint": "node scripts/lint-source.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
@@ -56,6 +61,7 @@
     "@sentry/react-native": "~6.10.0",
     "@supabase/supabase-js": "^2.45.0",
     "@types/react": "~18.3.12",
+    "country-flag-icons": "1.6.15",
     "expo": "~52.0.46",
     "expo-asset": "~11.0.5",
     "expo-av": "~15.0.2",

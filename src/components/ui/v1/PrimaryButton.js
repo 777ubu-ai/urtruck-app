@@ -1,10 +1,12 @@
 // PrimaryButton — premium B2B primary CTA.
 import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { useV1Colors, v1Radius, v1Typography } from '../../../theme/designV1';
+import { useV1Colors, useShipperCeramicColors, v1Radius, v1Typography } from '../../../theme/designV1';
 
-export default function PrimaryButton({ label, onPress, loading, disabled, accent = 'driver', style, testID }) {
-  const colors = useV1Colors();
+export default function PrimaryButton({ label, onPress, loading, disabled, accent = 'driver', style, testID, ceramic = false }) {
+  const baseColors = useV1Colors();
+  const shipperColors = useShipperCeramicColors();
+  const colors = ceramic ? shipperColors : baseColors;
   const color = accent === 'cargo' ? colors.cargoOwner : colors.driver;
   const textColor = color;
   return (

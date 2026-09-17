@@ -288,6 +288,20 @@ def active_devices(user_id: str) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def get_recipient_locale(user_id: str) -> str:
+    """Push-closure track: which language a system-generated push to this
+    user should be written in. Reads `push_devices.locale` (most recently
+    active device wins — ORDER BY last_seen_at DESC from active_devices())
+    and normalizes it via push_i18n.normalize_locale(). Falls back to the
+    app-wide default (RU) when the user has no device with a locale on file
+    (older client, or a client that never sent one)."""
+    from services.push_i18n import normalize_locale
+    for device in active_devices(user_id):
+        if device.get("locale"):
+            return normalize_locale(device["locale"])
+    return normalize_locale(None)
+
+
 def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payload: dict, priority: Optional[str] = None) -> bool:
     if not (event_id and event_type and recipient_user_id):
         return False
@@ -414,11 +428,25 @@ def send_to_devices(
         "expo": ExpoProvider(expo_send_one),
     }
     sent = 0
+    already_delivered = 0
     by_provider: dict[str, int] = {}
     event_id = (data or {}).get("event_id") or (data or {}).get("event_key")
     for device in devices:
         if _already_sent_to_device(event_id, device.get("id")):
+            already_delivered += 1
             continue
+        device_title, device_body = title, body
+        # System text may be tailored to each registered device. Free-form
+        # chat/attachment text has no i18n_event and is forwarded unchanged.
+        i18n_event = (data or {}).get("i18n_event")
+        if i18n_event:
+            try:
+                from services.push_i18n import push_text
+                localized = push_text(i18n_event, device.get("locale"), **((data or {}).get("i18n_params") or {}))
+                if localized[0] is not None:
+                    device_title, device_body = localized
+            except Exception:
+                pass
         provider_name = device.get("push_provider")
         provider = providers.get(provider_name)
         if not provider:
@@ -428,77 +456,274 @@ def send_to_devices(
         if not provider.supports_platform(platform) or not provider.validate_token(token):
             result = ProviderResult(provider_name, "failed", error_code="invalid_token", retryable=False)
         else:
-            result = provider.send(token, title, body, data, badge=badge)
+            result = provider.send(token, device_title, device_body, data, badge=badge)
         log_delivery(event_id, user_id, device, result)
         if result.status == "sent":
             sent += 1
             by_provider[provider_name] = by_provider.get(provider_name, 0) + 1
-    return {"sent": sent, "providers": by_provider, "devices": len(devices), "mode": mode}
+    return {
+        "sent": sent,
+        "already_delivered": already_delivered,
+        "providers": by_provider,
+        "devices": len(devices),
+        "mode": mode,
+    }
+
+
+MAX_OUTBOX_ATTEMPTS = 5
+STALE_PROCESSING_MINUTES = 5
+
+
+def _reclaim_stale_processing(c) -> int:
+    """A worker that crashed (or was killed) between claiming a row
+    (status='processing') and finishing it would otherwise leave that row
+    stuck forever — process_pending_once only ever SELECTs status='pending'.
+    Reclaim anything that has been 'processing' longer than a worker could
+    plausibly still be legitimately running (a single send_to_devices call is
+    a handful of HTTP requests with a 10s timeout each, never minutes)."""
+    cur = c.execute(
+        "UPDATE push_outbox SET status='pending', claimed_at=NULL "
+        "WHERE status='processing' AND claimed_at IS NOT NULL "
+        "AND claimed_at <= datetime(CURRENT_TIMESTAMP, ?)",
+        (f"-{STALE_PROCESSING_MINUTES} minutes",),
+    )
+    return cur.rowcount
+
+
+def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
+    """Atomically flip exactly one pending row to 'processing' and return it,
+    or None if it was already claimed by someone else (another worker tick,
+    another process) between the earlier SELECT and this UPDATE. The
+    `WHERE status='pending'` clause plus checking `rowcount` is what makes
+    this safe under concurrent callers — see test for two workers racing the
+    same row."""
+    with get_conn() as c:
+        cur = c.execute(
+            "UPDATE push_outbox SET status='processing', claimed_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND status='pending'",
+            (row_id,),
+        )
+        if cur.rowcount != 1:
+            return None
+        row = c.execute("SELECT * FROM push_outbox WHERE id=?", (row_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def _finish_row(row_id: int, attempt: int, sent: bool, error: Optional[str]) -> str:
+    """Apply the terminal/retry decision for one claimed row. Shared by both
+    the normal (no delivery) and exception (poison event) paths so a handler
+    that always raises still hits the same MAX_OUTBOX_ATTEMPTS→dead ceiling
+    instead of retrying forever with no backoff."""
+    with get_conn() as c:
+        if sent:
+            c.execute(
+                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=?, claimed_at=NULL WHERE id=?",
+                (attempt, row_id),
+            )
+            return "sent"
+        if attempt >= MAX_OUTBOX_ATTEMPTS:
+            c.execute(
+                "UPDATE push_outbox SET status='dead', failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL WHERE id=?",
+                (attempt, (error or "delivery_not_confirmed")[:500], row_id),
+            )
+            return "dead"
+        delay = min(300, 2 ** attempt * 5)
+        c.execute(
+            "UPDATE push_outbox SET status='pending', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, claimed_at=NULL WHERE id=?",
+            (attempt, f"+{delay} seconds", (error or "delivery_not_confirmed")[:500], row_id),
+        )
+        return "failed"
 
 
 def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
-    """Process one small outbox batch.
+    """Process one small outbox batch. Safe to call repeatedly/concurrently
+    (idempotent — a row already 'sent'/'dead', or already claimed by a
+    concurrent caller, is simply skipped) and safe after a crash (stale
+    'processing' rows are reclaimed first).
 
-    Business actions can enqueue rows inside their transaction, then a worker
-    calls this function after commit. It retries only retryable provider errors;
-    non-retryable rows become dead.
+    Delivery ownership contract: the immediate/inline fast path
+    (services.push_sender.send -> _send_native) marks its own outbox row
+    'sent' via mark_event_sent() as soon as it succeeds, so a row only ever
+    reaches this function's SELECT if the fast path never ran for it, or ran
+    and failed. This function is therefore the sole retry owner for
+    everything that is not already known-delivered — it never re-sends
+    something the fast path already delivered.
     """
-    picked = []
+    bounded_limit = max(1, min(int(limit or 100), 500))
     with get_conn() as c:
-        rows = c.execute(
-            """
-            SELECT * FROM push_outbox
-            WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
-            ORDER BY CASE priority WHEN 'critical' THEN 0 ELSE 1 END, created_at
-            LIMIT ?
-            """,
-            (max(1, min(int(limit or 100), 500)),),
-        ).fetchall()
-        picked = [dict(r) for r in rows]
-        for row in picked:
-            c.execute("UPDATE push_outbox SET status = 'processing' WHERE id = ? AND status = 'pending'", (row["id"],))
+        _reclaim_stale_processing(c)
+        candidate_ids = [
+            r["id"]
+            for r in c.execute(
+                """
+                SELECT id FROM push_outbox
+                WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
+                ORDER BY CASE priority WHEN 'critical' THEN 0 ELSE 1 END, created_at
+                LIMIT ?
+                """,
+                (bounded_limit,),
+            ).fetchall()
+        ]
 
-    stats = {"picked": len(picked), "sent": 0, "failed": 0, "dead": 0}
-    for row in picked:
+    stats = {"picked": 0, "sent": 0, "failed": 0, "dead": 0}
+    for row_id in candidate_ids:
+        row = _claim_row(row_id)
+        if row is None:
+            continue  # lost the race to another concurrent drain — not our row
+        stats["picked"] += 1
+        attempt = int(row["attempt_count"] or 0) + 1
         try:
             payload = json.loads(row["payload"] or "{}")
+            # Retry-payload-integrity fix (push-closure track): the enqueued
+            # payload (services/push_sender.py send() -> enqueue_event) never
+            # included `badge` at all — every retried delivery silently sent
+            # badge=None (Expo: the "badge" field is omitted entirely when
+            # None, so the OS keeps showing whatever stale number it already
+            # had). Recompute fresh here rather than trying to persist a
+            # static number: unread counts can legitimately change between
+            # the original attempt and a retry minutes later, so a stored
+            # value would risk being WRONG, not just missing.
+            badge = payload.get("badge")
+            if badge is None:
+                try:
+                    from services.push_sender import _compute_recipient_badge
+                    badge = _compute_recipient_badge(row["recipient_user_id"])
+                except Exception:
+                    badge = None
             result = send_to_devices(
                 row["recipient_user_id"],
                 payload.get("title") or "UrTruck",
                 payload.get("body") or "",
                 payload.get("data") or payload,
-                payload.get("badge"),
+                badge,
                 expo_send_one=expo_send_one,
             )
-            status = "sent" if result.get("sent", 0) else "pending"
-            attempt = int(row["attempt_count"] or 0) + 1
-            if status == "sent":
-                stats["sent"] += 1
-                with get_conn() as c:
-                    c.execute("UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=? WHERE id=?", (attempt, row["id"]))
-                continue
-            if attempt >= 5:
-                stats["dead"] += 1
-                with get_conn() as c:
-                    c.execute(
-                        "UPDATE push_outbox SET status='dead', failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=? WHERE id=?",
-                        (attempt, "delivery_not_confirmed", row["id"]),
-                    )
-                continue
-            stats["failed"] += 1
-            delay = min(300, 2 ** attempt * 5)
-            with get_conn() as c:
-                c.execute(
-                    "UPDATE push_outbox SET status='pending', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=? WHERE id=?",
-                    (attempt, f"+{delay} seconds", "delivery_not_confirmed", row["id"]),
-                )
+            # Multi-device fix (push-closure track): "sent" here must mean
+            # EVERY currently-active device was reached, not merely at
+            # least one — `result["sent"]` alone conflates "fully
+            # delivered" with "partially delivered", which would close out
+            # (mark 'sent', stop retrying) a row while one of the
+            # recipient's devices never got it. `result["devices"]` is the
+            # total targeted this attempt; per-device dedup already lives in
+            # push_delivery_log/_already_sent_to_device, so a re-run of this
+            # same row on the next tick only re-targets the device(s) that
+            # did not yet succeed.
+            total_devices = int(result.get("devices", 0) or 0)
+            confirmed = int(result.get("sent", 0) or 0) + int(result.get("already_delivered", 0) or 0)
+            fully_delivered = total_devices > 0 and confirmed >= total_devices
+            outcome = _finish_row(row["id"], attempt, sent=fully_delivered, error=None)
         except Exception as exc:
-            stats["failed"] += 1
-            with get_conn() as c:
+            # Poison event (malformed payload, provider client raising outside
+            # its own try/except, etc.) — must not crash the worker or loop
+            # forever without backoff; goes through the exact same
+            # attempt/backoff/dead ladder as an ordinary delivery failure.
+            outcome = _finish_row(row["id"], attempt, sent=False, error=str(exc))
+        stats[outcome] += 1
+    return stats
+
+
+def mark_event_sent(event_id: Optional[str], recipient_user_id: str) -> bool:
+    """Called by the immediate/inline fast path right after a successful
+    native send. Flips a still-pending/processing outbox row for this exact
+    (event_id, recipient) straight to 'sent' so process_pending_once's
+    `WHERE status='pending'` scan never re-sends it — this is the atomic
+    claim/mark half of the delivery-ownership contract described on
+    process_pending_once(). A no-op (returns False) when no event_key was
+    used for this send (nothing was ever enqueued) or the row is already
+    terminal (sent/dead) — never resurrects or re-marks a dead row.
+    """
+    if not event_id or not recipient_user_id:
+        return False
+    try:
+        with get_conn() as c:
+            cur = c.execute(
+                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL "
+                "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','processing')",
+                (event_id, recipient_user_id),
+            )
+            return cur.rowcount > 0
+    except Exception:
+        return False
+
+
+RECEIPT_MIN_AGE_MINUTES = 15  # Expo's own guidance: receipts are not reliably available before this
+RECEIPT_MAX_AGE_DAYS = 1      # Expo retains receipts ~1 day; querying older rows would waste a call for nothing
+
+
+def poll_pending_receipts(expo_receipts_fn, limit: int = 50) -> dict[str, int]:
+    """Bounded, once-per-row Expo delivery-receipt reconciliation (push-
+    recovery track, Phase 5).
+
+    Complements the immediate ticket-level DeviceNotRegistered handling
+    services.push_sender._send_expo already does (that only sees errors Expo
+    already knows about at send time) — some invalid-token errors only
+    surface in the DELAYED receipt, not the immediate ticket. Each
+    push_delivery_log row is queried at MOST ONCE (receipt_checked_at guard
+    below, set unconditionally whether or not Expo had an answer yet), in a
+    bounded age window (RECEIPT_MIN_AGE_MINUTES..RECEIPT_MAX_AGE_DAYS) — this
+    can never grow into an unbounded query or re-poll the same row forever.
+    A row whose receipt never resolves in that window simply stays
+    delivered_at=NULL — no retry loop, no aggressive polling.
+    """
+    bounded_limit = max(1, min(int(limit or 50), 200))
+    with get_conn() as c:
+        rows = [
+            dict(r)
+            for r in c.execute(
+                """
+                SELECT id, device_registry_id, provider_message_id FROM push_delivery_log
+                WHERE provider = 'expo' AND status = 'sent' AND delivered_at IS NULL
+                  AND receipt_checked_at IS NULL AND provider_message_id IS NOT NULL
+                  AND sent_at IS NOT NULL
+                  AND sent_at <= datetime(CURRENT_TIMESTAMP, ?)
+                  AND sent_at >= datetime(CURRENT_TIMESTAMP, ?)
+                LIMIT ?
+                """,
+                (f"-{RECEIPT_MIN_AGE_MINUTES} minutes", f"-{RECEIPT_MAX_AGE_DAYS} days", bounded_limit),
+            ).fetchall()
+        ]
+
+    stats = {"checked": 0, "delivered": 0, "invalid_token": 0, "errors": 0}
+    if not rows:
+        return stats
+
+    # Same ticket could theoretically repeat across rows; a dict is fine —
+    # we only need the row to update per ticket, not a list of duplicates.
+    by_ticket = {r["provider_message_id"]: r for r in rows}
+    try:
+        result = expo_receipts_fn(list(by_ticket.keys())) or {}
+    except Exception:
+        return stats  # transient provider failure — rows stay unchecked, next tick retries them
+    receipts = result.get("receipts") or {}
+
+    with get_conn() as c:
+        for ticket_id, row in by_ticket.items():
+            stats["checked"] += 1
+            c.execute(
+                "UPDATE push_delivery_log SET receipt_checked_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (row["id"],),
+            )
+            receipt = receipts.get(ticket_id)
+            if not receipt:
+                continue  # not resolved yet / Expo has no record for it — leave delivered_at NULL
+            if receipt.get("status") == "ok":
                 c.execute(
-                    "UPDATE push_outbox SET status='pending', attempt_count=attempt_count+1, last_error=? WHERE id=?",
-                    (str(exc)[:500], row["id"]),
+                    "UPDATE push_delivery_log SET delivered_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (row["id"],),
                 )
+                stats["delivered"] += 1
+                continue
+            details = receipt.get("details") or {}
+            if details.get("error") == "DeviceNotRegistered" and row.get("device_registry_id"):
+                c.execute(
+                    "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
+                    "invalidated_reason = 'expo_receipt_device_not_registered' WHERE id = ?",
+                    (row["device_registry_id"],),
+                )
+                stats["invalid_token"] += 1
+            else:
+                stats["errors"] += 1
+        c.commit()
     return stats
 
 

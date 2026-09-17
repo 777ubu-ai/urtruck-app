@@ -1,15 +1,13 @@
 // ProfileV2Screen — шаг 2 из 2 после выбора роли.
-// Канон onboarding: имя + основной телефон + компания обязательны для обеих
-// ролей; preferred messenger — необязательные контактные данные.
+// Канон onboarding: имя + основной телефон обязательны для обеих ролей;
+// для водителя дата рождения + ИИН нужны basic onboarding, а компания и
+// preferred messenger остаются необязательными контактными данными.
 // Email принадлежит auth-identity и повторно у пользователя не спрашивается.
 
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -22,6 +20,9 @@ import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
 import { useBrand, radius, typography } from '../../theme/brandV2';
+import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
+import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
 
 const COPY = {
   RU: {
@@ -30,9 +31,17 @@ const COPY = {
     nameLabel: 'Имя / контактное лицо *',
     namePlaceholder: 'Например, Иван Петров',
     phoneLabel: 'Основной телефон *',
+    birthDateLabel: 'Дата рождения *',
+    birthDatePlaceholder: 'ДД.ММ.ГГГГ',
+    birthDateRequired: 'Укажите дату рождения',
+    iinLabel: 'ИИН *',
+    iinPlaceholder: '12 цифр',
+    iinRequired: 'ИИН должен содержать 12 цифр',
     companyLabel: 'Компания / ИП *',
+    companyOptionalLabel: 'Компания / ИП',
     companyPlaceholder: 'Название компании или ИП',
     companyHint: 'Обязательно для порядка в сделках и документах',
+    companyOptionalHint: 'Можно добавить позже в профиле',
     companyRequired: 'Укажите компанию или ИП',
     messengerLabel: 'Предпочтительный мессенджер',
     messengerContact: 'Контакт в мессенджере',
@@ -50,9 +59,17 @@ const COPY = {
     nameLabel: 'Name / contact person *',
     namePlaceholder: 'For example, Alex Morgan',
     phoneLabel: 'Primary phone *',
+    birthDateLabel: 'Date of birth *',
+    birthDatePlaceholder: 'DD.MM.YYYY',
+    birthDateRequired: 'Enter your date of birth',
+    iinLabel: 'IIN *',
+    iinPlaceholder: '12 digits',
+    iinRequired: 'IIN must contain 12 digits',
     companyLabel: 'Company / business *',
+    companyOptionalLabel: 'Company / business',
     companyPlaceholder: 'Company or sole trader name',
     companyHint: 'Required to keep deals and documents clean',
+    companyOptionalHint: 'Can be added later in profile',
     companyRequired: 'Enter company or business name',
     messengerLabel: 'Preferred messenger',
     messengerContact: 'Messenger contact',
@@ -70,9 +87,17 @@ const COPY = {
     nameLabel: '姓名 / 联系人 *',
     namePlaceholder: '例如：张伟',
     phoneLabel: '主要手机号 *',
+    birthDateLabel: '出生日期 *',
+    birthDatePlaceholder: '日.月.年',
+    birthDateRequired: '请输入出生日期',
+    iinLabel: '个人识别号 *',
+    iinPlaceholder: '12位数字',
+    iinRequired: '个人识别号必须为12位数字',
     companyLabel: '公司 / 个体经营 *',
+    companyOptionalLabel: '公司 / 个体经营',
     companyPlaceholder: '公司或个体经营名称',
     companyHint: '交易和文件中必须填写',
+    companyOptionalHint: '可稍后在个人资料中添加',
     companyRequired: '请输入公司或个体经营名称',
     messengerLabel: '首选即时通讯',
     messengerContact: '即时通讯联系方式',
@@ -90,9 +115,17 @@ const COPY = {
     nameLabel: 'Аты / байланыс тұлғасы *',
     namePlaceholder: 'Мысалы, Айдан Нұрлан',
     phoneLabel: 'Негізгі телефон *',
+    birthDateLabel: 'Туған күні *',
+    birthDatePlaceholder: 'КК.АА.ЖЖЖЖ',
+    birthDateRequired: 'Туған күнді көрсетіңіз',
+    iinLabel: 'ЖСН *',
+    iinPlaceholder: '12 сан',
+    iinRequired: 'ЖСН 12 саннан тұруы керек',
     companyLabel: 'Компания / ЖК *',
+    companyOptionalLabel: 'Компания / ЖК',
     companyPlaceholder: 'Компания немесе ЖК атауы',
     companyHint: 'Мәмілелер мен құжаттар реті үшін міндетті',
+    companyOptionalHint: 'Профильде кейінірек қосуға болады',
     companyRequired: 'Компания немесе ЖК атауын көрсетіңіз',
     messengerLabel: 'Қалаулы мессенджер',
     messengerContact: 'Мессенджердегі байланыс',
@@ -205,11 +238,27 @@ function ProfileField({
 
 export default function ProfileV2Screen({ navigation, route }) {
   const colors = useBrand();
-  const s = useMemo(() => makeStyles(colors), [colors]);
+  const driverColors = useMemo(() => ({
+    ...colors,
+    bg: DRIVER_CERAMIC.bg,
+    surface: DRIVER_CERAMIC.surface,
+    surfaceSoft: DRIVER_CERAMIC.surface,
+    surfaceMuted: DRIVER_CERAMIC.surfaceMuted,
+    textPrimary: DRIVER_CERAMIC.text,
+    textSecondary: DRIVER_CERAMIC.textMuted,
+    textTertiary: DRIVER_CERAMIC.textDim,
+    primary: DRIVER_CERAMIC.active,
+    primarySoft: DRIVER_CERAMIC.activeSoft,
+    border: DRIVER_CERAMIC.border,
+    borderStrong: DRIVER_CERAMIC.border,
+    divider: DRIVER_CERAMIC.border,
+    textOnPrimary: DRIVER_CERAMIC.activeText,
+  }), [colors]);
   const { t, lang } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const { session, setRole } = useAuth();
   const role = route?.params?.role || session?.user?.role || 'driver';
+  const s = useMemo(() => role === 'driver' ? makeStyles(driverColors) : makeStyles(colors), [colors, driverColors, role]);
 
   const signupIdentity = route?.params?.phone || session?.user?.phone || '';
   const initialPhone = isRealPhone(signupIdentity) ? signupIdentity : '';
@@ -220,6 +269,8 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
+  const [birthDate, setBirthDate] = useState('');
+  const [iin, setIin] = useState('');
   const [company, setCompany] = useState('');
   const [messengerType, setMessengerType] = useState('');
   const [messengerId, setMessengerId] = useState('');
@@ -231,16 +282,21 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   const validName = name.trim().length >= 2;
   const validPhone = isRealPhone(phone);
-  const validCompany = company.trim().length >= 2;
-  const validMessenger = !messengerType
+  const validBirthDate = role !== 'driver' || /^\d{2}\.\d{2}\.\d{4}$/.test(birthDate.trim());
+  const validIin = role !== 'driver' || /^\d{12}$/.test(digitsOnly(iin));
+  const validCompany = role === 'driver' || company.trim().length >= 2;
+  const validMessenger = role === 'driver' || !messengerType
     || (messengerType === 'whatsapp' && sameAsPhone && validPhone)
     || messengerId.trim().length >= 2;
   const formValid = validName && validPhone && validCompany && validMessenger;
+  const basicFormValid = formValid && validBirthDate && validIin;
 
   const validate = () => {
     const next = {};
     if (!validName) next.name = t('profile_v2_err_name');
     if (!validPhone) next.phone = t('prem_reg_phone_invalid');
+    if (role === 'driver' && !validBirthDate) next.birthDate = ui.birthDateRequired;
+    if (role === 'driver' && !validIin) next.iin = ui.iinRequired;
     if (!validCompany) next.company = ui.companyRequired;
     if (!validMessenger) next.messenger = ui.messengerRequired;
     setErrors(next);
@@ -288,10 +344,24 @@ export default function ProfileV2Screen({ navigation, route }) {
         throw new Error(typeof detail === 'string' ? detail : 'profile_save_failed');
       }
 
-      // Критический инвариант: AppNavigator считает session.user.role признаком
-      // завершённого onboarding. Поэтому записываем роль в AuthContext только
-      // ПОСЛЕ успешного PATCH /users/me; иначе при сетевой ошибке шага 2
-      // пользователь мог бы попасть в Main с незаполненным профилем.
+      if (role === 'driver') {
+        const draftSaved = await regAPI.saveDriverDraft({
+          full_name: name.trim(),
+          birth_date: birthDate.trim(),
+          iin: digitsOnly(iin),
+        });
+        if (!draftSaved?.ok) throw new Error('basic_profile_save_failed');
+      }
+
+      // Водительский basic onboarding продолжается на двух обязательных
+      // шагах: личные данные → автомобиль. Роль driver и Main появляются
+      // только после complete-basic на экране успешного сохранения машины.
+      if (role === 'driver') {
+        navigation.replace('VehicleSetupCountry', { role: 'driver', origin: 'basic_onboarding' });
+        return;
+      }
+
+      // Для не-driver ролей сохраняем прежний переход после профиля.
       setRole(role);
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
     } catch {
@@ -306,10 +376,8 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="profile-v2-screen">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={s.flex}
-      >
+      {role === 'driver' ? <DriverRouteBackdrop /> : null}
+      <KeyboardSafeLayout style={s.flex}>
         <View style={s.header}>
           <Pressable
             onPress={() => navigation.goBack()}
@@ -321,7 +389,7 @@ export default function ProfileV2Screen({ navigation, route }) {
           </Pressable>
         </View>
 
-        <ScrollView
+        <KeyboardSafeScrollView
           contentContainerStyle={s.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -363,9 +431,45 @@ export default function ProfileV2Screen({ navigation, route }) {
             setErrors={setErrors}
           />
 
+          {role === 'driver' ? (
+            <>
+              <ProfileField
+                id="birthDate"
+                label={ui.birthDateLabel}
+                value={birthDate}
+                onChange={setBirthDate}
+                placeholder={ui.birthDatePlaceholder}
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+                s={s}
+                colors={colors}
+                focused={focused}
+                setFocused={setFocused}
+                errors={errors}
+                setErrors={setErrors}
+              />
+              <ProfileField
+                id="iin"
+                label={ui.iinLabel}
+                value={iin}
+                onChange={(value) => setIin(digitsOnly(value).slice(0, 12))}
+                placeholder={ui.iinPlaceholder}
+                keyboardType="number-pad"
+                inputMode="numeric"
+                autoCapitalize="none"
+                s={s}
+                colors={colors}
+                focused={focused}
+                setFocused={setFocused}
+                errors={errors}
+                setErrors={setErrors}
+              />
+            </>
+          ) : null}
+
           <ProfileField
             id="company"
-            label={ui.companyLabel}
+            label={role === 'driver' ? ui.companyOptionalLabel : ui.companyLabel}
             value={company}
             onChange={setCompany}
             placeholder={ui.companyPlaceholder}
@@ -377,7 +481,7 @@ export default function ProfileV2Screen({ navigation, route }) {
             errors={errors}
             setErrors={setErrors}
           />
-          <Text style={s.helperText}>{ui.companyHint}</Text>
+          <Text style={s.helperText}>{role === 'driver' ? ui.companyOptionalHint : ui.companyHint}</Text>
 
           <View style={s.section}>
             <Text style={s.sectionLabel}>{ui.messengerLabel}</Text>
@@ -447,14 +551,14 @@ export default function ProfileV2Screen({ navigation, route }) {
 
           <Pressable
             onPress={onContinue}
-            disabled={busy || !formValid}
+            disabled={busy || !basicFormValid}
             accessibilityRole="button"
-            accessibilityState={{ disabled: busy || !formValid }}
+            accessibilityState={{ disabled: busy || !basicFormValid }}
             testID="profile-v2-cta"
             style={({ pressed }) => [
-              s.ctaPrimary,
-              { backgroundColor: formValid ? colors.primary : colors.borderStrong },
-              pressed && formValid && s.pressed,
+            s.ctaPrimary,
+              { backgroundColor: basicFormValid ? colors.primary : colors.borderStrong },
+              pressed && basicFormValid && s.pressed,
             ]}
           >
             {busy ? (
@@ -466,8 +570,8 @@ export default function ProfileV2Screen({ navigation, route }) {
               </>
             )}
           </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardSafeScrollView>
+      </KeyboardSafeLayout>
     </SafeAreaView>
   );
 }
@@ -496,7 +600,7 @@ const makeStyles = (colors) => StyleSheet.create({
     opacity: 0.7,
   },
   scroll: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
     paddingTop: 4,
     paddingBottom: 36,
   },
@@ -563,8 +667,8 @@ const makeStyles = (colors) => StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    minHeight: 54,
-    borderRadius: radius.md,
+    minHeight: 52,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
@@ -609,7 +713,7 @@ const makeStyles = (colors) => StyleSheet.create({
     minHeight: 62,
     flexGrow: 1,
     flexBasis: '22%',
-    borderRadius: radius.md,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
@@ -645,7 +749,7 @@ const makeStyles = (colors) => StyleSheet.create({
     color: colors.textSecondary,
   },
   infoCard: {
-    borderRadius: radius.md,
+    borderRadius: 14,
     backgroundColor: colors.surfaceSoft,
     borderWidth: 1,
     borderColor: colors.border,
@@ -670,8 +774,8 @@ const makeStyles = (colors) => StyleSheet.create({
     marginBottom: 10,
   },
   ctaPrimary: {
-    height: 58,
-    borderRadius: radius.lg,
+    minHeight: 48,
+    borderRadius: 10,
     flexDirection: 'row',
     gap: 10,
     alignItems: 'center',

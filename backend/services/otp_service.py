@@ -21,13 +21,15 @@ from services import whatsapp as wa
 from services import sms_mobizon
 # Email OTP (SMTP) — канал для Китая и резерв. MOCK если нет SMTP-реквизитов.
 from services import email_service
+from services.log_redact import mask_phone
 
 # BETA bypass
 try:
-    from config import BETA_MODE, BETA_OTP_CODE
+    from config import BETA_MODE, BETA_OTP_CODE, IS_PRODUCTION
 except Exception:
     BETA_MODE = False
     BETA_OTP_CODE = "0000"
+    IS_PRODUCTION = False
 
 # Совместимость со старыми именами env (на случай если кто ещё пользуется)
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "") or os.getenv("WHATSAPP_TOKEN", "")
@@ -93,12 +95,37 @@ def send_sms(phone: str, code: str) -> dict:
     leak.
     """
     msg = f"UrTruck: {code}. Не сообщайте код никому."
+    # Hardening A final repair (2026-09-10), P1: an operator who explicitly
+    # set SMS_PROVIDER=twilio but only partially configured the credential
+    # triple must NOT silently fall through to SMS_MOCK below in production
+    # -- that would "succeed" from the caller's point of view while no SMS
+    # is ever sent, and (per the IS_PRODUCTION gate elsewhere, e.g.
+    # api/registration.py) the mock code is never even returned to the
+    # client either -- the user is locked out with zero visible error.
+    # services/env_check.py already refuses to BOOT with this exact config
+    # in production (defense layer 1); this is defense layer 2, for any
+    # code path that reaches send_sms() without having gone through that
+    # boot gate (a script/worker importing this module directly, a hot
+    # env-var change without a restart, etc.). Explicit fail-closed error,
+    # not a mock, not a generic exception.
+    if IS_PRODUCTION and SMS_PROVIDER == "twilio" and not _sms_real_configured():
+        missing = [n for n, v in (("TWILIO_ACCOUNT_SID", TWILIO_SID),
+                                   ("TWILIO_AUTH_TOKEN", TWILIO_TOKEN),
+                                   ("TWILIO_FROM", TWILIO_FROM)) if not v]
+        print(f"[OTP·SMS] FAIL-CLOSED: SMS_PROVIDER=twilio incomplete in production "
+              f"(missing: {', '.join(missing)}) — refusing to mock-fallback", flush=True)
+        return {
+            "sent": False, "mock": False, "channel": "sms", "provider": "twilio",
+            "error": "twilio_incomplete_config",
+        }
     if SMS_MOCK:
-        # Mask middle digits: a real phone in a server log is a PII
-        # leak even in dev, and confuses on-call when reading logs
-        # quickly.
-        masked = phone if len(phone) < 8 else f"{phone[:4]}***{phone[-3:]}"
-        print(f"[OTP·SMS MOCK] {masked}: {code}")
+        # Release hardening track A (2026-09-10): never print the raw code,
+        # even in the mock path — a mock server's stdout still ends up in
+        # the same log aggregation as production. The code itself is still
+        # returned in the dict below (that's the actual mock-delivery
+        # mechanism, gated separately by IS_PRODUCTION at the API layer,
+        # e.g. api/registration.py) — this only fixes the LOG line.
+        print(f"[OTP·SMS MOCK] {mask_phone(phone)}: (redacted)")
         return {"sent": True, "mock": True, "channel": "sms", "code": code}
 
     if SMS_PROVIDER == "mobizon":
@@ -136,7 +163,10 @@ def send_telegram(phone: str, code: str) -> dict:
     """
     link = telegram_deeplink(code)
     if TG_MOCK:
-        print(f"[OTP·TG MOCK] {phone}: {code} → {link}")
+        # Release hardening track A: `link` itself embeds the raw code
+        # (telegram_deeplink() urlencodes "verify_{code}" into the URL) —
+        # never print phone, code, OR the deeplink.
+        print(f"[OTP·TG MOCK] {mask_phone(phone)}: (redacted, deeplink omitted — contains code)")
         return {"sent": True, "mock": True, "channel": "telegram", "code": code, "deeplink": link}
     # При реальном боте можно логировать запрос или сделать ping админ-чату
     return {"sent": True, "mock": False, "channel": "telegram", "deeplink": link}

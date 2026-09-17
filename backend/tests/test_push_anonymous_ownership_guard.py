@@ -10,7 +10,9 @@ import sys
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_push_anon_guard.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
+    Path(TEST_DB).unlink(missing_ok=True)
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 

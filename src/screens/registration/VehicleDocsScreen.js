@@ -12,7 +12,6 @@ import {
   Text,
   TextInput,
   Pressable,
-  ScrollView,
   StyleSheet,
   ActivityIndicator,
   Image,
@@ -30,6 +29,7 @@ import RegistrationHelpSheet from '../../components/RegistrationHelpSheet';
 import PhotoGuide from '../../components/PhotoGuide';
 import QaStepSkip from '../../components/dev/QaStepSkip';
 import { brand, radius, typography } from '../../theme/brandV2';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const TOTAL_STEPS = 4;
 const STEP = 3;
@@ -77,6 +77,9 @@ export default function VehicleDocsScreen({ navigation }) {
   const [licenseExpiry, setLicenseExpiry] = useState(''); // срок действия (required)
   const [errors, setErrors] = useState({});
   const [closeVisible, setCloseVisible] = useState(false);
+  // Ручная правка дат прав — единственное, что ещё не persist-ится сразу
+  // (фото и OCR-префилл уже на сервере). Только она делает выход «грязным».
+  const [datesDirty, setDatesDirty] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
 
   // Повторный вход: подтягиваем уже загруженные стороны (front техпаспорта/прав
@@ -95,6 +98,11 @@ export default function VehicleDocsScreen({ navigation }) {
     })();
     return () => { alive = false; };
   }, []);
+
+  const onBackPress = () => {
+    if (datesDirty) { setCloseVisible(true); return; }
+    navigation.goBack();
+  };
 
   // ТЗ блок 10: при закрытии — дописать несохранённые даты прав в draft (фото
   // уже persist server-side). Бросаем при !ok, чтобы модал не вышел молча.
@@ -331,7 +339,7 @@ export default function VehicleDocsScreen({ navigation }) {
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="vehicle-docs-screen">
       <View style={s.header}>
-        <Pressable onPress={() => navigation.goBack()} style={s.backBtn} testID="vd-back">
+        <Pressable onPress={onBackPress} style={s.backBtn} testID="vd-back">
           <Feather name="arrow-left" size={22} color={brand.textPrimary} />
         </Pressable>
         <View style={s.progressTrack}>
@@ -346,7 +354,8 @@ export default function VehicleDocsScreen({ navigation }) {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <KeyboardSafeLayout>
+      <KeyboardSafeScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <Text style={s.title}>{t('vdocs_title')}</Text>
         <Text style={s.subtitle}>{t('vdocs_subtitle')}</Text>
 
@@ -398,7 +407,7 @@ export default function VehicleDocsScreen({ navigation }) {
         <Text style={s.label}>{t('vdocs_field_issue')}</Text>
         <TextInput
           value={licenseIssue}
-          onChangeText={(v) => { setLicenseIssue(maskDate(v)); if (errors.issue) setErrors({ ...errors, issue: null }); }}
+          onChangeText={(v) => { setLicenseIssue(maskDate(v)); setDatesDirty(true); if (errors.issue) setErrors({ ...errors, issue: null }); }}
           keyboardType="numeric"
           maxLength={10}
           placeholder={t('vdocs_date_ph')}
@@ -411,7 +420,7 @@ export default function VehicleDocsScreen({ navigation }) {
         <Text style={s.label}>{t('vdocs_field_expiry')}</Text>
         <TextInput
           value={licenseExpiry}
-          onChangeText={(v) => { setLicenseExpiry(maskDate(v)); if (errors.expiry) setErrors({ ...errors, expiry: null }); }}
+          onChangeText={(v) => { setLicenseExpiry(maskDate(v)); setDatesDirty(true); if (errors.expiry) setErrors({ ...errors, expiry: null }); }}
           keyboardType="numeric"
           maxLength={10}
           placeholder={t('vdocs_date_ph')}
@@ -428,13 +437,14 @@ export default function VehicleDocsScreen({ navigation }) {
         <QaStepSkip
           onPress={() => navigation.navigate('TruckParams', { fromVerification: true, plate: null })}
         />
-      </ScrollView>
+      </KeyboardSafeScrollView>
 
       <View style={s.ctaWrap}>
         <Pressable onPress={onNext} style={s.cta} testID="vd-next">
           <Text style={s.ctaText}>{t('vdocs_next')}</Text>
         </Pressable>
       </View>
+      </KeyboardSafeLayout>
       <RegistrationCloseModal
         visible={closeVisible}
         onCancel={() => setCloseVisible(false)}

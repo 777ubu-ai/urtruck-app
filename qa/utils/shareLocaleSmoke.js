@@ -51,8 +51,11 @@ for (const needle of ['marketAPI.getDealLocation', '<TruckMap', 'tracking_starts
   if (!routeMap.includes(needle)) throw new Error(`RouteMap live contract missing: ${needle}`);
 }
 
-const chat = fs.readFileSync(path.join(root, 'src/screens/ChatScreen.js'), 'utf8');
-for (const needle of ['getCurrentLocationPayload', "translate('deal_created')", 'marketAPI.sendDealLocation']) {
+// Commit 8: legacy ChatScreen.js was deleted; the live chat chrome (GPS
+// polling + deal-location sends + system-message localization) lives in
+// DealWorkspaceScreenV2.js.
+const chat = fs.readFileSync(path.join(root, 'src/screens/DealWorkspaceScreenV2.js'), 'utf8');
+for (const needle of ['getCurrentLocationPayload', 'localizeSystemMessage', 'marketAPI.sendDealLocation']) {
   if (!chat.includes(needle)) throw new Error(`Chat GPS/i18n contract missing: ${needle}`);
 }
 

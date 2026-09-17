@@ -24,6 +24,71 @@ def parse_telegram_job():
         print(f"  ERROR: {e}")
 
 
+def push_outbox_drain_job():
+    """Drains backend/services/push_gateway.py's push_outbox table.
+
+    Root cause this fixes (push-recovery track, confirmed by forensic audit):
+    push_gateway.enqueue_event() was already called on every event_key'd send
+    (services/push_sender.py `send()`), but nothing ever called
+    process_pending_once() in production — rows piled up 'pending' forever
+    with zero retries whenever the inline synchronous send failed. Wiring
+    this job (not a bespoke loop/thread) reuses the exact same singleton-lock
+    + max_instances=1 + coalesce=True + per-job-try/except guarantees
+    start_scheduler() already provides for every other job below, so this
+    gets "only one process runs it, never overlaps itself, a crash in this
+    job never takes down the process" for free instead of re-implementing
+    them.
+    """
+    try:
+        from services.push_sender import drain_outbox_once
+        stats = drain_outbox_once(limit=50)
+        if stats.get("picked"):
+            print(
+                f"[push-outbox] picked={stats['picked']} sent={stats['sent']} "
+                f"failed={stats['failed']} dead={stats['dead']}",
+                flush=True,
+            )
+    except Exception as e:
+        # A single bad batch must not take the scheduler process down —
+        # matches the per-job try/except convention every job here follows.
+        print(f"[push-outbox] drain job failed (continuing): {e}", flush=True)
+
+
+def push_receipts_poll_job():
+    """Push-recovery track, Phase 5: bounded, once-per-row Expo delivery-
+    receipt reconciliation (see services/push_gateway.py
+    poll_pending_receipts for the actual query/backoff-free, no-retry-loop
+    logic). Complements the immediate-ticket DeviceNotRegistered handling —
+    some invalid-token errors only surface in the delayed receipt."""
+    try:
+        from services.push_sender import poll_expo_receipts_once
+        stats = poll_expo_receipts_once(limit=50)
+        if stats.get("checked"):
+            print(
+                f"[push-receipts] checked={stats['checked']} delivered={stats['delivered']} "
+                f"invalid_token={stats['invalid_token']} errors={stats['errors']}",
+                flush=True,
+            )
+    except Exception as e:
+        print(f"[push-receipts] poll failed (continuing): {e}", flush=True)
+
+
+def gps_heartbeat_check_job():
+    """Push-recovery track, Phase 4: fires trip.gps_lost/gps_restored, which
+    previously existed only as declared event-type constants with no
+    producer (see api/marketplace.py:check_gps_heartbeats_job for the actual
+    stale-detection query and dedup guard, built on the real
+    deal_tracking.last_signal_at heartbeat already maintained by every
+    driver location ping — not invented telemetry)."""
+    try:
+        from api.marketplace import check_gps_heartbeats_job as _check
+        stats = _check()
+        if stats.get("fired"):
+            print(f"[gps-heartbeat] checked={stats['checked']} fired={stats['fired']}", flush=True)
+    except Exception as e:
+        print(f"[gps-heartbeat] check failed (continuing): {e}", flush=True)
+
+
 def monthly_rescore_job():
     """Переоценка всех водителей — раз в месяц."""
     print(f"[{datetime.now().isoformat()}] Monthly rescore start")
@@ -363,9 +428,24 @@ def start_scheduler():
     # «Пока нет предложений» (18ч без ставок) — проверяем каждые 3 часа,
     # дедуп по data_json удерживает один пуш на публикацию.
     sched.add_job(no_bids_notify_job, IntervalTrigger(hours=3), id="no_bids_notify")
+    # Push outbox drain — каждые 30с. Короткий интервал оправдан: это не
+    # тяжёлая джоба (LIMIT 50 строк, локальный SQLite), а retry-safety-net
+    # для push, которые не ушли синхронным inline-путём — держать
+    # пользователя без уведомления полчаса неприемлемо. max_instances=1 +
+    # атомарный claim в process_pending_once защищают от наложения.
+    sched.add_job(push_outbox_drain_job, IntervalTrigger(seconds=30), id="push_outbox_drain")
+    # GPS heartbeat staleness check — каждые 5 минут (порог staleness сам —
+    # 20 минут, см. GPS_LOST_THRESHOLD_MINUTES), достаточно редко, чтобы не
+    # быть busy-loop, достаточно часто, чтобы задержка обнаружения была мала
+    # относительно самого порога.
+    sched.add_job(gps_heartbeat_check_job, IntervalTrigger(minutes=5), id="gps_heartbeat_check")
+    # Expo receipt reconciliation — не агрессивный опрос: каждые 20 минут,
+    # каждая строка push_delivery_log проверяется РОВНО один раз (см.
+    # receipt_checked_at в poll_pending_receipts), окно 15 минут..1 сутки.
+    sched.add_job(push_receipts_poll_job, IntervalTrigger(minutes=20), id="push_receipts_poll")
     sched.start()
     _scheduler = sched
-    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h")
+    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s, gps-heartbeat 5m, push-receipts-poll 20m")
     return sched
 
 

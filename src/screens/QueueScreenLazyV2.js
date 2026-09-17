@@ -14,11 +14,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
-import { useV1Colors } from '../theme/designV1';
+import { useV1Colors, useDriverCeramicColors, useShipperCeramicColors } from '../theme/designV1';
+import { DRIVER_CERAMIC } from '../theme/designV1Palette';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
+import RootHeader from '../components/ui/v1/RootHeader';
+import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
 import { API_BASE } from '../config/env';
 import { localizeCheckpointName } from '../utils/checkpointNames';
 import { storage } from '../utils/storage';
+import { useVerificationGate } from '../components/VerificationGate';
+import { LEVELS } from '../utils/AuthContext';
 
 const BASE = `${API_BASE}/borders`;
 const FAVORITES_KEY = 'ur_border_favorites_v2';
@@ -168,11 +173,27 @@ export function completeBookingCalendar(live) {
 }
 
 export default function QueueScreenLazyV2({ navigation, route }) {
-  const { theme } = useTheme();
-  const v1 = useV1Colors();
-  const { lang } = useI18n();
+  const { theme: themeBase } = useTheme();
+  const v1Base = useV1Colors();
+  const ceramic = useDriverCeramicColors();
+  const shipper = useShipperCeramicColors();
+  const { t, lang, sp } = useI18n();
   const L = COPY[lang] || COPY.RU;
   const role = route?.params?.role || 'driver';
+  const isDriver = role === 'driver';
+  const activeColor = isDriver ? DRIVER_CERAMIC.active : shipper.active;
+  const v1 = isDriver ? ceramic : shipper;
+  const theme = isDriver ? {
+    ...themeBase,
+    bg: DRIVER_CERAMIC.bg,
+    card: DRIVER_CERAMIC.surface,
+    surface: DRIVER_CERAMIC.surface,
+    text: DRIVER_CERAMIC.text,
+    textMuted: DRIVER_CERAMIC.textMuted,
+    textDim: DRIVER_CERAMIC.textDim,
+    border: DRIVER_CERAMIC.border,
+  } : { ...themeBase, bg: shipper.bg, card: shipper.surface, surface: shipper.surface, text: shipper.text, textMuted: shipper.textMuted, textDim: shipper.textDim, border: shipper.border };
+  const { requireLevel } = useVerificationGate();
 
   const [catalog, setCatalog] = useState([]);
   const [countries, setCountries] = useState([]);
@@ -273,10 +294,11 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: v1.bg }]} edges={['top']} testID="border-screen-v2">
-      <View style={[s.topBar, { borderBottomColor: theme.border, backgroundColor: v1.bg }]}> 
-        <View style={{ flex: 1 }} />
-        <HeaderMenuButton navigation={navigation} role={role} />
-      </View>
+      <DriverRouteBackdrop />
+      <RootHeader ceramic hideBell={!isDriver} navigation={navigation} role={role} testID="queue-root-header" onBellPress={async () => {
+        const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
+        if (ok) navigation.navigate('PushFilter', { role });
+      }} />
 
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
         <Text style={[s.topTitle, s.scrollTitle, { color: theme.text }]} testID="queue-title">{L.title}</Text>
@@ -286,12 +308,12 @@ export default function QueueScreenLazyV2({ navigation, route }) {
           {countryCodes.map((code) => {
             const active = selectedCountry === code;
             return (
-              <TouchableOpacity key={code} onPress={() => selectCountry(code)} style={[s.countryChip, { borderColor: active ? '#168759' : theme.border, backgroundColor: active ? '#168759' : theme.card }]} testID={`border-country-${code}`}>
+              <TouchableOpacity key={code} onPress={() => selectCountry(code)} style={[s.countryChip, { borderColor: active ? activeColor : theme.border, backgroundColor: active ? activeColor : theme.card }]} testID={`border-country-${code}`}>
                 <Text style={[s.countryText, { color: active ? '#FFFFFF' : theme.text }]}>{countryName(code)}</Text>
               </TouchableOpacity>
             );
           })}
-          <TouchableOpacity onPress={() => selectCountry('ALL')} style={[s.countryChip, { borderColor: selectedCountry === 'ALL' ? '#168759' : theme.border, backgroundColor: selectedCountry === 'ALL' ? '#168759' : theme.card }]} testID="border-country-ALL">
+          <TouchableOpacity onPress={() => selectCountry('ALL')} style={[s.countryChip, { borderColor: selectedCountry === 'ALL' ? activeColor : theme.border, backgroundColor: selectedCountry === 'ALL' ? activeColor : theme.card }]} testID="border-country-ALL">
             <Text style={[s.countryText, { color: selectedCountry === 'ALL' ? '#FFFFFF' : theme.text }]}>🌐 {L.all}</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -302,34 +324,34 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             const next = checkpointCarouselX.current + 300;
             checkpointCarouselRef.current?.scrollTo({ x: next, animated: true });
             checkpointCarouselX.current = next;
-          }} style={s.carouselNext} testID="border-checkpoint-next"><Feather name="chevrons-right" size={21} color="#168759" /></TouchableOpacity>
+          }} style={s.carouselNext} testID="border-checkpoint-next"><Feather name="chevrons-right" size={21} color={activeColor} /></TouchableOpacity>
         </View>
 
-        {catalogLoading ? <View style={s.center}><ActivityIndicator color="#168759" /></View> : (
+        {catalogLoading ? <View style={s.center}><ActivityIndicator color={activeColor} /></View> : (
           <ScrollView ref={checkpointCarouselRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.carousel} onScroll={(event) => { checkpointCarouselX.current = event.nativeEvent.contentOffset.x; }} scrollEventThrottle={16} testID="border-checkpoint-carousel">
             {visible.map((checkpoint) => {
               const active = String(selectedId) === String(checkpoint.id);
               const loaded = liveById[String(checkpoint.id)];
               return (
-                <TouchableOpacity key={String(checkpoint.id)} onPress={() => loadLive(checkpoint)} style={[s.cpCard, { backgroundColor: theme.card, borderColor: active ? '#168759' : theme.border }, active && s.cpCardActive]} testID="border-checkpoint-chip">
-                  <View style={s.cpTop}><Text style={[s.cpName, { color: theme.text }]} numberOfLines={1}>{localizeCheckpointName(checkpoint, lang).split(' - ')[0]}</Text>{favorites.includes(String(checkpoint.id)) ? <Feather name="star" size={14} color="#168759" fill="#168759" /> : null}</View>
-                  <Text style={[s.cpRoute, { color: theme.textDim }]} numberOfLines={1}>{localizeCheckpointName(checkpoint, lang)}</Text>
-                  {loaded?.nearest_booking ? <Text style={s.cpLoadedText}>📅 {formatShortDate(loaded.nearest_booking, lang)}</Text> : <Text style={[s.tapText, { color: active ? '#168759' : theme.textDim }]}>{active ? L.selected : L.tapToOpen}</Text>}
+                <TouchableOpacity key={String(checkpoint.id)} onPress={() => loadLive(checkpoint)} style={[s.cpCard, { backgroundColor: theme.card, borderColor: active ? activeColor : theme.border }, active && s.cpCardActive]} testID="border-checkpoint-chip">
+                  <View style={s.cpTop}><Text style={[s.cpName, { color: theme.text }]} numberOfLines={1}>{localizeCheckpointName(checkpoint, lang).split(' - ')[0]}</Text>{favorites.includes(String(checkpoint.id)) ? <Feather name="star" size={14} color={activeColor} fill={activeColor} /> : null}</View>
+                  <Text style={[s.cpRoute, { color: theme.textDim, fontSize: sp(10.5) }]} numberOfLines={1}>{localizeCheckpointName(checkpoint, lang)}</Text>
+                  {loaded?.nearest_booking ? <Text style={s.cpLoadedText}>📅 {formatShortDate(loaded.nearest_booking, lang)}</Text> : <Text style={[s.tapText, { color: active ? activeColor : theme.textDim }]}>{active ? L.selected : L.tapToOpen}</Text>}
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
         )}
 
-        {!selected ? <View style={[s.promptCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-lazy-prompt"><Feather name="mouse-pointer" size={20} color="#168759" /><Text style={[s.promptText, { color: theme.textMuted }]}>{L.tap}</Text></View> : null}
-        {selected && liveLoading && !live ? <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: '#A7DCC3' }]} testID="border-live-loading"><ActivityIndicator color="#168759" size="large" /><Text style={[s.loadingText, { color: theme.textMuted }]}>{L.loading}</Text></View> : null}
+        {!selected ? <View style={[s.promptCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-lazy-prompt"><Feather name="mouse-pointer" size={20} color={activeColor} /><Text style={[s.promptText, { color: theme.textMuted }]}>{L.tap}</Text></View> : null}
+        {selected && liveLoading && !live ? <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: DRIVER_CERAMIC.border }]} testID="border-live-loading"><ActivityIndicator color={activeColor} size="large" /><Text style={[s.loadingText, { color: theme.textMuted }]}>{L.loading}</Text></View> : null}
         {selected && liveError ? <View style={[s.errorCard, { backgroundColor: theme.card }]}><Feather name="alert-circle" size={20} color="#B42318" /><Text style={[s.errorText, { color: theme.textMuted }]}>{liveError}</Text><TouchableOpacity onPress={() => loadLive(selected, true)}><Text style={s.retry}>{L.refresh}</Text></TouchableOpacity></View> : null}
 
         {selected && live ? (
-          <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: '#9FD8BD' }]} testID="border-selected-card">
+          <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: DRIVER_CERAMIC.border }]} testID="border-selected-card">
             <View style={s.liveHeader}>
               <View style={{ flex: 1, paddingRight: 8 }}><Text style={[s.liveTitle, { color: theme.text }]}>{localizeCheckpointName({ ...selected, name: live.name || selected.name }, lang)}</Text><Text style={[s.liveCountry, { color: theme.textMuted }]}>{selected.country ? countryName(selected.country) : ''}</Text></View>
-              <TouchableOpacity onPress={toggleFavorite} style={[s.iconButton, { borderColor: theme.border }]}><Feather name="star" size={19} color="#168759" fill={favorites.includes(String(selectedId)) ? '#168759' : 'transparent'} /></TouchableOpacity>
+              <TouchableOpacity onPress={toggleFavorite} style={[s.iconButton, { borderColor: theme.border }]} accessibilityRole="button" accessibilityLabel={t('a11y_toggle_favorite')} accessibilityState={{ selected: favorites.includes(String(selectedId)) }}><Feather name="star" size={19} color={activeColor} fill={favorites.includes(String(selectedId)) ? activeColor : 'transparent'} /></TouchableOpacity>
             </View>
 
             <View style={s.heroBooking}>
@@ -346,7 +368,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               <View style={s.metric}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{L.limit}</Text><Text style={[s.metricValue, { color: theme.text }]}>{live.daily_capacity != null ? `${live.daily_capacity}${L.perDay}` : '—'}</Text></View>
             </View>
 
-            <View style={s.calendarHead}><Text style={[s.sectionTitleSmall, { color: theme.text }]}>{L.calendar}</Text><Text style={[s.swipeHint, { color: theme.textDim }]}>{L.swipeCalendar}</Text></View>
+            <View style={s.calendarHead}><Text style={[s.sectionTitleSmall, { color: theme.text }]}>{L.calendar}</Text><Text style={[s.swipeHint, { color: theme.textDim, fontSize: sp(10.5) }]}>{L.swipeCalendar}</Text></View>
             <FlatList
               horizontal
               data={calendarRows}
@@ -357,9 +379,9 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 const hasStandard = standardFree > 0;
                 const hasPremium = !hasStandard && premiumFree > 0;
                 return (
-                  <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? '#70C49B' : hasPremium ? '#E4B35A' : '#E5B8B8', backgroundColor: item.is_day_off ? v1.bg : hasStandard ? '#F0FBF6' : hasPremium ? '#FFF8E8' : '#FFF7F7' }]} testID="border-booking-date-card">
+                  <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? DRIVER_CERAMIC.active : hasPremium ? '#B58A52' : '#C98B8B', backgroundColor: item.is_day_off ? v1.bg : hasStandard ? DRIVER_CERAMIC.activeSoft : hasPremium ? '#F3EBDD' : '#F5E7E7' }]} testID="border-booking-date-card">
                     <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
-                    {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim }]}>{L.dayOff}</Text> : hasStandard ? <><Text style={s.dateFree}>{standardFree}</Text><Text style={[s.dateState, { color: '#168759' }]}>{L.standard}</Text><Text style={[s.dateAmount, { color: '#168759' }]}>{formatKztAmount(1)}</Text></> : hasPremium ? <><Text style={s.datePremium}>{premiumFree}</Text><Text style={[s.dateState, { color: '#B7791F' }]}>{L.premium}</Text><Text style={[s.dateAmount, { color: '#B7791F' }]}>{formatKztAmount(100)}</Text></> : <Text style={[s.dateState, { color: '#B42318' }]}>{L.noPlaces}</Text>}
+                    {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim, fontSize: sp(9.5) }]}>{L.dayOff}</Text> : hasStandard ? <><Text style={s.dateFree}>{standardFree}</Text><Text style={[s.dateState, { color: activeColor, fontSize: sp(9.5) }]}>{L.standard}</Text><Text style={[s.dateAmount, { color: activeColor, fontSize: sp(8.5) }]}>{formatKztAmount(1)}</Text></> : hasPremium ? <><Text style={s.datePremium}>{premiumFree}</Text><Text style={[s.dateState, { color: '#B7791F', fontSize: sp(9.5) }]}>{L.premium}</Text><Text style={[s.dateAmount, { color: '#B7791F', fontSize: sp(8.5) }]}>{formatKztAmount(100)}</Text></> : <Text style={[s.dateState, { color: '#B42318', fontSize: sp(9.5) }]}>{L.noPlaces}</Text>}
                   </View>
                 );
               }}
@@ -375,7 +397,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               testID="border-booking-calendar"
             />
 
-            <View style={s.sourceRow}><Text style={[s.source, { color: theme.textDim }]}>{L.updated}: {formatSourceTime(live.source_updated_at || live.fetched_at)}</Text><TouchableOpacity onPress={() => loadLive(selected, true)} disabled={liveLoading} style={s.refreshButton}>{liveLoading ? <ActivityIndicator size="small" color="#168759" /> : <Feather name="refresh-cw" size={16} color="#168759" />}<Text style={s.refreshText}>{L.refresh}</Text></TouchableOpacity></View>
+            <View style={s.sourceRow}><Text style={[s.source, { color: theme.textDim }]}>{L.updated}: {formatSourceTime(live.source_updated_at || live.fetched_at)}</Text><TouchableOpacity onPress={() => loadLive(selected, true)} disabled={liveLoading} style={s.refreshButton}>{liveLoading ? <ActivityIndicator size="small" color={activeColor} /> : <Feather name="refresh-cw" size={16} color={activeColor} />}<Text style={s.refreshText}>{L.refresh}</Text></TouchableOpacity></View>
             <TouchableOpacity onPress={() => Linking.openURL(live.official_url || 'https://cgr.qoldau.kz/ru/start').catch(() => {})} style={s.cgrButton}><Feather name="external-link" size={17} color="#FFFFFF" /><Text style={s.cgrButtonText}>{L.details}</Text></TouchableOpacity>
           </View>
         ) : null}
@@ -406,14 +428,14 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '850' },
   sectionTitleSmall: { fontSize: 15, fontWeight: '850' },
   hint: { fontSize: 12, lineHeight: 17, marginTop: 3, paddingRight: 12 },
-  carouselNext: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF8F1' },
+  carouselNext: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DDE4EA' },
   carousel: { gap: 10, paddingRight: 28, paddingBottom: 4 },
   cpCard: { width: 140, minHeight: 94, borderWidth: 1, borderRadius: 16, padding: 12 },
-  cpCardActive: { borderWidth: 2, padding: 11, shadowColor: '#168759', shadowOpacity: 0.09, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+  cpCardActive: { borderWidth: 2, padding: 11, shadowColor: '#738396', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
   cpTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 5 },
   cpName: { fontSize: 15, fontWeight: '850', flex: 1 },
   cpRoute: { fontSize: 10.5, marginTop: 5 },
-  cpLoadedText: { color: '#168759', fontSize: 12, fontWeight: '800', marginTop: 10 },
+  cpLoadedText: { color: '#738396', fontSize: 12, fontWeight: '800', marginTop: 10 },
   tapText: { fontSize: 11, fontWeight: '700', marginTop: 11 },
   center: { height: 100, alignItems: 'center', justifyContent: 'center' },
   promptCard: { borderWidth: 1, borderRadius: 18, padding: 18, marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -423,11 +445,11 @@ const s = StyleSheet.create({
   liveHeader: { flexDirection: 'row', alignItems: 'flex-start' },
   liveTitle: { fontSize: 20, lineHeight: 25, fontWeight: '900' },
   liveCountry: { fontSize: 13, marginTop: 4 },
-  iconButton: { width: 38, height: 38, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  heroBooking: { backgroundColor: '#F2FBF6', borderRadius: 16, padding: 16, marginTop: 15, alignItems: 'flex-start' },
+  iconButton: { width: 44, height: 44, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  heroBooking: { backgroundColor: '#E5EBF0', borderRadius: 14, padding: 14, marginTop: 15, alignItems: 'flex-start' },
   heroLabel: { fontSize: 12.5, fontWeight: '750' },
-  heroDate: { color: '#126C49', fontSize: 31, lineHeight: 37, fontWeight: '950', marginTop: 4 },
-  freeBadge: { backgroundColor: '#168759', borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, marginTop: 9 },
+  heroDate: { color: '#111C2C', fontSize: 28, lineHeight: 34, fontWeight: '900', marginTop: 4 },
+  freeBadge: { backgroundColor: '#738396', borderRadius: 9, paddingVertical: 6, paddingHorizontal: 10, marginTop: 9 },
   freeBadgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   noBooking: { fontSize: 12, marginTop: 8 },
   premiumRow: { borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 10 },
@@ -443,24 +465,24 @@ const s = StyleSheet.create({
   dateStrip: { gap: 8, paddingRight: 4, paddingBottom: 4 },
   dateCard: { width: 90, minHeight: 101, borderWidth: 1, borderRadius: 13, padding: 9, alignItems: 'center', justifyContent: 'center' },
   dateText: { fontSize: 12, fontWeight: '850' },
-  dateFree: { color: '#168759', fontSize: 20, fontWeight: '950', marginTop: 5 },
+  dateFree: { color: '#738396', fontSize: 20, fontWeight: '950', marginTop: 5 },
   datePremium: { color: '#B7791F', fontSize: 20, fontWeight: '950', marginTop: 5 },
   dateState: { fontSize: 9.5, fontWeight: '700', textAlign: 'center', marginTop: 3 },
   dateAmount: { fontSize: 8.5, lineHeight: 11, fontWeight: '700', textAlign: 'center', marginTop: 2 },
   sourceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 15 },
   source: { fontSize: 11 },
-  refreshButton: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8 },
-  refreshText: { color: '#168759', fontWeight: '800', fontSize: 12 },
-  cgrButton: { minHeight: 46, borderRadius: 14, backgroundColor: '#168759', flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  refreshButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8 },
+  refreshText: { color: '#738396', fontWeight: '800', fontSize: 12 },
+  cgrButton: { minHeight: 46, borderRadius: 10, backgroundColor: '#738396', flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   cgrButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '850' },
   errorCard: { borderWidth: 1, borderColor: '#F2C7C7', borderRadius: 16, marginTop: 16, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 10 },
   errorText: { flex: 1, fontSize: 13, lineHeight: 18 },
-  retry: { color: '#168759', fontWeight: '850' },
+  retry: { color: '#738396', fontWeight: '850' },
   searchCard: { borderWidth: 1, borderRadius: 18, padding: 15, marginTop: 18 },
   searchRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
   inputWrap: { flex: 1, minHeight: 46, borderWidth: 1, borderRadius: 13, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   input: { flex: 1, fontSize: 14, minHeight: 44 },
-  checkButton: { minWidth: 94, minHeight: 46, borderRadius: 13, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 13 },
+  checkButton: { minWidth: 94, minHeight: 46, borderRadius: 10, backgroundColor: '#738396', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 13 },
   checkText: { color: '#FFFFFF', fontSize: 13, fontWeight: '850' },
   disabled: { opacity: 0.45 },
   lookup: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 12, paddingTop: 12 },

@@ -13,12 +13,13 @@ import sys
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_country_guard.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
+    Path(TEST_DB).unlink(missing_ok=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from api import verification_gate
 import contextvars
 
 _current_user = contextvars.ContextVar("user", default=None)
@@ -30,8 +31,6 @@ def fake_require_level(_min_level):
             raise HTTPException(status_code=401, detail="No test user set")
         return u
     return dep
-
-verification_gate.require_level = fake_require_level
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -52,13 +51,18 @@ if _notif_schema_path.exists():
     with _get_conn_for_setup() as _c_notif:
         _c_notif.executescript(_notif_schema_path.read_text(encoding="utf-8"))
 
+from tests.auth_harness import override_require_level
+
 app = FastAPI()
 app.include_router(mp_router, prefix="/api/v1/market")
+override_require_level(app, fake_require_level(1))
 client = TestClient(app)
 
 
-def as_user(uid: str):
-    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1})
+def as_user(uid: str, role: str = "client"):
+    # Track B (2026-09-10): create_cargo/create_trip/create_bid now enforce
+    # server-side role direction -- see as_user() callers below for overrides.
+    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1, "role": role})
 
 
 def seed_cargo(owner_id: str, from_country=None, to_country=None, price: int = 3000) -> str:
@@ -92,7 +96,7 @@ def _make_in_progress_deal(owner_id, driver_id, from_country, to_country):
     instead of bypassing the production guard.
     """
     cargo_id = seed_cargo(owner_id=owner_id, from_country=from_country, to_country=to_country)
-    as_user(driver_id)
+    as_user(driver_id, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2500}).json()["id"]
     as_user(owner_id)
     r = client.post(f"/api/v1/market/bids/{bid_id}/accept")

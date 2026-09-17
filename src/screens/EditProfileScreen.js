@@ -9,15 +9,23 @@ import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
+import BottomSheet from '../components/ui/v1/BottomSheet';
 import HelpButton from '../components/HelpButton';
 import { useDraft, clearDraft } from '../utils/useDraft';
 import { regAPI } from '../utils/registration';
 import { uploadProDoc } from '../utils/proDocs';
-import {v1Colors, useV1Colors, v1Spacing, v1Typography, v1AccentFor, v1Radius} from '../theme/designV1';
+import {v1Colors, useV1Colors, useShipperCeramicColors, v1Spacing, v1Typography, v1AccentFor, v1Radius} from '../theme/designV1';
+import Feather from '@expo/vector-icons/Feather';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { localizePlace } from '../utils/places';
 
 const BORDERS = ['Нур Жолы', 'Калжат', 'Достык', 'Бахты', 'Майкапчагай', 'Хоргос'];
+const MESSENGERS = [
+  { k: 'wechat', label: 'WeChat', icon: 'message-circle' },
+  { k: 'whatsapp', label: 'WhatsApp', icon: 'phone' },
+  { k: 'telegram', label: 'Telegram', icon: 'send' },
+  { k: 'viber', label: 'Viber', icon: 'phone-call' },
+];
 
 // EditProfileScreen — design v1, screens 05 (driver) & 06 (cargo owner).
 //
@@ -30,7 +38,11 @@ const BORDERS = ['Нур Жолы', 'Калжат', 'Достык', 'Бахты'
 // stage-2 "Transport" screen will edit them. Nothing is lost.
 
 export default function EditProfileScreen({ navigation, route }) {
-  const v1 = useV1Colors();
+  const baseV1 = useV1Colors();
+  const shipper = useShipperCeramicColors();
+  const { role } = route.params || {};
+  const isDriver = role === 'driver';
+  const v1 = isDriver ? baseV1 : shipper;
   const s = React.useMemo(() => StyleSheet.create({
 
   title: { ...v1Typography.h1, textAlign: 'center', marginTop: v1Spacing.md },
@@ -78,6 +90,10 @@ export default function EditProfileScreen({ navigation, route }) {
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1,
   },
   borderChipText: { fontSize: 12, fontWeight: '600' },
+  messengerSelector: { minHeight: 52, borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  messengerSelectorText: { flex: 1, fontSize: 15, fontWeight: '600' },
+  messengerOption: { minHeight: 52, borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  messengerOptionText: { flex: 1, fontSize: 15, fontWeight: '600' },
   helpRow: { position: 'absolute', top: 8, right: 8, zIndex: 10 },
   docRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -94,12 +110,10 @@ export default function EditProfileScreen({ navigation, route }) {
   docRowStatus: { fontSize: 11, marginTop: 2 },
 
   }), [v1]);
-  const { role } = route.params || {};
-  const isDriver = role === 'driver';
-  const accent = v1AccentFor(role);
+  const accent = isDriver ? v1AccentFor(role) : { main: shipper.active, soft: shipper.activeSoft };
   const accentKey = isDriver ? 'driver' : 'cargo';
   const { t, lang } = useI18n();
-  const { session, signOut } = useAuth();
+  const { session, signOut, refreshLevel } = useAuth();
   const { toast } = useToast();
   const [deleting, setDeleting] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
@@ -112,15 +126,21 @@ export default function EditProfileScreen({ navigation, route }) {
   const [avatar, setAvatar] = useState(profile.avatar_url || null);
   const [firstName, setFirstName] = useState(profile.first_name || (profile.display_name || '').split(' ')[0] || '');
   const [lastName, setLastName] = useState(profile.last_name || (profile.display_name || '').split(' ').slice(1).join(' ') || '');
-  const [phone] = useState(session?.user?.phone || '+7 (***) ***-**-**');
+  const [phone, setPhone] = useState(session?.user?.phone || '+7 (***) ***-**-**');
   const [city, setCity] = useState(profile.city || '');
   const [email, setEmail] = useState(profile.email || '');
   const [company, setCompany] = useState(profile.company || profile.company_name || '');
-  const [binInn, setBinInn] = useState(profile.bin_inn || '');
   // Предпочтительный мессенджер грузоотправителя + ID (WeChat важен для Китая).
   const [messengerType, setMessengerType] = useState(profile.messenger_type || '');
   const [messengerId, setMessengerId] = useState(profile.messenger_id || '');
+  const [messengerOpen, setMessengerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [phoneChangeOpen, setPhoneChangeOpen] = useState(false);
+  const [phoneChangeCode, setPhoneChangeCode] = useState('');
+  const [phoneChangePending, setPhoneChangePending] = useState(false);
+  const [phoneChangeError, setPhoneChangeError] = useState('');
+  const [phoneChangeMockCode, setPhoneChangeMockCode] = useState('');
+  const [savedPhone, setSavedPhone] = useState(session?.user?.phone || '');
 
   // PR-D1: PRO-секция (только водитель). Минимальный набор по спеке
   // driver_onboarding §2/Экран 3 + загрузка документов в Supabase Storage
@@ -144,9 +164,12 @@ export default function EditProfileScreen({ navigation, route }) {
       const data = await regAPI.profile();
       if (cancelled || !data) return;
       if (data.legal_form) setLegalForm(data.legal_form);
+      if (data.phone) {
+        setPhone(data.phone);
+        setSavedPhone(data.phone);
+      }
       if (data.china_experience_years != null) setChinaExp(String(data.china_experience_years));
       if (data.company_name) setCompany(data.company_name);
-      if (data.bin_inn) setBinInn(data.bin_inn);
       if (data.messenger_type) setMessengerType(data.messenger_type);
       if (data.messenger_id) setMessengerId(data.messenger_id);
       if (Array.isArray(data.favorite_borders) && data.favorite_borders.length) setFavBorders(data.favorite_borders);
@@ -164,8 +187,8 @@ export default function EditProfileScreen({ navigation, route }) {
   const draftKey = `edit_profile_${userId || 'guest'}_${role || 'na'}`;
   useDraft(
     draftKey,
-    { firstName, lastName, city, email, company, binInn, messengerType, messengerId, legalForm, chinaExp, favBorders, emergency },
-    { setFirstName, setLastName, setCity, setEmail, setCompany, setBinInn, setMessengerType, setMessengerId, setLegalForm, setChinaExp, setFavBorders, setEmergency },
+    { firstName, lastName, city, email, company, messengerType, messengerId, legalForm, chinaExp, favBorders, emergency },
+    { setFirstName, setLastName, setCity, setEmail, setCompany, setMessengerType, setMessengerId, setLegalForm, setChinaExp, setFavBorders, setEmergency },
   );
 
   const toggleBorder = (b) => {
@@ -236,10 +259,10 @@ export default function EditProfileScreen({ navigation, route }) {
     }
   };
 
-  const save = async () => {
-    if (saving) return;
-    setSaving(true);
-    const fullName = [firstName, lastName].map((s) => (s || '').trim()).filter(Boolean).join(' ');
+  const normalizePhone = (value) => String(value || '').replace(/[^\d+]/g, '');
+
+  const persistProfile = async () => {
+    const fullName = [firstName, lastName].map((value) => (value || '').trim()).filter(Boolean).join(' ');
     const chinaExpNum = parseInt(chinaExp, 10);
     saveProfile(userId, {
       avatar_url: avatar,
@@ -250,17 +273,11 @@ export default function EditProfileScreen({ navigation, route }) {
       city,
       email: email.trim(),
       company: company.trim(),
-      // грузоотправитель: компания/БИН/мессенджер
       ...(!isDriver ? {
         company_name: company.trim(),
-        bin_inn: binInn.trim(),
         messenger_type: messengerType,
         messenger_id: messengerId.trim(),
       } : {}),
-      // PR-D1: PRO-поля. Сохраняются локально (store) — серверный sync
-      // /users/me пока принимает только {name, city, about}, расширенные
-      // PRO-поля live на фронте до тех пор, пока backend не получит
-      // отдельный endpoint /api/v1/drivers/pro (вне scope этого PR).
       ...(isDriver ? {
         legal_form: legalForm,
         china_experience_years: Number.isFinite(chinaExpNum) ? chinaExpNum : null,
@@ -268,39 +285,83 @@ export default function EditProfileScreen({ navigation, route }) {
         emergency_contact: emergency.trim(),
       } : {}),
     });
+    const payload = { name: fullName, city, about: profile.bio || '' };
+    if (isDriver) {
+      payload.legal_form = legalForm;
+      payload.china_experience_years = Number.isFinite(chinaExpNum) ? chinaExpNum : null;
+      payload.favorite_borders = favBorders;
+      payload.emergency_contact = emergency.trim();
+      if (passportIntlUrl) payload.passport_intl_url = passportIntlUrl;
+      if (tirUrl) payload.tir_book_url = tirUrl;
+      if (cmrUrl) payload.cmr_insurance_url = cmrUrl;
+    } else {
+      payload.company_name = company.trim();
+      payload.messenger_type = messengerType;
+      payload.messenger_id = messengerId.trim();
+    }
+    return regAPI.updateProfile(payload);
+  };
+
+  const requestPhoneChange = async () => {
+    const nextPhone = phone.trim();
+    if (!nextPhone || normalizePhone(nextPhone) === normalizePhone(savedPhone)) return false;
+    setPhoneChangePending(true);
+    setPhoneChangeError('');
+    const result = await regAPI.requestPhoneChange(nextPhone);
+    setPhoneChangePending(false);
+    if (!result.ok) {
+      setPhoneChangeError(result.detail?.message || result.detail || 'Не удалось отправить код');
+      return false;
+    }
+    setPhoneChangeMockCode(result.code || '');
+    setPhoneChangeCode('');
+    setPhoneChangeOpen(true);
+    return true;
+  };
+
+  const confirmPhoneChange = async () => {
+    if (phoneChangePending || phoneChangeCode.trim().length !== 4) return;
+    setPhoneChangePending(true);
+    setPhoneChangeError('');
+    const result = await regAPI.confirmPhoneChange(phone.trim(), phoneChangeCode.trim());
+    if (!result.ok) {
+      setPhoneChangePending(false);
+      setPhoneChangeError(result.detail?.message || result.detail || 'Неверный или истёкший код');
+      return;
+    }
+    // The new number becomes visible only after the server confirms it.
+    setSavedPhone(phone.trim());
+    saveProfile(userId, { phone: phone.trim() });
+    setPhoneChangeOpen(false);
+    setPhoneChangePending(false);
+    setPhoneChangeCode('');
+    setPhoneChangeMockCode('');
+    try { await refreshLevel?.(); } catch {}
+    await finishSave(true);
+  };
+
+  const finishSave = async (phoneConfirmed = false) => {
     let serverOk = false;
     try {
-      // PR-D1: один регулируемый PATCH /users/me — включает и базовые
-      // поля, и PRO. Backend игнорирует поля, которых не знает.
-      const payload = {
-        name: fullName,
-        city,
-        about: profile.bio || '',
-      };
-      if (isDriver) {
-        payload.legal_form = legalForm;
-        payload.china_experience_years = Number.isFinite(chinaExpNum) ? chinaExpNum : null;
-        payload.favorite_borders = favBorders;
-        payload.emergency_contact = emergency.trim();
-        // URL'ы уже улетели в момент uploadProDoc, но шлём повторно
-        // чтобы сервер был in sync даже если до save был edge-case.
-        if (passportIntlUrl) payload.passport_intl_url = passportIntlUrl;
-        if (tirUrl)           payload.tir_book_url       = tirUrl;
-        if (cmrUrl)           payload.cmr_insurance_url  = cmrUrl;
-      } else {
-        // грузоотправитель: компания, БИН/ИНН, мессенджер + ID
-        payload.company_name = company.trim();
-        payload.bin_inn = binInn.trim();
-        payload.messenger_type = messengerType;
-        payload.messenger_id = messengerId.trim();
-      }
-      const r = await regAPI.updateProfile(payload);
-      serverOk = !!r.ok;
+      const result = await persistProfile();
+      serverOk = !!result?.ok;
     } catch {}
     setSaving(false);
     await clearDraft(draftKey);
     toast(serverOk ? '✓ ' + t('saveSettings') : '✓ ' + t('saved_locally'), serverOk ? 'success' : 'warn');
     navigation.goBack();
+    return phoneConfirmed;
+  };
+
+  const save = async () => {
+    if (saving) return;
+    if (normalizePhone(phone) !== normalizePhone(savedPhone)) {
+      const requested = await requestPhoneChange();
+      if (requested) return;
+      return;
+    }
+    setSaving(true);
+    await finishSave();
   };
 
   // App Store Guideline 5.1.1(v): удаление аккаунта из приложения.
@@ -325,8 +386,8 @@ export default function EditProfileScreen({ navigation, route }) {
   };
 
   return (
-    <Screen>
-      <BrandHeader onBack={() => navigation.goBack()} accent={accent.main} compact />
+    <Screen ceramic={!isDriver}>
+      <BrandHeader ceramic={!isDriver} onBack={() => navigation.goBack()} accent={accent.main} compact />
       <View style={s.helpRow}>
         <HelpButton accent={accent.main} />
       </View>
@@ -344,19 +405,27 @@ export default function EditProfileScreen({ navigation, route }) {
             <Image source={{ uri: avatar }} style={[s.avatar, { borderColor: accent.main }]} />
           ) : (
             <View style={[s.avatar, { borderColor: accent.main, backgroundColor: accent.soft }]}>
-              <Text style={s.avatarPlaceholder}>👤</Text>
+              <Feather name="user" size={32} color={accent.main} />
             </View>
           )}
           <View style={[s.cameraBadge, { backgroundColor: accent.main }]}>
-            <Text style={s.cameraIcon}>📷</Text>
+            <Feather name="camera" size={13} color={v1.text} />
           </View>
         </TouchableOpacity>
         <Text style={[s.avatarHint, { color: accent.main }]}>{t('profile_setup_add_photo')}</Text>
       </View>
 
-      <Field featherIcon="user" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} placeholder={t('signup_field_first_name')} />
-      <Field featherIcon="user" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} placeholder={t('signup_field_last_name')} />
-      <Field featherIcon="phone" label={t('signup_field_phone')} value={phone} onChangeText={() => {}} editable={false} />
+      <Field ceramic={!isDriver} featherIcon="user" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} placeholder={t('signup_field_first_name')} />
+      <Field ceramic={!isDriver} featherIcon="user" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} placeholder={t('signup_field_last_name')} />
+      <Field
+        ceramic={!isDriver}
+        featherIcon="phone"
+        label={t('signup_field_phone')}
+        value={phone}
+        onChangeText={setPhone}
+        keyboardType="phone-pad"
+        helper={t('phone_v2_send_hint') || t('reg_phone_hint')}
+      />
       {/* Stage 21: previously these were `Field variant="dropdown"`
           with `onPress={() => {}}` — taps did nothing, so users
           reported "страна не выбирается" and "город не выбирается".
@@ -365,13 +434,13 @@ export default function EditProfileScreen({ navigation, route }) {
           field — same shape as RegScreen for the client flow.
           Picker UI for multi-country onboarding is tracked
           separately. */}
-      <Field
+      <Field ceramic={!isDriver}
         featherIcon="globe"
         label={t('signup_field_country')}
         value={t('country_kazakhstan')}
         editable={false}
       />
-      <Field
+      <Field ceramic={!isDriver}
         featherIcon="map-pin"
         label={t('signup_field_city')}
         value={city}
@@ -380,24 +449,16 @@ export default function EditProfileScreen({ navigation, route }) {
       />
       {!isDriver ? (
         <>
-          <Field
+          <Field ceramic={!isDriver}
             featherIcon="briefcase"
             label={t('signup_field_company')}
             placeholder={t('signup_field_company_optional')}
             value={company}
             onChangeText={setCompany}
           />
-          <Field
-            featherIcon="hash"
-            label={t('bin_inn_label')}
-            placeholder={t('bin_inn_ph')}
-            value={binInn}
-            onChangeText={(v) => setBinInn(v.replace(/[^\d]/g, '').slice(0, 12))}
-            keyboardType="number-pad"
-          />
         </>
       ) : null}
-      <Field
+      <Field ceramic={!isDriver}
         featherIcon="mail"
         label={t('signup_field_email_optional')}
         value={email}
@@ -415,32 +476,33 @@ export default function EditProfileScreen({ navigation, route }) {
           <Text style={[v1Typography.small, { color: v1.textMuted, marginBottom: 6, marginLeft: 4 }]}>
             {t('messenger_pref')}
           </Text>
-          <View style={s.bordersWrap}>
-            {[
-              { k: 'wechat', label: '💚 WeChat' },
-              { k: 'whatsapp', label: '📱 WhatsApp' },
-              { k: 'telegram', label: '💬 Telegram' },
-              { k: 'viber', label: '☎️ Viber' },
-            ].map((m) => {
-              const active = messengerType === m.k;
-              return (
-                <TouchableOpacity
-                  key={m.k}
-                  style={[s.borderChip, {
-                    backgroundColor: active ? accent.soft : v1.bg,
-                    borderColor: active ? accent.main : v1.border,
-                  }]}
-                  onPress={() => setMessengerType(active ? '' : m.k)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[s.borderChipText, { color: active ? accent.main : v1.textMuted }]}>{m.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <TouchableOpacity
+            style={[s.messengerSelector, { backgroundColor: v1.surface, borderColor: v1.border }]}
+            onPress={() => setMessengerOpen(true)}
+            testID="messenger-selector"
+          >
+            <Feather name="message-circle" size={18} color={v1.textMuted} />
+            <Text style={[s.messengerSelectorText, { color: messengerType ? v1.text : v1.textMuted }]}>
+              {MESSENGERS.find((item) => item.k === messengerType)?.label || t('messenger_pref')}
+            </Text>
+            <Feather name="chevron-down" size={17} color={v1.textMuted} />
+          </TouchableOpacity>
+          <BottomSheet visible={messengerOpen} onClose={() => setMessengerOpen(false)} title={t('messenger_pref')}>
+            {MESSENGERS.map((messenger) => (
+              <TouchableOpacity
+                key={messenger.k}
+                style={[s.messengerOption, { borderColor: v1.border, backgroundColor: messengerType === messenger.k ? v1.surfaceMuted : v1.surface }]}
+                onPress={() => { setMessengerType(messenger.k); setMessengerOpen(false); }}
+              >
+                <Feather name={messenger.icon} size={18} color={v1.textMuted} />
+                <Text style={[s.messengerOptionText, { color: v1.text }]}>{messenger.label}</Text>
+                {messengerType === messenger.k ? <Feather name="check" size={18} color={accent.main} /> : null}
+              </TouchableOpacity>
+            ))}
+          </BottomSheet>
           {messengerType ? (
             <View style={{ marginTop: 8 }}>
-              <Field
+              <Field ceramic={!isDriver}
                 featherIcon="at-sign"
                 label={t('messenger_id_label')}
                 placeholder={t('messenger_id_ph')}
@@ -479,7 +541,7 @@ export default function EditProfileScreen({ navigation, route }) {
           })}
 
           <Text style={s.proSectionTitle}>{t('pro_section_routes')}</Text>
-          <Field
+          <Field ceramic={!isDriver}
             featherIcon="map"
             label={t('pro_field_china_experience')}
             value={chinaExp}
@@ -512,7 +574,7 @@ export default function EditProfileScreen({ navigation, route }) {
           </View>
 
           <Text style={s.proSectionTitle}>{t('pro_section_emergency')}</Text>
-          <Field
+          <Field ceramic={!isDriver}
             featherIcon="alert-triangle"
             label={t('pro_field_emergency_contact')}
             value={emergency}
@@ -574,7 +636,7 @@ export default function EditProfileScreen({ navigation, route }) {
         </Text>
       </View>
 
-      <PrimaryButton
+      <PrimaryButton ceramic={!isDriver}
         label={t('profile_setup_save')}
         onPress={save}
         loading={saving}
@@ -582,6 +644,64 @@ export default function EditProfileScreen({ navigation, route }) {
         testID="profile-save"
         style={{ marginTop: v1Spacing.sm }}
       />
+
+      <BottomSheet
+        visible={phoneChangeOpen}
+        onClose={() => {
+          setPhoneChangeOpen(false);
+          setPhone(savedPhone);
+          setPhoneChangeCode('');
+          setPhoneChangeError('');
+          setPhoneChangeMockCode('');
+        }}
+        title="Подтвердите новый номер"
+        scroll={false}
+        footer={(
+          <PrimaryButton
+            ceramic={!isDriver}
+            label={t('reg_confirm_btn') || 'Подтвердить'}
+            onPress={confirmPhoneChange}
+            loading={phoneChangePending}
+            disabled={phoneChangeCode.trim().length !== 4}
+            accent={accentKey}
+            testID="phone-change-confirm"
+          />
+        )}
+      >
+        <Text style={{ color: v1.textMuted, marginBottom: 10 }}>
+          Код отправлен на новый номер. Старый номер останется активным до подтверждения.
+        </Text>
+        <Field
+          ceramic={!isDriver}
+          featherIcon="shield"
+          label="Код подтверждения"
+          value={phoneChangeCode}
+          onChangeText={(value) => setPhoneChangeCode(value.replace(/\D/g, '').slice(0, 4))}
+          keyboardType="number-pad"
+          placeholder="0000"
+          maxLength={4}
+          testID="phone-change-code"
+          error={phoneChangeError}
+        />
+        {phoneChangeMockCode ? (
+          <Text testID="phone-change-mock-code" style={{ color: v1.textMuted, fontSize: 12 }}>
+            {t('reg_mock_label') || 'Код для тестового режима'}: {phoneChangeMockCode}
+          </Text>
+        ) : null}
+        <TouchableOpacity
+          onPress={() => {
+            setPhoneChangeOpen(false);
+            setPhone(savedPhone);
+            setPhoneChangeCode('');
+            setPhoneChangeError('');
+            setPhoneChangeMockCode('');
+          }}
+          style={s.skipRow}
+          testID="phone-change-cancel"
+        >
+          <Text style={[s.skipText, { color: accent.main }]}>{t('cancel') || 'Отмена'}</Text>
+        </TouchableOpacity>
+      </BottomSheet>
 
       <TouchableOpacity onPress={() => navigation.goBack()} style={s.skipRow} activeOpacity={0.7}>
         <Text style={[s.skipText, { color: accent.main }]}>{t('profile_setup_skip')}</Text>
@@ -605,4 +725,3 @@ export default function EditProfileScreen({ navigation, route }) {
     </Screen>
   );
 }
-

@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const deals = fs.readFileSync('src/screens/DealsScreen.js', 'utf8');
+// Design v1 Commit 3: the unread badge chrome lives in MarketplaceCard and
+// reads the error token instead of a hardcoded hex.
+const card = fs.readFileSync('src/components/ui/v1/MarketplaceCard.js', 'utf8');
 const cargoDetail = fs.readFileSync('src/screens/CargoDetail.js', 'utf8');
 const tripDetail = fs.readFileSync('src/screens/TripDetail.js', 'utf8');
 
@@ -21,8 +24,8 @@ test("deal inbox preserves actionable counters for offers and active deals", () 
 });
 
 test("attention inside cards uses the distinct red unread badge", () => {
-  assert.match(deals, /testID="deals-card-unread"/);
-  assert.match(deals, /backgroundColor: ["']#D64545["']/);
+  assert.match(card, /testID="deals-card-unread"/);
+  assert.match(card, /backgroundColor: colors\.error/);
   assert.match(
     deals,
     /const needsReceiptConfirmation[\s\S]*role === ["']client["'][\s\S]*data\.status === ["']delivered["'][\s\S]*data\.status === ["']awaiting_confirmation["']/,

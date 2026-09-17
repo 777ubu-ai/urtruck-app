@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Keyboard } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import CountryFlag from './ui/v1/CountryFlag';
 import { useTheme } from '../utils/ThemeContext';
 import { t } from '../utils/i18n';
 import { searchCities, formatCity, COUNTRIES, addCustomCity, subscribeToCities } from '../utils/cities';
@@ -68,7 +69,7 @@ export default function CityInput({ value, onChange, placeholder, style, testID 
               {c.isCustom ? (
                 <Feather name="plus" size={18} color={theme.textMuted} style={s.flag} />
               ) : (
-                <Text style={s.flag}>{COUNTRIES[c.country]?.flag || '🏳️'}</Text>
+                <CountryFlag code={c.country} width={24} />
               )}
               <View style={{ flex: 1 }}>
                 <Text style={[s.cityName, { color: theme.text }]}>

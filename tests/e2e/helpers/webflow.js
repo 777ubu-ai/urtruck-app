@@ -1,7 +1,8 @@
 // Общие helpers для полной e2e-регрессии на СОБРАННОМ веб-UI (dist/ через
 // scripts/e2e-static-proxy.js). Backend :8001 в MOCK/BETA (dev) → код 0000.
 //
-// Живой стек входа: OnboardingV2 → AuthV2(Google/Apple/Email) → OtpV2 →
+// Живой стек входа: OnboardingV2 → AuthV2(Google/Email; Apple только на
+// поддерживаемой native-платформе) → OtpV2 →
 // (RoleV2 → ProfileV2) → Main. Phone больше не является login-каналом.
 const { expect } = require('@playwright/test');
 
@@ -12,12 +13,18 @@ const SHOTS = 'qa/screenshots/e2e-web';
 
 const tid = (id) => `[data-testid="${id}"]`;
 
+function phoneForEmail(email) {
+  let hash = 0;
+  for (const char of String(email)) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return `+7701${String(hash % 10_000_000).padStart(7, '0')}`;
+}
+
 async function shot(page, name) {
   try { await page.screenshot({ path: `${SHOTS}/${name}.png` }); } catch {}
 }
 
-// Пройти онбординг до canonical Google/Apple/Email auth entry.
-// Имя helper оставлено для совместимости старых e2e imports.
+// Пройти онбординг до canonical Google/Email auth entry.
+// Apple скрыт на web и поэтому не является обязательным web E2E контрактом.
 async function gotoPhoneScreen(page) {
   await page.goto(BASE, { waitUntil: 'networkidle' });
   const cta = page.locator(tid('onb-v2-cta-phone'));
@@ -25,13 +32,14 @@ async function gotoPhoneScreen(page) {
   await cta.click();
   await page.locator(tid('email-v2-input')).waitFor({ state: 'visible', timeout: 15000 });
   await expect(page.locator(tid('auth-google'))).toBeVisible();
-  await expect(page.locator(tid('auth-apple'))).toBeVisible();
+  await expect(page.locator(tid('auth-legal-consent'))).toBeVisible();
 }
 
 // Ввести код на OtpV2 и, если новый юзер, пройти канонический профиль 2/2.
-// Короткий onboarding собирает только обязательные имя + телефон; город,
-// страна, компания и messenger остаются optional и на этом helper не нужны.
-async function passOtpAndOnboard(page, role, { name = 'QA Tester' } = {}) {
+// Короткий onboarding собирает обязательные имя, телефон и компанию. Это
+// реальный контракт ProfileV2: без компании роль не должна считаться
+// сохранённой, поэтому E2E не подменяет его прямой записью в localStorage.
+async function passOtpAndOnboard(page, role, { name = 'QA Tester', phone = '+77011234567' } = {}) {
   const cells = page.locator(tid('otp-v2-cells'));
   await cells.waitFor({ state: 'visible', timeout: 15000 });
   await cells.click();
@@ -56,7 +64,10 @@ async function passOtpAndOnboard(page, role, { name = 'QA Tester' } = {}) {
       await page.locator(tid('profile-v2-name')).fill(name);
       const phone = page.locator(tid('profile-v2-phone'));
       await phone.waitFor({ state: 'visible', timeout: 8000 });
-      await phone.fill('+77011234567');
+      await phone.fill(phone);
+      const company = page.locator(tid('profile-v2-company'));
+      await company.waitFor({ state: 'visible', timeout: 8000 });
+      await company.fill('UrTruck E2E');
       await expect(page.locator(tid('profile-v2-cta'))).toBeEnabled();
       await page.locator(tid('profile-v2-cta')).click();
     }
@@ -71,7 +82,22 @@ async function emailLogin(page, email, role, opts = {}) {
   const cta = page.locator(tid('phone-v2-cta'));
   await expect(cta).toBeEnabled();
   await cta.click();
-  await passOtpAndOnboard(page, role, opts);
+  await passOtpAndOnboard(page, role, { ...opts, phone: opts.phone || phoneForEmail(email) });
+}
+
+// Open the real web bundle with an already-issued local backend session.
+// This is used for the cross-role marketplace setup: BETA email login itself
+// intentionally provisions a driver demo role, whereas the shipper role is
+// established through the same PATCH /users/me contract as ProfileV2.
+async function openAuthenticated(page, token, role) {
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.evaluate(({ sessionToken, sessionRole }) => {
+    localStorage.setItem('ur_reg_token', sessionToken);
+    localStorage.setItem('ur_verification_level', '2');
+    localStorage.setItem('ur_session', JSON.stringify({ user: { id: null, role: sessionRole, phone: null } }));
+  }, { sessionToken: token, sessionRole: role });
+  await page.reload({ waitUntil: 'networkidle' });
+  await expect(page.locator(tid('bottom-nav'))).toBeVisible({ timeout: 20000 });
 }
 
 // ── API-хелперы (сид данных для C/D, подтверждение статусов) ──
@@ -83,14 +109,34 @@ async function apiEmailToken(request, email, role) {
     data: { email, code: BETA_CODE },
   });
   const body = await r.json();
-  return body.token;
+  const token = body.token;
+  if (!token) throw new Error(`email verify did not issue a token for ${email}`);
+
+  // The same server-side profile contract exercised by ProfileV2. API setup
+  // is used only to prepare two actors in the disposable local E2E database;
+  // it must not pretend that email verification alone assigned a marketplace
+  // role.
+  const profile = await request.patch(`${API}/users/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      name: role === 'driver' ? 'E2E Driver' : 'E2E Shipper',
+      phone: phoneForEmail(email),
+      company_name: 'UrTruck E2E',
+      role,
+    },
+  });
+  if (profile.status() >= 300) {
+    throw new Error(`profile role setup failed: ${profile.status()} ${await profile.text()}`);
+  }
+  return token;
 }
 
 async function apiCreateCargo(request, token, overrides = {}) {
   const payload = {
     from_city: 'Алматы', to_city: 'Урумчи', cargo_desc: 'Стройматериалы',
     cargo_type: 'tent', weight_tons: 20, volume_m3: 40,
-    price: 420000, currency: 'KZT', pickup_date: '2026-07-20',
+    price: 420000, currency: 'KZT',
+    pickup_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     ...overrides,
   };
   const r = await request.post(`${API}/market/cargos`, {
@@ -109,6 +155,6 @@ async function apiCreateBid(request, token, cargoId, amount = 400000) {
 
 module.exports = {
   BASE, API, BETA_CODE, SHOTS, tid, shot,
-  gotoPhoneScreen, passOtpAndOnboard, emailLogin,
-  apiEmailToken, apiCreateCargo, apiCreateBid,
+  gotoPhoneScreen, passOtpAndOnboard, emailLogin, openAuthenticated,
+  apiEmailToken, apiCreateCargo, apiCreateBid, phoneForEmail,
 };

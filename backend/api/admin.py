@@ -2,6 +2,14 @@
 
 Защищён паролем через HTTP Basic Auth.
 Credentials: ENV URTRUCK_ADMIN_USER и URTRUCK_ADMIN_PASS
+
+Анти-брутфорс (аудит C1.1, 08.09.2026): не более 5 неудачных попыток входа
+с одного IP, далее блокировка на 15 минут (429 + Retry-After). Счётчик —
+персистентный (SQLite sidecar, api/persistent_rate_limit.py), переживает
+рестарт процесса. Fail-mode: FAIL-CLOSED — при недоступном хранилище
+счётчиков админка отвечает 503, а не работает без лимита. Лимитер живёт
+только внутри check_admin (/admin), поэтому /health, /storage и прочие
+не-админ пути (включая внутреннюю автоматизацию) им не затрагиваются.
 """
 import sys
 import os
@@ -9,15 +17,20 @@ import secrets
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from database import db
 from services import file_signing
+from api import persistent_rate_limit as admin_rl
 
 admin_router = APIRouter()
-security = HTTPBasic()
+# auto_error=False: 401 формируем сами в check_admin, чтобы запрос БЕЗ
+# Authorization-заголовка тоже считался неудачной попыткой (иначе брутфорс
+# «без заголовка» обходил бы счётчик — HTTPBasic с auto_error=True ронял
+# такой запрос до входа в check_admin).
+security = HTTPBasic(auto_error=False)
 
 ADMIN_USER = os.getenv("URTRUCK_ADMIN_USER", "admin")
 _ADMIN_PASS_DEFAULT = "urtruck-admin-2026"
@@ -28,7 +41,60 @@ ADMIN_PASS = os.getenv("URTRUCK_ADMIN_PASS", _ADMIN_PASS_DEFAULT)
 _IS_PROD = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower() == "production"
 
 
-def check_admin(credentials: HTTPBasicCredentials = Depends(security)):
+def _client_ip(request) -> str:
+    if request is not None and request.client is not None and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+# Анти-брутфорс /admin (C1.1): 5 неудачных попыток с IP → блокировка 15 минут.
+ADMIN_RL_SCOPE = "admin_basic"
+ADMIN_RL_MAX_FAILURES = 5
+ADMIN_RL_BLOCK_SECONDS = 15 * 60
+
+
+def check_admin(
+    credentials: HTTPBasicCredentials = Depends(security),
+    request: Request = None,
+):
+    ip = _client_ip(request)
+
+    # FAIL-CLOSED: хранилище счётчиков недоступно → 503, не «без лимита».
+    try:
+        allowed, retry_after = admin_rl.check_allowed(ADMIN_RL_SCOPE, ip)
+    except admin_rl.RateLimitUnavailable:
+        raise HTTPException(
+            status_code=503,
+            detail="Сервис временно недоступен, повторите позже",
+        )
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Слишком много неудачных попыток входа. Попробуйте позже.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    if credentials is None:
+        # Анонимный запрос: оригинальная семантика до C1.1 — 401 +
+        # WWW-Authenticate (prod-guard дефолтного пароля анонимов не касается,
+        # иначе /metrics без заголовка отвечал бы 503 вместо 401 — регрессия
+        # test_production_security_guards). При этом попытка считается
+        # неудачной — брутфорс «без заголовка» не обходит счётчик.
+        try:
+            admin_rl.record_failure(
+                ADMIN_RL_SCOPE, ip, ADMIN_RL_MAX_FAILURES, ADMIN_RL_BLOCK_SECONDS
+            )
+        except admin_rl.RateLimitUnavailable:
+            raise HTTPException(
+                status_code=503,
+                detail="Сервис временно недоступен, повторите позже",
+            )
+        raise HTTPException(
+            status_code=401,
+            detail="Требуется авторизация",
+            headers={"WWW-Authenticate": 'Basic realm="UrTruck Admin"'},
+        )
+
     if _IS_PROD and ADMIN_PASS == _ADMIN_PASS_DEFAULT:
         raise HTTPException(
             status_code=503,
@@ -37,11 +103,26 @@ def check_admin(credentials: HTTPBasicCredentials = Depends(security)):
     u_ok = secrets.compare_digest(credentials.username.encode(), ADMIN_USER.encode())
     p_ok = secrets.compare_digest(credentials.password.encode(), ADMIN_PASS.encode())
     if not (u_ok and p_ok):
+        try:
+            blocked_retry_after = admin_rl.record_failure(
+                ADMIN_RL_SCOPE, ip, ADMIN_RL_MAX_FAILURES, ADMIN_RL_BLOCK_SECONDS
+            )
+        except admin_rl.RateLimitUnavailable:
+            raise HTTPException(
+                status_code=503,
+                detail="Сервис временно недоступен, повторите позже",
+            )
+        headers = {"WWW-Authenticate": 'Basic realm="UrTruck Admin"'}
+        if blocked_retry_after:
+            headers["Retry-After"] = str(blocked_retry_after)
         raise HTTPException(
             status_code=401,
             detail="Неверный логин или пароль",
-            headers={"WWW-Authenticate": 'Basic realm="UrTruck Admin"'},
+            headers=headers,
         )
+    # Успешный вход — сбрасываем счётчик неудач для этого IP (best-effort:
+    # запрос уже авторизован, обваливать его из-за cleanup нельзя).
+    admin_rl.reset(ADMIN_RL_SCOPE, ip)
     return credentials.username
 
 
@@ -149,6 +230,26 @@ HTML = """<!DOCTYPE html>
   </div>
 
 <script>
+// Security fix (Track B / B3): every field below can originate from an
+// untrusted party — driver full_name/reason/vehicle_* at registration,
+// blacklist reason, or raw Telegram message text — and was previously
+// interpolated straight into innerHTML. esc() HTML-escapes it before
+// insertion; safeUrl() additionally restricts href/src to http(s) so a
+// stored value can't inject a javascript: URL. Never remove esc()/safeUrl()
+// around user-controlled fields below without an equivalent replacement.
+function esc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function safeUrl(u) {
+  if (typeof u !== 'string' || !/^https?:\\/\\//i.test(u)) return '';
+  return esc(u);
+}
+
 async function loadPending() {
   const q = document.getElementById('search-q')?.value || '';
   const sf = document.getElementById('status-filter')?.value || '';
@@ -190,26 +291,26 @@ async function load() {
   document.getElementById('bl-count').textContent = `(${bl.entries.length})`;
   document.getElementById('bl-body').innerHTML = bl.entries.map(e => `
     <tr>
-      <td class="code">${e.phone || '—'}</td>
-      <td class="code">${e.plate_number || '—'}</td>
-      <td>${e.full_name || '—'}</td>
-      <td>${e.reason || '—'}</td>
-      <td><span class="pill ${e.source}">${e.source}</span></td>
-      <td><span class="pill ${e.severity}">${e.severity}</span></td>
-      <td class="code">${(e.created_at || '').split('.')[0]}</td>
+      <td class="code">${esc(e.phone) || '—'}</td>
+      <td class="code">${esc(e.plate_number) || '—'}</td>
+      <td>${esc(e.full_name) || '—'}</td>
+      <td>${esc(e.reason) || '—'}</td>
+      <td><span class="pill ${esc(e.source)}">${esc(e.source)}</span></td>
+      <td><span class="pill ${esc(e.severity)}">${esc(e.severity)}</span></td>
+      <td class="code">${esc((e.created_at || '').split('.')[0])}</td>
     </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:#78716C">Пусто</td></tr>';
 
   document.getElementById('tm-count').textContent = `(${tm.mentions.length})`;
   document.getElementById('tm-body').innerHTML = tm.mentions.slice(0, 20).map(m => {
-    const kw = m.keywords_found ? JSON.parse(m.keywords_found).slice(0, 3).join(', ') : '';
+    const kw = m.keywords_found ? JSON.parse(m.keywords_found).slice(0, 3).map(esc).join(', ') : '';
     return `
     <tr>
-      <td class="code">${m.chat_name}</td>
-      <td class="code">${m.mentioned_phone || '—'}</td>
-      <td class="code">${m.mentioned_plate || '—'}</td>
-      <td><span class="pill ${m.sentiment}">${m.sentiment}</span></td>
+      <td class="code">${esc(m.chat_name)}</td>
+      <td class="code">${esc(m.mentioned_phone) || '—'}</td>
+      <td class="code">${esc(m.mentioned_plate) || '—'}</td>
+      <td><span class="pill ${esc(m.sentiment)}">${esc(m.sentiment)}</span></td>
       <td class="code">${kw}</td>
-      <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.message_text || ''}</td>
+      <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.message_text)}</td>
     </tr>`;
   }).join('') || '<tr><td colspan="6" style="text-align:center;color:#78716C">Пусто</td></tr>';
 
@@ -217,30 +318,39 @@ async function load() {
   document.getElementById('al-count').textContent = `(${alerts.length})`;
   document.getElementById('al-body').innerHTML = alerts.map(a => `
     <tr>
-      <td class="code">${a.alert_type}</td>
-      <td><span class="pill ${a.severity}">${a.severity}</span></td>
-      <td class="code">${a.driver_id || '—'}</td>
-      <td>${a.message || '—'}</td>
-      <td class="code">${(a.created_at || '').split('.')[0]}</td>
+      <td class="code">${esc(a.alert_type)}</td>
+      <td><span class="pill ${esc(a.severity)}">${esc(a.severity)}</span></td>
+      <td class="code">${esc(a.driver_id) || '—'}</td>
+      <td>${esc(a.message) || '—'}</td>
+      <td class="code">${esc((a.created_at || '').split('.')[0])}</td>
     </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:#78716C">Нет активных</td></tr>';
 }
 
 function renderPending(d) {
-  const fmt = (url) => url ? `<a href="${url}" target="_blank"><img src="${url}" style="width:100px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #44403C"/></a>` : '<span style="color:#78716C">—</span>';
-  const score = d.security_score != null ? d.security_score : '—';
-  const color = d.security_color || 'neutral';
-  const reason = d.manual_review_reason || d.rejected_reason || '';
+  const fmt = (url) => {
+    const u = safeUrl(url);
+    return u ? `<a href="${u}" target="_blank"><img src="${u}" style="width:100px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #44403C"/></a>` : '<span style="color:#78716C">—</span>';
+  };
+  const score = d.security_score != null ? esc(d.security_score) : '—';
+  const color = esc(d.security_color || 'neutral');
+  const reason = esc(d.manual_review_reason || d.rejected_reason || '');
+  // d.id is drivers.id, an integer primary key (never free-text), so it is
+  // safe inside the single-quoted onclick handler below; do not put any
+  // other field from `d` into an inline event-handler attribute — HTML
+  // entity-decoding happens before the JS parses it, so esc() alone does
+  // NOT make arbitrary text safe in that specific context.
+  const id = esc(d.id);
   return `
     <div style="background:#17140F;border:1px solid #F59E0B40;border-radius:14px;padding:14px">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px">
         <div>
-          <div style="font-weight:800;font-size:16px">${d.full_name || 'Без имени'}</div>
-          <div class="code">${d.phone || '—'} · ИИН ${d.iin || '—'}</div>
+          <div style="font-weight:800;font-size:16px">${esc(d.full_name) || 'Без имени'}</div>
+          <div class="code">${esc(d.phone) || '—'} · ИИН ${esc(d.iin) || '—'}</div>
         </div>
         <span class="pill ${color}">${score} · ${color}</span>
       </div>
       <div class="code" style="margin-bottom:8px">
-        ${d.vehicle_brand || ''} ${d.vehicle_year || ''} · ${d.vehicle_plate || ''} · ${d.vehicle_type || ''}
+        ${esc(d.vehicle_brand) || ''} ${esc(d.vehicle_year) || ''} · ${esc(d.vehicle_plate) || ''} · ${esc(d.vehicle_type) || ''}
       </div>
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <div><div class="stat-label" style="margin:0 0 4px">Селфи</div>${fmt(d.selfie_url)}</div>
@@ -251,12 +361,12 @@ function renderPending(d) {
       <div style="font-size:11px;color:#A8A29E;margin-bottom:10px">
         Liveness: ${Math.round((d.face_quality || 0) * 100)}% ·
         Face match: ${Math.round((d.face_match_score || 0) * 100)}% ·
-        Уровень: ${d.verification_level || 0}
+        Уровень: ${esc(d.verification_level || 0)}
         ${reason ? '<br>⚠ ' + reason : ''}
       </div>
       <div style="display:flex;gap:8px">
-        <button onclick="moderate('${d.id}','approve')" style="flex:1;background:#22C55E;color:#fff;border:0;padding:10px;border-radius:8px;cursor:pointer;font-weight:700">✓ Одобрить</button>
-        <button onclick="moderate('${d.id}','reject')" style="flex:1;background:#EF4444;color:#fff;border:0;padding:10px;border-radius:8px;cursor:pointer;font-weight:700">✗ Отклонить</button>
+        <button onclick="moderate('${id}','approve')" style="flex:1;background:#22C55E;color:#fff;border:0;padding:10px;border-radius:8px;cursor:pointer;font-weight:700">✓ Одобрить</button>
+        <button onclick="moderate('${id}','reject')" style="flex:1;background:#EF4444;color:#fff;border:0;padding:10px;border-radius:8px;cursor:pointer;font-weight:700">✗ Отклонить</button>
       </div>
     </div>`;
 }
@@ -447,6 +557,12 @@ def admin_reject(driver_id: str, reason: str = "Не прошёл проверк
         "status": "rejected",
         "manual_review_required": 0,
         "rejected_reason": reason,
+        "verification_level": 2,
+        "role": "client",
+        "approved_at": None,
+        # P1: полностью отзываем доверенное состояние — stale trusted_real
+        # не должен быть переиспользован self-service /register/moderate.
+        "verification_provider_status": None,
     })
     # Блок 6 аудита (P1-8): см. комментарий в admin_approve выше.
     try:

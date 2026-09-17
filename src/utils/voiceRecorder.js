@@ -16,6 +16,11 @@ let _webAudio = null;
 let _playingUri = null;
 let _playPromise = null;
 let _webTick = null;
+// Поколение активного play(): инкрементируется на каждый запуск play()/stop().
+// run() сверяет свой номер после await createAsync — если за время создания
+// звука юзер тапнул другой бабл (или stop), опоздавший звук выгружается и
+// НЕ перетирает более новый _sound (иначе два трека играют одновременно).
+let _playSeq = 0;
 
 // Состояние активного трека + подписчики (UI бабла голосового).
 const _listeners = new Set();
@@ -193,19 +198,24 @@ export const voice = {
       if (_playPromise) return _playPromise;
     }
 
+    const seq = ++_playSeq;
     const run = (async () => {
       if (Platform.OS === 'web') {
         return this._playWeb(uri);
       }
 
+    let sound = null;
     try {
       if (_sound) {
-        if (_playResolve) {
-          try { _playResolve(false); } catch {}
-          _playResolve = null;
-        }
-        await _sound.unloadAsync();
+        const prev = _sound;
+        // Ссылку обязаны скинуть ДО await: пока идёт unload, completion-
+        // колбэк prev проверяет `_sound !== sound` и молчит корректно, а
+        // error-путь catch ниже никогда не видит stale _sound.
         _sound = null;
+        // unloadAsync может кинуть, если натив уже выгрузил звук — это НЕ
+        // повод бросать весь play() (старое поведение ловило здесь
+        // ReferenceError/stale _sound и уводило плеер в вечный fail).
+        try { await prev.unloadAsync(); } catch { /* уже выгружен нативно */ }
       }
       const { Audio } = require('expo-av');
       // C1 (device-баг): голосовое не проигрывалось у получателя на iOS.
@@ -218,12 +228,19 @@ export const voice = {
       try {
         await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
       } catch { /* не критично — пытаемся играть в текущем режиме */ }
-      const { sound } = await Audio.Sound.createAsync(
+      const { sound: created } = await Audio.Sound.createAsync(
         { uri },
         // progressUpdateIntervalMillis: полоса прогресса и таймер в бабле
         // должны идти плавно, как в WhatsApp; дефолт (500мс) даёт рывки.
         { shouldPlay: true, progressUpdateIntervalMillis: 80, rate: _state.rate, shouldCorrectPitch: true },
       );
+      sound = created;
+      if (seq !== _playSeq) {
+        // Пока создавался звук, стартовал более новый play()/stop() — этот
+        // звук опоздал: выгружаем его и НЕ трогаем состояние нового трека.
+        try { await sound.unloadAsync(); } catch { /* уже выгружен */ }
+        return false;
+      }
       _sound = sound;
       _playingUri = uri;
       _setState({ uri, isPlaying: true, positionMillis: 0, durationMillis: 0 });
@@ -246,8 +263,17 @@ export const voice = {
           durationMillis: status.durationMillis || _state.durationMillis || 0,
         });
       });
+      return true;
     } catch (e) {
       console.warn('[voice] play failed:', e);
+      // Error-путь обязан убирать следы: полуоткрытый звук (createAsync прошёл,
+      // playAsync упал) выгружается, мёртвые ссылки чистятся — иначе следующий
+      // play() спотыкается о stale _sound (вечный 'voice_play_fail').
+      if (sound && _sound === sound) {
+        _sound = null;
+        try { await sound.unloadAsync(); } catch { /* уже выгружен нативно */ }
+      }
+      _playingUri = null;
       _resetState();
       return false;
     }
@@ -262,6 +288,9 @@ export const voice = {
   },
 
   async stop() {
+    // Инвалидируем in-flight play(): его run() после createAsync увидит
+    // устаревший номер поколения и выгрузит свой звук вместо восстановления.
+    _playSeq += 1;
     if (_webAudio) {
       _webAudio.pause();
       if (_webTick) { clearInterval(_webTick); _webTick = null; }

@@ -9,12 +9,29 @@ from pathlib import Path
 from datetime import datetime
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, HTMLResponse
 
 from api.verification_gate import require_level
 
 docs_router = APIRouter()
+
+
+def _require_ttn_participant(trip_id: str, user: dict) -> dict:
+    """Return the real trip or deny access; never build TTN from an arbitrary id."""
+    from database.db import get_conn
+    with get_conn() as c:
+        trip = c.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone()
+        if not trip:
+            raise HTTPException(status_code=404, detail="Рейс не найден")
+        participant = c.execute(
+            "SELECT 1 FROM deals WHERE trip_id = ? AND status NOT IN ('cancelled', 'rejected') "
+            "AND (shipper_id = ? OR driver_id = ?) LIMIT 1",
+            (trip_id, user["id"], user["id"]),
+        ).fetchone()
+        if not participant and trip["driver_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Нет доступа к ТТН этого рейса")
+        return dict(trip)
 
 
 def _ttn_html(trip: dict, driver: dict, client_name: str = "—") -> str:
@@ -74,15 +91,15 @@ def _ttn_html(trip: dict, driver: dict, client_name: str = "—") -> str:
 @docs_router.post("/ttn/{trip_id}")
 def generate_ttn(trip_id: str, user=Depends(require_level(1))):
     """Генерация ТТН по рейсу. Возвращает HTML (для печати через browser print)."""
-    # Для демо — создаём из user data
+    trip_row = _require_ttn_participant(trip_id, user)
     from database import registration_dal as reg_dal
     driver = reg_dal.get_driver(user["id"]) or {}
 
     trip = {
         "id": trip_id,
-        "from": "Алматы", "to": "Астана",
-        "cargo": "Товары народного потребления",
-        "tons": 20, "m3": 82,
+        "from": trip_row.get("from_city", "—"), "to": trip_row.get("to_city", "—"),
+        "cargo": trip_row.get("cargo", "—"),
+        "tons": trip_row.get("capacity_tons", "—"), "m3": trip_row.get("volume_m3", "—"),
         "type": driver.get("vehicle_type", "tent"),
         "price": 1500,
     }
@@ -94,7 +111,8 @@ def generate_ttn(trip_id: str, user=Depends(require_level(1))):
 @docs_router.get("/ttn/{trip_id}/pdf")
 def download_ttn_pdf(trip_id: str, user=Depends(require_level(1))):
     """PDF версия ТТН; без WeasyPrint возвращает печатный HTML."""
-    trip = {"id": trip_id, "from": "Алматы", "to": "Астана", "cargo": "Товары", "tons": 20, "m3": 82, "type": "tent", "price": 1500}
+    trip_row = _require_ttn_participant(trip_id, user)
+    trip = {"id": trip_id, "from": trip_row.get("from_city", "—"), "to": trip_row.get("to_city", "—"), "cargo": trip_row.get("cargo", "—"), "tons": trip_row.get("capacity_tons", "—"), "m3": trip_row.get("volume_m3", "—"), "type": trip_row.get("truck_type", "tent"), "price": trip_row.get("price", 0)}
     driver = {"full_name": "—", "phone": "—", "iin": "—"}
     html = _ttn_html(trip, driver)
     safe_id = "".join(ch for ch in trip_id[:8] if ch.isalnum() or ch in "-_") or "document"

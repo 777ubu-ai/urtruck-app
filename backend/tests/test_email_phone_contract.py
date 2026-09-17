@@ -16,12 +16,13 @@ import sys
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_emailphone.db")
-Path(TEST_DB).unlink(missing_ok=True)
+if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
+    # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
+    Path(TEST_DB).unlink(missing_ok=True)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from api import verification_gate
 _current_user = contextvars.ContextVar("user", default=None)
 
 
@@ -35,8 +36,6 @@ def fake_require_level(_min):
     return dep
 
 
-verification_gate.require_level = fake_require_level
-
 from database import db as ddb
 ddb.init_db()
 from database import registration_dal as reg_dal
@@ -45,9 +44,11 @@ reg_dal.init_registration_schema()
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from api.profile import profile_router
+from tests.auth_harness import override_require_level
 
 app = FastAPI()
 app.include_router(profile_router, prefix="/api/v1/users")
+override_require_level(app, fake_require_level(1))
 client = TestClient(app)
 
 

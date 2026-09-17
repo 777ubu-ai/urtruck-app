@@ -16,6 +16,7 @@ def _migrate(c):
         ("manual_review_required", "INTEGER DEFAULT 0"),
         ("manual_review_reason", "TEXT"),
         ("verification_level", "INTEGER DEFAULT 0"),
+        ("verification_provider_status", "TEXT DEFAULT 'unavailable'"),
         ("role", "TEXT DEFAULT 'guest'"),
         ("is_demo", "INTEGER DEFAULT 0"),
         ("city", "TEXT"),
@@ -31,6 +32,9 @@ def _migrate(c):
         ("personal_photo_url", "TEXT"),
         ("residence_status", "TEXT"),
         ("citizenship_country", "TEXT"),
+        ("driver_citizenship_country_code", "TEXT"),
+        ("vehicle_registration_country_code", "TEXT"),
+        ("vehicle_registration_country", "TEXT"),
         ("id_doc_type", "TEXT"),
         ("id_front_url", "TEXT"),
         ("id_back_url", "TEXT"),
@@ -55,6 +59,8 @@ def _migrate(c):
         ("has_straps", "INTEGER DEFAULT 0"),
         ("draft_json", "TEXT"),
         ("submitted_at", "TEXT"),
+        ("basic_onboarding_completed", "INTEGER DEFAULT 0"),
+        ("basic_onboarding_completed_at", "TEXT"),
     ]
     for name, ddl in additions:
         if name not in cols:
@@ -408,6 +414,15 @@ def delete_session(token: str) -> bool:
     with get_conn() as c:
         cur = c.execute("DELETE FROM reg_sessions WHERE token = ?", (token,))
         return cur.rowcount > 0
+
+
+def revoke_sessions_for_driver(driver_id: str) -> int:
+    """Отозвать все текущие сессии пользователя после чувствительной смены."""
+    if not driver_id:
+        return 0
+    with get_conn() as c:
+        cur = c.execute("DELETE FROM reg_sessions WHERE driver_id = ?", (driver_id,))
+        return cur.rowcount
 
 
 def get_driver_by_token(token: str) -> str | None:
