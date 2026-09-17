@@ -17,6 +17,7 @@ from services import storage_service
 from services import file_signing
 from api.push import send_to_user
 from starlette.concurrency import run_in_threadpool
+from urllib.parse import urlencode
 from api.notifications import create_notification
 from database.db import get_conn, new_id
 
@@ -190,7 +191,12 @@ def _sign_attachment(att: dict | None):
     if not isinstance(att, dict):
         return att
     if att.get("url"):
-        return {**att, "url": file_signing.sign(att["url"])}
+        url = file_signing.sign(att["url"])
+        # Имя UUID нужно хранилищу; получатель скачивает исходное имя документа.
+        if (url and att.get("kind") == "document" and att.get("original_name")
+                and storage_service.is_private_remote_ref(att["url"])):
+            url += ("&" if "?" in url else "?") + urlencode({"download": att["original_name"]})
+        return {**att, "url": url}
     return att
 
 
