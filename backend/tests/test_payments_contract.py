@@ -41,7 +41,7 @@ _current_user = contextvars.ContextVar("user", default=None)
 def fake_require_level(_min_level):
     from fastapi import HTTPException
 
-    def dep():
+    def dep(_authorization=None):
         u = _current_user.get()
         if not u:
             raise HTTPException(status_code=401, detail="No test user set")
@@ -82,8 +82,11 @@ client = TestClient(app)
 PRODUCT_ID = config.GOOGLE_PLAY_CONTACTS_PRODUCT_ID
 
 
-def as_user(uid: str):
-    _current_user.set({"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1})
+def as_user(uid: str, role: str | None = None):
+    user = {"id": uid, "full_name": uid, "phone": "+70000000000", "verification_level": 1}
+    if role:
+        user["role"] = role
+    _current_user.set(user)
 
 
 def _rtdn(product_id: str, token: str, notif_type: int = 4) -> dict:

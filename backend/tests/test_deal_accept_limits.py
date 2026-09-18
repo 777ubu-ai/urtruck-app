@@ -89,14 +89,14 @@ def _seed_cargo(owner_id: str) -> str:
 
 
 def _bid(driver_id: str, cargo_id: str, amount: int = 2500) -> str:
-    as_user(driver_id)
+    as_user(driver_id, role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": amount})
     assert r.status_code == 200, r.text
     return r.json()["id"]
 
 
 def _accept_bid(shipper_id: str, bid_id: str):
-    as_user(shipper_id)
+    as_user(shipper_id, role="client")
     return client.post(f"/api/v1/market/bids/{bid_id}/accept")
 
 
@@ -127,11 +127,11 @@ def test_accept_counter_spends_driver_limit_not_shipper():
         cargo_id = _seed_cargo(shipper)
         bid_id = _bid(driver, cargo_id)
 
-        as_user(shipper)
+        as_user(shipper, role="client")
         r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 2800})
         assert r.status_code == 200, r.text
 
-        as_user(driver)
+        as_user(driver, role="driver")
         r = client.post(f"/api/v1/market/bids/{bid_id}/counter/accept")
         assert r.status_code == 200, r.text
 
@@ -255,7 +255,7 @@ def test_cancel_deal_does_not_refund_limit():
         assert _accept_bid(shipper, blocked_bid).status_code == 402
 
         # отменяем одну из принятых сделок через реальный endpoint
-        as_user(shipper)
+        as_user(shipper, role="client")
         r = client.patch(f"/api/v1/market/deals/{deals[0]}/status?new_status=cancelled")
         assert r.status_code == 200, r.text
 
