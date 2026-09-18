@@ -24,3 +24,31 @@ test('onboarding CTAs use compact asymmetric approved sizing', () => {
   assert.match(screen, /ctaArrowBubble:[\s\S]*width: 38,[\s\S]*height: 38,[\s\S]*borderRadius: 19/);
   assert.match(screen, /ctaOutline: \{ height: 48, width: '76%', maxWidth: 480, borderRadius: 24/);
 });
+
+test('the complete unauthenticated onboarding flow stays light regardless of app theme', () => {
+  const files = [
+    'OnboardingV2Screen.js',
+    'PhoneV2Screen.js',
+    'OtpV2Screen.js',
+    'RoleScreenV2.js',
+    'ProfileV2Screen.js',
+    'CountryPickerSheet.js',
+  ];
+  for (const file of files) {
+    const source = fs.readFileSync(`src/screens/onboarding/${file}`, 'utf8');
+    assert.match(source, /brandLight/, `${file} must use the fixed light auth palette`);
+    assert.doesNotMatch(source, /useBrand\(\)/, `${file} must not follow the signed-in dark theme`);
+  }
+});
+
+test('truck cards and queue highlights use runtime theme surfaces', () => {
+  const truckGrid = fs.readFileSync('src/components/TruckTypeGrid.js', 'utf8');
+  const queue = fs.readFileSync('src/screens/QueueScreenLazyV2.js', 'utf8');
+  assert.match(truckGrid, /useV1Colors\(\)/);
+  assert.match(truckGrid, /backgroundColor: v1\.surface, borderColor: v1\.border/);
+  assert.doesNotMatch(truckGrid, /backgroundColor: '#FFFFFF'/);
+  assert.match(queue, /backgroundColor: v1\.surfaceMuted/);
+  assert.match(queue, /backgroundColor: item\.is_day_off \? v1\.bg : theme\.card/);
+  assert.doesNotMatch(queue, /heroBooking: \{ backgroundColor: '#E5EBF0'/);
+  assert.doesNotMatch(queue, /heroDate: \{ color: '#111C2C'/);
+});

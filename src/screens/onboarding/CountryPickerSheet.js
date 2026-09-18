@@ -23,7 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
-import { brand, useBrand, radius, space, typography } from '../../theme/brandV2';
+import { brandLight as brand, radius, space, typography } from '../../theme/brandV2';
 import { COUNTRIES, POPULAR_ISO } from '../../utils/countries';
 import CountryFlag from '../../components/ui/v1/CountryFlag';
 
@@ -45,7 +45,7 @@ const Row = ({ s, country, label, onPress }) => (
 );
 
 export default function CountryPickerSheet({ navigation, route }) {
-  const _b = useBrand();
+  const _b = brand;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t, lang } = useI18n();
   const [query, setQuery] = useState('');

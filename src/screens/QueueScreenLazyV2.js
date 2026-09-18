@@ -329,7 +329,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             const next = checkpointCarouselX.current + 300;
             checkpointCarouselRef.current?.scrollTo({ x: next, animated: true });
             checkpointCarouselX.current = next;
-          }} style={s.carouselNext} testID="border-checkpoint-next"><Feather name="chevrons-right" size={21} color={activeColor} /></TouchableOpacity>
+          }} style={[s.carouselNext, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-checkpoint-next"><Feather name="chevrons-right" size={21} color={activeColor} /></TouchableOpacity>
         </View>
 
         {catalogLoading ? <View style={s.center}><ActivityIndicator color={activeColor} /></View> : catalogError ? (
@@ -365,9 +365,9 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               <TouchableOpacity onPress={toggleFavorite} style={[s.iconButton, { borderColor: theme.border }]} accessibilityRole="button" accessibilityLabel={t('a11y_toggle_favorite')} accessibilityState={{ selected: favorites.includes(String(selectedId)) }}><Feather name="star" size={19} color={activeColor} fill={favorites.includes(String(selectedId)) ? activeColor : 'transparent'} /></TouchableOpacity>
             </View>
 
-            <View style={s.heroBooking}>
+            <View style={[s.heroBooking, { backgroundColor: v1.surfaceMuted }]}>
               <Text style={[s.heroLabel, { color: theme.textMuted }]}>{L.nearest}</Text>
-              <Text style={s.heroDate}>{nearestText}</Text>
+              <Text style={[s.heroDate, { color: theme.text }]}>{nearestText}</Text>
               {live.nearest_booking_free != null ? <View style={s.freeBadge}><Text style={s.freeBadgeText}>{live.nearest_booking_free} {L.places} · {L.standard}</Text></View> : <Text style={[s.noBooking, { color: theme.textMuted }]}>{L.noStandard}</Text>}
             </View>
 
@@ -390,7 +390,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 const hasStandard = standardFree > 0;
                 const hasPremium = !hasStandard && premiumFree > 0;
                 return (
-                  <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? DRIVER_CERAMIC.active : hasPremium ? '#B58A52' : '#C98B8B', backgroundColor: item.is_day_off ? v1.bg : hasStandard ? DRIVER_CERAMIC.activeSoft : hasPremium ? '#F3EBDD' : '#F5E7E7' }]} testID="border-booking-date-card">
+                  <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? DRIVER_CERAMIC.active : hasPremium ? '#B58A52' : '#C98B8B', backgroundColor: item.is_day_off ? v1.bg : theme.card }]} testID="border-booking-date-card">
                     <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
                     {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim, fontSize: sp(9.5) }]}>{L.dayOff}</Text> : hasStandard ? <><Text style={s.dateFree}>{standardFree}</Text><Text style={[s.dateState, { color: activeColor, fontSize: sp(9.5) }]}>{L.standard}</Text><Text style={[s.dateAmount, { color: activeColor, fontSize: sp(8.5) }]}>{formatKztAmount(1)}</Text></> : hasPremium ? <><Text style={s.datePremium}>{premiumFree}</Text><Text style={[s.dateState, { color: '#B7791F', fontSize: sp(9.5) }]}>{L.premium}</Text><Text style={[s.dateAmount, { color: '#B7791F', fontSize: sp(8.5) }]}>{formatKztAmount(100)}</Text></> : <Text style={[s.dateState, { color: '#B42318', fontSize: sp(9.5) }]}>{L.noPlaces}</Text>}
                   </View>
@@ -439,7 +439,7 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '850' },
   sectionTitleSmall: { fontSize: 15, fontWeight: '850' },
   hint: { fontSize: 12, lineHeight: 17, marginTop: 3, paddingRight: 12 },
-  carouselNext: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DDE4EA' },
+  carouselNext: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   carousel: { gap: 10, paddingRight: 28, paddingBottom: 4 },
   cpCard: { width: 140, minHeight: 94, borderWidth: 1, borderRadius: 16, padding: 12 },
   cpCardActive: { borderWidth: 2, padding: 11, shadowColor: '#738396', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
@@ -458,9 +458,9 @@ const s = StyleSheet.create({
   liveCountryRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   liveCountry: { fontSize: 13 },
   iconButton: { width: 44, height: 44, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  heroBooking: { backgroundColor: '#E5EBF0', borderRadius: 14, padding: 14, marginTop: 15, alignItems: 'flex-start' },
+  heroBooking: { borderRadius: 14, padding: 14, marginTop: 15, alignItems: 'flex-start' },
   heroLabel: { fontSize: 12.5, fontWeight: '750' },
-  heroDate: { color: '#111C2C', fontSize: 28, lineHeight: 34, fontWeight: '900', marginTop: 4 },
+  heroDate: { fontSize: 28, lineHeight: 34, fontWeight: '900', marginTop: 4 },
   freeBadge: { backgroundColor: '#738396', borderRadius: 9, paddingVertical: 6, paddingHorizontal: 10, marginTop: 9 },
   freeBadgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   noBooking: { fontSize: 12, marginTop: 8 },

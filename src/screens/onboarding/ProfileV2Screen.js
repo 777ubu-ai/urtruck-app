@@ -19,7 +19,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
-import { useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight, radius, typography } from '../../theme/brandV2';
 import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
@@ -237,7 +237,7 @@ function ProfileField({
 }
 
 export default function ProfileV2Screen({ navigation, route }) {
-  const colors = useBrand();
+  const colors = brandLight;
   const driverColors = useMemo(() => ({
     ...colors,
     bg: DRIVER_CERAMIC.bg,

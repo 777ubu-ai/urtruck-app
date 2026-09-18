@@ -25,7 +25,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { isSocialAuthCallback, takeBufferedSocialCallbackUrl } from '../../utils/socialAuth';
-import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight as brand, radius, typography } from '../../theme/brandV2';
 import { API_BASE } from '../../config/env';
 
 const QA_HOOK_ALLOWED = (() => {
@@ -199,7 +199,7 @@ const QaLoginHook = ({ s }) => {
 };
 
 export default function OnboardingV2Screen({ navigation }) {
-  const _b = useBrand();
+  const _b = brand;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
   const { toast } = useToast();

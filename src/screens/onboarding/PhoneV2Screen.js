@@ -58,7 +58,7 @@ import {
   startSocialAuth,
   takeBufferedSocialCallbackUrl,
 } from '../../utils/socialAuth';
-import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight as brand, radius, typography } from '../../theme/brandV2';
 import { WEB_URL } from '../../config/env';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
@@ -140,7 +140,7 @@ const socialErrorKey = (err, provider) => {
 };
 
 export default function PhoneV2Screen({ navigation, route }) {
-  const _b = useBrand();
+  const _b = brand;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t, lang } = useI18n();
   const { toast } = useToast();
