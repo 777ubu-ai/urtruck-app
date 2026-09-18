@@ -451,6 +451,7 @@ def send_to_devices(
     sent = 0
     already_delivered = 0
     by_provider: dict[str, int] = {}
+    errors: dict[str, int] = {}
     event_id = (data or {}).get("event_id") or (data or {}).get("event_key")
     for device in devices:
         if _already_sent_to_device(event_id, device.get("id")):
@@ -471,6 +472,7 @@ def send_to_devices(
         provider_name = device.get("push_provider")
         provider = providers.get(provider_name)
         if not provider:
+            errors["unsupported_provider"] = errors.get("unsupported_provider", 0) + 1
             continue
         token = device.get("push_token") or ""
         platform = device.get("platform")
@@ -482,12 +484,16 @@ def send_to_devices(
         if result.status == "sent":
             sent += 1
             by_provider[provider_name] = by_provider.get(provider_name, 0) + 1
+        else:
+            error_code = result.error_code or "provider_send_failed"
+            errors[error_code] = errors.get(error_code, 0) + 1
     return {
         "sent": sent,
         "already_delivered": already_delivered,
         "providers": by_provider,
         "devices": len(devices),
         "mode": mode,
+        "errors": errors,
     }
 
 
@@ -652,7 +658,13 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
             else:
                 confirmed = int(result.get("sent", 0) or 0) + int(result.get("already_delivered", 0) or 0)
                 fully_delivered = confirmed >= total_devices
-                outcome = _finish_row(row["id"], attempt, sent=fully_delivered, error=None)
+                failure_counts = result.get("errors") or {}
+                failure_reason = ",".join(
+                    f"{code}:{count}" for code, count in sorted(failure_counts.items())
+                ) or result.get("error")
+                outcome = _finish_row(
+                    row["id"], attempt, sent=fully_delivered, error=failure_reason
+                )
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside
             # its own try/except, etc.) — must not crash the worker or loop

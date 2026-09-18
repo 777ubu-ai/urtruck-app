@@ -142,6 +142,7 @@ def test_2_transient_provider_failure_retries():
     assert row["status"] == "pending"
     assert row["attempt_count"] == 1
     assert row["next_attempt_at"] is not None
+    assert row["last_error"] == "rate_limited:1"
     # An immediate second tick must NOT re-pick it — backoff must actually delay.
     stats2 = push_gateway.process_pending_once(_always_fail_transient, limit=10)
     assert stats2["picked"] == 0, "bounded exponential backoff must delay the retry"
@@ -183,6 +184,7 @@ def test_5_max_attempts_reaches_dead():
     row = _row(ek, uid)
     assert row["status"] == "dead"
     assert row["attempt_count"] == push_gateway.MAX_OUTBOX_ATTEMPTS
+    assert row["last_error"] == "rate_limited:1"
     stats = push_gateway.process_pending_once(_always_fail_transient, limit=10)
     assert stats["picked"] == 0, "a dead row must never be resurrected"
 

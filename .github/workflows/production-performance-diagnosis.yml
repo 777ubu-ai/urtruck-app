@@ -144,6 +144,18 @@ jobs:
               print(f"DEAD_RECIPIENT {row['category']}={row['count']}")
           for row in conn.execute("SELECT push_provider, platform, COUNT(*) count FROM push_devices WHERE enabled=1 AND invalidated_at IS NULL GROUP BY push_provider, platform ORDER BY count DESC"):
               print(f"ACTIVE_DEVICE {row['push_provider']}/{row['platform']}={row['count']}")
+          for row in conn.execute("""
+              SELECT l.provider, l.status, COALESCE(l.error_code, 'none') error_code,
+                     COUNT(*) count
+              FROM push_delivery_log l
+              JOIN push_outbox o
+                ON o.event_id = l.event_id
+               AND o.recipient_user_id = l.recipient_user_id
+              WHERE o.status = 'dead'
+              GROUP BY l.provider, l.status, COALESCE(l.error_code, 'none')
+              ORDER BY count DESC
+          """):
+              print(f"DEAD_DELIVERY {row['provider']}/{row['status']}/{row['error_code']}={row['count']}")
           conn.close()
 
           token = env.get('QA_AGENT_TOKEN', '')
