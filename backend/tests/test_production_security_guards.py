@@ -54,6 +54,16 @@ def test_payments_monetization_requires_real_google_play_verification(monkeypatc
     assert not any("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" in i for i in env_check.collect_issues())
 
 
+def test_deal_limit_alone_still_requires_real_google_play_verification(monkeypatch):
+    """Нельзя включить только лимит сделок и случайно оставить MOCK Billing."""
+    monkeypatch.setenv("URTRUCK_ENV", "production")
+    monkeypatch.setenv("CONTACTS_MONETIZATION_ENABLED", "false")
+    monkeypatch.setenv("DEAL_ACCEPT_MONETIZATION_ENABLED", "true")
+    monkeypatch.delenv("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON", raising=False)
+
+    assert any("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" in i for i in env_check.collect_issues())
+
+
 def test_compromised_qa_token_fingerprint_is_not_a_plaintext_secret():
     assert len(COMPROMISED_QA_AGENT_TOKEN_SHA256) == 64
     assert is_compromised_qa_agent_token("") is False

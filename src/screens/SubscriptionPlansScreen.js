@@ -81,9 +81,11 @@ export default function SubscriptionPlansScreen({ navigation, route }) {
         const productId = purchase?.productId;
         if (!token || !productId) return;
         const verify = await subscriptionAPI.verifyGooglePurchase(productId, token);
-        try {
-          await RNIap.finishTransaction({ purchase, isConsumable: false });
-        } catch {}
+        if (verify.ok && verify.active) {
+          try {
+            await RNIap.finishTransaction({ purchase, isConsumable: false });
+          } catch {}
+        }
         if (!mountedRef.current) return;
         setPurchasing(false);
         if (verify.ok && verify.active) {

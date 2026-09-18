@@ -193,6 +193,35 @@ def test_verify_same_token_twice_updates_single_row():
     assert datetime.fromisoformat(row["period_end"]) > datetime.now(timezone.utc) + timedelta(days=45)
 
 
+def test_verify_rejects_unknown_product_id():
+    as_user("pay-user-wrong-product")
+    r = client.post(
+        "/api/v1/payments/google/verify",
+        json={"product_id": "not-urtruck-pro", "purchase_token": "token-x"},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "unknown_subscription_product"
+
+
+def test_purchase_token_cannot_move_to_another_user():
+    token = "tok-owned-" + new_id()
+    as_user("pay-owner-a")
+    first = client.post(
+        "/api/v1/payments/google/verify",
+        json={"product_id": PRODUCT_ID, "purchase_token": token},
+    )
+    assert first.status_code == 200
+
+    as_user("pay-owner-b")
+    second = client.post(
+        "/api/v1/payments/google/verify",
+        json={"product_id": PRODUCT_ID, "purchase_token": token},
+    )
+    assert second.status_code == 409
+    assert second.json()["detail"] == "purchase_already_linked"
+    assert sub_dal.get_subscription_by_token("google_play", token)["user_id"] == "pay-owner-a"
+
+
 # ---------------------------------------------------------------- RTDN
 def test_rtdn_unknown_token_is_acknowledged_without_row():
     """RTDN о подписке, которую мы не видели через /verify — ack 200,

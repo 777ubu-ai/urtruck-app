@@ -238,10 +238,12 @@ def collect_issues() -> List[str]:
             'or set REVIEWER_DEMO_EMAIL="" to disable the feature explicitly.'
         )
 
-    if (os.getenv("CONTACTS_MONETIZATION_ENABLED") or "").lower() in ("1", "true", "yes"):
+    contacts_paywall = (os.getenv("CONTACTS_MONETIZATION_ENABLED") or "").lower() in ("1", "true", "yes")
+    deals_paywall = (os.getenv("DEAL_ACCEPT_MONETIZATION_ENABLED") or "").lower() in ("1", "true", "yes")
+    if contacts_paywall or deals_paywall:
         if not (os.getenv("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON") or "").strip():
             issues.append(
-                "Payments: CONTACTS_MONETIZATION_ENABLED=true but GOOGLE_PLAY_SERVICE_ACCOUNT_JSON "
+                "Payments: monetization is enabled but GOOGLE_PLAY_SERVICE_ACCOUNT_JSON "
                 "is empty — production purchase verification would be insecure."
             )
 

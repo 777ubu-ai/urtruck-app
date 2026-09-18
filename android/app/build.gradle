@@ -88,13 +88,13 @@ android {
 
     namespace 'com.urtruck.app'
     defaultConfig {
-        applicationId 'com.urtruck.app'
+        applicationId 'com.urtruck.protest'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI (deploy-play.yml) передаёт свой versionCode через -PURTRUCK_VERSION_CODE,
         // чтобы каждая автозаливка в Google Play имела уникальный монотонный код.
         versionCode (project.hasProperty('URTRUCK_VERSION_CODE') ? URTRUCK_VERSION_CODE.toInteger() : 12)
-        versionName "1.0.8"
+        versionName "1.0.0-pro.2"
         missingDimensionStrategy 'store', 'play'
     }
     signingConfigs {

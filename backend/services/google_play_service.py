@@ -73,7 +73,12 @@ def verify_purchase(product_id: str, purchase_token: str) -> dict:
     expiry = datetime.fromtimestamp(expiry_ms / 1000, tz=timezone.utc) if expiry_ms else None
     now = datetime.now(timezone.utc)
     auto_renewing = bool(resp.get("autoRenewing", False))
-    if expiry and expiry > now:
+    payment_state = resp.get("paymentState")
+    # Для auto-renewing subscription paymentState=0 означает pending:
+    # доступ до окончательного получения платежа выдавать нельзя.
+    if payment_state == 0:
+        status = "pending"
+    elif expiry and expiry > now:
         status = "active"
     elif resp.get("cancelReason") is not None:
         status = "cancelled"

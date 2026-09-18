@@ -17,6 +17,10 @@ import config
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schemas" / "payments_schema.sql"
 
 
+class PurchaseTokenOwnershipError(ValueError):
+    """Google purchase token уже навсегда привязан к другому UrTruck user."""
+
+
 def init_payments_schema() -> None:
     """Применить payments_schema.sql (идемпотентно)."""
     with get_conn() as c:
@@ -48,10 +52,12 @@ def upsert_subscription(
     обновить ту же строку, а не плодить дубли."""
     with get_conn() as c:
         row = c.execute(
-            "SELECT id FROM subscriptions WHERE provider = ? AND purchase_token = ?",
+            "SELECT id, user_id FROM subscriptions WHERE provider = ? AND purchase_token = ?",
             (provider, purchase_token),
         ).fetchone()
         if row:
+            if row["user_id"] != user_id:
+                raise PurchaseTokenOwnershipError(purchase_token)
             sid = row["id"]
             c.execute(
                 """

@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "UrTruck",
-    "slug": "urtruck",
-    "version": "1.0.8",
+    "name": "UrTruck Pro Test",
+    "slug": "urtruck-pro-test",
+    "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "urtruck",
+    "scheme": "urtruck-pro-test",
     "platforms": [
       "ios",
       "android",
@@ -23,7 +23,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.urtruck.app",
+      "bundleIdentifier": "com.urtruck.protest",
       "buildNumber": "49",
       "usesAppleSignIn": true,
       "associatedDomains": [
@@ -46,7 +46,7 @@
       }
     },
     "android": {
-      "package": "com.urtruck.app",
+      "package": "com.urtruck.protest",
       "splash": {
         "image": "./assets/icon.png",
         "backgroundColor": "#070B14",

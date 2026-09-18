@@ -131,6 +131,6 @@ PRO_DEAL_ACCEPT_LIMIT = int(os.getenv("PRO_DEAL_ACCEPT_LIMIT", "30"))     # ли
 # GOOGLE_PLAY_PACKAGE_NAME должен совпадать с app.json → android.package.
 # GOOGLE_PLAY_SERVICE_ACCOUNT_JSON пуст по умолчанию → MOCK-режим верификации
 # (см. services/google_play_service.py) — на проде обязателен реальный ключ.
-GOOGLE_PLAY_PACKAGE_NAME = os.getenv("GOOGLE_PLAY_PACKAGE_NAME", "com.urtruck.app")
+GOOGLE_PLAY_PACKAGE_NAME = os.getenv("GOOGLE_PLAY_PACKAGE_NAME", "com.urtruck.protest")
 GOOGLE_PLAY_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON", "")
 GOOGLE_PLAY_CONTACTS_PRODUCT_ID = os.getenv("GOOGLE_PLAY_CONTACTS_PRODUCT_ID", "contacts_premium_monthly")

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 import config
@@ -32,7 +32,12 @@ def subscription_status(user=Depends(require_level(1))):
         limit = config.PREMIUM_CONTACT_LIMIT if sub else config.FREE_CONTACT_LIMIT
     deal_accept = sub_dal.get_deal_accept_limit(uid)
     return {
-        "monetization_enabled": config.CONTACTS_MONETIZATION_ENABLED,
+        "monetization_enabled": (
+            config.CONTACTS_MONETIZATION_ENABLED
+            or config.DEAL_ACCEPT_MONETIZATION_ENABLED
+        ),
+        "contacts_monetization_enabled": config.CONTACTS_MONETIZATION_ENABLED,
+        "deal_accept_monetization_enabled": config.DEAL_ACCEPT_MONETIZATION_ENABLED,
         "active": bool(sub),
         "plan": sub.get("product_id") if sub else None,
         "period_end": sub.get("period_end") if sub else None,
@@ -59,18 +64,25 @@ def verify_google_purchase(body: VerifyPurchaseBody, user=Depends(require_level(
     Сервер — единственный источник правды о том, активна ли подписка;
     клиентский "успех покупки" сам по себе доступ не даёт."""
     uid = user["id"]
+    if body.product_id != config.GOOGLE_PLAY_CONTACTS_PRODUCT_ID:
+        raise HTTPException(status_code=400, detail="unknown_subscription_product")
+    if not body.purchase_token.strip():
+        raise HTTPException(status_code=400, detail="purchase_token_required")
     result = google_play_service.verify_purchase(body.product_id, body.purchase_token)
-    sub = sub_dal.upsert_subscription(
-        uid,
-        provider="google_play",
-        product_id=body.product_id,
-        purchase_token=body.purchase_token,
-        status=result["status"],
-        auto_renewing=result["auto_renewing"],
-        period_start=result["period_start"],
-        period_end=result["period_end"],
-        raw_response=str(result["raw"])[:4000],
-    )
+    try:
+        sub = sub_dal.upsert_subscription(
+            uid,
+            provider="google_play",
+            product_id=body.product_id,
+            purchase_token=body.purchase_token,
+            status=result["status"],
+            auto_renewing=result["auto_renewing"],
+            period_start=result["period_start"],
+            period_end=result["period_end"],
+            raw_response=str(result["raw"])[:4000],
+        )
+    except sub_dal.PurchaseTokenOwnershipError:
+        raise HTTPException(status_code=409, detail="purchase_already_linked")
     return {"active": sub["status"] == "active", "period_end": sub["period_end"]}
 
 
@@ -95,6 +107,8 @@ async def google_rtdn_webhook(request: Request):
     product_id = notif.get("subscriptionId")
     purchase_token = notif.get("purchaseToken")
     if not (product_id and purchase_token):
+        return {"ok": True}
+    if product_id != config.GOOGLE_PLAY_CONTACTS_PRODUCT_ID:
         return {"ok": True}
     existing = sub_dal.get_subscription_by_token("google_play", purchase_token)
     if not existing:

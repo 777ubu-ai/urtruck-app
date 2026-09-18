@@ -49,9 +49,11 @@ export default function SubscriptionScreen({ navigation, route }) {
       const match = (purchases || []).find((p) => p?.productId === productId && p?.purchaseToken);
       if (!match) return;
       const verify = await subscriptionAPI.verifyGooglePurchase(match.productId, match.purchaseToken);
-      try {
-        await RNIap.finishTransaction({ purchase: match, isConsumable: false });
-      } catch {}
+      if (verify.ok && verify.active) {
+        try {
+          await RNIap.finishTransaction({ purchase: match, isConsumable: false });
+        } catch {}
+      }
       if (!mountedRef.current) return;
       if (verify.ok && verify.active) {
         toast(t('subscription_purchase_success'));
@@ -100,9 +102,11 @@ export default function SubscriptionScreen({ navigation, route }) {
         const productId = purchase?.productId;
         if (!token || !productId) return;
         const verify = await subscriptionAPI.verifyGooglePurchase(productId, token);
-        try {
-          await RNIap.finishTransaction({ purchase, isConsumable: false });
-        } catch {}
+        if (verify.ok && verify.active) {
+          try {
+            await RNIap.finishTransaction({ purchase, isConsumable: false });
+          } catch {}
+        }
         if (!mountedRef.current) return;
         setPurchasing(false);
         if (verify.ok && verify.active) {
