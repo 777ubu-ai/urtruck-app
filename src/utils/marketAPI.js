@@ -169,7 +169,7 @@ export const marketAPI = {
   },
 
   async getCargo(id) {
-    const r = await authedFetch(`${BASE}/cargos/${id}`);
+    const r = await authedFetch(`${BASE}/cargos/${id}`, { headers: await headers() });
     return r.json();
   },
 
@@ -299,7 +299,7 @@ export const marketAPI = {
   },
 
   async getTrip(id) {
-    const r = await authedFetch(`${BASE}/trips/${id}`);
+    const r = await authedFetch(`${BASE}/trips/${id}`, { headers: await headers() });
     return r.json();
   },
 
