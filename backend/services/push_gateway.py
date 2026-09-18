@@ -556,6 +556,23 @@ def _finish_row(row_id: int, attempt: int, sent: bool, error: Optional[str]) -> 
         return "failed"
 
 
+def _skip_row_without_devices(row_id: int, attempt: int) -> str:
+    """Terminate an outbox row when the recipient has no registered device.
+
+    This is not a provider failure: there was no delivery target to call. The
+    in-app notification remains authoritative, while the push audit records a
+    truthful terminal reason instead of retrying five times and inflating the
+    release-blocking dead-letter count.
+    """
+    with get_conn() as c:
+        c.execute(
+            "UPDATE push_outbox SET status='skipped_no_devices', failed_at=CURRENT_TIMESTAMP, "
+            "attempt_count=?, last_error='no_active_devices', claimed_at=NULL WHERE id=?",
+            (attempt, row_id),
+        )
+    return "skipped"
+
+
 def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
     """Process one small outbox batch. Safe to call repeatedly/concurrently
     (idempotent — a row already 'sent'/'dead', or already claimed by a
@@ -586,7 +603,7 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
             ).fetchall()
         ]
 
-    stats = {"picked": 0, "sent": 0, "failed": 0, "dead": 0}
+    stats = {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "skipped": 0}
     for row_id in candidate_ids:
         row = _claim_row(row_id)
         if row is None:
@@ -630,9 +647,12 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
             # same row on the next tick only re-targets the device(s) that
             # did not yet succeed.
             total_devices = int(result.get("devices", 0) or 0)
-            confirmed = int(result.get("sent", 0) or 0) + int(result.get("already_delivered", 0) or 0)
-            fully_delivered = total_devices > 0 and confirmed >= total_devices
-            outcome = _finish_row(row["id"], attempt, sent=fully_delivered, error=None)
+            if total_devices == 0:
+                outcome = _skip_row_without_devices(row["id"], attempt)
+            else:
+                confirmed = int(result.get("sent", 0) or 0) + int(result.get("already_delivered", 0) or 0)
+                fully_delivered = confirmed >= total_devices
+                outcome = _finish_row(row["id"], attempt, sent=fully_delivered, error=None)
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside
             # its own try/except, etc.) — must not crash the worker or loop
@@ -749,7 +769,7 @@ def poll_pending_receipts(expo_receipts_fn, limit: int = 50) -> dict[str, int]:
 
 
 def info() -> dict[str, Any]:
-    counts = {"devices_active": 0, "expo": 0, "fcm": 0, "apns": 0, "outbox_pending": 0, "outbox_dead": 0}
+    counts = {"devices_active": 0, "expo": 0, "fcm": 0, "apns": 0, "outbox_pending": 0, "outbox_dead": 0, "outbox_skipped_no_devices": 0}
     try:
         with get_conn() as c:
             counts["devices_active"] = int(c.execute("SELECT COUNT(*) FROM push_devices WHERE enabled = 1").fetchone()[0])
@@ -760,6 +780,7 @@ def info() -> dict[str, Any]:
                 ).fetchone()[0])
             counts["outbox_pending"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'pending'").fetchone()[0])
             counts["outbox_dead"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'dead'").fetchone()[0])
+            counts["outbox_skipped_no_devices"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'skipped_no_devices'").fetchone()[0])
     except Exception:
         pass
     service_account = _service_account_info()

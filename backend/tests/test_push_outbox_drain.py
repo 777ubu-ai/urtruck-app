@@ -224,8 +224,25 @@ def test_8_repeated_worker_execution_is_idempotent():
     r2 = push_gateway.process_pending_once(_always_ok, limit=10)
     r3 = push_gateway.process_pending_once(_always_ok, limit=10)
     assert r1["sent"] == 1
-    assert r2 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0}
-    assert r3 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0}
+    assert r2 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "skipped": 0}
+    assert r3 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "skipped": 0}
+
+
+def test_no_registered_device_is_skipped_not_dead():
+    guest = reg_dal.create_guest()
+    uid = guest["id"] if isinstance(guest, dict) else guest
+    ek = _enqueue(uid, "evt-no-device-1")
+
+    stats = push_gateway.process_pending_once(_always_ok, limit=10)
+
+    assert stats["skipped"] == 1
+    assert stats["failed"] == 0
+    assert stats["dead"] == 0
+    row = _row(ek, uid)
+    assert row["status"] == "skipped_no_devices"
+    assert row["last_error"] == "no_active_devices"
+    assert row["attempt_count"] == 1
+    assert push_gateway.process_pending_once(_always_ok, limit=10)["picked"] == 0
 
 
 def test_9_token_device_ownership_preserved():
