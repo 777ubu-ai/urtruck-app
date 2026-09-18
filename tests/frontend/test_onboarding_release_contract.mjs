@@ -4,12 +4,18 @@ import fs from 'node:fs';
 
 const screen = fs.readFileSync('src/screens/onboarding/OnboardingV2Screen.js', 'utf8');
 const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
+const brandV2 = fs.readFileSync('src/theme/brandV2.js', 'utf8');
 
 test('standalone onboarding never renders QA auth controls', () => {
   assert.match(screen, /if \(typeof __DEV__ === 'undefined' \|\| !__DEV__\) return false;/);
   assert.match(screen, /EXPO_PUBLIC_QA_HOOKS !== '1'/);
   assert.match(screen, /Constants\?\.appOwnership !== 'standalone'/);
   assert.doesNotMatch(screen, /flavor === 'qa2'.*return true/s);
+});
+
+test('fixed light auth palette is a real named export for every onboarding screen', () => {
+  assert.match(brandV2, /export const brandLight = \{/);
+  assert.match(screen, /import \{ brandLight as brand,/);
 });
 
 test('approved RU onboarding titles remain separate two-line UI copy', () => {
