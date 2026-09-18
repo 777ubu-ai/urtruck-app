@@ -63,6 +63,12 @@ jobs:
           done
 
           echo
+          echo '=== Social auth failure evidence (PII/token-free) ==='
+          pm2 logs urtruck-security-api --nostream --lines 1200 2>&1 \
+            | grep -E '\[social-auth\]|POST /api/v1/register/social/verify' \
+            | sed -E 's/[?&](access_token|token)=[^& ]+/\1=REDACTED/g' \
+            | tail -120 || true
+          echo
           echo '=== Android push aggregate forensics ==='
           cd /home/ubuntu/urtruck-security
           python3 - <<'PY'

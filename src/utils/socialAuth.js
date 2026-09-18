@@ -1,4 +1,5 @@
-import { Linking, Platform } from 'react-native';
+import { Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/supabase';
 import { API_BASE } from '../config/env';
 import { storage } from './storage';
@@ -299,7 +300,23 @@ export async function startSocialAuth(provider) {
       await clearPendingProvider();
       throw new SocialAuthError(AUTH_ERROR_CODES.PROVIDER_CONFIG_INVALID, `${provider} OAuth URL unavailable`, { provider, correlationId });
     }
-    await Linking.openURL(data.url);
+    const browserResult = await WebBrowser.openAuthSessionAsync(data.url, NATIVE_REDIRECT);
+    if (browserResult?.type === 'success' && browserResult.url) {
+      return { ...data, callbackUrl: browserResult.url };
+    }
+    await clearPendingProvider();
+    if (browserResult?.type === 'cancel' || browserResult?.type === 'dismiss') {
+      throw new SocialAuthError(
+        AUTH_ERROR_CODES.OAUTH_CANCELLED,
+        'oauth_cancelled',
+        { provider, correlationId },
+      );
+    }
+    throw new SocialAuthError(
+      AUTH_ERROR_CODES.OAUTH_CALLBACK_FAILED,
+      'oauth_callback_missing',
+      { provider, correlationId },
+    );
   }
 
   return data;

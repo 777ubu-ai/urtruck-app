@@ -8,6 +8,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { supabase } from '../../src/config/supabase.js';
 import {
+  __getAuthSessionCalls,
+  __resetAuthSessionMock,
+} from 'expo-web-browser';
+import {
   completeSocialAuth,
   startSocialAuth,
   setPendingProvider,
@@ -33,15 +37,22 @@ test('Google OAuth opens without waiting for the provider-settings preflight', a
     return { data: { url: 'https://accounts.google.com/o/oauth2/v2/auth' }, error: null };
   };
 
+  __resetAuthSessionMock();
   t.after(async () => {
     global.fetch = originalFetch;
     supabase.auth.signInWithOAuth = originalSignIn;
+    __resetAuthSessionMock();
     await clearPendingProvider();
   });
 
-  await startSocialAuth('google');
+  const result = await startSocialAuth('google');
   assert.equal(fetchCalls, 0, 'Google must not wait on /auth/v1/settings');
   assert.equal(signInCalls, 1, 'Google OAuth must start exactly once');
+  assert.equal(result.callbackUrl, 'urtruck://auth-social?code=test-pkce-code-123');
+  assert.deepEqual(__getAuthSessionCalls(), [{
+    url: 'https://accounts.google.com/o/oauth2/v2/auth',
+    redirectUrl: 'urtruck://auth-social',
+  }], 'native OAuth must use a tracked auth session and return its callback URL');
 });
 
 function withMocks(fn) {
