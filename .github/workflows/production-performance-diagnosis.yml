@@ -79,6 +79,25 @@ jobs:
                   key, value = line.split('=', 1)
                   env[key.strip()] = value.strip().strip("'\"")
 
+          # The active API runs from an atomic release directory, so its
+          # process environment is the authoritative source for DB/token
+          # configuration. Read values in memory and never print them.
+          for proc in Path('/proc').iterdir():
+              if not proc.name.isdigit():
+                  continue
+              try:
+                  cmdline = (proc / 'cmdline').read_bytes().replace(b'\0', b' ').decode('utf-8', 'ignore')
+                  if 'uvicorn' not in cmdline or '--port 8001' not in cmdline:
+                      continue
+                  for item in (proc / 'environ').read_bytes().split(b'\0'):
+                      if b'=' not in item:
+                          continue
+                      key, value = item.split(b'=', 1)
+                      env[key.decode('utf-8', 'ignore')] = value.decode('utf-8', 'ignore')
+                  break
+              except (OSError, PermissionError):
+                  continue
+
           configured = env.get('URTRUCK_DB_PATH') or env.get('DB_PATH') or ''
           if configured.startswith('sqlite:///'):
               configured = configured.removeprefix('sqlite:///')
