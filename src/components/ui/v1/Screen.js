@@ -10,11 +10,13 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useV1Colors, v1Spacing } from '../../../theme/designV1';
+import { useV1Colors, useShipperCeramicColors, v1Spacing } from '../../../theme/designV1';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from './KeyboardSafeLayout';
 
-export default function Screen({ children, contentStyle, scroll = true, keyboardAvoiding = true, footer }) {
-  const colors = useV1Colors();
+export default function Screen({ children, contentStyle, scroll = true, keyboardAvoiding = true, footer, ceramic = false }) {
+  const baseColors = useV1Colors();
+  const shipperColors = useShipperCeramicColors();
+  const colors = ceramic ? shipperColors : baseColors;
   const Body = scroll ? KeyboardSafeScrollView : React.Fragment;
   const bodyProps = scroll
     ? {

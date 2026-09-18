@@ -50,3 +50,8 @@ test('lost auth never exposes no_token and returns vehicle setup to sign-in safe
   assert.match(country, /onPress:\s*\(\) => signOut\(\)/);
   assert.match(country, /storage\.set\(KEY, JSON\.stringify\(next\)\)/);
 });
+
+test('machine selectors persist dependent values atomically', () => {
+  assert.match(machine, /onSelect=\{\((?:v|value)\) => setValues\(\{ vehicle_type: (?:v|value), body_type: '' \}\)\}/);
+  assert.doesNotMatch(machine, /setValue\('vehicle_type', v\); setValue\('body_type', ''\)/);
+});

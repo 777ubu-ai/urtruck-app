@@ -75,6 +75,17 @@ jobs:
         env:
           CI: 'true'
         run: npm run build:web
+      - name: Prepare local build-info artifact
+        run: |
+          set -euo pipefail
+          BUILD_SHA="$(git rev-parse HEAD)"
+          BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          test -s .version
+          printf '{"commit":"%s","short":"%s","built_at":"%s","version":%s}\n' \
+            "$BUILD_SHA" "${BUILD_SHA::7}" "$BUILT_AT" "$(cat .version)" > dist/build-info.json
+          test -s dist/build-info.json
+          LOCAL_BUILD_EXPECTED_COMMIT="$BUILD_SHA" >> "$GITHUB_ENV"
+          echo 'LOCAL_BUILD_INFO=ok'
       - name: Start local production server
         run: |
           npx serve dist -l 4173 > /tmp/urtruck-serve.log 2>&1 &
@@ -86,12 +97,6 @@ jobs:
           QA_CAPTURE_ALL: '1'
         run: |
           mkdir -p qa-artifacts/playwright
-          # A PR is tested against a synthetic merge ref. Production, however,
-          # must equal the actual current `main`, not the stale base SHA stored
-          # when a long-lived PR was first opened.
-          export PRODUCTION_EXPECTED_COMMIT="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
-          test -n "$PRODUCTION_EXPECTED_COMMIT"
-          echo "production smoke expects current main: $PRODUCTION_EXPECTED_COMMIT"
           set +e
           timeout --signal=TERM --kill-after=30s "${{ matrix.limit }}" \
             npx playwright test --config "${{ matrix.config }}"

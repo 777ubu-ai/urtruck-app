@@ -189,6 +189,32 @@ def test_5_max_attempts_reaches_dead():
     assert stats["picked"] == 0, "a dead row must never be resurrected"
 
 
+def test_legacy_dead_rows_are_reconciled_to_truthful_terminal_states():
+    delivered_uid, _ = _make_user_with_device()
+    no_device_guest = reg_dal.create_guest()
+    no_device_uid = no_device_guest["id"] if isinstance(no_device_guest, dict) else no_device_guest
+    delivered_event = _enqueue(delivered_uid, "evt-legacy-delivered")
+    skipped_event = _enqueue(no_device_uid, "evt-legacy-no-device")
+    with get_conn() as c:
+        c.execute("UPDATE push_outbox SET status='dead', attempt_count=5, last_error='delivery_not_confirmed'")
+        device = c.execute(
+            "SELECT id, device_id FROM push_devices WHERE user_id=? LIMIT 1", (delivered_uid,)
+        ).fetchone()
+        c.execute(
+            "INSERT INTO push_delivery_log "
+            "(event_id, recipient_user_id, device_registry_id, device_id, provider, status, sent_at) "
+            "VALUES (?,?,?,?,?,'sent',CURRENT_TIMESTAMP)",
+            (delivered_event, delivered_uid, device["id"], device["device_id"], "fcm"),
+        )
+
+    push_api._init_schema()
+
+    assert _row(delivered_event, delivered_uid)["status"] == "sent_partial"
+    skipped = _row(skipped_event, no_device_uid)
+    assert skipped["status"] == "skipped_no_devices"
+    assert skipped["last_error"] == "no_active_devices"
+
+
 def test_partial_delivery_is_not_reported_as_dead_after_retry_limit():
     uid, _ = _make_user_with_device()
     ek = _enqueue(uid, "evt-partial-1")

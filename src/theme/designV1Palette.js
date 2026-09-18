@@ -132,6 +132,39 @@ export const DRIVER_CERAMIC = {
   clientAccent: '#738396',
 };
 
+// Shipper work-surface contract. Kept separate from the driver's
+// semantic/status palette so changing client chrome cannot alter driver flows.
+export const SHIPPER_CERAMIC = {
+  bg: '#F1F3F5',
+  surface: '#FAFCFD',
+  surfaceMuted: '#E5EBF0',
+  text: '#111C2C',
+  textMuted: '#657489',
+  border: '#D1DAE3',
+  active: '#738396',
+  activeSoft: '#DDE4EA',
+  activeText: '#FAFCFD',
+  success: '#3E8E6B',
+  warning: '#A4773E',
+  error: '#B85454',
+  shadow: '#9AA9B7',
+  routeLine: '#D7E0E7',
+  textDim: '#7A8795',
+  driver: '#738396',
+  driverDeep: '#5F6E7E',
+  driverGlow: 'rgba(115,131,150,0.18)',
+  driverSoft: '#DDE4EA',
+  driverOnAccent: '#FAFCFD',
+  cargoOwner: '#738396',
+  cargoOwnerDeep: '#5F6E7E',
+  cargoOwnerGlow: 'rgba(115,131,150,0.18)',
+  cargoOwnerSoft: '#DDE4EA',
+  clientAccent: '#738396',
+  clientNavPill: '#DDE4EA',
+  clientNavIcon: '#111C2C',
+  clientNavLabel: '#111C2C',
+};
+
 // Dark counterpart for the driver Ceramic surfaces.  The first Ceramic
 // rollout intentionally shipped as a light-only visual variant; once the
 // profile theme toggle became user-facing that made the four main driver
