@@ -295,7 +295,10 @@ export default function PhoneV2Screen({ navigation, route }) {
     setSocialError(null);
     setSocialBusy(provider);
     try {
-      await startSocialAuth(provider);
+      const oauthResult = await startSocialAuth(provider);
+      if (oauthResult?.callbackUrl) {
+        await finishSocialUrl(oauthResult.callbackUrl);
+      }
       // On web this line is reached right as the browser is navigating away
       // to the OAuth provider — the socialBusy reset below is cosmetic (the
       // page unloads next). On native, startSocialAuth already opened the
