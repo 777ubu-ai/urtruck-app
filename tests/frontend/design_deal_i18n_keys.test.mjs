@@ -16,14 +16,38 @@ import { readFileSync } from 'node:fs';
 const i18n = readFileSync('src/utils/i18n.js', 'utf8');
 const lines = i18n.split('\n');
 
-// Extract a locale block: from `  XX: {` up to the closing `  }` line.
+// Extract a locale block: from `  XX: {` up to ITS OWN matching closing
+// brace, tracked by depth rather than by a fixed-indent line pattern.
+//
+// I18N-16 (2026-09-12): the previous version looked for the first line
+// matching `/^  \},?$/` (a literal 2-space-indented closing brace). That
+// happened to "work" only by coincidence: RU/KK/ZH/EN's own object-literal
+// closings are written UNINDENTED in this file ("},\n" at column 0, not
+// "  },\n"), so that regex never actually matched any of the four real
+// locale-block ends — it silently ran on until it hit some unrelated
+// 2-space-indented `}` deep in the module's tail helper functions,
+// accidentally including RU/KK/ZH/EN (and, once the 12 new locales were
+// added below EN, however many of THOSE it reached first too) in every
+// "block". Key lookups still resolved correctly before because the target
+// locale's own (inline-style) value always happened to be the leftmost
+// match in that over-captured text. Adding the new locale blocks changed
+// what came first, and a leftmost-match lookup started returning a
+// different locale's value (e.g. ZH's status_completed reading back as
+// UZ's) — see feat/claude-i18n-16-locales-20260912. Depth-tracking makes
+// this correct regardless of any block's indentation style.
 function localeBlock(lang) {
   const start = lines.findIndex((l) => l === `  ${lang}: {`);
   assert.notEqual(start, -1, `${lang}: block not found`);
-  const rest = lines.slice(start + 1);
-  const end = rest.findIndex((l) => /^  \},?$/.test(l));
+  let depth = 1;
+  let end = -1;
+  for (let i = start + 1; i < lines.length; i++) {
+    const opens = (lines[i].match(/\{/g) || []).length;
+    const closes = (lines[i].match(/\}/g) || []).length;
+    depth += opens - closes;
+    if (depth <= 0) { end = i; break; }
+  }
   assert.notEqual(end, -1, `${lang}: block end not found`);
-  return rest.slice(0, end).join('\n');
+  return lines.slice(start + 1, end).join('\n');
 }
 
 function keyValue(block, key) {

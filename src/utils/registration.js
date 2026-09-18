@@ -2,7 +2,7 @@
 import { Platform } from 'react-native';
 import { storage } from './storage';
 import { compressImage } from './imageCompress';
-import { getLanguage } from './i18n';
+import translations, { getLanguage } from './i18n';
 import { API_BASE } from '../config/env';
 
 const BASE = `${API_BASE}/register`;
@@ -15,17 +15,52 @@ const LEVEL_KEY = 'ur_verification_level';
 // PR-C2: см. marketAPI.normalizeDetail — те же причины. Backend
 // иногда возвращает detail как object (verification_required),
 // фронт пытается отрендерить его как <Text> → React error #31.
+//
+// I18N-16 / item 7 (2026-09-12): before, an unmatched `d.error` fell
+// through to the raw machine CODE string ("AMBIGUOUS_EMAIL_IDENTITY"), not
+// even the RU `message` — readable to nobody. `err_<CODE>` keys now exist
+// in every locale's dictionary (src/utils/i18n.js) for the codes this audit
+// covered — see marketAPI.js's matching fix for the full rationale. Any
+// code outside that set still falls through to `d.error`/raw message
+// exactly as before (never worse).
+//
+// I18N-16 / item 3 completion (2026-09-13): verification_required's `hint`
+// is RU-only prose (backend/api/verification_gate.py's LEVEL_REQUIREMENTS),
+// but the same response carries a stable structured `required_name` (guest/
+// phone_verified/identity_verified/driver_verified). Translate that via
+// verification_hint_<required_name> (all 16 locales) BEFORE falling through
+// to the raw RU hint below — identical fix already applied in marketAPI.js;
+// registration.js was missed in that pass (PR #357 review finding).
+function localizedVerificationHint(d) {
+  if (!d || d.error !== 'verification_required' || !d.required_name) return null;
+  const lang = getLanguage();
+  const key = `verification_hint_${d.required_name}`;
+  return translations[lang]?.[key] || translations.EN?.[key] || null;
+}
+
 function normalizeDetail(d, fallback) {
   if (d == null) return fallback;
   if (typeof d === 'string') return d;
   if (typeof d === 'object') {
+    const verificationHint = localizedVerificationHint(d);
+    if (verificationHint) return verificationHint;
     if (d.hint && typeof d.hint === 'string' && d.hint.length) return d.hint;
+    if (d.error && typeof d.error === 'string' && d.error.length) {
+      const lang = getLanguage();
+      const localized = translations[lang]?.[`err_${d.error}`] || translations.EN?.[`err_${d.error}`];
+      if (localized) return localized;
+    }
     if (d.error && typeof d.error === 'string' && d.error.length) return d.error;
     if (d.message && typeof d.message === 'string') return d.message;
     try { return JSON.stringify(d); } catch { return fallback; }
   }
   return String(d);
 }
+
+// Exported for the i18n-16 behavioral test (tests/unit/i18n16.test.mjs) that
+// proves a non-RU locale never surfaces the backend's raw RU hint text —
+// not part of the public regAPI surface used by screens.
+export const __testables = { normalizeDetail, localizedVerificationHint };
 
 // P0 fix (TestFlight): на нативном iOS/Android НЕЛЬЗЯ слать Blob,
 // полученный через fetch(file://uri).blob() — RN отдаёт пустой/битый
