@@ -259,9 +259,10 @@ function AppInner() {
   const base = isDark ? DarkTheme : DefaultTheme;
   const navTheme = { ...base, colors: { ...base.colors, background: theme.bg } };
 
-  // Авторизован ли для «глубоких» экранов (Chat/ChatsList/CargoDetail…) —
-  // они существуют только в полном стеке (session + роль). До этого маршрут
-  // отсутствует, navigate падал и тап по пушу «терялся».
+  // Авторизован ли для закрытых «глубоких» экранов (Chat/Deals/Profile…).
+  // Карточки активных грузов/рейсов — публичный marketplace: guest-стек уже
+  // регистрирует CargoDetail/TripDetail, а backend анонимно отдаёт только
+  // active-объявления. Поэтому share-link обязан открыть карточку до входа.
   const authedForDeepLink = !!(session && session.user && session.user.role);
 
   // P5: единая точка навигации по url из пуша. Если навигатор не готов или
@@ -270,7 +271,7 @@ function AppInner() {
   const routeFromUrl = (url) => {
     if (!url) return;
     const parsed = parseNotifUrl(url);
-    const needsAuth = parsed && ['chats', 'chat', 'deals', 'cargos', 'trips', 'driver', 'profile', 'notifications'].includes(parsed.kind);
+    const needsAuth = parsed && ['chats', 'chat', 'deals', 'driver', 'profile', 'notifications'].includes(parsed.kind);
     if (!navReadyRef.current || !navRef.current || (needsAuth && !authedForDeepLink)) {
       pendingUrlRef.current = url;  // отложить
       return;
@@ -301,11 +302,11 @@ function AppInner() {
   }, [authedForDeepLink]);
 
   // App/universal links outside push taps: urtruck://notifications,
-  // https://urtruck.kz/notifications и другие поддержанные url должны
-  // открывать те же экраны, что и tap по push. Unknown/social-auth urls
-  // спокойно игнорируются parseNotifUrl/navigateFromUrl.
+  // https://urtruck.kz/cargos/{id}, /trips/{id} и другие поддержанные url
+  // должны открывать точный экран. Это нужно и web: мессенджер часто
+  // открывает share-link во встроенном браузере, а не как universal link.
+  // Unknown/social-auth urls спокойно игнорируются parseNotifUrl/navigateFromUrl.
   useEffect(() => {
-    if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
     let active = true;
     Linking.getInitialURL()
       .then((url) => {

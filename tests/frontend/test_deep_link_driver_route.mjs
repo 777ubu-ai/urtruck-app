@@ -40,12 +40,15 @@ test('App.js: native push tap / universal-link router understands kind === "driv
   assert.match(block, /navigate\('DriverDetail', \{ driver: \{ id, _server: true, _isDriver: true \}, role \}\)/);
 });
 
-test('App.js: driver deep-links are queued behind the same pending-url auth gate as cargo/trip/deal/chat', () => {
+test('App.js: private driver/deal/chat links wait for auth while public cargo/trip shares do not', () => {
   const needsAuthIdx = appJs.indexOf('const needsAuth =');
   assert.ok(needsAuthIdx > -1);
   const line = appJs.slice(needsAuthIdx, appJs.indexOf('\n', needsAuthIdx));
-  for (const kind of ['cargos', 'trips', 'deals', 'chats', 'driver']) {
+  for (const kind of ['deals', 'chats', 'driver']) {
     assert.ok(line.includes(`'${kind}'`), `needsAuth list is missing '${kind}'`);
+  }
+  for (const kind of ['cargos', 'trips']) {
+    assert.ok(!line.includes(`'${kind}'`), `public share kind '${kind}' must not wait for login`);
   }
 });
 

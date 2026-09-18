@@ -13,12 +13,13 @@ function fixture(t, { exportExit = 0, missing = null, bundle = true, index = tru
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const put = (path, contents) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), contents); };
   for (const asset of assets) if (asset !== missing) put(`web/${asset}`, `fixture:${asset}`);
+  put('assets/hero.jpg', 'fixture:current-market-hero');
   // Экспортёр подменён только внутри temp fixture: production Expo не запускается.
   put('bin/npx', `#!/bin/sh\nexit ${exportExit}\n`);
   chmodSync(join(root, 'bin/npx'), 0o755);
   mkdirSync(join(root, 'scripts'), { recursive: true });
   if (existsSync('scripts/finalize-web-export.mjs')) copyFileSync('scripts/finalize-web-export.mjs', join(root, 'scripts/finalize-web-export.mjs'));
-  if (index) put('dist/index.html', '<html><script src="/_expo/static/js/web/index.js" defer></script></html>');
+  if (index) put('dist/index.html', '<html><head><title>UrTruck</title></head><body><script src="/_expo/static/js/web/index.js" defer></script></body></html>');
   if (bundle) put('dist/_expo/static/js/web/index.js', 'globalThis.fixture = true;');
   return { root, put, run: () => spawnSync('/bin/sh', ['-c', script], {
     cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${join(root, 'bin')}:${dirname(process.execPath)}:${process.env.PATH || ''}` },
@@ -64,4 +65,8 @@ test('успешный build:web сохраняет legal, share и deep-link as
   for (const name of ['terms', 'privacy', 'support']) {
     for (const alias of [name, `${name}.html`]) assert.equal(readFileSync(join(root, 'dist', alias), 'utf8'), `fixture:legal/${name}.html`);
   }
+  assert.equal(readFileSync(join(root, 'dist/share/urtruck-market-v2.png'), 'utf8'), 'fixture:current-market-hero');
+  const html = readFileSync(join(root, 'dist/index.html'), 'utf8');
+  assert.match(html, /property="og:title"/);
+  assert.match(html, /urtruck-market-v2\.png/);
 });
