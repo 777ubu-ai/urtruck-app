@@ -26,8 +26,10 @@ import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
 
 const COPY = {
   RU: {
-    title: 'Завершите профиль',
-    subtitle: 'Заполните основные контакты',
+    driverTitle: 'Профиль водителя',
+    driverSubtitle: 'Личные данные для рейсов и автомобиля',
+    shipperTitle: 'Профиль грузоотправителя',
+    shipperSubtitle: 'Данные компании и контактного лица',
     nameLabel: 'Имя / контактное лицо *',
     namePlaceholder: 'Например, Иван Петров',
     phoneLabel: 'Основной телефон *',
@@ -54,8 +56,10 @@ const COPY = {
     save: 'Сохранить и войти',
   },
   EN: {
-    title: 'Complete your profile',
-    subtitle: 'Add your main contact details',
+    driverTitle: 'Driver profile',
+    driverSubtitle: 'Personal details for trips and your vehicle',
+    shipperTitle: 'Shipper profile',
+    shipperSubtitle: 'Company and contact person details',
     nameLabel: 'Name / contact person *',
     namePlaceholder: 'For example, Alex Morgan',
     phoneLabel: 'Primary phone *',
@@ -82,8 +86,10 @@ const COPY = {
     save: 'Save and enter',
   },
   ZH: {
-    title: '完善个人资料',
-    subtitle: '填写主要联系方式',
+    driverTitle: '司机资料',
+    driverSubtitle: '填写运输和车辆所需的个人信息',
+    shipperTitle: '货主资料',
+    shipperSubtitle: '填写公司和联系人信息',
     nameLabel: '姓名 / 联系人 *',
     namePlaceholder: '例如：张伟',
     phoneLabel: '主要手机号 *',
@@ -110,8 +116,10 @@ const COPY = {
     save: '保存并进入',
   },
   KK: {
-    title: 'Профильді аяқтаңыз',
-    subtitle: 'Негізгі байланыс деректерін толтырыңыз',
+    driverTitle: 'Жүргізуші профилі',
+    driverSubtitle: 'Рейстер мен көлікке арналған жеке деректер',
+    shipperTitle: 'Жүк жөнелтуші профилі',
+    shipperSubtitle: 'Компания және байланыс тұлғасының деректері',
     nameLabel: 'Аты / байланыс тұлғасы *',
     namePlaceholder: 'Мысалы, Айдан Нұрлан',
     phoneLabel: 'Негізгі телефон *',
@@ -237,9 +245,9 @@ function ProfileField({
 }
 
 export default function ProfileV2Screen({ navigation, route }) {
-  const colors = brandLight;
+  const baseColors = brandLight;
   const driverColors = useMemo(() => ({
-    ...colors,
+    ...baseColors,
     bg: DRIVER_CERAMIC.bg,
     surface: DRIVER_CERAMIC.surface,
     surfaceSoft: DRIVER_CERAMIC.surface,
@@ -253,12 +261,19 @@ export default function ProfileV2Screen({ navigation, route }) {
     borderStrong: DRIVER_CERAMIC.border,
     divider: DRIVER_CERAMIC.border,
     textOnPrimary: DRIVER_CERAMIC.activeText,
-  }), [colors]);
+  }), [baseColors]);
+  const shipperColors = useMemo(() => ({
+    ...baseColors,
+    primary: '#C2410C',
+    primarySoft: '#FFF3E6',
+    textOnPrimary: '#FFFFFF',
+  }), [baseColors]);
   const { t, lang } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const { session, setRole } = useAuth();
   const role = route?.params?.role || session?.user?.role || 'driver';
-  const s = useMemo(() => role === 'driver' ? makeStyles(driverColors) : makeStyles(colors), [colors, driverColors, role]);
+  const colors = role === 'driver' ? driverColors : shipperColors;
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   const signupIdentity = route?.params?.phone || session?.user?.phone || '';
   const initialPhone = isRealPhone(signupIdentity) ? signupIdentity : '';
@@ -396,8 +411,8 @@ export default function ProfileV2Screen({ navigation, route }) {
         >
           <StepIndicator s={s} colors={colors} />
           <Text style={s.stepCaption}>2 / 2</Text>
-          <Text style={s.title}>{ui.title}</Text>
-          <Text style={s.subtitle}>{ui.subtitle}</Text>
+          <Text style={s.title}>{role === 'driver' ? ui.driverTitle : ui.shipperTitle}</Text>
+          <Text style={s.subtitle}>{role === 'driver' ? ui.driverSubtitle : ui.shipperSubtitle}</Text>
 
           <ProfileField
             id="name"
