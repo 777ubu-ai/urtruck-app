@@ -11,7 +11,7 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
-import { useV1Colors, v1Radius, v1Spacing, v1Typography } from '../../../theme/designV1';
+import { useV1Colors, useShipperCeramicColors, v1Radius, v1Spacing, v1Typography } from '../../../theme/designV1';
 import { useKeyboardSafeFocus } from './KeyboardSafeLayout';
 
 export default function Field(props) {
@@ -38,9 +38,11 @@ function InputRow({
   // read-only row (country during the KZ-only pilot) without
   // resorting to the dropdown variant.
   editable = true,
-  testID, onFocus, onBlur,
+  testID, onFocus, onBlur, ceramic = false,
 }) {
-  const colors = useV1Colors();
+  const baseColors = useV1Colors();
+  const shipperColors = useShipperCeramicColors();
+  const colors = ceramic ? shipperColors : baseColors;
   const [focused, setFocused] = React.useState(false);
   const handleFocus = useKeyboardSafeFocus((event) => {
     setFocused(true);
@@ -104,8 +106,10 @@ function InputRow({
   );
 }
 
-function DropdownRow({ icon, featherIcon, leading, label, value, onPress, placeholder, testID }) {
-  const colors = useV1Colors();
+function DropdownRow({ icon, featherIcon, leading, label, value, onPress, placeholder, testID, ceramic = false }) {
+  const baseColors = useV1Colors();
+  const shipperColors = useShipperCeramicColors();
+  const colors = ceramic ? shipperColors : baseColors;
   return (
     <View style={{ marginBottom: v1Spacing.sm }}>
       {/* Stage 28: dropdown тоже выносит label наружу — единый

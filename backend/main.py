@@ -370,6 +370,10 @@ def startup():
     print("  Docs:       http://localhost:8001/docs")
     print("  Admin:      http://localhost:8001/admin")
     print("=" * 50)
+    # Legacy push_delivery_log indexes can be large. Start their idempotent
+    # completion only after the FastAPI startup hook returns, so the health
+    # endpoint can bind before the background DDL scans old production data.
+    start_deferred_migrations()
 
 
 @app.on_event("startup")
