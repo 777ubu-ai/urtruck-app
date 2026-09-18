@@ -2,6 +2,9 @@ name: TEMP deploy Luna translation 20260918
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - qa/master-hard-qa-20260916
 
 permissions:
   contents: read
