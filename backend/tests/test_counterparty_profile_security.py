@@ -199,6 +199,28 @@ def test_07_cancelled_deal_still_allows_the_safe_card_by_design():
     assert not leaked
 
 
+def test_owner_can_reopen_active_qa_filtered_cargo():
+    """Public-feed hygiene must never hide a listing from its owner."""
+    from api.marketplace import _can_view_non_public_listing
+    row = {
+        "id": "cargo-owner-qa",
+        "owner_id": "owner-qa",
+        "status": "active",
+        "cargo_desc": "QA Груз ₸",
+        "from_city": "Алматы",
+        "to_city": "Урумчи",
+        "cargo_type": "tent",
+    }
+    assert _can_view_non_public_listing(
+        None,
+        table="cargos",
+        listing_id=row["id"],
+        row=row,
+        owner_field="owner_id",
+        caller={"id": row["owner_id"]},
+    ) is True
+
+
 def test_archived_bidder_can_reopen_taken_cargo_but_stranger_still_cannot():
     """Archive rows must remain navigable after another driver wins."""
     from database.db import get_conn

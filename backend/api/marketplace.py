@@ -78,6 +78,13 @@ def _can_view_non_public_listing(c, *, table: str, listing_id: str, row: dict,
     record, including after unpublish/completion. A stranger never gets a
     confirmation that a private ID exists.
     """
+    caller_id = caller.get("id") if caller else None
+    # Owners must always be able to reopen their own listing, including an
+    # active QA-marked record intentionally excluded from the public feed.
+    # Public hygiene is an audience filter, not an ownership access rule.
+    if caller_id and caller_id == row.get(owner_field):
+        return True
+
     is_public = str(row.get("status") or "") == "active"
     if is_public:
         if table == "cargos":

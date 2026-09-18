@@ -102,28 +102,43 @@ async function openAuthenticated(page, token, role) {
 
 // ── API-хелперы (сид данных для C/D, подтверждение статусов) ──
 async function apiEmailToken(request, email, role) {
+  // BETA verification provisions an unassigned identity as a demo driver.
+  // Start with a guest and select the intended immutable role first, then
+  // upgrade that same identity through email verification. This mirrors the
+  // real onboarding order and lets one disposable CI database host both roles.
+  const profileData = {
+    name: role === 'driver' ? 'E2E Driver' : 'E2E Shipper',
+    phone: phoneForEmail(email),
+    company_name: 'UrTruck E2E',
+    role,
+  };
+  const guestResponse = await request.post(`${API}/register/guest`);
+  const guestBody = await guestResponse.json();
+  const guestToken = guestBody.token;
+  if (!guestToken) throw new Error(`guest setup did not issue a token for ${email}`);
+  const selectedRole = await request.patch(`${API}/users/me`, {
+    headers: { Authorization: `Bearer ${guestToken}` },
+    data: profileData,
+  });
+  if (selectedRole.status() >= 300) {
+    throw new Error(`guest role setup failed: ${selectedRole.status()} ${await selectedRole.text()}`);
+  }
+
   await request.post(`${API}/register/email/send`, {
     data: { email, consent: true, role },
   });
   const r = await request.post(`${API}/register/email/verify`, {
-    data: { email, code: BETA_CODE },
+    data: { email, code: BETA_CODE, guest_token: guestToken },
   });
   const body = await r.json();
   const token = body.token;
   if (!token) throw new Error(`email verify did not issue a token for ${email}`);
 
-  // The same server-side profile contract exercised by ProfileV2. API setup
-  // is used only to prepare two actors in the disposable local E2E database;
-  // it must not pretend that email verification alone assigned a marketplace
-  // role.
+  // Reapply the same role/profile after identity upgrade. The role write is
+  // deliberately idempotent and therefore also exercises immutability.
   const profile = await request.patch(`${API}/users/me`, {
     headers: { Authorization: `Bearer ${token}` },
-    data: {
-      name: role === 'driver' ? 'E2E Driver' : 'E2E Shipper',
-      phone: phoneForEmail(email),
-      company_name: 'UrTruck E2E',
-      role,
-    },
+    data: profileData,
   });
   if (profile.status() >= 300) {
     throw new Error(`profile role setup failed: ${profile.status()} ${await profile.text()}`);

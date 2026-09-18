@@ -324,10 +324,14 @@ def get_or_create_driver_by_email(email: str, upgrade_guest_id: str = None) -> d
             return row
 
         if upgrade_guest_id:
+            # A guest may have completed name/phone/role onboarding before
+            # attaching a verified email identity. The authenticated guest
+            # session and empty email are the ownership proof; requiring the
+            # phone to still look like guest_* wrongly created a second account
+            # and let BETA provisioning overwrite the intended role.
             existing = c.execute(
                 "SELECT * FROM drivers_registration WHERE id = ? "
-                "AND (email IS NULL OR trim(email) = '') "
-                "AND (phone IS NULL OR phone LIKE 'guest_%')",
+                "AND (email IS NULL OR trim(email) = '')",
                 (upgrade_guest_id,),
             ).fetchone()
             if existing:

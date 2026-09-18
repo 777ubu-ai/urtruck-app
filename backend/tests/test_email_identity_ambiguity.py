@@ -128,6 +128,25 @@ def test_dal_single_match_still_works_normally():
     assert again["id"] == driver["id"]
 
 
+def test_completed_guest_profile_is_upgraded_in_place_by_email():
+    guest = reg_dal.create_guest()
+    reg_dal.update_driver(guest["id"], {
+        "phone": "+77015550123",
+        "full_name": "Ready Shipper",
+        "role": "client",
+    })
+
+    upgraded = reg_dal.get_or_create_driver_by_email(
+        "ready.shipper@example.com",
+        upgrade_guest_id=guest["id"],
+    )
+
+    assert upgraded["id"] == guest["id"]
+    assert upgraded["email"] == "ready.shipper@example.com"
+    assert upgraded["phone"] == "+77015550123"
+    assert upgraded["role"] == "client"
+
+
 def test_social_verify_returns_409_and_no_token_on_duplicate_email(monkeypatch):
     _drop_email_unique_index()
     email = "collision.social@example.com"
