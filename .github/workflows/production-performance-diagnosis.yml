@@ -61,4 +61,73 @@ jobs:
               -w "$target code=%{http_code} connect=%{time_connect}s ttfb=%{time_starttransfer}s total=%{time_total}s\\n" \
               "$target" || true
           done
+
+          echo
+          echo '=== Android push aggregate forensics ==='
+          cd /home/ubuntu/urtruck-security
+          python3 - <<'PY'
+          import json, os, sqlite3, urllib.request
+          from pathlib import Path
+
+          env = {}
+          env_path = Path('.env')
+          if env_path.is_file():
+              for raw in env_path.read_text(encoding='utf-8').splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith('#') or '=' not in line:
+                      continue
+                  key, value = line.split('=', 1)
+                  env[key.strip()] = value.strip().strip("'\"")
+
+          db_path = env.get('URTRUCK_DB_PATH') or env.get('DB_PATH') or 'database/security.db'
+          if not os.path.isabs(db_path):
+              db_path = str((Path.cwd() / db_path).resolve())
+          conn = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
+          conn.row_factory = sqlite3.Row
+          category_sql = """
+          CASE
+            WHEN last_error LIKE '%provider_not_configured%' THEN 'provider_not_configured'
+            WHEN last_error LIKE '%invalid_token%' THEN 'invalid_token'
+            WHEN last_error LIKE '%delivery_not_confirmed%' OR last_error IS NULL THEN 'delivery_not_confirmed'
+            WHEN last_error LIKE '%invalid_provider_mode%' THEN 'invalid_provider_mode'
+            ELSE 'other'
+          END
+          """
+          for row in conn.execute(f"SELECT {category_sql} category, COUNT(*) count FROM push_outbox WHERE status='dead' GROUP BY category ORDER BY count DESC"):
+              print(f"DEAD_CATEGORY {row['category']}={row['count']}")
+          for row in conn.execute("SELECT event_type, COUNT(*) count FROM push_outbox WHERE status='dead' GROUP BY event_type ORDER BY count DESC"):
+              print(f"DEAD_EVENT {row['event_type']}={row['count']}")
+          for row in conn.execute("SELECT push_provider, platform, COUNT(*) count FROM push_devices WHERE active=1 GROUP BY push_provider, platform ORDER BY count DESC"):
+              print(f"ACTIVE_DEVICE {row['push_provider']}/{row['platform']}={row['count']}")
+          conn.close()
+
+          token = env.get('QA_AGENT_TOKEN', '')
+          if not token:
+              print('DIRECT_ANDROID_PUSH=BLOCKED_QA_AGENT_TOKEN_UNSET')
+              raise SystemExit(0)
+
+          def post(path, body):
+              request = urllib.request.Request(
+                  'http://127.0.0.1:8001/api/v1/qa/' + path,
+                  data=json.dumps(body).encode('utf-8'),
+                  headers={'Content-Type': 'application/json', 'X-QA-Agent-Token': token},
+                  method='POST',
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return json.loads(response.read().decode('utf-8'))
+
+          for actor in ('serik', 'boris'):
+              diagnostic = post('push/native-tokens', {'actor': actor})
+              print('TOKEN_DIAGNOSTIC', actor, json.dumps(diagnostic, ensure_ascii=False, sort_keys=True))
+              result = post('push/test-direct', {
+                  'actor': actor,
+                  'provider': 'fcm',
+                  'title': 'UrTruck Android QA',
+                  'body': f'Прямая проверка push: {actor}',
+                  'url': '/notifications',
+                  'kind': 'qa_push_test',
+              })
+              safe = {key: result.get(key) for key in ('sent', 'providers', 'devices', 'mode', 'error')}
+              print('DIRECT_ANDROID_PUSH', actor, json.dumps(safe, ensure_ascii=False, sort_keys=True))
+          PY
           REMOTE
