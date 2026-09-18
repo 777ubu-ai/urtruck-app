@@ -22,6 +22,16 @@ test('Android native launch window uses the branded background without a tiny po
   assert.match(nativeStyle, /windowBackground">@drawable\/urtruck_splash_window_background/);
   assert.match(nativeStyle, /navigationBarColor">@color\/splashscreen_background/);
   assert.match(nativeStyle, /windowLightNavigationBar">false/);
+  assert.match(
+    read('android/app/src/main/res/drawable/urtruck_splash_window_background.xml'),
+    /android:gravity="fill"/,
+    'nodpi launch artwork must scale to the screen instead of being cropped at intrinsic pixels',
+  );
+  assert.match(
+    read('plugins/withAndroidFullscreenSplash.js'),
+    /android:gravity="fill"/,
+    'Expo prebuild must preserve the non-cropping native bitmap gravity',
+  );
 });
 
 test('Android branded launch splash preserves the logo and owns system bars during handoff', () => {

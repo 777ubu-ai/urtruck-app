@@ -7,7 +7,7 @@ const SPLASH_BACKGROUND = `
   <item android:drawable="@color/splashscreen_background" />
   <item>
     <bitmap
-      android:gravity="center"
+      android:gravity="fill"
       android:src="@drawable/urtruck_splash_fullscreen" />
   </item>
 </layer-list>
