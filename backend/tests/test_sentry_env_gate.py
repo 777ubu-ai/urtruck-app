@@ -39,6 +39,10 @@ def _run(env: dict, timeout: int = 40):
 def _base_env(db_path: str) -> dict:
     env = os.environ.copy()
     env["DB_PATH"] = db_path
+    # This suite isolates Sentry wiring. Avoid creating the production-local
+    # storage root when a case intentionally sets ENV=production on a Mac/CI
+    # host; production itself uses Supabase storage.
+    env["STORAGE_PROVIDER"] = "supabase"
     # No .env is committed in this repo, so SENTRY_DSN is only set here when
     # a case explicitly wants the opt-in path.
     env.pop("SENTRY_DSN", None)
