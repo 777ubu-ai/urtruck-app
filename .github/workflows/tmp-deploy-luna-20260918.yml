@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/qa/master-hard-qa-20260916
+    uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@1a3667280d2a8291065f06c908e7366a6e755afa
     with:
       deploy_sha: 3c6a7ff461a658c889658b6082c5bfce292bab40
       break_glass: true
