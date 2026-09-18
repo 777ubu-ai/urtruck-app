@@ -137,7 +137,7 @@ def test_00_stub_provider_fails_closed_instead_of_returning_source(monkeypatch):
 def _fake_urlopen_http_error(status, body=b"provider said no"):
     def _raise(*a, **kw):
         raise urllib.error.HTTPError(
-            "https://api.openai.com/v1/chat/completions", status, "err",
+            "https://api.openai.com/v1/responses", status, "err",
             hdrs=None, fp=io.BytesIO(body),
         )
     return _raise
@@ -171,6 +171,21 @@ def test_02_5xx_is_retryable(monkeypatch):
         assert exc.code == "TRANSLATION_TIMEOUT"
         assert exc.retryable is True
         assert "internal error" not in str(exc)
+
+
+def test_02b_429_is_retryable(monkeypatch):
+    from services import translate_service as ts
+
+    monkeypatch.setenv("TRANSLATE_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake")
+    monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen_http_error(429, b"quota exhausted"))
+    try:
+        ts.translate_text("hello", "ru", source_lang="en")
+        assert False
+    except ts.TranslationError as exc:
+        assert exc.code == "TRANSLATION_TIMEOUT"
+        assert exc.retryable is True
+        assert "quota exhausted" not in str(exc)
 
 
 def test_03_network_timeout_is_retryable(monkeypatch):
@@ -225,14 +240,30 @@ def test_05_success_case_still_works(monkeypatch):
             return False
 
         def read(self):
-            return _json.dumps({"choices": [{"message": {"content": "  privet  "}}]}).encode("utf-8")
+            return _json.dumps({
+                "output": [{
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "  privet  "}],
+                }],
+            }).encode("utf-8")
 
     monkeypatch.setenv("TRANSLATE_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake")
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: _FakeResp())
+    captured = {}
+
+    def _capture(req, **kw):
+        captured["url"] = req.full_url
+        captured["body"] = _json.loads(req.data.decode("utf-8"))
+        return _FakeResp()
+
+    monkeypatch.delenv("TRANSLATE_MODEL", raising=False)
+    monkeypatch.setattr(urllib.request, "urlopen", _capture)
     result = ts.translate_text("hello", "ru", source_lang="en")
     assert result["translated_text"] == "privet"
     assert result["provider"] == "openai"
+    assert captured["url"] == "https://api.openai.com/v1/responses"
+    assert captured["body"]["model"] == "gpt-5.6-luna"
+    assert "messages" not in captured["body"]
 
 
 # ───────────────────── 2. /chat/translate endpoint contract ────────────────

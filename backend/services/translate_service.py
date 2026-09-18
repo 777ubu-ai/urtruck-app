@@ -1,7 +1,7 @@
 """Translation service — OpenAI / stub / Google / DeepL.
 
 OPENAI_API_KEY хранится ТОЛЬКО в backend .env.
-Используется дешёвая модель gpt-4o-mini для перев��да.
+Используется самая дешёвая realtime text-модель GPT-5.6 Luna.
 """
 import os
 import json
@@ -54,7 +54,7 @@ def _get_api_key():
 
 
 def _get_model():
-    return os.environ.get("TRANSLATE_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+    return os.environ.get("TRANSLATE_MODEL", "gpt-5.6-luna").strip() or "gpt-5.6-luna"
 
 
 def get_cache_identity():
@@ -123,16 +123,13 @@ def _translate_openai(text, target_lang, source_lang, api_key):
 
     body = json.dumps({
         "model": _get_model(),
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_msg},
-        ],
-        "temperature": 0.1,
-        "max_tokens": 500,
+        "instructions": SYSTEM_PROMPT,
+        "input": user_msg,
+        "max_output_tokens": 500,
     }).encode("utf-8")
 
     req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
+        "https://api.openai.com/v1/responses",
         data=body,
         headers={
             "Content-Type": "application/json",
@@ -161,12 +158,12 @@ def _translate_openai(text, target_lang, source_lang, api_key):
         except Exception:
             pass
         print(f"[translate] OpenAI HTTP {status}: {detail_body}", flush=True)
-        is_server_error = status >= 500
+        is_retryable = status == 429 or status >= 500
         raise TranslationError(
-            "Перевод временно недоступен" if is_server_error else "Не удалось перевести текст",
+            "Перевод временно недоступен" if is_retryable else "Не удалось перевести текст",
             provider="openai",
-            retryable=is_server_error,
-            code="TRANSLATION_TIMEOUT" if is_server_error else "TRANSLATION_FAILED",
+            retryable=is_retryable,
+            code="TRANSLATION_TIMEOUT" if is_retryable else "TRANSLATION_FAILED",
         ) from exc
     except (urllib.error.URLError, socket.timeout) as exc:
         print(f"[translate] OpenAI network error: {exc}", flush=True)
@@ -174,7 +171,16 @@ def _translate_openai(text, target_lang, source_lang, api_key):
 
     try:
         data = json.loads(raw)
-        translated = data["choices"][0]["message"]["content"].strip()
+        parts = []
+        for item in data.get("output", []):
+            if item.get("type") != "message":
+                continue
+            for content in item.get("content", []):
+                if content.get("type") == "output_text" and content.get("text"):
+                    parts.append(content["text"])
+        translated = "".join(parts).strip()
+        if not translated:
+            raise ValueError("response has no output_text")
     except (ValueError, KeyError, IndexError, TypeError) as exc:
         print(f"[translate] OpenAI returned an unparsable response: {raw[:300]!r}", flush=True)
         raise TranslationError("Перевод вернул некорректный ответ", provider="openai", code="TRANSLATION_FAILED") from exc
