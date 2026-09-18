@@ -89,8 +89,11 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Verify preinstalled Android SDK
+        run: |
+          set -euo pipefail
+          command -v sdkmanager
+          sdkmanager --version
 
       - name: Install Android SDK platform 36 / build-tools 36.0.0
         run: |
