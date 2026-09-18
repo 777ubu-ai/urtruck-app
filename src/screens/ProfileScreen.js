@@ -137,7 +137,7 @@ export default function ProfileScreen({ navigation, route }) {
 
   const specsLine = isDriver
     ? [
-        t(profile.truckType || 'tent'),
+        profile.truckType ? t(`vt_${profile.truckType}`) : t('tent'),
         profile.capacity_tons != null && profile.capacity_tons !== '' ? `${profile.capacity_tons} ${tonUnit}` : null,
         profile.available_m3 != null && profile.available_m3 !== '' ? `${profile.available_m3} ${cubicMeterUnit}` : null,
       ].filter(Boolean).join(' · ')
@@ -161,7 +161,7 @@ export default function ProfileScreen({ navigation, route }) {
   const proActive = isDriver && proFilled === proTotal;
   const proRemaining = proTotal - proFilled;
   const proStatusTitle = proActive ? t('pro_active_badge') : t('pro_inactive_badge');
-  const verificationStatusText = profile.is_verified ? t('verification_passed_short') : t('verification_failed_short');
+  const verificationStatusText = profile.is_verified ? t('verification_passed_short') : '';
 
   const itemsWord = (n) => {
     const lang = getLanguage();
@@ -239,14 +239,14 @@ export default function ProfileScreen({ navigation, route }) {
                   <Text style={[s.proTitle, { color: theme.text }]}>{proStatusTitle}</Text>
                 </View>
                 {proActive ? (
-                  IS_BETA ? <Text style={[s.proSub, { color: theme.textMuted }]}>{verificationStatusText} · {t('pro_beta_note')}</Text> : null
+                  <Text style={[s.proSub, { color: theme.textMuted }]}>{verificationStatusText}{verificationStatusText && IS_BETA ? ' · ' : ''}{IS_BETA ? t('pro_beta_note') : ''}</Text>
                 ) : (
-                  <Text style={[s.proSub, { color: theme.textMuted }]}>{verificationStatusText} · {t('pro_progress_remaining')} {proRemaining} {itemsWord(proRemaining)}</Text>
+                  <Text style={[s.proSub, { color: theme.textMuted }]}>{t('pro_progress_remaining')} {proRemaining} {itemsWord(proRemaining)}</Text>
                 )}
               </View>
               <View style={[s.proStatusBadge, { backgroundColor: proActive ? '#E9F6EF' : theme.bg, borderColor: proActive ? accent : theme.border }]}>
                 <Feather name={proActive ? 'check-circle' : 'alert-circle'} size={14} color={proActive ? accent : theme.textMuted} />
-                <Text style={[s.proStatusBadgeText, { color: proActive ? accent : theme.textMuted }]}>{proActive ? t('done') : `${proFilled}/${proTotal}`}</Text>
+                <Text style={[s.proStatusBadgeText, { color: proActive ? accent : theme.textMuted }]}>{proActive ? t('done') : `${t('pro_progress_filled')} ${proFilled}/${proTotal}`}</Text>
               </View>
             </View>
             <View style={[s.proTrack, { backgroundColor: theme.bg }]}><View style={[s.proFill, { width: `${proPercent}%`, backgroundColor: accent }]} /></View>
