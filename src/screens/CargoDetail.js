@@ -147,7 +147,7 @@ export default function CargoDetail({ navigation, route }) {
   deleteMyBtnText: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
 
   }), [v1]);
-  const { cargo: paramCargo, cargoId, role, dealId: routeDealId } = route.params || {};
+  const { cargo: paramCargo, cargoId, role, dealId: routeDealId, readOnly = false } = route.params || {};
   // Canonical cargo: locale is explicit so normalizers stay pure and Node-testable.
   const { t, lang } = useI18n();
   const editBidLabel = ({
@@ -268,8 +268,17 @@ export default function CargoDetail({ navigation, route }) {
         // CTA after already bidding and could not see/accept a counter-offer.
         // Merge only the caller's own row back into the render set; this does
         // not expose any other bidder and mirrors TripDetail's contract.
-        const rawBids = [...(d.bids || [])];
-        if (d.my_bid && !rawBids.some((b) => b.id === d.my_bid.id)) rawBids.push(d.my_bid);
+        let rawBids = [...(d.bids || [])];
+        if (d.my_bid) {
+          // `my_bid` is the server-truth row. Replace any stale active copy
+          // for the same bidder so the list and "My bid" card cannot show
+          // two different prices at once.
+          rawBids = rawBids.filter((b) => !(
+            b.id === d.my_bid.id
+            || (b.bidder_id === d.my_bid.bidder_id && (b.status === 'pending' || b.status === 'countered'))
+          ));
+          rawBids.push(d.my_bid);
+        }
         const mapped = rawBids.map(b => ({
           id: b.id, bidderId: b.bidder_id,
           name: b.bidder_name || b.bidder_phone || t('driver'),
@@ -686,7 +695,7 @@ export default function CargoDetail({ navigation, route }) {
                     создания сделки — никакого чата. Иерархия — одна большая
                     «Принять», вторичная «Предложить свою цену», текстовый
                     «Отклонить». */}
-                {c.isMine && b.status === 'pending' && !hasAccepted && (
+                {!readOnly && c.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ marginTop: 10, gap: 6, alignSelf: 'stretch' }}>
                     <PriceSavingsBadge listingPrice={c.price} bidPrice={b.amount} currency={c.currency || 'USD'} />
                     <PrimaryCTA
@@ -764,7 +773,7 @@ export default function CargoDetail({ navigation, route }) {
                     разные суммы рядом и гадать, какая создаст сделку. Пока
                     водитель решает контр-оффер, владелец может только
                     отклонить предложение целиком. */}
-                {c.isMine && isCountered && (
+                {!readOnly && c.isMine && isCountered && (
                   <View style={{ marginTop: 10, gap: 6, alignSelf: 'stretch' }}>
                     <TouchableOpacity
                       testID="bid-reject"
@@ -790,7 +799,7 @@ export default function CargoDetail({ navigation, route }) {
 
                 {/* Водитель + countered: primary = «Принять контр $X» (driver
                     green), Destructive Decline. Чат — только после сделки. */}
-                {b.isMine && !c.isMine && isCountered && (
+                {!readOnly && b.isMine && !c.isMine && isCountered && (
                   <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                     <PrimaryCTA
                       testID="bid-accept-counter"
@@ -811,7 +820,7 @@ export default function CargoDetail({ navigation, route }) {
 
                 {/* Водитель + своя ставка pending: primary НЕТ (ждём хода
                     клиента), только Edit + Chat + Destructive Cancel. */}
-                {b.isMine && !c.isMine && b.status === 'pending' && !hasAccepted && (
+                {!readOnly && b.isMine && !c.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                     <SecondaryButton
                       testID="bid-edit"
@@ -860,7 +869,7 @@ export default function CargoDetail({ navigation, route }) {
           сделки ещё нет). По жалобе владельца 28.07: клиент отправил ставку —
           и никакой обратной связи. Показывает сумму, статус (ожидает/встречка)
           и кнопки [Изменить] [Чат]. Симметрично TripDetail. */}
-      {myPendingBid && isDriverViewing && !dealStatus ? (
+      {!readOnly && myPendingBid && isDriverViewing && !dealStatus ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           {/* Карточка своей ставки видна только водителю (isDriverViewing) —
               значит и цена, и рамка красятся его цветом (dealAccent), а не
@@ -1059,7 +1068,7 @@ export default function CargoDetail({ navigation, route }) {
           </Text>
         </View>
       ) : null}
-      {!c.isMine && !listingUnavailable && c.status === 'active' && !dealStatus && !myPendingBid ? (
+      {!readOnly && !c.isMine && !listingUnavailable && c.status === 'active' && !dealStatus && !myPendingBid ? (
         <StickyCTABar
           accent={v1Accent.main}
           primary={{

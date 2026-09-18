@@ -11,8 +11,8 @@ test('driver counter CTA displays the active counter amount, not original bid', 
 });
 
 test('shipper countered state never offers an accept-original-amount CTA', () => {
-  const ownerStart = cargo.indexOf('{c.isMine && isCountered && (');
-  const driverStart = cargo.indexOf('{b.isMine && !c.isMine && isCountered && (', ownerStart);
+  const ownerStart = cargo.indexOf('{!readOnly && c.isMine && isCountered && (');
+  const driverStart = cargo.indexOf('{!readOnly && b.isMine && !c.isMine && isCountered && (', ownerStart);
   assert.ok(ownerStart > -1 && driverStart > ownerStart);
   const ownerBlock = cargo.slice(ownerStart, driverStart);
   assert.doesNotMatch(ownerBlock, /bid-accept|acceptBid\(|cancelOwnCounter\(|formatPrice\(b\.amount/);

@@ -96,7 +96,7 @@ export default function TripDetail({ navigation, route }) {
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
 
   }), [v1]);
-  const { trip: rawTrip, tripId, role, dealId: routeDealId } = route.params || {};
+  const { trip: rawTrip, tripId, role, dealId: routeDealId, readOnly = false } = route.params || {};
   const [serverTrip, setServerTrip] = React.useState(null);
   // Canonical shape: TripDetail never reads raw fields directly. If we got
   // a trip object via navigation, use it; otherwise fall back to whatever the
@@ -730,7 +730,7 @@ export default function TripDetail({ navigation, route }) {
                     (05.08.2026, п.16 ТЗ). */}
                 <Text style={[s.bidAmt, { color: '#E06D00' }]}>{formatPrice(b.amount, b.currency || trip.currency, t)}</Text>
               </View>
-              {b.status === 'pending' && !hasAccepted ? (
+              {!readOnly && b.status === 'pending' && !hasAccepted ? (
                 <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                   {/* Приказ владельца 03.08 (скриншоты): до создания сделки
                       никакого чата. Иерархия — одна большая «Принять»,
@@ -766,7 +766,7 @@ export default function TripDetail({ navigation, route }) {
                   </TouchableOpacity>
                 </View>
               ) : null}
-              {isCountered ? (
+              {!readOnly && isCountered ? (
                 <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                   {b.counterAmount ? (
                     <Text style={{ color: '#E06D00', fontSize: 12, fontWeight: '700' }}>
@@ -929,7 +929,7 @@ export default function TripDetail({ navigation, route }) {
           отправки предложения на карточке рейса не было НИКАКОЙ обратной
           связи (дошло/не дошло/можно ли изменить/где чат). Плашка + два
           действия: изменить сумму или сразу перейти в чат. */}
-      {myActiveBid && !dealStatus && !isOwner ? (
+      {!readOnly && myActiveBid && !dealStatus && !isOwner ? (
         <View style={[s.myBidCard, { borderColor: v1Accent.main, backgroundColor: v1.card }]} testID="trip-my-active-bid">
           <View style={s.myBidHeader}>
             <Text style={[s.myBidLabel, { color: v1.textMuted }]}>{t('my_bid_label')}</Text>
@@ -1027,7 +1027,7 @@ export default function TripDetail({ navigation, route }) {
           Только «Предложить цену» — свободный чат до сделки убран (решение
           владельца 03.08): после accept ставки автоматически создаётся комната
           сделки, до этого переговоры ведутся через ставку/контрпредложение. */}
-      {!isOwner && !dealStatus && role === 'client' && !myActiveBid ? (
+      {!readOnly && !isOwner && !dealStatus && role === 'client' && !myActiveBid ? (
         <StickyCTABar
           accent={v1Accent.main}
           primary={{

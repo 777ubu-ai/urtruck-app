@@ -624,7 +624,14 @@ export default function MyTripsScreen({ navigation, route }) {
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       {isDriver ? <DriverRouteBackdrop /> : null}
-      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="mywork-minimal-header" menuTestID="mywork-menu-btn" />
+      <RootHeader
+        ceramic={isDriver}
+        navigation={navigation}
+        role={role}
+        showBack={route?.name === 'MyTripsList'}
+        testID="mywork-minimal-header"
+        menuTestID="mywork-menu-btn"
+      />
 
       <FlatList
         data={listData}

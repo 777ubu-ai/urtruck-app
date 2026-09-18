@@ -569,8 +569,9 @@ export default function DealsScreen({ navigation, route }) {
 
   const openBid = useCallback(
     (bid) => {
+      const readOnly = dealTab === 'archive' || CLOSED_BID_STATUSES.has(bid.status);
       if (bid.cargo_id) {
-        navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role });
+        navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role, readOnly, source: readOnly ? 'archive' : 'deals' });
         return;
       }
       if (bid.trip_id) {
@@ -578,10 +579,12 @@ export default function DealsScreen({ navigation, route }) {
           tripId: bid.trip_id,
           bidId: bid.id,
           role,
+          readOnly,
+          source: readOnly ? 'archive' : 'deals',
         });
       }
     },
-    [navigation, role],
+    [dealTab, navigation, role],
   );
 
   const openDeal = useCallback(
