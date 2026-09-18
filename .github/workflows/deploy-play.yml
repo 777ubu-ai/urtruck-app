@@ -27,7 +27,7 @@ name: Deploy Android to Google Play
 
 on:
   push:
-    branches: [main, qa/master-hard-qa-20260916]
+    branches: [main]
     paths:
       - "android/**"
       - "app.json"
