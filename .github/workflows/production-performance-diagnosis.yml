@@ -79,10 +79,25 @@ jobs:
                   key, value = line.split('=', 1)
                   env[key.strip()] = value.strip().strip("'\"")
 
-          db_path = env.get('URTRUCK_DB_PATH') or env.get('DB_PATH') or 'database/security.db'
-          if not os.path.isabs(db_path):
-              db_path = str((Path.cwd() / db_path).resolve())
-          conn = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
+          configured = env.get('URTRUCK_DB_PATH') or env.get('DB_PATH') or ''
+          if configured.startswith('sqlite:///'):
+              configured = configured.removeprefix('sqlite:///')
+              if not configured.startswith('/'):
+                  configured = '/' + configured
+          candidates = []
+          if configured:
+              candidates.append(Path(configured) if os.path.isabs(configured) else Path.cwd() / configured)
+          candidates.extend([
+              Path('/home/ubuntu/urtruck/backend/database/security.db'),
+              Path('/home/ubuntu/urtruck-security/database/security.db'),
+              Path('/home/ubuntu/urtruck-security/security.db'),
+              Path('/home/ubuntu/urtruck-security/urtruck.db'),
+          ])
+          db_file = next((path.resolve() for path in candidates if path.is_file() and os.access(path, os.R_OK)), None)
+          if db_file is None:
+              print('PUSH_FORENSICS=BLOCKED_DATABASE_NOT_FOUND')
+              raise SystemExit(2)
+          conn = sqlite3.connect(f'file:{db_file}?mode=ro', uri=True)
           conn.row_factory = sqlite3.Row
           category_sql = """
           CASE
