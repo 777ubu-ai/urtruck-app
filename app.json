@@ -81,7 +81,8 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_LOCATION"
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "com.android.vending.BILLING"
       ]
     },
     "plugins": [
@@ -115,7 +116,8 @@
           "isAndroidForegroundServiceEnabled": true,
           "isAndroidBackgroundLocationEnabled": true
         }
-      ]
+      ],
+      "react-native-iap"
     ],
     "extra": {
       "eas": {

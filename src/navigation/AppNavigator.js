@@ -33,6 +33,8 @@ import CargoDetailV2 from '../screens/CargoDetailV2';
 import DriverDetail from '../screens/DriverDetail';
 import ChatScreenV2 from '../screens/ChatScreenV2';
 import WalletScreen from '../screens/WalletScreen';
+import SubscriptionScreen from '../screens/SubscriptionScreen';
+import SubscriptionPlansScreen from '../screens/SubscriptionPlansScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ReviewsScreen from '../screens/ReviewsScreen';
 import FavoritesScreen from '../screens/FavoritesScreen';
@@ -322,6 +324,13 @@ export default function AppNavigator() {
               by navigation.navigate('Wallet') so any in-app deep link or
               future monetization feature can still open it. */}
           <Stack.Screen name="Wallet" component={WalletScreen} />
+          {/* Подписка на разблокировку контактов (Google Play Billing) —
+              доступна только полностью авторизованным пользователям с ролью,
+              открывается из ☰ → Профиль. */}
+          <Stack.Screen name="Subscription" component={SubscriptionScreen} />
+          {/* Тарифы и лимит принятия сделок — соседний экран подписки,
+              открывается из ☰ → Профиль → «Тарифы и лимиты». */}
+          <Stack.Screen name="SubscriptionPlans" component={SubscriptionPlansScreen} options={{ headerShown: false }} />
           <Stack.Screen name="HowItWorks" component={HowItWorksScreen} />
           <Stack.Screen name="About" component={AboutScreen} />
         </>

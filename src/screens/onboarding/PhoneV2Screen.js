@@ -407,8 +407,9 @@ export default function PhoneV2Screen({ navigation, route }) {
                 style={s.emailInput}
                 maxLength={120}
                 testID="email-v2-input"
-                textContentType="emailAddress"
-                autoComplete="email"
+                importantForAutofill="no"
+                textContentType={Platform.OS === 'ios' ? 'emailAddress' : 'none'}
+                autoComplete={Platform.OS === 'android' ? 'off' : 'email'}
                 onSubmitEditing={submitEmail}
                 returnKeyType="go"
               />

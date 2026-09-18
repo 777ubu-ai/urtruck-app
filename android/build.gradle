@@ -9,6 +9,13 @@ buildscript {
         targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '36')
         kotlinVersion = findProperty('android.kotlinVersion') ?: '1.9.25'
 
+        // react-native-iap 13.x по умолчанию тянет Play Billing Library 7.0.0,
+        // которую Google Play с августа 2026 не принимает (нужна >= 8.0.0).
+        // Библиотека читает rootProject.ext.playBillingSdkVersion в первую
+        // очередь (getExtOrDefault), так что этот override перекрывает
+        // дефолт модуля (RNIap_playBillingSdkVersion=7.0.0).
+        playBillingSdkVersion = "8.0.0"
+
         ndkVersion = "26.1.10909125"
     }
     repositories {
