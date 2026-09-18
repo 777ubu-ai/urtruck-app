@@ -1,0 +1,16 @@
+name: TEMP deploy Luna translation 20260918
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/qa/master-hard-qa-20260916
+    with:
+      deploy_sha: 3c6a7ff461a658c889658b6082c5bfce292bab40
+      break_glass: true
+      break_glass_reason: "Approved production rollout of low-cost Luna translation configuration"
+    secrets: inherit
