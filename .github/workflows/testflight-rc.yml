@@ -50,7 +50,13 @@ jobs:
         run: |
           set -euo pipefail
           echo "SHA=$(git rev-parse HEAD)"
-          test "${GITHUB_REF_NAME}" = "main"
+          case "${GITHUB_REF_NAME}" in
+            main|qa/master-hard-qa-20260916) ;;
+            *)
+              echo "::error::TestFlight RC may only be built from main or the canonical hard-QA branch."
+              exit 1
+              ;;
+          esac
           test -n "${EXPO_TOKEN:-}"
           test -n "${EXPO_PUBLIC_API_URL:-}"
           test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}" || {
