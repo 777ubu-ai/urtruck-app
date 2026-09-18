@@ -9,10 +9,8 @@
 //      isApplePlatformSupported()/appleConfigStatus in ../../utils/socialAuth
 //      for the explicit platform/config gate (no more silent SHOW_APPLE_AUTH
 //      flag — a genuinely-unavailable Apple surfaces its exact reason).
-//   4. Phone + SMS/OTP — "Continue with phone" below hands off to the
-//      internal phone flow (route 'Login' → PremiumLoginScreen). That
-//      screen is an implementation detail of AuthV2, not a second, parallel
-//      auth architecture — nothing outside AuthV2 links to it directly.
+// Phone/SMS is intentionally not exposed on this screen. The canonical
+// public entry offers Google, Email OTP and (when configured) Apple only.
 //
 // Google/Apple use Supabase OAuth only for identity proof. After the provider
 // returns, backend /register/social/verify validates the Supabase access token
@@ -49,6 +47,7 @@ import {
   clearPendingProvider,
   completeSocialAuth,
   getAppleAuthGate,
+  getPendingProvider,
   getPendingProviderState,
   isPendingProviderStale,
   isSocialAuthCallback,
@@ -483,21 +482,6 @@ export default function PhoneV2Screen({ navigation, route }) {
               <Text style={s.infoText}>{t('email_v2_send_hint')}</Text>
             </View>
 
-            {/* FINAL 10/10 AUTH CANON CLOSURE (2026-09-14, owner decision):
-                phone stays a first-class AuthV2 method, reached FROM here —
-                never the other way around. This is the only entry point
-                into the phone+SMS flow (route 'Login' → PremiumLoginScreen);
-                nothing outside AuthV2 links there directly anymore. */}
-            <Pressable
-              onPress={() => navigation.navigate('Login', role ? { role } : undefined)}
-              disabled={anyBusy}
-              accessibilityRole="button"
-              testID="phone-v2-continue-with-phone"
-              style={({ pressed }) => [s.phoneLinkRow, pressed && !anyBusy && { opacity: 0.7 }]}
-            >
-              <Feather name="phone" size={16} color={brand.textSecondary} />
-              <Text style={s.phoneLinkText}>{t('phone_v2_continue_with_phone')}</Text>
-            </Pressable>
           </View>
 
           <View style={s.consentBlock} testID="auth-legal-consent">
@@ -557,8 +541,6 @@ const makeStyles = (brand) => StyleSheet.create({
   ctaPrimaryText: { ...typography.button, color: brand.textOnPrimary },
   infoBlock: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 14 },
   infoText: { ...typography.caption, color: brand.textSecondary, textAlign: 'center', flexShrink: 1 },
-  phoneLinkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, marginTop: 4 },
-  phoneLinkText: { ...typography.bodySmall, color: brand.textSecondary, fontWeight: '600' },
   consentBlock: { width: '100%', maxWidth: 560, alignSelf: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: brand.border, marginTop: 22, paddingTop: 16, paddingHorizontal: 10, paddingBottom: 8 },
   consent: { ...typography.caption, color: brand.textSecondary, textAlign: 'center', lineHeight: 19 },
   consentLink: { color: brand.textPrimary, fontWeight: '700', textDecorationLine: 'underline' },

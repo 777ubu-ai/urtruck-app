@@ -93,12 +93,10 @@ test('CLOSURE: MyTripsScreen\'s own direct gate bypass also routes to PhoneV2', 
   assert.match(myTrips, /navigation\.navigate\('PhoneV2'/);
 });
 
-test('CLOSURE: PhoneV2 exposes phone as a first-class AuthV2 method', () => {
+test('CLOSURE: PhoneV2 public entry hides the legacy phone login method', () => {
   assert.match(phoneV2, /the ONE canonical sign-in \/ registration entry/);
-  assert.match(phoneV2, /testID="phone-v2-continue-with-phone"/);
-  assert.match(phoneV2, /navigation\.navigate\('Login'/);
-  // The old exclusionary product rule is gone from the header.
-  assert.doesNotMatch(phoneV2, /Phone is NOT an authentication tab anymore/);
+  assert.doesNotMatch(phoneV2, /testID="phone-v2-continue-with-phone"/);
+  assert.doesNotMatch(phoneV2, /navigation\.navigate\('Login'/);
 });
 
 test('CLOSURE: Apple availability is an explicit platform/config gate, not a bare flag', () => {

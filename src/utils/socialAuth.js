@@ -259,17 +259,22 @@ export async function startSocialAuth(provider) {
   const correlationId = newCorrelationId();
   logAuthStage('oauth_start', { provider, correlationId });
 
-  const availability = await getSocialProviderAvailability();
-  if (!availability.checked) {
-    logAuthStage('oauth_start_failed', { provider, code: AUTH_ERROR_CODES.NETWORK_UNAVAILABLE, correlationId });
-    throw new SocialAuthError(AUTH_ERROR_CODES.NETWORK_UNAVAILABLE, 'social_availability_unreachable', { provider, correlationId });
-  }
-  if (availability[provider] !== true) {
-    // Supabase itself confirms this provider is switched off — this is a
-    // CONFIG state, never a network failure. Conflating the two is exactly
-    // what made the real Apple root cause show as "Нет связи с сервером".
-    logAuthStage('oauth_start_failed', { provider, code: AUTH_ERROR_CODES.PROVIDER_UNAVAILABLE, correlationId });
-    throw new SocialAuthError(AUTH_ERROR_CODES.PROVIDER_UNAVAILABLE, 'social_provider_unavailable', { provider, correlationId });
+  // Google is the always-visible production provider. Do not put a second
+  // `/auth/v1/settings` request in front of its OAuth URL: on a real mobile
+  // network that preflight can take many seconds and makes the button look
+  // frozen. Supabase still validates OAuth and UrTruck independently
+  // validates the returned provider token. Apple stays fail-closed because
+  // its visibility depends on the iOS provider/config gate.
+  if (provider === 'apple') {
+    const availability = await getSocialProviderAvailability();
+    if (!availability.checked) {
+      logAuthStage('oauth_start_failed', { provider, code: AUTH_ERROR_CODES.NETWORK_UNAVAILABLE, correlationId });
+      throw new SocialAuthError(AUTH_ERROR_CODES.NETWORK_UNAVAILABLE, 'social_availability_unreachable', { provider, correlationId });
+    }
+    if (availability.apple !== true) {
+      logAuthStage('oauth_start_failed', { provider, code: AUTH_ERROR_CODES.PROVIDER_UNAVAILABLE, correlationId });
+      throw new SocialAuthError(AUTH_ERROR_CODES.PROVIDER_UNAVAILABLE, 'social_provider_unavailable', { provider, correlationId });
+    }
   }
 
   const options = {
