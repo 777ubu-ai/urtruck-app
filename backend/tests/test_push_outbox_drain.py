@@ -189,6 +189,23 @@ def test_5_max_attempts_reaches_dead():
     assert stats["picked"] == 0, "a dead row must never be resurrected"
 
 
+def test_partial_delivery_is_not_reported_as_dead_after_retry_limit():
+    uid, _ = _make_user_with_device()
+    ek = _enqueue(uid, "evt-partial-1")
+    row = _row(ek, uid)
+    outcome = push_gateway._finish_row(
+        row["id"],
+        push_gateway.MAX_OUTBOX_ATTEMPTS,
+        sent=False,
+        error="InvalidCredentials:1",
+        partially_sent=True,
+    )
+    assert outcome == "partial"
+    row = _row(ek, uid)
+    assert row["status"] == "sent_partial"
+    assert row["last_error"] == "InvalidCredentials:1"
+
+
 def test_6_poison_event_does_not_block_following_event():
     uid1, _ = _make_user_with_device()
     uid2, _ = _make_user_with_device()
@@ -226,8 +243,8 @@ def test_8_repeated_worker_execution_is_idempotent():
     r2 = push_gateway.process_pending_once(_always_ok, limit=10)
     r3 = push_gateway.process_pending_once(_always_ok, limit=10)
     assert r1["sent"] == 1
-    assert r2 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "skipped": 0}
-    assert r3 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "skipped": 0}
+    assert r2 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0}
+    assert r3 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0}
 
 
 def test_no_registered_device_is_skipped_not_dead():

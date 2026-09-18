@@ -536,7 +536,9 @@ def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
         return dict(row) if row else None
 
 
-def _finish_row(row_id: int, attempt: int, sent: bool, error: Optional[str]) -> str:
+def _finish_row(
+    row_id: int, attempt: int, sent: bool, error: Optional[str], *, partially_sent: bool = False
+) -> str:
     """Apply the terminal/retry decision for one claimed row. Shared by both
     the normal (no delivery) and exception (poison event) paths so a handler
     that always raises still hits the same MAX_OUTBOX_ATTEMPTS→dead ceiling
@@ -549,11 +551,12 @@ def _finish_row(row_id: int, attempt: int, sent: bool, error: Optional[str]) -> 
             )
             return "sent"
         if attempt >= MAX_OUTBOX_ATTEMPTS:
+            terminal_status = "sent_partial" if partially_sent else "dead"
             c.execute(
-                "UPDATE push_outbox SET status='dead', failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL WHERE id=?",
-                (attempt, (error or "delivery_not_confirmed")[:500], row_id),
+                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL WHERE id=?",
+                (terminal_status, attempt, (error or "delivery_not_confirmed")[:500], row_id),
             )
-            return "dead"
+            return "partial" if partially_sent else "dead"
         delay = min(300, 2 ** attempt * 5)
         c.execute(
             "UPDATE push_outbox SET status='pending', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, claimed_at=NULL WHERE id=?",
@@ -609,7 +612,7 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
             ).fetchall()
         ]
 
-    stats = {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "skipped": 0}
+    stats = {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0}
     for row_id in candidate_ids:
         row = _claim_row(row_id)
         if row is None:
@@ -663,7 +666,11 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
                     f"{code}:{count}" for code, count in sorted(failure_counts.items())
                 ) or result.get("error")
                 outcome = _finish_row(
-                    row["id"], attempt, sent=fully_delivered, error=failure_reason
+                    row["id"],
+                    attempt,
+                    sent=fully_delivered,
+                    error=failure_reason,
+                    partially_sent=confirmed > 0,
                 )
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside
