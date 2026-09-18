@@ -14,7 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
-import { DRIVER_CERAMIC } from '../theme/designV1Palette';
+import { useDriverCeramicColors } from '../theme/designV1';
 import { formatStatus } from '../utils/i18n';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
@@ -52,20 +52,20 @@ const INFO = "#3478D4";
 const ARCHIVE = "#7C8B82";
 const CANCELLED = "#A45A5A";
 
-const dealsPalette = (theme, isDark, isDriver) => isDriver ? ({
-  pageBg: DRIVER_CERAMIC.bg,
-  surface: DRIVER_CERAMIC.surface,
-  surfaceAlt: DRIVER_CERAMIC.surfaceMuted,
-  text: DRIVER_CERAMIC.text,
-  textSecondary: DRIVER_CERAMIC.textMuted,
-  textMuted: DRIVER_CERAMIC.textMuted,
-  border: DRIVER_CERAMIC.border,
-  headerBorder: DRIVER_CERAMIC.border,
-  shadow: DRIVER_CERAMIC.shadow,
-  accent: DRIVER_CERAMIC.active,
-  accentSoft: DRIVER_CERAMIC.activeSoft,
-  inactiveIcon: DRIVER_CERAMIC.textMuted,
-  chevron: DRIVER_CERAMIC.textMuted,
+const dealsPalette = (theme, isDark, isDriver, ceramic) => isDriver ? ({
+  pageBg: ceramic.bg,
+  surface: ceramic.surface,
+  surfaceAlt: ceramic.surfaceMuted,
+  text: ceramic.text,
+  textSecondary: ceramic.textMuted,
+  textMuted: ceramic.textMuted,
+  border: ceramic.border,
+  headerBorder: ceramic.border,
+  shadow: ceramic.shadow,
+  accent: ceramic.active,
+  accentSoft: ceramic.activeSoft,
+  inactiveIcon: ceramic.textMuted,
+  chevron: ceramic.textMuted,
   dimOpacity: 0.72,
 }) : ({
   pageBg: theme.bg,
@@ -292,9 +292,10 @@ function CompactDealCard({
 export default function DealsScreen({ navigation, route }) {
   const { t, lang, sp } = useI18n();
   const { theme, isDark } = useTheme();
+  const ceramic = useDriverCeramicColors();
   const role = route?.params?.role || 'client';
   const isDriver = role === 'driver';
-  const palette = useMemo(() => dealsPalette(theme, isDark, isDriver), [theme, isDark, isDriver]);
+  const palette = useMemo(() => dealsPalette(theme, isDark, isDriver, ceramic), [theme, isDark, isDriver, ceramic]);
   const roleAccent = isDriver ? palette.accent : (accentFor(role) || ACCENT);
   const copy = COPY[lang] || COPY.EN;
   const { requireLevel, Gate } = useVerificationGate();

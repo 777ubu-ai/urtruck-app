@@ -132,6 +132,42 @@ export const DRIVER_CERAMIC = {
   clientAccent: '#738396',
 };
 
+// Dark counterpart for the driver Ceramic surfaces.  The first Ceramic
+// rollout intentionally shipped as a light-only visual variant; once the
+// profile theme toggle became user-facing that made the four main driver
+// tabs stay light while Profile/Reviews turned dark.  Keep the same muted
+// blue-grey role identity, but use the global dark surface hierarchy so a
+// single theme selection applies to the whole signed-in app.
+export const DRIVER_CERAMIC_DARK = {
+  bg: '#0F1512',
+  surface: '#151E19',
+  surfaceMuted: '#202C25',
+  text: '#F3F7F4',
+  textMuted: '#B7C3BB',
+  border: '#2A3930',
+  active: '#8FA2B5',
+  activeSoft: '#24323A',
+  activeText: '#0F1512',
+  success: '#63D69A',
+  warning: '#F5B75B',
+  error: '#FF7B7B',
+  shadow: '#000000',
+  routeLine: '#3A4B40',
+  textDim: '#9EAAA2',
+  driver: '#8FA2B5',
+  driverDeep: '#73889D',
+  driverSoft: '#24323A',
+  driverOnAccent: '#0F1512',
+  statusAccepted: '#63D69A',
+  statusInProgress: '#8FA2B5',
+  statusAtBorder: '#F5B75B',
+  statusDelivered: '#63D69A',
+  statusReceived: '#63D69A',
+  statusCompleted: '#9EAAA2',
+  statusCancelled: '#7C8B82',
+  clientAccent: '#8FA2B5',
+};
+
 export const DARK = {
   bg: '#0F1512',
   bgDeep: '#0B100D',

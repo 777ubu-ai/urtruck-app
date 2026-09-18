@@ -899,12 +899,14 @@ export default function TripDetail({ navigation, route }) {
               onPress={async () => {
                 setReviewLoading(true);
                 try {
-                  await reviewsAPI.create({
+                  const result = await reviewsAPI.create({
+                    tripId: dealId || tid,
                     targetId: isShipper ? (driverId || trip.driverId) : shipperId,
                     targetRole: isShipper ? 'driver' : 'client',
                     rating: reviewRating,
                     text: reviewText.trim() || null,
                   });
+                  if (!result?.ok) throw new Error(result?.detail || 'review_failed');
                   setReviewSent(true);
                   toast(t('thanks_for_review'), 'success');
                 } catch {

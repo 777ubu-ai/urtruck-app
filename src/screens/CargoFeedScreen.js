@@ -32,31 +32,34 @@ import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import CompactFilterChip from '../components/ui/v1/CompactFilterChip';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
-import { DRIVER_CERAMIC } from '../theme/designV1Palette';
+import { useDriverCeramicColors } from '../theme/designV1';
 
-const ACCENT = DRIVER_CERAMIC.active;
-const ACCENT_SOFT = DRIVER_CERAMIC.activeSoft;
-const PAGE_BG = DRIVER_CERAMIC.bg;
+// StyleSheet defaults are immediately overridden with the resolved Ceramic
+// palette at render time. Keeping literal fallbacks here avoids undefined
+// values during module evaluation without making the live UI light-only.
+const ACCENT = '#738396';
+const ACCENT_SOFT = '#DDE4EA';
+const PAGE_BG = '#EEF2F5';
 const SURFACE = '#FFFFFF';
 const TEXT = '#17221D';
 const TEXT_SECONDARY = '#606B66';
 const TEXT_MUTED = '#718078';
 const BORDER = '#E5EAE7';
 
-const cargoPalette = () => ({
-  pageBg: DRIVER_CERAMIC.bg,
-  surface: DRIVER_CERAMIC.surface,
-  surfaceAlt: DRIVER_CERAMIC.surface,
-  text: DRIVER_CERAMIC.text,
-  textSecondary: DRIVER_CERAMIC.textMuted,
-  textMuted: DRIVER_CERAMIC.textMuted,
-  border: DRIVER_CERAMIC.border,
-  shadow: DRIVER_CERAMIC.shadow,
-  accent: ACCENT,
-  accentSoft: ACCENT_SOFT,
-  filterActive: ACCENT_SOFT,
-  favoriteBg: DRIVER_CERAMIC.surface,
-  priceText: DRIVER_CERAMIC.text,
+const cargoPalette = (ceramic) => ({
+  pageBg: ceramic.bg,
+  surface: ceramic.surface,
+  surfaceAlt: ceramic.surface,
+  text: ceramic.text,
+  textSecondary: ceramic.textMuted,
+  textMuted: ceramic.textMuted,
+  border: ceramic.border,
+  shadow: ceramic.shadow,
+  accent: ceramic.active,
+  accentSoft: ceramic.activeSoft,
+  filterActive: ceramic.activeSoft,
+  favoriteBg: ceramic.surface,
+  priceText: ceramic.text,
 });
 
 const COPY = {
@@ -216,7 +219,8 @@ function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
 
 export default function CargoFeedScreen({ navigation }) {
   const { t, lang } = useI18n();
-  const palette = useMemo(() => cargoPalette(), []);
+  const ceramic = useDriverCeramicColors();
+  const palette = useMemo(() => cargoPalette(ceramic), [ceramic]);
   const { session } = useAuth();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -409,7 +413,7 @@ export default function CargoFeedScreen({ navigation }) {
             {dirFrom ? localizePlace(dirFrom, lang) : dirFromCountry ? t(`country_${dirFromCountry}`) : t('city')}
           </Text>
         </TouchableOpacity>
-        <Feather name="arrow-right" size={24} color={ACCENT} />
+        <Feather name="arrow-right" size={24} color={palette.accent} />
         <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirToPicker(true)} testID="feed-route-to">
           <View style={styles.routeLabelRow}>
             <Feather name="flag" size={14} color={palette.textMuted} />
@@ -542,7 +546,7 @@ export default function CargoFeedScreen({ navigation }) {
             style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, !filterType && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
             onPress={() => setFilterType(null)}
           >
-            <Text style={[styles.bodyChipText, { color: palette.textSecondary }, !filterType && styles.bodyChipTextActive]}>{t('filter_all')}</Text>
+            <Text style={[styles.bodyChipText, { color: !filterType ? palette.accent : palette.textSecondary }]}>{t('filter_all')}</Text>
           </TouchableOpacity>
           {TRUCK_KEYS.map((key) => (
             <TouchableOpacity
@@ -550,7 +554,7 @@ export default function CargoFeedScreen({ navigation }) {
               style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, filterType === key && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
               onPress={() => setFilterType(filterType === key ? null : key)}
             >
-              <Text style={[styles.bodyChipText, { color: palette.textSecondary }, filterType === key && styles.bodyChipTextActive]}>{formatTruckType(key)}</Text>
+              <Text style={[styles.bodyChipText, { color: filterType === key ? palette.accent : palette.textSecondary }]}>{formatTruckType(key)}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -575,8 +579,8 @@ export default function CargoFeedScreen({ navigation }) {
             style={[styles.sortRow, { backgroundColor: palette.surface, borderColor: palette.border }, sortBy === key && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
             onPress={() => setSortBy(key)}
           >
-            <Text style={[styles.sortText, { color: palette.textSecondary }, sortBy === key && styles.sortTextActive]}>{label}</Text>
-            {sortBy === key ? <Feather name="check" size={18} color={ACCENT} /> : null}
+            <Text style={[styles.sortText, { color: sortBy === key ? palette.accent : palette.textSecondary }]}>{label}</Text>
+            {sortBy === key ? <Feather name="check" size={18} color={palette.accent} /> : null}
           </TouchableOpacity>
         ))}
         <View style={styles.sheetActions}>

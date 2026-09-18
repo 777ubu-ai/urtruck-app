@@ -27,6 +27,7 @@ import TruckMap from '../components/TruckMap';
 import TripMapInfoSheet from '../components/deal/TripMapInfoSheet';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
+import RatingModal from '../components/RatingModal';
 import Button from '../components/ui/v1/Button';
 import { useKeyboardDockInset } from '../components/ui/v1/KeyboardSafeLayout';
 import { chatAPI, documentKindFromFile } from '../utils/chatAPI';
@@ -58,6 +59,7 @@ import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
 import { SERVER_URL } from '../config/env';
+import { reviewsAPI } from '../utils/reviews';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
@@ -326,6 +328,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [attachOpen, setAttachOpen] = React.useState(false);
   const [callMenuOpen, setCallMenuOpen] = React.useState(false);
   const [statusModalOpen, setStatusModalOpen] = React.useState(false);
+  const [ratingModalOpen, setRatingModalOpen] = React.useState(false);
+  const [reviewEligibility, setReviewEligibility] = React.useState('idle');
+  const promptedReviewRef = React.useRef(null);
   const [recording, setRecording] = React.useState(false);
   const [emojiOpen, setEmojiOpen] = React.useState(false);
   const [recordSecs, setRecordSecs] = React.useState(0);
@@ -854,7 +859,40 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     await changeDealStatus(nextAction.key);
   }, [nextAction, startTrip, askConfirm, t, changeDealStatus]);
 
-  const recipientId = partner?.id || null;
+  const recipientId = partner?.id || (isDriver ? deal?.shipper_id : deal?.driver_id) || null;
+
+  // A completed transport must end with a visible two-sided review step.
+  // Check the server so an already submitted review is not requested again;
+  // when talking to an older backend without the eligibility endpoint, keep
+  // the completion CTA available and let POST /reviews enforce deduplication.
+  React.useEffect(() => {
+    if (deal?.status !== 'completed' || !recipientId || !dealId) {
+      setReviewEligibility('idle');
+      return undefined;
+    }
+    let cancelled = false;
+    setReviewEligibility('loading');
+    reviewsAPI.eligibility(recipientId, dealId)
+      .then((result) => {
+        if (cancelled) return;
+        const next = result?.eligible ? 'eligible' : result?.already_reviewed ? 'submitted' : 'unavailable';
+        setReviewEligibility(next);
+        if (next === 'eligible' && promptedReviewRef.current !== dealId) {
+          promptedReviewRef.current = dealId;
+          setRatingModalOpen(true);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const fallback = error?.status === 404 ? 'eligible' : 'error';
+        setReviewEligibility(fallback);
+        if (fallback === 'eligible' && promptedReviewRef.current !== dealId) {
+          promptedReviewRef.current = dealId;
+          setRatingModalOpen(true);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [deal?.status, recipientId, dealId]);
 
   // Shared by the composer, quick-reply, and call-link — every "send a fixed
   // string" action funnels through here so error handling (section 6) is
@@ -1706,6 +1744,22 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   ) : null}
                 </View>
 
+                {reviewEligibility === 'eligible' ? (
+                  <TouchableOpacity
+                    style={[s.reviewPrompt, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                    onPress={() => setRatingModalOpen(true)}
+                    testID="deal-review-prompt"
+                    accessibilityRole="button"
+                  >
+                    <Feather name="star" size={20} color="#D97706" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.reviewPromptTitle, { color: colors.text }]}>{t('leave_review')}</Text>
+                      <Text style={[s.reviewPromptText, { color: colors.textMuted }]}>{t('review_after_trip')}</Text>
+                    </View>
+                    <Feather name="chevron-right" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                ) : null}
+
                 {recording ? (
                   <View style={[s.recordBar, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]} testID="deal-chat-recording-bar">
                     <View style={s.recordDot} />
@@ -2016,6 +2070,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           onConfirm={() => settleConfirm(true)}
           testID="deal-workspace-confirm"
         />
+        <RatingModal
+          visible={ratingModalOpen}
+          onClose={() => setRatingModalOpen(false)}
+          onSubmitted={() => {
+            setReviewEligibility('submitted');
+            setRatingModalOpen(false);
+          }}
+          targetId={recipientId}
+          targetRole={isDriver ? 'client' : 'driver'}
+          targetName={partnerName}
+          tripId={dealId}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -2023,6 +2089,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
 const s = StyleSheet.create({
   historyNotice: { minHeight: 44, paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center' },
+  reviewPrompt: { minHeight: 58, marginHorizontal: 10, marginBottom: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  reviewPromptTitle: { fontSize: 14, lineHeight: 18, fontWeight: '800' },
+  reviewPromptText: { fontSize: 11.5, lineHeight: 15, fontWeight: '500', marginTop: 1 },
   safe: { flex: 1 },
   compactHeader: { minHeight: 96, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 8, paddingTop: 6, paddingBottom: 7, borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 20 },
   backButton: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center', marginTop: 3 },

@@ -15,7 +15,6 @@ import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import { useV1Colors, useDriverCeramicColors } from '../theme/designV1';
-import { DRIVER_CERAMIC } from '../theme/designV1Palette';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
@@ -181,17 +180,17 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const L = COPY[lang] || COPY.RU;
   const role = route?.params?.role || 'driver';
   const isDriver = role === 'driver';
-  const activeColor = isDriver ? DRIVER_CERAMIC.active : '#168759';
+  const activeColor = isDriver ? ceramic.active : '#168759';
   const v1 = isDriver ? ceramic : v1Base;
   const theme = isDriver ? {
     ...themeBase,
-    bg: DRIVER_CERAMIC.bg,
-    card: DRIVER_CERAMIC.surface,
-    surface: DRIVER_CERAMIC.surface,
-    text: DRIVER_CERAMIC.text,
-    textMuted: DRIVER_CERAMIC.textMuted,
-    textDim: DRIVER_CERAMIC.textDim,
-    border: DRIVER_CERAMIC.border,
+    bg: ceramic.bg,
+    card: ceramic.surface,
+    surface: ceramic.surface,
+    text: ceramic.text,
+    textMuted: ceramic.textMuted,
+    textDim: ceramic.textDim,
+    border: ceramic.border,
   } : themeBase;
   const { requireLevel } = useVerificationGate();
 
@@ -355,11 +354,11 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         )}
 
         {!selected ? <View style={[s.promptCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-lazy-prompt"><Feather name="mouse-pointer" size={20} color={activeColor} /><Text style={[s.promptText, { color: theme.textMuted }]}>{L.tap}</Text></View> : null}
-        {selected && liveLoading && !live ? <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: DRIVER_CERAMIC.border }]} testID="border-live-loading"><ActivityIndicator color={activeColor} size="large" /><Text style={[s.loadingText, { color: theme.textMuted }]}>{L.loading}</Text></View> : null}
+        {selected && liveLoading && !live ? <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: ceramic.border }]} testID="border-live-loading"><ActivityIndicator color={activeColor} size="large" /><Text style={[s.loadingText, { color: theme.textMuted }]}>{L.loading}</Text></View> : null}
         {selected && liveError ? <View style={[s.errorCard, { backgroundColor: theme.card }]}><Feather name="alert-circle" size={20} color="#B42318" /><Text style={[s.errorText, { color: theme.textMuted }]}>{liveError}</Text><TouchableOpacity onPress={() => loadLive(selected, true)}><Text style={s.retry}>{L.refresh}</Text></TouchableOpacity></View> : null}
 
         {selected && live ? (
-          <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: DRIVER_CERAMIC.border }]} testID="border-selected-card">
+          <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: ceramic.border }]} testID="border-selected-card">
             <View style={s.liveHeader}>
               <View style={{ flex: 1, paddingRight: 8 }}><Text style={[s.liveTitle, { color: theme.text }]}>{localizeCheckpointName({ ...selected, name: live.name || selected.name }, lang)}</Text><View style={s.liveCountryRow}>{selected.country ? <CountryFlag code={selected.country} width={20} /> : null}<Text style={[s.liveCountry, { color: theme.textMuted }]}>{selected.country ? countryName(selected.country) : ''}</Text></View></View>
               <TouchableOpacity onPress={toggleFavorite} style={[s.iconButton, { borderColor: theme.border }]} accessibilityRole="button" accessibilityLabel={t('a11y_toggle_favorite')} accessibilityState={{ selected: favorites.includes(String(selectedId)) }}><Feather name="star" size={19} color={activeColor} fill={favorites.includes(String(selectedId)) ? activeColor : 'transparent'} /></TouchableOpacity>
@@ -390,7 +389,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 const hasStandard = standardFree > 0;
                 const hasPremium = !hasStandard && premiumFree > 0;
                 return (
-                  <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? DRIVER_CERAMIC.active : hasPremium ? '#B58A52' : '#C98B8B', backgroundColor: item.is_day_off ? v1.bg : theme.card }]} testID="border-booking-date-card">
+                  <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? ceramic.active : hasPremium ? '#B58A52' : '#C98B8B', backgroundColor: item.is_day_off ? v1.bg : theme.card }]} testID="border-booking-date-card">
                     <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
                     {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim, fontSize: sp(9.5) }]}>{L.dayOff}</Text> : hasStandard ? <><Text style={s.dateFree}>{standardFree}</Text><Text style={[s.dateState, { color: activeColor, fontSize: sp(9.5) }]}>{L.standard}</Text><Text style={[s.dateAmount, { color: activeColor, fontSize: sp(8.5) }]}>{formatKztAmount(1)}</Text></> : hasPremium ? <><Text style={s.datePremium}>{premiumFree}</Text><Text style={[s.dateState, { color: '#B7791F', fontSize: sp(9.5) }]}>{L.premium}</Text><Text style={[s.dateAmount, { color: '#B7791F', fontSize: sp(8.5) }]}>{formatKztAmount(100)}</Text></> : <Text style={[s.dateState, { color: '#B42318', fontSize: sp(9.5) }]}>{L.noPlaces}</Text>}
                   </View>

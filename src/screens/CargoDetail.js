@@ -1022,7 +1022,8 @@ export default function CargoDetail({ navigation, route }) {
               onPress={async () => {
                 setReviewLoading(true);
                 try {
-                  await reviewsAPI.create({
+                  const result = await reviewsAPI.create({
+                    tripId: dealId || cid,
                     targetId: isShipper ? acceptedDriverId : shipperId,
                     // Backend reviews API accepts only 'driver' | 'client' (Pydantic pattern).
                     // Driver leaves review on the cargo owner — that's role 'client' on the server.
@@ -1030,6 +1031,7 @@ export default function CargoDetail({ navigation, route }) {
                     rating: reviewRating,
                     text: reviewText.trim() || null,
                   });
+                  if (!result?.ok) throw new Error(result?.detail || 'review_failed');
                   setReviewSent(true);
                   toast(t('thanks_for_review'), 'success');
                 } catch {
