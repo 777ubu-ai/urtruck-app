@@ -39,3 +39,14 @@ test('country setup renders the selected ISO as the shared round flag', () => {
   assert.match(country, /countryCode=\{draft\.driver_citizenship_country_code\}/);
   assert.match(country, /countryCode=\{draft\.vehicle_registration_country_code\}/);
 });
+
+test('lost auth never exposes no_token and returns vehicle setup to sign-in safely', () => {
+  const registration = read('src/utils/registration.js');
+  assert.match(registration, /function authRequiredResult\(\)/);
+  assert.match(registration, /detail:\s*tGlobal\('session_expired'\)/);
+  assert.doesNotMatch(registration, /detail:\s*'no_token'/);
+  assert.match(country, /if \(saved\.authRequired\)/);
+  assert.match(country, /Alert\.alert/);
+  assert.match(country, /onPress:\s*\(\) => signOut\(\)/);
+  assert.match(country, /storage\.set\(KEY, JSON\.stringify\(next\)\)/);
+});

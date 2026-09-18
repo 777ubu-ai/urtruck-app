@@ -27,6 +27,19 @@ function normalizeDetail(d, fallback) {
   return String(d);
 }
 
+// Never expose an internal storage condition such as `no_token` in UI.
+// A missing or rejected bearer is an expired authentication session; callers
+// can use authRequired to return the user to sign-in without creating a guest
+// identity and accidentally attaching private data to the wrong account.
+function authRequiredResult() {
+  return {
+    ok: false,
+    authRequired: true,
+    error: 'AUTH_REQUIRED',
+    detail: tGlobal('session_expired'),
+  };
+}
+
 // P0 fix (TestFlight): на нативном iOS/Android НЕЛЬЗЯ слать Blob,
 // полученный через fetch(file://uri).blob() — RN отдаёт пустой/битый
 // файл и backend отвечает 4xx («Не удалось загрузить фото»). Правильный
@@ -289,7 +302,7 @@ export const regAPI = {
   // (Pydantic по умолчанию ignores), ничего не ломается.
   async updateProfile(payload = {}) {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
 
     const allowed = [
       'name', 'city', 'about', 'phone', 'role',
@@ -319,7 +332,7 @@ export const regAPI = {
 
   async uploadProDoc(kind, uri, onProgress) {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     onProgress?.('compressing');
     const compressedUri = await compressImage(uri, { preset: 'document' });
     onProgress?.('uploading');
@@ -582,13 +595,14 @@ export const regAPI = {
   // { ok:false } при сетевой ошибке, чтобы UI не вис.
   async saveDriverDraft(payload = {}) {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${DRIVER_REG_BASE}/draft`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
+      if (r.status === 401) return authRequiredResult();
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
@@ -605,12 +619,13 @@ export const regAPI = {
 
   async completeBasic() {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${DRIVER_REG_BASE}/complete-basic`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
       });
+      if (r.status === 401) return authRequiredResult();
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
@@ -628,12 +643,13 @@ export const regAPI = {
   // ТЗ §9 — отправка заявки на проверку (стартовый скоринг на бэке).
   async submitDriverRegistration() {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${DRIVER_REG_BASE}/submit`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
       });
+      if (r.status === 401) return authRequiredResult();
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
