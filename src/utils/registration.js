@@ -333,7 +333,7 @@ export const regAPI = {
   // Безопасная смена телефона: generic PATCH намеренно не принимает phone.
   async requestPhoneChange(phone, channel = 'whatsapp') {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${API_BASE}/users/me/phone-change/request`, {
         method: 'POST',
@@ -346,13 +346,13 @@ export const regAPI = {
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 
   async confirmPhoneChange(phone, code) {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${API_BASE}/users/me/phone-change/confirm`, {
         method: 'POST',
@@ -366,7 +366,7 @@ export const regAPI = {
       if (data.token) await storage.set(TOKEN_KEY, data.token);
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 
