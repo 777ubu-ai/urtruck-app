@@ -112,7 +112,7 @@ jobs:
               print(f"DEAD_CATEGORY {row['category']}={row['count']}")
           for row in conn.execute("SELECT event_type, COUNT(*) count FROM push_outbox WHERE status='dead' GROUP BY event_type ORDER BY count DESC"):
               print(f"DEAD_EVENT {row['event_type']}={row['count']}")
-          for row in conn.execute("SELECT push_provider, platform, COUNT(*) count FROM push_devices WHERE active=1 GROUP BY push_provider, platform ORDER BY count DESC"):
+          for row in conn.execute("SELECT push_provider, platform, COUNT(*) count FROM push_devices WHERE enabled=1 AND invalidated_at IS NULL GROUP BY push_provider, platform ORDER BY count DESC"):
               print(f"ACTIVE_DEVICE {row['push_provider']}/{row['platform']}={row['count']}")
           conn.close()
 
