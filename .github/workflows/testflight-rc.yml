@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - main
+      - qa/master-hard-qa-20260916
     paths:
       - .github/workflows/testflight-rc.yml
 
