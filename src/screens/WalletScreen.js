@@ -10,6 +10,7 @@ import { fetchRates } from '../utils/exchangeRates';
 import { useMountedRef } from '../hooks/useMountedRef';
 import GradientText from '../components/GradientText';
 import Feather from '@expo/vector-icons/Feather';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 
 // Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
 // Wallet display + FX widget reduced to the same set so the picker
@@ -27,7 +28,7 @@ const TYPE_ICONS = { deal_income: '💰', topup: '↑', contact_purchase: '👤'
 
 // FX widget shows USD → {KZT, CNY, RUB}. UZS removed in Stage 5.
 const FX_PAIRS = ['KZT', 'CNY', 'RUB'];
-const FX_FLAGS = { KZT: '🇰🇿', CNY: '🇨🇳', RUB: '🇷🇺' };
+const FX_COUNTRIES = { KZT: 'KZ', CNY: 'CN', RUB: 'RU' };
 
 export default function WalletScreen({ route }) {
   const v1 = useV1Colors();
@@ -115,7 +116,7 @@ export default function WalletScreen({ route }) {
                   : rate.toFixed(2);
                 return (
                   <View key={code} style={[s.fxCard, { borderColor: theme.border }]}>
-                    <Text style={s.fxFlag}>{FX_FLAGS[code]}</Text>
+                    <CountryFlag code={FX_COUNTRIES[code]} width={28} height={18} compact testID={`wallet-fx-flag-${code}`} />
                     <Text style={[s.fxPair, { color: theme.textMuted }]}>USD / {code}</Text>
                     <Text style={[s.fxRate, { color: theme.text }]}>{formatted}</Text>
                   </View>

@@ -96,7 +96,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // Design v1 Commit 3: карточка объявления — каноническая MarketplaceCard
   // (radius 16, padding 16, border, без тени). Экран оставляет только
   // ленточный spacing (marginBottom 8 — плотность списка сохранена).
-  cardSpacing: { marginBottom: 8 },
+  cardSpacing: { marginBottom: 5 },
   // Дизайн 2026 v3: плашка «N предложений» — outline вместо заливки,
   // компактнее (меньше 32px), шрифт 12. Не «кричит».
   offersCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: v1Spacing.sm, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: v1.clientAccent || v1.warning, backgroundColor: 'transparent' },
@@ -115,9 +115,9 @@ export default function MyTripsScreen({ navigation, route }) {
   editBtnText: { color: v1.active || v1.driver, fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
   extendBtn: { flex: 1, backgroundColor: v1.active || v1.driver, borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
   extendBtnText: { color: v1.activeText || v1.driverOnAccent || '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
-  clientTopRow: { minHeight: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: v1.bg },
+  clientTopRow: { minHeight: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: v1.bg },
   clientTopTitle: { flex: 1, color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
-  clientCreateBtn: { width: 144, height: 40, borderRadius: 14, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surfaceMuted, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, shadowColor: v1.shadow, shadowOpacity: 0.12, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  clientCreateBtn: { width: 112, height: 40, borderRadius: 14, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surfaceMuted, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, shadowColor: v1.shadow, shadowOpacity: 0.12, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   clientCreateText: { color: v1.text, fontSize: 13, fontWeight: '700' },
   clientTabsRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
   clientTab: { flex: 1, minHeight: 40, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
@@ -392,6 +392,7 @@ export default function MyTripsScreen({ navigation, route }) {
     return (
       <MarketplaceCard
         variant={isDriver ? 'driver' : 'shipper'}
+        compact
         testID={isCargo ? 'my-cargo-card' : 'my-trip-card'}
         style={s.cardSpacing}
         onPress={() => {
@@ -407,7 +408,7 @@ export default function MyTripsScreen({ navigation, route }) {
           to: localizePlace(to, lang),
           fromFlag: flagCodeOrNull(item.from_country),
           toFlag: flagCodeOrNull(item.to_country),
-          numberOfLines: 2,
+          numberOfLines: 1,
         }}
         price={formatPrice(item.price, item.currency, t)}
         priceMeta={dateText}
@@ -576,6 +577,7 @@ export default function MyTripsScreen({ navigation, route }) {
     return (
       <MarketplaceCard
         variant={isDriver ? 'driver' : 'default'}
+        compact
         dimmed
         style={s.cardSpacing}
         route={{
@@ -583,7 +585,7 @@ export default function MyTripsScreen({ navigation, route }) {
           to: localizePlace(to, lang),
           fromFlag: flagCodeOrNull(item.from_country),
           toFlag: flagCodeOrNull(item.to_country),
-          numberOfLines: 2,
+          numberOfLines: 1,
         }}
         status={{ key: 'unpublished', label: formatStatus(item.status || 'unpublished'), color: v1.textDim }}
       >
@@ -630,7 +632,7 @@ export default function MyTripsScreen({ navigation, route }) {
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
       <DriverRouteBackdrop />
-      {isDriver ? <RootHeader ceramic navigation={navigation} role={role} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={async () => {
+      {isDriver ? <RootHeader ceramic navigation={navigation} role={role} title={t('my_trips_title')} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={async () => {
             const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
             if (ok) navigation.navigate('PushFilter', { role });
           }} /> : (
@@ -659,10 +661,6 @@ export default function MyTripsScreen({ navigation, route }) {
         renderItem={listRender}
         ListHeaderComponent={(
           <>
-            <View style={[s.titleBlock, !isDriver && { display: 'none' }]}>
-              <Text style={s.titleHero}>{isDriver ? t('my_trips_title') : t('my_cargos_title')}</Text>
-              <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
-            </View>
             {isDriver ? (
               <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
                 <TouchableOpacity

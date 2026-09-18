@@ -15,4 +15,4 @@ export default function CompactFilterChip({ icon, label, active = false, onPress
     </TouchableOpacity>
   );
 }
-const s = StyleSheet.create({ chip: { height: 40, minWidth: 42, paddingHorizontal: 11, borderRadius: 20, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }, label: { fontSize: 13, lineHeight: 18, fontWeight: '600', flexShrink: 1 } });
+const s = StyleSheet.create({ chip: { height: 38, minWidth: 42, paddingHorizontal: 10, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 5 }, label: { fontSize: 12.5, lineHeight: 17, fontWeight: '600', flexShrink: 1 } });

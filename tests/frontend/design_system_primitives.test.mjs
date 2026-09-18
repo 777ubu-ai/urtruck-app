@@ -215,8 +215,9 @@ test('CountryFlag uses bundled standards SVG and resolves ISO codes only', () =>
   const ru = countryFlagXml('RU');
   const cn = countryFlagXml('CN');
   assert.ok(kz && ru && cn, 'known codes resolve to local SVG');
-  assert.match(kz, /#36B6CC/i, 'KZ field is the official cyan blue');
-  assert.doesNotMatch(kz, /#FEC50C/i, 'KZ has no fabricated yellow bottom stripe');
+  assert.match(kz, /#00AFCA/i, 'KZ uses the approved local cyan field');
+  assert.match(kz, /circle|sun/i, 'KZ includes a local sun mark');
+  assert.match(kz, /stroke="#F6C744"|steppe/i, 'KZ includes a local ornament/eagle mark');
   assert.notEqual(kz, ru);
   assert.notEqual(kz, cn);
   assert.equal(countryFlagXml('XX'), null);
@@ -232,7 +233,7 @@ test('CountryFlag renders an SVG frame and a clear unknown fallback', () => {
   const unknownBg = flatten(unknown.props.style).backgroundColor;
   assert.equal(unknownBg, '#DDE6E0', 'unknown flag = grey fallback');
   const mark = findByType(unknown, 'Text')[0];
-  assert.equal(mark.children[0], '?');
+  assert.equal(mark.children[0], 'XX');
 });
 
 // ══ 5. Chat bubble colors ════════════════════════════════════════════

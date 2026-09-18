@@ -19,9 +19,9 @@ import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import { PhotoGallery } from '../components/PhotoGallery';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 
 const TCOLORS = { tent: '#168759', ref: '#16A34A', platform: '#E06D00', auto: '#7C3AED', izoterm: '#059669' };
-const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳' };
 const REPORT_REASONS = ['report_reason_fraud', 'report_reason_noshow', 'report_reason_rude', 'report_reason_other'];
 
 export default function DriverDetail({ navigation, route }) {
@@ -170,7 +170,7 @@ export default function DriverDetail({ navigation, route }) {
         {/* Identity card — branded with the role accent */}
         <GlassCard accent={v1Accent.main} style={{ alignItems: 'center', paddingVertical: 22 }}>
           <View style={[s.avatar, { backgroundColor: (TCOLORS[tt] || '#666') + '22', borderColor: v1Accent.main }]}>
-            <Text style={{ fontSize: 32 }}>{FLAGS[driver.country] || '🏳️'}</Text>
+            <CountryFlag code={driver.country} width={48} height={32} compact testID="driver-country-flag" />
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
             <Text style={[s.name, { color: v1.text }]}>{driverName}</Text>

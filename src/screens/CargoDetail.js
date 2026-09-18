@@ -46,8 +46,7 @@ import SecondaryButton from '../components/ui/actions/SecondaryButton';
 import DestructiveButton from '../components/ui/actions/DestructiveButton';
 import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
-
-const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
+import CountryFlag from '../components/ui/v1/CountryFlag';
 
 // HOT-003: скрываем техмусор из description (остатки init_db, стектрейсы и т.п.)
 const TRASH_RE = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
@@ -583,8 +582,11 @@ export default function CargoDetail({ navigation, route }) {
               opacity: (b.status === 'rejected' || isCancelled) ? 0.55 : 1,
             }]}>
               <View style={s.bidLeft}>
-                <View style={[s.bidFlag, { backgroundColor: b.status === 'accepted' ? '#168759' : b.isMine ? '#168759' : theme.border }]}>
-                  <Text style={{ fontSize: 14 }}>{b.isMine ? '🫵' : b.status === 'accepted' ? '✅' : isCountered ? '🔁' : (FLAGS[b.co] || '🏳️')}</Text>
+                <View style={[s.bidFlag, { backgroundColor: b.status === 'accepted' || b.isMine ? '#168759' : theme.border }]}>
+                  {b.isMine ? <Feather name="user" size={15} color="#FFFFFF" />
+                    : b.status === 'accepted' ? <Feather name="check" size={16} color="#FFFFFF" />
+                      : isCountered ? <Feather name="repeat" size={16} color={theme.text} />
+                        : <CountryFlag code={b.co} width={28} height={18} compact testID={`bid-country-${b.id}`} />}
                 </View>
                 <View style={{ flex: 1 }}>
                   <TouchableOpacity

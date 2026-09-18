@@ -32,7 +32,7 @@ test('unified list feeds have compact filter controls, bookmarks and no cargo ty
   assert.match(cargoFeed, /CompactFilterChip/);
   assert.match(cargoFeed, /filterPill\('date',[\s\S]*'calendar'/);
   assert.match(cargoFeed, /filterPill\('body',[\s\S]*'truck'/);
-  assert.match(cargoFeed, /filterPill\('price',[\s\S]*'dollar-sign'/);
+  assert.match(cargoFeed, /filterPill\('capacity',[\s\S]*'truck'/);
   assert.match(cargoFeed, /icon="bookmark"/);
   assert.doesNotMatch(cargoFeed, /badge:\s*\{/);
   assert.doesNotMatch(cargoFeed, /heart/);

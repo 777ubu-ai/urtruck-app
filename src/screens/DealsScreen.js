@@ -50,6 +50,7 @@ const AT_BORDER = "#B45800";
 const INFO = "#3478D4";
 const ARCHIVE = "#7C8B82";
 const CANCELLED = "#A45A5A";
+const ACTIVE_STATE = '#168759';
 
 const dealsPalette = (theme, isDark, isDriver) => isDriver ? ({
   pageBg: DRIVER_CERAMIC.bg,
@@ -173,9 +174,9 @@ const parseServerDate = (raw) => {
 
 const dealStatus = (status, t, activeColor = ACCENT) => {
   if (status === "accepted")
-    return { label: t("status_accepted"), color: activeColor };
+    return { label: t("status_accepted"), color: ACTIVE_STATE };
   if (status === "in_progress") {
-    return { label: t("status_in_progress"), color: activeColor };
+    return { label: t("status_in_progress"), color: ACTIVE_STATE };
   }
   // Design v1 Commit 4: the list used to collapse at_border into the
   // in_progress label («В работе»). at_border has its own dedicated key
@@ -188,7 +189,7 @@ const dealStatus = (status, t, activeColor = ACCENT) => {
     return { label: t("status_awaiting_receipt"), color: INFO };
   }
   if (status === 'received') {
-    return { label: t('status_received'), color: activeColor };
+    return { label: t('status_received'), color: ACTIVE_STATE };
   }
   if (status === 'completed') {
     return { label: t('status_completed'), color: ARCHIVE };
@@ -274,6 +275,7 @@ function CompactDealCard({
       testID={testID}
       onPress={onPress}
       style={styles.card}
+      compact
       route={routeLabel}
       price={price}
       priceMeta={priceMeta}
@@ -295,6 +297,7 @@ export default function DealsScreen({ navigation, route }) {
   const isDriver = role === 'driver';
   const palette = useMemo(() => dealsPalette(theme, isDark, isDriver), [theme, isDark, isDriver]);
   const roleAccent = isDriver ? palette.accent : (accentFor(role) || ACCENT);
+  const tabPalette = useMemo(() => ({ ...palette, accent: ACTIVE_STATE, accentSoft: '#E6F4EC' }), [palette]);
   const copy = COPY[lang] || COPY.EN;
   const { requireLevel, Gate } = useVerificationGate();
 
@@ -725,7 +728,7 @@ export default function DealsScreen({ navigation, route }) {
           attentionCount={offerAttentionCount}
           active={dealTab === 'offers'}
           onPress={() => setDealTab('offers')}
-          colors={palette}
+          colors={tabPalette}
           sp={sp}
         />
         <TabChip
@@ -735,7 +738,7 @@ export default function DealsScreen({ navigation, route }) {
           attentionCount={activeAttentionCount}
           active={dealTab === 'active'}
           onPress={() => setDealTab('active')}
-          colors={palette}
+          colors={tabPalette}
           sp={sp}
         />
         <TabChip
@@ -745,7 +748,7 @@ export default function DealsScreen({ navigation, route }) {
           active={dealTab === 'archive'}
           onPress={() => setDealTab('archive')}
           icon="archive"
-          colors={palette}
+          colors={tabPalette}
           sp={sp}
         />
       </View>
@@ -993,7 +996,7 @@ const styles = StyleSheet.create({
   },
   // Design v1 Commit 3: the card chrome lives in MarketplaceCard (radius
   // 16, border-only, StatusPill); the inbox keeps list spacing only.
-  card: { marginHorizontal: 18, marginBottom: 8 },
+  card: { marginHorizontal: 18, marginBottom: 5 },
   emptyText: {
     marginTop: 58,
     paddingHorizontal: 24,
