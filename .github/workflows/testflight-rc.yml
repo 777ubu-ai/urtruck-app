@@ -58,10 +58,14 @@ jobs:
             ...(eas.build.production.env || {}),
             EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
             EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY,
-            EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY,
-            YANDEX_ROUTER_API_KEY: process.env.YANDEX_ROUTER_API_KEY,
-            OPENROUTESERVICE_API_KEY: process.env.OPENROUTESERVICE_API_KEY
+            EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY
           };
+          if (process.env.YANDEX_ROUTER_API_KEY) {
+            eas.build.production.env.YANDEX_ROUTER_API_KEY = process.env.YANDEX_ROUTER_API_KEY;
+          }
+          if (process.env.OPENROUTESERVICE_API_KEY) {
+            eas.build.production.env.OPENROUTESERVICE_API_KEY = process.env.OPENROUTESERVICE_API_KEY;
+          }
           fs.writeFileSync('eas.json', JSON.stringify(eas, null, 2) + '\n');
           NODE
 
