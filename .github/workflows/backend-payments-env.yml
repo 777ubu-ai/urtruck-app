@@ -48,7 +48,8 @@ jobs:
           json.loads(sa)  # валидация: это корректный JSON
           assert "'" not in sa, "unexpected single quote in service account JSON"
           with open("/tmp/env_patch", "w", encoding="utf-8") as f:
-              f.write("URTRUCK_ENV=production\n")
+              f.write("URTRUCK_ENV=preview\n")
+              f.write("ENV=preview\n")
               f.write("DB_PATH=/home/ubuntu/urtruck-pro-test/backend/database/security.db\n")
               f.write("PREMIUM_CONTACT_LIMIT=30\n")
               f.write("CONTACTS_MONETIZATION_ENABLED=true\n")
