@@ -398,14 +398,54 @@ const CARGO_INDEX = Object.fromEntries(
   Object.entries(CARGO_DICT).map(([key, value]) => [key.toLocaleLowerCase('ru-RU'), value]),
 );
 
+// Legacy/QA rows may contain an internal English key, sometimes glued to a
+// localized value without a separator (for example
+// `Аяқ киімHome_appliances_in_boxes`). Keep the repair deliberately narrow:
+// arbitrary participant-entered descriptions must stay untouched.
+const CARGO_MACHINE_ALIASES = {
+  home_appliances_in_boxes: 'Бытовая техника',
+};
+
+const CARGO_VARIANT_INDEX = new Map();
+for (const [ru, variants] of Object.entries(CARGO_DICT)) {
+  CARGO_VARIANT_INDEX.set(ru.toLocaleLowerCase('ru-RU'), ru);
+  if (variants.zh) CARGO_VARIANT_INDEX.set(variants.zh.toLocaleLowerCase('zh-CN'), ru);
+  if (variants.en) CARGO_VARIANT_INDEX.set(variants.en.toLocaleLowerCase('en-US'), ru);
+  if (CARGO_KK[ru]) CARGO_VARIANT_INDEX.set(CARGO_KK[ru].toLocaleLowerCase('kk-KZ'), ru);
+}
+
+const canonicalCargoName = (raw) => {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const machineKey = value.toLowerCase().replace(/[\s-]+/g, '_');
+  return CARGO_MACHINE_ALIASES[machineKey]
+    || CARGO_VARIANT_INDEX.get(value.toLocaleLowerCase('ru-RU'))
+    || value;
+};
+
+const localizeSingleCargoName = (raw, lang) => {
+  const key = canonicalCargoName(raw);
+  const e = CARGO_DICT[key] || CARGO_INDEX[key.toLocaleLowerCase('ru-RU')];
+  if (lang === 'ru') return key;
+  if (lang === 'kk') return CARGO_KK[key] || e?.en || key;
+  if (lang === 'zh' || lang === 'en') return (e && e[lang]) ? e[lang] : key;
+  return key;
+};
+
 export function localizeCargoName(raw, lang) {
   const l = String(lang || '').toLowerCase();
-  if (!raw || l === 'ru') return raw;
+  if (!raw) return raw;
   const key = String(raw).trim();
-  const e = CARGO_DICT[key] || CARGO_INDEX[key.toLocaleLowerCase('ru-RU')];
-  if (l === 'kk') return CARGO_KK[key] || e?.en || raw;
-  if (l === 'zh' || l === 'en') return (e && e[l]) ? e[l] : raw;
-  return raw;
+  const machineSuffix = Object.keys(CARGO_MACHINE_ALIASES)
+    .find((alias) => key.toLowerCase().endsWith(alias) && key.length > alias.length);
+  if (machineSuffix) {
+    const prefix = key.slice(0, -machineSuffix.length).trim();
+    return [prefix, machineSuffix]
+      .filter(Boolean)
+      .map((part) => localizeSingleCargoName(part, l))
+      .join(' · ');
+  }
+  return localizeSingleCargoName(key, l);
 }
 
 export function localizeSystemMessage(raw, lang) {
