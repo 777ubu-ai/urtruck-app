@@ -18,10 +18,24 @@ on:
 jobs:
   update-env:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
+      - name: Checkout Pro Test source
+        uses: actions/checkout@v4
+
       - name: Install sshpass
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
+      - name: Package isolated backend source
+        run: |
+          set -euo pipefail
+          tar -czf /tmp/pro-test-backend.tgz \
+            --exclude='backend/.env' \
+            --exclude='backend/venv' \
+            --exclude='backend/__pycache__' \
+            --exclude='backend/database/*.db*' \
+            backend
+          test -s /tmp/pro-test-backend.tgz
 
       - name: Build env patch and merge script
         env:
@@ -34,6 +48,8 @@ jobs:
           json.loads(sa)  # валидация: это корректный JSON
           assert "'" not in sa, "unexpected single quote in service account JSON"
           with open("/tmp/env_patch", "w", encoding="utf-8") as f:
+              f.write("URTRUCK_ENV=production\n")
+              f.write("DB_PATH=/home/ubuntu/urtruck-pro-test/backend/database/security.db\n")
               f.write("PREMIUM_CONTACT_LIMIT=30\n")
               f.write("CONTACTS_MONETIZATION_ENABLED=true\n")
               f.write("DEAL_ACCEPT_MONETIZATION_ENABLED=true\n")
@@ -81,10 +97,10 @@ jobs:
         run: |
           set -euo pipefail
           sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=accept-new \
-            /tmp/env_patch /tmp/merge_env.py \
+            /tmp/pro-test-backend.tgz /tmp/env_patch /tmp/merge_env.py \
             "$SSH_USER@$SSH_HOST":/tmp/
 
-      - name: Backup .env and apply patch
+      - name: Deploy isolated backend and apply env patch
         env:
           SSH_USER: ${{ secrets.PRO_TEST_SERVER_USER || secrets.SERVER_USER }}
           SSH_HOST: ${{ secrets.PRO_TEST_SERVER_HOST || secrets.SERVER_HOST }}
@@ -93,11 +109,27 @@ jobs:
           set -euo pipefail
           sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" '
             set -euo pipefail
-            cd /home/ubuntu/urtruck-pro-test/backend
-            test -f .env
-            cp .env ".env.bak.payments-$(date +%Y%m%d_%H%M%S)"
-            python3 /tmp/merge_env.py /tmp/env_patch .env
-            rm -f /tmp/env_patch /tmp/merge_env.py
+            TARGET=/home/ubuntu/urtruck-pro-test/backend
+            mkdir -p "$TARGET/database"
+            if [ ! -f "$TARGET/.env" ]; then
+              for SOURCE_ENV in /home/ubuntu/urtruck-security/.env /home/ubuntu/urtruck/backend/.env; do
+                if [ -f "$SOURCE_ENV" ]; then
+                  cp "$SOURCE_ENV" "$TARGET/.env"
+                  chmod 600 "$TARGET/.env"
+                  break
+                fi
+              done
+            fi
+            test -f "$TARGET/.env"
+            cp "$TARGET/.env" "$TARGET/.env.bak.payments-$(date +%Y%m%d_%H%M%S)"
+            tar -xzf /tmp/pro-test-backend.tgz -C "$TARGET" --strip-components=1
+            python3 /tmp/merge_env.py /tmp/env_patch "$TARGET/.env"
+            cd "$TARGET"
+            if [ ! -x venv/bin/python ]; then
+              python3 -m venv venv
+            fi
+            venv/bin/python -m pip install --disable-pip-version-check -q -r requirements.txt
+            rm -f /tmp/pro-test-backend.tgz /tmp/env_patch /tmp/merge_env.py
           '
 
       - name: Validate config parses, restart uvicorn, verify
