@@ -71,9 +71,9 @@ jobs:
 
       - name: Copy patch to server
         env:
-          SSH_USER: ${{ secrets.PRO_TEST_SERVER_USER }}
-          SSH_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
-          SSH_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
+          SSH_USER: ${{ secrets.PRO_TEST_SERVER_USER || secrets.SERVER_USER }}
+          SSH_HOST: ${{ secrets.PRO_TEST_SERVER_HOST || secrets.SERVER_HOST }}
+          SSH_PASS: ${{ secrets.PRO_TEST_SERVER_PASS || secrets.SERVER_PASS }}
         run: |
           set -euo pipefail
           sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=accept-new \
@@ -82,9 +82,9 @@ jobs:
 
       - name: Backup .env and apply patch
         env:
-          SSH_USER: ${{ secrets.PRO_TEST_SERVER_USER }}
-          SSH_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
-          SSH_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
+          SSH_USER: ${{ secrets.PRO_TEST_SERVER_USER || secrets.SERVER_USER }}
+          SSH_HOST: ${{ secrets.PRO_TEST_SERVER_HOST || secrets.SERVER_HOST }}
+          SSH_PASS: ${{ secrets.PRO_TEST_SERVER_PASS || secrets.SERVER_PASS }}
         run: |
           set -euo pipefail
           sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" '
@@ -98,9 +98,9 @@ jobs:
 
       - name: Validate config parses, restart uvicorn, verify
         env:
-          SSH_USER: ${{ secrets.PRO_TEST_SERVER_USER }}
-          SSH_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
-          SSH_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
+          SSH_USER: ${{ secrets.PRO_TEST_SERVER_USER || secrets.SERVER_USER }}
+          SSH_HOST: ${{ secrets.PRO_TEST_SERVER_HOST || secrets.SERVER_HOST }}
+          SSH_PASS: ${{ secrets.PRO_TEST_SERVER_PASS || secrets.SERVER_PASS }}
         run: |
           set -euo pipefail
           sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" '
