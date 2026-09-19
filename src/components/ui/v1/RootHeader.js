@@ -5,12 +5,12 @@ import { useV1Colors, useDriverCeramicColors } from '../../../theme/designV1';
 import HeaderMenuButton from './HeaderMenuButton';
 
 /** Canonical root header: profile/menu only. Native push + tab badges remain active. */
-export default function RootHeader({ navigation, role, testID = 'root-header', menuTestID, ceramic = false, showBack = false }) {
+export default function RootHeader({ navigation, role, testID = 'root-header', menuTestID, ceramic = false, showBack = false, compact = false }) {
   const colors = useV1Colors();
   const ceramicColors = useDriverCeramicColors();
   const palette = ceramic ? ceramicColors : colors;
   return (
-    <View style={[s.row, showBack && s.rowWithBack, { backgroundColor: palette.bg }]} testID={testID}>
+    <View style={[s.row, compact && s.compact, showBack && s.rowWithBack, { backgroundColor: palette.bg }]} testID={testID}>
       {showBack ? (
         <TouchableOpacity
           accessibilityRole="button"
@@ -29,6 +29,7 @@ export default function RootHeader({ navigation, role, testID = 'root-header', m
 
 const s = StyleSheet.create({
   row: { minHeight: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
+  compact: { minHeight: 42, height: 42, paddingHorizontal: 12 },
   rowWithBack: { justifyContent: 'space-between' },
   back: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
 });
