@@ -69,6 +69,15 @@ jobs:
           fs.writeFileSync('eas.json', JSON.stringify(eas, null, 2) + '\n');
           NODE
 
+      - name: Select Xcode 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE_APP=$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' | sort -V | tail -1)
+          test -n "$XCODE_APP"
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+
       - name: Build signed IPA locally
         shell: bash
         run: |
