@@ -1,0 +1,87 @@
+name: UrTruck TestFlight Local Fallback
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-testflight-local
+  cancel-in-progress: true
+
+jobs:
+  build-and-upload:
+    runs-on: macos-15
+    timeout-minutes: 180
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_API_URL: https://urtruck.kz
+      EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+      EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+      YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+
+    steps:
+      - name: Checkout exact release candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify exact branch and credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "fix/cgr-border-deal-integration-20260919"
+          test -n "${EXPO_TOKEN:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
+          echo "SHA=$(git rev-parse HEAD)"
+          npx eas-cli@latest whoami
+
+      - name: Inject release runtime configuration
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          eas.build.production.env = {
+            ...(eas.build.production.env || {}),
+            EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+            EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY,
+            EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY,
+            YANDEX_ROUTER_API_KEY: process.env.YANDEX_ROUTER_API_KEY,
+            OPENROUTESERVICE_API_KEY: process.env.OPENROUTESERVICE_API_KEY
+          };
+          fs.writeFileSync('eas.json', JSON.stringify(eas, null, 2) + '\n');
+          NODE
+
+      - name: Build signed IPA locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx eas-cli@latest build --platform ios --profile production --local --non-interactive --output "$RUNNER_TEMP/UrTruck.ipa"
+          test -s "$RUNNER_TEMP/UrTruck.ipa"
+          shasum -a 256 "$RUNNER_TEMP/UrTruck.ipa" | tee "$RUNNER_TEMP/UrTruck.ipa.sha256"
+
+      - name: Upload private IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-TestFlight-IPA
+          path: |
+            ${{ runner.temp }}/UrTruck.ipa
+            ${{ runner.temp }}/UrTruck.ipa.sha256
+          retention-days: 14
+
+      - name: Submit IPA to TestFlight
+        shell: bash
+        run: npx eas-cli@latest submit --platform ios --profile production --path "$RUNNER_TEMP/UrTruck.ipa" --non-interactive --wait
