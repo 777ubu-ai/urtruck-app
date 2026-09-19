@@ -36,10 +36,21 @@ test('driver enables CGR watch only on the canonical backend and an active selec
   assert.match(border, /response\.ok\) setWatchEnabled\(true\)/);
 });
 
-test('shipper does not get the manual plate workflow; driver keeps it as secondary action', () => {
-  assert.match(border, /isDriver && showManualLookup \? <View[\s\S]*testID="border-plate-search"/);
-  assert.match(border, /R\.checkOther/);
-  assert.match(border, /manualLookup/);
+test('driver and shipper keep manual CGR lookup secondary and privacy scoped', () => {
+  assert.match(border, /showManualLookup \? <View[\s\S]*testID="border-plate-search"/);
+  assert.match(border, /testID="border-shipper-manual-toggle"/);
+  assert.match(border, /testID="border-manual-open-own-deal"/);
+  assert.match(border, /testID="border-manual-watch"/);
+  assert.match(border, /RECENT_LOOKUPS_KEY/);
+  assert.doesNotMatch(border, /manualLookup\?\.(?:location|gps|driver_name|chat_room_id)/);
+});
+
+test('Border separates CGR, GPS and queue timeline without fake ETA', () => {
+  assert.match(border, /testID="border-personal-cgr-status"/);
+  assert.match(border, /testID="border-gps-card"/);
+  assert.match(border, /testID="border-queue-timeline"/);
+  assert.match(border, /R\.etaPending/);
+  assert.doesNotMatch(border, /62\s*км|54\s*мин|1\s*ч\s*35\s*мин/);
 });
 
 test('multi-vehicle cargo bid binds a concrete vehicle id', () => {
