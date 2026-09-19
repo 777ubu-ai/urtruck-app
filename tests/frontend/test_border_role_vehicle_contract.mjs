@@ -29,10 +29,11 @@ test('Border keeps rolling-deploy fallback when /borders/context is not deployed
   assert.match(border, /market\/driver-profile/);
 });
 
-test('driver automatically enables CGR watch only for an active selected deal', () => {
-  assert.match(border, /!isDriver \|\| !contextToken \|\| !selectedDeal/);
+test('driver enables CGR watch only on the canonical backend and an active selected deal', () => {
+  assert.match(border, /!canonicalContext \|\| !isDriver \|\| !contextToken \|\| !selectedDeal/);
+  assert.match(border, /setCanonicalContext\(true\)/);
   assert.match(border, /fetch\(`\$\{BASE\}\/watch`/);
-  assert.match(border, /method: 'POST'/);
+  assert.match(border, /response\.ok\) setWatchEnabled\(true\)/);
 });
 
 test('shipper does not get the manual plate workflow; driver keeps it as secondary action', () => {
