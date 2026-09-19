@@ -18,7 +18,7 @@ import { LEVELS, useAuth } from '../utils/AuthContext';
 import BidModal from '../components/BidModal';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay, formatPrice } from '../utils/normalizers';
-import { buildTripShareText } from '../utils/share';
+import { buildTripShareText, publicListingPath } from '../utils/share';
 import { WEB_URL } from '../config/env';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
@@ -96,7 +96,7 @@ export default function TripDetail({ navigation, route }) {
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
 
   }), [v1]);
-  const { trip: rawTrip, tripId, role, dealId: routeDealId } = route.params || {};
+  const { trip: rawTrip, tripId, role, dealId: routeDealId, readOnly = false } = route.params || {};
   const [serverTrip, setServerTrip] = React.useState(null);
   // Canonical shape: TripDetail never reads raw fields directly. If we got
   // a trip object via navigation, use it; otherwise fall back to whatever the
@@ -164,6 +164,13 @@ export default function TripDetail({ navigation, route }) {
   const [myActiveBid, setMyActiveBid] = React.useState(null);
   const [cancelling, setCancelling] = React.useState(false);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
+  // Deep-link audit P1 (2026-09-14): a shared /trips/{id} link (or push
+  // payload) with an unknown/removed id used to fall through silently —
+  // serverTrip stayed null forever and the screen rendered the empty
+  // placeholder `trip` object from the useMemo above with no explanation.
+  // Only fires for the deep-link entry (no rawTrip/serverTrip at all) — a
+  // normal in-app open always carries a trip object already.
+  const [tripNotFound, setTripNotFound] = React.useState(false);
   const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
     new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
   ), [t]);
@@ -265,7 +272,10 @@ export default function TripDetail({ navigation, route }) {
     if (!tid) return;
     // Свежий рейс с сервера — актуальная цена/статус + driver_rating/
     // driver_verified для карточки водителя (get_trip обогащает).
-    marketAPI.getTrip(tid).then(d => { if (d && !d.detail) setServerTrip(d); }).catch(() => {});
+    marketAPI.getTrip(tid).then(d => {
+      if (d && !d.detail) { setServerTrip(d); setTripNotFound(false); }
+      else if (!rawTrip) setTripNotFound(true);
+    }).catch(() => { if (!rawTrip) setTripNotFound(true); });
     loadBids();
     const seq = ++dealFetchSeq.current;
     // dealId (state) — авторитетнее routeDealId: если сделка создана уже
@@ -498,6 +508,21 @@ export default function TripDetail({ navigation, route }) {
   const v1Accent = v1AccentFor(role === 'client' || role === 'shipper' ? 'client' : 'driver');
   const insets = useSafeAreaInsets();
 
+  // Deep-link audit P1: invalid/removed trip id → explicit not-found state
+  // instead of the empty-fields placeholder card. All hooks above this
+  // point already ran unconditionally, so branching here is safe.
+  if (tripNotFound && !rawTrip) {
+    return (
+      <SafeAreaView style={[s.container, { backgroundColor: v1.bg, alignItems: 'center', justifyContent: 'center' }]} edges={['top']}>
+        <Text style={{ fontSize: 48 }}>🔍</Text>
+        <Text style={{ color: v1.text, fontSize: 15, fontWeight: '700', marginTop: 8 }}>{t('incomplete_data')}</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
+          <Text style={{ color: '#168759', fontSize: 14, fontWeight: '600' }}>← {t('back_short')}</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare
@@ -705,7 +730,7 @@ export default function TripDetail({ navigation, route }) {
                     (05.08.2026, п.16 ТЗ). */}
                 <Text style={[s.bidAmt, { color: '#E06D00' }]}>{formatPrice(b.amount, b.currency || trip.currency, t)}</Text>
               </View>
-              {b.status === 'pending' && !hasAccepted ? (
+              {!readOnly && b.status === 'pending' && !hasAccepted ? (
                 <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                   {/* Приказ владельца 03.08 (скриншоты): до создания сделки
                       никакого чата. Иерархия — одна большая «Принять»,
@@ -741,7 +766,7 @@ export default function TripDetail({ navigation, route }) {
                   </TouchableOpacity>
                 </View>
               ) : null}
-              {isCountered ? (
+              {!readOnly && isCountered ? (
                 <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                   {b.counterAmount ? (
                     <Text style={{ color: '#E06D00', fontSize: 12, fontWeight: '700' }}>
@@ -874,12 +899,14 @@ export default function TripDetail({ navigation, route }) {
               onPress={async () => {
                 setReviewLoading(true);
                 try {
-                  await reviewsAPI.create({
+                  const result = await reviewsAPI.create({
+                    tripId: dealId || tid,
                     targetId: isShipper ? (driverId || trip.driverId) : shipperId,
                     targetRole: isShipper ? 'driver' : 'client',
                     rating: reviewRating,
                     text: reviewText.trim() || null,
                   });
+                  if (!result?.ok) throw new Error(result?.detail || 'review_failed');
                   setReviewSent(true);
                   toast(t('thanks_for_review'), 'success');
                 } catch {
@@ -904,7 +931,7 @@ export default function TripDetail({ navigation, route }) {
           отправки предложения на карточке рейса не было НИКАКОЙ обратной
           связи (дошло/не дошло/можно ли изменить/где чат). Плашка + два
           действия: изменить сумму или сразу перейти в чат. */}
-      {myActiveBid && !dealStatus && !isOwner ? (
+      {!readOnly && myActiveBid && !dealStatus && !isOwner ? (
         <View style={[s.myBidCard, { borderColor: v1Accent.main, backgroundColor: v1.card }]} testID="trip-my-active-bid">
           <View style={s.myBidHeader}>
             <Text style={[s.myBidLabel, { color: v1.textMuted }]}>{t('my_bid_label')}</Text>
@@ -1002,7 +1029,7 @@ export default function TripDetail({ navigation, route }) {
           Только «Предложить цену» — свободный чат до сделки убран (решение
           владельца 03.08): после accept ставки автоматически создаётся комната
           сделки, до этого переговоры ведутся через ставку/контрпредложение. */}
-      {!isOwner && !dealStatus && role === 'client' && !myActiveBid ? (
+      {!readOnly && !isOwner && !dealStatus && role === 'client' && !myActiveBid ? (
         <StickyCTABar
           accent={v1Accent.main}
           primary={{
@@ -1051,8 +1078,8 @@ export default function TripDetail({ navigation, route }) {
       <ShareModal
         visible={shareModal}
         onClose={() => setShareModal(false)}
-        shareText={buildTripShareText({ ...trip, truckTypeLabel: view.truckType }, `${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`, lang)}
-        url={`${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`}
+        shareText={buildTripShareText({ ...trip, truckTypeLabel: view.truckType }, `${WEB_URL || 'https://urtruck.kz'}${publicListingPath('trip', trip.id)}`, lang)}
+        url={`${WEB_URL || 'https://urtruck.kz'}${publicListingPath('trip', trip.id)}`}
       />
       {/* Stage 17: RatingModal removed alongside the inline
           "Оставить отзыв" CTA. Reviews live on CargoDetail's

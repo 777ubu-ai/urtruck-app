@@ -19,10 +19,15 @@ const supabaseClient = read('src/config/supabase.js');
 const appConfig = JSON.parse(read('app.json'));
 
 
-test('auth entry exposes Google + Email while Apple is hidden for build 18', () => {
+test('auth entry exposes Google + Email + explicitly platform/config-gated Apple', () => {
+  // FINAL 10/10 AUTH CANON CLOSURE (2026-09-14): the old
+  // `SHOW_APPLE_AUTH = false` build-18 flag is gone — Apple availability
+  // is now an explicit, named platform/config gate (getAppleAuthGate() in
+  // ../../utils/socialAuth), asserted in full in test_auth_canon_contract.mjs.
   assert.match(phoneV2, /testID="auth-google"/);
-  assert.match(phoneV2, /const SHOW_APPLE_AUTH = false/);
-  assert.match(phoneV2, /SHOW_APPLE_AUTH \? <SocialButton provider="apple"/);
+  assert.doesNotMatch(phoneV2, /const SHOW_APPLE_AUTH/);
+  assert.match(phoneV2, /getAppleAuthGate/);
+  assert.match(phoneV2, /appleGate\.show \? <SocialButton provider="apple"/);
   assert.match(phoneV2, /testID="email-v2-input"/);
   assert.doesNotMatch(phoneV2, /testID="auth-tab-phone"/);
   assert.doesNotMatch(phoneV2, /DEFAULT_COUNTRY/);
@@ -56,10 +61,13 @@ test('social OAuth supports only Google/Apple and returns through UrTruck deep l
 });
 
 
-test('social OAuth fails closed until Supabase confirms provider readiness', () => {
+test('Google starts without a redundant settings round-trip while Apple remains fail-closed', () => {
   assert.match(socialAuth, /\/auth\/v1\/settings/);
   assert.match(socialAuth, /settings\?\.external\?\.google === true/);
   assert.match(socialAuth, /settings\?\.external\?\.apple === true/);
+  assert.match(socialAuth, /if \(provider === 'apple'\)/);
+  assert.match(socialAuth, /if \(availability\.apple !== true\)/);
+  assert.doesNotMatch(socialAuth, /if \(availability\[provider\] !== true\)/);
   assert.match(socialAuth, /social_provider_unavailable/);
   assert.match(supabaseClient, /export const SUPABASE_URL/);
   assert.match(supabaseClient, /export const SUPABASE_ANON_KEY/);
@@ -124,9 +132,10 @@ test('P0-B: provider_unavailable/config errors are a distinct code from network 
   assert.match(socialAuth, /class SocialAuthError extends Error/);
   // The exact bug: getSocialProviderAvailability distinguishes "could not
   // reach Supabase" (checked:false) from "Supabase confirms disabled"
-  // (checked:true, provider:false) — startSocialAuth must branch on both.
+  // (checked:true, provider:false) — the conditional Apple path must branch
+  // on both while Google avoids this latency-only preflight.
   assert.match(socialAuth, /if \(!availability\.checked\)/);
-  assert.match(socialAuth, /if \(availability\[provider\] !== true\)/);
+  assert.match(socialAuth, /if \(availability\.apple !== true\)/);
 });
 
 test('P0-B: PhoneV2Screen maps SocialAuthError codes to distinct copy, never one generic message', () => {
@@ -162,6 +171,11 @@ test('P1-D: only the actively-pressed provider button shows a spinner', () => {
   assert.match(socialAuth, /export async function setPendingProvider/);
   assert.match(socialAuth, /export async function getPendingProvider/);
   assert.match(phoneV2, /getPendingProvider\(\)/);
+  assert.match(
+    phoneV2,
+    /import \{[\s\S]*getPendingProvider,[\s\S]*\} from '\.\.\/\.\.\/utils\/socialAuth';/,
+    'PhoneV2 must import the callback helper it invokes after Google returns',
+  );
 });
 
 test('P0-A: callback success path always resolves role and completes navigation before touching UI state', () => {

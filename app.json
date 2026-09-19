@@ -24,7 +24,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.urtruck.app",
-      "buildNumber": "27",
+      "buildNumber": "49",
       "usesAppleSignIn": true,
       "associatedDomains": [
         "applinks:urtruck.kz"
@@ -47,6 +47,11 @@
     },
     "android": {
       "package": "com.urtruck.app",
+      "splash": {
+        "image": "./assets/icon.png",
+        "backgroundColor": "#070B14",
+        "resizeMode": "contain"
+      },
       "softwareKeyboardLayoutMode": "resize",
       "versionCode": 9,
       "googleServicesFile": "./google-services.json",
@@ -59,6 +64,21 @@
               "scheme": "https",
               "host": "urtruck.kz",
               "pathPrefix": "/notifications"
+            },
+            {
+              "scheme": "https",
+              "host": "urtruck.kz",
+              "pathPrefix": "/cargos"
+            },
+            {
+              "scheme": "https",
+              "host": "urtruck.kz",
+              "pathPrefix": "/trips"
+            },
+            {
+              "scheme": "https",
+              "host": "urtruck.kz",
+              "pathPrefix": "/driver"
             }
           ],
           "category": [
@@ -86,6 +106,7 @@
     },
     "plugins": [
       "./plugins/withAndroidBackCompatibility",
+      "./plugins/withAndroidSingleFcmHandler",
       [
         "expo-av",
         {

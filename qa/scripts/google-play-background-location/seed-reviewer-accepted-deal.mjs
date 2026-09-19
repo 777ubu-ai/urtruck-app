@@ -3,6 +3,11 @@
 const API_BASE = process.env.API_BASE || 'https://urtruck.kz/api/v1';
 const REVIEWER_EMAIL = process.env.REVIEWER_EMAIL || 'appreview@urtruck.kz';
 const REVIEWER_CODE = process.env.REVIEWER_CODE || '1975';
+const QA_AGENT_TOKEN = process.env.QA_AGENT_TOKEN;
+
+if (!QA_AGENT_TOKEN) {
+  throw new Error('QA_AGENT_TOKEN is required to seed the shipper actor');
+}
 
 const now = new Date();
 const stamp = now.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
@@ -54,9 +59,17 @@ async function api(path, { method = 'GET', token, body, headers = {} } = {}) {
 
 async function setRole(token, role) {
   const body = role === 'client'
-    ? { role: 'client', name: 'App Review Demo', country: 'KZ', phone: '+77000009999' }
+    ? { role: 'client', name: 'App Review Demo', country: 'KZ', phone: '+77000009999', company_name: 'UrTruck Review' }
     : { role: 'driver', phone: '+77000009999' };
   await api('/users/me', { method: 'PATCH', token, body });
+}
+
+async function ensureQaActor(actor) {
+  return api('/qa/ensure-actor', {
+    method: 'POST',
+    body: { actor },
+    headers: { 'X-QA-Agent-Token': QA_AGENT_TOKEN },
+  });
 }
 
 async function postJson(path, body) {
@@ -95,8 +108,13 @@ if (!token) {
   throw new Error(`Reviewer email verify did not return token: ${JSON.stringify(verifyResult)}`);
 }
 
-await setRole(token, 'client');
-const cargo = await api('/market/cargos', { method: 'POST', token, body: cargoPayload });
+const shipper = await ensureQaActor('boris');
+const shipperToken = shipper?.token;
+if (!shipperToken) {
+  throw new Error(`QA shipper creation returned unexpected payload: ${JSON.stringify(shipper)}`);
+}
+
+const cargo = await api('/market/cargos', { method: 'POST', token: shipperToken, body: cargoPayload });
 const cargoId = cargo?.id;
 if (!cargoId) {
   throw new Error(`Cargo creation returned unexpected payload: ${JSON.stringify(cargo)}`);
@@ -118,8 +136,7 @@ if (!bidId) {
   throw new Error(`Bid creation returned unexpected payload: ${JSON.stringify(bid)}`);
 }
 
-await setRole(token, 'client');
-const accepted = await api(`/market/bids/${bidId}/accept`, { method: 'POST', token, body: {} });
+const accepted = await api(`/market/bids/${bidId}/accept`, { method: 'POST', token: shipperToken, body: {} });
 const dealId = accepted?.deal_id;
 if (!dealId) {
   throw new Error(`Bid accept returned unexpected payload: ${JSON.stringify(accepted)}`);

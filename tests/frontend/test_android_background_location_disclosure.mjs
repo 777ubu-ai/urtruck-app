@@ -40,7 +40,7 @@ test('Android trip map is viewable without starting the tracking permission flow
   assert.doesNotMatch(nativeMap, /permissionGate/);
   assert.doesNotMatch(nativeMap, /truck-map-location-consent-gate/);
   assert.doesNotMatch(nativeMap, /truck-map-location-consent-retry/);
-  assert.match(nativeMap, /testID="truck-map-yandex-webview"/);
+  assert.match(nativeMap, /testID="truck-map-yandex-mapkit"/);
 });
 
 test('canonical deal host handles Start trip consent only', () => {
@@ -107,17 +107,20 @@ test('background broadcaster never opens runtime permission prompts', () => {
   assert.doesNotMatch(hook, /requestForegroundPermissionsAsync\(\)/);
   assert.doesNotMatch(hook, /requestBackgroundPermissionsAsync\(\)/);
 
-  const startFn = tracker.split('export async function startBackgroundTracking()')[1] || '';
+  const startFn = tracker.split('export async function startBackgroundTracking(')[1] || '';
   assert.match(startFn, /getBackgroundLocationPermissionState\(\)/);
   assert.match(startFn, /foregroundService:/);
   assert.doesNotMatch(startFn, /requestForegroundLocationPermission\(\)/);
   assert.doesNotMatch(startFn, /requestBackgroundLocationPermission\(\)/);
 });
 
-test('Android location foreground service starts only while app is visible', () => {
+test('Android location foreground service starts only while app is visible and re-registers after settings return', () => {
   assert.match(hook, /AppState\.currentState !== 'active'/);
   assert.match(hook, /state === 'active'/);
-  assert.match(hook, /startBackgroundTracking\(\)/);
+  assert.match(hook, /syncTracking\(\{ forceReconfigure: true \}\)/);
+  assert.match(hook, /startBackgroundTracking\(\{ forceReconfigure \}\)/);
+  assert.match(tracker, /backgroundTrackingConfiguredThisProcess && !forceReconfigure/);
+  assert.match(tracker, /force one visible stop\/start/);
 });
 
 test('completed trip cleanup resolves expo-location after a native task survives restart', () => {

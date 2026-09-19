@@ -60,6 +60,11 @@ jobs:
       YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
       YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
       OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      TRANSCRIBE_PROVIDER: ${{ secrets.TRANSCRIBE_PROVIDER || 'openai' }}
+      TRANSCRIBE_MODEL: ${{ secrets.TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe' }}
+      TRANSLATE_PROVIDER: ${{ secrets.TRANSLATE_PROVIDER || 'openai' }}
+      TRANSLATE_MODEL: ${{ secrets.TRANSLATE_MODEL || 'gpt-5.6-luna' }}
       PM2_PROC: urtruck-security-api
 
     steps:
@@ -203,6 +208,21 @@ jobs:
           fi
           if [ -n "${OPENROUTESERVICE_API_KEY:-}" ]; then
             printf 'OPENROUTESERVICE_API_KEY=%s\n' "$OPENROUTESERVICE_API_KEY" >> "$BOOTSTRAP_FILE"
+          fi
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
+            printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY" >> "$BOOTSTRAP_FILE"
+          fi
+          if [ -n "${TRANSCRIBE_PROVIDER:-}" ]; then
+            printf 'TRANSCRIBE_PROVIDER=%s\n' "$TRANSCRIBE_PROVIDER" >> "$BOOTSTRAP_FILE"
+          fi
+          if [ -n "${TRANSCRIBE_MODEL:-}" ]; then
+            printf 'TRANSCRIBE_MODEL=%s\n' "$TRANSCRIBE_MODEL" >> "$BOOTSTRAP_FILE"
+          fi
+          if [ -n "${TRANSLATE_PROVIDER:-}" ]; then
+            printf 'TRANSLATE_PROVIDER=%s\n' "$TRANSLATE_PROVIDER" >> "$BOOTSTRAP_FILE"
+          fi
+          if [ -n "${TRANSLATE_MODEL:-}" ]; then
+            printf 'TRANSLATE_MODEL=%s\n' "$TRANSLATE_MODEL" >> "$BOOTSTRAP_FILE"
           fi
           REMOTE_BOOTSTRAP="/tmp/urtruck-secure-env-${GITHUB_RUN_ID}"
           bash scripts/deploy-ssh.sh scp "$BOOTSTRAP_FILE" "$SERVER_USER@$SERVER_HOST:$REMOTE_BOOTSTRAP"

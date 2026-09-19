@@ -154,6 +154,8 @@ export default function NotificationsScreen({ navigation }) {
         navigation.navigate("CargoDetail", { cargoId: id, bidId: params.bid || null, role });
       } else if (kind === "trips" && id) {
         navigation.navigate("TripDetail", { tripId: id, bidId: params.bid || null, role });
+      } else if (kind === "deals" && !id) {
+        navigation.navigate("Main", { screen: "Deals", params: { role } });
       } else if (kind === "deals" && id) {
         // Same fix as App.js's navigateFromUrl (this is a separate, in-app
         // copy of the same parser, for tapping a notification without a
@@ -163,6 +165,11 @@ export default function NotificationsScreen({ navigation }) {
         navigation.navigate("Chat", { dealId: id, role, action: params.action || null });
       } else if ((kind === "chats" || kind === "chat") && id) {
         navigation.navigate("Chat", { roomId: id, role });
+      } else if (kind === "driver" && id) {
+        // Same fix as App.js's navigateFromUrl — kept in sync so an
+        // in-app notification-list tap on a driver-share link behaves the
+        // same as a native push/cold-start deep link.
+        navigation.navigate("DriverDetail", { driver: { id, _server: true, _isDriver: true }, role });
       }
     } catch {}
   };

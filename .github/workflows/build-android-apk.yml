@@ -33,23 +33,26 @@ jobs:
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.8" >> "$GITHUB_ENV"
           # Must be strictly newer than the currently installed QA2 artifact.
-          echo "URTRUCK_VERSION_CODE=211039983" >> "$GITHUB_ENV"
+          # QA068: physical-кандидат с исправленным масштабированием native launch artwork.
+          # Перед установкой отдельно сверить версию и подпись устройства.
+          echo "URTRUCK_VERSION_CODE=211040068" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
+          # Restore the live service endpoint. The isolated adb-reverse harness
+          # has stub STT/translation and no native FCM credentials.
+          echo "EXPO_PUBLIC_API_URL=https://urtruck.kz" >> "$GITHUB_ENV"
 
-      - name: Materialize QA2 native map build contract
-        # TruckMap.native.js reads this public browser key while Metro bundles
-        # the native JS.  Keep the key out of source, but fail the QA2 build
-        # rather than publishing an APK that can only show map_unavailable.
+      - name: Materialize QA2 native MapKit build contract
+        # Keep the native key out of source and separate from the web JS key.
         env:
-          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
         run: |
           set -euo pipefail
-          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}" || {
-            echo "::error::YANDEX_MAPS_JS_API_KEY is required for QA2 Android builds; native deal maps would be unavailable without it."
+          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}" || {
+            echo "::error::YANDEX_MAPKIT_API_KEY is required for QA2 Android builds; native deal maps would be unavailable without it."
             exit 1
           }
-          printf 'EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY=%s\n' "$EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY" >> "$GITHUB_ENV"
-          echo "QA2_YANDEX_MAP_CONFIG=present"
+          printf 'EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY=%s\n' "$EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY" >> "$GITHUB_ENV"
+          echo "QA2_YANDEX_MAPKIT_CONFIG=present"
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
@@ -59,6 +62,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install Android SDK platform 36 / build-tools 36.0.0
         run: |
@@ -107,7 +112,10 @@ jobs:
             python3 scripts/verify_android_firebase_config.py --check-source google-services.json
 
       - name: Expo prebuild (Android, non-interactive)
-        run: npx expo prebuild --platform android --clean --no-install --non-interactive
+        # The tracked Android tree contains the approved full-screen splash and
+        # its native launch wiring. --clean deletes those native files before
+        # the build and silently restores Expo's tiny centered icon splash.
+        run: npx expo prebuild --platform android --no-install --non-interactive
         env:
           EXPO_NO_TELEMETRY: 1
           CI: 1
@@ -115,9 +123,37 @@ jobs:
       - name: Verify Google Services Gradle plugin wired after prebuild
         run: python3 scripts/verify_android_firebase_config.py --check-plugin android
 
+      - name: Verify canonical Android splash survived prebuild
+        run: |
+          test -f android/app/src/main/res/drawable-nodpi/urtruck_splash_fullscreen.png
+          test -f android/app/src/main/res/drawable/urtruck_splash_window_background.xml
+          grep -F 'android:windowBackground">@drawable/urtruck_splash_window_background' android/app/src/main/res/values/styles.xml
+          grep -F 'windowSplashScreenAnimatedIcon">@android:color/transparent' android/app/src/main/res/values/styles.xml
+
+      - name: Preserve MapKit native dependency resolution
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('android/build.gradle')
+          text = path.read_text()
+          marker = 'allprojects {\n'
+          pin = """allprojects {
+              configurations.configureEach {
+                  resolutionStrategy.force 'com.google.android.gms:play-services-location:21.0.1'
+              }
+          """
+          if "play-services-location:21.0.1" not in text:
+              if marker not in text:
+                  raise SystemExit('allprojects block not found in generated android/build.gradle')
+              text = text.replace(marker, pin, 1)
+              path.write_text(text)
+          print('MapKit dependency pin: play-services-location=21.0.1')
+          PY
+
       - name: Target API 36 (Google Play требование с 31.08.2026)
         run: |
-          printf '\nandroid.compileSdkVersion=36\nandroid.targetSdkVersion=36\nandroid.buildToolsVersion=36.0.0\n' >> android/gradle.properties
+          printf '\nandroid.minSdkVersion=26\nandroid.compileSdkVersion=36\nandroid.targetSdkVersion=36\nandroid.buildToolsVersion=36.0.0\n' >> android/gradle.properties
 
       - name: Show generated android/ structure (debug)
         run: |
@@ -126,11 +162,18 @@ jobs:
           ls -la android/gradle/wrapper/ 2>/dev/null || true
 
       - name: Build Release APK with Gradle
+        # Release-hardening track 2, item 2: android/app/build.gradle's
+        # `release` buildType now fails closed without real Play upload-key
+        # properties (never silently falls back to debug signing). This
+        # QA2-flavor APK intentionally has no such key (it's never uploaded
+        # to Play) — the explicit opt-in flag below is the one sanctioned
+        # exception to that fail-closed default.
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary \
-            -PURTRUCK_VERSION_CODE="$URTRUCK_VERSION_CODE"
+            -PURTRUCK_VERSION_CODE="$URTRUCK_VERSION_CODE" \
+            -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true
 
       - name: Verify Firebase runtime resources in build output
         run: python3 scripts/verify_android_firebase_config.py --check-resources android/app/build

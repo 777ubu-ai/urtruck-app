@@ -2,9 +2,9 @@
 
 Два канала:
   1. Web Push — через pywebpush + VAPID (браузер, PWA).
-  2. Native — через Push Gateway. По умолчанию Expo Push Service
-     сохраняется как legacy-path, но PUSH_PROVIDER_MODE=native|dual включает
-     прямой FCM/APNs через services.push_gateway.
+  2. Native — через Push Gateway. По умолчанию используется прямой
+     FCM/APNs; Expo сохраняется только как явно выбранный legacy-path
+     через PUSH_PROVIDER_MODE=expo|dual.
 
 ENV (.env):
   VAPID_PUBLIC_KEY    — публичный VAPID-ключ (base64url, без паддинга)
@@ -392,6 +392,12 @@ def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optiona
     )
     if gateway_result.get("devices", 0) > 0:
         return int(gateway_result.get("sent", 0) or 0), int(gateway_result.get("devices", 0) or 0)
+    # Native is the production default. If the new registry has no target,
+    # do not silently fall back to legacy Expo/FCM tokens. Legacy delivery is
+    # retained for an explicitly selected expo/dual mode and diagnostics.
+    configured_mode = (os.getenv("PUSH_PROVIDER_MODE") or "native").strip().lower()
+    if configured_mode not in ("expo", "dual"):
+        return 0, 0
     return _send_native_legacy(user_id, title, body, data, badge=badge)
 
 
@@ -491,12 +497,20 @@ def _compute_recipient_badge(user_id: str) -> int:
                 # — тот же фильтр, что в api/chat.py unread_count(), иначе
                 # APNs-бейдж на иконке расходился бы с in-app бейджем
                 # «Сделки» (двойной счёт одного события).
+                active_statuses = ("accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received")
+                placeholders = ",".join("?" for _ in active_statuses)
                 row = c.execute(
                     "SELECT COUNT(*) FROM chat_messages m "
                     "JOIN chat_rooms r ON r.id = m.room_id "
                     "WHERE (r.participant_1 = ? OR r.participant_2 = ?) "
-                    "AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0",
-                    (user_id, user_id, user_id),
+                    "AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0 "
+                    "AND ((r.cargo_id IS NULL AND r.trip_id IS NULL "
+                    "AND NOT EXISTS (SELECT 1 FROM deals d0 WHERE d0.chat_room_id = r.id)) "
+                    "OR EXISTS (SELECT 1 FROM deals d WHERE d.status IN (" + placeholders + ") "
+                    "AND (d.chat_room_id = r.id OR (d.chat_room_id IS NULL AND "
+                    "((r.cargo_id IS NOT NULL AND d.cargo_id = r.cargo_id) "
+                    "OR (r.trip_id IS NOT NULL AND d.trip_id = r.trip_id))))))",
+                    (user_id, user_id, user_id, *active_statuses),
                 ).fetchone()
                 total += int(row[0]) if row else 0
             except Exception:

@@ -25,9 +25,13 @@ import { useI18n } from '../../utils/useI18n';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { isSocialAuthCallback, takeBufferedSocialCallbackUrl } from '../../utils/socialAuth';
-import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight as brand, radius, typography } from '../../theme/brandV2';
+import { API_BASE } from '../../config/env';
 
 const QA_HOOK_ALLOWED = (() => {
+  // Product rule 2026-09-16: no dev auth controls in any standalone APK,
+  // including QA2. Keep the harness available only in an explicit dev
+  // environment (Expo/dev client) with the opt-in flag enabled.
   if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
   if (process.env.EXPO_PUBLIC_QA_HOOKS !== '1') return false;
   try {
@@ -44,13 +48,13 @@ const HERO_SLIDE_1 = require('../../../assets/onboarding/slide-1-hero.jpg');
 const HERO_SLIDE_2 = require('../../../assets/onboarding/slide-2-driver-1.jpg');
 const HERO_SLIDE_3 = require('../../../assets/onboarding/slide-2-driver-2.jpg');
 
-const ASPECT_S1 = 709 / 650;
-const ASPECT_S2 = 709 / 650;
-const ASPECT_S3 = 709 / 700;
+const ONBOARDING_IMAGE_ASPECT = 864 / 1536;
 
-const WINDOW_S1 = { from: 0, to: 1 };
-const WINDOW_S2 = { from: 0, to: 1 };
-const WINDOW_S3 = { from: 0, to: 1 };
+// The approved assets reserve their lower portion for the separate UI copy.
+// Keep the important upper composition and crop only the unused lower margin.
+const WINDOW_S1 = { from: 0, to: 0.59 };
+const WINDOW_S2 = { from: 0, to: 0.59 };
+const WINDOW_S3 = { from: 0, to: 0.59 };
 
 const HeroWindow = ({ source, imageAspect, win }) => {
   const imgHeight = SCREEN_W / imageAspect;
@@ -65,6 +69,7 @@ const HeroWindow = ({ source, imageAspect, win }) => {
       <Image
         source={source}
         pointerEvents="none"
+        resizeMode="contain"
         style={{
           width: SCREEN_W,
           height: imgHeight,
@@ -77,12 +82,21 @@ const HeroWindow = ({ source, imageAspect, win }) => {
   );
 };
 
-const Slide = ({ s, source, imageAspect, win, title, subtitle }) => (
+const BrandLogo = ({ s }) => (
+  <Text style={s.logo} accessibilityRole="header" testID="onb-v2-brand-logo">
+    <Text style={{ color: brand.logoDark }}>Ur</Text>
+    <Text style={{ color: brand.logoAccent }}>Truck</Text>
+  </Text>
+);
+
+const Slide = ({ s, source, imageAspect, win, title }) => (
   <View style={s.slide}>
+    <View style={s.logoWrap}>
+      <BrandLogo s={s} />
+    </View>
     <HeroWindow source={source} imageAspect={imageAspect} win={win} />
     <View style={s.captionBlock}>
-      <Text style={s.title}>{title}</Text>
-      <Text style={s.subtitle} numberOfLines={3}>{subtitle}</Text>
+      <Text style={s.title} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.86}>{title}</Text>
     </View>
   </View>
 );
@@ -93,6 +107,13 @@ const QaLoginHook = ({ s }) => {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
+  const completeLogin = async (value) => {
+    await signIn('qa-actor', 3, value);
+    const me = await refreshLevel().catch(() => null);
+    const role = me?.role && me.role !== 'guest' ? me.role : 'client';
+    setRole(role);
+  };
+
   const onSubmit = async () => {
     const value = (token || '').trim();
     if (!value) {
@@ -102,10 +123,7 @@ const QaLoginHook = ({ s }) => {
     setErr('');
     setBusy(true);
     try {
-      await signIn('qa-actor', 3, value);
-      const me = await refreshLevel().catch(() => null);
-      const role = me?.role && me.role !== 'guest' ? me.role : 'client';
-      setRole(role);
+      await completeLogin(value);
     } catch {
       setErr('login failed');
     } finally {
@@ -114,9 +132,46 @@ const QaLoginHook = ({ s }) => {
     }
   };
 
+  const onActor = async (actor) => {
+    setErr('');
+    setBusy(true);
+    try {
+      const r = await fetch(`${API_BASE}/qa/ensure-actor`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok || !data?.token) throw new Error('actor session failed');
+      await completeLogin(data.token);
+    } catch {
+      setErr(`actor login failed: ${actor}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <View style={s.qaBlock} testID="qa-debug-block">
       <Text style={s.qaLabel}>QA login (dev only)</Text>
+      <View style={s.qaActorRow}>
+        {[
+          ['boris', 'Boris · shipper'],
+          ['serik', 'Serik · driver'],
+          ['askar', 'Askar · driver'],
+        ].map(([actor, label]) => (
+          <Pressable
+            key={actor}
+            testID={`qa-actor-${actor}`}
+            accessibilityLabel={`QA actor ${actor}`}
+            disabled={busy}
+            onPress={() => onActor(actor)}
+            style={[s.qaActorButton, busy && { opacity: 0.5 }]}
+          >
+            <Text style={s.qaActorText}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
       <TextInput
         style={s.qaInput}
         value={token}
@@ -144,7 +199,7 @@ const QaLoginHook = ({ s }) => {
 };
 
 export default function OnboardingV2Screen({ navigation }) {
-  const _b = useBrand();
+  const _b = brand;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
   const { toast } = useToast();
@@ -223,30 +278,27 @@ export default function OnboardingV2Screen({ navigation }) {
           <Slide
             s={s}
             source={HERO_SLIDE_1}
-            imageAspect={ASPECT_S1}
+            imageAspect={ONBOARDING_IMAGE_ASPECT}
             win={WINDOW_S1}
             title={t('onb_v2_slide1_title')}
-            subtitle={t('onb_v2_slide1_subtitle')}
           />
         </View>
         <View style={{ width: SCREEN_W }}>
           <Slide
             s={s}
             source={HERO_SLIDE_2}
-            imageAspect={ASPECT_S2}
+            imageAspect={ONBOARDING_IMAGE_ASPECT}
             win={WINDOW_S2}
             title={t('onb_v2_slide2_title')}
-            subtitle={t('onb_v2_slide2_subtitle')}
           />
         </View>
         <View style={{ width: SCREEN_W }}>
           <Slide
             s={s}
             source={HERO_SLIDE_3}
-            imageAspect={ASPECT_S3}
+            imageAspect={ONBOARDING_IMAGE_ASPECT}
             win={WINDOW_S3}
             title={t('onb_v2_slide3_title')}
-            subtitle={t('onb_v2_slide3_subtitle')}
           />
         </View>
       </ScrollView>
@@ -278,7 +330,9 @@ export default function OnboardingV2Screen({ navigation }) {
           ]}
         >
           <Text style={s.ctaPrimaryText}>{t('phone_v2_title')}</Text>
-          <Feather name="arrow-right" size={20} color="#FFF" />
+          <View style={s.ctaArrowBubble}>
+            <Feather name="arrow-right" size={24} color="#FFF" />
+          </View>
         </Pressable>
         <Pressable
           onPress={goGuest}
@@ -308,20 +362,52 @@ export default function OnboardingV2Screen({ navigation }) {
 const makeStyles = (brand) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: brand.bg },
   slide: { flex: 1, paddingHorizontal: 0, paddingTop: 6, alignItems: 'stretch' },
+  logoWrap: { height: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  logo: { fontSize: 32, lineHeight: 38, fontWeight: '800', letterSpacing: -1.1 },
   captionBlock: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 4, alignItems: 'center' },
-  title: { ...typography.h1, color: brand.textPrimary, textAlign: 'center', marginBottom: 6 },
-  subtitle: { ...typography.body, color: brand.textSecondary, textAlign: 'center', paddingHorizontal: 4 },
-  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 10, zIndex: 5, elevation: 5 },
+  title: { fontSize: 30, lineHeight: 36, fontWeight: '800', color: brand.textPrimary, textAlign: 'center', paddingHorizontal: 0 },
+  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 20, zIndex: 5, elevation: 5 },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  ctaWrap: { paddingHorizontal: 20, paddingTop: 2, paddingBottom: 10, backgroundColor: brand.bg, zIndex: 10, elevation: 10 },
-  ctaPrimary: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24 },
-  ctaPrimaryText: { ...typography.button, color: brand.textOnPrimary, flex: 1, textAlign: 'center' },
-  ctaOutline: { height: 56, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, marginTop: 8, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface },
-  ctaOutlineText: { ...typography.button, color: brand.textPrimary, flex: 1, textAlign: 'center', fontWeight: '700' },
-  consent: { fontSize: 12, color: brand.textSecondary, textAlign: 'center', marginTop: 8 },
+  ctaWrap: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 10, backgroundColor: brand.bg, zIndex: 10, elevation: 10, alignItems: 'center' },
+  ctaPrimary: {
+    height: 52,
+    width: '86%',
+    maxWidth: 540,
+    borderRadius: 26,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    paddingLeft: 22,
+    paddingRight: 7,
+    backgroundColor: '#0A9B57',
+    borderWidth: 1,
+    borderColor: '#17B86A',
+    shadowColor: '#087B47',
+    shadowOpacity: 0.18,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  ctaPrimaryText: { ...typography.button, color: '#FFFFFF', flex: 1, textAlign: 'center', fontWeight: '700', fontSize: 18 },
+  ctaArrowBubble: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  ctaOutline: { height: 48, width: '76%', maxWidth: 480, borderRadius: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'center', paddingHorizontal: 20, marginTop: 15, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface },
+  ctaOutlineText: { ...typography.button, color: brand.textPrimary, flex: 1, textAlign: 'center', fontWeight: '700', fontSize: 17 },
+  consent: { fontSize: 12, color: brand.textSecondary, textAlign: 'center', marginTop: 20 },
   consentLink: { color: brand.textPrimary, textDecorationLine: 'underline', fontWeight: '600' },
   qaBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: brand.borderStrong, gap: 6 },
   qaLabel: { fontSize: 11, color: brand.textSecondary, textAlign: 'center', fontWeight: '600' },
+  qaActorRow: { flexDirection: 'row', gap: 6 },
+  qaActorButton: { flex: 1, minHeight: 34, borderRadius: radius.md, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  qaActorText: { color: brand.textPrimary, fontSize: 9, fontWeight: '700', textAlign: 'center' },
   qaInput: { height: 36, borderRadius: radius.md, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface, paddingHorizontal: 10, color: brand.textPrimary, fontSize: 12 },
   qaSubmit: { height: 36, borderRadius: radius.md, backgroundColor: brand.borderStrong, alignItems: 'center', justifyContent: 'center' },
   qaSubmitText: { color: brand.textPrimary, fontSize: 12, fontWeight: '700' },

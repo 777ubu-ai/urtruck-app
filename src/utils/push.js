@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { getActiveRoom } from './activeRoom';  // QA-аудит P2-2
+import { t as tGlobal } from './i18n';
 
 const BASE = `${API_BASE}/push`;
 
@@ -286,9 +287,14 @@ export const push = {
     if (status !== 'granted') return { ok: false, reason: 'denied' };
 
     // Android channel
+    // §15 i18n P2 fix: this name is user-visible (Android Settings → Apps
+    // → UrTruck → Notifications → channel list) and was hardcoded RU
+    // regardless of the app's language. `push_channel_name` exists in all
+    // 4 locales; tGlobal() reflects whatever language the user has already
+    // picked by the time this runs (after permission grant, post-onboarding).
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync(NATIVE_PUSH_CHANNEL_ID, {
-        name: 'UrTruck сообщения',
+        name: tGlobal('push_channel_name'),
         importance: Notifications.AndroidImportance.MAX,
         sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
@@ -318,17 +324,19 @@ export const push = {
     const dbg = (...a) => { if (typeof __DEV__ !== 'undefined' && __DEV__) console.log('[push]', ...a); };
     dbg('projectId', projectId || '(none)');
     let tokenData;
+    let token = null;
+    let expoTokenError = null;
     try {
       tokenData = projectId
         ? await Notifications.getExpoPushTokenAsync({ projectId })
         : await Notifications.getExpoPushTokenAsync();
+      token = tokenData?.data || null;
     } catch (e) {
       dbg('getExpoPushTokenAsync failed', String(e));
-      return { ok: false, reason: 'token_failed', error: String(e) };
+      expoTokenError = String(e);
     }
-    const token = tokenData?.data;
-    if (!token) { dbg('no token returned'); return { ok: false, reason: 'no_token' }; }
-    dbg('expo token', _maskToken(token)); // P0-1: полный токен в логи не пишем даже в dev
+    if (!token) dbg('no Expo token returned');
+    else dbg('expo token', _maskToken(token)); // P0-1: полный токен в логи не пишем даже в dev
 
     // Отправляем на бэк. issue #5: проверяем ответ — раньше статус
     // игнорировался и при 401/500 функция всё равно возвращала ok:true,
@@ -391,7 +399,9 @@ export const push = {
       return { ok: true, token: pushToken, provider, user_id: regUserId };
     };
 
-    const expoResult = await registerToken({ pushToken: token, provider: 'expo' });
+    const expoResult = token
+      ? await registerToken({ pushToken: token, provider: 'expo' })
+      : { ok: false, reason: expoTokenError ? 'token_failed' : 'no_token', error: expoTokenError };
     if (expoResult.ok) await storage.set(NATIVE_TOKEN_KEY, token);
 
     // Track: push-recovery — сырой нативный токен (FCM registration token на
@@ -426,6 +436,19 @@ export const push = {
       dbg('native registration block failed (Expo unaffected)', String(e));
     }
 
+    // Native delivery is canonical. An Expo credential/registration failure
+    // must not prevent the FCM/APNs registration above from succeeding.
+    if (nativeResult?.ok) {
+      return {
+        ok: true,
+        token: token || null,
+        user_id: nativeResult.user_id || expoResult?.user_id,
+        native: nativeResult,
+        native_token: nativeResult.token,
+        native_provider: nativeResult.provider,
+        expo: expoResult,
+      };
+    }
     if (!expoResult.ok) return { ...expoResult, native: nativeResult };
     return {
       ok: true,

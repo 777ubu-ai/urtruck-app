@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth:expired
+import { t as tGlobal } from './i18n';
 
 const BASE = `${API_BASE}/market`;
 
@@ -36,13 +37,18 @@ async function headers() {
 // Этот хелпер всегда возвращает string — для object с `hint` или
 // `error` поле, для других — JSON.stringify fallback.
 function normalizeDetail(d, status) {
-  if (d == null) return `Ошибка ${status}`;
+  // §15 i18n P2 fix: this fallback used to be a hardcoded Russian
+  // "error N" string, shown verbatim to ZH/KK/EN users whenever the
+  // backend detail was empty/non-string. i18n.js's `error_with_status` key
+  // exists in all 4 locales — route through it instead.
+  const errWithStatus = () => tGlobal('error_with_status').replace('{status}', status);
+  if (d == null) return errWithStatus();
   if (typeof d === 'string') return d;
   if (typeof d === 'object') {
     if (d.hint && typeof d.hint === 'string' && d.hint.length) return d.hint;
     if (d.message && typeof d.message === 'string' && d.message.length) return d.message;
     if (d.error && typeof d.error === 'string' && d.error.length) return d.error;
-    try { return JSON.stringify(d); } catch { return `Ошибка ${status}`; }
+    try { return JSON.stringify(d); } catch { return errWithStatus(); }
   }
   return String(d);
 }
@@ -140,11 +146,20 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listCargos({ status = 'active', fromCity = '', toCity = '', cargoType = '', limit = 50, offset = 0 } = {}) {
+  async listCargos({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', cargoType = '', limit = 50, offset = 0 } = {}) {
     // Never inject demo data on failure — empty list + serverError flag so
     // FeedScreen renders the proper empty state instead of stale fallback.
     try {
-      const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, cargo_type: cargoType, limit, offset });
+      const params = new URLSearchParams({
+        status,
+        from_city: fromCity,
+        to_city: toCity,
+        from_country: fromCountry,
+        to_country: toCountry,
+        cargo_type: cargoType,
+        limit,
+        offset,
+      });
       const r = await authedFetch(`${BASE}/cargos?${params}`);
       if (!r.ok) return { cargos: [], total: 0, serverError: true, status: r.status };
       return r.json();
@@ -154,7 +169,7 @@ export const marketAPI = {
   },
 
   async getCargo(id) {
-    const r = await authedFetch(`${BASE}/cargos/${id}`);
+    const r = await authedFetch(`${BASE}/cargos/${id}`, { headers: await headers() });
     return r.json();
   },
 
@@ -264,9 +279,17 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listTrips({ status = 'active', fromCity = '', toCity = '', truckType = '', limit = 50 } = {}) {
+  async listTrips({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', truckType = '', limit = 50 } = {}) {
     try {
-      const params = new URLSearchParams({ status, from_city: fromCity, to_city: toCity, truck_type: truckType, limit });
+      const params = new URLSearchParams({
+        status,
+        from_city: fromCity,
+        to_city: toCity,
+        from_country: fromCountry,
+        to_country: toCountry,
+        truck_type: truckType,
+        limit,
+      });
       const r = await authedFetch(`${BASE}/trips?${params}`);
       if (!r.ok) return { trips: [], total: 0, serverError: true, status: r.status };
       return r.json();
@@ -276,7 +299,7 @@ export const marketAPI = {
   },
 
   async getTrip(id) {
-    const r = await authedFetch(`${BASE}/trips/${id}`);
+    const r = await authedFetch(`${BASE}/trips/${id}`, { headers: await headers() });
     return r.json();
   },
 

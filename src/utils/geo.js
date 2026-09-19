@@ -55,7 +55,7 @@ const isBakhtyTachengBorderPair = (tokens, raw) => (
   && tokens.some((name) => TACHENG_NAMES.has(name))
 );
 
-// Парсит как простое название («Москва, 🇷🇺»), так и составной узел
+// Парсит legacy-строку с country marker и современный составной узел
 // («Бахты ↔ Чугучак»). Для одиночного результата берём первую известную точку.
 export const parseCity = (str) => {
   if (!str) return null;

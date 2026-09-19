@@ -193,9 +193,22 @@ def send_otp(phone: str, code: str, channel: str = "whatsapp") -> dict:
     Если все каналы MOCK — возвращаем последний mock-результат с кодом в ответе.
     """
     # ── BETA bypass ──────────────────────────────────────────
+    # FINAL 10/10 AUTH CANON CLOSURE (2026-09-14): "mock" used to be hardcoded
+    # False here, claiming a REAL channel delivered the code, when in fact no
+    # channel was used at all — BETA_MODE short-circuits before any
+    # WhatsApp/Telegram/SMS/email send is even attempted. That falsehood had
+    # a real, reproduced consequence: api/registration.py's email_send()
+    # only returns `code` to the caller when `mock` is true (so QA/dev can
+    # read the OTP without a real inbox), so a caller relying on this
+    # contract for the email channel got `code: null` with no code anywhere
+    # in the response, even though BETA_OTP_CODE was the actual code needed
+    # — silently forcing a DB read to recover it. `mock: True` is the
+    # truthful value (no real provider was used); `beta: True` stays a more
+    # specific sub-classification so callers that need to tell "beta
+    # bypass" apart from "provider genuinely unconfigured" still can.
     if BETA_MODE:
         return {
-            "sent": True, "mock": False, "beta": True,
+            "sent": True, "mock": True, "beta": True,
             "channel": "beta",
             "code": BETA_OTP_CODE,
             "message": f"Beta-режим: введите код {BETA_OTP_CODE}",

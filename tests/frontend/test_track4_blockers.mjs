@@ -19,3 +19,14 @@ test('GPS start-trip has explicit provider/no-fix health states', () => {
   assert.match(workspace, /getLocationHealth/);
   assert.match(workspace, /gps_system_disabled/);
 });
+
+test('GPS background delivery persists failed samples and retries them FIFO', () => {
+  const gps = fs.readFileSync('src/utils/backgroundLocation.js', 'utf8');
+  const hook = fs.readFileSync('src/hooks/useDealLocationBroadcast.js', 'utf8');
+  assert.match(gps, /BG_LOCATION_QUEUE_KEY = 'ur_bg_location_queue_v1'/);
+  assert.match(gps, /locationQueue.append/);
+  assert.match(gps, /locationQueue.drain/);
+  assert.doesNotMatch(gps, /slice\(-MAX_QUEUED_LOCATIONS\)/);
+  assert.match(gps, /locationPushChain/);
+  assert.match(hook, /pushLocationToDeals\(\{ \.\.\.payload, timestamp: pos\.timestamp \}, idsRef\.current\)/);
+});

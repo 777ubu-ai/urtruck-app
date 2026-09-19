@@ -37,7 +37,14 @@ def test_bid_accepted_and_deal_created_keep_canonical_order_card_links():
     # localized via push_i18n instead of hardcoded RU.
     assert 'create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url, event_key=event_key)' in MARKET
     assert 'push_i18n.push_text("bid_accepted", loc, amount=_money' in MARKET
-    assert 'create_notification(uid_, "deal_created", title_, text_, "✅", url=deal_url)' in MARKET
+    # Новый contract сохраняет event_key внутри транзакции сделки.
+    import ast
+    calls = [node for node in ast.walk(ast.parse(MARKET)) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Name) and node.func.id == "create_notification"
+             and len(node.args) > 1 and isinstance(node.args[1], ast.Constant)
+             and node.args[1].value == "deal_created"]
+    assert any({kw.arg: ast.unparse(kw.value) for kw in node.keywords}
+               == {"url": "deal_url", "event_key": "event_key", "conn": "c"} for node in calls)
     assert 'deal_url = f"/cargos/{bid[\'cargo_id\']}"' in MARKET or 'deal_url = f"/cargos/{bid["cargo_id"]}"' in MARKET
     assert 'deal_url = f"/trips/{bid[\'trip_id\']}"' in MARKET or 'deal_url = f"/trips/{bid["trip_id"]}"' in MARKET
 
@@ -56,7 +63,12 @@ def test_counter_cancellation_reaches_bidder_via_push_and_bell():
 
 
 def test_chat_message_push_payload_keeps_room_sender_recipient_context():
-    assert 'kind="chat"' in CHAT
+    # fix(chat): repair composer voice and push flow (3b66627d) split the
+    # push kind so voice messages get their own "chat.voice" kind instead of
+    # sharing the plain "chat" one — text still resolves to "chat", just via
+    # a conditional expression rather than the literal 'kind="chat"' this
+    # test used to grep for. Assert the real, current shape instead.
+    assert 'kind="chat.voice" if body.is_voice else "chat"' in CHAT
     assert '"type": "chat_message"' in CHAT
     assert '"room_id": room_id' in CHAT
     assert '"sender_id": user["id"]' in CHAT

@@ -5,7 +5,8 @@
 // Web показывает тот же per-trip disclosure перед browser location permission.
 // iOS сохраняет отдельный background-location flow.
 import { Platform } from 'react-native';
-import { storage } from './storage';
+import { storage, durableStorage } from './storage';
+import { createLocationQueue, locationSampleId } from './locationQueue';
 import { t } from './i18n';
 import { API_BASE } from '../config/env';
 import { requestLocationPermissionThroughDisclosure } from './locationPermissionCoordinator';
@@ -13,7 +14,19 @@ export { openLocationSettings } from './locationSettings';
 
 export const BG_LOCATION_TASK = 'urtruck-deal-location';
 const BG_DEALS_KEY = 'ur_bg_deal_ids';
+export const BG_LOCATION_QUEUE_KEY = 'ur_bg_location_queue_v1';
+const BG_LAST_LOCATION_KEY = 'ur_bg_last_location_v1';
 const TOKEN_KEY = 'ur_reg_token';
+const locationQueue = createLocationQueue(durableStorage);
+
+// A background task can overlap with a foreground tick or a second OS task
+// callback. Serialize the queue read/flush/write cycle so one sample cannot be
+// lost by two callers writing stale snapshots over each other.
+let locationPushChain = Promise.resolve();
+// Expo persists background-task registrations across process restarts and app
+// updates. Re-register once per fresh JS process so changed canonical options
+// (heartbeat/distance policy) actually replace an older installed contract.
+let backgroundTrackingConfiguredThisProcess = false;
 
 let TaskManager = null;
 let Location = null;
@@ -35,43 +48,177 @@ async function resolveLocationModule() {
   }
 }
 
-// Send coordinates only for server-approved active deal IDs.
-export async function pushLocationToDeals(coords) {
+function normalizeLocationSnapshot(coords) {
+  const lat = Number(coords?.latitude ?? coords?.lat);
+  const lng = Number(coords?.longitude ?? coords?.lng);
+  const timestamp = Number(coords?.timestamp);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180
+      || !Number.isFinite(timestamp) || timestamp < 946684800000 || timestamp > Date.now() + 300000) return null;
+  return {
+    latitude: lat,
+    longitude: lng,
+    heading: coords?.heading != null && coords.heading >= 0 ? coords.heading : null,
+    speed: coords?.speed != null && coords.speed >= 0 ? coords.speed : null,
+    timestamp,
+  };
+}
+
+async function rememberLastKnownLocation(coords) {
+  const snapshot = normalizeLocationSnapshot(coords);
+  if (!snapshot) return null;
+  try { await storage.set(BG_LAST_LOCATION_KEY, JSON.stringify(snapshot)); } catch {}
+  return snapshot;
+}
+
+function sampleForDeal(dealId, coords) {
+  const snapshot = normalizeLocationSnapshot(coords);
+  if (!dealId || !snapshot) return null;
+  return {
+    dealId,
+    lat: snapshot.latitude,
+    lng: snapshot.longitude,
+    heading: snapshot.heading,
+    speed: snapshot.speed,
+    capturedAt: snapshot.timestamp,
+  };
+}
+
+async function postLocationSample(sample, token) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
   try {
+    const response = await fetch(`${API_BASE}/market/deals/${sample.dealId}/location`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        lat: sample.lat,
+        lng: sample.lng,
+        heading: sample.heading,
+        speed: sample.speed,
+        captured_at_ms: sample.capturedAt,
+        sample_id: locationSampleId(sample),
+      }),
+    });
+    if ([400, 403, 404, 409, 422].includes(response?.status)) {
+      return { quarantine: response.status };
+    }
+    if (!response?.ok) return { retryAfter: response?.headers?.get?.('Retry-After') };
+    const ack = await response.json();
+    return ack?.ok === true && ack.sample_id === locationSampleId(sample);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function refreshBackgroundActiveDealIds(token, fallbackIds = []) {
+  const fallback = Array.isArray(fallbackIds) ? fallbackIds : [];
+  if (!token) return fallback;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(`${API_BASE}/market/tracking/active`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    if (!response?.ok) return fallback;
+    const data = await response.json().catch(() => ({}));
+    if (data?.ok !== true || !Array.isArray(data.deal_ids)
+        || !data.deal_ids.every((id) => typeof id === 'string' && id.length > 0)) return fallback;
+    if (await storage.get(TOKEN_KEY) !== token) return [];
+    const ids = [...new Set(data.deal_ids)];
+    await storage.set(BG_DEALS_KEY, JSON.stringify(ids));
+    return ids;
+  } catch {
+    // Offline is not the same as "no active deals". Keep the last server-
+    // approved IDs so samples continue entering the persistent FIFO.
+    return fallback;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function pushLocationToDealsNow(coords, explicitDealIds = null) {
+  try {
+    // Время сохранённого измерения не заменяется временем доставки.
+    const captured = Array.isArray(coords) ? coords : [coords];
+    await rememberLastKnownLocation(captured[captured.length - 1]);
     const [rawIds, token] = await Promise.all([
       storage.get(BG_DEALS_KEY), storage.get(TOKEN_KEY),
     ]);
-    const ids = rawIds ? JSON.parse(rawIds) : [];
-    if (!Array.isArray(ids) || !ids.length || !token) return;
-    const payload = JSON.stringify({
-      lat: coords.latitude,
-      lng: coords.longitude,
-      heading: coords.heading != null && coords.heading >= 0 ? coords.heading : null,
-      speed: coords.speed != null && coords.speed >= 0 ? coords.speed : null,
-    });
-    await Promise.all(ids.map((id) =>
-      fetch(`${API_BASE}/market/deals/${id}/location`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: payload,
-      }).catch(() => {})
-    ));
-  } catch { /* background task must never crash the app */ }
+    const storedIds = rawIds ? JSON.parse(rawIds) : [];
+    let ids = Array.isArray(explicitDealIds) ? explicitDealIds : storedIds;
+    if (!token) return;
+    const ownerId = JSON.parse(await storage.get('ur_session') || 'null')?.user?.id;
+    if (!ownerId) return;
+    if (!await durableStorage.get(BG_LOCATION_QUEUE_KEY + ':migrated')) {
+      await locationQueue.migrate(BG_LOCATION_QUEUE_KEY, ownerId);
+    }
+    const persist = async (dealIds) => {
+      for (const id of dealIds || []) {
+        for (const point of captured) {
+          const current = sampleForDeal(id, point);
+          if (current) await locationQueue.append({ ...current, ownerId });
+        }
+      }
+    };
+    // Весь callback записан до первого сетевого ожидания, даже offline.
+    if (await storage.get(TOKEN_KEY) !== token) return;
+    await persist(ids);
+    if (!Array.isArray(explicitDealIds)) {
+      ids = await refreshBackgroundActiveDealIds(token, ids);
+    }
+    if (!Array.isArray(ids) || !ids.length) return;
+    if (await storage.get(TOKEN_KEY) !== token) return;
+    await persist(ids);
+    for (const id of ids) {
+      await locationQueue.drain(id, (sample) => postLocationSample(sample, token), async () => {
+        if (await storage.get(TOKEN_KEY) !== token) return false;
+        const active = JSON.parse(await storage.get(BG_DEALS_KEY) || '[]');
+        return active.includes(id);
+      }, ownerId);
+    }
+    return { ok: true };
+  } catch {
+    console.warn('[GPS] Очередь не обработана; сохранённые точки оставлены для повтора');
+    return { ok: false, code: 'GPS_QUEUE_FAILURE' };
+  }
+}
+
+// Send coordinates only for server-approved active deal IDs. Failed samples
+// are persisted and retried on the next callback/foreground tick; they are
+// never silently discarded as a successful-looking delivery.
+export function pushLocationToDeals(coords, explicitDealIds = null) {
+  const job = locationPushChain.then(() => pushLocationToDealsNow(coords, explicitDealIds));
+  locationPushChain = job.catch(() => {});
+  return job;
 }
 
 if (TaskManager) {
   try {
-    TaskManager.defineTask(BG_LOCATION_TASK, async ({ data, error }) => {
-      if (error || !data) return;
-      const { locations } = data;
-      const last = locations && locations[locations.length - 1];
-      if (last && last.coords) await pushLocationToDeals(last.coords);
+    TaskManager.defineTask(BG_LOCATION_TASK, async ({ data, error } = {}) => {
+      if (error) return;
+      const locations = data?.locations;
+      if (Array.isArray(locations) && locations.length) {
+        await pushLocationToDeals(locations.map((item) => ({ ...item.coords, timestamp: item.timestamp ?? item.coords?.timestamp })));
+      } else {
+        // Пустой callback только повторяет очередь. Старый GPS не становится
+        // новым heartbeat: свежесть подтверждается настоящим измерением ОС.
+        await pushLocationToDeals(null);
+      }
     });
   } catch { /* duplicate definition during hot reload is safe */ }
 }
 
 export async function setActiveDealIds(ids) {
-  try { await storage.set(BG_DEALS_KEY, JSON.stringify(ids || [])); } catch {}
+  try {
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string' && id.length > 0)) return;
+    const nextIds = [...new Set(ids)];
+    await storage.set(BG_DEALS_KEY, JSON.stringify(nextIds));
+    // Неактивные точки остаются в архиве очереди, но больше не отправляются.
+  } catch {}
 }
 
 export async function getBackgroundLocationPermissionState() {
@@ -246,6 +393,8 @@ export async function getCurrentLocationPayload() {
       lng: c.longitude,
       heading: c.heading != null && c.heading >= 0 ? c.heading : null,
       speed: c.speed != null && c.speed >= 0 ? c.speed : null,
+      timestamp: pos.timestamp,
+      captured_at_ms: pos.timestamp,
     };
   } catch { return null; }
 }
@@ -275,7 +424,7 @@ export async function getLocationHealth() {
 // Background hook may call this after the deal becomes active. It MUST NOT
 // trigger a permission dialog by itself. On Android it starts the visible
 // foreground service only after foreground + background permissions are granted.
-export async function startBackgroundTracking() {
+export async function startBackgroundTracking({ forceReconfigure = false } = {}) {
   if (Platform.OS === 'web') return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
   const locationModule = await resolveLocationModule();
   if (!locationModule) return { ok: false, reason: 'unsupported' };
@@ -291,19 +440,33 @@ export async function startBackgroundTracking() {
 
   try {
     const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
-    if (started) return { ok: true, already: true };
+    if (started && backgroundTrackingConfiguredThisProcess && !forceReconfigure) return { ok: true, already: true };
+    // A package update can leave Expo's persisted registration alive with the
+    // OLD options. A user may also return from Android's system Location
+    // settings after the provider was disabled: force one visible stop/start
+    // so Expo re-subscribes instead of retaining a silent stale registration.
+    // Ordinary refreshes keep the same service and do not churn it.
+    if (started) {
+      await locationModule.stopLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => {});
+    }
     await locationModule.startLocationUpdatesAsync(BG_LOCATION_TASK, {
       accuracy: locationModule.Accuracy.Balanced,
+      // Active-trip tracking needs a time heartbeat even while the truck is
+      // stopped at a warehouse/border. A 400 m distance gate let Android keep
+      // the FGS alive but stop callbacks for a stationary device, so the
+      // backend incorrectly aged `last_signal_at` into gps_lost. Keep the
+      // one-minute cadence authoritative; movement is not required.
       timeInterval: 60000,
-      distanceInterval: 400,
-      pausesUpdatesAutomatically: true,
+      distanceInterval: 0,
+      pausesUpdatesAutomatically: false,
       showsBackgroundLocationIndicator: true,
       foregroundService: {
         notificationTitle: t('bg_location_title'),
         notificationBody: t('bg_location_body'),
       },
     });
-    return { ok: true, foregroundService: Platform.OS === 'android' };
+    backgroundTrackingConfiguredThisProcess = true;
+    return { ok: true, foregroundService: Platform.OS === 'android', reconfigured: started };
   } catch (error) {
     return { ok: false, reason: String(error?.message || error || 'background_start_failed') };
   }

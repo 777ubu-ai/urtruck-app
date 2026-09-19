@@ -12,3 +12,15 @@ const dashboard = {
 
 assert.equal(computeDealsUnread(dashboard), 1);
 console.log('✓ pending GPS request is visible in Deals badge');
+
+assert.equal(computeDealsUnread({
+  my_deals: [{ status: 'completed', unread_count: 9 }],
+  my_bids: [],
+  incoming_bids: [],
+}), 0);
+assert.equal(computeDealsUnread({
+  my_deals: [{ status: 'accepted', unread_count: '2' }],
+  my_bids: [],
+  incoming_bids: [],
+}), 2);
+console.log('✓ closed deals stay hidden and numeric unread counts are normalized');

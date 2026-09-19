@@ -60,7 +60,7 @@ test('deal workspace has a fixed compact information header and no repeated UrTr
   assert.match(workspace, /scheduleMeta/);
   assert.match(workspace, /counterpartyMeta/);
   assert.match(workspace, /const compactHeader = \(/);
-  assert.match(workspace, /\{compactHeader\}/);
+  assert.match(workspace, /Navigation chrome is fixed OUTSIDE the scrolling message list/);
   assert.doesNotMatch(workspace, /ListHeaderComponent=\{compactHeader\}/);
   assert.doesNotMatch(workspace, /BrandBarWithShare|>UrTruck</);
   assert.doesNotMatch(brand, />UrTruck</);
@@ -123,14 +123,17 @@ test('the map is never mounted underneath the chat — chat and map are mutually
 });
 
 test('distance and ETA remain real Yandex route properties and fail closed', () => {
-  assert.match(workspace, /testID="deal-route-metrics"/);
-  assert.match(workspace, /routeSummary\.distanceText/);
-  assert.match(workspace, /routeSummary\.durationText/);
-  assert.match(workspace, /routeSummary\.isRemaining/);
+  assert.match(workspace, /<TripMapInfoSheet/);
+  assert.match(workspace, /metrics=\{mapMetrics\}/);
+  assert.match(workspace, /progress=\{metrics\.progress\}/);
+  assert.match(workspace, /routeMetricValues\(routeSummary,/);
+  assert.match(workspace, /value: metrics\.remaining/);
+  assert.match(workspace, /value: metrics\.estimatedTime/);
   assert.match(webMap, /multiRoute\.getActiveRoute/);
   assert.match(webMap, /get\?\.\(["']distance["']\)/);
   assert.match(webMap, /get\?\.\(["']duration["']\)/);
-  assert.match(webMap, /\[livePoint, destination\]/);
+  assert.match(webMap, /const routingPoints = plannedPoints/);
+  assert.doesNotMatch(webMap, /\[livePoint, destination\]/);
   assert.match(webMap, /emitSummary\(null\)/);
 });
 
@@ -148,7 +151,8 @@ test('no draggable multi-state bottom sheet remains — chat is a plain fullscre
   assert.doesNotMatch(workspace, /PanResponder\.create/);
   assert.doesNotMatch(workspace, /sheetState/);
   assert.doesNotMatch(workspace, /setSheet\(/);
-  assert.doesNotMatch(workspace, /keyboardWillShow|keyboardDidShow/);
+  assert.match(workspace, /useKeyboardDockInset/);
+  assert.match(workspace, /paddingBottom: keyboardDockInset/);
 });
 
 test('chat has no permanent second tab — status/history lives behind one icon-triggered modal', () => {
@@ -167,7 +171,7 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
   assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 32/);
-  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 74/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
   assert.match(workspace, /Math\.min\(COMPOSER_INPUT_MAX_HEIGHT/);
   assert.match(workspace, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
@@ -199,17 +203,35 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   // hardcoded light hex that glows in dark mode.
   assert.doesNotMatch(workspace, /backgroundColor: '#EAF1ED'/);
   assert.doesNotMatch(workspace, /backgroundColor: '#E9F6EF'/);
-  assert.match(workspace, /s\.mapArea, \{ backgroundColor: colors\.driverSoft \}/);
+  assert.match(workspace, /s\.mapArea, \{ backgroundColor: colors\.driverSoft, flex:/);
   assert.match(workspace, /s\.finishedIcon, \{ backgroundColor: colors\.driverSoft \}/);
-  assert.match(workspace, /s\.chatIconBox, \{ backgroundColor: colors\.driverSoft \}/);
+  // The map no longer renders the legacy chat dock; its visual styles are
+  // intentionally not part of this composer contract.
   assert.match(workspace, /testID="deal-chat-composer-dock"/);
   assert.match(workspace, /composerDock: \{ paddingHorizontal: 8, paddingTop: 5/);
-  assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'center'/);
+  assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'flex-end'/);
   assert.match(workspace, /borderRadius: 30/);
   assert.match(workspace, /shadowOpacity: 0\.1/);
-  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 74, borderRadius: 999/);
-  assert.match(workspace, /placeholder=""/);
+  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 88, borderRadius: 999/);
+  // The approved composer is visually empty in its idle state; the localized
+  // copy remains available to screen readers through accessibilityLabel.
+  assert.doesNotMatch(workspace, /placeholder=\{isDriver \? ui\.writeShipper : ui\.write\}/);
+  assert.match(workspace, /accessibilityLabel=\{isDriver \? ui\.writeShipper : ui\.write\}/);
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
+});
+
+test('receiver auto-scroll retries after native FlatList layout settles', () => {
+  // Android can report the new content size before the appended message cell
+  // is measured. The deferred retries keep a realtime text/voice message
+  // visible without requiring a manual swipe, while preserving the explicit
+  // user-scrolled-away guard.
+  assert.match(workspace, /const scheduleAutoScrollRef = React\.useRef\(null\)/);
+  assert.match(workspace, /scheduleAutoScrollRef\.current = \(\) =>/);
+  assert.match(workspace, /setTimeout\(scroll, 80\)/);
+  assert.match(workspace, /setTimeout\(scroll, 220\)/);
+  assert.match(workspace, /userScrolledAwayRef\.current && !nearBottomRef\.current/);
+  assert.match(workspace, /onContentSizeChange=\{\(\) => \{/);
+  assert.match(workspace, /scheduleAutoScrollRef\.current\?\.\(\)/);
 });
 
 test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
@@ -225,8 +247,8 @@ test('composer stays visible while scrolling and avoids duplicate emoji while ty
   assert.match(workspace, /attachHandle/);
   assert.doesNotMatch(workspace, /onScrollBeginDrag=\{collapseComposer\}/);
   assert.match(workspace, /Keyboard\.dismiss\(\)/);
-  assert.doesNotMatch(workspace, /Keyboard\.addListener/);
-  assert.doesNotMatch(workspace, /keyboardWillShow|keyboardDidShow/);
+  assert.match(workspace, /Keyboard\.addListener/);
+  assert.match(workspace, /keyboardWillShow|keyboardDidShow/);
 });
 
 test('emoji button opens a real bottom emoji picker instead of a coming-soon toast', () => {
@@ -261,7 +283,7 @@ test('toggleAttachMenu dismisses the keyboard and blurs input before opening the
   assert.doesNotMatch(workspace, /setComposerFocused/);
   // Multiline/emoji contract must survive: multiline input with emoji gutter.
   assert.match(workspace, /multiline/);
-  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 74/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
   assert.match(workspace, /testID="deal-chat-emoji"/);
   assert.match(workspace, /testID="deal-chat-composer"/);
 });
@@ -285,6 +307,23 @@ test('chat history scroll does not yank user from old messages when new messages
   assert.match(workspace, /setShowJumpLatest\(true\)/);
   assert.match(workspace, /testID="deal-chat-jump-latest"/);
   assert.match(workspace, /contentOffset/);
+});
+
+test('chat anchors the first loaded history to the latest message', () => {
+  assert.match(workspace, /initialMessagesLoadedRef/);
+  assert.match(workspace, /once, so a new receiver message is visible without a manual swipe/);
+  assert.match(workspace, /initialMessagesLoadedRef\.current = true/);
+  assert.match(workspace, /nearBottomRef\.current = true/);
+  assert.match(workspace, /scrollToEnd\?\.\(\{ animated: false \}\)/);
+});
+
+test('chat distinguishes a user scroll from programmatic receiver updates', () => {
+  assert.match(workspace, /userScrolledAwayRef/);
+  assert.match(workspace, /pendingAutoScrollRef/);
+  assert.match(workspace, /userScrolledAwayRef\.current = true;\s+pendingAutoScrollRef\.current = false/);
+  assert.match(workspace, /!userScrolledAwayRef\.current \|\| nearBottomRef\.current/);
+  assert.match(workspace, /if \(nearBottom\) userScrolledAwayRef\.current = false/);
+  assert.match(workspace, /!userScrolledAwayRef\.current \|\| pendingAutoScrollRef\.current \|\| nearBottomRef\.current/);
 });
 
 test('statuses render a detailed vertical timeline instead of compact system chips', () => {

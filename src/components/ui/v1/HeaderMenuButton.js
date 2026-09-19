@@ -13,6 +13,7 @@ import React from "react";
 import { TouchableOpacity, StyleSheet } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 import { useV1Colors } from "../../../theme/designV1";
+import { useI18n } from "../../../utils/useI18n";
 
 export default function HeaderMenuButton({
   navigation,
@@ -21,6 +22,7 @@ export default function HeaderMenuButton({
   testID = "header-menu-btn",
 }) {
   const colors = useV1Colors();
+  const { t } = useI18n();
   return (
     <TouchableOpacity
       onPress={() =>
@@ -30,7 +32,7 @@ export default function HeaderMenuButton({
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       testID={testID}
       accessibilityRole="button"
-      accessibilityLabel="Профиль и меню"
+      accessibilityLabel={t('menu_profile_a11y')}
     >
       <Feather name="menu" size={24} color={color || colors.text} />
     </TouchableOpacity>

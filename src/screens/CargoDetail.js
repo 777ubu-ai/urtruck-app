@@ -33,12 +33,12 @@ import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { normalizeCargo, cargoDisplay, sanitizeForDisplay, formatPrice } from '../utils/normalizers';
 import { localizePlace } from '../utils/places';
 import { formatDateForDisplay } from '../utils/dateInput';
-import { buildCargoShareText } from '../utils/share';
+import { buildCargoShareText, publicListingPath } from '../utils/share';
 import { WEB_URL } from '../config/env';
-import {v1Colors, useV1Colors, useShipperCeramicColors, v1Radius, v1AccentFor} from '../theme/designV1';
-import { SHIPPER_CERAMIC } from '../theme/designV1Palette';
+import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import StickyCTABar from '../components/ui/v1/StickyCTABar';
 import PrimaryCTA from '../components/ui/actions/PrimaryCTA';
@@ -47,7 +47,6 @@ import DestructiveButton from '../components/ui/actions/DestructiveButton';
 import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 
-const FLAGS = { KZ: '🇰🇿', UZ: '🇺🇿', RU: '🇷🇺', KG: '🇰🇬', CN: '🇨🇳', TJ: '🇹🇯', TR: '🇹🇷', TM: '🇹🇲', MN: '🇲🇳', DE: '🇩🇪', FR: '🇫🇷' };
 
 // HOT-003: скрываем техмусор из description (остатки init_db, стектрейсы и т.п.)
 const TRASH_RE = /init_db|phone_formatter|json_merger|bin_iin|SQL|sqlite|traceback|\bError:|File "[^"]+\.py"|line \d+|^```|stderr|\.py\b|SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/gi;
@@ -61,10 +60,7 @@ const sanitizeDesc = (s) => {
 };
 
 export default function CargoDetail({ navigation, route }) {
-  const baseV1 = useV1Colors();
-  const shipper = useShipperCeramicColors();
-  const roleHint = route?.params?.role || 'client';
-  const v1 = roleHint === 'driver' ? baseV1 : shipper;
+  const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
 
   container: { flex: 1 },
@@ -73,7 +69,7 @@ export default function CargoDetail({ navigation, route }) {
   // shareIcon styles were removed as part of stage 3E cleanup.
   pageTitle: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2, marginVertical: 12 },
   priceLabelV1: { fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  priceValueV1: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, color: SHIPPER_CERAMIC.text, fontVariant: ['tabular-nums'] },
+  priceValueV1: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, color: '#E06D00', fontVariant: ['tabular-nums'] },
   // Legacy local styles still used by deal-block / bid cards / reviews
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   backBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
@@ -88,12 +84,12 @@ export default function CargoDetail({ navigation, route }) {
   gridItem: { width: '50%', marginBottom: 10 },
   gridLabel: { fontSize: 11 },
   gridValue: { fontSize: 13, fontWeight: '600', marginTop: 2 },
-  priceBlock: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderRadius: 16, padding: 18, borderWidth: 1, borderColor: SHIPPER_CERAMIC.border, marginBottom: 16 },
-  priceLabel: { color: SHIPPER_CERAMIC.textMuted, fontSize: 11 },
-  priceValue: { color: SHIPPER_CERAMIC.text, fontSize: 28, fontWeight: '900' },
+  priceBlock: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#E8F6EF', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#C8D8CF', marginBottom: 16 },
+  priceLabel: { color: '#0F6B47', fontSize: 11 },
+  priceValue: { color: '#168759', fontSize: 28, fontWeight: '900' },
   beta: { color: '#57534E', fontSize: 11 },
-  bidBtn: { backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderColor: SHIPPER_CERAMIC.border, borderWidth: 1, borderRadius: 14, paddingHorizontal: 22, paddingVertical: 14 },
-  bidBtnText: { color: SHIPPER_CERAMIC.text, fontSize: 14, fontWeight: '800' },
+  bidBtn: { backgroundColor: '#168759', borderRadius: 14, paddingHorizontal: 22, paddingVertical: 14 },
+  bidBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   bidsTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
   // 27.07: было flexDirection:'row' → кнопки справа съедали ширину и имя/
   // сообщение схлопывались в вертикальный столбик по букве. Теперь колонка:
@@ -107,7 +103,7 @@ export default function CargoDetail({ navigation, route }) {
   // не оранжевая: та же карточка показывает и цену груза владельца
   // (priceValueV1, оранжевая), совпадение цвета читалось как одна цена
   // (05.08.2026, п.16 ТЗ).
-  bidAmt: { color: SHIPPER_CERAMIC.text, fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  bidAmt: { color: '#00C766', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   confirmBanner: { backgroundColor: '#16875920', borderWidth: 1, borderColor: '#168759', borderRadius: 12, padding: 14, marginBottom: 12, alignItems: 'center' },
   confirmText: { color: '#168759', fontSize: 14, fontWeight: '800' },
   photoWrap: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, marginBottom: 12, position: 'relative' },
@@ -115,8 +111,8 @@ export default function CargoDetail({ navigation, route }) {
   photoBadge: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   photoBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   // «Для перчаток и солнца»: крупные тап-цели (≥44pt) и читаемый текст.
-  acceptBtn: { backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderColor: SHIPPER_CERAMIC.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
-  acceptBtnText: { color: SHIPPER_CERAMIC.text, fontSize: 14, fontWeight: '800' },
+  acceptBtn: { backgroundColor: '#168759', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
+  acceptBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   rejectBtn: { backgroundColor: 'rgba(239,68,68,0.10)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center', borderWidth: 0 },
   rejectBtnText: { color: '#EF4444', fontSize: 14, fontWeight: '700' },
   miniBtn: { backgroundColor: 'rgba(148,163,184,0.14)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 44, justifyContent: 'center', borderWidth: 0 },
@@ -126,7 +122,7 @@ export default function CargoDetail({ navigation, route }) {
   reviewTitle: { fontSize: 15, fontWeight: '700' },
   starsRow: { flexDirection: 'row', gap: 8 },
   reviewInput: { width: '100%', borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 13 },
-  reviewSubmitBtn: { backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderColor: SHIPPER_CERAMIC.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+  reviewSubmitBtn: { backgroundColor: '#168759', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
   reviewSubmitText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   dealBlock: { borderWidth: 1, borderRadius: 14, padding: 16, alignItems: 'center', gap: 10 },
   myBidCard: { padding: 14, borderRadius: 10, borderWidth: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
@@ -139,19 +135,19 @@ export default function CargoDetail({ navigation, route }) {
   myBidBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
   dealStatusLabel: { fontSize: 15, fontWeight: '700' },
-  dealActionBtn: { backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderColor: SHIPPER_CERAMIC.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center', maxWidth: '100%', flexShrink: 1 },
+  dealActionBtn: { backgroundColor: '#168759', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center', maxWidth: '100%', flexShrink: 1 },
   // Ghost-стиль (обводка) для акцентных действий сделки — вместо сплошной заливки.
   dealActionGhost: { backgroundColor: 'transparent', borderWidth: 1.6 },
   dealActionText: { color: '#fff', fontSize: 13, fontWeight: '700', flexShrink: 1 },
-  chatBtn: { backgroundColor: SHIPPER_CERAMIC.surfaceMuted, borderColor: SHIPPER_CERAMIC.border, borderWidth: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  chatBtnText: { color: SHIPPER_CERAMIC.text, fontSize: 15, fontWeight: '700' },
+  chatBtn: { backgroundColor: '#168759', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   // Дизайн 2026 v3 (03.08): «Удалить груз» — редкое действие, не должно
   // «кричать» красным контуром. Text-only серый, красным только при нажатии.
   deleteMyBtn: { paddingVertical: 10, alignItems: 'center' },
   deleteMyBtnText: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
 
   }), [v1]);
-  const { cargo: paramCargo, cargoId, role = roleHint, dealId: routeDealId } = route.params || {};
+  const { cargo: paramCargo, cargoId, role, dealId: routeDealId, readOnly = false } = route.params || {};
   // Canonical cargo: locale is explicit so normalizers stay pure and Node-testable.
   const { t, lang } = useI18n();
   const editBidLabel = ({
@@ -197,6 +193,19 @@ export default function CargoDetail({ navigation, route }) {
   const [reviewSent, setReviewSent] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [acceptedDriverId, setAcceptedDriverId] = useState(null);
+  // Deep-link audit P1 (2026-09-14): a shared /cargos/{id} link (or a push
+  // payload) with an unknown/removed id used to fall through silently —
+  // fullCargo stayed null forever and the screen rendered a near-empty card
+  // instead of a clear error. Only matters for the deep-link entry (no
+  // paramCargo.from means CargoDetail was opened with just an id) — a normal
+  // in-app open always carries the full card already and must never flash a
+  // false not-found while refreshDeal's periodic poll is in flight.
+  const [cargoNotFound, setCargoNotFound] = useState(false);
+  // A route snapshot may stay mounted after another driver wins. The server then
+  // deliberately stops exposing the cargo as a public active listing (404).
+  // Track that separately from deep-link not-found so a stale `status=active`
+  // snapshot can never offer a second bid after the listing has closed.
+  const [listingUnavailable, setListingUnavailable] = useState(false);
   const askConfirm = useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
     new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
   ), [t]);
@@ -252,7 +261,25 @@ export default function CargoDetail({ navigation, route }) {
     if (!cid) return;
     marketAPI.listBids({ cargoId: cid })
       .then(d => {
-        const mapped = (d.bids || []).map(b => ({
+        // Backend may return the caller's own active bid separately as
+        // `my_bid` even when the public/dirty-bid filter intentionally omits
+        // it from `bids` (QA actors, confidential mode). CargoDetail used to
+        // ignore that field, so the driver saw a fresh "Предложить цену"
+        // CTA after already bidding and could not see/accept a counter-offer.
+        // Merge only the caller's own row back into the render set; this does
+        // not expose any other bidder and mirrors TripDetail's contract.
+        let rawBids = [...(d.bids || [])];
+        if (d.my_bid) {
+          // `my_bid` is the server-truth row. Replace any stale active copy
+          // for the same bidder so the list and "My bid" card cannot show
+          // two different prices at once.
+          rawBids = rawBids.filter((b) => !(
+            b.id === d.my_bid.id
+            || (b.bidder_id === d.my_bid.bidder_id && (b.status === 'pending' || b.status === 'countered'))
+          ));
+          rawBids.push(d.my_bid);
+        }
+        const mapped = rawBids.map(b => ({
           id: b.id, bidderId: b.bidder_id,
           name: b.bidder_name || b.bidder_phone || t('driver'),
           // Реальные данные оферента с бэка (list_bids обогащает) —
@@ -365,7 +392,21 @@ export default function CargoDetail({ navigation, route }) {
   // экрана + лёгкий поллинг раз в 15с, пока экран открыт (как в чате/сделках).
   const refreshDeal = useCallback(() => {
     if (!cid) return;
-    marketAPI.getCargo(cid).then(d => { if (d && d.id) setFullCargo(d); }).catch(() => {});
+    marketAPI.getCargo(cid).then(d => {
+      if (d && d.id) {
+        setFullCargo(d);
+        setCargoNotFound(false);
+        setListingUnavailable(false);
+      } else {
+        // HTTP 404/non-public response after accept/expiry/delete is
+        // authoritative even when navigation params still carry an old card.
+        setListingUnavailable(true);
+        if (!cargo.from) setCargoNotFound(true);
+      }
+    }).catch(() => {
+      // A transport error is not evidence that the listing was closed.
+      if (!cargo.from) setCargoNotFound(true);
+    });
     loadBids();
     const seq = ++dealFetchSeq.current;
     // dealId (state) авторитетнее routeDealId — тот навсегда фиксирован
@@ -438,12 +479,28 @@ export default function CargoDetail({ navigation, route }) {
   // открывая свой груз, видел зелёный driver-акцент (решение владельца
   // 2026-06-13: клиент везде оранжевый).
   const isDriverViewing = role === 'driver' || (driverId && driverId === myUserId);
-  const v1Accent = isDriverSide ? v1AccentFor('driver') : shipper;
+  const v1Accent = v1AccentFor('client');
   // Кнопки сделки (чат/подтвердить/старт) — действия текущего зрителя, поэтому
   // акцент роль-семантический: client → жёлтый #FF8400, driver → неон #168759.
   // Раньше был хардкод #168759 (зелёный) на всех поверхностях, в т.ч. клиентских.
-  const dealAccent = isDriverSide ? v1AccentFor('driver') : shipper;
+  const dealAccent = v1AccentFor(isDriverSide ? 'driver' : 'client');
   const insets = useSafeAreaInsets();
+
+  // Deep-link audit P1: invalid/removed cargo id → explicit not-found state
+  // instead of the near-empty card the missing guard used to render. All
+  // hooks above this point already ran unconditionally, so branching here
+  // is safe (no hook-order risk vs. the `!cid && !c.from` early return above).
+  if (cargoNotFound && !c.from) {
+    return (
+      <SafeAreaView style={[s.container, { backgroundColor: v1.bg, alignItems: 'center', justifyContent: 'center' }]} edges={['top']}>
+        <Text style={{ fontSize: 48 }}>🔍</Text>
+        <Text style={{ color: v1.text, fontSize: 15, fontWeight: '700', marginTop: 8 }}>{t('incomplete_data')}</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
+          <Text style={{ color: '#168759', fontSize: 14, fontWeight: '600' }}>← {t('back_short')}</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
@@ -506,7 +563,7 @@ export default function CargoDetail({ navigation, route }) {
               <Feather name="dollar-sign" size={12} color={theme.textMuted} />
               <Text testID="cargo-price-label" style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('price')}</Text>
             </View>
-            <Text testID="cargo-price-value" style={{ color: v1.text, fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1, minWidth: 0, textAlign: 'right' }} numberOfLines={1} ellipsizeMode="tail">{priceDisplay}</Text>
+            <Text testID="cargo-price-value" style={{ color: '#E06D00', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1, minWidth: 0, textAlign: 'right' }} numberOfLines={1} ellipsizeMode="tail">{priceDisplay}</Text>
           </View>
         </GlassCard>
 
@@ -584,7 +641,7 @@ export default function CargoDetail({ navigation, route }) {
             }]}>
               <View style={s.bidLeft}>
                 <View style={[s.bidFlag, { backgroundColor: b.status === 'accepted' ? '#168759' : b.isMine ? '#168759' : theme.border }]}>
-                  <Text style={{ fontSize: 14 }}>{b.isMine ? '🫵' : b.status === 'accepted' ? '✅' : isCountered ? '🔁' : (FLAGS[b.co] || '🏳️')}</Text>
+                  {b.isMine ? <Feather name="user" size={15} color="#FFFFFF" /> : b.status === 'accepted' ? <Feather name="check" size={15} color="#FFFFFF" /> : isCountered ? <Feather name="repeat" size={15} color="#FFFFFF" /> : <CountryFlag code={b.co} width={24} />}
                 </View>
                 <View style={{ flex: 1 }}>
                   <TouchableOpacity
@@ -638,7 +695,7 @@ export default function CargoDetail({ navigation, route }) {
                     создания сделки — никакого чата. Иерархия — одна большая
                     «Принять», вторичная «Предложить свою цену», текстовый
                     «Отклонить». */}
-                {c.isMine && b.status === 'pending' && !hasAccepted && (
+                {!readOnly && c.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ marginTop: 10, gap: 6, alignSelf: 'stretch' }}>
                     <PriceSavingsBadge listingPrice={c.price} bidPrice={b.amount} currency={c.currency || 'USD'} />
                     <PrimaryCTA
@@ -710,73 +767,39 @@ export default function CargoDetail({ navigation, route }) {
                   </View>
                 )}
 
-                {/* Клиент + countered: те же 2 кнопки. «Принять $X» под капотом
-                    отменяет свою встречку и принимает оригинал водителя одним
-                    нажатием (см. cancelOwnCounter → acceptBid). Требование
-                    владельца: две кнопки во всех состояниях, без «отменить
-                    встречную». */}
-                {c.isMine && isCountered && (
+                {/* Клиент уже отправил встречную цену. Финансово опасно
+                    одновременно показывать counterAmount и кнопку принятия
+                    исходной b.amount: пользователь не должен видеть две
+                    разные суммы рядом и гадать, какая создаст сделку. Пока
+                    водитель решает контр-оффер, владелец может только
+                    отклонить предложение целиком. */}
+                {!readOnly && c.isMine && isCountered && (
                   <View style={{ marginTop: 10, gap: 6, alignSelf: 'stretch' }}>
-                      <PrimaryCTA
-                        testID="bid-accept"
-                        role="client"
-                        icon="✓"
-                        label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
-                        numberOfLines={2}
-                        loading={accepting === b.id}
-                        disabled={!!accepting || !!rejecting}
-                        onPress={async () => {
-                          // Confirm сначала — под капотом два вызова, дороже отменить нельзя.
-                          const sum = formatPrice(b.amount, c.currency);
-                          const msg = t('accept_bid_confirm').replace('{sum}', sum);
-                          const ok = await askConfirm(t('accept_bid_confirm_title'), msg, t('accept_bid_btn'));
-                          if (!ok) return;
-                          setAccepting(b.id);
-                          try {
-                            // Шаг 1: отменяем свою встречку (ставка → pending).
-                            const c1 = await marketAPI.cancelOwnCounter(b.id);
-                            if (!c1.ok) { toast(c1.detail || t('accept_failed'), 'error'); setAccepting(null); return; }
-                            // Шаг 2: принимаем оригинальную сумму водителя.
-                            const r = await marketAPI.acceptBid(b.id);
-                            if (r.ok) {
-                              toast('✓ ' + t('driver_chosen'), 'success');
-                              if (r.chat_room_id) setChatRoomId(r.chat_room_id);
-                              if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
-                              loadBids();
-                              // WhatsApp-упрощение (04.08.2026, п.9 ТЗ): сразу в чат сделки.
-                              if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
-                            } else {
-                              toast(r.detail || t('accept_failed'), 'error');
-                            }
-                          } catch { toast(t('no_connection'), 'error'); }
-                          setAccepting(null);
-                        }}
-                      />
-                      <TouchableOpacity
-                        testID="bid-reject"
-                        onPress={async () => {
-                          setRejecting(b.id);
-                          try {
-                            const r = await marketAPI.rejectBid(b.id);
-                            if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); loadBids(); }
-                            else toast(r.detail || t('reject_failed'), 'error');
-                          } catch { toast(t('no_connection'), 'error'); }
-                          setRejecting(null);
-                        }}
-                        disabled={!!rejecting || !!accepting}
-                        style={{ alignSelf: 'center', maxWidth: '100%', paddingVertical: 6, paddingHorizontal: 10 }}
-                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      >
-                        <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1, flexShrink: 1 }} numberOfLines={1} ellipsizeMode="tail">
-                          {rejecting === b.id ? '…' : t('reject_btn')}
-                        </Text>
-                      </TouchableOpacity>
+                    <TouchableOpacity
+                      testID="bid-reject"
+                      onPress={async () => {
+                        setRejecting(b.id);
+                        try {
+                          const r = await marketAPI.rejectBid(b.id);
+                          if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); loadBids(); }
+                          else toast(r.detail || t('reject_failed'), 'error');
+                        } catch { toast(t('no_connection'), 'error'); }
+                        setRejecting(null);
+                      }}
+                      disabled={!!rejecting || !!accepting}
+                      style={{ alignSelf: 'center', maxWidth: '100%', paddingVertical: 6, paddingHorizontal: 10 }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', opacity: (accepting || rejecting) ? 0.55 : 1, flexShrink: 1 }} numberOfLines={1} ellipsizeMode="tail">
+                        {rejecting === b.id ? '…' : t('reject_btn')}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 )}
 
                 {/* Водитель + countered: primary = «Принять контр $X» (driver
                     green), Destructive Decline. Чат — только после сделки. */}
-                {b.isMine && !c.isMine && isCountered && (
+                {!readOnly && b.isMine && !c.isMine && isCountered && (
                   <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                     <PrimaryCTA
                       testID="bid-accept-counter"
@@ -797,7 +820,7 @@ export default function CargoDetail({ navigation, route }) {
 
                 {/* Водитель + своя ставка pending: primary НЕТ (ждём хода
                     клиента), только Edit + Chat + Destructive Cancel. */}
-                {b.isMine && !c.isMine && b.status === 'pending' && !hasAccepted && (
+                {!readOnly && b.isMine && !c.isMine && b.status === 'pending' && !hasAccepted && (
                   <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                     <SecondaryButton
                       testID="bid-edit"
@@ -846,7 +869,7 @@ export default function CargoDetail({ navigation, route }) {
           сделки ещё нет). По жалобе владельца 28.07: клиент отправил ставку —
           и никакой обратной связи. Показывает сумму, статус (ожидает/встречка)
           и кнопки [Изменить] [Чат]. Симметрично TripDetail. */}
-      {myPendingBid && isDriverViewing && !dealStatus ? (
+      {!readOnly && myPendingBid && isDriverViewing && !dealStatus ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           {/* Карточка своей ставки видна только водителю (isDriverViewing) —
               значит и цена, и рамка красятся его цветом (dealAccent), а не
@@ -999,7 +1022,8 @@ export default function CargoDetail({ navigation, route }) {
               onPress={async () => {
                 setReviewLoading(true);
                 try {
-                  await reviewsAPI.create({
+                  const result = await reviewsAPI.create({
+                    tripId: dealId || cid,
                     targetId: isShipper ? acceptedDriverId : shipperId,
                     // Backend reviews API accepts only 'driver' | 'client' (Pydantic pattern).
                     // Driver leaves review on the cargo owner — that's role 'client' on the server.
@@ -1007,6 +1031,7 @@ export default function CargoDetail({ navigation, route }) {
                     rating: reviewRating,
                     text: reviewText.trim() || null,
                   });
+                  if (!result?.ok) throw new Error(result?.detail || 'review_failed');
                   setReviewSent(true);
                   toast(t('thanks_for_review'), 'success');
                 } catch {
@@ -1038,7 +1063,14 @@ export default function CargoDetail({ navigation, route }) {
       {/* Sticky CTA — только «Предложить цену». Свободный чат до сделки убран
           (решение владельца 03.08): переговоры ведутся через ставку/контрпредложение,
           чат создаётся автоматически после accept. */}
-      {!c.isMine && !dealStatus && !myPendingBid ? (
+      {!c.isMine && listingUnavailable && !dealStatus ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }} testID="cargo-listing-closed">
+          <Text style={{ color: theme.textMuted, fontSize: 14, fontWeight: '600', textAlign: 'center' }}>
+            {t('cargo_unavailable_for_bids')}
+          </Text>
+        </View>
+      ) : null}
+      {!readOnly && !c.isMine && !listingUnavailable && c.status === 'active' && !dealStatus && !myPendingBid ? (
         <StickyCTABar
           accent={v1Accent.main}
           primary={{
@@ -1070,8 +1102,8 @@ export default function CargoDetail({ navigation, route }) {
       <ShareModal
         visible={shareModal}
         onClose={() => setShareModal(false)}
-        shareText={buildCargoShareText(c, `${WEB_URL || 'https://urtruck.kz'}/cargo/${c.id}`, lang)}
-        url={`${WEB_URL || 'https://urtruck.kz'}/cargo/${c.id}`}
+        shareText={buildCargoShareText(c, `${WEB_URL || 'https://urtruck.kz'}${publicListingPath('cargo', c.id)}`, lang)}
+        url={`${WEB_URL || 'https://urtruck.kz'}${publicListingPath('cargo', c.id)}`}
       />
       <AppConfirmModal
         visible={!!confirmDialog}

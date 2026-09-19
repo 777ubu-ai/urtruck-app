@@ -1,0 +1,9 @@
+{
+  "package": "com.urtruck.app.qa2",
+  "versionName": "1.0.8",
+  "versionCode": "211040057",
+  "targetSdk": "36",
+  "sourceSHA": "103473497d0656d989d14b1db2de2989d0ad88c2",
+  "apkSHA256": "8b6fc4714f490033121b1062655b3efeb21e7b3101d3b369e39f4948213ba7d7",
+  "certificateSHA256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c"
+}

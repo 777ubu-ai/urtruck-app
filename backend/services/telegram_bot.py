@@ -65,11 +65,11 @@ def _handle_message(msg: dict):
         # Определяем язык по номеру: +86 = CN, +998 = UZ, +996 = KG, else RU
         prefix = phone[:4] if phone.startswith('+') else ''
         if prefix.startswith('+86'):
-            user_lang_block = f"🇨🇳 您的验证码: <b>{code}</b>\n在UrTruck应用中输入此代码。"
+            user_lang_block = f"您的验证码: <b>{code}</b>\n在UrTruck应用中输入此代码。"
         elif prefix.startswith('+998'):
-            user_lang_block = f"🇺🇿 Sizning kodingiz: <b>{code}</b>\nUrTruck ilovasida ushbu kodni kiriting."
+            user_lang_block = f"Sizning kodingiz: <b>{code}</b>\nUrTruck ilovasida ushbu kodni kiriting."
         elif prefix.startswith('+996'):
-            user_lang_block = f"🇰🇬 Сиздин код: <b>{code}</b>\nUrTruck колдонмосуна кодду киргизиңиз."
+            user_lang_block = f"Сиздин код: <b>{code}</b>\nUrTruck колдонмосуна кодду киргизиңиз."
         else:
             user_lang_block = ""
 

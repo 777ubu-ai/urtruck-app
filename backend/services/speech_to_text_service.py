@@ -18,10 +18,18 @@ LANG_ALIAS = {
 
 
 class SpeechToTextError(RuntimeError):
-    def __init__(self, message: str, *, provider: str = "", retryable: bool = False):
+    """`code` is the stable, translatable machine code (see err_<CODE> in
+    src/utils/i18n.js) the frontend/API contract should key off of — the
+    `message` is a RU-language fallback for callers that don't localize it,
+    never raw provider text (a provider's HTTP error body may echo request
+    internals — model name, account/plan details — that shouldn't reach an
+    end user; see _transcribe_openai's own comment for what's logged
+    instead)."""
+    def __init__(self, message: str, *, provider: str = "", retryable: bool = False, code: str = "TRANSCRIPTION_FAILED"):
         super().__init__(message)
         self.provider = provider
         self.retryable = retryable
+        self.code = code
 
 
 def _normalize_lang_code(value: str | None) -> str | None:
@@ -53,17 +61,33 @@ def transcribe_audio_ref(audio_ref: str, *, filename: str | None = None, languag
     suffix = Path(filename or audio_ref or "voice.m4a").suffix or ".m4a"
     with storage.materialize_for_processing(audio_ref, suffix=suffix) as local_path:
         if not local_path or not Path(local_path).exists():
-            raise SpeechToTextError("Голосовой файл не найден", provider=_provider())
+            raise SpeechToTextError("Голосовой файл не найден", provider=_provider(), code="TRANSCRIPTION_UNAVAILABLE")
         return transcribe_audio_path(local_path, filename=filename or Path(local_path).name, language=language)
 
 
 def transcribe_audio_path(path: str, *, filename: str | None = None, language: str | None = None) -> dict:
     provider = _provider()
+    if provider == "local_whisper":
+        from services.local_speech_service import LocalSpeechError, transcribe
+        try:
+            return transcribe(path)
+        except LocalSpeechError as exc:
+            raise SpeechToTextError(
+                "Распознавание голоса временно недоступно", provider=provider,
+                retryable=exc.retryable, code=exc.code,
+            ) from exc
     if provider != "openai":
-        raise SpeechToTextError("Распознавание голоса не настроено", provider=provider)
+        # Fail-closed (i18n-16/STT-hardening spec item 7): no configured
+        # provider means no fake transcript — a controlled, canonical error
+        # code, never a silently-invented result.
+        raise SpeechToTextError("Распознавание голоса не настроено", provider=provider, code="TRANSCRIPTION_UNAVAILABLE")
     api_key = _api_key()
     if not api_key:
-        raise SpeechToTextError("OPENAI_API_KEY не задан", provider=provider)
+        # Deliberately does NOT say "OPENAI_API_KEY" to the caller — that's
+        # an internal config-variable name, not something to leak past the
+        # trust boundary (STT-hardening spec item 7's "no raw internal
+        # exception" applies to config detail too, not just provider text).
+        raise SpeechToTextError("Распознавание голоса не настроено", provider=provider, code="TRANSCRIPTION_UNAVAILABLE")
     return _transcribe_openai(path, filename=filename, language=language, api_key=api_key)
 
 
@@ -94,17 +118,46 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
             )
         response.raise_for_status()
     except httpx.TimeoutException as exc:
-        raise SpeechToTextError("Распознавание голоса долго отвечает", provider="openai", retryable=True) from exc
+        raise SpeechToTextError("Распознавание голоса долго отвечает", provider="openai", retryable=True, code="TRANSCRIPTION_TIMEOUT") from exc
     except httpx.HTTPStatusError as exc:
+        # STT-hardening spec item 7: the raw provider response body (may
+        # echo request/account internals) is logged server-side ONLY — the
+        # exception that reaches the API layer (and, from there, the HTTP
+        # client) carries just a canonical code + generic RU text. A 5xx
+        # from OpenAI (their own outage) is distinguished from a 4xx (this
+        # specific request/audio was rejected) via `retryable`, so a
+        # transient provider failure can be retried instead of reported to
+        # the user as "this recording can't be transcribed."
+        status = exc.response.status_code if exc.response is not None else 0
         body = exc.response.text[:300] if exc.response is not None else ""
+        print(f"[stt] OpenAI HTTP {status}: {body}", flush=True)
+        # Hardening B (2026-09-14): 429 (rate limit / quota exceeded) is a
+        # 4xx status but, unlike "this specific request/audio was rejected"
+        # 4xx codes (400 bad request, 401/403 bad key), it is transient —
+        # OpenAI's own guidance is to back off and retry. Previously only
+        # `status >= 500` was retryable, so a rate-limited request was
+        # reported to the user identically to "this recording can't be
+        # transcribed" (422, no retry hint) instead of "try again shortly"
+        # (503, retryable) — see test_12_5xx_is_retryable_4xx_is_not and its
+        # 429 sibling in test_stt_contract.py.
+        is_retryable = status >= 500 or status == 429
         raise SpeechToTextError(
-            f"OpenAI speech-to-text отклонил запрос: {body or exc.response.status_code}",
+            "Распознавание голоса временно недоступно" if is_retryable else "Не удалось распознать голосовое сообщение",
             provider="openai",
+            retryable=is_retryable,
+            code="TRANSCRIPTION_TIMEOUT" if is_retryable else "TRANSCRIPTION_FAILED",
         ) from exc
     except httpx.HTTPError as exc:
-        raise SpeechToTextError("Сервис распознавания голоса недоступен", provider="openai", retryable=True) from exc
+        raise SpeechToTextError("Сервис распознавания голоса недоступен", provider="openai", retryable=True, code="TRANSCRIPTION_UNAVAILABLE") from exc
 
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError as exc:
+        # Malformed 2xx body (STT-hardening spec item 4) — a provider that
+        # returns success with an unparsable body must still fail closed,
+        # not bubble up as an unhandled 500.
+        print(f"[stt] OpenAI returned non-JSON 2xx body: {response.text[:300]!r}", flush=True)
+        raise SpeechToTextError("Распознавание голоса вернуло некорректный ответ", provider="openai", code="TRANSCRIPTION_FAILED") from exc
     transcript = str(data.get("text") or "").strip()
     detected_lang = None
     languages = data.get("languages")

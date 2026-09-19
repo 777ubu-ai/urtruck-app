@@ -63,17 +63,22 @@ sqlite3 /home/ubuntu/urtruck/backend/database/security.db ".schema"
 ```
 
 ### 2.2. Seed `border_checkpoints` выполнен
-- [ ] В таблице минимум 8 строк (захардкоженные ПП из `BORDERS`)
+- [ ] В таблице находится полный результат последнего complete CGR directory scan
 - [ ] У всех записей `is_active = 1`
-- [ ] Хардкод `BORDERS = [...]` из `border_service.py` удалён
+- [ ] Нет фиксированного acceptance-ожидания `17 КПП / 5 стран`
+- [ ] Legacy `BORDERS` используется только как bootstrap fallback до complete scan
 
 **Доказательство 🗄 SQL:**
 ```bash
 sqlite3 security.db "SELECT code, name_ru, country_to FROM border_checkpoints WHERE is_active=1;"
-# Должно быть минимум 8 строк
+# Количество берётся из complete CGR scan, а не из hardcoded expectation.
+# На сверке 2026-09-14 production catalog: 51 записи / 6 country groups.
 ```
 
-**Доказательство:** `grep "BORDERS = " backend/services/border_service.py` — пустой результат.
+**Доказательство:** `GET /api/v1/borders/catalog` должен вернуть полный
+active-only каталог с уникальными `id`; в QA фиксируются HTTP status, counts,
+country mappings и список IDs. Legacy fallback не считается authoritative
+каталогом.
 
 ### 2.3. Индексы созданы
 - [ ] Все индексы из `cgr_schema.sql` присутствуют

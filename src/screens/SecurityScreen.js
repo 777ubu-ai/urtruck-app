@@ -65,8 +65,8 @@ export default function SecurityScreen({ navigation }) {
             <Text style={[s.backText, { color: theme.text }]}>‹</Text>
           </TouchableOpacity>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-            <Feather name="shield" size={20} color="#DC2626" />
-            <GradientText style={s.title} colors={['#DC2626', '#FF8400']}>{t('security_my_status')}</GradientText>
+            <Feather name="shield" size={20} color="#168759" />
+            <GradientText style={s.title} colors={['#168759', '#00A86B']}>{t('security_my_status')}</GradientText>
           </View>
         </View>
 
@@ -110,8 +110,6 @@ export default function SecurityScreen({ navigation }) {
                 { icon: 'check-circle', title: t('security_tip_complete_trips'),  desc: t('security_tip_complete_trips_desc') },
                 { icon: 'star',         title: t('security_tip_get_reviews'),     desc: t('security_tip_get_reviews_desc') },
                 { icon: 'file-text',    title: t('security_tip_verify_docs'),     desc: t('security_tip_verify_docs_desc') },
-                { icon: 'credit-card',  title: t('security_tip_confirm_account'), desc: t('security_tip_confirm_account_desc') },
-                { icon: 'camera',       title: t('biometry'),                     desc: t('security_tip_biometry_desc') },
               ].map(item => (
                 <View key={item.title} style={[s.tipRow, { borderBottomColor: theme.border }]}>
                   <Feather name={item.icon} size={18} color={theme.text} />

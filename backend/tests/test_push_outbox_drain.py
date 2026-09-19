@@ -24,15 +24,14 @@ and a real (temp) SQLite push_outbox/push_devices — not source-regex — that:
 
 Provider responses are simulated via a fake `expo_send_one` callback — the
 exact seam services.push_sender._send_native already hands push_gateway in
-production for the Expo path (see push_gateway.ExpoProvider.send()) — so no
-real network call is made and no Expo/FCM/APNs behavior is invented.
+production for the explicitly selected Expo legacy path (see
+push_gateway.ExpoProvider.send()) — so no real network call is made and no
+Expo/FCM/APNs behavior is invented.
 """
 import os
 import sys
 import uuid
 from pathlib import Path
-
-import pytest
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_push_outbox_drain.db")
 if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
@@ -53,30 +52,14 @@ import api.push as push_api  # noqa: F401  — import runs _init_schema() (push_
 
 
 # ───────────────────────── fixtures / helpers ─────────────────────────
-_PUSH_STATE_TABLES = (
-    "push_outbox",
-    "push_delivery_log",
-    "push_devices",
-    "push_tokens_native",
-    "push_subscriptions",
-    "push_token_audit",
-    "push_log",
-)
-
-
-def _clear_push_state():
-    """Keep outbox tests independent when pytest reuses one SQLite database."""
+def setup_function(_function):
+    """Isolate durable outbox rows from earlier tests in the shared DB."""
+    # This suite is specifically the retained Expo legacy-path contract. The
+    # production default is native, so the test intent must be explicit.
+    push_gateway.PUSH_PROVIDER_MODE = "expo"
     with get_conn() as c:
-        for table in _PUSH_STATE_TABLES:
-            c.execute(f"DELETE FROM {table}")
-
-
-@pytest.fixture(autouse=True)
-def _isolated_push_state():
-    """Prevent pending/sent rows and device data leaking between test cases."""
-    _clear_push_state()
-    yield
-    _clear_push_state()
+        c.execute("DELETE FROM push_outbox")
+        c.execute("DELETE FROM push_devices")
 
 
 def _make_user_with_device(provider="expo"):
@@ -159,6 +142,7 @@ def test_2_transient_provider_failure_retries():
     assert row["status"] == "pending"
     assert row["attempt_count"] == 1
     assert row["next_attempt_at"] is not None
+    assert row["last_error"] == "rate_limited:1"
     # An immediate second tick must NOT re-pick it — backoff must actually delay.
     stats2 = push_gateway.process_pending_once(_always_fail_transient, limit=10)
     assert stats2["picked"] == 0, "bounded exponential backoff must delay the retry"
@@ -200,8 +184,52 @@ def test_5_max_attempts_reaches_dead():
     row = _row(ek, uid)
     assert row["status"] == "dead"
     assert row["attempt_count"] == push_gateway.MAX_OUTBOX_ATTEMPTS
+    assert row["last_error"] == "rate_limited:1"
     stats = push_gateway.process_pending_once(_always_fail_transient, limit=10)
     assert stats["picked"] == 0, "a dead row must never be resurrected"
+
+
+def test_legacy_dead_rows_are_reconciled_to_truthful_terminal_states():
+    delivered_uid, _ = _make_user_with_device()
+    no_device_guest = reg_dal.create_guest()
+    no_device_uid = no_device_guest["id"] if isinstance(no_device_guest, dict) else no_device_guest
+    delivered_event = _enqueue(delivered_uid, "evt-legacy-delivered")
+    skipped_event = _enqueue(no_device_uid, "evt-legacy-no-device")
+    with get_conn() as c:
+        c.execute("UPDATE push_outbox SET status='dead', attempt_count=5, last_error='delivery_not_confirmed'")
+        device = c.execute(
+            "SELECT id, device_id FROM push_devices WHERE user_id=? LIMIT 1", (delivered_uid,)
+        ).fetchone()
+        c.execute(
+            "INSERT INTO push_delivery_log "
+            "(event_id, recipient_user_id, device_registry_id, device_id, provider, status, sent_at) "
+            "VALUES (?,?,?,?,?,'sent',CURRENT_TIMESTAMP)",
+            (delivered_event, delivered_uid, device["id"], device["device_id"], "fcm"),
+        )
+
+    push_api._init_schema()
+
+    assert _row(delivered_event, delivered_uid)["status"] == "sent_partial"
+    skipped = _row(skipped_event, no_device_uid)
+    assert skipped["status"] == "skipped_no_devices"
+    assert skipped["last_error"] == "no_active_devices"
+
+
+def test_partial_delivery_is_not_reported_as_dead_after_retry_limit():
+    uid, _ = _make_user_with_device()
+    ek = _enqueue(uid, "evt-partial-1")
+    row = _row(ek, uid)
+    outcome = push_gateway._finish_row(
+        row["id"],
+        push_gateway.MAX_OUTBOX_ATTEMPTS,
+        sent=False,
+        error="InvalidCredentials:1",
+        partially_sent=True,
+    )
+    assert outcome == "partial"
+    row = _row(ek, uid)
+    assert row["status"] == "sent_partial"
+    assert row["last_error"] == "InvalidCredentials:1"
 
 
 def test_6_poison_event_does_not_block_following_event():
@@ -241,8 +269,25 @@ def test_8_repeated_worker_execution_is_idempotent():
     r2 = push_gateway.process_pending_once(_always_ok, limit=10)
     r3 = push_gateway.process_pending_once(_always_ok, limit=10)
     assert r1["sent"] == 1
-    assert r2 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0}
-    assert r3 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0}
+    assert r2 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0}
+    assert r3 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0}
+
+
+def test_no_registered_device_is_skipped_not_dead():
+    guest = reg_dal.create_guest()
+    uid = guest["id"] if isinstance(guest, dict) else guest
+    ek = _enqueue(uid, "evt-no-device-1")
+
+    stats = push_gateway.process_pending_once(_always_ok, limit=10)
+
+    assert stats["skipped"] == 1
+    assert stats["failed"] == 0
+    assert stats["dead"] == 0
+    row = _row(ek, uid)
+    assert row["status"] == "skipped_no_devices"
+    assert row["last_error"] == "no_active_devices"
+    assert row["attempt_count"] == 1
+    assert push_gateway.process_pending_once(_always_ok, limit=10)["picked"] == 0
 
 
 def test_9_token_device_ownership_preserved():

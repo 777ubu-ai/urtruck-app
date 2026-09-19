@@ -56,8 +56,23 @@ print(f"[startup] ENV={_ENV_NAME} DB_PATH={_masked_db_path(_DB_PATH_RAW)}", flus
 # держим значением по умолчанию, чтобы мониторинг работал сразу после деплоя
 # без ручной правки .env на сервере. Через env SENTRY_DSN можно переопределить
 # (например, отключить, задав пустую строку).
+#
+# §24 hardening (2026-09-14): the committed default DSN used to apply
+# regardless of _ENV_NAME (computed above) — every `from main import app`
+# (every pytest run, every isolated/CI backend, every agent session in this
+# repo) sent real telemetry to the production Sentry project, and tagged it
+# environment="production" (also a hardcoded default, ignoring _ENV_NAME)
+# even when the process was actually ENV=test. That both floods the real
+# dashboard with CI/test noise and mislabels it as production, which is
+# actively misleading for anyone triaging real production errors there.
+# Fix: the committed default DSN is only used when _ENV_NAME is genuinely
+# "production"; test/dev/preview stay silent unless an operator explicitly
+# sets SENTRY_DSN (e.g. a staging project) — and in that opt-in case the
+# environment tag now defaults to the real _ENV_NAME instead of a hardcoded
+# "production", so events land correctly labeled either way.
 _DEFAULT_SENTRY_DSN = "https://18453143e7167ce08c98f2ce0d90bfd2@o4511743497273344.ingest.de.sentry.io/4511743527354448"
-_sentry_dsn = os.getenv("SENTRY_DSN", _DEFAULT_SENTRY_DSN).strip()
+_sentry_dsn_override = os.getenv("SENTRY_DSN", "").strip()
+_sentry_dsn = _sentry_dsn_override or (_DEFAULT_SENTRY_DSN if _ENV_NAME == "production" else "")
 if _sentry_dsn:
     try:
         import sentry_sdk
@@ -65,7 +80,7 @@ if _sentry_dsn:
 
         sentry_sdk.init(
             dsn=_sentry_dsn,
-            environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+            environment=os.getenv("SENTRY_ENVIRONMENT", _ENV_NAME),
             traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
             integrations=[FastApiIntegration()],
             send_default_pii=False,  # ИИН/ФИО водителей в Sentry не уходят
@@ -73,6 +88,8 @@ if _sentry_dsn:
         print("[sentry] initialized", flush=True)
     except Exception as e:
         print(f"[sentry] init failed (continuing without): {e}", flush=True)
+else:
+    print(f"[sentry] skipped (env={_ENV_NAME!r}, no SENTRY_DSN override)", flush=True)
 
 from typing import Optional
 
@@ -81,6 +98,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
+from services.form_limits import FormLimitsMiddleware
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -95,6 +113,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 from api.routes import router
 from api.admin import admin_router
+from api.admin_control import control_router
+from api.presence import presence_router
 from api.registration import reg_router
 from api.social_auth import social_auth_router
 from api.driver_registration import driver_reg_router
@@ -143,6 +163,7 @@ ALLOWED_ORIGINS = os.getenv(
     "http://localhost:8081,http://localhost:19006,http://185.22.65.11:8080,https://185.22.65.11:8443"
 ).split(",")
 
+app.add_middleware(FormLimitsMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -188,6 +209,8 @@ app.include_router(ss_router, prefix="/api/v1/searches")
 app.include_router(qa_router, prefix="/api/v1/qa")
 app.include_router(routing_router, prefix="/api/v1/routing")
 app.include_router(metrics_router, prefix="")
+app.include_router(control_router, prefix="/api/v1/admin/control")
+app.include_router(presence_router, prefix="/api/v1/presence")
 app.include_router(admin_router, prefix="/admin")
 
 # Приватная раздача локального storage (только provider=local).
@@ -198,7 +221,11 @@ app.include_router(admin_router, prefix="/admin")
 if storage_service.PROVIDER == "local":
     storage_service.LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
 
+    # Production nginx exposes this handler under /security/storage; keep the
+    # same signed endpoint available when the isolated QA backend is reached
+    # directly on :8001.
     @app.get("/storage/{path:path}")
+    @app.get("/security/storage/{path:path}")
     def serve_signed_storage(path: str, exp: Optional[str] = None, sig: Optional[str] = None):
         from services import file_signing
         # Path-traversal: резолвим и требуем, чтобы путь остался внутри LOCAL_ROOT.
@@ -214,7 +241,18 @@ if storage_service.PROVIDER == "local":
             raise HTTPException(status_code=403, detail="Invalid or missing signature")
         if not full.is_file():
             raise HTTPException(status_code=404, detail="Not found")
-        return FileResponse(str(full))
+        # §21 hardening (2026-09-14): these are private per-user documents
+        # (driver license/selfie/vehicle docs, chat attachments) reached via
+        # a signature+exp query string, not an auth header — without an
+        # explicit no-store a shared/CDN cache sitting in front of this
+        # endpoint, or the requesting browser's own disk cache, could retain
+        # the bytes past the signature's TTL or hand them to a different
+        # client on a cache hit keyed loosely on the path. FileResponse sets
+        # no Cache-Control by default, so this must be explicit.
+        return FileResponse(
+            str(full),
+            headers={"Cache-Control": "private, no-store", "Pragma": "no-cache"},
+        )
 
 
 @app.on_event("startup")
@@ -241,21 +279,19 @@ def startup():
     consent_dal.init_consent_schema()
     blacklist_mgr.seed_demo_blacklist()
 
-    # CGR schema всегда; легаси-сид border_checkpoints (короткие имена) —
-    # ТОЛЬКО при выключенном CGR. При включённом CGR авторитетный список с
-    # парными именами даёт seed_checkpoints_from_cgr() (scheduler), а легаси
-    # дал бы дубли («Нуржолы» + «Нур Жолы - Хоргос»).
+    # CGR schema всегда. Каталог КПП — локальный authoritative baseline и
+    # обязан существовать независимо от доступности live-CGR. CGR может
+    # дополнить/обновить его позже, но не должен оставлять Queue пустым на
+    # свежей QA/production-БД.
     from database import cgr_dal
     # Queue API требует эту схему даже когда optional CGR workers не могут
     # стартовать из-за неполной runtime-конфигурации.
     cgr_dal.init_cgr_schema()
     try:
         from cgr.settings import cgr_settings
-        if cgr_settings.feature_enabled:
-            print("[startup] CGR enabled — legacy checkpoint seed skipped (CGR is source)", flush=True)
-        else:
-            n = cgr_dal.seed_border_checkpoints_from_legacy()
-            print(f"[startup] CGR schema applied, border_checkpoints seeded: +{n}", flush=True)
+        n = cgr_dal.seed_border_checkpoints_from_legacy()
+        mode = "CGR live update enabled" if cgr_settings.feature_enabled else "CGR live update disabled"
+        print(f"[startup] CGR schema applied, authoritative border catalogue seeded: +{n}; {mode}", flush=True)
     except Exception as e:
         # Отсутствие CGR-секрета не должно оставлять Queue без таблиц. Legacy
         # catalogue локален, идемпотентен и сохраняет read-only просмотр
@@ -340,6 +376,12 @@ def startup():
     start_deferred_migrations()
 
 
+@app.on_event("startup")
+def finish_deferred_push_migrations():
+    # Тяжёлый индекс старой БД не задерживает открытие HTTP-порта.
+    start_deferred_migrations()
+
+
 @app.on_event("shutdown")
 async def shutdown():
     """Корректная остановка CGR-scheduler и httpx-клиента."""
@@ -369,9 +411,16 @@ def root():
     }
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+# §25 hardening (2026-09-14): a `@app.get("/health")` used to be defined
+# here too. It was PURE DEAD CODE: api/metrics.py's `metrics_router` (which
+# also defines GET /health) is include_router()'d above, before this point
+# in the file runs, and FastAPI/Starlette match routes in registration
+# order -- so metrics_router's handler has always been the one actually
+# serving every real /health request; this one never executed. Rather than
+# leave a second, silently-unreachable /health definition as a trap for the
+# next person who edits "the" health check and wonders why their change has
+# no effect, the DB-reachability check this handler was going to add lives
+# in api/metrics.py's health_detailed() instead -- the one that is live.
 
 
 @app.get("/api/v1/system/info")
@@ -379,6 +428,7 @@ def system_info():
     """Режимы работы подсистем MVP."""
     import os
     from services import otp_service
+    from api import routing as routing_api
     from biometrics.liveness import info as face_info
     from config import BETA_MODE
     env = os.getenv("URTRUCK_ENV", "").strip().lower() or "unset"
@@ -393,6 +443,9 @@ def system_info():
         "otp": otp_service.info(),
         "face": face_info(),
         "storage": storage_service.info(),
+        # Hardening B (2026-09-14): routing provider config presence (no
+        # key values) — see backend/api/routing.py's info().
+        "routing": routing_api.info(),
     }
 
 

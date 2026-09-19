@@ -1,5 +1,9 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
   <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <item name="android:windowFullscreen">true</item>
+    <item name="android:windowBackground">@drawable/urtruck_splash_window_background</item>
+    <item name="android:navigationBarColor">@color/splashscreen_background</item>
+    <item name="android:windowLightNavigationBar">false</item>
     <item name="android:textColor">@android:color/black</item>
     <item name="android:editTextStyle">@style/ResetEditText</item>
     <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
@@ -12,8 +16,15 @@
     <item name="android:textColor">@android:color/black</item>
   </style>
   <style name="Theme.App.SplashScreen" parent="Theme.SplashScreen">
+    <item name="android:windowFullscreen">true</item>
+    <item name="android:windowBackground">@drawable/urtruck_splash_window_background</item>
+    <item name="android:navigationBarColor">@color/splashscreen_background</item>
+    <item name="android:windowLightNavigationBar">false</item>
     <item name="windowSplashScreenBackground">@color/splashscreen_background</item>
-    <item name="windowSplashScreenAnimatedIcon">@drawable/splashscreen_logo</item>
+    <!-- Android 12+ помещает artwork в маленький иконный контейнер. Плакат
+         показывается следующим полноэкранным React Native слоем, а system
+         splash остаётся коротким чистым фоном без tiny center poster. -->
+    <item name="windowSplashScreenAnimatedIcon">@android:color/transparent</item>
     <item name="postSplashScreenTheme">@style/AppTheme</item>
   </style>
 </resources>

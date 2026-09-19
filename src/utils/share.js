@@ -18,6 +18,15 @@ const SHARE_COPY = {
 
 const copyFor = (lang) => SHARE_COPY[String(lang || 'RU').toUpperCase()] || SHARE_COPY.EN;
 
+// Единый публичный контракт для карточек marketplace. Push/backend уже
+// используют plural-форму; share не должен порождать другой URL-namespace.
+// Идентификатор экранируется, чтобы share URL не мог менять path structure.
+export const publicListingPath = (kind, id) => {
+  const normalizedKind = String(kind || '').toLowerCase();
+  const prefix = normalizedKind === 'trip' || normalizedKind === 'trips' ? 'trips' : 'cargos';
+  return `/${prefix}/${encodeURIComponent(String(id || ''))}`;
+};
+
 const CURRENCY_ALIASES = {
   '$': 'USD', 'US$': 'USD', USD: 'USD',
   '₸': 'KZT', KZT: 'KZT', ТГ: 'KZT', ТЕНГЕ: 'KZT',

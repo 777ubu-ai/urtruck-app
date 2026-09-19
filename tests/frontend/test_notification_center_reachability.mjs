@@ -14,25 +14,18 @@ test('Profile does not duplicate deal notifications entry or unread badge', () =
   assert.doesNotMatch(profile, /navigation\.navigate\(['"]PushFilter/);
 });
 
-test('My Work Bell opens the canonical PushFilter settings', () => {
-  const myTrips = readFileSync('src/screens/MyTripsScreen.js', 'utf8');
-  assert.match(myTrips, /bellTestID="mywork-notification-settings-btn"/);
-  assert.match(myTrips, /navigation\.navigate\('PushFilter', \{ role \}\)/);
-  assert.doesNotMatch(myTrips, /navigation\.navigate\(['"]Notifications/);
-});
-
-test('all active root screens route Bell to PushFilter, never Notifications', () => {
+test('root screens do not expose a Bell or direct notification-center entry', () => {
   for (const file of [
     'src/screens/FeedScreen.js',
     'src/screens/CargoFeedScreen.js',
+    'src/screens/MyTripsScreen.js',
     'src/screens/DealsScreen.js',
-    'src/screens/QueueScreenLazyV2.js',
   ]) {
     const source = readFileSync(file, 'utf8');
     assert.match(source, /RootHeader/);
-    assert.match(source, /navigation\.navigate\('PushFilter', \{ role \}\)/, file);
-    assert.doesNotMatch(source, /useUnreadNotifications/);
-    assert.doesNotMatch(source, /navigation\.navigate\(['"]Notifications/, file);
+    assert.doesNotMatch(source, /bellTestID=/, file);
+    assert.doesNotMatch(source, /onBellPress=/, file);
+    assert.doesNotMatch(source, /navigation\.navigate\('Notifications', \{ role \}\)/, file);
   }
 });
 
@@ -58,4 +51,5 @@ test('NotificationsScreen route remains registered for push/deep-link compatibil
   const nav = readFileSync('src/navigation/AppNavigator.js', 'utf8');
   assert.match(nav, /name="Notifications"/);
   assert.match(nav, /component=\{NotificationsScreen\}/);
+  assert.match(nav, /<Stack\.Screen name="Notifications" component=\{NotificationsScreen\} \/>/);
 });

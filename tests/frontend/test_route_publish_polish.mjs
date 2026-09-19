@@ -22,7 +22,7 @@ test('route CTA opens a fullscreen map inside UrTruck and never deep-links exter
   assert.doesNotMatch(webMap, /Linking\.openURL/);
   assert.doesNotMatch(nativeMap, /https:\/\/yandex\.(?:ru|kz)\/maps/);
   assert.doesNotMatch(webMap, /https:\/\/yandex\.(?:ru|kz)\/maps/);
-  assert.match(nativeMap, /testID="truck-map-yandex-webview"/);
+  assert.match(nativeMap, /testID="truck-map-yandex-mapkit"/);
   assert.match(webMap, /testID="truck-map-yandex-web"/);
 });
 

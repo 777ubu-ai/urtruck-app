@@ -14,11 +14,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
-import { useV1Colors, useDriverCeramicColors, useShipperCeramicColors } from '../theme/designV1';
-import { DRIVER_CERAMIC } from '../theme/designV1Palette';
+import { useV1Colors, useDriverCeramicColors } from '../theme/designV1';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 import { API_BASE } from '../config/env';
 import { localizeCheckpointName } from '../utils/checkpointNames';
 import { storage } from '../utils/storage';
@@ -32,12 +32,12 @@ const COUNTRY_ORDER = ['CN', 'KG', 'RU', 'UZ', 'TM', 'CASPIAN'];
 const MCI_KZT_2026 = 4325;
 
 const COUNTRY = {
-  CN: { flag: '🇨🇳', RU: 'Китай', KK: 'Қытай', EN: 'China', ZH: '中国' },
-  KG: { flag: '🇰🇬', RU: 'Кыргызстан', KK: 'Қырғызстан', EN: 'Kyrgyzstan', ZH: '吉尔吉斯斯坦' },
-  RU: { flag: '🇷🇺', RU: 'Россия', KK: 'Ресей', EN: 'Russia', ZH: '俄罗斯' },
-  UZ: { flag: '🇺🇿', RU: 'Узбекистан', KK: 'Өзбекстан', EN: 'Uzbekistan', ZH: '乌兹别克斯坦' },
-  TM: { flag: '🇹🇲', RU: 'Туркменистан', KK: 'Түрікменстан', EN: 'Turkmenistan', ZH: '土库曼斯坦' },
-  CASPIAN: { flag: '⚓️', RU: 'Каспий', KK: 'Каспий', EN: 'Caspian', ZH: '里海' },
+  CN: { RU: 'Китай', KK: 'Қытай', EN: 'China', ZH: '中国' },
+  KG: { RU: 'Кыргызстан', KK: 'Қырғызстан', EN: 'Kyrgyzstan', ZH: '吉尔吉斯斯坦' },
+  RU: { RU: 'Россия', KK: 'Ресей', EN: 'Russia', ZH: '俄罗斯' },
+  UZ: { RU: 'Узбекистан', KK: 'Өзбекстан', EN: 'Uzbekistan', ZH: '乌兹别克斯坦' },
+  TM: { RU: 'Туркменистан', KK: 'Түрікменстан', EN: 'Turkmenistan', ZH: '土库曼斯坦' },
+  CASPIAN: { RU: 'Каспий', KK: 'Каспий', EN: 'Caspian', ZH: '里海' },
 };
 
 const COPY = {
@@ -176,23 +176,22 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const { theme: themeBase } = useTheme();
   const v1Base = useV1Colors();
   const ceramic = useDriverCeramicColors();
-  const shipper = useShipperCeramicColors();
   const { t, lang, sp } = useI18n();
   const L = COPY[lang] || COPY.RU;
   const role = route?.params?.role || 'driver';
   const isDriver = role === 'driver';
-  const activeColor = isDriver ? DRIVER_CERAMIC.active : shipper.active;
-  const v1 = isDriver ? ceramic : shipper;
+  const activeColor = isDriver ? ceramic.active : '#168759';
+  const v1 = isDriver ? ceramic : v1Base;
   const theme = isDriver ? {
     ...themeBase,
-    bg: DRIVER_CERAMIC.bg,
-    card: DRIVER_CERAMIC.surface,
-    surface: DRIVER_CERAMIC.surface,
-    text: DRIVER_CERAMIC.text,
-    textMuted: DRIVER_CERAMIC.textMuted,
-    textDim: DRIVER_CERAMIC.textDim,
-    border: DRIVER_CERAMIC.border,
-  } : { ...themeBase, bg: shipper.bg, card: shipper.surface, surface: shipper.surface, text: shipper.text, textMuted: shipper.textMuted, textDim: shipper.textDim, border: shipper.border };
+    bg: ceramic.bg,
+    card: ceramic.surface,
+    surface: ceramic.surface,
+    text: ceramic.text,
+    textMuted: ceramic.textMuted,
+    textDim: ceramic.textDim,
+    border: ceramic.border,
+  } : themeBase;
   const { requireLevel } = useVerificationGate();
 
   const [catalog, setCatalog] = useState([]);
@@ -203,6 +202,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const [liveLoading, setLiveLoading] = useState(false);
   const [liveError, setLiveError] = useState('');
   const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
   const [favorites, setFavorites] = useState([]);
   const [plate, setPlate] = useState('');
   const [lookup, setLookup] = useState(null);
@@ -211,18 +211,24 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const checkpointCarouselX = useRef(0);
 
   const countryName = useCallback((code) => {
-    const meta = COUNTRY[code] || { flag: '🌐', RU: code, KK: code, EN: code, ZH: code };
-    return `${meta.flag || '🌐'} ${meta[lang] || meta.RU || code}`;
+    const normalizedCode = String(code || '').trim().toUpperCase();
+    const meta = COUNTRY[normalizedCode] || { RU: normalizedCode, KK: normalizedCode, EN: normalizedCode, ZH: normalizedCode };
+    return meta[lang] || meta.RU || normalizedCode;
   }, [lang]);
 
   const loadCatalog = useCallback(async () => {
     setCatalogLoading(true);
+    setCatalogError('');
     try {
       const data = await fetchJson(`${BASE}/catalog`);
-      setCatalog(Array.isArray(data?.checkpoints) ? data.checkpoints : []);
+      const nextCatalog = Array.isArray(data?.checkpoints) ? data.checkpoints : [];
+      setCatalog(nextCatalog);
       setCountries(Array.isArray(data?.countries) ? data.countries : []);
+      if (!nextCatalog.length) setCatalogError(L.sourceError);
+    } catch {
+      setCatalogError(L.sourceError);
     } finally { setCatalogLoading(false); }
-  }, []);
+  }, [L.sourceError]);
 
   useEffect(() => {
     loadCatalog().catch(() => setCatalogLoading(false));
@@ -230,21 +236,21 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   }, [loadCatalog]);
 
   const countryCodes = useMemo(() => {
-    const available = new Set(countries.map((item) => item.country).filter(Boolean));
+    const available = new Set(countries.map((item) => String(item.country || '').trim().toUpperCase()).filter(Boolean));
     const ordered = COUNTRY_ORDER.filter((code) => available.has(code) || ['CN', 'KG', 'RU'].includes(code));
     for (const code of available) if (!ordered.includes(code)) ordered.push(code);
     return ordered;
   }, [countries]);
 
   const visible = useMemo(() => {
-    const rows = selectedCountry === 'ALL' ? catalog : catalog.filter((item) => item.country === selectedCountry);
+    const rows = selectedCountry === 'ALL' ? catalog : catalog.filter((item) => String(item.country || '').trim().toUpperCase() === selectedCountry);
     return [...rows].sort((a, b) => {
       const af = favorites.includes(String(a.id)) ? 0 : 1;
       const bf = favorites.includes(String(b.id)) ? 0 : 1;
       return af !== bf ? af - bf
         : localizeCheckpointName(a, lang).localeCompare(localizeCheckpointName(b, lang));
     });
-  }, [catalog, selectedCountry, favorites]);
+  }, [catalog, selectedCountry, favorites, lang]);
 
   const selected = useMemo(() => catalog.find((item) => String(item.id) === String(selectedId)) || null, [catalog, selectedId]);
   const live = selectedId ? liveById[String(selectedId)] : null;
@@ -294,11 +300,8 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: v1.bg }]} edges={['top']} testID="border-screen-v2">
-      <DriverRouteBackdrop />
-      <RootHeader ceramic hideBell={!isDriver} navigation={navigation} role={role} testID="queue-root-header" onBellPress={async () => {
-        const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-        if (ok) navigation.navigate('PushFilter', { role });
-      }} />
+      {isDriver ? <DriverRouteBackdrop /> : null}
+      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="queue-root-header" onBellPress={() => navigation.navigate('Notifications', { role })} />
 
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
         <Text style={[s.topTitle, s.scrollTitle, { color: theme.text }]} testID="queue-title">{L.title}</Text>
@@ -309,6 +312,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             const active = selectedCountry === code;
             return (
               <TouchableOpacity key={code} onPress={() => selectCountry(code)} style={[s.countryChip, { borderColor: active ? activeColor : theme.border, backgroundColor: active ? activeColor : theme.card }]} testID={`border-country-${code}`}>
+                <CountryFlag code={code} width={22} />
                 <Text style={[s.countryText, { color: active ? '#FFFFFF' : theme.text }]}>{countryName(code)}</Text>
               </TouchableOpacity>
             );
@@ -324,10 +328,16 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             const next = checkpointCarouselX.current + 300;
             checkpointCarouselRef.current?.scrollTo({ x: next, animated: true });
             checkpointCarouselX.current = next;
-          }} style={s.carouselNext} testID="border-checkpoint-next"><Feather name="chevrons-right" size={21} color={activeColor} /></TouchableOpacity>
+          }} style={[s.carouselNext, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-checkpoint-next"><Feather name="chevrons-right" size={21} color={activeColor} /></TouchableOpacity>
         </View>
 
-        {catalogLoading ? <View style={s.center}><ActivityIndicator color={activeColor} /></View> : (
+        {catalogLoading ? <View style={s.center}><ActivityIndicator color={activeColor} /></View> : catalogError ? (
+          <View style={[s.errorCard, { backgroundColor: theme.card }]} testID="border-catalog-error">
+            <Feather name="alert-circle" size={20} color="#B42318" />
+            <Text style={[s.errorText, { color: theme.textMuted }]}>{catalogError}</Text>
+            <TouchableOpacity onPress={() => loadCatalog()} testID="border-catalog-retry"><Text style={s.retry}>{L.refresh}</Text></TouchableOpacity>
+          </View>
+        ) : (
           <ScrollView ref={checkpointCarouselRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.carousel} onScroll={(event) => { checkpointCarouselX.current = event.nativeEvent.contentOffset.x; }} scrollEventThrottle={16} testID="border-checkpoint-carousel">
             {visible.map((checkpoint) => {
               const active = String(selectedId) === String(checkpoint.id);
@@ -344,19 +354,19 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         )}
 
         {!selected ? <View style={[s.promptCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-lazy-prompt"><Feather name="mouse-pointer" size={20} color={activeColor} /><Text style={[s.promptText, { color: theme.textMuted }]}>{L.tap}</Text></View> : null}
-        {selected && liveLoading && !live ? <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: DRIVER_CERAMIC.border }]} testID="border-live-loading"><ActivityIndicator color={activeColor} size="large" /><Text style={[s.loadingText, { color: theme.textMuted }]}>{L.loading}</Text></View> : null}
+        {selected && liveLoading && !live ? <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: ceramic.border }]} testID="border-live-loading"><ActivityIndicator color={activeColor} size="large" /><Text style={[s.loadingText, { color: theme.textMuted }]}>{L.loading}</Text></View> : null}
         {selected && liveError ? <View style={[s.errorCard, { backgroundColor: theme.card }]}><Feather name="alert-circle" size={20} color="#B42318" /><Text style={[s.errorText, { color: theme.textMuted }]}>{liveError}</Text><TouchableOpacity onPress={() => loadLive(selected, true)}><Text style={s.retry}>{L.refresh}</Text></TouchableOpacity></View> : null}
 
         {selected && live ? (
-          <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: DRIVER_CERAMIC.border }]} testID="border-selected-card">
+          <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: ceramic.border }]} testID="border-selected-card">
             <View style={s.liveHeader}>
-              <View style={{ flex: 1, paddingRight: 8 }}><Text style={[s.liveTitle, { color: theme.text }]}>{localizeCheckpointName({ ...selected, name: live.name || selected.name }, lang)}</Text><Text style={[s.liveCountry, { color: theme.textMuted }]}>{selected.country ? countryName(selected.country) : ''}</Text></View>
+              <View style={{ flex: 1, paddingRight: 8 }}><Text style={[s.liveTitle, { color: theme.text }]}>{localizeCheckpointName({ ...selected, name: live.name || selected.name }, lang)}</Text><View style={s.liveCountryRow}>{selected.country ? <CountryFlag code={selected.country} width={20} /> : null}<Text style={[s.liveCountry, { color: theme.textMuted }]}>{selected.country ? countryName(selected.country) : ''}</Text></View></View>
               <TouchableOpacity onPress={toggleFavorite} style={[s.iconButton, { borderColor: theme.border }]} accessibilityRole="button" accessibilityLabel={t('a11y_toggle_favorite')} accessibilityState={{ selected: favorites.includes(String(selectedId)) }}><Feather name="star" size={19} color={activeColor} fill={favorites.includes(String(selectedId)) ? activeColor : 'transparent'} /></TouchableOpacity>
             </View>
 
-            <View style={s.heroBooking}>
+            <View style={[s.heroBooking, { backgroundColor: v1.surfaceMuted }]}>
               <Text style={[s.heroLabel, { color: theme.textMuted }]}>{L.nearest}</Text>
-              <Text style={s.heroDate}>{nearestText}</Text>
+              <Text style={[s.heroDate, { color: theme.text }]}>{nearestText}</Text>
               {live.nearest_booking_free != null ? <View style={s.freeBadge}><Text style={s.freeBadgeText}>{live.nearest_booking_free} {L.places} · {L.standard}</Text></View> : <Text style={[s.noBooking, { color: theme.textMuted }]}>{L.noStandard}</Text>}
             </View>
 
@@ -379,7 +389,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 const hasStandard = standardFree > 0;
                 const hasPremium = !hasStandard && premiumFree > 0;
                 return (
-                  <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? DRIVER_CERAMIC.active : hasPremium ? '#B58A52' : '#C98B8B', backgroundColor: item.is_day_off ? v1.bg : hasStandard ? DRIVER_CERAMIC.activeSoft : hasPremium ? '#F3EBDD' : '#F5E7E7' }]} testID="border-booking-date-card">
+                  <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? ceramic.active : hasPremium ? '#B58A52' : '#C98B8B', backgroundColor: item.is_day_off ? v1.bg : theme.card }]} testID="border-booking-date-card">
                     <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
                     {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim, fontSize: sp(9.5) }]}>{L.dayOff}</Text> : hasStandard ? <><Text style={s.dateFree}>{standardFree}</Text><Text style={[s.dateState, { color: activeColor, fontSize: sp(9.5) }]}>{L.standard}</Text><Text style={[s.dateAmount, { color: activeColor, fontSize: sp(8.5) }]}>{formatKztAmount(1)}</Text></> : hasPremium ? <><Text style={s.datePremium}>{premiumFree}</Text><Text style={[s.dateState, { color: '#B7791F', fontSize: sp(9.5) }]}>{L.premium}</Text><Text style={[s.dateAmount, { color: '#B7791F', fontSize: sp(8.5) }]}>{formatKztAmount(100)}</Text></> : <Text style={[s.dateState, { color: '#B42318', fontSize: sp(9.5) }]}>{L.noPlaces}</Text>}
                   </View>
@@ -422,13 +432,13 @@ const s = StyleSheet.create({
   subtitle: { fontSize: 14, lineHeight: 20, marginBottom: 18 },
   label: { fontSize: 15, fontWeight: '800', marginBottom: 9 },
   chips: { gap: 8, paddingRight: 18, paddingBottom: 5 },
-  countryChip: { minHeight: 38, borderWidth: 1, borderRadius: 20, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
+  countryChip: { minHeight: 38, borderWidth: 1, borderRadius: 20, paddingHorizontal: 13, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },
   countryText: { fontSize: 13, fontWeight: '700' },
   selectorHead: { flexDirection: 'row', alignItems: 'center', marginTop: 18, marginBottom: 10 },
   sectionTitle: { fontSize: 17, fontWeight: '850' },
   sectionTitleSmall: { fontSize: 15, fontWeight: '850' },
   hint: { fontSize: 12, lineHeight: 17, marginTop: 3, paddingRight: 12 },
-  carouselNext: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DDE4EA' },
+  carouselNext: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   carousel: { gap: 10, paddingRight: 28, paddingBottom: 4 },
   cpCard: { width: 140, minHeight: 94, borderWidth: 1, borderRadius: 16, padding: 12 },
   cpCardActive: { borderWidth: 2, padding: 11, shadowColor: '#738396', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
@@ -444,11 +454,12 @@ const s = StyleSheet.create({
   loadingText: { textAlign: 'center', marginTop: 10, fontSize: 13 },
   liveHeader: { flexDirection: 'row', alignItems: 'flex-start' },
   liveTitle: { fontSize: 20, lineHeight: 25, fontWeight: '900' },
-  liveCountry: { fontSize: 13, marginTop: 4 },
+  liveCountryRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  liveCountry: { fontSize: 13 },
   iconButton: { width: 44, height: 44, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  heroBooking: { backgroundColor: '#E5EBF0', borderRadius: 14, padding: 14, marginTop: 15, alignItems: 'flex-start' },
+  heroBooking: { borderRadius: 14, padding: 14, marginTop: 15, alignItems: 'flex-start' },
   heroLabel: { fontSize: 12.5, fontWeight: '750' },
-  heroDate: { color: '#111C2C', fontSize: 28, lineHeight: 34, fontWeight: '900', marginTop: 4 },
+  heroDate: { fontSize: 28, lineHeight: 34, fontWeight: '900', marginTop: 4 },
   freeBadge: { backgroundColor: '#738396', borderRadius: 9, paddingVertical: 6, paddingHorizontal: 10, marginTop: 9 },
   freeBadgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   noBooking: { fontSize: 12, marginTop: 8 },

@@ -15,7 +15,8 @@ test('foreground deal activity uses the Deals badge without a duplicate top bann
   assert.match(bottomNav, /computeDealsUnread/);
   assert.match(bottomNav, /setDealsUnread\(next\)/);
   assert.match(bottomNav, /bottom-nav-deals-badge/);
-  assert.match(bottomNav, /route\.name === 'Deals' \? Math\.max\(chatUnread, dealsUnread\) : 0/);
+  assert.match(bottomNav, /route\.name === 'Deals' \? dealsUnread : 0/);
+  assert.doesNotMatch(bottomNav, /Math\.max\(chatUnread, dealsUnread\)/);
   assert.doesNotMatch(bottomNav, /route\.name === 'Chats' \? chatUnread/);
   assert.doesNotMatch(bottomNav, /useToast/);
   assert.doesNotMatch(bottomNav, /новое событие/);
@@ -71,13 +72,33 @@ test('status history opens from the status card and keeps the next status action
   assert.match(timeline, /currentCard/);
 });
 
-test('profile PRO state is explicit and no longer depends on a bare percent label', () => {
+test('profile separates verification, trust tier and PRO completion truthfully', () => {
   assert.match(profile, /proStatusTitle = proActive \? t\('pro_active_badge'\) : t\('pro_inactive_badge'\)/);
-  assert.match(profile, /verificationStatusText = profile\.is_verified \? t\('verification_passed_short'\) : t\('verification_failed_short'\)/);
+  assert.match(profile, /verificationStatusText = profile\.is_verified \? t\('verification_passed_short'\) : ''/);
+  assert.doesNotMatch(profile, /t\('verification_failed_short'\)/);
+  assert.match(profile, /t\('pro_progress_filled'\)/);
+  assert.match(profile, /profile\.truckType \? t\(`vt_\$\{profile\.truckType\}`\) : t\('tent'\)/);
   assert.match(profile, /proStatusBadge/);
   assert.doesNotMatch(profile, /<Text style=\{\[s\.proPercent/);
   assert.match(i18n, /pro_inactive_badge:\s*'PRO не активен'/);
+  assert.match(i18n, /pro_progress_filled:\s*'Заполнено'/);
   assert.match(i18n, /verification_passed_short:\s*'Проверка пройдена'/);
+});
+
+test('trust screen does not promise unavailable bank or biometric scoring', () => {
+  const security = fs.readFileSync('src/screens/SecurityScreen.js', 'utf8');
+  assert.doesNotMatch(security, /security_tip_confirm_account/);
+  assert.doesNotMatch(security, /security_tip_biometry_desc/);
+  assert.match(security, /security_tip_verify_docs/);
+});
+
+test('help copy matches the current basic onboarding and deal completion flow', () => {
+  assert.doesNotMatch(i18n, /WhatsApp-код → селфи/);
+  assert.doesNotMatch(i18n, /получаешь оплату/);
+  assert.doesNotMatch(i18n, /11 языков/);
+  assert.match(i18n, /Документы для повышения доверия можно загрузить позже/);
+  assert.match(i18n, /После подтверждения получения сделка завершается/);
+  assert.match(i18n, /Интерфейс на 4 языках/);
 });
 
 test('route filter can select a whole country without forcing a city', () => {

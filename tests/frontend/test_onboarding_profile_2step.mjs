@@ -74,8 +74,10 @@ test('preferred messenger supports WhatsApp, WeChat, Telegram and Other', () => 
 });
 
 
-test('profile uses runtime brand theme instead of a fixed light page palette', () => {
-  assert.match(profile, /const colors = useBrand\(\)/);
+test('profile keeps the unauthenticated onboarding palette consistently light', () => {
+  assert.match(profile, /const baseColors = brandLight/);
+  assert.doesNotMatch(profile, /useBrand\(\)/);
+  assert.match(profile, /const colors = role === 'driver' \? driverColors : shipperColors/);
   assert.match(profile, /makeStyles\(colors\)/);
   assert.match(profile, /backgroundColor:\s*colors\.bg/);
   assert.match(profile, /backgroundColor:\s*colors\.surface/);

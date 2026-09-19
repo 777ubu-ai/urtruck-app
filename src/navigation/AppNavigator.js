@@ -257,6 +257,7 @@ export default function AppNavigator() {
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
           <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
           <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />

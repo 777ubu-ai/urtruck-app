@@ -43,9 +43,19 @@ jobs:
 
       - name: Resolve exact app source SHA
         shell: bash
+        # Security audit finding (STT-hardening track, P2): `inputs.source_sha`
+        # is free-text supplied by whoever triggers this workflow_dispatch —
+        # interpolating it directly into the run: block (as this used to do)
+        # lets GitHub Actions substitute it BEFORE the shell parses the
+        # script, the same script-injection class already hardened against
+        # in break-glass-production-deploy.yml. Passed via `env:` instead so
+        # it only ever reaches the shell as a variable's VALUE, never as
+        # script text the shell parses.
+        env:
+          SOURCE_SHA_INPUT: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
-          source_sha="${{ inputs.source_sha }}"
+          source_sha="$SOURCE_SHA_INPUT"
           if [[ -z "$source_sha" ]]; then
             source_sha="${GITHUB_SHA}"
           fi
@@ -141,6 +151,7 @@ jobs:
         env:
           EXPO_PUBLIC_API_URL: https://urtruck.kz
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}

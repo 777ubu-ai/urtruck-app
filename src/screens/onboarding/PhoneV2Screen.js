@@ -1,8 +1,16 @@
-// PhoneV2Screen — canonical sign-in / registration entry.
+// PhoneV2Screen — the ONE canonical sign-in / registration entry (AuthV2).
 //
-// Product rule (22 Aug 2026): Google + Apple + Email are the only login
-// methods shown here. Phone is NOT an authentication tab anymore; it remains
-// a required logistics contact collected on ProfileV2 for email/social users.
+// FINAL 10/10 AUTH CANON CLOSURE (2026-09-14, owner decision): every guest
+// conversion path in the app (VerificationGate + every real bypass) leads
+// HERE, and only here. Four auth methods live under this one entry:
+//   1. Google      — always shown.
+//   2. Email + OTP — always shown.
+//   3. Apple       — iOS only, and only when provider/config are valid; see
+//      isApplePlatformSupported()/appleConfigStatus in ../../utils/socialAuth
+//      for the explicit platform/config gate (no more silent SHOW_APPLE_AUTH
+//      flag — a genuinely-unavailable Apple surfaces its exact reason).
+// Phone/SMS is intentionally not exposed on this screen. The canonical
+// public entry offers Google, Email OTP and (when configured) Apple only.
 //
 // Google/Apple use Supabase OAuth only for identity proof. After the provider
 // returns, backend /register/social/verify validates the Supabase access token
@@ -38,19 +46,22 @@ import {
   AUTH_ERROR_CODES,
   clearPendingProvider,
   completeSocialAuth,
+  getAppleAuthGate,
   getPendingProvider,
+  getPendingProviderState,
+  isPendingProviderStale,
   isSocialAuthCallback,
   logAuthStage,
+  shouldRestorePendingProvider,
   SocialAuthError,
   startSocialAuth,
   takeBufferedSocialCallbackUrl,
 } from '../../utils/socialAuth';
-import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight as brand, radius, typography } from '../../theme/brandV2';
 import { WEB_URL } from '../../config/env';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 
 const LEGAL_BASE = WEB_URL || 'https://urtruck.kz';
-const SHOW_APPLE_AUTH = false;
 
 // BUG FIX (logout → мгновенный молчаливый повторный вход): Linking.
 // getInitialURL() отдаёт URL, которым процесс приложения был запущен
@@ -128,7 +139,7 @@ const socialErrorKey = (err, provider) => {
 };
 
 export default function PhoneV2Screen({ navigation, route }) {
-  const _b = useBrand();
+  const _b = brand;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t, lang } = useI18n();
   const { toast } = useToast();
@@ -146,6 +157,11 @@ export default function PhoneV2Screen({ navigation, route }) {
   // validation message, and vice versa.
   const [emailError, setEmailError] = useState(null);
   const [socialError, setSocialError] = useState(null);
+  // FINAL 10/10 AUTH CANON CLOSURE (2026-09-14): explicit platform/config
+  // gate for Apple — see getAppleAuthGate() in ../../utils/socialAuth for
+  // the full reason taxonomy. `reason` is exposed via a testID below so a
+  // hidden button can never silently be read as "Apple checked, PASS".
+  const [appleGate, setAppleGate] = useState({ show: false, reason: 'PENDING' });
   const finishingSocialRef = useRef(false);
   const role = route?.params?.role || null;
   const routedSocialUrl = route?.params?.socialAuthUrl || null;
@@ -153,13 +169,29 @@ export default function PhoneV2Screen({ navigation, route }) {
   const emailOk = isValidEmail(email);
   const anyBusy = emailBusy || !!socialBusy;
 
-  // Hydrate which provider's callback we're resuming (survives the full
-  // page reload Google/Apple OAuth does on web — React state does not).
   useEffect(() => {
     let mounted = true;
-    getPendingProvider().then((p) => { if (mounted && p) setSocialBusy(p); }).catch(() => {});
+    getAppleAuthGate().then((gate) => { if (mounted) setAppleGate(gate); });
     return () => { mounted = false; };
   }, []);
+
+  // Восстанавливаем только живую OAuth-попытку. Legacy-строка и истёкшая
+  // метаинформация означают прерванный flow и не должны блокировать Email.
+  useEffect(() => {
+    let mounted = true;
+    getPendingProviderState().then(async (state) => {
+      if (!mounted || !state) return;
+      const hasRoutedCallback = isSocialAuthCallback(routedSocialUrl);
+      if (isPendingProviderStale(state) && !hasRoutedCallback) {
+        await clearPendingProvider();
+        return;
+      }
+      if (mounted && shouldRestorePendingProvider(state, { hasCallback: hasRoutedCallback })) {
+        setSocialBusy(state.provider);
+      }
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, [routedSocialUrl]);
 
   const goAfterLogin = useCallback(async (result, identifier, channel) => {
     await signIn(identifier, result.verification_level || 1, result.token);
@@ -263,7 +295,10 @@ export default function PhoneV2Screen({ navigation, route }) {
     setSocialError(null);
     setSocialBusy(provider);
     try {
-      await startSocialAuth(provider);
+      const oauthResult = await startSocialAuth(provider);
+      if (oauthResult?.callbackUrl) {
+        await finishSocialUrl(oauthResult.callbackUrl);
+      }
       // On web this line is reached right as the browser is navigating away
       // to the OAuth provider — the socialBusy reset below is cosmetic (the
       // page unloads next). On native, startSocialAuth already opened the
@@ -371,7 +406,15 @@ export default function PhoneV2Screen({ navigation, route }) {
 
             <View style={s.socialStack} testID="auth-social-providers">
               <SocialButton provider="google" icon="google" testID="auth-google" />
-              {SHOW_APPLE_AUTH ? <SocialButton provider="apple" icon="apple" testID="auth-apple" /> : null}
+              {appleGate.show ? <SocialButton provider="apple" icon="apple" testID="auth-apple" /> : null}
+              {/* Exact BLOCKED reason for Apple, always queryable even when
+                  the button itself is absent — see getAppleAuthGate() for
+                  the taxonomy. A dynamic testID (unlike a bare custom DOM
+                  attribute on a RN View, which react-native-web does not
+                  reliably forward) is guaranteed to render, on every
+                  platform, so "Apple hidden" can never be read as "Apple
+                  PASS" from a screenshot alone. */}
+              <View testID={`auth-apple-gate-${appleGate.reason ? appleGate.reason.toLowerCase() : 'available'}`} />
             </View>
 
             {/* #P1-C: social error lives here, next to the buttons that
@@ -441,6 +484,7 @@ export default function PhoneV2Screen({ navigation, route }) {
               <Feather name="shield" size={14} color={brand.textSecondary} />
               <Text style={s.infoText}>{t('email_v2_send_hint')}</Text>
             </View>
+
           </View>
 
           <View style={s.consentBlock} testID="auth-legal-consent">

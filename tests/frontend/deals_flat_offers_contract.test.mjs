@@ -21,5 +21,5 @@ test('incoming cargo offers show the bidder name and keep bidId navigation', () 
   assert.match(source, /const isIncomingCargoOffer = role === 'client' && data\._incoming && data\.cargo_id/);
   assert.match(source, /const offerMeta = \[data\.bidder_name \|\| t\('role_driver'\), offerCargo\]/);
   assert.match(source, /routeLabel=\{offerRoute\}/);
-  assert.match(source, /navigation\.navigate\('CargoDetail', \{ cargoId: bid\.cargo_id, bidId: bid\.id, role \}\)/);
+  assert.match(source, /navigation\.navigate\('CargoDetail', \{ cargoId: bid\.cargo_id, bidId: bid\.id, role, readOnly/);
 });

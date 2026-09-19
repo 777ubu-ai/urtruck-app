@@ -7,12 +7,14 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useI18n } from '../utils/useI18n';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import TruckTypeIcon from './TruckTypeIcon';
+import { useV1Colors } from '../theme/designV1';
 
 const PRIMARY = ['tent', 'ref', 'izoterm', 'cont20', 'cont40', 'platform', 'tanker', 'dumptruck'];
 const REST = TRUCK_KEYS.filter((k) => !PRIMARY.includes(k));
 
 export default function TruckTypeGrid({ value, onSelect, accent = '#168759' }) {
   const { t } = useI18n();
+  const v1 = useV1Colors();
   const [showAll, setShowAll] = useState(false);
   const keys = showAll ? [...PRIMARY, ...REST] : PRIMARY;
   return (
@@ -26,7 +28,7 @@ export default function TruckTypeGrid({ value, onSelect, accent = '#168759' }) {
               onPress={() => onSelect(k)}
               activeOpacity={0.8}
               testID={`truck-type-${k}`}
-              style={[s.card, sel ? { borderColor: accent, borderWidth: 2 } : { borderColor: '#E7E5E4' }]}
+              style={[s.card, { backgroundColor: v1.surface, borderColor: v1.border }, sel && { borderColor: accent, borderWidth: 2 }]}
             >
               {sel ? (
                 <View style={[s.check, { backgroundColor: accent }]}>
@@ -34,7 +36,7 @@ export default function TruckTypeGrid({ value, onSelect, accent = '#168759' }) {
                 </View>
               ) : null}
               <TruckTypeIcon type={k} width={58} />
-              <Text style={s.lbl} numberOfLines={2}>{t(k)}</Text>
+              <Text style={[s.lbl, { color: v1.text }]} numberOfLines={2}>{t(k)}</Text>
             </TouchableOpacity>
           );
         })}
@@ -51,11 +53,11 @@ export default function TruckTypeGrid({ value, onSelect, accent = '#168759' }) {
 const s = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   card: {
-    width: '31.5%', backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1,
+    width: '31.5%', borderRadius: 14, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center', marginBottom: 10,
     paddingVertical: 12, paddingHorizontal: 4, minHeight: 96,
   },
-  lbl: { marginTop: 6, fontSize: 11, fontWeight: '700', color: '#44403C', textAlign: 'center' },
+  lbl: { marginTop: 6, fontSize: 11, fontWeight: '700', textAlign: 'center' },
   check: { position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   checkT: { color: '#fff', fontSize: 11, fontWeight: '900' },
   more: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 20, marginTop: 2 },

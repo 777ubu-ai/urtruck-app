@@ -23,7 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
-import { brand, useBrand, radius, space, typography } from '../../theme/brandV2';
+import { brandLight as brand, radius, space, typography } from '../../theme/brandV2';
 import { COUNTRIES, POPULAR_ISO } from '../../utils/countries';
 import CountryFlag from '../../components/ui/v1/CountryFlag';
 
@@ -38,13 +38,14 @@ const Row = ({ s, country, label, onPress }) => (
   >
     <CountryFlag code={country.iso} width={27} />
     <Text style={s.countryName}>{label}</Text>
+    <Text style={s.iso}>{country.iso}</Text>
     <Text style={s.dial}>+{country.dial}</Text>
     <Feather name="chevron-right" size={18} color={brand.textTertiary} />
   </Pressable>
 );
 
 export default function CountryPickerSheet({ navigation, route }) {
-  const _b = useBrand();
+  const _b = brand;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t, lang } = useI18n();
   const [query, setQuery] = useState('');
@@ -228,9 +229,6 @@ const makeStyles = (brand) => StyleSheet.create({
     borderBottomColor: brand.divider,
     gap: 12,
   },
-  flag: {
-    fontSize: 24,
-  },
   countryName: {
     flex: 1,
     ...typography.bodyLarge,
@@ -242,6 +240,12 @@ const makeStyles = (brand) => StyleSheet.create({
     color: brand.textSecondary,
     fontWeight: '600',
     marginRight: 8,
+  },
+  iso: {
+    ...typography.caption,
+    color: brand.textTertiary,
+    fontWeight: '700',
+    marginRight: 4,
   },
   footer: {
     position: 'absolute',

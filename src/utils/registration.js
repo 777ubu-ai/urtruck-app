@@ -2,7 +2,7 @@
 import { Platform } from 'react-native';
 import { storage } from './storage';
 import { compressImage } from './imageCompress';
-import { getLanguage } from './i18n';
+import { getLanguage, t as tGlobal } from './i18n';
 import { API_BASE } from '../config/env';
 
 const BASE = `${API_BASE}/register`;
@@ -25,6 +25,19 @@ function normalizeDetail(d, fallback) {
     try { return JSON.stringify(d); } catch { return fallback; }
   }
   return String(d);
+}
+
+// Never expose an internal storage condition such as `no_token` in UI.
+// A missing or rejected bearer is an expired authentication session; callers
+// can use authRequired to return the user to sign-in without creating a guest
+// identity and accidentally attaching private data to the wrong account.
+function authRequiredResult() {
+  return {
+    ok: false,
+    authRequired: true,
+    error: 'AUTH_REQUIRED',
+    detail: tGlobal('session_expired'),
+  };
 }
 
 // P0 fix (TestFlight): на нативном iOS/Android НЕЛЬЗЯ слать Blob,
@@ -223,7 +236,14 @@ export const regAPI = {
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      // §15 i18n P2 fix: this used to return the raw `e.message` (a native
+      // fetch/runtime error, always in English/untranslated, e.g. "Network
+      // request failed") straight to callers, which display `detail`
+      // verbatim (EditProfileScreen's delete-account toast, VehicleSetup-
+      // CountryScreen's inline error) — bypassing the app's language
+      // entirely. `network_error` is localized in all 4 locales; route
+      // through it instead of leaking the raw runtime message.
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 
@@ -282,7 +302,7 @@ export const regAPI = {
   // (Pydantic по умолчанию ignores), ничего не ломается.
   async updateProfile(payload = {}) {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
 
     const allowed = [
       'name', 'city', 'about', 'phone', 'role',
@@ -313,7 +333,7 @@ export const regAPI = {
   // Безопасная смена телефона: generic PATCH намеренно не принимает phone.
   async requestPhoneChange(phone, channel = 'whatsapp') {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${API_BASE}/users/me/phone-change/request`, {
         method: 'POST',
@@ -326,13 +346,13 @@ export const regAPI = {
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 
   async confirmPhoneChange(phone, code) {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${API_BASE}/users/me/phone-change/confirm`, {
         method: 'POST',
@@ -346,13 +366,13 @@ export const regAPI = {
       if (data.token) await storage.set(TOKEN_KEY, data.token);
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 
   async uploadProDoc(kind, uri, onProgress) {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     onProgress?.('compressing');
     const compressedUri = await compressImage(uri, { preset: 'document' });
     onProgress?.('uploading');
@@ -615,48 +635,72 @@ export const regAPI = {
   // { ok:false } при сетевой ошибке, чтобы UI не вис.
   async saveDriverDraft(payload = {}) {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${DRIVER_REG_BASE}/draft`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
+      if (r.status === 401) return authRequiredResult();
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      // §15 i18n P2 fix: this used to return the raw `e.message` (a native
+      // fetch/runtime error, always in English/untranslated, e.g. "Network
+      // request failed") straight to callers, which display `detail`
+      // verbatim (EditProfileScreen's delete-account toast, VehicleSetup-
+      // CountryScreen's inline error) — bypassing the app's language
+      // entirely. `network_error` is localized in all 4 locales; route
+      // through it instead of leaking the raw runtime message.
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 
   async completeBasic() {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${DRIVER_REG_BASE}/complete-basic`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
       });
+      if (r.status === 401) return authRequiredResult();
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      // §15 i18n P2 fix: this used to return the raw `e.message` (a native
+      // fetch/runtime error, always in English/untranslated, e.g. "Network
+      // request failed") straight to callers, which display `detail`
+      // verbatim (EditProfileScreen's delete-account toast, VehicleSetup-
+      // CountryScreen's inline error) — bypassing the app's language
+      // entirely. `network_error` is localized in all 4 locales; route
+      // through it instead of leaking the raw runtime message.
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 
   // ТЗ §9 — отправка заявки на проверку (стартовый скоринг на бэке).
   async submitDriverRegistration() {
     const token = await this.getToken();
-    if (!token) return { ok: false, detail: 'no_token' };
+    if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${DRIVER_REG_BASE}/submit`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
       });
+      if (r.status === 401) return authRequiredResult();
       const data = await r.json().catch(() => ({}));
       return { ok: r.ok, ...data };
     } catch (e) {
-      return { ok: false, detail: e?.message || 'network_error' };
+      // §15 i18n P2 fix: this used to return the raw `e.message` (a native
+      // fetch/runtime error, always in English/untranslated, e.g. "Network
+      // request failed") straight to callers, which display `detail`
+      // verbatim (EditProfileScreen's delete-account toast, VehicleSetup-
+      // CountryScreen's inline error) — bypassing the app's language
+      // entirely. `network_error` is localized in all 4 locales; route
+      // through it instead of leaking the raw runtime message.
+      return { ok: false, detail: tGlobal('network_error') };
     }
   },
 };

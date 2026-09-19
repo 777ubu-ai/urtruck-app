@@ -96,6 +96,22 @@ def has_deal_between(user_a: str, user_b: str) -> bool:
     return bool(row)
 
 
+def has_completed_deal_reference(user_a: str, user_b: str, reference_id: str) -> bool:
+    """Validate that a review reference belongs to a completed deal between
+    the author and target.  The mobile client uses the deal id as the stable
+    review reference for both cargo- and trip-originated deals; legacy rows
+    may still carry the listing trip/cargo id, so all three are accepted.
+    """
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT 1 FROM deals WHERE status = 'completed' AND "
+            "((shipper_id = ? AND driver_id = ?) OR (shipper_id = ? AND driver_id = ?)) AND "
+            "(id = ? OR trip_id = ? OR cargo_id = ?) LIMIT 1",
+            (user_a, user_b, user_b, user_a, reference_id, reference_id, reference_id),
+        ).fetchone()
+    return bool(row)
+
+
 def has_reviewed_target(author_id: str, target_id: str) -> bool:
     """True, если author уже оставлял отзыв на target. Дедуп по паре для случая
     trip_id=None (иначе один пользователь мог оставить неограниченно отзывов)."""

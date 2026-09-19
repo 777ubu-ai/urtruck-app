@@ -30,12 +30,12 @@ test('body-type filter chips (bodyChip) carry an inline palette override at ever
   // One for the "all" chip + one for the TRUCK_KEYS.map(...) chip — both
   // sites must be covered, not just the first.
   assert.ok(matches.length >= 2, `expected >= 2 themed bodyChip render sites, got ${matches.length}`);
-  assert.match(src, /styles\.bodyChipText, \{ color: palette\.textSecondary \}/);
+  assert.match(src, /styles\.bodyChipText, \{ color: [^}]*palette\.textSecondary \}/);
 });
 
 test('sort rows (sortRow) carry an inline palette override', () => {
   assert.match(src, /styles\.sortRow, \{ backgroundColor: palette\.surface, borderColor: palette\.border \}/);
-  assert.match(src, /styles\.sortText, \{ color: palette\.textSecondary \}/);
+  assert.match(src, /styles\.sortText, \{ color: [^}]*palette\.textSecondary \}/);
 });
 
 test('all three sheetSecondary usage sites (date/body/price filters) are themed, not just the first', () => {

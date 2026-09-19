@@ -32,31 +32,34 @@ import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import CompactFilterChip from '../components/ui/v1/CompactFilterChip';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
-import { DRIVER_CERAMIC } from '../theme/designV1Palette';
+import { useDriverCeramicColors } from '../theme/designV1';
 
-const ACCENT = DRIVER_CERAMIC.active;
-const ACCENT_SOFT = DRIVER_CERAMIC.activeSoft;
-const PAGE_BG = DRIVER_CERAMIC.bg;
+// StyleSheet defaults are immediately overridden with the resolved Ceramic
+// palette at render time. Keeping literal fallbacks here avoids undefined
+// values during module evaluation without making the live UI light-only.
+const ACCENT = '#738396';
+const ACCENT_SOFT = '#DDE4EA';
+const PAGE_BG = '#EEF2F5';
 const SURFACE = '#FFFFFF';
 const TEXT = '#17221D';
 const TEXT_SECONDARY = '#606B66';
 const TEXT_MUTED = '#718078';
 const BORDER = '#E5EAE7';
 
-const cargoPalette = () => ({
-  pageBg: DRIVER_CERAMIC.bg,
-  surface: DRIVER_CERAMIC.surface,
-  surfaceAlt: DRIVER_CERAMIC.surface,
-  text: DRIVER_CERAMIC.text,
-  textSecondary: DRIVER_CERAMIC.textMuted,
-  textMuted: DRIVER_CERAMIC.textMuted,
-  border: DRIVER_CERAMIC.border,
-  shadow: DRIVER_CERAMIC.shadow,
-  accent: ACCENT,
-  accentSoft: ACCENT_SOFT,
-  filterActive: ACCENT_SOFT,
-  favoriteBg: DRIVER_CERAMIC.surface,
-  priceText: DRIVER_CERAMIC.text,
+const cargoPalette = (ceramic) => ({
+  pageBg: ceramic.bg,
+  surface: ceramic.surface,
+  surfaceAlt: ceramic.surface,
+  text: ceramic.text,
+  textSecondary: ceramic.textMuted,
+  textMuted: ceramic.textMuted,
+  border: ceramic.border,
+  shadow: ceramic.shadow,
+  accent: ceramic.active,
+  accentSoft: ceramic.activeSoft,
+  filterActive: ceramic.activeSoft,
+  favoriteBg: ceramic.surface,
+  priceText: ceramic.text,
 });
 
 const COPY = {
@@ -196,7 +199,7 @@ function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
         fromFlag,
         toFlag,
         testID: `cargo-card-route-${item.id}`,
-        numberOfLines: 2,
+        numberOfLines: 1,
       }}
       price={formatMoney(item.price, item.currency, copy)}
       priceTestID={`cargo-card-price-${item.id}`}
@@ -216,7 +219,8 @@ function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
 
 export default function CargoFeedScreen({ navigation }) {
   const { t, lang } = useI18n();
-  const palette = useMemo(() => cargoPalette(), []);
+  const ceramic = useDriverCeramicColors();
+  const palette = useMemo(() => cargoPalette(ceramic), [ceramic]);
   const { session } = useAuth();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
@@ -230,6 +234,8 @@ export default function CargoFeedScreen({ navigation }) {
   const [pageLimit, setPageLimit] = useState(50);
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
+  const [dirFromCountry, setDirFromCountry] = useState('');
+  const [dirToCountry, setDirToCountry] = useState('');
   const [showDirFromPicker, setShowDirFromPicker] = useState(false);
   const [showDirToPicker, setShowDirToPicker] = useState(false);
   const [activeFilter, setActiveFilter] = useState(null);
@@ -258,9 +264,24 @@ export default function CargoFeedScreen({ navigation }) {
       const result = await marketAPI.listCargos({
         fromCity: dirFrom.trim() || '',
         toCity: dirTo.trim() || '',
+        fromCountry: dirFromCountry,
+        toCountry: dirToCountry,
         cargoType: filterType || '',
         limit: pageLimit,
       });
+      // Финальный аудит (§34 ERROR UX, 2026-09-14): marketAPI.listCargos НЕ
+      // бросает при сетевой ошибке / 5xx — он возвращает
+      // `{ cargos: [], serverError: true }` (src/utils/marketAPI.js), чтобы
+      // экран мог отличить «грузов нет» от «сервер недоступен». Этот флаг тут
+      // не проверялся: catch не срабатывал, `error` оставался false, и при
+      // HTTP 500 / 502 / offline / timeout водитель на своей ГЛАВНОЙ вкладке
+      // видел «Подходящих грузов пока нет» — ложное «грузов нет» вместо
+      // ошибки и без кнопки «Повторить». Ветка error в ListEmptyComponent
+      // (alert-circle + copy.loadError + retry, testID cargo-retry) была
+      // полностью мёртвой. Подтверждено рантаймом (Playwright: route abort и
+      // fulfill 500). FeedScreen.js делает ровно эту проверку — приводим
+      // ленту грузов к той же симметрии.
+      if (result?.serverError) throw new Error('cargo_feed_failed');
       const mapped = (result?.cargos || [])
         .filter((cargo) => !myUserId || cargo.owner_id !== myUserId)
         .map((cargo) => normalizeCargo(cargo, myUserId))
@@ -272,7 +293,7 @@ export default function CargoFeedScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [dirFrom, dirTo, filterType, pageLimit, myUserId]);
+  }, [dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, pageLimit, myUserId]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
@@ -371,7 +392,7 @@ export default function CargoFeedScreen({ navigation }) {
         style={[
           styles.routeSelector,
           {
-            borderColor: (dirFrom || dirTo) ? palette.accent : palette.border,
+            borderColor: (dirFrom || dirTo || dirFromCountry || dirToCountry) ? palette.accent : palette.border,
             backgroundColor: palette.surface,
             shadowColor: palette.shadow,
           },
@@ -389,21 +410,21 @@ export default function CargoFeedScreen({ navigation }) {
               routeHalf column; clipped to "Например, Алм…". t('city') is
               short and reads naturally under the "Откуда" label above. */}
           <Text style={[styles.routeValue, { color: palette.text }, !dirFrom && { color: palette.textMuted }]} numberOfLines={1}>
-            {dirFrom ? localizePlace(dirFrom, lang) : t('city')}
+            {dirFrom ? localizePlace(dirFrom, lang) : dirFromCountry ? t(`country_${dirFromCountry}`) : t('city')}
           </Text>
         </TouchableOpacity>
-        <Feather name="arrow-right" size={24} color={ACCENT} />
+        <Feather name="arrow-right" size={24} color={palette.accent} />
         <TouchableOpacity style={styles.routeHalf} onPress={() => setShowDirToPicker(true)} testID="feed-route-to">
           <View style={styles.routeLabelRow}>
             <Feather name="flag" size={14} color={palette.textMuted} />
             <Text style={[styles.routeLabel, { color: palette.textSecondary }]}>{t('to')}</Text>
           </View>
           <Text style={[styles.routeValue, { color: palette.text }, !dirTo && { color: palette.textMuted }]} numberOfLines={1}>
-            {dirTo ? localizePlace(dirTo, lang) : t('city')}
+            {dirTo ? localizePlace(dirTo, lang) : dirToCountry ? t(`country_${dirToCountry}`) : t('city')}
           </Text>
         </TouchableOpacity>
-        {(dirFrom || dirTo) ? (
-          <TouchableOpacity onPress={() => { setDirFrom(''); setDirTo(''); }} hitSlop={10} testID="feed-route-clear">
+        {(dirFrom || dirTo || dirFromCountry || dirToCountry) ? (
+          <TouchableOpacity onPress={() => { setDirFrom(''); setDirTo(''); setDirFromCountry(''); setDirToCountry(''); }} hitSlop={10} testID="feed-route-clear">
             <Feather name="x" size={17} color={palette.textMuted} />
           </TouchableOpacity>
         ) : null}
@@ -426,10 +447,7 @@ export default function CargoFeedScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
       <DriverRouteBackdrop />
-      <RootHeader ceramic navigation={navigation} role={role} testID="cargo-feed-minimal-header" bellTestID="cargo-feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
-            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-            if (ok) navigation.navigate('PushFilter', { role });
-          }} />
+      <RootHeader ceramic navigation={navigation} role={role} testID="cargo-feed-minimal-header" menuTestID="feed-menu-btn" />
 
       <FlatList
         style={styles.list}
@@ -479,13 +497,21 @@ export default function CargoFeedScreen({ navigation }) {
         onClose={() => setShowDirFromPicker(false)}
         title={t('loc_from_title')}
         showGeo
-        onSelect={(value, point) => setDirFrom((point && point.name) || value || '')}
+        allowCountryOnly
+        onSelect={(value, point) => {
+          setDirFrom(point?.countryOnly ? '' : ((point && point.name) || value || ''));
+          setDirFromCountry(point?.country && point.country !== 'XX' ? point.country : '');
+        }}
       />
       <LocationPickerModal
         visible={showDirToPicker}
         onClose={() => setShowDirToPicker(false)}
         title={t('loc_to_title')}
-        onSelect={(value, point) => setDirTo((point && point.name) || value || '')}
+        allowCountryOnly
+        onSelect={(value, point) => {
+          setDirTo(point?.countryOnly ? '' : ((point && point.name) || value || ''));
+          setDirToCountry(point?.country && point.country !== 'XX' ? point.country : '');
+        }}
       />
 
       {/* P1 (27.08.2026, владелец): sheetSecondary/bodyChip/sortRow — все три
@@ -520,7 +546,7 @@ export default function CargoFeedScreen({ navigation }) {
             style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, !filterType && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
             onPress={() => setFilterType(null)}
           >
-            <Text style={[styles.bodyChipText, { color: palette.textSecondary }, !filterType && styles.bodyChipTextActive]}>{t('filter_all')}</Text>
+            <Text style={[styles.bodyChipText, { color: !filterType ? palette.accent : palette.textSecondary }]}>{t('filter_all')}</Text>
           </TouchableOpacity>
           {TRUCK_KEYS.map((key) => (
             <TouchableOpacity
@@ -528,7 +554,7 @@ export default function CargoFeedScreen({ navigation }) {
               style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, filterType === key && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
               onPress={() => setFilterType(filterType === key ? null : key)}
             >
-              <Text style={[styles.bodyChipText, { color: palette.textSecondary }, filterType === key && styles.bodyChipTextActive]}>{formatTruckType(key)}</Text>
+              <Text style={[styles.bodyChipText, { color: filterType === key ? palette.accent : palette.textSecondary }]}>{formatTruckType(key)}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -553,8 +579,8 @@ export default function CargoFeedScreen({ navigation }) {
             style={[styles.sortRow, { backgroundColor: palette.surface, borderColor: palette.border }, sortBy === key && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
             onPress={() => setSortBy(key)}
           >
-            <Text style={[styles.sortText, { color: palette.textSecondary }, sortBy === key && styles.sortTextActive]}>{label}</Text>
-            {sortBy === key ? <Feather name="check" size={18} color={ACCENT} /> : null}
+            <Text style={[styles.sortText, { color: sortBy === key ? palette.accent : palette.textSecondary }]}>{label}</Text>
+            {sortBy === key ? <Feather name="check" size={18} color={palette.accent} /> : null}
           </TouchableOpacity>
         ))}
         <View style={styles.sheetActions}>

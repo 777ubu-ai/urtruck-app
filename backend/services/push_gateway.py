@@ -1,4 +1,4 @@
-"""Native push gateway: FCM/APNs primary, Expo fallback.
+"""Native push gateway: FCM/APNs primary, Expo legacy path.
 
 This module is deliberately additive. Existing business call-sites still call
 services.push_sender.send(), while the sender delegates native delivery here
@@ -7,12 +7,16 @@ according to PUSH_PROVIDER_MODE:
   expo   -> legacy Expo Push only
   native -> direct FCM/APNs only
   dual   -> direct FCM/APNs first, Expo only for devices without native token
+
+The canonical default is ``native``. Expo is only selected when the operator
+explicitly sets ``PUSH_PROVIDER_MODE=expo`` (or ``dual``).
 """
 from __future__ import annotations
 
 import json
 import os
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -20,7 +24,8 @@ import httpx
 
 from database.db import get_conn
 
-PUSH_PROVIDER_MODE = (os.getenv("PUSH_PROVIDER_MODE") or "expo").strip().lower()
+PUSH_PROVIDER_MODE = (os.getenv("PUSH_PROVIDER_MODE") or "native").strip().lower()
+SUPPORTED_PUSH_PROVIDER_MODES = {"expo", "native", "dual"}
 NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
 
 FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "")
@@ -33,30 +38,45 @@ APNS_BUNDLE_ID = os.getenv("APNS_BUNDLE_ID", "")
 APNS_AUTH_KEY_P8 = os.getenv("APNS_AUTH_KEY_P8", "")
 APNS_USE_SANDBOX = (os.getenv("APNS_USE_SANDBOX") or "").lower() in ("1", "true", "yes")
 
+# Push-forensic finding (STT/push-hardening track): this set is read by
+# enqueue_event() (below) to classify outbox priority — it must contain the
+# ACTUAL `event_type` strings producers pass, not an aspirational catalog.
+# It previously listed "trip.*"/"deal.cancelled" names that no caller has
+# ever emitted (deal-status pushes use f"deal.status.{new_status}", GPS
+# pushes use the bare "gps_lost"/"gps_restored", see api/marketplace.py's
+# _transition_deal / _tracking_notify) — meaning every event except
+# "bid.accepted" silently fell through to "normal" priority since this set
+# was introduced, undetected because nothing asserted outbox priority for
+# them (test_gps_lost_restored.py's own docstring already flagged the
+# "declared but nothing ever produced them" half of this; this fixes the
+# producer-string mismatch that made the flag matter). Corrected 1:1 to the
+# real strings for the same events this set always intended to cover
+# (trip start / GPS lost / delivered / completed) — no new events added.
 CRITICAL_EVENTS = {
     "bid.accepted",
-    "trip.started",
-    "trip.gps_lost",
-    "trip.delivered",
-    "trip.completed",
+    "bid.counter_accepted",
+    "deal.status.in_progress",
+    "gps_lost",
+    "deal.status.delivered",
+    "deal.status.completed",
 }
 
 PUSH_EVENT_CATALOG = {
     "bid.created",
     "bid.countered",
+    "bid.counter_accepted",
     "bid.accepted",
     "bid.rejected",
     "bid.withdrawn",
     "chat.message",
     "chat.voice",
-    "trip.started",
-    "trip.status_changed",
-    "trip.border",
-    "trip.gps_lost",
-    "trip.gps_restored",
-    "trip.delivered",
-    "trip.completed",
-    "deal.cancelled",
+    "deal.status.in_progress",
+    "deal.status.at_border",
+    "gps_lost",
+    "gps_restored",
+    "deal.status.delivered",
+    "deal.status.completed",
+    "deal.status.cancelled",
 }
 
 
@@ -302,12 +322,12 @@ def get_recipient_locale(user_id: str) -> str:
     return normalize_locale(None)
 
 
-def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payload: dict, priority: Optional[str] = None) -> bool:
+def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payload: dict, priority: Optional[str] = None, *, conn=None) -> bool:
     if not (event_id and event_type and recipient_user_id):
         return False
     prio = priority or ("critical" if event_type in CRITICAL_EVENTS else "normal")
-    with get_conn() as c:
-        c.execute(
+    with (nullcontext(conn) if conn is not None else get_conn()) as c:
+        cursor = c.execute(
             """
             INSERT INTO push_outbox(event_id, event_type, recipient_user_id, payload, priority)
             VALUES(?,?,?,?,?)
@@ -315,7 +335,7 @@ def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payloa
             """,
             (event_id, event_type, recipient_user_id, _json_dumps(payload), prio),
         )
-        return c.total_changes > 0
+        return cursor.rowcount > 0
 
 
 def log_delivery(event_id: Optional[str], user_id: str, device: dict, result: ProviderResult, attempt: int = 1) -> None:
@@ -405,9 +425,10 @@ def send_to_devices(
     mode: Optional[str] = None,
     provider_filter: Optional[str] = None,
 ) -> dict[str, Any]:
-    mode = (mode or PUSH_PROVIDER_MODE or "expo").lower()
-    if mode not in ("expo", "native", "dual"):
-        mode = "expo"
+    mode = (mode or PUSH_PROVIDER_MODE or "native").lower()
+    if mode not in SUPPORTED_PUSH_PROVIDER_MODES:
+        # Never turn a typo/misconfiguration into an implicit Expo delivery.
+        return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "error": "invalid_provider_mode"}
 
     devices = active_devices(user_id)
     if not devices:
@@ -430,6 +451,7 @@ def send_to_devices(
     sent = 0
     already_delivered = 0
     by_provider: dict[str, int] = {}
+    errors: dict[str, int] = {}
     event_id = (data or {}).get("event_id") or (data or {}).get("event_key")
     for device in devices:
         if _already_sent_to_device(event_id, device.get("id")):
@@ -450,6 +472,7 @@ def send_to_devices(
         provider_name = device.get("push_provider")
         provider = providers.get(provider_name)
         if not provider:
+            errors["unsupported_provider"] = errors.get("unsupported_provider", 0) + 1
             continue
         token = device.get("push_token") or ""
         platform = device.get("platform")
@@ -461,12 +484,16 @@ def send_to_devices(
         if result.status == "sent":
             sent += 1
             by_provider[provider_name] = by_provider.get(provider_name, 0) + 1
+        else:
+            error_code = result.error_code or "provider_send_failed"
+            errors[error_code] = errors.get(error_code, 0) + 1
     return {
         "sent": sent,
         "already_delivered": already_delivered,
         "providers": by_provider,
         "devices": len(devices),
         "mode": mode,
+        "errors": errors,
     }
 
 
@@ -509,7 +536,9 @@ def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
         return dict(row) if row else None
 
 
-def _finish_row(row_id: int, attempt: int, sent: bool, error: Optional[str]) -> str:
+def _finish_row(
+    row_id: int, attempt: int, sent: bool, error: Optional[str], *, partially_sent: bool = False
+) -> str:
     """Apply the terminal/retry decision for one claimed row. Shared by both
     the normal (no delivery) and exception (poison event) paths so a handler
     that always raises still hits the same MAX_OUTBOX_ATTEMPTS→dead ceiling
@@ -522,17 +551,35 @@ def _finish_row(row_id: int, attempt: int, sent: bool, error: Optional[str]) -> 
             )
             return "sent"
         if attempt >= MAX_OUTBOX_ATTEMPTS:
+            terminal_status = "sent_partial" if partially_sent else "dead"
             c.execute(
-                "UPDATE push_outbox SET status='dead', failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL WHERE id=?",
-                (attempt, (error or "delivery_not_confirmed")[:500], row_id),
+                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL WHERE id=?",
+                (terminal_status, attempt, (error or "delivery_not_confirmed")[:500], row_id),
             )
-            return "dead"
+            return "partial" if partially_sent else "dead"
         delay = min(300, 2 ** attempt * 5)
         c.execute(
             "UPDATE push_outbox SET status='pending', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, claimed_at=NULL WHERE id=?",
             (attempt, f"+{delay} seconds", (error or "delivery_not_confirmed")[:500], row_id),
         )
         return "failed"
+
+
+def _skip_row_without_devices(row_id: int, attempt: int) -> str:
+    """Terminate an outbox row when the recipient has no registered device.
+
+    This is not a provider failure: there was no delivery target to call. The
+    in-app notification remains authoritative, while the push audit records a
+    truthful terminal reason instead of retrying five times and inflating the
+    release-blocking dead-letter count.
+    """
+    with get_conn() as c:
+        c.execute(
+            "UPDATE push_outbox SET status='skipped_no_devices', failed_at=CURRENT_TIMESTAMP, "
+            "attempt_count=?, last_error='no_active_devices', claimed_at=NULL WHERE id=?",
+            (attempt, row_id),
+        )
+    return "skipped"
 
 
 def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
@@ -565,7 +612,7 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
             ).fetchall()
         ]
 
-    stats = {"picked": 0, "sent": 0, "failed": 0, "dead": 0}
+    stats = {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0}
     for row_id in candidate_ids:
         row = _claim_row(row_id)
         if row is None:
@@ -609,9 +656,22 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
             # same row on the next tick only re-targets the device(s) that
             # did not yet succeed.
             total_devices = int(result.get("devices", 0) or 0)
-            confirmed = int(result.get("sent", 0) or 0) + int(result.get("already_delivered", 0) or 0)
-            fully_delivered = total_devices > 0 and confirmed >= total_devices
-            outcome = _finish_row(row["id"], attempt, sent=fully_delivered, error=None)
+            if total_devices == 0:
+                outcome = _skip_row_without_devices(row["id"], attempt)
+            else:
+                confirmed = int(result.get("sent", 0) or 0) + int(result.get("already_delivered", 0) or 0)
+                fully_delivered = confirmed >= total_devices
+                failure_counts = result.get("errors") or {}
+                failure_reason = ",".join(
+                    f"{code}:{count}" for code, count in sorted(failure_counts.items())
+                ) or result.get("error")
+                outcome = _finish_row(
+                    row["id"],
+                    attempt,
+                    sent=fully_delivered,
+                    error=failure_reason,
+                    partially_sent=confirmed > 0,
+                )
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside
             # its own try/except, etc.) — must not crash the worker or loop
@@ -728,7 +788,7 @@ def poll_pending_receipts(expo_receipts_fn, limit: int = 50) -> dict[str, int]:
 
 
 def info() -> dict[str, Any]:
-    counts = {"devices_active": 0, "expo": 0, "fcm": 0, "apns": 0, "outbox_pending": 0, "outbox_dead": 0}
+    counts = {"devices_active": 0, "expo": 0, "fcm": 0, "apns": 0, "outbox_pending": 0, "outbox_dead": 0, "outbox_skipped_no_devices": 0}
     try:
         with get_conn() as c:
             counts["devices_active"] = int(c.execute("SELECT COUNT(*) FROM push_devices WHERE enabled = 1").fetchone()[0])
@@ -739,11 +799,47 @@ def info() -> dict[str, Any]:
                 ).fetchone()[0])
             counts["outbox_pending"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'pending'").fetchone()[0])
             counts["outbox_dead"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'dead'").fetchone()[0])
+            counts["outbox_skipped_no_devices"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'skipped_no_devices'").fetchone()[0])
     except Exception:
         pass
+    service_account = _service_account_info()
+    fcm_configured = bool(
+        (FCM_PROJECT_ID or (service_account or {}).get("project_id"))
+        and service_account
+        and service_account.get("client_email")
+        and service_account.get("private_key")
+    )
+    fcm_errors = []
+    if not (FCM_PROJECT_ID or (service_account or {}).get("project_id")):
+        fcm_errors.append("project_id_missing")
+    if not service_account:
+        fcm_errors.append("service_account_missing_or_invalid")
+    else:
+        if not service_account.get("client_email"):
+            fcm_errors.append("service_account_client_email_missing")
+        if not service_account.get("private_key"):
+            fcm_errors.append("service_account_private_key_missing")
+    try:
+        import jwt  # noqa: F401
+    except Exception:
+        fcm_errors.append("pyjwt_missing")
+
+    apns_configured = bool(APNS_KEY_ID and APNS_TEAM_ID and APNS_AUTH_KEY_P8 and APNS_BUNDLE_ID)
+    apns_errors = [] if apns_configured else ["apns_credentials_missing"]
+    config_errors = []
+    if PUSH_PROVIDER_MODE not in SUPPORTED_PUSH_PROVIDER_MODES:
+        config_errors.append("invalid_provider_mode")
+    elif PUSH_PROVIDER_MODE in ("native", "dual"):
+        if not fcm_configured:
+            config_errors.append("fcm_not_configured")
+        if not apns_configured:
+            config_errors.append("apns_not_configured")
+
     return {
         "mode": PUSH_PROVIDER_MODE,
-        "fcm": {"configured": bool((FCM_PROJECT_ID or (_service_account_info() or {}).get("project_id")) and _service_account_info())},
-        "apns": {"configured": bool(APNS_KEY_ID and APNS_TEAM_ID and APNS_AUTH_KEY_P8 and APNS_BUNDLE_ID), "sandbox": APNS_USE_SANDBOX},
+        "ready": not config_errors,
+        "config_errors": config_errors,
+        "fcm": {"configured": fcm_configured, "errors": fcm_errors},
+        "apns": {"configured": apns_configured, "errors": apns_errors, "sandbox": APNS_USE_SANDBOX},
         "registry": counts,
     }

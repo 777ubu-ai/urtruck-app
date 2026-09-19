@@ -11,6 +11,7 @@ const ROOT_SCREENS = [
 ];
 
 const read = (file) => readFileSync(file, 'utf8');
+const rootHeader = read('src/components/ui/v1/RootHeader.js');
 
 const loadTranslations = () => {
   const source = read('src/utils/i18n.js');
@@ -22,17 +23,14 @@ const loadTranslations = () => {
   return eval(`(${match[1].slice(0, -1)})`);
 };
 
-test('Bell always routes authenticated root screens to PushFilter', () => {
+test('Bell UI is intentionally hidden while root navigation and durable push state remain separate', () => {
+  assert.match(rootHeader, /Canonical root header: profile\/menu only/);
+  assert.match(rootHeader, /HeaderMenuButton/);
+  assert.doesNotMatch(rootHeader, /BellBadge|useUnreadNotifications|onBellPress/);
   for (const file of ROOT_SCREENS) {
     const source = read(file);
-    assert.match(source, /onBellPress=\{async \(\) => \{/,
-      `${file}: RootHeader must own Bell navigation`);
-    assert.match(source, /requireLevel\(LEVELS\.PHONE, 'push_settings', role\)/,
-      `${file}: Bell must preserve the phone-level gate`);
-    assert.match(source, /if \(ok\) navigation\.navigate\('PushFilter', \{ role \}\)/,
-      `${file}: Bell must enter PushFilter after the gate`);
-    assert.doesNotMatch(source, /onBellPress=[\s\S]{0,300}navigation\.navigate\('Notifications'/,
-      `${file}: Bell must not reopen the legacy notification center`);
+    assert.match(source, /RootHeader/, `${file}: canonical RootHeader missing`);
+    assert.doesNotMatch(source, /bellTestID=/, `${file}: visible Bell wiring must stay absent`);
   }
 });
 

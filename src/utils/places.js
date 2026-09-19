@@ -295,7 +295,7 @@ const FLAG_PAIR_RE = /[\u{1F1E6}-\u{1F1FF}]{2}/gu;
 /**
  * Удаляет legacy-декорации из значения точки маршрута. Флаг — отдельная
  * UI-сущность и не должен жить внутри city string. Для ZH/EN это также
- * предотвращает «Иу, 🇨🇳 + ещё один 🇨🇳» при отдельном countryFlag().
+ * предотвращает дублирование country marker при отдельном CountryFlag().
  */
 export function cleanPlaceName(raw) {
   if (!raw) return raw;
@@ -333,7 +333,7 @@ export function localizePlace(raw, lang) {
   const l = String(lang || '').toLowerCase();
   if (!raw) return raw;
   // Always remove legacy presentation decorations first. RU/KK previously
-  // returned raw DB text, so a city stored as "Иу, 🇨🇳" plus countryFlag(CN)
+  // returned raw DB text, so a city stored with a legacy marker plus CountryFlag(CN)
   // rendered two flags for the same point. Flags are a UI entity, never data.
   const clean = cleanPlaceName(raw);
   if (l === 'ru') return clean;

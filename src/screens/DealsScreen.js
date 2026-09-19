@@ -14,7 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
-import { DRIVER_CERAMIC, SHIPPER_CERAMIC } from '../theme/designV1Palette';
+import { useDriverCeramicColors } from '../theme/designV1';
 import { formatStatus } from '../utils/i18n';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
@@ -23,6 +23,7 @@ import { notificationsAPI } from '../utils/notificationsAPI';
 import { formatPrice } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
 import { countryCode } from '../utils/countryFlags';
+import { dealMessagePreview } from '../utils/dealMessagePreview';
 import { accentFor } from '../components/deal/DealRoom';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { isBidActionable } from '../utils/dealsUnread';
@@ -33,16 +34,16 @@ import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
 
-const ACCENT = SHIPPER_CERAMIC.active;
-const ACCENT_SOFT = SHIPPER_CERAMIC.activeSoft;
-const PAGE_BG = SHIPPER_CERAMIC.bg;
-const SURFACE = SHIPPER_CERAMIC.surface;
-const BORDER = SHIPPER_CERAMIC.border;
-const BORDER_STRONG = SHIPPER_CERAMIC.active;
-const TEXT = SHIPPER_CERAMIC.text;
-const TEXT_SECONDARY = SHIPPER_CERAMIC.textMuted;
-const TEXT_MUTED = SHIPPER_CERAMIC.textMuted;
-const TEXT_DIM = SHIPPER_CERAMIC.textDim;
+const ACCENT = "#34936B";
+const ACCENT_SOFT = '#EAF5EF';
+const PAGE_BG = '#F7F9F7';
+const SURFACE = '#FFFFFF';
+const BORDER = '#E0E6E2';
+const BORDER_STRONG = '#BFDCCF';
+const TEXT = '#18231E';
+const TEXT_SECONDARY = '#526057';
+const TEXT_MUTED = '#758078';
+const TEXT_DIM = '#98A19B';
 const WAITING = "#617067";
 // Design v1 Commit 4: at_border rides the approved at-border role colour
 // (LIGHT statusAtBorder — same hue family the timeline uses).
@@ -51,36 +52,36 @@ const INFO = "#3478D4";
 const ARCHIVE = "#7C8B82";
 const CANCELLED = "#A45A5A";
 
-const dealsPalette = (theme, isDark, isDriver) => isDriver ? ({
-  pageBg: DRIVER_CERAMIC.bg,
-  surface: DRIVER_CERAMIC.surface,
-  surfaceAlt: DRIVER_CERAMIC.surfaceMuted,
-  text: DRIVER_CERAMIC.text,
-  textSecondary: DRIVER_CERAMIC.textMuted,
-  textMuted: DRIVER_CERAMIC.textMuted,
-  border: DRIVER_CERAMIC.border,
-  headerBorder: DRIVER_CERAMIC.border,
-  shadow: DRIVER_CERAMIC.shadow,
-  accent: DRIVER_CERAMIC.active,
-  accentSoft: DRIVER_CERAMIC.activeSoft,
-  inactiveIcon: DRIVER_CERAMIC.textMuted,
-  chevron: DRIVER_CERAMIC.textMuted,
+const dealsPalette = (theme, isDark, isDriver, ceramic) => isDriver ? ({
+  pageBg: ceramic.bg,
+  surface: ceramic.surface,
+  surfaceAlt: ceramic.surfaceMuted,
+  text: ceramic.text,
+  textSecondary: ceramic.textMuted,
+  textMuted: ceramic.textMuted,
+  border: ceramic.border,
+  headerBorder: ceramic.border,
+  shadow: ceramic.shadow,
+  accent: ceramic.active,
+  accentSoft: ceramic.activeSoft,
+  inactiveIcon: ceramic.textMuted,
+  chevron: ceramic.textMuted,
   dimOpacity: 0.72,
 }) : ({
-  pageBg: SHIPPER_CERAMIC.bg,
-  surface: SHIPPER_CERAMIC.surface,
-  surfaceAlt: SHIPPER_CERAMIC.surfaceMuted,
-  text: SHIPPER_CERAMIC.text,
-  textSecondary: SHIPPER_CERAMIC.textMuted,
-  textMuted: SHIPPER_CERAMIC.textMuted,
-  border: SHIPPER_CERAMIC.border,
-  headerBorder: SHIPPER_CERAMIC.border,
-  shadow: SHIPPER_CERAMIC.shadow,
+  pageBg: theme.bg,
+  surface: theme.card || theme.surface,
+  surfaceAlt: theme.surfaceAlt || theme.cardActive || theme.surface,
+  text: theme.text,
+  textSecondary: theme.textSecondary,
+  textMuted: theme.textMuted,
+  border: theme.border,
+  headerBorder: isDark ? theme.border : '#EDF0EE',
+  shadow: isDark ? '#000000' : '#14211C',
   accent: ACCENT,
-  accentSoft: ACCENT_SOFT,
-  inactiveIcon: SHIPPER_CERAMIC.textMuted,
-  chevron: SHIPPER_CERAMIC.textMuted,
-  dimOpacity: 0.72,
+  accentSoft: isDark ? 'rgba(22,135,89,0.18)' : ACCENT_SOFT,
+  inactiveIcon: theme.textMuted,
+  chevron: isDark ? '#65746B' : '#A0A9A4',
+  dimOpacity: isDark ? 0.62 : 0.72,
 });
 
 // `delivered` is intentionally ACTIVE, not terminal. The driver has finished
@@ -283,7 +284,7 @@ function CompactDealCard({
       unread={unread}
       chevron
       dimmed={dimmed}
-      variant={variant === 'driver' ? 'driver' : 'shipper'}
+      variant={variant}
     />
   );
 }
@@ -291,9 +292,10 @@ function CompactDealCard({
 export default function DealsScreen({ navigation, route }) {
   const { t, lang, sp } = useI18n();
   const { theme, isDark } = useTheme();
+  const ceramic = useDriverCeramicColors();
   const role = route?.params?.role || 'client';
   const isDriver = role === 'driver';
-  const palette = useMemo(() => dealsPalette(theme, isDark, isDriver), [theme, isDark, isDriver]);
+  const palette = useMemo(() => dealsPalette(theme, isDark, isDriver, ceramic), [theme, isDark, isDriver, ceramic]);
   const roleAccent = isDriver ? palette.accent : (accentFor(role) || ACCENT);
   const copy = COPY[lang] || COPY.EN;
   const { requireLevel, Gate } = useVerificationGate();
@@ -568,8 +570,9 @@ export default function DealsScreen({ navigation, route }) {
 
   const openBid = useCallback(
     (bid) => {
+      const readOnly = dealTab === 'archive' || CLOSED_BID_STATUSES.has(bid.status);
       if (bid.cargo_id) {
-        navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role });
+        navigation.navigate('CargoDetail', { cargoId: bid.cargo_id, bidId: bid.id, role, readOnly, source: readOnly ? 'archive' : 'deals' });
         return;
       }
       if (bid.trip_id) {
@@ -577,10 +580,12 @@ export default function DealsScreen({ navigation, route }) {
           tripId: bid.trip_id,
           bidId: bid.id,
           role,
+          readOnly,
+          source: readOnly ? 'archive' : 'deals',
         });
       }
     },
-    [navigation, role],
+    [dealTab, navigation, role],
   );
 
   const openDeal = useCallback(
@@ -642,7 +647,7 @@ export default function DealsScreen({ navigation, route }) {
           dimmed={isClosed}
           unread={!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0}
           onPress={() => openBid(data)}
-          variant={isDriver ? 'driver' : 'shipper'}
+          variant={isDriver ? 'driver' : 'default'}
         />
       );
       }
@@ -658,7 +663,7 @@ export default function DealsScreen({ navigation, route }) {
           ? t('tracking_action_required')
           : status.label;
       const statusColor = (needsReceiptConfirmation || trackingActionRequired) ? INFO : status.color;
-      const meta = [partnerName, data.last_message].filter(Boolean).join(' · ');
+      const meta = [partnerName, dealMessagePreview(data, lang)].filter(Boolean).join(' · ');
       const attentionRequired = needsReceiptConfirmation || trackingActionRequired ||
         unreadNotifPaths.includes(`/deals/${data.id}`) ||
         (data.cargo_id && unreadNotifPaths.includes(`/cargos/${data.cargo_id}`)) ||
@@ -678,7 +683,7 @@ export default function DealsScreen({ navigation, route }) {
           unread={unread}
           dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
           onPress={() => openDeal(data)}
-          variant={isDriver ? 'driver' : 'shipper'}
+          variant={isDriver ? 'driver' : 'default'}
         />
       );
     }, [
@@ -712,10 +717,7 @@ export default function DealsScreen({ navigation, route }) {
       ]}
       testID="deals-minimal-header"
     >
-      <RootHeader ceramic hideBell={!isDriver} navigation={navigation} role={role} testID="deals-minimal-header" bellTestID="deals-notification-settings-btn" menuTestID="deals-menu-btn" onBellPress={async () => {
-            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-            if (ok) navigation.navigate('PushFilter', { role });
-          }} />
+      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="deals-minimal-header" menuTestID="deals-menu-btn" />
 
       <View style={styles.tabsRow} testID="deals-primary-tabs">
         <TabChip
@@ -791,7 +793,7 @@ export default function DealsScreen({ navigation, route }) {
       edges={['top']}
       testID="deal-room-list"
     >
-      <DriverRouteBackdrop />
+      {isDriver ? <DriverRouteBackdrop /> : null}
       {loading ? (
         <>
           {listHeader}

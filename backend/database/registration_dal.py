@@ -195,6 +195,52 @@ def check_code(phone: str, code: str) -> bool:
         return row["code"] == code
 
 
+def consume_code(phone: str, code: str) -> bool:
+    """Validate AND atomically consume an OTP code in one transaction.
+
+    §23 hardening (2026-09-14): api/registration.py's email_verify/wa_verify
+    used to call check_code(phone, code) and, only on a truthy result, call
+    delete_code(phone) as a SEPARATE follow-up call -- two independent
+    get_conn() transactions with an open window between them. Two concurrent
+    verify requests for the same phone/code (a client double-tap/retry, or a
+    deliberate race) could both pass check_code() before either deleted the
+    row, both proceed past the "invalid code" gate, and each mint its own
+    session token from the one OTP code -- violating one-time-use.
+
+    Fix: read, expiry/attempts validation, and consumption happen inside a
+    SINGLE get_conn() transaction, and the code is proven single-use by the
+    DELETE's rowcount, not by the earlier SELECT. SQLite serializes
+    concurrent writers on the same row (WAL + busy_timeout, see db.py); the
+    first transaction to reach the DELETE removes the row and commits, and
+    the second transaction's DELETE (whether its own preceding SELECT saw
+    the row or not) then always affects 0 rows and correctly returns False --
+    there is no window in which two callers can both observe "consumed
+    successfully". Callers should use this instead of the separate
+    check_code()+delete_code() pair; those two remain for any caller that
+    genuinely needs a non-consuming (or independently-timed) check, but the
+    real login endpoints below use consume_code() exclusively.
+    """
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT code, expires_at, attempts FROM verification_codes WHERE phone = ?",
+            (phone,),
+        ).fetchone()
+        if not row:
+            return False
+        c.execute("UPDATE verification_codes SET attempts = attempts + 1 WHERE phone = ?", (phone,))
+        if row["attempts"] >= 5:
+            return False
+        if row["expires_at"] < datetime.utcnow().isoformat():
+            return False
+        if row["code"] != code:
+            return False
+        cur = c.execute(
+            "DELETE FROM verification_codes WHERE phone = ? AND code = ?",
+            (phone, code),
+        )
+        return cur.rowcount > 0
+
+
 def delete_code(phone: str):
     with get_conn() as c:
         c.execute("DELETE FROM verification_codes WHERE phone = ?", (phone,))
@@ -278,10 +324,14 @@ def get_or_create_driver_by_email(email: str, upgrade_guest_id: str = None) -> d
             return row
 
         if upgrade_guest_id:
+            # A guest may have completed name/phone/role onboarding before
+            # attaching a verified email identity. The authenticated guest
+            # session and empty email are the ownership proof; requiring the
+            # phone to still look like guest_* wrongly created a second account
+            # and let BETA provisioning overwrite the intended role.
             existing = c.execute(
                 "SELECT * FROM drivers_registration WHERE id = ? "
-                "AND (email IS NULL OR trim(email) = '') "
-                "AND (phone IS NULL OR phone LIKE 'guest_%')",
+                "AND (email IS NULL OR trim(email) = '')",
                 (upgrade_guest_id,),
             ).fetchone()
             if existing:
@@ -417,12 +467,26 @@ def delete_session(token: str) -> bool:
 
 
 def revoke_sessions_for_driver(driver_id: str) -> int:
-    """Отозвать все текущие сессии пользователя после чувствительной смены."""
+    """Отозвать все сессии пользователя."""
     if not driver_id:
         return 0
     with get_conn() as c:
-        cur = c.execute("DELETE FROM reg_sessions WHERE driver_id = ?", (driver_id,))
-        return cur.rowcount
+        return c.execute("DELETE FROM reg_sessions WHERE driver_id = ?", (driver_id,)).rowcount
+
+
+def rotate_sessions_for_driver(driver_id: str, *, connection=None) -> str:
+    """Отозвать старые сессии и выдать новую в общей транзакции."""
+    if connection is None:
+        with get_conn() as c:
+            return rotate_sessions_for_driver(driver_id, connection=c)
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.utcnow() + timedelta(days=30)).isoformat()
+    connection.execute("DELETE FROM reg_sessions WHERE driver_id = ?", (driver_id,))
+    connection.execute(
+        "INSERT INTO reg_sessions (token, driver_id, expires_at) VALUES (?, ?, ?)",
+        (token, driver_id, expires),
+    )
+    return token
 
 
 def get_driver_by_token(token: str) -> str | None:

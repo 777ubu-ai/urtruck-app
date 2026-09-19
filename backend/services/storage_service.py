@@ -6,6 +6,9 @@ import os
 import re
 import tempfile
 import uuid
+import time
+import threading
+from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional
@@ -35,6 +38,13 @@ S3_REGION = os.getenv("S3_REGION", "eu-central-1")
 
 _SAFE_SEGMENT_RE = re.compile(r"[^A-Za-z0-9_-]+")
 _SAFE_EXT_RE = re.compile(r"[^A-Za-z0-9]+")
+
+# Подпись нужна после проверки доступа в API, но не на каждом poll чата.
+# Кеш ограничен по памяти и времени; URL обновляется задолго до истечения.
+_SIGNED_URL_CACHE = OrderedDict()
+_SIGNED_URL_CACHE_LOCK = threading.Lock()
+_SIGNED_URL_LOCKS = tuple(threading.Lock() for _ in range(32))
+_SIGNED_URL_CACHE_LIMIT = 1024
 
 
 class StorageSaveError(RuntimeError):
@@ -120,6 +130,26 @@ def create_signed_url(value: Optional[str], ttl: int = 3600) -> Optional[str]:
         raise RuntimeError("Supabase Storage is not configured")
     bucket, key = parsed
     ttl_seconds = max(60, min(int(ttl), 7 * 24 * 60 * 60))
+    cache_key = (SUPABASE_URL, SUPABASE_KEY, bucket, key, ttl_seconds)
+    # Одновременный poll двух участников не дублирует запрос подписи.
+    with _SIGNED_URL_LOCKS[hash(cache_key) % len(_SIGNED_URL_LOCKS)]:
+        started = time.monotonic()
+        with _SIGNED_URL_CACHE_LOCK:
+            cached = _SIGNED_URL_CACHE.get(cache_key)
+            if cached and cached[0] > started:
+                _SIGNED_URL_CACHE.move_to_end(cache_key)
+                return cached[1]
+            _SIGNED_URL_CACHE.pop(cache_key, None)
+        signed = _request_signed_url(bucket, key, ttl_seconds)
+        reusable_until = started + min(300, ttl_seconds - 30)
+        with _SIGNED_URL_CACHE_LOCK:
+            _SIGNED_URL_CACHE[cache_key] = (reusable_until, signed)
+            while len(_SIGNED_URL_CACHE) > _SIGNED_URL_CACHE_LIMIT:
+                _SIGNED_URL_CACHE.popitem(last=False)
+        return signed
+
+
+def _request_signed_url(bucket: str, key: str, ttl_seconds: int) -> str:
     r = httpx.post(
         f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{key}",
         headers={"Authorization": f"Bearer {SUPABASE_KEY}"},
@@ -208,6 +238,41 @@ def save_image(data: bytes, category: str, ext: str = "jpg") -> str:
     """Backward-compatible image helper."""
     mime = "image/png" if str(ext).lower().lstrip('.') == "png" else "image/jpeg"
     return save_file(data, category, ext=ext, content_type=mime)
+
+
+def is_owned_storage_ref(value: Optional[str]) -> bool:
+    """True iff `value` has the exact shape a ref THIS service issued would
+    have (supabase://<bucket>/<key>, {LOCAL_PUBLIC_BASE}/<key> resolving
+    under LOCAL_ROOT, or the S3 https URL this service's own `_save_s3`
+    builds) — never true for an arbitrary absolute filesystem path or an
+    attacker-chosen http(s) URL.
+
+    Security audit finding (STT-hardening track, P0): `chat.py`'s
+    `SendMessageIn.photo_url` is a free-form client-supplied string with no
+    server-side validation before being persisted and later handed to
+    `materialize_for_processing()` for STT — which, for any value that
+    isn't a recognized `supabase://` ref, falls back to treating the raw
+    string as a local filesystem path (`get_local_path`'s permissive
+    fallback below, kept for legitimate device-local paths in other
+    callers). Combined, a client could set `photo_url` to an arbitrary
+    absolute path (e.g. "/etc/passwd") or an attacker-controlled URL and
+    have the backend read/fetch it — this validator is the gate that
+    closes that: callers that accept a client-supplied storage reference
+    for content THIS backend must later read (STT, attachment display)
+    should reject anything that doesn't pass this check, at write time.
+    """
+    if not value or not isinstance(value, str):
+        return False
+    if _split_supabase_ref(value) is not None:
+        return True
+    if value.startswith(LOCAL_PUBLIC_BASE):
+        return get_local_path(value) is not None
+    if S3_BUCKET:
+        s3_prefix = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/"
+        if value.startswith(s3_prefix):
+            key = value[len(s3_prefix):]
+            return bool(key) and ".." not in key.split("/") and not key.startswith("/")
+    return False
 
 
 def get_local_path(url_or_path: str) -> Optional[str]:

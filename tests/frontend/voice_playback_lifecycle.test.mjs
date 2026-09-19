@@ -33,6 +33,16 @@ test.beforeEach(async () => {
   shim.state.audioModeCalls.length = 0;
   shim.state.createAsyncThrows = null;
   shim.state.playAsyncThrows = null;
+  shim.state.events.length = 0;
+});
+
+test('progress listener is attached before native playback starts', async () => {
+  assert.equal(await voice.play(URI_A), true);
+  assert.deepEqual(
+    shim.state.events.slice(0, 3),
+    ['createAsync:false', 'setOnPlaybackStatusUpdate', 'playAsync'],
+    'Android must not start audio before the progress listener is attached',
+  );
 });
 
 // ─── REPRODUCE (P1): play A → natural completion → play B ───
@@ -95,6 +105,109 @@ test('natural completion → replay of the SAME uri works instantly', async () =
   assert.equal(soundA.playing, true, 'same sound resumes without re-create');
   assert.equal(voice.getState().isPlaying, true);
   assert.equal(shim.state.sounds.length, 1, 'no sound re-created on replay');
+});
+
+test('Android terminal status without didJustFinish resets 0:59 to full duration', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+
+  // Реальный Xiaomi/Expo AV может закончить минутный файл так: кнопка уже
+  // Play, последний position=59s, didJustFinish отсутствует. UI не должен
+  // оставаться на 0:59 после физического окончания звука.
+  soundA._emit({
+    isPlaying: false,
+    positionMillis: soundA.durationMillis - 1200,
+    durationMillis: soundA.durationMillis,
+    didJustFinish: false,
+  });
+
+  assert.equal(voice.getState().isPlaying, false);
+  assert.equal(voice.getState().positionMillis, 0, 'terminal Android tick resets to start');
+  assert.equal(soundA.positionMillis, 0, 'native sound is rewound for immediate replay');
+});
+
+test('Android missing terminal callback is recovered by native status poll', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+
+  // Натив закончил звук, но намеренно НЕ вызывает _emit/callback — точный
+  // physical QA064 сценарий. Независимый poll обязан заметить idle/end.
+  soundA.playing = false;
+  soundA.positionMillis = soundA.durationMillis - 1200;
+  await new Promise((resolve) => setTimeout(resolve, 350));
+
+  assert.equal(voice.getState().isPlaying, false);
+  assert.equal(voice.getState().positionMillis, 0);
+  assert.equal(soundA.positionMillis, 0);
+});
+
+test('Xiaomi early terminal idle resets even when native position stops before threshold', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+
+  // Physical QA065: the sound was audibly complete and native returned to
+  // Play, but getStatusAsync froze around 0:59 for a 1:00 message.  The final
+  // position can fall outside a guessed duration tolerance, so a sound that
+  // was observed playing and then becomes idle must be treated as complete.
+  soundA.playing = false;
+  soundA.positionMillis = soundA.durationMillis - 2500;
+  await new Promise((resolve) => setTimeout(resolve, 350));
+
+  assert.equal(voice.getState().isPlaying, false);
+  assert.equal(voice.getState().positionMillis, 0);
+  assert.equal(soundA.positionMillis, 0);
+});
+
+test('Xiaomi terminal idle may incorrectly retain isBuffering=true at 0:59', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+
+  soundA.playing = false;
+  soundA.positionMillis = Math.round(soundA.durationMillis * 0.9);
+  soundA._emit({
+    isPlaying: false,
+    isBuffering: true,
+    positionMillis: soundA.positionMillis,
+    durationMillis: soundA.durationMillis,
+    didJustFinish: false,
+  });
+
+  assert.equal(voice.getState().isPlaying, false);
+  assert.equal(voice.getState().positionMillis, 0);
+  assert.equal(soundA.positionMillis, 0);
+});
+
+test('early network buffering is not mistaken for natural completion', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+
+  soundA.positionMillis = Math.round(soundA.durationMillis * 0.25);
+  soundA._emit({
+    isPlaying: false,
+    isBuffering: true,
+    positionMillis: soundA.positionMillis,
+    durationMillis: soundA.durationMillis,
+    didJustFinish: false,
+  });
+
+  assert.equal(voice.getState().positionMillis, soundA.positionMillis);
+  assert.equal(soundA.positionMillis > 0, true);
+});
+
+test('manual pause before the terminal window preserves playback position', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+  soundA.positionMillis = 2500;
+  soundA._emit({
+    isPlaying: true,
+    positionMillis: 2500,
+    durationMillis: soundA.durationMillis,
+    didJustFinish: false,
+  });
+  assert.equal(await voice.pause(), true);
+
+  assert.equal(voice.getState().isPlaying, false);
+  assert.equal(voice.getState().positionMillis, 2500);
 });
 
 test('repeat playback: full play → completion cycle works twice in a row', async () => {

@@ -21,6 +21,7 @@ import AppConfirmModal from '../components/ui/AppConfirmModal';
 import Button from '../components/ui/v1/Button';
 import CountryFlag from '../components/ui/v1/CountryFlag';
 import { localizePlace } from '../utils/places';
+import { appVersionLabel } from '../utils/appVersionLabel';
 
 const LANGS = [
   { code: 'RU', country: 'RU' },
@@ -42,15 +43,10 @@ const QA_HOOK_ALLOWED = (() => {
 const APP_VERSION_LABEL = (() => {
   try {
     const Constants = require('expo-constants').default;
-    const ver = Constants?.nativeAppVersion || Constants?.expoConfig?.version || '1.0.4';
-    const build = Constants?.nativeBuildVersion
-      || Constants?.expoConfig?.ios?.buildNumber
-      || Constants?.expoConfig?.android?.versionCode
-      || '';
-    const commit = process.env.EXPO_PUBLIC_BUILD_COMMIT;
-    return `v${ver}${build ? ` (${build})` : ''}${commit ? ` · Build: ${commit}` : ''}`;
+    const Application = require('expo-application');
+    return appVersionLabel(Application, Constants?.expoConfig, Platform.OS, process.env.EXPO_PUBLIC_BUILD_COMMIT);
   } catch {
-    return 'v1.0.4';
+    return '—';
   }
 })();
 
@@ -136,14 +132,13 @@ export default function ProfileScreen({ navigation, route }) {
   const menuItems = [
     ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
     { icon: 'star', label: t('myReviews'), screen: 'Reviews', testID: 'profile-my-reviews' },
-    { icon: 'heart', label: t('favorites_title'), screen: 'Favorites', testID: 'profile-favorites' },
     { icon: 'help-circle', label: t('howit_header'), screen: 'HowItWorks', testID: 'profile-how-it-works' },
     { icon: 'info', label: t('about_title'), screen: 'About', testID: 'profile-about' },
   ];
 
   const specsLine = isDriver
     ? [
-        t(profile.truckType || 'tent'),
+        profile.truckType ? t(`vt_${profile.truckType}`) : t('tent'),
         profile.capacity_tons != null && profile.capacity_tons !== '' ? `${profile.capacity_tons} ${tonUnit}` : null,
         profile.available_m3 != null && profile.available_m3 !== '' ? `${profile.available_m3} ${cubicMeterUnit}` : null,
       ].filter(Boolean).join(' · ')
@@ -167,7 +162,7 @@ export default function ProfileScreen({ navigation, route }) {
   const proActive = isDriver && proFilled === proTotal;
   const proRemaining = proTotal - proFilled;
   const proStatusTitle = proActive ? t('pro_active_badge') : t('pro_inactive_badge');
-  const verificationStatusText = profile.is_verified ? t('verification_passed_short') : t('verification_failed_short');
+  const verificationStatusText = profile.is_verified ? t('verification_passed_short') : '';
 
   const itemsWord = (n) => {
     const lang = getLanguage();
@@ -182,11 +177,10 @@ export default function ProfileScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: theme.bg }]} edges={['top']}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <View style={s.headerRow}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8 }}>
             {navigation.canGoBack?.() ? (
-              <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} testID="profile-back" accessibilityLabel={t('back')}>
+              <TouchableOpacity style={s.backButton} onPress={() => navigation.goBack()} testID="profile-back" accessibilityRole="button" accessibilityLabel={t('back')}>
                 <Feather name="arrow-left" size={24} color={theme.text} />
               </TouchableOpacity>
             ) : null}
@@ -194,7 +188,7 @@ export default function ProfileScreen({ navigation, route }) {
           </View>
           <HelpButton accent={accent} />
         </View>
-
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <View style={[s.profileCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           {profile.avatar_url ? (
             <Image source={{ uri: profile.avatar_url }} style={[s.avatar, { borderColor: accent + '40' }]} />
@@ -246,14 +240,14 @@ export default function ProfileScreen({ navigation, route }) {
                   <Text style={[s.proTitle, { color: theme.text }]}>{proStatusTitle}</Text>
                 </View>
                 {proActive ? (
-                  IS_BETA ? <Text style={[s.proSub, { color: theme.textMuted }]}>{verificationStatusText} · {t('pro_beta_note')}</Text> : null
+                  <Text style={[s.proSub, { color: theme.textMuted }]}>{verificationStatusText}{verificationStatusText && IS_BETA ? ' · ' : ''}{IS_BETA ? t('pro_beta_note') : ''}</Text>
                 ) : (
-                  <Text style={[s.proSub, { color: theme.textMuted }]}>{verificationStatusText} · {t('pro_progress_remaining')} {proRemaining} {itemsWord(proRemaining)}</Text>
+                  <Text style={[s.proSub, { color: theme.textMuted }]}>{t('pro_progress_remaining')} {proRemaining} {itemsWord(proRemaining)}</Text>
                 )}
               </View>
               <View style={[s.proStatusBadge, { backgroundColor: proActive ? '#E9F6EF' : theme.bg, borderColor: proActive ? accent : theme.border }]}>
                 <Feather name={proActive ? 'check-circle' : 'alert-circle'} size={14} color={proActive ? accent : theme.textMuted} />
-                <Text style={[s.proStatusBadgeText, { color: proActive ? accent : theme.textMuted }]}>{proActive ? t('done') : `${proFilled}/${proTotal}`}</Text>
+                <Text style={[s.proStatusBadgeText, { color: proActive ? accent : theme.textMuted }]}>{proActive ? t('done') : `${t('pro_progress_filled')} ${proFilled}/${proTotal}`}</Text>
               </View>
             </View>
             <View style={[s.proTrack, { backgroundColor: theme.bg }]}><View style={[s.proFill, { width: `${proPercent}%`, backgroundColor: accent }]} /></View>
@@ -370,7 +364,8 @@ export default function ProfileScreen({ navigation, route }) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 },
+  backButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
   proCard: { borderRadius: 10, borderWidth: 1, padding: 14, marginBottom: 14 },
   proHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },

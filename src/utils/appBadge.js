@@ -14,9 +14,23 @@ import { chatAPI } from './chatAPI';
 import { notificationsAPI } from './notificationsAPI';
 
 const pick = (r) => (r && (r.unread ?? r.count ?? r.total)) || 0;
+let refreshVersion = 0;
+
+export function setAppIconBadge(total) {
+  if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+  let Notifications;
+  try { Notifications = require('expo-notifications'); } catch { return; }
+  Notifications.setBadgeCountAsync?.(Number(total) || 0).catch(() => {});
+}
+
+export function clearAppIconBadge() {
+  refreshVersion += 1;
+  setAppIconBadge(0);
+}
 
 export async function refreshAppIconBadge() {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+  const version = ++refreshVersion;
   let Notifications;
   try { Notifications = require('expo-notifications'); } catch { return; }
   try {
@@ -24,6 +38,7 @@ export async function refreshAppIconBadge() {
       chatAPI.unread().catch(() => null),
       notificationsAPI.unread().catch(() => null),
     ]);
+    if (version !== refreshVersion) return;
     const total = (Number(pick(c)) || 0) + (Number(pick(n)) || 0);
     Notifications.setBadgeCountAsync?.(total).catch(() => {});
   } catch {}

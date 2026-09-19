@@ -82,6 +82,15 @@ def test_gateway_reports_real_mode_in_push_info():
         assert field in gw_info, f"gateway.info() должен раскрывать {field}"
 
 
+def test_native_is_the_safe_default_and_invalid_mode_never_becomes_expo():
+    gateway = _read("services/push_gateway.py")
+    assert 'os.getenv("PUSH_PROVIDER_MODE") or "native"' in gateway
+    assert 'mode = "expo"' not in gateway
+    sender = _read("services/push_sender.py")
+    assert 'configured_mode not in ("expo", "dual")' in sender
+    assert '"config_errors"' in gateway
+
+
 def test_fcm_provider_sends_notification_payload_not_data_only():
     """Сообщение обязано нести notification-блок, иначе shade останется пуст."""
     gateway = _read("services/push_gateway.py")

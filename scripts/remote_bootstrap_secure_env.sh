@@ -47,9 +47,19 @@ legacy_service="$(get_env SUPABASE_SERVICE_ROLE_KEY "$ENV_FILE")"
 [ -n "$legacy_service" ] || legacy_service="$(get_env SUPABASE_KEY "$ENV_FILE")"
 incoming_service=""
 incoming_expo_access_token=""
+incoming_openai_api_key=""
+incoming_transcribe_provider=""
+incoming_transcribe_model=""
+incoming_translate_provider=""
+incoming_translate_model=""
 if [ -n "$REMOTE_BOOTSTRAP" ] && [ -f "$REMOTE_BOOTSTRAP" ]; then
   incoming_service="$(get_env SUPABASE_SERVICE_KEY "$REMOTE_BOOTSTRAP")"
   incoming_expo_access_token="$(get_env EXPO_ACCESS_TOKEN "$REMOTE_BOOTSTRAP")"
+  incoming_openai_api_key="$(get_env OPENAI_API_KEY "$REMOTE_BOOTSTRAP")"
+  incoming_transcribe_provider="$(get_env TRANSCRIBE_PROVIDER "$REMOTE_BOOTSTRAP")"
+  incoming_transcribe_model="$(get_env TRANSCRIBE_MODEL "$REMOTE_BOOTSTRAP")"
+  incoming_translate_provider="$(get_env TRANSLATE_PROVIDER "$REMOTE_BOOTSTRAP")"
+  incoming_translate_model="$(get_env TRANSLATE_MODEL "$REMOTE_BOOTSTRAP")"
 fi
 if [ -n "$incoming_service" ]; then
   set_env SUPABASE_SERVICE_KEY "$incoming_service"
@@ -57,6 +67,11 @@ elif [ -z "$current_service" ]; then
   set_env SUPABASE_SERVICE_KEY "$legacy_service"
 fi
 [ -z "$incoming_expo_access_token" ] || set_env EXPO_ACCESS_TOKEN "$incoming_expo_access_token"
+[ -z "$incoming_openai_api_key" ] || set_env OPENAI_API_KEY "$incoming_openai_api_key"
+[ -z "$incoming_transcribe_provider" ] || set_env TRANSCRIBE_PROVIDER "$incoming_transcribe_provider"
+[ -z "$incoming_transcribe_model" ] || set_env TRANSCRIBE_MODEL "$incoming_transcribe_model"
+[ -z "$incoming_translate_provider" ] || set_env TRANSLATE_PROVIDER "$incoming_translate_provider"
+[ -z "$incoming_translate_model" ] || set_env TRANSLATE_MODEL "$incoming_translate_model"
 
 # Server-side route providers are optional enhancements for web/PWA because
 # the embedded Yandex JS API 2.1 MultiRoute remains the real-road fallback.
@@ -94,7 +109,7 @@ fi
 file_key="$(get_env FILE_SIGNING_KEY "$ENV_FILE")"
 [ "$(printf %s "$file_key" | wc -c)" -ge 32 ] || set_env FILE_SIGNING_KEY "$(openssl rand -hex 32)"
 [ -n "$(get_env QA_AGENT_TOKEN "$ENV_FILE")" ] || set_env QA_AGENT_TOKEN "$(openssl rand -hex 32)"
-unset file_key current_service legacy_service incoming_service incoming_expo_access_token incoming_yandex_router incoming_global_router
+unset file_key current_service legacy_service incoming_service incoming_expo_access_token incoming_openai_api_key incoming_transcribe_provider incoming_transcribe_model incoming_yandex_router incoming_global_router
 
 # Fail closed only on secrets that are required to keep production/private
 # storage safe. Routing provider absence must not freeze all frontend releases;
@@ -177,3 +192,12 @@ if [ -n "$(get_env EXPO_ACCESS_TOKEN "$ENV_FILE")" ]; then
 else
   echo 'EXPO_ACCESS_TOKEN_PRESENT=no'
 fi
+if [ -n "$(get_env OPENAI_API_KEY "$ENV_FILE")" ]; then
+  echo 'OPENAI_API_KEY_PRESENT=yes'
+else
+  echo 'OPENAI_API_KEY_PRESENT=no'
+fi
+echo "TRANSCRIBE_PROVIDER=$(get_env TRANSCRIBE_PROVIDER "$ENV_FILE" | tr -c 'A-Za-z0-9_.-' '_')"
+echo "TRANSCRIBE_MODEL=$(get_env TRANSCRIBE_MODEL "$ENV_FILE" | tr -c 'A-Za-z0-9_.-' '_')"
+echo "TRANSLATE_PROVIDER=$(get_env TRANSLATE_PROVIDER "$ENV_FILE" | tr -c 'A-Za-z0-9_.-' '_')"
+echo "TRANSLATE_MODEL=$(get_env TRANSLATE_MODEL "$ENV_FILE" | tr -c 'A-Za-z0-9_.-' '_')"

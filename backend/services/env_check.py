@@ -20,6 +20,7 @@ import os
 from typing import List
 
 from services.qa_token_guard import is_compromised_qa_agent_token
+from services import email_service
 
 
 def _is_unsafe_password(value: str) -> bool:
@@ -56,11 +57,26 @@ def collect_issues() -> List[str]:
         os.getenv("MOBIZON_API_KEY") or twilio_real
     )
     tg_real = bool(os.getenv("TELEGRAM_BOT_TOKEN"))
-    if not (wa_token and wa_phone) and not sms_real and not tg_real:
+    # Hardening B (2026-09-14): this used to check WhatsApp/SMS/Telegram only
+    # -- email (services/email_service.py, the China-reachable channel; see
+    # CLAUDE.md) was invisible to this guard entirely. Two distinct bugs
+    # resulted: (1) a deployment where email is the ONLY configured channel
+    # (a real, intended production shape -- WA/Telegram are blocked in China
+    # and international SMS to +86 is unreliable, per email_service.py's own
+    # module docstring) was wrongly flagged as "no real channel configured"
+    # and refused to boot, even though real OTP delivery worked fine; (2) a
+    # deployment where NOTHING is configured, including email, correctly
+    # still got a signal (this branch already fired due to WA/SMS/TG) but
+    # the message never named email as a valid fix, sending an operator
+    # trying to unblock a China-only deployment down the wrong path.
+    email_real = email_service.is_configured()
+    if not (wa_token and wa_phone) and not sms_real and not tg_real and not email_real:
         issues.append(
-            "OTP: no real channel configured (WhatsApp / SMS / Telegram all in MOCK). "
+            "OTP: no real channel configured (WhatsApp / SMS / Telegram / Email all in MOCK). "
             "Real users will not receive codes. Set WHATSAPP_TOKEN+WHATSAPP_PHONE_ID, "
-            "or SMS_PROVIDER=mobizon|twilio with credentials, or TELEGRAM_BOT_TOKEN."
+            "or SMS_PROVIDER=mobizon|twilio with credentials, or TELEGRAM_BOT_TOKEN, "
+            "or EMAIL_SMTP_HOST+EMAIL_SMTP_USER+EMAIL_SMTP_PASSWORD (email is the "
+            "recommended channel for China, where WhatsApp/Telegram are blocked)."
         )
 
     # Stage 22: BETA_MODE in production is a security hole — anyone
@@ -115,6 +131,32 @@ def collect_issues() -> List[str]:
             "missing value(s). There is no mock fallback for a partial Twilio "
             "config in production; OTP delivery would fail for every user."
         )
+
+    # Database — main.py's own separate guard (top of main.py, runs before
+    # this module is even imported) already refuses ENV=test pointed at a
+    # server-like /home/ubuntu/... path. The gap this closes is the OPPOSITE
+    # direction: URTRUCK_ENV=production with a DB_PATH that is unset (fine —
+    # config.py's own default is a real persistent path) is NOT the risk;
+    # an explicitly-set DB_PATH pointing at ':memory:' (wiped the instant the
+    # process restarts) or a /tmp-style ephemeral path (wiped on reboot / by
+    # a tmp-cleaner cron) silently loses every driver/cargo/bid/message row
+    # with zero symptom until the next restart. Empty DB_PATH is left alone
+    # here -- config.py's own default already resolves it to a real path.
+    _db_path = os.getenv("DB_PATH", "")
+    if _db_path:
+        _db_path_norm = _db_path.strip()
+        if _db_path_norm in (":memory:", "file::memory:"):
+            issues.append(
+                "Database: DB_PATH is an in-memory SQLite database "
+                f"({_db_path_norm!r}) — every row is lost on process restart. "
+                "Set DB_PATH to a persistent path on disk."
+            )
+        elif _db_path_norm.startswith(("/tmp/", "/tmp", "/var/tmp/", "/var/tmp")):
+            issues.append(
+                f"Database: DB_PATH points into a temp directory ({_db_path_norm!r}) "
+                "— contents are wiped on reboot or by a tmp-cleaner cron. Set DB_PATH "
+                "to a persistent, backed-up path outside /tmp."
+            )
 
     # Storage — local FS in production loses uploads on redeploy.
     provider = (os.getenv("STORAGE_PROVIDER") or "local").lower()
@@ -214,7 +256,7 @@ def enforce_production_env() -> None:
 
     issues = collect_issues()
     if not issues:
-        print("[env-check] production env OK (OTP/Storage/Admin/CORS all configured)", flush=True)
+        print("[env-check] production env OK (OTP/Database/Storage/Admin/CORS all configured)", flush=True)
         return
 
     print("[env-check] PRODUCTION CONFIG ISSUES:", flush=True)
