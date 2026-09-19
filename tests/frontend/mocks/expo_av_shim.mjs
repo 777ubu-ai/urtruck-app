@@ -104,7 +104,7 @@ export function installExpoAvRequireShim() {
 
   const previous = globalThis.require;
   globalThis.require = (specifier) => {
-    if (specifier === 'expo-av') return { Audio };
+    if (specifier === './expoAudioCompat') return { Audio };
     if (typeof previous === 'function') return previous(specifier);
     throw new Error(`expo_av_shim: unmocked require('${specifier}')`);
   };

@@ -15,7 +15,7 @@ class UrTruckSystemBarsModule(
 
   @ReactMethod
   fun setLaunchMode(enabled: Boolean) {
-    val activity = currentActivity ?: return
+    val activity = reactApplicationContext.currentActivity ?: return
     activity.runOnUiThread {
       val window = activity.window
       val controller = WindowCompat.getInsetsController(window, window.decorView)

@@ -97,6 +97,10 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Dependency security audit
+        run: |
+          npm run audit:production
+          npm run audit:dependencies
       - name: Lint
         run: npm run lint
       - name: Frontend ownership and currency tests

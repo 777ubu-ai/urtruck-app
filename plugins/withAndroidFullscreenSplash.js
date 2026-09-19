@@ -46,13 +46,9 @@ module.exports = function withAndroidFullscreenSplash(config) {
     const drawableNodpiRoot = path.join(resRoot, 'drawable-nodpi');
     const canonicalImage = path.join(
       projectRoot,
-      'android',
-      'app',
-      'src',
-      'main',
-      'res',
-      'drawable-nodpi',
-      'urtruck_splash_fullscreen.png',
+      'assets',
+      'splash',
+      'urtruck-android-splash.png',
     );
     const outputImage = path.join(drawableNodpiRoot, 'urtruck_splash_fullscreen.png');
     const backgroundPath = path.join(drawableRoot, 'urtruck_splash_window_background.xml');
@@ -61,7 +57,7 @@ module.exports = function withAndroidFullscreenSplash(config) {
     fs.mkdirSync(drawableNodpiRoot, { recursive: true });
     if (!fs.existsSync(canonicalImage)) {
       throw new Error(
-        'Canonical Android splash artwork is missing. Run prebuild without --clean so the approved native resource remains available.',
+        'Canonical Android splash artwork is missing from assets/splash/urtruck-android-splash.png.',
       );
     }
     fs.copyFileSync(canonicalImage, outputImage);

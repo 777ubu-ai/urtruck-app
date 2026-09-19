@@ -11,9 +11,10 @@ def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 react {
     entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
     reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
-    hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+    hermesCommand = new File(["node", "--print", "require.resolve('hermes-compiler/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/hermesc/%OS-BIN%/hermesc"
     codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
 
+    enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
     // Use Expo CLI to bundle the app, this ensures the Metro config
     // works correctly with Expo projects.
     cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
@@ -28,7 +29,7 @@ react {
     // codegenDir = file("../../node_modules/@react-native/codegen")
 
     /* Variants */
-    //   The list of variants that are debuggable. For those we're going to
+    //   The list of variants to that are debuggable. For those we're going to
     //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
     //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
     // debuggableVariants = ["liteDebug", "prodDebug"]
@@ -63,9 +64,9 @@ react {
 }
 
 /**
- * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
+ * Set this to true in release builds to optimize the app using [R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
  */
-def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInReleaseBuilds') ?: false).toBoolean()
+def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: false).toBoolean()
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -78,7 +79,7 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
  * give correct results when using with locales other than en-US. Note that
  * this variant is about 6MiB larger per architecture than default.
  */
-def jscFlavor = 'org.webkit:android-jsc:+'
+def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -91,10 +92,11 @@ android {
         applicationId 'com.urtruck.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // CI (deploy-play.yml) передаёт свой versionCode через -PURTRUCK_VERSION_CODE,
-        // чтобы каждая автозаливка в Google Play имела уникальный монотонный код.
+        // CI passes a unique monotonic code for every Play upload.
         versionCode (project.hasProperty('URTRUCK_VERSION_CODE') ? URTRUCK_VERSION_CODE.toInteger() : 9)
         versionName "1.0.8"
+
+        buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
     signingConfigs {
         debug {
@@ -103,12 +105,6 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        // Release (upload) key. Значения задаются в android/gradle.properties
-        // (файл в .gitignore — пароли в git не коммитим). Пример свойств:
-        //   URTRUCK_UPLOAD_STORE_FILE=../../keystore/urtruck-release.keystore
-        //   URTRUCK_UPLOAD_STORE_PASSWORD=***
-        //   URTRUCK_UPLOAD_KEY_ALIAS=***
-        //   URTRUCK_UPLOAD_KEY_PASSWORD=***
         release {
             if (project.hasProperty('URTRUCK_UPLOAD_STORE_FILE')) {
                 storeFile file(URTRUCK_UPLOAD_STORE_FILE)
@@ -123,50 +119,32 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Release-hardening track 2, item 2: this used to silently fall
-            // back to signingConfigs.debug whenever URTRUCK_UPLOAD_STORE_FILE
-            // was absent — a release build with no production signing config
-            // available would quietly produce a debug-signed artifact
-            // instead of failing, so a misconfigured/secret-less CI run (or
-            // a plain local `./gradlew bundleRelease`) could silently ship
-            // (or attempt to ship) something that isn't actually signed for
-            // production. Google Play's own upload-certificate check would
-            // eventually reject a debug-signed AAB, but that's a downstream
-            // safety net, not this build failing closed at the point of the
-            // actual misconfiguration.
-            //
-            // Fixed: a release build now REQUIRES the real upload-key
-            // properties by default and fails immediately if they're
-            // missing. The one legitimate exception is the internal QA2
-            // APK build (build-android-apk.yml) — that workflow builds the
-            // `release` buildType (for R8/shrink parity with what ships)
-            // but is never uploaded to Play, so it explicitly opts into the
-            // old debug-signing fallback via
-            // -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true. Nothing else may
-            // opt in without the same explicit flag — the default is
-            // fail-closed.
-            if (!project.hasProperty('URTRUCK_UPLOAD_STORE_FILE')) {
+            def releaseTaskRequested = gradle.startParameter.taskNames.any { taskName ->
+                taskName.toLowerCase(java.util.Locale.ROOT).contains('release')
+            }
+            if (releaseTaskRequested && !project.hasProperty('URTRUCK_UPLOAD_STORE_FILE')) {
                 def allowDebugFallback = project.hasProperty('URTRUCK_ALLOW_DEBUG_SIGNED_RELEASE') &&
                     URTRUCK_ALLOW_DEBUG_SIGNED_RELEASE.toString().toBoolean()
                 if (!allowDebugFallback) {
                     throw new GradleException(
-                        "release build requires URTRUCK_UPLOAD_STORE_FILE (+ _STORE_PASSWORD/_KEY_ALIAS/_KEY_PASSWORD) " +
-                        "for production signing. A build that intentionally does not need Play-store signing (e.g. an " +
-                        "internal QA APK) must explicitly pass -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true to opt into " +
-                        "debug signing — this is never the silent default."
+                        "release build requires the UrTruck upload key. Internal QA must explicitly pass " +
+                        "-PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true."
                     )
                 }
             }
             signingConfig project.hasProperty('URTRUCK_UPLOAD_STORE_FILE') ? signingConfigs.release : signingConfigs.debug
-            shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
-            minifyEnabled enableProguardInReleaseBuilds
+            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
+            shrinkResources enableShrinkResources.toBoolean()
+            minifyEnabled enableMinifyInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
-            crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
+            def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
+            crunchPngs enablePngCrunchInRelease.toBoolean()
         }
     }
     packagingOptions {
         jniLibs {
-            useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+            def enableLegacyPackaging = findProperty('expo.useLegacyPackaging') ?: 'false'
+            useLegacyPackaging enableLegacyPackaging.toBoolean()
         }
     }
     androidResources {
@@ -204,13 +182,15 @@ dependencies {
 
     if (isGifEnabled) {
         // For animated gif support
-        implementation("com.facebook.fresco:animated-gif:${reactAndroidLibs.versions.fresco.get()}")
+        implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
     }
 
     if (isWebpEnabled) {
-        implementation("com.facebook.fresco:webpsupport:${reactAndroidLibs.versions.fresco.get()}")
+        // For webp support
+        implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
         if (isWebpAnimatedEnabled) {
-            implementation("com.facebook.fresco:animated-webp:${reactAndroidLibs.versions.fresco.get()}")
+            // Animated webp support
+            implementation("com.facebook.fresco:animated-webp:${expoLibs.versions.fresco.get()}")
         }
     }
 
@@ -221,18 +201,8 @@ dependencies {
     }
 }
 
-// P1 fix (26.08.2026): Android push notifications go through FCM, which
-// requires a real Firebase project's google-services.json to be present at
-// build time (see docs/release/android-firebase-config.md for the full
-// incident writeup). Applied conditionally — a build with no
-// google-services.json present (e.g. a plain local `./gradlew assembleDebug`
-// run by a contributor who hasn't been handed the file) must still succeed;
-// only the release workflows (build-android-apk.yml, deploy-play.yml) fail
-// CLOSED and loudly via scripts/verify_android_firebase_config.py *before*
-// Gradle even starts, so a genuinely broken/missing config is never silently
-// shipped. This mirrors the standard community pattern for optional Firebase
-// wiring in a React Native/Expo Android project that also supports
-// Firebase-less local development.
+// Contributors can compile without Firebase credentials. Release workflows
+// verify the file separately and therefore still fail closed before Gradle.
 if (file("google-services.json").exists()) {
     apply plugin: "com.google.gms.google-services"
 }
