@@ -15,7 +15,6 @@ import Feather from '@expo/vector-icons/Feather';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import { useV1Colors, useDriverCeramicColors } from '../theme/designV1';
-import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
 import CountryFlag from '../components/ui/v1/CountryFlag';
@@ -87,6 +86,45 @@ const COPY = {
     favorited: '已收藏', sourceError: '无法获取 CGR 数据，请重试。', checkQueue: '查询我的排队', platePlaceholder: '车牌号，例如 123ABC02',
     check: '查询', notFound: '未找到有效排队', lookupError: '无法查询车牌', checkpoint: '口岸', queueTime: '排队时间', status: '状态',
     cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择', tapToOpen: '点击查看', swipeCalendar: '左右滑动日期 →',
+  },
+};
+
+const ROLE_COPY = {
+  RU: {
+    myVehicle: 'Моя машина', change: 'Сменить', myBorderDeals: 'Мои перевозки на границе',
+    active: 'активных', cgrOnline: 'CGR online', selectedShipment: 'Выбранная перевозка',
+    toCheckpoint: 'До КПП', trackingOn: 'Отслеживание включено', openDeal: 'Открыть сделку',
+    history: 'История статусов', messageDriver: 'Написать водителю', borderSituation: 'Обстановка на границе',
+    checkOther: 'Проверить другой номер', noVehicle: 'Добавьте машину, чтобы UrTruck сам проверял очередь по госномеру.',
+    noActiveShipments: 'Активных перевозок на границе пока нет.', liveStatus: 'Статус CGR',
+    gpsOnline: 'GPS включён', gpsUnavailable: 'GPS пока недоступен', late: 'Опаздывает', onTime: 'Не опаздывает',
+  },
+  KK: {
+    myVehicle: 'Менің көлігім', change: 'Ауыстыру', myBorderDeals: 'Шекарадағы тасымалдарым',
+    active: 'белсенді', cgrOnline: 'CGR online', selectedShipment: 'Таңдалған тасымал',
+    toCheckpoint: 'Бекетке дейін', trackingOn: 'Бақылау қосулы', openDeal: 'Мәмілені ашу',
+    history: 'Күй тарихы', messageDriver: 'Жүргізушіге жазу', borderSituation: 'Шекарадағы жағдай',
+    checkOther: 'Басқа нөмірді тексеру', noVehicle: 'Кезекті автоматты тексеру үшін көлік қосыңыз.',
+    noActiveShipments: 'Шекарада белсенді тасымалдар жоқ.', liveStatus: 'CGR күйі',
+    gpsOnline: 'GPS қосулы', gpsUnavailable: 'GPS әзірге қолжетімсіз', late: 'Кешігуде', onTime: 'Кешікпейді',
+  },
+  EN: {
+    myVehicle: 'My vehicle', change: 'Change', myBorderDeals: 'My border shipments',
+    active: 'active', cgrOnline: 'CGR online', selectedShipment: 'Selected shipment',
+    toCheckpoint: 'To checkpoint', trackingOn: 'Tracking on', openDeal: 'Open deal',
+    history: 'Status history', messageDriver: 'Message driver', borderSituation: 'Border situation',
+    checkOther: 'Check another plate', noVehicle: 'Add a vehicle so UrTruck can check the queue automatically.',
+    noActiveShipments: 'No active border shipments yet.', liveStatus: 'CGR status',
+    gpsOnline: 'GPS on', gpsUnavailable: 'GPS unavailable', late: 'Late', onTime: 'On time',
+  },
+  ZH: {
+    myVehicle: '我的车辆', change: '切换', myBorderDeals: '我的边境运输',
+    active: '进行中', cgrOnline: 'CGR 在线', selectedShipment: '已选运输',
+    toCheckpoint: '距口岸', trackingOn: '跟踪已开启', openDeal: '打开交易',
+    history: '状态记录', messageDriver: '联系司机', borderSituation: '边境情况',
+    checkOther: '查询其他车牌', noVehicle: '添加车辆后，UrTruck 可自动查询排队状态。',
+    noActiveShipments: '暂无边境运输。', liveStatus: 'CGR 状态',
+    gpsOnline: 'GPS 已开启', gpsUnavailable: 'GPS 暂不可用', late: '已延误', onTime: '未延误',
   },
 };
 
@@ -178,6 +216,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const ceramic = useDriverCeramicColors();
   const { t, lang, sp } = useI18n();
   const L = COPY[lang] || COPY.RU;
+  const R = ROLE_COPY[lang] || ROLE_COPY.RU;
   const role = route?.params?.role || 'driver';
   const isDriver = role === 'driver';
   const activeColor = isDriver ? ceramic.active : '#168759';
@@ -207,6 +246,14 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const [plate, setPlate] = useState('');
   const [lookup, setLookup] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
+  const [manualLookup, setManualLookup] = useState(null);
+  const [manualLookupLoading, setManualLookupLoading] = useState(false);
+  const [privateContext, setPrivateContext] = useState({ vehicles: [], deals: [], trips: [] });
+  const [contextToken, setContextToken] = useState(null);
+  const [contextLoading, setContextLoading] = useState(true);
+  const [selectedVehicleId, setSelectedVehicleId] = useState(null);
+  const [selectedDealId, setSelectedDealId] = useState(null);
+  const [showManualLookup, setShowManualLookup] = useState(false);
   const checkpointCarouselRef = useRef(null);
   const checkpointCarouselX = useRef(0);
 
@@ -234,6 +281,66 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     loadCatalog().catch(() => setCatalogLoading(false));
     storage.get(FAVORITES_KEY).then((raw) => setFavorites(jsonArray(raw).map(String))).catch(() => {});
   }, [loadCatalog]);
+
+  const loadPrivateContext = useCallback(async () => {
+    setContextLoading(true);
+    try {
+      const token = await storage.get('ur_reg_token').catch(() => null);
+      setContextToken(token || null);
+      if (!token) {
+        setPrivateContext({ vehicles: [], deals: [], trips: [] });
+        return;
+      }
+      const response = await fetch(`${BASE}/context`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.detail || `HTTP ${response.status}`);
+      const next = {
+        vehicles: Array.isArray(data?.vehicles) ? data.vehicles : [],
+        deals: Array.isArray(data?.deals) ? data.deals : [],
+        trips: Array.isArray(data?.trips) ? data.trips : [],
+      };
+      setPrivateContext(next);
+      if (isDriver) {
+        const firstDeal = next.deals.find((item) => item?.plate) || next.deals[0] || null;
+        const preferredVehicle = firstDeal?.vehicle_id || next.vehicles[0]?.id || null;
+        setSelectedVehicleId((current) => current || preferredVehicle);
+        setSelectedDealId((current) => current || firstDeal?.deal_id || null);
+      } else {
+        setSelectedDealId((current) => current || next.deals[0]?.deal_id || null);
+      }
+    } catch {
+      setPrivateContext({ vehicles: [], deals: [], trips: [] });
+    } finally {
+      setContextLoading(false);
+    }
+  }, [isDriver]);
+
+  useEffect(() => { loadPrivateContext(); }, [loadPrivateContext]);
+
+  const selectedDeal = useMemo(() => {
+    const byId = privateContext.deals.find((item) => String(item.deal_id) === String(selectedDealId));
+    if (byId) return byId;
+    return isDriver ? null : (privateContext.deals[0] || null);
+  }, [privateContext.deals, selectedDealId, isDriver]);
+
+  const selectedVehicle = useMemo(() => {
+    const byId = privateContext.vehicles.find((item) => String(item.id) === String(selectedVehicleId));
+    return byId || privateContext.vehicles[0] || null;
+  }, [privateContext.vehicles, selectedVehicleId]);
+
+  const activePlate = useMemo(() => {
+    if (isDriver) return selectedDeal?.plate || selectedVehicle?.license_plate || '';
+    return selectedDeal?.plate || '';
+  }, [isDriver, selectedDeal, selectedVehicle]);
+
+  const cycleVehicle = useCallback(() => {
+    if (!isDriver || privateContext.vehicles.length < 2) return;
+    const current = privateContext.vehicles.findIndex((item) => String(item.id) === String(selectedVehicle?.id));
+    const next = privateContext.vehicles[(current + 1) % privateContext.vehicles.length];
+    setSelectedVehicleId(next?.id || null);
+    const matchingDeal = privateContext.deals.find((item) => String(item.vehicle_id) === String(next?.id));
+    setSelectedDealId(matchingDeal?.deal_id || null);
+  }, [isDriver, privateContext.vehicles, privateContext.deals, selectedVehicle]);
 
   const countryCodes = useMemo(() => {
     const available = new Set(countries.map((item) => String(item.country || '').trim().toUpperCase()).filter(Boolean));
@@ -284,16 +391,51 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     await storage.set(FAVORITES_KEY, JSON.stringify(next));
   }, [selectedId, favorites]);
 
-  const searchPlate = useCallback(async () => {
-    const normalized = normalizePlate(plate);
-    if (normalized.length < 3 || lookupLoading) return;
-    setPlate(normalized);
+  const lookupPlateValue = useCallback(async (value) => {
+    const normalized = normalizePlate(value);
+    if (normalized.length < 3) return;
     setLookupLoading(true);
     setLookup(null);
-    try { setLookup(await fetchJson(`${BASE}/lookup?plate=${encodeURIComponent(normalized)}`)); }
-    catch { setLookup({ error: true }); }
+    try {
+      const result = await fetchJson(`${BASE}/lookup?plate=${encodeURIComponent(normalized)}`);
+      setLookup(result);
+    } catch { setLookup({ error: true }); }
     finally { setLookupLoading(false); }
-  }, [plate, lookupLoading]);
+  }, []);
+
+  const searchPlate = useCallback(async () => {
+    const normalized = normalizePlate(plate);
+    if (normalized.length < 3 || manualLookupLoading) return;
+    setPlate(normalized);
+    setManualLookupLoading(true);
+    setManualLookup(null);
+    try { setManualLookup(await fetchJson(`${BASE}/lookup?plate=${encodeURIComponent(normalized)}`)); }
+    catch { setManualLookup({ error: true }); }
+    finally { setManualLookupLoading(false); }
+  }, [plate, manualLookupLoading]);
+
+  useEffect(() => {
+    const normalized = normalizePlate(activePlate);
+    if (!normalized) return;
+    setPlate(normalized);
+    lookupPlateValue(normalized);
+  }, [activePlate, lookupPlateValue]);
+
+  useEffect(() => {
+    if (!isDriver || !contextToken || !selectedDeal || normalizePlate(activePlate).length < 3) return;
+    fetch(`${BASE}/watch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${contextToken}` },
+      body: JSON.stringify({ plate: normalizePlate(activePlate) }),
+    }).catch(() => {});
+  }, [isDriver, contextToken, selectedDeal, activePlate]);
+
+  useEffect(() => {
+    if (!lookup?.found || !lookup?.checkpoint || !catalog.length || selectedId) return;
+    const target = String(lookup.checkpoint).trim().toLowerCase();
+    const match = catalog.find((item) => String(item.name_ru || item.name || '').trim().toLowerCase() === target);
+    if (match) loadLive(match).catch(() => {});
+  }, [lookup, catalog, selectedId, loadLive]);
 
   const nearestText = live?.nearest_booking ? formatDate(live.nearest_booking, lang) : '—';
   const premiumText = live?.nearest_premium_booking ? formatDate(live.nearest_premium_booking, lang) : null;
@@ -301,11 +443,56 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: v1.bg }]} edges={['top']} testID="border-screen-v2">
       {isDriver ? <DriverRouteBackdrop /> : null}
-      <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="queue-root-header" onBellPress={() => navigation.navigate('Notifications', { role })} />
+      <RootHeader compact ceramic={isDriver} navigation={navigation} role={role} testID="queue-root-header" menuTestID="queue-root-header-menu" />
 
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-        <Text style={[s.topTitle, s.scrollTitle, { color: theme.text }]} testID="queue-title">{L.title}</Text>
-        <Text style={[s.subtitle, { color: theme.textMuted }]}>{L.subtitle}</Text>
+        {isDriver ? (
+          <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-driver-vehicle-card">
+            <View style={s.contextHeader}>
+              <View style={s.contextTitleRow}><Feather name="truck" size={20} color={theme.textMuted} /><Text style={[s.contextTitle, { color: theme.text }]}>{R.myVehicle}</Text></View>
+              {privateContext.vehicles.length > 1 ? <TouchableOpacity onPress={cycleVehicle} style={[s.smallAction, { backgroundColor: v1.surfaceMuted }]}><Text style={[s.smallActionText, { color: theme.text }]}>{R.change}</Text><Feather name="chevron-down" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
+            </View>
+            {contextLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 14 }} /> : selectedVehicle || selectedDeal ? (
+              <View style={s.vehicleBody}>
+                <View style={[s.vehicleIconWrap, { backgroundColor: v1.surfaceMuted }]}><Feather name="truck" size={34} color={activeColor} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.vehicleName, { color: theme.text }]}>{[selectedDeal?.make || selectedVehicle?.make, selectedDeal?.model || selectedVehicle?.model].filter(Boolean).join(' ') || selectedVehicle?.vehicle_type || '—'}</Text>
+                  <View style={s.plateRow}><Text style={[s.plateBadge, { color: theme.text, borderColor: theme.border }]}>{normalizePlate(activePlate) || '—'}</Text>{(selectedDeal?.vehicle_country || selectedVehicle?.vehicle_registration_country_code) ? <Text style={[s.countryBadge, { color: theme.textMuted }]}>{selectedDeal?.vehicle_country || selectedVehicle?.vehicle_registration_country_code}</Text> : null}</View>
+                  {selectedDeal ? <Text style={[s.routeLine, { color: theme.textMuted }]}>{selectedDeal.from_city} → {selectedDeal.to_city}</Text> : null}
+                </View>
+              </View>
+            ) : <Text style={[s.emptyContext, { color: theme.textMuted }]}>{R.noVehicle}</Text>}
+          </View>
+        ) : (
+          <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-shipper-deals-card">
+            <View style={s.contextHeader}>
+              <View style={s.contextTitleRow}><Feather name="truck" size={20} color={theme.textMuted} /><Text style={[s.contextTitle, { color: theme.text }]}>{R.myBorderDeals}</Text></View>
+              <View style={s.headerPills}><View style={s.countPill}><Text style={s.countPillText}>{privateContext.deals.length} {R.active}</Text></View><View style={s.onlinePill}><View style={s.onlineDot} /><Text style={s.onlineText}>{R.cgrOnline}</Text></View></View>
+            </View>
+            {contextLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 14 }} /> : privateContext.deals.length ? privateContext.deals.slice(0, 4).map((item) => {
+              const activeDeal = String(item.deal_id) === String(selectedDeal?.deal_id);
+              return <TouchableOpacity key={item.deal_id} onPress={() => setSelectedDealId(item.deal_id)} style={[s.shipmentRow, { borderColor: activeDeal ? activeColor : theme.border, backgroundColor: activeDeal ? activeColor + '0D' : v1.surfaceMuted }]} testID="border-shipper-deal-row">
+                <View style={[s.shipmentTruck, { backgroundColor: theme.card }]}><Feather name="truck" size={26} color={activeColor} /></View>
+                <View style={{ flex: 1 }}><Text style={[s.shipmentRoute, { color: theme.text }]}>{item.from_city} → {item.to_city}</Text><Text style={[s.shipmentMeta, { color: theme.textMuted }]}>{item.driver_name || '—'} · {[item.make, item.model].filter(Boolean).join(' ') || '—'} · {normalizePlate(item.plate) || '—'}</Text></View>
+                <Feather name="chevron-right" size={20} color={theme.textDim} />
+              </TouchableOpacity>;
+            }) : <Text style={[s.emptyContext, { color: theme.textMuted }]}>{R.noActiveShipments}</Text>}
+          </View>
+        )}
+
+        {activePlate ? <View style={[s.personalStatusCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-personal-cgr-status">
+          <View style={s.contextHeader}><View style={s.contextTitleRow}><Feather name="activity" size={19} color={activeColor} /><Text style={[s.contextTitle, { color: theme.text }]}>{R.liveStatus}</Text></View>{lookup?.found && lookup?.status ? <View style={[s.statusPill, { backgroundColor: lookup.status === 'called' ? '#E8F1FF' : lookup.status === 'revoked' ? '#FDECEC' : '#E9F8EE' }]}><Text style={[s.statusPillText, { color: lookup.status === 'revoked' ? '#B42318' : lookup.status === 'called' ? '#1769E0' : '#168759' }]}>{lookupStatusLabel(lookup.status, lang)}</Text></View> : null}</View>
+          {lookupLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 12 }} /> : lookup?.error ? <Text style={[s.lookupText, { color: '#B42318' }]}>{L.lookupError}</Text> : lookup?.found ? <>
+            <Text style={[s.personalCheckpoint, { color: theme.text }]}>{localizeCheckpointName(lookup.checkpoint, lang)}</Text>
+            <View style={s.personalMetaRow}><Feather name="calendar" size={15} color={theme.textMuted} /><Text style={[s.lookupText, { color: theme.textMuted }]}>{L.queueTime}: {lookup.queue_datetime || '—'}</Text></View>
+            <View style={s.personalMetaRow}><Feather name={lookup.is_late ? 'alert-circle' : 'check-circle'} size={15} color={lookup.is_late ? '#B7791F' : '#168759'} /><Text style={[s.lookupText, { color: lookup.is_late ? '#B7791F' : '#168759' }]}>{lookup.is_late ? R.late : R.onTime}</Text></View>
+            {selectedDeal ? <View style={s.personalMetaRow}><Feather name="navigation" size={15} color={activeColor} /><Text style={[s.lookupText, { color: theme.textMuted }]}>{selectedDeal.location ? `${R.gpsOnline} · ${formatSourceTime(selectedDeal.location.updated_at)}` : R.gpsUnavailable}</Text></View> : null}
+          </> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}
+          {selectedDeal && !isDriver ? <View style={s.dealActions}><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role })} style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="file-text" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.openDeal}</Text></TouchableOpacity><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role, action: 'status-history' })} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="clock" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.history}</Text></TouchableOpacity><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role })} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="message-circle" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.messageDriver}</Text></TouchableOpacity></View> : null}
+          {isDriver && selectedDeal ? <View style={s.dealActions}><View style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="radio" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.trackingOn}</Text></View><TouchableOpacity onPress={() => setShowManualLookup((value) => !value)} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="search" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.checkOther}</Text></TouchableOpacity></View> : null}
+        </View> : null}
+
+        <View style={s.sectionHeadingRow}><Text style={[s.sectionTitle, { color: theme.text }]}>{R.borderSituation}</Text><Text style={[s.source, { color: theme.textDim }]}>CGR</Text></View>
         <Text style={[s.label, { color: theme.text }]}>{L.where}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} testID="border-country-filter">
           {countryCodes.map((code) => {
@@ -412,11 +599,11 @@ export default function QueueScreenLazyV2({ navigation, route }) {
           </View>
         ) : null}
 
-        <View style={[s.searchCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-plate-search">
-          <Text style={[s.sectionTitle, { color: theme.text }]}>{L.checkQueue}</Text>
-          <View style={s.searchRow}><View style={[s.inputWrap, { backgroundColor: v1.bg, borderColor: theme.border }]}><Feather name="truck" size={17} color={theme.textMuted} /><TextInput value={plate} onChangeText={(value) => { setPlate(value.toUpperCase()); setLookup(null); }} onSubmitEditing={searchPlate} placeholder={L.platePlaceholder} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} style={[s.input, { color: theme.text }]} testID="border-plate-input" /></View><TouchableOpacity onPress={searchPlate} disabled={normalizePlate(plate).length < 3 || lookupLoading} style={[s.checkButton, (normalizePlate(plate).length < 3 || lookupLoading) && s.disabled]} testID="border-plate-check">{lookupLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.checkText}>{L.check}</Text>}</TouchableOpacity></View>
-          {lookup ? <View style={[s.lookup, { borderTopColor: theme.border }]}>{lookup.error ? <Text style={[s.lookupText, { color: '#B42318' }]}>{L.lookupError}</Text> : lookup.found ? <><Text style={[s.lookupPlate, { color: theme.text }]}>{lookup.plate || normalizePlate(plate)}</Text>{lookup.status ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.status}: {lookupStatusLabel(lookup.status, lang)}</Text> : null}{lookup.checkpoint ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.checkpoint}: {localizeCheckpointName(lookup.checkpoint, lang)}</Text> : null}{lookup.queue_datetime ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.queueTime}: {lookup.queue_datetime}</Text> : null}</> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}</View> : null}
-        </View>
+        {isDriver && showManualLookup ? <View style={[s.searchCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-plate-search">
+          <Text style={[s.sectionTitle, { color: theme.text }]}>{R.checkOther}</Text>
+          <View style={s.searchRow}><View style={[s.inputWrap, { backgroundColor: v1.bg, borderColor: theme.border }]}><Feather name="truck" size={17} color={theme.textMuted} /><TextInput value={plate} onChangeText={(value) => { setPlate(value.toUpperCase()); setManualLookup(null); }} onSubmitEditing={searchPlate} placeholder={L.platePlaceholder} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} style={[s.input, { color: theme.text }]} testID="border-plate-input" /></View><TouchableOpacity onPress={searchPlate} disabled={normalizePlate(plate).length < 3 || manualLookupLoading} style={[s.checkButton, (normalizePlate(plate).length < 3 || manualLookupLoading) && s.disabled]} testID="border-plate-check">{manualLookupLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.checkText}>{L.check}</Text>}</TouchableOpacity></View>
+        {manualLookup ? <View style={[s.lookup, { borderTopColor: theme.border }]}>{manualLookup.error ? <Text style={[s.lookupText, { color: '#B42318' }]}>{L.lookupError}</Text> : manualLookup.found ? <><Text style={[s.lookupPlate, { color: theme.text }]}>{manualLookup.plate || normalizePlate(plate)}</Text>{manualLookup.status ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.status}: {lookupStatusLabel(manualLookup.status, lang)}</Text> : null}{manualLookup.checkpoint ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.checkpoint}: {localizeCheckpointName(manualLookup.checkpoint, lang)}</Text> : null}{manualLookup.queue_datetime ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.queueTime}: {manualLookup.queue_datetime}</Text> : null}</> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}</View> : null}
+        </View> : null}
         <View style={{ height: 34 }} />
       </ScrollView>
     </SafeAreaView>
@@ -425,11 +612,42 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
 const s = StyleSheet.create({
   safe: { flex: 1 },
-  topBar: { height: 56, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
-  topTitle: { fontSize: 20, fontWeight: '800' },
-  scrollTitle: { marginBottom: 8 },
-  content: { paddingHorizontal: 18, paddingTop: 15 },
-  subtitle: { fontSize: 14, lineHeight: 20, marginBottom: 18 },
+  content: { paddingHorizontal: 14, paddingTop: 0, paddingBottom: 18 },
+  contextCard: { borderWidth: 1, borderRadius: 18, padding: 13, marginBottom: 10 },
+  contextHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  contextTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  contextTitle: { fontSize: 16, fontWeight: '850' },
+  smallAction: { minHeight: 34, borderRadius: 10, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  smallActionText: { fontSize: 12.5, fontWeight: '750' },
+  vehicleBody: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 11 },
+  vehicleIconWrap: { width: 68, height: 58, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  vehicleName: { fontSize: 18, fontWeight: '900' },
+  plateRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 5 },
+  plateBadge: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, fontSize: 15, fontWeight: '900', letterSpacing: 0.4 },
+  countryBadge: { fontSize: 11.5, fontWeight: '800' },
+  routeLine: { fontSize: 13, marginTop: 6, fontWeight: '650' },
+  emptyContext: { fontSize: 13, lineHeight: 19, marginTop: 10 },
+  headerPills: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  countPill: { backgroundColor: '#E9F2FF', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
+  countPillText: { color: '#1769E0', fontSize: 11.5, fontWeight: '800' },
+  onlinePill: { backgroundColor: '#E9F8EE', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  onlineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#168759' },
+  onlineText: { color: '#168759', fontSize: 11.5, fontWeight: '800' },
+  shipmentRow: { borderWidth: 1, borderRadius: 14, padding: 10, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  shipmentTruck: { width: 48, height: 44, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  shipmentRoute: { fontSize: 14.5, fontWeight: '850' },
+  shipmentMeta: { fontSize: 11.5, marginTop: 4 },
+  personalStatusCard: { borderWidth: 1, borderRadius: 18, padding: 13, marginBottom: 10 },
+  statusPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  statusPillText: { fontSize: 11.5, fontWeight: '850' },
+  personalCheckpoint: { fontSize: 19, fontWeight: '900', marginTop: 10, marginBottom: 6 },
+  personalMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 5 },
+  dealActions: { flexDirection: 'row', gap: 7, marginTop: 12, flexWrap: 'wrap' },
+  primaryDealAction: { minHeight: 42, borderRadius: 11, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  primaryDealActionText: { color: '#fff', fontSize: 12, fontWeight: '850' },
+  secondaryDealAction: { minHeight: 42, borderRadius: 11, borderWidth: 1, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  secondaryDealActionText: { fontSize: 11.5, fontWeight: '800' },
+  sectionHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 3, marginBottom: 8 },
   label: { fontSize: 15, fontWeight: '800', marginBottom: 9 },
   chips: { gap: 8, paddingRight: 18, paddingBottom: 5 },
   countryChip: { minHeight: 38, borderWidth: 1, borderRadius: 20, paddingHorizontal: 13, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },

@@ -6,22 +6,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from services.border_service import get_border, search_borders, get_borders_grouped
+from api.registration import get_current_driver
+from database.db import get_conn
 
 logger = logging.getLogger("api.borders")
 borders_router = APIRouter()
 
 
-def _current_user_id(authorization: str = Header(default="")) -> str:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authorization required")
-    token = authorization.split(" ", 1)[1].strip()
-    if not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Empty token")
-    return token
+def _current_user_id(user_id: str = Depends(get_current_driver)) -> str:
+    """Canonical UrTruck auth identity for private CGR watches/bookings."""
+    return user_id
 
 
 def _cgr_enabled() -> bool:
@@ -184,6 +182,96 @@ def list_countries():
         if u and (d["updated_at"] is None or u > d["updated_at"]):
             d["updated_at"] = u
     return {"countries": [by_country[k] for k in sorted(by_country)]}
+
+
+def _context_vehicle(c, driver_id: str, vehicle_id: str | None = None) -> dict | None:
+    if vehicle_id:
+        row = c.execute(
+            "SELECT id, owner_user_id, vehicle_registration_country_code, vehicle_type, body_type, make, model, license_plate "
+            "FROM vehicles WHERE id = ? AND owner_user_id = ?",
+            (vehicle_id, driver_id),
+        ).fetchone()
+        if row:
+            return dict(row)
+    rows = c.execute(
+        "SELECT id, owner_user_id, vehicle_registration_country_code, vehicle_type, body_type, make, model, license_plate "
+        "FROM vehicles WHERE owner_user_id = ? ORDER BY updated_at DESC LIMIT 2",
+        (driver_id,),
+    ).fetchall()
+    return dict(rows[0]) if len(rows) == 1 else None
+
+
+@borders_router.get("/context")
+def border_context(user_id: str = Depends(_current_user_id)):
+    """Role-aware private context for the Border tab.
+
+    Driver: saved vehicles + active deals/trips.
+    Shipper: active deals and the immutable vehicle snapshot from each deal.
+    No CGR network call is made here; live status is loaded lazily per selected plate/checkpoint.
+    """
+    with get_conn() as c:
+        user = c.execute(
+            "SELECT id, role, full_name FROM drivers_registration WHERE id = ?", (user_id,)
+        ).fetchone()
+        role = (user["role"] if user else None) or "driver"
+        vehicles = []
+        if role == "driver":
+            try:
+                vehicles = [dict(r) for r in c.execute(
+                    "SELECT id, vehicle_registration_country_code, vehicle_type, body_type, make, model, license_plate "
+                    "FROM vehicles WHERE owner_user_id = ? ORDER BY updated_at DESC, created_at DESC",
+                    (user_id,),
+                ).fetchall()]
+            except Exception:
+                vehicles = []
+
+        active_statuses = ("accepted", "in_progress", "at_border", "delivered", "received")
+        qmarks = ",".join("?" for _ in active_statuses)
+        party_col = "driver_id" if role == "driver" else "shipper_id"
+        rows = c.execute(
+            f"SELECT * FROM deals WHERE {party_col} = ? AND status IN ({qmarks}) ORDER BY updated_at DESC, created_at DESC LIMIT 30",
+            (user_id, *active_statuses),
+        ).fetchall()
+        deals = []
+        for raw in rows:
+            d = dict(raw)
+            vehicle_id = d.get("vehicle_id")
+            if not vehicle_id and d.get("trip_id"):
+                tr = c.execute("SELECT vehicle_id FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
+                vehicle_id = tr["vehicle_id"] if tr else None
+            v = None
+            try:
+                v = _context_vehicle(c, d["driver_id"], vehicle_id)
+            except Exception:
+                v = None
+            plate = d.get("vehicle_plate_snapshot") or (v or {}).get("license_plate")
+            country = d.get("vehicle_country_snapshot") or (v or {}).get("vehicle_registration_country_code")
+            make = d.get("vehicle_make_snapshot") or (v or {}).get("make")
+            model = d.get("vehicle_model_snapshot") or (v or {}).get("model")
+            loc = c.execute(
+                "SELECT lat, lng, speed, heading, updated_at FROM deal_locations WHERE deal_id = ?",
+                (d["id"],),
+            ).fetchone()
+            dr = c.execute("SELECT full_name FROM drivers_registration WHERE id = ?", (d["driver_id"],)).fetchone()
+            deals.append({
+                "deal_id": d["id"], "chat_room_id": d.get("chat_room_id"), "status": d.get("status"),
+                "from_city": d.get("from_city"), "to_city": d.get("to_city"),
+                "driver_name": dr["full_name"] if dr else None,
+                "driver_id": d.get("driver_id"), "shipper_id": d.get("shipper_id"),
+                "vehicle_id": d.get("vehicle_id") or (v or {}).get("id"),
+                "plate": plate, "vehicle_country": country, "make": make, "model": model,
+                "location": dict(loc) if loc else None,
+            })
+
+        trips = []
+        if role == "driver":
+            trips = [dict(r) for r in c.execute(
+                "SELECT id, from_city, to_city, status, vehicle_id, departure, arrival "
+                "FROM trips WHERE driver_id = ? AND status IN ('active','booked','in_transit') "
+                "ORDER BY updated_at DESC, created_at DESC LIMIT 30",
+                (user_id,),
+            ).fetchall()]
+    return {"role": role, "vehicles": vehicles, "deals": deals, "trips": trips}
 
 
 @borders_router.get("/lookup")

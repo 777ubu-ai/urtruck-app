@@ -32,7 +32,7 @@ DRAFT_FIELDS = {
     "license_category", "license_issue_date", "license_expiry",
     "license_number", "license_selfie_url",
     # шаг 4
-    "vehicle_brand", "vehicle_model", "vehicle_plate", "vehicle_year", "vehicle_vin",
+    "vehicle_brand", "vehicle_model", "vehicle_plate", "trailer_plate", "vehicle_year", "vehicle_vin",
     "vehicle_type", "vehicle_color",
     # шаг 5
     "truck_kind", "body_type", "capacity_tons", "volume_m3",
