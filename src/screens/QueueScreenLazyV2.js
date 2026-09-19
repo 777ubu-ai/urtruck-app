@@ -331,17 +331,10 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         .slice(0, 30);
       const deals = await Promise.all(rawDeals.map(async (item) => {
         const dealId = item?.deal_id || item?.id;
-        let full = {};
-        if (dealId) {
-          try {
-            const fetched = await marketAPI.getDeal(dealId);
-            if (fetched && fetched.ok !== false) full = fetched;
-          } catch { /* fallback stays useful without enrichment */ }
-        }
-        let plate = full?.plate || item?.plate || item?.vehicle_plate_snapshot || null;
-        let make = full?.vehicle_make_snapshot || item?.vehicle_make_snapshot || null;
-        let model = full?.vehicle_model_snapshot || item?.vehicle_model_snapshot || null;
-        let vehicleCountry = full?.vehicle_country_snapshot || item?.vehicle_country_snapshot || null;
+        let plate = item?.plate || item?.vehicle_plate_snapshot || null;
+        let make = item?.vehicle_make_snapshot || null;
+        let model = item?.vehicle_model_snapshot || null;
+        let vehicleCountry = item?.vehicle_country_snapshot || null;
         if (!plate && item?.driver_id) {
           try {
             const profileResponse = await fetch(`${API_BASE}/market/driver-profile/${encodeURIComponent(item.driver_id)}`);
@@ -349,14 +342,13 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               const profile = await profileResponse.json();
               plate = profile?.vehicle_plate || plate;
               make = profile?.vehicle_brand || make;
-              vehicleCountry = profile?.vehicle_registration_country_code || vehicleCountry;
             }
           } catch { /* approved-profile fallback is optional */ }
         }
         return {
-          ...item, ...full, deal_id: dealId,
+          ...item, deal_id: dealId,
           plate, make, model, vehicle_country: vehicleCountry,
-          driver_name: full?.driver_name || item?.driver_name || null,
+          driver_name: item?.driver_name || null,
         };
       }));
       applyContext({
