@@ -105,9 +105,21 @@ jobs:
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
           EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
         run: |
-          set -euo pipefail
-          npx eas-cli@latest build --platform ios --profile production --clear-cache --non-interactive --wait --json > eas-build.json
+          set -uo pipefail
+          set +e
+          npx eas-cli@latest build --platform ios --profile production --clear-cache --non-interactive --wait --json > eas-build.json 2>eas-build.stderr
+          BUILD_EXIT=$?
+          set -e
+          cat eas-build.stderr
           cat eas-build.json
+          if [ "$BUILD_EXIT" -ne 0 ]; then
+            BUILD_ID=$(grep -Eo 'builds/[a-f0-9-]+' eas-build.stderr eas-build.json | head -1 | sed 's#.*builds/##' || true)
+            if [ -n "$BUILD_ID" ]; then
+              echo "Failed EAS build id: $BUILD_ID"
+              npx eas-cli@latest build:view "$BUILD_ID" --json || true
+            fi
+            exit "$BUILD_EXIT"
+          fi
           BUILD_ID=$(node -e "console.log(JSON.parse(require('fs').readFileSync('eas-build.json','utf8'))[0].id)")
           BUILD_COMMIT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('eas-build.json','utf8'))[0].gitCommitHash)")
           HEAD_SHA=$(git rev-parse HEAD)

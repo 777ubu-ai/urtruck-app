@@ -25,6 +25,7 @@ test('live QA2 keeps MapKit and Firebase secret injection and the isolated packa
 test('TestFlight accepts the canonical Border QA branch and still rejects arbitrary refs', () => {
   assert.ok(testflightWorkflow.includes('main|qa/master-hard-qa-20260916|fix/cgr-border-deal-integration-20260919'));
   assert.ok(testflightWorkflow.includes('TestFlight RC may only be built from main or an approved canonical QA branch.'));
+  assert.ok(testflightWorkflow.includes('npx eas-cli@latest build:view "$BUILD_ID" --json'));
 });
 
 test('Play workflow can build a signed AAB without submitting and records release identity', () => {
