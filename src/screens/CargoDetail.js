@@ -279,6 +279,31 @@ export default function CargoDetail({ navigation, route }) {
           ));
           rawBids.push(d.my_bid);
         }
+
+        // Defense-in-depth for legacy API rows: owner/public callers may
+        // receive two pending/countered rows from the same bidder. Keep one
+        // authoritative active price for every bidder, not only the caller.
+        // Accepted always wins; otherwise the newest updated/created row wins.
+        const activeStatuses = new Set(['pending', 'countered', 'accepted']);
+        const activeWinnerByBidder = new Map();
+        const activeRank = (bid) => [
+          bid.status === 'accepted' ? 1 : 0,
+          bid.updated_at || bid.created_at || '',
+          bid.id || '',
+        ];
+        rawBids.forEach((bid) => {
+          if (!bid.bidder_id || !activeStatuses.has(bid.status)) return;
+          const current = activeWinnerByBidder.get(bid.bidder_id);
+          if (!current || activeRank(bid).join('|') > activeRank(current).join('|')) {
+            activeWinnerByBidder.set(bid.bidder_id, bid);
+          }
+        });
+        rawBids = rawBids.filter((bid) => (
+          !bid.bidder_id
+          || !activeStatuses.has(bid.status)
+          || activeWinnerByBidder.get(bid.bidder_id)?.id === bid.id
+        ));
+
         const mapped = rawBids.map(b => ({
           id: b.id, bidderId: b.bidder_id,
           name: b.bidder_name || b.bidder_phone || t('driver'),

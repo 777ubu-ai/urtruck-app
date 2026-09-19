@@ -733,3 +733,81 @@ def test_counter_cancel_by_owner_notifies_bidder():
     r2 = client.post(f"/api/v1/market/bids/{bid_id}/counter/cancel")
     expect(r2.status_code == 409, f"repeat cancel on pending bid → 409 (got {r2.status_code})")
     expect(len(query_notifications(driver)) == len(notifs), "repeat cancel must not create a second notification")
+
+
+def test_list_bids_dedupes_legacy_active_rows_for_same_bidder():
+    """Owner/public UI must never receive two active prices from one bidder."""
+    from api.marketplace import list_bids
+    from database.db import get_conn
+
+    cargo_id = seed_cargo(owner_id="dedupe-owner")
+    old_id = f"legacy-old-{cargo_id}"
+    new_id = f"legacy-new-{cargo_id}"
+    index_name = "idx_bids_active_cargo_bidder_unique"
+
+    with get_conn() as c:
+        c.execute(f"DROP INDEX IF EXISTS {index_name}")
+        c.execute(
+            "INSERT INTO bids (id,cargo_id,bidder_id,bidder_name,amount,status,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,'pending','2026-09-19 19:03:00','2026-09-19 19:03:00')",
+            (old_id, cargo_id, "same-bidder", "Cargo 888", 5700),
+        )
+        c.execute(
+            "INSERT INTO bids (id,cargo_id,bidder_id,bidder_name,amount,status,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,'countered','2026-09-19 19:35:00','2026-09-19 19:35:00')",
+            (new_id, cargo_id, "same-bidder", "Cargo 888", 4550),
+        )
+
+    try:
+        body = list_bids(cargo_id=cargo_id, authorization=None)
+        active = [b for b in body["bids"] if b["status"] in ("pending", "countered", "accepted")]
+        expect(body["count"] == 1, f"deduped proposal count=1 (got {body['count']})")
+        expect(len(active) == 1, f"one active row returned (got {len(active)})")
+        expect(active[0]["id"] == new_id and active[0]["amount"] == 4550,
+               f"newest active price wins (got {active})")
+    finally:
+        with get_conn() as c:
+            c.execute("UPDATE bids SET status='cancelled' WHERE id IN (?,?)", (old_id, new_id))
+            c.execute(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
+                "ON bids(cargo_id,bidder_id) "
+                "WHERE cargo_id IS NOT NULL AND status IN ('pending','countered')"
+            )
+
+
+def test_active_bid_unique_index_blocks_concurrent_duplicate():
+    """DB defense-in-depth closes the create_bid SELECT/INSERT race."""
+    import sqlite3
+    from database.db import get_conn
+
+    cargo_id = seed_cargo(owner_id="unique-owner")
+    first_id = f"unique-first-{cargo_id}"
+    second_id = f"unique-second-{cargo_id}"
+
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO bids (id,cargo_id,bidder_id,bidder_name,amount,status) "
+            "VALUES (?,?,?,?,?,'pending')",
+            (first_id, cargo_id, "unique-bidder", "Unique bidder", 5000),
+        )
+    try:
+        with get_conn() as c:
+            c.execute(
+                "INSERT INTO bids (id,cargo_id,bidder_id,bidder_name,amount,status) "
+                "VALUES (?,?,?,?,?,'countered')",
+                (second_id, cargo_id, "unique-bidder", "Unique bidder", 4900),
+            )
+        raise AssertionError("second active bid unexpectedly inserted")
+    except sqlite3.IntegrityError:
+        pass
+
+
+def test_active_bid_dedupe_preserves_unbound_demo_rows():
+    """Legacy local/demo bids have no shared listing identity and stay intact."""
+    from api.marketplace import _dedupe_active_bid_rows
+
+    rows = [
+        {"id": "demo-a", "bidder_id": "demo-user", "status": "pending", "amount": 100},
+        {"id": "demo-b", "bidder_id": "demo-user", "status": "pending", "amount": 200},
+    ]
+    expect(_dedupe_active_bid_rows(rows) == rows, "unbound demo rows are not collapsed together")

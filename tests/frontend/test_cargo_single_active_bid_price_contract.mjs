@@ -18,6 +18,12 @@ test('server-truth my_bid replaces stale active copies from the same bidder', ()
   assert.match(cargo, /rawBids\.push\(d\.my_bid\)/);
 });
 
+test('owner/public view dedupes legacy active prices for every bidder', () => {
+  assert.match(cargo, /activeWinnerByBidder = new Map\(\)/);
+  assert.match(cargo, /activeStatuses = new Set\(\['pending', 'countered', 'accepted'\]\)/);
+  assert.match(cargo, /activeWinnerByBidder\.get\(bid\.bidder_id\)\?\.id === bid\.id/);
+});
+
 test('driver sees own active offer only in the My bid action card', () => {
   assert.match(cargo, /if \(b\.isMine && \(b\.status === 'pending' \|\| b\.status === 'countered'\)[\s\S]*return false/);
   assert.match(cargo, /testID="cargo-my-active-bid"/);
