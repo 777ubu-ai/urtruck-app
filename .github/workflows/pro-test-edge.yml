@@ -1,0 +1,90 @@
+name: UrTruck Pro Test HTTPS edge
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [pro/urtruck-paid-test]
+    paths:
+      - ".github/workflows/pro-test-edge.yml"
+
+jobs:
+  configure-edge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Verify public DNS
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 20); do
+            answer="$(getent ahostsv4 pro-test.urtruck.kz | awk 'NR==1 {print $1}')"
+            echo "DNS attempt $attempt: ${answer:-none}"
+            [ "$answer" = "185.22.65.11" ] && exit 0
+            sleep 15
+          done
+          exit 1
+
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
+      - name: Build isolated nginx site
+        run: |
+          cat > /tmp/urtruck-pro-test.nginx <<'NGINX'
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name pro-test.urtruck.kz;
+
+              location / {
+                  proxy_pass http://127.0.0.1:8002;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+          }
+          NGINX
+
+      - name: Copy and enable Pro Test site
+        env:
+          SSH_USER: ${{ secrets.PRO_TEST_SERVER_USER || secrets.SERVER_USER }}
+          SSH_HOST: ${{ secrets.PRO_TEST_SERVER_HOST || secrets.SERVER_HOST }}
+          SSH_PASS: ${{ secrets.PRO_TEST_SERVER_PASS || secrets.SERVER_PASS }}
+        run: |
+          set -euo pipefail
+          sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=accept-new             /tmp/urtruck-pro-test.nginx "$SSH_USER@$SSH_HOST":/tmp/
+          sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" '
+            set -euo pipefail
+            sudo -n true
+            sudo install -m 0644 /tmp/urtruck-pro-test.nginx /etc/nginx/sites-available/urtruck-pro-test
+            sudo ln -sfn /etc/nginx/sites-available/urtruck-pro-test /etc/nginx/sites-enabled/urtruck-pro-test
+            sudo nginx -t
+            sudo systemctl reload nginx
+            curl -fsS http://127.0.0.1:8002/api/version
+          '
+
+      - name: Issue TLS certificate
+        env:
+          SSH_USER: ${{ secrets.PRO_TEST_SERVER_USER || secrets.SERVER_USER }}
+          SSH_HOST: ${{ secrets.PRO_TEST_SERVER_HOST || secrets.SERVER_HOST }}
+          SSH_PASS: ${{ secrets.PRO_TEST_SERVER_PASS || secrets.SERVER_PASS }}
+        run: |
+          set -euo pipefail
+          sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" '
+            set -euo pipefail
+            if ! command -v certbot >/dev/null 2>&1; then
+              sudo apt-get update -qq
+              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq certbot python3-certbot-nginx
+            fi
+            sudo certbot --nginx -d pro-test.urtruck.kz               --non-interactive --agree-tos --redirect --register-unsafely-without-email
+            sudo nginx -t
+            sudo systemctl reload nginx
+          '
+
+      - name: Verify public HTTPS and isolated backend
+        run: |
+          set -euo pipefail
+          curl --retry 10 --retry-delay 3 --retry-all-errors -fsS             https://pro-test.urtruck.kz/api/version
+          code="$(curl -sS -o /dev/null -w '%{http_code}'             https://pro-test.urtruck.kz/api/v1/payments/subscription/status)"
+          echo "Unauthenticated payments status: $code"
+          [ "$code" = "401" ] || [ "$code" = "403" ]
