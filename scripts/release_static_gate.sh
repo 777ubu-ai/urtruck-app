@@ -152,6 +152,16 @@ if [ -n "$PROD_REF" ]; then
   fail "authenticated Maestro flows reference production backend:"; printf '%b\n' "$PROD_REF" | sed 's/^/        /'
 else pass "authenticated Maestro flows have no production backend defaults"; fi
 
+# 14) Production SSH is non-interactive. PM2 must be resolved explicitly in
+#     both remote scripts; otherwise a healthy host can fail with exit 127.
+if bash -n scripts/remote_health_check.sh scripts/remote_signing_verify.sh \
+   && grep -q 'PM2_BIN=' scripts/remote_health_check.sh \
+   && grep -q 'PM2_BIN=' scripts/remote_signing_verify.sh \
+   && ! grep -nE '^[[:space:]]*pm2[[:space:]]' \
+        scripts/remote_health_check.sh scripts/remote_signing_verify.sh >/dev/null; then
+  pass "production remote scripts resolve PM2 and parse cleanly"
+else fail "production remote scripts have unsafe PM2 resolution or syntax"; fi
+
 echo
 if [ "$FAIL" -gt 0 ]; then
   echo "== Static gate: $FAIL FAILED — not ready for merge→main =="
