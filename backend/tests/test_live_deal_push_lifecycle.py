@@ -131,6 +131,25 @@ def as_user(uid, name="Test User", phone="+70000000000", role="client"):
     _current_user.set({"id": uid, "full_name": name, "phone": phone, "verification_level": 1, "role": role})
 
 
+def _seed_ru_push_locale(uid):
+    """I18N-16 (2026-09-12): this scenario's push-copy assertions ("Рейс
+    начался", "Получение подтверждено", etc.) check for RU text
+    specifically — that's the point of those assertions, not an accident.
+    Before the 16-locale expansion, an actor with no push_devices row at
+    all still got RU text because DEFAULT_LOCALE was RU; now that the
+    default is EN (never RU, per i18n expansion spec item 2 — a real
+    international user must never see Russian just because their device
+    reported no locale), a fixture that wants to verify RU push copy has
+    to say so explicitly rather than lean on the old accidental default.
+    """
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO push_devices (user_id, device_id, platform, push_provider, push_token, locale, enabled) "
+            "VALUES (?,?,?,?,?,?,1)",
+            (uid, f"test-device-{uid}", "android", "expo", f"ExponentPushToken[{uid}]", "RU"),
+        )
+
+
 def seed_cargo(owner_id, price=1234):
     cargo_id = new_id()
     with get_conn() as c:
@@ -186,6 +205,8 @@ def run_full_lifecycle(run_label):
     function twice in one process) is the genuine double-check."""
     driver = f"drv_{run_label}_{uuid.uuid4().hex[:6]}"
     shipper = f"shp_{run_label}_{uuid.uuid4().hex[:6]}"
+    _seed_ru_push_locale(driver)
+    _seed_ru_push_locale(shipper)
 
     # ── 1. Shipper's cargo exists, driver bids ──────────────────────────
     cargo_id = seed_cargo(shipper)
@@ -294,6 +315,25 @@ def run_full_lifecycle(run_label):
         f"(before={badge_driver_before_repeat_msg}, after={badge_driver_after_repeat_msg}, "
         f"repeat status={msg_again.status_code})"
     )
+
+    # I18N-16 (2026-09-13): _seed_ru_push_locale() gives driver/shipper a
+    # REAL push_devices row (needed so the RU push-copy assertions above
+    # have something to render against) — before that fixture existed,
+    # this scenario's push sends were harmless no-ops (no device to target,
+    # nothing enqueued). With a real device, services.push_sender.send()
+    # now actually enqueues durable push_outbox rows for every event this
+    # lifecycle fires (bid, accept, in_progress, delivered, received...),
+    # and the fake ExponentPushToken can't be delivered for real, so some
+    # stay 'pending'. Other files in this suite assert a GLOBAL zero-
+    # pending-rows invariant (e.g. test_push_outbox_drain.py's `stats
+    # ["picked"] == 0"); confirmed by direct reproduction that this
+    # cross-file leak is NOT new — the same push_outbox pollution already
+    # reproduces on the pre-i18n-16 base commit once ANY test registers a
+    # real device here, it was just never triggered before. Clean up this
+    # scenario's own rows so it keeps the "no devices means no side
+    # effects for other test files" invariant those tests were relying on.
+    with get_conn() as c:
+        c.execute("DELETE FROM push_outbox WHERE recipient_user_id IN (?, ?)", (driver, shipper))
 
     return {
         "cargo_id": cargo_id, "bid_id": bid_id, "deal_id": deal_id, "chat_room_id": chat_room_id,

@@ -38,7 +38,12 @@ def test_called_booking_change_sends_throttled_push(monkeypatch):
 
     assert ok is True
     assert sent[0][0][0] == "driver-1"
-    assert "Ваша очередь подошла" in sent[0][0][1]
+    # I18N-16 (2026-09-12): "driver-1" has no push_devices row in this test
+    # (monkeypatched, no real DB insert), so get_recipient_locale() falls to
+    # DEFAULT_LOCALE — EN, not RU, since that track changed the fallback for
+    # exactly this "truly no locale data" case (never silently show Russian
+    # to a user we know nothing about — i18n expansion spec item 2).
+    assert "Your turn is up" in sent[0][0][1]
     assert sent[0][1]["kind"] == "queue"
     assert len(logged) == 1
 
