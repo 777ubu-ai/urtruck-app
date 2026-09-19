@@ -51,9 +51,9 @@ jobs:
           set -euo pipefail
           echo "SHA=$(git rev-parse HEAD)"
           case "${GITHUB_REF_NAME}" in
-            main|qa/master-hard-qa-20260916) ;;
+            main|qa/master-hard-qa-20260916|fix/cgr-border-deal-integration-20260919) ;;
             *)
-              echo "::error::TestFlight RC may only be built from main or the canonical hard-QA branch."
+              echo "::error::TestFlight RC may only be built from main or an approved canonical QA branch."
               exit 1
               ;;
           esac
