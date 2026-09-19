@@ -1,0 +1,36 @@
+name: UrTruck Pro Test Free and Pro limits
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [pro/urtruck-paid-test]
+    paths:
+      - ".github/workflows/pro-test-limit-ci.yml"
+      - "backend/config.py"
+      - "backend/database/subscription_dal.py"
+      - "backend/tests/test_deal_accept_limits.py"
+      - "backend/tests/test_payments_contract.py"
+
+jobs:
+  limits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend test dependencies
+        run: python -m pip install -q -r backend/requirements.txt pytest
+      - name: Verify Free 5 and Pro 30 behavior
+        env:
+          URTRUCK_ENV: test
+          ENV: test
+          FREE_DEAL_ACCEPT_LIMIT: "5"
+          PRO_DEAL_ACCEPT_LIMIT: "30"
+          CONTACTS_MONETIZATION_ENABLED: "true"
+          DEAL_ACCEPT_MONETIZATION_ENABLED: "true"
+          BETA_MODE: "false"
+        run: python -m pytest -q backend/tests/test_deal_accept_limits.py backend/tests/test_payments_contract.py
