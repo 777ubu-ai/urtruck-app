@@ -21,6 +21,8 @@ import CountryFlag from '../components/ui/v1/CountryFlag';
 import { API_BASE } from '../config/env';
 import { localizeCheckpointName } from '../utils/checkpointNames';
 import { storage } from '../utils/storage';
+import { vehicleAPI } from '../utils/vehicleAPI';
+import { marketAPI } from '../utils/marketAPI';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
 
@@ -284,21 +286,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   const loadPrivateContext = useCallback(async () => {
     setContextLoading(true);
-    try {
-      const token = await storage.get('ur_reg_token').catch(() => null);
-      setContextToken(token || null);
-      if (!token) {
-        setPrivateContext({ vehicles: [], deals: [], trips: [] });
-        return;
-      }
-      const response = await fetch(`${BASE}/context`, { headers: { Authorization: `Bearer ${token}` } });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.detail || `HTTP ${response.status}`);
-      const next = {
-        vehicles: Array.isArray(data?.vehicles) ? data.vehicles : [],
-        deals: Array.isArray(data?.deals) ? data.deals : [],
-        trips: Array.isArray(data?.trips) ? data.trips : [],
-      };
+    const applyContext = (next) => {
       setPrivateContext(next);
       if (isDriver) {
         const firstDeal = next.deals.find((item) => item?.plate) || next.deals[0] || null;
@@ -308,8 +296,76 @@ export default function QueueScreenLazyV2({ navigation, route }) {
       } else {
         setSelectedDealId((current) => current || next.deals[0]?.deal_id || null);
       }
+    };
+    try {
+      const token = await storage.get('ur_reg_token').catch(() => null);
+      setContextToken(token || null);
+      if (!token) {
+        applyContext({ vehicles: [], deals: [], trips: [] });
+        return;
+      }
+      try {
+        const response = await fetch(`${BASE}/context`, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.detail || `HTTP ${response.status}`);
+        applyContext({
+          vehicles: Array.isArray(data?.vehicles) ? data.vehicles : [],
+          deals: Array.isArray(data?.deals) ? data.deals : [],
+          trips: Array.isArray(data?.trips) ? data.trips : [],
+        });
+        return;
+      } catch {
+        // Rolling-deploy compatibility: a new mobile build may reach production
+        // before /borders/context is deployed. Reconstruct the same view from
+        // already-live vehicle/market APIs instead of showing an empty screen.
+      }
+
+      const activeStatuses = new Set(['accepted', 'in_progress', 'at_border', 'delivered', 'received']);
+      const [vehicleResult, dashboard] = await Promise.all([
+        isDriver ? vehicleAPI.list().catch(() => ({ ok: false, vehicles: [] })) : Promise.resolve({ ok: true, vehicles: [] }),
+        marketAPI.myDashboard({ force: true }).catch(() => ({ my_deals: [], my_trips: [] })),
+      ]);
+      const vehicles = vehicleResult?.ok && Array.isArray(vehicleResult.vehicles) ? vehicleResult.vehicles : [];
+      const rawDeals = (Array.isArray(dashboard?.my_deals) ? dashboard.my_deals : [])
+        .filter((item) => activeStatuses.has(item?.status))
+        .slice(0, 30);
+      const deals = await Promise.all(rawDeals.map(async (item) => {
+        const dealId = item?.deal_id || item?.id;
+        let full = {};
+        if (dealId) {
+          try {
+            const fetched = await marketAPI.getDeal(dealId);
+            if (fetched && fetched.ok !== false) full = fetched;
+          } catch { /* fallback stays useful without enrichment */ }
+        }
+        let plate = full?.plate || item?.plate || item?.vehicle_plate_snapshot || null;
+        let make = full?.vehicle_make_snapshot || item?.vehicle_make_snapshot || null;
+        let model = full?.vehicle_model_snapshot || item?.vehicle_model_snapshot || null;
+        let vehicleCountry = full?.vehicle_country_snapshot || item?.vehicle_country_snapshot || null;
+        if (!plate && item?.driver_id) {
+          try {
+            const profileResponse = await fetch(`${API_BASE}/market/driver-profile/${encodeURIComponent(item.driver_id)}`);
+            if (profileResponse.ok) {
+              const profile = await profileResponse.json();
+              plate = profile?.vehicle_plate || plate;
+              make = profile?.vehicle_brand || make;
+              vehicleCountry = profile?.vehicle_registration_country_code || vehicleCountry;
+            }
+          } catch { /* approved-profile fallback is optional */ }
+        }
+        return {
+          ...item, ...full, deal_id: dealId,
+          plate, make, model, vehicle_country: vehicleCountry,
+          driver_name: full?.driver_name || item?.driver_name || null,
+        };
+      }));
+      applyContext({
+        vehicles,
+        deals,
+        trips: Array.isArray(dashboard?.my_trips) ? dashboard.my_trips : [],
+      });
     } catch {
-      setPrivateContext({ vehicles: [], deals: [], trips: [] });
+      applyContext({ vehicles: [], deals: [], trips: [] });
     } finally {
       setContextLoading(false);
     }

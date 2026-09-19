@@ -21,6 +21,14 @@ test('Border loads canonical private vehicle/deal context with auth', () => {
   assert.match(border, /testID="border-shipper-deals-card"/);
 });
 
+
+test('Border keeps rolling-deploy fallback when /borders/context is not deployed yet', () => {
+  assert.match(border, /vehicleAPI\.list\(\)/);
+  assert.match(border, /marketAPI\.myDashboard\(\{ force: true \}\)/);
+  assert.match(border, /marketAPI\.getDeal\(dealId\)/);
+  assert.match(border, /market\/driver-profile/);
+});
+
 test('driver automatically enables CGR watch only for an active selected deal', () => {
   assert.match(border, /!isDriver \|\| !contextToken \|\| !selectedDeal/);
   assert.match(border, /fetch\(`\$\{BASE\}\/watch`/);
