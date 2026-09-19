@@ -2075,11 +2075,13 @@ def list_bids(
     except Exception:
         _bids_confidential = False
     if _bids_confidential and not is_owner:
-        # Только принятые (публично видимы) + собственная ставка бидера (из сырого
-        # списка — если dirty-фильтр её убрал, возвращаем через my_bid).
+        # Only accepted bids stay public in confidential mode.
         bids = [b for b in bids if b.get("status") == "accepted"]
-        if my_bid and not any(b.get("id") == my_bid.get("id") for b in bids):
-            bids.append(my_bid)
+    # A caller must always see their own active bid. Public anti-QA/guest
+    # filtering may hide namespaced bidder IDs from other users, but it must
+    # never hide the row from its author (in either open or confidential mode).
+    if my_bid and not any(b.get("id") == my_bid.get("id") for b in bids):
+        bids.append(my_bid)
     # Security (B2): bidder_phone виден ТОЛЬКО владельцу листинга (он ведёт
     # переговоры). Публичным/чужим вызовам /bids телефон оферента не отдаём —
     # раньше SELECT b.* возвращал bidder_phone любому, кто знает cargo_id.

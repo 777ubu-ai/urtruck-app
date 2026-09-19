@@ -33,7 +33,7 @@ test('Cargo currency · KZT round-trip', async () => {
     volume_m3: 20,
     price: 5000,
     currency: 'KZT',
-    pickup_date: '2026-06-01',
+    pickup_date: new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10),
     photos: [],
   }, headers);
 

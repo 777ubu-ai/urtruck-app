@@ -23,6 +23,7 @@ import { localizeCheckpointName } from '../utils/checkpointNames';
 import { storage } from '../utils/storage';
 import { vehicleAPI } from '../utils/vehicleAPI';
 import { marketAPI } from '../utils/marketAPI';
+import { routingAPI } from '../utils/routingAPI';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
 
@@ -101,7 +102,7 @@ const ROLE_COPY = {
     checkOther: 'Проверить другой номер', noVehicle: 'Добавьте машину, чтобы UrTruck сам проверял очередь по госномеру.',
     noActiveShipments: 'Активных перевозок на границе пока нет.', liveStatus: 'Статус CGR',
     gpsOnline: 'GPS включён', gpsUnavailable: 'GPS пока недоступен', late: 'Опаздывает', onTime: 'Не опаздывает',
-    gpsTitle: 'GPS UrTruck', etaPending: 'ETA уточняется', lastGps: 'Последний GPS', queueTimeline: 'Статус очереди',
+    gpsTitle: 'GPS UrTruck', etaPending: 'ETA уточняется', routeUnavailable: 'Маршрут пока недоступен', lastGps: 'Последний GPS', distanceLabel: 'До КПП', bookingCountdown: 'До окна брони', queueTimeline: 'Статус очереди',
     paymentStep: 'Оплата', reviewStep: 'Проверка', queueStep: 'В очереди', calledStep: 'Вызван', crossedStep: 'Пересёк',
     recent: 'Недавние', followStatus: 'Следить за статусом', following: 'Отслеживание включено', openShipment: 'Открыть перевозку',
   },
@@ -113,7 +114,7 @@ const ROLE_COPY = {
     checkOther: 'Басқа нөмірді тексеру', noVehicle: 'Кезекті автоматты тексеру үшін көлік қосыңыз.',
     noActiveShipments: 'Шекарада белсенді тасымалдар жоқ.', liveStatus: 'CGR күйі',
     gpsOnline: 'GPS қосулы', gpsUnavailable: 'GPS әзірге қолжетімсіз', late: 'Кешігуде', onTime: 'Кешікпейді',
-    gpsTitle: 'GPS UrTruck', etaPending: 'ETA нақтылануда', lastGps: 'Соңғы GPS', queueTimeline: 'Кезек күйі',
+    gpsTitle: 'GPS UrTruck', etaPending: 'ETA нақтылануда', routeUnavailable: 'Бағыт әзірше қолжетімсіз', lastGps: 'Соңғы GPS', distanceLabel: 'Бекетке дейін', bookingCountdown: 'Бронь терезесіне дейін', queueTimeline: 'Кезек күйі',
     paymentStep: 'Төлем', reviewStep: 'Тексеру', queueStep: 'Кезекте', calledStep: 'Шақырылды', crossedStep: 'Өтті',
     recent: 'Соңғылар', followStatus: 'Күйді бақылау', following: 'Бақылау қосулы', openShipment: 'Тасымалды ашу',
   },
@@ -125,7 +126,7 @@ const ROLE_COPY = {
     checkOther: 'Check another plate', noVehicle: 'Add a vehicle so UrTruck can check the queue automatically.',
     noActiveShipments: 'No active border shipments yet.', liveStatus: 'CGR status',
     gpsOnline: 'GPS on', gpsUnavailable: 'GPS unavailable', late: 'Late', onTime: 'On time',
-    gpsTitle: 'GPS UrTruck', etaPending: 'ETA pending', lastGps: 'Last GPS', queueTimeline: 'Queue status',
+    gpsTitle: 'GPS UrTruck', etaPending: 'ETA pending', routeUnavailable: 'Route currently unavailable', lastGps: 'Last GPS', distanceLabel: 'To checkpoint', bookingCountdown: 'Until booking window', queueTimeline: 'Queue status',
     paymentStep: 'Payment', reviewStep: 'Review', queueStep: 'In queue', calledStep: 'Called', crossedStep: 'Crossed',
     recent: 'Recent', followStatus: 'Follow status', following: 'Following', openShipment: 'Open shipment',
   },
@@ -137,7 +138,7 @@ const ROLE_COPY = {
     checkOther: '查询其他车牌', noVehicle: '添加车辆后，UrTruck 可自动查询排队状态。',
     noActiveShipments: '暂无边境运输。', liveStatus: 'CGR 状态',
     gpsOnline: 'GPS 已开启', gpsUnavailable: 'GPS 暂不可用', late: '已延误', onTime: '未延误',
-    gpsTitle: 'UrTruck GPS', etaPending: 'ETA 计算中', lastGps: '最近 GPS', queueTimeline: '排队状态',
+    gpsTitle: 'UrTruck GPS', etaPending: 'ETA 计算中', routeUnavailable: '路线暂不可用', lastGps: '最近 GPS', distanceLabel: '距口岸', bookingCountdown: '距预约时间', queueTimeline: '排队状态',
     paymentStep: '支付', reviewStep: '审核', queueStep: '排队中', calledStep: '已叫号', crossedStep: '已过境',
     recent: '最近查询', followStatus: '关注状态', following: '正在关注', openShipment: '打开运输',
   },
@@ -196,6 +197,41 @@ function formatSourceTime(value) {
 function formatKztAmount(mci) {
   const amount = Math.max(0, Number(mci) || 0) * MCI_KZT_2026;
   return `${Math.round(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ₸`;
+}
+function formatDistance(distanceM, lang = 'RU') {
+  const value = Number(distanceM);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const units = lang === 'EN' ? { m: 'm', km: 'km' } : lang === 'ZH' ? { m: '米', km: '公里' } : { m: 'м', km: 'км' };
+  return value < 1000 ? `${Math.round(value)} ${units.m}` : `${Math.round(value / 100) / 10} ${units.km}`;
+}
+function formatDuration(durationS, lang = 'RU') {
+  const minutes = Math.max(1, Math.round(Number(durationS) / 60));
+  if (!Number.isFinite(minutes)) return null;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  const unit = {
+    RU: { h: 'ч', m: 'мин' }, KK: { h: 'сағ', m: 'мин' },
+    EN: { h: 'h', m: 'min' }, ZH: { h: '小时', m: '分钟' },
+  }[lang] || { h: 'ч', m: 'мин' };
+  return hours ? `${hours} ${unit.h}${rest ? ` ${rest} ${unit.m}` : ''}` : `${rest} ${unit.m}`;
+}
+function parseQueueWindowStart(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const cgr = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})/);
+  if (cgr) {
+    const [, day, month, year, hour, minute] = cgr;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
+  }
+  const parsed = new Date(raw);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+function bookingCountdown(value, lang) {
+  const target = parseQueueWindowStart(value);
+  if (!target) return null;
+  const seconds = Math.round((target.getTime() - Date.now()) / 1000);
+  return seconds > 0 ? formatDuration(seconds, lang) : null;
 }
 
 // The nearest booking fields are also official backend data. Defensively merge
@@ -273,6 +309,8 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const [showManualLookup, setShowManualLookup] = useState(false);
   const [recentLookups, setRecentLookups] = useState([]);
   const [manualWatchEnabled, setManualWatchEnabled] = useState(false);
+  const [roadRoute, setRoadRoute] = useState(null);
+  const [roadRouteLoading, setRoadRouteLoading] = useState(false);
   const checkpointCarouselRef = useRef(null);
   const checkpointCarouselX = useRef(0);
 
@@ -431,6 +469,34 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const selected = useMemo(() => catalog.find((item) => String(item.id) === String(selectedId)) || null, [catalog, selectedId]);
   const live = selectedId ? liveById[String(selectedId)] : null;
   const calendarRows = useMemo(() => completeBookingCalendar(live), [live]);
+
+  useEffect(() => {
+    const origin = selectedDeal?.location;
+    const hasCoordinates = [origin?.lat, origin?.lng, selected?.lat, selected?.lon]
+      .every((value) => value != null && String(value).trim() !== '' && Number.isFinite(Number(value)));
+    const originLat = Number(origin?.lat);
+    const originLng = Number(origin?.lng);
+    const checkpointLat = Number(selected?.lat);
+    const checkpointLng = Number(selected?.lon);
+    if (!hasCoordinates) {
+      setRoadRoute(null);
+      setRoadRouteLoading(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    setRoadRoute(null);
+    setRoadRouteLoading(true);
+    routingAPI.roadRoute(
+      [[originLat, originLng], [checkpointLat, checkpointLng]],
+      null,
+      { signal: controller.signal },
+    ).then((result) => {
+      if (!controller.signal.aborted) setRoadRoute(result?.ok ? result : { ok: false, detail: result?.detail });
+    }).finally(() => {
+      if (!controller.signal.aborted) setRoadRouteLoading(false);
+    });
+    return () => controller.abort();
+  }, [selectedDeal?.location?.lat, selectedDeal?.location?.lng, selected?.lat, selected?.lon]);
 
   const loadLive = useCallback(async (checkpoint, force = false) => {
     if (!checkpoint || liveLoading) return;
@@ -595,12 +661,17 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             <View style={s.personalMetaRow}><Feather name={lookup.is_late ? 'alert-circle' : 'check-circle'} size={15} color={lookup.is_late ? '#B7791F' : '#168759'} /><Text style={[s.lookupText, { color: lookup.is_late ? '#B7791F' : '#168759' }]}>{lookup.is_late ? R.late : R.onTime}</Text></View>
           </> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}
           {selectedDeal && !isDriver ? <View style={s.dealActions}><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role })} style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="file-text" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.openDeal}</Text></TouchableOpacity><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role, action: 'status-history' })} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="clock" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.history}</Text></TouchableOpacity><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role })} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="message-circle" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.messageDriver}</Text></TouchableOpacity></View> : null}
-          {isDriver && selectedDeal ? <View style={s.dealActions}>{watchEnabled ? <View style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="radio" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.trackingOn}</Text></View> : null}<TouchableOpacity onPress={() => setShowManualLookup((value) => !value)} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="search" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.checkOther}</Text></TouchableOpacity></View> : null}
+          {isDriver && selectedDeal ? <View style={s.dealActions}>{watchEnabled ? <View style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="radio" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.trackingOn}</Text></View> : null}<TouchableOpacity onPress={() => setShowManualLookup((value) => !value)} style={[s.secondaryDealAction, { borderColor: theme.border }]} testID="border-driver-manual-toggle"><Feather name="search" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.checkOther}</Text></TouchableOpacity></View> : null}
         </View> : null}
 
         {selectedDeal ? <View style={[s.gpsCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-gps-card">
           <View style={s.contextHeader}><View style={s.contextTitleRow}><Feather name="navigation" size={20} color={activeColor} /><Text style={[s.contextTitle, { color: theme.text }]}>{R.gpsTitle}</Text></View><View style={[s.statusPill, { backgroundColor: selectedDeal.location ? '#E9F8EE' : v1.surfaceMuted }]}><Text style={[s.statusPillText, { color: selectedDeal.location ? '#168759' : theme.textMuted }]}>{selectedDeal.location ? R.gpsOnline : R.gpsUnavailable}</Text></View></View>
-          <View style={s.gpsMetrics}><View><Text style={[s.metricLabel, { color: theme.textMuted }]}>{R.lastGps}</Text><Text style={[s.gpsValue, { color: theme.text }]}>{selectedDeal.location ? formatSourceTime(selectedDeal.location.updated_at) : '—'}</Text></View><View><Text style={[s.metricLabel, { color: theme.textMuted }]}>ETA</Text><Text style={[s.gpsValue, { color: theme.text }]}>{R.etaPending}</Text></View></View>
+          <View style={s.gpsMetrics}>
+            <View><Text style={[s.metricLabel, { color: theme.textMuted }]}>{R.lastGps}</Text><Text style={[s.gpsValue, { color: theme.text }]}>{selectedDeal.location ? formatSourceTime(selectedDeal.location.updated_at) : '—'}</Text></View>
+            <View><Text style={[s.metricLabel, { color: theme.textMuted }]}>{R.distanceLabel}</Text><Text style={[s.gpsValue, { color: theme.text }]}>{roadRouteLoading ? R.etaPending : roadRoute?.ok ? formatDistance(roadRoute.distance_m, lang) : R.routeUnavailable}</Text></View>
+            <View><Text style={[s.metricLabel, { color: theme.textMuted }]}>ETA</Text><Text style={[s.gpsValue, { color: theme.text }]}>{roadRouteLoading ? R.etaPending : roadRoute?.ok ? formatDuration(roadRoute.duration_s, lang) : R.routeUnavailable}</Text></View>
+            <View><Text style={[s.metricLabel, { color: theme.textMuted }]}>{R.bookingCountdown}</Text><Text style={[s.gpsValue, { color: theme.text }]}>{bookingCountdown(lookup?.queue_datetime, lang) || '—'}</Text></View>
+          </View>
         </View> : null}
 
         {isDriver && activePlate ? <View style={[s.timelineCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-queue-timeline"><Text style={[s.contextTitle, { color: theme.text }]}>{R.queueTimeline}</Text><View style={s.timelineRow}>{queueStages.map((stage, index) => { const complete = lookup?.found && currentQueueStage >= 0 && index < currentQueueStage; const current = lookup?.found && index === currentQueueStage; return <View key={stage.code} style={s.timelineItem}><View style={[s.timelineDot, { borderColor: current || complete ? activeColor : theme.border, backgroundColor: complete ? activeColor : current ? theme.card : v1.surfaceMuted }]}>{complete ? <Feather name="check" size={11} color="#fff" /> : null}</View><Text style={[s.timelineLabel, { color: current ? activeColor : theme.textMuted }]} numberOfLines={2}>{stage.label}</Text></View>; })}</View></View> : null}
@@ -772,7 +843,7 @@ const s = StyleSheet.create({
   personalMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 5 },
   manualToggle: { minHeight: 44, borderWidth: 1, borderRadius: 12, marginTop: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   gpsCard: { borderWidth: 1, borderRadius: 18, padding: 13, marginBottom: 10 },
-  gpsMetrics: { flexDirection: 'row', justifyContent: 'space-between', gap: 18, marginTop: 12 },
+  gpsMetrics: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12, columnGap: 18, marginTop: 12 },
   gpsValue: { fontSize: 14, fontWeight: '850', marginTop: 4 },
   timelineCard: { borderWidth: 1, borderRadius: 18, padding: 13, marginBottom: 10 },
   timelineRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: 14 },

@@ -1,5 +1,5 @@
-# driver-queue-cgr — новый operational dashboard «Граница».
-# Проверяет: вкладка → dashboard → поиск госномера → страна CN → КПП → детали.
+# Canonical driver Border flow: private vehicle context, secondary public
+# plate lookup, and lazy loading for exactly one selected checkpoint.
 appId: host.exp.Exponent
 name: driver-border-cgr
 tags: [driver, cgr, border]
@@ -11,27 +11,31 @@ env:
 - tapOn: { id: "bottom-nav-queue" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "queue-title" }
+    visible: { id: "border-screen-v2" }
     timeout: 12000
-- takeScreenshot: D0_border_dashboard
-# Главная ценность — страны и честные live/no-data состояния.
+- assertVisible: { id: "border-driver-vehicle-card" }
 - assertVisible: { id: "border-country-CN" }
-# Поиск своей машины по публичному CGR-реестру.
-- tapOn: { id: "border-plate-input" }
-- inputText: "777ABC01"
-- tapOn: { id: "border-plate-check" }
-- waitForAnimationToEnd
-- takeScreenshot: D1_border_plate_lookup
-# Китай → список КПП.
+- takeScreenshot: D0_border_dashboard
+# Manual lookup stays collapsed until the driver explicitly requests it.
+- runFlow:
+    when:
+      visible: { id: "border-driver-manual-toggle" }
+    commands:
+      - tapOn: { id: "border-driver-manual-toggle" }
+      - assertVisible: { id: "border-plate-search" }
+      - tapOn: { id: "border-plate-input" }
+      - inputText: "777ABC01"
+      - tapOn: { id: "border-plate-check" }
+      - waitForAnimationToEnd
+      - takeScreenshot: D1_border_plate_lookup
+# CGR detail is lazy: one card tap produces one selected-checkpoint panel.
 - tapOn: { id: "border-country-CN" }
-- waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "border-crossing-card" }
+    visible: { id: "border-checkpoint-chip" }
     timeout: 8000
 - takeScreenshot: D2_border_crossings_CN
-- tapOn: { id: "border-crossing-card", index: 0 }
-- waitForAnimationToEnd
+- tapOn: { id: "border-checkpoint-chip", index: 0 }
 - extendedWaitUntil:
-    visible: { id: "border-crossing-detail" }
-    timeout: 8000
+    visible: { id: "border-selected-card" }
+    timeout: 15000
 - takeScreenshot: D3_border_crossing_detail

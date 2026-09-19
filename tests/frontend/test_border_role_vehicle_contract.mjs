@@ -45,11 +45,19 @@ test('driver and shipper keep manual CGR lookup secondary and privacy scoped', (
   assert.doesNotMatch(border, /manualLookup\?\.(?:location|gps|driver_name|chat_room_id)/);
 });
 
-test('Border separates CGR, GPS and queue timeline without fake ETA', () => {
+test('Border calculates road GPS/ETA only from deal GPS and verified checkpoint coordinates', () => {
   assert.match(border, /testID="border-personal-cgr-status"/);
   assert.match(border, /testID="border-gps-card"/);
   assert.match(border, /testID="border-queue-timeline"/);
-  assert.match(border, /R\.etaPending/);
+  assert.match(border, /routingAPI\.roadRoute/);
+  assert.match(border, /\[\[originLat, originLng\], \[checkpointLat, checkpointLng\]\]/);
+  assert.match(border, /roadRoute\?\.ok \? formatDistance/);
+  assert.match(border, /roadRoute\?\.ok \? formatDuration/);
+  assert.match(border, /R\.routeUnavailable/);
+  assert.match(border, /return \(\) => controller\.abort\(\)/);
+  assert.match(border, /function parseQueueWindowStart/);
+  assert.match(border, /\\d\{1,2\}.*\\d\{1,2\}.*\\d\{4\}/, 'CGR DD.MM.YYYY booking windows need an explicit parser');
+  assert.match(border, /new Date\(Number\(year\), Number\(month\) - 1, Number\(day\)/);
   assert.doesNotMatch(border, /62\s*км|54\s*мин|1\s*ч\s*35\s*мин/);
 });
 
