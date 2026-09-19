@@ -788,7 +788,7 @@ def poll_pending_receipts(expo_receipts_fn, limit: int = 50) -> dict[str, int]:
 
 
 def info() -> dict[str, Any]:
-    counts = {"devices_active": 0, "expo": 0, "fcm": 0, "apns": 0, "outbox_pending": 0, "outbox_dead": 0, "outbox_skipped_no_devices": 0}
+    counts = {"devices_active": 0, "expo": 0, "fcm": 0, "apns": 0, "outbox_pending": 0, "outbox_dead": 0, "outbox_sent_partial": 0, "outbox_skipped_no_devices": 0}
     try:
         with get_conn() as c:
             counts["devices_active"] = int(c.execute("SELECT COUNT(*) FROM push_devices WHERE enabled = 1").fetchone()[0])
@@ -799,6 +799,7 @@ def info() -> dict[str, Any]:
                 ).fetchone()[0])
             counts["outbox_pending"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'pending'").fetchone()[0])
             counts["outbox_dead"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'dead'").fetchone()[0])
+            counts["outbox_sent_partial"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'sent_partial'").fetchone()[0])
             counts["outbox_skipped_no_devices"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'skipped_no_devices'").fetchone()[0])
     except Exception:
         pass

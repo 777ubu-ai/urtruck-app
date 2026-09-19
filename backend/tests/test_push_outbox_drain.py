@@ -214,6 +214,11 @@ def test_legacy_dead_rows_are_reconciled_to_truthful_terminal_states():
     assert skipped["status"] == "skipped_no_devices"
     assert skipped["last_error"] == "no_active_devices"
 
+    registry = push_gateway.info()["registry"]
+    assert registry["outbox_sent_partial"] == 1
+    assert registry["outbox_skipped_no_devices"] == 1
+    assert registry["outbox_dead"] == 0
+
 
 def test_partial_delivery_is_not_reported_as_dead_after_retry_limit():
     uid, _ = _make_user_with_device()
