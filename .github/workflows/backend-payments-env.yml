@@ -142,7 +142,7 @@ jobs:
           sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" '
             set -euo pipefail
             cd /home/ubuntu/urtruck-pro-test/backend
-            venv/bin/python -c "import config; assert config.GOOGLE_PLAY_PACKAGE_NAME == 'com.urtruck.protest'; assert config.FREE_DEAL_ACCEPT_LIMIT == 5; assert config.PRO_DEAL_ACCEPT_LIMIT == 30; assert config.CONTACTS_MONETIZATION_ENABLED; assert config.DEAL_ACCEPT_MONETIZATION_ENABLED; assert not config.BETA_MODE; assert config.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON; print('UrTruck Pro Test payments config OK')"
+            venv/bin/python -c "import config; assert config.GOOGLE_PLAY_PACKAGE_NAME == \"com.urtruck.protest\"; assert config.FREE_DEAL_ACCEPT_LIMIT == 5; assert config.PRO_DEAL_ACCEPT_LIMIT == 30; assert config.CONTACTS_MONETIZATION_ENABLED; assert config.DEAL_ACCEPT_MONETIZATION_ENABLED; assert not config.BETA_MODE; assert config.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON; print(\"UrTruck Pro Test payments config OK\")"
             PIDS=$(pgrep -af "uvicorn.*main:app.*--port 8002" | awk "{print \$1}" || true)
             if [ -n "$PIDS" ]; then
               kill -TERM $PIDS || true
