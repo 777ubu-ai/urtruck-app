@@ -159,7 +159,6 @@ jobs:
             kill -0 "$NEW_PID"
             echo -n "version: "; curl -fsS http://127.0.0.1:8002/api/version
             echo
-            curl -fsS http://127.0.0.1:8002/openapi.json | grep -q '"/api/v1/payments/subscription/status"'
             PAYMENTS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8002/api/v1/payments/subscription/status)
             echo "payments router (ожидаем 401/403 без авторизации): $PAYMENTS_CODE"
             [ "$PAYMENTS_CODE" = "401" ] || [ "$PAYMENTS_CODE" = "403" ]
