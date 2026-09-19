@@ -1,4 +1,5 @@
 package com.urtruck.app
+
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -14,10 +15,8 @@ class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     // Set the theme to AppTheme BEFORE onCreate to support
     // coloring the background, status bar, and navigation bar.
-    // Android system splash is deliberately short and image-free. The
-    // full-size branded artwork is rendered once by AndroidBrandedLaunchSplash
-    // after React Native is ready; keeping Expo's legacy splash manager here
-    // would hold the old contain-mode poster above that layer.
+    // The native window is already branded by withAndroidFullscreenSplash.
+    // Keep immersive flags active until the React layer takes over.
     setTheme(R.style.AppTheme)
     window.decorView.systemUiVisibility =
       View.SYSTEM_UI_FLAG_FULLSCREEN or

@@ -1,6 +1,6 @@
-// Запись и воспроизведение голосовых сообщений через expo-av
+// Запись и воспроизведение голосовых сообщений через expo-audio
 // Web: MediaRecorder API с audio/mp4 fallback
-// Native: expo-av Audio.Recording
+// Native: expo-audio через локальный compatibility layer
 //
 // Плеер (28.08.2026, WhatsApp/WeChat-паритет по заявке владельца): один
 // активный трек на всё приложение, play/pause/resume, seek по прогрессу,
@@ -116,7 +116,7 @@ export const voice = {
       return this._startWeb();
     }
     try {
-      const { Audio } = require('expo-av');
+      const { Audio } = require('./expoAudioCompat');
       // Явно запрашиваем доступ к микрофону — без этого iOS не показывает диалог
       // разрешения и запись падает («Нужен доступ к микрофону»). NSMicrophone-
       // UsageDescription уже прописан в app.json (нужна пересборка build 39).
@@ -301,7 +301,7 @@ export const voice = {
         // ReferenceError/stale _sound и уводило плеер в вечный fail).
         try { await prev.unloadAsync(); } catch { /* уже выгружен нативно */ }
       }
-      const { Audio } = require('expo-av');
+      const { Audio } = require('./expoAudioCompat');
       // C1 (device-баг): голосовое не проигрывалось у получателя на iOS.
       // Первопричина — после записи audio-сессия остаётся в режиме записи
       // (allowsRecordingIOS: true, выставлен в startRecording), и на iOS

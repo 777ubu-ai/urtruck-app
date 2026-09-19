@@ -1,60 +1,25 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
-    ext {
-        buildToolsVersion = findProperty('android.buildToolsVersion') ?: '36.0.0'
-        // react-native-yamap 4.8.3 / Yandex MapKit requires API 26+.
-        // Do not use tools:overrideLibrary: that would allow install-time
-        // success while leaving unsupported MapKit calls to crash at runtime.
-        minSdkVersion = Integer.parseInt(findProperty('android.minSdkVersion') ?: '26')
-        // Google Play: с 31.08.2026 требуется targetSdk >= 36 (Android 16).
-        compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '36')
-        targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '36')
-        kotlinVersion = findProperty('android.kotlinVersion') ?: '1.9.25'
-
-        ndkVersion = "26.1.10909125"
-    }
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath('com.android.tools.build:gradle')
-        classpath('com.facebook.react:react-native-gradle-plugin')
-        classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
-        // P1 fix (26.08.2026): Android FCM push requires this plugin to turn
-        // app/google-services.json into real Firebase runtime config
-        // (google_app_id, gcm_defaultSenderId, ...). See
-        // docs/release/android-firebase-config.md. Applied conditionally in
-        // app/build.gradle — the classpath itself is always available so
-        // that conditional `apply plugin` doesn't fail to resolve.
-        classpath('com.google.gms:google-services:4.4.2')
-    }
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+        classpath 'com.google.gms:google-services:4.4.4'
+    classpath('com.android.tools.build:gradle')
+    classpath('com.facebook.react:react-native-gradle-plugin')
+    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+  }
 }
-
-apply plugin: "com.facebook.react.rootproject"
 
 allprojects {
-    // react-native-yamap 4.8.3 declares play-services-location:+. Resolving
-    // that wildcard to 21.4.0 pulls Kotlin metadata 2.3 into this Expo/RN
-    // build (Kotlin 1.9.25) and fails MapKit compilation. Expo Location in
-    // this app is already aligned to 21.0.1, so pin only this shared native
-    // location dependency instead of upgrading the whole toolchain.
-    configurations.configureEach {
-        resolutionStrategy.force 'com.google.android.gms:play-services-location:21.0.1'
-    }
-    repositories {
-        maven {
-            // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
-            url(new File(['node', '--print', "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim(), '../android'))
-        }
-        maven {
-            // Android JSC is installed from npm
-            url(new File(['node', '--print', "require.resolve('jsc-android/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim(), '../dist'))
-        }
-
-        google()
-        mavenCentral()
-        maven { url 'https://www.jitpack.io' }
-    }
+  repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://www.jitpack.io' }
+  }
 }
+
+apply plugin: "expo-root-project"
+apply plugin: "com.facebook.react.rootproject"

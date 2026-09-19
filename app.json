@@ -11,11 +11,6 @@
       "web"
     ],
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash/urtruck-splash.png",
-      "backgroundColor": "#070B14",
-      "resizeMode": "contain"
-    },
     "web": {
       "bundler": "metro",
       "output": "single",
@@ -47,11 +42,6 @@
     },
     "android": {
       "package": "com.urtruck.app",
-      "splash": {
-        "image": "./assets/icon.png",
-        "backgroundColor": "#070B14",
-        "resizeMode": "contain"
-      },
       "softwareKeyboardLayoutMode": "resize",
       "versionCode": 9,
       "googleServicesFile": "./google-services.json",
@@ -108,7 +98,7 @@
       "./plugins/withAndroidBackCompatibility",
       "./plugins/withAndroidSingleFcmHandler",
       [
-        "expo-av",
+        "expo-audio",
         {
           "microphonePermission": "UrTruck использует микрофон для записи голосовых сообщений"
         }
