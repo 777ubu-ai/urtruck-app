@@ -1,27 +1,18 @@
-name: UrTruck TestFlight RC
+name: UrTruck TestFlight Local Fallback
 
-# Push to this release branch is the canonical trigger for an exact
-# TestFlight candidate build and upload.
-# RC refresh 2026-08-26: voice optimistic-send + chat UX fixes.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/testflight-rc.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: urtruck-testflight-rc
+  group: urtruck-testflight-local
   cancel-in-progress: true
 
 jobs:
-  build-and-upload-testflight:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
-    runs-on: ubuntu-latest
+  build-and-upload:
+    runs-on: macos-15
     timeout-minutes: 180
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -30,6 +21,7 @@ jobs:
       EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
       YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
       OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+
     steps:
       - name: Checkout exact release candidate
         uses: actions/checkout@v4
@@ -45,106 +37,51 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify release branch, Expo auth, and map config
+      - name: Verify exact branch and credentials
         shell: bash
         run: |
           set -euo pipefail
-          echo "SHA=$(git rev-parse HEAD)"
-          case "${GITHUB_REF_NAME}" in
-            main|qa/master-hard-qa-20260916|fix/cgr-border-deal-integration-20260919) ;;
-            *)
-              echo "::error::TestFlight RC may only be built from main or an approved canonical QA branch."
-              exit 1
-              ;;
-          esac
+          test "${GITHUB_REF_NAME}" = "fix/cgr-border-deal-integration-20260919"
           test -n "${EXPO_TOKEN:-}"
-          test -n "${EXPO_PUBLIC_API_URL:-}"
-          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}" || {
-            echo "::error::YANDEX_MAPS_JS_API_KEY is required for TestFlight builds so iOS matches production web map behavior."
-            exit 1
-          }
-          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}" || {
-            echo "::error::YANDEX_MAPKIT_API_KEY is required for TestFlight native MapKit builds."
-            exit 1
-          }
+          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
+          echo "SHA=$(git rev-parse HEAD)"
           npx eas-cli@latest whoami
 
-      - name: Inject TestFlight runtime config into EAS profile
+      - name: Inject release runtime configuration
         shell: bash
         run: |
-          set -euo pipefail
           node <<'NODE'
           const fs = require('fs');
-          const path = 'eas.json';
-          const eas = JSON.parse(fs.readFileSync(path, 'utf8'));
-          eas.build = eas.build || {};
-          eas.build.production = eas.build.production || {};
+          const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
           eas.build.production.env = {
             ...(eas.build.production.env || {}),
             EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
             EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY,
             EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY,
+            YANDEX_ROUTER_API_KEY: process.env.YANDEX_ROUTER_API_KEY,
+            OPENROUTESERVICE_API_KEY: process.env.OPENROUTESERVICE_API_KEY
           };
-          if (process.env.YANDEX_ROUTER_API_KEY) {
-            eas.build.production.env.YANDEX_ROUTER_API_KEY = process.env.YANDEX_ROUTER_API_KEY;
-          }
-          if (process.env.OPENROUTESERVICE_API_KEY) {
-            eas.build.production.env.OPENROUTESERVICE_API_KEY = process.env.OPENROUTESERVICE_API_KEY;
-          }
-          fs.writeFileSync(path, `${JSON.stringify(eas, null, 2)}\n`);
+          fs.writeFileSync('eas.json', JSON.stringify(eas, null, 2) + '\n');
           NODE
-          node -e "const eas=require('./eas.json'); const env=eas.build.production.env||{}; if(!env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY || !env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY) process.exit(1); console.log('TESTFLIGHT_MAP_CONFIG=present')"
 
-      - name: Show recent iOS EAS builds
-        run: npx eas-cli@latest build:list --platform ios --limit 10 --non-interactive
-
-      - name: Build production iOS RC in EAS
-        id: build
-        shell: bash
-        env:
-          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
-          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-        run: |
-          set -uo pipefail
-          set +e
-          npx eas-cli@latest build --platform ios --profile production --clear-cache --non-interactive --wait --json > eas-build.json 2>eas-build.stderr
-          BUILD_EXIT=$?
-          set -e
-          cat eas-build.stderr
-          cat eas-build.json
-          if [ "$BUILD_EXIT" -ne 0 ]; then
-            BUILD_ID=$(grep -Eo 'builds/[a-f0-9-]+' eas-build.stderr eas-build.json | head -1 | sed 's#.*builds/##' || true)
-            if [ -n "$BUILD_ID" ]; then
-              echo "Failed EAS build id: $BUILD_ID"
-              npx eas-cli@latest build:view "$BUILD_ID" --json || true
-            fi
-            exit "$BUILD_EXIT"
-          fi
-          BUILD_ID=$(node -e "console.log(JSON.parse(require('fs').readFileSync('eas-build.json','utf8'))[0].id)")
-          BUILD_COMMIT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('eas-build.json','utf8'))[0].gitCommitHash)")
-          HEAD_SHA=$(git rev-parse HEAD)
-          echo "EAS build id:            $BUILD_ID"
-          echo "EAS build gitCommitHash: $BUILD_COMMIT"
-          echo "Checked-out HEAD:        $HEAD_SHA"
-          if [ "$BUILD_COMMIT" != "$HEAD_SHA" ]; then
-            echo "::error::EAS build gitCommitHash ($BUILD_COMMIT) does not match the checked-out release-branch HEAD ($HEAD_SHA) — refusing to submit an unverified build to TestFlight."
-            exit 1
-          fi
-          echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
-
-      - name: Upload the exact verified build to TestFlight only
-        id: submit
+      - name: Build signed IPA locally
         shell: bash
         run: |
-          set -o pipefail
-          set +e
-          npx eas-cli@latest submit --platform ios --profile production --id "${{ steps.build.outputs.build_id }}" --non-interactive --wait 2>&1 | tee submit.log
-          SUBMIT_EXIT=${PIPESTATUS[0]}
-          set -e
-          SUBMISSION_ID=$(grep -oE 'submissions/[a-f0-9-]+' submit.log | head -1 | cut -d/ -f2 || true)
-          echo "submission_id=$SUBMISSION_ID" >> "$GITHUB_OUTPUT"
-          exit "$SUBMIT_EXIT"
+          set -euo pipefail
+          npx eas-cli@latest build --platform ios --profile production --local --non-interactive --output "$RUNNER_TEMP/UrTruck.ipa"
+          test -s "$RUNNER_TEMP/UrTruck.ipa"
+          shasum -a 256 "$RUNNER_TEMP/UrTruck.ipa" | tee "$RUNNER_TEMP/UrTruck.ipa.sha256"
 
-      - name: Show exact Apple/EAS submission error on failure
-        if: failure() && steps.submit.outputs.submission_id != ''
-        run: npx eas-cli@latest submission:view "${{ steps.submit.outputs.submission_id }}" --json || true
+      - name: Upload private IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-TestFlight-IPA
+          path: |
+            ${{ runner.temp }}/UrTruck.ipa
+            ${{ runner.temp }}/UrTruck.ipa.sha256
+          retention-days: 14
+
+      - name: Submit IPA to TestFlight
+        shell: bash
+        run: npx eas-cli@latest submit --platform ios --profile production --path "$RUNNER_TEMP/UrTruck.ipa" --non-interactive --wait
