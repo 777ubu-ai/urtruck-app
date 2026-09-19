@@ -6,6 +6,7 @@ import sys
 import json
 import re
 import time
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -396,6 +397,49 @@ def _init():
                     c.commit()
         except Exception as e:
             print(f"[startup] deals.{_col} active-UNIQUE index migration skipped: {e}", flush=True)
+
+    # P1 (2026-09-19): ровно одна активная ставка одного перевозчика на
+    # один груз/рейс. Старые версии могли оставить несколько pending/countered
+    # строк (например, после повторного запроса при плохой сети). Сохраняем
+    # самую новую строку, старые переводим в terminal cancelled, затем
+    # закрываем гонку partial UNIQUE-индексом на уровне SQLite.
+    for _listing_col, _idx_name in (
+        ("cargo_id", "idx_bids_active_cargo_bidder_unique"),
+        ("trip_id", "idx_bids_active_trip_bidder_unique"),
+    ):
+        try:
+            with get_conn() as c:
+                c.execute(f"""
+                    UPDATE bids
+                    SET status='cancelled', updated_at=CURRENT_TIMESTAMP
+                    WHERE {_listing_col} IS NOT NULL
+                      AND status IN ('pending','countered')
+                      AND EXISTS (
+                        SELECT 1 FROM bids newer
+                        WHERE newer.{_listing_col}=bids.{_listing_col}
+                          AND newer.bidder_id=bids.bidder_id
+                          AND newer.status IN ('pending','countered')
+                          AND (
+                            COALESCE(NULLIF(newer.updated_at,''), newer.created_at) >
+                              COALESCE(NULLIF(bids.updated_at,''), bids.created_at)
+                            OR (
+                              COALESCE(NULLIF(newer.updated_at,''), newer.created_at) =
+                                COALESCE(NULLIF(bids.updated_at,''), bids.created_at)
+                              AND newer.id > bids.id
+                            )
+                          )
+                      )
+                """)
+                c.execute(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {_idx_name} "
+                    f"ON bids({_listing_col}, bidder_id) "
+                    f"WHERE {_listing_col} IS NOT NULL "
+                    f"AND status IN ('pending','countered')"
+                )
+                c.commit()
+        except Exception as e:
+            print(f"[startup] bids.{_listing_col} active-UNIQUE migration skipped: {e}", flush=True)
+
     # Часть 3 (история цены): таблица price_events + связь chat_messages.event_id.
     # Аддитивно и идемпотентно. Бэкфилл старых ставок НЕ делаем.
     with get_conn() as c:
@@ -1628,6 +1672,48 @@ def _money(amount, currency):
     return f"{amount} {sym}" if cur == "UZS" else f"{sym}{amount}"
 
 
+def _dedupe_active_bid_rows(rows):
+    """Return at most one active bid per bidder/listing.
+
+    Accepted wins over pending/countered because it is authoritative deal
+    truth. Otherwise the most recently updated row wins. Terminal history is
+    preserved unchanged. This also protects reads while a legacy database is
+    still waiting for the startup cleanup/UNIQUE migration.
+    """
+    active = {"pending", "countered", "accepted"}
+    chosen = {}
+
+    def _key(row):
+        if row.get("cargo_id"):
+            return "cargo", row.get("cargo_id"), row.get("bidder_id")
+        if row.get("trip_id"):
+            return "trip", row.get("trip_id"), row.get("bidder_id")
+        return None
+
+    def _rank(row):
+        accepted = 1 if row.get("status") == "accepted" else 0
+        changed = row.get("updated_at") or row.get("created_at") or ""
+        return accepted, changed, row.get("id") or ""
+
+    for row in rows:
+        if row.get("status") not in active or not row.get("bidder_id"):
+            continue
+        key = _key(row)
+        if key is None:
+            continue
+        current = chosen.get(key)
+        if current is None or _rank(row) > _rank(current):
+            chosen[key] = row
+
+    return [
+        row for row in rows
+        if row.get("status") not in active
+        or not row.get("bidder_id")
+        or _key(row) is None
+        or chosen.get(_key(row), {}).get("id") == row.get("id")
+    ]
+
+
 def _bid_currency(c, bid) -> str:
     """Валюта родителя ставки (груз/рейс) — чтобы пуши/уведомления показывали
     сумму в валюте листинга, а не хардкодным '$'. Fallback USD."""
@@ -1729,7 +1815,8 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
         dup = c.execute(
             "SELECT id, amount, message FROM bids WHERE bidder_id = ? "
             "AND status IN ('pending','countered') "
-            "AND ((cargo_id IS NOT NULL AND cargo_id = ?) OR (trip_id IS NOT NULL AND trip_id = ?))",
+            "AND ((cargo_id IS NOT NULL AND cargo_id = ?) OR (trip_id IS NOT NULL AND trip_id = ?)) "
+            "ORDER BY COALESCE(NULLIF(updated_at,''), created_at) DESC, id DESC LIMIT 1",
             (user["id"], body.cargo_id, body.trip_id),
         ).fetchone()
         if dup:
@@ -1741,11 +1828,33 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
                 "existing_message": dup["message"],
             })
 
-        c.execute("""
-            INSERT INTO bids (id, cargo_id, trip_id, bidder_id, bidder_name, bidder_phone, amount, message)
-            VALUES (?,?,?,?,?,?,?,?)
-        """, (bid_id, body.cargo_id, body.trip_id, user["id"],
-              user.get("full_name"), user.get("phone"), body.amount, body.message))
+        try:
+            c.execute("""
+                INSERT INTO bids (id, cargo_id, trip_id, bidder_id, bidder_name, bidder_phone, amount, message)
+                VALUES (?,?,?,?,?,?,?,?)
+            """, (bid_id, body.cargo_id, body.trip_id, user["id"],
+                  user.get("full_name"), user.get("phone"), body.amount, body.message))
+        except sqlite3.IntegrityError as exc:
+            # DB-level active-bid UNIQUE guard won a concurrent create race.
+            # Return the same actionable 409 contract as the pre-insert check,
+            # never leak a raw SQLite 500 to the mobile client.
+            existing = c.execute(
+                "SELECT id, amount, message FROM bids WHERE bidder_id = ? "
+                "AND status IN ('pending','countered') "
+                "AND ((cargo_id IS NOT NULL AND cargo_id = ?) OR "
+                "(trip_id IS NOT NULL AND trip_id = ?)) "
+                "ORDER BY COALESCE(NULLIF(updated_at,''), created_at) DESC, id DESC LIMIT 1",
+                (user["id"], body.cargo_id, body.trip_id),
+            ).fetchone()
+            if existing:
+                raise HTTPException(status_code=409, detail={
+                    "error": "duplicate_bid",
+                    "message": "У вас уже есть активная ставка — измените её",
+                    "existing_bid_id": existing["id"],
+                    "existing_amount": existing["amount"],
+                    "existing_message": existing["message"],
+                }) from exc
+            raise
         # Часть 3: событие цены — предложение (автор ставки = bidder).
         _record_price_event(c, bid_id, user["id"], "bidder", body.amount, "proposed", body.message)
 
@@ -1829,7 +1938,10 @@ def list_bids(
             WHERE {' AND '.join(where)}
             ORDER BY b.created_at DESC LIMIT 100
         """, params).fetchall()
-    bids = [dict(r) for r in rows]
+    # Legacy/race safety: one authoritative active row per bidder/listing.
+    # Dedupe before count, my_bid and visibility filters so every caller sees
+    # the same price and the counter is not inflated by stale active rows.
+    bids = _dedupe_active_bid_rows([dict(r) for r in rows])
     # Часть 1: сырой список ДО dirty-фильтра — из него честно считаем число
     # предложений и находим собственную ставку вызывающего (dirty-фильтр по
     # prefix 'agent-'/'guest-' иначе прячет и его собственную ставку в QA).

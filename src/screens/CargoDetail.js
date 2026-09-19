@@ -279,6 +279,35 @@ export default function CargoDetail({ navigation, route }) {
           ));
           rawBids.push(d.my_bid);
         }
+
+        // Defense-in-depth for legacy API rows: owner/public callers may
+        // receive two pending/countered rows from the same bidder. Keep one
+        // authoritative active price for every bidder, not only the caller.
+        // Accepted always wins; otherwise the newest updated/created row wins.
+        const activeStatuses = new Set(['pending', 'countered', 'accepted']);
+        const activeWinnerByBidder = new Map();
+        const activeRank = (bid) => [
+          bid.status === 'accepted' ? 1 : 0,
+          bid.updated_at || bid.created_at || '',
+          bid.id || '',
+        ];
+        rawBids.forEach((bid) => {
+          if (!bid.bidder_id || !activeStatuses.has(bid.status)) return;
+          const current = activeWinnerByBidder.get(bid.bidder_id);
+          if (!current || activeRank(bid).join('|') > activeRank(current).join('|')) {
+            activeWinnerByBidder.set(bid.bidder_id, bid);
+          }
+        });
+        rawBids = rawBids.filter((bid) => {
+          if (!bid.bidder_id) return true;
+          const activeWinner = activeWinnerByBidder.get(bid.bidder_id);
+          // When a bidder has an active/current price, do not render their
+          // cancelled/rejected historical prices beside it. The API count is
+          // active-only, so the visible offer rows must follow the same rule.
+          if (activeWinner) return activeWinner.id === bid.id;
+          return true;
+        });
+
         const mapped = rawBids.map(b => ({
           id: b.id, bidderId: b.bidder_id,
           name: b.bidder_name || b.bidder_phone || t('driver'),
@@ -561,7 +590,7 @@ export default function CargoDetail({ navigation, route }) {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               <Feather name="dollar-sign" size={12} color={theme.textMuted} />
-              <Text testID="cargo-price-label" style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('price')}</Text>
+              <Text testID="cargo-price-label" style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('cargo_price_label')}</Text>
             </View>
             <Text testID="cargo-price-value" style={{ color: '#E06D00', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1, minWidth: 0, textAlign: 'right' }} numberOfLines={1} ellipsizeMode="tail">{priceDisplay}</Text>
           </View>

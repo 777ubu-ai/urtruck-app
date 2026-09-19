@@ -327,7 +327,7 @@ export default function CreateTripScreen({ navigation, route }) {
       {errors.departure ? <Text style={s.err}>⚠️ {errors.departure}</Text> : null}
       {errors.truckType ? <Text style={s.err}>⚠️ {errors.truckType}</Text> : null}
 
-      {/* Stage 27: placeholder "—" → пример числа; label с
+      {/* Пустые числовые поля: label уже объясняет единицу; label с
           единицей. Те же изменения, что в CreateCargoScreen. */}
       <View style={s.row2}>
         <View style={{ flex: 1 }}>
@@ -336,7 +336,7 @@ export default function CreateTripScreen({ navigation, route }) {
             value={tons}
             onChangeText={(v) => setTons(normalizeDecimal(v))}
             keyboardType="decimal-pad"
-            placeholder={t('weight_placeholder') || 'Например: 31.5'}
+            placeholder=""
             testID="trip-weight-field"
           />
         </View>
@@ -346,7 +346,7 @@ export default function CreateTripScreen({ navigation, route }) {
             value={m3}
             onChangeText={(v) => setM3(normalizeDecimal(v))}
             keyboardType="decimal-pad"
-            placeholder={t('volume_placeholder') || 'Например: 110'}
+            placeholder=""
             testID="trip-volume-field"
           />
         </View>
