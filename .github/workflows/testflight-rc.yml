@@ -41,12 +41,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${GITHUB_REF_NAME}" = "fix/cgr-border-deal-integration-20260919"
+          case "${GITHUB_REF_NAME}" in
+            main|qa/master-hard-qa-20260916|fix/cgr-border-deal-integration-20260919) ;;
+            *)
+              echo "::error::TestFlight RC may only be built from main or an approved canonical QA branch."
+              exit 1
+              ;;
+          esac
           test -n "${EXPO_TOKEN:-}"
           test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
           test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
           echo "SHA=$(git rev-parse HEAD)"
           npx eas-cli@latest whoami
+          # Cloud-build diagnostic contract: npx eas-cli@latest build:view "$BUILD_ID" --json
 
       - name: Inject release runtime configuration
         shell: bash
