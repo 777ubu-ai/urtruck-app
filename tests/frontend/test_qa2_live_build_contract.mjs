@@ -5,6 +5,9 @@ import { readFileSync } from 'node:fs';
 const workflow = readFileSync('.github/workflows/build-android-apk.yml', 'utf8');
 const testflightWorkflow = readFileSync('.github/workflows/testflight-rc.yml', 'utf8');
 const playWorkflow = readFileSync('.github/workflows/deploy-play.yml', 'utf8');
+const iosPodfile = readFileSync('ios/Podfile', 'utf8');
+const iosPodProperties = readFileSync('ios/Podfile.properties.json', 'utf8');
+const iosProject = readFileSync('ios/UrTruck.xcodeproj/project.pbxproj', 'utf8');
 
 test('distributed QA2 restores live providers without embedding the isolated harness URL', () => {
   assert.ok(workflow.includes('EXPO_PUBLIC_API_URL=https://urtruck.kz'));
@@ -26,6 +29,14 @@ test('TestFlight accepts the canonical Border QA branch and still rejects arbitr
   assert.ok(testflightWorkflow.includes('main|qa/master-hard-qa-20260916|fix/cgr-border-deal-integration-20260919'));
   assert.ok(testflightWorkflow.includes('TestFlight RC may only be built from main or an approved canonical QA branch.'));
   assert.ok(testflightWorkflow.includes('npx eas-cli@latest build:view "$BUILD_ID" --json'));
+});
+
+test('Expo SDK 57 native iOS project uses the required deployment target and architecture', () => {
+  assert.ok(iosPodfile.includes("podfile_properties['ios.deploymentTarget'] || '16.4'"));
+  assert.equal(JSON.parse(iosPodProperties)['ios.deploymentTarget'], '16.4');
+  assert.equal(JSON.parse(iosPodProperties).newArchEnabled, 'true');
+  assert.ok(!iosProject.includes('IPHONEOS_DEPLOYMENT_TARGET = 15.1;'));
+  assert.equal((iosProject.match(/IPHONEOS_DEPLOYMENT_TARGET = 16.4;/g) || []).length, 4);
 });
 
 test('Play workflow can build a signed AAB without submitting and records release identity', () => {
