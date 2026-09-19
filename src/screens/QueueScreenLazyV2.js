@@ -253,6 +253,8 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const [privateContext, setPrivateContext] = useState({ vehicles: [], deals: [], trips: [] });
   const [contextToken, setContextToken] = useState(null);
   const [contextLoading, setContextLoading] = useState(true);
+  const [canonicalContext, setCanonicalContext] = useState(false);
+  const [watchEnabled, setWatchEnabled] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [selectedDealId, setSelectedDealId] = useState(null);
   const [showManualLookup, setShowManualLookup] = useState(false);
@@ -286,6 +288,8 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   const loadPrivateContext = useCallback(async () => {
     setContextLoading(true);
+    setCanonicalContext(false);
+    setWatchEnabled(false);
     const applyContext = (next) => {
       setPrivateContext(next);
       if (isDriver) {
@@ -308,6 +312,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         const response = await fetch(`${BASE}/context`, { headers: { Authorization: `Bearer ${token}` } });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data?.detail || `HTTP ${response.status}`);
+        setCanonicalContext(true);
         applyContext({
           vehicles: Array.isArray(data?.vehicles) ? data.vehicles : [],
           deals: Array.isArray(data?.deals) ? data.deals : [],
@@ -470,13 +475,16 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   }, [activePlate, lookupPlateValue]);
 
   useEffect(() => {
-    if (!isDriver || !contextToken || !selectedDeal || normalizePlate(activePlate).length < 3) return;
+    setWatchEnabled(false);
+    if (!canonicalContext || !isDriver || !contextToken || !selectedDeal || normalizePlate(activePlate).length < 3) return;
     fetch(`${BASE}/watch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${contextToken}` },
       body: JSON.stringify({ plate: normalizePlate(activePlate) }),
+    }).then((response) => {
+      if (response.ok) setWatchEnabled(true);
     }).catch(() => {});
-  }, [isDriver, contextToken, selectedDeal, activePlate]);
+  }, [canonicalContext, isDriver, contextToken, selectedDeal, activePlate]);
 
   useEffect(() => {
     if (!lookup?.found || !lookup?.checkpoint || !catalog.length || selectedId) return;
@@ -537,7 +545,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             {selectedDeal ? <View style={s.personalMetaRow}><Feather name="navigation" size={15} color={activeColor} /><Text style={[s.lookupText, { color: theme.textMuted }]}>{selectedDeal.location ? `${R.gpsOnline} · ${formatSourceTime(selectedDeal.location.updated_at)}` : R.gpsUnavailable}</Text></View> : null}
           </> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}
           {selectedDeal && !isDriver ? <View style={s.dealActions}><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role })} style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="file-text" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.openDeal}</Text></TouchableOpacity><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role, action: 'status-history' })} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="clock" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.history}</Text></TouchableOpacity><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role })} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="message-circle" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.messageDriver}</Text></TouchableOpacity></View> : null}
-          {isDriver && selectedDeal ? <View style={s.dealActions}><View style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="radio" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.trackingOn}</Text></View><TouchableOpacity onPress={() => setShowManualLookup((value) => !value)} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="search" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.checkOther}</Text></TouchableOpacity></View> : null}
+          {isDriver && selectedDeal ? <View style={s.dealActions}>{watchEnabled ? <View style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="radio" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.trackingOn}</Text></View> : null}<TouchableOpacity onPress={() => setShowManualLookup((value) => !value)} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="search" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.checkOther}</Text></TouchableOpacity></View> : null}
         </View> : null}
 
         <View style={s.sectionHeadingRow}><Text style={[s.sectionTitle, { color: theme.text }]}>{R.borderSituation}</Text><Text style={[s.source, { color: theme.textDim }]}>CGR</Text></View>
