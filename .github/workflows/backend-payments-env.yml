@@ -150,9 +150,20 @@ jobs:
             NEW_PID=$!
             echo "$NEW_PID" > uvicorn.pid
             disown || true
-            sleep 5
-            kill -0 "$NEW_PID"
-            echo -n "version: "; curl -fsS http://127.0.0.1:8002/api/version
+            READY=0
+            for ATTEMPT in $(seq 1 20); do
+              if curl -fsS http://127.0.0.1:8002/api/version >/tmp/pro-test-version.json; then
+                READY=1
+                break
+              fi
+              kill -0 "$NEW_PID" 2>/dev/null || break
+              sleep 2
+            done
+            if [ "$READY" != "1" ]; then
+              tail -100 uvicorn.log || true
+              exit 1
+            fi
+            echo -n "version: "; cat /tmp/pro-test-version.json
             echo
             PAYMENTS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8002/api/v1/payments/subscription/status)
             echo "payments router (ожидаем 401/403 без авторизации): $PAYMENTS_CODE"
