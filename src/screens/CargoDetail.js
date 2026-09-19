@@ -298,11 +298,15 @@ export default function CargoDetail({ navigation, route }) {
             activeWinnerByBidder.set(bid.bidder_id, bid);
           }
         });
-        rawBids = rawBids.filter((bid) => (
-          !bid.bidder_id
-          || !activeStatuses.has(bid.status)
-          || activeWinnerByBidder.get(bid.bidder_id)?.id === bid.id
-        ));
+        rawBids = rawBids.filter((bid) => {
+          if (!bid.bidder_id) return true;
+          const activeWinner = activeWinnerByBidder.get(bid.bidder_id);
+          // When a bidder has an active/current price, do not render their
+          // cancelled/rejected historical prices beside it. The API count is
+          // active-only, so the visible offer rows must follow the same rule.
+          if (activeWinner) return activeWinner.id === bid.id;
+          return true;
+        });
 
         const mapped = rawBids.map(b => ({
           id: b.id, bidderId: b.bidder_id,
