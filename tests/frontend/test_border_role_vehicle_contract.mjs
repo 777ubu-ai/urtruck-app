@@ -25,7 +25,7 @@ test('Border loads canonical private vehicle/deal context with auth', () => {
 test('Border keeps rolling-deploy fallback when /borders/context is not deployed yet', () => {
   assert.match(border, /vehicleAPI\.list\(\)/);
   assert.match(border, /marketAPI\.myDashboard\(\{ force: true \}\)/);
-  assert.match(border, /marketAPI\.getDeal\(dealId\)/);
+  assert.doesNotMatch(border, /marketAPI\.getDeal\(/, 'Border background fallback must not mark deal notifications read');
   assert.match(border, /market\/driver-profile/);
 });
 
