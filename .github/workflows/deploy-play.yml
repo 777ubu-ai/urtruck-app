@@ -56,6 +56,11 @@ on:
           - completed
           - inProgress
           - halted
+      submit_to_play:
+        description: "Upload the resulting AAB to Google Play"
+        required: true
+        default: true
+        type: boolean
 
 # Play принимает только уникальные versionCode. Сериализация гарантирует, что
 # два push/manual запуска не дойдут до вычисления кода в одну секунду.
@@ -192,6 +197,26 @@ jobs:
           printf '%s\n' "$manifest_xml" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
           echo "Verified com.urtruck.app versionCode=${URTRUCK_VERSION_CODE} inside AAB"
 
+      - name: Record AAB checksum and upload certificate
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          aab="android/app/build/outputs/bundle/release/app-release.aab"
+          aab_sha=$(shasum -a 256 "$aab" | awk '{print $1}')
+          cert_sha=$(keytool -list -v \
+            -keystore "$RUNNER_TEMP/urtruck-upload-key.jks" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            | sed -n 's/^[[:space:]]*SHA256: //p' | head -1)
+          test -n "$cert_sha"
+          echo "AAB_SHA256=${aab_sha}" >> "$GITHUB_ENV"
+          echo "UPLOAD_CERT_SHA256=${cert_sha}" >> "$GITHUB_ENV"
+          echo "Source SHA=${GITHUB_SHA}"
+          echo "AAB SHA-256=${aab_sha}"
+          echo "Upload certificate SHA-256=${cert_sha}"
+
       - name: Remove keystore from runner
         if: always()
         run: rm -f "$RUNNER_TEMP/urtruck-upload-key.jks"
@@ -205,6 +230,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload to Google Play
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.submit_to_play }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -221,12 +247,13 @@ jobs:
           RESULT: ${{ job.status }}
           TRACK: ${{ inputs.track || 'internal' }}
           RELEASE_STATUS: ${{ inputs.status || 'completed' }}
+          SUBMIT_TO_PLAY: ${{ github.event_name != 'workflow_dispatch' || inputs.submit_to_play }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           version_code="${URTRUCK_VERSION_CODE:-unknown}"
           body=$(cat <<EOF
-          ### Google Play upload — ${RESULT^^}
+          ### Android release AAB — ${RESULT^^}
           - sha: \`${GITHUB_SHA}\`
           - workflow: \`Deploy Android to Google Play\`
           - run: ${RUN_URL}
@@ -234,7 +261,10 @@ jobs:
           - package: \`com.urtruck.app\`
           - track: \`${TRACK}\`
           - release status: \`${RELEASE_STATUS}\`
+          - submitted to Play: \`${SUBMIT_TO_PLAY}\`
           - versionCode: \`${version_code}\`
+          - AAB SHA-256: \`${AAB_SHA256:-unknown}\`
+          - upload certificate SHA-256: \`${UPLOAD_CERT_SHA256:-unknown}\`
           EOF
           )
           gh api "repos/${GITHUB_REPOSITORY}/issues/247/comments" -f body="$body"
