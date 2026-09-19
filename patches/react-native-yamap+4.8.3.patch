@@ -1,0 +1,442 @@
+diff --git a/node_modules/react-native-yamap/android/build.gradle b/node_modules/react-native-yamap/android/build.gradle
+index d9de295..d4fbc97 100644
+--- a/node_modules/react-native-yamap/android/build.gradle
++++ b/node_modules/react-native-yamap/android/build.gradle
+@@ -1,7 +1,7 @@
+
+ buildscript {
+     repositories {
+-        jcenter()
++        google()
+         mavenCentral()
+     }
+ }
+@@ -31,7 +31,7 @@ repositories {
+ }
+
+ dependencies {
+-    implementation 'com.google.android.gms:play-services-location:+'
++    implementation 'com.google.android.gms:play-services-location:21.3.0'
+     implementation 'com.facebook.react:react-native:+'
+     implementation 'com.yandex.android:maps.mobile:4.8.0-full'
+     implementation 'androidx.core:core-ktx:1.13.1'
+diff --git a/node_modules/react-native-yamap/android/build/generated/source/buildConfig/debug/ru/vvdev/yamap/BuildConfig.java b/node_modules/react-native-yamap/android/build/generated/source/buildConfig/debug/ru/vvdev/yamap/BuildConfig.java
+new file mode 100644
+index 0000000..aa1edd3
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/generated/source/buildConfig/debug/ru/vvdev/yamap/BuildConfig.java
+@@ -0,0 +1,10 @@
++/**
++ * Automatically generated file. DO NOT MODIFY
++ */
++package ru.vvdev.yamap;
++
++public final class BuildConfig {
++  public static final boolean DEBUG = Boolean.parseBoolean("true");
++  public static final String LIBRARY_PACKAGE_NAME = "ru.vvdev.yamap";
++  public static final String BUILD_TYPE = "debug";
++}
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/AndroidManifest.xml b/node_modules/react-native-yamap/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/AndroidManifest.xml
+new file mode 100644
+index 0000000..1acb509
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/AndroidManifest.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    package="ru.vvdev.yamap" >
++
++    <uses-sdk android:minSdkVersion="26" />
++
++</manifest>
+\ No newline at end of file
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/output-metadata.json b/node_modules/react-native-yamap/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/output-metadata.json
+new file mode 100644
+index 0000000..2e27784
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/output-metadata.json
+@@ -0,0 +1,18 @@
++{
++  "version": 3,
++  "artifactType": {
++    "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
++    "kind": "Directory"
++  },
++  "applicationId": "ru.vvdev.yamap",
++  "variantName": "debug",
++  "elements": [
++    {
++      "type": "SINGLE",
++      "filters": [],
++      "attributes": [],
++      "outputFile": "AndroidManifest.xml"
++    }
++  ],
++  "elementType": "File"
++}
+\ No newline at end of file
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/aar_metadata/debug/writeDebugAarMetadata/aar-metadata.properties b/node_modules/react-native-yamap/android/build/intermediates/aar_metadata/debug/writeDebugAarMetadata/aar-metadata.properties
+new file mode 100644
+index 0000000..1211b1e
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/aar_metadata/debug/writeDebugAarMetadata/aar-metadata.properties
+@@ -0,0 +1,6 @@
++aarFormatVersion=1.0
++aarMetadataVersion=1.0
++minCompileSdk=1
++minCompileSdkExtension=0
++minAndroidGradlePluginVersion=1.0.0
++coreLibraryDesugaringEnabled=false
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/annotation_processor_list/debug/javaPreCompileDebug/annotationProcessors.json b/node_modules/react-native-yamap/android/build/intermediates/annotation_processor_list/debug/javaPreCompileDebug/annotationProcessors.json
+new file mode 100644
+index 0000000..9e26dfe
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/annotation_processor_list/debug/javaPreCompileDebug/annotationProcessors.json
+@@ -0,0 +1 @@
++{}
+\ No newline at end of file
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar b/node_modules/react-native-yamap/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar
+new file mode 100644
+index 0000000..bcf0699
+Binary files /dev/null and b/node_modules/react-native-yamap/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar differ
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/compile_symbol_list/debug/generateDebugRFile/R.txt b/node_modules/react-native-yamap/android/build/intermediates/compile_symbol_list/debug/generateDebugRFile/R.txt
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/incremental/debug/packageDebugResources/compile-file-map.properties b/node_modules/react-native-yamap/android/build/intermediates/incremental/debug/packageDebugResources/compile-file-map.properties
+new file mode 100644
+index 0000000..8968601
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/incremental/debug/packageDebugResources/compile-file-map.properties
+@@ -0,0 +1 @@
++#Sat Sep 19 23:06:39 GMT+05:00 2026
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/incremental/debug/packageDebugResources/merger.xml b/node_modules/react-native-yamap/android/build/intermediates/incremental/debug/packageDebugResources/merger.xml
+new file mode 100644
+index 0000000..7292820
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/incremental/debug/packageDebugResources/merger.xml
+@@ -0,0 +1,2 @@
++<?xml version="1.0" encoding="utf-8"?>
++<merger version="3"><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="main$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="main" generated-set="main$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="debug$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/debug/res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="debug" generated-set="debug$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/debug/res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="generated$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/build/generated/res/resValues/debug"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="generated" generated-set="generated$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/build/generated/res/resValues/debug"/></dataSet><mergedItems/></merger>
+\ No newline at end of file
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/local_only_symbol_list/debug/parseDebugLocalResources/R-def.txt b/node_modules/react-native-yamap/android/build/intermediates/local_only_symbol_list/debug/parseDebugLocalResources/R-def.txt
+new file mode 100644
+index 0000000..78ac5b8
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/local_only_symbol_list/debug/parseDebugLocalResources/R-def.txt
+@@ -0,0 +1,2 @@
++R_DEF: Internal format may change without notice
++local
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/manifest_merge_blame_file/debug/processDebugManifest/manifest-merger-blame-debug-report.txt b/node_modules/react-native-yamap/android/build/intermediates/manifest_merge_blame_file/debug/processDebugManifest/manifest-merger-blame-debug-report.txt
+new file mode 100644
+index 0000000..b7642c0
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/manifest_merge_blame_file/debug/processDebugManifest/manifest-merger-blame-debug-report.txt
+@@ -0,0 +1,7 @@
++1<?xml version="1.0" encoding="utf-8"?>
++2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++3    package="ru.vvdev.yamap" >
++4
++5    <uses-sdk android:minSdkVersion="26" />
++6
++7</manifest>
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml b/node_modules/react-native-yamap/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml
+new file mode 100644
+index 0000000..1acb509
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    package="ru.vvdev.yamap" >
++
++    <uses-sdk android:minSdkVersion="26" />
++
++</manifest>
+\ No newline at end of file
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/navigation_json/debug/extractDeepLinksDebug/navigation.json b/node_modules/react-native-yamap/android/build/intermediates/navigation_json/debug/extractDeepLinksDebug/navigation.json
+new file mode 100644
+index 0000000..0637a08
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/navigation_json/debug/extractDeepLinksDebug/navigation.json
+@@ -0,0 +1 @@
++[]
+\ No newline at end of file
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/nested_resources_validation_report/debug/generateDebugResources/nestedResourcesValidationReport.txt b/node_modules/react-native-yamap/android/build/intermediates/nested_resources_validation_report/debug/generateDebugResources/nestedResourcesValidationReport.txt
+new file mode 100644
+index 0000000..08f4ebe
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/nested_resources_validation_report/debug/generateDebugResources/nestedResourcesValidationReport.txt
+@@ -0,0 +1 @@
++0 Warning/Error
+\ No newline at end of file
+diff --git a/node_modules/react-native-yamap/android/build/intermediates/symbol_list_with_package_name/debug/generateDebugRFile/package-aware-r.txt b/node_modules/react-native-yamap/android/build/intermediates/symbol_list_with_package_name/debug/generateDebugRFile/package-aware-r.txt
+new file mode 100644
+index 0000000..6fd4358
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/intermediates/symbol_list_with_package_name/debug/generateDebugRFile/package-aware-r.txt
+@@ -0,0 +1 @@
++ru.vvdev.yamap
+diff --git a/node_modules/react-native-yamap/android/build/kotlin/compileDebugKotlin/cacheable/dirty-sources.txt b/node_modules/react-native-yamap/android/build/kotlin/compileDebugKotlin/cacheable/dirty-sources.txt
+new file mode 100644
+index 0000000..052ecfb
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/kotlin/compileDebugKotlin/cacheable/dirty-sources.txt
+@@ -0,0 +1,29 @@
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/suggest/RNYandexSuggestPackage.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/utils/ImageLoader.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/search/YandexSearchRNArgsHelper.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapCircle.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapPolygonManager.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/suggest/MapSuggestItem.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/suggest/MapSuggestClient.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/models/ReactMapObject.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapPolyline.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/search/YandexMapSearchClient.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapMarkerManager.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/search/RNYandexSearchModule.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/utils/RouteManager.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/search/MapSearchItem.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapPolygon.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapMarker.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/ClusteredYamapView.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/search/MapSearchClient.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/RNYamapModule.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/suggest/RNYandexSuggestModule.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/suggest/YandexMapSuggestClient.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapCircleManager.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/suggest/YandexSuggestRNArgsHelper.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/RNYamapPackage.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapPolylineManager.kt
++/private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/utils/Callback.kt
+\ No newline at end of file
+diff --git a/node_modules/react-native-yamap/android/build/kotlin/compileDebugKotlin/local-state/build-history.bin b/node_modules/react-native-yamap/android/build/kotlin/compileDebugKotlin/local-state/build-history.bin
+new file mode 100644
+index 0000000..c095587
+Binary files /dev/null and b/node_modules/react-native-yamap/android/build/kotlin/compileDebugKotlin/local-state/build-history.bin differ
+diff --git a/node_modules/react-native-yamap/android/build/outputs/logs/manifest-merger-debug-report.txt b/node_modules/react-native-yamap/android/build/outputs/logs/manifest-merger-debug-report.txt
+new file mode 100644
+index 0000000..51aa151
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/build/outputs/logs/manifest-merger-debug-report.txt
+@@ -0,0 +1,17 @@
++-- Merging decision tree log ---
++manifest
++ADDED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml:2:1-5:12
++INJECTED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml:2:1-5:12
++	package
++		ADDED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml:3:11-35
++		INJECTED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml
++	xmlns:android
++		ADDED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml:2:11-69
++uses-sdk
++INJECTED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml reason: use-sdk injection requested
++INJECTED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml
++INJECTED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml
++	android:targetSdkVersion
++		INJECTED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml
++	android:minSdkVersion
++		INJECTED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml
+diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt
+index 54d8a0f..0d370d1 100644
+--- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt
++++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt
+@@ -85,6 +85,7 @@ class ClusteredYamapViewManager internal constructor() : ViewGroupManager<Cluste
+                 )
+             )
+             .build()
++            .toMutableMap()
+     }
+
+     override fun getCommandsMap(): Map<String, Int>? {
+@@ -128,7 +129,7 @@ class ClusteredYamapViewManager internal constructor() : ViewGroupManager<Cluste
+             }
+
+             "findRoutes" -> if (args != null) {
+-                findRoutes(view, args.getArray(0), args.getArray(1), args.getString(2))
++                findRoutes(view, args.getArray(0), args.getArray(1), requireNotNull(args.getString(2)))
+             }
+
+             "setZoom" -> if (args != null) {
+@@ -152,11 +153,11 @@ class ClusteredYamapViewManager internal constructor() : ViewGroupManager<Cluste
+             }
+
+             "getScreenPoints" -> if (args != null) {
+-                view.emitWorldToScreenPoints(args.getArray(0), args.getString(1))
++                view.emitWorldToScreenPoints(requireNotNull(args.getArray(0)), args.getString(1))
+             }
+
+             "getWorldPoints" -> if (args != null) {
+-                view.emitScreenToWorldPoints(args.getArray(0), args.getString(1))
++                view.emitScreenToWorldPoints(requireNotNull(args.getArray(0)), args.getString(1))
+             }
+
+             else -> throw IllegalArgumentException(
+@@ -171,7 +172,7 @@ class ClusteredYamapViewManager internal constructor() : ViewGroupManager<Cluste
+
+     @ReactProp(name = "clusteredMarkers")
+     fun setClusteredMarkers(view: View, points: ReadableArray) {
+-        castToYaMapView(view).setClusteredMarkers(points.toArrayList())
++        castToYaMapView(view).setClusteredMarkers(ArrayList(points.toArrayList().filterNotNull()))
+     }
+
+     @ReactProp(name = "clusterColor")
+@@ -243,7 +244,7 @@ class ClusteredYamapViewManager internal constructor() : ViewGroupManager<Cluste
+             val vehicles = ArrayList<String>()
+             if (jsVehicles != null) {
+                 for (i in 0 until jsVehicles.size()) {
+-                    vehicles.add(jsVehicles.getString(i))
++                    jsVehicles.getString(i)?.let(vehicles::add)
+                 }
+             }
+             castToYaMapView(view).findRoutes(points, vehicles, id)
+diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapCircleManager.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapCircleManager.kt
+index 85be269..8769db6 100644
+--- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapCircleManager.kt
++++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapCircleManager.kt
+@@ -23,6 +23,7 @@ class YamapCircleManager internal constructor() : ViewGroupManager<YamapCircle>(
+     override fun getExportedCustomBubblingEventTypeConstants(): MutableMap<String, Any>? {
+         return MapBuilder.builder<String, Any>()
+             .build()
++            .toMutableMap()
+     }
+
+     @Nonnull
+diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapMarkerManager.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapMarkerManager.kt
+index e32d22c..e9f03a2 100644
+--- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapMarkerManager.kt
++++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapMarkerManager.kt
+@@ -26,6 +26,7 @@ class YamapMarkerManager internal constructor() : ViewGroupManager<YamapMarker>(
+     override fun getExportedCustomBubblingEventTypeConstants(): MutableMap<String, Any>? {
+         return MapBuilder.builder<String, Any>()
+             .build()
++            .toMutableMap()
+     }
+
+     private fun castToMarkerView(view: View): YamapMarker {
+@@ -107,7 +108,7 @@ class YamapMarkerManager internal constructor() : ViewGroupManager<YamapMarker>(
+     ) {
+         when (commandType) {
+             "animatedMoveTo" -> {
+-                val markerPoint = args!!.getMap(0)
++                val markerPoint = requireNotNull(args!!.getMap(0))
+                 val moveDuration = args.getInt(1)
+                 val lon = markerPoint.getDouble("lon").toFloat()
+                 val lat = markerPoint.getDouble("lat").toFloat()
+diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapPolygonManager.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapPolygonManager.kt
+index cf14b19..bda7ff7 100644
+--- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapPolygonManager.kt
++++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapPolygonManager.kt
+@@ -24,6 +24,7 @@ class YamapPolygonManager internal constructor() : ViewGroupManager<YamapPolygon
+     override fun getExportedCustomBubblingEventTypeConstants(): MutableMap<String, Any>? {
+         return MapBuilder.builder<String, Any>()
+             .build()
++            .toMutableMap()
+     }
+
+     private fun castToPolygonView(view: View): YamapPolygon {
+diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapPolylineManager.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapPolylineManager.kt
+index 8be99c8..97776e8 100644
+--- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapPolylineManager.kt
++++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapPolylineManager.kt
+@@ -24,6 +24,7 @@ class YamapPolylineManager internal constructor() : ViewGroupManager<YamapPolyli
+     override fun getExportedCustomBubblingEventTypeConstants(): MutableMap<String, Any>? {
+         return MapBuilder.builder<String, Any>()
+             .build()
++            .toMutableMap()
+     }
+
+     private fun castToPolylineView(view: View): YamapPolyline {
+diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt
+index 8b05905..cea9bfb 100644
+--- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt
++++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt
+@@ -85,6 +85,7 @@ class YamapViewManager internal constructor() : ViewGroupManager<YamapView>() {
+                 )
+             )
+             .build()
++            .toMutableMap()
+     }
+
+     override fun getCommandsMap(): Map<String, Int>? {
+@@ -128,7 +129,7 @@ class YamapViewManager internal constructor() : ViewGroupManager<YamapView>() {
+             }
+
+             "findRoutes" -> if (args != null) {
+-                findRoutes(view, args.getArray(0), args.getArray(1), args.getString(2))
++                findRoutes(view, args.getArray(0), args.getArray(1), requireNotNull(args.getString(2)))
+             }
+
+             "setZoom" -> if (args != null) {
+@@ -152,11 +153,11 @@ class YamapViewManager internal constructor() : ViewGroupManager<YamapView>() {
+             }
+
+             "getScreenPoints" -> if (args != null) {
+-                view.emitWorldToScreenPoints(args.getArray(0), args.getString(1))
++                view.emitWorldToScreenPoints(requireNotNull(args.getArray(0)), args.getString(1))
+             }
+
+             "getWorldPoints" -> if (args != null) {
+-                view.emitScreenToWorldPoints(args.getArray(0), args.getString(1))
++                view.emitScreenToWorldPoints(requireNotNull(args.getArray(0)), args.getString(1))
+             }
+
+             else -> throw IllegalArgumentException(
+@@ -237,7 +238,7 @@ class YamapViewManager internal constructor() : ViewGroupManager<YamapView>() {
+
+             if (jsVehicles != null) {
+                 for (i in 0 until jsVehicles.size()) {
+-                    vehicles.add(jsVehicles.getString(i))
++                    jsVehicles.getString(i)?.let(vehicles::add)
+                 }
+             }
+
+diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt
+index 48c1cdf..d419037 100644
+--- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt
++++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt
+@@ -225,7 +225,7 @@ open class YamapView(context: Context?) : MapView(context), UserLocationObjectLi
+         val screenPoints = Arguments.createArray()
+
+         for (i in 0 until worldPoints.size()) {
+-            val p = worldPoints.getMap(i)
++            val p = requireNotNull(worldPoints.getMap(i))
+             val worldPoint = Point(p.getDouble("lat"), p.getDouble("lon"))
+             val screenPoint = mapWindow.worldToScreen(worldPoint)
+             screenPoints.pushMap(screenPointToJSON(screenPoint))
+@@ -244,7 +244,7 @@ open class YamapView(context: Context?) : MapView(context), UserLocationObjectLi
+         val worldPoints = Arguments.createArray()
+
+         for (i in 0 until screenPoints.size()) {
+-            val p = screenPoints.getMap(i)
++            val p = requireNotNull(screenPoints.getMap(i))
+             val screenPoint = ScreenPoint(p.getDouble("x").toFloat(), p.getDouble("y").toFloat())
+             val worldPoint = mapWindow.screenToWorld(screenPoint)
+             worldPoints.pushMap(worldPointToJSON(worldPoint))
+@@ -626,7 +626,7 @@ open class YamapView(context: Context?) : MapView(context), UserLocationObjectLi
+         val routeMetadata = Arguments.createMap()
+         val routeWeightData = Arguments.createMap()
+         val sectionWeightData = Arguments.createMap()
+-        val transports: MutableMap<String, ArrayList<String?>?> = HashMap()
++        val transports: MutableMap<String, ArrayList<String>> = HashMap()
+         routeWeightData.putString("time", routeWeight.time.text)
+         routeWeightData.putInt("transferCount", routeWeight.transfersCount)
+         routeWeightData.putDouble("walkingDistance", routeWeight.walkingDistance.value)
+@@ -654,12 +654,12 @@ open class YamapView(context: Context?) : MapView(context), UserLocationObjectLi
+                     if (transports[type] != null) {
+                         val list = transports[type]
+                         if (list != null) {
+-                            list.add(transport.line.name)
++                            transport.line.name?.let(list::add)
+                             transports[type] = list
+                         }
+                     } else {
+-                        val list = ArrayList<String?>()
+-                        list.add(transport.line.name)
++                        val list = ArrayList<String>()
++                        transport.line.name?.let(list::add)
+                         transports[type] = list
+                     }
+                     routeMetadata.putString("type", type)
