@@ -561,7 +561,7 @@ export default function CargoDetail({ navigation, route }) {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               <Feather name="dollar-sign" size={12} color={theme.textMuted} />
-              <Text testID="cargo-price-label" style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('price')}</Text>
+              <Text testID="cargo-price-label" style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{acceptedBid ? t('deal_price') : t('cargo_price_label')}</Text>
             </View>
             <Text testID="cargo-price-value" style={{ color: '#E06D00', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1, minWidth: 0, textAlign: 'right' }} numberOfLines={1} ellipsizeMode="tail">{priceDisplay}</Text>
           </View>

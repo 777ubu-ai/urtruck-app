@@ -395,7 +395,7 @@ export default function CreateCargoScreen({ navigation, route }) {
       {errors.truckType ? <Text style={s.err}>⚠️ {errors.truckType}</Text> : null}
       {errors.pickupDate ? <Text style={s.err}>⚠️ {errors.pickupDate}</Text> : null}
 
-      {/* Stage 27: placeholder "—" заменён на пример числа,
+      {/* Пустые числовые поля без демонстрационных значений,
           label несёт единицу измерения ("Вес, т" / "Объём, м³").
           Раньше пользователь видел два пустых поля без подсказки —
           непонятно, где вес, где кубатура. */}
@@ -406,7 +406,7 @@ export default function CreateCargoScreen({ navigation, route }) {
             value={tons}
             onChangeText={(v) => { setTons(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
             keyboardType="decimal-pad"
-            placeholder={t('weight_placeholder') || 'Например: 31.5'}
+            placeholder=""
             testID="cargo-weight-field"
           />
         </View>
@@ -416,7 +416,7 @@ export default function CreateCargoScreen({ navigation, route }) {
             value={m3}
             onChangeText={(v) => { setM3(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
             keyboardType="decimal-pad"
-            placeholder={t('volume_placeholder') || 'Например: 110'}
+            placeholder=""
             testID="cargo-volume-field"
           />
         </View>

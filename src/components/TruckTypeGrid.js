@@ -1,65 +1,95 @@
-// Сетка выбора типа кузова (референс владельца 14.06): белые карточки,
-// иконка-набор владельца, выбранный — рамка акцента + галочка. Сначала
-// ходовые типы, остальные — по кнопке «Другие типы ›». Карточки всегда
-// белые (как на референсе), поэтому видно и в тёмной теме.
-import React, { useState } from 'react';
+// Categorized body selector: freight, LCV and special equipment.
+// The tabs keep dispatchers from scanning unrelated vehicle classes.
+import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useI18n } from '../utils/useI18n';
-import { TRUCK_KEYS } from '../utils/truckConstants';
 import TruckTypeIcon from './TruckTypeIcon';
 import { useV1Colors } from '../theme/designV1';
 
-const PRIMARY = ['tent', 'ref', 'izoterm', 'cont20', 'cont40', 'platform', 'tanker', 'dumptruck'];
-const REST = TRUCK_KEYS.filter((k) => !PRIMARY.includes(k));
+export const TRUCK_TYPE_GROUPS = {
+  freight: ['tent', 'ref', 'izoterm', 'closed', 'container', 'platform', 'tandem', 'longliner'],
+  lcv: ['lcv_tent', 'lcv_van', 'lcv_flatbed', 'lcv_ref', 'microvan'],
+  special: ['tanker', 'dumptruck', 'auto', 'lowloader', 'grain', 'livestock', 'logger', 'manipulator'],
+};
+
+const LEGACY_GROUP = {
+  cont20: 'freight', cont40: 'freight', jumbo: 'freight', mega: 'freight', curtain: 'freight',
+  open_truck: 'lcv', hazmat: 'special',
+};
+
+const tabForValue = (value) => {
+  if (!value) return 'freight';
+  return Object.entries(TRUCK_TYPE_GROUPS).find(([, keys]) => keys.includes(value))?.[0] || LEGACY_GROUP[value] || 'freight';
+};
 
 export default function TruckTypeGrid({ value, onSelect, accent = '#168759' }) {
   const { t } = useI18n();
   const v1 = useV1Colors();
-  const [showAll, setShowAll] = useState(false);
-  const keys = showAll ? [...PRIMARY, ...REST] : PRIMARY;
+  const initialTab = useMemo(() => tabForValue(value), [value]);
+  const [tab, setTab] = useState(initialTab);
+  const keys = TRUCK_TYPE_GROUPS[tab];
+
   return (
     <View>
-      <View style={s.grid}>
-        {keys.map((k) => {
-          const sel = value === k;
+      <View style={[s.tabs, { backgroundColor: v1.bg, borderColor: v1.border }]} testID="truck-type-tabs">
+        {['freight', 'lcv', 'special'].map((key) => {
+          const active = tab === key;
           return (
             <TouchableOpacity
-              key={k}
-              onPress={() => onSelect(k)}
-              activeOpacity={0.8}
-              testID={`truck-type-${k}`}
-              style={[s.card, { backgroundColor: v1.surface, borderColor: v1.border }, sel && { borderColor: accent, borderWidth: 2 }]}
+              key={key}
+              onPress={() => setTab(key)}
+              style={[s.tab, active && { backgroundColor: v1.surface, borderColor: accent }]}
+              testID={`truck-tab-${key}`}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
             >
-              {sel ? (
-                <View style={[s.check, { backgroundColor: accent }]}>
-                  <Text style={s.checkT}>✓</Text>
-                </View>
-              ) : null}
-              <TruckTypeIcon type={k} width={58} />
-              <Text style={[s.lbl, { color: v1.text }]} numberOfLines={2}>{t(k)}</Text>
+              <Text style={[s.tabText, { color: active ? accent : v1.textMuted }]} numberOfLines={2}>
+                {t(`truck_group_${key}`)}
+              </Text>
             </TouchableOpacity>
           );
         })}
       </View>
-      {!showAll ? (
-        <TouchableOpacity onPress={() => setShowAll(true)} style={s.more} testID="truck-more-types">
-          <Text style={[s.moreT, { color: accent }]}>{t('truck_more_types')} ›</Text>
-        </TouchableOpacity>
+
+      <View style={s.grid}>
+        {keys.map((key) => {
+          const selected = value === key
+            || (key === 'container' && (value === 'cont20' || value === 'cont40'))
+            || (key === 'tent' && value === 'curtain');
+          return (
+            <TouchableOpacity
+              key={key}
+              onPress={() => onSelect(key)}
+              activeOpacity={0.8}
+              testID={`truck-type-${key}`}
+              style={[s.card, { backgroundColor: v1.surface, borderColor: v1.border }, selected && { borderColor: accent, borderWidth: 2 }]}
+            >
+              {selected ? <View style={[s.check, { backgroundColor: accent }]}><Text style={s.checkText}>✓</Text></View> : null}
+              <TruckTypeIcon type={key} width={72} />
+              <Text style={[s.label, { color: v1.text }]} numberOfLines={2}>{t(key)}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {tab === 'freight' ? (
+        <Text style={[s.hint, { color: v1.textMuted }]} testID="truck-volume-hint">{t('truck_volume_profile_hint')}</Text>
+      ) : null}
+      {tab === 'special' ? (
+        <Text style={[s.hint, { color: v1.textMuted }]} testID="truck-adr-hint">{t('truck_adr_profile_hint')}</Text>
       ) : null}
     </View>
   );
 }
 
 const s = StyleSheet.create({
+  tabs: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, padding: 3, marginBottom: 14, gap: 3 },
+  tab: { flex: 1, minHeight: 44, borderRadius: 11, borderWidth: 1, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  tabText: { fontSize: 11, lineHeight: 14, fontWeight: '800', textAlign: 'center' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  card: {
-    width: '31.5%', borderRadius: 14, borderWidth: 1,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 10,
-    paddingVertical: 12, paddingHorizontal: 4, minHeight: 96,
-  },
-  lbl: { marginTop: 6, fontSize: 11, fontWeight: '700', textAlign: 'center' },
-  check: { position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  checkT: { color: '#fff', fontSize: 11, fontWeight: '900' },
-  more: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 20, marginTop: 2 },
-  moreT: { fontSize: 14, fontWeight: '800' },
+  card: { width: '48.5%', borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginBottom: 12, paddingVertical: 15, paddingHorizontal: 8, minHeight: 126 },
+  label: { marginTop: 8, fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center' },
+  check: { position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  checkText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
+  hint: { fontSize: 12, lineHeight: 17, textAlign: 'center', paddingHorizontal: 8, paddingVertical: 6 },
 });

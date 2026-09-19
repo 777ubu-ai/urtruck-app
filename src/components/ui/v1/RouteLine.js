@@ -4,25 +4,30 @@ import Feather from '@expo/vector-icons/Feather';
 import CountryFlag from './CountryFlag';
 import { useV1Colors, useDriverCeramicColors } from '../../../theme/designV1';
 
-export default function RouteLine({ from, to, fromFlag, toFlag, numberOfLines = 1, testID, ceramic = false }) {
+// Two-row route layout prevents narrow destination columns from splitting a
+// city in the middle (for example Алмат/ы) when a fixed price rail is present.
+export default function RouteLine({ from, to, fromFlag, toFlag, testID, ceramic = false }) {
   const colors = useV1Colors();
   const ceramicColors = useDriverCeramicColors();
   const palette = ceramic ? ceramicColors : colors;
   return (
-    <View style={s.row} testID={testID}>
-      {fromFlag ? <CountryFlag code={fromFlag} width={26} style={s.flag} /> : null}
-      <Text style={[s.city, { color: palette.text }]} numberOfLines={numberOfLines} ellipsizeMode="tail">{from || '—'}</Text>
-      <Feather name="arrow-right" size={16} color={palette.textMuted} style={s.arrow} />
-      {toFlag ? <CountryFlag code={toFlag} width={26} style={s.flag} /> : null}
-      <Text style={[s.city, { color: palette.text }]} numberOfLines={numberOfLines} ellipsizeMode="tail">{to || '—'}</Text>
+    <View style={s.route} testID={testID}>
+      <View style={s.pointRow}>
+        {fromFlag ? <CountryFlag code={fromFlag} width={26} style={s.flag} /> : null}
+        <Text style={[s.city, { color: palette.text }]} numberOfLines={1} ellipsizeMode="tail">{from || '—'}</Text>
+      </View>
+      <View style={s.pointRow}>
+        <Feather name="arrow-right" size={15} color={palette.textMuted} style={s.startArrow} />
+        {toFlag ? <CountryFlag code={toFlag} width={26} style={s.flag} /> : null}
+        <Text style={[s.city, { color: palette.text }]} numberOfLines={1} ellipsizeMode="tail">{to || '—'}</Text>
+      </View>
     </View>
   );
 }
 const s = StyleSheet.create({
-  row: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' },
-  flag: { marginRight: 3, flexShrink: 0 },
-  // A single clamped row makes cities the primary signal while the fixed
-  // price rail in MarketplaceCard keeps the card compact.
-  city: { flexShrink: 1, minWidth: 0, fontSize: 15, lineHeight: 19, fontWeight: '700', letterSpacing: -0.1 },
-  arrow: { marginHorizontal: 4, flexShrink: 0 },
+  route: { flex: 1, minWidth: 0, gap: 2 },
+  pointRow: { minWidth: 0, flexDirection: 'row', alignItems: 'center' },
+  flag: { marginRight: 5, flexShrink: 0 },
+  startArrow: { width: 26, marginRight: 5, textAlign: 'center', flexShrink: 0 },
+  city: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 19, fontWeight: '700', letterSpacing: -0.1 },
 });
