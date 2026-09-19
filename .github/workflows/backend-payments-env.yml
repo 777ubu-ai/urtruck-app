@@ -10,6 +10,10 @@ name: UrTruck Pro Test backend payments env
 
 on:
   workflow_dispatch:
+  push:
+    branches: [pro/urtruck-paid-test]
+    paths:
+      - ".github/workflows/backend-payments-env.yml"
 
 jobs:
   update-env:
