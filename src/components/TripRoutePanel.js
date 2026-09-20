@@ -1,11 +1,13 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import * as Location from 'expo-location';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import { localizePlace } from '../utils/places';
 import { parseRouteCities } from '../utils/geo';
 import { routingAPI } from '../utils/routingAPI';
+import { fetchRates } from '../utils/exchangeRates';
 
 const COPY = {
   RU: {
@@ -13,28 +15,28 @@ const COPY = {
     duration: 'Время в пути', rates: 'Курсы', weather: 'Погода',
     border: 'Граница', gps: 'GPS сделки', loading: 'Рассчитываем маршрут…',
     unavailable: 'Расчёт маршрута временно недоступен', retry: 'Повторить',
-    weatherUnavailable: 'Нет данных', gpsPending: 'После начала рейса',
+    weatherUnavailable: 'Нет данных', ratesUnavailable: 'Нет данных', cached: 'кэш', gpsPending: 'После начала рейса',
   },
   EN: {
     tools: 'On-road tools', route: 'Route', distance: 'Distance',
     duration: 'Travel time', rates: 'Rates', weather: 'Weather',
     border: 'Border', gps: 'Deal GPS', loading: 'Calculating route…',
     unavailable: 'Route calculation is temporarily unavailable', retry: 'Retry',
-    weatherUnavailable: 'No data', gpsPending: 'After trip start',
+    weatherUnavailable: 'No data', ratesUnavailable: 'No data', cached: 'cached', gpsPending: 'After trip start',
   },
   KK: {
     tools: 'Жолдағы пайдалы ақпарат', route: 'Бағыт', distance: 'Қашықтық',
     duration: 'Жол уақыты', rates: 'Бағамдар', weather: 'Ауа райы',
     border: 'Шекара', gps: 'Мәміле GPS', loading: 'Бағыт есептелуде…',
     unavailable: 'Бағытты есептеу уақытша қолжетімсіз', retry: 'Қайталау',
-    weatherUnavailable: 'Дерек жоқ', gpsPending: 'Рейс басталғаннан кейін',
+    weatherUnavailable: 'Дерек жоқ', ratesUnavailable: 'Дерек жоқ', cached: 'кэш', gpsPending: 'Рейс басталғаннан кейін',
   },
   ZH: {
     tools: '行程工具', route: '路线', distance: '距离',
     duration: '预计时间', rates: '汇率', weather: '天气',
     border: '口岸', gps: '订单定位', loading: '正在计算路线…',
     unavailable: '暂时无法计算路线', retry: '重试',
-    weatherUnavailable: '暂无数据', gpsPending: '行程开始后可用',
+    weatherUnavailable: '暂无数据', ratesUnavailable: '暂无数据', cached: '缓存', gpsPending: '行程开始后可用',
   },
 };
 
@@ -69,8 +71,26 @@ const formatDuration = (seconds, lang) => {
   return days ? `${days} д. ${hours} ч.` : hours ? `${hours} ч. ${mins} мин.` : `${mins} мин.`;
 };
 
+const WEATHER_LABELS = {
+  RU: ['Ясно', 'Облачно', 'Туман', 'Дождь', 'Снег', 'Гроза'],
+  EN: ['Clear', 'Cloudy', 'Fog', 'Rain', 'Snow', 'Thunderstorm'],
+  KK: ['Ашық', 'Бұлтты', 'Тұман', 'Жаңбыр', 'Қар', 'Найзағай'],
+  ZH: ['晴', '多云', '雾', '雨', '雪', '雷暴'],
+};
+const weatherLabel = (code, lang) => {
+  const labels = WEATHER_LABELS[lang] || WEATHER_LABELS.RU;
+  const value = Number(code);
+  if (value === 0) return labels[0];
+  if (value >= 1 && value <= 3) return labels[1];
+  if (value === 45 || value === 48) return labels[2];
+  if ((value >= 51 && value <= 67) || (value >= 80 && value <= 82)) return labels[3];
+  if ((value >= 71 && value <= 77) || (value >= 85 && value <= 86)) return labels[4];
+  if (value >= 95) return labels[5];
+  return '';
+};
+
 export default function TripRoutePanel({
-  from, to, transit, capacityTons, weather = null,
+  from, to, transit, capacityTons, weather = null, role,
   onOpenRates, onOpenWeather, onOpenBorder, onOpenTracking,
 }) {
   const { theme } = useTheme();
@@ -79,6 +99,8 @@ export default function TripRoutePanel({
   const [state, setState] = React.useState('loading');
   const [summary, setSummary] = React.useState(null);
   const [retry, setRetry] = React.useState(0);
+  const [liveWeather, setLiveWeather] = React.useState(null);
+  const [fx, setFx] = React.useState(null);
 
   const routePoints = React.useMemo(() => dedupePoints([
     ...parseRouteCities(from),
@@ -116,12 +138,61 @@ export default function TripRoutePanel({
     });
     return () => { cancelled = true; controller.abort(); };
   }, [routePoints, vehicle, lang, retry]);
-  const weatherText = weather?.current_label || weather?.current || weather?.now || copy.weatherUnavailable;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetchRates().then((result) => { if (!cancelled) setFx(result); });
+    return () => { cancelled = true; };
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const load = async () => {
+      if (role !== 'driver') return;
+      const permission = await Location.getForegroundPermissionsAsync();
+      if (permission.status !== 'granted') return;
+      let position = await Location.getLastKnownPositionAsync({ maxAge: 15 * 60 * 1000, requiredAccuracy: 5000 });
+      if (!position) position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      if (cancelled || !position?.coords) return;
+      const { latitude, longitude } = position.coords;
+      const places = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
+      const place = places?.[0];
+      const city = place?.city || place?.district || place?.subregion || place?.region || '';
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&current=temperature_2m,apparent_temperature,weather_code&timezone=auto`;
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) return;
+        const data = await response.json();
+        const temperature = Number(data?.current?.temperature_2m);
+        const code = Number(data?.current?.weather_code);
+        if (cancelled || !Number.isFinite(temperature) || !Number.isFinite(code)) return;
+        const degrees = Math.round(temperature);
+        const signed = degrees > 0 ? `+${degrees}` : String(degrees);
+        const condition = weatherLabel(code, lang);
+        setLiveWeather({
+          text: [city, `${signed}°`, condition].filter(Boolean).join(' · '),
+          source: 'open-meteo.com',
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+    load().catch(() => {});
+    return () => { cancelled = true; controller.abort(); };
+  }, [lang, role]);
+
+  const serverWeatherText = weather?.current_label || weather?.current || weather?.now || '';
+  const weatherText = liveWeather?.text || serverWeatherText || copy.weatherUnavailable;
+  const ratesText = fx?.rates
+    ? `${fx.stale ? `${copy.cached} · ` : ''}₸${Math.round(Number(fx.rates.KZT))} · ¥${Number(fx.rates.CNY).toFixed(2)} · ₽${Math.round(Number(fx.rates.RUB))}`
+    : copy.ratesUnavailable;
   const actions = [
-    { key: 'rates', icon: 'dollar-sign', label: copy.rates, meta: '', onPress: onOpenRates },
-    { key: 'weather', icon: 'cloud', label: copy.weather, meta: weatherText, onPress: onOpenWeather },
-    { key: 'border', icon: 'map-pin', label: copy.border, meta: 'CGR', onPress: onOpenBorder },
-    { key: 'gps', icon: 'navigation', label: copy.gps, meta: onOpenTracking ? '' : copy.gpsPending, onPress: onOpenTracking },
+    { key: 'rates', icon: 'dollar-sign', label: copy.rates, meta: ratesText, onPress: onOpenRates, available: Boolean(fx?.rates) },
+    { key: 'weather', icon: 'cloud', label: copy.weather, meta: weatherText, onPress: onOpenWeather, available: Boolean(liveWeather?.text || serverWeatherText) },
+    { key: 'border', icon: 'map-pin', label: copy.border, meta: 'CGR', onPress: onOpenBorder, available: true },
+    { key: 'gps', icon: 'navigation', label: copy.gps, meta: onOpenTracking ? '' : copy.gpsPending, onPress: onOpenTracking, available: Boolean(onOpenTracking) },
   ];
 
   return (
@@ -132,7 +203,7 @@ export default function TripRoutePanel({
           {actions.map((item) => (
             <TouchableOpacity
               key={item.key}
-              style={[s.menuItem, { backgroundColor: theme.bg, borderColor: theme.border }, !item.onPress && s.menuDisabled]}
+              style={[s.menuItem, { backgroundColor: theme.bg, borderColor: theme.border }, !item.onPress && !item.available && s.menuDisabled]}
               onPress={item.onPress}
               disabled={!item.onPress}
               activeOpacity={0.82}
@@ -140,7 +211,7 @@ export default function TripRoutePanel({
               testID={`trip-tool-${item.key}`}
             >
               <View style={[s.menuIcon, { backgroundColor: theme.card }]}>
-                <Feather name={item.icon} size={18} color={item.onPress ? '#168759' : theme.textMuted} />
+                <Feather name={item.icon} size={18} color={item.onPress || item.available ? '#168759' : theme.textMuted} />
               </View>
               <Text style={[s.menuLabel, { color: theme.text }]} numberOfLines={1}>{item.label}</Text>
               {item.meta ? <Text style={[s.menuMeta, { color: theme.textMuted }]} numberOfLines={1}>{item.meta}</Text> : null}

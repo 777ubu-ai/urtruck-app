@@ -107,10 +107,10 @@ export default function WalletScreen({ route }) {
           </View>
           {fxLoading ? (
             <ActivityIndicator color={accent} style={{ padding: 16 }} />
-          ) : (
+          ) : fx?.rates ? (
             <View style={s.fxGrid}>
               {FX_PAIRS.map(code => {
-                const rate = fx?.rates[code] || 0;
+                const rate = Number(fx.rates[code]);
                 const formatted = code === 'KZT' || code === 'RUB'
                   ? Math.round(rate).toLocaleString()
                   : rate.toFixed(2);
@@ -123,8 +123,10 @@ export default function WalletScreen({ route }) {
                 );
               })}
             </View>
+          ) : (
+            <Text style={[s.fxUnavailable, { color: theme.textMuted }]}>{t('fx_rates_unavailable')}</Text>
           )}
-          {fx?.source === 'fallback' && (
+          {fx?.stale && (
             <Text style={[s.fxFallback, { color: theme.textMuted }]}>{t('fx_offline_cached')}</Text>
           )}
         </View>
@@ -211,6 +213,7 @@ const s = StyleSheet.create({
   fxPair: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   fxRate: { fontSize: 18, fontWeight: '900', marginTop: 2 },
   fxFallback: { fontSize: 11, textAlign: 'center', marginTop: 10 },
+  fxUnavailable: { fontSize: 13, fontWeight: '700', textAlign: 'center', paddingVertical: 18 },
   payRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   payIcon: { fontSize: 20 },
   payName: { flex: 1, fontSize: 13 },

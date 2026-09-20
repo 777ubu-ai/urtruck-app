@@ -546,6 +546,7 @@ export default function TripDetail({ navigation, route }) {
           transit={trip.transit}
           capacityTons={trip.capacityTons}
           weather={tripWeather}
+          role={role}
           onOpenRates={session?.user?.id ? () => navigation.navigate('Wallet', { role }) : undefined}
           onOpenWeather={tripWeather && trackingAvailable ? () => navigation.navigate('Chat', {
             roomId: chatRoomId, dealId, role, tripId: trip.id, action: 'tracking',

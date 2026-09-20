@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { File as ExpoFile } from 'expo-file-system';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';
@@ -66,6 +67,14 @@ function mimeFromName(name, fallback = 'application/octet-stream') {
   if (value.endsWith('.png')) return 'image/png';
   if (value.endsWith('.jpg') || value.endsWith('.jpeg')) return 'image/jpeg';
   return fallback;
+}
+
+function appendNativeFile(form, uri, name) {
+  // Expo 57 rejects React Native's legacy multipart { uri, name, type }
+  // object before the request reaches the server. ExpoFile implements Blob,
+  // so the native and web paths now use the same standards-based contract.
+  const file = new ExpoFile(uri);
+  form.append('file', file, name || file.name || 'file.bin');
 }
 
 // Shared document classification for the chat "+" document flow — the same
@@ -217,7 +226,7 @@ export const chatAPI = {
       const blob = await fetch(uri).then((r) => r.blob());
       form.append('file', blob, 'chat.jpg');
     } else {
-      form.append('file', { uri, name: 'chat.jpg', type: 'image/jpeg' });
+      appendNativeFile(form, uri, 'chat.jpg');
     }
     let r;
     try {
@@ -254,7 +263,7 @@ export const chatAPI = {
       form.append('file', part, name || `voice.${ext}`);
     } else {
       const ext = String(uri).split('.').pop() || 'm4a';
-      form.append('file', { uri, name: `voice.${ext}`, type: `audio/${ext === 'm4a' ? 'mp4' : ext}` });
+      appendNativeFile(form, uri, name || `voice.${ext}`);
     }
     let r;
     try {
@@ -329,11 +338,7 @@ export const chatAPI = {
         : new Blob([blob], { type: finalType || 'application/octet-stream' });
       form.append('file', part, name);
     } else {
-      form.append('file', {
-        uri,
-        name,
-        type: requestedType || 'application/octet-stream',
-      });
+      appendNativeFile(form, uri, name);
     }
     form.append('kind', kind);
     if (clientUploadId) form.append('client_upload_id', String(clientUploadId));

@@ -23,16 +23,19 @@ test('Boris · cargo owner flow', async ({ page }) => {
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await snap(page, 'boris', 'home-loaded');
 
-  // 2. Select cargo owner role
-  // Stage 18: full-image RoleScreen — prefer testID hotspot.
-  const shipperBtn = page.getByTestId('role-client').or(page.getByText(/Я грузовладелец|I'm a shipper|cargo owner|client/i)).first();
+  // 2. Verify the active entry surface. Legacy builds expose role tiles;
+  // current builds use OnboardingV2 and select the role after phone auth.
+  const shipperBtn = page.getByTestId('role-client').first();
+  const onboarding = page.getByTestId('onb-v2-cta-phone').first();
   if (await shipperBtn.isVisible().catch(() => false)) {
-    await shipperBtn.click().catch(() => {});
-    await page.waitForTimeout(2000);
+    await shipperBtn.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(1000);
     await snap(page, 'boris', 'shipper-role-selected');
     log.pass(ACTOR, 'select-shipper-role');
+  } else if (await onboarding.isVisible().catch(() => false)) {
+    log.pass(ACTOR, 'current-onboarding-entry');
   } else {
-    log.p2(ACTOR, 'select-shipper-role', 'shipper button not found in current layout');
+    log.p1(ACTOR, 'entry-surface-visible', 'neither OnboardingV2 nor legacy shipper role is visible');
   }
 
   // 3. Provision session via stable QA actor (rate-limit safe)

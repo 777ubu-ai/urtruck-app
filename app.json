@@ -26,6 +26,7 @@
       ],
       "infoPlist": {
         "NSMicrophoneUsageDescription": "UrTruck использует микрофон для записи голосовых сообщений в чате",
+        "NSMotionUsageDescription": "UrTruck использует данные движения устройства только во время активного рейса, чтобы надёжно отслеживать движение машины в фоне.",
         "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
         "NSPhotoLibraryUsageDescription": "UrTruck использует фото для аватара, груза и документов",
         "NSLocationWhenInUseUsageDescription": "UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки",

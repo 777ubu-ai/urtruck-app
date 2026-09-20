@@ -515,6 +515,7 @@ export default function FeedScreen({ navigation }) {
         visible={activeFilter === 'date'}
         onClose={() => setActiveFilter(null)}
         title={t('filter_date')}
+        testID="filter-date-sheet"
       >
         <Text style={[styles.sheetLabel, { color: colors.textMuted }]}>{t('filter_date_from')}</Text>
         <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('date_placeholder')} />
@@ -527,7 +528,7 @@ export default function FeedScreen({ navigation }) {
           >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>
@@ -537,6 +538,7 @@ export default function FeedScreen({ navigation }) {
         visible={activeFilter === 'body'}
         onClose={() => setActiveFilter(null)}
         title={t('filter_body')}
+        testID="filter-body-sheet"
       >
         <View style={styles.bodyGrid}>
           <TouchableOpacity
@@ -586,7 +588,7 @@ export default function FeedScreen({ navigation }) {
           >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>
@@ -596,6 +598,7 @@ export default function FeedScreen({ navigation }) {
         visible={activeFilter === 'price'}
         onClose={() => setActiveFilter(null)}
         title={t('filter_price')}
+        testID="filter-price-sheet"
       >
         {[
           ['newest', t('filter_newest')],
@@ -630,7 +633,7 @@ export default function FeedScreen({ navigation }) {
           >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>

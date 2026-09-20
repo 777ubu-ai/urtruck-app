@@ -311,7 +311,7 @@ export default function ProfileScreen({ navigation, route }) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}><Feather name="globe" size={14} color={theme.text} /><Text style={[s.settingLabel, { color: theme.text }]}>{t('language')}</Text></View>
             <View style={s.langGrid}>
               {LANGS.map(l => (
-                <TouchableOpacity key={l.code} style={[s.langCard, { backgroundColor: theme.bg, borderColor: theme.border }, lang === l.code && { backgroundColor: accent, borderColor: accent }]} onPress={() => { setLang(l.code); setLanguage(l.code); }}>
+                <TouchableOpacity key={l.code} testID={`profile-lang-${l.code.toLowerCase()}`} accessibilityRole="button" accessibilityLabel={l.code} style={[s.langCard, { backgroundColor: theme.bg, borderColor: theme.border }, lang === l.code && { backgroundColor: accent, borderColor: accent }]} onPress={() => { setLang(l.code); setLanguage(l.code); }}>
                   <CountryFlag code={l.country} width={28} />
                   <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: onAccent }]} numberOfLines={1}>{l.code}</Text>
                 </TouchableOpacity>

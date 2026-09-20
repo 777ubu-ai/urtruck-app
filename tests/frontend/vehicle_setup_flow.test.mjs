@@ -10,6 +10,8 @@ const success = read('src/screens/vehicle/VehicleSetupSuccessScreen.js');
 const chooser = read('src/screens/vehicle/VehicleChooserScreen.js');
 const profile = read('src/screens/ProfileScreen.js');
 const api = read('src/utils/vehicleAPI.js');
+const border = read('src/screens/QueueScreenLazyV2.js');
+const copy = read('src/utils/vehicleSetupCopy.js');
 
 test('vehicle setup is a four-step flow with independent country fields', () => {
   assert.match(country, /step=\{1\}/);

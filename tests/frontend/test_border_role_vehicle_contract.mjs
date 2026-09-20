@@ -6,6 +6,7 @@ const border = fs.readFileSync('src/screens/QueueScreenLazyV2.js', 'utf8');
 const bid = fs.readFileSync('src/components/BidModal.js', 'utf8');
 const truckParams = fs.readFileSync('src/screens/registration/TruckParamsScreen.js', 'utf8');
 const legacyCgr = fs.readFileSync('src/screens/CargoRuqsatInfoScreen.js', 'utf8');
+const bordersPy = fs.readFileSync('backend/api/borders.py', 'utf8');
 
 test('Border uses compact top chrome without duplicate page title/logo space', () => {
   assert.match(border, /<RootHeader compact/);
@@ -35,6 +36,17 @@ test('driver detail keeps canonical visual order CGR then GPS then actions then 
   assert.match(border, /isDriver && \(selectedVehicle \|\| selectedDeal\)/);
 });
 
+test('Border rejects an HTTP 200 from the legacy dynamic route unless it is the private context shape', () => {
+  const validation = border.indexOf("const validContext = (data?.role === 'driver' || data?.role === 'client')");
+  const canonical = border.indexOf('setCanonicalContext(true)');
+  assert.ok(validation >= 0 && canonical > validation, 'context shape must be validated before enabling canonical mode');
+  assert.match(border, /Array\.isArray\(data\?\.vehicles\)/);
+  assert.match(border, /Array\.isArray\(data\?\.deals\)/);
+  assert.match(border, /Array\.isArray\(data\?\.trips\)/);
+  assert.match(border, /invalid_border_context_contract/);
+  assert.match(bordersPy, /"context_version": 1/);
+});
+
 test('Border keeps rolling-deploy fallback when /borders/context is not deployed yet', () => {
   assert.match(border, /vehicleAPI\.list\(\)/);
   assert.match(border, /marketAPI\.myDashboard\(\{ force: true \}\)/);
@@ -55,6 +67,9 @@ test('driver and shipper keep manual CGR lookup secondary and privacy scoped', (
   assert.match(border, /testID="border-manual-open-own-deal"/);
   assert.match(border, /testID="border-manual-watch"/);
   assert.match(border, /RECENT_LOOKUPS_KEY/);
+  const panel = border.indexOf('testID="border-plate-search"');
+  const generalSituation = border.indexOf('{R.borderSituation}');
+  assert.ok(panel >= 0 && generalSituation > panel, 'manual plate panel must open before the general border section');
   assert.doesNotMatch(border, /manualLookup\?\.(?:location|gps|driver_name|chat_room_id)/);
 });
 

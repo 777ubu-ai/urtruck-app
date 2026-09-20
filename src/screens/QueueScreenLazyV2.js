@@ -366,11 +366,20 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         const response = await fetch(`${BASE}/context`, { headers: { Authorization: `Bearer ${token}` } });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data?.detail || `HTTP ${response.status}`);
+        // During a rolling deploy, the legacy /borders/{border_id} route can
+        // catch the literal "context" path and return HTTP 200 with a public
+        // checkpoint payload. Accept only the private role-aware contract;
+        // otherwise continue into the compatibility fallback below.
+        const validContext = (data?.role === 'driver' || data?.role === 'client')
+          && Array.isArray(data?.vehicles)
+          && Array.isArray(data?.deals)
+          && Array.isArray(data?.trips);
+        if (!validContext) throw new Error('invalid_border_context_contract');
         setCanonicalContext(true);
         applyContext({
-          vehicles: Array.isArray(data?.vehicles) ? data.vehicles : [],
-          deals: Array.isArray(data?.deals) ? data.deals : [],
-          trips: Array.isArray(data?.trips) ? data.trips : [],
+          vehicles: data.vehicles,
+          deals: data.deals,
+          trips: data.trips,
         });
         return;
       } catch {
@@ -629,7 +638,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               <View style={s.contextTitleRow}><Feather name="truck" size={20} color={theme.textMuted} /><Text style={[s.contextTitle, { color: theme.text }]}>{R.myVehicle}</Text></View>
               {privateContext.vehicles.length > 1 ? <TouchableOpacity onPress={cycleVehicle} style={[s.smallAction, { backgroundColor: v1.surfaceMuted }]}><Text style={[s.smallActionText, { color: theme.text }]}>{R.change}</Text><Feather name="chevron-down" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
             </View>
-            {contextLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 14 }} /> : selectedVehicle || selectedDeal ? (
+            {contextLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 14 }} /> : selectedVehicle || normalizePlate(selectedDeal?.plate) ? (
               <View style={s.vehicleBody}>
                 <View style={[s.vehicleIconWrap, { backgroundColor: v1.surfaceMuted }]}><Feather name="truck" size={34} color={activeColor} /></View>
                 <View style={{ flex: 1 }}>
@@ -695,6 +704,27 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         </View> : null}
 
         {isDriver && activePlate ? <View style={[s.timelineCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-queue-timeline"><Text style={[s.contextTitle, { color: theme.text }]}>{R.queueTimeline}</Text><View style={s.timelineRow}>{queueStages.map((stage, index) => { const complete = lookup?.found && currentQueueStage >= 0 && index < currentQueueStage; const current = lookup?.found && index === currentQueueStage; return <View key={stage.code} style={s.timelineItem}><View style={[s.timelineDot, { borderColor: current || complete ? activeColor : theme.border, backgroundColor: complete ? activeColor : current ? theme.card : v1.surfaceMuted }]}>{complete ? <Feather name="check" size={11} color="#fff" /> : null}</View><Text style={[s.timelineLabel, { color: current ? activeColor : theme.textMuted }]} numberOfLines={2}>{stage.label}</Text></View>; })}</View></View> : null}
+
+        {showManualLookup ? <View style={[s.searchCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-plate-search">
+          <Text style={[s.sectionTitle, { color: theme.text }]}>{R.checkOther}</Text>
+          <View style={s.searchRow}>
+            <View style={[s.inputWrap, { backgroundColor: v1.bg, borderColor: theme.border }]}><Feather name="truck" size={17} color={theme.textMuted} /><TextInput value={plate} onChangeText={(value) => { setPlate(value.toUpperCase()); setManualLookup(null); setManualWatchEnabled(false); }} onSubmitEditing={() => searchPlate()} placeholder={L.platePlaceholder} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} style={[s.input, { color: theme.text }]} testID="border-plate-input" /></View>
+            <TouchableOpacity onPress={() => searchPlate()} disabled={normalizePlate(plate).length < 3 || manualLookupLoading} style={[s.checkButton, (normalizePlate(plate).length < 3 || manualLookupLoading) && s.disabled]} testID="border-plate-check">{manualLookupLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.checkText}>{L.check}</Text>}</TouchableOpacity>
+          </View>
+          {manualLookup ? <View style={[s.lookup, { borderTopColor: theme.border }]}>
+            {manualLookup.error ? <Text style={[s.lookupText, { color: '#B42318' }]}>{L.lookupError}</Text> : manualLookup.found ? <>
+              <Text style={[s.lookupPlate, { color: theme.text }]}>{manualLookup.plate || normalizePlate(plate)}</Text>
+              {manualLookup.status ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.status}: {lookupStatusLabel(manualLookup.status, lang)}</Text> : null}
+              {manualLookup.checkpoint ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.checkpoint}: {localizeCheckpointName(manualLookup.checkpoint, lang)}</Text> : null}
+              {manualLookup.queue_datetime ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.queueTime}: {manualLookup.queue_datetime}</Text> : null}
+              <View style={s.dealActions}>
+                {manualOwnDeal ? <TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: manualOwnDeal.chat_room_id, dealId: manualOwnDeal.deal_id, role })} style={[s.primaryDealAction, { backgroundColor: activeColor }]} testID="border-manual-open-own-deal"><Feather name="file-text" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.openShipment}</Text></TouchableOpacity> : null}
+                {contextToken ? <TouchableOpacity onPress={enableManualWatch} disabled={manualWatchEnabled} style={[s.secondaryDealAction, { borderColor: theme.border }]} testID="border-manual-watch"><Feather name={manualWatchEnabled ? 'check-circle' : 'bell'} size={17} color={manualWatchEnabled ? '#168759' : theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: manualWatchEnabled ? '#168759' : theme.text }]}>{manualWatchEnabled ? R.following : R.followStatus}</Text></TouchableOpacity> : null}
+              </View>
+            </> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}
+          </View> : null}
+          {recentLookups.length ? <View style={s.recentWrap}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{R.recent}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.recentRow}>{recentLookups.map((item) => <TouchableOpacity key={item.plate} onPress={() => searchPlate(item.plate)} style={[s.recentChip, { borderColor: theme.border, backgroundColor: v1.surfaceMuted }]}><Text style={[s.recentPlate, { color: theme.text }]}>{item.plate}</Text><Text style={[s.recentStatus, { color: theme.textMuted }]}>{item.status ? lookupStatusLabel(item.status, lang) : L.notFound}</Text></TouchableOpacity>)}</ScrollView></View> : null}
+        </View> : null}
 
         <View style={s.sectionHeadingRow}><Text style={[s.sectionTitle, { color: theme.text }]}>{R.borderSituation}</Text><Text style={[s.source, { color: theme.textDim }]}>CGR</Text></View>
         <Text style={[s.label, { color: theme.text }]}>{L.where}</Text>
@@ -803,26 +833,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
           </View>
         ) : null}
 
-        {showManualLookup ? <View style={[s.searchCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-plate-search">
-          <Text style={[s.sectionTitle, { color: theme.text }]}>{R.checkOther}</Text>
-          <View style={s.searchRow}>
-            <View style={[s.inputWrap, { backgroundColor: v1.bg, borderColor: theme.border }]}><Feather name="truck" size={17} color={theme.textMuted} /><TextInput value={plate} onChangeText={(value) => { setPlate(value.toUpperCase()); setManualLookup(null); setManualWatchEnabled(false); }} onSubmitEditing={() => searchPlate()} placeholder={L.platePlaceholder} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} style={[s.input, { color: theme.text }]} testID="border-plate-input" /></View>
-            <TouchableOpacity onPress={() => searchPlate()} disabled={normalizePlate(plate).length < 3 || manualLookupLoading} style={[s.checkButton, (normalizePlate(plate).length < 3 || manualLookupLoading) && s.disabled]} testID="border-plate-check">{manualLookupLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.checkText}>{L.check}</Text>}</TouchableOpacity>
-          </View>
-          {manualLookup ? <View style={[s.lookup, { borderTopColor: theme.border }]}>
-            {manualLookup.error ? <Text style={[s.lookupText, { color: '#B42318' }]}>{L.lookupError}</Text> : manualLookup.found ? <>
-              <Text style={[s.lookupPlate, { color: theme.text }]}>{manualLookup.plate || normalizePlate(plate)}</Text>
-              {manualLookup.status ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.status}: {lookupStatusLabel(manualLookup.status, lang)}</Text> : null}
-              {manualLookup.checkpoint ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.checkpoint}: {localizeCheckpointName(manualLookup.checkpoint, lang)}</Text> : null}
-              {manualLookup.queue_datetime ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.queueTime}: {manualLookup.queue_datetime}</Text> : null}
-              <View style={s.dealActions}>
-                {manualOwnDeal ? <TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: manualOwnDeal.chat_room_id, dealId: manualOwnDeal.deal_id, role })} style={[s.primaryDealAction, { backgroundColor: activeColor }]} testID="border-manual-open-own-deal"><Feather name="file-text" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.openShipment}</Text></TouchableOpacity> : null}
-                {contextToken ? <TouchableOpacity onPress={enableManualWatch} disabled={manualWatchEnabled} style={[s.secondaryDealAction, { borderColor: theme.border }]} testID="border-manual-watch"><Feather name={manualWatchEnabled ? 'check-circle' : 'bell'} size={17} color={manualWatchEnabled ? '#168759' : theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: manualWatchEnabled ? '#168759' : theme.text }]}>{manualWatchEnabled ? R.following : R.followStatus}</Text></TouchableOpacity> : null}
-              </View>
-            </> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}
-          </View> : null}
-          {recentLookups.length ? <View style={s.recentWrap}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{R.recent}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.recentRow}>{recentLookups.map((item) => <TouchableOpacity key={item.plate} onPress={() => searchPlate(item.plate)} style={[s.recentChip, { borderColor: theme.border, backgroundColor: v1.surfaceMuted }]}><Text style={[s.recentPlate, { color: theme.text }]}>{item.plate}</Text><Text style={[s.recentStatus, { color: theme.textMuted }]}>{item.status ? lookupStatusLabel(item.status, lang) : L.notFound}</Text></TouchableOpacity>)}</ScrollView></View> : null}
-        </View> : null}
+
         <View style={{ height: 34 }} />
       </ScrollView>
     </SafeAreaView>
