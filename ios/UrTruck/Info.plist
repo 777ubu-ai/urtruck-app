@@ -66,6 +66,8 @@
 	<string>UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>UrTruck использует микрофон для записи голосовых сообщений</string>
+	<key>NSMotionUsageDescription</key>
+	<string>UrTruck использует данные движения устройства только во время активного рейса, чтобы надёжно отслеживать движение машины в фоне.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>UrTruck использует фото для аватара, груза и документов</string>
 	<key>RCTNewArchEnabled</key>
