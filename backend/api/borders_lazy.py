@@ -31,6 +31,10 @@ def border_catalog(country: str = ""):
             "name_en": cp.get("name_en"),
             "name_zh": cp.get("name_cn"),
             "country": cp.get("country_to"),
+            # Verified checkpoint coordinates are required for road ETA.  NULL
+            # stays NULL: clients must never invent a destination coordinate.
+            "lat": cp.get("lat"),
+            "lon": cp.get("lon"),
         }
         for cp in cgr_dal.get_all_checkpoints(active_only=True)
     ]
@@ -51,6 +55,8 @@ def border_catalog(country: str = ""):
                 "country": b.get("country_to") or b.get("country") or (
                     b.get("countries", "").split("↔")[-1] if "↔" in b.get("countries", "") else None
                 ),
+                "lat": b.get("lat"),
+                "lon": b.get("lon"),
             }
             for b in BORDERS
         ]

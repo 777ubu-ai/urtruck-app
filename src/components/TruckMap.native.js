@@ -229,7 +229,7 @@ const s = StyleSheet.create({
   shell: { flex: 1, position: 'relative', backgroundColor: '#EEF3F0' },
   map: { flex: 1 },
   mapFallback: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, backgroundColor: '#EEF3F0' },
-  mapOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(238,243,240,0.72)' },
+  mapOverlay: { position: 'absolute', left: 12, right: 12, bottom: 14, minHeight: 72, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: '#CCD7D1', borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.96)', boxShadow: '0 3px 12px rgba(20,34,28,0.14)' },
   mapFallbackText: { color: '#617067', fontSize: 15, fontWeight: '700', textAlign: 'center' },
   retryButton: { minHeight: 44, minWidth: 100, marginTop: 12, paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: '#168759' },
   retryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },

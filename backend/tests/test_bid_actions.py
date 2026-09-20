@@ -735,6 +735,26 @@ def test_counter_cancel_by_owner_notifies_bidder():
     expect(len(query_notifications(driver)) == len(notifs), "repeat cancel must not create a second notification")
 
 
+def test_list_bids_keeps_namespaced_callers_own_bid(monkeypatch):
+    """Anti-QA/guest public filtering must not hide a bidder's own row."""
+    from api import marketplace
+    from database.db import get_conn, new_id
+
+    trip_id = seed_trip(driver_id="driver-own-bid")
+    bid_id = new_id()
+    bidder_id = "agent-own-bid"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO bids (id,trip_id,bidder_id,bidder_name,amount,status) "
+            "VALUES (?,?,?,?,?,'pending')",
+            (bid_id, trip_id, bidder_id, "Namespaced bidder", 4500),
+        )
+    monkeypatch.setattr(marketplace, "_maybe_user", lambda _authorization: {"id": bidder_id})
+    body = marketplace.list_bids(trip_id=trip_id, authorization="Bearer own")
+    expect(any(row["id"] == bid_id for row in body["bids"]), "caller sees own namespaced bid")
+    expect(body["my_bid"]["id"] == bid_id, "my_bid points at caller's active bid")
+
+
 def test_list_bids_dedupes_legacy_active_rows_for_same_bidder():
     """Owner/public UI must never receive two active prices from one bidder."""
     from api.marketplace import list_bids

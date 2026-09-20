@@ -32,7 +32,7 @@ env:
 - waitForAnimationToEnd
 - takeScreenshot: 04_driver_queue
 - assertVisible:
-    id: "queue-title"
+    id: "border-screen-v2"
 # Гость показывает gate; авторизованный водитель (verification_level=3, status=approved
 # у actor-serik) либо проходит дальше, либо всё ещё видит CarGoRuqSat ссылку.
 - runFlow:

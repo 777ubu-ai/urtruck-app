@@ -346,7 +346,15 @@ def _init():
             cols = {row["name"] for row in c.execute("PRAGMA table_info(trips)").fetchall()}
             if "vehicle_id" not in cols:
                 c.execute("ALTER TABLE trips ADD COLUMN vehicle_id TEXT")
-                c.commit()
+            bid_cols = {row["name"] for row in c.execute("PRAGMA table_info(bids)").fetchall()}
+            if "vehicle_id" not in bid_cols:
+                c.execute("ALTER TABLE bids ADD COLUMN vehicle_id TEXT")
+            deal_cols = {row["name"] for row in c.execute("PRAGMA table_info(deals)").fetchall()}
+            for _name in ("vehicle_id", "vehicle_plate_snapshot", "vehicle_country_snapshot",
+                          "vehicle_make_snapshot", "vehicle_model_snapshot"):
+                if _name not in deal_cols:
+                    c.execute(f"ALTER TABLE deals ADD COLUMN {_name} TEXT")
+            c.commit()
             dup = c.execute(
                 "SELECT bid_id, COUNT(*) n FROM deals WHERE bid_id IS NOT NULL "
                 "GROUP BY bid_id HAVING n > 1 LIMIT 1"
@@ -689,6 +697,7 @@ class TripPatchIn(BaseModel):
 class BidIn(BaseModel):
     cargo_id: Optional[str] = None
     trip_id: Optional[str] = None
+    vehicle_id: Optional[str] = None
     amount: int
     message: Optional[str] = None
 
@@ -1416,6 +1425,27 @@ def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
     fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
     tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
     with get_conn() as c:
+        resolved_vehicle_id = body.vehicle_id
+        try:
+            if resolved_vehicle_id:
+                owned = c.execute(
+                    "SELECT id FROM vehicles WHERE id = ? AND owner_user_id = ?",
+                    (resolved_vehicle_id, user["id"]),
+                ).fetchone()
+                if not owned:
+                    raise HTTPException(status_code=422, detail="Выберите свою сохранённую машину")
+            else:
+                owned_rows = c.execute(
+                    "SELECT id FROM vehicles WHERE owner_user_id = ? ORDER BY updated_at DESC LIMIT 2",
+                    (user["id"],),
+                ).fetchall()
+                if len(owned_rows) == 1:
+                    resolved_vehicle_id = owned_rows[0]["id"]
+                elif len(owned_rows) > 1:
+                    raise HTTPException(status_code=422, detail="Выберите машину для рейса")
+        except sqlite3.OperationalError:
+            # Legacy DB before the vehicles table existed: keep old clients working.
+            resolved_vehicle_id = body.vehicle_id
         c.execute("""
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
               from_city, to_city, transit, truck_type, vehicle_id,
@@ -1424,7 +1454,7 @@ def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
               to_country, to_point_type, to_point_name, published_at)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         """, (tid, user["id"], user.get("phone"), user.get("full_name"),
-              body.from_city, body.to_city, body.transit, body.truck_type, body.vehicle_id,
+              body.from_city, body.to_city, body.transit, body.truck_type, resolved_vehicle_id,
               body.capacity_tons, body.available_m3, body.price, currency,
               body.departure, body.arrival,
               fc, fpt, fpn, tc, tpt, tpn))
@@ -1781,6 +1811,28 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
     post_notifs: list = []  # каждый элемент: (recipient_id, title, body, icon, url, push)
 
     with get_conn() as c:
+        resolved_bid_vehicle_id = body.vehicle_id
+        if body.cargo_id:
+            try:
+                if resolved_bid_vehicle_id:
+                    owned = c.execute(
+                        "SELECT id FROM vehicles WHERE id = ? AND owner_user_id = ?",
+                        (resolved_bid_vehicle_id, user["id"]),
+                    ).fetchone()
+                    if not owned:
+                        raise HTTPException(status_code=422, detail="Выберите свою сохранённую машину")
+                else:
+                    owned_rows = c.execute(
+                        "SELECT id FROM vehicles WHERE owner_user_id = ? ORDER BY updated_at DESC LIMIT 2",
+                        (user["id"],),
+                    ).fetchall()
+                    if len(owned_rows) == 1:
+                        resolved_bid_vehicle_id = owned_rows[0]["id"]
+                    elif len(owned_rows) > 1:
+                        raise HTTPException(status_code=422, detail="Выберите машину для предложения")
+            except sqlite3.OperationalError:
+                resolved_bid_vehicle_id = body.vehicle_id
+
         # M1: нельзя ставить на уже занятый/истёкший груз или рейс. Пустой/
         # None status (legacy-строки) не блокируем — только явный не-active.
         if body.cargo_id:
@@ -1830,10 +1882,10 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
 
         try:
             c.execute("""
-                INSERT INTO bids (id, cargo_id, trip_id, bidder_id, bidder_name, bidder_phone, amount, message)
-                VALUES (?,?,?,?,?,?,?,?)
+                INSERT INTO bids (id, cargo_id, trip_id, bidder_id, bidder_name, bidder_phone, vehicle_id, amount, message)
+                VALUES (?,?,?,?,?,?,?,?,?)
             """, (bid_id, body.cargo_id, body.trip_id, user["id"],
-                  user.get("full_name"), user.get("phone"), body.amount, body.message))
+                  user.get("full_name"), user.get("phone"), resolved_bid_vehicle_id, body.amount, body.message))
         except sqlite3.IntegrityError as exc:
             # DB-level active-bid UNIQUE guard won a concurrent create race.
             # Return the same actionable 409 contract as the pre-insert check,
@@ -2023,11 +2075,13 @@ def list_bids(
     except Exception:
         _bids_confidential = False
     if _bids_confidential and not is_owner:
-        # Только принятые (публично видимы) + собственная ставка бидера (из сырого
-        # списка — если dirty-фильтр её убрал, возвращаем через my_bid).
+        # Only accepted bids stay public in confidential mode.
         bids = [b for b in bids if b.get("status") == "accepted"]
-        if my_bid and not any(b.get("id") == my_bid.get("id") for b in bids):
-            bids.append(my_bid)
+    # A caller must always see their own active bid. Public anti-QA/guest
+    # filtering may hide namespaced bidder IDs from other users, but it must
+    # never hide the row from its author (in either open or confidential mode).
+    if my_bid and not any(b.get("id") == my_bid.get("id") for b in bids):
+        bids.append(my_bid)
     # Security (B2): bidder_phone виден ТОЛЬКО владельцу листинга (он ведёт
     # переговоры). Публичным/чужим вызовам /bids телефон оферента не отдаём —
     # раньше SELECT b.* возвращал bidder_phone любому, кто знает cargo_id.
@@ -2467,6 +2521,39 @@ def _notify_rejected_siblings(rejected_siblings):
             pass
 
 
+def _vehicle_snapshot_for_deal(c, driver_id: str, *, vehicle_id: str | None = None, trip_id: str | None = None) -> dict:
+    """Resolve one canonical vehicle for the deal. Never use legacy profile.vehicle_plate.
+
+    Priority: explicit bid vehicle -> trip.vehicle_id -> the driver's only saved vehicle.
+    If multiple saved vehicles exist and none is bound, fail closed by returning empty data.
+    """
+    resolved = vehicle_id
+    try:
+        if not resolved and trip_id:
+            row = c.execute("SELECT vehicle_id FROM trips WHERE id = ?", (trip_id,)).fetchone()
+            resolved = row["vehicle_id"] if row else None
+        if not resolved:
+            rows = c.execute(
+                "SELECT id FROM vehicles WHERE owner_user_id = ? ORDER BY updated_at DESC LIMIT 2",
+                (driver_id,),
+            ).fetchall()
+            if len(rows) == 1:
+                resolved = rows[0]["id"]
+        if not resolved:
+            return {}
+        v = c.execute(
+            "SELECT id, license_plate, vehicle_registration_country_code, make, model "
+            "FROM vehicles WHERE id = ? AND owner_user_id = ?",
+            (resolved, driver_id),
+        ).fetchone()
+        if not v:
+            return {}
+        return dict(v)
+    except sqlite3.OperationalError:
+        # Unit/rollback compatibility with a pre-vehicles/pre-vehicle_id schema.
+        return {}
+
+
 def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: str = "pending"):
     """Shared accept logic used by accept_bid and counter/accept.
 
@@ -2526,7 +2613,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
     if bid["trip_id"]:
         trip = c.execute(
-            "SELECT driver_id, from_city, to_city FROM trips WHERE id = ?", (bid["trip_id"],)
+            "SELECT driver_id, from_city, to_city, vehicle_id FROM trips WHERE id = ?", (bid["trip_id"],)
         ).fetchone()
         # P0 (аудит 2026-08-21): раньше здесь был `if trip:` без else —
         # ставка на несуществующий/удалённый рейс проваливалась мимо ВСЕЙ
@@ -2623,17 +2710,37 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
         c, shipper_id, driver_id, bid.get("cargo_id"), bid.get("trip_id")
     )
 
-    deal_id = new_id()
-    c.execute(
-        """
-        INSERT INTO deals (id, cargo_id, trip_id, bid_id, shipper_id, driver_id,
-                           from_city, to_city, amount, status, chat_room_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)
-        """,
-        (deal_id, bid.get("cargo_id"), bid.get("trip_id"), bid_id,
-         shipper_id, driver_id, from_city, to_city, final_amount,
-         "accepted", chat_room_id),
+    vehicle_snapshot = _vehicle_snapshot_for_deal(
+        c, driver_id, vehicle_id=bid.get("vehicle_id"), trip_id=bid.get("trip_id")
     )
+    deal_id = new_id()
+    deal_cols = {row["name"] for row in c.execute("PRAGMA table_info(deals)").fetchall()}
+    snapshot_cols = {"vehicle_id", "vehicle_plate_snapshot", "vehicle_country_snapshot",
+                     "vehicle_make_snapshot", "vehicle_model_snapshot"}
+    if snapshot_cols.issubset(deal_cols):
+        c.execute(
+            """
+            INSERT INTO deals (id, cargo_id, trip_id, bid_id, shipper_id, driver_id,
+                               vehicle_id, vehicle_plate_snapshot, vehicle_country_snapshot,
+                               vehicle_make_snapshot, vehicle_model_snapshot,
+                               from_city, to_city, amount, status, chat_room_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (deal_id, bid.get("cargo_id"), bid.get("trip_id"), bid_id,
+             shipper_id, driver_id, vehicle_snapshot.get("id"),
+             vehicle_snapshot.get("license_plate"), vehicle_snapshot.get("vehicle_registration_country_code"),
+             vehicle_snapshot.get("make"), vehicle_snapshot.get("model"),
+             from_city, to_city, final_amount, "accepted", chat_room_id),
+        )
+    else:
+        # Rolling-deploy / isolated unit-test compatibility before the migration runs.
+        c.execute(
+            """INSERT INTO deals (id, cargo_id, trip_id, bid_id, shipper_id, driver_id,
+                                  from_city, to_city, amount, status, chat_room_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (deal_id, bid.get("cargo_id"), bid.get("trip_id"), bid_id, shipper_id, driver_id,
+             from_city, to_city, final_amount, "accepted", chat_room_id),
+        )
 
     # PR4 — immutable юридическое событие сделки. actor = текущий пользователь
     # (из auth), created_at ставит сервер. Роль actor'а: тот, кто принял ставку,
@@ -3308,10 +3415,14 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
                 d.setdefault("from_country", tr["from_country"])
                 d.setdefault("to_country", tr["to_country"])
                 d.setdefault("trip_capacity_tons", tr["capacity_tons"])
-                if tr["driver_id"]:
-                    vp = c.execute("SELECT vehicle_plate FROM drivers_registration WHERE id = ?", (tr["driver_id"],)).fetchone()
-                    if vp and vp["vehicle_plate"]:
-                        d.setdefault("plate", vp["vehicle_plate"])
+                if d.get("vehicle_plate_snapshot"):
+                    d.setdefault("plate", d["vehicle_plate_snapshot"])
+                elif tr["driver_id"]:
+                    snap = _vehicle_snapshot_for_deal(c, tr["driver_id"], trip_id=d.get("trip_id"))
+                    if snap.get("license_plate"):
+                        d.setdefault("plate", snap["license_plate"])
+                        d.setdefault("vehicle_id", snap.get("id"))
+                        d.setdefault("vehicle_registration_country_code", snap.get("vehicle_registration_country_code"))
         # Блок 4 (P0-3): нормализованный вердикт по стране — ЕДИНЫЙ источник
         # истины для фронта. Раньше MyTripsScreen.js и TripDetail.js каждый
         # вычисляли "международный/внутренний" по-своему (и TripDetail.js

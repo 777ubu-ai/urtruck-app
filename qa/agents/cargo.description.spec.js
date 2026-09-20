@@ -75,22 +75,34 @@ async function bootCreateCargoAsClient(page) {
   }
   if (!inMain) return false;
 
-  // Тапнем publish-cargo-button или bottom-nav-publish (центральная +)
+  // Current navigation exposes publishing from the role-aware «My work» tab.
+  // Keep the older direct buttons as compatibility fallbacks for deployed builds.
+  const myWork = page.getByTestId('bottom-nav-mywork');
+  const placeCargo = page.getByTestId('mytrips-place-cargo');
   const pubBtn = page.getByTestId('publish-cargo-button');
   const navPub = page.getByTestId('bottom-nav-publish');
   let clickedSomething = false;
-  if (await pubBtn.isVisible().catch(() => false)) {
+  if (await myWork.isVisible().catch(() => false)) {
+    await myWork.click({ force: true }).catch(() => {});
+    await placeCargo.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    if (await placeCargo.isVisible().catch(() => false)) {
+      await placeCargo.click({ force: true }).catch(() => {});
+      clickedSomething = true;
+      log.info(ACTOR, 'boot-clicked-mytrips-place-cargo');
+    }
+  }
+  if (!clickedSomething && await pubBtn.isVisible().catch(() => false)) {
     await pubBtn.click({ force: true }).catch(() => {});
     clickedSomething = true;
     log.info(ACTOR, 'boot-clicked-publish-cargo-button');
-  } else if (await navPub.isVisible().catch(() => false)) {
+  } else if (!clickedSomething && await navPub.isVisible().catch(() => false)) {
     await navPub.click({ force: true }).catch(() => {});
     clickedSomething = true;
     log.info(ACTOR, 'boot-clicked-bottom-nav-publish');
   }
   if (!clickedSomething) {
     log.p1(ACTOR, 'boot-no-pub-btn-found',
-      `pub-btn=${await pubBtn.count()} nav-pub=${await navPub.count()}`);
+      `mywork=${await myWork.count()} place=${await placeCargo.count()} pub-btn=${await pubBtn.count()} nav-pub=${await navPub.count()}`);
     return false;
   }
   // Ждём CreateCargoScreen — cargo-desc-input должен появиться.
@@ -134,7 +146,9 @@ for (const desc of CUSTOM_DESCS) {
     await page.waitForTimeout(300);
 
     const valueAfterType = await descInput.inputValue().catch(() => '');
-    if (valueAfterType === desc) {
+    // Known catalog suggestions may normalize display capitalization while
+    // preserving the same user-entered cargo meaning.
+    if (valueAfterType.toLocaleLowerCase('ru-RU') === desc.toLocaleLowerCase('ru-RU')) {
       log.pass(ACTOR, `${desc}-input-accepts-typing`);
     } else {
       log.p0(ACTOR, `${desc}-input-accepts-typing`,
@@ -145,7 +159,7 @@ for (const desc of CUSTOM_DESCS) {
     await page.keyboard.press('Tab').catch(() => {});
     await page.waitForTimeout(300);
     const valueAfterBlur = await descInput.inputValue().catch(() => '');
-    if (valueAfterBlur === desc) {
+    if (valueAfterBlur.toLocaleLowerCase('ru-RU') === desc.toLocaleLowerCase('ru-RU')) {
       log.pass(ACTOR, `${desc}-input-survives-blur`);
     } else {
       log.p1(ACTOR, `${desc}-input-survives-blur`,
@@ -173,7 +187,8 @@ for (const desc of CUSTOM_DESCS) {
     } else {
       // Submit мог не пройти валидацию (нет from/to/date). Главное:
       // input всё ещё содержит наш custom text. Это и есть Stage 42 fix.
-      const stillInInput = (await descInput.inputValue().catch(() => '')) === desc;
+      const retainedValue = await descInput.inputValue().catch(() => '');
+      const stillInInput = retainedValue.toLocaleLowerCase('ru-RU') === desc.toLocaleLowerCase('ru-RU');
       if (stillInInput) {
         log.pass(ACTOR, `${desc}-input-survives-submit-attempt`);
       } else {

@@ -116,6 +116,10 @@ android {
     }
     buildTypes {
         debug {
+            // QA builds must coexist with the Play/production package on the
+            // same physical device and must never overwrite its app data.
+            applicationIdSuffix ".qa2"
+            versionNameSuffix "-qa2"
             signingConfig signingConfigs.debug
         }
         release {

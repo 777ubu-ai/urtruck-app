@@ -5,6 +5,7 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
+import { vehicleAPI } from '../utils/vehicleAPI';
 import { CURRENCY_SYMBOLS } from '../utils/normalizers';
 
 // PR-C2 (BidModal P0): currency-aware quick prices.
@@ -76,7 +77,9 @@ export default function BidModal({
   // Ставку больше нельзя отправить (сессия истекла / ставка уже принята и т.п.):
   // блокируем кнопку, чтобы пользователь не жал повторно и не ловил ту же ошибку.
   const [locked, setLocked] = useState(false);
-  const { t } = useI18n();
+  const [vehicles, setVehicles] = useState([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState(null);
+  const { t, lang } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
 
@@ -89,6 +92,23 @@ export default function BidModal({
     setRuntimeBidId(bidId);
     setRuntimeInitialAmount(initialAmount);
   }, [visible, mode, bidId, initialAmount]);
+
+  useEffect(() => {
+    if (!visible || mode !== 'create' || !cargoId) {
+      setVehicles([]);
+      setSelectedVehicleId(null);
+      return;
+    }
+    let cancelled = false;
+    vehicleAPI.list().then((result) => {
+      if (cancelled) return;
+      const rows = result?.ok && Array.isArray(result.vehicles) ? result.vehicles : [];
+      setVehicles(rows);
+      if (rows.length === 1) setSelectedVehicleId(rows[0].id);
+      else setSelectedVehicleId((current) => rows.some((v) => v.id === current) ? current : null);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [visible, mode, cargoId]);
 
   // Re-seed inputs every time the modal becomes visible or the source bid changes.
   useEffect(() => {
@@ -136,6 +156,11 @@ export default function BidModal({
       setError(t('bid_amount_invalid'));
       return;
     }
+    if (!isCounter && !isEdit && cargoId && vehicles.length > 1 && !selectedVehicleId) {
+      const msg = { RU: 'Выберите машину для перевозки', KK: 'Тасымалға көлікті таңдаңыз', EN: 'Choose a vehicle for this shipment', ZH: '请选择本次运输车辆' };
+      setError(msg[lang] || msg.RU);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -154,6 +179,7 @@ export default function BidModal({
         r = await marketAPI.createBid({
           cargo_id: cargoId || null,
           trip_id: tripId || null,
+          vehicle_id: selectedVehicleId || null,
           amount: amountInt,
           message: message.trim() || null,
         });
@@ -240,6 +266,21 @@ export default function BidModal({
             </Text>
           )}
 
+          {!isPrefill && cargoId && vehicles.length > 1 ? (
+            <View style={s.vehicleChooser} testID="bid-vehicle-chooser">
+              <Text style={[s.vehicleChooserLabel, { color: theme.text }]}>{({ RU: 'Машина для перевозки', KK: 'Тасымал көлігі', EN: 'Vehicle for shipment', ZH: '运输车辆' })[lang] || 'Машина для перевозки'}</Text>
+              <View style={s.vehicleChips}>
+                {vehicles.map((vehicle) => {
+                  const activeVehicle = String(vehicle.id) === String(selectedVehicleId);
+                  return <TouchableOpacity key={vehicle.id} onPress={() => setSelectedVehicleId(vehicle.id)} style={[s.vehicleChip, { borderColor: activeVehicle ? accent : theme.border, backgroundColor: activeVehicle ? accent + '12' : theme.card }]} testID={`bid-vehicle-${vehicle.id}`}>
+                    <Text style={[s.vehicleChipTitle, { color: theme.text }]} numberOfLines={1}>{[vehicle.make, vehicle.model].filter(Boolean).join(' ') || vehicle.vehicle_type || '—'}</Text>
+                    <Text style={[s.vehicleChipPlate, { color: activeVehicle ? accent : theme.textMuted }]}>{vehicle.license_plate}</Text>
+                  </TouchableOpacity>;
+                })}
+              </View>
+            </View>
+          ) : null}
+
           <View style={s.quickRow}>
             {!isPrefill && createQuickPrices.map((p) => (
               <TouchableOpacity
@@ -322,6 +363,12 @@ const s = StyleSheet.create({
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#44403C', alignSelf: 'center', marginBottom: 18 },
   title: { fontSize: 20, fontWeight: '800', marginBottom: 4 },
   subtitle: { fontSize: 12, marginBottom: 6 },
+  vehicleChooser: { marginTop: 12, marginBottom: 4 },
+  vehicleChooserLabel: { fontSize: 13, fontWeight: '800', marginBottom: 8 },
+  vehicleChips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  vehicleChip: { minWidth: 132, maxWidth: 180, borderWidth: 1, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9 },
+  vehicleChipTitle: { fontSize: 12.5, fontWeight: '800' },
+  vehicleChipPlate: { fontSize: 12, fontWeight: '850', marginTop: 4, letterSpacing: 0.3 },
   quickRow: { flexDirection: 'row', gap: 8, marginBottom: 14, marginTop: 10 },
   quickBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
   quickBtnActive: { backgroundColor: '#16875918', borderColor: '#168759' },

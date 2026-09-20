@@ -1,4 +1,5 @@
-import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 // Вызывается только после успешного Expo export. Все перечисленные файлы —
@@ -86,6 +87,25 @@ try {
     html = html.replace('</head>', `${SOCIAL_META}\n</head>`);
     writeFileSync(index, html);
   }
+
+  // Runtime smoke tests and operators must be able to prove exactly which
+  // source revision produced the static artifact. Keep this file intentionally
+  // public and limited to non-secret build identity fields.
+  const packagePath = resolve('package.json');
+  // The fail-fast unit fixture intentionally contains only exported assets.
+  // A real application export always has package.json and must publish a
+  // verifiable source identity; the asset-only fixture remains supported.
+  if (existsSync(packagePath)) {
+    const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
+    const commit = (process.env.GITHUB_SHA || execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' })).trim();
+    if (!/^[0-9a-f]{40}$/i.test(commit)) throw new Error('Некорректный commit SHA для build-info.json');
+    writeFileSync(resolve(dist, 'build-info.json'), `${JSON.stringify({
+      commit,
+      short: commit.slice(0, 7),
+      version: packageJson.version,
+    }, null, 2)}\n`);
+  }
+
   console.log(`[build:web] PASS: ${localScripts.length} JS bundle(s), ${assets.length} обязательных статических источников`);
 } catch (error) {
   console.error(`[build:web] FAIL: ${error.message}`);

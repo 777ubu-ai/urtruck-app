@@ -184,7 +184,7 @@ export default function TruckParamsScreen({ navigation, route }) {
     ...(brandName ? { vehicle_brand: brandName } : {}),
     ...(modelName ? { vehicle_model: modelName } : {}),
     ...(colorKey ? { vehicle_color: colorKey } : {}),
-    ...(showTrailer && trailerPlate ? { vehicle_plate: trailerPlate.trim() } : {}),
+    ...(showTrailer && trailerPlate ? { trailer_plate: trailerPlate.trim().toUpperCase() } : {}),
   });
 
   const onSave = async () => {

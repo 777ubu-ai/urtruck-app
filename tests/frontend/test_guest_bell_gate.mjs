@@ -9,13 +9,20 @@ const ROOT_SCREENS = [
   'src/screens/DealsScreen.js',
 ];
 
-test('Bell UI is absent for guests and authenticated users on all root screens', () => {
-  for (const file of ROOT_SCREENS) {
+test('root bell is hidden unless an authenticated Deals inbox has unread items', () => {
+  for (const file of ROOT_SCREENS.slice(0, -1)) {
     const src = readFileSync(file, 'utf8');
     assert.match(src, /<RootHeader\b/, `${file}: canonical RootHeader missing`);
     assert.doesNotMatch(src, /bellTestID=|onBellPress=/, `${file}: Bell wiring must be hidden`);
     assert.doesNotMatch(src, /navigation\.navigate\('Notifications', \{ role \}\)/, `${file}: root must not expose notification center`);
   }
+
+  const deals = readFileSync('src/screens/DealsScreen.js', 'utf8');
+  assert.match(deals, /<RootHeader\b/, 'Deals: canonical RootHeader missing');
+  assert.match(deals, /const notificationUnread = useUnreadNotifications\(hasToken\)/);
+  assert.match(deals, /notificationUnread > 0/);
+  assert.match(deals, /testID="deals-notification-inbox"/);
+  assert.match(deals, /navigation\.navigate\('Notifications', \{ role \}\)/);
 });
 
 test('verification Gate remains mounted for other gated root actions', () => {

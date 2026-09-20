@@ -33,9 +33,9 @@ jobs:
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.8" >> "$GITHUB_ENV"
           # Must be strictly newer than the currently installed QA2 artifact.
-          # QA068: physical-кандидат с исправленным масштабированием native launch artwork.
-          # Перед установкой отдельно сверить версию и подпись устройства.
-          echo "URTRUCK_VERSION_CODE=211040068" >> "$GITHUB_ENV"
+          # QA070: CGR/Border role-aware integration candidate.
+          # Must be newer than QA069 used by the previous diagnostic artifact.
+          echo "URTRUCK_VERSION_CODE=211040070" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           # Restore the live service endpoint. The isolated adb-reverse harness
           # has stub STT/translation and no native FCM credentials.
@@ -140,15 +140,15 @@ jobs:
           marker = 'allprojects {\n'
           pin = """allprojects {
               configurations.configureEach {
-                  resolutionStrategy.force 'com.google.android.gms:play-services-location:21.0.1'
+                  resolutionStrategy.force 'com.google.android.gms:play-services-location:21.3.0'
               }
           """
-          if "play-services-location:21.0.1" not in text:
+          if "play-services-location:21.3.0" not in text:
               if marker not in text:
                   raise SystemExit('allprojects block not found in generated android/build.gradle')
               text = text.replace(marker, pin, 1)
               path.write_text(text)
-          print('MapKit dependency pin: play-services-location=21.0.1')
+          print('MapKit dependency pin: play-services-location=21.3.0')
           PY
 
       - name: Target API 36 (Google Play требование с 31.08.2026)

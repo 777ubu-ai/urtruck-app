@@ -21,6 +21,7 @@ const LOCALES = ['ru', 'en', 'zh-Hans', 'kk'];
 const PERMISSION_KEYS = [
   'NSCameraUsageDescription',
   'NSMicrophoneUsageDescription',
+  'NSMotionUsageDescription',
   'NSPhotoLibraryUsageDescription',
   'NSLocationWhenInUseUsageDescription',
   'NSLocationAlwaysAndWhenInUseUsageDescription',
@@ -96,6 +97,10 @@ test('Info.plist declares the localizations', () => {
     assert.match(plist, new RegExp(`<string>${loc}</string>`), `CFBundleLocalizations missing ${loc}`);
   }
   assert.match(plist, /<key>CFBundleAllowMixedLocalizations<\/key>\s*<true\/>/);
+  for (const key of PERMISSION_KEYS) {
+    assert.match(plist, new RegExp(`<key>${key}<\\/key>\\s*<string>[^<]{10,}<\\/string>`),
+      `Info.plist is missing a real base purpose string for ${key}`);
+  }
 });
 
 test('Xcode project bundles InfoPlist.strings as a localized resource', () => {

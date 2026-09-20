@@ -46,6 +46,7 @@ def _migrate(c):
         ("tech_back_url", "TEXT"),
         ("license_back_url", "TEXT"),
         ("vehicle_model", "TEXT"),
+        ("trailer_plate", "TEXT"),
         ("vehicle_color", "TEXT"),
         ("body_type", "TEXT"),
         ("truck_kind", "TEXT"),

@@ -9,6 +9,12 @@ CREATE TABLE IF NOT EXISTS deals (
   shipper_id TEXT NOT NULL,       -- грузовладелец
   driver_id TEXT NOT NULL,        -- водитель
 
+  vehicle_id TEXT,                -- canonical vehicles.id used for the deal
+  vehicle_plate_snapshot TEXT,    -- immutable plate snapshot at accept time
+  vehicle_country_snapshot TEXT,
+  vehicle_make_snapshot TEXT,
+  vehicle_model_snapshot TEXT,
+
   from_city TEXT NOT NULL,
   to_city TEXT NOT NULL,
   amount INTEGER NOT NULL,        -- согласованная цена $
