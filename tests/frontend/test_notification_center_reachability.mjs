@@ -14,19 +14,21 @@ test('Profile does not duplicate deal notifications entry or unread badge', () =
   assert.doesNotMatch(profile, /navigation\.navigate\(['"]PushFilter/);
 });
 
-test('root screens do not expose a Bell or direct notification-center entry', () => {
+test('only Deals exposes a conditional durable inbox for an app-icon badge', () => {
   for (const file of [
     'src/screens/FeedScreen.js',
     'src/screens/CargoFeedScreen.js',
     'src/screens/MyTripsScreen.js',
-    'src/screens/DealsScreen.js',
   ]) {
     const source = readFileSync(file, 'utf8');
     assert.match(source, /RootHeader/);
-    assert.doesNotMatch(source, /bellTestID=/, file);
-    assert.doesNotMatch(source, /onBellPress=/, file);
     assert.doesNotMatch(source, /navigation\.navigate\('Notifications', \{ role \}\)/, file);
   }
+  const deals = readFileSync('src/screens/DealsScreen.js', 'utf8');
+  assert.match(deals, /RootHeader/);
+  assert.match(deals, /notificationUnread > 0/);
+  assert.match(deals, /testID="deals-notification-inbox"/);
+  assert.match(deals, /navigation\.navigate\('Notifications', \{ role \}\)/);
 });
 
 test('NotificationsScreen still clears unread state correctly when reached by supported routing', () => {

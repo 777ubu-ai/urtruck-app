@@ -22,6 +22,7 @@ import Button from '../components/ui/v1/Button';
 import CountryFlag from '../components/ui/v1/CountryFlag';
 import { localizePlace } from '../utils/places';
 import { appVersionLabel } from '../utils/appVersionLabel';
+import { getVehicleCopy } from '../utils/vehicleSetupCopy';
 
 const LANGS = [
   { code: 'RU', country: 'RU' },
@@ -130,7 +131,10 @@ export default function ProfileScreen({ navigation, route }) {
   // their unread state live in the dedicated Deals area, so Profile must not
   // duplicate the same feed or badge.
   const menuItems = [
-    ...(isDriver ? [{ icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' }] : []),
+    ...(isDriver ? [
+      { icon: 'truck', label: getVehicleCopy(uiLang).myVehicles, screen: 'VehicleChooser', params: { origin: 'Profile' }, testID: 'profile-my-vehicles' },
+      { icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' },
+    ] : []),
     { icon: 'star', label: t('myReviews'), screen: 'Reviews', testID: 'profile-my-reviews' },
     { icon: 'help-circle', label: t('howit_header'), screen: 'HowItWorks', testID: 'profile-how-it-works' },
     { icon: 'info', label: t('about_title'), screen: 'About', testID: 'profile-about' },
@@ -271,7 +275,7 @@ export default function ProfileScreen({ navigation, route }) {
           {menuItems.map((item, idx) => (
             <React.Fragment key={item.label}>
               {idx > 0 ? <View style={[s.menuSeparator, { backgroundColor: theme.border }]} /> : null}
-              <TouchableOpacity style={s.menuRow} onPress={() => item.screen && navigation.navigate(item.screen, { role, targetId: session?.user?.id })} activeOpacity={0.6} testID={item.testID} accessibilityLabel={item.label}>
+              <TouchableOpacity style={s.menuRow} onPress={() => item.screen && navigation.navigate(item.screen, { role, targetId: session?.user?.id, ...(item.params || {}) })} activeOpacity={0.6} testID={item.testID} accessibilityLabel={item.label}>
                 <View style={[s.menuIconWrap, { backgroundColor: theme.bg }]}><Feather name={item.icon} size={18} color={theme.textMuted} /></View>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.menuLabel, { color: theme.text }]}>{item.label}</Text>

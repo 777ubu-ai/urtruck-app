@@ -7,6 +7,8 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 const app = read('App.js');
 const push = read('src/utils/push.js');
 const notifications = read('src/screens/NotificationsScreen.js');
+const notificationsAPI = read('src/utils/notificationsAPI.js');
+const dealsScreen = read('src/screens/DealsScreen.js');
 const appJson = JSON.parse(read('app.json'));
 const aasa = JSON.parse(read('web/apple-app-site-association'));
 const wellKnownAasa = JSON.parse(read('web/.well-known/apple-app-site-association'));
@@ -60,6 +62,20 @@ test('notification reads update both in-app source-of-truth and the app icon bad
   assert.match(notifications, /notifyNotifRead\(\);/);
   assert.match(notifications, /refreshAppIconBadge\(\);/);
   assert.match(notifications, /await notificationsAPI\.read\(item\.id\);/);
+});
+
+test('server unread stays authoritative when the local verification cache is stale', () => {
+  const unreadBlock = notificationsAPI.slice(notificationsAPI.indexOf('async unread()'), notificationsAPI.indexOf('async readAll()'));
+  assert.match(unreadBlock, /if \(!h\.Authorization\) return \{ unread: 0 \}/);
+  assert.match(unreadBlock, /fetch\(`\$\{BASE\}\/unread`/);
+  assert.doesNotMatch(unreadBlock, /ur_verification_level/);
+});
+
+test('Deals exposes the durable notification inbox whenever an app-icon badge has unread events', () => {
+  assert.match(dealsScreen, /useUnreadNotifications\(hasToken\)/);
+  assert.match(dealsScreen, /notificationUnread > 0/);
+  assert.match(dealsScreen, /testID="deals-notification-inbox"/);
+  assert.match(dealsScreen, /navigation\.navigate\('Notifications', \{ role \}\)/);
 });
 
 test('auth and notification cold-start deeplinks are queued until nav and auth are ready', () => {

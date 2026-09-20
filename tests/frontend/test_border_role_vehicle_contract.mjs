@@ -22,6 +22,19 @@ test('Border loads canonical private vehicle/deal context with auth', () => {
 });
 
 
+test('driver without a vehicle can add one or run a secondary public lookup', () => {
+  assert.match(border, /testID="border-driver-empty-vehicle"/);
+  assert.match(border, /testID="border-add-vehicle"/);
+  assert.match(border, /storage\.remove\('ur_vehicle_setup_draft'\)/);
+  assert.match(border, /navigate\('VehicleSetupCountry', \{ role: 'driver', origin: 'Border' \}\)/);
+  assert.match(border, /testID="border-driver-manual-toggle"/);
+});
+
+test('driver detail keeps canonical visual order CGR then GPS then actions then timeline', () => {
+  assert.match(border, /testID="border-personal-cgr-status"[\s\S]*testID="border-gps-card"[\s\S]*testID="border-driver-actions"[\s\S]*testID="border-queue-timeline"/);
+  assert.match(border, /isDriver && \(selectedVehicle \|\| selectedDeal\)/);
+});
+
 test('Border keeps rolling-deploy fallback when /borders/context is not deployed yet', () => {
   assert.match(border, /vehicleAPI\.list\(\)/);
   assert.match(border, /marketAPI\.myDashboard\(\{ force: true \}\)/);

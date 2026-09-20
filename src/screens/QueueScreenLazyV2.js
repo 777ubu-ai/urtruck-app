@@ -99,7 +99,7 @@ const ROLE_COPY = {
     active: 'активных', cgrOnline: 'CGR online', selectedShipment: 'Выбранная перевозка',
     toCheckpoint: 'До КПП', trackingOn: 'Отслеживание включено', openDeal: 'Открыть сделку',
     history: 'История статусов', messageDriver: 'Написать водителю', borderSituation: 'Обстановка на границе',
-    checkOther: 'Проверить другой номер', noVehicle: 'Добавьте машину, чтобы UrTruck сам проверял очередь по госномеру.',
+    checkOther: 'Проверить другой номер', addVehicle: 'Добавить машину', noVehicle: 'Добавьте машину, чтобы UrTruck сам проверял очередь по госномеру.',
     noActiveShipments: 'Активных перевозок на границе пока нет.', liveStatus: 'Статус CGR',
     gpsOnline: 'GPS включён', gpsUnavailable: 'GPS пока недоступен', late: 'Опаздывает', onTime: 'Не опаздывает',
     gpsTitle: 'GPS UrTruck', etaPending: 'ETA уточняется', routeUnavailable: 'Маршрут пока недоступен', lastGps: 'Последний GPS', distanceLabel: 'До КПП', bookingCountdown: 'До окна брони', queueTimeline: 'Статус очереди',
@@ -111,7 +111,7 @@ const ROLE_COPY = {
     active: 'белсенді', cgrOnline: 'CGR online', selectedShipment: 'Таңдалған тасымал',
     toCheckpoint: 'Бекетке дейін', trackingOn: 'Бақылау қосулы', openDeal: 'Мәмілені ашу',
     history: 'Күй тарихы', messageDriver: 'Жүргізушіге жазу', borderSituation: 'Шекарадағы жағдай',
-    checkOther: 'Басқа нөмірді тексеру', noVehicle: 'Кезекті автоматты тексеру үшін көлік қосыңыз.',
+    checkOther: 'Басқа нөмірді тексеру', addVehicle: 'Көлік қосу', noVehicle: 'Кезекті автоматты тексеру үшін көлік қосыңыз.',
     noActiveShipments: 'Шекарада белсенді тасымалдар жоқ.', liveStatus: 'CGR күйі',
     gpsOnline: 'GPS қосулы', gpsUnavailable: 'GPS әзірге қолжетімсіз', late: 'Кешігуде', onTime: 'Кешікпейді',
     gpsTitle: 'GPS UrTruck', etaPending: 'ETA нақтылануда', routeUnavailable: 'Бағыт әзірше қолжетімсіз', lastGps: 'Соңғы GPS', distanceLabel: 'Бекетке дейін', bookingCountdown: 'Бронь терезесіне дейін', queueTimeline: 'Кезек күйі',
@@ -123,7 +123,7 @@ const ROLE_COPY = {
     active: 'active', cgrOnline: 'CGR online', selectedShipment: 'Selected shipment',
     toCheckpoint: 'To checkpoint', trackingOn: 'Tracking on', openDeal: 'Open deal',
     history: 'Status history', messageDriver: 'Message driver', borderSituation: 'Border situation',
-    checkOther: 'Check another plate', noVehicle: 'Add a vehicle so UrTruck can check the queue automatically.',
+    checkOther: 'Check another plate', addVehicle: 'Add vehicle', noVehicle: 'Add a vehicle so UrTruck can check the queue automatically.',
     noActiveShipments: 'No active border shipments yet.', liveStatus: 'CGR status',
     gpsOnline: 'GPS on', gpsUnavailable: 'GPS unavailable', late: 'Late', onTime: 'On time',
     gpsTitle: 'GPS UrTruck', etaPending: 'ETA pending', routeUnavailable: 'Route currently unavailable', lastGps: 'Last GPS', distanceLabel: 'To checkpoint', bookingCountdown: 'Until booking window', queueTimeline: 'Queue status',
@@ -135,7 +135,7 @@ const ROLE_COPY = {
     active: '进行中', cgrOnline: 'CGR 在线', selectedShipment: '已选运输',
     toCheckpoint: '距口岸', trackingOn: '跟踪已开启', openDeal: '打开交易',
     history: '状态记录', messageDriver: '联系司机', borderSituation: '边境情况',
-    checkOther: '查询其他车牌', noVehicle: '添加车辆后，UrTruck 可自动查询排队状态。',
+    checkOther: '查询其他车牌', addVehicle: '添加车辆', noVehicle: '添加车辆后，UrTruck 可自动查询排队状态。',
     noActiveShipments: '暂无边境运输。', liveStatus: 'CGR 状态',
     gpsOnline: 'GPS 已开启', gpsUnavailable: 'GPS 暂不可用', late: '已延误', onTime: '未延误',
     gpsTitle: 'UrTruck GPS', etaPending: 'ETA 计算中', routeUnavailable: '路线暂不可用', lastGps: '最近 GPS', distanceLabel: '距口岸', bookingCountdown: '距预约时间', queueTimeline: '排队状态',
@@ -609,6 +609,11 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     } catch { /* Public CGR lookup remains usable when watch registration fails. */ }
   }, [contextToken, manualLookup, plate, manualWatchEnabled]);
 
+  const beginVehicleSetup = useCallback(async () => {
+    await storage.remove('ur_vehicle_setup_draft');
+    navigation.navigate('VehicleSetupCountry', { role: 'driver', origin: 'Border' });
+  }, [navigation]);
+
   const nearestText = live?.nearest_booking ? formatDate(live.nearest_booking, lang) : '—';
   const premiumText = live?.nearest_premium_booking ? formatDate(live.nearest_premium_booking, lang) : null;
 
@@ -633,7 +638,17 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                   {selectedDeal ? <Text style={[s.routeLine, { color: theme.textMuted }]}>{selectedDeal.from_city} → {selectedDeal.to_city}</Text> : null}
                 </View>
               </View>
-            ) : <Text style={[s.emptyContext, { color: theme.textMuted }]}>{R.noVehicle}</Text>}
+            ) : (
+              <View style={s.emptyVehicleState} testID="border-driver-empty-vehicle">
+                <View style={[s.emptyVehicleIcon, { backgroundColor: v1.surfaceMuted }]}>
+                  <Feather name="truck" size={38} color={activeColor} />
+                  <View style={[s.emptyVehiclePlus, { backgroundColor: activeColor, borderColor: theme.card }]}><Feather name="plus" size={15} color="#fff" /></View>
+                </View>
+                <Text style={[s.emptyContext, { color: theme.textMuted }]}>{R.noVehicle}</Text>
+                <TouchableOpacity onPress={beginVehicleSetup} style={[s.emptyVehiclePrimary, { backgroundColor: activeColor }]} accessibilityRole="button" testID="border-add-vehicle"><Feather name="plus" size={18} color="#fff" /><Text style={s.emptyVehiclePrimaryText}>{R.addVehicle}</Text></TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowManualLookup((value) => !value)} style={[s.emptyVehicleSecondary, { borderColor: theme.border }]} accessibilityRole="button" testID="border-driver-manual-toggle"><Feather name="search" size={18} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.checkOther}</Text></TouchableOpacity>
+              </View>
+            )}
           </View>
         ) : (
           <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-shipper-deals-card">
@@ -661,7 +676,6 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             <View style={s.personalMetaRow}><Feather name={lookup.is_late ? 'alert-circle' : 'check-circle'} size={15} color={lookup.is_late ? '#B7791F' : '#168759'} /><Text style={[s.lookupText, { color: lookup.is_late ? '#B7791F' : '#168759' }]}>{lookup.is_late ? R.late : R.onTime}</Text></View>
           </> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}
           {selectedDeal && !isDriver ? <View style={s.dealActions}><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role })} style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="file-text" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.openDeal}</Text></TouchableOpacity><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role, action: 'status-history' })} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="clock" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.history}</Text></TouchableOpacity><TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role })} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="message-circle" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.messageDriver}</Text></TouchableOpacity></View> : null}
-          {isDriver && selectedDeal ? <View style={s.dealActions}>{watchEnabled ? <View style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="radio" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.trackingOn}</Text></View> : null}<TouchableOpacity onPress={() => setShowManualLookup((value) => !value)} style={[s.secondaryDealAction, { borderColor: theme.border }]} testID="border-driver-manual-toggle"><Feather name="search" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.checkOther}</Text></TouchableOpacity></View> : null}
         </View> : null}
 
         {selectedDeal ? <View style={[s.gpsCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-gps-card">
@@ -672,6 +686,12 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             <View><Text style={[s.metricLabel, { color: theme.textMuted }]}>ETA</Text><Text style={[s.gpsValue, { color: theme.text }]}>{roadRouteLoading ? R.etaPending : roadRoute?.ok ? formatDuration(roadRoute.duration_s, lang) : R.routeUnavailable}</Text></View>
             <View><Text style={[s.metricLabel, { color: theme.textMuted }]}>{R.bookingCountdown}</Text><Text style={[s.gpsValue, { color: theme.text }]}>{bookingCountdown(lookup?.queue_datetime, lang) || '—'}</Text></View>
           </View>
+        </View> : null}
+
+        {isDriver && (selectedVehicle || selectedDeal) ? <View style={s.driverActions} testID="border-driver-actions">
+          {watchEnabled ? <View style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="radio" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.trackingOn}</Text></View> : null}
+          {selectedDeal ? <TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role })} style={[s.secondaryDealAction, { borderColor: theme.border, backgroundColor: theme.card }]} testID="border-driver-open-deal"><Feather name="list" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.openDeal}</Text></TouchableOpacity> : null}
+          <TouchableOpacity onPress={() => setShowManualLookup((value) => !value)} style={[s.secondaryDealAction, { borderColor: theme.border, backgroundColor: theme.card }]} accessibilityRole="button" testID="border-driver-manual-toggle"><Feather name="search" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.checkOther}</Text></TouchableOpacity>
         </View> : null}
 
         {isDriver && activePlate ? <View style={[s.timelineCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-queue-timeline"><Text style={[s.contextTitle, { color: theme.text }]}>{R.queueTimeline}</Text><View style={s.timelineRow}>{queueStages.map((stage, index) => { const complete = lookup?.found && currentQueueStage >= 0 && index < currentQueueStage; const current = lookup?.found && index === currentQueueStage; return <View key={stage.code} style={s.timelineItem}><View style={[s.timelineDot, { borderColor: current || complete ? activeColor : theme.border, backgroundColor: complete ? activeColor : current ? theme.card : v1.surfaceMuted }]}>{complete ? <Feather name="check" size={11} color="#fff" /> : null}</View><Text style={[s.timelineLabel, { color: current ? activeColor : theme.textMuted }]} numberOfLines={2}>{stage.label}</Text></View>; })}</View></View> : null}
@@ -825,7 +845,13 @@ const s = StyleSheet.create({
   plateBadge: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, fontSize: 15, fontWeight: '900', letterSpacing: 0.4 },
   countryBadge: { fontSize: 11.5, fontWeight: '800' },
   routeLine: { fontSize: 13, marginTop: 6, fontWeight: '650' },
-  emptyContext: { fontSize: 13, lineHeight: 19, marginTop: 10 },
+  emptyContext: { fontSize: 13, lineHeight: 19, marginTop: 10, textAlign: 'center' },
+  emptyVehicleState: { alignItems: 'center', paddingTop: 8 },
+  emptyVehicleIcon: { width: 82, height: 68, borderRadius: 20, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  emptyVehiclePlus: { position: 'absolute', right: 5, bottom: 3, width: 27, height: 27, borderRadius: 14, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
+  emptyVehiclePrimary: { width: '100%', minHeight: 48, borderRadius: 12, marginTop: 16, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  emptyVehiclePrimaryText: { color: '#fff', fontSize: 14, fontWeight: '850' },
+  emptyVehicleSecondary: { width: '100%', minHeight: 48, borderRadius: 12, borderWidth: 1, marginTop: 9, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   headerPills: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   countPill: { backgroundColor: '#E9F2FF', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
   countPillText: { color: '#1769E0', fontSize: 11.5, fontWeight: '800' },
@@ -851,6 +877,7 @@ const s = StyleSheet.create({
   timelineDot: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   timelineLabel: { fontSize: 10.5, lineHeight: 13, fontWeight: '750', textAlign: 'center' },
   dealActions: { flexDirection: 'row', gap: 7, marginTop: 12, flexWrap: 'wrap' },
+  driverActions: { flexDirection: 'row', gap: 7, marginBottom: 10, flexWrap: 'wrap' },
   primaryDealAction: { minHeight: 44, borderRadius: 11, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   primaryDealActionText: { color: '#fff', fontSize: 12, fontWeight: '850' },
   secondaryDealAction: { minHeight: 44, borderRadius: 11, borderWidth: 1, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
