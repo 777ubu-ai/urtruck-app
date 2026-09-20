@@ -7,6 +7,8 @@ const country = read('src/screens/vehicle/VehicleSetupCountryScreen.js');
 const machine = read('src/screens/vehicle/VehicleSetupMachineScreen.js');
 const review = read('src/screens/vehicle/VehicleSetupReviewScreen.js');
 const success = read('src/screens/vehicle/VehicleSetupSuccessScreen.js');
+const chooser = read('src/screens/vehicle/VehicleChooserScreen.js');
+const profile = read('src/screens/ProfileScreen.js');
 const api = read('src/utils/vehicleAPI.js');
 
 test('vehicle setup is a four-step flow with independent country fields', () => {
@@ -49,6 +51,20 @@ test('lost auth never exposes no_token and returns vehicle setup to sign-in safe
   assert.match(country, /Alert\.alert/);
   assert.match(country, /onPress:\s*\(\) => signOut\(\)/);
   assert.match(country, /storage\.set\(KEY, JSON\.stringify\(next\)\)/);
+});
+
+test('Border and Profile vehicle management return to their originating screen', () => {
+  assert.match(profile, /testID: 'profile-my-vehicles'/);
+  assert.match(profile, /screen: 'VehicleChooser', params: \{ origin: 'Profile' \}/);
+  assert.match(chooser, /storage\.remove\(DRAFT_KEY\)/);
+  assert.match(chooser, /storage\.set\(DRAFT_KEY, JSON\.stringify\(item\)\)/);
+  assert.match(chooser, /vehicleId: item\.id/);
+  assert.match(review, /vehicleAPI\.save\(payload, route\?\.params\?\.vehicleId\)/);
+  assert.match(review, /origin === 'Border' \|\| route\?\.params\?\.origin === 'Profile'/);
+  assert.match(success, /origin === 'Border'/);
+  assert.match(success, /screen: 'Queue'/);
+  assert.match(success, /origin === 'Profile'/);
+  assert.match(success, /testID=\{origin === 'Border' \? 'border-vehicle-return'/);
 });
 
 test('machine selectors persist dependent values atomically', () => {

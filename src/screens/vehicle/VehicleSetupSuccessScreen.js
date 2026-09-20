@@ -12,7 +12,9 @@ export default function VehicleSetupSuccessScreen({ navigation, route }) {
   const { c } = useVehicleCopy();
   const { setRole } = useAuth();
   const vehicle = route?.params?.vehicle;
-  const [basicState, setBasicState] = useState('loading');
+  const origin = route?.params?.origin;
+  const returnsToExistingFlow = origin === 'Border' || origin === 'Profile';
+  const [basicState, setBasicState] = useState(returnsToExistingFlow ? 'done' : 'loading');
   const completionStarted = useRef(false);
   const completeBasic = useCallback(async () => {
     setBasicState('loading');
@@ -29,13 +31,22 @@ export default function VehicleSetupSuccessScreen({ navigation, route }) {
     }
   }, [setRole]);
   useEffect(() => {
+    if (returnsToExistingFlow) return undefined;
     if (completionStarted.current) return undefined;
     completionStarted.current = true;
     completeBasic();
     return undefined;
-  }, [completeBasic]);
+  }, [completeBasic, returnsToExistingFlow]);
   const openPublish = () => {
     if (basicState !== 'done') return;
+    if (origin === 'Border') {
+      navigation.replace('Main', { role: 'driver', screen: 'Queue' });
+      return;
+    }
+    if (origin === 'Profile') {
+      navigation.replace('Profile', { role: 'driver' });
+      return;
+    }
     navigation.replace('CreateTrip', { role: 'driver', vehicle, vehicleId: vehicle?.id });
   };
   const benefits = [['box', c.findLoads], ['map', c.publishRoutes], ['message-circle', c.offers], ['shield', c.safe]];
@@ -50,7 +61,7 @@ export default function VehicleSetupSuccessScreen({ navigation, route }) {
         <Text style={[styles.subtitle, { textAlign: 'center' }]}>{c.successSub}</Text>
         <Text style={{ color: DRIVER_CERAMIC.active, fontSize: 22, fontWeight: '700', marginVertical: 10 }}>{c.slogan}</Text>
         <View style={{ flexDirection: 'row', gap: 8, width: '100%', marginTop: 14 }}>{benefits.map(([icon, label]) => <View key={label} style={styles.benefit}><Feather name={icon} size={23} color={DRIVER_CERAMIC.active} /><Text style={styles.benefitText}>{label}</Text></View>)}</View>
-        <Pressable onPress={openPublish} style={[styles.cta, { width: '100%', marginTop: 22 }]} testID="basic-onboarding-publish"><Text style={styles.ctaText}>{c.publish}</Text></Pressable>
+        <Pressable onPress={openPublish} style={[styles.cta, { width: '100%', marginTop: 22 }]} testID={origin === 'Border' ? 'border-vehicle-return' : origin === 'Profile' ? 'profile-vehicle-return' : 'basic-onboarding-publish'}><Text style={styles.ctaText}>{origin === 'Border' ? c.backToBorder : origin === 'Profile' ? c.backToProfile : c.publish}</Text></Pressable>
         <Pressable onPress={() => navigation.replace('Main', { role: 'driver' })} style={[{ width: '100%', marginTop: 10 }]} testID="basic-onboarding-home"><View style={styles.secondary}><Text style={styles.secondaryText}>{c.home}</Text></View></Pressable>
       </> : <View style={{ width: '100%', alignItems: 'center', paddingTop: 56 }} testID={`basic-onboarding-${basicState}`}>
         {basicState === 'loading' ? <ActivityIndicator size="large" color={DRIVER_CERAMIC.active} /> : <Feather name="alert-circle" size={48} color={DRIVER_CERAMIC.error} />}
