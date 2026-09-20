@@ -7,11 +7,10 @@ import { useI18n } from '../utils/useI18n';
 import { formatBids, formatStatus } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
-import RouteMap from '../components/RouteMap';
-import { localizePlace } from '../utils/places';
+import TripRoutePanel from '../components/TripRoutePanel';
 import GradientText from '../components/GradientText';
 import ShareModal from '../components/ShareModal';
-import { routeStats } from '../utils/geo';
+
 import { TRIP_STATES, TRIP_STATE_INFO } from '../utils/store';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
@@ -20,7 +19,7 @@ import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay, formatPrice } from '../utils/normalizers';
 import { buildTripShareText, publicListingPath } from '../utils/share';
 import { WEB_URL } from '../config/env';
-import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
+import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
@@ -481,8 +480,9 @@ export default function TripDetail({ navigation, route }) {
     );
   }
 
-  const stats = routeStats(trip.from, trip.to, trip.transit);
   const view = tripDisplay(trip, t, lang);
+  const tripWeather = (serverTrip || rawTrip)?.weather || null;
+  const trackingAvailable = Boolean(dealId && chatRoomId && ['in_progress', 'at_border'].includes(dealStatus));
   // Принятая ставка → в блоке цены показываем сумму сделки, не листинг.
   const acceptedBid = bids.find(b => b.status === 'accepted');
 
@@ -537,48 +537,24 @@ export default function TripDetail({ navigation, route }) {
             language across detail titles. */}
         <Text style={s.pageTitle}>{t('trip_title')}</Text>
 
-        {/* Маршрут на карте */}
-        <View style={{ marginBottom: 10, borderRadius: v1Radius.card, overflow: 'hidden' }}>
-          <RouteMap
-            from={trip.from}
-            to={trip.to}
-            transit={trip.transit}
-            dealId={dealId}
-            dealStatus={dealStatus}
-            driverName={trip.driverName}
-            capacityTons={trip.capacityTons}
-          />
-        </View>
-
-        {/* Информация о рейсе */}
-        <GlassCard>
-          <SectionTitle featherIcon="map" label={t('trip_route')} />
-          <View style={s.routeRow}>
-            <View style={[s.dot, { backgroundColor: '#EF4444' }]} />
-            <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.from, lang)}</Text>
-          </View>
-          {view.transit ? (
-            <View style={s.routeRow}>
-              <View style={[s.dot, { backgroundColor: '#334155' }]} />
-              <Text style={[s.transitCity, { color: theme.textSecondary }]}>{t('trip_via')} {localizePlace(view.transit, lang)}</Text>
-            </View>
-          ) : null}
-          <View style={s.routeRow}>
-            <View style={[s.dot, { backgroundColor: '#168759' }]} />
-            <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.to, lang)}</Text>
-          </View>
-
-          {stats && (
-            <View style={s.statsRow}>
-              <View style={[s.statPill, { backgroundColor: theme.border }]}>
-                <Text style={[s.statText, { color: theme.text }]}>📏 {stats.km} {t('km_short')}</Text>
-              </View>
-              <View style={[s.statPill, { backgroundColor: theme.border }]}>
-                <Text style={[s.statText, { color: theme.text }]}>⏱ ~{stats.days} {t('days_short')}</Text>
-              </View>
-            </View>
-          )}
-        </GlassCard>
+        {/* Compact trip dashboard: no duplicate native map is mounted here.
+            Road metrics come only from the authenticated UrTruck routing API.
+            Live GPS remains available inside the accepted deal workspace. */}
+        <TripRoutePanel
+          from={trip.from}
+          to={trip.to}
+          transit={trip.transit}
+          capacityTons={trip.capacityTons}
+          weather={tripWeather}
+          onOpenRates={session?.user?.id ? () => navigation.navigate('Wallet', { role }) : undefined}
+          onOpenWeather={tripWeather && trackingAvailable ? () => navigation.navigate('Chat', {
+            roomId: chatRoomId, dealId, role, tripId: trip.id, action: 'tracking',
+          }) : undefined}
+          onOpenBorder={() => navigation.navigate('Main', { screen: 'Queue', params: { role } })}
+          onOpenTracking={trackingAvailable ? () => navigation.navigate('Chat', {
+            roomId: chatRoomId, dealId, role, tripId: trip.id, action: 'tracking',
+          }) : undefined}
+        />
 
         {/* Даты */}
         <GlassCard>

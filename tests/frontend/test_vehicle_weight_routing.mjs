@@ -65,8 +65,9 @@ test('RouteMap turns capacityTons into a partial VehicleSpec (payload_t, not wei
   assert.match(routeMap, /<TruckMap[\s\S]{0,600}vehicle=\{vehicle\}/);
 });
 
-test('TripDetail feeds the already-collected trip capacity into RouteMap (no new data collection)', () => {
-  assert.match(tripDetail, /<RouteMap[\s\S]{0,300}capacityTons=\{trip\.capacityTons\}/);
+test('TripDetail feeds the already-collected trip capacity into the compact route panel (no new data collection)', () => {
+  assert.match(tripDetail, /<TripRoutePanel[\s\S]{0,300}capacityTons=\{trip\.capacityTons\}/);
+  assert.doesNotMatch(tripDetail, /import RouteMap/);
 });
 
 test('DealWorkspaceScreenV2 builds vehicle.payload_t strictly from the trip\'s real capacity — no cargo-weight fallback', () => {
