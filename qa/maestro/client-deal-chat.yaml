@@ -6,17 +6,17 @@ env:
   MAESTRO_ACTOR: boris
 ---
 - runFlow: _lib/qa-login.yaml
-- tapOn: { id: "bottom-nav-mywork" }
+- tapOn: { id: "bottom-nav-deals" }
 - waitForAnimationToEnd
-- tapOn: { id: "my-work-tab-enroute" }
+- tapOn: { id: "deals-tab-active" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "my-order-card" }
+    visible: { id: "deals-deal-card" }
     timeout: 8000
-- tapOn: { id: "my-order-card", index: 0 }
+- tapOn: { id: "deals-deal-card", index: 0 }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "deal-order-chat" }
+    visible: { id: "deal-chat-input" }
     timeout: 8000
 - takeScreenshot: P73_deal_detail_chat_orange
-- assertVisible: { id: "deal-order-chat" }
+- assertVisible: { id: "deal-chat-input" }

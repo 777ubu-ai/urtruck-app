@@ -28,10 +28,7 @@ env:
     timeout: 4000
 
 # → Profile → PRO-CTA → Identity
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd:
-    timeout: 4000
+- runFlow: _lib/open-profile.yaml
 - scrollUntilVisible:
     element:
       id: "profile-pro-cta"

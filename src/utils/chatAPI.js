@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { File as ExpoFile } from 'expo-file-system';
+import { fetch as expoFetch } from 'expo/fetch';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';
@@ -234,7 +235,7 @@ export const chatAPI = {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, expoFetch);
     } catch (e) {
       throw attachmentError('network', { isNetwork: true, detail: e?.message || 'network' });
     }
@@ -271,7 +272,7 @@ export const chatAPI = {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, expoFetch);
     } catch (e) {
       throw attachmentError('network', { isNetwork: true, detail: e?.message || 'network' });
     }
@@ -349,7 +350,7 @@ export const chatAPI = {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, expoFetch);
     } catch (error) {
       throw attachmentError('network', { isNetwork: true, detail: error?.message || 'network' });
     }

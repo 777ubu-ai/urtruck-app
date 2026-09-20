@@ -82,13 +82,14 @@ jobs:
               raise SystemExit(f'Missing Maestro flows: {missing}')
           print('Maestro smoke suite references:', ', '.join(refs))
           PY
+          node qa/utils/maestroContractSmoke.js
       - name: Archive Maestro contracts
         uses: actions/upload-artifact@v4
         with:
           name: maestro-contracts-${{ github.sha }}
           path: |
-            qa/maestro/*.yaml
-            qa/maestro/*.yml
+            qa/maestro/**/*.yaml
+            qa/maestro/**/*.yml
             qa/maestro/README.md
             qa/README.md
           if-no-files-found: error

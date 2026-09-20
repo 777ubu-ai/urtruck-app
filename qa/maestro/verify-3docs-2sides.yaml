@@ -17,9 +17,7 @@ env:
   MAESTRO_ACTOR: serik
 ---
 - runFlow: _lib/qa-login.yaml
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 # QA dev-only вход в верификацию (qa-debug login хардкодит level 3, поэтому
 # штатный pro-CTA ведёт в EditProfile — этот хук идёт прямо в Гражданство).
 - scrollUntilVisible:

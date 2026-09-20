@@ -5,10 +5,8 @@ tags:
   - client
   - guest
 ---
-# В Expo Go без OTP «Смотреть грузы» (guest) даёт driver-набор табов,
-# а реальный client tab-bar (Машины / Грузы / Разместить / Профиль)
-# доступен только после OTP + явного выбора роли клиент в Profile.
-# Здесь фиксируем то, что реально проверяемо стабильными селекторами.
+# Гостевой вход обязан открыть текущую четырёхвкладочную оболочку.
+# Профиль не является вкладкой и открывается через ☰.
 - launchApp
 - extendedWaitUntil:
     visible: "UrTruck"
@@ -47,10 +45,14 @@ tags:
     id: "onb-v2-cta-guest"
 - extendedWaitUntil:
     visible:
-      id: "bottom-nav-profile"
+      id: "bottom-nav-feed"
     timeout: 30000
 - takeScreenshot: 02_after_guest_main
 - assertVisible:
     id: "bottom-nav-feed"
 - assertVisible:
-    id: "bottom-nav-profile"
+    id: "bottom-nav-mywork"
+- assertVisible:
+    id: "bottom-nav-deals"
+- assertVisible:
+    id: "bottom-nav-queue"

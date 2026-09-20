@@ -15,9 +15,7 @@ env:
 # Регресс: fetchProfile молча выходит при отсутствии ur_reg_token —
 # если плейсхолдер виден, серверное имя не дотянулось.
 - runFlow: _lib/qa-login.yaml
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - takeScreenshot: audit_p1_01_profile
 # Имя дотягивается по focus асинхронно — даём до 10с.
 - extendedWaitUntil:

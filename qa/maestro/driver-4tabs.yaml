@@ -18,4 +18,4 @@ env:
 - assertVisible: { id: "border-driver-vehicle-card" }
 - tapOn: { id: "bottom-nav-deals" }
 - assertVisible: { id: "deal-room-list" }
-- assertVisible: { id: "chats-menu-btn" }
+- assertVisible: { id: "deals-menu-btn" }

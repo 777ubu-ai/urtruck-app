@@ -12,31 +12,31 @@ env:
 - runFlow: _lib/qa-login.yaml
 # Шаг 4/7: индикатор непрочитанного на вкладке «Чаты»
 - takeScreenshot: CH0_after_login
-- assertVisible: { id: "bottom-nav-chats" }
-- tapOn: { id: "bottom-nav-chats" }
+- assertVisible: { id: "bottom-nav-deals" }
+- tapOn: { id: "bottom-nav-deals" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "chats-header" }
+    visible: { id: "deals-minimal-header" }
     timeout: 12000
 - takeScreenshot: CH1_chats_list_with_unread
 - assertVisible: { id: "deal-room-list" }
-- assertVisible: { id: "deal-room-list-unread" }
+- assertVisible: { id: "deals-tab-active-attention" }
 # Шаг 8: открыть комнату с водителем (верхняя — самая свежая активность)
-- tapOn: { id: "deal-room-list-card", index: 0 }
+- tapOn: { id: "deals-deal-card", index: 0 }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "chat-partner-name" }
+    visible: { id: "deal-compact-header" }
     timeout: 10000
 - takeScreenshot: CH2_chat_open_driver_msg
 # Партнёр корректный, НЕ «Собеседник»
-- assertVisible: { id: "chat-partner-name" }
+- assertVisible: { id: "deal-compact-header" }
 - assertNotVisible: "Собеседник"
 # Сообщение водителя видно
 - assertVisible: "QA driver msg MAESTRO"
 # Шаг 9: owner отвечает через UI
-- tapOn: { id: "chat-input" }
+- tapOn: { id: "deal-chat-input" }
 - inputText: "QA owner reply MAESTRO"
-- tapOn: { id: "chat-send-btn" }
+- tapOn: { id: "deal-chat-send" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
     visible: "QA owner reply MAESTRO"

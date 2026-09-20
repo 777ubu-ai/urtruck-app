@@ -1,5 +1,5 @@
-# client-myworkhunt — MyWork: 3 вкладки, архив, правка груза (F10),
-# сделка «Везут» (F7/F8/F9: заполненность карточки + трекинг водителя)
+# client-myworkhunt — MyWork: публикации, архив и правка груза (F10);
+# Deals: активная сделка и трекинг (F7/F8/F9)
 appId: host.exp.Exponent
 name: client-myworkhunt
 tags: [client, buttonhunt]
@@ -10,13 +10,10 @@ env:
 - tapOn: { id: "bottom-nav-mywork" }
 - waitForAnimationToEnd
 - takeScreenshot: 50_mywork_open
-# 3 вкладки клиента
-- assertVisible: { id: "my-work-tab-searching" }
-- assertVisible: { id: "my-work-tab-enroute" }
-- assertVisible: { id: "my-work-tab-delivered" }
-- tapOn: { id: "my-work-tab-searching" }
-- waitForAnimationToEnd
-- takeScreenshot: 51_tab_searching
+# Текущий «Мои»: активные публикации и архив
+- assertVisible: { id: "my-work-screen" }
+- assertVisible: { id: "my-cargo-card" }
+- takeScreenshot: 51_my_cargo_publications
 # Тогл архива
 - runFlow:
     when:
@@ -28,8 +25,6 @@ env:
       - tapOn: { id: "my-work-archive-toggle" }
       - waitForAnimationToEnd
 # F10: правка груза не обнуляет цену
-- tapOn: { id: "my-work-tab-searching" }
-- waitForAnimationToEnd
 - runFlow:
     when:
       visible: { id: "my-cargo-edit-btn" }
@@ -55,31 +50,31 @@ env:
             - takeScreenshot: 54_after_price_clear_save
       - back
 - waitForAnimationToEnd
-# Вкладка «Везут» — сделка (F8 заполненность, F9 трекинг, F7 кнопки)
-- tapOn: { id: "my-work-tab-enroute" }
+# Активные и завершённые сделки теперь живут в «Сделки»
+- tapOn: { id: "bottom-nav-deals" }
 - waitForAnimationToEnd
-- takeScreenshot: 55_tab_enroute
+- tapOn: { id: "deals-tab-active" }
+- waitForAnimationToEnd
+- takeScreenshot: 55_deals_active
 - runFlow:
     when:
-      visible: { id: "my-order-card" }
+      visible: { id: "deals-deal-card" }
     commands:
       - takeScreenshot: 56_deal_card_filled
-      - tapOn:
-          id: "my-order-card"
-          index: 0
+      - tapOn: { id: "deals-deal-card", index: 0 }
       - waitForAnimationToEnd
-      - takeScreenshot: 57_deal_detail
-      # F9: трекинг водителя
+      - takeScreenshot: 57_deal_workspace
       - runFlow:
           when:
-            visible: { id: "deal-track-truck" }
+            visible: { id: "deal-header-map" }
           commands:
-            - tapOn: { id: "deal-track-truck" }
+            - tapOn: { id: "deal-header-map" }
             - waitForAnimationToEnd
             - takeScreenshot: 58_deal_tracking
-            - back
+            - tapOn: { id: "deal-map-back" }
+      - tapOn: { id: "deal-workspace-back" }
+      - waitForAnimationToEnd
+- tapOn: { id: "bottom-nav-deals" }
+- tapOn: { id: "deals-tab-archive" }
 - waitForAnimationToEnd
-# «Доставлено»
-- tapOn: { id: "my-work-tab-delivered" }
-- waitForAnimationToEnd
-- takeScreenshot: 59_tab_delivered
+- takeScreenshot: 59_deals_archive

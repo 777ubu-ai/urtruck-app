@@ -4,7 +4,7 @@
 # получателя) требует 2 РЕАЛЬНЫХ устройств с рабочим микрофоном — см.
 # раздел 6 брифа. На iOS-симуляторе микрофон недоступен, поэтому здесь
 # проверяем smoke: комната сделки открывается, композер с кнопкой
-# голосового (chat-voice-btn) и полем ввода (chat-input) рендерятся, тап
+# голосового (deal-chat-voice) и полем ввода (deal-chat-input) рендерятся, тап
 # по записи/остановке не роняет экран (защита от пустого blob — фикс
 # voiceRecorder._stopWeb: requestData() + отказ при blob.size===0).
 #
@@ -20,35 +20,37 @@ env:
 ---
 - runFlow: _lib/qa-login.yaml
 - tapOn:
-    id: "bottom-nav-chats"
+    id: "bottom-nav-deals"
+- waitForAnimationToEnd
+- tapOn: { id: "deals-tab-active" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
     visible:
       id: "deal-room-list"
     timeout: 20000
 - tapOn:
-    id: "deal-room-list-card"
+    id: "deals-deal-card"
     index: 0
 - waitForAnimationToEnd
 - extendedWaitUntil:
     visible:
-      id: "chat-input"
+      id: "deal-chat-input"
     timeout: 15000
 - takeScreenshot: VOICE_01_deal_room
 # Композер с голосовой кнопкой рендерится
 - assertVisible:
-    id: "chat-voice-btn"
+    id: "deal-chat-voice"
 # Старт → стоп записи: на симуляторе без микрофона это короткая/пустая
 # запись — экран НЕ должен упасть и НЕ отправить пустое сообщение
 # (композер остаётся на месте). Полный e2e — на 2 устройствах (раздел 6).
 - tapOn:
-    id: "chat-voice-btn"
+    id: "deal-chat-voice"
 - waitForAnimationToEnd
 - tapOn:
-    id: "chat-voice-btn"
+    id: "deal-chat-voice"
 - waitForAnimationToEnd
 - takeScreenshot: VOICE_02_after_record_stop
 - assertVisible:
-    id: "chat-input"
+    id: "deal-chat-input"
 - assertVisible:
-    id: "chat-send-btn"
+    id: "deal-chat-send"

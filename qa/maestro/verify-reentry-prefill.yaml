@@ -17,9 +17,7 @@ env:
   MAESTRO_ACTOR: serik
 ---
 - runFlow: _lib/qa-login.yaml
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - scrollUntilVisible:
     element:
       id: "qa-open-verification"

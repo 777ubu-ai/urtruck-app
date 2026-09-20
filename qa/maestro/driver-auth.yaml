@@ -16,9 +16,7 @@ env:
 - assertVisible:
     id: "bottom-nav-queue"
 - assertVisible:
-    id: "bottom-nav-chats"
-- assertVisible:
-    id: "bottom-nav-profile"
+    id: "bottom-nav-deals"
 - tapOn:
     id: "bottom-nav-feed"
 - waitForAnimationToEnd
@@ -50,16 +48,14 @@ env:
       - assertVisible:
           id: "queue-cgr-link-approved"
 - tapOn:
-    id: "bottom-nav-chats"
+    id: "bottom-nav-deals"
 - waitForAnimationToEnd
 - takeScreenshot: 05_driver_chats
 - assertVisible:
     id: "deal-room-list"
 - assertVisible:
-    id: "chats-header"
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+    id: "deals-minimal-header"
+- runFlow: _lib/open-profile.yaml
 - takeScreenshot: 06_driver_profile
 - assertVisible:
     id: "profile-my-status"

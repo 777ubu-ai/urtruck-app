@@ -12,20 +12,20 @@ env:
 # бейдж 2 непрочитанных появляется на mount BottomNav — ждём его НА Feed
 # (надёжнее, чем после перехода в Chats: индексация New Arch при transition флакает)
 - extendedWaitUntil:
-    visible: { id: "bottom-nav-chats-badge" }
+    visible: { id: "bottom-nav-deals-badge" }
     timeout: 15000
-- assertVisible: { id: "bottom-nav-chats-badge" }
+- assertVisible: { id: "bottom-nav-deals-badge" }
 - takeScreenshot: MR0_badge_on_feed
-- tapOn: { id: "bottom-nav-chats" }
+- tapOn: { id: "bottom-nav-deals" }
 - waitForAnimationToEnd:
     timeout: 5000
 - extendedWaitUntil:
-    visible: { id: "chats-header" }
+    visible: { id: "deals-minimal-header" }
     timeout: 10000
-- assertVisible: { id: "deal-room-list-unread" }
+- assertVisible: { id: "deals-tab-active-attention" }
 - takeScreenshot: MR1_two_unread_badge
 # читаем первую комнату
-- tapOn: { id: "deal-room-list-card", index: 0 }
+- tapOn: { id: "deals-deal-card", index: 0 }
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn:
@@ -33,18 +33,18 @@ env:
 - waitForAnimationToEnd:
     timeout: 4000
 - extendedWaitUntil:
-    visible: { id: "chats-header" }
+    visible: { id: "deals-minimal-header" }
     timeout: 8000
 - takeScreenshot: MR2_after_read_one_badge_stays
 # H5: вторая комната ещё непрочитана → её per-room unread-бейдж ОСТАЛСЯ
-# (deal-room-list-unread надёжнее индексируется, чем крошечный tab-бейдж
+# (deals-tab-active-attention надёжнее индексируется, чем крошечный tab-бейдж
 # в момент ре-рендера New Arch; сам факт «осталось 1» = суть H5)
 - extendedWaitUntil:
-    visible: { id: "deal-room-list-unread" }
+    visible: { id: "deals-tab-active-attention" }
     timeout: 8000
-- assertVisible: { id: "deal-room-list-unread" }
+- assertVisible: { id: "deals-tab-active-attention" }
 # читаем вторую комнату
-- tapOn: { id: "deal-room-list-card", index: 1 }
+- tapOn: { id: "deals-deal-card", index: 1 }
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn:
@@ -52,8 +52,8 @@ env:
 - waitForAnimationToEnd:
     timeout: 4000
 - extendedWaitUntil:
-    visible: { id: "chats-header" }
+    visible: { id: "deals-minimal-header" }
     timeout: 8000
 # обе прочитаны → бейдж исчез
-- assertNotVisible: { id: "bottom-nav-chats-badge" }
+- assertNotVisible: { id: "bottom-nav-deals-badge" }
 - takeScreenshot: MR3_after_read_both_no_badge

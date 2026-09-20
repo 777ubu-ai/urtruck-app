@@ -28,9 +28,7 @@ env:
 - takeScreenshot: 03_after_publish_trip_tap
 
 # === Назад в driver Profile → Security ===
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - takeScreenshot: 04_profile_top
 - tapOn:
     id: "profile-my-status"
@@ -39,9 +37,7 @@ env:
 - takeScreenshot: 05_security_screen
 
 # === Profile → PRO CTA если активна ===
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - runFlow:
     when:
       visible:

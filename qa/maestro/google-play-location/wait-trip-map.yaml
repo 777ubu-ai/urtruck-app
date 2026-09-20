@@ -3,15 +3,15 @@ name: wait-trip-map
 ---
 - extendedWaitUntil:
     visible:
-      id: "deal-map-card-open"
+      id: "deal-header-map"
     timeout: 30000
 - scrollUntilVisible:
     element:
-      id: "deal-map-card-open"
+      id: "deal-header-map"
     direction: DOWN
     timeout: 15000
 - tapOn:
-    id: "deal-map-card-open"
+    id: "deal-header-map"
 - extendedWaitUntil:
     visible:
       id: "deal-map-fullscreen"

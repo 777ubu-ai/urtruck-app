@@ -10,8 +10,6 @@ env:
 # Открываем свой груз со ставкой (Тент) → counter-модалка для стресс-ввода
 - tapOn: { id: "bottom-nav-mywork" }
 - waitForAnimationToEnd
-- tapOn: { id: "my-work-tab-searching" }
-- waitForAnimationToEnd
 - tapOn:
     id: "my-cargo-card"
     index: 0

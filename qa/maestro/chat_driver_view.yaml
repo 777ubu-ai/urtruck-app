@@ -6,18 +6,20 @@ env:
   MAESTRO_ACTOR: serik
 ---
 - runFlow: _lib/qa-login.yaml
-- assertVisible: { id: "bottom-nav-chats" }
-- tapOn: { id: "bottom-nav-chats" }
+- assertVisible: { id: "bottom-nav-deals" }
+- tapOn: { id: "bottom-nav-deals" }
+- waitForAnimationToEnd
+- tapOn: { id: "deals-tab-active" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "chats-header" }
+    visible: { id: "deals-minimal-header" }
     timeout: 12000
 - assertVisible: { id: "deal-room-list" }
 - takeScreenshot: CD1_driver_chats_list
-- tapOn: { id: "deal-room-list-card", index: 0 }
+- tapOn: { id: "deals-deal-card", index: 0 }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "chat-partner-name" }
+    visible: { id: "deal-compact-header" }
     timeout: 10000
 - assertNotVisible: "Собеседник"
 # История обеих реплик в одной комнате

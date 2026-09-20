@@ -6,5 +6,5 @@ tags:
 ---
 - runFlow: driver-4tabs.yaml
 - runFlow: driver-queue-cgr.yaml
-- runFlow: client-3tabs.yaml
+- runFlow: client-4tabs.yaml
 - runFlow: verification-render.yaml
