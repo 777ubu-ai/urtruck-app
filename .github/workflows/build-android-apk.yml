@@ -5,6 +5,11 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Exact source commit SHA to build
+        required: true
+        default: 630953dc3aad29c99aa162ef01c3e6344a7d3faf
   push:
     branches: [main, "claude/**"]
 
@@ -18,8 +23,10 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout repo
+      - name: Checkout exact candidate source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -28,14 +35,20 @@ jobs:
           cache: 'npm'
 
       - name: Set QA2 build contract
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
         run: |
           set -euo pipefail
+          RESOLVED_SOURCE_SHA="$(git rev-parse HEAD)"
+          test "$RESOLVED_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA" || {
+            echo "::error::Expected exact source SHA $EXPECTED_SOURCE_SHA, resolved $RESOLVED_SOURCE_SHA"
+            exit 1
+          }
+          echo "URTRUCK_SOURCE_SHA=$RESOLVED_SOURCE_SHA" >> "$GITHUB_ENV"
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.9" >> "$GITHUB_ENV"
-          # Must be strictly newer than every QA2 artifact currently installed
-          # on the three Android test devices (Xiaomi: 211040071; OPPO: 211040068).
-          # QA073 is the single candidate for the route-layout retest and Android QA.
-          echo "URTRUCK_VERSION_CODE=211040073" >> "$GITHUB_ENV"
+          # QA074 is built from the exact owner-approved Golden source SHA.
+          echo "URTRUCK_VERSION_CODE=211040074" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           # Restore the live service endpoint. The isolated adb-reverse harness
           # has stub STT/translation and no native FCM credentials.
@@ -203,7 +216,7 @@ jobs:
           echo "versionName=$URTRUCK_VERSION_NAME"
           echo "versionCode=$URTRUCK_VERSION_CODE"
           echo "targetSdk=36"
-          echo "sourceSHA=${GITHUB_SHA}"
+          echo "sourceSHA=${URTRUCK_SOURCE_SHA}"
           echo "apkSHA256=$SHA256"
           echo "certificateSHA256=$CERT"
 

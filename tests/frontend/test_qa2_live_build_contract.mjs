@@ -16,6 +16,14 @@ test('distributed QA2 restores live providers without embedding the isolated har
   assert.ok(version > 211040069, 'never reuse or downgrade the latest QA2 candidate');
 });
 
+test('QA074 checks out and records the exact approved Golden source SHA', () => {
+  assert.ok(workflow.includes('default: 630953dc3aad29c99aa162ef01c3e6344a7d3faf'));
+  assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));
+  assert.ok(workflow.includes('test "$RESOLVED_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"'));
+  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040074'));
+  assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
+});
+
 test('live QA2 keeps MapKit and Firebase secret injection and the isolated package', () => {
   assert.ok(workflow.includes('secrets.YANDEX_MAPKIT_API_KEY'));
   assert.ok(workflow.includes('YANDEX_MAPKIT_API_KEY is required'));
