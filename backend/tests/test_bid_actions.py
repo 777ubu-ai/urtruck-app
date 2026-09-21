@@ -769,12 +769,12 @@ def test_list_bids_dedupes_legacy_active_rows_for_same_bidder():
         c.execute(f"DROP INDEX IF EXISTS {index_name}")
         c.execute(
             "INSERT INTO bids (id,cargo_id,bidder_id,bidder_name,amount,status,created_at,updated_at) "
-            "VALUES (?,?,?,?,?,'pending','2026-09-19 19:03:00','2026-09-19 19:03:00')",
+            "VALUES (?,?,?,?,?,'pending',datetime('now','-31 minutes'),datetime('now','-31 minutes'))",
             (old_id, cargo_id, "same-bidder", "Cargo 888", 5700),
         )
         c.execute(
             "INSERT INTO bids (id,cargo_id,bidder_id,bidder_name,amount,status,created_at,updated_at) "
-            "VALUES (?,?,?,?,?,'countered','2026-09-19 19:35:00','2026-09-19 19:35:00')",
+            "VALUES (?,?,?,?,?,'countered',datetime('now','-5 minutes'),datetime('now','-5 minutes'))",
             (new_id, cargo_id, "same-bidder", "Cargo 888", 4550),
         )
 
