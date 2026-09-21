@@ -1,4 +1,5 @@
 """Speech-to-text service for chat voice messages."""
+import json
 import os
 from pathlib import Path
 
@@ -55,6 +56,22 @@ def _model() -> str:
 
 def _api_key() -> str:
     return os.getenv("OPENAI_API_KEY", "").strip()
+
+
+def _is_quota_exhausted(body: str) -> bool:
+    """Distinguish a transient 429 rate limit from a billing stop.
+
+    Provider text stays server-side; only its stable machine code controls the
+    user-facing error contract.
+    """
+    try:
+        error = json.loads(body or "{}").get("error") or {}
+    except (TypeError, ValueError):
+        return False
+    return (
+        str(error.get("type") or "").lower() == "insufficient_quota"
+        or str(error.get("code") or "").lower() in {"insufficient_quota", "credit_balance_exhausted"}
+    )
 
 
 def transcribe_audio_ref(audio_ref: str, *, filename: str | None = None, language: str | None = None) -> dict:
@@ -131,21 +148,21 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
         status = exc.response.status_code if exc.response is not None else 0
         body = exc.response.text[:300] if exc.response is not None else ""
         print(f"[stt] OpenAI HTTP {status}: {body}", flush=True)
-        # Hardening B (2026-09-14): 429 (rate limit / quota exceeded) is a
-        # 4xx status but, unlike "this specific request/audio was rejected"
-        # 4xx codes (400 bad request, 401/403 bad key), it is transient —
-        # OpenAI's own guidance is to back off and retry. Previously only
-        # `status >= 500` was retryable, so a rate-limited request was
-        # reported to the user identically to "this recording can't be
-        # transcribed" (422, no retry hint) instead of "try again shortly"
-        # (503, retryable) — see test_12_5xx_is_retryable_4xx_is_not and its
-        # 429 sibling in test_stt_contract.py.
-        is_retryable = status >= 500 or status == 429
+        # A generic 429 is a transient rate-limit condition. OpenAI also
+        # returns 429 for exhausted billing credit; that one cannot recover by
+        # retrying and must not be shown as a timeout.
+        quota_exhausted = status == 429 and _is_quota_exhausted(body)
+        is_retryable = status >= 500 or (status == 429 and not quota_exhausted)
+        code = (
+            "TRANSCRIPTION_UNAVAILABLE" if quota_exhausted
+            else "TRANSCRIPTION_TIMEOUT" if is_retryable
+            else "TRANSCRIPTION_FAILED"
+        )
         raise SpeechToTextError(
-            "Распознавание голоса временно недоступно" if is_retryable else "Не удалось распознать голосовое сообщение",
+            "Распознавание голоса временно недоступно" if (quota_exhausted or is_retryable) else "Не удалось распознать голосовое сообщение",
             provider="openai",
             retryable=is_retryable,
-            code="TRANSCRIPTION_TIMEOUT" if is_retryable else "TRANSCRIPTION_FAILED",
+            code=code,
         ) from exc
     except httpx.HTTPError as exc:
         raise SpeechToTextError("Сервис распознавания голоса недоступен", provider="openai", retryable=True, code="TRANSCRIPTION_UNAVAILABLE") from exc

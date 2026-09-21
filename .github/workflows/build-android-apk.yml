@@ -31,11 +31,11 @@ jobs:
         run: |
           set -euo pipefail
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
-          echo "URTRUCK_VERSION_NAME=1.0.8" >> "$GITHUB_ENV"
-          # Must be strictly newer than the currently installed QA2 artifact.
-          # QA070: CGR/Border role-aware integration candidate.
-          # Must be newer than QA069 used by the previous diagnostic artifact.
-          echo "URTRUCK_VERSION_CODE=211040070" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_NAME=1.0.9" >> "$GITHUB_ENV"
+          # Must be strictly newer than every QA2 artifact currently installed
+          # on the three Android test devices (Xiaomi: 211040071; OPPO: 211040068).
+          # QA072 is the single candidate for MapKit/Firebase/voice regression.
+          echo "URTRUCK_VERSION_CODE=211040072" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           # Restore the live service endpoint. The isolated adb-reverse harness
           # has stub STT/translation and no native FCM credentials.

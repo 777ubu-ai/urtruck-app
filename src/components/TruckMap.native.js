@@ -11,6 +11,23 @@ import { useI18n } from '../utils/useI18n';
 
 const YANDEX_MAPKIT_API_KEY = String(process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY || '').trim();
 const MAPKIT_AVAILABLE = Boolean(NativeModules?.yamap);
+const MAPKIT_CONFIGURED = MAPKIT_AVAILABLE && Boolean(YANDEX_MAPKIT_API_KEY);
+
+// MapKit must receive the key through the native bridge before any YaMap view
+// mounts. Merely exposing EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY to JavaScript does
+// not initialise the native SDK.
+let mapKitInitPromise = null;
+const initializeMapKit = () => {
+  if (!MAPKIT_CONFIGURED) return Promise.resolve(false);
+  if (!mapKitInitPromise) {
+    try {
+      mapKitInitPromise = Promise.resolve(YaMap.init(YANDEX_MAPKIT_API_KEY));
+    } catch (error) {
+      mapKitInitPromise = Promise.reject(error);
+    }
+  }
+  return mapKitInitPromise;
+};
 
 const asPoint = (value) => {
   const rawLat = Array.isArray(value) ? value[0] : value?.lat ?? value?.latitude;
@@ -90,6 +107,23 @@ export default function TruckMap({
   const mapRef = React.useRef(null);
   const truckMarkerRef = React.useRef(null);
   const previousLiveRef = React.useRef(null);
+  const [mapKitInitState, setMapKitInitState] = React.useState(
+    MAPKIT_CONFIGURED ? 'loading' : 'unavailable',
+  );
+
+  React.useEffect(() => {
+    let active = true;
+    if (!MAPKIT_CONFIGURED) {
+      setMapKitInitState('unavailable');
+      return () => { active = false; };
+    }
+    setMapKitInitState('loading');
+    initializeMapKit().then(
+      () => { if (active) setMapKitInitState('ready'); },
+      () => { if (active) setMapKitInitState('error'); },
+    );
+    return () => { active = false; };
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -168,16 +202,24 @@ export default function TruckMap({
   }, [live?.lat, live?.lon]);
 
   const hasNothingToShow = !live && planned.length < 2;
-  const mapReady = MAPKIT_AVAILABLE && Boolean(YANDEX_MAPKIT_API_KEY);
+  const mapReady = mapKitInitState === 'ready';
   if (hasNothingToShow) {
     return <View style={s.shell}><View style={s.mapFallback} testID="truck-map-native-unavailable-no_route_coordinates"><Text style={s.mapFallbackText}>{t('map_no_route_coordinates')}</Text></View></View>;
   }
+  if (mapKitInitState === 'loading') {
+    return <View style={s.shell}><View style={s.mapFallback} testID="truck-map-native-initializing"><Text style={s.mapFallbackText}>{t('map_loading')}</Text></View></View>;
+  }
   if (!mapReady) {
+    const debugError = !MAPKIT_AVAILABLE
+      ? 'Yandex MapKit native module is not linked'
+      : !YANDEX_MAPKIT_API_KEY
+        ? 'EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY is missing'
+        : 'Yandex MapKit initialization failed';
     return (
       <View style={s.shell}>
         <View style={s.mapFallback} testID="truck-map-native-unavailable-provider_not_configured">
           <Text style={s.mapFallbackText}>{t('map_unavailable')}</Text>
-          {__DEV__ ? <Text style={s.mapDebugError}>{MAPKIT_AVAILABLE ? 'EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY is missing' : 'Yandex MapKit native module is not linked'}</Text> : null}
+          {__DEV__ ? <Text style={s.mapDebugError}>{debugError}</Text> : null}
         </View>
       </View>
     );

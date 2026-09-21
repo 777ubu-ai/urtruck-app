@@ -1,6 +1,7 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet } from 'react-native';
+import { ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import CargoDetail from './CargoDetail';
 import DealWorkspaceRoute from '../components/deal/DealWorkspaceRoute';
 import { marketAPI } from '../utils/marketAPI';
@@ -64,8 +65,17 @@ export default function CargoDetailV2(props) {
 
   if (!checked) {
     return (
-      <SafeAreaView style={[s.loading, { backgroundColor: colors.bg }]} edges={['top']}>
-        <ActivityIndicator color={colors.active || colors.driver} />
+      <SafeAreaView style={{ backgroundColor: colors.bg }} edges={['top']}>
+        <TouchableOpacity
+          onPress={() => props.navigation.goBack()}
+          style={s.loadingBack}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          testID="cargo-detail-loading-back"
+        >
+          <Feather name="chevron-left" size={28} color={colors.text} />
+        </TouchableOpacity>
+        <ActivityIndicator style={s.loading} color={colors.active || colors.driver} />
       </SafeAreaView>
     );
   }
@@ -91,4 +101,7 @@ export default function CargoDetailV2(props) {
   return <CargoDetail {...props} />;
 }
 
-const s = StyleSheet.create({ loading: { flex: 1, alignItems: 'center', justifyContent: 'center' } });
+const s = StyleSheet.create({
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingBack: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+});

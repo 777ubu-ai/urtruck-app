@@ -23,11 +23,11 @@ test('foreground deal activity uses the Deals badge without a duplicate top bann
   assert.doesNotMatch(bottomNav, /actionLabel:\s*t\('open_action'\)/);
 });
 
-test('native push remains configured to show banners and play the default sound', () => {
+test('native push remains configured to show banners and use the Android system sound', () => {
   assert.match(push, /shouldShowBanner:\s*true/);
   assert.match(push, /shouldPlaySound:\s*true/);
   assert.match(push, /AndroidImportance\.MAX/);
-  assert.match(push, /sound:\s*'default'/);
+  assert.doesNotMatch(push, /sound:\s*['\"]default['\"]/);
 });
 
 test('shipper machine feed saves an individual trip and exposes the same saved filter as driver cargo feed', () => {

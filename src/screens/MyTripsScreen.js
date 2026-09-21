@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Platform, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
@@ -18,8 +18,6 @@ import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import FadeInUp from '../components/ui/FadeInUp';
 import Feather from '@expo/vector-icons/Feather';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
-import BellBadge from '../components/ui/v1/BellBadge';
-import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
@@ -47,6 +45,15 @@ const myItemStatusColor = (colors, st) => {
   return colors.textDim;
 };
 
+// Latest request wins: a slow dashboard call can never trap the tab on a loader.
+const withTimeout = (promise, timeoutMs = 12000) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error('dashboard_timeout')), timeoutMs);
+  Promise.resolve(promise).then(
+    (value) => { clearTimeout(timer); resolve(value); },
+    (error) => { clearTimeout(timer); reject(error); },
+  );
+});
+
 export default function MyTripsScreen({ navigation, route }) {
   const v1Base = useV1Colors();
   const ceramic = useDriverCeramicColors();
@@ -63,8 +70,6 @@ export default function MyTripsScreen({ navigation, route }) {
   brandText: { color: v1.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
   ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
-  bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1.surface },
-  bellIcon: { fontSize: 18 },
   menuBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   // Дизайн 2026 v4 (03.08): заголовок 26→19px. Раньше «Мои грузы» занимал
   // визуально столько же, сколько сам список — user жаловался «как для слепого».
@@ -147,6 +152,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // (republish/продление); ставки (bid) переехали в «Сделки».
   const [busyBidId, setBusyBidId] = useState(null);
   const [extending, setExtending] = useState(null);  // Модель А: продление одним тапом
+  const loadRequestRef = useRef(0);
 
   // «Ещё актуально» — сбрасывает дату на сегодня, публикация снова живёт
   // 3 дня и возвращается в ленту. Без ручного ввода даты.
@@ -212,31 +218,37 @@ export default function MyTripsScreen({ navigation, route }) {
   };
 
   const load = useCallback(async ({ showLoading = true } = {}) => {
+    const requestId = ++loadRequestRef.current;
     if (showLoading) setLoading(true);
     else setRefreshingList(true);
     try {
-      const token = await require('../utils/storage').storage.get('ur_reg_token');
+      const token = await withTimeout(require('../utils/storage').storage.get('ur_reg_token'));
+      let next;
       if (!token) {
         if (isDriver) {
-          const trips = await marketAPI.listTrips({});
-          if (!mounted.current) return;  // QA-аудит P1-8: экран размонтирован
-          setData({ my_trips: trips.trips || [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true });
+          const trips = await withTimeout(marketAPI.listTrips({}));
+          next = { my_trips: trips.trips || [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true };
         } else {
-          if (!mounted.current) return;
-          setData({ my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true });
+          next = { my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true };
         }
       } else {
-        let d = await marketAPI.myDashboard();
-        if (d.serverError && isDriver) {
-          try { const trips = await marketAPI.listTrips({}); d = { ...d, my_trips: (trips.trips || []) }; } catch {}
+        let dashboard = await withTimeout(marketAPI.myDashboard());
+        if (dashboard.serverError && isDriver) {
+          try {
+            const trips = await withTimeout(marketAPI.listTrips({}));
+            dashboard = { ...dashboard, my_trips: trips.trips || [] };
+          } catch { /* preserve the dashboard response if its fallback fails */ }
         }
-        if (!mounted.current) return;
-        setData(d);
+        next = dashboard;
       }
-    } catch (e) { console.warn('[MyTrips] load error:', e.message); }
-    if (mounted.current) {
-      if (showLoading) setLoading(false);
-      else setRefreshingList(false);
+      if (mounted.current && requestId === loadRequestRef.current) setData(next);
+    } catch (e) {
+      console.warn('[MyTrips] load error:', e.message);
+    } finally {
+      if (mounted.current && requestId === loadRequestRef.current) {
+        setLoading(false);
+        setRefreshingList(false);
+      }
     }
   }, [isDriver, mounted]);
 

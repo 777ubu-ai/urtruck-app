@@ -1706,11 +1706,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     keyExtractor={(item) => item.id}
                     style={s.messageList}
                     contentContainerStyle={s.messageContent}
-                    onLayout={() => {
-                      // После изменения IME-области показываем последнее сообщение,
-                      // сохраняя позицию пользователя, читающего старую историю.
-                      scheduleAutoScrollRef.current?.();
-                    }}
+                    // Do not force-scroll from onLayout: iOS emits repeated layout
+                    // passes while the IME animates, which made the composer flash.
+                    // New messages remain anchored by the content-size handler below.
                     keyboardShouldPersistTaps="handled"
                     onScroll={(event) => {
                       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;

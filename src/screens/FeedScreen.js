@@ -25,7 +25,6 @@ import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
-import BellBadge from '../components/ui/v1/BellBadge';
 import RootHeader from '../components/ui/v1/RootHeader';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';

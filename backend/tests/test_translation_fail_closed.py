@@ -188,6 +188,22 @@ def test_02b_429_is_retryable(monkeypatch):
         assert "quota exhausted" not in str(exc)
 
 
+def test_02c_429_insufficient_quota_is_unavailable_not_a_timeout(monkeypatch):
+    from services import translate_service as ts
+
+    monkeypatch.setenv("TRANSLATE_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake")
+    body = _json.dumps({"error": {"type": "insufficient_quota", "code": "credit_balance_exhausted"}}).encode("utf-8")
+    monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen_http_error(429, body))
+    try:
+        ts.translate_text("hello", "ru", source_lang="en")
+        assert False
+    except ts.TranslationError as exc:
+        assert exc.code == "TRANSLATION_UNAVAILABLE"
+        assert exc.retryable is False
+
+
+
 def test_03_network_timeout_is_retryable(monkeypatch):
     from services import translate_service as ts
 

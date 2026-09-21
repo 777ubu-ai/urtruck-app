@@ -28,8 +28,16 @@ test('new cargo and trip numeric fields have no misleading example numbers', () 
   }
 });
 
-test('route destination gets its own full-width row instead of a narrow city column', () => {
-  assert.match(route, /<View style=\{s\.pointRow\}>[\s\S]*\{from \|\| '—'\}[\s\S]*<View style=\{s\.pointRow\}>[\s\S]*\{to \|\| '—'\}/);
+test('regular routes keep the destination on its own full-width row', () => {
+  const regularRoute = route.slice(route.lastIndexOf('return ('), route.indexOf('const s ='));
+  assert.match(regularRoute, /<View style=\{s\.pointRow\}>[\s\S]*\{from \|\| '—'\}[\s\S]*<View style=\{s\.pointRow\}>[\s\S]*\{to \|\| '—'\}/);
   assert.match(route, /city: \{ flex: 1, minWidth: 0/);
-  assert.equal((route.match(/<View style=\{s\.pointRow\}>/g) || []).length, 2);
+  assert.equal((regularRoute.match(/<View style=\{s\.pointRow\}>/g) || []).length, 2);
+});
+
+test('Dulaty–Kalzhat keeps Kalzhat below the origin and destination on one line', () => {
+  assert.match(route, /splitDulatyKalzhat/);
+  assert.match(route, /crossingCheckpoint/);
+  assert.match(route, /crossingDestination/);
+  assert.match(route, /numberOfLines=\{1\} ellipsizeMode="tail">\{to \|\| '—'\}/);
 });

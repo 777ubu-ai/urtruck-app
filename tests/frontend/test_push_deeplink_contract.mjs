@@ -71,11 +71,11 @@ test('server unread stays authoritative when the local verification cache is sta
   assert.doesNotMatch(unreadBlock, /ur_verification_level/);
 });
 
-test('Deals exposes the durable notification inbox whenever an app-icon badge has unread events', () => {
-  assert.match(dealsScreen, /useUnreadNotifications\(hasToken\)/);
-  assert.match(dealsScreen, /notificationUnread > 0/);
-  assert.match(dealsScreen, /testID="deals-notification-inbox"/);
-  assert.match(dealsScreen, /navigation\.navigate\('Notifications', \{ role \}\)/);
+test('Deals has no Bell or notification-inbox entry point; notification routing stays deep-link compatible', () => {
+  assert.doesNotMatch(dealsScreen, /useUnreadNotifications\(hasToken\)/);
+  assert.doesNotMatch(dealsScreen, /notificationUnread > 0/);
+  assert.doesNotMatch(dealsScreen, /testID="deals-notification-inbox"/);
+  assert.doesNotMatch(dealsScreen, /navigation\.navigate\('Notifications', \{ role \}\)/);
 });
 
 test('auth and notification cold-start deeplinks are queued until nav and auth are ready', () => {
