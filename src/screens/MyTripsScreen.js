@@ -114,6 +114,10 @@ export default function MyTripsScreen({ navigation, route }) {
   // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
   miniBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, maxWidth: '100%', backgroundColor: 'rgba(148,163,184,0.14)' },
   miniBtnText: { fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  // Active cargo actions are visually compact; hitSlop keeps a 44dp touch target.
+  cargoActions: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  cargoActionBtn: { height: 34, borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', flex: 1, backgroundColor: 'transparent' },
+  cargoActionText: { fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
   editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: v1Spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
   editBtnText: { color: v1.active || v1.driver, fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
   extendBtn: { flex: 1, backgroundColor: v1.active || v1.driver, borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
@@ -504,20 +508,22 @@ export default function MyTripsScreen({ navigation, route }) {
         {/* Задача A: управление СВОИМ грузом — Изменить (цена/описание) + Удалить.
             Только для активного груза (taken/принятый редактировать нельзя). */}
         {isCargo && !isDriver && st === 'active' && (
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+          <View style={s.cargoActions}>
             <TouchableOpacity
               testID="my-cargo-edit-btn"
-              style={[s.miniBtn, { borderColor: v1.clientAccent || v1.warning, flex: 1 }]}
+              hitSlop={{ top: 5, right: 4, bottom: 5, left: 4 }}
+              style={[s.cargoActionBtn, { borderColor: v1.clientAccent || v1.warning }]}
               onPress={(e) => { e.stopPropagation && e.stopPropagation(); setEditCargo(item); }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Feather name="edit-3" size={14} color={v1.clientAccent || v1.warning} />
-                <Text style={[s.miniBtnText, { color: v1.warning }]}>{t('edit_btn')}</Text>
+                <Text style={[s.cargoActionText, { color: v1.warning }]}>{t('edit_btn')}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="my-cargo-delete-btn"
-              style={[s.miniBtn, { borderColor: v1.error, flex: 1 }]}
+              hitSlop={{ top: 5, right: 4, bottom: 5, left: 4 }}
+              style={[s.cargoActionBtn, { borderColor: v1.error }]}
               onPress={async (e) => {
                 e.stopPropagation && e.stopPropagation();
                 if (!(await confirmAction(t('delete_cargo_confirm')))) return;
@@ -528,7 +534,7 @@ export default function MyTripsScreen({ navigation, route }) {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Feather name="trash-2" size={14} color={v1.error} />
-                <Text style={[s.miniBtnText, { color: v1.error }]}>{t('delete_btn')}</Text>
+                <Text style={[s.cargoActionText, { color: v1.error }]}>{t('delete_btn')}</Text>
               </View>
             </TouchableOpacity>
           </View>

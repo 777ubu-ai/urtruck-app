@@ -29,6 +29,14 @@ test('shipper feed wires the bookmark with localized accessibility labels', () =
   assert.match(shipperFeed, /testID: `trip-card-bookmark-\$\{item\.id\}`/);
 });
 
+test('active cargo actions are visually compact but retain a 44dp touch target', () => {
+  assert.match(myTrips, /cargoActions: \{ flexDirection: 'row', gap: 8, marginTop: 6 \}/);
+  assert.match(myTrips, /cargoActionBtn: \{ height: 34, borderWidth: 1/);
+  assert.equal((myTrips.match(/testID="my-cargo-(?:edit|delete)-btn"[\s\S]*?hitSlop=\{\{ top: 5, right: 4, bottom: 5, left: 4 \}\}/g) || []).length, 2);
+  assert.match(myTrips, /testID="my-cargo-edit-btn"[\s\S]*?setEditCargo\(item\)/);
+  assert.match(myTrips, /testID="my-cargo-delete-btn"[\s\S]*?marketAPI\.deleteCargo\(item\.id\)/);
+});
+
 test('route owns primary row with CountryFlag on both endpoints and a clamp', () => {
   // MyTrips passes ISO codes for both endpoints into the shared RouteLine.
   assert.match(myTrips, /fromFlag: flagCodeOrNull\(item\.from_country\)/);
