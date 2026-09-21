@@ -36,8 +36,12 @@ require(ROOT / "docs" / "GOLDEN_BASELINE.md", [
     "Baseline type:",
     "Main SHA:",
     "CI evidence",
-    "Protected capability ledger",
-    "Release certification table",
+    "Подтверждённые GOLDEN-блоки",
+    "GOLDEN DESIGN BASELINE",
+    "10/10 блока",
+    "10/10 продукта",
+    "QA073",
+    "Release-specific certification table",
 ])
 require(ROOT / ".github" / "pull_request_template.md", [
     "UrTruck PRE-FLIGHT",

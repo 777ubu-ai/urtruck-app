@@ -276,10 +276,24 @@ Definition of Done.
 
 ## 22. Правило 10/10
 
-10/10 — не настроение и не оценка автора. Это состояние с доказательствами.
+Разрешены только две формы:
 
-Нельзя утверждать 10/10, если обязательный physical/device/production пункт
-имеет статус PENDING, FAIL, UNKNOWN или NOT VERIFIED.
+1. **10/10 блока** — конкретная capability имеет known-good SHA/QA build,
+   PASS-сценарий и device/platform evidence по применимости. Незакрытые соседние
+   дефекты перечисляются отдельно.
+2. **10/10 продукта** — один exact release SHA одновременно прошёл все
+   обязательные gates, включая Android, iPhone, critical deal path,
+   chat/voice/translation, push, GPS/map, documents, security, localization,
+   bad network/idempotency, load/release acceptance и production verification.
+
+Historical PASS нельзя переносить на новый SHA без анализа diff и ретеста
+затронутой функции.
+
+Нельзя утверждать product 10/10, если обязательный physical/device/production
+пункт имеет PENDING, FAIL, BLOCKED, UNKNOWN или NOT VERIFIED.
+
+Визуальная регрессия утверждённого Golden Design (например marketplace route
+cards) считается реальной регрессией даже если unit/build остаются зелёными.
 
 ## 23. AI coding agents
 

@@ -48,8 +48,9 @@ history/branches/PR**, а не писать замену с нуля.
 - **ROOT CAUSE:** исправление P0/P1/P2 обязано включать причину и regression test.
 - **NO FALSE DONE:** build, HTTP 200, локальный запуск или эмулятор не означают
   production-ready.
-- **NO FALSE 10/10:** статус 10/10 разрешён только при доказательствах,
-  перечисленных в Golden Baseline и release criteria.
+- **NO FALSE 10/10:** разрешены только «10/10 блока» с exact evidence и
+  «10/10 продукта» на одном release SHA после всех обязательных gates.
+  Определения и recovery points — только в Golden Baseline.
 - **STOP THE LINE:** если новая правка ломает ранее подтверждённый сценарий,
   дальнейшая разработка останавливается до rollback/fix и повторной регрессии.
 - **BASELINE IS EVIDENCE:** `GOLDEN_BASELINE.md` обновляется только точными SHA,
