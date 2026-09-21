@@ -1,0 +1,21 @@
+# UrTruck ownership map.
+# Critical areas have two human owners so independent review is possible.
+
+* @777ubu-ai
+
+/AGENTS.md @777ubu-ai @arbeiterschaft02-prog
+/docs/GOLDEN_BASELINE.md @777ubu-ai @arbeiterschaft02-prog
+/docs/ENGINEERING_STANDARDS_AND_QUALITY_PROTOCOL.md @777ubu-ai @arbeiterschaft02-prog
+/docs/CURRENT_PRODUCT_CANON.md @777ubu-ai @arbeiterschaft02-prog
+/docs/CURRENT_ENGINEERING_CANON.md @777ubu-ai @arbeiterschaft02-prog
+
+/.github/workflows/ @777ubu-ai @arbeiterschaft02-prog
+/.github/CODEOWNERS @777ubu-ai @arbeiterschaft02-prog
+/.github/pull_request_template.md @777ubu-ai @arbeiterschaft02-prog
+/scripts/ @777ubu-ai @arbeiterschaft02-prog
+
+/backend/ @777ubu-ai @arbeiterschaft02-prog
+/database/ @777ubu-ai @arbeiterschaft02-prog
+/src/ @777ubu-ai @arbeiterschaft02-prog
+/android/ @777ubu-ai @arbeiterschaft02-prog
+/ios/ @777ubu-ai @arbeiterschaft02-prog
