@@ -37,7 +37,7 @@ bad network/idempotency и release acceptance.
 ## 2. Текущий repository baseline
 
 - **Baseline type:** repository + CI baseline
-- **Current main SHA at governance start:** `1da2afa730ca1755b27877a5967a5d6c645fc45b`
+- **Main SHA:** `1da2afa730ca1755b27877a5967a5d6c645fc45b` (current main at governance start)
 - **Main commit:** Merge PR #379 — Android mediaPlayback FGS removal
 - **Verified PR head:** `2eea415b9a3609fe357d90e60a4e50f76e4cd550`
 - **Дата фиксации:** 2026-09-21
