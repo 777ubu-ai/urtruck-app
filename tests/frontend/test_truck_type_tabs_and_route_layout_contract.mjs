@@ -6,6 +6,8 @@ const grid = readFileSync('src/components/TruckTypeGrid.js', 'utf8');
 const route = readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
 const createTrip = readFileSync('src/screens/CreateTripScreen.js', 'utf8');
 const createCargo = readFileSync('src/screens/CreateCargoScreen.js', 'utf8');
+const myTrips = readFileSync('src/screens/MyTripsScreen.js', 'utf8');
+const favorites = readFileSync('src/screens/FavoritesScreen.js', 'utf8');
 const i18n = readFileSync('src/utils/i18n.js', 'utf8');
 
 test('truck selector separates freight, LCV and special vehicles', () => {
@@ -34,6 +36,13 @@ test('regular routes keep both flags and cities on one compact row', () => {
   assert.equal((regularRoute.match(/<View style=\{s\.pointRow\}>/g) || []).length, 0);
   assert.match(route, /fromCity: \{ flexShrink: 1, maxWidth: '42%' \}/);
   assert.match(route, /toCity: \{ flex: 1 \}/);
+});
+
+test('all compact list routes force a single line for each ordinary city', () => {
+  for (const source of [myTrips, favorites]) {
+    assert.doesNotMatch(source, /numberOfLines:\s*2/);
+    assert.match(source, /numberOfLines:\s*1/);
+  }
 });
 
 test('known border pairs keep checkpoint below origin and destination readable', () => {

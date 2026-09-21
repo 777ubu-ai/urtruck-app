@@ -113,7 +113,7 @@ export default function FavoritesScreen({ navigation, route }) {
             to: localizePlace(data.to, lang) || t('not_specified'),
             fromFlag: flagCode(data.from_country) || flagCode(data.from) || null,
             toFlag: flagCode(data.to_country) || flagCode(data.to) || null,
-            numberOfLines: 2,
+            numberOfLines: 1,
           }}
           price={formatPrice(data.price, data.currency, t)}
           priceMeta={dateText || null}

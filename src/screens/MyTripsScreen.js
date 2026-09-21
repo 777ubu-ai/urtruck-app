@@ -409,7 +409,7 @@ export default function MyTripsScreen({ navigation, route }) {
           to: localizePlace(to, lang),
           fromFlag: flagCodeOrNull(item.from_country),
           toFlag: flagCodeOrNull(item.to_country),
-          numberOfLines: 2,
+          numberOfLines: 1,
         }}
         price={formatPrice(item.price, item.currency, t)}
         priceMeta={dateText}
@@ -585,7 +585,7 @@ export default function MyTripsScreen({ navigation, route }) {
           to: localizePlace(to, lang),
           fromFlag: flagCodeOrNull(item.from_country),
           toFlag: flagCodeOrNull(item.to_country),
-          numberOfLines: 2,
+          numberOfLines: 1,
         }}
         status={{ key: 'unpublished', label: formatStatus(item.status || 'unpublished'), color: v1.textDim }}
       >
