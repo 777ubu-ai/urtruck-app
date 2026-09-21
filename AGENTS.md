@@ -3,7 +3,16 @@
 Этот файл — точка входа для AI-ассистентов (Codex, Claude Code, Cursor и т.п.),
 работающих в этом репозитории.
 
-**Основной источник инструкций — [`CLAUDE.md`](CLAUDE.md).** Прочитать его
+**До любой работы обязательно прочитать:**
+
+1. [`docs/ENGINEERING_CONSTITUTION.md`](docs/ENGINEERING_CONSTITUTION.md) — главный anti-regression протокол;
+2. [`docs/GOLDEN_BASELINE.md`](docs/GOLDEN_BASELINE.md) — подтверждённые known-good блоки и текущие регрессии;
+3. [`CLAUDE.md`](CLAUDE.md) — архитектура и специальные правила проекта.
+
+Если документы расходятся, фактический проверенный Golden Baseline и более новое
+явное решение владельца имеют приоритет. До изменения кода обязателен PRE-FLIGHT.
+
+**Основной архитектурный источник — [`CLAUDE.md`](CLAUDE.md).** Прочитать его
 целиком перед началом работы: архитектура фронтенда/бэкенда, правила UI,
 Graphify-gated changes (обязательный процесс перед правками навигации,
 FeedScreen/MyTripsScreen, i18n, backend registration, chat/deal room,
