@@ -37,6 +37,9 @@ test('regular routes keep the destination on its own full-width row', () => {
 
 test('Dulaty–Kalzhat keeps Kalzhat below the origin and destination on one line', () => {
   assert.match(route, /splitDulatyKalzhat/);
+  const separatorSource = route.match(/\.split\(\/([^/]+)\/\)/)?.[1];
+  assert.ok(separatorSource);
+  assert.deepEqual('Дулаты → Калжат'.split(new RegExp(separatorSource)), ['Дулаты', 'Калжат']);
   assert.match(route, /crossingCheckpoint/);
   assert.match(route, /crossingDestination/);
   assert.match(route, /numberOfLines=\{1\} ellipsizeMode="tail">\{to \|\| '—'\}/);

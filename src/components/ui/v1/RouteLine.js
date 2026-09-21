@@ -9,7 +9,7 @@ const KALZHAT = new Set(['калжат', 'kalzhat', '喀勒扎特']);
 const norm = (value) => String(value || '').trim().toLowerCase();
 
 function splitDulatyKalzhat(value) {
-  const parts = String(value || '').split(/\s*[-–—]\s*/).map((item) => item.trim()).filter(Boolean);
+  const parts = String(value || '').split(/\s*[-–—→↔]\s*/).map((item) => item.trim()).filter(Boolean);
   if (parts.length !== 2 || !DULATY.has(norm(parts[0])) || !KALZHAT.has(norm(parts[1]))) return null;
   return parts;
 }

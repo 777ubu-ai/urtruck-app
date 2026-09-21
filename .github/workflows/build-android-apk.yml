@@ -34,8 +34,8 @@ jobs:
           echo "URTRUCK_VERSION_NAME=1.0.9" >> "$GITHUB_ENV"
           # Must be strictly newer than every QA2 artifact currently installed
           # on the three Android test devices (Xiaomi: 211040071; OPPO: 211040068).
-          # QA072 is the single candidate for MapKit/Firebase/voice regression.
-          echo "URTRUCK_VERSION_CODE=211040072" >> "$GITHUB_ENV"
+          # QA073 is the single candidate for the route-layout retest and Android QA.
+          echo "URTRUCK_VERSION_CODE=211040073" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           # Restore the live service endpoint. The isolated adb-reverse harness
           # has stub STT/translation and no native FCM credentials.
