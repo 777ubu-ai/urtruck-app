@@ -33,10 +33,12 @@ test('detail loading states always provide an explicit back button', () => {
   assert.match(tripDetail, /testID="trip-detail-loading-back"/);
 });
 
-test('Dulaty–Kalzhat renders as a source stack while destination remains one line', () => {
-  assert.match(routeLine, /splitDulatyKalzhat/);
-  assert.match(routeLine, /crossingCheckpoint/);
-  assert.match(routeLine, /crossingDestination/);
+test('approved compact route layout survives border-pair rendering', () => {
+  assert.match(routeLine, /splitBorderPair/);
+  assert.match(routeLine, /<View style=\{s\.row\}/);
+  assert.match(routeLine, /чугучак.*tacheng.*塔城/);
+  assert.match(routeLine, /бахты.*bakhty.*巴克图/);
+  assert.match(routeLine, /crossingDestination: \{ flex: 1/);
   assert.match(routeLine, /numberOfLines=\{1\}/);
 });
 
