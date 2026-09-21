@@ -27,7 +27,7 @@
 
 | Функция | Статус | Known-good evidence | Платформа / дата |
 | --- | --- | --- | --- |
-| Compact cards | PASS historical; FAIL QA073 | `a443d2aa`, tests enforce 84 dp | Android UI, 15.09 |
+| Compact cards/routes | PASS source candidate; physical retest required | `2e9abdef`, tests enforce 84 dp and one-line ordinary route | Android pending |
 | Round flags | PASS historical | `e423bd40`, `docs/design/country-flags.md` | shared UI, 14.09 |
 | Native map route | PASS historical | `12d7d679`, QA059: Yiwu→Moscow 9063 km | Xiaomi, 17.09 |
 | Text chat | PASS historical + QA073 delivery | QA061/062 ≤6.821/6.795 s; QA073 5×2 | two Xiaomi |
@@ -65,8 +65,8 @@ light border; rectangular and emoji flags are forbidden.
 
 | Defect | Status | Evidence |
 | --- | --- | --- |
-| Ordinary route became two rows; Almaty shown as `Ал…` | P1 FAIL | physical screenshot + diff after `a443d2aa` |
-| Cargo loading date picker does not open | P1 FAIL | publish blocked by «Укажите дату загрузки» |
+| Ordinary route became two rows; Almaty shown as `Ал…` | FIXED IN SOURCE; RETEST | `2e9abdef`, route regression tests PASS |
+| Cargo loading date picker does not open | FIXED IN SOURCE; RETEST | `2e9abdef`, explicit open action + regression test |
 | Translation button shows `翻译不可用` | FAIL | real RU message on ZH Xiaomi |
 | Route calculation temporarily unavailable | FAIL/needs root cause | physical QA073 |
 | OPPO third account | BLOCKED | Google login cancelled |
@@ -76,6 +76,8 @@ light border; rectangular and emoji flags are forbidden.
 - 17.09 route-fix: backend 858/858; frontend 685/685.
 - 17.09 chat-history fix: backend 864/864; frontend 691/691; i18n 2006×4.
 - QA062: backend 878/878; frontend 699/699; lint PASS.
+- Golden source candidate `2e9abdef`: frontend 779/779; backend 901/901;
+  lint, QA Center quick, dependency audit and Python dependency check PASS.
 
 These results apply only to their exact source/runtime snapshots.
 
