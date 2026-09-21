@@ -36,6 +36,8 @@ test('regular routes keep both flags and cities on one compact row', () => {
   assert.equal((regularRoute.match(/<View style=\{s\.pointRow\}>/g) || []).length, 0);
   assert.match(route, /fromCity: \{ flexShrink: 1, maxWidth: '42%' \}/);
   assert.match(route, /toCity: \{ flex: 1 \}/);
+  assert.equal((regularRoute.match(/adjustsFontSizeToFit/g) || []).length, 2);
+  assert.equal((regularRoute.match(/minimumFontScale=\{0\.8\}/g) || []).length, 2);
 });
 
 test('all compact list routes force a single line for each ordinary city', () => {

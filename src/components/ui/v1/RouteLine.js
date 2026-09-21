@@ -59,10 +59,10 @@ export default function RouteLine({ from, to, fromFlag, toFlag, numberOfLines = 
   return (
     <View style={s.row} testID={testID}>
       {fromFlag ? <CountryFlag code={fromFlag} width={26} style={s.flag} /> : null}
-      <Text style={[s.city, s.fromCity, { color: palette.text }]} numberOfLines={numberOfLines} ellipsizeMode="tail">{from || '—'}</Text>
+      <Text style={[s.city, s.fromCity, { color: palette.text }]} numberOfLines={numberOfLines} adjustsFontSizeToFit minimumFontScale={0.8} ellipsizeMode="tail">{from || '—'}</Text>
       <Feather name="arrow-right" size={16} color={palette.textMuted} style={s.arrow} />
       {toFlag ? <CountryFlag code={toFlag} width={26} style={s.flag} /> : null}
-      <Text style={[s.city, s.toCity, { color: palette.text }]} numberOfLines={numberOfLines} ellipsizeMode="tail">{to || '—'}</Text>
+      <Text style={[s.city, s.toCity, { color: palette.text }]} numberOfLines={numberOfLines} adjustsFontSizeToFit minimumFontScale={0.8} ellipsizeMode="tail">{to || '—'}</Text>
     </View>
   );
 }
