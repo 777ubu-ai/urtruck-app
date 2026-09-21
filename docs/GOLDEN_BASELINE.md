@@ -104,7 +104,7 @@ Recovery/evidence:
 
 ### 4.2. Voice / STT / Translation RU→ZH и ZH→RU — 60 s
 
-**Статус core voice/STT/translation блока:** GOLDEN / PASS на QA062.  
+**Статус core voice/STT/translation блока:** GOLDEN / PASS на QA062.
 **Статус player progress UI:** RETEST REQUIRED.
 
 Repository evidence QA062 прямо подтверждает:
