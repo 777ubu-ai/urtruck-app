@@ -1,4 +1,77 @@
-# AGENTS.md
+# UrTruck Mandatory Engineering Entry Point
+
+> **STOP RULE:** перед изменением кода, конфигурации, БД, workflow, UI или production
+> каждый человек и AI-агент обязан выполнить этот протокол. Новая задача не даёт
+> права переписывать уже работающий модуль.
+
+## Обязательное чтение перед любой работой
+
+1. Прочитать этот `AGENTS.md`.
+2. Прочитать `docs/ENGINEERING_STANDARDS_AND_QUALITY_PROTOCOL.md`.
+3. Прочитать `docs/GOLDEN_BASELINE.md` и найти затрагиваемые подсистемы.
+4. Прочитать актуальные `docs/CURRENT_PRODUCT_CANON.md` и
+   `docs/CURRENT_ENGINEERING_CANON.md`.
+5. Для GPS/Android дополнительно читать
+   `docs/release/google-play-background-location.md`.
+6. Проверить текущие branch, HEAD SHA, base SHA, незакоммиченные изменения и
+   открытые PR, которые пересекаются с задачей.
+
+## PRE-FLIGHT обязателен до первой правки
+
+Зафиксировать в рабочем отчёте:
+
+```text
+Task:
+Branch:
+HEAD SHA:
+Base SHA:
+Current production/baseline SHA:
+Affected modules:
+Protected modules that must remain unchanged:
+Existing known-good implementation / commit / PR:
+Regression risks:
+Tests that already protect this area:
+Tests to add/update:
+Minimal-change plan:
+Rollback plan:
+```
+
+Если неизвестно, где последняя рабочая реализация, **сначала искать её в Git
+history/branches/PR**, а не писать замену с нуля.
+
+## Anti-regression rules
+
+- **NO REWRITE:** нельзя переписывать рабочий Chat/Deal/FSM/Push/GPS/Map/Auth/
+  Documents/Voice/Translation/Payments без отдельного доказанного решения.
+- **MINIMAL DIFF:** одна задача — один логический scope. Попутный рефакторинг
+  запрещён.
+- **ROOT CAUSE:** исправление P0/P1/P2 обязано включать причину и regression test.
+- **NO FALSE DONE:** build, HTTP 200, локальный запуск или эмулятор не означают
+  production-ready.
+- **NO FALSE 10/10:** статус 10/10 разрешён только при доказательствах,
+  перечисленных в Golden Baseline и release criteria.
+- **STOP THE LINE:** если новая правка ломает ранее подтверждённый сценарий,
+  дальнейшая разработка останавливается до rollback/fix и повторной регрессии.
+- **BASELINE IS EVIDENCE:** `GOLDEN_BASELINE.md` обновляется только точными SHA,
+  CI run IDs, устройствами, production evidence и результатами тестов.
+
+## Обязательные проверки перед PR/merge
+
+Минимум использовать существующие канонические gates проекта:
+
+- `PR Quality Gate`;
+- `UrTruck QA Center`;
+- `UrTruck Full QA Audit`;
+- `UrTruck Governance Guard`.
+
+Падение любого required check = **MERGE BLOCKED**.
+
+Для UI обязательны before/after screenshots. Для mobile/GPS/push/voice/map
+финальная приёмка требует физического устройства по критериям задачи.
+
+---
+
+# Repository-specific rules already in force
 
 Этот файл — точка входа для AI-ассистентов (Codex, Claude Code, Cursor и т.п.),
 работающих в этом репозитории.

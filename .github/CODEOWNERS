@@ -1,0 +1,22 @@
+# UrTruck ownership map.
+# CODEOWNERS is ownership metadata. Independent approval requirements remain
+# controlled by branch protection; do not weaken them in this file.
+
+* @777ubu-ai
+
+/AGENTS.md @777ubu-ai
+/docs/GOLDEN_BASELINE.md @777ubu-ai
+/docs/ENGINEERING_STANDARDS_AND_QUALITY_PROTOCOL.md @777ubu-ai
+/docs/CURRENT_PRODUCT_CANON.md @777ubu-ai
+/docs/CURRENT_ENGINEERING_CANON.md @777ubu-ai
+
+/.github/workflows/ @777ubu-ai
+/.github/CODEOWNERS @777ubu-ai
+/.github/pull_request_template.md @777ubu-ai
+/scripts/ @777ubu-ai
+
+/backend/ @777ubu-ai
+/database/ @777ubu-ai
+/src/ @777ubu-ai
+/android/ @777ubu-ai
+/ios/ @777ubu-ai
