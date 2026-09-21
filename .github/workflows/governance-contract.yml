@@ -20,7 +20,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Verify mandatory engineering governance
         run: python3 scripts/verify_governance_contract.py
       - name: Diff hygiene
-        run: git diff --check origin/${{ github.base_ref || 'main' }}...HEAD
+        run: git diff --check "origin/${{ github.base_ref || 'main' }}...HEAD"
