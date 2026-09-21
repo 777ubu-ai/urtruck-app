@@ -16,11 +16,11 @@ test('distributed QA2 restores live providers without embedding the isolated har
   assert.ok(version > 211040069, 'never reuse or downgrade the latest QA2 candidate');
 });
 
-test('QA076 checks out and records the exact approved Golden source SHA', () => {
-  assert.ok(workflow.includes('default: a77cd8c9f820cb92cb6b61aab563e9c0bf2acd3f'));
+test('QA077 checks out and records the exact approved Golden source SHA', () => {
+  assert.ok(workflow.includes('default: d2b188b6ccdc46b5d555cffc2f911ae882e76c31'));
   assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));
   assert.ok(workflow.includes('test "$RESOLVED_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"'));
-  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040076'));
+  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040077'));
   assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
 });
 
