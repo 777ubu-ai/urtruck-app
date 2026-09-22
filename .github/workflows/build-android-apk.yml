@@ -47,8 +47,8 @@ jobs:
           echo "URTRUCK_SOURCE_SHA=$RESOLVED_SOURCE_SHA" >> "$GITHUB_ENV"
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.9" >> "$GITHUB_ENV"
-          # QA078 retests compact cargo actions from the exact Golden source SHA.
-          echo "URTRUCK_VERSION_CODE=211040078" >> "$GITHUB_ENV"
+          # QA079 retests QA2P visibility from the exact Golden source SHA.
+          echo "URTRUCK_VERSION_CODE=211040079" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           # Restore the live service endpoint. The isolated adb-reverse harness
           # has stub STT/translation and no native FCM credentials.
