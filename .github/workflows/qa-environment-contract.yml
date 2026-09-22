@@ -28,7 +28,8 @@ jobs:
           import os
           print(urlparse(os.environ['QA2_API_URL']).hostname or '')
           PY
-          )"          test -n "$host" || {
+          )"
+          test -n "$host" || {
             echo "::error::QA2_API_URL has no host"
             exit 1
           }
