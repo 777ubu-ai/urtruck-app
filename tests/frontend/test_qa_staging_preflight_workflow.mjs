@@ -53,3 +53,11 @@ test('QA staging preflight reports Python runtime layout without exposing paths'
   assert.match(workflow, /QA_PREFLIGHT_DOTVENV_BACKEND=present/);
   assert.match(workflow, /QA_PREFLIGHT_SYSTEM_PYTHON=present/);
 });
+
+test('QA staging preflight proves recovery prerequisites before touching the listener', () => {
+  assert.match(workflow, /QA_PREFLIGHT_SYSTEM_PYTHON_API_DEPS=present/);
+  assert.match(workflow, /QA_PREFLIGHT_ENVIRONMENT=nonproduction/);
+  assert.match(workflow, /QA_PREFLIGHT_ROLLBACK_BACKUP=present/);
+  assert.match(workflow, /QA_PREFLIGHT_CURRENT_CODE_MATCHES_PREDEPLOY=yes/);
+  assert.match(workflow, /QA_PREFLIGHT_STORAGE_INODE=preserved/);
+});
