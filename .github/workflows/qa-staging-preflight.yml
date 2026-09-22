@@ -49,8 +49,6 @@ jobs:
               echo '::error::QA_PREFLIGHT_BACKEND_DATABASE_DIRECTORY_MISSING'
               exit 1
             fi
-            db_file="$(find "$qa_backend/database" -maxdepth 1 -type f -name '*.db' -print -quit)"
-            test -n "$db_file" || { echo '::error::QA_PREFLIGHT_EXISTING_DB_MISSING'; exit 1; }
             test -d "$qa_root/storage" || { echo '::error::QA_PREFLIGHT_EXISTING_STORAGE_MISSING'; exit 1; }
             if [ "$supervisor" = pm2 ]; then
               pm2 jlist | grep -q 'urtruck-qa2' || { echo '::error::QA_PREFLIGHT_EXISTING_PM2_MISSING'; exit 1; }
@@ -59,17 +57,30 @@ jobs:
             fi
             ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$' || { echo '::error::QA_PREFLIGHT_EXISTING_PORT_MISSING'; exit 1; }
             echo "QA_PREFLIGHT_SUPERVISOR=$supervisor"
-            python3 - "$qa_root/.env" <<'PY'
+            python3 - "$qa_root" "$qa_root/.env" <<'PY'
           from pathlib import Path
           import sys
+
+          qa_root = Path(sys.argv[1]).resolve()
           values = {}
-          for raw in Path(sys.argv[1]).read_text(encoding='utf-8').splitlines():
+          for raw in Path(sys.argv[2]).read_text(encoding='utf-8').splitlines():
               if '=' in raw and not raw.lstrip().startswith('#'):
                   key, value = raw.split('=', 1)
-                  values[key.strip()] = value.strip()
+                  values[key.strip()] = value.strip().strip('"').strip("'")
           db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
-          if not db or 'urtruck-qa2' not in db or 'urtruck-security' in db:
+          if not db:
+              raise SystemExit('::error::QA_PREFLIGHT_EXISTING_DB_CONFIG_MISSING')
+          if db.startswith('sqlite:///'):
+              db = db[len('sqlite:///'):]
+          db_path = Path(db)
+          if not db_path.is_absolute():
+              db_path = qa_root / db_path
+          db_path = db_path.resolve()
+          if qa_root not in db_path.parents or 'urtruck-security' in str(db_path):
               raise SystemExit('::error::QA_PREFLIGHT_EXISTING_DB_NOT_ISOLATED')
+          if not db_path.is_file():
+              raise SystemExit('::error::QA_PREFLIGHT_EXISTING_DB_FILE_MISSING')
+          print('QA_PREFLIGHT_DATABASE=isolated-existing')
           print('QA_STAGING_PREFLIGHT=existing-isolated-target-ready')
           PY
           else
