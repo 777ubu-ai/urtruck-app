@@ -8,10 +8,12 @@ const workflow = fs.readFileSync(
   'utf8',
 );
 
-test('QA staging preflight binds an API process to QA root by cwd, not command-line path', () => {
+test('QA staging preflight binds an API process to QA root without command-line ordering assumptions', () => {
   assert.match(workflow, /for candidate_pid in \$\(pgrep -f 'uvicorn\|gunicorn' \|\| true\); do/);
   assert.match(workflow, /readlink -f "\/proc\/\$candidate_pid\/cwd"/);
+  assert.match(workflow, /tr '\\0' ' ' < "\/proc\/\$candidate_pid\/cmdline"/);
   assert.match(workflow, /"\$qa_root"\|"\$qa_root"\/\*/);
+  assert.match(workflow, /grep -Fq -- "\$qa_root"/);
   assert.doesNotMatch(
     workflow,
     /pgrep -fo '\/home\/ubuntu\/urtruck-qa2\.\*\(uvicorn\|gunicorn\)'/,

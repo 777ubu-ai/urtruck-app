@@ -57,12 +57,17 @@ jobs:
               qa_pid=
               for candidate_pid in $(pgrep -f 'uvicorn|gunicorn' || true); do
                 candidate_cwd="$(readlink -f "/proc/$candidate_pid/cwd" 2>/dev/null || true)"
+                candidate_cmdline="$(tr '\0' ' ' < "/proc/$candidate_pid/cmdline" 2>/dev/null || true)"
                 case "$candidate_cwd" in
                   "$qa_root"|"$qa_root"/*)
                     qa_pid="$candidate_pid"
                     break
                     ;;
                 esac
+                if printf '%s' "$candidate_cmdline" | grep -Fq -- "$qa_root"; then
+                  qa_pid="$candidate_pid"
+                  break
+                fi
               done
               test -n "$qa_pid" || { echo '::error::QA_PREFLIGHT_QA_API_PROCESS_MISSING'; exit 1; }
               qa_systemd_unit="$(awk -F/ '/\.service$/ {print $NF; exit}' "/proc/$qa_pid/cgroup" 2>/dev/null || true)"
