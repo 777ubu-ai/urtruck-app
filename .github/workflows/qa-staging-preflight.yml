@@ -70,6 +70,50 @@ jobs:
             test -x "$qa_root/venv/bin/python" && echo 'QA_PREFLIGHT_VENV_ROOT=present' || echo 'QA_PREFLIGHT_VENV_ROOT=missing'
             test -x "$qa_backend/.venv/bin/python" && echo 'QA_PREFLIGHT_DOTVENV_BACKEND=present' || echo 'QA_PREFLIGHT_DOTVENV_BACKEND=missing'
             command -v python3 >/dev/null && echo 'QA_PREFLIGHT_SYSTEM_PYTHON=present' || echo 'QA_PREFLIGHT_SYSTEM_PYTHON=missing'
+            if python3 -c "import importlib.util; assert importlib.util.find_spec('uvicorn'); assert importlib.util.find_spec('fastapi')" >/dev/null 2>&1; then
+              echo 'QA_PREFLIGHT_SYSTEM_PYTHON_API_DEPS=present'
+            else
+              echo 'QA_PREFLIGHT_SYSTEM_PYTHON_API_DEPS=missing'
+            fi
+            python3 - "$qa_root" "$qa_root/.env" <<'PYENV'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1]).resolve()
+          values = {}
+          for raw in Path(sys.argv[2]).read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  key, value = raw.split('=', 1)
+                  values[key.strip()] = value.strip().strip('"').strip("'")
+          env_name = (values.get('URTRUCK_ENV') or values.get('ENV') or '').strip().lower()
+          if not env_name or env_name == 'production':
+              raise SystemExit('::error::QA_PREFLIGHT_ENVIRONMENT_NOT_NONPRODUCTION')
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if db.startswith('sqlite:///'):
+              db = db[len('sqlite:///'):]
+          p = Path(db)
+          if not p.is_absolute():
+              p = root / p
+          p = p.resolve()
+          if root not in p.parents or 'urtruck-security' in str(p) or not p.is_file():
+              raise SystemExit('::error::QA_PREFLIGHT_EXISTING_DB_NOT_ISOLATED')
+          print('QA_PREFLIGHT_ENVIRONMENT=nonproduction')
+          print('QA_PREFLIGHT_DATABASE=isolated-existing')
+          PYENV
+            state=/tmp/urtruck-qa2-deploy.state
+            if test -f "$state"; then
+              . "$state"
+              backup_dir="$qa_root/backups/$BACKUP_ID"
+              test -d "$backup_dir" && echo 'QA_PREFLIGHT_ROLLBACK_BACKUP=present' || echo 'QA_PREFLIGHT_ROLLBACK_BACKUP=missing'
+              current_hash="$(cd "$qa_backend" && find . -type f ! -path './venv/*' ! -path './database/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+              if test "$current_hash" = "$PRE_CODE_HASH"; then
+                echo 'QA_PREFLIGHT_CURRENT_CODE_MATCHES_PREDEPLOY=yes'
+              else
+                echo 'QA_PREFLIGHT_CURRENT_CODE_MATCHES_PREDEPLOY=no'
+              fi
+              test "$(stat -c '%d:%i' "$qa_root/storage")" = "$STORAGE_INODE" && echo 'QA_PREFLIGHT_STORAGE_INODE=preserved' || echo 'QA_PREFLIGHT_STORAGE_INODE=changed'
+            else
+              echo 'QA_PREFLIGHT_DEPLOY_STATE=missing'
+            fi
             if [ "$supervisor" = pm2 ]; then
               pm2 jlist | grep -q 'urtruck-qa2' || { echo '::error::QA_PREFLIGHT_EXISTING_PM2_MISSING'; exit 1; }
             else
