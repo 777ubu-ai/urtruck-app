@@ -34,13 +34,25 @@ jobs:
           qa_root=/home/ubuntu/urtruck-qa2
           if test "$(id -u)" -eq 0; then echo '::error::QA_PREFLIGHT_REMOTE_ROOT'; exit 1; fi
           if ! df -Pk /home/ubuntu | awk 'NR==2 { exit !($4 >= 2097152) }'; then echo '::error::QA_PREFLIGHT_DISK_TOO_LOW'; exit 1; fi
-          if ! command -v pm2 >/dev/null; then echo '::error::QA_PREFLIGHT_PM2_MISSING'; exit 1; fi
+          if command -v pm2 >/dev/null; then
+            supervisor=pm2
+          elif command -v systemctl >/dev/null; then
+            supervisor=systemd
+          else
+            echo '::error::QA_PREFLIGHT_SUPERVISOR_MISSING'
+            exit 1
+          fi
           if test -e "$qa_root"; then
             test -f "$qa_root/.env" || { echo '::error::QA_PREFLIGHT_EXISTING_ENV_MISSING'; exit 1; }
             test -f "$qa_root/database/qa2.db" || { echo '::error::QA_PREFLIGHT_EXISTING_DB_MISSING'; exit 1; }
             test -d "$qa_root/storage" || { echo '::error::QA_PREFLIGHT_EXISTING_STORAGE_MISSING'; exit 1; }
-            pm2 jlist | grep -q 'urtruck-qa2' || { echo '::error::QA_PREFLIGHT_EXISTING_PM2_MISSING'; exit 1; }
+            if [ "$supervisor" = pm2 ]; then
+              pm2 jlist | grep -q 'urtruck-qa2' || { echo '::error::QA_PREFLIGHT_EXISTING_PM2_MISSING'; exit 1; }
+            else
+              pgrep -f 'uvicorn|gunicorn' >/dev/null || { echo '::error::QA_PREFLIGHT_EXISTING_API_PROCESS_MISSING'; exit 1; }
+            fi
             ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$' || { echo '::error::QA_PREFLIGHT_EXISTING_PORT_MISSING'; exit 1; }
+            echo "QA_PREFLIGHT_SUPERVISOR=$supervisor"
             python3 - "$qa_root/.env" <<'PY'
           from pathlib import Path
           import sys
