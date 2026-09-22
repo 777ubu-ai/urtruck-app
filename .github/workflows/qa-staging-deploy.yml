@@ -268,29 +268,141 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          fixture_id="qa2p-runtime-$GITHUB_RUN_ID"
+          fixture_marker="QA2P_RUNTIME_$GITHUB_RUN_ID"
+          export FIXTURE_MARKER="$fixture_marker"
+          export SSHPASS="$SERVER_PASS"
+
+          qa_fixture() {
+            mode="$1"
+            sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+              bash -s -- "$mode" "$fixture_id" "$fixture_marker" <<'REMOTE_FIXTURE'
+          set -euo pipefail
+          mode="$1"
+          fixture_id="$2"
+          fixture_marker="$3"
+          qa_root=/home/ubuntu/urtruck-qa2
+          python3 - "$qa_root" "$qa_root/.env" "$mode" "$fixture_id" "$fixture_marker" <<'PYFIXTURE'
+          from pathlib import Path
+          from datetime import datetime
+          import sqlite3
+          import sys
+
+          root = Path(sys.argv[1]).resolve()
+          env_path = Path(sys.argv[2])
+          mode = sys.argv[3]
+          fixture_id = sys.argv[4]
+          marker = sys.argv[5]
+          values = {}
+          for raw in env_path.read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  key, value = raw.split('=', 1)
+                  values[key.strip()] = value.strip().strip('"').strip("'")
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if db.startswith('sqlite:///'):
+              db = db[len('sqlite:///'):]
+          db_path = Path(db)
+          if not db_path.is_absolute():
+              db_path = root / db_path
+          db_path = db_path.resolve()
+          if root not in db_path.parents or 'urtruck-security' in str(db_path) or not db_path.is_file():
+              raise SystemExit('::error::QA2P_RUNTIME_DB_NOT_ISOLATED')
+
+          owner = 'qa-runtime-isolation'
+          with sqlite3.connect(db_path) as conn:
+              conn.row_factory = sqlite3.Row
+              row = conn.execute(
+                  'SELECT owner_id, cargo_desc FROM cargos WHERE id=?',
+                  (fixture_id,),
+              ).fetchone()
+              if row and (row['owner_id'] != owner or row['cargo_desc'] != marker):
+                  raise SystemExit('::error::QA2P_RUNTIME_FIXTURE_ID_COLLISION')
+
+              if mode == 'seed':
+                  if row:
+                      conn.execute(
+                          'DELETE FROM cargos WHERE id=? AND owner_id=? AND cargo_desc=?',
+                          (fixture_id, owner, marker),
+                      )
+                  now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+                  conn.execute(
+                      'INSERT INTO cargos '
+                      '(id, owner_id, from_city, to_city, cargo_desc, cargo_type, '
+                      'pickup_date, photos, status, created_at, updated_at, published_at) '
+                      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                      (fixture_id, owner, marker, 'QA Runtime Destination', marker, 'tent',
+                       '2099-01-01', '[]', 'active', now, now, now),
+                  )
+                  conn.commit()
+                  print('QA2P_RUNTIME_FIXTURE=seeded')
+              elif mode == 'cleanup':
+                  if row:
+                      cur = conn.execute(
+                          'DELETE FROM cargos WHERE id=? AND owner_id=? AND cargo_desc=?',
+                          (fixture_id, owner, marker),
+                      )
+                      if cur.rowcount != 1:
+                          raise SystemExit('::error::QA2P_RUNTIME_FIXTURE_CLEANUP_FAILED')
+                      conn.commit()
+                  print('QA2P_RUNTIME_FIXTURE=cleaned')
+              else:
+                  raise SystemExit('::error::QA2P_RUNTIME_FIXTURE_MODE_INVALID')
+          PYFIXTURE
+          REMOTE_FIXTURE
+          }
+
+          qa_fixture seed
+          trap 'qa_fixture cleanup || true' EXIT
+
+          set +e
           python3 - <<'PY'
-          import json, os, urllib.request
-          qa = os.environ['QA_API_URL'].rstrip('/') + '/api/v1/market/cargos?status=active&limit=500'
-          prod = 'https://urtruck.kz/api/v1/market/cargos?status=active&limit=500'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          marker = os.environ['FIXTURE_MARKER']
+          query = urllib.parse.urlencode({
+              'status': 'active',
+              'from_city': marker,
+              'limit': 20,
+          })
+          qa = os.environ['QA_API_URL'].rstrip('/') + '/api/v1/market/cargos?' + query
+          prod = 'https://urtruck.kz/api/v1/market/cargos?' + query
+
           def fetch(url, label):
               try:
                   with urllib.request.urlopen(url, timeout=20) as r:
-                      if not 200 <= r.status < 300: raise RuntimeError(label)
+                      if not 200 <= r.status < 300:
+                          raise RuntimeError(label)
                       return json.loads(r.read().decode('utf-8'))
               except Exception:
                   raise SystemExit(f'::error::{label}_API_READ_FAILED')
-          def has_qa2p(value):
-              if isinstance(value, str): return 'QA2P_' in value
-              if isinstance(value, dict): return any(has_qa2p(v) for v in value.values())
-              if isinstance(value, list): return any(has_qa2p(v) for v in value)
+
+          def has_marker(value):
+              if isinstance(value, str):
+                  return marker in value
+              if isinstance(value, dict):
+                  return any(has_marker(v) for v in value.values())
+              if isinstance(value, list):
+                  return any(has_marker(v) for v in value)
               return False
+
           qa_data = fetch(qa, 'QA')
           prod_data = fetch(prod, 'PRODUCTION')
-          if not has_qa2p(qa_data): raise SystemExit('::error::QA2P_RUNTIME_FIXTURE_NOT_VISIBLE_IN_QA')
-          if has_qa2p(prod_data): raise SystemExit('::error::QA2P_RUNTIME_LEAKED_TO_PRODUCTION')
+          if not has_marker(qa_data):
+              raise SystemExit('::error::QA2P_RUNTIME_FIXTURE_NOT_VISIBLE_IN_QA')
+          if has_marker(prod_data):
+              raise SystemExit('::error::QA2P_RUNTIME_LEAKED_TO_PRODUCTION')
           print('QA2P_RUNTIME_QA=visible')
           print('QA2P_RUNTIME_PRODUCTION=hidden')
           PY
+          runtime_rc=$?
+          set -e
+
+          qa_fixture cleanup
+          trap - EXIT
+          exit "$runtime_rc"
 
       - name: Verify production fingerprint unchanged
         shell: bash

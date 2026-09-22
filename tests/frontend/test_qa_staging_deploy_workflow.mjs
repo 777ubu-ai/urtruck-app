@@ -43,12 +43,19 @@ test('QA2 backend deploy protects database, storage and production', () => {
   assert.match(workflow, /Production version fingerprint changed during QA-only deploy/);
 });
 
-test('QA2 backend deploy has rollback and runtime QA2P isolation proof', () => {
+test('QA2 backend deploy has rollback and self-contained runtime QA2P isolation proof', () => {
   assert.match(workflow, /Roll back QA2 code if deploy validation fails/);
   assert.match(workflow, /if: failure\(\)/);
   assert.match(workflow, /QA_ROLLBACK=restored-/);
+  assert.match(workflow, /QA2P_RUNTIME_FIXTURE=seeded/);
+  assert.match(workflow, /QA2P_RUNTIME_FIXTURE=cleaned/);
+  assert.match(workflow, /INSERT INTO cargos/);
+  assert.match(workflow, /DELETE FROM cargos WHERE id=\? AND owner_id=\? AND cargo_desc=\?/);
+  assert.match(workflow, /QA2P_RUNTIME_FIXTURE_ID_COLLISION/);
   assert.match(workflow, /QA2P_RUNTIME_FIXTURE_NOT_VISIBLE_IN_QA/);
   assert.match(workflow, /QA2P_RUNTIME_LEAKED_TO_PRODUCTION/);
+  assert.match(workflow, /'from_city': marker/);
+  assert.match(workflow, /trap 'qa_fixture cleanup \|\| true' EXIT/);
   assert.match(workflow, /pytest tests\/test_qa_data_isolation\.py -q/);
 });
 
