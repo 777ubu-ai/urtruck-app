@@ -54,6 +54,19 @@ jobs:
               pm2 jlist | grep -q 'urtruck-qa2' || { echo '::error::QA_PREFLIGHT_EXISTING_PM2_MISSING'; exit 1; }
             else
               pgrep -f 'uvicorn|gunicorn' >/dev/null || { echo '::error::QA_PREFLIGHT_EXISTING_API_PROCESS_MISSING'; exit 1; }
+              qa_systemd_unit="$(systemctl list-units --type=service --all --no-legend 'urtruck-qa2.service' 2>/dev/null | awk 'NF {print $1; exit}')"
+              qa_systemd_scope=system
+              if test -z "$qa_systemd_unit"; then
+                qa_systemd_unit="$(systemctl --user list-units --type=service --all --no-legend 'urtruck-qa2.service' 2>/dev/null | awk 'NF {print $1; exit}')"
+                qa_systemd_scope=user
+              fi
+              test -n "$qa_systemd_unit" || { echo '::error::QA_PREFLIGHT_SYSTEMD_UNIT_MISSING'; exit 1; }
+              if [ "$qa_systemd_scope" = system ]; then
+                systemctl is-active --quiet "$qa_systemd_unit" || { echo '::error::QA_PREFLIGHT_SYSTEMD_UNIT_INACTIVE'; exit 1; }
+              else
+                systemctl --user is-active --quiet "$qa_systemd_unit" || { echo '::error::QA_PREFLIGHT_SYSTEMD_UNIT_INACTIVE'; exit 1; }
+              fi
+              echo 'QA_PREFLIGHT_SYSTEMD_UNIT=verified-active'
             fi
             ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$' || { echo '::error::QA_PREFLIGHT_EXISTING_PORT_MISSING'; exit 1; }
             echo "QA_PREFLIGHT_SUPERVISOR=$supervisor"
