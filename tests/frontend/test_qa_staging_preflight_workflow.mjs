@@ -41,3 +41,8 @@ test('QA staging preflight emits safe startup diagnostics without reading env co
   assert.match(workflow, /<redacted>/);
   assert.doesNotMatch(workflow, /cat \"\\$qa_root\\\/\\.env\"/);
 });
+
+test('QA staging preflight tolerates an empty fuser/lsof result before reporting listener absence', () => {
+  assert.match(workflow, /\{ fuser -n tcp 8002 2>\\\/dev\\\/null \|\| true; \}/);
+  assert.match(workflow, /\{ lsof -nP -iTCP:8002 -sTCP:LISTEN -t 2>\\\/dev\\\/null \|\| true; \}/);
+});
