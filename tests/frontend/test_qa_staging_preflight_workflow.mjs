@@ -46,3 +46,10 @@ test('QA staging preflight tolerates an empty fuser/lsof result before reporting
   assert.ok(workflow.includes('{ fuser -n tcp 8002 2>/dev/null || true; }'));
   assert.ok(workflow.includes('{ lsof -nP -iTCP:8002 -sTCP:LISTEN -t 2>/dev/null || true; }'));
 });
+
+test('QA staging preflight reports Python runtime layout without exposing paths', () => {
+  assert.match(workflow, /QA_PREFLIGHT_VENV_BACKEND=present/);
+  assert.match(workflow, /QA_PREFLIGHT_VENV_ROOT=present/);
+  assert.match(workflow, /QA_PREFLIGHT_DOTVENV_BACKEND=present/);
+  assert.match(workflow, /QA_PREFLIGHT_SYSTEM_PYTHON=present/);
+});
