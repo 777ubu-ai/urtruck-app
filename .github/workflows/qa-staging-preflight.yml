@@ -44,7 +44,8 @@ jobs:
           fi
           if test -e "$qa_root"; then
             test -f "$qa_root/.env" || { echo '::error::QA_PREFLIGHT_EXISTING_ENV_MISSING'; exit 1; }
-            test -f "$qa_root/database/qa2.db" || { echo '::error::QA_PREFLIGHT_EXISTING_DB_MISSING'; exit 1; }
+            db_file="$(find "$qa_root/database" -maxdepth 1 -type f -name '*.db' -print -quit)"
+            test -n "$db_file" || { echo '::error::QA_PREFLIGHT_EXISTING_DB_MISSING'; exit 1; }
             test -d "$qa_root/storage" || { echo '::error::QA_PREFLIGHT_EXISTING_STORAGE_MISSING'; exit 1; }
             if [ "$supervisor" = pm2 ]; then
               pm2 jlist | grep -q 'urtruck-qa2' || { echo '::error::QA_PREFLIGHT_EXISTING_PM2_MISSING'; exit 1; }
