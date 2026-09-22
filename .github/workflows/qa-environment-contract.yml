@@ -3,6 +3,9 @@ name: QA Environment Contract
 on:
   workflow_dispatch:
   workflow_call:
+    secrets:
+      API_URL:
+        required: true
 
 permissions:
   contents: read
@@ -13,34 +16,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      QA2_API_URL: ${{ secrets.QA2_API_URL }}
+      API_URL: ${{ secrets.API_URL }}
     steps:
       - name: Refuse production and probe QA health without revealing the URL
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${QA2_API_URL:-}" || {
-            echo "::error::QA2_API_URL is not configured"
+          test -n "${API_URL:-}" || {
+            echo "::error::QA API URL is not configured"
             exit 1
           }
           host="$(python3 - <<'PY'
           from urllib.parse import urlparse
           import os
-          print(urlparse(os.environ['QA2_API_URL']).hostname or '')
+          print(urlparse(os.environ['API_URL']).hostname or '')
           PY
           )"
           test -n "$host" || {
-            echo "::error::QA2_API_URL has no host"
+            echo "::error::QA API URL has no host"
             exit 1
           }
           case "$host" in
             urtruck.kz|www.urtruck.kz|185.22.65.11)
-              echo "::error::QA2_API_URL must not point to production"
+              echo "::error::QA API URL must not point to production"
               exit 1
               ;;
           esac
           for path in /health /api/version; do
-            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${QA2_API_URL%/}${path}" || true)"
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${API_URL%/}${path}" || true)"
             if [[ "$code" =~ ^2 ]]; then
               echo "QA2_TARGET=reachable-nonproduction"
               exit 0

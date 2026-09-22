@@ -15,7 +15,13 @@ permissions:
 jobs:
   qa-environment-contract:
     uses: ./.github/workflows/qa-environment-contract.yml
-    secrets: inherit
+    secrets:
+      API_URL: ${{ secrets.QA2_API_URL }}
+
+  pro-test-environment-contract:
+    uses: ./.github/workflows/qa-environment-contract.yml
+    secrets:
+      API_URL: ${{ secrets.PRO_TEST_API_URL }}
 
   routing-provider-forensic:
     name: Routing provider forensic
