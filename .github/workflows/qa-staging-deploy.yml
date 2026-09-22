@@ -213,6 +213,17 @@ jobs:
             if test -z "\$pid" && command -v lsof >/dev/null; then pid="\$({ lsof -nP -iTCP:8002 -sTCP:LISTEN -t 2>/dev/null || true; } | head -1)"; fi
             printf '%s' "\$pid"
           }
+          safe_deploy_log() {
+            if test -f uvicorn.log; then
+              echo 'QA_DEPLOY_UVICORN_LOG=present'
+              tail -n 160 uvicorn.log 2>/dev/null \
+                | grep -E '^(Traceback|ERROR:|CRITICAL:|[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):|ModuleNotFoundError:|ImportError:|SyntaxError:)' \
+                | sed -E 's#https?://[^[:space:]]+#<url>#g; s#(token|key|password|secret)=[^[:space:]]+#\\1=<redacted>#Ig' \
+                | tail -n 16 || true
+            else
+              echo 'QA_DEPLOY_UVICORN_LOG=missing'
+            fi
+          }
           old_pid="\$(listener_pid)"
           test -n "\$old_pid"
           old_cmd="\$(tr '\0' ' ' < "/proc/\$old_pid/cmdline")"
@@ -222,10 +233,27 @@ jobs:
           kill -TERM "\$old_pid"
           for _ in {1..20}; do kill -0 "\$old_pid" 2>/dev/null || break; sleep 0.5; done
           if kill -0 "\$old_pid" 2>/dev/null; then kill -KILL "\$old_pid"; fi
-          sleep 1
-          test -z "\$(listener_pid)"
+          port_free=no
+          for _ in {1..20}; do
+            if test -z "\$(listener_pid)"; then port_free=yes; break; fi
+            sleep 0.5
+          done
+          test "\$port_free" = yes || { echo '::error::QA_DEPLOY_PORT_8002_DID_NOT_RELEASE'; exit 1; }
           nohup "\$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
-          sleep 5
+          healthy=no
+          for _ in {1..40}; do
+            new_pid="\$(listener_pid)"
+            if test -n "\$new_pid" && curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1; then
+              healthy=yes
+              break
+            fi
+            sleep 1
+          done
+          if test "\$healthy" != yes; then
+            echo '::error::QA_DEPLOY_LOCAL_HEALTH_TIMEOUT'
+            safe_deploy_log
+            exit 1
+          fi
           new_pid="\$(listener_pid)"
           test -n "\$new_pid"
           test "\$(ps -o user= -p "\$new_pid" | xargs)" = "\$(id -un)"

@@ -74,5 +74,15 @@ test('QA Center keeps deploy opt-in and waits for every existing gate', () => {
 
 test('QA2 deploy treats an empty free-port probe as normal after stopping the listener', () => {
   assert.ok(workflow.includes('{ fuser -n tcp 8002 2>/dev/null || true; }'));
-  assert.ok(workflow.includes('test -z "\\$(listener_pid)"'));
+  assert.match(workflow, /QA_DEPLOY_PORT_8002_DID_NOT_RELEASE/);
+  assert.match(workflow, /port_free=no/);
+});
+
+test('QA2 deploy waits for local health and emits only sanitized startup diagnostics', () => {
+  assert.match(workflow, /for _ in \{1\.\.40\}; do/);
+  assert.match(workflow, /QA_DEPLOY_LOCAL_HEALTH_TIMEOUT/);
+  assert.match(workflow, /QA_DEPLOY_UVICORN_LOG=present/);
+  assert.match(workflow, /tail -n 160 uvicorn\.log/);
+  assert.match(workflow, /<redacted>/);
+  assert.doesNotMatch(workflow, /cat "\\$qa_root\/\.env"/);
 });
