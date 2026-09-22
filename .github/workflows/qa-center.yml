@@ -23,6 +23,13 @@ jobs:
     secrets:
       API_URL: ${{ secrets.PRO_TEST_API_URL }}
 
+  qa-staging-preflight:
+    uses: ./.github/workflows/qa-staging-preflight.yml
+    secrets:
+      SERVER_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
+      SERVER_USER: ${{ secrets.PRO_TEST_SERVER_USER }}
+      SERVER_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
+
   routing-provider-forensic:
     name: Routing provider forensic
     runs-on: ubuntu-latest
