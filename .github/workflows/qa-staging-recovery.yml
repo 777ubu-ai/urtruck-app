@@ -7,6 +7,21 @@ on:
         description: Type RECOVER_QA2 to restore only the isolated QA2 backend
         required: true
         type: string
+  workflow_call:
+    inputs:
+      confirmation:
+        description: Explicit QA2 runtime recovery confirmation
+        required: true
+        type: string
+    secrets:
+      PRO_TEST_API_URL:
+        required: true
+      PRO_TEST_SERVER_HOST:
+        required: true
+      PRO_TEST_SERVER_USER:
+        required: true
+      PRO_TEST_SERVER_PASS:
+        required: true
 
 concurrency:
   group: urtruck-qa2-runtime-recovery

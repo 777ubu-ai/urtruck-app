@@ -7,6 +7,10 @@ const workflow = fs.readFileSync(
   path.join(process.cwd(), '.github/workflows/qa-staging-recovery.yml'),
   'utf8',
 );
+const qaCenter = fs.readFileSync(
+  path.join(process.cwd(), '.github/workflows/qa-center.yml'),
+  'utf8',
+);
 
 test('QA2 recovery is manual, pinned and production-safe', () => {
   assert.match(workflow, /RECOVER_QA2/);
@@ -41,4 +45,13 @@ test('QA2 recovery has code backup and rollback without touching QA data', () =>
   assert.match(workflow, /--exclude='storage\/'/);
   assert.match(workflow, /--exclude='\.env'/);
   assert.match(workflow, /rm -rf "\$qa_backend\/venv"/);
+});
+
+test('QA Center exposes recovery without running strict health gates concurrently', () => {
+  assert.match(qaCenter, /recover_qa2:/);
+  assert.match(qaCenter, /qa2_recovery_confirmation:/);
+  assert.match(qaCenter, /uses: \.\/\.github\/workflows\/qa-staging-recovery\.yml/);
+  assert.match(qaCenter, /inputs\.recover_qa2 == true/);
+  assert.match(qaCenter, /inputs\.recover_qa2 != true/);
+  assert.match(qaCenter, /confirmation: \$\{\{ inputs\.qa2_recovery_confirmation \}\}/);
 });

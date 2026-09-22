@@ -15,6 +15,16 @@ on:
         required: false
         default: ''
         type: string
+      recover_qa2:
+        description: Recover the isolated QA2 runtime when the API is down
+        required: false
+        default: false
+        type: boolean
+      qa2_recovery_confirmation:
+        description: Type RECOVER_QA2 only when recover_qa2 is enabled
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: qa-center-${{ github.event.pull_request.number || github.ref }}
@@ -25,11 +35,13 @@ permissions:
 
 jobs:
   pro-test-environment-contract:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.recover_qa2 != true }}
     uses: ./.github/workflows/qa-environment-contract.yml
     secrets:
       API_URL: ${{ secrets.PRO_TEST_API_URL }}
 
   qa-staging-preflight:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.recover_qa2 != true }}
     uses: ./.github/workflows/qa-staging-preflight.yml
     secrets:
       SERVER_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
@@ -37,6 +49,7 @@ jobs:
       SERVER_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
 
   routing-provider-forensic:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.recover_qa2 != true }}
     name: Routing provider forensic
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -51,6 +64,7 @@ jobs:
           python3 scripts/routing_provider_forensic.py
 
   quick-gate:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.recover_qa2 != true }}
     name: QA Center quick gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -74,6 +88,7 @@ jobs:
           retention-days: 7
 
   maestro-contract:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.recover_qa2 != true }}
     name: Maestro flow contract
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -120,7 +135,7 @@ jobs:
 
   qa2-backend-deploy:
     name: QA2 backend deploy after full gate
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_qa2 == true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_qa2 == true && inputs.recover_qa2 != true }}
     needs:
       - pro-test-environment-contract
       - qa-staging-preflight
@@ -130,4 +145,12 @@ jobs:
     uses: ./.github/workflows/qa-staging-deploy.yml
     with:
       confirmation: ${{ inputs.qa2_confirmation }}
+    secrets: inherit
+
+  qa2-runtime-recovery:
+    name: QA2 runtime recovery
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.recover_qa2 == true }}
+    uses: ./.github/workflows/qa-staging-recovery.yml
+    with:
+      confirmation: ${{ inputs.qa2_recovery_confirmation }}
     secrets: inherit
