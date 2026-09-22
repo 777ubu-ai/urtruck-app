@@ -1,0 +1,323 @@
+name: Recover QA2 Backend Runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type RECOVER_QA2 to restore only the isolated QA2 backend
+        required: true
+        type: string
+
+concurrency:
+  group: urtruck-qa2-runtime-recovery
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  QA_SOURCE_SHA: 7b73ca90c123dd889b924313e05c8adc3e0113ee
+
+jobs:
+  recover:
+    name: Recover isolated QA2 runtime only
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SERVER_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
+      SERVER_USER: ${{ secrets.PRO_TEST_SERVER_USER }}
+      SERVER_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
+      QA_API_URL: ${{ secrets.PRO_TEST_API_URL }}
+    steps:
+      - name: Checkout recovery controls
+        uses: actions/checkout@v4
+
+      - name: Validate QA2 recovery workflow contract
+        run: node --test tests/frontend/test_qa_staging_recovery_workflow.mjs
+
+      - name: Require explicit QA-only recovery confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = "RECOVER_QA2" || {
+            echo "::error::QA2 recovery confirmation mismatch"
+            exit 1
+          }
+
+      - name: Checkout exact Golden QA backend source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.QA_SOURCE_SHA }}
+          path: golden-source
+
+      - name: Verify pinned source
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolved="$(git -C golden-source rev-parse HEAD)"
+          test "$resolved" = "$QA_SOURCE_SHA"
+          test -f golden-source/backend/tests/test_qa_data_isolation.py
+          grep -Fq 'QA2P_' golden-source/backend/tests/test_qa_data_isolation.py
+          echo "QA_RECOVERY_SOURCE_SHA=$resolved"
+
+      - name: Install SSH and rsync
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+      - name: Validate non-production target and fingerprint production
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${QA_API_URL:-}"
+          host="$(python3 - <<'PY'
+          from urllib.parse import urlparse
+          import os
+          print(urlparse(os.environ['QA_API_URL']).hostname or '')
+          PY
+          )"
+          test -n "$host"
+          case "$host" in
+            urtruck.kz|www.urtruck.kz|185.22.65.11)
+              echo "::error::QA recovery URL must not point to production"
+              exit 1
+              ;;
+          esac
+          prod_body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          test -n "$prod_body"
+          prod_hash="$(printf '%s' "$prod_body" | sha256sum | awk '{print $1}')"
+          echo "PROD_VERSION_HASH_BEFORE=$prod_hash" >> "$GITHUB_ENV"
+          echo 'PRODUCTION_BEFORE=healthy-fingerprinted'
+
+      - name: Static QA2 recovery preflight and code backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_backend="$qa_root/backend"
+          state=/tmp/urtruck-qa2-recovery.state
+          test "$(id -u)" -ne 0
+          test -d "$qa_root" && test -d "$qa_backend"
+          test -f "$qa_root/.env" && test -d "$qa_root/storage"
+          test -d "$qa_backend/database"
+          command -v python3 >/dev/null
+          command -v rsync >/dev/null
+          python3 -m venv --help >/dev/null 2>&1 || {
+            echo '::error::QA_RECOVERY_PYTHON_VENV_UNAVAILABLE'
+            exit 1
+          }
+          if ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$'; then
+            echo '::error::QA_RECOVERY_PORT_8002_NOT_FREE'
+            exit 1
+          fi
+          test ! -e "$qa_backend/venv" || {
+            echo '::error::QA_RECOVERY_VENV_ALREADY_PRESENT_RECHECK'
+            exit 1
+          }
+          backend_env_state=missing
+          if test -e "$qa_backend/.env" || test -L "$qa_backend/.env"; then
+            test "$(readlink -f "$qa_backend/.env")" = "$(readlink -f "$qa_root/.env")" || {
+              echo '::error::QA_RECOVERY_BACKEND_ENV_UNEXPECTED'
+              exit 1
+            }
+            backend_env_state=linked
+          fi
+          db_path="$(python3 - "$qa_root" "$qa_root/.env" <<'PY'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1]).resolve()
+          values = {}
+          for raw in Path(sys.argv[2]).read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  k, v = raw.split('=', 1)
+                  values[k.strip()] = v.strip().strip('"').strip("'")
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if db.startswith('sqlite:///'):
+              db = db[len('sqlite:///'):]
+          p = Path(db)
+          if not p.is_absolute():
+              p = root / p
+          p = p.resolve()
+          if root not in p.parents or 'urtruck-security' in str(p) or not p.is_file():
+              raise SystemExit(2)
+          print(p)
+          PY
+          )"
+          db_hash="$(printf '%s' "$db_path" | sha256sum | awk '{print $1}')"
+          db_inode="$(stat -c '%d:%i' "$db_path")"
+          storage_inode="$(stat -c '%d:%i' "$qa_root/storage")"
+          backup_id="backend-code-recovery-$(date -u +%Y%m%dT%H%M%SZ)"
+          backup_dir="$qa_root/backups/$backup_id"
+          mkdir -p "$backup_dir"
+          rsync -a             --exclude='venv/' --exclude='database/' --exclude='storage/' --exclude='backups/'             --exclude='.env' --exclude='*.db' --exclude='*.sqlite*'             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log'             "$qa_backend/" "$backup_dir/"
+          test -n "$(find "$backup_dir" -type f -print -quit)"
+          umask 077
+          cat > "$state" <<STATE
+          BACKUP_ID=$backup_id
+          DB_PATH_HASH=$db_hash
+          DB_INODE=$db_inode
+          STORAGE_INODE=$storage_inode
+          BACKEND_ENV_STATE=$backend_env_state
+          STATE
+          echo "QA_RECOVERY_BACKUP_ID=$backup_id"
+          echo 'QA_RECOVERY_STATIC_ISOLATION=verified'
+          echo 'QA_RECOVERY_PORT_8002=free'
+          REMOTE
+
+      - name: Mirror exact Golden backend without QA data
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          rsync -az --delete             --exclude='venv/' --exclude='database/' --exclude='storage/' --exclude='backups/'             --exclude='.env' --exclude='*.db' --exclude='*.sqlite*'             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log'             -e 'sshpass -e ssh -o StrictHostKeyChecking=no'             golden-source/backend/ "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/"
+      - name: Build isolated QA runtime and start port 8002
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<REMOTE
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_backend="\$qa_root/backend"
+          state=/tmp/urtruck-qa2-recovery.state
+          run_id='$GITHUB_RUN_ID'
+          source_sha='$QA_SOURCE_SHA'
+          test -f "\$state"
+          . "\$state"
+          cd "\$qa_backend"
+          if ! test -e .env && ! test -L .env; then
+            ln -s ../.env .env
+          fi
+          test "\$(readlink -f .env)" = "\$(readlink -f "\$qa_root/.env")"
+          python3 -m venv venv
+          PY="\$qa_backend/venv/bin/python"
+          test -x "\$PY"
+          pip_log="\$qa_root/recovery-pip-\$run_id.log"
+          if ! "\$PY" -m pip install --disable-pip-version-check -q -r requirements-test.txt >"\$pip_log" 2>&1; then
+            echo '::error::QA_RECOVERY_DEPENDENCIES_FAILED'
+            exit 1
+          fi
+          "\$PY" -m py_compile main.py
+          printf '%s\n' "\$source_sha" > .qa-source-sha
+          nohup env -i HOME="\$HOME" PATH="\$PATH" PYTHONUNBUFFERED=1             "\$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002             > uvicorn.log 2>&1 </dev/null &
+          healthy=no
+          for _ in {1..40}; do
+            if curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1; then
+              healthy=yes
+              break
+            fi
+            sleep 1
+          done
+          test "\$healthy" = yes || {
+            echo '::error::QA_RECOVERY_LOCAL_HEALTH_FAILED'
+            exit 1
+          }
+          info="\$(curl -fsS http://127.0.0.1:8002/api/v1/system/info)"
+          printf '%s' "\$info" | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          env = str(d.get("env", "")).lower()
+          if env in {"", "unset", "production"}:
+              raise SystemExit(2)
+          if d.get("beta_bypass_on_prod"):
+              raise SystemExit(3)
+          '
+          pid="\$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          test -n "\$pid"
+          test "\$(ps -o user= -p "\$pid" | xargs)" = "\$(id -un)"
+          test "\$(readlink -f "/proc/\$pid/cwd")" = "\$(readlink -f "\$qa_backend")"
+          test "\$(cat .qa-source-sha)" = "\$source_sha"
+          db_path="\$(python3 - "\$qa_root" "\$qa_root/.env" <<'PY'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1]).resolve(); values = {}
+          for raw in Path(sys.argv[2]).read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  k, v = raw.split('=', 1); values[k.strip()] = v.strip().strip('"').strip("'")
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if db.startswith('sqlite:///'): db = db[len('sqlite:///'):]
+          p = Path(db); p = p if p.is_absolute() else root / p; print(p.resolve())
+          PY
+          )"
+          test "\$(printf '%s' "\$db_path" | sha256sum | awk '{print \$1}')" = "\$DB_PATH_HASH"
+          test "\$(stat -c '%d:%i' "\$db_path")" = "\$DB_INODE"
+          test "\$(stat -c '%d:%i' "\$qa_root/storage")" = "\$STORAGE_INODE"
+          rm -f "\$pip_log"
+          echo "QA_RECOVERED_SOURCE_SHA=\$source_sha"
+          echo 'QA_RECOVERY_DB=preserved-same-file'
+          echo 'QA_RECOVERY_STORAGE=preserved-same-directory'
+          echo 'QA_RECOVERY_API_8002=healthy'
+          REMOTE
+
+      - name: Verify external QA and production unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=no
+          for path in /health /api/version; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${QA_API_URL%/}${path}" || true)"
+            [[ "$code" =~ ^2 ]] && ok=yes && break
+          done
+          test "$ok" = yes || { echo '::error::QA_RECOVERY_EXTERNAL_API_UNHEALTHY'; exit 1; }
+          prod_body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          prod_after="$(printf '%s' "$prod_body" | sha256sum | awk '{print $1}')"
+          test "$prod_after" = "$PROD_VERSION_HASH_BEFORE" || {
+            echo '::error::Production fingerprint changed during QA2 recovery'
+            exit 1
+          }
+          echo 'QA_RECOVERY_EXTERNAL_API=healthy'
+          echo 'PRODUCTION_AFTER=healthy-unchanged'
+      - name: Remove temporary recovery state after success
+        if: success()
+        shell: bash
+        run: |
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST"             'rm -f /tmp/urtruck-qa2-recovery.state'
+
+      - name: Roll back QA2 code if recovery fails
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_backend="$qa_root/backend"
+          state=/tmp/urtruck-qa2-recovery.state
+          test -f "$state" || { echo 'QA_RECOVERY_ROLLBACK=state-missing-no-action'; exit 0; }
+          . "$state"
+          backup_dir="$qa_root/backups/$BACKUP_ID"
+          test -d "$backup_dir"
+          pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          if test -n "$pid"; then
+            cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+            printf '%s' "$cmd" | grep -Fq 'main:app'
+            test "$(ps -o user= -p "$pid" | xargs)" = "$(id -un)"
+            kill -TERM "$pid" || true
+            sleep 2
+            kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true
+          fi
+          rm -rf "$qa_backend/venv"
+          if test "$BACKEND_ENV_STATE" = missing; then
+            rm -f "$qa_backend/.env"
+          fi
+          rsync -a --delete             --exclude='venv/' --exclude='database/' --exclude='storage/' --exclude='backups/'             --exclude='.env' --exclude='*.db' --exclude='*.sqlite*'             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log'             "$backup_dir/" "$qa_backend/"
+          db_path="$(python3 - "$qa_root" "$qa_root/.env" <<'PY'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1]).resolve(); values = {}
+          for raw in Path(sys.argv[2]).read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  k, v = raw.split('=', 1); values[k.strip()] = v.strip().strip('"').strip("'")
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if db.startswith('sqlite:///'): db = db[len('sqlite:///'):]
+          p = Path(db); p = p if p.is_absolute() else root / p; print(p.resolve())
+          PY
+          )"
+          test "$(printf '%s' "$db_path" | sha256sum | awk '{print $1}')" = "$DB_PATH_HASH"
+          test "$(stat -c '%d:%i' "$db_path")" = "$DB_INODE"
+          test "$(stat -c '%d:%i' "$qa_root/storage")" = "$STORAGE_INODE"
+          rm -f "$qa_root"/recovery-pip-*.log "$state"
+          echo "QA_RECOVERY_ROLLBACK=restored-$BACKUP_ID"
+          REMOTE
