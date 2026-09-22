@@ -64,25 +64,42 @@ jobs:
               test -n "$qa_pid" || { echo '::error::QA_PREFLIGHT_QA_LISTENER_PID_MISSING'; exit 1; }
               qa_cmdline="$(tr '\0' ' ' < "/proc/$qa_pid/cmdline" 2>/dev/null || true)"
               printf '%s' "$qa_cmdline" | grep -Eq 'uvicorn|gunicorn' || { echo '::error::QA_PREFLIGHT_QA_LISTENER_UNEXPECTED_PROCESS'; exit 1; }
+              printf '%s' "$qa_cmdline" | grep -Fq 'main:app' || { echo '::error::QA_PREFLIGHT_QA_LISTENER_UNEXPECTED_APP'; exit 1; }
+              qa_owner="$(ps -o user= -p "$qa_pid" 2>/dev/null | xargs || true)"
+              test "$qa_owner" = "$(id -un)" || { echo '::error::QA_PREFLIGHT_QA_LISTENER_OWNER_MISMATCH'; exit 1; }
               qa_cgroup="$(cat "/proc/$qa_pid/cgroup" 2>/dev/null || true)"
               qa_systemd_unit="$(printf '%s\n' "$qa_cgroup" | awk -F/ '{for(i=NF;i>=1;i--) if ($i ~ /\.service$/) {print $i; exit}}')"
-              test -n "$qa_systemd_unit" || { echo '::error::QA_PREFLIGHT_SYSTEMD_UNIT_MISSING_FOR_LISTENER'; exit 1; }
               qa_cwd="$(readlink -f "/proc/$qa_pid/cwd" 2>/dev/null || true)"
-              if printf '%s' "$qa_cgroup" | grep -q '/user.slice/'; then
-                export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-                systemctl --user is-active --quiet "$qa_systemd_unit" || { echo '::error::QA_PREFLIGHT_SYSTEMD_UNIT_INACTIVE'; exit 1; }
-                qa_unit_config="$(systemctl --user cat "$qa_systemd_unit" 2>/dev/null || true)"
+              qa_unit_config=
+              if test -n "$qa_systemd_unit"; then
+                supervisor=systemd
+                if printf '%s' "$qa_cgroup" | grep -q '/user.slice/'; then
+                  export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+                  systemctl --user is-active --quiet "$qa_systemd_unit" || { echo '::error::QA_PREFLIGHT_SYSTEMD_UNIT_INACTIVE'; exit 1; }
+                  qa_unit_config="$(systemctl --user cat "$qa_systemd_unit" 2>/dev/null || true)"
+                else
+                  systemctl is-active --quiet "$qa_systemd_unit" || { echo '::error::QA_PREFLIGHT_SYSTEMD_UNIT_INACTIVE'; exit 1; }
+                  qa_unit_config="$(systemctl cat "$qa_systemd_unit" 2>/dev/null || true)"
+                fi
+                echo "QA_PREFLIGHT_SYSTEMD_UNIT=$qa_systemd_unit"
               else
-                systemctl is-active --quiet "$qa_systemd_unit" || { echo '::error::QA_PREFLIGHT_SYSTEMD_UNIT_INACTIVE'; exit 1; }
-                qa_unit_config="$(systemctl cat "$qa_systemd_unit" 2>/dev/null || true)"
+                supervisor=direct-nohup
+                echo 'QA_PREFLIGHT_RESTART_MODE=exact-port-8002-direct-nohup'
               fi
               qa_root_linked=no
               case "$qa_cwd" in "$qa_root"|"$qa_root"/*) qa_root_linked=yes ;; esac
               if printf '%s\n%s' "$qa_cmdline" "$qa_unit_config" | grep -Fq -- "$qa_root"; then
                 qa_root_linked=yes
               fi
-              test "$qa_root_linked" = yes || { echo '::error::QA_PREFLIGHT_QA_LISTENER_NOT_LINKED_TO_QA_ROOT'; exit 1; }
-              echo "QA_PREFLIGHT_SYSTEMD_UNIT=$qa_systemd_unit"
+              if test "$qa_root_linked" = yes; then
+                echo 'QA_PREFLIGHT_QA_SOURCE_LINK=verified'
+              elif test "$supervisor" = systemd; then
+                echo '::error::QA_PREFLIGHT_QA_LISTENER_NOT_LINKED_TO_QA_ROOT'
+                exit 1
+              else
+                echo 'QA_PREFLIGHT_QA_SOURCE_LINK=not-detectable-before-redeploy'
+              fi
+              curl -fsS http://127.0.0.1:8002/api/version >/dev/null || { echo '::error::QA_PREFLIGHT_LOCAL_API_UNHEALTHY'; exit 1; }
             fi
             ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$' || { echo '::error::QA_PREFLIGHT_EXISTING_PORT_MISSING'; exit 1; }
             echo "QA_PREFLIGHT_SUPERVISOR=$supervisor"

@@ -16,13 +16,14 @@ test('QA staging preflight identifies the API process from the 8002 listener', (
   assert.match(workflow, /QA_PREFLIGHT_QA_LISTENER_UNEXPECTED_PROCESS/);
 });
 
-test('QA staging preflight derives the real service and proves QA-root linkage', () => {
+test('QA staging preflight supports verified systemd or direct-nohup restart modes', () => {
   assert.match(workflow, /for\(i=NF;i>=1;i--\) if \(\$i ~ \/\\\.service\$\//);
   assert.match(workflow, /systemctl --user is-active --quiet/);
   assert.match(workflow, /systemctl is-active --quiet/);
-  assert.match(workflow, /systemctl --user cat/);
-  assert.match(workflow, /systemctl cat/);
-  assert.match(workflow, /QA_PREFLIGHT_QA_LISTENER_NOT_LINKED_TO_QA_ROOT/);
+  assert.match(workflow, /QA_PREFLIGHT_RESTART_MODE=exact-port-8002-direct-nohup/);
+  assert.match(workflow, /QA_PREFLIGHT_QA_LISTENER_OWNER_MISMATCH/);
+  assert.match(workflow, /grep -Fq 'main:app'/);
+  assert.match(workflow, /curl -fsS http:\/\/127\.0\.0\.1:8002\/api\/version/);
 });
 
 test('QA staging preflight keeps isolation and port guards', () => {
