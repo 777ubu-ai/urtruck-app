@@ -104,7 +104,7 @@ jobs:
               . "$state"
               backup_dir="$qa_root/backups/$BACKUP_ID"
               test -d "$backup_dir" && echo 'QA_PREFLIGHT_ROLLBACK_BACKUP=present' || echo 'QA_PREFLIGHT_ROLLBACK_BACKUP=missing'
-              current_hash="$(cd "$qa_backend" && find . -type f ! -path './venv/*' ! -path './database/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+              current_hash="$(cd "$qa_backend" && find . -type f ! -path './venv/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
               if test "$current_hash" = "$PRE_CODE_HASH"; then
                 echo 'QA_PREFLIGHT_CURRENT_CODE_MATCHES_PREDEPLOY=yes'
               else

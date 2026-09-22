@@ -72,6 +72,7 @@ jobs:
           resolved="$(git -C golden-source rev-parse HEAD)"
           test "$resolved" = "$QA_SOURCE_SHA"
           test -f golden-source/backend/tests/test_qa_data_isolation.py
+          test -f golden-source/backend/database/vehicles_dal.py
           grep -Fq 'QA2P_' golden-source/backend/tests/test_qa_data_isolation.py
           echo "QA_RECOVERY_SOURCE_SHA=$resolved"
 
@@ -164,7 +165,7 @@ jobs:
           backup_id="backend-code-recovery-$(date -u +%Y%m%dT%H%M%SZ)"
           backup_dir="$qa_root/backups/$backup_id"
           mkdir -p "$backup_dir"
-          rsync -a             --exclude='venv/' --exclude='database/' --exclude='storage/' --exclude='backups/'             --exclude='.env' --exclude='*.db' --exclude='*.sqlite*'             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log'             "$qa_backend/" "$backup_dir/"
+          rsync -a             --exclude='venv/' --exclude='storage/' --exclude='backups/'             --exclude='.env' --exclude='*.db' --exclude='*.sqlite*' --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm'             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log'             "$qa_backend/" "$backup_dir/"
           test -n "$(find "$backup_dir" -type f -print -quit)"
           umask 077
           cat > "$state" <<STATE
@@ -184,7 +185,7 @@ jobs:
         run: |
           set -euo pipefail
           export SSHPASS="$SERVER_PASS"
-          rsync -az --delete             --exclude='venv/' --exclude='database/' --exclude='storage/' --exclude='backups/'             --exclude='.env' --exclude='*.db' --exclude='*.sqlite*'             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log'             -e 'sshpass -e ssh -o StrictHostKeyChecking=no'             golden-source/backend/ "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/"
+          rsync -az --delete             --exclude='venv/' --exclude='storage/' --exclude='backups/'             --exclude='.env' --exclude='*.db' --exclude='*.sqlite*' --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm'             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log'             -e 'sshpass -e ssh -o StrictHostKeyChecking=no'             golden-source/backend/ "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/"
       - name: Build isolated QA runtime and start port 8002
         shell: bash
         run: |
@@ -204,6 +205,7 @@ jobs:
             ln -s ../.env .env
           fi
           test "\$(readlink -f .env)" = "\$(readlink -f "\$qa_root/.env")"
+          test -f database/vehicles_dal.py || { echo '::error::QA_RECOVERY_DATABASE_CODE_MISSING'; exit 1; }
           python3 -m venv venv
           PY="\$qa_backend/venv/bin/python"
           test -x "\$PY"
@@ -213,6 +215,9 @@ jobs:
             exit 1
           fi
           "\$PY" -m py_compile main.py
+          env -i HOME="\$HOME" PATH="\$PATH" DB_PATH="/tmp/urtruck-qa2-import-smoke-\$run_id.db" URTRUCK_ENV=test ENV=test \
+            "\$PY" -c 'from database import vehicles_dal'
+          rm -f "/tmp/urtruck-qa2-import-smoke-\$run_id.db"
           printf '%s\n' "\$source_sha" > .qa-source-sha
           nohup env -i HOME="\$HOME" PATH="\$PATH" PYTHONUNBUFFERED=1             "\$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002             > uvicorn.log 2>&1 </dev/null &
           healthy=no
@@ -317,7 +322,7 @@ jobs:
           if test "$BACKEND_ENV_STATE" = missing; then
             rm -f "$qa_backend/.env"
           fi
-          rsync -a --delete             --exclude='venv/' --exclude='database/' --exclude='storage/' --exclude='backups/'             --exclude='.env' --exclude='*.db' --exclude='*.sqlite*'             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log'             "$backup_dir/" "$qa_backend/"
+          rsync -a --delete             --exclude='venv/' --exclude='storage/' --exclude='backups/'             --exclude='.env' --exclude='*.db' --exclude='*.sqlite*' --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm'             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log'             "$backup_dir/" "$qa_backend/"
           db_path="$(python3 - "$qa_root" "$qa_root/.env" <<'PY'
           from pathlib import Path
           import sys

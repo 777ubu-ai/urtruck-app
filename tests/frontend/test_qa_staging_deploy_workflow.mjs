@@ -28,9 +28,15 @@ test('QA2 backend deploy protects database, storage and production', () => {
   assert.match(workflow, /\/home\/ubuntu\/urtruck-qa2/);
   assert.match(workflow, /sport = :8002/);
   assert.match(workflow, /--port 8002/);
-  assert.match(workflow, /--exclude='database\/'/);
+  assert.doesNotMatch(workflow, /--exclude='database\/'/);
+  assert.match(workflow, /--exclude='\*\.db'/);
+  assert.match(workflow, /--exclude='\*\.db-wal'/);
+  assert.match(workflow, /--exclude='\*\.db-shm'/);
+  assert.match(workflow, /--exclude='\*\.db-journal'/);
   assert.match(workflow, /--exclude='storage\/'/);
   assert.match(workflow, /--exclude='\.env'/);
+  assert.match(workflow, /database\/vehicles_dal\.py/);
+  assert.match(workflow, /QA_DEPLOY_DATABASE_CODE_MISSING/);
   assert.match(workflow, /QA_DB=preserved-same-file/);
   assert.match(workflow, /QA_STORAGE=preserved-same-directory/);
   assert.match(workflow, /PROD_VERSION_HASH_BEFORE/);

@@ -41,9 +41,15 @@ test('QA2 recovery builds an isolated runtime and binds the existing QA env', ()
 test('QA2 recovery has code backup and rollback without touching QA data', () => {
   assert.match(workflow, /backend-code-recovery-/);
   assert.match(workflow, /QA_RECOVERY_ROLLBACK=restored-/);
-  assert.match(workflow, /--exclude='database\/'/);
+  assert.doesNotMatch(workflow, /--exclude='database\/'/);
+  assert.match(workflow, /--exclude='\*\.db'/);
+  assert.match(workflow, /--exclude='\*\.db-wal'/);
+  assert.match(workflow, /--exclude='\*\.db-shm'/);
+  assert.match(workflow, /--exclude='\*\.db-journal'/);
   assert.match(workflow, /--exclude='storage\/'/);
   assert.match(workflow, /--exclude='\.env'/);
+  assert.match(workflow, /database\/vehicles_dal\.py/);
+  assert.match(workflow, /QA_RECOVERY_DATABASE_CODE_MISSING/);
   assert.match(workflow, /rm -rf "\$qa_backend\/venv"/);
 });
 

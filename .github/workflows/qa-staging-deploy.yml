@@ -79,6 +79,7 @@ jobs:
           resolved="$(git -C golden-source rev-parse HEAD)"
           test "$resolved" = "$QA_SOURCE_SHA"
           test -f golden-source/backend/tests/test_qa_data_isolation.py
+          test -f golden-source/backend/database/vehicles_dal.py
           grep -Fq 'QA2P_' golden-source/backend/tests/test_qa_data_isolation.py
           echo "QA_DEPLOY_SOURCE_SHA=$resolved"
 
@@ -143,12 +144,12 @@ jobs:
             [0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;;
             *) pre_source=unknown ;;
           esac
-          pre_hash="$(cd "$qa_backend" && find . -type f ! -path './venv/*' ! -path './database/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          pre_hash="$(cd "$qa_backend" && find . -type f ! -path './venv/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
           backup_id="backend-code-$(date -u +%Y%m%dT%H%M%SZ)"
           backup_dir="$qa_root/backups/$backup_id"
           mkdir -p "$backup_dir"
           rsync -a \
-            --exclude='venv/' --exclude='database/' --exclude='storage/' --exclude='backups/' \
+            --exclude='venv/' --exclude='storage/' --exclude='backups/' \
             --exclude='.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
             --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm' \
             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log' \
@@ -175,7 +176,7 @@ jobs:
           set -euo pipefail
           export SSHPASS="$SERVER_PASS"
           rsync -az --delete \
-            --exclude='venv/' --exclude='database/' --exclude='storage/' --exclude='backups/' \
+            --exclude='venv/' --exclude='storage/' --exclude='backups/' \
             --exclude='.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
             --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm' \
             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log' \
@@ -198,7 +199,11 @@ jobs:
           PY="\$qa_backend/venv/bin/python"
           test -x "\$PY"
           cd "\$qa_backend"
+          test -f database/vehicles_dal.py || { echo '::error::QA_DEPLOY_DATABASE_CODE_MISSING'; exit 1; }
           "\$PY" -m py_compile main.py
+          env -i HOME="\$HOME" PATH="\$PATH" DB_PATH="/tmp/urtruck-qa2-import-smoke.db" URTRUCK_ENV=test ENV=test \
+            "\$PY" -c 'from database import vehicles_dal'
+          rm -f /tmp/urtruck-qa2-import-smoke.db
           "\$PY" -m pytest tests/test_qa_data_isolation.py -q
           printf '%s\n' "\$source_sha" > .qa-source-sha
           listener_pid() {
@@ -251,7 +256,7 @@ jobs:
           test "\$(printf '%s' "\$db_path" | sha256sum | awk '{print \$1}')" = "\$DB_PATH_HASH"
           test "\$(stat -c '%d:%i' "\$db_path")" = "\$DB_INODE"
           test "\$(stat -c '%d:%i' "\$qa_root/storage")" = "\$STORAGE_INODE"
-          post_hash="\$(find . -type f ! -path './venv/*' ! -path './database/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print \$1}')"
+          post_hash="\$(find . -type f ! -path './venv/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print \$1}')"
           echo "QA_DEPLOYED_SOURCE_SHA=\$source_sha"
           echo "QA_POSTDEPLOY_CODE_SHA256=\$post_hash"
           echo 'QA_DB=preserved-same-file'
@@ -332,7 +337,7 @@ jobs:
             kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true
           fi
           rsync -a --delete \
-            --exclude='venv/' --exclude='database/' --exclude='storage/' --exclude='backups/' \
+            --exclude='venv/' --exclude='storage/' --exclude='backups/' \
             --exclude='.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
             --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm' \
             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log' \

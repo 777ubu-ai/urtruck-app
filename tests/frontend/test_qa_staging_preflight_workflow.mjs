@@ -61,3 +61,9 @@ test('QA staging preflight proves recovery prerequisites before touching the lis
   assert.match(workflow, /QA_PREFLIGHT_CURRENT_CODE_MATCHES_PREDEPLOY=yes/);
   assert.match(workflow, /QA_PREFLIGHT_STORAGE_INODE=preserved/);
 });
+
+test('QA staging code fingerprint includes database DAL code while excluding data files', () => {
+  assert.ok(!workflow.includes("! -path './database/*'"));
+  assert.ok(workflow.includes("! -name '*.db'"));
+  assert.ok(workflow.includes("! -name '*.sqlite*'"));
+});
