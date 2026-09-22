@@ -31,12 +31,12 @@ jobs:
           test -n "$SERVER_HOST" && test -n "$SERVER_USER" && test -n "$SERVER_PASS"
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          test "$(id -u)" -ne 0
-          test ! -e /home/ubuntu/urtruck-qa2
-          ! ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$'
-          test ! -e /home/ubuntu/urtruck-qa2/database/qa2.db
-          test ! -e /home/ubuntu/urtruck-qa2/storage
-          df -Pk /home/ubuntu | awk 'NR==2 { if ($4 < 2097152) exit 1 }'
-          command -v pm2 >/dev/null
+          if test "$(id -u)" -eq 0; then echo '::error::QA_PREFLIGHT_REMOTE_ROOT'; exit 1; fi
+          if test -e /home/ubuntu/urtruck-qa2; then echo '::error::QA_PREFLIGHT_DIRECTORY_OCCUPIED'; exit 1; fi
+          if ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$'; then echo '::error::QA_PREFLIGHT_PORT_8002_OCCUPIED'; exit 1; fi
+          if test -e /home/ubuntu/urtruck-qa2/database/qa2.db; then echo '::error::QA_PREFLIGHT_DATABASE_OCCUPIED'; exit 1; fi
+          if test -e /home/ubuntu/urtruck-qa2/storage; then echo '::error::QA_PREFLIGHT_STORAGE_OCCUPIED'; exit 1; fi
+          if ! df -Pk /home/ubuntu | awk 'NR==2 { exit !($4 >= 2097152) }'; then echo '::error::QA_PREFLIGHT_DISK_TOO_LOW'; exit 1; fi
+          if ! command -v pm2 >/dev/null; then echo '::error::QA_PREFLIGHT_PM2_MISSING'; exit 1; fi
           echo 'QA_STAGING_PREFLIGHT=isolated-target-available'
           REMOTE
