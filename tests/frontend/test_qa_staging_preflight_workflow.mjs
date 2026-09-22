@@ -8,16 +8,21 @@ const workflow = fs.readFileSync(
   'utf8',
 );
 
-test('QA staging preflight binds an API process to QA root without command-line ordering assumptions', () => {
-  assert.match(workflow, /for candidate_pid in \$\(pgrep -f 'uvicorn\|gunicorn' \|\| true\); do/);
-  assert.match(workflow, /readlink -f "\/proc\/\$candidate_pid\/cwd"/);
-  assert.match(workflow, /tr '\\0' ' ' < "\/proc\/\$candidate_pid\/cmdline"/);
-  assert.match(workflow, /"\$qa_root"\|"\$qa_root"\/\*/);
-  assert.match(workflow, /grep -Fq -- "\$qa_root"/);
-  assert.doesNotMatch(
-    workflow,
-    /pgrep -fo '\/home\/ubuntu\/urtruck-qa2\.\*\(uvicorn\|gunicorn\)'/,
-  );
+test('QA staging preflight identifies the API process from the 8002 listener', () => {
+  assert.match(workflow, /ss -ltnpH 'sport = :8002'/);
+  assert.match(workflow, /fuser -n tcp 8002/);
+  assert.match(workflow, /lsof -nP -iTCP:8002 -sTCP:LISTEN -t/);
+  assert.match(workflow, /QA_PREFLIGHT_QA_LISTENER_PID_MISSING/);
+  assert.match(workflow, /QA_PREFLIGHT_QA_LISTENER_UNEXPECTED_PROCESS/);
+});
+
+test('QA staging preflight derives the real service and proves QA-root linkage', () => {
+  assert.match(workflow, /for\(i=NF;i>=1;i--\) if \(\$i ~ \/\\\.service\$\//);
+  assert.match(workflow, /systemctl --user is-active --quiet/);
+  assert.match(workflow, /systemctl is-active --quiet/);
+  assert.match(workflow, /systemctl --user cat/);
+  assert.match(workflow, /systemctl cat/);
+  assert.match(workflow, /QA_PREFLIGHT_QA_LISTENER_NOT_LINKED_TO_QA_ROOT/);
 });
 
 test('QA staging preflight keeps isolation and port guards', () => {
