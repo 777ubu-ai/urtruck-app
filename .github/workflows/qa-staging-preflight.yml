@@ -54,7 +54,16 @@ jobs:
               pm2 jlist | grep -q 'urtruck-qa2' || { echo '::error::QA_PREFLIGHT_EXISTING_PM2_MISSING'; exit 1; }
             else
               pgrep -f 'uvicorn|gunicorn' >/dev/null || { echo '::error::QA_PREFLIGHT_EXISTING_API_PROCESS_MISSING'; exit 1; }
-              qa_pid="$(pgrep -fo '/home/ubuntu/urtruck-qa2.*(uvicorn|gunicorn)' || true)"
+              qa_pid=
+              for candidate_pid in $(pgrep -f 'uvicorn|gunicorn' || true); do
+                candidate_cwd="$(readlink -f "/proc/$candidate_pid/cwd" 2>/dev/null || true)"
+                case "$candidate_cwd" in
+                  "$qa_root"|"$qa_root"/*)
+                    qa_pid="$candidate_pid"
+                    break
+                    ;;
+                esac
+              done
               test -n "$qa_pid" || { echo '::error::QA_PREFLIGHT_QA_API_PROCESS_MISSING'; exit 1; }
               qa_systemd_unit="$(awk -F/ '/\.service$/ {print $NF; exit}' "/proc/$qa_pid/cgroup" 2>/dev/null || true)"
               if test -n "$qa_systemd_unit"; then
