@@ -4,6 +4,17 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      deploy_qa2:
+        description: Deploy exact Golden backend source to isolated QA2 after all gates
+        required: false
+        default: false
+        type: boolean
+      qa2_confirmation:
+        description: Type DEPLOY_QA2 only when deploy_qa2 is enabled
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: qa-center-${{ github.event.pull_request.number || github.ref }}
@@ -106,3 +117,17 @@ jobs:
             qa/README.md
           if-no-files-found: error
           retention-days: 14
+
+  qa2-backend-deploy:
+    name: QA2 backend deploy after full gate
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_qa2 == true }}
+    needs:
+      - pro-test-environment-contract
+      - qa-staging-preflight
+      - routing-provider-forensic
+      - quick-gate
+      - maestro-contract
+    uses: ./.github/workflows/qa-staging-deploy.yml
+    with:
+      confirmation: ${{ inputs.qa2_confirmation }}
+    secrets: inherit
