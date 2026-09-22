@@ -66,6 +66,10 @@ jobs:
             fi
             test -d "$qa_root/storage" || { echo '::error::QA_PREFLIGHT_EXISTING_STORAGE_MISSING'; exit 1; }
             echo 'QA_PREFLIGHT_STORAGE=present'
+            test -x "$qa_backend/venv/bin/python" && echo 'QA_PREFLIGHT_VENV_BACKEND=present' || echo 'QA_PREFLIGHT_VENV_BACKEND=missing'
+            test -x "$qa_root/venv/bin/python" && echo 'QA_PREFLIGHT_VENV_ROOT=present' || echo 'QA_PREFLIGHT_VENV_ROOT=missing'
+            test -x "$qa_backend/.venv/bin/python" && echo 'QA_PREFLIGHT_DOTVENV_BACKEND=present' || echo 'QA_PREFLIGHT_DOTVENV_BACKEND=missing'
+            command -v python3 >/dev/null && echo 'QA_PREFLIGHT_SYSTEM_PYTHON=present' || echo 'QA_PREFLIGHT_SYSTEM_PYTHON=missing'
             if [ "$supervisor" = pm2 ]; then
               pm2 jlist | grep -q 'urtruck-qa2' || { echo '::error::QA_PREFLIGHT_EXISTING_PM2_MISSING'; exit 1; }
             else
