@@ -7,6 +7,10 @@ const workflow = fs.readFileSync(
   path.join(process.cwd(), '.github/workflows/qa-staging-deploy.yml'),
   'utf8',
 );
+const qaCenter = fs.readFileSync(
+  path.join(process.cwd(), '.github/workflows/qa-center.yml'),
+  'utf8',
+);
 
 test('QA2 backend deploy is manual, fixed-source and gated by QA contracts', () => {
   assert.match(workflow, /workflow_dispatch:/);
@@ -40,4 +44,17 @@ test('QA2 backend deploy has rollback and runtime QA2P isolation proof', () => {
   assert.match(workflow, /QA2P_RUNTIME_FIXTURE_NOT_VISIBLE_IN_QA/);
   assert.match(workflow, /QA2P_RUNTIME_LEAKED_TO_PRODUCTION/);
   assert.match(workflow, /pytest tests\/test_qa_data_isolation\.py -q/);
+});
+
+test('QA Center keeps deploy opt-in and waits for every existing gate', () => {
+  assert.match(qaCenter, /deploy_qa2:/);
+  assert.match(qaCenter, /qa2_confirmation:/);
+  assert.match(qaCenter, /inputs\.deploy_qa2 == true/);
+  assert.match(qaCenter, /confirmation: \$\{\{ inputs\.qa2_confirmation \}\}/);
+  assert.ok(qaCenter.includes('- pro-test-environment-contract'));
+  assert.ok(qaCenter.includes('- qa-staging-preflight'));
+  assert.ok(qaCenter.includes('- routing-provider-forensic'));
+  assert.ok(qaCenter.includes('- quick-gate'));
+  assert.ok(qaCenter.includes('- maestro-contract'));
+  assert.match(workflow, /workflow_call:/);
 });
