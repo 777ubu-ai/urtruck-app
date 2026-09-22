@@ -9,18 +9,23 @@ const iosPodfile = readFileSync('ios/Podfile', 'utf8');
 const iosPodProperties = readFileSync('ios/Podfile.properties.json', 'utf8');
 const iosProject = readFileSync('ios/UrTruck.xcodeproj/project.pbxproj', 'utf8');
 
-test('distributed QA2 restores live providers without embedding the isolated harness URL', () => {
-  assert.ok(workflow.includes('EXPO_PUBLIC_API_URL=https://urtruck.kz'));
+test('distributed QA2 requires a healthy non-production API target', () => {
+  assert.ok(workflow.includes('QA_API_URL: ${{ secrets.PRO_TEST_API_URL }}'));
+  assert.ok(workflow.includes('QA2 Android build must not target production'));
+  assert.ok(workflow.includes('urtruck.kz|www.urtruck.kz|185.22.65.11'));
+  assert.ok(workflow.includes('for path in /health /api/version'));
+  assert.ok(workflow.includes("printf 'EXPO_PUBLIC_API_URL=%s\\n' \"$QA_API_URL\""));
+  assert.ok(!workflow.includes('EXPO_PUBLIC_API_URL=https://urtruck.kz'));
   assert.ok(!workflow.includes('EXPO_PUBLIC_API_URL=http://127.0.0.1:18001'));
-  const version = Number(workflow.match(/URTRUCK_VERSION_CODE=(\d+)/)?.[1]);
-  assert.ok(version > 211040069, 'never reuse or downgrade the latest QA2 candidate');
 });
 
-test('QA078 checks out and records the exact approved Golden source SHA', () => {
-  assert.ok(workflow.includes('default: d2b188b60673deb056b21a94a7894bb9a196bb8c'));
+test('QA080 checks out and records an explicitly supplied exact source SHA', () => {
+  const sourceInput = workflow.match(/source_ref:\n([\s\S]*?)\n\s*push:/)?.[1] || '';
+  assert.ok(sourceInput.includes('required: true'));
+  assert.ok(!sourceInput.includes('default:'), 'QA2 build must not silently reuse a stale source SHA');
   assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));
   assert.ok(workflow.includes('test "$RESOLVED_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"'));
-  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040078'));
+  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040080'));
   assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
 });
 

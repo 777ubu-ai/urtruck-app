@@ -9,7 +9,6 @@ on:
       source_ref:
         description: Exact source commit SHA to build
         required: true
-        default: d2b188b60673deb056b21a94a7894bb9a196bb8c
   push:
     branches: [main, "claude/**"]
 
@@ -37,6 +36,7 @@ jobs:
       - name: Set QA2 build contract
         env:
           EXPECTED_SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
+          QA_API_URL: ${{ secrets.PRO_TEST_API_URL }}
         run: |
           set -euo pipefail
           RESOLVED_SOURCE_SHA="$(git rev-parse HEAD)"
@@ -44,15 +44,42 @@ jobs:
             echo "::error::Expected exact source SHA $EXPECTED_SOURCE_SHA, resolved $RESOLVED_SOURCE_SHA"
             exit 1
           }
+          test -n "${QA_API_URL:-}" || {
+            echo "::error::PRO_TEST_API_URL is required for QA2 Android builds"
+            exit 1
+          }
+          QA_HOST="$(python3 - <<'PY'
+          from urllib.parse import urlparse
+          import os
+          print(urlparse(os.environ['QA_API_URL']).hostname or '')
+          PY
+          )"
+          test -n "$QA_HOST" || { echo "::error::QA2 API URL has no host"; exit 1; }
+          case "$QA_HOST" in
+            urtruck.kz|www.urtruck.kz|185.22.65.11)
+              echo "::error::QA2 Android build must not target production"
+              exit 1
+              ;;
+          esac
+          qa_ok=no
+          for path in /health /api/version; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${QA_API_URL%/}${path}" || true)"
+            [[ "$code" =~ ^2 ]] && qa_ok=yes && break
+          done
+          test "$qa_ok" = yes || {
+            echo "::error::QA2 Android build target is not healthy"
+            exit 1
+          }
           echo "URTRUCK_SOURCE_SHA=$RESOLVED_SOURCE_SHA" >> "$GITHUB_ENV"
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.9" >> "$GITHUB_ENV"
-          # QA079 retests QA2P visibility from the exact Golden source SHA.
-          echo "URTRUCK_VERSION_CODE=211040079" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_CODE=211040080" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
-          # Restore the live service endpoint. The isolated adb-reverse harness
-          # has stub STT/translation and no native FCM credentials.
-          echo "EXPO_PUBLIC_API_URL=https://urtruck.kz" >> "$GITHUB_ENV"
+          printf 'EXPO_PUBLIC_API_URL=%s\n' "$QA_API_URL" >> "$GITHUB_ENV"
+          echo "QA2_API_TARGET=healthy-nonproduction"
+
+      - name: Verify QA2 build regression contract
+        run: node --test tests/frontend/test_qa2_live_build_contract.mjs
 
       - name: Materialize QA2 native MapKit build contract
         # Keep the native key out of source and separate from the web JS key.
