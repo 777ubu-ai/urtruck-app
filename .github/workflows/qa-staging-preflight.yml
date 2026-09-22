@@ -31,12 +31,31 @@ jobs:
           test -n "$SERVER_HOST" && test -n "$SERVER_USER" && test -n "$SERVER_PASS"
           sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
           if test "$(id -u)" -eq 0; then echo '::error::QA_PREFLIGHT_REMOTE_ROOT'; exit 1; fi
-          if test -e /home/ubuntu/urtruck-qa2; then echo '::error::QA_PREFLIGHT_DIRECTORY_OCCUPIED'; exit 1; fi
-          if ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$'; then echo '::error::QA_PREFLIGHT_PORT_8002_OCCUPIED'; exit 1; fi
-          if test -e /home/ubuntu/urtruck-qa2/database/qa2.db; then echo '::error::QA_PREFLIGHT_DATABASE_OCCUPIED'; exit 1; fi
-          if test -e /home/ubuntu/urtruck-qa2/storage; then echo '::error::QA_PREFLIGHT_STORAGE_OCCUPIED'; exit 1; fi
           if ! df -Pk /home/ubuntu | awk 'NR==2 { exit !($4 >= 2097152) }'; then echo '::error::QA_PREFLIGHT_DISK_TOO_LOW'; exit 1; fi
           if ! command -v pm2 >/dev/null; then echo '::error::QA_PREFLIGHT_PM2_MISSING'; exit 1; fi
-          echo 'QA_STAGING_PREFLIGHT=isolated-target-available'
+          if test -e "$qa_root"; then
+            test -f "$qa_root/.env" || { echo '::error::QA_PREFLIGHT_EXISTING_ENV_MISSING'; exit 1; }
+            test -f "$qa_root/database/qa2.db" || { echo '::error::QA_PREFLIGHT_EXISTING_DB_MISSING'; exit 1; }
+            test -d "$qa_root/storage" || { echo '::error::QA_PREFLIGHT_EXISTING_STORAGE_MISSING'; exit 1; }
+            pm2 jlist | grep -q 'urtruck-qa2' || { echo '::error::QA_PREFLIGHT_EXISTING_PM2_MISSING'; exit 1; }
+            ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$' || { echo '::error::QA_PREFLIGHT_EXISTING_PORT_MISSING'; exit 1; }
+            python3 - "$qa_root/.env" <<'PY'
+          from pathlib import Path
+          import sys
+          values = {}
+          for raw in Path(sys.argv[1]).read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  key, value = raw.split('=', 1)
+                  values[key.strip()] = value.strip()
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if not db or 'urtruck-qa2' not in db or 'urtruck-security' in db:
+              raise SystemExit('::error::QA_PREFLIGHT_EXISTING_DB_NOT_ISOLATED')
+          print('QA_STAGING_PREFLIGHT=existing-isolated-target-ready')
+          PY
+          else
+            ! ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$' || { echo '::error::QA_PREFLIGHT_PORT_8002_OCCUPIED'; exit 1; }
+            echo 'QA_STAGING_PREFLIGHT=new-isolated-target-available'
+          fi
           REMOTE
