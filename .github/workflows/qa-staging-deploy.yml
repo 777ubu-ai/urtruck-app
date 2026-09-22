@@ -204,8 +204,8 @@ jobs:
           listener_pid() {
             local pid
             pid="\$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
-            if test -z "\$pid" && command -v fuser >/dev/null; then pid="\$(fuser -n tcp 8002 2>/dev/null | awk '{print \$1; exit}')"; fi
-            if test -z "\$pid" && command -v lsof >/dev/null; then pid="\$(lsof -nP -iTCP:8002 -sTCP:LISTEN -t 2>/dev/null | head -1)"; fi
+            if test -z "\$pid" && command -v fuser >/dev/null; then pid="\$({ fuser -n tcp 8002 2>/dev/null || true; } | awk '{print \$1; exit}')"; fi
+            if test -z "\$pid" && command -v lsof >/dev/null; then pid="\$({ lsof -nP -iTCP:8002 -sTCP:LISTEN -t 2>/dev/null || true; } | head -1)"; fi
             printf '%s' "\$pid"
           }
           old_pid="\$(listener_pid)"
