@@ -13,6 +13,10 @@ permissions:
   contents: read
 
 jobs:
+  qa-environment-contract:
+    uses: ./.github/workflows/qa-environment-contract.yml
+    secrets: inherit
+
   routing-provider-forensic:
     name: Routing provider forensic
     runs-on: ubuntu-latest
