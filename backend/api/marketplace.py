@@ -145,7 +145,7 @@ DIRTY_TOKENS = (
 # pickup_date — anything older than this with no pickup is treated as stale
 # pre-pilot leftover.
 PUBLIC_CUTOFF_DATE = "2026-05-01"
-QA_RECORD_MARKER = "[ar-"
+QA_RECORD_MARKERS = ("[ar-", "qa2p_")
 
 
 def _parse_iso_date(s):
@@ -277,16 +277,14 @@ def _deal_country_guard(cur_status: str, new_status: str, from_country: Optional
 def _is_dirty_text(*fields) -> bool:
     """Cheap substring match for moderation tokens. Case-insensitive, RU+EN.
 
-    QA agents tag their records with "[ar-<runid>]" markers and rely on the
-    public feed showing them during a run (cleanup removes them after). Treat
-    a row carrying that marker as *not* dirty, even if some other field
-    incidentally matches a dirty token (e.g. "QA" inside an agent name).
+    QA records use either "[ar-<runid>]" or the mobile "QA2P_" prefix.
+    On a non-production backend they must remain visible during a run;
+    production still treats them as dirty even though they contain "qa".
     """
     blob = " ".join(str(f or "") for f in fields).lower()
-    # QA records are visible only from an explicitly non-production backend.
-    # The old exception made QA runs against the default production URL leak
-    # fixtures into the ordinary user feed.
-    if QA_RECORD_MARKER in blob:
+    # QA fixtures are visible only on a non-production backend. Production
+    # keeps them hidden even when their text contains an allowed QA marker.
+    if any(marker in blob for marker in QA_RECORD_MARKERS):
         return bool(IS_PRODUCTION)
     return any(tok in blob for tok in DIRTY_TOKENS)
 

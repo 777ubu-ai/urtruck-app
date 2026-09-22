@@ -27,3 +27,18 @@ def test_qa_marker_is_available_only_in_non_production_qa_environment(monkeypatc
     }
     monkeypatch.setattr(marketplace, "IS_PRODUCTION", False)
     assert marketplace._public_cargo_ok(row) is True
+
+
+def test_qa2p_fixture_is_visible_only_in_non_production(monkeypatch):
+    row = {
+        "cargo_desc": "QA2P_20260921_078_DEAL_CYCLE",
+        "from_city": "Иу",
+        "to_city": "Алматы",
+        "cargo_type": "tent",
+        "pickup_date": "2099-01-01",
+        "created_at": "2098-12-01 00:00:00",
+    }
+    monkeypatch.setattr(marketplace, "IS_PRODUCTION", False)
+    assert marketplace._public_cargo_ok(row) is True
+    monkeypatch.setattr(marketplace, "IS_PRODUCTION", True)
+    assert marketplace._public_cargo_ok(row) is False
