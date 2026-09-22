@@ -32,3 +32,12 @@ test('QA staging preflight keeps isolation and port guards', () => {
   assert.match(workflow, /QA_PREFLIGHT_EXISTING_DB_NOT_ISOLATED/);
   assert.match(workflow, /QA_PREFLIGHT_SYSTEMD_UNIT_INACTIVE/);
 });
+
+test('QA staging preflight emits safe startup diagnostics without reading env contents', () => {
+  assert.match(workflow, /QA_PREFLIGHT_REMOTE_CONNECTED=yes/);
+  assert.match(workflow, /QA_PREFLIGHT_UVICORN_LOG=present/);
+  assert.match(workflow, /safe_startup_diagnostic/);
+  assert.match(workflow, /tail -n 120/);
+  assert.match(workflow, /<redacted>/);
+  assert.doesNotMatch(workflow, /cat \"\\$qa_root\\\/\\.env\"/);
+});
