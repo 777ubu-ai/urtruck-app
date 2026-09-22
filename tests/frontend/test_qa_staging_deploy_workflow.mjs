@@ -60,6 +60,6 @@ test('QA Center keeps deploy opt-in and waits for every existing gate', () => {
 });
 
 test('QA2 deploy treats an empty free-port probe as normal after stopping the listener', () => {
-  assert.match(workflow, /\{ fuser -n tcp 8002 2>\\\/dev\\\/null \|\| true; \}/);
-  assert.match(workflow, /test -z \"\\\$\\\(listener_pid\\\)\"/);
+  assert.ok(workflow.includes('{ fuser -n tcp 8002 2>/dev/null || true; }'));
+  assert.ok(workflow.includes('test -z "\\$(listener_pid)"'));
 });
