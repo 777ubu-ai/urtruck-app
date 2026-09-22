@@ -33,7 +33,8 @@ jobs:
           set -euo pipefail
           test "$(id -u)" -ne 0
           test ! -e /home/ubuntu/urtruck-qa2
-          ! ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$'          test ! -e /home/ubuntu/urtruck-qa2/database/qa2.db
+          ! ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$'
+          test ! -e /home/ubuntu/urtruck-qa2/database/qa2.db
           test ! -e /home/ubuntu/urtruck-qa2/storage
           df -Pk /home/ubuntu | awk 'NR==2 { if ($4 < 2097152) exit 1 }'
           command -v pm2 >/dev/null
