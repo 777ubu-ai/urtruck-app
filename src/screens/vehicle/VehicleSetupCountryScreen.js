@@ -10,11 +10,17 @@ import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
 import { useVehicleCopy, ProgressHeader, SelectRow, Label, CountrySheet, countryLabel, styles } from '../../components/vehicle/VehicleSetupUI';
 
 const KEY = 'ur_vehicle_setup_draft';
+// Kazakhstan is a real default, never a placeholder: users may continue
+// immediately or replace either value in the country picker.
+const DEFAULT_DRAFT = {
+  driver_citizenship_country_code: 'KZ',
+  vehicle_registration_country_code: 'KZ',
+};
 export default function VehicleSetupCountryScreen({ navigation, route }) {
   const { lang, c } = useVehicleCopy();
   const { t } = useI18n();
   const { signOut } = useAuth();
-  const [draft, setDraft] = useState({}); const [sheet, setSheet] = useState(null); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
+  const [draft, setDraft] = useState(DEFAULT_DRAFT); const [sheet, setSheet] = useState(null); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -22,7 +28,7 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
       if (!mounted) return;
       // The picker is backed by the bundled ISO catalogue. Render it from the
       // local draft immediately; server status is only a background merge.
-      setDraft(local);
+      setDraft({ ...DEFAULT_DRAFT, ...local });
       setLoading(false);
       const status = await regAPI.status().catch(() => null);
       if (!mounted || !status) return;
