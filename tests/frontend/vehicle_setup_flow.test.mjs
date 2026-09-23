@@ -20,8 +20,11 @@ test('vehicle setup is a four-step flow with independent country fields', () => 
   assert.match(success, /step=\{4\}/);
   assert.match(country, /driver_citizenship_country_code/);
   assert.match(country, /vehicle_registration_country_code/);
-  assert.match(country, /const DEFAULT_DRAFT[\s\S]*driver_citizenship_country_code: 'KZ'/);
-  assert.match(country, /vehicle_registration_country_code: 'KZ'/);
+  assert.match(country, /const DEFAULT_DRAFT[\s\S]*driver_citizenship_country_code: ''/);
+  assert.match(country, /vehicle_registration_country_code: ''/);
+  assert.doesNotMatch(country, /driver_citizenship_country_code: 'KZ'/);
+  assert.doesNotMatch(country, /vehicle_registration_country_code: 'KZ'/);
+  assert.match(country, /placeholder=\{c\.select\}/);
   assert.match(country, /setDraft\(\{ \.\.\.DEFAULT_DRAFT, \.\.\.local \}\)/);
 });
 
@@ -80,7 +83,9 @@ test('completion failure identifies the real missing data and offers recovery ac
   assert.match(success, /BASIC_ONBOARDING_INCOMPLETE/);
   assert.match(success, /ROLE_ALREADY_SET/);
   assert.match(success, /Заполните:/);
+  assert.match(success, /finishErrorTitle/);
   assert.match(success, /basic-onboarding-fix-data/);
   assert.match(success, /basic-onboarding-retry/);
+  assert.match(copy, /finishErrorTitle/);
   assert.doesNotMatch(success, /\{basicState === 'loading' \? c\.loading : c\.saveErrorSub\}/);
 });

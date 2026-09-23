@@ -31,7 +31,9 @@ permissions:
   contents: read
 
 env:
-  QA_SOURCE_SHA: 7b73ca90c123dd889b924313e05c8adc3e0113ee
+  # The manually selected workflow ref is the only backend source deployed to QA2.
+  # Keeping this dynamic prevents a new QA APK from silently testing an older server.
+  QA_SOURCE_SHA: ${{ github.sha }}
 
 jobs:
   environment-contract:

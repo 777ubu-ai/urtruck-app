@@ -15,7 +15,8 @@ const qaCenter = fs.readFileSync(
 test('QA2 backend deploy is manual, fixed-source and gated by QA contracts', () => {
   assert.match(workflow, /workflow_dispatch:/);
   assert.doesNotMatch(workflow, /\n\s*push:/);
-  assert.match(workflow, /QA_SOURCE_SHA: 7b73ca90c123dd889b924313e05c8adc3e0113ee/);
+  assert.match(workflow, /QA_SOURCE_SHA: \$\{\{ github\.sha \}\}/);
+  assert.match(workflow, /prevents a new QA APK from silently testing an older server/);
   assert.match(workflow, /needs: \[environment-contract, staging-preflight\]/);
   assert.match(workflow, /PRO_TEST_API_URL/);
   assert.match(workflow, /PRO_TEST_SERVER_HOST/);

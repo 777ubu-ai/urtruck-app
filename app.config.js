@@ -3,6 +3,16 @@ const { existsSync } = require('node:fs');
 const isQa2 = process.env.URTRUCK_BUILD_FLAVOR === 'qa2';
 const qa2VersionCode = Number(process.env.URTRUCK_VERSION_CODE || '211039959');
 const apiOverride = process.env.EXPO_PUBLIC_API_URL || '';
+const PRODUCTION_API_URL = 'https://urtruck.kz';
+const normalizedApiOverride = apiOverride.replace(/\/+$/, '');
+
+// QA2 must never silently reuse the production API. A missing or production
+// endpoint makes the build fail before any test account can reach real data.
+if (isQa2 && (!normalizedApiOverride || normalizedApiOverride === PRODUCTION_API_URL)) {
+  throw new Error(
+    'QA2 build requires EXPO_PUBLIC_API_URL pointing to an isolated non-production QA API',
+  );
+}
 
 module.exports = ({ config }) => {
   const androidConfig = { ...config.android };

@@ -89,7 +89,7 @@ export default function VehicleSetupSuccessScreen({ navigation, route }) {
         <Pressable onPress={() => navigation.replace('Main', { role: 'driver' })} style={[{ width: '100%', marginTop: 10 }]} testID="basic-onboarding-home"><View style={styles.secondary}><Text style={styles.secondaryText}>{c.home}</Text></View></Pressable>
       </> : <View style={{ width: '100%', alignItems: 'center', paddingTop: 52 }} testID={`basic-onboarding-${basicState}`}>
         {basicState === 'loading' ? <ActivityIndicator size="large" color={DRIVER_CERAMIC.active} /> : <View style={styles.errorCircle}><Feather name="alert-circle" size={40} color={DRIVER_CERAMIC.error} /></View>}
-        <Text style={[styles.title, { textAlign: 'center', marginTop: 20 }]}>{basicState === 'loading' ? c.loading : c.saveError}</Text>
+        <Text style={[styles.title, { textAlign: 'center', marginTop: 20 }]}>{basicState === 'loading' ? c.loading : (c.finishErrorTitle || c.saveError)}</Text>
         {basicState === 'error' ? <>
           <Text selectable style={[styles.subtitle, { textAlign: 'center', marginBottom: 18 }]}>{completionError || c.saveErrorSub}</Text>
           <View style={styles.errorActions}>
