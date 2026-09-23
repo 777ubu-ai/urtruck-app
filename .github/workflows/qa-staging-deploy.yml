@@ -1,0 +1,510 @@
+name: Deploy QA2 Backend Golden Source
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type DEPLOY_QA2 to deploy only the isolated QA backend
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      confirmation:
+        description: Explicit QA-only deploy confirmation
+        required: true
+        type: string
+    secrets:
+      PRO_TEST_API_URL:
+        required: true
+      PRO_TEST_SERVER_HOST:
+        required: true
+      PRO_TEST_SERVER_USER:
+        required: true
+      PRO_TEST_SERVER_PASS:
+        required: true
+
+concurrency:
+  group: urtruck-qa2-backend-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # The manually selected workflow ref is the only backend source deployed to QA2.
+  # Keeping this dynamic prevents a new QA APK from silently testing an older server.
+  QA_SOURCE_SHA: ${{ github.sha }}
+
+jobs:
+  environment-contract:
+    uses: ./.github/workflows/qa-environment-contract.yml
+    secrets:
+      API_URL: ${{ secrets.PRO_TEST_API_URL }}
+
+  staging-preflight:
+    uses: ./.github/workflows/qa-staging-preflight.yml
+    secrets:
+      SERVER_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
+      SERVER_USER: ${{ secrets.PRO_TEST_SERVER_USER }}
+      SERVER_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
+
+  deploy:
+    name: Backup and deploy exact source to QA2 only
+    needs: [environment-contract, staging-preflight]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SERVER_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
+      SERVER_USER: ${{ secrets.PRO_TEST_SERVER_USER }}
+      SERVER_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
+      QA_API_URL: ${{ secrets.PRO_TEST_API_URL }}
+    steps:
+      - name: Require explicit QA-only confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = "DEPLOY_QA2" || {
+            echo "::error::QA-only deploy confirmation mismatch"
+            exit 1
+          }
+
+      - name: Checkout exact Golden backend source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.QA_SOURCE_SHA }}
+          path: golden-source
+
+      - name: Verify exact source and QA2P regression file
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolved="$(git -C golden-source rev-parse HEAD)"
+          test "$resolved" = "$QA_SOURCE_SHA"
+          test -f golden-source/backend/tests/test_qa_data_isolation.py
+          test -f golden-source/backend/database/vehicles_dal.py
+          grep -Fq 'QA2P_' golden-source/backend/tests/test_qa_data_isolation.py
+          echo "QA_DEPLOY_SOURCE_SHA=$resolved"
+
+      - name: Install SSH and rsync
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+
+      - name: Fingerprint production before QA deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          test -n "$body"
+          hash="$(printf '%s' "$body" | sha256sum | awk '{print $1}')"
+          echo "PROD_VERSION_HASH_BEFORE=$hash" >> "$GITHUB_ENV"
+          echo "PRODUCTION_BEFORE=healthy-fingerprinted"
+
+      - name: Record QA state and create code-only rollback backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST" && test -n "$SERVER_USER" && test -n "$SERVER_PASS"
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_backend="$qa_root/backend"
+          state=/tmp/urtruck-qa2-deploy.state
+          test "$(id -u)" -ne 0
+          test -d "$qa_backend" && test -f "$qa_root/.env" && test -d "$qa_root/storage"
+          command -v rsync >/dev/null
+          db_path="$(python3 - "$qa_root" "$qa_root/.env" <<'PY'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1]).resolve()
+          values = {}
+          for raw in Path(sys.argv[2]).read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  key, value = raw.split('=', 1)
+                  values[key.strip()] = value.strip().strip('"').strip("'")
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if db.startswith('sqlite:///'): db = db[len('sqlite:///'):]
+          p = Path(db)
+          if not p.is_absolute(): p = root / p
+          p = p.resolve()
+          if root not in p.parents or 'urtruck-security' in str(p) or not p.is_file():
+              raise SystemExit(2)
+          print(p)
+          PY
+          )"
+          db_path_hash="$(printf '%s' "$db_path" | sha256sum | awk '{print $1}')"
+          db_inode="$(stat -c '%d:%i' "$db_path")"
+          storage_inode="$(stat -c '%d:%i' "$qa_root/storage")"
+          pre_source=unknown
+          if test -f "$qa_backend/.qa-source-sha"; then
+            pre_source="$(tr -d '\r\n ' < "$qa_backend/.qa-source-sha")"
+          elif git -C "$qa_root" rev-parse HEAD >/dev/null 2>&1; then
+            pre_source="$(git -C "$qa_root" rev-parse HEAD)"
+          elif git -C "$qa_backend" rev-parse HEAD >/dev/null 2>&1; then
+            pre_source="$(git -C "$qa_backend" rev-parse HEAD)"
+          fi
+          case "$pre_source" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;;
+            *) pre_source=unknown ;;
+          esac
+          pre_hash="$(cd "$qa_backend" && find . -type f ! -path './venv/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          backup_id="backend-code-$(date -u +%Y%m%dT%H%M%SZ)"
+          backup_dir="$qa_root/backups/$backup_id"
+          mkdir -p "$backup_dir"
+          rsync -a \
+            --exclude='venv/' --exclude='storage/' --exclude='backups/' \
+            --exclude='.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
+            --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm' \
+            --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log' \
+            "$qa_backend/" "$backup_dir/"
+          test -n "$(find "$backup_dir" -type f -print -quit)"
+          umask 077
+          cat > "$state" <<STATE
+          BACKUP_ID=$backup_id
+          DB_PATH_HASH=$db_path_hash
+          DB_INODE=$db_inode
+          STORAGE_INODE=$storage_inode
+          PRE_SOURCE=$pre_source
+          PRE_CODE_HASH=$pre_hash
+          STATE
+          echo "QA_PREDEPLOY_SOURCE_SHA=$pre_source"
+          echo "QA_PREDEPLOY_CODE_SHA256=$pre_hash"
+          echo "QA_BACKUP_ID=$backup_id"
+          echo "QA_BACKUP=code-only-ready"
+          REMOTE
+
+      - name: Mirror exact backend source into isolated QA2 backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          rsync -az --delete \
+            --exclude='venv/' --exclude='storage/' --exclude='backups/' \
+            --exclude='.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
+            --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm' \
+            --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log' \
+            -e 'sshpass -e ssh -o StrictHostKeyChecking=no' \
+            golden-source/backend/ "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/"
+
+      - name: Validate deployed source, restart exact QA2 listener and verify protected state
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<REMOTE
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_backend="\$qa_root/backend"
+          state=/tmp/urtruck-qa2-deploy.state
+          source_sha='$QA_SOURCE_SHA'
+          test -f "\$state"
+          . "\$state"
+          PY="\$qa_backend/venv/bin/python"
+          test -x "\$PY"
+          cd "\$qa_backend"
+          test -f database/vehicles_dal.py || { echo '::error::QA_DEPLOY_DATABASE_CODE_MISSING'; exit 1; }
+          "\$PY" -m py_compile main.py
+          env -i HOME="\$HOME" PATH="\$PATH" DB_PATH="/tmp/urtruck-qa2-import-smoke.db" URTRUCK_ENV=test ENV=test \
+            "\$PY" -c 'from database import vehicles_dal'
+          rm -f /tmp/urtruck-qa2-import-smoke.db
+          "\$PY" -m pytest tests/test_qa_data_isolation.py -q
+          printf '%s\n' "\$source_sha" > .qa-source-sha
+          listener_pid() {
+            local pid
+            pid="\$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+            if test -z "\$pid" && command -v fuser >/dev/null; then pid="\$({ fuser -n tcp 8002 2>/dev/null || true; } | awk '{print \$1; exit}')"; fi
+            if test -z "\$pid" && command -v lsof >/dev/null; then pid="\$({ lsof -nP -iTCP:8002 -sTCP:LISTEN -t 2>/dev/null || true; } | head -1)"; fi
+            printf '%s' "\$pid"
+          }
+          safe_deploy_log() {
+            if test -f uvicorn.log; then
+              echo 'QA_DEPLOY_UVICORN_LOG=present'
+              tail -n 160 uvicorn.log 2>/dev/null \
+                | grep -E '^(Traceback|ERROR:|CRITICAL:|[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):|ModuleNotFoundError:|ImportError:|SyntaxError:)' \
+                | sed -E 's#https?://[^[:space:]]+#<url>#g; s#(token|key|password|secret)=[^[:space:]]+#\\1=<redacted>#Ig' \
+                | tail -n 16 || true
+            else
+              echo 'QA_DEPLOY_UVICORN_LOG=missing'
+            fi
+          }
+          old_pid="\$(listener_pid)"
+          test -n "\$old_pid"
+          old_cmd="\$(tr '\0' ' ' < "/proc/\$old_pid/cmdline")"
+          printf '%s' "\$old_cmd" | grep -Eq 'uvicorn|gunicorn'
+          printf '%s' "\$old_cmd" | grep -Fq 'main:app'
+          test "\$(ps -o user= -p "\$old_pid" | xargs)" = "\$(id -un)"
+          kill -TERM "\$old_pid"
+          for _ in {1..20}; do kill -0 "\$old_pid" 2>/dev/null || break; sleep 0.5; done
+          if kill -0 "\$old_pid" 2>/dev/null; then kill -KILL "\$old_pid"; fi
+          port_free=no
+          for _ in {1..20}; do
+            if test -z "\$(listener_pid)"; then port_free=yes; break; fi
+            sleep 0.5
+          done
+          test "\$port_free" = yes || { echo '::error::QA_DEPLOY_PORT_8002_DID_NOT_RELEASE'; exit 1; }
+          nohup "\$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
+          healthy=no
+          for _ in {1..40}; do
+            new_pid="\$(listener_pid)"
+            if test -n "\$new_pid" && curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1; then
+              healthy=yes
+              break
+            fi
+            sleep 1
+          done
+          if test "\$healthy" != yes; then
+            echo '::error::QA_DEPLOY_LOCAL_HEALTH_TIMEOUT'
+            safe_deploy_log
+            exit 1
+          fi
+          new_pid="\$(listener_pid)"
+          test -n "\$new_pid"
+          test "\$(ps -o user= -p "\$new_pid" | xargs)" = "\$(id -un)"
+          new_cmd="\$(tr '\0' ' ' < "/proc/\$new_pid/cmdline")"
+          printf '%s' "\$new_cmd" | grep -Fq 'main:app'
+          test "\$(readlink -f "/proc/\$new_pid/cwd")" = "\$(readlink -f "\$qa_backend")"
+          curl -fsS http://127.0.0.1:8002/api/version >/dev/null
+          curl -fsS http://127.0.0.1:8002/health >/dev/null
+          test "\$(cat .qa-source-sha)" = "\$source_sha"
+          db_path="\$(python3 - "\$qa_root" "\$qa_root/.env" <<'PY'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1]).resolve()
+          values = {}
+          for raw in Path(sys.argv[2]).read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  key, value = raw.split('=', 1)
+                  values[key.strip()] = value.strip().strip('"').strip("'")
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if db.startswith('sqlite:///'): db = db[len('sqlite:///'):]
+          p = Path(db)
+          if not p.is_absolute(): p = root / p
+          p = p.resolve()
+          if root not in p.parents or 'urtruck-security' in str(p) or not p.is_file(): raise SystemExit(2)
+          print(p)
+          PY
+          )"
+          test "\$(printf '%s' "\$db_path" | sha256sum | awk '{print \$1}')" = "\$DB_PATH_HASH"
+          test "\$(stat -c '%d:%i' "\$db_path")" = "\$DB_INODE"
+          test "\$(stat -c '%d:%i' "\$qa_root/storage")" = "\$STORAGE_INODE"
+          post_hash="\$(find . -type f ! -path './venv/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print \$1}')"
+          echo "QA_DEPLOYED_SOURCE_SHA=\$source_sha"
+          echo "QA_POSTDEPLOY_CODE_SHA256=\$post_hash"
+          echo 'QA_DB=preserved-same-file'
+          echo 'QA_STORAGE=preserved-same-directory'
+          echo 'QA_API_8002=healthy-restarted'
+          REMOTE
+
+      - name: Runtime QA2P isolation check through QA and production APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture_id="qa2p-runtime-$GITHUB_RUN_ID"
+          fixture_marker="QA2P_RUNTIME_$GITHUB_RUN_ID"
+          export FIXTURE_MARKER="$fixture_marker"
+          export SSHPASS="$SERVER_PASS"
+
+          qa_fixture() {
+            mode="$1"
+            sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+              bash -s -- "$mode" "$fixture_id" "$fixture_marker" <<'REMOTE_FIXTURE'
+          set -euo pipefail
+          mode="$1"
+          fixture_id="$2"
+          fixture_marker="$3"
+          qa_root=/home/ubuntu/urtruck-qa2
+          python3 - "$qa_root" "$qa_root/.env" "$mode" "$fixture_id" "$fixture_marker" <<'PYFIXTURE'
+          from pathlib import Path
+          from datetime import datetime
+          import sqlite3
+          import sys
+
+          root = Path(sys.argv[1]).resolve()
+          env_path = Path(sys.argv[2])
+          mode = sys.argv[3]
+          fixture_id = sys.argv[4]
+          marker = sys.argv[5]
+          values = {}
+          for raw in env_path.read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  key, value = raw.split('=', 1)
+                  values[key.strip()] = value.strip().strip('"').strip("'")
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if db.startswith('sqlite:///'):
+              db = db[len('sqlite:///'):]
+          db_path = Path(db)
+          if not db_path.is_absolute():
+              db_path = root / db_path
+          db_path = db_path.resolve()
+          if root not in db_path.parents or 'urtruck-security' in str(db_path) or not db_path.is_file():
+              raise SystemExit('::error::QA2P_RUNTIME_DB_NOT_ISOLATED')
+
+          owner = 'qa-runtime-isolation'
+          with sqlite3.connect(db_path) as conn:
+              conn.row_factory = sqlite3.Row
+              row = conn.execute(
+                  'SELECT owner_id, cargo_desc FROM cargos WHERE id=?',
+                  (fixture_id,),
+              ).fetchone()
+              if row and (row['owner_id'] != owner or row['cargo_desc'] != marker):
+                  raise SystemExit('::error::QA2P_RUNTIME_FIXTURE_ID_COLLISION')
+
+              if mode == 'seed':
+                  if row:
+                      conn.execute(
+                          'DELETE FROM cargos WHERE id=? AND owner_id=? AND cargo_desc=?',
+                          (fixture_id, owner, marker),
+                      )
+                  now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+                  conn.execute(
+                      'INSERT INTO cargos '
+                      '(id, owner_id, from_city, to_city, cargo_desc, cargo_type, '
+                      'pickup_date, photos, status, created_at, updated_at, published_at) '
+                      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                      (fixture_id, owner, marker, 'QA Runtime Destination', marker, 'tent',
+                       '2099-01-01', '[]', 'active', now, now, now),
+                  )
+                  conn.commit()
+                  print('QA2P_RUNTIME_FIXTURE=seeded')
+              elif mode == 'cleanup':
+                  if row:
+                      cur = conn.execute(
+                          'DELETE FROM cargos WHERE id=? AND owner_id=? AND cargo_desc=?',
+                          (fixture_id, owner, marker),
+                      )
+                      if cur.rowcount != 1:
+                          raise SystemExit('::error::QA2P_RUNTIME_FIXTURE_CLEANUP_FAILED')
+                      conn.commit()
+                  print('QA2P_RUNTIME_FIXTURE=cleaned')
+              else:
+                  raise SystemExit('::error::QA2P_RUNTIME_FIXTURE_MODE_INVALID')
+          PYFIXTURE
+          REMOTE_FIXTURE
+          }
+
+          qa_fixture seed
+          trap 'qa_fixture cleanup || true' EXIT
+
+          set +e
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          marker = os.environ['FIXTURE_MARKER']
+          query = urllib.parse.urlencode({
+              'status': 'active',
+              'from_city': marker,
+              'limit': 20,
+          })
+          qa = os.environ['QA_API_URL'].rstrip('/') + '/api/v1/market/cargos?' + query
+          prod = 'https://urtruck.kz/api/v1/market/cargos?' + query
+
+          def fetch(url, label):
+              try:
+                  with urllib.request.urlopen(url, timeout=20) as r:
+                      if not 200 <= r.status < 300:
+                          raise RuntimeError(label)
+                      return json.loads(r.read().decode('utf-8'))
+              except Exception:
+                  raise SystemExit(f'::error::{label}_API_READ_FAILED')
+
+          def has_marker(value):
+              if isinstance(value, str):
+                  return marker in value
+              if isinstance(value, dict):
+                  return any(has_marker(v) for v in value.values())
+              if isinstance(value, list):
+                  return any(has_marker(v) for v in value)
+              return False
+
+          qa_data = fetch(qa, 'QA')
+          prod_data = fetch(prod, 'PRODUCTION')
+          if not has_marker(qa_data):
+              raise SystemExit('::error::QA2P_RUNTIME_FIXTURE_NOT_VISIBLE_IN_QA')
+          if has_marker(prod_data):
+              raise SystemExit('::error::QA2P_RUNTIME_LEAKED_TO_PRODUCTION')
+          print('QA2P_RUNTIME_QA=visible')
+          print('QA2P_RUNTIME_PRODUCTION=hidden')
+          PY
+          runtime_rc=$?
+          set -e
+
+          qa_fixture cleanup
+          trap - EXIT
+          exit "$runtime_rc"
+
+      - name: Verify production fingerprint unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          after="$(printf '%s' "$body" | sha256sum | awk '{print $1}')"
+          test "$after" = "$PROD_VERSION_HASH_BEFORE" || {
+            echo "::error::Production version fingerprint changed during QA-only deploy"
+            exit 1
+          }
+          echo "PRODUCTION_AFTER=healthy-unchanged"
+
+      - name: Remove temporary QA deploy state after success
+        if: success()
+        shell: bash
+        run: |
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'rm -f /tmp/urtruck-qa2-deploy.state'
+
+      - name: Roll back QA2 code if deploy validation fails
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_backend="$qa_root/backend"
+          state=/tmp/urtruck-qa2-deploy.state
+          test -f "$state" || { echo 'QA_ROLLBACK=state-missing-no-action'; exit 0; }
+          . "$state"
+          backup_dir="$qa_root/backups/$BACKUP_ID"
+          test -d "$backup_dir"
+          pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          if test -n "$pid"; then
+            cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+            printf '%s' "$cmd" | grep -Eq 'uvicorn|gunicorn'
+            printf '%s' "$cmd" | grep -Fq 'main:app'
+            test "$(ps -o user= -p "$pid" | xargs)" = "$(id -un)"
+            kill -TERM "$pid" || true
+            sleep 2
+            kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true
+          fi
+          rsync -a --delete \
+            --exclude='venv/' --exclude='storage/' --exclude='backups/' \
+            --exclude='.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
+            --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm' \
+            --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log' \
+            "$backup_dir/" "$qa_backend/"
+          cd "$qa_backend"
+          PY=venv/bin/python
+          test -x "$PY"
+          nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
+          sleep 5
+          curl -fsS http://127.0.0.1:8002/api/version >/dev/null
+          db_path="$(python3 - "$qa_root" "$qa_root/.env" <<'PY'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1]).resolve(); values = {}
+          for raw in Path(sys.argv[2]).read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  k, v = raw.split('=', 1); values[k.strip()] = v.strip().strip('"').strip("'")
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if db.startswith('sqlite:///'): db = db[len('sqlite:///'):]
+          p = Path(db); p = p if p.is_absolute() else root / p; print(p.resolve())
+          PY
+          )"
+          test "$(printf '%s' "$db_path" | sha256sum | awk '{print $1}')" = "$DB_PATH_HASH"
+          test "$(stat -c '%d:%i' "$db_path")" = "$DB_INODE"
+          test "$(stat -c '%d:%i' "$qa_root/storage")" = "$STORAGE_INODE"
+          rm -f "$state"
+          echo "QA_ROLLBACK=restored-$BACKUP_ID"
+          REMOTE
