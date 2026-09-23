@@ -1,0 +1,37 @@
+name: Repository Governance
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  governance-contract:
+    name: Governance contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Verify repository and QA2 safety contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f AGENTS.md
+          test -f .github/workflows/pr-quality-gate.yml
+          test -f .github/workflows/qa-staging-deploy.yml
+          test -f .github/workflows/qa-staging-preflight.yml
+          test -f .github/workflows/qa-environment-contract.yml
+          grep -Fq 'DEPLOY_QA2' .github/workflows/qa-staging-deploy.yml
+          grep -Fq 'PRO_TEST_API_URL' .github/workflows/qa-staging-deploy.yml
+          grep -Fq '/home/ubuntu/urtruck-qa2' .github/workflows/qa-staging-deploy.yml
+          grep -Fq 'cancel-in-progress: false' .github/workflows/qa-staging-deploy.yml
+          if grep -Eq '^[[:space:]]+push:' .github/workflows/qa-staging-deploy.yml; then
+            echo 'QA2 staging deploy must remain manual-only' >&2
+            exit 1
+          fi
+          echo 'GOVERNANCE_CONTRACT=PASS'

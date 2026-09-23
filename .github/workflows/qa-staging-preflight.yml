@@ -1,0 +1,200 @@
+name: QA Staging Preflight
+
+on:
+  workflow_call:
+    secrets:
+      SERVER_HOST:
+        required: true
+      SERVER_USER:
+        required: true
+      SERVER_PASS:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Inspect isolated QA host without changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+    steps:
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Verify dedicated QA process, directory and database targets are free
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST" && test -n "$SERVER_USER" && test -n "$SERVER_PASS"
+          sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_backend="$qa_root/backend"
+          echo 'QA_PREFLIGHT_REMOTE_CONNECTED=yes'
+          safe_startup_diagnostic() {
+            log="$qa_backend/uvicorn.log"
+            if test -f "$log"; then
+              echo 'QA_PREFLIGHT_UVICORN_LOG=present'
+              tail -n 120 "$log" 2>/dev/null \
+                | grep -E '^(Traceback|ERROR:|CRITICAL:|[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):|ModuleNotFoundError:|ImportError:|SyntaxError:)' \
+                | sed -E 's#https?://[^[:space:]]+#<url>#g; s#(token|key|password|secret)=[^[:space:]]+#\\1=<redacted>#Ig' \
+                | tail -n 12 || true
+            else
+              echo 'QA_PREFLIGHT_UVICORN_LOG=missing'
+            fi
+          }
+          if test "$(id -u)" -eq 0; then echo '::error::QA_PREFLIGHT_REMOTE_ROOT'; exit 1; fi
+          if ! df -Pk /home/ubuntu | awk 'NR==2 { exit !($4 >= 2097152) }'; then echo '::error::QA_PREFLIGHT_DISK_TOO_LOW'; exit 1; fi
+          if command -v pm2 >/dev/null; then
+            supervisor=pm2
+          elif command -v systemctl >/dev/null; then
+            supervisor=systemd
+          else
+            echo '::error::QA_PREFLIGHT_SUPERVISOR_MISSING'
+            exit 1
+          fi
+          if test -e "$qa_root"; then
+            echo 'QA_PREFLIGHT_QA_ROOT=present'
+            test -f "$qa_root/.env" || { echo '::error::QA_PREFLIGHT_EXISTING_ENV_MISSING'; exit 1; }
+            echo 'QA_PREFLIGHT_ENV=present'
+            if ! test -d "$qa_backend/database"; then
+              echo '::error::QA_PREFLIGHT_BACKEND_DATABASE_DIRECTORY_MISSING'
+              exit 1
+            fi
+            test -d "$qa_root/storage" || { echo '::error::QA_PREFLIGHT_EXISTING_STORAGE_MISSING'; exit 1; }
+            echo 'QA_PREFLIGHT_STORAGE=present'
+            test -x "$qa_backend/venv/bin/python" && echo 'QA_PREFLIGHT_VENV_BACKEND=present' || echo 'QA_PREFLIGHT_VENV_BACKEND=missing'
+            test -x "$qa_root/venv/bin/python" && echo 'QA_PREFLIGHT_VENV_ROOT=present' || echo 'QA_PREFLIGHT_VENV_ROOT=missing'
+            test -x "$qa_backend/.venv/bin/python" && echo 'QA_PREFLIGHT_DOTVENV_BACKEND=present' || echo 'QA_PREFLIGHT_DOTVENV_BACKEND=missing'
+            command -v python3 >/dev/null && echo 'QA_PREFLIGHT_SYSTEM_PYTHON=present' || echo 'QA_PREFLIGHT_SYSTEM_PYTHON=missing'
+            if python3 -c "import importlib.util; assert importlib.util.find_spec('uvicorn'); assert importlib.util.find_spec('fastapi')" >/dev/null 2>&1; then
+              echo 'QA_PREFLIGHT_SYSTEM_PYTHON_API_DEPS=present'
+            else
+              echo 'QA_PREFLIGHT_SYSTEM_PYTHON_API_DEPS=missing'
+            fi
+            python3 - "$qa_root" "$qa_root/.env" <<'PYENV'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1]).resolve()
+          values = {}
+          for raw in Path(sys.argv[2]).read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  key, value = raw.split('=', 1)
+                  values[key.strip()] = value.strip().strip('"').strip("'")
+          env_name = (values.get('URTRUCK_ENV') or values.get('ENV') or '').strip().lower()
+          if not env_name or env_name == 'production':
+              raise SystemExit('::error::QA_PREFLIGHT_ENVIRONMENT_NOT_NONPRODUCTION')
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if db.startswith('sqlite:///'):
+              db = db[len('sqlite:///'):]
+          p = Path(db)
+          if not p.is_absolute():
+              p = root / p
+          p = p.resolve()
+          if root not in p.parents or 'urtruck-security' in str(p) or not p.is_file():
+              raise SystemExit('::error::QA_PREFLIGHT_EXISTING_DB_NOT_ISOLATED')
+          print('QA_PREFLIGHT_ENVIRONMENT=nonproduction')
+          print('QA_PREFLIGHT_DATABASE=isolated-existing')
+          PYENV
+            state=/tmp/urtruck-qa2-deploy.state
+            if test -f "$state"; then
+              . "$state"
+              backup_dir="$qa_root/backups/$BACKUP_ID"
+              test -d "$backup_dir" && echo 'QA_PREFLIGHT_ROLLBACK_BACKUP=present' || echo 'QA_PREFLIGHT_ROLLBACK_BACKUP=missing'
+              current_hash="$(cd "$qa_backend" && find . -type f ! -path './venv/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+              if test "$current_hash" = "$PRE_CODE_HASH"; then
+                echo 'QA_PREFLIGHT_CURRENT_CODE_MATCHES_PREDEPLOY=yes'
+              else
+                echo 'QA_PREFLIGHT_CURRENT_CODE_MATCHES_PREDEPLOY=no'
+              fi
+              test "$(stat -c '%d:%i' "$qa_root/storage")" = "$STORAGE_INODE" && echo 'QA_PREFLIGHT_STORAGE_INODE=preserved' || echo 'QA_PREFLIGHT_STORAGE_INODE=changed'
+            else
+              echo 'QA_PREFLIGHT_DEPLOY_STATE=missing'
+            fi
+            if [ "$supervisor" = pm2 ]; then
+              pm2 jlist | grep -q 'urtruck-qa2' || { echo '::error::QA_PREFLIGHT_EXISTING_PM2_MISSING'; exit 1; }
+            else
+              pgrep -f 'uvicorn|gunicorn' >/dev/null || { echo '::error::QA_PREFLIGHT_EXISTING_API_PROCESS_MISSING'; safe_startup_diagnostic; exit 1; }
+              qa_pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+              if test -z "$qa_pid" && command -v fuser >/dev/null; then
+                qa_pid="$({ fuser -n tcp 8002 2>/dev/null || true; } | awk '{print $1; exit}')"
+              fi
+              if test -z "$qa_pid" && command -v lsof >/dev/null; then
+                qa_pid="$({ lsof -nP -iTCP:8002 -sTCP:LISTEN -t 2>/dev/null || true; } | head -1)"
+              fi
+              test -n "$qa_pid" || { echo '::error::QA_PREFLIGHT_QA_LISTENER_PID_MISSING'; safe_startup_diagnostic; exit 1; }
+              qa_cmdline="$(tr '\0' ' ' < "/proc/$qa_pid/cmdline" 2>/dev/null || true)"
+              printf '%s' "$qa_cmdline" | grep -Eq 'uvicorn|gunicorn' || { echo '::error::QA_PREFLIGHT_QA_LISTENER_UNEXPECTED_PROCESS'; exit 1; }
+              printf '%s' "$qa_cmdline" | grep -Fq 'main:app' || { echo '::error::QA_PREFLIGHT_QA_LISTENER_UNEXPECTED_APP'; exit 1; }
+              qa_owner="$(ps -o user= -p "$qa_pid" 2>/dev/null | xargs || true)"
+              test "$qa_owner" = "$(id -un)" || { echo '::error::QA_PREFLIGHT_QA_LISTENER_OWNER_MISMATCH'; exit 1; }
+              qa_cgroup="$(cat "/proc/$qa_pid/cgroup" 2>/dev/null || true)"
+              qa_systemd_unit="$(printf '%s\n' "$qa_cgroup" | awk -F/ '{for(i=NF;i>=1;i--) if ($i ~ /\.service$/) {print $i; exit}}')"
+              qa_cwd="$(readlink -f "/proc/$qa_pid/cwd" 2>/dev/null || true)"
+              qa_unit_config=
+              if test -n "$qa_systemd_unit"; then
+                supervisor=systemd
+                if printf '%s' "$qa_cgroup" | grep -q '/user.slice/'; then
+                  export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+                  systemctl --user is-active --quiet "$qa_systemd_unit" || { echo '::error::QA_PREFLIGHT_SYSTEMD_UNIT_INACTIVE'; exit 1; }
+                  qa_unit_config="$(systemctl --user cat "$qa_systemd_unit" 2>/dev/null || true)"
+                else
+                  systemctl is-active --quiet "$qa_systemd_unit" || { echo '::error::QA_PREFLIGHT_SYSTEMD_UNIT_INACTIVE'; exit 1; }
+                  qa_unit_config="$(systemctl cat "$qa_systemd_unit" 2>/dev/null || true)"
+                fi
+                echo "QA_PREFLIGHT_SYSTEMD_UNIT=$qa_systemd_unit"
+              else
+                supervisor=direct-nohup
+                echo 'QA_PREFLIGHT_RESTART_MODE=exact-port-8002-direct-nohup'
+              fi
+              qa_root_linked=no
+              case "$qa_cwd" in "$qa_root"|"$qa_root"/*) qa_root_linked=yes ;; esac
+              if printf '%s\n%s' "$qa_cmdline" "$qa_unit_config" | grep -Fq -- "$qa_root"; then
+                qa_root_linked=yes
+              fi
+              if test "$qa_root_linked" = yes; then
+                echo 'QA_PREFLIGHT_QA_SOURCE_LINK=verified'
+              elif test "$supervisor" = systemd; then
+                echo '::error::QA_PREFLIGHT_QA_LISTENER_NOT_LINKED_TO_QA_ROOT'
+                exit 1
+              else
+                echo 'QA_PREFLIGHT_QA_SOURCE_LINK=not-detectable-before-redeploy'
+              fi
+              curl -fsS http://127.0.0.1:8002/api/version >/dev/null || { echo '::error::QA_PREFLIGHT_LOCAL_API_UNHEALTHY'; safe_startup_diagnostic; exit 1; }
+            fi
+            ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$' || { echo '::error::QA_PREFLIGHT_EXISTING_PORT_MISSING'; exit 1; }
+            echo "QA_PREFLIGHT_SUPERVISOR=$supervisor"
+            python3 - "$qa_root" "$qa_root/.env" <<'PY'
+          from pathlib import Path
+          import sys
+
+          qa_root = Path(sys.argv[1]).resolve()
+          values = {}
+          for raw in Path(sys.argv[2]).read_text(encoding='utf-8').splitlines():
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  key, value = raw.split('=', 1)
+                  values[key.strip()] = value.strip().strip('"').strip("'")
+          db = values.get('DB_PATH') or values.get('URTRUCK_DB_PATH') or ''
+          if not db:
+              raise SystemExit('::error::QA_PREFLIGHT_EXISTING_DB_CONFIG_MISSING')
+          if db.startswith('sqlite:///'):
+              db = db[len('sqlite:///'):]
+          db_path = Path(db)
+          if not db_path.is_absolute():
+              db_path = qa_root / db_path
+          db_path = db_path.resolve()
+          if qa_root not in db_path.parents or 'urtruck-security' in str(db_path):
+              raise SystemExit('::error::QA_PREFLIGHT_EXISTING_DB_NOT_ISOLATED')
+          if not db_path.is_file():
+              raise SystemExit('::error::QA_PREFLIGHT_EXISTING_DB_FILE_MISSING')
+          print('QA_PREFLIGHT_DATABASE=isolated-existing')
+          print('QA_STAGING_PREFLIGHT=existing-isolated-target-ready')
+          PY
+          else
+            ! ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)8002$' || { echo '::error::QA_PREFLIGHT_PORT_8002_OCCUPIED'; exit 1; }
+            echo 'QA_STAGING_PREFLIGHT=new-isolated-target-available'
+          fi
+          REMOTE

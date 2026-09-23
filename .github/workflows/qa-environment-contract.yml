@@ -1,0 +1,53 @@
+name: QA Environment Contract
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      API_URL:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-qa2-target:
+    name: Verify isolated QA2 API target
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      API_URL: ${{ secrets.API_URL }}
+    steps:
+      - name: Refuse production and probe QA health without revealing the URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${API_URL:-}" || {
+            echo "::error::QA API URL is not configured"
+            exit 1
+          }
+          host="$(python3 - <<'PY'
+          from urllib.parse import urlparse
+          import os
+          print(urlparse(os.environ['API_URL']).hostname or '')
+          PY
+          )"
+          test -n "$host" || {
+            echo "::error::QA API URL has no host"
+            exit 1
+          }
+          case "$host" in
+            urtruck.kz|www.urtruck.kz|185.22.65.11)
+              echo "::error::QA API URL must not point to production"
+              exit 1
+              ;;
+          esac
+          for path in /health /api/version; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${API_URL%/}${path}" || true)"
+            if [[ "$code" =~ ^2 ]]; then
+              echo "QA2_TARGET=reachable-nonproduction"
+              exit 0
+            fi
+          done
+          echo "::error::QA2 target did not expose a healthy API"
+          exit 1
