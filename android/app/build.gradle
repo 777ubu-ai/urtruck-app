@@ -123,6 +123,11 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
+            def qa2Release = project.hasProperty('URTRUCK_QA2') && URTRUCK_QA2.toString().toBoolean()
+            if (qa2Release) {
+                applicationIdSuffix ".qa2"
+                versionNameSuffix "-qa2"
+            }
             def releaseTaskRequested = gradle.startParameter.taskNames.any { taskName ->
                 taskName.toLowerCase(java.util.Locale.ROOT).contains('release')
             }

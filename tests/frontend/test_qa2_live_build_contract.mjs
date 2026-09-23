@@ -8,6 +8,7 @@ const playWorkflow = readFileSync('.github/workflows/deploy-play.yml', 'utf8');
 const iosPodfile = readFileSync('ios/Podfile', 'utf8');
 const iosPodProperties = readFileSync('ios/Podfile.properties.json', 'utf8');
 const iosProject = readFileSync('ios/UrTruck.xcodeproj/project.pbxproj', 'utf8');
+const androidAppBuild = readFileSync('android/app/build.gradle', 'utf8');
 
 test('distributed QA2 requires a healthy non-production API target', () => {
   assert.ok(workflow.includes('QA_API_URL: ${{ secrets.PRO_TEST_API_URL }}'));
@@ -19,13 +20,13 @@ test('distributed QA2 requires a healthy non-production API target', () => {
   assert.ok(!workflow.includes('EXPO_PUBLIC_API_URL=http://127.0.0.1:18001'));
 });
 
-test('QA080 checks out and records an explicitly supplied exact source SHA', () => {
+test('QA081 checks out and records an explicitly supplied exact source SHA', () => {
   const sourceInput = workflow.match(/source_ref:\n([\s\S]*?)\n\s*push:/)?.[1] || '';
   assert.ok(sourceInput.includes('required: true'));
   assert.ok(!sourceInput.includes('default:'), 'QA2 build must not silently reuse a stale source SHA');
   assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));
   assert.ok(workflow.includes('test "$RESOLVED_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"'));
-  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040080'));
+  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040081'));
   assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
 });
 
@@ -36,6 +37,13 @@ test('live QA2 keeps MapKit and Firebase secret injection and the isolated packa
   assert.ok(workflow.includes("play-services-location:21.3.0"));
   assert.ok(!workflow.includes("play-services-location:21.0.1"));
   assert.ok(workflow.includes('URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2'));
+});
+
+test('explicit QA release stays in the isolated QA2 package', () => {
+  assert.ok(androidAppBuild.includes("project.hasProperty('URTRUCK_QA2')"));
+  assert.ok(androidAppBuild.includes('applicationIdSuffix ".qa2"'));
+  assert.ok(androidAppBuild.includes('versionNameSuffix "-qa2"'));
+  assert.ok(androidAppBuild.includes("URTRUCK_ALLOW_DEBUG_SIGNED_RELEASE"));
 });
 
 test('TestFlight accepts the canonical Border QA branch and still rejects arbitrary refs', () => {
