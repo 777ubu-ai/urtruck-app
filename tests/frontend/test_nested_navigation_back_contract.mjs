@@ -20,10 +20,10 @@ test('premium registration profile cannot trap the user without Back', () => {
   assert.match(src, /navigation\.goBack\(\)/);
 });
 
-test('vehicle country step keeps explicit Back and local country search', () => {
+test('single-page vehicle registration keeps explicit Back and local country search', () => {
   const screen = read('src/screens/vehicle/VehicleSetupCountryScreen.js');
   const ui = read('src/components/vehicle/VehicleSetupUI.js');
-  assert.match(screen, /ProgressHeader navigation=\{navigation\}/);
-  assert.match(ui, /BackButton onPress=\{\(\) => navigation\.goBack\(\)\}/);
+  assert.match(screen, /BackButton onPress=\{\(\) => navigation\.goBack\(\)\}/);
+  assert.doesNotMatch(screen, /ProgressHeader/);
   assert.match(ui, /searchAllCountries\(query, lang\)/);
 });
