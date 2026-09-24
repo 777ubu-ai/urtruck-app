@@ -91,10 +91,10 @@ jobs:
             "$root/venv/bin/hf" download Systran/faster-whisper-small \
               --revision 536b0662742c02347bc0e980a01041f333bce120 --local-dir "$whisper"
           fi
-          if ! test -f "$tokenizer/sentencepiece.bpe.model"; then
+          if ! test -f "$tokenizer/vocab.json"; then
             "$root/venv/bin/hf" download facebook/m2m100_418M \
               --revision 55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636 --local-dir "$tokenizer" \
-              --include tokenizer_config.json sentencepiece.bpe.model special_tokens_map.json
+              --include tokenizer_config.json sentencepiece.bpe.model special_tokens_map.json vocab.json
           fi
           if ! test -f "$translated/model.bin"; then
             "$root/venv/bin/hf" download auralmira/m2m100-418M-ct2-int8 \

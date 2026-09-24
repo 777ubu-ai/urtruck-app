@@ -28,6 +28,9 @@ prod_before="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256su
 set -euo pipefail
 test "$(id -un)" = ubuntu
 sudo -n true
+if sudo systemctl list-unit-files urtruck-qa2-ai.service --no-legend 2>/dev/null | grep -q urtruck-qa2-ai; then
+  curl -fsS --max-time 3 http://127.0.0.1:8003/health >/dev/null 2>&1 || sudo systemctl stop urtruck-qa2-ai.service
+fi
 test -d /home/ubuntu/urtruck-qa2/backend
 sudo grep -Fq '/home/ubuntu/urtruck-qa2/backend' /etc/systemd/system/urtruck-qa2.service
 test "$(uname -m)" = x86_64
@@ -59,10 +62,10 @@ if ! test -f "$whisper/model.bin"; then
   "$root/venv/bin/hf" download Systran/faster-whisper-small \
     --revision 536b0662742c02347bc0e980a01041f333bce120 --local-dir "$whisper"
 fi
-if ! test -f "$tokenizer/sentencepiece.bpe.model"; then
+if ! test -f "$tokenizer/vocab.json"; then
   "$root/venv/bin/hf" download facebook/m2m100_418M \
     --revision 55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636 --local-dir "$tokenizer" \
-    --include tokenizer_config.json sentencepiece.bpe.model special_tokens_map.json
+    --include tokenizer_config.json sentencepiece.bpe.model special_tokens_map.json vocab.json
 fi
 if ! test -f "$translated/model.bin"; then
   "$root/venv/bin/hf" download auralmira/m2m100-418M-ct2-int8 \
