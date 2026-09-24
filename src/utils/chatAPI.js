@@ -59,6 +59,22 @@ function chatApiError(detail, fallbackKey) {
   return error;
 }
 
+// Translation and especially long voice transcription legitimately exceed
+// the shared 20-second API timeout when the private CPU model is serving a
+// second queued phone. Pass an explicit signal so authedFetch does not apply
+// its short screen-loading timeout, while still keeping these calls bounded.
+async function authedFetchWithTimeout(input, init, timeoutMs) {
+  let controller;
+  try { controller = new AbortController(); } catch { controller = null; }
+  if (!controller) return authedFetch(input, init);
+  const timer = setTimeout(() => { try { controller.abort(); } catch {} }, timeoutMs);
+  try {
+    return await authedFetch(input, { ...(init || {}), signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function mimeFromName(name, fallback = 'application/octet-stream') {
   const value = String(name || '').toLowerCase();
   if (value.endsWith('.pdf')) return 'application/pdf';
@@ -166,21 +182,21 @@ export const chatAPI = {
   },
 
   async translate(messageId, targetLang) {
-    const r = await authedFetch(`${BASE}/translate`, {
+    const r = await authedFetchWithTimeout(`${BASE}/translate`, {
       method: 'POST', headers: await headers(),
       body: JSON.stringify({ message_id: messageId, target_lang: targetLang }),
-    });
+    }, 120000);
     const data = await r.json().catch(() => null);
     if (!r.ok) throw chatApiError(data?.detail, 'translation_unavailable');
     return data;
   },
 
   async transcribe(messageId, targetLang = null) {
-    const r = await authedFetch(`${BASE}/transcribe`, {
+    const r = await authedFetchWithTimeout(`${BASE}/transcribe`, {
       method: 'POST',
       headers: await headers(),
       body: JSON.stringify({ message_id: messageId, target_lang: targetLang }),
-    });
+    }, 240000);
     const data = await r.json().catch(() => null);
     if (!r.ok) throw chatApiError(data?.detail, 'voice_transcription_unavailable');
     return data;
