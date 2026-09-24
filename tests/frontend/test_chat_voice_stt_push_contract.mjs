@@ -32,11 +32,15 @@ test('queued translation and long transcription override the shared 20 second ti
   assert.match(frontendChatApi, /signal: controller\.signal/);
 });
 
-test('QA2 CPU speech inference uses bounded low-latency decoding', () => {
-  assert.match(qa2Ai, /_slot = threading\.BoundedSemaphore\(1\)/);
+test('QA2 CPU speech inference uses bounded concurrent low-latency decoding', () => {
+  assert.match(qa2Ai, /_translate_slot = threading\.BoundedSemaphore\(1\)/);
+  assert.match(qa2Ai, /_speech_slots = threading\.BoundedSemaphore\(2\)/);
+  assert.match(qa2Ai, /num_workers=2/);
+  assert.match(qa2Ai, /def transcribe\(file:/);
   assert.match(qa2Ai, /beam_size=1/);
   assert.match(qa2Ai, /best_of=1/);
   assert.match(qa2Ai, /condition_on_previous_text=False/);
+  assert.match(qa2Ai, /without_timestamps=True/);
 });
 
 test('persisted transcript reaches the second participant through the message API', () => {

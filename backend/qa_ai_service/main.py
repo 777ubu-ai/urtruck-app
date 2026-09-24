@@ -12,7 +12,8 @@ from pydantic import BaseModel, Field
 from transformers import M2M100Tokenizer
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-_slot = threading.BoundedSemaphore(1)
+_translate_slot = threading.BoundedSemaphore(1)
+_speech_slots = threading.BoundedSemaphore(2)
 _translator = None
 _tokenizer = None
 _whisper = None
@@ -64,7 +65,7 @@ def _load_whisper():
     if _whisper is None:
         if not (WHISPER_MODEL / "model.bin").is_file():
             raise RuntimeError("speech model missing")
-        _whisper = WhisperModel(str(WHISPER_MODEL), device="cpu", compute_type="int8", cpu_threads=4, num_workers=1, local_files_only=True)
+        _whisper = WhisperModel(str(WHISPER_MODEL), device="cpu", compute_type="int8", cpu_threads=4, num_workers=2, local_files_only=True)
     return _whisper
 
 
@@ -93,7 +94,7 @@ def translate(body: TranslateRequest):
         raise HTTPException(status_code=422, detail="unsupported language")
     if source == target:
         raise HTTPException(status_code=422, detail="same language")
-    if not _slot.acquire(timeout=75):
+    if not _translate_slot.acquire(timeout=75):
         raise HTTPException(status_code=503, detail="busy")
     try:
         translator, tokenizer = _load_translation()
@@ -113,15 +114,17 @@ def translate(body: TranslateRequest):
         print(f"[qa2-ai] translation failed: {type(exc).__name__}", flush=True)
         raise HTTPException(status_code=500, detail="translation failed") from exc
     finally:
-        _slot.release()
+        _translate_slot.release()
 
 
 @app.post("/transcribe")
-async def transcribe(file: UploadFile = File(...)):
-    data = await file.read(32 * 1024 * 1024 + 1)
+def transcribe(file: UploadFile = File(...)):
+    # A synchronous endpoint runs in FastAPI's worker pool, allowing the two
+    # bounded CTranslate2 workers to serve the two QA phones concurrently.
+    data = file.file.read(32 * 1024 * 1024 + 1)
     if not data or len(data) > 32 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="invalid audio size")
-    if not _slot.acquire(timeout=150):
+    if not _speech_slots.acquire(timeout=150):
         raise HTTPException(status_code=503, detail="busy")
     suffix = Path(file.filename or "voice.m4a").suffix[:10] or ".m4a"
     temp_path = None
@@ -130,16 +133,17 @@ async def transcribe(file: UploadFile = File(...)):
             handle.write(data)
             temp_path = handle.name
         # QA2 runs on four CPU cores without a GPU. Beam search at size five
-        # can take several minutes on repetitive 30-60 second phone recordings,
-        # keeping the single inference slot occupied until both clients time
-        # out. Greedy decoding is the low-latency path here; VAD still removes
-        # silence and disabling previous-text conditioning avoids repetition.
+        # can take several minutes on repetitive 30-60 second phone recordings.
+        # Greedy decoding plus no timestamps is the bounded-latency path here;
+        # VAD still removes silence and disabling previous-text conditioning
+        # avoids repetition loops.
         segments, info = _load_whisper().transcribe(
             temp_path,
             beam_size=1,
             best_of=1,
             vad_filter=True,
             condition_on_previous_text=False,
+            without_timestamps=True,
         )
         transcript = " ".join(segment.text.strip() for segment in segments).strip()
         language = _lang(info.language)
@@ -160,4 +164,4 @@ async def transcribe(file: UploadFile = File(...)):
     finally:
         if temp_path:
             Path(temp_path).unlink(missing_ok=True)
-        _slot.release()
+        _speech_slots.release()
