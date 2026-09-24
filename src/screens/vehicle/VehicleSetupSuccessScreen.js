@@ -18,7 +18,6 @@ const completionMessage = (result, c, lang) => {
       vehicle_plate: c.plate, capacity_tons: c.payload, volume_m3: c.volume,
       full_name: lang === 'ZH' ? '姓名' : lang === 'EN' ? 'Full name' : lang === 'KK' ? 'Аты-жөні' : 'ФИО',
       birth_date: lang === 'ZH' ? '出生日期' : lang === 'EN' ? 'Date of birth' : lang === 'KK' ? 'Туған күні' : 'Дата рождения',
-      iin: lang === 'ZH' ? '个人识别号' : lang === 'EN' ? 'Personal ID' : lang === 'KK' ? 'ЖСН' : 'ИИН',
     };
     const labels = detail.fields.map((field) => fields[field]).filter(Boolean);
     if (labels.length) return `${lang === 'ZH' ? '请补充：' : lang === 'EN' ? 'Please complete: ' : lang === 'KK' ? 'Толтырыңыз: ' : 'Заполните: '}${labels.join(', ')}`;
