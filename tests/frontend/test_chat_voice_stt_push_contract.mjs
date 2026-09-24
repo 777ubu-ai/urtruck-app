@@ -11,6 +11,7 @@ const pushI18n = readFileSync('backend/services/push_i18n.py', 'utf8');
 const workflow = readFileSync('.github/workflows/production-deploy-execute.yml', 'utf8');
 const bootstrap = readFileSync('scripts/remote_bootstrap_secure_env.sh', 'utf8');
 const i18n = readFileSync('src/utils/i18n.js', 'utf8');
+const qa2Ai = readFileSync('backend/qa_ai_service/main.py', 'utf8');
 
 test('voice one-tap STT attaches the current-language translation and remains retryable', () => {
   assert.match(workspace, /voiceText\.toggle\(item, lang\)/);
@@ -29,6 +30,13 @@ test('queued translation and long transcription override the shared 20 second ti
   assert.match(frontendChatApi, /authedFetchWithTimeout\(`\$\{BASE\}\/translate`[\s\S]*?120000\)/);
   assert.match(frontendChatApi, /authedFetchWithTimeout\(`\$\{BASE\}\/transcribe`[\s\S]*?240000\)/);
   assert.match(frontendChatApi, /signal: controller\.signal/);
+});
+
+test('QA2 CPU speech inference uses bounded low-latency decoding', () => {
+  assert.match(qa2Ai, /_slot = threading\.BoundedSemaphore\(1\)/);
+  assert.match(qa2Ai, /beam_size=1/);
+  assert.match(qa2Ai, /best_of=1/);
+  assert.match(qa2Ai, /condition_on_previous_text=False/);
 });
 
 test('persisted transcript reaches the second participant through the message API', () => {

@@ -129,7 +129,18 @@ async def transcribe(file: UploadFile = File(...)):
         with tempfile.NamedTemporaryFile(prefix="qa2-voice-", suffix=suffix, delete=False) as handle:
             handle.write(data)
             temp_path = handle.name
-        segments, info = _load_whisper().transcribe(temp_path, beam_size=5, vad_filter=True)
+        # QA2 runs on four CPU cores without a GPU. Beam search at size five
+        # can take several minutes on repetitive 30-60 second phone recordings,
+        # keeping the single inference slot occupied until both clients time
+        # out. Greedy decoding is the low-latency path here; VAD still removes
+        # silence and disabling previous-text conditioning avoids repetition.
+        segments, info = _load_whisper().transcribe(
+            temp_path,
+            beam_size=1,
+            best_of=1,
+            vad_filter=True,
+            condition_on_previous_text=False,
+        )
         transcript = " ".join(segment.text.strip() for segment in segments).strip()
         language = _lang(info.language)
         if not transcript or not language:
