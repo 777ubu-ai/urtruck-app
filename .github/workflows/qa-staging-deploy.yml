@@ -14,13 +14,15 @@ on:
         required: true
         type: string
     secrets:
-      PRO_TEST_API_URL:
+      QA2_API_URL:
         required: true
-      PRO_TEST_SERVER_HOST:
+      QA2_SERVER_HOST:
         required: true
-      PRO_TEST_SERVER_USER:
+      QA2_SERVER_USER:
         required: true
-      PRO_TEST_SERVER_PASS:
+      QA2_SERVER_PASS:
+        required: true
+      QA2_OPENAI_API_KEY:
         required: true
 
 concurrency:
@@ -39,14 +41,14 @@ jobs:
   environment-contract:
     uses: ./.github/workflows/qa-environment-contract.yml
     secrets:
-      API_URL: ${{ secrets.PRO_TEST_API_URL }}
+      API_URL: ${{ secrets.QA2_API_URL }}
 
   staging-preflight:
     uses: ./.github/workflows/qa-staging-preflight.yml
     secrets:
-      SERVER_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
-      SERVER_USER: ${{ secrets.PRO_TEST_SERVER_USER }}
-      SERVER_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
+      SERVER_HOST: ${{ secrets.QA2_SERVER_HOST }}
+      SERVER_USER: ${{ secrets.QA2_SERVER_USER }}
+      SERVER_PASS: ${{ secrets.QA2_SERVER_PASS }}
 
   deploy:
     name: Backup and deploy exact source to QA2 only
@@ -54,10 +56,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      SERVER_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
-      SERVER_USER: ${{ secrets.PRO_TEST_SERVER_USER }}
-      SERVER_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
-      QA_API_URL: ${{ secrets.PRO_TEST_API_URL }}
+      SERVER_HOST: ${{ secrets.QA2_SERVER_HOST }}
+      SERVER_USER: ${{ secrets.QA2_SERVER_USER }}
+      SERVER_PASS: ${{ secrets.QA2_SERVER_PASS }}
+      QA_API_URL: ${{ secrets.QA2_API_URL }}
+      QA2_OPENAI_API_KEY: ${{ secrets.QA2_OPENAI_API_KEY }}
     steps:
       - name: Require explicit QA-only confirmation
         shell: bash
@@ -185,6 +188,72 @@ jobs:
             -e 'sshpass -e ssh -o StrictHostKeyChecking=no' \
             golden-source/backend/ "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/"
 
+      - name: Provision isolated QA2 AI providers
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${QA2_OPENAI_API_KEY:-}" || {
+            echo '::error::QA2_OPENAI_API_KEY is required for QA2 voice and translation'
+            exit 1
+          }
+          umask 077
+          local_bootstrap="$(mktemp)"
+          remote_bootstrap="/tmp/urtruck-qa2-ai-${GITHUB_RUN_ID}.env"
+          cleanup() { rm -f "$local_bootstrap"; }
+          trap cleanup EXIT INT TERM
+          {
+            printf 'OPENAI_API_KEY=%s\n' "$QA2_OPENAI_API_KEY"
+            printf 'TRANSCRIBE_PROVIDER=openai\n'
+            printf 'TRANSCRIBE_MODEL=gpt-4o-mini-transcribe\n'
+            printf 'TRANSLATE_PROVIDER=openai\n'
+            printf 'TRANSLATE_MODEL=gpt-5.6-luna\n'
+          } > "$local_bootstrap"
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e scp -o StrictHostKeyChecking=no "$local_bootstrap" \
+            "$SERVER_USER@$SERVER_HOST:$remote_bootstrap"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            bash -s -- "$remote_bootstrap" <<'REMOTE_AI'
+          set -euo pipefail
+          bootstrap="$1"
+          qa_env=/home/ubuntu/urtruck-qa2/.env
+          trap 'rm -f "$bootstrap"' EXIT INT TERM
+          test -f "$qa_env" && test -f "$bootstrap"
+          python3 - "$qa_env" "$bootstrap" <<'PY'
+          import os
+          import stat
+          import sys
+          from pathlib import Path
+
+          env_path = Path(sys.argv[1])
+          incoming_path = Path(sys.argv[2])
+          allowed = {
+              "OPENAI_API_KEY",
+              "TRANSCRIBE_PROVIDER",
+              "TRANSCRIBE_MODEL",
+              "TRANSLATE_PROVIDER",
+              "TRANSLATE_MODEL",
+          }
+          incoming = {}
+          for raw in incoming_path.read_text(encoding="utf-8").splitlines():
+              key, sep, value = raw.partition("=")
+              if sep and key in allowed and value:
+                  incoming[key] = value
+          if set(incoming) != allowed:
+              raise SystemExit("QA_AI_BOOTSTRAP_INCOMPLETE")
+          current = env_path.read_text(encoding="utf-8").splitlines()
+          kept = [
+              line for line in current
+              if line.partition("=")[0].strip() not in allowed
+          ]
+          updated = kept + [f"{key}={incoming[key]}" for key in sorted(allowed)]
+          tmp = env_path.with_name(f".{env_path.name}.qa-ai-{os.getpid()}")
+          tmp.write_text("\n".join(updated) + "\n", encoding="utf-8")
+          os.chmod(tmp, stat.S_IMODE(env_path.stat().st_mode))
+          os.replace(tmp, env_path)
+          PY
+          echo 'QA_AI_ENV=isolated-secret-provisioned'
+          REMOTE_AI
+
       - name: Validate deployed source, restart exact QA2 listener and verify protected state
         shell: bash
         run: |
@@ -264,6 +333,25 @@ jobs:
           test "\$(readlink -f "/proc/\$new_pid/cwd")" = "\$(readlink -f "\$qa_backend")"
           curl -fsS http://127.0.0.1:8002/api/version >/dev/null
           curl -fsS http://127.0.0.1:8002/health >/dev/null
+          ai_info="\$(curl -fsS http://127.0.0.1:8002/api/v1/chat/translate/info)"
+          printf '%s' "\$ai_info" | python3 -c '
+          import json, sys
+          info = json.load(sys.stdin)
+          if info.get("provider") != "openai" or not info.get("openai_key_exists"):
+              raise SystemExit("QA_AI_PROVIDER_NOT_READY")
+          '
+          python3 - "\$qa_root/.env" <<'PY'
+          from pathlib import Path
+          import sys
+          values = {}
+          for raw in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+              key, sep, value = raw.partition("=")
+              if sep:
+                  values[key.strip()] = value.strip()
+          if values.get("TRANSCRIBE_PROVIDER") != "openai" or not values.get("OPENAI_API_KEY"):
+              raise SystemExit("QA_STT_PROVIDER_NOT_READY")
+          PY
+          echo 'QA_AI_PROVIDER=openai-ready'
           test "\$(cat .qa-source-sha)" = "\$source_sha"
           db_path="\$(python3 - "\$qa_root" "\$qa_root/.env" <<'PY'
           from pathlib import Path

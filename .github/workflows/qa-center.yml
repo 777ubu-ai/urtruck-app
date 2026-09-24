@@ -34,19 +34,19 @@ permissions:
   contents: read
 
 jobs:
-  pro-test-environment-contract:
+  qa2-environment-contract:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.recover_qa2 != true }}
     uses: ./.github/workflows/qa-environment-contract.yml
     secrets:
-      API_URL: ${{ secrets.PRO_TEST_API_URL }}
+      API_URL: ${{ secrets.QA2_API_URL }}
 
   qa-staging-preflight:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.recover_qa2 != true }}
     uses: ./.github/workflows/qa-staging-preflight.yml
     secrets:
-      SERVER_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
-      SERVER_USER: ${{ secrets.PRO_TEST_SERVER_USER }}
-      SERVER_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
+      SERVER_HOST: ${{ secrets.QA2_SERVER_HOST }}
+      SERVER_USER: ${{ secrets.QA2_SERVER_USER }}
+      SERVER_PASS: ${{ secrets.QA2_SERVER_PASS }}
 
   routing-provider-forensic:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.recover_qa2 != true }}
@@ -137,7 +137,7 @@ jobs:
     name: QA2 backend deploy after full gate
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_qa2 == true && inputs.recover_qa2 != true }}
     needs:
-      - pro-test-environment-contract
+      - qa2-environment-contract
       - qa-staging-preflight
       - routing-provider-forensic
       - quick-gate

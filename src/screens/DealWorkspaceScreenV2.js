@@ -503,13 +503,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     } catch { /* keep last authoritative response */ }
   }, [dealId]);
 
-  React.useEffect(() => {
-    refreshDeal();
-    if (!dealId) return undefined;
-    const timer = setInterval(refreshDeal, 15000);
-    return () => clearInterval(timer);
-  }, [dealId, refreshDeal]);
-
   const refreshTimeline = React.useCallback(async () => {
     if (!dealId) return;
     try {
@@ -517,7 +510,26 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       if (mounted.current) setTimeline(Array.isArray(result?.events) ? result.events : []);
     } catch { /* no fake timeline */ }
   }, [dealId]);
-  React.useEffect(() => { refreshTimeline(); }, [refreshTimeline]);
+
+  React.useEffect(() => {
+    refreshDeal();
+    refreshTimeline();
+    if (!dealId) return undefined;
+    // Both participants must see the authoritative FSM history without
+    // needing a local action or a remount. Keep it on the same cadence as
+    // deal status so the header and timeline cannot drift apart.
+    const timer = setInterval(() => {
+      refreshDeal();
+      refreshTimeline();
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [dealId, refreshDeal, refreshTimeline]);
+
+  const openStatusModal = React.useCallback(() => {
+    setStatusModalOpen(true);
+    refreshDeal();
+    refreshTimeline();
+  }, [refreshDeal, refreshTimeline]);
 
   // Documents render as ordinary bubbles in the same list as text/photo/voice
   // (PR #255 review item 5: "не отдельной нижней панелью, а как обычное
@@ -1612,7 +1624,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     { key: 'photo', icon: 'image', label: ui.attachPhoto, onPress: sendGalleryPhoto, testID: 'deal-chat-attach-photo' },
     { key: 'camera', icon: 'camera', label: ui.attachCamera, onPress: sendCameraPhoto, testID: 'deal-chat-attach-camera' },
     { key: 'share', icon: 'share', label: ui.attachShare, onPress: sendDealShare, testID: 'deal-chat-attach-share' },
-    { key: 'status', icon: 'tasks', label: ui.statuses, onPress: () => { setAttachOpen(false); setStatusModalOpen(true); }, testID: 'deal-chat-attach-status' },
+    { key: 'status', icon: 'tasks', label: ui.statuses, onPress: () => { setAttachOpen(false); openStatusModal(); }, testID: 'deal-chat-attach-status' },
     { key: 'location', icon: 'map-marker-alt', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' },
     { key: 'document', icon: 'file-alt', label: ui.attachDocument, onPress: pickAndSendDocument, testID: 'deal-chat-attach-document' },
     { key: 'contact', icon: 'user-alt', label: ui.attachContact, onPress: sendContactCard, testID: 'deal-chat-attach-contact' },
@@ -1644,7 +1656,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           <Feather name="map" size={17} color={colors.textMuted} />
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => setStatusModalOpen(true)}
+          onPress={openStatusModal}
           style={[s.headerIconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
           testID="deal-status-open"
           accessibilityLabel={ui.statuses}

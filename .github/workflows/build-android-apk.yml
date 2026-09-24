@@ -36,7 +36,7 @@ jobs:
       - name: Set QA2 build contract
         env:
           EXPECTED_SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
-          QA_API_URL: ${{ secrets.PRO_TEST_API_URL }}
+          QA_API_URL: ${{ secrets.QA2_API_URL }}
         run: |
           set -euo pipefail
           RESOLVED_SOURCE_SHA="$(git rev-parse HEAD)"
@@ -45,7 +45,7 @@ jobs:
             exit 1
           }
           test -n "${QA_API_URL:-}" || {
-            echo "::error::PRO_TEST_API_URL is required for QA2 Android builds"
+            echo "::error::QA2_API_URL is required for QA2 Android builds"
             exit 1
           }
           QA_HOST="$(python3 - <<'PY'
@@ -140,11 +140,11 @@ jobs:
         # и сам копирует его в android/app/, поэтому здесь файл кладётся в
         # корень репо — ДО prebuild.
         env:
-          QA2_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.PRO_TEST_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+          QA2_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
           set -euo pipefail
           if [ -z "${QA2_GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
-            echo "::error::Секрет PRO_TEST_ANDROID_GOOGLE_SERVICES_JSON_BASE64 не задан — QA2 Android push (FCM) не будет работать в этой сборке."
+            echo "::error::Секрет QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64 не задан — QA2 Android push (FCM) не будет работать в этой сборке."
             exit 1
           fi
           echo "$QA2_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > google-services.json

@@ -11,7 +11,7 @@ const iosProject = readFileSync('ios/UrTruck.xcodeproj/project.pbxproj', 'utf8')
 const androidAppBuild = readFileSync('android/app/build.gradle', 'utf8');
 
 test('distributed QA2 requires a healthy non-production API target', () => {
-  assert.ok(workflow.includes('QA_API_URL: ${{ secrets.PRO_TEST_API_URL }}'));
+  assert.ok(workflow.includes('QA_API_URL: ${{ secrets.QA2_API_URL }}'));
   assert.ok(workflow.includes('QA2 Android build must not target production'));
   assert.ok(workflow.includes('urtruck.kz|www.urtruck.kz|185.22.65.11'));
   assert.ok(workflow.includes('for path in /health /api/version'));
@@ -33,7 +33,7 @@ test('QA081 checks out and records an explicitly supplied exact source SHA', () 
 test('live QA2 keeps MapKit and Firebase secret injection and the isolated package', () => {
   assert.ok(workflow.includes('secrets.YANDEX_MAPKIT_API_KEY'));
   assert.ok(workflow.includes('YANDEX_MAPKIT_API_KEY is required'));
-  assert.ok(workflow.includes('secrets.PRO_TEST_ANDROID_GOOGLE_SERVICES_JSON_BASE64'));
+  assert.ok(workflow.includes('secrets.QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64'));
   assert.ok(!workflow.includes('secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64'));
   assert.ok(workflow.includes("play-services-location:21.3.0"));
   assert.ok(!workflow.includes("play-services-location:21.0.1"));

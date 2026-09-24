@@ -14,13 +14,13 @@ on:
         required: true
         type: string
     secrets:
-      PRO_TEST_API_URL:
+      QA2_API_URL:
         required: true
-      PRO_TEST_SERVER_HOST:
+      QA2_SERVER_HOST:
         required: true
-      PRO_TEST_SERVER_USER:
+      QA2_SERVER_USER:
         required: true
-      PRO_TEST_SERVER_PASS:
+      QA2_SERVER_PASS:
         required: true
 
 concurrency:
@@ -39,10 +39,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SERVER_HOST: ${{ secrets.PRO_TEST_SERVER_HOST }}
-      SERVER_USER: ${{ secrets.PRO_TEST_SERVER_USER }}
-      SERVER_PASS: ${{ secrets.PRO_TEST_SERVER_PASS }}
-      QA_API_URL: ${{ secrets.PRO_TEST_API_URL }}
+      SERVER_HOST: ${{ secrets.QA2_SERVER_HOST }}
+      SERVER_USER: ${{ secrets.QA2_SERVER_USER }}
+      SERVER_PASS: ${{ secrets.QA2_SERVER_PASS }}
+      QA_API_URL: ${{ secrets.QA2_API_URL }}
     steps:
       - name: Checkout recovery controls
         uses: actions/checkout@v4

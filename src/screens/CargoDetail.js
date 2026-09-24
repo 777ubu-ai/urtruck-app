@@ -191,6 +191,7 @@ export default function CargoDetail({ navigation, route }) {
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [reviewSent, setReviewSent] = useState(false);
+  const [reviewChecked, setReviewChecked] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [acceptedDriverId, setAcceptedDriverId] = useState(null);
   // Deep-link audit P1 (2026-09-14): a shared /cargos/{id} link (or a push
@@ -458,6 +459,31 @@ export default function CargoDetail({ navigation, route }) {
     const iv = setInterval(refreshDeal, 15000);
     return () => clearInterval(iv);
   }, [refreshDeal]));
+
+  const reviewTargetId = isShipper ? (acceptedDriverId || driverId) : shipperId;
+  const reviewReferenceId = dealId || cid;
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    if (dealStatus !== 'completed' || !reviewTargetId || !reviewReferenceId) {
+      setReviewChecked(false);
+      return () => { active = false; };
+    }
+    setReviewChecked(false);
+    reviewsAPI.eligibility(reviewTargetId, reviewReferenceId)
+      .then((result) => {
+        if (!active) return;
+        setReviewSent(Boolean(result?.already_reviewed));
+        setReviewChecked(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        // Keep rating available on legacy/offline eligibility failures; POST
+        // remains authoritative and its 409 path below closes a stale form.
+        setReviewSent(false);
+        setReviewChecked(true);
+      });
+    return () => { active = false; };
+  }, [dealStatus, reviewTargetId, reviewReferenceId]));
 
   const onDeleteCargo = () => {
     const doDel = async () => {
@@ -1026,7 +1052,7 @@ export default function CargoDetail({ navigation, route }) {
           </View>
         </View>
       )}
-      {dealStatus === 'completed' && !reviewSent && (isShipper ? acceptedDriverId : shipperId) && (
+      {dealStatus === 'completed' && reviewChecked && !reviewSent && reviewTargetId && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.reviewBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.reviewTitle, { color: theme.text }]}>{isShipper ? t('rate_driver') : t('rate_shipper')}</Text>
@@ -1053,7 +1079,7 @@ export default function CargoDetail({ navigation, route }) {
                 try {
                   const result = await reviewsAPI.create({
                     tripId: dealId || cid,
-                    targetId: isShipper ? acceptedDriverId : shipperId,
+                    targetId: reviewTargetId,
                     // Backend reviews API accepts only 'driver' | 'client' (Pydantic pattern).
                     // Driver leaves review on the cargo owner — that's role 'client' on the server.
                     targetRole: isShipper ? 'driver' : 'client',
@@ -1063,8 +1089,13 @@ export default function CargoDetail({ navigation, route }) {
                   if (!result?.ok) throw new Error(result?.detail || 'review_failed');
                   setReviewSent(true);
                   toast(t('thanks_for_review'), 'success');
-                } catch {
-                  toast(t('review_failed'), 'error');
+                } catch (error) {
+                  if (error?.status === 409) {
+                    setReviewSent(true);
+                    toast(t('thanks_for_review'), 'success');
+                  } else {
+                    toast(t('review_failed'), 'error');
+                  }
                 }
                 setReviewLoading(false);
               }}
