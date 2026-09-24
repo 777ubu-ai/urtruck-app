@@ -66,8 +66,7 @@ const decimal = (value) => String(value || '')
 export default function VehicleSetupCountryScreen({ navigation, route }) {
   const { lang, c } = useVehicleCopy();
   const { t } = useI18n();
-  const { signOut, setRole } = useAuth();
-  const canSkip = route?.params?.origin === 'basic_onboarding';
+  const { signOut } = useAuth();
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [sheet, setSheet] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -138,30 +137,6 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
     setError(message);
     Alert.alert('', message, [{ text: 'OK', onPress: () => signOut() }]);
     return true;
-  };
-
-  const skip = async () => {
-    if (saving || !canSkip) return;
-    setSaving(true);
-    setError('');
-    try {
-      const result = await regAPI.deferVehicle();
-      if (handleAuthFailure(result)) return;
-      if (!result?.ok) {
-        setError(result?.detail || c.saveErrorSub);
-        return;
-      }
-      await storage.remove(KEY);
-      setRole('driver');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Main', params: { role: 'driver', screen: 'Feed' } }],
-      });
-    } catch {
-      setError(c.saveErrorSub);
-    } finally {
-      setSaving(false);
-    }
   };
 
   const save = async () => {
@@ -241,7 +216,7 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
     <View style={{ paddingHorizontal: 16, paddingTop: 6 }}>
       <BackButton onPress={() => navigation.goBack()} label={c.back} />
     </View>
-    <KeyboardSafeScrollView contentContainerStyle={[styles.scroll, { gap: 12, paddingTop: 12, paddingBottom: canSkip ? 178 : 120 }]} showsVerticalScrollIndicator={false}>
+    <KeyboardSafeScrollView contentContainerStyle={[styles.scroll, { gap: 12, paddingTop: 12 }]} showsVerticalScrollIndicator={false}>
       <Text style={[styles.title, { marginBottom: 22 }]}>{c.addVehicle}</Text>
       <View style={styles.row}>
         <View style={styles.fieldCell}>
@@ -278,9 +253,6 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
       <Pressable disabled={incomplete || saving} onPress={save} style={[styles.cta, (incomplete || saving) && styles.ctaDisabled]} testID="vehicle-save">
         {saving ? <ActivityIndicator color="#fff" /> : <Text style={[styles.ctaText, incomplete && styles.disabledText]}>{c.saveVehicle || c.saveOnly}</Text>}
       </Pressable>
-      {canSkip ? <Pressable disabled={saving} onPress={skip} style={styles.secondary} testID="vehicle-add-later">
-        <Text style={styles.secondaryText}>{c.addLater}</Text>
-      </Pressable> : null}
     </View>
     <CountrySheet visible={sheet === 'citizenship'} title={c.citizenshipSheet} onClose={() => setSheet(null)} onSelect={(iso) => setValue('driver_citizenship_country_code', iso)} />
     <CountrySheet visible={sheet === 'registration'} title={c.registrationSheet} onClose={() => setSheet(null)} onSelect={(iso) => setValue('vehicle_registration_country_code', iso)} />

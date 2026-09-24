@@ -657,22 +657,6 @@ export const regAPI = {
     }
   },
 
-  async deferVehicle() {
-    const token = await this.getToken();
-    if (!token) return authRequiredResult();
-    try {
-      const r = await fetch(`${DRIVER_REG_BASE}/defer-vehicle`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (r.status === 401) return authRequiredResult();
-      const data = await r.json().catch(() => ({}));
-      return { ok: r.ok, ...data };
-    } catch {
-      return { ok: false, detail: tGlobal('network_error') };
-    }
-  },
-
   async completeBasic() {
     const token = await this.getToken();
     if (!token) return authRequiredResult();

@@ -186,22 +186,6 @@ def reconcile_basic_onboarding(driver: dict) -> dict:
     return {**driver, "basic_onboarding_completed": 1}
 
 
-@driver_reg_router.post("/defer-vehicle")
-def defer_vehicle_onboarding(driver_id: str = Depends(get_current_driver)):
-    """Allow browsing now while keeping work actions locked until a vehicle is saved."""
-    driver = reg_dal.get_driver(driver_id)
-    if not driver:
-        raise HTTPException(status_code=404, detail="Водитель не найден")
-    if (driver.get("role") or "").strip().lower() == "client":
-        raise HTTPException(status_code=409, detail={"error": "ROLE_ALREADY_SET"})
-
-    updates = {"role": "driver"}
-    if driver.get("status") not in {"approved", "rejected", "basic"}:
-        updates["status"] = "vehicle_deferred"
-    reg_dal.update_driver(driver_id, updates)
-    return {"ok": True, "role": "driver", "vehicle_deferred": True}
-
-
 @driver_reg_router.post("/complete-basic")
 def complete_basic_onboarding(driver_id: str = Depends(get_current_driver)):
     """Закрыть базовый водительский онбординг без Pro-верификации."""

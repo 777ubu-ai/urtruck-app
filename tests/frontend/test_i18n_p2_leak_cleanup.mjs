@@ -33,7 +33,7 @@ test('marketAPI.normalizeDetail no longer hardcodes "Ошибка {status}"', ()
 test('registration.js network-failure paths no longer leak raw e.message', () => {
   assert.doesNotMatch(registration, /e\?\.message \|\| 'network_error'/);
   const occurrences = (registration.match(/detail: tGlobal\('network_error'\)/g) || []).length;
-  assert.equal(occurrences, 7, 'all 7 registration network catch blocks must route through tGlobal');
+  assert.equal(occurrences, 6, 'all 6 registration network catch blocks must route through tGlobal');
 });
 
 test('vehicleAPI.js request() no longer leaks raw error.message', () => {

@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from uuid import uuid4
 
 from api import driver_registration, registration, verification_gate
-from api.marketplace import BidIn, TripIn, create_bid, create_trip
+from api.marketplace import TripIn, create_trip
 from database import registration_dal
 
 
@@ -56,27 +56,6 @@ def test_complete_basic_does_not_require_iin(monkeypatch):
     assert result["ok"] is True
     assert result["basic_onboarding_completed"] is True
     assert updates["basic_onboarding_completed"] == 1
-
-
-def test_defer_vehicle_marks_driver_without_completing_basic(monkeypatch):
-    updates = {}
-    monkeypatch.setattr(driver_registration.reg_dal, "get_driver", lambda _: _basic_driver(role=""))
-    monkeypatch.setattr(driver_registration.reg_dal, "update_driver", lambda _, fields: updates.update(fields))
-
-    result = driver_registration.defer_vehicle_onboarding("basic-driver")
-
-    assert result["vehicle_deferred"] is True
-    assert updates == {"role": "driver", "status": "vehicle_deferred"}
-
-
-def test_deferred_driver_cannot_bid_on_cargo():
-    with pytest.raises(HTTPException) as exc:
-        create_bid(
-            BidIn(cargo_id="cargo-1", amount=1000),
-            user={"id": "driver-1", "role": "driver", "status": "vehicle_deferred"},
-        )
-    assert exc.value.status_code == 403
-    assert exc.value.detail["error"] == "vehicle_required"
 
 
 def test_complete_basic_rejects_incomplete_profile(monkeypatch):

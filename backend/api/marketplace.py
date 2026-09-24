@@ -1787,11 +1787,6 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
     # (see _finalize_accept_inline's own fail-closed check on that case).
     if body.cargo_id:
         _require_role(user, ("driver",), "сделать ставку на груз")
-        if user.get("status") == "vehicle_deferred":
-            raise HTTPException(
-                status_code=403,
-                detail={"error": "vehicle_required", "message": "Сначала добавьте машину"},
-            )
     elif body.trip_id:
         _require_role(user, ("client",), "сделать ставку на рейс")
 
