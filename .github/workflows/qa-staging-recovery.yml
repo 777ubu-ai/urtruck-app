@@ -342,6 +342,18 @@ jobs:
           if d.get("provider") != "openai" or not d.get("openai_key_exists"):
               raise SystemExit(2)
           '
+          set -a
+          . "\$qa_root/.env"
+          set +a
+          venv/bin/python - <<'PY'
+          from services.translate_service import translate_text
+
+          result = translate_text("Груз готов", "zh", "ru")
+          translated = str(result.get("translated_text") or "").strip()
+          if result.get("provider") != "openai" or not translated or translated == "Груз готов":
+              raise SystemExit("QA_TRANSLATION_SMOKE_FAILED")
+          print("QA_RECOVERY_TRANSLATION=healthy")
+          PY
           echo "QA_RECOVERED_SOURCE_SHA=\$source_sha"
           echo "QA_RECOVERY_API_8002=healthy"
           REMOTE

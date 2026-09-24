@@ -45,6 +45,7 @@ test('QA2 voice and translation use only the QA2 OpenAI secret', () => {
   assert.match(workflow, /TRANSLATE_MODEL=gpt-4o-mini/);
   assert.match(workflow, /api\/v1\/chat\/translate\/info/);
   assert.match(workflow, /openai_key_exists/);
+  assert.match(workflow, /QA_RECOVERY_TRANSLATION=healthy/);
   assert.doesNotMatch(workflow, /PRO_TEST_OPENAI_API_KEY/);
 });
 
