@@ -16,11 +16,11 @@ on:
     secrets:
       QA2_API_URL:
         required: true
-      QA2_SERVER_HOST:
+      SERVER_HOST:
         required: true
-      QA2_SERVER_USER:
+      SERVER_USER:
         required: true
-      QA2_SERVER_PASS:
+      SERVER_PASS:
         required: true
 
 concurrency:
@@ -39,9 +39,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SERVER_HOST: ${{ secrets.QA2_SERVER_HOST }}
-      SERVER_USER: ${{ secrets.QA2_SERVER_USER }}
-      SERVER_PASS: ${{ secrets.QA2_SERVER_PASS }}
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
       QA_API_URL: ${{ secrets.QA2_API_URL }}
     steps:
       - name: Checkout recovery controls

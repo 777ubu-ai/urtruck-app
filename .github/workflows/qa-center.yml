@@ -44,9 +44,9 @@ jobs:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.recover_qa2 != true }}
     uses: ./.github/workflows/qa-staging-preflight.yml
     secrets:
-      SERVER_HOST: ${{ secrets.QA2_SERVER_HOST }}
-      SERVER_USER: ${{ secrets.QA2_SERVER_USER }}
-      SERVER_PASS: ${{ secrets.QA2_SERVER_PASS }}
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
 
   routing-provider-forensic:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.recover_qa2 != true }}

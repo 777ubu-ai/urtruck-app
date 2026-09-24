@@ -25,7 +25,7 @@ test('ordinary QA2 workflows never reference the separate UrTruck Pro Test conto
     assert.doesNotMatch(source, /PRO_TEST_|pro-test|urtruck-pro-test|com\.urtruck\.protest/i);
   }
   assert.match(workflow, /QA2_OPENAI_API_KEY/);
-  assert.match(recoveryWorkflow, /QA2_SERVER_HOST/);
+  assert.match(recoveryWorkflow, /SERVER_HOST:\n\s+required: true/);
   assert.match(androidWorkflow, /QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64/);
 });
 
@@ -36,9 +36,9 @@ test('QA2 backend deploy is manual, fixed-source and gated by QA contracts', () 
   assert.match(workflow, /prevents a new QA APK from silently testing an older server/);
   assert.match(workflow, /needs: \[environment-contract, staging-preflight\]/);
   assert.match(workflow, /QA2_API_URL/);
-  assert.match(workflow, /QA2_SERVER_HOST/);
-  assert.match(workflow, /QA2_SERVER_USER/);
-  assert.match(workflow, /QA2_SERVER_PASS/);
+  assert.match(workflow, /SERVER_HOST:\n\s+required: true/);
+  assert.match(workflow, /SERVER_USER:\n\s+required: true/);
+  assert.match(workflow, /SERVER_PASS:\n\s+required: true/);
   assert.match(workflow, /DEPLOY_QA2/);
 });
 
