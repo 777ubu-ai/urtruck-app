@@ -42,7 +42,7 @@ test('QA2 runtime is a dedicated service bound only to loopback port 8002', () =
 test('QA2 voice and translation use only the QA2 OpenAI secret', () => {
   assert.match(workflow, /QA2_OPENAI_API_KEY/);
   assert.match(workflow, /TRANSCRIBE_MODEL=gpt-4o-mini-transcribe/);
-  assert.match(workflow, /TRANSLATE_MODEL=gpt-5\.6-luna/);
+  assert.match(workflow, /TRANSLATE_MODEL=gpt-4o-mini/);
   assert.match(workflow, /api\/v1\/chat\/translate\/info/);
   assert.match(workflow, /openai_key_exists/);
   assert.doesNotMatch(workflow, /PRO_TEST_OPENAI_API_KEY/);
