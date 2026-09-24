@@ -37,6 +37,9 @@ test('QA2 runtime is a dedicated service bound only to loopback port 8002', () =
   assert.match(workflow, /--host 127\.0\.0\.1 --port 8002/);
   assert.match(workflow, /QA_RECOVERY_PORT_8002_NOT_FREE/);
   assert.match(workflow, /QA_RECOVERY_API_8002=healthy/);
+  assert.match(workflow, /QA_AI_RAM_AVAILABLE_BYTES/);
+  assert.match(workflow, /QA_AI_DISK_AVAILABLE_BYTES/);
+  assert.match(workflow, /QA_AI_GPU=/);
 });
 
 test('QA2 voice and translation use only the QA2 OpenAI secret', () => {

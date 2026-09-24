@@ -91,6 +91,35 @@ jobs:
       - name: Install SSH and rsync
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
 
+      - name: Inspect existing server capacity for isolated QA2 AI
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "QA_AI_ARCH=$(uname -m)"
+          echo "QA_AI_CPU_COUNT=$(nproc)"
+          echo "QA_AI_CPU_MODEL=$(lscpu | sed -n 's/^Model name:[[:space:]]*//p' | head -1)"
+          echo "QA_AI_RAM_BYTES=$(awk '/MemTotal:/ {print $2 * 1024}' /proc/meminfo)"
+          echo "QA_AI_RAM_AVAILABLE_BYTES=$(awk '/MemAvailable:/ {print $2 * 1024}' /proc/meminfo)"
+          echo "QA_AI_SWAP_BYTES=$(awk '/SwapTotal:/ {print $2 * 1024}' /proc/meminfo)"
+          echo "QA_AI_DISK_AVAILABLE_BYTES=$(df -B1 --output=avail /home/ubuntu | tail -1 | tr -d ' ')"
+          echo "QA_AI_LOAD=$(cut -d' ' -f1-3 /proc/loadavg)"
+          if command -v nvidia-smi >/dev/null 2>&1; then
+            echo "QA_AI_GPU=nvidia"
+            nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+          else
+            echo "QA_AI_GPU=none"
+          fi
+          if systemctl is-active --quiet urtruck-qa2.service; then
+            echo "QA_AI_QA2_SERVICE=active"
+            systemctl show urtruck-qa2.service -p MemoryCurrent -p CPUUsageNSec --no-pager
+          else
+            echo "QA_AI_QA2_SERVICE=inactive"
+          fi
+          REMOTE
+
       - name: Prepare isolated QA2 directories and backup code
         shell: bash
         run: |
