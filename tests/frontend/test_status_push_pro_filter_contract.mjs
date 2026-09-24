@@ -73,7 +73,10 @@ test('status history refreshes before opening from the status card and keeps the
   assert.match(timeline, /currentCard/);
 });
 
-test('profile separates verification, trust tier and PRO completion truthfully', () => {
+test('profile hides the optional PRO journey after basic registration', () => {
+  assert.match(profile, /const ADVANCED_VERIFICATION_VISIBLE = false/);
+  assert.match(profile, /ADVANCED_VERIFICATION_VISIBLE && isDriver/);
+  assert.match(profile, /\.\.\.\(ADVANCED_VERIFICATION_VISIBLE \? \[/);
   assert.match(profile, /proStatusTitle = proActive \? t\('pro_active_badge'\) : t\('pro_inactive_badge'\)/);
   assert.match(profile, /verificationStatusText = profile\.is_verified \? t\('verification_passed_short'\) : ''/);
   assert.doesNotMatch(profile, /t\('verification_failed_short'\)/);

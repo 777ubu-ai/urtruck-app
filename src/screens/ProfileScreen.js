@@ -41,6 +41,11 @@ const QA_HOOK_ALLOWED = (() => {
   }
 })();
 
+// Product decision 2026-09-25: the completed basic registration is the only
+// mandatory driver onboarding. The separate 4-step PRO verification remains
+// implemented for future use, but is hidden from the normal profile journey.
+const ADVANCED_VERIFICATION_VISIBLE = false;
+
 const APP_VERSION_LABEL = (() => {
   try {
     const Constants = require('expo-constants').default;
@@ -133,7 +138,9 @@ export default function ProfileScreen({ navigation, route }) {
   const menuItems = [
     ...(isDriver ? [
       { icon: 'truck', label: getVehicleCopy(uiLang).myVehicles, screen: 'VehicleChooser', params: { origin: 'Profile' }, testID: 'profile-my-vehicles' },
-      { icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' },
+      ...(ADVANCED_VERIFICATION_VISIBLE ? [
+        { icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' },
+      ] : []),
     ] : []),
     { icon: 'star', label: t('myReviews'), screen: 'Reviews', testID: 'profile-my-reviews' },
     { icon: 'help-circle', label: t('howit_header'), screen: 'HowItWorks', testID: 'profile-how-it-works' },
@@ -235,7 +242,7 @@ export default function ProfileScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {isDriver ? (
+        {ADVANCED_VERIFICATION_VISIBLE && isDriver ? (
           <View style={[s.proCard, { backgroundColor: theme.card, borderColor: proActive ? accent : theme.border }]}>
             <View style={s.proHeader}>
               <View style={{ flex: 1 }}>
