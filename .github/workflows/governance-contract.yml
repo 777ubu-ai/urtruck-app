@@ -27,7 +27,11 @@ jobs:
           test -f .github/workflows/qa-staging-preflight.yml
           test -f .github/workflows/qa-environment-contract.yml
           grep -Fq 'DEPLOY_QA2' .github/workflows/qa-staging-deploy.yml
-          grep -Fq 'PRO_TEST_API_URL' .github/workflows/qa-staging-deploy.yml
+          grep -Fq 'QA2_API_URL' .github/workflows/qa-staging-deploy.yml
+          if grep -Fq 'PRO_TEST_API_URL' .github/workflows/qa-staging-deploy.yml; then
+            echo 'QA2 staging deploy must not reuse Pro test secrets' >&2
+            exit 1
+          fi
           grep -Fq '/home/ubuntu/urtruck-qa2' .github/workflows/qa-staging-deploy.yml
           grep -Fq 'cancel-in-progress: false' .github/workflows/qa-staging-deploy.yml
           if grep -Eq '^[[:space:]]+push:' .github/workflows/qa-staging-deploy.yml; then
