@@ -131,6 +131,20 @@ ss -ltnH 'sport = :8003' | grep -Fq '127.0.0.1:8003'
 ! ss -ltnH 'sport = :8003' | grep -Fq '0.0.0.0:8003'
 REMOTE
 
+voice_smoke="$(mktemp --suffix=.wav)"
+espeak-ng -w "$voice_smoke" "Cargo is ready for shipment"
+remote_voice="/tmp/qa2-local-ai-voice-$GITHUB_RUN_ID.wav"
+sshpass -e scp -o StrictHostKeyChecking=no "$voice_smoke" "$SERVER_USER@$SERVER_HOST:$remote_voice"
+rm -f "$voice_smoke"
+"${ssh_cmd[@]}" 'bash -s' -- "$remote_voice" <<'REMOTE'
+set -euo pipefail
+voice="$1"
+trap 'rm -f "$voice"' EXIT
+result="$(curl -fsS --max-time 180 -F "file=@$voice;type=audio/wav" http://127.0.0.1:8003/transcribe)"
+printf '%s' "$result" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("provider")=="local_faster_whisper" and str(d.get("transcript_text") or "").strip()'
+echo "QA2_AI_TRANSCRIPTION_EN=healthy"
+REMOTE
+
 "${ssh_cmd[@]}" 'python3 -' <<'PY'
 import json, urllib.request
 cases = [

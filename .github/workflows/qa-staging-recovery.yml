@@ -505,8 +505,8 @@ jobs:
           python3 -m py_compile backend/services/local_ai_client.py backend/qa_ai_service/main.py
           node --test tests/frontend/test_qa2_local_ai_workflow.mjs
 
-      - name: Install SSH and rsync
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+      - name: Install SSH, rsync and voice fixture generator
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync espeak-ng
 
       - name: Install and verify private QA2 AI
         shell: bash
