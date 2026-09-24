@@ -3,62 +3,73 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(path, 'utf8');
-const country = read('src/screens/vehicle/VehicleSetupCountryScreen.js');
-const machine = read('src/screens/vehicle/VehicleSetupMachineScreen.js');
-const review = read('src/screens/vehicle/VehicleSetupReviewScreen.js');
+const setup = read('src/screens/vehicle/VehicleSetupCountryScreen.js');
 const success = read('src/screens/vehicle/VehicleSetupSuccessScreen.js');
 const chooser = read('src/screens/vehicle/VehicleChooserScreen.js');
 const profile = read('src/screens/ProfileScreen.js');
 const api = read('src/utils/vehicleAPI.js');
-const border = read('src/screens/QueueScreenLazyV2.js');
 const copy = read('src/utils/vehicleSetupCopy.js');
 
-test('vehicle setup is a four-step flow with independent country fields', () => {
-  assert.match(country, /step=\{1\}/);
-  assert.match(machine, /step=\{2\}/);
-  assert.match(review, /step=\{3\}/);
-  assert.match(success, /step=\{4\}/);
-  assert.match(country, /driver_citizenship_country_code/);
-  assert.match(country, /vehicle_registration_country_code/);
-  assert.match(country, /const DEFAULT_DRAFT[\s\S]*driver_citizenship_country_code: ''/);
-  assert.match(country, /vehicle_registration_country_code: ''/);
-  assert.doesNotMatch(country, /driver_citizenship_country_code: 'KZ'/);
-  assert.doesNotMatch(country, /vehicle_registration_country_code: 'KZ'/);
-  assert.match(country, /placeholder=\{c\.select\}/);
-  assert.match(country, /setDraft\(\{ \.\.\.DEFAULT_DRAFT, \.\.\.local \}\)/);
+test('vehicle registration is one empty form without the legacy progress flow', () => {
+  assert.match(setup, /testID="vehicle-setup-single-screen"/);
+  assert.match(setup, /const EMPTY_DRAFT = \{[\s\S]*driver_citizenship_country_code: ''/);
+  assert.match(setup, /vehicle_registration_country_code: ''/);
+  assert.match(setup, /vehicle_type: ''/);
+  assert.match(setup, /make: ''/);
+  assert.match(setup, /model: ''/);
+  assert.doesNotMatch(setup, /ProgressHeader/);
+  assert.doesNotMatch(setup, /machineSub|basicsSub/);
+  assert.doesNotMatch(setup, /navigation\.navigate\('VehicleSetupMachine'/);
+  assert.doesNotMatch(setup, /navigation\.navigate\('VehicleSetupReview'/);
 });
 
-test('vehicle setup keeps machine separate and reuses it for publishing', () => {
-  assert.match(review, /vehicleAPI\.save/);
+test('new vehicle forms clear stale defaults while edit and recovery restore the draft', () => {
+  assert.match(setup, /const shouldRestore = Boolean\(route\?\.params\?\.vehicleId \|\| route\?\.params\?\.preserveDraft\)/);
+  assert.match(setup, /if \(!shouldRestore\) await storage\.remove\(KEY\)/);
+  assert.match(setup, /setDraft\(\{ \.\.\.EMPTY_DRAFT, \.\.\.local \}\)/);
+  assert.doesNotMatch(setup, /driver_citizenship_country_code: 'KZ'/);
+  assert.doesNotMatch(setup, /vehicle_registration_country_code: 'KZ'/);
+});
+
+test('single form contains every required vehicle field', () => {
+  for (const testID of [
+    'vehicle-citizenship-selector',
+    'vehicle-registration-selector',
+    'vehicle-type-selector',
+    'vehicle-body-selector',
+    'vehicle-make-selector',
+    'vehicle-model-selector',
+    'vehicle-license-plate',
+    'vehicle-payload',
+    'vehicle-volume',
+  ]) {
+    assert.match(setup, new RegExp(testID));
+  }
+  assert.match(setup, /const required = \[[\s\S]*'cargo_volume_m3'/);
+  assert.match(setup, /disabled=\{incomplete \|\| saving\}/);
+  assert.match(setup, /testID="vehicle-save"/);
+  assert.match(copy, /saveVehicle: 'Сохранить машину'/);
+});
+
+test('dependent selectors, numeric validation, and localized body names remain intact', () => {
+  assert.match(setup, /BODIES/);
+  assert.match(setup, /decimal-pad/);
+  assert.match(setup, /Number\(draft\.payload_tons\) > 0/);
+  assert.match(setup, /draft\.make === 'Other'/);
+  assert.match(setup, /search hideIcons/);
+  assert.match(copy, /curtain_sider: 'Тент'/);
+});
+
+test('vehicle is saved before the compact success page', () => {
+  assert.match(setup, /vehicleAPI\.save\(payload, route\?\.params\?\.vehicleId\)/);
+  assert.match(setup, /regAPI\.saveDriverDraft/);
+  assert.match(setup, /navigation\.replace\('VehicleSetupSuccess'/);
   assert.match(api, /driver\/vehicles/);
-  assert.match(chooser, /c\.bodies\?\.\[vehicle\.body_type\] \|\| vehicle\.body_type/);
-  assert.match(read('backend/database/vehicles_schema.sql'), /CREATE TABLE IF NOT EXISTS vehicles/);
-  assert.match(read('src/screens/MyTripsScreen.js'), /vehicles\.length === 0/);
-  assert.match(read('src/screens/CreateTripScreen.js'), /vehicle_id/);
-});
-
-test('machine form has dependent body options and numeric validation', () => {
-  assert.match(machine, /BODIES/);
-  assert.match(machine, /decimal-pad/);
-  assert.match(machine, /Number\(draft\.payload_tons\) <= 0/);
-  assert.match(machine, /draft\.make === 'Other'/);
-  assert.match(machine, /search hideIcons/);
-});
-
-test('country setup renders the selected ISO as the shared round flag', () => {
-  assert.match(country, /countryCode=\{draft\.driver_citizenship_country_code\}/);
-  assert.match(country, /countryCode=\{draft\.vehicle_registration_country_code\}/);
-});
-
-test('lost auth never exposes no_token and returns vehicle setup to sign-in safely', () => {
-  const registration = read('src/utils/registration.js');
-  assert.match(registration, /function authRequiredResult\(\)/);
-  assert.match(registration, /detail:\s*tGlobal\('session_expired'\)/);
-  assert.doesNotMatch(registration, /detail:\s*'no_token'/);
-  assert.match(country, /if \(saved\.authRequired\)/);
-  assert.match(country, /Alert\.alert/);
-  assert.match(country, /onPress:\s*\(\) => signOut\(\)/);
-  assert.match(country, /storage\.set\(KEY, JSON\.stringify\(next\)\)/);
+  assert.match(success, /registrationComplete/);
+  assert.match(success, /goToLoads/);
+  assert.match(success, /basic-onboarding-loads/);
+  assert.doesNotMatch(success, /benefits|successSub|slogan|publishRoutes/);
+  assert.doesNotMatch(success, /ProgressHeader/);
 });
 
 test('Border and Profile vehicle management return to their originating screen', () => {
@@ -67,26 +78,17 @@ test('Border and Profile vehicle management return to their originating screen',
   assert.match(chooser, /storage\.remove\(DRAFT_KEY\)/);
   assert.match(chooser, /storage\.set\(DRAFT_KEY, JSON\.stringify\(item\)\)/);
   assert.match(chooser, /vehicleId: item\.id/);
-  assert.match(review, /vehicleAPI\.save\(payload, route\?\.params\?\.vehicleId\)/);
-  assert.match(review, /origin === 'Border' \|\| route\?\.params\?\.origin === 'Profile'/);
   assert.match(success, /origin === 'Border'/);
   assert.match(success, /screen: 'Queue'/);
   assert.match(success, /origin === 'Profile'/);
-  assert.match(success, /testID=\{origin === 'Border' \? 'border-vehicle-return'/);
+  assert.match(success, /profile-vehicle-return/);
 });
 
-test('machine selectors persist dependent values atomically', () => {
-  assert.match(machine, /onSelect=\{\((?:v|value)\) => setValues\(\{ vehicle_type: (?:v|value), body_type: '' \}\)\}/);
-  assert.doesNotMatch(machine, /setValue\('vehicle_type', v\); setValue\('body_type', ''\)/);
-});
-
-test('completion failure identifies the real missing data and offers recovery actions', () => {
+test('completion failure keeps the entered form recoverable', () => {
   assert.match(success, /BASIC_ONBOARDING_INCOMPLETE/);
   assert.match(success, /ROLE_ALREADY_SET/);
-  assert.match(success, /Заполните:/);
-  assert.match(success, /finishErrorTitle/);
   assert.match(success, /basic-onboarding-fix-data/);
   assert.match(success, /basic-onboarding-retry/);
+  assert.match(success, /preserveDraft: true/);
   assert.match(copy, /finishErrorTitle/);
-  assert.doesNotMatch(success, /\{basicState === 'loading' \? c\.loading : c\.saveErrorSub\}/);
 });

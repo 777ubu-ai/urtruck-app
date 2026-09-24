@@ -8,7 +8,7 @@ const gate = read('backend/api/verification_gate.py');
 const registration = read('backend/api/registration.py');
 const client = read('src/utils/registration.js');
 const success = read('src/screens/vehicle/VehicleSetupSuccessScreen.js');
-const review = read('src/screens/vehicle/VehicleSetupReviewScreen.js');
+const setup = read('src/screens/vehicle/VehicleSetupCountryScreen.js');
 const profile = read('src/screens/onboarding/ProfileV2Screen.js');
 const trips = read('src/screens/MyTripsScreen.js');
 const proDocs = read('src/navigation/AppNavigator.js');
@@ -39,13 +39,13 @@ test('VehicleSetupSuccess completes basic onboarding before opening trip creatio
   assert.match(success, /regAPI\.completeBasic\(\)/);
   assert.match(success, /catch \{/);
   assert.match(success, /setRole\('driver'\)/);
-  assert.match(success, /navigation\.replace\('CreateTrip'/);
+  assert.match(success, /screen: 'Feed'/);
   assert.match(success, /basicState === 'done' \? </);
-  assert.match(success, /'basic-onboarding-publish'/);
-  assert.match(success, /testID=\{`basic-onboarding-\$\{basicState\}`\}/);
+  assert.match(success, /basic-onboarding-loads/);
+  assert.match(success, /testID="vehicle-setup-success"/);
   assert.doesNotMatch(success, /<Pressable disabled=\{basicState !== 'done'\}/);
-  assert.match(review, /truck_kind: d\.vehicle_type/);
-  assert.match(review, /vehicle_registration_country: d\.vehicle_registration_country_code/);
+  assert.match(setup, /truck_kind: draft\.vehicle_type/);
+  assert.match(setup, /vehicle_registration_country: draft\.vehicle_registration_country_code/);
 });
 
 test('driver profile continues to vehicle setup and does not commit driver role early', () => {
@@ -55,16 +55,16 @@ test('driver profile continues to vehicle setup and does not commit driver role 
   assert.doesNotMatch(driverContinue, /Main/);
 });
 
-test('vehicle save without publication still completes basic onboarding and errors have retry', () => {
-  assert.match(review, /if \(!publish && !returnOrigin\) \{ const completed = await regAPI\.completeBasic\(\)/);
-  assert.match(review, /setRole\('driver'\)/);
-  assert.match(review, /testID="vehicle-setup-retry"/);
-  assert.doesNotMatch(review, /c\.documents/);
+test('single-page vehicle save continues through compact completion and errors have retry', () => {
+  assert.match(setup, /vehicleAPI\.save/);
+  assert.match(setup, /regAPI\.saveDriverDraft/);
+  assert.match(setup, /navigation\.replace\('VehicleSetupSuccess'/);
+  assert.doesNotMatch(setup, /VehicleSetupReview/);
   assert.match(success, /testID="basic-onboarding-retry"/);
   assert.match(success, /const completionStarted = useRef\(false\)/);
-  assert.match(success, /if \(completionStarted\.current\) return undefined/);
+  assert.match(success, /returnsToExistingFlow \|\| completionStarted\.current/);
   assert.match(success, /basicState !== 'done'/);
-  assert.match(success, /navigation\.replace\('Main', \{ role: 'driver' \}\)/);
+  assert.match(success, /navigation\.reset\(/);
 });
 
 test('driver basic profile leaves company and messenger optional', () => {
