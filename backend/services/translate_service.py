@@ -70,9 +70,10 @@ def _is_quota_exhausted(body):
 
 
 def get_cache_identity():
+    provider = (_get_provider() or "stub").strip().lower()
     return {
-        "provider": (_get_provider() or "stub").strip().lower(),
-        "model": _get_model() if _get_provider() == "openai" else "",
+        "provider": provider,
+        "model": _get_model() if provider == "openai" else "m2m100_418m_int8" if provider == "local_ai" else "",
         "prompt_version": TRANSLATION_PROMPT_VERSION,
     }
 
@@ -91,9 +92,10 @@ def get_info():
     """Debug info — НЕ раскрывает ключ. QA-находка: endpoint публичный,
     поэтому префикс ключа наружу не отдаём вовсе (только факт наличия)."""
     key = _get_api_key()
+    provider = _get_provider()
     return {
-        "provider": _get_provider(),
-        "model": _get_model() if _get_provider() == "openai" else "",
+        "provider": provider,
+        "model": _get_model() if provider == "openai" else "m2m100_418m_int8" if provider == "local_ai" else "",
         "prompt_version": TRANSLATION_PROMPT_VERSION,
         "openai_key_exists": bool(key and len(key) > 5),
     }
@@ -112,6 +114,15 @@ def translate_text(text: str, target_lang: str, source_lang: str = None) -> dict
 
     if provider == "openai" and api_key:
         return _translate_openai(text, target_lang, source_lang, api_key)
+    if provider == "local_ai":
+        from services.local_ai_client import LocalAIError, translate
+        try:
+            return translate(text, source_lang, target_lang)
+        except LocalAIError as exc:
+            raise TranslationError(
+                "Перевод временно недоступен", provider="local_m2m100",
+                retryable=exc.retryable, code=exc.code,
+            ) from exc
 
     # A provider stub must never return the source text as a successful
     # translation. That made an unconfigured deployment look healthy and

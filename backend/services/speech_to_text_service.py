@@ -84,6 +84,15 @@ def transcribe_audio_ref(audio_ref: str, *, filename: str | None = None, languag
 
 def transcribe_audio_path(path: str, *, filename: str | None = None, language: str | None = None) -> dict:
     provider = _provider()
+    if provider == "local_ai":
+        from services.local_ai_client import LocalAIError, transcribe
+        try:
+            return transcribe(path, filename=filename)
+        except LocalAIError as exc:
+            raise SpeechToTextError(
+                "Распознавание голоса временно недоступно", provider="local_faster_whisper",
+                retryable=exc.retryable, code=exc.code,
+            ) from exc
     if provider == "local_whisper":
         from services.local_speech_service import LocalSpeechError, transcribe
         try:
