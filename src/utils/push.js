@@ -296,7 +296,6 @@ export const push = {
       await Notifications.setNotificationChannelAsync(NATIVE_PUSH_CHANNEL_ID, {
         name: tGlobal('push_channel_name'),
         importance: Notifications.AndroidImportance.MAX,
-        sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#378ADD',
       });

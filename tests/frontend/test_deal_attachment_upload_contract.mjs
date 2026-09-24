@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const api = fs.readFileSync('src/utils/chatAPI.js', 'utf8');
+const authEvents = fs.readFileSync('src/utils/authEvents.js', 'utf8');
 const ui = fs.readFileSync('src/components/deal/DealAttachments.js', 'utf8');
 const backend = fs.readFileSync('backend/api/deal_room.py', 'utf8');
 // Upload sniffing is intentionally shared by deal-room, profile and chat
@@ -123,4 +124,11 @@ test('document type classification is shared, not duplicated, between DealAttach
   assert.match(ui, /documentKindFromFile/);
   const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
   assert.match(workspace, /documentKindFromFile/);
+});
+
+test('native multipart uses expo/fetch without bypassing auth expiry or timeouts', () => {
+  assert.match(api, /import \{ fetch as expoFetch \} from 'expo\/fetch'/);
+  assert.equal((api.match(/\}, expoFetch\);/g) || []).length, 3);
+  assert.match(authEvents, /authedFetch\(input, init, fetchImpl = fetch\)/);
+  assert.equal((authEvents.match(/await fetchImpl\(/g) || []).length, 2);
 });

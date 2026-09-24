@@ -10,13 +10,13 @@ env:
 # B4 (LIVE) — клиент открывает deal room по сделке «в пути».
 # Предусловие (API-сид): принятая ставка → сделка in_progress (STATE-SEED).
 # Проверяем: Chats → пункт комнаты сделки → открывается ChatScreen с
-# карточкой сделки (deal-room-card) + поле ввода (chat-input).
+# карточкой сделки (deal-room-card) + поле ввода (deal-chat-input).
 
 - runFlow: _lib/qa-login.yaml
 - waitForAnimationToEnd:
     timeout: 4000
 - tapOn:
-    id: "bottom-nav-chats"
+    id: "bottom-nav-deals"
 - extendedWaitUntil:
     visible:
       id: "deal-room-list"
@@ -24,19 +24,19 @@ env:
 - takeScreenshot: ../screenshots/deep-reg/B4-01-chats-list
 # Фильтр «активные сделки» → в списке остаются комнаты со сделкой
 - tapOn:
-    id: "deal-room-filter-active"
+    id: "deals-tab-active"
 - waitForAnimationToEnd:
     timeout: 2000
 - assertVisible:
-    id: "deal-room-list-card"
+    id: "deals-deal-card"
 - tapOn:
-    id: "deal-room-list-card"
+    id: "deals-deal-card"
     index: 0
 - extendedWaitUntil:
     visible:
-      id: "chat-input"
+      id: "deal-chat-input"
     timeout: 8000
 # Карточка сделки в комнате (DealRoom) — «Ставка»/валюта/груз
 - assertVisible:
-    id: "deal-room-card"
+    id: "deal-compact-header"
 - takeScreenshot: ../screenshots/deep-reg/B4-02-deal-room

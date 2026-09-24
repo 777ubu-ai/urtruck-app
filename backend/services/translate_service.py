@@ -57,10 +57,23 @@ def _get_model():
     return os.environ.get("TRANSLATE_MODEL", "gpt-5.6-luna").strip() or "gpt-5.6-luna"
 
 
+def _is_quota_exhausted(body):
+    """Return true only for OpenAI's non-retryable billing 429 shape."""
+    try:
+        error = json.loads(body or "{}").get("error") or {}
+    except (TypeError, ValueError):
+        return False
+    return (
+        str(error.get("type") or "").lower() == "insufficient_quota"
+        or str(error.get("code") or "").lower() in {"insufficient_quota", "credit_balance_exhausted"}
+    )
+
+
 def get_cache_identity():
+    provider = (_get_provider() or "stub").strip().lower()
     return {
-        "provider": (_get_provider() or "stub").strip().lower(),
-        "model": _get_model() if _get_provider() == "openai" else "",
+        "provider": provider,
+        "model": _get_model() if provider == "openai" else "m2m100_418m_int8" if provider == "local_ai" else "",
         "prompt_version": TRANSLATION_PROMPT_VERSION,
     }
 
@@ -79,9 +92,10 @@ def get_info():
     """Debug info — НЕ раскрывает ключ. QA-находка: endpoint публичный,
     поэтому префикс ключа наружу не отдаём вовсе (только факт наличия)."""
     key = _get_api_key()
+    provider = _get_provider()
     return {
-        "provider": _get_provider(),
-        "model": _get_model() if _get_provider() == "openai" else "",
+        "provider": provider,
+        "model": _get_model() if provider == "openai" else "m2m100_418m_int8" if provider == "local_ai" else "",
         "prompt_version": TRANSLATION_PROMPT_VERSION,
         "openai_key_exists": bool(key and len(key) > 5),
     }
@@ -100,6 +114,15 @@ def translate_text(text: str, target_lang: str, source_lang: str = None) -> dict
 
     if provider == "openai" and api_key:
         return _translate_openai(text, target_lang, source_lang, api_key)
+    if provider == "local_ai":
+        from services.local_ai_client import LocalAIError, translate
+        try:
+            return translate(text, source_lang, target_lang)
+        except LocalAIError as exc:
+            raise TranslationError(
+                "Перевод временно недоступен", provider="local_m2m100",
+                retryable=exc.retryable, code=exc.code,
+            ) from exc
 
     # A provider stub must never return the source text as a successful
     # translation. That made an unconfigured deployment look healthy and
@@ -158,12 +181,18 @@ def _translate_openai(text, target_lang, source_lang, api_key):
         except Exception:
             pass
         print(f"[translate] OpenAI HTTP {status}: {detail_body}", flush=True)
-        is_retryable = status == 429 or status >= 500
+        quota_exhausted = status == 429 and _is_quota_exhausted(detail_body)
+        is_retryable = status >= 500 or (status == 429 and not quota_exhausted)
+        code = (
+            "TRANSLATION_UNAVAILABLE" if quota_exhausted
+            else "TRANSLATION_TIMEOUT" if is_retryable
+            else "TRANSLATION_FAILED"
+        )
         raise TranslationError(
-            "Перевод временно недоступен" if is_retryable else "Не удалось перевести текст",
+            "Перевод временно недоступен" if (quota_exhausted or is_retryable) else "Не удалось перевести текст",
             provider="openai",
             retryable=is_retryable,
-            code="TRANSLATION_TIMEOUT" if is_retryable else "TRANSLATION_FAILED",
+            code=code,
         ) from exc
     except (urllib.error.URLError, socket.timeout) as exc:
         print(f"[translate] OpenAI network error: {exc}", flush=True)

@@ -1,4 +1,6 @@
 import { Platform } from 'react-native';
+import { File as ExpoFile } from 'expo-file-system';
+import { fetch as expoFetch } from 'expo/fetch';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';
@@ -57,6 +59,22 @@ function chatApiError(detail, fallbackKey) {
   return error;
 }
 
+// Translation and especially long voice transcription legitimately exceed
+// the shared 20-second API timeout when the private CPU model is serving a
+// second queued phone. Pass an explicit signal so authedFetch does not apply
+// its short screen-loading timeout, while still keeping these calls bounded.
+async function authedFetchWithTimeout(input, init, timeoutMs) {
+  let controller;
+  try { controller = new AbortController(); } catch { controller = null; }
+  if (!controller) return authedFetch(input, init);
+  const timer = setTimeout(() => { try { controller.abort(); } catch {} }, timeoutMs);
+  try {
+    return await authedFetch(input, { ...(init || {}), signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function mimeFromName(name, fallback = 'application/octet-stream') {
   const value = String(name || '').toLowerCase();
   if (value.endsWith('.pdf')) return 'application/pdf';
@@ -66,6 +84,14 @@ function mimeFromName(name, fallback = 'application/octet-stream') {
   if (value.endsWith('.png')) return 'image/png';
   if (value.endsWith('.jpg') || value.endsWith('.jpeg')) return 'image/jpeg';
   return fallback;
+}
+
+function appendNativeFile(form, uri, name) {
+  // Expo 57 rejects React Native's legacy multipart { uri, name, type }
+  // object before the request reaches the server. ExpoFile implements Blob,
+  // so the native and web paths now use the same standards-based contract.
+  const file = new ExpoFile(uri);
+  form.append('file', file, name || file.name || 'file.bin');
 }
 
 // Shared document classification for the chat "+" document flow — the same
@@ -156,21 +182,21 @@ export const chatAPI = {
   },
 
   async translate(messageId, targetLang) {
-    const r = await authedFetch(`${BASE}/translate`, {
+    const r = await authedFetchWithTimeout(`${BASE}/translate`, {
       method: 'POST', headers: await headers(),
       body: JSON.stringify({ message_id: messageId, target_lang: targetLang }),
-    });
+    }, 120000);
     const data = await r.json().catch(() => null);
     if (!r.ok) throw chatApiError(data?.detail, 'translation_unavailable');
     return data;
   },
 
   async transcribe(messageId, targetLang = null) {
-    const r = await authedFetch(`${BASE}/transcribe`, {
+    const r = await authedFetchWithTimeout(`${BASE}/transcribe`, {
       method: 'POST',
       headers: await headers(),
       body: JSON.stringify({ message_id: messageId, target_lang: targetLang }),
-    });
+    }, 240000);
     const data = await r.json().catch(() => null);
     if (!r.ok) throw chatApiError(data?.detail, 'voice_transcription_unavailable');
     return data;
@@ -217,7 +243,7 @@ export const chatAPI = {
       const blob = await fetch(uri).then((r) => r.blob());
       form.append('file', blob, 'chat.jpg');
     } else {
-      form.append('file', { uri, name: 'chat.jpg', type: 'image/jpeg' });
+      appendNativeFile(form, uri, 'chat.jpg');
     }
     let r;
     try {
@@ -225,7 +251,7 @@ export const chatAPI = {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, expoFetch);
     } catch (e) {
       throw attachmentError('network', { isNetwork: true, detail: e?.message || 'network' });
     }
@@ -254,7 +280,7 @@ export const chatAPI = {
       form.append('file', part, name || `voice.${ext}`);
     } else {
       const ext = String(uri).split('.').pop() || 'm4a';
-      form.append('file', { uri, name: `voice.${ext}`, type: `audio/${ext === 'm4a' ? 'mp4' : ext}` });
+      appendNativeFile(form, uri, name || `voice.${ext}`);
     }
     let r;
     try {
@@ -262,7 +288,7 @@ export const chatAPI = {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, expoFetch);
     } catch (e) {
       throw attachmentError('network', { isNetwork: true, detail: e?.message || 'network' });
     }
@@ -329,11 +355,7 @@ export const chatAPI = {
         : new Blob([blob], { type: finalType || 'application/octet-stream' });
       form.append('file', part, name);
     } else {
-      form.append('file', {
-        uri,
-        name,
-        type: requestedType || 'application/octet-stream',
-      });
+      appendNativeFile(form, uri, name);
     }
     form.append('kind', kind);
     if (clientUploadId) form.append('client_upload_id', String(clientUploadId));
@@ -344,7 +366,7 @@ export const chatAPI = {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, expoFetch);
     } catch (error) {
       throw attachmentError('network', { isNetwork: true, detail: error?.message || 'network' });
     }

@@ -23,11 +23,11 @@ test('foreground deal activity uses the Deals badge without a duplicate top bann
   assert.doesNotMatch(bottomNav, /actionLabel:\s*t\('open_action'\)/);
 });
 
-test('native push remains configured to show banners and play the default sound', () => {
+test('native push remains configured to show banners and use the Android system sound', () => {
   assert.match(push, /shouldShowBanner:\s*true/);
   assert.match(push, /shouldPlaySound:\s*true/);
   assert.match(push, /AndroidImportance\.MAX/);
-  assert.match(push, /sound:\s*'default'/);
+  assert.doesNotMatch(push, /sound:\s*['\"]default['\"]/);
 });
 
 test('shipper machine feed saves an individual trip and exposes the same saved filter as driver cargo feed', () => {
@@ -58,8 +58,9 @@ test('deal header uses map and status buttons, not the old call button', () => {
   assert.match(workspace, /statusActionIcon/);
 });
 
-test('status history opens from the status card and keeps the next status action at the bottom', () => {
-  assert.match(workspace, /onPress=\{\(\) => setStatusModalOpen\(true\)\}/);
+test('status history refreshes before opening from the status card and keeps the next status action at the bottom', () => {
+  assert.match(workspace, /const openStatusModal = React\.useCallback\(\(\) => \{[\s\S]*?setStatusModalOpen\(true\);[\s\S]*?refreshDeal\(\);[\s\S]*?refreshTimeline\(\);/);
+  assert.match(workspace, /onPress=\{openStatusModal\}/);
   assert.match(workspace, /<DealStatusTimeline events=\{timeline\} fallbackStatus=\{statusLabel\}/);
   // Design v1 Commit 4: the next-action CTA is the canonical Button primary
   // (dealActionResolver labels/transitions untouched, testID contract kept).

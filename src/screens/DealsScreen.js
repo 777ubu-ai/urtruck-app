@@ -17,7 +17,6 @@ import { useTheme } from '../utils/ThemeContext';
 import { useDriverCeramicColors } from '../theme/designV1';
 import { formatStatus } from '../utils/i18n';
 import RootHeader from '../components/ui/v1/RootHeader';
-import { useUnreadNotifications } from '../utils/useUnreadNotifications';
 import { marketAPI } from '../utils/marketAPI';
 import { notificationsAPI } from '../utils/notificationsAPI';
 import { formatPrice } from '../utils/normalizers';
@@ -28,11 +27,9 @@ import { accentFor } from '../components/deal/DealRoom';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { isBidActionable } from '../utils/dealsUnread';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
-import BellBadge from '../components/ui/v1/BellBadge';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
 import { useVerificationGate } from '../components/VerificationGate';
-import { LEVELS, useAuth } from '../utils/AuthContext';
 
 const ACCENT = "#34936B";
 const ACCENT_SOFT = '#EAF5EF';
@@ -291,8 +288,6 @@ function CompactDealCard({
 
 export default function DealsScreen({ navigation, route }) {
   const { t, lang, sp } = useI18n();
-  const { hasToken } = useAuth();
-  const notificationUnread = useUnreadNotifications(hasToken);
   const { theme, isDark } = useTheme();
   const ceramic = useDriverCeramicColors();
   const role = route?.params?.role || 'client';
@@ -719,19 +714,7 @@ export default function DealsScreen({ navigation, route }) {
       ]}
       testID="deals-minimal-header"
     >
-      <View style={styles.headerWithInbox}>
         <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="deals-minimal-header" menuTestID="deals-menu-btn" />
-        {notificationUnread > 0 ? (
-          <View style={styles.notificationInbox}>
-            <BellBadge
-              count={notificationUnread}
-              onPress={() => navigation.navigate('Notifications', { role })}
-              testID="deals-notification-inbox"
-              ceramic={isDriver}
-            />
-          </View>
-        ) : null}
-      </View>
 
       <View style={styles.tabsRow} testID="deals-primary-tabs">
         <TabChip
@@ -854,8 +837,6 @@ export default function DealsScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: PAGE_BG },
-  headerWithInbox: { position: 'relative' },
-  notificationInbox: { position: 'absolute', right: 60, top: 6, zIndex: 2 },
   scrollingHeader: {
     backgroundColor: PAGE_BG,
     paddingBottom: 0,

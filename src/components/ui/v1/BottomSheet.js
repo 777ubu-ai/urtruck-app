@@ -11,7 +11,7 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, KeyboardAv
 import { useV1Colors } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 
-export default function BottomSheet({ visible, onClose, title, children, scroll = true, footer = null }) {
+export default function BottomSheet({ visible, onClose, title, children, scroll = true, footer = null, testID }) {
   const colors = useV1Colors();
   const { isDark } = useTheme();
   const overlayBg = isDark ? 'rgba(0,0,0,0.7)' : 'rgba(15,23,42,0.45)';
@@ -26,7 +26,7 @@ export default function BottomSheet({ visible, onClose, title, children, scroll 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <TouchableOpacity style={[s.overlay, { backgroundColor: overlayBg }]} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity style={[s.overlay, { backgroundColor: overlayBg }]} activeOpacity={1} onPress={onClose} testID={testID ? `${testID}-overlay` : undefined}>
           <TouchableOpacity
             style={[
               s.sheet,
@@ -34,6 +34,7 @@ export default function BottomSheet({ visible, onClose, title, children, scroll 
             ]}
             activeOpacity={1}
             onPress={() => {}}
+            testID={testID}
           >
             <View style={[s.handle, { backgroundColor: colors.borderStrong }]} />
             {title ? <Text style={[s.title, { color: colors.text }]}>{title}</Text> : null}

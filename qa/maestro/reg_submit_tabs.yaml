@@ -1,6 +1,6 @@
 # reg_submit_tabs — прямое доказательство проверки B: driver, который прошёл
 # submit и авто-одобрен (status=approved, verification_level=3), попадает в
-# ПОЛНЫЙ стек с 5 вкладками, а не висит на экране ожидания.
+# ПОЛНЫЙ канонический стек с 4 вкладками, а не висит на экране ожидания.
 # Токен реального submit-driver передаётся через MAESTRO_REG_TOKEN (см. reg_a.tok).
 # Онбординг-часть — как в _lib/qa-login.yaml, но вместо ensure-actor вставляем
 # наш готовый Bearer-токен. Требует keychain reset перед прогоном (чистый вход).
@@ -41,14 +41,13 @@ tags: [driver, registration, approved, e2e]
 - waitForAnimationToEnd
 - tapOn: { id: "qa-debug-submit" }
 - extendedWaitUntil:
-    visible: { id: "bottom-nav-profile" }
+    visible: { id: "bottom-nav-feed" }
     timeout: 30000
-# ── approved driver → полный стек из 5 вкладок ──
+# ── approved driver → полный стек из 4 вкладок ──
 - assertVisible: { id: "bottom-nav-feed" }
 - assertVisible: { id: "bottom-nav-mywork" }
 - assertVisible: { id: "bottom-nav-queue" }
-- assertVisible: { id: "bottom-nav-chats" }
-- assertVisible: { id: "bottom-nav-profile" }
+- assertVisible: { id: "bottom-nav-deals" }
 # не должен висеть на экране ожидания/обновления
 - assertNotVisible: "Обновить приложение"
-- takeScreenshot: REG_approved_driver_5tabs
+- takeScreenshot: REG_approved_driver_4tabs

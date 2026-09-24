@@ -27,21 +27,20 @@ env:
     timeout: 12000
 - takeScreenshot: DB1_mytrips_bell
 
-# ── Цена сделки в CargoDetail — детерминированная навигация по testID ──
-# Фильтр «Доставлено» (my-work-tab-delivered) → карточка сделки (my-order-card)
-# → openDealCard → CargoDetail c dealId → блок «Цена сделки». Любая доставленная
-# сделка ведёт в CargoDetail с cargo-price-value, поэтому путь устойчив к
-# порядку/количеству элементов (в отличие от прежнего тапа по координате).
-- tapOn: { id: "my-work-tab-delivered" }
+# ── Завершённая сделка — детерминированная навигация через «Сделки» ──
+# Архивная карточка показывает цену сделки; тап открывает единый DealWorkspace.
+- tapOn: { id: "bottom-nav-deals" }
+- waitForAnimationToEnd
+- tapOn: { id: "deals-tab-archive" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "my-order-card" }
+    visible: { id: "deals-deal-card" }
     timeout: 12000
-- tapOn: { id: "my-order-card" }
+- takeScreenshot: DB2_archive_deal_price
+- tapOn: { id: "deals-deal-card", index: 0 }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "cargo-price-value" }
+    visible: { id: "deal-workspace-screen" }
     timeout: 15000
-- assertVisible: { id: "cargo-price-label" }
-- assertVisible: { id: "cargo-price-value" }
-- takeScreenshot: DB3_cargodetail_deal_price
+- assertVisible: { id: "deal-chat-input" }
+- takeScreenshot: DB3_archive_deal_workspace

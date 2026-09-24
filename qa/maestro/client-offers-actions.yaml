@@ -12,23 +12,32 @@ env:
 # Порядок: модалка/reject/accept ДО чата (чат последним — нет стабильного
 # testID «назад» из стека чата). Проверяем: валюта ₸; bid-counter (BidModal),
 # bid-reject (тост «Предложение отклонено»), bid-accept (тост «Предложение
-# принято»), bid-chat (комната).
+# принято»), чат после создания сделки.
 
 - runFlow: _lib/qa-login.yaml
 - waitForAnimationToEnd:
     timeout: 4000
 - tapOn:
-    id: "bottom-nav-mywork"
+    id: "bottom-nav-deals"
 - waitForAnimationToEnd:
     timeout: 3000
 - tapOn:
-    id: "my-work-tab-offers-client"
+    id: "deals-tab-offers"
 - waitForAnimationToEnd:
     timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "deals-driver-bid"
+    timeout: 10000
 - takeScreenshot: ../screenshots/deep-reg/B3-01-offers-tab
 # Валюта груза (KZT → ₸), НЕ хардкод $.
 - assertVisible:
     text: ".*₸.*"
+- tapOn:
+    id: "deals-driver-bid"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 3000
 
 # КОНТР → BidModal «Отправить встречную цену»
 - tapOn:
@@ -69,12 +78,4 @@ env:
 - waitForAnimationToEnd:
     timeout: 2000
 
-# ЧАТ (последним) → открывается комната
-- tapOn:
-    id: "bid-chat"
-    index: 0
-- extendedWaitUntil:
-    visible:
-      id: "chat-input"
-    timeout: 8000
-- takeScreenshot: ../screenshots/deep-reg/B3-05-bid-chat-open
+# Чат становится доступен только после создания сделки; это покрывает release-smoke.

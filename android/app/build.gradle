@@ -94,7 +94,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI passes a unique monotonic code for every Play upload.
         versionCode (project.hasProperty('URTRUCK_VERSION_CODE') ? URTRUCK_VERSION_CODE.toInteger() : 9)
-        versionName "1.0.8"
+        versionName "1.0.9"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -123,6 +123,11 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
+            def qa2Release = project.hasProperty('URTRUCK_QA2') && URTRUCK_QA2.toString().toBoolean()
+            if (qa2Release) {
+                applicationIdSuffix ".qa2"
+                versionNameSuffix "-qa2"
+            }
             def releaseTaskRequested = gradle.startParameter.taskNames.any { taskName ->
                 taskName.toLowerCase(java.util.Locale.ROOT).contains('release')
             }

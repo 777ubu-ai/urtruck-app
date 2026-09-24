@@ -1,0 +1,20 @@
+name: Build Android QA2 (debug lineage)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type RECOVER_QA2 to bootstrap the isolated QA2 server
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-isolated-qa2:
+    name: Bootstrap isolated QA2 server
+    uses: ./.github/workflows/qa-staging-recovery.yml
+    with:
+      confirmation: ${{ inputs.confirmation }}
+    secrets: inherit

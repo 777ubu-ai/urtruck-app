@@ -20,16 +20,18 @@ env:
 - runFlow: _lib/qa-login.yaml
 
 # Открываем комнату чата сделки (верхняя — самая свежая).
-- assertVisible: { id: "bottom-nav-chats" }
-- tapOn: { id: "bottom-nav-chats" }
+- assertVisible: { id: "bottom-nav-deals" }
+- tapOn: { id: "bottom-nav-deals" }
+- waitForAnimationToEnd
+- tapOn: { id: "deals-tab-active" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "deal-room-list-card" }
+    visible: { id: "deals-deal-card" }
     timeout: 12000
-- tapOn: { id: "deal-room-list-card", index: 0 }
+- tapOn: { id: "deals-deal-card", index: 0 }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "chat-input" }
+    visible: { id: "deal-chat-input" }
     timeout: 12000
 
 # У водителя на контр-оффере ЕСТЬ карточка торга и кнопка ответа.
@@ -44,7 +46,7 @@ env:
 - tapOn: { id: "bargain-accept-counter" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "chat-deal-banner" }
+    visible: { id: "deal-compact-header" }
     timeout: 15000
-- assertVisible: { id: "chat-deal-banner" }
+- assertVisible: { id: "deal-compact-header" }
 - takeScreenshot: CR2_deal_done

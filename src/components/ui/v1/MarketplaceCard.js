@@ -9,9 +9,9 @@ import BookmarkButton from './BookmarkButton';
 import StatusPill from './StatusPill';
 import { useV1Colors, useDriverCeramicColors, useV1Typography } from '../../../theme/designV1';
 
-// The fixed price rail keeps amounts/dates readable without pushing the route
-// onto a second line on compact phones.
-const PRICE_COLUMN_WIDTH = 108;
+// Price sits in the lower metadata row so the route owns the full top row.
+// The narrow rail preserves compact 84dp cards and keeps amounts readable.
+const PRICE_COLUMN_WIDTH = 100;
 
 export default function MarketplaceCard({
   testID,
@@ -71,22 +71,22 @@ export default function MarketplaceCard({
         ) : (
       <Text style={[s.routeText, { color: palette.text }]} numberOfLines={1}>{routeLabel || '—'}</Text>
         )}
-        {price ? (
-          <View style={s.priceColumn}>
-            <Text style={[typo.price, s.price, { color: palette.text }]} numberOfLines={1} testID={priceTestID}>{price}</Text>
-            {priceMeta ? <Text style={[s.priceMeta, { color: palette.textMuted }]} numberOfLines={1}>{priceMeta}</Text> : null}
-          </View>
-        ) : null}
         {chevron ? <Feather name="chevron-right" size={18} color={colors.textDim} style={s.chevron} /> : null}
       </View>
 
-      {firstMeta || body || status || rightMeta || bookmark || unread > 0 ? (
+      {firstMeta || body || status || price || rightMeta || bookmark || unread > 0 ? (
         <View style={s.bottomRow}>
           <View style={s.bottomText}>
             {firstMeta ? <Text style={[s.meta, { color: palette.textMuted }]} numberOfLines={1}>{firstMeta}</Text> : null}
             {body ? <Text style={[s.description, { color: palette.textMuted }]} numberOfLines={1} ellipsizeMode="tail">{body}</Text> : null}
             {status ? <StatusPill status={status.key} label={status.label} color={status.color} testID={status.testID} /> : null}
           </View>
+          {price ? (
+            <View style={s.priceColumn}>
+              <Text style={[typo.price, s.price, { color: palette.text }]} numberOfLines={1} testID={priceTestID}>{price}</Text>
+              {priceMeta ? <Text style={[s.priceMeta, { color: palette.textMuted }]} numberOfLines={1}>{priceMeta}</Text> : null}
+            </View>
+          ) : null}
           {rightMeta ? <Text style={[s.rightMeta, { color: palette.textMuted }]} numberOfLines={1}>{rightMeta}</Text> : null}
             {unread > 0 ? <View style={[s.unread, { backgroundColor: colors.error }]} testID="deals-card-unread"><Text style={s.unreadText}>{unread > 9 ? '9+' : unread}</Text></View> : null}
           {bookmark ? <BookmarkButton saved={bookmark.saved} onPress={bookmark.onToggle} testID={bookmark.testID} accessibilityLabel={bookmark.accessibilityLabel} /> : null}
@@ -104,10 +104,10 @@ const s = StyleSheet.create({
   dimmed: { opacity: 0.62 },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 0 },
   routeText: { flex: 1, minWidth: 0, fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.15 },
-  priceColumn: { width: PRICE_COLUMN_WIDTH, marginLeft: 8, alignItems: 'flex-end', flexShrink: 0 },
+  priceColumn: { width: PRICE_COLUMN_WIDTH, marginLeft: 6, alignItems: 'flex-end', flexShrink: 0 },
   // Stretch the two labels across the fixed rail. On Android this prevents
   // an intrinsic-width Text node from ellipsizing a short price such as $8 000.
-  price: { alignSelf: 'stretch', textAlign: 'right', fontVariant: ['tabular-nums'], letterSpacing: -0.1 },
+  price: { alignSelf: 'stretch', textAlign: 'right', fontSize: 16, lineHeight: 20, fontVariant: ['tabular-nums'], letterSpacing: -0.1 },
   priceMeta: { alignSelf: 'stretch', fontSize: 11, lineHeight: 13, fontWeight: '600', textAlign: 'right' },
   chevron: { marginLeft: 4, marginTop: 1, flexShrink: 0 },
   meta: { fontSize: 12, lineHeight: 14, fontWeight: '600' },

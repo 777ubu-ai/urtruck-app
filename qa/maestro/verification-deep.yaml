@@ -16,10 +16,7 @@ env:
 - runFlow: _lib/qa-login.yaml
 - waitForAnimationToEnd:
     timeout: 4000
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd:
-    timeout: 4000
+- runFlow: _lib/open-profile.yaml
 - extendedWaitUntil:
     visible:
       id: "profile-push-filter"

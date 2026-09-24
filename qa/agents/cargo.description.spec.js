@@ -20,6 +20,10 @@ const { log } = require('../utils/qaReport');
 const ACTOR = 'agent-cargo-description';
 
 async function bootCreateCargoAsClient(page) {
+  // Generic auxiliary fallback is registered first; the specific handlers
+  // below take precedence and keep this isolated flow deterministic.
+  await page.route('**/api/v1/**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   // Все mock'и для backend (auth + main + cargos endpoints).
   await page.route('**/api/v1/register/me', (r) =>
     r.fulfill({ status: 200, contentType: 'application/json',
@@ -42,20 +46,19 @@ async function bootCreateCargoAsClient(page) {
   await page.route('**/api/v1/market/trips*', (r) =>
     r.fulfill({ status: 200, contentType: 'application/json', body: '{"trips":[]}' }));
 
-  // Сразу инжектим session в localStorage — это пропускает SMS/OTP/profile,
-  // AppNavigator (Stage 35) роутит сразу в Main по hasToken+session+role.
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
-  await page.evaluate(() => {
-    try {
-      window.localStorage.setItem('ur_reg_token', 'mock-stage42-cargo-token');
-      window.localStorage.setItem('ur_verification_level', '1');
-      window.localStorage.setItem('ur_session', JSON.stringify({
-        user: { id: 'u_mock_client', phone: '+77000000099', role: 'client' },
-      }));
-    } catch {}
+  // Install the verified client session before the first application script.
+  // Post-navigation injection races AuthProvider's asynchronous no-token cleanup.
+  await page.addInitScript(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem('ur_reg_token', 'mock-stage42-cargo-token');
+    localStorage.setItem('ur_verification_level', '1');
+    localStorage.setItem('ur_session', JSON.stringify({
+      user: { id: 'u_mock_client', phone: '+77000000099', role: 'client' },
+    }));
   });
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
-  await page.waitForTimeout(2500);
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(1200);
 
   // Должны быть в Main как client. waitFor реально ждёт mount.
   let inMain = false;

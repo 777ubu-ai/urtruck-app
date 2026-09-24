@@ -228,8 +228,11 @@ export default function TripDetail({ navigation, route }) {
   const [reviewRating, setReviewRating] = React.useState(0);
   const [reviewText, setReviewText] = React.useState('');
   const [reviewSent, setReviewSent] = React.useState(false);
+  const [reviewChecked, setReviewChecked] = React.useState(false);
   const [reviewLoading, setReviewLoading] = React.useState(false);
   const tid = (trip && trip.id) || tripId;
+  const reviewTargetId = isShipper ? (driverId || trip.driverId) : shipperId;
+  const reviewReferenceId = dealId || tid;
 
   // Один источник ставок — GET /bids?trip_id (как CargoDetail): даёт счётчик
   // предложений, confidential-режим, owner-вид и МОЮ ставку со встречкой
@@ -297,6 +300,27 @@ export default function TripDetail({ navigation, route }) {
     const iv = setInterval(refreshAll, 15000);
     return () => clearInterval(iv);
   }, [refreshAll]));
+
+  useFocusEffect(React.useCallback(() => {
+    let active = true;
+    if (dealStatus !== 'completed' || !reviewTargetId || !reviewReferenceId) {
+      setReviewChecked(false);
+      return () => { active = false; };
+    }
+    setReviewChecked(false);
+    reviewsAPI.eligibility(reviewTargetId, reviewReferenceId)
+      .then((result) => {
+        if (!active) return;
+        setReviewSent(Boolean(result?.already_reviewed));
+        setReviewChecked(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        setReviewSent(false);
+        setReviewChecked(true);
+      });
+    return () => { active = false; };
+  }, [dealStatus, reviewTargetId, reviewReferenceId]));
 
   React.useEffect(() => { if (refreshBidTick > 0) refreshAll(); }, [refreshBidTick]);
 
@@ -546,6 +570,7 @@ export default function TripDetail({ navigation, route }) {
           transit={trip.transit}
           capacityTons={trip.capacityTons}
           weather={tripWeather}
+          role={role}
           onOpenRates={session?.user?.id ? () => navigation.navigate('Wallet', { role }) : undefined}
           onOpenWeather={tripWeather && trackingAvailable ? () => navigation.navigate('Chat', {
             roomId: chatRoomId, dealId, role, tripId: trip.id, action: 'tracking',
@@ -850,7 +875,7 @@ export default function TripDetail({ navigation, route }) {
       {/* Отзыв после доставки. Trip-сделка не проходит через CargoDetail,
           поэтому без этого блока участникам trip-сделки было негде оценить
           друг друга. Клиент оценивает водителя, водитель — клиента. */}
-      {dealStatus === 'completed' && !reviewSent && (isShipper ? (driverId || trip.driverId) : shipperId) ? (
+      {dealStatus === 'completed' && reviewChecked && !reviewSent && reviewTargetId ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.reviewBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.reviewTitle, { color: theme.text }]}>{isShipper ? t('rate_driver') : t('rate_shipper')}</Text>
@@ -877,7 +902,7 @@ export default function TripDetail({ navigation, route }) {
                 try {
                   const result = await reviewsAPI.create({
                     tripId: dealId || tid,
-                    targetId: isShipper ? (driverId || trip.driverId) : shipperId,
+                    targetId: reviewTargetId,
                     targetRole: isShipper ? 'driver' : 'client',
                     rating: reviewRating,
                     text: reviewText.trim() || null,
@@ -885,8 +910,13 @@ export default function TripDetail({ navigation, route }) {
                   if (!result?.ok) throw new Error(result?.detail || 'review_failed');
                   setReviewSent(true);
                   toast(t('thanks_for_review'), 'success');
-                } catch {
-                  toast(t('review_failed'), 'error');
+                } catch (error) {
+                  if (error?.status === 409) {
+                    setReviewSent(true);
+                    toast(t('thanks_for_review'), 'success');
+                  } else {
+                    toast(t('review_failed'), 'error');
+                  }
                 }
                 setReviewLoading(false);
               }}

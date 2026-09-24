@@ -5,6 +5,10 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Exact source commit SHA to build
+        required: true
   push:
     branches: [main, "claude/**"]
 
@@ -18,8 +22,10 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout repo
+      - name: Checkout exact candidate source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -28,18 +34,52 @@ jobs:
           cache: 'npm'
 
       - name: Set QA2 build contract
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
+          QA_API_URL: ${{ secrets.QA2_API_URL }}
         run: |
           set -euo pipefail
+          RESOLVED_SOURCE_SHA="$(git rev-parse HEAD)"
+          test "$RESOLVED_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA" || {
+            echo "::error::Expected exact source SHA $EXPECTED_SOURCE_SHA, resolved $RESOLVED_SOURCE_SHA"
+            exit 1
+          }
+          test -n "${QA_API_URL:-}" || {
+            echo "::error::QA2_API_URL is required for QA2 Android builds"
+            exit 1
+          }
+          QA_HOST="$(python3 - <<'PY'
+          from urllib.parse import urlparse
+          import os
+          print(urlparse(os.environ['QA_API_URL']).hostname or '')
+          PY
+          )"
+          test -n "$QA_HOST" || { echo "::error::QA2 API URL has no host"; exit 1; }
+          case "$QA_HOST" in
+            urtruck.kz|www.urtruck.kz|185.22.65.11)
+              echo "::error::QA2 Android build must not target production"
+              exit 1
+              ;;
+          esac
+          qa_ok=no
+          for path in /health /api/version; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${QA_API_URL%/}${path}" || true)"
+            [[ "$code" =~ ^2 ]] && qa_ok=yes && break
+          done
+          test "$qa_ok" = yes || {
+            echo "::error::QA2 Android build target is not healthy"
+            exit 1
+          }
+          echo "URTRUCK_SOURCE_SHA=$RESOLVED_SOURCE_SHA" >> "$GITHUB_ENV"
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
-          echo "URTRUCK_VERSION_NAME=1.0.8" >> "$GITHUB_ENV"
-          # Must be strictly newer than the currently installed QA2 artifact.
-          # QA070: CGR/Border role-aware integration candidate.
-          # Must be newer than QA069 used by the previous diagnostic artifact.
-          echo "URTRUCK_VERSION_CODE=211040070" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_NAME=1.0.9" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_CODE=211040081" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
-          # Restore the live service endpoint. The isolated adb-reverse harness
-          # has stub STT/translation and no native FCM credentials.
-          echo "EXPO_PUBLIC_API_URL=https://urtruck.kz" >> "$GITHUB_ENV"
+          printf 'EXPO_PUBLIC_API_URL=%s\n' "$QA_API_URL" >> "$GITHUB_ENV"
+          echo "QA2_API_TARGET=healthy-nonproduction"
+
+      - name: Verify QA2 build regression contract
+        run: node --test tests/frontend/test_qa2_live_build_contract.mjs
 
       - name: Materialize QA2 native MapKit build contract
         # Keep the native key out of source and separate from the web JS key.
@@ -100,14 +140,14 @@ jobs:
         # и сам копирует его в android/app/, поэтому здесь файл кладётся в
         # корень репо — ДО prebuild.
         env:
-          ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+          QA2_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
           set -euo pipefail
-          if [ -z "${ANDROID_GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
-            echo "::error::Секрет ANDROID_GOOGLE_SERVICES_JSON_BASE64 не задан — Android push (FCM) не будет работать в этой сборке. См. docs/release/android-firebase-config.md."
+          if [ -z "${QA2_GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
+            echo "::error::Секрет QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64 не задан — QA2 Android push (FCM) не будет работать в этой сборке."
             exit 1
           fi
-          echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > google-services.json
+          echo "$QA2_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > google-services.json
           URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2 \
             python3 scripts/verify_android_firebase_config.py --check-source google-services.json
 
@@ -173,6 +213,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary \
             -PURTRUCK_VERSION_CODE="$URTRUCK_VERSION_CODE" \
+            -PURTRUCK_QA2=true \
             -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true
 
       - name: Verify Firebase runtime resources in build output
@@ -203,7 +244,7 @@ jobs:
           echo "versionName=$URTRUCK_VERSION_NAME"
           echo "versionCode=$URTRUCK_VERSION_CODE"
           echo "targetSdk=36"
-          echo "sourceSHA=${GITHUB_SHA}"
+          echo "sourceSHA=${URTRUCK_SOURCE_SHA}"
           echo "apkSHA256=$SHA256"
           echo "certificateSHA256=$CERT"
 

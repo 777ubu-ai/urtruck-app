@@ -33,6 +33,13 @@ test('publish currency fields show one clear code, not duplicated symbol plus co
   assert.doesNotMatch(createTrip, /\{c\.l\} \{c\.k\}/);
 });
 
+test('cargo loading date trigger opens one controlled calendar and closes cleanly', () => {
+  assert.match(createCargo, /onPress=\{\(\) => setShowDatePicker\(true\)\}/);
+  assert.match(createCargo, /testID="cargo-pickup-date-open"/);
+  assert.match(createCargo, /<DatePicker[\s\S]*defaultOpen[\s\S]*onClose=\{\(\) => setShowDatePicker\(false\)\}/);
+  assert.doesNotMatch(createCargo, /setShowDatePicker\(\(v\) => !v\)/);
+});
+
 test('China-to-Kazakhstan border crossings are displayed in logistics direction', () => {
   assert.match(geography, /'Хоргос → Нур Жолы'/);
   assert.match(geography, /'Дулаты → Калжат'/);

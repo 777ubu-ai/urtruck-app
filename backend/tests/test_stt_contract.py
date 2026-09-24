@@ -512,6 +512,39 @@ def test_12b_429_rate_limit_is_retryable_not_treated_as_bad_audio(monkeypatch):
     # (code, retryable) shape by test_08's TRANSCRIPTION_TIMEOUT/503 case.
 
 
+def test_12c_429_insufficient_quota_is_unavailable_not_a_timeout(monkeypatch):
+    import httpx
+    from services import speech_to_text_service as stt_mod
+
+    request = httpx.Request("POST", stt_mod.OPENAI_TRANSCRIPT_URL)
+    response = httpx.Response(
+        429, request=request,
+        json={"error": {"type": "insufficient_quota", "code": "credit_balance_exhausted"}},
+    )
+
+    class _R:
+        status_code = 429
+
+        def raise_for_status(self):
+            raise httpx.HTTPStatusError("boom", request=request, response=response)
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake")
+    import tempfile
+    fd, path = tempfile.mkstemp(suffix=".m4a")
+    os.write(fd, b"\x00" * 16)
+    os.close(fd)
+    try:
+        monkeypatch.setattr(stt_mod.httpx, "post", lambda *a, **kw: _R())
+        try:
+            stt_mod._transcribe_openai(path, filename="voice.m4a", api_key="sk-test-fake")
+            assert False
+        except stt_mod.SpeechToTextError as exc:
+            assert exc.code == "TRANSCRIPTION_UNAVAILABLE"
+            assert exc.retryable is False
+    finally:
+        os.unlink(path)
+
+
 # ───────────────────── 8. storage_service.is_owned_storage_ref ─────────────
 
 def test_13_is_owned_storage_ref_shapes():

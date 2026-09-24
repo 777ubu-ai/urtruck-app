@@ -10,11 +10,17 @@ import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
 import { useVehicleCopy, ProgressHeader, SelectRow, Label, CountrySheet, countryLabel, styles } from '../../components/vehicle/VehicleSetupUI';
 
 const KEY = 'ur_vehicle_setup_draft';
+// A country is personal data, not a geographic hint. New drafts require an
+// explicit choice; a saved local/server value is still restored below.
+const DEFAULT_DRAFT = {
+  driver_citizenship_country_code: '',
+  vehicle_registration_country_code: '',
+};
 export default function VehicleSetupCountryScreen({ navigation, route }) {
   const { lang, c } = useVehicleCopy();
   const { t } = useI18n();
   const { signOut } = useAuth();
-  const [draft, setDraft] = useState({}); const [sheet, setSheet] = useState(null); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
+  const [draft, setDraft] = useState(DEFAULT_DRAFT); const [sheet, setSheet] = useState(null); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -22,7 +28,7 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
       if (!mounted) return;
       // The picker is backed by the bundled ISO catalogue. Render it from the
       // local draft immediately; server status is only a background merge.
-      setDraft(local);
+      setDraft({ ...DEFAULT_DRAFT, ...local });
       setLoading(false);
       const status = await regAPI.status().catch(() => null);
       if (!mounted || !status) return;
@@ -59,5 +65,5 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
     navigation.navigate('VehicleSetupMachine', { ...route?.params });
   };
   if (loading) return <SafeAreaView style={styles.safe}><DriverRouteBackdrop /><ActivityIndicator color={DRIVER_CERAMIC.active} style={{ marginTop: 80 }} /></SafeAreaView>;
-  return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><DriverRouteBackdrop /><ProgressHeader navigation={navigation} step={1} c={c} /><ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled"><Text style={styles.title}>{c.basics}</Text><Text style={styles.subtitle}>{c.basicsSub}</Text><Label>{c.citizenship}</Label><SelectRow icon="globe" countryCode={draft.driver_citizenship_country_code} value={countryLabel(draft.driver_citizenship_country_code, lang)} onPress={() => setSheet('citizenship')} testID="vehicle-citizenship-selector" /><Label>{c.registration}</Label><SelectRow icon="globe" countryCode={draft.vehicle_registration_country_code} value={countryLabel(draft.vehicle_registration_country_code, lang)} onPress={() => setSheet('registration')} testID="vehicle-registration-selector" />{error ? <Text style={styles.error}>{error}</Text> : null}</ScrollView><View style={styles.footer}><Pressable disabled={!draft.driver_citizenship_country_code || !draft.vehicle_registration_country_code} onPress={next} style={[styles.cta, (!draft.driver_citizenship_country_code || !draft.vehicle_registration_country_code) && styles.ctaDisabled]}><Text style={[styles.ctaText, (!draft.driver_citizenship_country_code || !draft.vehicle_registration_country_code) && styles.disabledText]}>{c.next}</Text></Pressable></View><CountrySheet visible={!!sheet} title={sheet === 'citizenship' ? c.citizenshipSheet : c.registrationSheet} onClose={() => setSheet(null)} onSelect={(iso) => setValue(sheet === 'citizenship' ? 'driver_citizenship_country_code' : 'vehicle_registration_country_code', iso)} /></SafeAreaView>;
+  return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><DriverRouteBackdrop /><ProgressHeader navigation={navigation} step={1} c={c} /><ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled"><Text style={styles.title}>{c.basics}</Text><Text style={styles.subtitle}>{c.basicsSub}</Text><Label>{c.citizenship}</Label><SelectRow icon="globe" countryCode={draft.driver_citizenship_country_code} value={countryLabel(draft.driver_citizenship_country_code, lang)} placeholder={c.select} onPress={() => setSheet('citizenship')} testID="vehicle-citizenship-selector" /><Label>{c.registration}</Label><SelectRow icon="globe" countryCode={draft.vehicle_registration_country_code} value={countryLabel(draft.vehicle_registration_country_code, lang)} placeholder={c.select} onPress={() => setSheet('registration')} testID="vehicle-registration-selector" />{error ? <Text style={styles.error}>{error}</Text> : null}</ScrollView><View style={styles.footer}><Pressable disabled={!draft.driver_citizenship_country_code || !draft.vehicle_registration_country_code} onPress={next} style={[styles.cta, (!draft.driver_citizenship_country_code || !draft.vehicle_registration_country_code) && styles.ctaDisabled]}><Text style={[styles.ctaText, (!draft.driver_citizenship_country_code || !draft.vehicle_registration_country_code) && styles.disabledText]}>{c.next}</Text></Pressable></View><CountrySheet visible={!!sheet} title={sheet === 'citizenship' ? c.citizenshipSheet : c.registrationSheet} onClose={() => setSheet(null)} onSelect={(iso) => setValue(sheet === 'citizenship' ? 'driver_citizenship_country_code' : 'vehicle_registration_country_code', iso)} /></SafeAreaView>;
 }

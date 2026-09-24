@@ -26,7 +26,6 @@ import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
-import BellBadge from '../components/ui/v1/BellBadge';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
@@ -534,13 +533,13 @@ export default function CargoFeedScreen({ navigation }) {
           <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => { setDateFrom(''); setDateTo(''); }}>
             <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>
       </BottomSheet>
 
-      <BottomSheet visible={activeFilter === 'body'} onClose={() => setActiveFilter(null)} title={t('filter_body')}>
+      <BottomSheet visible={activeFilter === 'body'} onClose={() => setActiveFilter(null)} title={t('filter_body')} testID="filter-body-sheet">
         <View style={styles.bodyGrid}>
           <TouchableOpacity
             style={[styles.bodyChip, { backgroundColor: palette.surface, borderColor: palette.border }, !filterType && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
@@ -562,13 +561,13 @@ export default function CargoFeedScreen({ navigation }) {
           <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => setFilterType(null)}>
             <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>
       </BottomSheet>
 
-      <BottomSheet visible={activeFilter === 'price'} onClose={() => setActiveFilter(null)} title={t('filter_price')}>
+      <BottomSheet visible={activeFilter === 'price'} onClose={() => setActiveFilter(null)} title={t('filter_price')} testID="filter-price-sheet">
         {[
           ['newest', t('filter_newest')],
           ['price-asc', t('filter_price_asc')],
@@ -587,7 +586,7 @@ export default function CargoFeedScreen({ navigation }) {
           <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => setSortBy('newest')}>
             <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>

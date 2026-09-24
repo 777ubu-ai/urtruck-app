@@ -23,16 +23,19 @@ test('Serik · driver flow', async ({ page }) => {
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await snap(page, 'serik', 'home-loaded');
 
-  // 2. Select driver role (UI; falls back gracefully if Welcome layout shifts)
-  // Stage 18: full-image RoleScreen — prefer testID hotspot.
-  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|I'm a driver|carrier|driver/i)).first();
+  // 2. Verify the active entry surface. Legacy builds expose role tiles;
+  // current builds use OnboardingV2 and select the role after phone auth.
+  const driverBtn = page.getByTestId('role-driver').first();
+  const onboarding = page.getByTestId('onb-v2-cta-phone').first();
   if (await driverBtn.isVisible().catch(() => false)) {
-    await driverBtn.click().catch(() => {});
-    await page.waitForTimeout(2000);
+    await driverBtn.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(1000);
     await snap(page, 'serik', 'driver-role-selected');
     log.pass(ACTOR, 'select-driver-role');
+  } else if (await onboarding.isVisible().catch(() => false)) {
+    log.pass(ACTOR, 'current-onboarding-entry');
   } else {
-    log.p2(ACTOR, 'select-driver-role', 'driver button not found in current layout — may be already inside the app');
+    log.p1(ACTOR, 'entry-surface-visible', 'neither OnboardingV2 nor legacy driver role is visible');
   }
 
   // 3. Provision a session. Prefer the protected /qa/ensure-actor endpoint

@@ -14,13 +14,15 @@ env:
 - runFlow: _lib/qa-login.yaml
 - takeScreenshot: 01_serik_main
 - tapOn:
-    id: "bottom-nav-chats"
+    id: "bottom-nav-deals"
+- waitForAnimationToEnd
+- tapOn: { id: "deals-tab-active" }
 - waitForAnimationToEnd
 - takeScreenshot: 02_chats_with_deal
 - assertVisible:
-    id: "deal-room-list-card"
+    id: "deals-deal-card"
 - tapOn:
-    id: "deal-room-list-card"
+    id: "deals-deal-card"
 - waitForAnimationToEnd:
     timeout: 4000
 - takeScreenshot: 03_chat_room_open

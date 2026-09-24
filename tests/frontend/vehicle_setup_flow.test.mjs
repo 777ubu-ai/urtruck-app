@@ -10,6 +10,8 @@ const success = read('src/screens/vehicle/VehicleSetupSuccessScreen.js');
 const chooser = read('src/screens/vehicle/VehicleChooserScreen.js');
 const profile = read('src/screens/ProfileScreen.js');
 const api = read('src/utils/vehicleAPI.js');
+const border = read('src/screens/QueueScreenLazyV2.js');
+const copy = read('src/utils/vehicleSetupCopy.js');
 
 test('vehicle setup is a four-step flow with independent country fields', () => {
   assert.match(country, /step=\{1\}/);
@@ -18,7 +20,12 @@ test('vehicle setup is a four-step flow with independent country fields', () => 
   assert.match(success, /step=\{4\}/);
   assert.match(country, /driver_citizenship_country_code/);
   assert.match(country, /vehicle_registration_country_code/);
-  assert.doesNotMatch(country, /KZ.*default|default.*KZ/);
+  assert.match(country, /const DEFAULT_DRAFT[\s\S]*driver_citizenship_country_code: ''/);
+  assert.match(country, /vehicle_registration_country_code: ''/);
+  assert.doesNotMatch(country, /driver_citizenship_country_code: 'KZ'/);
+  assert.doesNotMatch(country, /vehicle_registration_country_code: 'KZ'/);
+  assert.match(country, /placeholder=\{c\.select\}/);
+  assert.match(country, /setDraft\(\{ \.\.\.DEFAULT_DRAFT, \.\.\.local \}\)/);
 });
 
 test('vehicle setup keeps machine separate and reuses it for publishing', () => {
@@ -70,4 +77,15 @@ test('Border and Profile vehicle management return to their originating screen',
 test('machine selectors persist dependent values atomically', () => {
   assert.match(machine, /onSelect=\{\((?:v|value)\) => setValues\(\{ vehicle_type: (?:v|value), body_type: '' \}\)\}/);
   assert.doesNotMatch(machine, /setValue\('vehicle_type', v\); setValue\('body_type', ''\)/);
+});
+
+test('completion failure identifies the real missing data and offers recovery actions', () => {
+  assert.match(success, /BASIC_ONBOARDING_INCOMPLETE/);
+  assert.match(success, /ROLE_ALREADY_SET/);
+  assert.match(success, /Заполните:/);
+  assert.match(success, /finishErrorTitle/);
+  assert.match(success, /basic-onboarding-fix-data/);
+  assert.match(success, /basic-onboarding-retry/);
+  assert.match(copy, /finishErrorTitle/);
+  assert.doesNotMatch(success, /\{basicState === 'loading' \? c\.loading : c\.saveErrorSub\}/);
 });

@@ -105,6 +105,13 @@
     "patch-package": "^8.0.1",
     "sucrase": "^3.35.1"
   },
+  "expo": {
+    "doctor": {
+      "appConfigFieldsNotSyncedCheck": {
+        "enabled": false
+      }
+    }
+  },
   "overrides": {
     "nanoid": "3.3.19",
     "@supabase/realtime-js": {

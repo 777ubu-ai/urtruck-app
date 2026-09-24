@@ -271,7 +271,7 @@ def border_context(user_id: str = Depends(_current_user_id)):
                 "ORDER BY updated_at DESC, created_at DESC LIMIT 30",
                 (user_id,),
             ).fetchall()]
-    return {"role": role, "vehicles": vehicles, "deals": deals, "trips": trips}
+    return {"context_version": 1, "role": role, "vehicles": vehicles, "deals": deals, "trips": trips}
 
 
 @borders_router.get("/lookup")

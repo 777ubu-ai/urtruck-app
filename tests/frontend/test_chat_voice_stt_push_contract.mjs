@@ -5,11 +5,13 @@ import { readFileSync } from 'node:fs';
 const workspace = readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
 const bubble = readFileSync('src/components/VoiceMessageBubble.js', 'utf8');
 const voiceTextState = readFileSync('src/utils/voiceTranscriptState.js', 'utf8');
+const frontendChatApi = readFileSync('src/utils/chatAPI.js', 'utf8');
 const chatApi = readFileSync('backend/api/chat.py', 'utf8');
 const pushI18n = readFileSync('backend/services/push_i18n.py', 'utf8');
 const workflow = readFileSync('.github/workflows/production-deploy-execute.yml', 'utf8');
 const bootstrap = readFileSync('scripts/remote_bootstrap_secure_env.sh', 'utf8');
 const i18n = readFileSync('src/utils/i18n.js', 'utf8');
+const qa2Ai = readFileSync('backend/qa_ai_service/main.py', 'utf8');
 
 test('voice one-tap STT attaches the current-language translation and remains retryable', () => {
   assert.match(workspace, /voiceText\.toggle\(item, lang\)/);
@@ -22,6 +24,23 @@ test('voice one-tap STT attaches the current-language translation and remains re
   assert.match(bubble, /testID="voice-original-btn"/);
   assert.match(bubble, /testID="voice-transcription-retry"/);
   assert.doesNotMatch(bubble, /voice-translation-btn/);
+});
+
+test('queued translation and long transcription override the shared 20 second timeout', () => {
+  assert.match(frontendChatApi, /authedFetchWithTimeout\(`\$\{BASE\}\/translate`[\s\S]*?120000\)/);
+  assert.match(frontendChatApi, /authedFetchWithTimeout\(`\$\{BASE\}\/transcribe`[\s\S]*?240000\)/);
+  assert.match(frontendChatApi, /signal: controller\.signal/);
+});
+
+test('QA2 CPU speech inference uses bounded concurrent low-latency decoding', () => {
+  assert.match(qa2Ai, /_translate_slot = threading\.BoundedSemaphore\(1\)/);
+  assert.match(qa2Ai, /_speech_slots = threading\.BoundedSemaphore\(2\)/);
+  assert.match(qa2Ai, /num_workers=2/);
+  assert.match(qa2Ai, /def transcribe\(file:/);
+  assert.match(qa2Ai, /beam_size=1/);
+  assert.match(qa2Ai, /best_of=1/);
+  assert.match(qa2Ai, /condition_on_previous_text=False/);
+  assert.match(qa2Ai, /without_timestamps=True/);
 });
 
 test('persisted transcript reaches the second participant through the message API', () => {

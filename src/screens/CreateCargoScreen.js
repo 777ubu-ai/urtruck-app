@@ -357,7 +357,8 @@ export default function CreateCargoScreen({ navigation, route }) {
             featherIcon="calendar"
             label={t('pickupDate')}
             value={pickupDate}
-            onPress={() => setShowDatePicker((v) => !v)}
+            onPress={() => setShowDatePicker(true)}
+            testID="cargo-pickup-date-open"
           />
         </View>
       </View>

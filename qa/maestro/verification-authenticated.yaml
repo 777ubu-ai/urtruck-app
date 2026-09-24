@@ -14,9 +14,7 @@ env:
 # Identity-флоу можно открыть только если конкретный PRO-CTA ещё активен.
 - runFlow: _lib/qa-login.yaml
 - takeScreenshot: 01_after_qa_login_verif
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - takeScreenshot: 02_profile_for_verif
 - assertVisible:
     id: "profile-my-status"
