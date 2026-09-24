@@ -511,3 +511,29 @@ jobs:
       - name: Install and verify private QA2 AI
         shell: bash
         run: bash scripts/deploy-qa2-local-ai.sh
+
+  inspect_ai:
+    if: inputs.confirmation == 'INSPECT_QA2_LOCAL_AI'
+    name: Inspect private QA2 AI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+    steps:
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Read private AI health and sanitized logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = "INSPECT_QA2_LOCAL_AI"
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          curl -fsS http://127.0.0.1:8003/health
+          sudo systemctl show urtruck-qa2-ai.service -p ActiveState -p SubState -p MemoryCurrent -p MemoryPeak -p CPUUsageNSec --no-pager
+          sudo journalctl -u urtruck-qa2-ai.service -n 120 --no-pager \
+            | sed -E 's#(token|key|password|secret)=[^[:space:]]+#\1=<redacted>#Ig'
+          REMOTE
