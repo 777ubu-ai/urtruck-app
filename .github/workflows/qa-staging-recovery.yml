@@ -37,6 +37,7 @@ env:
 
 jobs:
   recover:
+    if: inputs.confirmation == 'RECOVER_QA2'
     name: Bootstrap or recover isolated QA2 runtime
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -480,3 +481,33 @@ jobs:
           export SSHPASS="$SERVER_PASS"
           sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
             'rm -f /tmp/urtruck-qa2-recovery.state'
+
+  local_ai:
+    if: inputs.confirmation == 'INSTALL_QA2_LOCAL_AI'
+    name: Deploy private local AI to isolated QA2
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      QA_API_URL: ${{ secrets.QA2_API_URL }}
+    steps:
+      - name: Checkout exact QA2 source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.QA_SOURCE_SHA }}
+
+      - name: Validate local AI contracts
+        run: |
+          test "${{ inputs.confirmation }}" = "INSTALL_QA2_LOCAL_AI"
+          bash -n scripts/deploy-qa2-local-ai.sh
+          python3 -m py_compile backend/services/local_ai_client.py backend/qa_ai_service/main.py
+          node --test tests/frontend/test_qa2_local_ai_workflow.mjs
+
+      - name: Install SSH and rsync
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+
+      - name: Install and verify private QA2 AI
+        shell: bash
+        run: bash scripts/deploy-qa2-local-ai.sh

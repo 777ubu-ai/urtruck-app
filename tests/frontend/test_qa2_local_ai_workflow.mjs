@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 const workflow = fs.readFileSync('.github/workflows/qa2-local-ai.yml', 'utf8');
+const recovery = fs.readFileSync('.github/workflows/qa-staging-recovery.yml', 'utf8');
 
 test('local AI deploy is manual and QA2-only', () => {
   assert.match(workflow, /INSTALL_QA2_LOCAL_AI/);
@@ -36,4 +37,10 @@ test('production is fingerprinted and QA2 has rollback', () => {
   assert.match(workflow, /Roll back QA2 backend on failure/);
   assert.match(workflow, /TRANSCRIBE_PROVIDER':'local_ai'/);
   assert.match(workflow, /TRANSLATE_PROVIDER':'local_ai'/);
+});
+
+test('registered QA2 recovery workflow exposes the isolated local AI mode', () => {
+  assert.match(recovery, /inputs\.confirmation == 'INSTALL_QA2_LOCAL_AI'/);
+  assert.match(recovery, /bash scripts\/deploy-qa2-local-ai\.sh/);
+  assert.match(recovery, /inputs\.confirmation == 'RECOVER_QA2'/);
 });
