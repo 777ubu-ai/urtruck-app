@@ -28,6 +28,7 @@ import ShareModal from '../components/ShareModal';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
+import { vehicleAPI } from '../utils/vehicleAPI';
 import { reviewsAPI } from '../utils/reviews';
 import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { normalizeCargo, cargoDisplay, sanitizeForDisplay, formatPrice } from '../utils/normalizers';
@@ -240,6 +241,20 @@ export default function CargoDetail({ navigation, route }) {
     };
   })();
   const cid = cargoId || c.id;
+  const startBid = async () => {
+    const allowed = await requireLevel(LEVELS.PHONE, 'bid');
+    if (!allowed) return;
+    const result = await vehicleAPI.list();
+    if (!result?.ok) {
+      toast(t('no_connection'), 'error');
+      return;
+    }
+    if (!(result.vehicles || []).length) {
+      navigation.navigate('VehicleSetupCountry', { origin: 'Bid', role: 'driver' });
+      return;
+    }
+    setBidModal(true);
+  };
   // route.params.role is the authoritative side hint when CargoDetail is opened
   // from MyTripsScreen → Orders. The previous id-based comparison is unreliable
   // because session.user.id is a synthetic `u_<timestamp>` until AuthContext
@@ -1135,10 +1150,7 @@ export default function CargoDetail({ navigation, route }) {
           accent={v1Accent.main}
           primary={{
             label: t('suggestPrice'),
-            onPress: async () => {
-              const ok = await requireLevel(LEVELS.PHONE, 'bid');
-              if (ok) setBidModal(true);
-            },
+            onPress: startBid,
             testID: 'cargo-sticky-bid',
           }}
         />

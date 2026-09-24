@@ -206,11 +206,14 @@ export default function MyTripsScreen({ navigation, route }) {
   // пропадал бы от простого захода в «Мои рейсы»/«Мои грузы».
 
   const onPublishRoute = async () => {
-    if (!canPublish) { setPubGateVisible(true); return; }
     const result = await vehicleAPI.list();
     const vehicles = result.ok ? (result.vehicles || []) : [];
-    if (vehicles.length === 0) navigation.navigate('VehicleSetupCountry', { origin: 'CreateTrip', role });
-    else if (vehicles.length === 1) navigation.navigate('CreateTrip', { role, vehicle: vehicles[0], vehicleId: vehicles[0].id });
+    if (vehicles.length === 0) {
+      navigation.navigate('VehicleSetupCountry', { origin: 'CreateTrip', role });
+      return;
+    }
+    if (!canPublish) { setPubGateVisible(true); return; }
+    if (vehicles.length === 1) navigation.navigate('CreateTrip', { role, vehicle: vehicles[0], vehicleId: vehicles[0].id });
     else navigation.navigate('VehicleChooser', { role });
   };
 

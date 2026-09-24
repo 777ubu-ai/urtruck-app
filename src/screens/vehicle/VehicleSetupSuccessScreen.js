@@ -87,6 +87,15 @@ export default function VehicleSetupSuccessScreen({ navigation, route }) {
       navigation.replace('Profile', { role: 'driver' });
       return;
     }
+    if (origin === 'CreateTrip') {
+      const vehicle = route?.params?.vehicle;
+      navigation.replace('CreateTrip', { role: 'driver', vehicle, vehicleId: vehicle?.id });
+      return;
+    }
+    if (origin === 'Bid') {
+      navigation.goBack();
+      return;
+    }
     navigation.reset({
       index: 0,
       routes: [{ name: 'Main', params: { role: 'driver', screen: 'Feed' } }],
@@ -97,7 +106,9 @@ export default function VehicleSetupSuccessScreen({ navigation, route }) {
     ? c.backToBorder
     : origin === 'Profile'
       ? c.backToProfile
-      : (c.goToLoads || c.home);
+      : (origin === 'CreateTrip' || origin === 'Bid')
+        ? c.next
+        : (c.goToLoads || c.home);
 
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']} testID="vehicle-setup-success">
     <DriverRouteBackdrop />
