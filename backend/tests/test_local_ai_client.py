@@ -47,3 +47,23 @@ def test_translation_never_accepts_source_as_result(monkeypatch):
     with pytest.raises(client.LocalAIError) as error:
         client.translate("Груз", "ru", "zh")
     assert error.value.code == "TRANSLATION_FAILED"
+
+
+def test_transcription_422_is_a_file_failure_not_service_outage(monkeypatch, tmp_path):
+    audio = tmp_path / "voice.m4a"
+    audio.write_bytes(b"not-audio")
+    monkeypatch.setattr(client.httpx, "post", lambda *a, **k: FakeResponse({}, status=422))
+    with pytest.raises(client.LocalAIError) as error:
+        client.transcribe(str(audio))
+    assert error.value.code == "TRANSCRIPTION_FAILED"
+    assert error.value.retryable is False
+
+
+def test_transcription_503_is_retryable(monkeypatch, tmp_path):
+    audio = tmp_path / "voice.m4a"
+    audio.write_bytes(b"audio")
+    monkeypatch.setattr(client.httpx, "post", lambda *a, **k: FakeResponse({}, status=503))
+    with pytest.raises(client.LocalAIError) as error:
+        client.transcribe(str(audio))
+    assert error.value.code == "TRANSCRIPTION_TIMEOUT"
+    assert error.value.retryable is True

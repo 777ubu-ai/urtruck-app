@@ -30,6 +30,10 @@ def translate(text: str, source_lang: str | None, target_lang: str) -> dict:
         data = response.json()
     except httpx.TimeoutException as exc:
         raise LocalAIError("TRANSLATION_TIMEOUT", retryable=True) from exc
+    except httpx.HTTPStatusError as exc:
+        retryable = exc.response.status_code >= 500
+        code = "TRANSLATION_TIMEOUT" if retryable else "TRANSLATION_FAILED"
+        raise LocalAIError(code, retryable=retryable) from exc
     except (httpx.HTTPError, ValueError) as exc:
         raise LocalAIError("TRANSLATION_UNAVAILABLE", retryable=True) from exc
     translated = str(data.get("translated_text") or "").strip()
@@ -55,6 +59,10 @@ def transcribe(path: str, filename: str | None = None) -> dict:
         data = response.json()
     except httpx.TimeoutException as exc:
         raise LocalAIError("TRANSCRIPTION_TIMEOUT", retryable=True) from exc
+    except httpx.HTTPStatusError as exc:
+        retryable = exc.response.status_code >= 500
+        code = "TRANSCRIPTION_TIMEOUT" if retryable else "TRANSCRIPTION_FAILED"
+        raise LocalAIError(code, retryable=retryable) from exc
     except (OSError, httpx.HTTPError, ValueError) as exc:
         raise LocalAIError("TRANSCRIPTION_UNAVAILABLE", retryable=True) from exc
     transcript = str(data.get("transcript_text") or "").strip()

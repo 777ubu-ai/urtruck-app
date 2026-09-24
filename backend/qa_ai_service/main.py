@@ -93,7 +93,7 @@ def translate(body: TranslateRequest):
         raise HTTPException(status_code=422, detail="unsupported language")
     if source == target:
         raise HTTPException(status_code=422, detail="same language")
-    if not _slot.acquire(blocking=False):
+    if not _slot.acquire(timeout=75):
         raise HTTPException(status_code=503, detail="busy")
     try:
         translator, tokenizer = _load_translation()
@@ -121,7 +121,7 @@ async def transcribe(file: UploadFile = File(...)):
     data = await file.read(32 * 1024 * 1024 + 1)
     if not data or len(data) > 32 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="invalid audio size")
-    if not _slot.acquire(blocking=False):
+    if not _slot.acquire(timeout=150):
         raise HTTPException(status_code=503, detail="busy")
     suffix = Path(file.filename or "voice.m4a").suffix[:10] or ".m4a"
     temp_path = None
@@ -133,8 +133,16 @@ async def transcribe(file: UploadFile = File(...)):
         transcript = " ".join(segment.text.strip() for segment in segments).strip()
         language = _lang(info.language)
         if not transcript or not language:
-            raise RuntimeError("empty transcript")
+            raise ValueError("empty transcript")
         return {"transcript_text": transcript, "source_lang": language, "provider": "local_faster_whisper"}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        print("[qa2-ai] transcription rejected: no speech detected", flush=True)
+        raise HTTPException(status_code=422, detail="no speech detected") from exc
+    except RuntimeError as exc:
+        print("[qa2-ai] transcription failed: audio decode or inference runtime", flush=True)
+        raise HTTPException(status_code=422, detail="audio could not be decoded") from exc
     except Exception as exc:
         print(f"[qa2-ai] transcription failed: {type(exc).__name__}", flush=True)
         raise HTTPException(status_code=500, detail="transcription failed") from exc
