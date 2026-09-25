@@ -29,7 +29,9 @@ WEBP_BYTES = b"RIFF" + b"\x24\x00\x00\x00" + b"WEBP" + b"\x00" * 32
 PDF_BYTES = b"%PDF-1.7\n" + b"\x00" * 32
 MP3_BYTES = b"ID3\x04\x00\x00\x00\x00\x00\x00" + b"\x00" * 64
 WEBM_BYTES = b"\x1a\x45\xdf\xa3" + b"\x00" * 64
-M4A_BYTES = b"\x00\x00\x00\x18ftypM4A " + b"\x00" * 64
+M4A_BYTES = b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00isom" + b"\x00" * 56
+SAFARI_QUICKTIME_BYTES = b"\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00" + b"\x00" * 64
+SAFARI_COMPATIBLE_BRAND_BYTES = b"\x00\x00\x00\x18ftypzzzz\x00\x00\x00\x00M4A " + b"\x00" * 64
 
 
 def _upload(data: bytes, filename: str = "photo.jpg", content_type: str = "image/jpeg") -> UploadFile:
@@ -70,11 +72,14 @@ def test_sniff_audio_variants_and_rejection():
     assert uv.sniff_audio_mime(MP3_BYTES) == ("mp3", "audio/mpeg")
     assert uv.sniff_audio_mime(WEBM_BYTES) == ("webm", "audio/webm")
     assert uv.sniff_audio_mime(M4A_BYTES) == ("m4a", "audio/mp4")
+    assert uv.sniff_audio_mime(SAFARI_QUICKTIME_BYTES) == ("m4a", "audio/mp4")
+    assert uv.sniff_audio_mime(SAFARI_COMPATIBLE_BRAND_BYTES) == ("m4a", "audio/mp4")
     assert uv.sniff_audio_mime(b"\xff\xfb\x90\x44" + b"\x00" * 16) == ("mp3", "audio/mpeg")
     assert uv.sniff_audio_mime(b"RIFF\x24\x08\x00\x00WAVE" + b"\x00" * 16) == ("wav", "audio/wav")
     assert uv.sniff_audio_mime(b"OggS\x00\x02" + b"\x00" * 16) == ("ogg", "audio/ogg")
     assert uv.sniff_audio_mime(b"\xff\xf1\x50\x80" + b"\x00" * 16) == ("aac", "audio/aac")
     assert uv.sniff_audio_mime(b"MZ\x90\x00" + b"\x00" * 16) is None
+    assert uv.sniff_audio_mime(b"\x00\x00\x00\x18ftypzzzz\x00\x00\x00\x00nope" + b"\x00" * 32) is None
     assert uv.sniff_audio_mime(PDF_BYTES) is None
 
 

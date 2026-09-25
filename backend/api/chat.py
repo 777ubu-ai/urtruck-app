@@ -979,6 +979,13 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
     # binary was stored and served with an audio MIME.
     sniffed = upload_validation.sniff_audio_mime(data)
     if sniffed is None:
+        # First bytes contain only the container signature, not speech/PII.
+        # Keeping it server-side makes the next browser-specific format
+        # diagnosable without accepting arbitrary renamed binary files.
+        print(
+            f"[voice-upload] unsupported bytes={len(data)} signature={data[:16].hex()}",
+            flush=True,
+        )
         raise HTTPException(status_code=415, detail="Неподдерживаемый тип аудио")
     ext, audio_mime = sniffed
     try:
