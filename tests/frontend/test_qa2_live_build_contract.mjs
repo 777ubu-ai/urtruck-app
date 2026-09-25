@@ -20,13 +20,13 @@ test('distributed QA2 requires a healthy non-production API target', () => {
   assert.ok(!workflow.includes('EXPO_PUBLIC_API_URL=http://127.0.0.1:18001'));
 });
 
-test('QA081 checks out and records an explicitly supplied exact source SHA', () => {
+test('QA086 checks out and records an explicitly supplied exact source SHA', () => {
   const sourceInput = workflow.match(/source_ref:\n([\s\S]*?)\n\s*push:/)?.[1] || '';
   assert.ok(sourceInput.includes('required: true'));
   assert.ok(!sourceInput.includes('default:'), 'QA2 build must not silently reuse a stale source SHA');
   assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));
   assert.ok(workflow.includes('test "$RESOLVED_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"'));
-  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040081'));
+  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040086'));
   assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
 });
 
