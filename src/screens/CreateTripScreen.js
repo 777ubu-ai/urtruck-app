@@ -27,7 +27,7 @@ import TruckTypeGrid from '../components/TruckTypeGrid';
 //   - normalizeDateInput for timezone-stable submission
 //   - marketAPI.createTrip(payload)
 //   - validation order matches the old `submitTrip` (toast first error)
-//   - on success → navigate('MyTripsList', { initialTab:'my', justCreatedTrip })
+//   - on success → reset to Main/MyWork so the canonical bottom navigation stays visible
 //
 // "Сохранить как черновик" is a visual stub for now: backend has no
 // status='draft', so the link is disabled with a hint to keep filling.
@@ -190,7 +190,17 @@ export default function CreateTripScreen({ navigation, route }) {
       if (r.ok || r.id) {
         toast('✓ ' + t('trip_published'), 'success', 4000);
         const justCreated = { id: r.id, ...payload, status: 'active', created_at: new Date().toISOString() };
-        navigation.replace('MyTripsList', { role, initialTab: 'my', justCreatedTrip: justCreated });
+        navigation.reset({
+          index: 0,
+          routes: [{
+            name: 'Main',
+            params: {
+              role,
+              screen: 'MyWork',
+              params: { role, initialTab: 'routes', justCreatedTrip: justCreated },
+            },
+          }],
+        });
       } else {
         toast(r.detail || t('send_error'), 'error');
       }

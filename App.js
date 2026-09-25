@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import * as NavigationBar from 'expo-navigation-bar';
 import { Platform, AppState, Linking, BackHandler } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -259,6 +260,21 @@ function AppInner() {
   const base = isDark ? DarkTheme : DefaultTheme;
   const navTheme = { ...base, colors: { ...base.colors, background: theme.bg } };
 
+  // Keep Android system chrome in the same theme as the app. setStyle covers
+  // modern edge-to-edge Android; the async calls preserve correct behaviour
+  // on older three-button/gesture navigation implementations.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const barStyle = isDark ? 'light' : 'dark';
+    try {
+      NavigationBar.setStyle(barStyle);
+      Promise.allSettled([
+        NavigationBar.setBackgroundColorAsync(theme.bg),
+        NavigationBar.setButtonStyleAsync(barStyle),
+      ]).catch(() => {});
+    } catch {}
+  }, [isDark, theme.bg]);
+
   // Авторизован ли для закрытых «глубоких» экранов (Chat/Deals/Profile…).
   // Карточки активных грузов/рейсов — публичный marketplace: guest-стек уже
   // регистрирует CargoDetail/TripDetail, а backend анонимно отдаёт только
@@ -386,7 +402,7 @@ function AppInner() {
   }, [hasToken]);
 
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider style={{ flex: 1, backgroundColor: theme.bg }}>
       <ToastProvider>
         <OfflineBanner />
         <PushPermissionBanner enabled={hasToken} />
@@ -395,7 +411,7 @@ function AppInner() {
           theme={navTheme}
           onReady={() => { navReadyRef.current = true; if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current); }}
         >
-          <StatusBar style="light" />
+          <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.bg} />
           <AppNavigator />
         </NavigationContainer>
       </ToastProvider>

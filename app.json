@@ -96,6 +96,12 @@
       ]
     },
     "plugins": [
+      [
+        "expo-navigation-bar",
+        {
+          "enforceContrast": false
+        }
+      ],
       "./plugins/withAndroidBackCompatibility",
       "./plugins/withAndroidSingleFcmHandler",
       [

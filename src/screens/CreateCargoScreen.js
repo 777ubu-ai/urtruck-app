@@ -227,7 +227,17 @@ export default function CreateCargoScreen({ navigation, route }) {
           status: 'active',
           created_at: new Date().toISOString(),
         };
-        navigation.replace('MyTripsList', { role, initialTab: 'searching', justCreatedCargo: justCreated });
+        navigation.reset({
+          index: 0,
+          routes: [{
+            name: 'Main',
+            params: {
+              role,
+              screen: 'MyWork',
+              params: { role, initialTab: 'searching', justCreatedCargo: justCreated },
+            },
+          }],
+        });
       } else {
         toast(r.detail || t('send_error'), 'error');
       }
