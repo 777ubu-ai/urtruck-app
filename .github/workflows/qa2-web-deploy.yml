@@ -1,0 +1,139 @@
+name: Deploy QA2 Web
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type DEPLOY_QA2_WEB
+        required: true
+        type: string
+
+concurrency:
+  group: urtruck-qa2-web-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      QA_WEB_ROOT: /home/ubuntu/urtruck-qa2-web
+    steps:
+      - name: Require isolated QA confirmation
+        run: test "${{ inputs.confirmation }}" = "DEPLOY_QA2_WEB"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Build QA web with Yandex Maps
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY"
+          npm ci
+          npm run build:web
+          node scripts/injectYandexMaps.mjs
+          grep -q 'api-maps.yandex.ru/2.1/' dist/index.html
+          grep -q 'lang=ru_RU' dist/index.html
+          cp sw-template.js dist/sw.js
+
+      - name: Upload immutable QA web release
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass rsync
+          export SSHPASS="$SERVER_PASS"
+          release="$QA_WEB_ROOT/releases/${GITHUB_SHA}"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "mkdir -p '$release'"
+          sshpass -e rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
+            dist/ "$SERVER_USER@$SERVER_HOST:$release/"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "test -s '$release/index.html' && grep -q 'api-maps.yandex.ru/2.1/' '$release/index.html'"
+
+      - name: Route only QA2 web root to the static release
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "QA_WEB_ROOT='$QA_WEB_ROOT' QA_SHA='${GITHUB_SHA}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          site=/etc/nginx/sites-available/urtruck-qa2
+          backup="$QA_WEB_ROOT/nginx.before-${QA_SHA}"
+          previous="$(readlink "$QA_WEB_ROOT/current" || true)"
+          sudo cp -a "$site" "$backup"
+          ln -sfn "$QA_WEB_ROOT/releases/$QA_SHA" "$QA_WEB_ROOT/current"
+          tmp="$(mktemp)"
+          cat > "$tmp" <<'NGINX'
+          server {
+              server_name qa2.urtruck.kz;
+              client_max_body_size 64m;
+              root /home/ubuntu/urtruck-qa2-web/current;
+              index index.html;
+          
+              location ^~ /api/ {
+                  proxy_pass http://127.0.0.1:8002;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_read_timeout 300s;
+              }
+          
+              location = /health { proxy_pass http://127.0.0.1:8002; }
+              location = /docs { proxy_pass http://127.0.0.1:8002; }
+              location = /openapi.json { proxy_pass http://127.0.0.1:8002; }
+          
+              location / {
+                  try_files $uri $uri/ /index.html;
+              }
+          
+              listen [::]:443 ssl;
+              listen 443 ssl;
+              ssl_certificate /etc/letsencrypt/live/qa2.urtruck.kz/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/qa2.urtruck.kz/privkey.pem;
+              include /etc/letsencrypt/options-ssl-nginx.conf;
+              ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+          }
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name qa2.urtruck.kz;
+              return 301 https://$host$request_uri;
+          }
+          NGINX
+          chmod -R a+rX "$QA_WEB_ROOT/releases/$QA_SHA"
+          chmod a+x "$QA_WEB_ROOT" "$QA_WEB_ROOT/releases"
+          sudo install -o root -g root -m 0644 "$tmp" "$site"
+          rm -f "$tmp"
+          if ! sudo nginx -t; then
+            sudo cp -a "$backup" "$site"
+            if test -n "$previous"; then ln -sfn "$previous" "$QA_WEB_ROOT/current"; fi
+            sudo nginx -t
+            exit 1
+          fi
+          sudo systemctl reload nginx
+          REMOTE
+
+      - name: Verify QA web and API without touching production
+        run: |
+          set -euo pipefail
+          html="$(curl -fsS --max-time 20 https://qa2.urtruck.kz/)"
+          printf '%s' "$html" | grep -q 'api-maps.yandex.ru/2.1/'
+          curl -fsS --max-time 20 https://qa2.urtruck.kz/api/version >/dev/null
+          curl -fsS --max-time 20 https://qa2.urtruck.kz/health >/dev/null
+          prod="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          test -n "$prod"
+          echo "QA2_WEB_DEPLOY=ok"
