@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const profile = fs.readFileSync('src/screens/onboarding/ProfileV2Screen.js', 'utf8');
 const api = fs.readFileSync('backend/api/profile.py', 'utf8');
+const driverRegistration = fs.readFileSync('backend/api/driver_registration.py', 'utf8');
 const attachments = fs.readFileSync('src/components/deal/DealAttachments.js', 'utf8');
 const profileMenu = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
 
@@ -23,6 +24,20 @@ test('active ProfileV2 keeps company optional for basic drivers and required for
   assert.doesNotMatch(profile, /id="country"/);
   assert.doesNotMatch(profile, /id="city"/);
   assert.doesNotMatch(profile, /COUNTRY_REQUIRED/);
+});
+
+test('driver basic form matches backend: IIN optional, date format explained, CTA always reachable', () => {
+  assert.match(driverRegistration, /_BASIC_REQUIRED_FIELDS = \("full_name", "birth_date"\)/);
+  assert.match(profile, /const validIin = role !== 'driver' \|\| !iinDigits \|\|/);
+  assert.match(profile, /const basicFormValid = formValid && validBirthDate;/);
+  assert.doesNotMatch(profile, /basicFormValid = formValid && validBirthDate && validIin/);
+  assert.match(profile, /placeholder=\{ui\.birthDatePlaceholder\}/);
+  assert.match(profile, /if \(role === 'driver' && iinDigits && !validIin\)/);
+  assert.match(profile, /disabled=\{busy\}[\s\S]*accessibilityState=\{\{ disabled: busy \}\}/);
+  assert.ok(
+    profile.indexOf('</KeyboardSafeScrollView>') < profile.indexOf('testID="profile-v2-cta"'),
+    'CTA must stay visible outside the long form scroll area',
+  );
 });
 
 test('backend independently requires name+phone for drivers and company for clients, not country', () => {

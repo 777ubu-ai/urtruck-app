@@ -62,9 +62,12 @@ async function passOtpAndOnboard(page, role, { name = 'QA Tester', phone = '+770
     ]);
     if (await profile.isVisible().catch(() => false)) {
       await page.locator(tid('profile-v2-name')).fill(name);
-      const phone = page.locator(tid('profile-v2-phone'));
-      await phone.waitFor({ state: 'visible', timeout: 8000 });
-      await phone.fill(phone);
+      const phoneInput = page.locator(tid('profile-v2-phone'));
+      await phoneInput.waitFor({ state: 'visible', timeout: 8000 });
+      await phoneInput.fill(phone);
+      if (role === 'driver') {
+        await page.locator(tid('profile-v2-birthDate')).fill('01.01.1990');
+      }
       const company = page.locator(tid('profile-v2-company'));
       await company.waitFor({ state: 'visible', timeout: 8000 });
       await company.fill('UrTruck E2E');

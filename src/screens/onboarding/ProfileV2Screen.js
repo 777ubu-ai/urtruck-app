@@ -35,8 +35,8 @@ const COPY = {
     phoneLabel: 'Основной телефон *',
     birthDateLabel: 'Дата рождения *',
     birthDatePlaceholder: 'ДД.ММ.ГГГГ',
-    birthDateRequired: 'Укажите дату рождения',
-    iinLabel: 'ИИН *',
+    birthDateRequired: 'Укажите дату рождения в формате ДД.ММ.ГГГГ',
+    iinLabel: 'ИИН (необязательно)',
     iinPlaceholder: '12 цифр',
     iinRequired: 'ИИН должен содержать 12 цифр',
     companyLabel: 'Компания / ИП *',
@@ -65,8 +65,8 @@ const COPY = {
     phoneLabel: 'Primary phone *',
     birthDateLabel: 'Date of birth *',
     birthDatePlaceholder: 'DD.MM.YYYY',
-    birthDateRequired: 'Enter your date of birth',
-    iinLabel: 'IIN *',
+    birthDateRequired: 'Enter the date as DD.MM.YYYY',
+    iinLabel: 'IIN (optional)',
     iinPlaceholder: '12 digits',
     iinRequired: 'IIN must contain 12 digits',
     companyLabel: 'Company / business *',
@@ -95,8 +95,8 @@ const COPY = {
     phoneLabel: '主要手机号 *',
     birthDateLabel: '出生日期 *',
     birthDatePlaceholder: '日.月.年',
-    birthDateRequired: '请输入出生日期',
-    iinLabel: '个人识别号 *',
+    birthDateRequired: '请按日.月.年格式输入出生日期',
+    iinLabel: '个人识别号（可选）',
     iinPlaceholder: '12位数字',
     iinRequired: '个人识别号必须为12位数字',
     companyLabel: '公司 / 个体经营 *',
@@ -125,8 +125,8 @@ const COPY = {
     phoneLabel: 'Негізгі телефон *',
     birthDateLabel: 'Туған күні *',
     birthDatePlaceholder: 'КК.АА.ЖЖЖЖ',
-    birthDateRequired: 'Туған күнді көрсетіңіз',
-    iinLabel: 'ЖСН *',
+    birthDateRequired: 'Туған күнді КК.АА.ЖЖЖЖ форматында көрсетіңіз',
+    iinLabel: 'ЖСН (міндетті емес)',
     iinPlaceholder: '12 сан',
     iinRequired: 'ЖСН 12 саннан тұруы керек',
     companyLabel: 'Компания / ЖК *',
@@ -298,20 +298,23 @@ export default function ProfileV2Screen({ navigation, route }) {
   const validName = name.trim().length >= 2;
   const validPhone = isRealPhone(phone);
   const validBirthDate = role !== 'driver' || /^\d{2}\.\d{2}\.\d{4}$/.test(birthDate.trim());
-  const validIin = role !== 'driver' || /^\d{12}$/.test(digitsOnly(iin));
+  const iinDigits = digitsOnly(iin);
+  const validIin = role !== 'driver' || !iinDigits || /^\d{12}$/.test(iinDigits);
   const validCompany = role === 'driver' || company.trim().length >= 2;
   const validMessenger = role === 'driver' || !messengerType
     || (messengerType === 'whatsapp' && sameAsPhone && validPhone)
     || messengerId.trim().length >= 2;
   const formValid = validName && validPhone && validCompany && validMessenger;
-  const basicFormValid = formValid && validBirthDate && validIin;
+  // Basic onboarding backend requires full_name + birth_date only. IIN remains
+  // optional here and is validated only when the driver chooses to enter it.
+  const basicFormValid = formValid && validBirthDate;
 
   const validate = () => {
     const next = {};
     if (!validName) next.name = t('profile_v2_err_name');
     if (!validPhone) next.phone = t('prem_reg_phone_invalid');
     if (role === 'driver' && !validBirthDate) next.birthDate = ui.birthDateRequired;
-    if (role === 'driver' && !validIin) next.iin = ui.iinRequired;
+    if (role === 'driver' && iinDigits && !validIin) next.iin = ui.iinRequired;
     if (!validCompany) next.company = ui.companyRequired;
     if (!validMessenger) next.messenger = ui.messengerRequired;
     setErrors(next);
@@ -456,7 +459,7 @@ export default function ProfileV2Screen({ navigation, route }) {
                 label={ui.birthDateLabel}
                 value={birthDate}
                 onChange={setBirthDate}
-                placeholder=""
+                placeholder={ui.birthDatePlaceholder}
                 keyboardType="numbers-and-punctuation"
                 autoCapitalize="none"
                 s={s}
@@ -471,7 +474,7 @@ export default function ProfileV2Screen({ navigation, route }) {
                 label={ui.iinLabel}
                 value={iin}
                 onChange={(value) => setIin(digitsOnly(value).slice(0, 12))}
-                placeholder=""
+                placeholder={ui.iinPlaceholder}
                 keyboardType="number-pad"
                 inputMode="numeric"
                 autoCapitalize="none"
@@ -566,17 +569,19 @@ export default function ProfileV2Screen({ navigation, route }) {
           </View>
 
           {serverError ? <Text style={s.serverError}>{serverError}</Text> : null}
+        </KeyboardSafeScrollView>
 
+        <View style={s.ctaWrap}>
           <Pressable
             onPress={onContinue}
-            disabled={busy || !basicFormValid}
+            disabled={busy}
             accessibilityRole="button"
-            accessibilityState={{ disabled: busy || !basicFormValid }}
+            accessibilityState={{ disabled: busy }}
             testID="profile-v2-cta"
             style={({ pressed }) => [
-            s.ctaPrimary,
+              s.ctaPrimary,
               { backgroundColor: basicFormValid ? colors.primary : colors.borderStrong },
-              pressed && basicFormValid && s.pressed,
+              pressed && !busy && s.pressed,
             ]}
           >
             {busy ? (
@@ -588,7 +593,7 @@ export default function ProfileV2Screen({ navigation, route }) {
               </>
             )}
           </Pressable>
-        </KeyboardSafeScrollView>
+        </View>
       </KeyboardSafeLayout>
     </SafeAreaView>
   );
@@ -790,6 +795,12 @@ const makeStyles = (colors) => StyleSheet.create({
     color: colors.error,
     textAlign: 'center',
     marginBottom: 10,
+  },
+  ctaWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+    backgroundColor: colors.bg,
   },
   ctaPrimary: {
     minHeight: 48,
