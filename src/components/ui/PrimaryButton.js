@@ -1,11 +1,13 @@
 import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useV1Colors, v1Radius, v1Spacing, v1Typography } from '../../theme/designV1';
+import { useTheme } from '../../utils/ThemeContext';
 
 export default function PrimaryButton({
   label, onPress, variant = 'primary', loading = false, disabled = false, style,
 }) {
   const colors = useV1Colors();
+  const { isDark } = useTheme();
   const isDisabled = disabled || loading;
   // Светлая тема: у secondary фон — зелёный тинт, текст — тёмно-зелёный.
   // Белый текст на surfaceMuted (#F0F4F2) был невидим после light-флипа.
@@ -13,7 +15,7 @@ export default function PrimaryButton({
     : variant === 'secondary' ? colors.driverSoft
     : 'transparent';
   const textColor = variant === 'ghost' ? colors.textMuted
-    : variant === 'secondary' ? colors.driverDeep
+    : variant === 'secondary' ? (isDark ? colors.success : colors.driverDeep)
     : '#fff';
   const borderColor = variant === 'ghost' ? colors.border : 'transparent';
 

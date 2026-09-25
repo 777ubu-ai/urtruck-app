@@ -4,6 +4,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { push } from '../utils/push';
 import { useI18n } from '../utils/useI18n';
 import { useV1Colors } from '../theme/designV1';
+import { useTheme } from '../utils/ThemeContext';
 
 const COPY = {
   RU: {
@@ -39,6 +40,8 @@ const COPY = {
 export default function PushPermissionBanner({ enabled }) {
   const { lang } = useI18n();
   const colors = useV1Colors();
+  const { isDark } = useTheme();
+  const accentColor = isDark ? colors.success : colors.driver;
   const c = COPY[lang] || COPY.RU;
   const [permission, setPermission] = useState('loading');
   const [busy, setBusy] = useState(false);
@@ -76,18 +79,18 @@ export default function PushPermissionBanner({ enabled }) {
 
   return (
     <View style={[s.wrap, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="push-permission-banner">
-      <View style={[s.icon, { backgroundColor: colors.driverSoft }]}><Feather name="bell" size={18} color={colors.driver} /></View>
+      <View style={[s.icon, { backgroundColor: colors.driverSoft }]}><Feather name="bell" size={18} color={accentColor} /></View>
       <View style={s.copy}>
         <Text style={[s.title, { color: colors.text }]}>{c.title}</Text>
         <Text style={[s.body, { color: colors.textMuted }]}>{denied ? c.denied : c.body}</Text>
       </View>
       <TouchableOpacity
-        style={[s.action, { borderColor: colors.driver }]}
+        style={[s.action, { borderColor: accentColor }]}
         onPress={denied ? refresh : enablePush}
         disabled={busy}
         testID="push-permission-enable"
       >
-        <Text style={[s.actionText, { color: colors.driver }]}>{denied ? c.retry : c.enable}</Text>
+        <Text style={[s.actionText, { color: accentColor }]}>{denied ? c.retry : c.enable}</Text>
       </TouchableOpacity>
     </View>
   );
