@@ -40,7 +40,7 @@ test('QA2 CPU speech inference uses bounded concurrent low-latency decoding', ()
   assert.match(qa2Ai, /beam_size=1/);
   assert.match(qa2Ai, /best_of=1/);
   assert.match(qa2Ai, /condition_on_previous_text=False/);
-  assert.match(qa2Ai, /without_timestamps=True/);
+  assert.match(qa2Ai, /word_timestamps=False/);
 });
 
 test('persisted transcript reaches the second participant through the message API', () => {

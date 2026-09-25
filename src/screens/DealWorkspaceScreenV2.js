@@ -1237,7 +1237,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       return;
     }
     try {
-      await chatAPI.send({
+      const sentVoice = await chatAPI.send({
         roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
         isVoice: true, voiceDuration: duration,
         cargoId: deal?.cargo_id || params.cargoId || null, tripId: deal?.trip_id || params.tripId || null,
@@ -1245,6 +1245,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       });
       setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'sent' } : m)));
       setTimeout(loadMessages, 120);
+      // Start STT while the user is still reading the chat. The visible
+      // "В текст" action then uses the server-cached result instead of making
+      // the user wait for CPU inference after the tap.
+      if (sentVoice?.message_id) {
+        chatAPI.transcribe(sentVoice.message_id)
+          .then(() => loadMessages())
+          .catch(() => {});
+      }
     } catch {
       const message = t('voice_error_send');
       failVoice(message);
@@ -1263,7 +1271,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         type: item.voiceMime || null,
       });
       if (!upload?.voice_key) throw new Error('voice upload did not return a key');
-      await chatAPI.send({
+      const sentVoice = await chatAPI.send({
         roomId,
         toUserId: recipientId,
         text: `🎤 ${ui.voiceMessage}`,
@@ -1274,6 +1282,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         tripId: deal?.trip_id || params.tripId || null,
         clientMsgId: item.clientMsgId || item.id,
       });
+      if (sentVoice?.message_id) {
+        chatAPI.transcribe(sentVoice.message_id)
+          .then(() => loadMessages())
+          .catch(() => {});
+      }
       setMessages((items) => items.map((message) => (
         message.id === item.id ? { ...message, sendStatus: 'sent', sendError: null } : message
       )));
