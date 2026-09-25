@@ -31,6 +31,6 @@ test('bottom navigation is compact but still keeps the four approved pages', () 
   // Design v1 Commit 2: tab label 10.5 → 11 (weight 700 kept, LABEL_H 13
   // unchanged — same line box, denser glyph).
   assert.match(bottomNav, /fontSize:\s*11/);
-  assert.match(bottomNav, /Queue:\s*\{\s*driver:\s*'map-pin',\s*client:\s*'map-pin'\s*\}/);
+  assert.match(bottomNav, /Queue:[\s\S]*active: 'map-marker-radius'[\s\S]*inactive: 'map-marker-radius-outline'/);
   assert.doesNotMatch(bottomNav, /Profile:\s*\{/);
 });

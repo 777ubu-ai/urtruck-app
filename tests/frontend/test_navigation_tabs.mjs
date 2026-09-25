@@ -22,8 +22,8 @@ test('approved four-tab role navigation restores Border and removes Profile', ()
 });
 
 test('BottomNav exposes Border and has no Profile tab branch', () => {
-  assert.ok(bottomNav.includes("MyWork: { driver: 'truck', client: 'clipboard' }"));
-  assert.ok(bottomNav.includes("Queue:   { driver: 'map-pin', client: 'map-pin' }"));
+  assert.match(bottomNav, /MyWork:[\s\S]*driver: \{ active: 'routes', inactive: 'map-marker-path' \}/);
+  assert.match(bottomNav, /Queue:[\s\S]*active: 'map-marker-radius'[\s\S]*inactive: 'map-marker-radius-outline'/);
   assert.ok(bottomNav.includes("if (name === 'Queue')   return t('tab_border')"));
   assert.ok(!bottomNav.includes("Profile: { driver: 'user', client: 'user' }"));
   assert.ok(!bottomNav.includes("if (name === 'Profile') return t('tab_profile')"));
@@ -32,7 +32,8 @@ test('BottomNav exposes Border and has no Profile tab branch', () => {
 
 test('BottomNav follows the flat owner reference without shadow haze', () => {
   assert.match(bottomNav, /bar:[\s\S]*shadowOpacity: 0[\s\S]*elevation: 0/);
-  assert.match(bottomNav, /pill:[\s\S]*shadowOpacity: 0[\s\S]*elevation: 0/);
+  assert.match(bottomNav, /pill:[\s\S]*minWidth: 54[\s\S]*borderRadius: 999[\s\S]*shadowOpacity: 0[\s\S]*elevation: 0/);
+  assert.match(bottomNav, /MaterialCommunityIcons name=\{iconName\} size=\{23\}/);
   assert.match(bottomNav, /isFocused && \{ backgroundColor: accent\.soft \}/);
   assert.match(bottomNav, /route\.name === 'Deals' \? dealsUnread : 0/);
 });

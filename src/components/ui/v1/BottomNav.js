@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, AppState } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useV1Colors, useDriverCeramicColors } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
@@ -16,11 +15,25 @@ import { clearAppIconBadge, refreshAppIconBadge } from '../../../utils/appBadge'
 
 const UNREAD_POLL_MS = 12000;
 
+// One contemporary outline/filled family keeps the bar visually coherent.
+// Role-specific meanings remain explicit: cargo, trucks, routes, deals, border.
 const ICONS = {
-  Feed: { driver: 'package', client: 'truck' },
-  MyWork: { driver: 'truck', client: 'clipboard' },
-  Deals: { driver: 'handshake', client: 'handshake' },
-  Queue:   { driver: 'map-pin', client: 'map-pin' },
+  Feed: {
+    driver: { active: 'package-variant-closed', inactive: 'package-variant' },
+    client: { active: 'truck-fast', inactive: 'truck-fast-outline' },
+  },
+  MyWork: {
+    driver: { active: 'routes', inactive: 'map-marker-path' },
+    client: { active: 'package-variant-closed', inactive: 'package-variant' },
+  },
+  Deals: {
+    driver: { active: 'briefcase-check', inactive: 'briefcase-check-outline' },
+    client: { active: 'briefcase-check', inactive: 'briefcase-check-outline' },
+  },
+  Queue: {
+    driver: { active: 'map-marker-radius', inactive: 'map-marker-radius-outline' },
+    client: { active: 'map-marker-radius', inactive: 'map-marker-radius-outline' },
+  },
 };
 
 export default function BottomNav({ state, navigation }) {
@@ -142,8 +155,8 @@ export default function BottomNav({ state, navigation }) {
       <View style={[styles.bar, { backgroundColor: barBg, borderColor: barBorder }]}>
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
-          const iconKey = ICONS[route.name];
-          const iconName = iconKey ? (isDriver ? iconKey.driver : iconKey.client) : 'circle';
+          const iconKey = ICONS[route.name]?.[isDriver ? 'driver' : 'client'];
+          const iconName = iconKey?.[isFocused ? 'active' : 'inactive'] || 'circle-outline';
           const label = labelOf(route.name);
           const iconColor = isFocused ? focusedIconColor : inactiveColor;
           const labelColor = isFocused ? focusedLabelColor : inactiveColor;
@@ -171,11 +184,7 @@ export default function BottomNav({ state, navigation }) {
                   isFocused && { backgroundColor: accent.soft },
                 ]}
               >
-                {route.name === 'Deals' ? (
-                  <MaterialCommunityIcons name="handshake-outline" size={24} color={iconColor} />
-                ) : (
-                  <Feather name={iconName} size={22} color={iconColor} />
-                )}
+                <MaterialCommunityIcons name={iconName} size={23} color={iconColor} />
                 {showBadge ? (
                   <View style={[styles.iconBadge, { backgroundColor: isDriver ? ceramic.error : colors.error, borderColor: barBg }]} testID={badgeTestID}>
                     <Text style={styles.iconBadgeText}>{badgeLabel}</Text>
@@ -200,7 +209,7 @@ const styles = StyleSheet.create({
   wrap: { paddingHorizontal: 12, paddingTop: 4, backgroundColor: 'transparent' },
   bar: {
     flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    paddingHorizontal: 6, paddingTop: 5, paddingBottom: 4, borderRadius: 20, borderWidth: 1,
+    paddingHorizontal: 6, paddingTop: 5, paddingBottom: 4, borderRadius: 24, borderWidth: 1,
     shadowColor: 'transparent', shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0,
   },
   cell: {
@@ -208,8 +217,8 @@ const styles = StyleSheet.create({
     minHeight: PILL_H + LABEL_H + 3,
   },
   pill: {
-    height: PILL_H, minWidth: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 10, shadowColor: 'transparent', shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0,
+    height: PILL_H, minWidth: 54, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 12, shadowColor: 'transparent', shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0,
   },
   label: {
     height: LABEL_H, fontSize: 11, fontWeight: '700', marginTop: 2,
