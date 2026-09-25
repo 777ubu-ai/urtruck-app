@@ -2,6 +2,8 @@
 import re
 from decimal import Decimal
 
+STT_LATIN_ALLOWLIST = {"almaty", "astana", "moscow", "beijing", "khorgos", "dostyk"}
+
 LOGISTICS_TERMS = {
     "cargo": {
         "en": ("cargo", "freight", "goods", "shipment"), "ru": ("груз", "товар", "поставк"),
@@ -130,6 +132,53 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
                 repaired = candidate
                 break
     return repaired
+
+
+def transcription_quality_ok(
+    transcript: str,
+    source: str,
+    confidence: float,
+    *,
+    minimum_confidence: float = 0.70,
+) -> bool:
+    """Reject low-confidence or script-incoherent speech recognition output."""
+    text = str(transcript or "").strip()
+    if not text or confidence < minimum_confidence:
+        return False
+
+    cyrillic = len(re.findall(r"[\u0400-\u04ff]", text))
+    latin = len(re.findall(r"[A-Za-z]", text))
+    han = len(re.findall(r"[\u3400-\u9fff]", text))
+    letters = cyrillic + latin + han
+    if letters == 0:
+        return False
+
+    if source in {"ru", "kk"}:
+        latin_words = {
+            word.casefold()
+            for word in re.findall(r"(?<![A-Za-z])[A-Za-z]{4,}(?![A-Za-z])", text)
+        }
+        if latin_words - STT_LATIN_ALLOWLIST:
+            return False
+        if cyrillic == 0 or han / (cyrillic + han) > 0.25:
+            return False
+    elif source == "zh":
+        if han / letters < 0.50:
+            return False
+    elif source == "en":
+        if latin / letters < 0.85:
+            return False
+    else:
+        return False
+
+    words = re.findall(r"[\w\u3400-\u9fff]+", text.casefold())
+    if len(words) >= 8:
+        seen = set()
+        for trigram in zip(words, words[1:], words[2:]):
+            if trigram in seen:
+                return False
+            seen.add(trigram)
+    return True
 
 
 def translation_quality_ok(source_text: str, translated_text: str, source: str, target: str) -> bool:

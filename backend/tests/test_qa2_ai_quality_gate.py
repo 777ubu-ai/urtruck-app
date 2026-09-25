@@ -1,5 +1,9 @@
 """Quality gates for the isolated QA2 speech and translation service."""
-from qa_ai_service.quality import repair_logistics_translation, translation_quality_ok
+from qa_ai_service.quality import (
+    repair_logistics_translation,
+    transcription_quality_ok,
+    translation_quality_ok,
+)
 
 
 def test_logistics_translation_rejects_lost_meaning():
@@ -51,4 +55,34 @@ def test_quality_gate_supports_kazakh_logistics_terms():
         "货物在仓库，司机在边境。",
         "kk",
         "zh",
+    ) is True
+
+
+def test_transcription_rejects_physical_xiaomi_hallucination():
+    assert transcription_quality_ok(
+        "Корбус ready. При сырае в доварку с твором мони.", "ru", 0.91
+    ) is False
+
+
+def test_transcription_rejects_low_word_confidence():
+    assert transcription_quality_ok(
+        "Груз готов. Водитель будет на складе утром.", "ru", 0.69
+    ) is False
+
+
+def test_transcription_accepts_clear_supported_scripts():
+    assert transcription_quality_ok(
+        "Груз готов. Водитель будет на складе утром.", "ru", 0.91
+    ) is True
+    assert transcription_quality_ok(
+        "货物准备好了，司机早上到仓库。", "zh", 0.91
+    ) is True
+    assert transcription_quality_ok(
+        "Cargo is ready. The driver will arrive at the warehouse.", "en", 0.91
+    ) is True
+
+
+def test_transcription_allows_known_latin_city_in_russian():
+    assert transcription_quality_ok(
+        "Груз готов на складе Almaty.", "ru", 0.91
     ) is True

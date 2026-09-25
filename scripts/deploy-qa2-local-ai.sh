@@ -101,7 +101,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=HF_HUB_OFFLINE=1
 Environment=TRANSFORMERS_OFFLINE=1
 Environment=QA2_AI_MODEL_ROOT=/home/ubuntu/urtruck-qa2-ai/models
-Environment=QA2_STT_MIN_WORD_CONFIDENCE=0.55
+Environment=QA2_STT_MIN_WORD_CONFIDENCE=0.70
 ExecStart=/home/ubuntu/urtruck-qa2-ai/venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8003
 Restart=on-failure
 RestartSec=5
@@ -150,7 +150,7 @@ set -euo pipefail
 voice="$1"
 trap 'rm -f "$voice"' EXIT
 result="$(curl -fsS --max-time 240 -F "language=en" -F "file=@$voice;type=audio/wav" http://127.0.0.1:8003/transcribe)"
-printf '%s' "$result" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("provider")=="local_faster_whisper_large_v3_turbo"; assert d.get("source_lang")=="en"; assert float(d.get("confidence") or 0)>=0.55; assert "cargo" in str(d.get("transcript_text") or "").lower()'
+printf '%s' "$result" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("provider")=="local_faster_whisper_large_v3_turbo"; assert d.get("source_lang")=="en"; assert float(d.get("confidence") or 0)>=0.70; assert "cargo" in str(d.get("transcript_text") or "").lower()'
 echo "QA2_AI_TRANSCRIPTION_EN=healthy"
 REMOTE
 

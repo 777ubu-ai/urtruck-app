@@ -12,9 +12,9 @@ from pydantic import BaseModel, Field
 from transformers import AutoTokenizer
 
 try:
-    from .quality import repair_logistics_translation, translation_quality_ok
+    from .quality import repair_logistics_translation, transcription_quality_ok, translation_quality_ok
 except ImportError:  # uvicorn runs this file as top-level main.py in QA2
-    from quality import repair_logistics_translation, translation_quality_ok
+    from quality import repair_logistics_translation, transcription_quality_ok, translation_quality_ok
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _translate_slot = threading.BoundedSemaphore(1)
@@ -31,7 +31,7 @@ SUPPORTED_LANGS = {"ru", "zh", "kk", "en"}
 LANG_ALIASES = {"cn": "zh", "zh-cn": "zh", "zh-hans": "zh", "kz": "kk", "kk-kz": "kk"}
 NLLB_LANGS = {"ru": "rus_Cyrl", "zh": "zho_Hans", "kk": "kaz_Cyrl", "en": "eng_Latn"}
 KAZAKH_MARKERS = set("әғқңөұүһіӘҒҚҢӨҰҮҺІ")
-STT_MIN_WORD_CONFIDENCE = float(os.getenv("QA2_STT_MIN_WORD_CONFIDENCE", "0.55"))
+STT_MIN_WORD_CONFIDENCE = float(os.getenv("QA2_STT_MIN_WORD_CONFIDENCE", "0.70"))
 LOGISTICS_PROMPTS = {
     "ru": "Груз, склад, загрузка, разгрузка, водитель, машина, прицеп, таможня, граница, документы, маршрут, доставка. Алматы, Астана, Москва, Пекин, Хоргос, Достык.",
     "zh": "货物，仓库，装货，卸货，司机，车辆，挂车，海关，边境，文件，路线，交付。阿拉木图，阿斯塔纳，莫斯科，北京，霍尔果斯，多斯特克。",
@@ -195,8 +195,8 @@ def transcribe(file: UploadFile = File(...), language: str | None = Form(default
         )
         if not transcript or not source_language:
             raise ValueError("empty transcript")
-        if confidence < STT_MIN_WORD_CONFIDENCE:
-            raise HTTPException(status_code=422, detail="transcription confidence too low")
+        if not transcription_quality_ok(transcript, source_language, confidence, minimum_confidence=STT_MIN_WORD_CONFIDENCE):
+            raise HTTPException(status_code=422, detail="transcription quality too low")
         return {
             "transcript_text": transcript,
             "source_lang": source_language,
