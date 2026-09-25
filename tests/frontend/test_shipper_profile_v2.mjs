@@ -8,31 +8,31 @@ const driverRegistration = fs.readFileSync('backend/api/driver_registration.py',
 const attachments = fs.readFileSync('src/components/deal/DealAttachments.js', 'utf8');
 const profileMenu = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
 
-test('active ProfileV2 keeps company optional for basic drivers and required for clients', () => {
+test('active ProfileV2 keeps company and location optional for both roles', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /const validCompany = role === 'driver' \|\| company\.trim\(\)\.length >= 2/);
-  assert.match(profile, /const formValid = validName && validPhone && validCompany && validMessenger/);
+  assert.match(profile, /id="country"/);
+  assert.match(profile, /id="city"/);
+  assert.match(profile, /const basicFormValid = validName && validPhone && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
-  assert.match(profile, /if \(!validCompany\) next\.company/);
+  assert.doesNotMatch(profile, /validCompany/);
   assert.match(profile, /testID=\{`profile-v2-\$\{id\}`\}/);
   assert.match(profile, /name:\s*name\.trim\(\)/);
   assert.match(profile, /phone:\s*phone\.trim\(\)/);
   assert.match(profile, /company_name:\s*company\.trim\(\)/);
-  assert.doesNotMatch(profile, /id="country"/);
-  assert.doesNotMatch(profile, /id="city"/);
+  assert.match(profile, /country:\s*country\.trim\(\)/);
+  assert.match(profile, /city:\s*city\.trim\(\)/);
   assert.doesNotMatch(profile, /COUNTRY_REQUIRED/);
 });
 
-test('driver basic form matches backend: IIN optional, date format explained, CTA always reachable', () => {
-  assert.match(driverRegistration, /_BASIC_REQUIRED_FIELDS = \("full_name", "birth_date"\)/);
-  assert.match(profile, /const validIin = role !== 'driver' \|\| !iinDigits \|\|/);
-  assert.match(profile, /const basicFormValid = formValid && validBirthDate;/);
-  assert.doesNotMatch(profile, /basicFormValid = formValid && validBirthDate && validIin/);
-  assert.match(profile, /placeholder=\{ui\.birthDatePlaceholder\}/);
-  assert.match(profile, /if \(role === 'driver' && iinDigits && !validIin\)/);
+test('driver basic form requires only name and phone; birth date and IIN are absent', () => {
+  assert.match(driverRegistration, /_BASIC_REQUIRED_FIELDS = \("full_name",\)/);
+  assert.doesNotMatch(profile, /id="birthDate"/);
+  assert.doesNotMatch(profile, /id="iin"/);
+  assert.doesNotMatch(profile, /birth_date:\s*birthDate/);
+  assert.doesNotMatch(profile, /iin:\s*digitsOnly/);
   assert.match(profile, /disabled=\{busy\}[\s\S]*accessibilityState=\{\{ disabled: busy \}\}/);
   assert.ok(
     profile.indexOf('</KeyboardSafeScrollView>') < profile.indexOf('testID="profile-v2-cta"'),
@@ -40,13 +40,12 @@ test('driver basic form matches backend: IIN optional, date format explained, CT
   );
 });
 
-test('backend independently requires name+phone for drivers and company for clients, not country', () => {
+test('backend independently requires only name+phone for both roles', () => {
   assert.match(api, /PHONE_REQUIRED/);
   assert.match(api, /NAME_REQUIRED/);
-  assert.match(api, /COMPANY_REQUIRED/);
+  assert.doesNotMatch(api, /COMPANY_REQUIRED/);
   assert.match(api, /if not effective_phone:/);
   assert.match(api, /if not effective_name:/);
-  assert.match(api, /role_norm == "client" and/);
   assert.match(api, /role_norm not in \("driver", "client"\)/);
   assert.doesNotMatch(api, /COUNTRY_REQUIRED/);
 });

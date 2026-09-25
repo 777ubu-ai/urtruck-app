@@ -348,20 +348,19 @@ test('deal status actions use the shared canonical role FSM and GPS starts with 
   assert.match(workspace, /marketAPI\.sendDealLocation/);
 });
 
-test('short onboarding requires name and phone; company remains editable but optional for drivers', () => {
+test('short onboarding requires only name and phone; company and location stay optional', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /const validCompany = role === 'driver' \|\| company\.trim\(\)\.length >= 2/);
-  assert.match(profile, /const formValid = validName && validPhone && validCompany && validMessenger/);
+  assert.match(profile, /id="country"/);
+  assert.match(profile, /id="city"/);
+  assert.match(profile, /const basicFormValid = validName && validPhone && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
-  assert.match(profile, /if \(!validCompany\) next\.company/);
+  assert.doesNotMatch(profile, /validCompany/);
   assert.match(profile, /setRole\(role\)/);
-  assert.doesNotMatch(profile, /id="country"/);
-  assert.doesNotMatch(profile, /id="city"/);
   assert.match(profileApi, /PHONE_REQUIRED/);
   assert.match(profileApi, /NAME_REQUIRED/);
-  assert.match(profileApi, /COMPANY_REQUIRED/);
+  assert.doesNotMatch(profileApi, /COMPANY_REQUIRED/);
   assert.doesNotMatch(profileApi, /COUNTRY_REQUIRED/);
 });

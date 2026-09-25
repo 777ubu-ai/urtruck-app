@@ -46,9 +46,13 @@ def test_complete_basic_sets_basic_status_without_promoting_to_pro(monkeypatch):
     assert result["verification_level"] == 1
 
 
-def test_complete_basic_does_not_require_iin(monkeypatch):
+def test_complete_basic_does_not_require_birth_date_or_iin(monkeypatch):
     updates = {}
-    monkeypatch.setattr(driver_registration.reg_dal, "get_driver", lambda _: _basic_driver(iin=""))
+    monkeypatch.setattr(
+        driver_registration.reg_dal,
+        "get_driver",
+        lambda _: _basic_driver(birth_date="", iin=""),
+    )
     monkeypatch.setattr(driver_registration.reg_dal, "update_driver", lambda _, fields: updates.update(fields))
 
     result = driver_registration.complete_basic_onboarding("basic-driver")

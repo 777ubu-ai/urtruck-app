@@ -138,7 +138,7 @@ def save_draft(body: DraftBody, driver_id: str = Depends(get_current_driver)):
     return {"ok": True, "saved": sorted(updates.keys())}
 
 
-_BASIC_REQUIRED_FIELDS = ("full_name", "birth_date")
+_BASIC_REQUIRED_FIELDS = ("full_name",)
 
 
 def _basic_onboarding_missing(driver: dict) -> list[str]:

@@ -72,9 +72,9 @@ test('vehicle save without publication still completes basic onboarding and erro
   assert.match(success, /navigation\.replace\('Main', \{ role: 'driver' \}\)/);
 });
 
-test('driver basic profile leaves company and messenger optional', () => {
-  assert.match(profile, /const validCompany = role === 'driver' \|\| company\.trim\(\)\.length >= 2/);
-  assert.match(profile, /const validMessenger = role === 'driver' \|\| !messengerType/);
+test('basic profile leaves company and messenger optional', () => {
+  assert.doesNotMatch(profile, /validCompany/);
+  assert.match(profile, /const validMessenger = !messengerType/);
 });
 
 test('Pro documents remain separate stack routes', () => {
