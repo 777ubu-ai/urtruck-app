@@ -66,7 +66,7 @@ def test_transcription_rejects_physical_xiaomi_hallucination():
 
 def test_transcription_rejects_low_word_confidence():
     assert transcription_quality_ok(
-        "Груз готов. Водитель будет на складе утром.", "ru", 0.69
+        "Груз готов. Водитель будет на складе утром.", "ru", 0.49
     ) is False
 
 

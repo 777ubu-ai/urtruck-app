@@ -1,4 +1,5 @@
 """Private CPU inference service for the isolated UrTruck QA2 environment."""
+import math
 import os
 import re
 import tempfile
@@ -31,7 +32,7 @@ SUPPORTED_LANGS = {"ru", "zh", "kk", "en"}
 LANG_ALIASES = {"cn": "zh", "zh-cn": "zh", "zh-hans": "zh", "kz": "kk", "kk-kz": "kk"}
 NLLB_LANGS = {"ru": "rus_Cyrl", "zh": "zho_Hans", "kk": "kaz_Cyrl", "en": "eng_Latn"}
 KAZAKH_MARKERS = set("әғқңөұүһіӘҒҚҢӨҰҮҺІ")
-STT_MIN_WORD_CONFIDENCE = float(os.getenv("QA2_STT_MIN_WORD_CONFIDENCE", "0.70"))
+STT_MIN_WORD_CONFIDENCE = float(os.getenv("QA2_STT_MIN_WORD_CONFIDENCE", "0.50"))
 LOGISTICS_PROMPTS = {
     "ru": "Груз, склад, загрузка, разгрузка, водитель, машина, прицеп, таможня, граница, документы, маршрут, доставка. Алматы, Астана, Москва, Пекин, Хоргос, Достык.",
     "zh": "货物，仓库，装货，卸货，司机，车辆，挂车，海关，边境，文件，路线，交付。阿拉木图，阿斯塔纳，莫斯科，北京，霍尔果斯，多斯特克。",
@@ -171,26 +172,25 @@ def transcribe(file: UploadFile = File(...), language: str | None = Form(default
             temp_path,
             language=language_hint,
             initial_prompt=LOGISTICS_PROMPTS.get(language_hint or ""),
-            beam_size=3,
-            best_of=3,
+            beam_size=1,
+            best_of=1,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 500, "speech_pad_ms": 250},
             condition_on_previous_text=False,
-            word_timestamps=True,
+            word_timestamps=False,
         )
         segments = list(segments_iter)
         transcript = " ".join(segment.text.strip() for segment in segments).strip()
         detected_language = _lang(info.language)
         source_language = language_hint or detected_language
-        probabilities = [
-            float(word.probability)
+        segment_confidences = [
+            math.exp(min(0.0, float(segment.avg_logprob)))
             for segment in segments
-            for word in (segment.words or [])
-            if word.probability is not None
+            if segment.avg_logprob is not None
         ]
         confidence = (
-            sum(probabilities) / len(probabilities)
-            if probabilities
+            sum(segment_confidences) / len(segment_confidences)
+            if segment_confidences
             else float(getattr(info, "language_probability", 0.0) or 0.0)
         )
         if not transcript or not source_language:

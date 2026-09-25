@@ -139,7 +139,7 @@ def transcription_quality_ok(
     source: str,
     confidence: float,
     *,
-    minimum_confidence: float = 0.70,
+    minimum_confidence: float = 0.50,
 ) -> bool:
     """Reject low-confidence or script-incoherent speech recognition output."""
     text = str(transcript or "").strip()

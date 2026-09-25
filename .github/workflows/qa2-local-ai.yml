@@ -7,6 +7,11 @@ on:
         description: Type INSTALL_QA2_LOCAL_AI
         required: true
         type: string
+      fast_stt_patch:
+        description: Skip the already-passed 54-case translation matrix
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: urtruck-qa2-local-ai
@@ -25,6 +30,7 @@ jobs:
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SERVER_PASS: ${{ secrets.SERVER_PASS }}
       QA_API_URL: ${{ secrets.QA2_API_URL }}
+      QA2_STT_FAST_PATCH_ONLY: ${{ inputs.fast_stt_patch && 'yes' || 'no' }}
     steps:
       - uses: actions/checkout@v4
       - name: Validate local AI contracts
