@@ -67,6 +67,20 @@ test('первое нажатие использует существующий 
   assert.equal(state.view('new', 'ru').transcriptText, '你好');
 });
 
+test('background prewarm и немедленное нажатие используют один STT-запрос', async () => {
+  const wait = deferred();
+  const { state, calls } = fixture({ transcribe: () => wait.promise });
+  const background = state.prewarm('new');
+  const tap = state.toggle({ id: 'new', voice: true }, 'RU');
+  await tick();
+  assert.equal(state.view('new', 'ru').transcribing, true);
+  assert.deepEqual(calls, [['stt', 'new', '']]);
+  wait.resolve({ transcript_text: 'Груз готов', source_lang: 'ru', provider: 'local_ai' });
+  await Promise.all([background, tap]);
+  assert.equal(calls.filter(([kind]) => kind === 'stt').length, 1);
+  assert.equal(state.view('new', 'ru').transcriptText, 'Груз готов');
+});
+
 test('одинаковый язык не требует translation, включая нормализацию кодов', async () => {
   for (const [source, target] of [['ru', 'RU'], ['rus', 'ru-RU'], ['Chinese', 'zh_CN'], ['kaz', 'KK']]) {
     const { state, calls } = fixture();

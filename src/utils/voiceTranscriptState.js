@@ -134,6 +134,18 @@ export function createVoiceTranscriptState(api) {
   return {
     hydrate,
     view,
+    prewarm(id) {
+      if (!active || !id) return Promise.resolve();
+      const entry = entryFor(id);
+      const requestGeneration = generation;
+      const isCurrent = () => active && generation === requestGeneration;
+      const pending = transcribe(entry, '', isCurrent);
+      // Publish the in-flight state immediately. If the user taps “В текст”
+      // while background STT is running, toggle() reuses this same promise
+      // instead of issuing a second request that receives HTTP 409.
+      emit();
+      return pending.catch(() => null);
+    },
     connect(listener) {
       active = true;
       listeners.add(listener);

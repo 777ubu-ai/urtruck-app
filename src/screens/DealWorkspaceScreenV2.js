@@ -1249,16 +1249,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       // "В текст" action then uses the server-cached result instead of making
       // the user wait for CPU inference after the tap.
       if (sentVoice?.message_id) {
-        chatAPI.transcribe(sentVoice.message_id)
-          .then(() => loadMessages())
-          .catch(() => {});
+        voiceText.prewarm(sentVoice.message_id)
+          .then(() => loadMessages());
       }
     } catch {
       const message = t('voice_error_send');
       failVoice(message);
       toast(message, 'error');
     }
-  }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
+  }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, voiceText, toast, t]);
 
   const retryFailedVoice = React.useCallback(async (item) => {
     if (!item?.voiceUri || !roomId || !recipientId) return;
@@ -1283,9 +1282,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         clientMsgId: item.clientMsgId || item.id,
       });
       if (sentVoice?.message_id) {
-        chatAPI.transcribe(sentVoice.message_id)
-          .then(() => loadMessages())
-          .catch(() => {});
+        voiceText.prewarm(sentVoice.message_id)
+          .then(() => loadMessages());
       }
       setMessages((items) => items.map((message) => (
         message.id === item.id ? { ...message, sendStatus: 'sent', sendError: null } : message
@@ -1298,7 +1296,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       )));
       toast(message, 'error');
     }
-  }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
+  }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, voiceText, toast, t]);
 
   // The timer effect uses a ref so the 60-second hard stop always invokes the
   // latest callback without restarting the timer on every render.
