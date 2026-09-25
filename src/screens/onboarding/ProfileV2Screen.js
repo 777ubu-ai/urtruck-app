@@ -368,11 +368,14 @@ export default function ProfileV2Screen({ navigation, route }) {
         if (!draftSaved?.ok) throw new Error('basic_profile_save_failed');
       }
 
-      // Водительский basic onboarding продолжается на двух обязательных
-      // шагах: личные данные → автомобиль. Роль driver и Main появляются
-      // только после complete-basic на экране успешного сохранения машины.
+      // В обычной версии личные данные завершают регистрацию водителя.
+      // Автомобиль добавляется отдельно перед первой публикацией рейса;
+      // документы и модерация остаются только в Pro-пути.
       if (role === 'driver') {
-        navigation.replace('VehicleSetupCountry', { role: 'driver', origin: 'basic_onboarding' });
+        const completed = await regAPI.completeBasic();
+        if (!completed?.ok) throw new Error('basic_onboarding_complete_failed');
+        setRole('driver');
+        navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: 'driver' } }] });
         return;
       }
 
@@ -419,7 +422,7 @@ export default function ProfileV2Screen({ navigation, route }) {
             label={ui.nameLabel}
             value={name}
             onChange={setName}
-            placeholder={ui.namePlaceholder}
+            placeholder=""
             autoCapitalize="words"
             s={s}
             colors={colors}
@@ -434,7 +437,7 @@ export default function ProfileV2Screen({ navigation, route }) {
             label={ui.phoneLabel}
             value={phone}
             onChange={setPhone}
-            placeholder={t('prem_reg_phone_placeholder')}
+            placeholder=""
             keyboardType="phone-pad"
             inputMode="tel"
             autoCapitalize="none"
@@ -453,7 +456,7 @@ export default function ProfileV2Screen({ navigation, route }) {
                 label={ui.birthDateLabel}
                 value={birthDate}
                 onChange={setBirthDate}
-                placeholder={ui.birthDatePlaceholder}
+                placeholder=""
                 keyboardType="numbers-and-punctuation"
                 autoCapitalize="none"
                 s={s}
@@ -468,7 +471,7 @@ export default function ProfileV2Screen({ navigation, route }) {
                 label={ui.iinLabel}
                 value={iin}
                 onChange={(value) => setIin(digitsOnly(value).slice(0, 12))}
-                placeholder={ui.iinPlaceholder}
+                placeholder=""
                 keyboardType="number-pad"
                 inputMode="numeric"
                 autoCapitalize="none"
@@ -487,7 +490,7 @@ export default function ProfileV2Screen({ navigation, route }) {
             label={role === 'driver' ? ui.companyOptionalLabel : ui.companyLabel}
             value={company}
             onChange={setCompany}
-            placeholder={ui.companyPlaceholder}
+            placeholder=""
             autoCapitalize="words"
             s={s}
             colors={colors}
@@ -537,7 +540,7 @@ export default function ProfileV2Screen({ navigation, route }) {
               label={ui.messengerContact}
               value={messengerId}
               onChange={setMessengerId}
-              placeholder={ui.messengerPlaceholder}
+              placeholder=""
               autoCapitalize="none"
               s={s}
               colors={colors}

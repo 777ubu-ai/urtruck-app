@@ -40,8 +40,9 @@ test('shipper has its own visual identity and never enters driver vehicle setup'
   assert.match(profile, /shipperTitle: 'Профиль грузоотправителя'/);
   assert.match(profile, /shipperColors/);
   assert.match(profile, /primary: '#C2410C'/);
-  assert.match(profile, /if \(role === 'driver'\)[\s\S]*navigation\.replace\('VehicleSetupCountry'/);
-  assert.match(profile, /setRole\(role\);\s*navigation\.reset/);
+  assert.match(profile, /if \(role === 'driver'\)[\s\S]*regAPI\.completeBasic\(\)/);
+  assert.match(profile, /setRole\('driver'\);\s*navigation\.reset/);
+  assert.doesNotMatch(profile, /navigation\.replace\('VehicleSetupCountry', \{ role: 'driver', origin: 'basic_onboarding' \}\)/);
   assert.doesNotMatch(profileMenu, /testID: 'profile-favorites'/);
   assert.doesNotMatch(profileMenu, /icon: 'heart'/);
 });

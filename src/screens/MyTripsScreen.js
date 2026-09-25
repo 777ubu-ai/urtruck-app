@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Platform, Alert, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useToast } from '../components/Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { vehicleAPI } from '../utils/vehicleAPI';
-import { regAPI } from '../utils/registration';
 import { formatStatus, formatTruckType, formatBids } from '../utils/i18n';
 import { formatDateForDisplay } from '../utils/dateInput';
 import { formatPrice, normalizeTrip } from '../utils/normalizers';
@@ -83,16 +82,6 @@ export default function MyTripsScreen({ navigation, route }) {
   // Меньше 40px, тонкий контур, чтобы не «кричал» и не «для слепого».
   publishRouteBtn: { height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: 'transparent' },
   publishRouteText: { fontSize: 13, fontWeight: '700' },
-  // Gate-модалка размещения рейса (progressive verification).
-  pgBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center', padding: 28 },
-  pgCard: { width: '100%', maxWidth: 420, backgroundColor: v1.surface, borderRadius: 20, padding: 24, alignItems: 'center' },
-  pgIcon: { fontSize: 44, marginBottom: 12 },
-  pgTitle: { color: v1.text, fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 10 },
-  pgText: { color: v1.textMuted, fontSize: 14, lineHeight: 21, textAlign: 'center', marginBottom: 22 },
-  pgBtn: { height: 48, borderRadius: 10, backgroundColor: v1.active || v1.driver, alignItems: 'center', justifyContent: 'center', width: '100%' },
-  pgBtnText: { color: v1.activeText || v1.driverOnAccent || '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  pgCancel: { marginTop: 10, paddingVertical: 8 },
-  pgCancelText: { color: v1.textMuted, fontSize: 13, fontWeight: '600' },
   archiveToggle: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4, marginTop: 2 },
   archiveToggleText: { fontSize: 12, fontWeight: '700' },
 
@@ -171,42 +160,13 @@ export default function MyTripsScreen({ navigation, route }) {
     finally { setExtending(null); }
   };
 
-  // Публикация рейса доступна после basic onboarding либо по legacy Pro-пути.
-  // Источник статуса — regAPI.me(); UI не должен открывать CreateTrip всем
-  // водителям подряд, потому что backend повторяет этот gate.
-  // ({status, verification_level}). verState: loading|approved|review|
-  // rejected|unverified. Basic-профиль допускает публикацию без Pro-документов.
-  const [verState, setVerState] = useState('loading');
-  const [canPublish, setCanPublish] = useState(false);
-  const [pubGateVisible, setPubGateVisible] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
-
-  useEffect(() => {
-    if (!isDriver) { setVerState('approved'); setCanPublish(true); return; } // у клиента кнопки размещения рейса нет
-    let alive = true;
-    (async () => {
-      try {
-        const me = await regAPI.me();
-        if (!alive) return;
-        const eligible = Boolean(me && (me.basic_onboarding_completed || me.status === 'approved' || Number(me.verification_level) >= 3));
-        setCanPublish(eligible);
-        if (eligible) setVerState('approved');
-        else if (me && (me.status === 'pending' || me.status === 'under_review' || me.status === 'manual_review')) setVerState('review');
-        else if (me && me.status === 'rejected') setVerState('rejected');
-        else setVerState('unverified');
-      } catch {
-        if (alive) { setCanPublish(false); setVerState('unverified'); }
-      }
-    })();
-    return () => { alive = false; };
-  }, [isDriver]);
 
   // Гашение бейджа событий (26.07.2026, обе роли): живёт на вкладке «Сделки»
   // (ChatsListScreen в dealsMode). Здесь ничего не гасим — иначе бейдж
   // пропадал бы от простого захода в «Мои рейсы»/«Мои грузы».
 
   const onPublishRoute = async () => {
-    if (!canPublish) { setPubGateVisible(true); return; }
     const result = await vehicleAPI.list();
     const vehicles = result.ok ? (result.vehicles || []) : [];
     if (vehicles.length === 0) navigation.navigate('VehicleSetupCountry', { origin: 'CreateTrip', role });
@@ -699,7 +659,6 @@ export default function MyTripsScreen({ navigation, route }) {
         onSaved={() => load()}
       />
 
-      {/* Progressive verification gate для размещения рейса (driver). */}
       <AppConfirmModal
         visible={!!confirmDialog}
         title={confirmDialog?.msg}
@@ -710,40 +669,6 @@ export default function MyTripsScreen({ navigation, route }) {
         onConfirm={() => settleConfirm(true)}
         testID="my-trips-confirm-modal"
       />
-      <Modal visible={pubGateVisible} transparent animationType="fade" onRequestClose={() => setPubGateVisible(false)}>
-        <View style={s.pgBackdrop}>
-          <View style={s.pgCard} testID="trips-publish-gate">
-            <Feather name="lock" size={40} color={v1.text} style={{ marginBottom: 12 }} />
-            <Text style={s.pgTitle}>
-              {verState === 'review' ? t('trips_gate_pending_title')
-                : verState === 'rejected' ? t('trips_gate_rejected_title')
-                : t(verState === 'unverified' ? 'trips_gate_basic_title' : 'trips_gate_title')}
-            </Text>
-            <Text style={s.pgText}>
-              {verState === 'review' ? t('trips_gate_pending_text')
-                : verState === 'rejected' ? t('trips_gate_rejected_text')
-                : t(verState === 'unverified' ? 'trips_gate_basic_text' : 'trips_gate_text')}
-            </Text>
-            <TouchableOpacity
-              style={s.pgBtn}
-              testID="trips-publish-gate-cta"
-              onPress={() => {
-                setPubGateVisible(false);
-                navigation.navigate(verState === 'review' ? 'Security' : verState === 'rejected' ? 'Citizenship' : 'VehicleSetupCountry', { role: 'driver', origin: 'CreateTrip' });
-              }}
-            >
-              <Text style={s.pgBtnText}>
-                {verState === 'review' ? t('trips_gate_pending_btn')
-                  : verState === 'rejected' ? t('trips_gate_rejected_btn')
-                  : t(verState === 'unverified' ? 'trips_gate_basic_btn' : 'trips_gate_btn')}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s.pgCancel} onPress={() => setPubGateVisible(false)}>
-              <Text style={s.pgCancelText}>{t('not_now')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
       {Gate}
     </SafeAreaView>
   );
