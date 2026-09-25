@@ -3,6 +3,7 @@ import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import Feather from '@expo/vector-icons/Feather';
 import { push } from '../utils/push';
 import { useI18n } from '../utils/useI18n';
+import { useV1Colors } from '../theme/designV1';
 
 const COPY = {
   RU: {
@@ -37,6 +38,7 @@ const COPY = {
 
 export default function PushPermissionBanner({ enabled }) {
   const { lang } = useI18n();
+  const colors = useV1Colors();
   const c = COPY[lang] || COPY.RU;
   const [permission, setPermission] = useState('loading');
   const [busy, setBusy] = useState(false);
@@ -73,19 +75,19 @@ export default function PushPermissionBanner({ enabled }) {
   const denied = permission === 'denied';
 
   return (
-    <View style={s.wrap} testID="push-permission-banner">
-      <View style={s.icon}><Feather name="bell" size={18} color="#34936B" /></View>
+    <View style={[s.wrap, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="push-permission-banner">
+      <View style={[s.icon, { backgroundColor: colors.driverSoft }]}><Feather name="bell" size={18} color={colors.driver} /></View>
       <View style={s.copy}>
-        <Text style={s.title}>{c.title}</Text>
-        <Text style={s.body}>{denied ? c.denied : c.body}</Text>
+        <Text style={[s.title, { color: colors.text }]}>{c.title}</Text>
+        <Text style={[s.body, { color: colors.textMuted }]}>{denied ? c.denied : c.body}</Text>
       </View>
       <TouchableOpacity
-        style={s.action}
+        style={[s.action, { borderColor: colors.driver }]}
         onPress={denied ? refresh : enablePush}
         disabled={busy}
         testID="push-permission-enable"
       >
-        <Text style={s.actionText}>{denied ? c.retry : c.enable}</Text>
+        <Text style={[s.actionText, { color: colors.driver }]}>{denied ? c.retry : c.enable}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -99,18 +101,16 @@ const s = StyleSheet.create({
     minHeight: 64,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#DDE9E2',
-    backgroundColor: '#F6FBF8',
     paddingHorizontal: 12,
     paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  icon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#EAF5EF', alignItems: 'center', justifyContent: 'center' },
+  icon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   copy: { flex: 1, minWidth: 0 },
-  title: { color: '#17221E', fontSize: 13, lineHeight: 17, fontWeight: '700' },
-  body: { color: '#606B66', fontSize: 11.5, lineHeight: 15, marginTop: 2 },
-  action: { minHeight: 38, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#34936B', alignItems: 'center', justifyContent: 'center' },
-  actionText: { color: '#34936B', fontSize: 12, fontWeight: '700' },
+  title: { fontSize: 13, lineHeight: 17, fontWeight: '700' },
+  body: { fontSize: 11.5, lineHeight: 15, marginTop: 2 },
+  action: { minHeight: 38, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  actionText: { fontSize: 12, fontWeight: '700' },
 });

@@ -1,16 +1,17 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { v1Colors, v1Spacing, v1Typography } from '../../theme/designV1';
+import { useV1Colors, v1Spacing, v1Typography } from '../../theme/designV1';
 import PrimaryButton from './PrimaryButton';
 
 export default function EmptyState({ title, description, actionLabel, onAction }) {
+  const colors = useV1Colors();
   return (
     <View style={s.container}>
-      <View style={s.iconWrap}>
-        <Text style={s.icon}>---</Text>
+      <View style={[s.iconWrap, { backgroundColor: colors.surfaceMuted }]}>
+        <Text style={[s.icon, { color: colors.textDim }]}>---</Text>
       </View>
-      <Text style={s.title}>{title}</Text>
-      {description && <Text style={s.desc}>{description}</Text>}
+      <Text style={[s.title, { color: colors.text }]}>{title}</Text>
+      {description && <Text style={[s.desc, { color: colors.textMuted }]}>{description}</Text>}
       {actionLabel && onAction && (
         <PrimaryButton label={actionLabel} onPress={onAction} variant="secondary" style={s.btn} />
       )}
@@ -28,13 +29,11 @@ const s = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: v1Colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: v1Spacing.lg,
   },
   icon: {
-    color: v1Colors.textDim,
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 2,
@@ -45,7 +44,6 @@ const s = StyleSheet.create({
     ...v1Typography.h2,
     fontSize: 18,
     lineHeight: 24,
-    color: v1Colors.text,
     textAlign: 'center',
     marginBottom: v1Spacing.sm,
   },
@@ -53,7 +51,6 @@ const s = StyleSheet.create({
     // v3 body was { fontSize: 14, fontWeight: '400', lineHeight: 20 }.
     ...v1Typography.bodyMd,
     lineHeight: 20,
-    color: v1Colors.textMuted,
     textAlign: 'center',
     maxWidth: 280,
   },
