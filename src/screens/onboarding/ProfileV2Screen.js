@@ -1,5 +1,5 @@
-// ProfileV2Screen — шаг 2 из 2 после выбора роли.
-// Канон onboarding: фамилия/имя + основной телефон обязательны для обеих ролей.
+// ProfileV2Screen — личные данные после выбора роли.
+// Водитель после этого шага обязательно добавляет машину на одной странице.
 // Компания, страна/город и preferred messenger — необязательные контактные данные.
 // Дата рождения и ИИН не запрашиваются в базовой регистрации.
 // Email принадлежит auth-identity и повторно у пользователя не спрашивается.
@@ -357,14 +357,14 @@ export default function ProfileV2Screen({ navigation, route }) {
         if (!draftSaved?.ok) throw new Error('basic_profile_save_failed');
       }
 
-      // В обычной версии личные данные завершают регистрацию водителя.
-      // Автомобиль добавляется отдельно перед первой публикацией рейса;
-      // документы и модерация остаются только в Pro-пути.
+      // Для водителя машина входит в обязательный базовый onboarding.
+      // Роль фиксируется в AuthContext только после сохранения машины и
+      // успешного complete-basic на финальном экране.
       if (role === 'driver') {
-        const completed = await regAPI.completeBasic();
-        if (!completed?.ok) throw new Error('basic_onboarding_complete_failed');
-        setRole('driver');
-        navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: 'driver' } }] });
+        navigation.replace('VehicleSetupCountry', {
+          role: 'driver',
+          origin: 'basic_onboarding',
+        });
         return;
       }
 

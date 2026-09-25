@@ -48,6 +48,8 @@ test('single form contains every required vehicle field', () => {
   assert.match(setup, /const required = \[[\s\S]*'cargo_volume_m3'/);
   assert.match(setup, /disabled=\{incomplete \|\| saving\}/);
   assert.match(setup, /testID="vehicle-save"/);
+  assert.match(setup, /<Label>\{c\.citizenship\}<\/Label>/);
+  assert.match(setup, /<Label>\{c\.registrationShort \|\| c\.registration\}<\/Label>/);
   assert.match(copy, /saveVehicle: 'Сохранить машину'/);
 });
 
@@ -78,6 +80,10 @@ test('Border and Profile vehicle management return to their originating screen',
   assert.match(chooser, /storage\.remove\(DRAFT_KEY\)/);
   assert.match(chooser, /storage\.set\(DRAFT_KEY, JSON\.stringify\(item\)\)/);
   assert.match(chooser, /vehicleId: item\.id/);
+  assert.match(chooser, /vehicleAPI\.remove\(pendingDelete\.id\)/);
+  assert.match(chooser, /testID="vehicle-delete-confirm"/);
+  assert.match(api, /remove: \(vehicleId\).*method: 'DELETE'/);
+  assert.match(copy, /deleteVehicle: 'Удалить машину'/);
   assert.match(success, /origin === 'Border'/);
   assert.match(success, /screen: 'Queue'/);
   assert.match(success, /origin === 'Profile'/);

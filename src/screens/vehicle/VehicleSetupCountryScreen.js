@@ -6,6 +6,7 @@ import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
 import { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 import {
   CountrySheet,
+  Label,
   OptionSheet,
   SelectRow,
   countryLabel,
@@ -220,10 +221,12 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
       <Text style={[styles.title, { marginBottom: 22 }]}>{c.addVehicle}</Text>
       <View style={styles.row}>
         <View style={styles.fieldCell}>
-          <SelectRow countryCode={draft.driver_citizenship_country_code} value={countryLabel(draft.driver_citizenship_country_code, lang)} placeholder={c.citizenship} onPress={() => setSheet('citizenship')} testID="vehicle-citizenship-selector" />
+          <Label>{c.citizenship}</Label>
+          <SelectRow countryCode={draft.driver_citizenship_country_code} value={countryLabel(draft.driver_citizenship_country_code, lang)} placeholder={c.select} onPress={() => setSheet('citizenship')} testID="vehicle-citizenship-selector" />
         </View>
         <View style={styles.fieldCell}>
-          <SelectRow countryCode={draft.vehicle_registration_country_code} value={countryLabel(draft.vehicle_registration_country_code, lang)} placeholder={c.registrationShort || c.registration} onPress={() => setSheet('registration')} testID="vehicle-registration-selector" />
+          <Label>{c.registrationShort || c.registration}</Label>
+          <SelectRow countryCode={draft.vehicle_registration_country_code} value={countryLabel(draft.vehicle_registration_country_code, lang)} placeholder={c.select} onPress={() => setSheet('registration')} testID="vehicle-registration-selector" />
         </View>
       </View>
       <SelectRow icon="truck" value={draft.vehicle_type ? c.types[draft.vehicle_type] : ''} placeholder={c.transport} onPress={() => setSheet('type')} testID="vehicle-type-selector" />

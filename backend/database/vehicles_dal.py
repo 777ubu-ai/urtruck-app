@@ -1,5 +1,6 @@
 """DAL отдельной сущности Vehicle."""
 from pathlib import Path
+import re
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -37,10 +38,16 @@ def upsert_vehicle(owner_user_id: str, payload: dict, vehicle_id: str | None = N
                 (vehicle_id, owner_user_id),
             ).fetchone()
         else:
-            existing = c.execute(
-                "SELECT id FROM vehicles WHERE owner_user_id = ? AND license_plate = ?",
-                (owner_user_id, payload["license_plate"]),
-            ).fetchone()
+            plate_key = re.sub(r"[^0-9A-ZА-ЯЁ]", "", str(payload["license_plate"]).upper())
+            candidates = c.execute(
+                "SELECT id, license_plate FROM vehicles WHERE owner_user_id = ? "
+                "ORDER BY updated_at DESC, created_at DESC",
+                (owner_user_id,),
+            ).fetchall()
+            existing = next((
+                row for row in candidates
+                if re.sub(r"[^0-9A-ZА-ЯЁ]", "", str(row["license_plate"]).upper()) == plate_key
+            ), None)
         if existing:
             vid = existing["id"]
             sets = ", ".join(f"{key} = ?" for key in payload)
@@ -56,3 +63,35 @@ def upsert_vehicle(owner_user_id: str, payload: dict, vehicle_id: str | None = N
             )
         row = c.execute("SELECT * FROM vehicles WHERE id = ?", (vid,)).fetchone()
     return dict(row)
+
+
+def has_active_references(owner_user_id: str, vehicle_id: str) -> bool:
+    """Не даёт удалить машину, которая участвует в незавершённой работе."""
+    checks = (
+        (
+            "SELECT 1 FROM trips WHERE driver_id = ? AND vehicle_id = ? "
+            "AND status IN ('active', 'booked', 'in_transit') LIMIT 1",
+            (owner_user_id, vehicle_id),
+        ),
+        (
+            "SELECT 1 FROM bids WHERE bidder_id = ? AND vehicle_id = ? "
+            "AND status IN ('pending', 'accepted', 'countered') LIMIT 1",
+            (owner_user_id, vehicle_id),
+        ),
+        (
+            "SELECT 1 FROM deals WHERE driver_id = ? AND vehicle_id = ? "
+            "AND status NOT IN ('completed', 'cancelled', 'rejected', 'expired') LIMIT 1",
+            (owner_user_id, vehicle_id),
+        ),
+    )
+    with get_conn() as c:
+        return any(c.execute(sql, params).fetchone() for sql, params in checks)
+
+
+def delete_vehicle(owner_user_id: str, vehicle_id: str) -> bool:
+    with get_conn() as c:
+        cursor = c.execute(
+            "DELETE FROM vehicles WHERE id = ? AND owner_user_id = ?",
+            (vehicle_id, owner_user_id),
+        )
+        return cursor.rowcount > 0
