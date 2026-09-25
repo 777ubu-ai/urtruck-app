@@ -73,7 +73,7 @@ jobs:
           echo "URTRUCK_SOURCE_SHA=$RESOLVED_SOURCE_SHA" >> "$GITHUB_ENV"
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.9" >> "$GITHUB_ENV"
-          echo "URTRUCK_VERSION_CODE=211040081" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_CODE=211040086" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           printf 'EXPO_PUBLIC_API_URL=%s\n' "$QA_API_URL" >> "$GITHUB_ENV"
           echo "QA2_API_TARGET=healthy-nonproduction"
