@@ -155,9 +155,49 @@ echo "QA2_AI_TRANSCRIPTION_EN=healthy"
 REMOTE
 
 if test "${QA2_STT_FAST_PATCH_ONLY:-no}" = yes; then
+  : "${QA2_OPENAI_API_KEY:?QA2 OpenAI STT key is required for the fast path}"
+  secret_file="$(mktemp)"
+  chmod 600 "$secret_file"
+  printf 'OPENAI_API_KEY=%s\n' "$QA2_OPENAI_API_KEY" > "$secret_file"
+  remote_secret="/tmp/urtruck-qa2-fast-stt-$GITHUB_RUN_ID.env"
+  sshpass -e scp -o StrictHostKeyChecking=no "$secret_file" "$SERVER_USER@$SERVER_HOST:$remote_secret"
+  rm -f "$secret_file"
+  "${ssh_cmd[@]}" 'bash -s' -- "$remote_secret" <<'REMOTE'
+set -euo pipefail
+secret_file="$1"
+trap 'rm -f "$secret_file"' EXIT
+python3 - "$secret_file" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+secret_path = Path(sys.argv[1])
+secret = secret_path.read_text().partition("=")[2].strip()
+assert secret
+path = Path("/home/ubuntu/urtruck-qa2/.env")
+lines = path.read_text().splitlines()
+values = {
+    "OPENAI_API_KEY": secret,
+    "TRANSCRIBE_PROVIDER": "openai",
+    "TRANSCRIBE_MODEL": "gpt-4o-mini-transcribe",
+}
+kept = [line for line in lines if line.partition("=")[0].strip() not in values]
+tmp = path.with_name(".env.fast-stt-new")
+tmp.write_text("\n".join(kept + [f"{key}={value}" for key, value in values.items()]) + "\n")
+os.chmod(tmp, 0o600)
+os.replace(tmp, path)
+PY
+sudo systemctl restart urtruck-qa2.service
+for _ in {1..45}; do
+  curl -fsS --max-time 10 http://127.0.0.1:8002/health >/dev/null && break
+  sleep 2
+done
+grep -Fqx 'TRANSCRIBE_PROVIDER=openai' /home/ubuntu/urtruck-qa2/.env
+grep -Fqx 'TRANSCRIBE_MODEL=gpt-4o-mini-transcribe' /home/ubuntu/urtruck-qa2/.env
+REMOTE
   prod_after="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256sum | awk '{print $1}')"
   test "$prod_after" = "$prod_before"
-  echo "QA2_STT_FAST_PATCH=healthy-private"
+  echo "QA2_STT_FAST_PATCH=openai-ready"
   echo "PRODUCTION=healthy-unchanged"
   exit 0
 fi
