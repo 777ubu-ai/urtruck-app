@@ -22,6 +22,7 @@ test('approved four-tab role navigation restores Border and removes Profile', ()
 });
 
 test('BottomNav exposes Border and has no Profile tab branch', () => {
+  assert.ok(bottomNav.includes("MyWork: { driver: 'truck', client: 'clipboard' }"));
   assert.ok(bottomNav.includes("Queue:   { driver: 'map-pin', client: 'map-pin' }"));
   assert.ok(bottomNav.includes("if (name === 'Queue')   return t('tab_border')"));
   assert.ok(!bottomNav.includes("Profile: { driver: 'user', client: 'user' }"));

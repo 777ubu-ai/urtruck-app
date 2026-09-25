@@ -18,7 +18,7 @@ const UNREAD_POLL_MS = 12000;
 
 const ICONS = {
   Feed: { driver: 'package', client: 'truck' },
-  MyWork: { driver: 'clipboard', client: 'clipboard' },
+  MyWork: { driver: 'truck', client: 'clipboard' },
   Deals: { driver: 'handshake', client: 'handshake' },
   Queue:   { driver: 'map-pin', client: 'map-pin' },
 };
