@@ -38,7 +38,7 @@ def test_translation_uses_private_service(monkeypatch):
     monkeypatch.setattr(client.httpx, "post", post)
     result = client.translate("Груз", "ru", "zh")
     assert seen == {"url": "http://127.0.0.1:8003/translate", "json": {"text": "Груз", "source_lang": "ru", "target_lang": "zh"}}
-    assert result["provider"] == "local_m2m100"
+    assert result["provider"] == "local_nllb_1_3b"
     assert result["translated_text"] == "货物"
 
 
@@ -47,6 +47,29 @@ def test_translation_never_accepts_source_as_result(monkeypatch):
     with pytest.raises(client.LocalAIError) as error:
         client.translate("Груз", "ru", "zh")
     assert error.value.code == "TRANSLATION_FAILED"
+
+
+def test_transcription_sends_explicit_language_hint(monkeypatch, tmp_path):
+    audio = tmp_path / "voice.m4a"
+    audio.write_bytes(b"audio")
+    seen = {}
+    def post(url, **kwargs):
+        seen.update(url=url, data=kwargs["data"], timeout=kwargs["timeout"])
+        return FakeResponse({
+            "transcript_text": "Груз готов",
+            "source_lang": "ru",
+            "provider": "local_faster_whisper_large_v3_turbo",
+            "confidence": 0.97,
+        })
+    monkeypatch.setattr(client.httpx, "post", post)
+    result = client.transcribe(str(audio), language="ru-RU")
+    assert seen == {
+        "url": "http://127.0.0.1:8003/transcribe",
+        "data": {"language": "ru"},
+        "timeout": 240.0,
+    }
+    assert result["source_lang"] == "ru"
+    assert result["confidence"] == 0.97
 
 
 def test_transcription_422_is_a_file_failure_not_service_outage(monkeypatch, tmp_path):

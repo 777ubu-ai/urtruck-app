@@ -215,13 +215,15 @@ def test_05_participant_blocked_once_deal_leaves_chat_eligible_statuses(monkeypa
 # ───────────────────── 4. real transcription + idempotency ─────────────────
 
 def test_06_transcribe_success_and_idempotent_on_repeat(monkeypatch):
-    calls = {"n": 0}
+    calls = {"n": 0, "language": None}
 
     def fake_transcribe(audio_ref, *, filename=None, language=None):
         calls["n"] += 1
+        calls["language"] = language
         return {"transcript_text": "hello world", "provider": "openai", "source_lang": "en"}
 
-    from services import speech_to_text_service
+    from services import push_gateway, speech_to_text_service
+    monkeypatch.setattr(push_gateway, "get_recipient_locale", lambda user_id: "en-US")
     monkeypatch.setattr(speech_to_text_service, "transcribe_audio_ref", fake_transcribe)
 
     _as(A)
@@ -231,6 +233,7 @@ def test_06_transcribe_success_and_idempotent_on_repeat(monkeypatch):
     assert body["transcript_text"] == "hello world"
     assert body["cached"] is False
     assert calls["n"] == 1
+    assert calls["language"] == "en"
 
     # Idempotency: a second call (by either participant) must NOT invoke
     # the provider again — the persisted transcript is reused.

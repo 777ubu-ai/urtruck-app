@@ -17,18 +17,20 @@ test('local AI deploy is manual and QA2-only', () => {
 
 test('AI service is private and resource bounded', () => {
   assert.match(deployment, /--host 127\.0\.0\.1 --port 8003/);
-  assert.match(deployment, /MemoryMax=5G/);
+  assert.match(deployment, /MemoryMax=6G/);
   assert.match(deployment, /CPUQuota=350%/);
   assert.match(deployment, /NoNewPrivileges=true/);
   assert.match(deployment, /0\.0\.0\.0:8003/);
 });
 
-test('pinned local models and required language smoke tests are present', () => {
-  assert.match(deployment, /Systran\/faster-whisper-small/);
-  assert.match(deployment, /facebook\/m2m100_418M/);
-  assert.match(deployment, /auralmira\/m2m100-418M-ct2-int8/);
-  assert.match(deployment, /e205afefce2fd6933a1dca3b92b5063894f2f2bb/);
-  for (const pair of ["'ru', 'zh'", "'zh', 'ru'", "'kk', 'ru'", "'en', 'ru'"]) {
+test('pinned high-quality local models and 54-case language matrix are present', () => {
+  assert.match(deployment, /dropbox-dash\/faster-whisper-large-v3-turbo/);
+  assert.match(deployment, /0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf/);
+  assert.match(deployment, /facebook\/nllb-200-distilled-1\.3B/);
+  assert.match(deployment, /7be3e24664b38ce1cac29b8aeed6911aa0cf0576/);
+  assert.match(deployment, /QA2_AI_TRANSLATION_MATRIX=54\/54/);
+  assert.match(deployment, /language=en/);
+  for (const pair of ["'ru','zh'", "'zh','ru'", "'en','zh'", "'zh','en'", "'ru','en'", "'en','ru'"]) {
     assert.match(deployment, new RegExp(pair));
   }
 });
@@ -38,6 +40,7 @@ test('production is fingerprinted and QA2 has rollback', () => {
   assert.match(deployment, /PRODUCTION=healthy-unchanged/);
   assert.match(deployment, /rollback\(\)/);
   assert.match(deployment, /QA2_AI_TRANSCRIPTION_EN=healthy/);
+  assert.match(deployment, /backend\/api\/chat\.py/);
   assert.match(deployment, /TRANSCRIBE_PROVIDER':'local_ai'/);
   assert.match(deployment, /TRANSLATE_PROVIDER':'local_ai'/);
 });

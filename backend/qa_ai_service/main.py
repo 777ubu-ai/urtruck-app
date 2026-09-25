@@ -6,10 +6,15 @@ import threading
 from pathlib import Path
 
 import ctranslate2
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from faster_whisper import WhisperModel
 from pydantic import BaseModel, Field
-from transformers import M2M100Tokenizer
+from transformers import AutoTokenizer
+
+try:
+    from .quality import repair_logistics_translation, translation_quality_ok
+except ImportError:  # uvicorn runs this file as top-level main.py in QA2
+    from quality import repair_logistics_translation, translation_quality_ok
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _translate_slot = threading.BoundedSemaphore(1)
@@ -19,12 +24,20 @@ _tokenizer = None
 _whisper = None
 
 MODEL_ROOT = Path(os.getenv("QA2_AI_MODEL_ROOT", "/home/ubuntu/urtruck-qa2-ai/models"))
-TRANSLATE_MODEL = MODEL_ROOT / "m2m100-418m-int8"
-TOKENIZER_MODEL = MODEL_ROOT / "m2m100-tokenizer"
-WHISPER_MODEL = MODEL_ROOT / "faster-whisper-small"
+TRANSLATE_MODEL = MODEL_ROOT / "nllb-200-distilled-1.3b-int8"
+TOKENIZER_MODEL = MODEL_ROOT / "nllb-200-distilled-1.3b-tokenizer"
+WHISPER_MODEL = MODEL_ROOT / "faster-whisper-large-v3-turbo"
 SUPPORTED_LANGS = {"ru", "zh", "kk", "en"}
 LANG_ALIASES = {"cn": "zh", "zh-cn": "zh", "zh-hans": "zh", "kz": "kk", "kk-kz": "kk"}
+NLLB_LANGS = {"ru": "rus_Cyrl", "zh": "zho_Hans", "kk": "kaz_Cyrl", "en": "eng_Latn"}
 KAZAKH_MARKERS = set("әғқңөұүһіӘҒҚҢӨҰҮҺІ")
+STT_MIN_WORD_CONFIDENCE = float(os.getenv("QA2_STT_MIN_WORD_CONFIDENCE", "0.55"))
+LOGISTICS_PROMPTS = {
+    "ru": "Груз, склад, загрузка, разгрузка, водитель, машина, прицеп, таможня, граница, документы, маршрут, доставка. Алматы, Астана, Москва, Пекин, Хоргос, Достык.",
+    "zh": "货物，仓库，装货，卸货，司机，车辆，挂车，海关，边境，文件，路线，交付。阿拉木图，阿斯塔纳，莫斯科，北京，霍尔果斯，多斯特克。",
+    "kk": "Жүк, қойма, тиеу, түсіру, жүргізуші, көлік, тіркеме, кеден, шекара, құжаттар, бағыт, жеткізу. Алматы, Астана, Мәскеу, Бейжің, Қорғас, Достық.",
+    "en": "Cargo, warehouse, loading, unloading, driver, truck, trailer, customs, border, documents, route, delivery. Almaty, Astana, Moscow, Beijing, Khorgos, Dostyk.",
+}
 
 
 class TranslateRequest(BaseModel):
@@ -56,7 +69,7 @@ def _load_translation():
         if not (TRANSLATE_MODEL / "model.bin").is_file():
             raise RuntimeError("translation model missing")
         _translator = ctranslate2.Translator(str(TRANSLATE_MODEL), device="cpu", compute_type="int8", inter_threads=1, intra_threads=4)
-        _tokenizer = M2M100Tokenizer.from_pretrained(str(TOKENIZER_MODEL), local_files_only=True)
+        _tokenizer = AutoTokenizer.from_pretrained(str(TOKENIZER_MODEL), local_files_only=True)
     return _translator, _tokenizer
 
 
@@ -98,16 +111,35 @@ def translate(body: TranslateRequest):
         raise HTTPException(status_code=503, detail="busy")
     try:
         translator, tokenizer = _load_translation()
-        tokenizer.src_lang = source
+        tokenizer.src_lang = NLLB_LANGS[source]
         source_ids = tokenizer.encode(body.text.strip())
         source_tokens = tokenizer.convert_ids_to_tokens(source_ids)
-        prefix = [tokenizer.lang_code_to_token[target]]
-        result = translator.translate_batch([source_tokens], target_prefix=[prefix], beam_size=4, max_decoding_length=512)[0]
+        target_token = NLLB_LANGS[target]
+        result = translator.translate_batch(
+            [source_tokens],
+            target_prefix=[[target_token]],
+            beam_size=5,
+            max_decoding_length=512,
+        )[0]
         target_tokens = result.hypotheses[0][1:]
-        translated = tokenizer.decode(tokenizer.convert_tokens_to_ids(target_tokens), skip_special_tokens=True).strip()
+        translated = tokenizer.decode(
+            tokenizer.convert_tokens_to_ids(target_tokens),
+            skip_special_tokens=True,
+        ).strip()
+        translated = repair_logistics_translation(body.text, translated, source, target)
         if not translated:
             raise RuntimeError("empty translation")
-        return {"translated_text": translated, "source_lang": source, "target_lang": target, "provider": "local_m2m100"}
+        if not translation_quality_ok(body.text, translated, source, target):
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "translation confidence too low", "candidate": translated},
+            )
+        return {
+            "translated_text": translated,
+            "source_lang": source,
+            "target_lang": target,
+            "provider": "local_nllb_1_3b",
+        }
     except HTTPException:
         raise
     except Exception as exc:
@@ -118,12 +150,15 @@ def translate(body: TranslateRequest):
 
 
 @app.post("/transcribe")
-def transcribe(file: UploadFile = File(...)):
+def transcribe(file: UploadFile = File(...), language: str | None = Form(default=None)):
     # A synchronous endpoint runs in FastAPI's worker pool, allowing the two
     # bounded CTranslate2 workers to serve the two QA phones concurrently.
     data = file.file.read(32 * 1024 * 1024 + 1)
     if not data or len(data) > 32 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="invalid audio size")
+    language_hint = _lang(language)
+    if language_hint and language_hint not in SUPPORTED_LANGS:
+        raise HTTPException(status_code=422, detail="unsupported language")
     if not _speech_slots.acquire(timeout=150):
         raise HTTPException(status_code=503, detail="busy")
     suffix = Path(file.filename or "voice.m4a").suffix[:10] or ".m4a"
@@ -132,24 +167,42 @@ def transcribe(file: UploadFile = File(...)):
         with tempfile.NamedTemporaryFile(prefix="qa2-voice-", suffix=suffix, delete=False) as handle:
             handle.write(data)
             temp_path = handle.name
-        # QA2 runs on four CPU cores without a GPU. Beam search at size five
-        # can take several minutes on repetitive 30-60 second phone recordings.
-        # Greedy decoding plus no timestamps is the bounded-latency path here;
-        # VAD still removes silence and disabling previous-text conditioning
-        # avoids repetition loops.
-        segments, info = _load_whisper().transcribe(
+        segments_iter, info = _load_whisper().transcribe(
             temp_path,
-            beam_size=1,
-            best_of=1,
+            language=language_hint,
+            initial_prompt=LOGISTICS_PROMPTS.get(language_hint or ""),
+            beam_size=3,
+            best_of=3,
             vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 500, "speech_pad_ms": 250},
             condition_on_previous_text=False,
-            without_timestamps=True,
+            word_timestamps=True,
         )
+        segments = list(segments_iter)
         transcript = " ".join(segment.text.strip() for segment in segments).strip()
-        language = _lang(info.language)
-        if not transcript or not language:
+        detected_language = _lang(info.language)
+        source_language = language_hint or detected_language
+        probabilities = [
+            float(word.probability)
+            for segment in segments
+            for word in (segment.words or [])
+            if word.probability is not None
+        ]
+        confidence = (
+            sum(probabilities) / len(probabilities)
+            if probabilities
+            else float(getattr(info, "language_probability", 0.0) or 0.0)
+        )
+        if not transcript or not source_language:
             raise ValueError("empty transcript")
-        return {"transcript_text": transcript, "source_lang": language, "provider": "local_faster_whisper"}
+        if confidence < STT_MIN_WORD_CONFIDENCE:
+            raise HTTPException(status_code=422, detail="transcription confidence too low")
+        return {
+            "transcript_text": transcript,
+            "source_lang": source_language,
+            "provider": "local_faster_whisper_large_v3_turbo",
+            "confidence": round(confidence, 4),
+        }
     except HTTPException:
         raise
     except ValueError as exc:

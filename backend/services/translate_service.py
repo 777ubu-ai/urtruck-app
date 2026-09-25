@@ -34,7 +34,7 @@ LANG_ALIAS = {
     "kk-kz": "kk",
 }
 
-TRANSLATION_PROMPT_VERSION = "logistics-v1"
+TRANSLATION_PROMPT_VERSION = "logistics-v2-nllb-quality-gate"
 
 SYSTEM_PROMPT = (
     "You are a logistics translation engine. "
@@ -73,7 +73,7 @@ def get_cache_identity():
     provider = (_get_provider() or "stub").strip().lower()
     return {
         "provider": provider,
-        "model": _get_model() if provider == "openai" else "m2m100_418m_int8" if provider == "local_ai" else "",
+        "model": _get_model() if provider == "openai" else "nllb_200_distilled_1_3b_int8" if provider == "local_ai" else "",
         "prompt_version": TRANSLATION_PROMPT_VERSION,
     }
 
@@ -95,7 +95,7 @@ def get_info():
     provider = _get_provider()
     return {
         "provider": provider,
-        "model": _get_model() if provider == "openai" else "m2m100_418m_int8" if provider == "local_ai" else "",
+        "model": _get_model() if provider == "openai" else "nllb_200_distilled_1_3b_int8" if provider == "local_ai" else "",
         "prompt_version": TRANSLATION_PROMPT_VERSION,
         "openai_key_exists": bool(key and len(key) > 5),
     }
@@ -120,7 +120,7 @@ def translate_text(text: str, target_lang: str, source_lang: str = None) -> dict
             return translate(text, source_lang, target_lang)
         except LocalAIError as exc:
             raise TranslationError(
-                "Перевод временно недоступен", provider="local_m2m100",
+                "Перевод временно недоступен", provider="local_nllb_1_3b",
                 retryable=exc.retryable, code=exc.code,
             ) from exc
 

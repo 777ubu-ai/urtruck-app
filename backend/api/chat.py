@@ -1204,7 +1204,16 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
             })
         try:
             guessed_name = Path(str(msg["photo_url"] or "")).name or f"voice-{body.message_id}.m4a"
-            transcript = transcribe_audio_ref(msg["photo_url"], filename=guessed_name)
+            # The sender's latest app locale is the most reliable language hint
+            # available for voice messages. Passing it to Whisper prevents a
+            # noisy RU/EN/ZH recording from being decoded as another language.
+            from services.push_gateway import get_recipient_locale
+            sender_language = _normalize_lang_code(get_recipient_locale(msg["sender_id"]))
+            transcript = transcribe_audio_ref(
+                msg["photo_url"],
+                filename=guessed_name,
+                language=sender_language,
+            )
         except SpeechToTextError as exc:
             # Release the claim so a retry isn't forced to wait out the
             # stale-claim TTL after a real (non-transient) failure.
@@ -1224,7 +1233,7 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
                     "WHERE id = ? AND (voice_transcript IS NULL OR voice_transcript = '')",
                     (body.message_id,),
                 )
-            raise HTTPException(status_code=422, detail={"error": "TRANSCRIPTION_FAILED", "hint": "Не удалось распознать речь в голосовом"})
+            raise HTTPException(status_code=422, detail={"error": "TRANSCRIPTION_FAILED", "hint": "Не удалось надёжно распознать"})
         transcript_lang = _normalize_lang_code(transcript.get("source_lang")) or "auto"
         transcript_provider = transcript.get("provider") or "unknown"
         with get_conn() as c:

@@ -87,7 +87,7 @@ def transcribe_audio_path(path: str, *, filename: str | None = None, language: s
     if provider == "local_ai":
         from services.local_ai_client import LocalAIError, transcribe
         try:
-            return transcribe(path, filename=filename)
+            return transcribe(path, filename=filename, language=_normalize_lang_code(language))
         except LocalAIError as exc:
             raise SpeechToTextError(
                 "Распознавание голоса временно недоступно", provider="local_faster_whisper",
@@ -168,7 +168,7 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
             else "TRANSCRIPTION_FAILED"
         )
         raise SpeechToTextError(
-            "Распознавание голоса временно недоступно" if (quota_exhausted or is_retryable) else "Не удалось распознать голосовое сообщение",
+            "Распознавание голоса временно недоступно" if (quota_exhausted or is_retryable) else "Не удалось надёжно распознать",
             provider="openai",
             retryable=is_retryable,
             code=code,

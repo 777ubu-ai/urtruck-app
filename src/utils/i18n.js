@@ -1351,7 +1351,7 @@ const translations = {
     voice_transcription_unavailable: 'Распознавание голоса недоступно',
     err_TRANSCRIPTION_UNAVAILABLE: 'Распознавание голоса недоступно',
     err_TRANSCRIPTION_TIMEOUT: 'Распознавание голоса долго отвечает, попробуйте ещё раз',
-    err_TRANSCRIPTION_FAILED: 'Не удалось распознать голосовое сообщение',
+    err_TRANSCRIPTION_FAILED: 'Не удалось надёжно распознать',
     err_TRANSCRIPTION_IN_PROGRESS: 'Распознавание уже выполняется, подождите',
     translation_unavailable: 'Перевод недоступен',
     err_TRANSLATION_UNAVAILABLE: 'Перевод недоступен',

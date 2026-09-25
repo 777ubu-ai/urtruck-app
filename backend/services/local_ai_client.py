@@ -41,19 +41,21 @@ def translate(text: str, source_lang: str | None, target_lang: str) -> dict:
         raise LocalAIError("TRANSLATION_FAILED")
     return {
         "translated_text": translated,
-        "provider": "local_m2m100",
+        "provider": "local_nllb_1_3b",
         "source_lang": str(data.get("source_lang") or source_lang or "auto"),
     }
 
 
-def transcribe(path: str, filename: str | None = None) -> dict:
+def transcribe(path: str, filename: str | None = None, language: str | None = None) -> dict:
     file_name = filename or Path(path).name or "voice.m4a"
+    normalized_language = str(language or "").strip().lower().split("-", 1)[0]
     try:
         with open(path, "rb") as audio_file:
             response = httpx.post(
                 f"{_base_url()}/transcribe",
+                data={"language": normalized_language} if normalized_language else None,
                 files={"file": (file_name, audio_file, "application/octet-stream")},
-                timeout=180.0,
+                timeout=240.0,
             )
         response.raise_for_status()
         data = response.json()
@@ -71,7 +73,8 @@ def transcribe(path: str, filename: str | None = None) -> dict:
         raise LocalAIError("TRANSCRIPTION_FAILED")
     return {
         "transcript_text": transcript,
-        "provider": "local_faster_whisper",
+        "provider": str(data.get("provider") or "local_faster_whisper_large_v3_turbo"),
         "source_lang": source_lang,
+        "confidence": data.get("confidence"),
         "usage": None,
     }

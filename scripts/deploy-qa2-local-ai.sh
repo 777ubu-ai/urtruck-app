@@ -4,8 +4,8 @@ set -euo pipefail
 : "${SERVER_HOST:?}" "${SERVER_USER:?}" "${SERVER_PASS:?}" "${QA_API_URL:?}" "${GITHUB_RUN_ID:?}"
 test "$QA_API_URL" = "https://qa2.urtruck.kz"
 export SSHPASS="$SERVER_PASS"
-ssh_cmd=(sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST")
-rsync_ssh='sshpass -e ssh -o StrictHostKeyChecking=no'
+ssh_cmd=(sshpass -e ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=20 "$SERVER_USER@$SERVER_HOST")
+rsync_ssh='sshpass -e ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=20'
 backup="/home/ubuntu/urtruck-qa2/backups/local-ai-$GITHUB_RUN_ID"
 rollback_enabled=no
 
@@ -17,6 +17,7 @@ rollback() {
   cp "$backup/.env" /home/ubuntu/urtruck-qa2/.env
   cp "$backup/translate_service.py" /home/ubuntu/urtruck-qa2/backend/services/translate_service.py
   cp "$backup/speech_to_text_service.py" /home/ubuntu/urtruck-qa2/backend/services/speech_to_text_service.py
+  cp "$backup/chat.py" /home/ubuntu/urtruck-qa2/backend/api/chat.py
   rm -f /home/ubuntu/urtruck-qa2/backend/services/local_ai_client.py
   sudo systemctl restart urtruck-qa2.service
 REMOTE
@@ -55,21 +56,28 @@ if ! test -x "$root/venv/bin/python"; then
 fi
 "$root/venv/bin/python" -m pip install --disable-pip-version-check -q -r "$root/app/requirements.txt"
 export HF_HOME="$root/hf-cache"
-whisper="$root/models/faster-whisper-small"
-tokenizer="$root/models/m2m100-tokenizer"
-translated="$root/models/m2m100-418m-int8"
+whisper="$root/models/faster-whisper-large-v3-turbo"
+tokenizer="$root/models/nllb-200-distilled-1.3b-tokenizer"
+translated="$root/models/nllb-200-distilled-1.3b-int8"
 if ! test -f "$whisper/model.bin"; then
-  "$root/venv/bin/hf" download Systran/faster-whisper-small \
-    --revision 536b0662742c02347bc0e980a01041f333bce120 --local-dir "$whisper"
-fi
-if ! test -f "$tokenizer/vocab.json"; then
-  "$root/venv/bin/hf" download facebook/m2m100_418M \
-    --revision 55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636 --local-dir "$tokenizer" \
-    --include tokenizer_config.json sentencepiece.bpe.model special_tokens_map.json vocab.json
+  "$root/venv/bin/hf" download dropbox-dash/faster-whisper-large-v3-turbo \
+    --revision 0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf --local-dir "$whisper"
 fi
 if ! test -f "$translated/model.bin"; then
-  "$root/venv/bin/hf" download auralmira/m2m100-418M-ct2-int8 \
-    --revision e205afefce2fd6933a1dca3b92b5063894f2f2bb --local-dir "$translated"
+  source="$root/models/nllb-200-distilled-1.3b-source"
+  if ! test -f "$source/pytorch_model.bin"; then
+    rm -rf "$source"
+    "$root/venv/bin/hf" download facebook/nllb-200-distilled-1.3B \
+      --revision 7be3e24664b38ce1cac29b8aeed6911aa0cf0576 --local-dir "$source"
+  fi
+  rm -rf "$translated" "$tokenizer"
+  "$root/venv/bin/ct2-transformers-converter" \
+    --model "$source" --output_dir "$translated" --quantization int8 \
+    --copy_files tokenizer.json tokenizer_config.json sentencepiece.bpe.model special_tokens_map.json
+  mkdir -p "$tokenizer"
+  cp "$source"/tokenizer.json "$source"/tokenizer_config.json \
+    "$source"/sentencepiece.bpe.model "$source"/special_tokens_map.json "$tokenizer"/
+  rm -rf "$source"
 fi
 test -f "$whisper/model.bin"
 test -f "$translated/model.bin"
@@ -93,10 +101,11 @@ Environment=PYTHONUNBUFFERED=1
 Environment=HF_HUB_OFFLINE=1
 Environment=TRANSFORMERS_OFFLINE=1
 Environment=QA2_AI_MODEL_ROOT=/home/ubuntu/urtruck-qa2-ai/models
+Environment=QA2_STT_MIN_WORD_CONFIDENCE=0.55
 ExecStart=/home/ubuntu/urtruck-qa2-ai/venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8003
 Restart=on-failure
 RestartSec=5
-MemoryMax=5G
+MemoryMax=6G
 CPUQuota=350%
 NoNewPrivileges=true
 PrivateTmp=true
@@ -140,35 +149,62 @@ rm -f "$voice_smoke"
 set -euo pipefail
 voice="$1"
 trap 'rm -f "$voice"' EXIT
-result="$(curl -fsS --max-time 180 -F "file=@$voice;type=audio/wav" http://127.0.0.1:8003/transcribe)"
-printf '%s' "$result" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("provider")=="local_faster_whisper" and str(d.get("transcript_text") or "").strip()'
+result="$(curl -fsS --max-time 240 -F "language=en" -F "file=@$voice;type=audio/wav" http://127.0.0.1:8003/transcribe)"
+printf '%s' "$result" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("provider")=="local_faster_whisper_large_v3_turbo"; assert d.get("source_lang")=="en"; assert float(d.get("confidence") or 0)>=0.55; assert "cargo" in str(d.get("transcript_text") or "").lower()'
 echo "QA2_AI_TRANSCRIPTION_EN=healthy"
 REMOTE
 
 "${ssh_cmd[@]}" 'python3 -' <<'PY'
-import json, urllib.request
-cases = [
-    ('Груз готов к отправке', 'ru', 'zh'),
-    ('货物已准备好装运', 'zh', 'ru'),
-    ('Жүк жөнелтуге дайын', 'kk', 'ru'),
-    ('Cargo is ready for shipment', 'en', 'ru'),
+import json, urllib.error, urllib.request
+triples = [
+    {'en':'Cargo is ready at the warehouse tomorrow morning.','ru':'Груз будет готов на складе завтра утром.','zh':'货物明天早上在仓库准备好。'},
+    {'en':'The driver will arrive at the border at 09:30.','ru':'Водитель прибудет на границу в 09:30.','zh':'司机将在09:30到达边境。'},
+    {'en':'Trailer number A123BC and the documents are ready.','ru':'Прицеп номер A123BC и документы готовы.','zh':'挂车号码A123BC，文件已准备好。'},
+    {'en':'Loading 20 tons at the customs warehouse.','ru':'Загрузка 20 тонн на таможенном складе.','zh':'在海关仓库装货20吨。'},
+    {'en':'Delivery is delayed by 2 hours because of the border queue.','ru':'Доставка задерживается на 2 часа из-за очереди на границе.','zh':'由于边境排队，交付延迟2小时。'},
+    {'en':'The truck is waiting at the warehouse gate.','ru':'Машина ждёт у ворот склада.','zh':'卡车正在仓库门口等候。'},
+    {'en':'Customs inspection is complete; the driver may continue.','ru':'Таможенная проверка завершена, водитель может продолжать путь.','zh':'海关检查已完成，司机可以继续行驶。'},
+    {'en':'Unload the cargo at the warehouse at 17:00.','ru':'Разгрузите груз на складе в 17:00.','zh':'17:00在仓库卸货。'},
+    {'en':'Call the driver before loading.','ru':'Позвоните водителю перед загрузкой.','zh':'装货前请给司机打电话。'},
 ]
-for text, source, target in cases:
-    body=json.dumps({'text':text,'source_lang':source,'target_lang':target}).encode()
-    req=urllib.request.Request('http://127.0.0.1:8003/translate', data=body, headers={'Content-Type':'application/json'})
-    with urllib.request.urlopen(req, timeout=120) as response:
-        result=json.load(response)
-    translated=str(result.get('translated_text') or '').strip()
-    assert translated and translated != text
-    assert result.get('provider') == 'local_m2m100'
-    print(f'QA2_AI_TRANSLATION_{source}_{target}=healthy')
+pairs=(('ru','zh'),('zh','ru'),('en','zh'),('zh','en'),('ru','en'),('en','ru'))
+count=0
+failures=[]
+for item in triples:
+    for source,target in pairs:
+        text=item[source]
+        body=json.dumps({'text':text,'source_lang':source,'target_lang':target}).encode()
+        req=urllib.request.Request('http://127.0.0.1:8003/translate', data=body, headers={'Content-Type':'application/json'})
+        try:
+            with urllib.request.urlopen(req, timeout=180) as response:
+                result=json.load(response)
+        except urllib.error.HTTPError as exc:
+            detail=exc.read().decode('utf-8', errors='replace')
+            print(f'QA2_AI_TRANSLATION_FAILURE={source}->{target} input={text!r} status={exc.code} body={detail}', flush=True)
+            failures.append((source, target, text, exc.code, detail))
+            continue
+        translated=str(result.get('translated_text') or '').strip()
+        assert translated and translated != text
+        assert result.get('provider') == 'local_nllb_1_3b'
+        count += 1
+assert not failures, f'{len(failures)} translation cases failed'
+assert count == 54
+probe=json.dumps({'text':'Cargo is ready. Please arrive at the warehouse tomorrow morning.','source_lang':'en','target_lang':'zh'}).encode()
+request=urllib.request.Request('http://127.0.0.1:8003/translate', data=probe, headers={'Content-Type':'application/json'})
+with urllib.request.urlopen(request, timeout=180) as response:
+    translated=str(json.load(response)['translated_text'])
+assert '货物' in translated and '仓库' in translated
+assert '牛奶' not in translated and '奶酪' not in translated
+print('QA2_AI_TRANSLATION_MATRIX=54/54')
 PY
 
-"${ssh_cmd[@]}" "mkdir -p '$backup' && cp /home/ubuntu/urtruck-qa2/.env '$backup/.env' && cp /home/ubuntu/urtruck-qa2/backend/services/translate_service.py '$backup/' && cp /home/ubuntu/urtruck-qa2/backend/services/speech_to_text_service.py '$backup/'"
+"${ssh_cmd[@]}" "mkdir -p '$backup' && cp /home/ubuntu/urtruck-qa2/.env '$backup/.env' && cp /home/ubuntu/urtruck-qa2/backend/services/translate_service.py '$backup/' && cp /home/ubuntu/urtruck-qa2/backend/services/speech_to_text_service.py '$backup/' && cp /home/ubuntu/urtruck-qa2/backend/api/chat.py '$backup/'"
 rollback_enabled=yes
 rsync -az -e "$rsync_ssh" \
   backend/services/local_ai_client.py backend/services/translate_service.py backend/services/speech_to_text_service.py \
   "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/services/"
+rsync -az -e "$rsync_ssh" backend/api/chat.py \
+  "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/api/chat.py"
 
 "${ssh_cmd[@]}" 'python3 -' <<'PY'
 import os
@@ -195,7 +231,7 @@ for _ in {1..45}; do
 done
 test "$healthy" = yes
 info="$(curl -fsS --max-time 20 "$QA_API_URL/api/v1/chat/translate/info")"
-printf '%s' "$info" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["provider"]=="local_ai" and d["model"]=="m2m100_418m_int8"'
+printf '%s' "$info" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["provider"]=="local_ai" and d["model"]=="nllb_200_distilled_1_3b_int8"'
 prod_after="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256sum | awk '{print $1}')"
 test "$prod_after" = "$prod_before"
 rollback_enabled=no
