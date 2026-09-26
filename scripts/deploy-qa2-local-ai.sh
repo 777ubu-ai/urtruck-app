@@ -13,13 +13,15 @@ rollback() {
   test "$rollback_enabled" = yes || return 0
   "${ssh_cmd[@]}" bash -s -- "$backup" <<'REMOTE' || true
   backup="$1"
-  test -f "$backup/.env" || exit 0
-  cp "$backup/.env" /home/ubuntu/urtruck-qa2/.env
-  cp "$backup/translate_service.py" /home/ubuntu/urtruck-qa2/backend/services/translate_service.py
-  cp "$backup/speech_to_text_service.py" /home/ubuntu/urtruck-qa2/backend/services/speech_to_text_service.py
-  cp "$backup/chat.py" /home/ubuntu/urtruck-qa2/backend/api/chat.py
-  rm -f /home/ubuntu/urtruck-qa2/backend/services/local_ai_client.py
-  sudo systemctl restart urtruck-qa2.service
+  test -d "$backup/app" || exit 0
+  rsync -az --delete "$backup/app/" /home/ubuntu/urtruck-qa2-ai/app/
+  if test -f "$backup/urtruck-qa2-ai.service"; then
+    sudo cp "$backup/urtruck-qa2-ai.service" /etc/systemd/system/urtruck-qa2-ai.service
+  else
+    sudo rm -f /etc/systemd/system/urtruck-qa2-ai.service
+  fi
+  sudo systemctl daemon-reload
+  sudo systemctl restart urtruck-qa2-ai.service
 REMOTE
 }
 trap 'status=$?; if test $status -ne 0; then rollback; fi; exit $status' EXIT
@@ -30,7 +32,7 @@ set -euo pipefail
 test "$(id -un)" = ubuntu
 sudo -n true
 if sudo systemctl list-unit-files urtruck-qa2-ai.service --no-legend 2>/dev/null | grep -q urtruck-qa2-ai; then
-  curl -fsS --max-time 3 http://127.0.0.1:8003/health >/dev/null 2>&1 || sudo systemctl stop urtruck-qa2-ai.service
+  sudo systemctl cat urtruck-qa2-ai.service >/dev/null
 fi
 test -d /home/ubuntu/urtruck-qa2/backend
 sudo grep -Fq '/home/ubuntu/urtruck-qa2/backend' /etc/systemd/system/urtruck-qa2.service
@@ -44,6 +46,30 @@ mkdir -p /home/ubuntu/urtruck-qa2-ai/app /home/ubuntu/urtruck-qa2-ai/models
 chmod 700 /home/ubuntu/urtruck-qa2-ai
 echo "QA2_AI_CAPACITY=accepted-4cpu-8gb-no-gpu-int8"
 REMOTE
+
+backend_info="$(curl -fsS --max-time 20 "$QA_API_URL/api/v1/chat/translate/info")"
+printf '%s' "$backend_info" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("provider") == "local_ai" and d.get("model") == "nllb_200_distilled_1_3b_int8"'
+echo "QA2_BACKEND_LOCAL_AI=preflight-confirmed"
+
+"${ssh_cmd[@]}" 'bash -s' -- "$backup" <<'REMOTE'
+set -euo pipefail
+backup="$1"
+root=/home/ubuntu/urtruck-qa2-ai
+test ! -e "$backup" || {
+  echo "backup path already exists" >&2
+  exit 1
+}
+mkdir -p "$backup/app"
+if test -d "$root/app"; then
+  cp -a "$root/app/." "$backup/app/"
+fi
+if sudo test -f /etc/systemd/system/urtruck-qa2-ai.service; then
+  sudo cp -a /etc/systemd/system/urtruck-qa2-ai.service "$backup/urtruck-qa2-ai.service"
+fi
+chmod 700 "$backup"
+echo "QA2_AI_BACKUP_READY=code-and-unit"
+REMOTE
+rollback_enabled=yes
 
 rsync -az --delete -e "$rsync_ssh" backend/qa_ai_service/ \
   "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2-ai/app/"
@@ -154,33 +180,6 @@ printf '%s' "$result" | python3 -c 'import json,sys; d=json.load(sys.stdin); ass
 echo "QA2_AI_TRANSCRIPTION_EN=healthy"
 REMOTE
 
-if test "${QA2_STT_FAST_PATCH_ONLY:-no}" = yes; then
-  "${ssh_cmd[@]}" 'python3 -' <<'PY'
-import os
-from pathlib import Path
-
-path = Path("/home/ubuntu/urtruck-qa2/.env")
-lines = path.read_text().splitlines()
-values = {"TRANSCRIBE_PROVIDER": "local_ai", "LOCAL_AI_URL": "http://127.0.0.1:8003"}
-remove = set(values)
-kept = [line for line in lines if line.partition("=")[0].strip() not in remove]
-tmp = path.with_name(".env.local-stt-new")
-tmp.write_text("\n".join(kept + [f"{key}={value}" for key, value in values.items()]) + "\n")
-os.chmod(tmp, 0o600)
-os.replace(tmp, path)
-PY
-  "${ssh_cmd[@]}" 'sudo systemctl restart urtruck-qa2.service'
-  for _ in {1..45}; do
-    curl -fsS --max-time 10 "$QA_API_URL/health" >/dev/null && break
-    sleep 2
-  done
-  prod_after="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256sum | awk '{print $1}')"
-  test "$prod_after" = "$prod_before"
-  echo "QA2_STT_FAST_PATCH=local-ai-ready"
-  echo "PRODUCTION=healthy-unchanged"
-  exit 0
-fi
-
 "${ssh_cmd[@]}" 'python3 -' <<'PY'
 import json, urllib.error, urllib.request
 triples = [
@@ -225,42 +224,9 @@ assert '牛奶' not in translated and '奶酪' not in translated
 print('QA2_AI_TRANSLATION_MATRIX=54/54')
 PY
 
-"${ssh_cmd[@]}" "mkdir -p '$backup' && cp /home/ubuntu/urtruck-qa2/.env '$backup/.env' && cp /home/ubuntu/urtruck-qa2/backend/services/translate_service.py '$backup/' && cp /home/ubuntu/urtruck-qa2/backend/services/speech_to_text_service.py '$backup/' && cp /home/ubuntu/urtruck-qa2/backend/api/chat.py '$backup/'"
-rollback_enabled=yes
-rsync -az -e "$rsync_ssh" \
-  backend/services/local_ai_client.py backend/services/translate_service.py backend/services/speech_to_text_service.py \
-  "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/services/"
-rsync -az -e "$rsync_ssh" backend/api/chat.py \
-  "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/api/chat.py"
-
-"${ssh_cmd[@]}" 'python3 -' <<'PY'
-import os
-from pathlib import Path
-path=Path('/home/ubuntu/urtruck-qa2/.env')
-lines=path.read_text().splitlines()
-values={'TRANSCRIBE_PROVIDER':'local_ai','TRANSLATE_PROVIDER':'local_ai','LOCAL_AI_URL':'http://127.0.0.1:8003'}
-remove=set(values) | {'LOCAL_WHISPER_MODEL_PATH'}
-kept=[line for line in lines if line.partition('=')[0].strip() not in remove]
-tmp=path.with_name('.env.local-ai-new')
-tmp.write_text('\n'.join(kept + [f'{key}={value}' for key,value in values.items()]) + '\n')
-os.chmod(tmp, 0o600)
-os.replace(tmp, path)
-PY
-"${ssh_cmd[@]}" 'sudo systemctl restart urtruck-qa2.service'
-
-healthy=no
-for _ in {1..45}; do
-  if curl -fsS --max-time 20 "$QA_API_URL/health" >/dev/null; then
-    healthy=yes
-    break
-  fi
-  sleep 2
-done
-test "$healthy" = yes
-info="$(curl -fsS --max-time 20 "$QA_API_URL/api/v1/chat/translate/info")"
-printf '%s' "$info" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["provider"]=="local_ai" and d["model"]=="nllb_200_distilled_1_3b_int8"'
 prod_after="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256sum | awk '{print $1}')"
 test "$prod_after" = "$prod_before"
 rollback_enabled=no
 echo "QA2_LOCAL_AI=healthy-private"
+echo "QA2_BACKEND=unchanged"
 echo "PRODUCTION=healthy-unchanged"

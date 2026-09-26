@@ -9,6 +9,9 @@ const deployment = workflow + '\n' + script;
 
 test('local AI deploy is manual and QA2-only', () => {
   assert.match(deployment, /INSTALL_QA2_LOCAL_AI/);
+  assert.match(workflow, /source_sha/);
+  assert.match(workflow, /environment:\s+name: qa2/);
+  assert.match(workflow, /3678612761b793d42c66a99214640b28e81b81bd/);
   assert.match(deployment, /https:\/\/qa2\.urtruck\.kz/);
   assert.match(deployment, /\/home\/ubuntu\/urtruck-qa2-ai/);
   assert.match(deployment, /\/home\/ubuntu\/urtruck-qa2\/backend/);
@@ -35,14 +38,16 @@ test('pinned high-quality local models and 54-case language matrix are present',
   }
 });
 
-test('production is fingerprinted and QA2 has rollback', () => {
+test('production is fingerprinted and AI-only rollback is prepared', () => {
   assert.match(deployment, /prod_before/);
   assert.match(deployment, /PRODUCTION=healthy-unchanged/);
   assert.match(deployment, /rollback\(\)/);
   assert.match(deployment, /QA2_AI_TRANSCRIPTION_EN=healthy/);
-  assert.match(deployment, /backend\/api\/chat\.py/);
-  assert.match(deployment, /TRANSCRIBE_PROVIDER':'local_ai'/);
-  assert.match(deployment, /TRANSLATE_PROVIDER':'local_ai'/);
+  assert.match(deployment, /QA2_AI_BACKUP_READY=code-and-unit/);
+  assert.match(deployment, /QA2_BACKEND=unchanged/);
+  assert.doesNotMatch(script, /\/home\/ubuntu\/urtruck-qa2\/\.env/);
+  assert.doesNotMatch(script, /TRANSCRIBE_PROVIDER|TRANSLATE_PROVIDER/);
+  assert.doesNotMatch(script, /urtruck-qa2\/backend\/(services|api)\/.*\.(py|env)/);
 });
 
 test('registered QA2 recovery workflow exposes the isolated local AI mode', () => {

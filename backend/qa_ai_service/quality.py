@@ -84,33 +84,58 @@ def _contains_any(text: str, variants: tuple[str, ...]) -> bool:
     return False
 
 
+def _weight_unit_pattern(language: str) -> str:
+    variants = sorted(WEIGHT_UNIT_TERMS.get(language, ()), key=len, reverse=True)
+    return "(?:" + "|".join(re.escape(unit) for unit in variants) + ")" if variants else r"(?!)"
+
+
+def _weight_profile(text: str, language: str) -> tuple[list[tuple[Decimal, int, int]], int]:
+    """Return explicitly bound weights and standalone weight-unit count.
+
+    The number and unit are kept as one fact.  This is intentional: comparing
+    an unordered list of numbers lets a price, licence plate, or date steal a
+    weight unit merely because it appeared earlier in the sentence.
+    """
+    unit = _weight_unit_pattern(language)
+    if language == "zh":
+        boundary = r"(?<!\d)"
+        suffix = ""
+    elif language in {"ru", "kk"}:
+        boundary = r"(?<![\w])"
+        suffix = r"(?![\w])"
+    else:
+        boundary = r"(?<![\w])"
+        suffix = r"(?![\w])"
+    bound_pattern = re.compile(
+        rf"{boundary}(?P<number>\d+(?:[.,]\d+)?)\s*(?P<unit>{unit}){suffix}",
+        re.IGNORECASE,
+    )
+    facts: list[tuple[Decimal, int, int]] = []
+    bound_unit_spans: list[tuple[int, int]] = []
+    for match in bound_pattern.finditer(text.casefold()):
+        value = Decimal(match.group("number").replace(",", "."))
+        facts.append((value, match.start("number"), match.end("number")))
+        bound_unit_spans.append((match.start("unit"), match.end("unit")))
+
+    unit_pattern = re.compile(
+        rf"{boundary}(?P<unit>{unit}){suffix}", re.IGNORECASE
+    )
+    standalone = 0
+    for match in unit_pattern.finditer(text.casefold()):
+        span = (match.start("unit"), match.end("unit"))
+        if not any(start <= span[0] and span[1] <= end for start, end in bound_unit_spans):
+            standalone += 1
+    return facts, standalone
+
+
 def _source_weight(text: str, source: str) -> bool:
-    variants = WEIGHT_UNIT_TERMS.get(source, ())
-    if not variants:
-        return False
-    for unit in variants:
-        if source == "zh":
-            pattern = rf"(?<!\d)\d+(?:[.,]\d+)?\s*{re.escape(unit)}"
-        elif unit == "т":
-            pattern = r"(?<![\w])\d+(?:[.,]\d+)?\s*т(?![\w])"
-        else:
-            pattern = rf"(?<!\w)\d+(?:[.,]\d+)?\s*{re.escape(unit)}(?![\w])"
-        if re.search(pattern, text.casefold()):
-            return True
-    return False
+    facts, standalone = _weight_profile(text, source)
+    return bool(facts or standalone)
 
 
 def _target_weight(text: str, target: str) -> bool:
-    for unit in WEIGHT_UNIT_TERMS.get(target, ()):
-        if target == "zh":
-            pattern = rf"(?<!\d)\d+(?:[.,]\d+)?\s*{re.escape(unit)}"
-        elif unit == "т":
-            pattern = r"(?<![\w])\d+(?:[.,]\d+)?\s*т(?![\w])"
-        else:
-            pattern = rf"(?<!\w)\d+(?:[.,]\d+)?\s*{re.escape(unit)}(?![\w])"
-        if re.search(pattern, text.casefold()):
-            return True
-    return False
+    facts, standalone = _weight_profile(text, target)
+    return bool(facts or standalone)
 
 
 def _city_keys(text: str, language: str) -> list[str]:
@@ -193,21 +218,24 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
     if target == "zh" and delivery_source and not delivery_target and "延迟" in repaired:
         repaired = f"交付{repaired}"
 
-    # Preserve a source weight unit when NLLB keeps the number but drops the
-    # unit (the observed ``10`` -> ``10`` regression).  This is a narrow
-    # deterministic repair; the gate below still rejects missing numbers,
-    # cities, or vehicle body terms.
-    if _source_weight(source_text, source) and not _target_weight(repaired, target):
-        source_number = re.search(r"(?<!\d)\d+(?:[.,]\d+)?", source_text)
-        if source_number:
-            target_number = re.search(r"(?<!\d)\d+(?:[.,]\d+)?", repaired)
-            if target_number and target_number.group(0) == source_number.group(0):
-                unit = WEIGHT_UNIT_CANONICAL[target]
-                separator = " " if target != "zh" else " "
+    # Restore a dropped unit only when every numeric token in the candidate
+    # maps one-to-one, in order, to a source weight.  If the sentence also
+    # contains a price, plate number, or date, that mapping is ambiguous and
+    # must remain a FAIL rather than attaching the unit to the first number.
+    source_weights, source_unbound_units = _weight_profile(source_text, source)
+    target_weights, target_unbound_units = _weight_profile(repaired, target)
+    if source_weights and not target_weights and not target_unbound_units:
+        target_numbers = list(re.finditer(r"(?<!\d)\d+(?:[.,]\d+)?", repaired))
+        source_values = [value for value, _start, _end in source_weights]
+        target_values = [Decimal(match.group(0).replace(",", ".")) for match in target_numbers]
+        if len(source_values) == len(target_values) and source_values == target_values:
+            unit = WEIGHT_UNIT_CANONICAL[target]
+            for match in reversed(target_numbers):
+                number = match.group(0)
                 repaired = (
-                    repaired[:target_number.start()]
-                    + f"{target_number.group(0)}{separator}{unit}"
-                    + repaired[target_number.end():]
+                    repaired[:match.end()]
+                    + f" {unit}"
+                    + repaired[match.end():]
                 )
 
     # The body type is a critical cargo fact, not a generic truck synonym.
@@ -297,7 +325,24 @@ def translation_quality_ok(source_text: str, translated_text: str, source: str, 
             continue
         if _contains_any(source_text, variants[source]) and not _contains_any(translated_text, variants[target]):
             return False
-    if _source_weight(source_text, source) and not _target_weight(translated_text, target):
+    source_weights, source_unbound_units = _weight_profile(source_text, source)
+    target_weights, target_unbound_units = _weight_profile(translated_text, target)
+    if source_weights:
+        # Preserve the association, not merely the set of numbers.  Thus
+        # ``1500 吨 USD, 10`` cannot pass for ``1500 USD, 10 тонн``.
+        if [value for value, _start, _end in source_weights] != [
+            value for value, _start, _end in target_weights
+        ]:
+            return False
+        if source_unbound_units != target_unbound_units:
+            return False
+    elif source_unbound_units:
+        # A source unit without a number may be retained only as a standalone
+        # unit.  A target number plus that unit would invent an association.
+        if target_weights or target_unbound_units != source_unbound_units:
+            return False
+    elif target_weights or target_unbound_units:
+        # Do not allow a model to invent a weight where the source had none.
         return False
     if source_has_body and not _contains_any(translated_text, VEHICLE_BODY_TERMS.get(target, ())):
         return False

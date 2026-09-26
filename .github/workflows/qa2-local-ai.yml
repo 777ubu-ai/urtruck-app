@@ -7,11 +7,10 @@ on:
         description: Type INSTALL_QA2_LOCAL_AI
         required: true
         type: string
-      fast_stt_patch:
-        description: Skip the already-passed 54-case translation matrix
-        required: false
-        default: false
-        type: boolean
+      source_sha:
+        description: Exact branch SHA for the AI-only QA2 deployment
+        required: true
+        type: string
 
 concurrency:
   group: urtruck-qa2-local-ai
@@ -25,16 +24,26 @@ jobs:
     if: inputs.confirmation == 'INSTALL_QA2_LOCAL_AI'
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    environment:
+      name: qa2
     env:
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SERVER_PASS: ${{ secrets.SERVER_PASS }}
       QA_API_URL: ${{ secrets.QA2_API_URL }}
-      QA2_STT_FAST_PATCH_ONLY: ${{ inputs.fast_stt_patch && 'yes' || 'no' }}
+      QA_SOURCE_SHA: ${{ inputs.source_sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
       - name: Validate local AI contracts
         run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "fix/voice-stt-translation-20260925"
+          test "$QA_SOURCE_SHA" != "3678612761b793d42c66a99214640b28e81b81bd"
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          git fetch --no-tags origin "refs/heads/fix/voice-stt-translation-20260925:refs/remotes/origin/fix/voice-stt-translation-20260925"
+          git merge-base --is-ancestor "$QA_SOURCE_SHA" "origin/fix/voice-stt-translation-20260925"
           bash -n scripts/deploy-qa2-local-ai.sh
           python3 -m py_compile backend/services/local_ai_client.py backend/qa_ai_service/main.py
           node --test tests/frontend/test_qa2_local_ai_workflow.mjs
