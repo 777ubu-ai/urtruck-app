@@ -201,6 +201,42 @@ export const DRIVER_CERAMIC_DARK = {
   clientAccent: '#8FA2B5',
 };
 
+// Dark counterpart for shipper/client Ceramic surfaces. The light-only
+// SHIPPER_CERAMIC object was previously returned for both theme modes, so
+// profile and client work screens stayed light after selecting dark mode.
+// Keep the muted blue-grey client identity while using the same dark surface
+// hierarchy as the rest of the application.
+export const SHIPPER_CERAMIC_DARK = {
+  bg: '#0F1512',
+  surface: '#151E19',
+  surfaceMuted: '#202C25',
+  text: '#F3F7F4',
+  textMuted: '#B7C3BB',
+  border: '#2A3930',
+  active: '#8FA2B5',
+  activeSoft: '#24323A',
+  activeText: '#0F1512',
+  success: '#63D69A',
+  warning: '#F5B75B',
+  error: '#FF7B7B',
+  shadow: '#000000',
+  routeLine: '#3A4B40',
+  textDim: '#9EAAA2',
+  driver: '#8FA2B5',
+  driverDeep: '#73889D',
+  driverGlow: 'rgba(143,162,181,0.30)',
+  driverSoft: '#24323A',
+  driverOnAccent: '#0F1512',
+  cargoOwner: '#8FA2B5',
+  cargoOwnerDeep: '#73889D',
+  cargoOwnerGlow: 'rgba(143,162,181,0.30)',
+  cargoOwnerSoft: '#24323A',
+  clientAccent: '#8FA2B5',
+  clientNavPill: '#24323A',
+  clientNavIcon: '#F3F7F4',
+  clientNavLabel: '#F3F7F4',
+};
+
 export const DARK = {
   bg: '#0F1512',
   bgDeep: '#0B100D',
