@@ -2,6 +2,19 @@ name: Configure Google and Apple Auth
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: production Auth (default) or the isolated QA2 redirect-only procedure
+        required: false
+        type: choice
+        options: [production, qa2]
+        default: production
+      mode:
+        description: QA2 mode; inspect reads only, apply adds only the QA2 URI
+        required: false
+        type: choice
+        options: [inspect, apply]
+        default: inspect
   push:
     branches:
       - main
@@ -19,6 +32,7 @@ concurrency:
 
 jobs:
   configure:
+    if: inputs.target != 'qa2'
     name: Configure Supabase social auth providers
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -289,3 +303,33 @@ jobs:
             fi
             echo '- Redirects preserved: https://urtruck.kz/?social_auth=1 , urtruck://auth-social'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  configure-qa2-redirect:
+    if: inputs.target == 'qa2'
+    name: Inspect or add only the QA2 Google redirect
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_PROJECT_REF: pymddxenwtjcbmrafvnc
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      QA2_AUTH_MODE: ${{ inputs.mode }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Materialize public Supabase key without logging it
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          anon_key="$(node - <<'NODE'
+          const fs = require('fs');
+          const src = fs.readFileSync('src/config/supabase.js', 'utf8');
+          const m = src.match(/SUPABASE_ANON_KEY\s*=\s*'([^']+)'/);
+          if (!m) process.exit(2);
+          process.stdout.write(m[1]);
+          NODE
+          )"
+          echo "SUPABASE_ANON_KEY=${anon_key}" >> "$GITHUB_ENV"
+      - name: Inspect or add QA2 redirect without removing existing entries
+        shell: bash
+        run: bash scripts/configure_qa2_social_auth_redirect.sh
