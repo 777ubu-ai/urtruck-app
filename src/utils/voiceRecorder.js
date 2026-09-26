@@ -1,5 +1,6 @@
 // Запись и воспроизведение голосовых сообщений через expo-audio
-// Web: MediaRecorder API с audio/mp4 fallback
+// Web: MediaRecorder API с audio/webm fallback для браузеров, где mp4/Opus
+// выдаёт повреждённые временные метки; Safari сохраняет mp4 fallback.
 // Native: expo-audio через локальный compatibility layer
 //
 // Плеер (28.08.2026, WhatsApp/WeChat-паритет по заявке владельца): один
@@ -393,10 +394,10 @@ export const voice = {
   async _startWeb() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported('audio/mp4')
-        ? 'audio/mp4'
-        : MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+          ? 'audio/mp4'
           : 'audio/webm';
       this._webRecorder = new MediaRecorder(stream, { mimeType });
       this._webChunks = [];

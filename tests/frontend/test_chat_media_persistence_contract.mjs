@@ -219,6 +219,12 @@ test('web voice upload sends a real Blob/File in FormData, never an empty/placeh
 
 test('voiceRecorder produces a real, non-empty web Blob before upload is attempted', () => {
   const recorder = fs.readFileSync('src/utils/voiceRecorder.js', 'utf8');
+  // Android Chrome can emit a malformed first Opus/MP4 timestamp (minutes of
+  // fake duration), so WebM/Opus is preferred there; Safari keeps MP4 as the
+  // compatibility fallback.
+  assert.ok(recorder.indexOf("MediaRecorder.isTypeSupported('audio/webm;codecs=opus')")
+    < recorder.indexOf("MediaRecorder.isTypeSupported('audio/mp4')"),
+  'web voice recording must prefer WebM/Opus before MP4');
   // iOS Safari on a short recording can hand MediaRecorder zero data at
   // stop() unless timesliced + explicitly flushed — both guards must exist.
   assert.match(recorder, /this\._webRecorder\.start\(400\)/);
