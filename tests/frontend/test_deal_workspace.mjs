@@ -235,6 +235,15 @@ test('receiver auto-scroll retries after native FlatList layout settles', () => 
   assert.match(workspace, /scheduleAutoScrollRef\.current\?\.\(\)/);
 });
 
+test('empty web composer cannot expand from an initial multiline content measurement', () => {
+  assert.match(workspace, /onContentSizeChange=\{\(event\) => \{/);
+  assert.match(
+    workspace,
+    /if \(!input\.trim\(\)\) \{\s*setInputHeight\(COMPOSER_INPUT_MIN_HEIGHT\);\s*return;/,
+    'empty multiline input must stay at the compact height',
+  );
+});
+
 test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
   // Structural marker: composer state exists and the dock is theme-tokenized
   // (no hardcoded light surface). The old composerCollapsed fork must stay gone.

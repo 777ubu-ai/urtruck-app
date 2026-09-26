@@ -1842,6 +1842,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                           }}
                           onFocus={onComposerFocus}
                           onContentSizeChange={(event) => {
+                            // Web can report the textarea's max content box
+                            // for the initial empty multiline control. Do not
+                            // let that transient measurement turn the idle
+                            // composer into a tall white panel.
+                            if (!input.trim()) {
+                              setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+                              return;
+                            }
                             const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
                             setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
                           }}
