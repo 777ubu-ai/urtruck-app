@@ -13,9 +13,9 @@ from pydantic import BaseModel, Field
 from transformers import AutoTokenizer
 
 try:
-    from .quality import repair_logistics_translation, transcription_quality_ok, translation_quality_ok
+    from .quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_ok
 except ImportError:  # uvicorn runs this file as top-level main.py in QA2
-    from quality import repair_logistics_translation, transcription_quality_ok, translation_quality_ok
+    from quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_ok
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _translate_slot = threading.BoundedSemaphore(1)
@@ -33,14 +33,6 @@ LANG_ALIASES = {"cn": "zh", "zh-cn": "zh", "zh-hans": "zh", "kz": "kk", "kk-kz":
 NLLB_LANGS = {"ru": "rus_Cyrl", "zh": "zho_Hans", "kk": "kaz_Cyrl", "en": "eng_Latn"}
 KAZAKH_MARKERS = set("әғқңөұүһіӘҒҚҢӨҰҮҺІ")
 STT_MIN_WORD_CONFIDENCE = float(os.getenv("QA2_STT_MIN_WORD_CONFIDENCE", "0.50"))
-LOGISTICS_PROMPTS = {
-    "ru": "Груз, склад, загрузка, разгрузка, водитель, машина, прицеп, таможня, граница, документы, маршрут, доставка. Алматы, Астана, Москва, Пекин, Хоргос, Достык.",
-    "zh": "货物，仓库，装货，卸货，司机，车辆，挂车，海关，边境，文件，路线，交付。阿拉木图，阿斯塔纳，莫斯科，北京，霍尔果斯，多斯特克。",
-    "kk": "Жүк, қойма, тиеу, түсіру, жүргізуші, көлік, тіркеме, кеден, шекара, құжаттар, бағыт, жеткізу. Алматы, Астана, Мәскеу, Бейжің, Қорғас, Достық.",
-    "en": "Cargo, warehouse, loading, unloading, driver, truck, trailer, customs, border, documents, route, delivery. Almaty, Astana, Moscow, Beijing, Khorgos, Dostyk.",
-}
-
-
 class TranslateRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     source_lang: str | None = None
@@ -171,7 +163,7 @@ def transcribe(file: UploadFile = File(...), language: str | None = Form(default
         segments_iter, info = _load_whisper().transcribe(
             temp_path,
             language=language_hint,
-            initial_prompt=LOGISTICS_PROMPTS.get(language_hint or ""),
+            initial_prompt=stt_prompt(language_hint or ""),
             beam_size=1,
             best_of=1,
             vad_filter=True,

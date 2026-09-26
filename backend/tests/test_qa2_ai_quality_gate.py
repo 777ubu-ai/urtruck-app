@@ -1,9 +1,18 @@
 """Quality gates for the isolated QA2 speech and translation service."""
 from qa_ai_service.quality import (
     repair_logistics_translation,
+    stt_prompt,
     transcription_quality_ok,
     translation_quality_ok,
 )
+
+
+def test_stt_prompt_contains_vehicle_body_vocabulary_without_rewrite_rules():
+    prompt = stt_prompt("ru")
+    assert "тент" in prompt
+    assert "рефрижератор" in prompt
+    assert "платформа" in prompt
+    assert "ТЭН" not in prompt
 
 
 def test_logistics_translation_rejects_lost_meaning():
@@ -52,6 +61,22 @@ def test_weight_unit_stays_with_weight_not_price_ru_zh():
     assert translation_quality_ok(source, good, "ru", "zh") is True
     assert translation_quality_ok(source, bad, "ru", "zh") is False
     assert repair_logistics_translation(source, bad, "ru", "zh") == bad
+
+
+def test_message_82_preserves_price_weight_unit_and_body_ru_zh():
+    source = "Алматы, Астана, груз, 1500 USD, 10 тонн, тент."
+    good = "阿拉木图, 阿斯塔纳, 货物, 1500 USD, 10 吨, 篷布车。"
+    bad = "阿拉木图, 阿斯塔纳, 货物, 1500 吨 USD, 10, ТЭН。"
+    assert translation_quality_ok(source, good, "ru", "zh") is True
+    assert translation_quality_ok(source, bad, "ru", "zh") is False
+
+
+def test_message_82_preserves_price_weight_unit_and_body_zh_ru():
+    source = "阿拉木图, 阿斯塔纳, 货物, 1500 USD, 10 吨, 篷布车。"
+    good = "Алматы, Астана, груз, 1500 USD, 10 тонн, тент."
+    bad = "Алматы, Астана, груз, 1500 тонн USD, 10, ТЭН。"
+    assert translation_quality_ok(source, good, "zh", "ru") is True
+    assert translation_quality_ok(source, bad, "zh", "ru") is False
 
 
 def test_weight_unit_stays_with_weight_not_price_zh_ru():

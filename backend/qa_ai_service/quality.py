@@ -50,6 +50,35 @@ VEHICLE_BODY_TERMS = {
 }
 VEHICLE_BODY_CANONICAL = {"ru": "тент", "zh": "篷布车", "en": "tent truck", "kk": "тент"}
 
+# Vocabulary supplied to Whisper as domain context.  This is recognition
+# guidance only; it is deliberately not a post-processing replacement.  The
+# transcript still has to come from the audio, and translation_quality_ok()
+# remains the authority for accepting the resulting logistics meaning.
+STT_VEHICLE_BODY_PROMPTS = {
+    "ru": "тент, рефрижератор, платформа, изотерм, бортовой кузов",
+    "zh": "篷布车，冷藏车，平板车，厢式车，栏板车",
+    "en": "tent truck, reefer, flatbed, insulated truck, curtain-sided truck",
+    "kk": "тент, рефрижератор, платформа, изотерм, бортты кузов",
+}
+
+
+def stt_prompt(language: str) -> str:
+    """Return domain context for STT without rewriting its output."""
+    base = {
+        "ru": "Груз, склад, загрузка, разгрузка, водитель, машина, прицеп, таможня, граница, документы, маршрут, доставка.",
+        "zh": "货物，仓库，装货，卸货，司机，车辆，挂车，海关，边境，文件，路线，交付。",
+        "kk": "Жүк, қойма, тиеу, түсіру, жүргізуші, көлік, тіркеме, кеден, шекара, құжаттар, бағыт, жеткізу.",
+        "en": "Cargo, warehouse, loading, unloading, driver, truck, trailer, customs, border, documents, route, delivery.",
+    }.get(language, "")
+    bodies = STT_VEHICLE_BODY_PROMPTS.get(language, "")
+    cities = {
+        "ru": "Алматы, Астана, Москва, Пекин, Хоргос, Достык.",
+        "zh": "阿拉木图，阿斯塔纳，莫斯科，北京，霍尔果斯，多斯特克。",
+        "kk": "Алматы, Астана, Мәскеу, Бейжің, Қорғас, Достық.",
+        "en": "Almaty, Astana, Moscow, Beijing, Khorgos, Dostyk.",
+    }.get(language, "")
+    return " ".join(part for part in (base, f"Тип кузова: {bodies}." if bodies else "", cities) if part)
+
 CITY_TERMS = {
     "almaty": {"ru": ("алматы",), "zh": ("阿拉木图",), "en": ("almaty",), "kk": ("алматы",)},
     "astana": {"ru": ("астана",), "zh": ("阿斯塔纳",), "en": ("astana",), "kk": ("астана",)},
