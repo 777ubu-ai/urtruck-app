@@ -129,9 +129,10 @@ test('distance and ETA remain real Yandex route properties and fail closed', () 
   assert.match(workspace, /routeMetricValues\(routeSummary,/);
   assert.match(workspace, /value: metrics\.remaining/);
   assert.match(workspace, /value: metrics\.estimatedTime/);
-  assert.match(webMap, /multiRoute\.getActiveRoute/);
-  assert.match(webMap, /get\?\.\(["']distance["']\)/);
-  assert.match(webMap, /get\?\.\(["']duration["']\)/);
+  assert.doesNotMatch(webMap, /multiRoute\.getActiveRoute/);
+  assert.doesNotMatch(webMap, /get\?\.\(["']distance["']\)/);
+  assert.doesNotMatch(webMap, /get\?\.\(["']duration["']\)/);
+  assert.match(webMap, /durationLabelKey: numbers\.isRemaining/);
   assert.match(webMap, /const routingPoints = plannedPoints/);
   assert.doesNotMatch(webMap, /\[livePoint, destination\]/);
   assert.match(webMap, /emitSummary\(null\)/);

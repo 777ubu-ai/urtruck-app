@@ -88,7 +88,7 @@ test("live GPS route metrics use cached planned road geometry and current point 
 test("tracking screen renders distance and delivery time card over the map", () => {
   assert.match(trackSrc, /testID="track-route-metrics"/);
   assert.match(trackSrc, /t\('distance'\)/);
-  assert.match(trackSrc, /t\('delivery_time'\)/);
+  assert.match(trackSrc, /routeSummary\.durationLabelKey \|\| ['"]delivery_time['"]/);
   assert.match(trackSrc, /routeSummary\.distanceText/);
   assert.match(trackSrc, /routeSummary\.durationText/);
 });
