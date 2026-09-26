@@ -128,7 +128,7 @@ export const styles = StyleSheet.create({
   emptyState: { ...typography.body, color: brand.textSecondary, padding: 20, textAlign: 'center' },
   error: { color: brand.errorText, ...typography.bodySmall, marginTop: 8 },
   reviewCard: { backgroundColor: brand.surfaceSoft, borderRadius: 14, padding: 14, marginBottom: 12 },
-  reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   reviewTitle: { flex: 1, ...typography.h2, fontSize: 18, color: brand.textPrimary },
   edit: { color: brand.primary, fontWeight: '700' },
   reviewRow: { flexDirection: 'row', marginTop: 8 },

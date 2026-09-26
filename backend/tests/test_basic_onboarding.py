@@ -46,11 +46,23 @@ def test_complete_basic_sets_basic_status_without_promoting_to_pro(monkeypatch):
     assert result["verification_level"] == 1
 
 
+def test_complete_basic_does_not_require_iin(monkeypatch):
+    updates = {}
+    monkeypatch.setattr(driver_registration.reg_dal, "get_driver", lambda _: _basic_driver(iin=""))
+    monkeypatch.setattr(driver_registration.reg_dal, "update_driver", lambda _, fields: updates.update(fields))
+
+    result = driver_registration.complete_basic_onboarding("basic-driver")
+
+    assert result["ok"] is True
+    assert result["basic_onboarding_completed"] is True
+    assert updates["basic_onboarding_completed"] == 1
+
+
 def test_complete_basic_rejects_incomplete_profile(monkeypatch):
     monkeypatch.setattr(
         driver_registration.reg_dal,
         "get_driver",
-        lambda _: _basic_driver(iin="123", vehicle_brand=""),
+        lambda _: _basic_driver(vehicle_brand=""),
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -58,7 +70,7 @@ def test_complete_basic_rejects_incomplete_profile(monkeypatch):
 
     assert exc.value.status_code == 400
     assert exc.value.detail["error"] == "BASIC_ONBOARDING_INCOMPLETE"
-    assert set(exc.value.detail["fields"]) == {"iin", "vehicle_brand"}
+    assert set(exc.value.detail["fields"]) == {"vehicle_brand"}
 
 
 def test_basic_driver_is_allowed_to_publish_but_incomplete_driver_is_not():
@@ -148,7 +160,7 @@ def test_http_complete_basic_and_trip_publication_contract():
     from main import app
 
     client = TestClient(app)
-    _, incomplete_token = _http_driver(iin="123")
+    _, incomplete_token = _http_driver(vehicle_brand="")
     incomplete = client.post(
         "/api/v1/driver/registration/complete-basic",
         headers={"Authorization": f"Bearer {incomplete_token}"},

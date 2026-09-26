@@ -14,6 +14,7 @@ export default function VehicleChooserScreen({ navigation, route }) {
   const { c } = useVehicleCopy();
   const [vehicles, setVehicles] = useState(null);
   const origin = route?.params?.origin || 'CreateTrip';
+  const bodyLabel = (vehicle) => c.bodies?.[vehicle.body_type] || vehicle.body_type;
 
   useEffect(() => { vehicleAPI.list().then((r) => setVehicles(r.ok ? r.vehicles : [])); }, []);
 
@@ -38,7 +39,7 @@ export default function VehicleChooserScreen({ navigation, route }) {
     <FlatList
       data={vehicles}
       keyExtractor={(item) => String(item.id)}
-      renderItem={({ item }) => <Pressable style={styles.reviewCard} onPress={() => openVehicle(item)} testID="vehicle-chooser-item"><View style={styles.reviewHeader}><Feather name="truck" size={23} color={DRIVER_CERAMIC.active} /><Text style={styles.reviewTitle}>{item.make} {item.model}</Text><Feather name={origin === 'CreateTrip' ? 'chevron-right' : 'edit-2'} size={20} color={DRIVER_CERAMIC.textMuted} /></View><Text style={styles.subtitle}>{item.body_type} · {item.payload_tons} т · {item.cargo_volume_m3} м³</Text><Text style={styles.reviewValue}>{item.license_plate}</Text></Pressable>}
+      renderItem={({ item }) => <Pressable style={styles.reviewCard} onPress={() => openVehicle(item)} testID="vehicle-chooser-item"><View style={styles.reviewHeader}><Feather name="truck" size={23} color={DRIVER_CERAMIC.active} /><Text style={styles.reviewTitle}>{item.make} {item.model}</Text><Feather name={origin === 'CreateTrip' ? 'chevron-right' : 'edit-2'} size={20} color={DRIVER_CERAMIC.textMuted} /></View><Text style={styles.subtitle}>{bodyLabel(item)} · {item.payload_tons} т · {item.cargo_volume_m3} м³</Text><Text style={styles.reviewValue}>{item.license_plate}</Text></Pressable>}
       ListEmptyComponent={<Text style={styles.subtitle}>{c.noVehicles}</Text>}
     />
     <Pressable onPress={addVehicle} style={[styles.cta, { marginTop: 12 }]} testID="vehicle-chooser-add"><Text style={styles.ctaText}>{c.addVehicle}</Text></Pressable>
