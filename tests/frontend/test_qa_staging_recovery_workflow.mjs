@@ -66,6 +66,10 @@ test('QA2 has a dedicated Nginx host and certificate', () => {
   assert.match(workflow, /proxy_pass http:\/\/127\.0\.0\.1:8002/);
   assert.match(workflow, /certbot --nginx/);
   assert.match(workflow, /QA_RECOVERY_TLS=valid/);
+  assert.match(workflow, /location \^~ \/qa2\/storage\//);
+  assert.match(workflow, /location \^~ \/storage\//);
+  assert.match(workflow, /location \^~ \/security\/storage\//);
+  assert.match(workflow, /proxy_pass http:\/\/127\.0\.0\.1:8002\/storage\//);
 });
 
 test('QA Center exposes isolated recovery and inherits repository secrets', () => {

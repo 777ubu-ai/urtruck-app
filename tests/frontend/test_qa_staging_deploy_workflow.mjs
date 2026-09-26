@@ -15,6 +15,10 @@ const recoveryWorkflow = fs.readFileSync(
   path.join(process.cwd(), '.github/workflows/qa-staging-recovery.yml'),
   'utf8',
 );
+const webWorkflow = fs.readFileSync(
+  path.join(process.cwd(), '.github/workflows/qa2-web-deploy.yml'),
+  'utf8',
+);
 const androidWorkflow = fs.readFileSync(
   path.join(process.cwd(), '.github/workflows/build-android-apk.yml'),
   'utf8',
@@ -120,4 +124,14 @@ test('QA2 deploy preserves private local AI and rejects provider substitution', 
   assert.doesNotMatch(workflow, /printf[^\n]*TRANSCRIBE_PROVIDER=openai/);
   assert.doesNotMatch(workflow, /printf[^\n]*TRANSLATE_PROVIDER=openai/);
   assert.doesNotMatch(workflow, /urtruck-security.*\.env/);
+});
+
+test('QA2 web and recovery route private signed audio to FastAPI, never index.html', () => {
+  assert.match(webWorkflow, /Range request returns HTML/);
+  for (const source of [webWorkflow, recoveryWorkflow]) {
+    assert.match(source, /location \^~ \/qa2\/storage\//);
+    assert.match(source, /location \^~ \/storage\//);
+    assert.match(source, /location \^~ \/security\/storage\//);
+    assert.match(source, /proxy_pass http:\/\/127\.0\.0\.1:8002\/storage\//);
+  }
 });
