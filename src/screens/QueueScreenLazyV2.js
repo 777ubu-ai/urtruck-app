@@ -55,7 +55,7 @@ const COPY = {
     favorited: 'В избранном', sourceError: 'Не удалось получить данные CGR. Повторите.', checkQueue: 'Проверить свою очередь',
     platePlaceholder: 'Госномер, например 123ABC02', check: 'Проверить', notFound: 'Активная очередь не найдена',
     lookupError: 'Не удалось проверить номер', checkpoint: 'КПП', queueTime: 'Время очереди', status: 'Статус',
-    cached: 'из кэша UrTruck', live: 'живые данные', selected: 'Выбрано', tapToOpen: 'Нажать', swipeCalendar: 'Листайте даты →',
+    cached: 'из кэша UrTruck', live: 'живые данные', selected: 'Выбрано', tapToOpen: 'Показать данные', swipeCalendar: 'Листайте даты →',
   },
   KK: {
     title: 'Шекара', subtitle: 'CGR нақты жүктемесі және қолжетімді бронь', where: 'Қайда барасыз?', all: 'Барлығы',
@@ -67,7 +67,7 @@ const COPY = {
     details: 'CGR ашу', favorite: 'Таңдаулыға', favorited: 'Таңдаулыда', sourceError: 'CGR деректерін алу мүмкін болмады.',
     checkQueue: 'Өз кезегіңізді тексеру', platePlaceholder: 'Мемлекеттік нөмір, мысалы 123ABC02', check: 'Тексеру',
     notFound: 'Белсенді кезек табылмады', lookupError: 'Нөмірді тексеру мүмкін болмады', checkpoint: 'Бекет', queueTime: 'Кезек уақыты',
-    status: 'Күйі', cached: 'UrTruck кэшінен', live: 'нақты дерек', selected: 'Таңдалды', tapToOpen: 'Басу', swipeCalendar: 'Күндерді жылжытыңыз →',
+    status: 'Күйі', cached: 'UrTruck кэшінен', live: 'нақты дерек', selected: 'Таңдалды', tapToOpen: 'Деректерді көрсету', swipeCalendar: 'Күндерді жылжытыңыз →',
   },
   EN: {
     title: 'Border', subtitle: 'Real CGR load and booking availability', where: 'Where are you going?', all: 'All',
@@ -78,7 +78,7 @@ const COPY = {
     calendar: 'Load calendar', noPlaces: 'No slots', dayOff: 'Day off', updated: 'CGR updated', refresh: 'Refresh', details: 'Open CGR',
     favorite: 'Favorite', favorited: 'Favorited', sourceError: 'Could not load CGR data. Try again.', checkQueue: 'Check your queue',
     platePlaceholder: 'Plate number, e.g. 123ABC02', check: 'Check', notFound: 'No active queue found', lookupError: 'Could not check plate',
-    checkpoint: 'Checkpoint', queueTime: 'Queue time', status: 'Status', cached: 'UrTruck cache', live: 'live data', selected: 'Selected', tapToOpen: 'Tap',
+    checkpoint: 'Checkpoint', queueTime: 'Queue time', status: 'Status', cached: 'UrTruck cache', live: 'live data', selected: 'Selected', tapToOpen: 'Show live data',
     swipeCalendar: 'Swipe dates →',
   },
   ZH: {
@@ -89,7 +89,7 @@ const COPY = {
     noPlaces: '无空位', dayOff: '休息日', updated: 'CGR 更新时间', refresh: '刷新', details: '打开 CGR', favorite: '收藏',
     favorited: '已收藏', sourceError: '无法获取 CGR 数据，请重试。', checkQueue: '查询我的排队', platePlaceholder: '车牌号，例如 123ABC02',
     check: '查询', notFound: '未找到有效排队', lookupError: '无法查询车牌', checkpoint: '口岸', queueTime: '排队时间', status: '状态',
-    cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择', tapToOpen: '点击查看', swipeCalendar: '左右滑动日期 →',
+    cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择', tapToOpen: '查看实时数据', swipeCalendar: '左右滑动日期 →',
   },
 };
 
@@ -764,10 +764,24 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               const active = String(selectedId) === String(checkpoint.id);
               const loaded = liveById[String(checkpoint.id)];
               return (
-                <TouchableOpacity key={String(checkpoint.id)} onPress={() => loadLive(checkpoint)} style={[s.cpCard, { backgroundColor: theme.card, borderColor: active ? activeColor : theme.border }, active && s.cpCardActive]} testID="border-checkpoint-chip">
+                <TouchableOpacity
+                  key={String(checkpoint.id)}
+                  onPress={() => loadLive(checkpoint)}
+                  style={[s.cpCard, { backgroundColor: theme.card, borderColor: active ? activeColor : theme.border }, active && s.cpCardActive]}
+                  testID="border-checkpoint-chip"
+                  accessibilityRole="button"
+                  accessibilityLabel={`${L.tapToOpen}: ${localizeCheckpointName(checkpoint, lang)}`}
+                  accessibilityState={{ selected: active }}
+                  activeOpacity={0.72}
+                >
                   <View style={s.cpTop}><Text style={[s.cpName, { color: theme.text }]} numberOfLines={1}>{localizeCheckpointName(checkpoint, lang).split(' - ')[0]}</Text>{favorites.includes(String(checkpoint.id)) ? <Feather name="star" size={14} color={activeColor} fill={activeColor} /> : null}</View>
                   <Text style={[s.cpRoute, { color: theme.textDim, fontSize: sp(10.5) }]} numberOfLines={1}>{localizeCheckpointName(checkpoint, lang)}</Text>
-                  {loaded?.nearest_booking ? <Text style={s.cpLoadedText}>📅 {formatShortDate(loaded.nearest_booking, lang)}</Text> : <Text style={[s.tapText, { color: active ? activeColor : theme.textDim }]}>{active ? L.selected : L.tapToOpen}</Text>}
+                  {loaded?.nearest_booking ? <Text style={s.cpLoadedText}>📅 {formatShortDate(loaded.nearest_booking, lang)}</Text> : (
+                    <View style={[s.cpAction, { backgroundColor: active ? activeColor : ceramic.soft }]}>
+                      <Text style={[s.cpActionText, { color: active ? '#FFFFFF' : activeColor }]}>{active ? `✓ ${L.selected}` : L.tapToOpen}</Text>
+                      {!active ? <Feather name="arrow-right" size={14} color={activeColor} /> : null}
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -904,13 +918,14 @@ const s = StyleSheet.create({
   hint: { fontSize: 12, lineHeight: 17, marginTop: 3, paddingRight: 12 },
   carouselNext: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   carousel: { gap: 10, paddingRight: 28, paddingBottom: 4 },
-  cpCard: { width: 140, minHeight: 94, borderWidth: 1, borderRadius: 16, padding: 12 },
+  cpCard: { width: 156, minHeight: 116, borderWidth: 1.5, borderRadius: 16, padding: 12 },
   cpCardActive: { borderWidth: 2, padding: 11, shadowColor: '#738396', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
   cpTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 5 },
   cpName: { fontSize: 15, fontWeight: '850', flex: 1 },
   cpRoute: { fontSize: 10.5, marginTop: 5 },
   cpLoadedText: { color: '#738396', fontSize: 12, fontWeight: '800', marginTop: 10 },
-  tapText: { fontSize: 11, fontWeight: '700', marginTop: 11 },
+  cpAction: { minHeight: 34, borderRadius: 10, marginTop: 11, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  cpActionText: { flex: 1, fontSize: 11, lineHeight: 14, fontWeight: '850' },
   center: { height: 100, alignItems: 'center', justifyContent: 'center' },
   promptCard: { borderWidth: 1, borderRadius: 18, padding: 18, marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
   promptText: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '650' },
