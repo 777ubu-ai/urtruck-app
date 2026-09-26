@@ -27,6 +27,30 @@ def test_logistics_translation_preserves_numbers():
     ) is False
 
 
+def test_logistics_translation_preserves_weight_unit_and_tent_ru_zh():
+    source = "Алматы, Астана, груз, 10 тонн, тент."
+    raw = "阿尔马塔,阿斯塔纳,货物,10,."
+    assert translation_quality_ok(source, raw, "ru", "zh") is False
+    repaired = repair_logistics_translation(source, raw, "ru", "zh")
+    assert repaired == "阿拉木图,阿斯塔纳,货物,10 吨, 篷布车."
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
+def test_logistics_translation_preserves_weight_unit_and_tent_zh_ru():
+    source = "阿拉木图,阿斯塔纳,货物,10 吨,篷布车。"
+    raw = "Алматы, Астана, груз, 10,."
+    assert translation_quality_ok(source, raw, "zh", "ru") is False
+    repaired = repair_logistics_translation(source, raw, "zh", "ru")
+    assert repaired == "Алматы, Астана, груз, 10 тонн, тент."
+    assert translation_quality_ok(source, repaired, "zh", "ru") is True
+
+
+def test_logistics_translation_rejects_missing_city_even_when_number_survives():
+    source = "Алматы, Астана, груз, 10 тонн, тент."
+    candidate = "阿斯塔纳,货物,10 吨,篷布车."
+    assert translation_quality_ok(source, candidate, "ru", "zh") is False
+
+
 def test_glossary_repairs_unambiguous_trailer_truck_confusion():
     repaired = repair_logistics_translation(
         "Прицеп номер A123BC и документы готовы.",

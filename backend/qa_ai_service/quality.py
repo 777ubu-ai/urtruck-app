@@ -31,6 +31,40 @@ LOGISTICS_TERMS = {
     },
 }
 
+# Critical cargo facts are stricter than generic logistics vocabulary.  A
+# translation that keeps ``10`` but drops ``тонн`` (or turns ``тент`` into a
+# generic cargo word) is not safe to show as a successful translation.
+WEIGHT_UNIT_TERMS = {
+    "ru": ("тонн", "тонна", "тонны", "т"),
+    "zh": ("吨",),
+    "en": ("ton", "tons", "tonne", "tonnes"),
+    "kk": ("тонна", "тонн", "т"),
+}
+WEIGHT_UNIT_CANONICAL = {"ru": "тонн", "zh": "吨", "en": "tons", "kk": "тонна"}
+
+VEHICLE_BODY_TERMS = {
+    "ru": ("тент", "тентов"),
+    "zh": ("篷布车", "篷车", "帆布车"),
+    "en": ("tent truck", "tent trailer", "curtain-sided", "curtain side"),
+    "kk": ("тент", "тентті"),
+}
+VEHICLE_BODY_CANONICAL = {"ru": "тент", "zh": "篷布车", "en": "tent truck", "kk": "тент"}
+
+CITY_TERMS = {
+    "almaty": {"ru": ("алматы",), "zh": ("阿拉木图",), "en": ("almaty",), "kk": ("алматы",)},
+    "astana": {"ru": ("астана",), "zh": ("阿斯塔纳",), "en": ("astana",), "kk": ("астана",)},
+    "moscow": {"ru": ("москва",), "zh": ("莫斯科",), "en": ("moscow",), "kk": ("мәскеу", "москва")},
+    "beijing": {"ru": ("пекин",), "zh": ("北京",), "en": ("beijing",), "kk": ("пекин",)},
+    "khorgos": {"ru": ("хоргос",), "zh": ("霍尔果斯",), "en": ("khorgos",), "kk": ("қорғас", "хоргос")},
+    "dostyk": {"ru": ("достык",), "zh": ("多斯特克",), "en": ("dostyk",), "kk": ("достық", "достык")},
+}
+
+# NLLB's observed transliteration for Almaty is a city-preserving error that
+# must be normalized before the strict invariant check.
+CITY_OBSERVED_CONFUSIONS = {
+    ("almaty", "zh"): ("阿尔马塔",),
+}
+
 
 def _contains_any(text: str, variants: tuple[str, ...]) -> bool:
     lowered = text.casefold()
@@ -48,6 +82,47 @@ def _contains_any(text: str, variants: tuple[str, ...]) -> bool:
         elif candidate in lowered:
             return True
     return False
+
+
+def _source_weight(text: str, source: str) -> bool:
+    variants = WEIGHT_UNIT_TERMS.get(source, ())
+    if not variants:
+        return False
+    for unit in variants:
+        if source == "zh":
+            pattern = rf"(?<!\d)\d+(?:[.,]\d+)?\s*{re.escape(unit)}"
+        elif unit == "т":
+            pattern = r"(?<![\w])\d+(?:[.,]\d+)?\s*т(?![\w])"
+        else:
+            pattern = rf"(?<!\w)\d+(?:[.,]\d+)?\s*{re.escape(unit)}(?![\w])"
+        if re.search(pattern, text.casefold()):
+            return True
+    return False
+
+
+def _target_weight(text: str, target: str) -> bool:
+    for unit in WEIGHT_UNIT_TERMS.get(target, ()):
+        if target == "zh":
+            pattern = rf"(?<!\d)\d+(?:[.,]\d+)?\s*{re.escape(unit)}"
+        elif unit == "т":
+            pattern = r"(?<![\w])\d+(?:[.,]\d+)?\s*т(?![\w])"
+        else:
+            pattern = rf"(?<!\w)\d+(?:[.,]\d+)?\s*{re.escape(unit)}(?![\w])"
+        if re.search(pattern, text.casefold()):
+            return True
+    return False
+
+
+def _city_keys(text: str, language: str) -> list[str]:
+    return [key for key, variants in CITY_TERMS.items() if _contains_any(text, variants.get(language, ()))]
+
+
+def _append_before_punctuation(text: str, addition: str) -> str:
+    match = re.search(r"([.!?。！？])\s*$", text)
+    if match:
+        prefix = text[:match.start()].rstrip(" ,，")
+        return f"{prefix}, {addition}{match.group(1)}"
+    return f"{text.rstrip()}, {addition}"
 
 
 def _normalize_number_words(text: str) -> str:
@@ -118,6 +193,35 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
     if target == "zh" and delivery_source and not delivery_target and "延迟" in repaired:
         repaired = f"交付{repaired}"
 
+    # Preserve a source weight unit when NLLB keeps the number but drops the
+    # unit (the observed ``10`` -> ``10`` regression).  This is a narrow
+    # deterministic repair; the gate below still rejects missing numbers,
+    # cities, or vehicle body terms.
+    if _source_weight(source_text, source) and not _target_weight(repaired, target):
+        source_number = re.search(r"(?<!\d)\d+(?:[.,]\d+)?", source_text)
+        if source_number:
+            target_number = re.search(r"(?<!\d)\d+(?:[.,]\d+)?", repaired)
+            if target_number and target_number.group(0) == source_number.group(0):
+                unit = WEIGHT_UNIT_CANONICAL[target]
+                separator = " " if target != "zh" else " "
+                repaired = (
+                    repaired[:target_number.start()]
+                    + f"{target_number.group(0)}{separator}{unit}"
+                    + repaired[target_number.end():]
+                )
+
+    # The body type is a critical cargo fact, not a generic truck synonym.
+    if _contains_any(source_text, VEHICLE_BODY_TERMS.get(source, ())) and not _contains_any(repaired, VEHICLE_BODY_TERMS.get(target, ())):
+        repaired = _append_before_punctuation(repaired, VEHICLE_BODY_CANONICAL[target])
+
+    # Normalize only the observed Almaty transliteration; missing cities are
+    # left for the quality gate to reject rather than guessed or invented.
+    for city in _city_keys(source_text, source):
+        for confused in CITY_OBSERVED_CONFUSIONS.get((city, target), ()):
+            if confused.casefold() in repaired.casefold() and not _contains_any(repaired, CITY_TERMS[city][target]):
+                repaired = re.sub(re.escape(confused), CITY_TERMS[city][target][0], repaired, count=1, flags=re.IGNORECASE)
+                break
+
     source_times = re.findall(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", source_text)
     if len(source_times) == 1:
         preserved = f"{int(source_times[0][0]):02d}:{int(source_times[0][1]):02d}"
@@ -184,7 +288,20 @@ def transcription_quality_ok(
 def translation_quality_ok(source_text: str, translated_text: str, source: str, target: str) -> bool:
     if _numeric_facts(source_text) != _numeric_facts(translated_text):
         return False
-    for variants in LOGISTICS_TERMS.values():
+    source_has_body = _contains_any(source_text, VEHICLE_BODY_TERMS.get(source, ()))
+    for name, variants in LOGISTICS_TERMS.items():
+        # A specific body type (e.g. 篷布车) is stronger than the generic
+        # ``truck`` bucket; its dedicated invariant below checks the exact
+        # type instead of demanding a second generic vehicle word.
+        if name == "truck" and source_has_body:
+            continue
         if _contains_any(source_text, variants[source]) and not _contains_any(translated_text, variants[target]):
+            return False
+    if _source_weight(source_text, source) and not _target_weight(translated_text, target):
+        return False
+    if source_has_body and not _contains_any(translated_text, VEHICLE_BODY_TERMS.get(target, ())):
+        return False
+    for city in _city_keys(source_text, source):
+        if not _contains_any(translated_text, CITY_TERMS[city].get(target, ())):
             return False
     return True
