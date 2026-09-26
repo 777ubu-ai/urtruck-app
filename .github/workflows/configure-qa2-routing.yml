@@ -1,0 +1,75 @@
+name: Configure QA2 Routing Provider
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type CONFIGURE_QA2_ROUTING
+        required: true
+        type: string
+
+concurrency:
+  group: urtruck-qa2-routing-config
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    if: inputs.confirmation == 'CONFIGURE_QA2_ROUTING'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: qa2
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      QA_API_URL: ${{ secrets.QA2_API_URL }}
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate isolated QA2 routing procedure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "fix/voice-stt-translation-20260925"
+          test -n "$OPENROUTESERVICE_API_KEY"
+          bash -n scripts/configure_qa2_routing.sh
+          node --test tests/frontend/test_qa2_routing_workflow.mjs
+      - name: Install SSH tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Configure ORS on QA2 only
+        shell: bash
+        run: bash scripts/configure_qa2_routing.sh
+      - name: Verify QA2 route provider after restart
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 "$QA_API_URL/health" >/dev/null
+          info="$(curl -fsS --max-time 20 "$QA_API_URL/api/v1/system/info")"
+          printf '%s' "$info" | python3 -c 'import json,sys; assert json.load(sys.stdin)["routing"]["provider"] == "openrouteservice"'
+          echo 'QA2_ROUTING_POSTCHECK=pass'
+      - name: Roll back QA2 routing settings on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          state=/tmp/urtruck-qa2-routing.state
+          if test ! -f "$state"; then echo 'QA2_ROUTING_ROLLBACK=state-missing'; exit 0; fi
+          . "$state"
+          test -f "$BACKUP_DIR/qa2.env"
+          cp -- "$BACKUP_DIR/qa2.env" "$ENV_FILE"
+          chmod 600 "$ENV_FILE"
+          pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          if test -n "$pid"; then kill -TERM "$pid" || true; sleep 2; kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true; fi
+          cd /home/ubuntu/urtruck-qa2/backend
+          nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
+          for _ in {1..40}; do curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8002/health >/dev/null
+          echo 'QA2_ROUTING_ROLLBACK=restored-env-and-backend'
+          REMOTE
