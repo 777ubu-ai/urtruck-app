@@ -170,13 +170,16 @@ export default function TruckMap({
     const passedDistanceText = distanceTextFromMeters(numbers.passedMeters, t);
     const totalDurationText = durationTextFromSeconds(numbers.totalDurationSeconds, t);
     const drivingDurationText = durationTextFromSeconds(numbers.drivingDurationSeconds, t);
+    const remainingDurationText = durationTextFromSeconds(numbers.remainingDurationSeconds, t);
     if (roadGeometry.length >= 2 && totalDistanceText) {
       onRouteSummary?.({
         distanceText: numbers.isRemaining ? remainingText : totalDistanceText,
-        durationText: totalDurationText,
+        durationText: numbers.isRemaining ? remainingDurationText : totalDurationText,
         totalDistanceText,
         passedDistanceText,
         totalDurationText,
+        remainingDurationText,
+        durationLabelKey: numbers.isRemaining ? 'route_eta' : 'delivery_time',
         drivingDurationText,
         progressPercent: numbers.progressPercent,
         progressReason: progress.reason,

@@ -7,6 +7,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from database.db import get_conn, new_id
 
 
+def normalize_plate_key(value: str) -> str:
+    """Canonical plate key that preserves non-Latin registration symbols."""
+    return "".join(ch for ch in str(value).strip().upper() if ch.isalnum())
+
+
 def init_vehicles_schema():
     schema = Path(__file__).resolve().parent / "vehicles_schema.sql"
     with get_conn() as c:
@@ -38,15 +43,17 @@ def upsert_vehicle(owner_user_id: str, payload: dict, vehicle_id: str | None = N
                 (vehicle_id, owner_user_id),
             ).fetchone()
         else:
-            plate_key = re.sub(r"[^0-9A-ZА-ЯЁ]", "", str(payload["license_plate"]).upper())
+            plate_key = normalize_plate_key(payload["license_plate"])
+            country = str(payload["vehicle_registration_country_code"]).strip().upper()
             candidates = c.execute(
-                "SELECT id, license_plate FROM vehicles WHERE owner_user_id = ? "
+                "SELECT id, license_plate, vehicle_registration_country_code FROM vehicles WHERE owner_user_id = ? "
                 "ORDER BY updated_at DESC, created_at DESC",
                 (owner_user_id,),
             ).fetchall()
             existing = next((
                 row for row in candidates
-                if re.sub(r"[^0-9A-ZА-ЯЁ]", "", str(row["license_plate"]).upper()) == plate_key
+                if str(row["vehicle_registration_country_code"]).strip().upper() == country
+                and normalize_plate_key(row["license_plate"]) == plate_key
             ), None)
         if existing:
             vid = existing["id"]

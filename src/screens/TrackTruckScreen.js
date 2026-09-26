@@ -142,7 +142,7 @@ export default function TrackTruckScreen({ navigation, route }) {
               </View>
               <View style={[s.metricDiv, { backgroundColor: theme.border }]} />
               <View style={s.metricBlock}>
-                <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t('delivery_time')}</Text>
+                <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t(routeSummary.durationLabelKey || 'delivery_time')}</Text>
                 <Text style={[s.metricValue, { color: theme.text }]} numberOfLines={1}>{routeSummary.durationText}</Text>
               </View>
             </View>

@@ -76,7 +76,17 @@ const YANDEX_PROVIDER_OVERLAY_CSS = `
 function StaticRouteFallback({ livePoint, plannedPoints, reason }) {
   const { t } = useI18n();
   const points = livePoint ? [livePoint, ...plannedPoints] : plannedPoints;
-  const safePoints = points.length >= 2 ? points : (points.length === 1 ? points : [[43.2389, 76.8897], [55.7558, 37.6173]]);
+  const safePoints = points;
+  if (safePoints.length < 2) {
+    return (
+      <View style={s.staticMap} testID="truck-map-static-fallback">
+        <View style={s.staticNotice}>
+          <Text style={s.errorTitle}>{t('map_no_route_coordinates')}</Text>
+          <Text style={s.loadingText}>{reason || t('map_road_route_unavailable')}</Text>
+        </View>
+      </View>
+    );
+  }
   return (
     <View style={s.staticMap} testID="truck-map-static-fallback">
       <View style={s.staticRouteLine} />
@@ -311,50 +321,10 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
       fitBounds();
     };
 
-    if (routingPoints.length >= 2 && api.multiRouter?.MultiRoute) {
-      const multiRoute = new api.multiRouter.MultiRoute(
-        {
-          referencePoints: routingPoints,
-          params: { routingMode: "auto", results: 1, avoidTrafficJams: false },
-        },
-        {
-          boundsAutoApply: true,
-          wayPointVisible: true,
-          routeActiveStrokeColor: '#168759',
-          routeActiveStrokeWidth: 6,
-          routeStrokeColor: "#9DB9AC",
-          routeStrokeWidth: 4,
-          pinVisible: false,
-        },
-      );
-      multiRoute.model?.events?.add?.("requestsuccess", () => {
-        try {
-          const activeRoute = multiRoute.getActiveRoute?.();
-          const distance = activeRoute?.properties?.get?.("distance");
-          const duration = activeRoute?.properties?.get?.("duration");
-          if (!distance?.text || !duration?.text) {
-            addDirectionFallback();
-            return;
-          }
-          setFallbackActive(false);
-          emitSummary({
-            distanceText: String(distance.text),
-            durationText: String(duration.text),
-            blocked: Boolean(activeRoute?.properties?.get?.("blocked")),
-            // MultiRoute построен по plannedPoints: это полный маршрут.
-            isRemaining: false,
-            provider: "yandex-js",
-          });
-        } catch {
-          addDirectionFallback();
-        }
-      });
-      multiRoute.model?.events?.add?.("requestfail", addDirectionFallback);
-      map.geoObjects.add(multiRoute);
-      addMarkers();
-    } else {
-      addDirectionFallback();
-    }
+    // Do not use Yandex JS `routingMode: auto` as a truck route. Without a
+    // verified server result it is only a direction and must not expose
+    // passenger-car distance/ETA as authoritative cargo metrics.
+    addDirectionFallback();
 
     if (routingPoints.length < 2) fitBounds();
     return () => {
@@ -381,12 +351,15 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
     const numbers = routeMetricNumbers(serverRoute, progress);
     const totalDistanceText = distanceTextFromMeters(numbers.totalMeters, t);
     const totalDurationText = durationTextFromSeconds(numbers.totalDurationSeconds, t);
+    const remainingDurationText = durationTextFromSeconds(numbers.remainingDurationSeconds, t);
     onRouteSummary?.(totalDistanceText ? {
       distanceText: numbers.isRemaining ? distanceTextFromMeters(numbers.remainingMeters, t) : totalDistanceText,
-      durationText: totalDurationText,
+      durationText: numbers.isRemaining ? remainingDurationText : totalDurationText,
       totalDistanceText,
       passedDistanceText: distanceTextFromMeters(numbers.passedMeters, t),
       totalDurationText,
+      remainingDurationText,
+      durationLabelKey: numbers.isRemaining ? 'route_eta' : 'delivery_time',
       drivingDurationText: durationTextFromSeconds(numbers.drivingDurationSeconds, t),
       progressPercent: numbers.progressPercent,
       progressReason: progress.reason,
