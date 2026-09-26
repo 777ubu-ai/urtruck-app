@@ -42,13 +42,22 @@ test('QA2 runtime is a dedicated service bound only to loopback port 8002', () =
   assert.match(workflow, /QA_AI_GPU=/);
 });
 
-test('QA2 voice and translation use only the QA2 OpenAI secret', () => {
-  assert.match(workflow, /QA2_OPENAI_API_KEY/);
-  assert.match(workflow, /TRANSCRIBE_MODEL=gpt-4o-mini-transcribe/);
-  assert.match(workflow, /TRANSLATE_MODEL=gpt-4o-mini/);
+test('QA2 recovery preserves private local AI and rolls back settings', () => {
+  assert.doesNotMatch(workflow, /QA2_OPENAI_API_KEY/);
+  assert.match(workflow, /Verify QA2 local AI policy before recovery mutation/);
+  assert.match(workflow, /QA2_LOCAL_AI_POLICY_OPENAI_SUBSTITUTION_BLOCKED/);
+  assert.match(workflow, /QA2_LOCAL_AI_POLICY_BLOCKED_BEFORE_RECOVERY/);
+  assert.match(workflow, /QA2_LOCAL_AI_URL_POLICY_BLOCKED_BEFORE_RECOVERY/);
+  assert.match(workflow, /TRANSCRIBE_PROVIDER=local_ai/);
+  assert.match(workflow, /TRANSLATE_PROVIDER=local_ai/);
+  assert.match(workflow, /LOCAL_AI_URL=http:\/\/127\.0\.0\.1:8003/);
   assert.match(workflow, /api\/v1\/chat\/translate\/info/);
-  assert.match(workflow, /openai_key_exists/);
-  assert.match(workflow, /QA_RECOVERY_TRANSLATION=healthy/);
+  assert.match(workflow, /QA2_LOCAL_AI_PROVIDER_NOT_READY/);
+  assert.match(workflow, /QA_RECOVERY_LOCAL_AI=healthy/);
+  assert.match(workflow, /Roll back QA2 code and settings if recovery fails/);
+  assert.match(workflow, /QA_RECOVERY_ROLLBACK_LOCAL_AI_SETTINGS_NOT_RESTORED/);
+  assert.doesNotMatch(workflow, /printf[^\n]*TRANSCRIBE_PROVIDER=openai/);
+  assert.doesNotMatch(workflow, /printf[^\n]*TRANSLATE_PROVIDER=openai/);
   assert.doesNotMatch(workflow, /PRO_TEST_OPENAI_API_KEY/);
 });
 

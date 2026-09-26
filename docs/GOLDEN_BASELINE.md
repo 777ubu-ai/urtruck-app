@@ -100,3 +100,29 @@ Payments, Notifications, RLS/database access and navigation.
 A block is promoted for the new candidate only after its automatic tests and
 required physical matrix pass on the same final SHA. No historical PASS is
 silently inherited.
+
+## QA2 snapshot — 26.09.2026
+
+Эта запись не переносит исторические PASS и не меняет общий статус: **BLOCKED**.
+
+- Рабочая ветка: `fix/voice-stt-translation-20260925`.
+- Исходный SHA текущей проверки: `ea3c8c4ca875e84f8185940a774f04dc4f815a2b`.
+- QA2 Web подтверждён на том же SHA по предоставленной release-сверке.
+- QA2 API отвечает `/api/version`: `1.0.50`, build time `2026-09-26 14:22`.
+- `urtruck-qa2.service` и приватный `urtruck-qa2-ai.service` наблюдались как
+  active; локальный AI слушает только loopback `127.0.0.1:8003`.
+- Локальный AI health подтвердил `private=true`, speech/translation models и
+  языки `en/kk/ru/zh`; серверная synthetic translation matrix — `54/54`.
+- Фактическая конфигурация QA2 на момент сверки: оба провайдера `local_ai`,
+  `LOCAL_AI_URL=http://127.0.0.1:8003`; наличие ключа OpenAI не означает его
+  выбор и не является доказательством работоспособности внешнего провайдера.
+- Реальная запись `message_id=76`: `.m4a`, заявленная длительность 29 секунд,
+  sender language `ru`, provider `local_faster_whisper_large_v3_turbo`; STT
+  сохранил посторонний русский текст вместо контрольной фразы. Перевод в `zh`
+  был отклонён локальным quality gate (`translation confidence too low`).
+- Телефонная голосовая приёмка не PASS: контрольный аудиозахват не доказал, что
+  контрольная фраза попала в микрофон Xiaomi; новая матрица шести направлений
+  требует повторной записи через UI и остаётся BLOCKED до воспроизводимого
+  источника аудио и доказательств на Xiaomi/OPPO.
+- Маршрут QA2 остаётся BLOCKED: runtime сообщает `routing.provider=none`;
+  серый пунктир интерфейса не считается дорожным маршрутом.

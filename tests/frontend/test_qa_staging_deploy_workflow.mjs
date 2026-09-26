@@ -24,7 +24,7 @@ test('ordinary QA2 workflows never reference the separate UrTruck Pro Test conto
   for (const source of [workflow, qaCenter, recoveryWorkflow, androidWorkflow]) {
     assert.doesNotMatch(source, /PRO_TEST_|pro-test|urtruck-pro-test|com\.urtruck\.protest/i);
   }
-  assert.match(workflow, /QA2_OPENAI_API_KEY/);
+  assert.doesNotMatch(workflow, /QA2_OPENAI_API_KEY/);
   assert.match(recoveryWorkflow, /SERVER_HOST:\n\s+required: true/);
   assert.match(androidWorkflow, /QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64/);
 });
@@ -62,7 +62,7 @@ test('QA2 backend deploy protects database, storage and production', () => {
 });
 
 test('QA2 backend deploy has rollback and self-contained runtime QA2P isolation proof', () => {
-  assert.match(workflow, /Roll back QA2 code if deploy validation fails/);
+  assert.match(workflow, /Roll back QA2 code and settings if deploy validation fails/);
   assert.match(workflow, /if: failure\(\)/);
   assert.match(workflow, /QA_ROLLBACK=restored-/);
   assert.match(workflow, /QA2P_RUNTIME_FIXTURE=seeded/);
@@ -105,14 +105,19 @@ test('QA2 deploy waits for local health and emits only sanitized startup diagnos
   assert.doesNotMatch(workflow, /cat "\\$qa_root\/\.env"/);
 });
 
-test('QA2 AI uses its own required secret and verifies both providers', () => {
-  assert.match(workflow, /QA2_OPENAI_API_KEY:\n\s+required: true/);
-  assert.match(workflow, /QA2_OPENAI_API_KEY: \$\{\{ secrets\.QA2_OPENAI_API_KEY \}\}/);
+test('QA2 deploy preserves private local AI and rejects provider substitution', () => {
+  assert.match(workflow, /Verify QA2 local AI policy before any server mutation/);
+  assert.match(workflow, /QA2_LOCAL_AI_POLICY_OPENAI_SUBSTITUTION_BLOCKED/);
+  assert.match(workflow, /QA2_LOCAL_AI_POLICY_BLOCKED_BEFORE_MUTATION/);
+  assert.match(workflow, /QA2_LOCAL_AI_URL_POLICY_BLOCKED_BEFORE_MUTATION/);
   assert.match(workflow, /qa_env=\/home\/ubuntu\/urtruck-qa2\/\.env/);
-  assert.match(workflow, /TRANSCRIBE_PROVIDER=openai/);
-  assert.match(workflow, /TRANSLATE_PROVIDER=openai/);
-  assert.match(workflow, /QA_AI_PROVIDER_NOT_READY/);
-  assert.match(workflow, /QA_STT_PROVIDER_NOT_READY/);
+  assert.match(workflow, /TRANSCRIBE_PROVIDER.*local_ai/);
+  assert.match(workflow, /TRANSLATE_PROVIDER.*local_ai/);
+  assert.match(workflow, /QA2_LOCAL_AI_PROVIDER_NOT_READY/);
+  assert.match(workflow, /QA2_LOCAL_AI_SETTINGS_NOT_READY/);
+  assert.match(workflow, /ENV_BACKUP=.*qa2\.env/);
+  assert.match(workflow, /QA_ROLLBACK_LOCAL_AI_SETTINGS_NOT_RESTORED/);
+  assert.doesNotMatch(workflow, /printf[^\n]*TRANSCRIBE_PROVIDER=openai/);
+  assert.doesNotMatch(workflow, /printf[^\n]*TRANSLATE_PROVIDER=openai/);
   assert.doesNotMatch(workflow, /urtruck-security.*\.env/);
-  assert.doesNotMatch(workflow, /echo[^\n]*\$\{?QA2_OPENAI_API_KEY/);
 });
