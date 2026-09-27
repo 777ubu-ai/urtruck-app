@@ -4200,7 +4200,9 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
 @mp_router.get("/deals/{deal_id}/location")
 def get_deal_location(deal_id: str, user=Depends(require_level(1))):
     """Участник сделки (грузоотправитель или водитель) читает последнюю
-    позицию машины. has_location=false, если водитель ещё не слал гео."""
+    позицию машины. Историческая последняя точка остаётся доступной участникам
+    после остановки трекинга как доказательство рейса; новые точки при этом
+    после остановки не принимаются."""
     with get_conn() as c:
         d = c.execute("SELECT shipper_id, driver_id, status FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not d:
@@ -4208,12 +4210,11 @@ def get_deal_location(deal_id: str, user=Depends(require_level(1))):
         if user["id"] not in (d["shipper_id"], d["driver_id"]):
             raise HTTPException(status_code=403, detail="Нет доступа к сделке")
         tracking = _tracking_payload(c, deal_id)
-        if tracking.get("status") != "active":
-            return {"ok": True, "has_location": False, "tracking_status": tracking.get("status", "not_requested")}
         loc = c.execute(
             "SELECT lat, lng, heading, speed, captured_at_ms, updated_at FROM deal_locations WHERE deal_id = ?",
             (deal_id,),
         ).fetchone()
+        tracking_status = tracking.get("status", "not_requested")
     if not loc:
-        return {"ok": True, "has_location": False, "tracking_status": "active", "deal_status": d["status"]}
-    return {"ok": True, "has_location": True, "location": dict(loc), "tracking_status": "active", "deal_status": d["status"]}
+        return {"ok": True, "has_location": False, "tracking_status": tracking_status, "deal_status": d["status"]}
+    return {"ok": True, "has_location": True, "location": dict(loc), "tracking_status": tracking_status, "deal_status": d["status"]}

@@ -63,6 +63,7 @@ import { SERVER_URL } from '../config/env';
 import { reviewsAPI } from '../utils/reviews';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
+const LOCATION_HISTORY_STATUSES = [...LIVE_TRACKING_STATUSES, 'delivered', 'received', 'completed'];
 const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
 const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected', 'expired'];
 const COMPOSER_INPUT_MIN_HEIGHT = 32;
@@ -749,8 +750,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [voiceText, voiceScope, lang]);
 
   const trackingActive = Boolean(dealId && LIVE_TRACKING_STATUSES.includes(deal?.status));
+  const locationReadable = Boolean(dealId && LOCATION_HISTORY_STATUSES.includes(deal?.status));
   const refreshLocation = React.useCallback(async () => {
-    if (!trackingActive || !dealId) {
+    if (!locationReadable || !dealId) {
       setLocation(null);
       setLocationLoading(false);
       return;
@@ -770,7 +772,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     } finally {
       if (mounted.current) setLocationLoading(false);
     }
-  }, [dealId, trackingActive]);
+  }, [dealId, locationReadable]);
   React.useEffect(() => {
     refreshLocation();
     if (!trackingActive) return undefined;
@@ -793,7 +795,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [deal?.trip_capacity_tons]);
   const lat = location?.lat != null ? Number(location.lat) : null;
   const lng = location?.lng != null ? Number(location.lng) : null;
-  const hasLivePoint = Number.isFinite(lat) && Number.isFinite(lng);
+  const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
+  const hasLivePoint = trackingActive && hasCoordinates;
   const onRouteSummary = React.useCallback((summary) => setRouteSummary(summary || null), []);
 
   const updatedText = React.useMemo(() => {
