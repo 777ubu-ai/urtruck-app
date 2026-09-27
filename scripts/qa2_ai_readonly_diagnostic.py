@@ -299,7 +299,17 @@ def voice_local_benchmark(row):
 
     sys.path.insert(0, str(AI_ROOT / "app"))
     from faster_whisper import WhisperModel
-    from quality import stt_prompt, transcription_quality_ok
+    try:
+        from quality import stt_prompt, transcription_quality_ok
+    except ImportError:
+        from quality import transcription_quality_ok
+
+        def stt_prompt(language: str) -> str:
+            return {
+                "ru": "Груз, склад, водитель, машина, прицеп, таможня, граница, документы, маршрут, доставка, тент, Алматы, Астана.",
+                "zh": "货物，仓库，司机，车辆，挂车，海关，边境，文件，路线，交付，篷布车，阿拉木图，阿斯塔纳。",
+                "en": "Cargo, warehouse, driver, truck, trailer, customs, border, documents, route, delivery, tent truck, Almaty, Astana.",
+            }.get(language, "")
 
     model_started = time.perf_counter()
     model = WhisperModel(
