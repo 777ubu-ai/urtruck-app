@@ -71,6 +71,26 @@ def test_message_82_preserves_price_weight_unit_and_body_ru_zh():
     assert translation_quality_ok(source, bad, "ru", "zh") is False
 
 
+def test_control_phrase_repairs_weight_after_price_without_binding_price():
+    source = "Алматы — Астана, груз 1500 USD, 10 тонн, тент."
+    raw = "阿拉木图阿斯塔纳,货物1500美元,10,篷布车."
+    repaired = repair_logistics_translation(source, raw, "ru", "zh")
+    assert "1500美元" in repaired
+    assert "10 吨" in repaired
+    assert "1500 吨" not in repaired
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
+def test_control_phrase_repairs_truncated_astana_and_weight_ru_zh():
+    source = "Алматы — Астана, груз, 10 тонн, тент."
+    raw = "阿拉木图阿斯塔货物10, 篷布车."
+    repaired = repair_logistics_translation(source, raw, "ru", "zh")
+    assert "阿拉木图" in repaired
+    assert "阿斯塔纳" in repaired
+    assert "10 吨" in repaired
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
 def test_message_82_preserves_price_weight_unit_and_body_zh_ru():
     source = "阿拉木图, 阿斯塔纳, 货物, 1500 USD, 10 吨, 篷布车。"
     good = "Алматы, Астана, груз, 1500 USD, 10 тонн, тент."

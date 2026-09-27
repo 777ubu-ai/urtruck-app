@@ -92,6 +92,10 @@ CITY_TERMS = {
 # must be normalized before the strict invariant check.
 CITY_OBSERVED_CONFUSIONS = {
     ("almaty", "zh"): ("阿尔马塔",),
+    # NLLB occasionally truncates 阿斯塔纳 to 阿斯塔 and joins it to the
+    # following noun (for example ``阿斯塔货物``).  Normalize only this
+    # observed city-preserving error; unknown omissions remain a quality FAIL.
+    ("astana", "zh"): ("阿斯塔",),
 }
 
 
@@ -261,6 +265,26 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
             unit = WEIGHT_UNIT_CANONICAL[target]
             for match in reversed(target_numbers):
                 number = match.group(0)
+                repaired = (
+                    repaired[:match.end()]
+                    + f" {unit}"
+                    + repaired[match.end():]
+                )
+        elif len(source_values) == 1:
+            # A logistics sentence commonly contains a price as well as one
+            # weight.  The old all-numbers mapping intentionally refused to
+            # repair that case, which made the real control phrase fail when
+            # NLLB returned ``1500 dollars, 10``.  Bind the unit only when the
+            # source weight value occurs exactly once in the candidate; a
+            # plate/date/price can therefore never receive a guessed unit.
+            matching_numbers = [
+                match
+                for match in target_numbers
+                if Decimal(match.group(0).replace(",", ".")) == source_values[0]
+            ]
+            if len(matching_numbers) == 1:
+                match = matching_numbers[0]
+                unit = WEIGHT_UNIT_CANONICAL[target]
                 repaired = (
                     repaired[:match.end()]
                     + f" {unit}"
