@@ -727,7 +727,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     if (!autoTranslate || historyStatus !== 'ready' || queue.running) return undefined;
     const pending = messages.filter((m) => m?.id && !m.mine && !m.system
       && m.text && !m.photo && !m.voice && !translations[m.id]
-      && !queue.attempted.has(m.id)).slice(0, 6);
+      && !queue.attempted.has(m.id) && !queue.pending.has(m.id)).slice(0, 6);
     if (!pending.length) return undefined;
     queue.running = true;
     pending.forEach((item) => queue.pending.add(item.id));
@@ -1474,21 +1474,34 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       const queue = autoTranslationRef.current;
                       const scope = JSON.stringify([roomId, session?.user?.id || null, getLanguage().toLowerCase()]);
                       if (queue.scope === scope && queue.pending.has(item.id)) return;
+                      // Ручной запрос участвует в той же single-flight очереди, что и auto.
+                      // Иначе включение auto между нажатием и ответом создаст второй запрос.
+                      if (queue.scope === scope) {
+                        queue.pending.add(item.id);
+                        queue.attempted.add(item.id);
+                      }
                       setTranslating(item.id);
+                      let translated = false;
                       try {
                         const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
-                        if (result?.translated_text) {
+                        // Не показывать запоздалый ответ в другой комнате или на другом языке.
+                        if (queue.scope === scope && result?.translated_text) {
+                          translated = true;
                           setTranslations((prev) => ({
                             ...prev,
                             [item.id]: { text: result.translated_text, provider: result.provider, showOriginal: false },
                           }));
-                        } else {
+                        } else if (queue.scope === scope) {
                           toast(t('translation_unavailable'), 'info');
                         }
                       } catch {
-                        toast(t('translation_unavailable'), 'info');
+                        if (queue.scope === scope) toast(t('translation_unavailable'), 'info');
                       } finally {
-                        setTranslating(null);
+                        if (queue.scope === scope) {
+                          queue.pending.delete(item.id);
+                          if (!translated) queue.attempted.delete(item.id);
+                          setTranslating(null);
+                        }
                       }
                     }}
                     testID="deal-chat-message-translate"

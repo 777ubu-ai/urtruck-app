@@ -172,3 +172,38 @@ test('ручная кнопка не дублирует авто-запрос и
   await f.manualTap(message);
   assert.deepEqual(f.calls, [[101, 'ru'], [101, 'ru']]);
 });
+
+test('ручной запрос, начатый раньше auto, остаётся единственным запросом', async () => {
+  const wait = deferred();
+  const f = fixture(() => wait.promise);
+  f.state.autoTranslate = false;
+  const message = { id: 101, text: '你好' };
+  f.state.messages = [message];
+  f.render();
+  const manual = f.manualTap(message);
+  assert.deepEqual(f.calls, [[101, 'ru']]);
+  f.state.autoTranslate = true;
+  f.render();
+  assert.deepEqual(f.calls, [[101, 'ru']]);
+  wait.resolve({ translated_text: 'Привет', provider: 'local_ai' });
+  await manual;
+  assert.equal(f.getTranslations()[101].text, 'Привет');
+});
+
+test('запоздалый ручной ответ не попадает в другую комнату или язык', async () => {
+  const old = deferred();
+  const f = fixture(() => old.promise);
+  f.state.autoTranslate = false;
+  const message = { id: 101, text: '你好' };
+  f.state.messages = [message];
+  f.render();
+  const manual = f.manualTap(message);
+  f.state.roomId = 'room-2';
+  f.state.lang = 'zh';
+  f.state.messages = [{ id: 102, text: 'новое' }];
+  f.render();
+  old.resolve({ translated_text: 'stale', provider: 'local_ai' });
+  await manual;
+  assert.equal(f.getTranslations()[101], undefined);
+  assert.equal(f.getTranslations()[102], undefined);
+});
