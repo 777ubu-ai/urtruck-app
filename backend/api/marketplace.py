@@ -145,7 +145,10 @@ DIRTY_TOKENS = (
 # pickup_date — anything older than this with no pickup is treated as stale
 # pre-pilot leftover.
 PUBLIC_CUTOFF_DATE = "2026-05-01"
-QA_RECORD_MARKERS = ("[ar-", "qa2p_")
+# QA2 E2E records are intentionally visible on non-production environments
+# so the real driver feed can exercise the full cargo -> bid -> deal path.
+# Production keeps the existing hygiene rule and hides every QA marker.
+QA_RECORD_MARKERS = ("[ar-", "qa2p_", "qa2-e2e-")
 
 
 def _parse_iso_date(s):
