@@ -332,7 +332,7 @@ def _translation_cache_source_lang(source_text: str, source_lang: str | None) ->
 
 def _repair_local_ai_cached_translation(source_text: str, source_lang: str | None,
                                          target_lang: str, provider: str,
-                                         translated_text: str) -> str:
+                                         translated_text: str) -> str | None:
     """Revalidate cached local-AI output with the same narrow repair contract.
 
     Shared cache rows predate the current quality-gate repair and can contain a
@@ -343,17 +343,26 @@ def _repair_local_ai_cached_translation(source_text: str, source_lang: str | Non
     if provider not in {"local_nllb_1_3b", "local_ai"}:
         return translated_text
     try:
-        from qa_ai_service.quality import repair_logistics_translation
-        return repair_logistics_translation(
+        from qa_ai_service.quality import repair_logistics_translation, translation_quality_ok
+        cache_source = _translation_cache_source_lang(source_text, source_lang)
+        cache_target = _normalize_lang_code(target_lang) or "en"
+        repaired = repair_logistics_translation(
             source_text,
             translated_text,
-            _translation_cache_source_lang(source_text, source_lang),
-            _normalize_lang_code(target_lang) or "en",
+            cache_source,
+            cache_target,
         )
+        if not repaired or not translation_quality_ok(
+            source_text, repaired, cache_source, cache_target
+        ):
+            return None
+        return repaired
     except Exception:
-        # Cache validation must never make chat unavailable if the optional
-        # quality module is absent in a rolling/legacy backend process.
-        return translated_text
+        # Never serve stale local-AI output when validation itself fails. The
+        # caller removes the cache row and falls through to a fresh provider
+        # request; returning the old text would turn a validator outage into
+        # a false successful translation.
+        return None
 
 
 def _translation_memory_lookup(c, source_text: str, source_lang: str | None, target_lang: str):
@@ -368,6 +377,13 @@ def _translation_memory_lookup(c, source_text: str, source_lang: str | None, tar
         repaired = _repair_local_ai_cached_translation(
             source_text, source_lang, target_lang, row["provider"], row["translated_text"]
         )
+        if repaired is None:
+            c.execute(
+                "DELETE FROM translation_memory WHERE source_hash=? AND source_lang=? "
+                "AND target_lang=? AND provider=? AND model=? AND prompt_version=?",
+                key,
+            )
+            return None
         if repaired != row["translated_text"]:
             c.execute(
                 "UPDATE translation_memory SET translated_text=?, last_used_at=CURRENT_TIMESTAMP "
@@ -1138,19 +1154,25 @@ def translate_message(body: TranslateIn, user=Depends(require_level(1))):
             cached_text = _repair_local_ai_cached_translation(
                 source_text, source_lang, target_lang, cached["provider"], cached["translated_text"]
             )
-            if cached_text != cached["translated_text"]:
+            if cached_text is None:
                 c.execute(
-                    "UPDATE chat_translations SET translated_text=? WHERE message_id=? AND target_lang=?",
-                    (cached_text, body.message_id, target_lang),
+                    "DELETE FROM chat_translations WHERE message_id=? AND target_lang=?",
+                    (body.message_id, target_lang),
                 )
-            return {
-                "translated_text": cached_text,
-                "original_text": source_text,
-                "target_lang": target_lang,
-                "provider": cached["provider"],
-                "cached": True,
-                "cache_scope": "message",
-            }
+            else:
+                if cached_text != cached["translated_text"]:
+                    c.execute(
+                        "UPDATE chat_translations SET translated_text=? WHERE message_id=? AND target_lang=?",
+                        (cached_text, body.message_id, target_lang),
+                    )
+                return {
+                    "translated_text": cached_text,
+                    "original_text": source_text,
+                    "target_lang": target_lang,
+                    "provider": cached["provider"],
+                    "cached": True,
+                    "cache_scope": "message",
+                }
 
         shared = _translation_memory_lookup(c, source_text, source_lang, target_lang)
         if shared:
@@ -1314,10 +1336,31 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
     translation_error = None
     if target_lang:
         if cached_translation:
-            translated_text = cached_translation["translated_text"]
-            translation_provider = cached_translation["provider"]
-            translation_cached = True
-        elif target_lang != transcript_lang:
+            cached_text = _repair_local_ai_cached_translation(
+                transcript_text,
+                transcript_lang,
+                target_lang,
+                cached_translation["provider"],
+                cached_translation["translated_text"],
+            )
+            if cached_text is None:
+                with get_conn() as c:
+                    c.execute(
+                        "DELETE FROM chat_translations WHERE message_id=? AND target_lang=?",
+                        (body.message_id, target_lang),
+                    )
+                cached_translation = None
+            else:
+                translated_text = cached_text
+                translation_provider = cached_translation["provider"]
+                translation_cached = True
+                if cached_text != cached_translation["translated_text"]:
+                    with get_conn() as c:
+                        c.execute(
+                            "UPDATE chat_translations SET translated_text=? WHERE message_id=? AND target_lang=?",
+                            (cached_text, body.message_id, target_lang),
+                        )
+        if not translated_text and target_lang != transcript_lang:
             with get_conn() as c:
                 shared = _translation_memory_lookup(c, transcript_text, transcript_lang, target_lang)
                 if shared:
