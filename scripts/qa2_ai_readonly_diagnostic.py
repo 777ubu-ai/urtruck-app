@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import resource
 import sqlite3
@@ -287,6 +288,94 @@ def voice_measurement(row):
     )
 
 
+def voice_local_benchmark(row):
+    """Measure the same Whisper pipeline without exposing transcript contents."""
+    if row is None:
+        return
+    path = local_audio_path(row["photo_url"])
+    if not path or not path.is_file():
+        emit("voice_local_benchmark", message_id=row["id"], status="audio_unresolved")
+        return
+
+    sys.path.insert(0, str(AI_ROOT / "app"))
+    from faster_whisper import WhisperModel
+    from quality import stt_prompt, transcription_quality_ok
+
+    model_started = time.perf_counter()
+    model = WhisperModel(
+        str(AI_ROOT / "models" / "faster-whisper-large-v3-turbo"),
+        device="cpu",
+        compute_type="int8",
+        cpu_threads=4,
+        num_workers=2,
+        local_files_only=True,
+    )
+    model_load_ms = (time.perf_counter() - model_started) * 1000
+
+    read_started = time.perf_counter()
+    audio = path.read_bytes()
+    audio_read_ms = (time.perf_counter() - read_started) * 1000
+    language_hint = str(row["voice_transcript_lang"] or "ru")
+    inference_started = time.perf_counter()
+    segments_iter, info = model.transcribe(
+        str(path),
+        language=language_hint,
+        initial_prompt=stt_prompt(language_hint),
+        beam_size=1,
+        best_of=1,
+        vad_filter=True,
+        vad_parameters={"min_silence_duration_ms": 500, "speech_pad_ms": 250},
+        condition_on_previous_text=False,
+        word_timestamps=False,
+    )
+    segments = list(segments_iter)
+    inference_ms = (time.perf_counter() - inference_started) * 1000
+    transcript = " ".join(segment.text.strip() for segment in segments).strip()
+    confidences = [
+        math.exp(min(0.0, float(segment.avg_logprob)))
+        for segment in segments
+        if segment.avg_logprob is not None
+    ]
+    confidence = (
+        sum(confidences) / len(confidences)
+        if confidences
+        else float(getattr(info, "language_probability", 0.0) or 0.0)
+    )
+    detected_language = str(getattr(info, "language", "") or "")
+    quality_started = time.perf_counter()
+    quality_ok = transcription_quality_ok(
+        transcript,
+        detected_language,
+        confidence,
+        minimum_confidence=0.50,
+    )
+    quality_ms = (time.perf_counter() - quality_started) * 1000
+    if not transcript:
+        failure_reason = "empty_transcript"
+    elif confidence < 0.50:
+        failure_reason = "low_confidence"
+    elif not quality_ok:
+        failure_reason = "script_or_content_quality"
+    else:
+        failure_reason = None
+    emit(
+        "voice_local_benchmark",
+        message_id=row["id"],
+        audio_bytes=len(audio),
+        model_load_ms=round(model_load_ms, 2),
+        audio_read_ms=round(audio_read_ms, 2),
+        inference_ms=round(inference_ms, 2),
+        quality_ms=round(quality_ms, 2),
+        segment_count=len(segments),
+        transcript_chars=len(transcript),
+        transcript_digest=safe_text_digest(transcript),
+        detected_language=detected_language,
+        confidence=round(confidence, 4),
+        quality_ok=quality_ok,
+        failure_reason=failure_reason,
+    )
+
+
 def main():
     snapshot("start")
     rows, latest_voice = load_rows()
@@ -298,6 +387,8 @@ def main():
     beam_benchmark(rows)
     snapshot("after_beam_benchmark")
     voice_measurement(latest_voice)
+    snapshot("after_voice_endpoint")
+    voice_local_benchmark(latest_voice)
     snapshot("finish")
 
 
