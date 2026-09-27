@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import resource
 import sqlite3
 import sys
@@ -365,7 +366,21 @@ def voice_local_benchmark(row):
     elif confidence < 0.50:
         failure_reason = "low_confidence"
     elif not quality_ok:
-        failure_reason = "script_or_content_quality"
+        cyrillic = len(re.findall(r"[\u0400-\u04ff]", transcript))
+        latin = len(re.findall(r"[A-Za-z]", transcript))
+        han = len(re.findall(r"[\u3400-\u9fff]", transcript))
+        if detected_language in {"ru", "kk"} and cyrillic == 0:
+            failure_reason = "source_script_missing"
+        elif detected_language in {"ru", "kk"} and han / max(cyrillic + han, 1) > 0.25:
+            failure_reason = "unexpected_han_ratio"
+        elif detected_language == "zh" and han / max(cyrillic + latin + han, 1) < 0.50:
+            failure_reason = "unexpected_non_han_ratio"
+        elif detected_language == "en" and latin / max(cyrillic + latin + han, 1) < 0.85:
+            failure_reason = "unexpected_non_latin_ratio"
+        else:
+            words = re.findall(r"[\w\u3400-\u9fff]+", transcript.casefold())
+            trigrams = list(zip(words, words[1:], words[2:]))
+            failure_reason = "repeated_trigram" if len(trigrams) != len(set(trigrams)) else "disallowed_term_or_script"
     else:
         failure_reason = None
     emit(
