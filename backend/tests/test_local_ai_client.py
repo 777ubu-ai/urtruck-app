@@ -14,8 +14,15 @@ class FakeResponse:
     def raise_for_status(self):
         if self.status_code >= 400:
             import httpx
+            import json
             request = httpx.Request("POST", "http://127.0.0.1:8003/test")
-            raise httpx.HTTPStatusError("failed", request=request, response=httpx.Response(self.status_code, request=request))
+            response = httpx.Response(
+                self.status_code,
+                request=request,
+                content=json.dumps(self._data).encode("utf-8"),
+                headers={"content-type": "application/json"},
+            )
+            raise httpx.HTTPStatusError("failed", request=request, response=response)
 
     def json(self):
         return self._data
@@ -49,6 +56,21 @@ def test_translation_never_accepts_source_as_result(monkeypatch):
     assert error.value.code == "TRANSLATION_FAILED"
 
 
+def test_translation_quality_rejection_has_stable_safe_code(monkeypatch):
+    monkeypatch.setattr(
+        client.httpx,
+        "post",
+        lambda *a, **k: FakeResponse(
+            {"detail": {"message": "translation confidence too low", "candidate": "private"}},
+            status=422,
+        ),
+    )
+    with pytest.raises(client.LocalAIError) as error:
+        client.translate("Груз", "ru", "zh")
+    assert error.value.code == "TRANSLATION_QUALITY_FAILED"
+    assert "private" not in str(error.value)
+
+
 def test_transcription_sends_explicit_language_hint(monkeypatch, tmp_path):
     audio = tmp_path / "voice.m4a"
     audio.write_bytes(b"audio")
@@ -80,6 +102,19 @@ def test_transcription_422_is_a_file_failure_not_service_outage(monkeypatch, tmp
         client.transcribe(str(audio))
     assert error.value.code == "TRANSCRIPTION_FAILED"
     assert error.value.retryable is False
+
+
+def test_transcription_quality_rejection_has_stable_safe_code(monkeypatch, tmp_path):
+    audio = tmp_path / "voice.m4a"
+    audio.write_bytes(b"audio")
+    monkeypatch.setattr(
+        client.httpx,
+        "post",
+        lambda *a, **k: FakeResponse({"detail": "transcription quality too low"}, status=422),
+    )
+    with pytest.raises(client.LocalAIError) as error:
+        client.transcribe(str(audio))
+    assert error.value.code == "TRANSCRIPTION_QUALITY_FAILED"
 
 
 def test_transcription_503_is_retryable(monkeypatch, tmp_path):

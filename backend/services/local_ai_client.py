@@ -12,6 +12,23 @@ class LocalAIError(RuntimeError):
         self.retryable = retryable
 
 
+def _safe_error_code(response, fallback: str) -> str:
+    """Map private AI 4xx details to stable safe codes without leaking text."""
+    try:
+        detail = response.json().get("detail")
+    except (AttributeError, TypeError, ValueError):
+        return fallback
+    if isinstance(detail, dict):
+        detail = detail.get("message") or detail.get("error")
+    detail = str(detail or "").strip().lower()
+    return {
+        "translation confidence too low": "TRANSLATION_QUALITY_FAILED",
+        "transcription quality too low": "TRANSCRIPTION_QUALITY_FAILED",
+        "no speech detected": "TRANSCRIPTION_NO_SPEECH",
+        "audio could not be decoded": "TRANSCRIPTION_AUDIO_INVALID",
+    }.get(detail, fallback)
+
+
 def _base_url() -> str:
     value = os.getenv("LOCAL_AI_URL", "http://127.0.0.1:8003").strip()
     if value not in {"http://127.0.0.1:8003", "http://localhost:8003"}:
@@ -32,7 +49,9 @@ def translate(text: str, source_lang: str | None, target_lang: str) -> dict:
         raise LocalAIError("TRANSLATION_TIMEOUT", retryable=True) from exc
     except httpx.HTTPStatusError as exc:
         retryable = exc.response.status_code >= 500
-        code = "TRANSLATION_TIMEOUT" if retryable else "TRANSLATION_FAILED"
+        code = "TRANSLATION_TIMEOUT" if retryable else _safe_error_code(
+            exc.response, "TRANSLATION_FAILED"
+        )
         raise LocalAIError(code, retryable=retryable) from exc
     except (httpx.HTTPError, ValueError) as exc:
         raise LocalAIError("TRANSLATION_UNAVAILABLE", retryable=True) from exc
@@ -63,7 +82,9 @@ def transcribe(path: str, filename: str | None = None, language: str | None = No
         raise LocalAIError("TRANSCRIPTION_TIMEOUT", retryable=True) from exc
     except httpx.HTTPStatusError as exc:
         retryable = exc.response.status_code >= 500
-        code = "TRANSCRIPTION_TIMEOUT" if retryable else "TRANSCRIPTION_FAILED"
+        code = "TRANSCRIPTION_TIMEOUT" if retryable else _safe_error_code(
+            exc.response, "TRANSCRIPTION_FAILED"
+        )
         raise LocalAIError(code, retryable=retryable) from exc
     except (OSError, httpx.HTTPError, ValueError) as exc:
         raise LocalAIError("TRANSCRIPTION_UNAVAILABLE", retryable=True) from exc
