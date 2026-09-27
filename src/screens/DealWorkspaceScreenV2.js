@@ -26,6 +26,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import TruckMap from '../components/TruckMap';
 import TripMapInfoSheet from '../components/deal/TripMapInfoSheet';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
+import PdfPreviewModal from '../components/deal/PdfPreviewModal';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import RatingModal from '../components/RatingModal';
 import Button from '../components/ui/v1/Button';
@@ -337,6 +338,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [confirmDialog, setConfirmDialog] = React.useState(null);
   const [showJumpLatest, setShowJumpLatest] = React.useState(false);
   const [fullImage, setFullImage] = React.useState(null);
+  const [pdfPreview, setPdfPreview] = React.useState(null);
   const [locationSending, setLocationSending] = React.useState(false);
   const [translations, setTranslations] = React.useState({});
   const [translating, setTranslating] = React.useState(null);
@@ -1353,7 +1355,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             <TouchableOpacity
               activeOpacity={item.docUrl ? 0.72 : 1}
               disabled={!item.docUrl}
-              onPress={() => item.docUrl && Linking.openURL(item.docUrl).catch(() => {})}
+              onPress={() => {
+                if (!item.docUrl) return;
+                if (meta.ext === 'pdf') {
+                  setPdfPreview({ url: item.docUrl, title: item.docName });
+                  return;
+                }
+                Linking.openURL(item.docUrl).catch(() => {});
+              }}
               style={[s.docBubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}
               testID="deal-chat-document-bubble"
             >
@@ -2021,6 +2030,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             </TouchableOpacity>
           </Pressable>
         </Modal>
+        <PdfPreviewModal
+          visible={Boolean(pdfPreview)}
+          url={pdfPreview?.url}
+          title={pdfPreview?.title}
+          onClose={() => setPdfPreview(null)}
+        />
 
         {/* Call menu — only "send call link" is real. Audio/video/schedule are
             explicitly disabled with a "coming soon" label rather than looking
