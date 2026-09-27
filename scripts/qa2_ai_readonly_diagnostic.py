@@ -56,12 +56,35 @@ def snapshot(label: str):
 
 
 def open_db():
-    uri = f"file:{DB_PATH}?mode=ro"
-    return sqlite3.connect(uri, uri=True)
+    candidates = [DB_PATH]
+    qa_root = Path("/home/ubuntu/urtruck-qa2")
+    if qa_root.is_dir():
+        candidates.extend(sorted(qa_root.rglob("*.db")))
+    seen = set()
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        if candidate in seen or not candidate.is_file():
+            continue
+        seen.add(candidate)
+        try:
+            db = sqlite3.connect(f"file:{candidate}?mode=ro", uri=True)
+            db.execute("SELECT 1 FROM chat_messages LIMIT 1")
+            emit("database_path", path=str(candidate))
+            return db
+        except sqlite3.Error:
+            try:
+                db.close()
+            except UnboundLocalError:
+                pass
+    return None
 
 
 def load_rows():
-    with open_db() as db:
+    db = open_db()
+    if db is None:
+        emit("database", status="DB_NOT_FOUND_OR_INACCESSIBLE")
+        return [], None
+    with db:
         db.row_factory = sqlite3.Row
         messages = db.execute(
             "SELECT id, text, is_voice, voice_duration, photo_url, "
