@@ -22,6 +22,13 @@ test('Border loads canonical private vehicle/deal context with auth', () => {
   assert.match(border, /testID="border-shipper-deals-card"/);
 });
 
+test('Border never keeps the CGR-online badge after the live source failed', () => {
+  assert.match(border, /const cgrLiveAvailable = !catalogError && !liveError/);
+  assert.match(border, /cgrLiveAvailable \? R\.cgrOnline : R\.cgrUnavailable/);
+  assert.match(border, /!cgrLiveAvailable && s\.unavailablePill/);
+  assert.match(border, /cgrUnavailable: 'CGR 暂不可用'/);
+});
+
 
 test('driver without a vehicle can add one or run a secondary public lookup', () => {
   assert.match(border, /testID="border-driver-empty-vehicle"/);
