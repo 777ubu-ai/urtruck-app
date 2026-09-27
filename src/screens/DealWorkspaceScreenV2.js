@@ -342,6 +342,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [pdfPreview, setPdfPreview] = React.useState(null);
   const [locationSending, setLocationSending] = React.useState(false);
   const [translations, setTranslations] = React.useState({});
+  const [translationErrors, setTranslationErrors] = React.useState({});
   const [translating, setTranslating] = React.useState(null);
   const [autoTranslate, setAutoTranslate] = React.useState(false);
   // Не повторять автоматический перевод при опросе сообщений каждые 3 секунды.
@@ -588,7 +589,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           read: !!message.is_read,
         };
       });
-      voiceText.hydrate(mapped);
+      const resumedVoiceTranslations = voiceText.hydrate(mapped) || [];
+      // Если poll принёс transcript после 409 «распознавание выполняется»,
+      // продолжить только уже открытый пользователем перевод. Не трогаем
+      // скрытые сообщения и не запускаем повтор на каждом poll: hydrate
+      // возвращает id исключительно при новом original.
+      resumedVoiceTranslations.forEach((messageId) => {
+        void voiceText.retry({ id: messageId }, lang);
+      });
       const serverDocs = (attachResult?.attachments || [])
         .filter((a) => a.kind === 'document')
         .map((a) => {
@@ -721,6 +729,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       queue.pending = new Set();
       // Перевод принадлежит конкретной комнате и языку получателя.
       setTranslations({});
+      setTranslationErrors({});
       return undefined;
     }
     queue.enabled = autoTranslate;
@@ -1462,6 +1471,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   {translations[item.id] && !translations[item.id].showOriginal ? translations[item.id].text : item.text}
                 </Text>
                 {!item.mine && !item.system ? (
+                  <>
                   <TouchableOpacity
                     style={s.translateBtn}
                     disabled={translating === item.id}
@@ -1491,11 +1501,19 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                             ...prev,
                             [item.id]: { text: result.translated_text, provider: result.provider, showOriginal: false },
                           }));
+                          setTranslationErrors((prev) => {
+                            if (!prev[item.id]) return prev;
+                            const next = { ...prev };
+                            delete next[item.id];
+                            return next;
+                          });
                         } else if (queue.scope === scope) {
-                          toast(t('translation_unavailable'), 'info');
+                          setTranslationErrors((prev) => ({ ...prev, [item.id]: { code: null } }));
                         }
-                      } catch {
-                        if (queue.scope === scope) toast(t('translation_unavailable'), 'info');
+                      } catch (error) {
+                        if (queue.scope === scope) {
+                          setTranslationErrors((prev) => ({ ...prev, [item.id]: { code: error?.code || null } }));
+                        }
                       } finally {
                         if (queue.scope === scope) {
                           queue.pending.delete(item.id);
@@ -1508,9 +1526,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   >
                     <Feather name="globe" size={11} color={colors.info} />
                     <Text style={[s.translateText, { color: colors.info }]}>
-                      {translating === item.id ? '...' : translations[item.id] ? (translations[item.id].showOriginal ? t('hide_original') : t('show_original')) : t('translate')}
+                      {translating === item.id ? '...' : translations[item.id] ? (translations[item.id].showOriginal ? t('hide_original') : t('show_original')) : translationErrors[item.id] ? t('repeat_action') : t('translate')}
                     </Text>
                   </TouchableOpacity>
+                  {translationErrors[item.id] ? (
+                    <Text style={[s.translateError, { color: colors.textMuted }]} testID="deal-chat-translation-error">
+                      {translationErrors[item.id].code && t(`err_${translationErrors[item.id].code}`) !== `err_${translationErrors[item.id].code}`
+                        ? t(`err_${translationErrors[item.id].code}`)
+                        : t('translation_unavailable')}
+                    </Text>
+                  ) : null}
+                  </>
                 ) : null}
               </>
             ) : null}
@@ -1550,7 +1576,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         </View>
       </React.Fragment>
     );
-  }, [colors, translations, translating, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
+  }, [colors, translations, translationErrors, translating, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
@@ -2242,6 +2268,7 @@ const s = StyleSheet.create({
   photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
   translateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   translateText: { fontSize: 11, fontWeight: '700' },
+  translateError: { marginTop: 2, fontSize: 11, lineHeight: 15 },
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
   jumpLatest: { position: 'absolute', right: 14, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#168759', paddingHorizontal: 11, height: 34, borderRadius: 17, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, elevation: 3 },
   jumpLatestText: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '800' },

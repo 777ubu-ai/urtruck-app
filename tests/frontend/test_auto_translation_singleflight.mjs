@@ -24,6 +24,7 @@ const deferred = () => {
 function fixture(translate) {
   const queue = { scope: null, running: false, enabled: false, attempted: new Set(), pending: new Set() };
   let translations = {};
+  let translationErrors = {};
   const calls = [];
   const state = { roomId: 'room-1', lang: 'ru', messages: [], autoTranslate: true, historyStatus: 'ready' };
   function render() {
@@ -36,10 +37,14 @@ function fixture(translate) {
       setTranslations: (update) => {
         translations = typeof update === 'function' ? update(translations) : update;
       },
+      setTranslationErrors: (update) => {
+        translationErrors = typeof update === 'function' ? update(translationErrors) : update;
+      },
       autoTranslate: state.autoTranslate,
       historyStatus: state.historyStatus,
       messages: state.messages,
       translations,
+      translationErrors,
       lang: state.lang,
       chatAPI: { translate: (id, lang) => {
         calls.push([id, lang]);
@@ -55,6 +60,9 @@ function fixture(translate) {
       setTranslations: (update) => {
         translations = typeof update === 'function' ? update(translations) : update;
       },
+      setTranslationErrors: (update) => {
+        translationErrors = typeof update === 'function' ? update(translationErrors) : update;
+      },
       chatAPI: { translate: (id, lang) => {
         calls.push([id, lang]);
         return translate(id, lang);
@@ -63,7 +71,7 @@ function fixture(translate) {
     });
     return handler();
   }
-  return { state, calls, render, manualTap, queue, getTranslations: () => translations };
+  return { state, calls, render, manualTap, queue, getTranslations: () => translations, getTranslationErrors: () => translationErrors };
 }
 
 test('one slow translation stays one request across polling and render', async () => {
@@ -171,6 +179,23 @@ test('ручная кнопка не дублирует авто-запрос и
   assert.equal(f.queue.pending.size, 0);
   await f.manualTap(message);
   assert.deepEqual(f.calls, [[101, 'ru'], [101, 'ru']]);
+});
+
+test('ручный 422 остаётся у конкретного сообщения, а успешный retry очищает его', async () => {
+  let attempt = 0;
+  const f = fixture(() => {
+    attempt += 1;
+    return attempt === 1
+      ? Promise.reject(Object.assign(new Error('quality'), { code: 'TRANSLATION_QUALITY_FAILED' }))
+      : Promise.resolve({ translated_text: '你好', provider: 'local_ai' });
+  });
+  const message = { id: 303, text: 'Привет' };
+  f.render();
+  await f.manualTap(message);
+  assert.equal(f.getTranslationErrors()[303].code, 'TRANSLATION_QUALITY_FAILED');
+  await f.manualTap(message);
+  assert.equal(f.getTranslationErrors()[303], undefined);
+  assert.equal(f.getTranslations()[303].text, '你好');
 });
 
 test('ручной запрос, начатый раньше auto, остаётся единственным запросом', async () => {
