@@ -405,6 +405,12 @@ def main():
     snapshot("start")
     rows, latest_voice = load_rows()
     emit("database", path=str(DB_PATH), messages_found=[row["id"] for row in rows], latest_voice_id=latest_voice["id"] if latest_voice else None)
+    if os.getenv("QA2_DIAGNOSTIC_VOICE_ONLY") == "1":
+        voice_measurement(latest_voice)
+        snapshot("after_voice_endpoint")
+        voice_local_benchmark(latest_voice)
+        snapshot("finish")
+        return
     for row in rows:
         if row["id"] in MESSAGE_TARGETS and row["text"]:
             endpoint_translate(row["id"], row["text"], MESSAGE_TARGETS[row["id"]])
