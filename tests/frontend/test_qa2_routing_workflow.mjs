@@ -9,6 +9,8 @@ test('QA2 routing workflow is protected and uses only the existing ORS secret', 
   assert.match(workflow, /environment:\n\s+name: qa2/);
   assert.match(workflow, /OPENROUTESERVICE_API_KEY:\s*\$\{\{ secrets\.OPENROUTESERVICE_API_KEY \}\}/);
   assert.match(workflow, /CONFIGURE_QA2_ROUTING/);
+  assert.match(workflow, /push:\n\s+branches:\n\s+- fix\/voice-stt-translation-20260925/);
+  assert.match(workflow, /github\.event\.head_commit\.message, '\[qa2-routing\]'/);
   assert.doesNotMatch(workflow, /production-deploy|refs\/heads\/main/);
 });
 

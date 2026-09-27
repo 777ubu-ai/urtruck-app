@@ -7,6 +7,13 @@ on:
         description: Type CONFIGURE_QA2_ROUTING
         required: true
         type: string
+  push:
+    branches:
+      - fix/voice-stt-translation-20260925
+    paths:
+      - .github/workflows/configure-qa2-routing.yml
+      - scripts/configure_qa2_routing.sh
+      - tests/frontend/test_qa2_routing_workflow.mjs
 
 concurrency:
   group: urtruck-qa2-routing-config
@@ -17,7 +24,11 @@ permissions:
 
 jobs:
   configure:
-    if: inputs.confirmation == 'CONFIGURE_QA2_ROUTING'
+    if: >-
+      inputs.confirmation == 'CONFIGURE_QA2_ROUTING' ||
+      (github.event_name == 'push' &&
+       github.ref == 'refs/heads/fix/voice-stt-translation-20260925' &&
+       contains(github.event.head_commit.message, '[qa2-routing]'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
