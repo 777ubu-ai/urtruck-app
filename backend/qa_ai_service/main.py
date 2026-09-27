@@ -4,6 +4,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 import ctranslate2
@@ -19,7 +20,7 @@ except ImportError:  # uvicorn runs this file as top-level main.py in QA2
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _translate_slot = threading.BoundedSemaphore(1)
-_speech_slots = threading.BoundedSemaphore(2)
+_speech_slots = threading.BoundedSemaphore(1)
 _translator = None
 _tokenizer = None
 _whisper = None
@@ -71,7 +72,7 @@ def _load_whisper():
     if _whisper is None:
         if not (WHISPER_MODEL / "model.bin").is_file():
             raise RuntimeError("speech model missing")
-        _whisper = WhisperModel(str(WHISPER_MODEL), device="cpu", compute_type="int8", cpu_threads=4, num_workers=2, local_files_only=True)
+        _whisper = WhisperModel(str(WHISPER_MODEL), device="cpu", compute_type="int8", cpu_threads=4, num_workers=1, local_files_only=True)
     return _whisper
 
 
@@ -146,20 +147,28 @@ def translate(body: TranslateRequest):
 def transcribe(file: UploadFile = File(...), language: str | None = Form(default=None)):
     # A synchronous endpoint runs in FastAPI's worker pool, allowing the two
     # bounded CTranslate2 workers to serve the two QA phones concurrently.
+    request_started = time.perf_counter()
+    read_started = time.perf_counter()
     data = file.file.read(32 * 1024 * 1024 + 1)
+    file_read_ms = (time.perf_counter() - read_started) * 1000
     if not data or len(data) > 32 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="invalid audio size")
     language_hint = _lang(language)
     if language_hint and language_hint not in SUPPORTED_LANGS:
         raise HTTPException(status_code=422, detail="unsupported language")
+    slot_started = time.perf_counter()
     if not _speech_slots.acquire(timeout=150):
         raise HTTPException(status_code=503, detail="busy")
+    slot_wait_ms = (time.perf_counter() - slot_started) * 1000
     suffix = Path(file.filename or "voice.m4a").suffix[:10] or ".m4a"
     temp_path = None
     try:
+        write_started = time.perf_counter()
         with tempfile.NamedTemporaryFile(prefix="qa2-voice-", suffix=suffix, delete=False) as handle:
             handle.write(data)
             temp_path = handle.name
+        file_write_ms = (time.perf_counter() - write_started) * 1000
+        whisper_started = time.perf_counter()
         segments_iter, info = _load_whisper().transcribe(
             temp_path,
             language=language_hint,
@@ -172,6 +181,7 @@ def transcribe(file: UploadFile = File(...), language: str | None = Form(default
             word_timestamps=False,
         )
         segments = list(segments_iter)
+        whisper_ms = (time.perf_counter() - whisper_started) * 1000
         transcript = " ".join(segment.text.strip() for segment in segments).strip()
         detected_language = _lang(info.language)
         source_language = language_hint or detected_language
@@ -187,8 +197,48 @@ def transcribe(file: UploadFile = File(...), language: str | None = Form(default
         )
         if not transcript or not source_language:
             raise ValueError("empty transcript")
-        if not transcription_quality_ok(transcript, source_language, confidence, minimum_confidence=STT_MIN_WORD_CONFIDENCE):
-            raise HTTPException(status_code=422, detail="transcription quality too low")
+        quality_started = time.perf_counter()
+        quality_ok = transcription_quality_ok(
+            transcript,
+            source_language,
+            confidence,
+            minimum_confidence=STT_MIN_WORD_CONFIDENCE,
+        )
+        quality_ms = (time.perf_counter() - quality_started) * 1000
+        if not quality_ok:
+            cyrillic = len(re.findall(r"[\u0400-\u04ff]", transcript))
+            han = len(re.findall(r"[\u3400-\u9fff]", transcript))
+            if confidence < STT_MIN_WORD_CONFIDENCE:
+                reason = "low_confidence"
+            elif source_language in {"ru", "kk"} and cyrillic == 0:
+                reason = "source_script_missing"
+            elif source_language in {"ru", "kk"} and han / max(cyrillic + han, 1) > 0.25:
+                reason = "unexpected_han_ratio"
+            elif source_language == "zh" and han / max(cyrillic + han + len(re.findall(r"[A-Za-z]", transcript)), 1) < 0.50:
+                reason = "unexpected_non_han_ratio"
+            else:
+                reason = "quality_gate"
+            print(
+                "[qa2-ai] transcription rejected "
+                f"reason={reason} bytes={len(data)} segments={len(segments)} "
+                f"confidence={confidence:.4f} file_read_ms={file_read_ms:.2f} "
+                f"slot_wait_ms={slot_wait_ms:.2f} file_write_ms={file_write_ms:.2f} "
+                f"whisper_ms={whisper_ms:.2f} quality_ms={quality_ms:.2f} "
+                f"total_ms={(time.perf_counter() - request_started) * 1000:.2f}",
+                flush=True,
+            )
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "transcription quality too low", "reason": reason},
+            )
+        print(
+            "[qa2-ai] transcription accepted "
+            f"bytes={len(data)} segments={len(segments)} confidence={confidence:.4f} "
+            f"file_read_ms={file_read_ms:.2f} slot_wait_ms={slot_wait_ms:.2f} "
+            f"file_write_ms={file_write_ms:.2f} whisper_ms={whisper_ms:.2f} "
+            f"quality_ms={quality_ms:.2f} total_ms={(time.perf_counter() - request_started) * 1000:.2f}",
+            flush=True,
+        )
         return {
             "transcript_text": transcript,
             "source_lang": source_language,

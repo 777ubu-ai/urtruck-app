@@ -318,7 +318,7 @@ def voice_local_benchmark(row):
         device="cpu",
         compute_type="int8",
         cpu_threads=4,
-        num_workers=2,
+        num_workers=1,
         local_files_only=True,
     )
     model_load_ms = (time.perf_counter() - model_started) * 1000
@@ -398,6 +398,7 @@ def voice_local_benchmark(row):
         confidence=round(confidence, 4),
         quality_ok=quality_ok,
         failure_reason=failure_reason,
+        candidate_num_workers=1,
     )
 
 
