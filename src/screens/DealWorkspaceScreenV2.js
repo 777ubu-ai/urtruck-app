@@ -344,6 +344,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [translations, setTranslations] = React.useState({});
   const [translating, setTranslating] = React.useState(null);
   const [autoTranslate, setAutoTranslate] = React.useState(false);
+  // Не повторять автоматический перевод при опросе сообщений каждые 3 секунды.
+  const autoTranslationRef = React.useRef({
+    scope: null, running: false, enabled: false, attempted: new Set(),
+  });
   const [voiceRevision, setVoiceRevision] = React.useState(0);
   const voiceScope = JSON.stringify([roomId, session?.user?.id || null]);
   const historyStatus = historyState?.scope === voiceScope ? historyState.status : 'loading';
@@ -707,25 +711,48 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [messages.length]);
 
   React.useEffect(() => {
-    if (!autoTranslate) return undefined;
-    let cancelled = false;
-    const pending = messages.filter((m) => m?.id && !m.mine && !m.system && m.text && !m.photo && !m.voice && !translations[m.id]);
+    const targetLang = getLanguage().toLowerCase();
+    const scope = JSON.stringify([roomId, session?.user?.id || null, targetLang]);
+    const queue = autoTranslationRef.current;
+    if (queue.scope !== scope) {
+      queue.scope = scope;
+      queue.running = false;
+      queue.attempted = new Set();
+      // Перевод принадлежит конкретной комнате и языку получателя.
+      setTranslations({});
+      return undefined;
+    }
+    queue.enabled = autoTranslate;
+    if (!autoTranslate || historyStatus !== 'ready' || queue.running) return undefined;
+    const pending = messages.filter((m) => m?.id && !m.mine && !m.system
+      && m.text && !m.photo && !m.voice && !translations[m.id]
+      && !queue.attempted.has(m.id)).slice(0, 6);
     if (!pending.length) return undefined;
+    queue.running = true;
     (async () => {
-      for (const item of pending.slice(0, 6)) {
+      for (const item of pending) {
+        if (queue.scope !== scope || !queue.enabled) break;
+        queue.attempted.add(item.id);
         try {
-          const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
-          if (!cancelled && result?.translated_text) {
+          const result = await chatAPI.translate(item.id, targetLang);
+          if (queue.scope === scope && queue.enabled && result?.translated_text) {
             setTranslations((prev) => (prev[item.id] ? prev : ({
               ...prev,
               [item.id]: { text: result.translated_text, provider: result.provider, showOriginal: false },
             })));
+          } else if (queue.scope === scope && !queue.enabled) {
+            queue.attempted.delete(item.id);
           }
-        } catch { /* translation is an assistive layer, never blocks chat */ }
+        } catch {
+          // Ошибка качества не вызывает новый AI-запрос на каждом опросе.
+          // Повторить можно существующей кнопкой перевода.
+          if (queue.scope === scope && !queue.enabled) queue.attempted.delete(item.id);
+        }
       }
+      if (queue.scope === scope) queue.running = false;
     })();
-    return () => { cancelled = true; };
-  }, [autoTranslate, messages, translations]);
+    return undefined;
+  }, [autoTranslate, messages, translations, roomId, session?.user?.id, lang, historyStatus]);
 
   React.useEffect(() => voiceText.connect(() => setVoiceRevision((value) => value + 1)), [voiceText]);
 
