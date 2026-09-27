@@ -15,10 +15,10 @@ import resource
 import sqlite3
 import sys
 import time
+import urllib.error
+import urllib.request
+import uuid
 from pathlib import Path
-
-import httpx
-
 
 DB_PATH = Path(os.getenv("QA2_DB_PATH", "/home/ubuntu/urtruck-qa2/database/security.db"))
 AI_ROOT = Path(os.getenv("QA2_AI_ROOT", "/home/ubuntu/urtruck-qa2-ai"))
@@ -88,17 +88,33 @@ def safe_text_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
+def post_json(path: str, payload: dict, timeout: int = 240):
+    request = urllib.request.Request(
+        f"{AI_URL}{path}",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            payload = json.loads(exc.read().decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            payload = {"detail": type(exc).__name__}
+        return exc.code, payload
+
+
 def endpoint_translate(message_id: int, text: str, target: str):
     source = detect_source(text)
     started = time.perf_counter()
     try:
-        response = httpx.post(
-            f"{AI_URL}/translate",
-            json={"text": text, "source_lang": source, "target_lang": target},
-            timeout=240,
+        status, payload = post_json(
+            "/translate",
+            {"text": text, "source_lang": source, "target_lang": target},
         )
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-        payload = response.json()
         detail = payload.get("detail") if isinstance(payload, dict) else None
         candidate = detail.get("candidate") if isinstance(detail, dict) else None
         emit(
@@ -106,13 +122,13 @@ def endpoint_translate(message_id: int, text: str, target: str):
             message_id=message_id,
             source_lang=source,
             target_lang=target,
-            http=response.status_code,
+            http=status,
             response_ms=elapsed_ms,
-            provider=payload.get("provider") if response.is_success else None,
-            translated_text=payload.get("translated_text") if response.is_success else None,
-            candidate_text=candidate if response.status_code == 422 else None,
+            provider=payload.get("provider") if status < 400 else None,
+            translated_text=payload.get("translated_text") if status < 400 else None,
+            candidate_text=candidate if status == 422 else None,
             error=(detail.get("message") if isinstance(detail, dict) else detail)
-            if not response.is_success
+            if status >= 400
             else None,
         )
     except Exception as exc:
@@ -200,24 +216,51 @@ def voice_measurement(row):
     if not path or not path.is_file():
         return
     started = time.perf_counter()
-    with path.open("rb") as audio:
-        response = httpx.post(
-            f"{AI_URL}/transcribe",
-            data={"language": row["voice_transcript_lang"] or "ru"},
-            files={"file": (path.name, audio, "application/octet-stream")},
-            timeout=300,
-        )
-    payload = response.json()
+    boundary = f"----qa2diagnostic{uuid.uuid4().hex}"
+    audio = path.read_bytes()
+    fields = [
+        ("language", row["voice_transcript_lang"] or "ru", None),
+        ("file", path.name, audio),
+    ]
+    body = bytearray()
+    for name, value, content in fields:
+        body.extend(f"--{boundary}\r\n".encode())
+        if content is None:
+            body.extend(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
+        else:
+            body.extend(
+                f'Content-Disposition: form-data; name="{name}"; filename="{value}"\r\n'
+                "Content-Type: application/octet-stream\r\n\r\n".encode()
+            )
+            body.extend(content)
+            body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode())
+    request = urllib.request.Request(
+        f"{AI_URL}/transcribe",
+        data=bytes(body),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=300) as response:
+            status = response.status
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        try:
+            payload = json.loads(exc.read().decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            payload = {"detail": type(exc).__name__}
     emit(
         "voice_transcription",
         message_id=row["id"],
-        http=response.status_code,
+        http=status,
         response_ms=round((time.perf_counter() - started) * 1000, 2),
-        transcript_text=payload.get("transcript_text") if response.is_success else None,
-        source_lang=payload.get("source_lang") if response.is_success else None,
-        provider=payload.get("provider") if response.is_success else None,
-        confidence=payload.get("confidence") if response.is_success else None,
-        error=payload.get("detail") if not response.is_success else None,
+        transcript_text=payload.get("transcript_text") if status < 400 else None,
+        source_lang=payload.get("source_lang") if status < 400 else None,
+        provider=payload.get("provider") if status < 400 else None,
+        confidence=payload.get("confidence") if status < 400 else None,
+        error=payload.get("detail") if status >= 400 else None,
     )
 
 
