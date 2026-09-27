@@ -98,6 +98,16 @@ CITY_OBSERVED_CONFUSIONS = {
     ("astana", "zh"): ("阿斯塔",),
 }
 
+# Exact, observed QA2 repairs.  These are deliberately not a general phrase
+# dictionary: they only recover a source string that NLLB left untranslated,
+# or the known false-friend output for the unambiguous traffic-status phrase.
+_EXACT_TRANSLATION_REPAIRS = {
+    ("привет", "ru", "zh"): "你好",
+}
+
+_CLEAR_ROAD_SOURCE = re.compile(r"\b(?:road|route)\s+(?:is\s+)?clear\b", re.IGNORECASE)
+_CLEAR_ROAD_ZH = ("道路畅通", "道路通畅", "路况畅通", "路况良好")
+
 
 def _contains_any(text: str, variants: tuple[str, ...]) -> bool:
     lowered = text.casefold()
@@ -226,6 +236,16 @@ def _numeric_facts(text: str) -> tuple[list[tuple[int, int]], list[Decimal]]:
 def repair_logistics_translation(source_text: str, translated_text: str, source: str, target: str) -> str:
     """Apply narrow, deterministic repairs for observed logistics model errors."""
     repaired = translated_text
+    normalized_source = source_text.strip().casefold()
+    exact_repair = _EXACT_TRANSLATION_REPAIRS.get((normalized_source, source, target))
+    if exact_repair and repaired.strip().casefold() == normalized_source:
+        repaired = exact_repair
+
+    # In the dispatch context, ``Route clear`` is a traffic-status statement,
+    # not an instruction to clear a route.  NLLB has emitted ``路线清理``
+    # ("route cleaning"), so repair only that observed false friend.
+    if source == "en" and target == "zh" and _CLEAR_ROAD_SOURCE.search(source_text):
+        repaired = repaired.replace("路线清理", "道路畅通")
     trailer_source = _contains_any(source_text, LOGISTICS_TERMS["trailer"][source])
     truck_source = _contains_any(source_text, LOGISTICS_TERMS["truck"][source])
     trailer_target = _contains_any(repaired, LOGISTICS_TERMS["trailer"][target])
@@ -432,6 +452,9 @@ def translation_quality_ok(source_text: str, translated_text: str, source: str, 
         return False
     if source_has_body and not _contains_any(translated_text, VEHICLE_BODY_TERMS.get(target, ())):
         return False
+    if source == "en" and target == "zh" and _CLEAR_ROAD_SOURCE.search(source_text):
+        if not _contains_any(translated_text, _CLEAR_ROAD_ZH):
+            return False
     for city in _city_keys(source_text, source):
         if not _contains_any(translated_text, CITY_TERMS[city].get(target, ())):
             return False

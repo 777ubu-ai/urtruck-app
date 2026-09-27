@@ -27,6 +27,21 @@ def test_logistics_translation_accepts_correct_meaning():
     assert translation_quality_ok(source, good, "en", "zh") is True
 
 
+def test_route_clear_is_traffic_status_not_route_cleaning_en_zh():
+    source = "Route clear. Continue to the warehouse."
+    bad = "路线清理。继续前往仓库。"
+    repaired = repair_logistics_translation(source, bad, "en", "zh")
+    assert repaired == "道路畅通。继续前往仓库。"
+    assert translation_quality_ok(source, repaired, "en", "zh") is True
+    assert translation_quality_ok(source, bad, "en", "zh") is False
+
+
+def test_untranslated_uppercase_ru_greeting_is_repaired_for_zh():
+    repaired = repair_logistics_translation("ПРИВЕТ", "ПРИВЕТ", "ru", "zh")
+    assert repaired == "你好"
+    assert translation_quality_ok("ПРИВЕТ", repaired, "ru", "zh") is True
+
+
 def test_logistics_translation_preserves_numbers():
     assert translation_quality_ok(
         "Driver arrives at the border at 09:30.",
