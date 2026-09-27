@@ -8,6 +8,11 @@ const start = source.indexOf('  React.useEffect(() => {\n    const targetLang = 
 const end = source.indexOf('\n\n  React.useEffect(', start + 1);
 assert.ok(start >= 0 && end > start);
 const effectSource = source.slice(start, end);
+const manualMarker = source.indexOf('const current = translations[item.id];');
+const manualStart = source.lastIndexOf('onPress={async () => {', manualMarker) + 'onPress={'.length;
+const manualEnd = source.indexOf('\n                    }}', manualMarker) + '\n                    }'.length;
+assert.ok(manualMarker > 0 && manualStart > 0 && manualEnd > manualStart);
+const manualSource = source.slice(manualStart, manualEnd);
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const deferred = () => {
   let resolve;
@@ -17,7 +22,7 @@ const deferred = () => {
 };
 
 function fixture(translate) {
-  const queue = { scope: null, running: false, enabled: false, attempted: new Set() };
+  const queue = { scope: null, running: false, enabled: false, attempted: new Set(), pending: new Set() };
   let translations = {};
   const calls = [];
   const state = { roomId: 'room-1', lang: 'ru', messages: [], autoTranslate: true, historyStatus: 'ready' };
@@ -42,7 +47,23 @@ function fixture(translate) {
       } },
     });
   }
-  return { state, calls, render, getTranslations: () => translations };
+  function manualTap(item) {
+    const handler = vm.runInNewContext('(' + manualSource + ')', {
+      item, translations, roomId: state.roomId, session: { user: { id: 'user-1' } },
+      getLanguage: () => state.lang, autoTranslationRef: { current: queue },
+      setTranslating: () => {},
+      setTranslations: (update) => {
+        translations = typeof update === 'function' ? update(translations) : update;
+      },
+      chatAPI: { translate: (id, lang) => {
+        calls.push([id, lang]);
+        return translate(id, lang);
+      } },
+      toast: () => {}, t: () => 'translation_unavailable',
+    });
+    return handler();
+  }
+  return { state, calls, render, manualTap, queue, getTranslations: () => translations };
 }
 
 test('one slow translation stays one request across polling and render', async () => {
@@ -134,4 +155,20 @@ test('выключение автоперевода сохраняет сооб�
   second.resolve({ translated_text: 'Two', provider: 'local_ai' });
   await tick();
   assert.equal(f.getTranslations()[102].text, 'Two');
+});
+
+test('ручная кнопка не дублирует авто-запрос и остаётся доступна после 422', async () => {
+  const wait = deferred();
+  const f = fixture(() => wait.promise);
+  const message = { id: 101, text: '你好' };
+  f.state.messages = [message];
+  f.render();
+  f.render();
+  await f.manualTap(message);
+  assert.deepEqual(f.calls, [[101, 'ru']]);
+  wait.reject(new Error('422'));
+  await tick();
+  assert.equal(f.queue.pending.size, 0);
+  await f.manualTap(message);
+  assert.deepEqual(f.calls, [[101, 'ru'], [101, 'ru']]);
 });

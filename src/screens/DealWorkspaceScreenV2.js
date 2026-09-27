@@ -346,7 +346,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [autoTranslate, setAutoTranslate] = React.useState(false);
   // Не повторять автоматический перевод при опросе сообщений каждые 3 секунды.
   const autoTranslationRef = React.useRef({
-    scope: null, running: false, enabled: false, attempted: new Set(),
+    scope: null, running: false, enabled: false, attempted: new Set(), pending: new Set(),
   });
   const [voiceRevision, setVoiceRevision] = React.useState(0);
   const voiceScope = JSON.stringify([roomId, session?.user?.id || null]);
@@ -718,6 +718,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       queue.scope = scope;
       queue.running = false;
       queue.attempted = new Set();
+      queue.pending = new Set();
       // Перевод принадлежит конкретной комнате и языку получателя.
       setTranslations({});
       return undefined;
@@ -729,6 +730,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       && !queue.attempted.has(m.id)).slice(0, 6);
     if (!pending.length) return undefined;
     queue.running = true;
+    pending.forEach((item) => queue.pending.add(item.id));
     (async () => {
       for (const item of pending) {
         if (queue.scope !== scope || !queue.enabled) break;
@@ -747,9 +749,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           // Ошибка качества не вызывает новый AI-запрос на каждом опросе.
           // Повторить можно существующей кнопкой перевода.
           if (queue.scope === scope && !queue.enabled) queue.attempted.delete(item.id);
+        } finally {
+          if (queue.scope === scope) queue.pending.delete(item.id);
         }
       }
-      if (queue.scope === scope) queue.running = false;
+      if (queue.scope === scope) {
+        pending.forEach((item) => queue.pending.delete(item.id));
+        queue.running = false;
+      }
     })();
     return undefined;
   }, [autoTranslate, messages, translations, roomId, session?.user?.id, lang, historyStatus]);
@@ -1464,6 +1471,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         setTranslations((prev) => ({ ...prev, [item.id]: { ...current, showOriginal: !current.showOriginal } }));
                         return;
                       }
+                      const queue = autoTranslationRef.current;
+                      const scope = JSON.stringify([roomId, session?.user?.id || null, getLanguage().toLowerCase()]);
+                      if (queue.scope === scope && queue.pending.has(item.id)) return;
                       setTranslating(item.id);
                       try {
                         const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
