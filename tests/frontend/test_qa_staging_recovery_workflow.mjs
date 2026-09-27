@@ -61,6 +61,16 @@ test('QA2 recovery preserves private local AI and rolls back settings', () => {
   assert.doesNotMatch(workflow, /PRO_TEST_OPENAI_API_KEY/);
 });
 
+test('QA2 exposes a diagnostic-only local AI runner without mutation commands', () => {
+  assert.match(workflow, /DIAGNOSE_QA2_LOCAL_AI/);
+  assert.match(workflow, /qa2_ai_readonly_diagnostic\.py/);
+  assert.match(workflow, /df -h \/home\/ubuntu/);
+  assert.match(workflow, /du -sh \/home\/ubuntu\/urtruck-qa2-ai/);
+  assert.match(workflow, /free -h/);
+  assert.match(workflow, /systemctl show urtruck-qa2-ai\.service/);
+  assert.doesNotMatch(workflow, /diagnose_ai[\s\S]*systemctl restart/);
+});
+
 test('QA2 has a dedicated Nginx host and certificate', () => {
   assert.match(workflow, /server_name qa2\.urtruck\.kz/);
   assert.match(workflow, /proxy_pass http:\/\/127\.0\.0\.1:8002/);

@@ -646,3 +646,36 @@ jobs:
           sudo journalctl -u urtruck-qa2-ai.service -n 120 --no-pager \
             | sed -E 's#(token|key|password|secret)=[^[:space:]]+#\1=<redacted>#Ig'
           REMOTE
+
+  diagnose_ai:
+    if: inputs.confirmation == 'DIAGNOSE_QA2_LOCAL_AI'
+    name: Read-only QA2 AI resources and latency
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.QA_SOURCE_SHA }}
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+      - name: Run read-only QA2 AI diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = "DIAGNOSE_QA2_LOCAL_AI"
+          export SSHPASS="$SERVER_PASS"
+          echo '--- host resources before ---'
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            'set -e; date -Iseconds; df -h /home/ubuntu; du -sh /home/ubuntu/urtruck-qa2-ai /home/ubuntu/urtruck-qa2; free -h; nproc; uptime; sudo systemctl show urtruck-qa2-ai.service -p ActiveState -p SubState -p MemoryCurrent -p MemoryPeak -p CPUUsageNSec --no-pager'
+          remote_script="/tmp/qa2-ai-readonly-diagnostic-${GITHUB_RUN_ID}.py"
+          sshpass -e scp -o StrictHostKeyChecking=no scripts/qa2_ai_readonly_diagnostic.py \
+            "$SERVER_USER@$SERVER_HOST:$remote_script"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "set -e; trap 'rm -f '$remote_script'' EXIT; /home/ubuntu/urtruck-qa2-ai/venv/bin/python '$remote_script'"
+          echo '--- host resources after ---'
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            'set -e; date -Iseconds; free -h; sudo systemctl show urtruck-qa2-ai.service -p MemoryCurrent -p MemoryPeak -p CPUUsageNSec --no-pager'
