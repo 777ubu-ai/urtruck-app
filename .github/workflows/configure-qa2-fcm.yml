@@ -1,0 +1,224 @@
+name: Configure QA2 FCM
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type CONFIGURE_QA2_FCM to update only the QA2 FCM gateway
+        required: true
+        type: string
+
+concurrency:
+  group: urtruck-qa2-fcm-configuration
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    name: Validate and configure isolated QA2 FCM
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: qa2
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      QA2_API_URL: ${{ secrets.QA2_API_URL }}
+      QA2_FCM_PROJECT_ID: ${{ secrets.QA2_FCM_PROJECT_ID }}
+      QA2_FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.QA2_FCM_SERVICE_ACCOUNT_JSON }}
+      QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+    steps:
+      - name: Require an explicit QA2-only confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = "CONFIGURE_QA2_FCM"
+
+      - name: Validate the QA2 Firebase project without printing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$QA2_FCM_PROJECT_ID"
+          test -n "$QA2_FCM_SERVICE_ACCOUNT_JSON"
+          test -n "$QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64"
+          python3 - "$RUNNER_TEMP/qa2-fcm-service-account.json" <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+
+          expected_package = "com.urtruck.app.qa2"
+          project_id = os.environ["QA2_FCM_PROJECT_ID"].strip()
+          try:
+              service_account = json.loads(os.environ["QA2_FCM_SERVICE_ACCOUNT_JSON"])
+              android = json.loads(base64.b64decode(
+                  os.environ["QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64"], validate=True
+              ))
+          except Exception as exc:
+              raise SystemExit(f"QA2_FCM_SECRET_INVALID: {type(exc).__name__}")
+          service_project = str(service_account.get("project_id") or "")
+          android_project = str(android.get("project_info", {}).get("project_id") or "")
+          packages = {
+              str(client.get("client_info", {}).get("android_client_info", {}).get("package_name") or "")
+              for client in android.get("client", [])
+          }
+          if service_account.get("type") != "service_account":
+              raise SystemExit("QA2_FCM_SERVICE_ACCOUNT_TYPE_INVALID")
+          if not project_id or project_id != service_project or project_id != android_project:
+              raise SystemExit("Firebase project IDs differ")
+          if expected_package not in packages:
+              raise SystemExit("QA2_FCM_ANDROID_PACKAGE_MISMATCH")
+          target = Path(__import__("sys").argv[1])
+          target.write_text(json.dumps(service_account, separators=(",", ":")), encoding="utf-8")
+          target.chmod(0o600)
+          print("QA2_FCM_PROJECT_AND_ANDROID_PACKAGE=validated")
+          PY
+
+      - name: Install isolated transport tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
+      - name: Fingerprint production before QA2 configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          test -n "$body"
+          printf '%s' "$body" | sha256sum | awk '{print "PROD_VERSION_HASH_BEFORE=" $1}' >> "$GITHUB_ENV"
+          echo "PRODUCTION_BEFORE=healthy-fingerprinted"
+
+      - name: Back up only QA2 configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_env="$qa_root/.env"
+          test -f "$qa_env"
+          backup="$qa_root/backups/fcm-$(date -u +%Y%m%dT%H%M%SZ)"
+          mkdir -p "$backup"
+          cp -- "$qa_env" "$backup/qa2-fcm.env"
+          chmod 600 "$backup/qa2-fcm.env"
+          printf 'BACKUP=%s\n' "$backup" > /tmp/urtruck-qa2-fcm.state
+          chmod 600 /tmp/urtruck-qa2-fcm.state
+          echo 'QA2_FCM_BACKUP=ready'
+          REMOTE
+
+      - name: Update only QA2 FCM values and restart its isolated backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          remote_payload=/tmp/urtruck-qa2-fcm-service-account.json
+          sshpass -e scp -q -o StrictHostKeyChecking=no "$RUNNER_TEMP/qa2-fcm-service-account.json" "$SERVER_USER@$SERVER_HOST:$remote_payload"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "QA2_FCM_PROJECT_ID='$QA2_FCM_PROJECT_ID' bash -s" <<'REMOTE'
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_env="$qa_root/.env"
+          payload=/tmp/urtruck-qa2-fcm-service-account.json
+          project_id="$QA2_FCM_PROJECT_ID"
+          python3 - "$qa_env" "$payload" "$project_id" <<'PY'
+          from pathlib import Path
+          import json
+          import os
+          import sys
+
+          env_path = Path(sys.argv[1])
+          payload_path = Path(sys.argv[2])
+          expected_project = sys.argv[3]
+          service_account = json.loads(payload_path.read_text(encoding="utf-8"))
+          if service_account.get("type") != "service_account" or service_account.get("project_id") != expected_project:
+              raise SystemExit("QA2_FCM_REMOTE_VALIDATION_FAILED")
+          replacement = {
+              "FCM_PROJECT_ID": expected_project,
+              "FCM_SERVICE_ACCOUNT_JSON": json.dumps(service_account, separators=(",", ":")),
+              "PUSH_PROVIDER_MODE": "native",
+          }
+          kept = []
+          for line in env_path.read_text(encoding="utf-8").splitlines():
+              key = line.split("=", 1)[0].strip() if "=" in line else ""
+              if key not in replacement:
+                  kept.append(line)
+          kept.extend(f"{key}={value}" for key, value in replacement.items())
+          temp = env_path.with_suffix(".fcm.tmp")
+          temp.write_text("\n".join(kept) + "\n", encoding="utf-8")
+          os.chmod(temp, 0o600)
+          temp.replace(env_path)
+          payload_path.unlink(missing_ok=True)
+          PY
+          cd "$qa_root/backend"
+          pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          test -n "$pid"
+          command="$(tr '\0' ' ' < "/proc/$pid/cmdline")"
+          printf '%s' "$command" | grep -Eq 'uvicorn|gunicorn'
+          printf '%s' "$command" | grep -Fq 'main:app'
+          test "$(ps -o user= -p "$pid" | xargs)" = "$(id -un)"
+          kill -TERM "$pid"
+          for _ in {1..20}; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+          kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true
+          nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
+          for _ in {1..40}; do curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1 && exit 0; sleep 1; done
+          exit 1
+          REMOTE
+
+      - name: Verify only QA2 native FCM is ready
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 "$QA2_API_URL/api/v1/push/info" -o "$RUNNER_TEMP/qa2-push-info.json"
+          python3 - "$RUNNER_TEMP/qa2-push-info.json" <<'PY'
+          import json
+          import sys
+          info = json.load(open(sys.argv[1], encoding="utf-8")).get("native", {}).get("gateway", {})
+          fcm = info.get("fcm", {})
+          if info.get("mode") != "native" or not info.get("ready") or not fcm.get("configured"):
+              raise SystemExit("QA2_FCM_GATEWAY_NOT_READY")
+          if info.get("config_errors"):
+              raise SystemExit("QA2_FCM_GATEWAY_HAS_CONFIG_ERRORS")
+          print("QA2_FCM_GATEWAY=ready")
+          PY
+
+      - name: Verify production fingerprint unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          after="$(printf '%s' "$body" | sha256sum | awk '{print $1}')"
+          test "$after" = "$PROD_VERSION_HASH_BEFORE"
+          echo "PRODUCTION_AFTER=healthy-unchanged"
+
+      - name: Remove temporary QA2 FCM state after success
+        if: success()
+        shell: bash
+        run: |
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'rm -f /tmp/urtruck-qa2-fcm.state /tmp/urtruck-qa2-fcm-service-account.json'
+
+      - name: Roll back QA2 FCM configuration after a failed validation
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          state=/tmp/urtruck-qa2-fcm.state
+          test -f "$state" || { echo 'QA2_FCM_ROLLBACK=state-missing-no-action'; exit 0; }
+          . "$state"
+          qa_root=/home/ubuntu/urtruck-qa2
+          cp -- "$BACKUP/qa2-fcm.env" "$qa_root/.env"
+          chmod 600 "$qa_root/.env"
+          rm -f /tmp/urtruck-qa2-fcm-service-account.json
+          cd "$qa_root/backend"
+          pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          if test -n "$pid"; then kill -TERM "$pid" || true; sleep 2; kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true; fi
+          nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
+          for _ in {1..40}; do curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8002/health >/dev/null
+          echo 'QA2_FCM_ROLLBACK=restored'
+          REMOTE
