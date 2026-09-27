@@ -2,6 +2,7 @@
 import os
 import sys
 import sqlite3
+import re
 from starlette.concurrency import run_in_threadpool
 import hashlib
 import unicodedata
@@ -317,6 +318,44 @@ def _translation_memory_key(source_text: str, source_lang: str | None, target_la
     )
 
 
+def _translation_cache_source_lang(source_text: str, source_lang: str | None) -> str:
+    """Infer only the scripts needed to revalidate a local-AI cache row."""
+    normalized = _normalize_lang_code(source_lang)
+    if normalized:
+        return normalized
+    if re.search(r"[\u3400-\u9fff]", str(source_text or "")):
+        return "zh"
+    if re.search(r"[\u0400-\u04ff]", str(source_text or "")):
+        return "ru"
+    return "en"
+
+
+def _repair_local_ai_cached_translation(source_text: str, source_lang: str | None,
+                                         target_lang: str, provider: str,
+                                         translated_text: str) -> str:
+    """Revalidate cached local-AI output with the same narrow repair contract.
+
+    Shared cache rows predate the current quality-gate repair and can contain a
+    known model confusion. Reusing them verbatim makes a fresh message look
+    like a successful translation forever. Other providers retain their
+    existing cache behavior.
+    """
+    if provider not in {"local_nllb_1_3b", "local_ai"}:
+        return translated_text
+    try:
+        from qa_ai_service.quality import repair_logistics_translation
+        return repair_logistics_translation(
+            source_text,
+            translated_text,
+            _translation_cache_source_lang(source_text, source_lang),
+            _normalize_lang_code(target_lang) or "en",
+        )
+    except Exception:
+        # Cache validation must never make chat unavailable if the optional
+        # quality module is absent in a rolling/legacy backend process.
+        return translated_text
+
+
 def _translation_memory_lookup(c, source_text: str, source_lang: str | None, target_lang: str):
     key = _translation_memory_key(source_text, source_lang, target_lang)
     row = c.execute(
@@ -326,6 +365,16 @@ def _translation_memory_lookup(c, source_text: str, source_lang: str | None, tar
         key,
     ).fetchone()
     if row:
+        repaired = _repair_local_ai_cached_translation(
+            source_text, source_lang, target_lang, row["provider"], row["translated_text"]
+        )
+        if repaired != row["translated_text"]:
+            c.execute(
+                "UPDATE translation_memory SET translated_text=?, last_used_at=CURRENT_TIMESTAMP "
+                "WHERE source_hash=? AND source_lang=? AND target_lang=? AND provider=? AND model=? AND prompt_version=?",
+                (repaired, *key),
+            )
+            row = {"translated_text": repaired, "provider": row["provider"]}
         c.execute(
             "UPDATE translation_memory SET hit_count=hit_count+1, "
             "last_used_at=CURRENT_TIMESTAMP WHERE source_hash=? AND source_lang=? "
@@ -1086,8 +1135,16 @@ def translate_message(body: TranslateIn, user=Depends(require_level(1))):
             (body.message_id, target_lang),
         ).fetchone()
         if cached:
+            cached_text = _repair_local_ai_cached_translation(
+                source_text, source_lang, target_lang, cached["provider"], cached["translated_text"]
+            )
+            if cached_text != cached["translated_text"]:
+                c.execute(
+                    "UPDATE chat_translations SET translated_text=? WHERE message_id=? AND target_lang=?",
+                    (cached_text, body.message_id, target_lang),
+                )
             return {
-                "translated_text": cached["translated_text"],
+                "translated_text": cached_text,
                 "original_text": source_text,
                 "target_lang": target_lang,
                 "provider": cached["provider"],

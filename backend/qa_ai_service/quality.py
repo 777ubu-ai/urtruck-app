@@ -268,8 +268,41 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
                 )
 
     # The body type is a critical cargo fact, not a generic truck synonym.
-    if _contains_any(source_text, VEHICLE_BODY_TERMS.get(source, ())) and not _contains_any(repaired, VEHICLE_BODY_TERMS.get(target, ())):
-        repaired = _append_before_punctuation(repaired, VEHICLE_BODY_CANONICAL[target])
+    if _contains_any(source_text, VEHICLE_BODY_TERMS.get(source, ())):
+        # The QA2 NLLB model has produced the observed Russian hallucination
+        # «водопад» for Chinese 篷布车.  Handle it as a glossary confusion even
+        # when an earlier repair already appended the canonical body type;
+        # otherwise the bad word survives beside the correct word and is then
+        # cached as a successful translation.
+        observed_body_confusions = {
+            "en": (),
+            "ru": ("тренажер", "водопад"),
+            "zh": (),
+            "kk": (),
+        }
+        for confused in observed_body_confusions.get(target, ()):
+            if confused.casefold() in repaired.casefold():
+                if _contains_any(repaired, VEHICLE_BODY_TERMS.get(target, ())):
+                    # A previous repair may already have appended the
+                    # canonical body type; remove only the hallucinated word
+                    # to avoid returning «тент, тент».
+                    repaired = re.sub(
+                        rf"{re.escape(confused)}\s*[,，]?\s*",
+                        "",
+                        repaired,
+                        count=1,
+                        flags=re.IGNORECASE,
+                    )
+                else:
+                    repaired = re.sub(
+                        re.escape(confused),
+                        VEHICLE_BODY_CANONICAL[target],
+                        repaired,
+                        count=1,
+                        flags=re.IGNORECASE,
+                    )
+        if not _contains_any(repaired, VEHICLE_BODY_TERMS.get(target, ())):
+            repaired = _append_before_punctuation(repaired, VEHICLE_BODY_CANONICAL[target])
 
     # Normalize only the observed Almaty transliteration; missing cities are
     # left for the quality gate to reject rather than guessed or invented.
