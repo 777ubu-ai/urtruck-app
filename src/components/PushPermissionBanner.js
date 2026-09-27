@@ -37,12 +37,21 @@ const COPY = {
   },
 };
 
+export const getPushPermissionHost = () => (
+  Platform.OS === 'web'
+    && typeof window !== 'undefined'
+    && window.location?.host
+    ? window.location.host
+    : 'urtruck.kz'
+);
+
 export default function PushPermissionBanner({ enabled }) {
   const { lang } = useI18n();
   const colors = useV1Colors();
   const { isDark } = useTheme();
   const accentColor = isDark ? colors.success : colors.driver;
   const c = COPY[lang] || COPY.RU;
+  const deniedCopy = c.denied.replace('urtruck.kz', getPushPermissionHost());
   const [permission, setPermission] = useState('loading');
   const [busy, setBusy] = useState(false);
 
@@ -82,7 +91,7 @@ export default function PushPermissionBanner({ enabled }) {
       <View style={[s.icon, { backgroundColor: colors.driverSoft }]}><Feather name="bell" size={18} color={accentColor} /></View>
       <View style={s.copy}>
         <Text style={[s.title, { color: colors.text }]}>{c.title}</Text>
-        <Text style={[s.body, { color: colors.textMuted }]}>{denied ? c.denied : c.body}</Text>
+        <Text style={[s.body, { color: colors.textMuted }]}>{denied ? deniedCopy : c.body}</Text>
       </View>
       <TouchableOpacity
         style={[s.action, { borderColor: accentColor }]}
