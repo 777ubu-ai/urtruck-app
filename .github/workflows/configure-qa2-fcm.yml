@@ -97,12 +97,16 @@ jobs:
           sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           qa_root=/home/ubuntu/urtruck-qa2
-          qa_env="$qa_root/.env"
-          test -f "$qa_env"
+          qa_backend="$qa_root/backend"
+          root_env="$qa_root/.env"
+          backend_env="$qa_backend/.env"
+          test -f "$root_env"
+          test -f "$backend_env"
           backup="$qa_root/backups/fcm-$(date -u +%Y%m%dT%H%M%SZ)"
           mkdir -p "$backup"
-          cp -- "$qa_env" "$backup/qa2-fcm.env"
-          chmod 600 "$backup/qa2-fcm.env"
+          cp -- "$root_env" "$backup/qa2-root-fcm.env"
+          cp -- "$backend_env" "$backup/qa2-backend-fcm.env"
+          chmod 600 "$backup/qa2-root-fcm.env" "$backup/qa2-backend-fcm.env"
           printf 'BACKUP=%s\n' "$backup" > /tmp/urtruck-qa2-fcm.state
           chmod 600 /tmp/urtruck-qa2-fcm.state
           echo 'QA2_FCM_BACKUP=ready'
@@ -119,18 +123,20 @@ jobs:
             "QA2_FCM_PROJECT_ID='$QA2_FCM_PROJECT_ID' bash -s" <<'REMOTE'
           set -euo pipefail
           qa_root=/home/ubuntu/urtruck-qa2
-          qa_env="$qa_root/.env"
+          qa_backend="$qa_root/backend"
+          root_env="$qa_root/.env"
+          backend_env="$qa_backend/.env"
           payload=/tmp/urtruck-qa2-fcm-service-account.json
           project_id="$QA2_FCM_PROJECT_ID"
-          python3 - "$qa_env" "$payload" "$project_id" <<'PY'
+          python3 - "$root_env" "$backend_env" "$payload" "$project_id" <<'PY'
           from pathlib import Path
           import json
           import os
           import sys
 
-          env_path = Path(sys.argv[1])
-          payload_path = Path(sys.argv[2])
-          expected_project = sys.argv[3]
+          env_paths = {Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()}
+          payload_path = Path(sys.argv[3])
+          expected_project = sys.argv[4]
           service_account = json.loads(payload_path.read_text(encoding="utf-8"))
           if service_account.get("type") != "service_account" or service_account.get("project_id") != expected_project:
               raise SystemExit("QA2_FCM_REMOTE_VALIDATION_FAILED")
@@ -139,16 +145,17 @@ jobs:
               "FCM_SERVICE_ACCOUNT_JSON": json.dumps(service_account, separators=(",", ":")),
               "PUSH_PROVIDER_MODE": "native",
           }
-          kept = []
-          for line in env_path.read_text(encoding="utf-8").splitlines():
-              key = line.split("=", 1)[0].strip() if "=" in line else ""
-              if key not in replacement:
-                  kept.append(line)
-          kept.extend(f"{key}={value}" for key, value in replacement.items())
-          temp = env_path.with_suffix(".fcm.tmp")
-          temp.write_text("\n".join(kept) + "\n", encoding="utf-8")
-          os.chmod(temp, 0o600)
-          temp.replace(env_path)
+          for env_path in env_paths:
+              kept = []
+              for line in env_path.read_text(encoding="utf-8").splitlines():
+                  key = line.split("=", 1)[0].strip() if "=" in line else ""
+                  if key not in replacement:
+                      kept.append(line)
+              kept.extend(f"{key}={value}" for key, value in replacement.items())
+              temp = env_path.with_suffix(".fcm.tmp")
+              temp.write_text("\n".join(kept) + "\n", encoding="utf-8")
+              os.chmod(temp, 0o600)
+              temp.replace(env_path)
           payload_path.unlink(missing_ok=True)
           PY
           cd "$qa_root/backend"
@@ -211,8 +218,9 @@ jobs:
           test -f "$state" || { echo 'QA2_FCM_ROLLBACK=state-missing-no-action'; exit 0; }
           . "$state"
           qa_root=/home/ubuntu/urtruck-qa2
-          cp -- "$BACKUP/qa2-fcm.env" "$qa_root/.env"
-          chmod 600 "$qa_root/.env"
+          cp -- "$BACKUP/qa2-root-fcm.env" "$qa_root/.env"
+          cp -- "$BACKUP/qa2-backend-fcm.env" "$qa_root/backend/.env"
+          chmod 600 "$qa_root/.env" "$qa_root/backend/.env"
           rm -f /tmp/urtruck-qa2-fcm-service-account.json
           cd "$qa_root/backend"
           pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"

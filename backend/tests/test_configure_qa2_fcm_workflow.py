@@ -43,7 +43,9 @@ def test_qa2_fcm_workflow_validates_android_project_and_rolls_back():
     raw = WORKFLOW.read_text(encoding="utf-8")
     assert "com.urtruck.app.qa2" in raw
     assert "QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64" in raw
+    assert 'qa_backend/.env' in raw
     assert "Firebase project IDs differ" in raw
-    assert "qa2-fcm.env" in raw
+    assert "qa2-root-fcm.env" in raw
+    assert "qa2-backend-fcm.env" in raw
     assert "QA2_FCM_ROLLBACK" in raw
     assert "PRODUCTION_AFTER=healthy-unchanged" in raw
