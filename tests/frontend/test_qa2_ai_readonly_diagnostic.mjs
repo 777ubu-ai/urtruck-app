@@ -63,6 +63,9 @@ assert module.semantic_check('zh', 'cargo', '阿拉木图到阿斯塔纳：货�
 assert not module.semantic_check('ru', 'cargo', 'Алматы — Астана: груз 1500 USD, 10 тонн, не тент.')[0]
 assert not module.semantic_check('en', 'cargo', 'Almaty to Astana: cargo 1500 USD, 10 tonnes, not a tent truck.')[0]
 assert not module.semantic_check('zh', 'cargo', '阿拉木图到阿斯塔纳：货物1500美元，10吨，不是篷布车。')[0]
+assert not module.semantic_check('ru', 'negation', 'Не рефрижератор, тент тоже не нужен, 20 тонн.')[0]
+assert not module.semantic_check('en', 'negation', 'Not a refrigerated truck; a tent truck is also not needed, 20 tonnes.')[0]
+assert not module.semantic_check('zh', 'negation', '不是冷藏车，篷布车也不需要，20吨。')[0]
 # A question followed by no is a negative answer, not cargo readiness.
 assert module.semantic_check('ru', 'short', 'Да, груз готов.')[0]
 assert module.semantic_check('en', 'short', 'Yes, the cargo is ready.')[0]

@@ -65,7 +65,7 @@ FACT_PATTERNS = {
         "not_refrigerated": (r"не\s+(?:нужен\s+)?рефриж",), "time_0930": (r"09\s*:\s*30",),
         "date_2026_10_01": (r"2026[-/.]10[-/.]0?1",), "refrigerated": (r"рефриж",),
         "positive_refrigerated": (r"(?:нужен|требуется)\s+(?:рефриж\w*)",),
-        "not_tent": (r"не\s+тент(?:ов\w*)?",), "cargo_ready": (r"груз\s+(?:готов|готовый)",),
+        "not_tent": (r"не\s+тент(?:ов\w*)?", r"тент(?:ов\w*)?(?:\s+тоже)?\s+не\s+нужен"), "cargo_ready": (r"груз\s+(?:готов|готовый)",),
         "not_cargo_ready": (r"груз\s+не\s+готов", r"груз\s+готов\s*\?\s*нет"),
     },
     "en": {
@@ -79,7 +79,7 @@ FACT_PATTERNS = {
         "time_0930": (r"09\s*:\s*30",), "date_2026_10_01": (r"2026[-/.]10[-/.]0?1",),
         "refrigerated": (r"(?:refrigerated|reefer)",),
         "positive_refrigerated": (r"(?:need|requires?)\s+(?:a\s+)?(?:refrigerated|reefer)", r"(?:a\s+)?(?:refrigerated|reefer)\s+(?:truck\s+)?is\s+required"),
-        "not_tent": (r"not\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?",),
+        "not_tent": (r"not\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?", r"(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?\s+(?:is\s+)?(?:also\s+)?not\s+needed"),
         "cargo_ready": (r"cargo\s+is\s+ready",), "not_cargo_ready": (r"cargo\s+(?:is\s+)?not\s+ready", r"cargo\s+(?:is\s+)?ready\s*\?\s*no"),
     },
     "zh": {
@@ -89,7 +89,7 @@ FACT_PATTERNS = {
         "tent": (r"(?:篷布车|篷车|帆布车)",), "not_refrigerated": (r"(?:不[是要]?|非)\s*冷藏车",),
         "time_0930": (r"09\s*[:：]\s*30",), "date_2026_10_01": (r"2026(?:[-/.]10[-/.]0?1|年10月0?1日?)",),
         "refrigerated": (r"冷藏车",), "positive_refrigerated": (r"(?:需要|要)\s*冷藏车",),
-        "not_tent": (r"(?:不[是要]?|非)\s*(?:篷布车|篷车|帆布车)",),
+        "not_tent": (r"(?:不[是要]?|非)\s*(?:篷布车|篷车|帆布车)", r"(?:篷布车|篷车|帆布车)也?不需要"),
         "cargo_ready": (r"货物(?:已)?准备好",), "not_cargo_ready": (r"货物(?:还)?没(?:有)?准备好", r"货物准备好了吗?\s*[？?]?\s*不"),
     },
 }
