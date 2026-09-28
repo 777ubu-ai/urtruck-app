@@ -1,5 +1,6 @@
 """Reason-code contract for the isolated QA2 translation quality gate."""
 from qa_ai_service.quality import (
+    _polarity,
     _numeric_facts,
     repair_logistics_translation,
     translation_quality_failures,
@@ -123,6 +124,23 @@ def test_quality_gate_rejects_lost_negation_and_question_no_readiness():
     assert "cargo_readiness_missing" in translation_quality_failures(
         "Shipment is ready.", "司机到仓库。", "en", "zh"
     )
+
+
+def test_extended_ru_zh_en_negative_forms_do_not_match_positive_substrings():
+    for language, concept, values in (
+        ("zh", "refrigerated", ("不要冷藏车", "不用冷藏车", "无需冷藏车")),
+        ("zh", "tent", ("不要篷布车", "不用篷布车", "无需篷布车")),
+        ("ru", "refrigerated", ("рефрижератор не требуется", "без рефрижератора")),
+        ("ru", "tent", ("тент не требуется", "без тента")),
+        ("en", "refrigerated", ("no reefer", "no refrigerated truck", "do not need a reefer", "don't need a reefer")),
+        ("en", "tent", ("no tent truck", "don't need a tent truck")),
+    ):
+        for text in values:
+            assert _polarity(text, language, concept) == "negative"
+    for language, text in (("ru", "груз ещё не готов"), ("en", "cargo isn't ready"), ("en", "goods aren't ready")):
+        assert _polarity(text, language, "cargo_readiness") == "negative"
+    assert _polarity("需要冷藏车", "zh", "refrigerated") == "positive"
+    assert _polarity("需要篷布车", "zh", "tent") == "positive"
 
 
 def test_urumqi_alias_and_repair_are_strictly_scoped():

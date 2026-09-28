@@ -299,18 +299,18 @@ def _currency_facts(text: str) -> list[str]:
 
 POLARITY_PATTERNS = {
     "refrigerated": {
-        "ru": {"negative": (r"не\s+(?:нужен\s+)?(?:рефрижератор\w*|холодильн\w*\s+грузовик)", r"(?:рефрижератор\w*|холодильн\w*\s+грузовик)\s+не\s+нужен"), "positive": (r"(?:нужен|требуется)\s+(?:рефрижератор\w*|холодильн\w*\s+грузовик)",)},
-        "en": {"negative": (r"not\s+(?:a\s+)?(?:refrigerated\s+truck|reefer)", r"(?:refrigerated\s+truck|reefer)\s+(?:is\s+)?not\s+needed"), "positive": (r"(?:need|requires?)\s+(?:a\s+)?(?:refrigerated\s+truck|reefer)", r"(?:a\s+)?(?:refrigerated\s+truck|reefer)\s+(?:is\s+)?required")},
-        "zh": {"negative": (r"(?:不是|不需要|没有)\s*冷藏(?:车|卡车)", r"冷藏(?:车|卡车)\s*不需要"), "positive": (r"(?:需要|要)\s*冷藏(?:车|卡车)",)},
+        "ru": {"negative": (r"не\s+(?:нужен\s+)?(?:рефрижератор\w*|холодильн\w*\s+грузовик)", r"(?:рефрижератор\w*|холодильн\w*\s+грузовик)\s+(?:не\s+нужен|не\s+требуется)", r"без\s+(?:рефрижератор\w*|холодильн\w*\s+грузовик)"), "positive": (r"(?:нужен|требуется)\s+(?:рефрижератор\w*|холодильн\w*\s+грузовик)",)},
+        "en": {"negative": (r"not\s+(?:a\s+)?(?:refrigerated\s+truck|reefer)", r"no\s+(?:refrigerated\s+truck|reefer)", r"(?:do\s+not|don't)\s+need\s+(?:a\s+)?(?:refrigerated\s+truck|reefer)", r"(?:refrigerated\s+truck|reefer)\s+(?:is\s+)?not\s+needed"), "positive": (r"(?:need|requires?)\s+(?:a\s+)?(?:refrigerated\s+truck|reefer)", r"(?:a\s+)?(?:refrigerated\s+truck|reefer)\s+(?:is\s+)?required")},
+        "zh": {"negative": (r"(?:不是|不需要|不要|不用|无需|没有)\s*冷藏(?:车|卡车)", r"冷藏(?:车|卡车)\s*(?:不需要|不要|不用|无需)"), "positive": (r"(?:需要|要)\s*冷藏(?:车|卡车)",)},
     },
     "tent": {
-        "ru": {"negative": (r"не\s+(?:нужен\s+)?тент(?:ов\w*)?", r"тент(?:ов\w*)?\s+(?:тоже\s+)?не\s+нужен"), "positive": (r"(?:нужен|требуется)\s+тент(?:ов\w*)?",)},
-        "en": {"negative": (r"(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?\s+(?:is\s+)?(?:also\s+)?not\s+needed", r"not\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?"), "positive": (r"(?:need|requires?)\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?", r"(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?\s+(?:is\s+)?required")},
-        "zh": {"negative": (r"(?:不是|不需要|没有)\s*(?:篷布车|篷车|帆布车)", r"(?:篷布车|篷车|帆布车)\s*不需要"), "positive": (r"(?:需要|要)\s*(?:篷布车|篷车|帆布车)",)},
+        "ru": {"negative": (r"не\s+(?:нужен\s+)?тент(?:ов\w*)?", r"тент(?:ов\w*)?\s+(?:тоже\s+)?(?:не\s+нужен|не\s+требуется)", r"без\s+тент(?:ов\w*)?"), "positive": (r"(?:нужен|требуется)\s+тент(?:ов\w*)?",)},
+        "en": {"negative": (r"(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?\s+(?:is\s+)?(?:also\s+)?not\s+needed", r"not\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?", r"no\s+(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?", r"(?:do\s+not|don't)\s+need\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?"), "positive": (r"(?:need|requires?)\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?", r"(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?\s+(?:is\s+)?required")},
+        "zh": {"negative": (r"(?:不是|不需要|不要|不用|无需|没有)\s*(?:篷布车|篷车|帆布车)", r"(?:篷布车|篷车|帆布车)\s*(?:不需要|不要|不用|无需)"), "positive": (r"(?:需要|要)\s*(?:篷布车|篷车|帆布车)",)},
     },
     "cargo_readiness": {
-        "ru": {"negative": (r"груз\s+не\s+готов", r"груз\s+готов\s*\?\s*нет"), "positive": (r"груз\s+(?:готов|готовый)",)},
-        "en": {"negative": (r"(?:cargo|goods|shipment)\s+(?:is|are)\s+not\s+ready", r"(?:cargo|goods|shipment)\s+(?:(?:is|are)\s+)?ready\s*\?\s*no"), "positive": (r"(?:cargo|goods|shipment)\s+(?:is|are)\s+ready",)},
+        "ru": {"negative": (r"груз\s+(?:ещё\s+)?не\s+готов", r"груз\s+готов\s*\?\s*нет"), "positive": (r"груз\s+(?:готов|готовый)",)},
+        "en": {"negative": (r"(?:cargo|goods|shipment)\s+(?:(?:is|are)\s+not|isn't|aren't)\s+ready", r"(?:cargo|goods|shipment)\s+(?:(?:is|are)\s+)?ready\s*\?\s*no"), "positive": (r"(?:cargo|goods|shipment)\s+(?:is|are)\s+ready",)},
         "zh": {"negative": (r"货物(?:还)?没(?:有)?准备好", r"货物准备好了吗?\s*[？?]?\s*不"), "positive": (r"货物(?:已)?准备好",)},
     },
 }

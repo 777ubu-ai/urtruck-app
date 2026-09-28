@@ -53,6 +53,10 @@ jobs:
         run: python -m pytest -q backend/tests/test_qa2_ai_quality_gate.py backend/tests/test_qa2_ai_quality_failure_reasons.py
       - name: Compile changed Python sources
         run: python -m py_compile backend/qa_ai_service/quality.py backend/qa_ai_service/main.py scripts/qa2_ai_readonly_diagnostic.py scripts/replay_qa2_ai_diagnostic.py
+      - name: Replay the pinned 60-row synthetic translation fixture
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: python scripts/replay_qa2_ai_diagnostic.py --input tests/fixtures/qa2_local_ai_readonly_36409260200.jsonl --sha256-file tests/fixtures/qa2_local_ai_readonly_36409260200.sha256 --expect-pass 58 --expect-fail-case 28
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

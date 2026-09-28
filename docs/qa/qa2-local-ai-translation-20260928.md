@@ -152,3 +152,9 @@ replay of the same saved 60 synthetic rows reaches **58/60**: `Уруми-Ци` 
 repaired only for Chinese `乌鲁木齐`, `Urumchi` is accepted as the explicit
 English alias, and case 28 fresh/warm remains FAIL due to invented travel
 history. No QA2 service was installed or restarted for this source result.
+
+The public synthetic corpus is now a checked-in fixture at
+`tests/fixtures/qa2_local_ai_readonly_36409260200.jsonl`, with SHA-256
+`f8439956a911f49677df217011b7e9ee3f42e5c42a4fb389adb67528c36be97a`.
+`SOURCE_TESTS` verifies that checksum and requires exactly 58 PASS with case
+28 as the only failing case ID; it makes no AI or QA2 request.

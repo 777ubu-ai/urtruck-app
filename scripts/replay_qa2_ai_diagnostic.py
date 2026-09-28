@@ -8,6 +8,7 @@ never opens application storage, media, or databases.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import sys
@@ -34,6 +35,8 @@ def _rows(path: Path):
     for line in path.read_text().splitlines():
         start = line.find('{"kind": "safe_translation"')
         if start < 0:
+            start = line.find('{"kind":"safe_translation"')
+        if start < 0:
             continue
         row, _ = decoder.raw_decode(line[start:])
         yield row
@@ -42,7 +45,15 @@ def _rows(path: Path):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path)
+    parser.add_argument("--sha256-file", type=Path)
+    parser.add_argument("--expect-pass", type=int)
+    parser.add_argument("--expect-fail-case", type=int, action="append", default=[])
     args = parser.parse_args()
+    if args.sha256_file:
+        expected = args.sha256_file.read_text().split()[0]
+        actual = hashlib.sha256(args.input.read_bytes()).hexdigest()
+        if actual != expected:
+            raise SystemExit(f"fixture SHA-256 mismatch: expected {expected}, got {actual}")
     runner = _load_runner()
     rows = list(_rows(args.input))
     if len(rows) != 60:
@@ -50,6 +61,7 @@ def main() -> int:
 
     before_pass = after_pass = accepted_422 = semantic_fixed = 0
     remaining_model = remaining_review = 0
+    failed_cases: set[int] = set()
     for row in rows:
         candidate = row["translated_text"] if row["http"] == 200 else row.get("rejected_candidate")
         repaired = repair_logistics_translation(
@@ -68,6 +80,7 @@ def main() -> int:
         accepted_422 += row["http"] == 422 and not failures
         semantic_fixed += row["http"] == 200 and not row["semantic_pass"] and after
         if not after:
+            failed_cases.add(row["case_id"])
             if (
                 "waterfall" in (repaired or "").casefold()
                 or "водопад" in (repaired or "").casefold()
@@ -91,6 +104,11 @@ def main() -> int:
         "semantic_fixed": semantic_fixed, "remaining_model": remaining_model,
         "remaining_review": remaining_review,
     }, ensure_ascii=False))
+    if args.expect_pass is not None and after_pass != args.expect_pass:
+        raise SystemExit(f"expected {args.expect_pass} PASS, got {after_pass}")
+    expected_cases = set(args.expect_fail_case)
+    if expected_cases and failed_cases != expected_cases:
+        raise SystemExit(f"expected failing cases {sorted(expected_cases)}, got {sorted(failed_cases)}")
     return 0
 
 
