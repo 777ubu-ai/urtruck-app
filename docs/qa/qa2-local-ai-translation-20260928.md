@@ -183,3 +183,8 @@ installed in the current Mac interpreter, so the full backend test count must
 come from the normal CI environment. QA2 runtime SHA remains UNKNOWN; the
 feature is not approved for user responses until terminology and template
 review plus shadow evidence are complete.
+
+Source CI run [#36444728524](https://github.com/777ubu-ai/urtruck-app/actions/runs/36444728524)
+on `69f67d69` passed: 78 backend tests, 25 Node workflow tests, fixture replay
+and compile checks passed; the `deploy` job was skipped. This is source evidence
+only and does not establish an installed QA2 runtime SHA.
