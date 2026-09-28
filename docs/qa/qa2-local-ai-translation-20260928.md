@@ -129,3 +129,10 @@ Six rows remain red: case 28 fresh/warm stays a confirmed NLLB hallucination
 cases 8 fresh/warm (`Уруми-Ци`) and 13 fresh/warm (`Urumchi`) require manual
 language review before adding any city alias. This is offline source evidence
 only; QA2 remains unmodified and its runtime SHA remains **UNKNOWN**.
+
+The root-owned `__pycache__` cleanup failure from run `#36409260200` was
+resolved by a dedicated no-AI cleanup job. Run
+[#36412614794](https://github.com/777ubu-ai/urtruck-app/actions/runs/36412614794)
+successfully removed only `/tmp/qa2-ai-readonly-diagnostic-36409260200` and
+verified that it no longer exists. Its diagnostic, deploy and recovery jobs
+were skipped.
