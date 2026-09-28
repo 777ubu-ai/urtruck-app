@@ -22,11 +22,8 @@ and a real (temp) SQLite push_outbox/push_devices — not source-regex — that:
       own outbox row 'sent' on success is what stops the worker from ever
       re-sending it — the actual delivery-ownership contract, end to end.
 
-Provider responses are simulated via a fake `expo_send_one` callback — the
-exact seam services.push_sender._send_native already hands push_gateway in
-production for the explicitly selected Expo legacy path (see
-push_gateway.ExpoProvider.send()) — so no real network call is made and no
-Expo/FCM/APNs behavior is invented.
+Provider responses are simulated via the deterministic ``provider_send_one``
+seam accepted by the outbox worker.  No real FCM/APNs network call is made.
 """
 import os
 import sys
@@ -54,18 +51,16 @@ import api.push as push_api  # noqa: F401  — import runs _init_schema() (push_
 # ───────────────────────── fixtures / helpers ─────────────────────────
 def setup_function(_function):
     """Isolate durable outbox rows from earlier tests in the shared DB."""
-    # This suite is specifically the retained Expo legacy-path contract. The
-    # production default is native, so the test intent must be explicit.
-    push_gateway.PUSH_PROVIDER_MODE = "expo"
+    push_gateway.PUSH_PROVIDER_MODE = "native"
     with get_conn() as c:
         c.execute("DELETE FROM push_outbox")
         c.execute("DELETE FROM push_devices")
 
 
-def _make_user_with_device(provider="expo"):
+def _make_user_with_device(provider="fcm"):
     guest = reg_dal.create_guest()
     uid = guest["id"] if isinstance(guest, dict) else guest
-    token = f"ExponentPushToken[{uuid.uuid4().hex}]"
+    token = f"fcm-{uuid.uuid4().hex}"
     device_id = uuid.uuid4().hex
     with get_conn() as c:
         c.execute(

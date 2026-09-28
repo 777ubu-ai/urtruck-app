@@ -3,11 +3,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_expo_invalid_credentials_does_not_deactivate_driver_token():
-    src = (ROOT / 'backend/services/push_sender.py').read_text(encoding='utf-8')
-    assert 'if err == "DeviceNotRegistered"' in src
-    assert 'if err in ("DeviceNotRegistered", "InvalidCredentials")' not in src
-    assert 'expo ticket error' in src
+def test_native_invalid_token_is_deactivated_by_gateway():
+    src = (ROOT / 'backend/services/push_gateway.py').read_text(encoding='utf-8')
+    assert 'error_code="invalid_token"' in src
+    assert "invalidated_reason = 'invalid_token'" in src
 
 
 def test_trip_bid_push_targets_driver_id():
@@ -25,13 +24,12 @@ def test_push_info_has_safe_registration_counts():
     assert '"web_active"' in src
 
 
-def test_expo_push_uses_dedicated_audible_android_channel():
-    src = (ROOT / 'backend/services/push_sender.py').read_text(encoding='utf-8')
+def test_native_push_uses_dedicated_audible_android_channel():
+    src = (ROOT / 'backend/services/push_gateway.py').read_text(encoding='utf-8')
     assert 'NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"' in src
     assert '"sound": "default"' in src
-    assert '"priority": "high"' in src
-    assert '"channelId": NATIVE_PUSH_CHANNEL_ID' in src
-    assert '"channelId": "default"' not in src
+    assert '"priority": "HIGH"' in src
+    assert '"channel_id": NATIVE_PUSH_CHANNEL_ID' in src
 
 
 def test_qa_push_diagnostics_are_token_guarded_and_masked():
@@ -47,14 +45,10 @@ def test_qa_push_diagnostics_are_token_guarded_and_masked():
     assert '"token": t.get("token")' not in sender
 
 
-def test_direct_push_diagnostics_return_expo_tickets_and_receipts():
+def test_direct_push_diagnostics_are_native_only():
     sender = (ROOT / 'backend/services/push_sender.py').read_text(encoding='utf-8')
-
-    assert 'def _send_expo_detailed(' in sender
-    assert 'def expo_receipts(ticket_ids: list[str])' in sender
-    assert 'https://exp.host/--/api/v2/push/getReceipts' in sender
     assert 'def send_native_debug(' in sender
-    assert '"tickets": expo_result.get("tickets", [])' in sender
+    assert 'push_gateway.send_to_devices(' in sender
 
 
 def test_native_gateway_contract_is_present():
@@ -66,7 +60,7 @@ def test_native_gateway_contract_is_present():
     assert 'class PushProvider' in gateway
     assert 'class FCMProvider' in gateway
     assert 'class APNsProvider' in gateway
-    assert 'class ExpoProvider' in gateway
+    assert 'class ExpoProvider' not in gateway
     assert 'def enqueue_event(' in gateway
     assert 'def send_to_devices(' in gateway
     assert 'CREATE TABLE IF NOT EXISTS push_devices' in schema
