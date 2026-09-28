@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import resource
 import time
 import urllib.error
@@ -46,13 +47,45 @@ LANG_TEXT = {
     },
 }
 PAIRS = (("ru", "zh"), ("zh", "ru"), ("ru", "en"), ("en", "ru"), ("en", "zh"), ("zh", "en"))
-FACTS = {
-    "cargo": ("1500", "10", "almaty", "astana", "tent"),
-    "negation": ("not", "refriger", "tent", "20"),
-    "schedule": ("urumqi", "warehouse", "09:30", "2026-10-01"),
-    "price": ("12000", "usd", "15"),
+REQUIRED_FACTS = {
+    "cargo": ("money_1500_usd", "weight_10", "city_almaty", "city_astana", "tent"),
+    "negation": ("not_refrigerated", "tent", "weight_20"),
+    "schedule": ("city_urumqi", "time_0930", "date_2026_10_01"),
+    "price": ("money_12000_usd", "weight_15"),
     "short": (),
 }
+
+FACT_PATTERNS = {
+    "ru": {
+        "money_1500_usd": (r"1500\s*(?:usd|доллар(?:ов|а)?\s*сша|долл?\.?\s*сша)",),
+        "money_12000_usd": (r"12[\s,]?000\s*(?:usd|доллар(?:ов|а)?\s*сша|долл?\.?\s*сша)",),
+        "weight_10": (r"10\s*(?:тонн\w*|т\b)",), "weight_15": (r"15\s*(?:тонн\w*|т\b)",),
+        "weight_20": (r"20\s*(?:тонн\w*|т\b)",), "city_almaty": (r"алматы",),
+        "city_astana": (r"астана",), "city_urumqi": (r"урумчи",), "tent": (r"тент(?:ов\w*)?",),
+        "not_refrigerated": (r"не\s+(?:нужен\s+)?рефриж",), "time_0930": (r"09\s*:\s*30",),
+        "date_2026_10_01": (r"2026[-/.]10[-/.]0?1",), "refrigerated": (r"рефриж",),
+    },
+    "en": {
+        "money_1500_usd": (r"1500\s*(?:usd|us\s*dollars?)",),
+        "money_12000_usd": (r"12[\s,]?000\s*(?:usd|us\s*dollars?)",),
+        "weight_10": (r"10\s*(?:tonnes?|tons?)",), "weight_15": (r"15\s*(?:tonnes?|tons?)",),
+        "weight_20": (r"20\s*(?:tonnes?|tons?)",), "city_almaty": (r"almaty",),
+        "city_astana": (r"astana",), "city_urumqi": (r"urumqi",),
+        "tent": (r"(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?",),
+        "not_refrigerated": (r"not\s+(?:a\s+)?(?:refrigerated|reefer)",),
+        "time_0930": (r"09\s*:\s*30",), "date_2026_10_01": (r"2026[-/.]10[-/.]0?1",),
+        "refrigerated": (r"(?:refrigerated|reefer)",),
+    },
+    "zh": {
+        "money_1500_usd": (r"1500\s*(?:usd|美元)",), "money_12000_usd": (r"12000\s*(?:usd|美元)",),
+        "weight_10": (r"10\s*吨",), "weight_15": (r"15\s*吨",), "weight_20": (r"20\s*吨",),
+        "city_almaty": (r"阿拉木图",), "city_astana": (r"阿斯塔纳",), "city_urumqi": (r"乌鲁木齐",),
+        "tent": (r"(?:篷布车|篷车|帆布车)",), "not_refrigerated": (r"(?:不[是要]?|非)\s*冷藏车",),
+        "time_0930": (r"09\s*[:：]\s*30",), "date_2026_10_01": (r"2026(?:[-/.]10[-/.]0?1|年10月0?1日?)",),
+        "refrigerated": (r"冷藏车",),
+    },
+}
+FORBIDDEN_BODY = {"ru": ("водопад",), "en": ("waterfall",), "zh": ("瀑布",)}
 
 
 def emit(kind: str, **values: object) -> None:
@@ -114,40 +147,37 @@ def post_translate(text: str, source: str, target: str) -> tuple[int | None, dic
         return None, {"detail": type(exc).__name__}, round((time.perf_counter() - started) * 1000, 2)
 
 
-def normalized(text: str) -> str:
-    return "".join(character.lower() for character in text if character.isalnum())
-
-
-def fact_markers(target: str, key: str) -> tuple[str, ...]:
-    # Markers are intentionally broad equivalents in each target language.
-    localized = {
-        "ru": {
-            "almaty": "алматы", "astana": "астана", "tent": "тент",
-            "not": "не", "refriger": "рефриж", "urumqi": "урумчи", "warehouse": "склад",
-        },
-        "zh": {
-            "almaty": "阿拉木图", "astana": "阿斯塔纳", "tent": "篷布",
-            "not": "不", "refriger": "冷藏", "urumqi": "乌鲁木齐", "warehouse": "仓库",
-        },
-        "en": {
-            "almaty": "almaty", "astana": "astana", "tent": "tent",
-            "not": "not", "refriger": "refriger", "urumqi": "urumqi", "warehouse": "warehouse",
-        },
-    }
-    return tuple(localized[target].get(item, item) for item in FACTS[key])
-
-
 def semantic_check(target: str, key: str, translated: str | None) -> tuple[bool, list[str], list[str]]:
+    """Check structured cargo facts, including the required negation relation."""
+    required = REQUIRED_FACTS[key]
     if not translated:
-        return False, list(fact_markers(target, key)), []
-    compact = normalized(translated)
-    missing = [marker for marker in fact_markers(target, key) if normalized(marker) not in compact]
-    forbidden = [term for term in ("водопад", "瀑布", "waterfall") if term in translated.lower()]
+        return False, list(required), []
+    patterns = FACT_PATTERNS[target]
+    missing = [fact for fact in required if not any(re.search(pattern, translated, re.IGNORECASE) for pattern in patterns[fact])]
+    forbidden = [term for term in FORBIDDEN_BODY[target] if term in translated.casefold()]
+    # A refrigerator may appear only when it is explicitly negated in the
+    # scenario that requires that relation; otherwise it changes the cargo.
+    has_refrigerated = any(re.search(pattern, translated, re.IGNORECASE) for pattern in patterns["refrigerated"])
+    if has_refrigerated and "not_refrigerated" not in required:
+        forbidden.append("added_refrigerated")
+    if "not_refrigerated" in required and has_refrigerated and "not_refrigerated" not in missing:
+        pass
+    elif "not_refrigerated" in required and has_refrigerated:
+        forbidden.append("opposite_refrigerated")
     return not missing and not forbidden, missing, forbidden
 
 
-def run_corpus() -> None:
+def percentile(values: list[float], quantile: float = 0.5) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = max(0, min(len(ordered) - 1, int((len(ordered) - 1) * quantile + 0.999999)))
+    return round(ordered[index], 2)
+
+
+def run_corpus() -> bool:
     case_id = 0
+    rows: list[dict[str, object]] = []
     for source, target in PAIRS:
         for key, text in LANG_TEXT[source].items():
             case_id += 1
@@ -157,27 +187,42 @@ def run_corpus() -> None:
                 detail = payload.get("detail") if isinstance(payload, dict) else None
                 error = detail.get("message") if isinstance(detail, dict) else detail
                 semantic_pass, missing, forbidden = semantic_check(target, key, translated)
-                emit(
-                    "safe_translation",
-                    case_id=case_id,
-                    phrase_kind=key,
-                    attempt=attempt,
-                    source_lang=source,
-                    target_lang=target,
-                    input_text=text,
-                    http=status,
-                    translated_text=translated,
-                    error_code=error if status is None or status >= 400 else None,
-                    semantic_pass=semantic_pass if status == 200 else False,
-                    missing_markers=missing,
-                    forbidden_terms=forbidden,
-                    cache_hit=False,
-                    cache_scope="ai_endpoint_has_no_translation_memory",
-                    queue_ms="unavailable",
-                    model_load_ms="preloaded_or_unavailable",
-                    inference_ms="unavailable",
-                    response_ms=response_ms,
-                )
+                row = {
+                    "case_id": case_id, "phrase_kind": key, "attempt": attempt,
+                    "source_lang": source, "target_lang": target, "input_text": text,
+                    "http": status, "translated_text": translated,
+                    "error_code": error if status is None or status >= 400 else None,
+                    "semantic_pass": semantic_pass if status == 200 else False,
+                    "missing_markers": missing, "forbidden_terms": forbidden,
+                    "cache_hit": False, "cache_scope": "ai_endpoint_has_no_translation_memory",
+                    "queue_ms": "unavailable", "model_load_ms": "preloaded_or_unavailable",
+                    "inference_ms": "unavailable", "response_ms": response_ms,
+                }
+                # Keep rows in-memory solely to summarize the synthetic matrix.
+                # They contain no application data.
+                rows.append(row)
+                emit("safe_translation", **row)
+    summaries: dict[str, dict[str, object]] = {}
+    for source, target in PAIRS:
+        direction = f"{source}->{target}"
+        direction_rows = [row for row in rows if row["source_lang"] == source and row["target_lang"] == target]
+        summaries[direction] = {
+            "total": len(direction_rows),
+            "pass": sum(row["http"] == 200 and row["semantic_pass"] for row in direction_rows),
+            "http_fail": sum(row["http"] != 200 for row in direction_rows),
+            "semantic_fail": sum(row["http"] == 200 and not row["semantic_pass"] for row in direction_rows),
+            "fresh_p50_ms": percentile([row["response_ms"] for row in direction_rows if row["attempt"] == "fresh"]),
+            "fresh_p95_ms": percentile([row["response_ms"] for row in direction_rows if row["attempt"] == "fresh"], 0.95),
+            "warm_p50_ms": percentile([row["response_ms"] for row in direction_rows if row["attempt"] == "warm_repeat"]),
+            "warm_p95_ms": percentile([row["response_ms"] for row in direction_rows if row["attempt"] == "warm_repeat"], 0.95),
+        }
+    total = len(rows)
+    passed = sum(row["http"] == 200 and row["semantic_pass"] for row in rows)
+    emit("matrix_summary", total=total, pass_count=passed,
+         http_fail=sum(row["http"] != 200 for row in rows),
+         semantic_fail=sum(row["http"] == 200 and not row["semantic_pass"] for row in rows),
+         directions=summaries)
+    return passed == total
 
 
 def model_inventory() -> None:
@@ -199,9 +244,9 @@ def main() -> int:
     emit("diagnostic_policy", mode="safe_default", application_data="not_read", mutation="none")
     snapshot("before")
     model_inventory()
-    run_corpus()
+    matrix_pass = run_corpus()
     snapshot("after")
-    return 0
+    return 0 if matrix_pass else 1
 
 
 if __name__ == "__main__":
