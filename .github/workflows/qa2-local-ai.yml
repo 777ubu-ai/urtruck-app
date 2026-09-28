@@ -50,7 +50,13 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/backend
           APP_ENV: test
           CGR_IIN_SALT: ci-test-salt-not-a-secret
-        run: python -m pytest -q backend/tests/test_qa2_ai_quality_gate.py backend/tests/test_qa2_ai_quality_failure_reasons.py
+        run: >-
+          python -m pytest -q
+          backend/tests/test_qa2_ai_quality_gate.py
+          backend/tests/test_qa2_ai_quality_failure_reasons.py
+          backend/tests/test_push_delivery_release_gate.py
+          backend/tests/test_direct_native_push_contract.py
+          backend/tests/test_direct_gateway_providers.py
       - name: Compile changed Python sources
         run: python -m py_compile backend/qa_ai_service/quality.py backend/qa_ai_service/main.py scripts/qa2_ai_readonly_diagnostic.py scripts/replay_qa2_ai_diagnostic.py
       - name: Replay the pinned 60-row synthetic translation fixture
