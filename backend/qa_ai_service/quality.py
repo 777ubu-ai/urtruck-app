@@ -419,9 +419,10 @@ def transcription_quality_ok(
     return True
 
 
-def translation_quality_ok(source_text: str, translated_text: str, source: str, target: str) -> bool:
+def translation_quality_failures(source_text: str, translated_text: str, source: str, target: str) -> list[str]:
+    failures: list[str] = []
     if _numeric_facts(source_text) != _numeric_facts(translated_text):
-        return False
+        failures.append("numeric_facts_changed")
     source_has_body = _contains_any(source_text, VEHICLE_BODY_TERMS.get(source, ()))
     for name, variants in LOGISTICS_TERMS.items():
         # A specific body type (e.g. 篷布车) is stronger than the generic
@@ -430,7 +431,7 @@ def translation_quality_ok(source_text: str, translated_text: str, source: str, 
         if name == "truck" and source_has_body:
             continue
         if _contains_any(source_text, variants[source]) and not _contains_any(translated_text, variants[target]):
-            return False
+            failures.append(f"logistics_term_missing:{name}")
     source_weights, source_unbound_units = _weight_profile(source_text, source)
     target_weights, target_unbound_units = _weight_profile(translated_text, target)
     if source_weights:
@@ -439,23 +440,27 @@ def translation_quality_ok(source_text: str, translated_text: str, source: str, 
         if [value for value, _start, _end in source_weights] != [
             value for value, _start, _end in target_weights
         ]:
-            return False
+            failures.append("weight_value_changed")
         if source_unbound_units != target_unbound_units:
-            return False
+            failures.append("weight_unit_missing")
     elif source_unbound_units:
         # A source unit without a number may be retained only as a standalone
         # unit.  A target number plus that unit would invent an association.
         if target_weights or target_unbound_units != source_unbound_units:
-            return False
+            failures.append("weight_association_changed")
     elif target_weights or target_unbound_units:
         # Do not allow a model to invent a weight where the source had none.
-        return False
+        failures.append("weight_invented")
     if source_has_body and not _contains_any(translated_text, VEHICLE_BODY_TERMS.get(target, ())):
-        return False
+        failures.append("body_type_missing")
     if source == "en" and target == "zh" and _CLEAR_ROAD_SOURCE.search(source_text):
         if not _contains_any(translated_text, _CLEAR_ROAD_ZH):
-            return False
+            failures.append("clear_road_meaning_missing")
     for city in _city_keys(source_text, source):
         if not _contains_any(translated_text, CITY_TERMS[city].get(target, ())):
-            return False
-    return True
+            failures.append(f"city_missing:{city}")
+    return list(dict.fromkeys(failures))
+
+
+def translation_quality_ok(source_text: str, translated_text: str, source: str, target: str) -> bool:
+    return not translation_quality_failures(source_text, translated_text, source, target)

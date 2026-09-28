@@ -14,9 +14,9 @@ from pydantic import BaseModel, Field
 from transformers import AutoTokenizer
 
 try:
-    from .quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_ok
+    from .quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
 except ImportError:  # uvicorn runs this file as top-level main.py in QA2
-    from quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_ok
+    from quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _translate_slot = threading.BoundedSemaphore(1)
@@ -123,10 +123,11 @@ def translate(body: TranslateRequest):
         translated = repair_logistics_translation(body.text, translated, source, target)
         if not translated:
             raise RuntimeError("empty translation")
-        if not translation_quality_ok(body.text, translated, source, target):
+        gate_failures = translation_quality_failures(body.text, translated, source, target)
+        if gate_failures:
             raise HTTPException(
                 status_code=422,
-                detail={"message": "translation confidence too low", "candidate": translated},
+                detail={"message": "translation confidence too low", "candidate": translated, "gate_failure_reasons": gate_failures},
             )
         return {
             "translated_text": translated,

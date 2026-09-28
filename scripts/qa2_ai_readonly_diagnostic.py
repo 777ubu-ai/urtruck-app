@@ -202,11 +202,14 @@ def run_corpus() -> bool:
                 translated = payload.get("translated_text") if status is not None and status < 400 else None
                 detail = payload.get("detail") if isinstance(payload, dict) else None
                 error = detail.get("message") if isinstance(detail, dict) else detail
+                rejected_candidate = detail.get("candidate") if status == 422 and isinstance(detail, dict) else None
+                gate_failure_reasons = detail.get("gate_failure_reasons") if status == 422 and isinstance(detail, dict) else None
                 semantic_pass, missing, forbidden = semantic_check(target, key, translated)
                 row = {
                     "case_id": case_id, "phrase_kind": key, "attempt": attempt,
                     "source_lang": source, "target_lang": target, "input_text": text,
                     "http": status, "translated_text": translated,
+                    "rejected_candidate": rejected_candidate, "gate_failure_reasons": gate_failure_reasons,
                     "error_code": error if status is None or status >= 400 else None,
                     "semantic_pass": semantic_pass if status == 200 else False,
                     "missing_markers": missing, "forbidden_terms": forbidden,
