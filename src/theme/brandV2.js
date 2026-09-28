@@ -4,16 +4,16 @@
 // экранам (OnboardingV2 / CountryPickerSheet / PhoneV2). Старые экраны
 // (designV1, dark theme) живут отдельно — этот файл их не трогает.
 //
-// Owner ТЗ от 2026-05-13: белый фон, тёмный зелёно-графитовый текст (redesign 08.08.2026: slate-нейтрали заменены на зелёно-серые ТЗ), оранжевый акцент
+// Owner ТЗ: тёплый нейтральный фон, белые карточки и тёмный зелёно-графитовый текст; оранжевый акцент
 // в логотипе, GREEN primary CTA (как в inDrive — зелёная кнопка
 // "Продолжить"). Outline secondary CTA — navy border + navy text.
 
 export const brandLight = {
   // Backgrounds
-  bg: '#FFFFFF',
+  bg: '#F7F3EC',
   surface: '#FFFFFF',
-  surfaceMuted: '#F0F4F2',
-  surfaceSoft: '#F6F8F7',
+  surfaceMuted: '#FAF8F4',
+  surfaceSoft: '#FFFCF7',
 
   // Text
   textPrimary: '#14221C',   // navy — заголовки, основной текст
@@ -42,9 +42,9 @@ export const brandLight = {
   accentIcon: '#D26D00',
 
   // Borders / dividers
-  border: '#E5ECE8',
-  borderStrong: '#C8D8CF',
-  divider: '#EEF3F0',
+  border: '#D8D2C9',
+  borderStrong: '#BFB5A8',
+  divider: '#EEE8DF',
 
   // States
   success: '#168759',
@@ -60,8 +60,8 @@ export const brandLight = {
   // everything else (background/border/icon) — do not repoint the base
   // tokens themselves, that would also (unnecessarily) darken every
   // existing background/border use of them.
-  errorText: '#D03B3B',
-  infoText: '#3273CC',
+  errorText: '#CB3636',
+  infoText: '#2F6FC6',
 
   // Map/illustration assist
   mapGray: '#E5E7EB',

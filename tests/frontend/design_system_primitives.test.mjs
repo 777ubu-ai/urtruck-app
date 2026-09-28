@@ -42,9 +42,15 @@ test('palette LIGHT: exact approved values for all new token entries', () => {
   assert.equal(LIGHT.statusReceived, '#0F6B47');
   assert.equal(LIGHT.statusCompleted, '#7C8B82');
   assert.equal(LIGHT.statusCancelled, '#718078');
-  // Pre-existing entries must not have moved (back-compat for 76 consumers).
+  // Owner-approved warm light surfaces; semantic accent/text stay stable.
+  assert.equal(LIGHT.bg, '#F7F3EC');
+  assert.equal(LIGHT.bgDeep, '#F5EEE3');
+  assert.equal(LIGHT.chatCanvas, '#F5EEE3');
+  assert.equal(LIGHT.chatPattern, '#8C7D68');
+  assert.equal(LIGHT.surface, '#FFFFFF');
+  assert.equal(LIGHT.surfaceMuted, '#FAF8F4');
+  assert.equal(LIGHT.border, '#D8D2C9');
   assert.equal(LIGHT.driver, '#168759');
-  assert.equal(LIGHT.border, '#E5ECE8');
   assert.equal(LIGHT.text, '#14221C');
 });
 
@@ -263,7 +269,7 @@ test('Card: radius 16, surface bg, 1px border, padding 16, no shadow', () => {
   const st = flatten(tree.props.style);
   assert.equal(st.borderRadius, 16);
   assert.equal(st.backgroundColor, LIGHT.surface);
-  assert.equal(st.borderColor, LIGHT.border, 'border-only separation (light #E5ECE8)');
+  assert.equal(st.borderColor, LIGHT.border, 'border-only separation (warm light #D8D2C9)');
   assert.equal(st.borderWidth, 1);
   assert.equal(st.padding, 16);
   assert.equal(st.shadowOpacity ?? 0, 0, 'NO shadow on cards');

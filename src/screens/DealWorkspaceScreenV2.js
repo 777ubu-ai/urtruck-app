@@ -20,6 +20,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 
@@ -68,6 +69,25 @@ const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
 const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected', 'expired'];
 const COMPOSER_INPUT_MIN_HEIGHT = 32;
 const COMPOSER_INPUT_MAX_HEIGHT = 88;
+
+// Декоративные метки живут только под сообщениями: без изображений,
+// сетевых запросов и влияния на карту/жесты/доступность.
+const CHAT_WALLPAPER_MARKS = Object.freeze([
+  { name: 'truck-outline', top: '5%', left: '8%', size: 23, rotate: '-8deg' },
+  { name: 'map-marker-outline', top: '10%', left: '47%', size: 20, rotate: '7deg' },
+  { name: 'package-variant-closed', top: '4%', left: '82%', size: 20, rotate: '9deg' },
+  { name: 'road-variant', top: '24%', left: '24%', size: 24, rotate: '-12deg' },
+  { name: 'warehouse', top: '28%', left: '68%', size: 21, rotate: '5deg' },
+  { name: 'map-marker-path', top: '42%', left: '6%', size: 25, rotate: '8deg' },
+  { name: 'shield-check-outline', top: '45%', left: '46%', size: 20, rotate: '-6deg' },
+  { name: 'truck-outline', top: '41%', left: '84%', size: 22, rotate: '10deg' },
+  { name: 'package-variant-closed', top: '61%', left: '18%', size: 20, rotate: '-7deg' },
+  { name: 'map-marker-outline', top: '66%', left: '61%', size: 21, rotate: '8deg' },
+  { name: 'road-variant', top: '78%', left: '4%', size: 24, rotate: '11deg' },
+  { name: 'warehouse', top: '82%', left: '39%', size: 21, rotate: '-5deg' },
+  { name: 'truck-outline', top: '76%', left: '79%', size: 23, rotate: '-9deg' },
+  { name: 'map-marker-path', top: '93%', left: '58%', size: 23, rotate: '6deg' },
+]);
 const COMPOSER_INPUT_VERTICAL_PADDING = 8;
 const VOICE_MAX_DURATION_SEC = 60;
 // Stop slightly before the contract boundary: native stop/unload is async and
@@ -255,6 +275,32 @@ const newClientId = (prefix = 'c') => `${prefix}_${Date.now().toString(36)}_${Ma
 // A CGR-style Yandex Maps deep link. Real, openable pin — not a promise of an
 // in-app live-location feature the "Местопол." button never claimed to be.
 const yandexMapsLink = (lat, lng) => `https://yandex.ru/maps/?pt=${lng},${lat}&z=16&l=map`;
+
+const ChatWallpaperPattern = React.memo(function ChatWallpaperPattern({ color, visible }) {
+  if (!visible) return null;
+  return (
+    <View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={s.chatWallpaper}
+      testID="deal-chat-wallpaper"
+    >
+      {CHAT_WALLPAPER_MARKS.map((mark, index) => (
+        <MaterialCommunityIcons
+          key={`${mark.name}-${index}`}
+          name={mark.name}
+          size={mark.size}
+          color={color}
+          style={[
+            s.chatWallpaperMark,
+            { top: mark.top, left: mark.left, transform: [{ rotate: mark.rotate }] },
+          ]}
+        />
+      ))}
+    </View>
+  );
+});
 
 export default function DealWorkspaceScreenV2({ navigation, route }) {
   const { t, lang, sp } = useI18n();
@@ -1726,7 +1772,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               </View>
             ) : (
               <>
-                <View style={s.chatBody}>
+                <View
+                  style={[
+                    s.chatBody,
+                    { backgroundColor: isDark ? colors.bg : colors.chatCanvas },
+                  ]}
+                >
+                  <ChatWallpaperPattern
+                    visible={!isDark}
+                    color={colors.chatPattern}
+                  />
                   {historyStatus === 'error' ? (
                     <TouchableOpacity onPress={loadMessages} style={s.historyNotice} testID="deal-chat-history-retry" accessibilityRole="button">
                       <Text style={[s.loadingText, { color: colors.text }]}>
@@ -2169,6 +2224,8 @@ const s = StyleSheet.create({
   loadingText: { fontSize: 13, fontWeight: '700' },
 
   chatBody: { flex: 1, position: 'relative' },
+  chatWallpaper: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
+  chatWallpaperMark: { position: 'absolute', opacity: 0.065 },
   messageList: { flex: 1 },
   messageContent: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 },
   messageRow: { marginBottom: 10 },
