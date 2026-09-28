@@ -7,6 +7,11 @@ on:
         description: Exact source SHA recorded with this audit
         required: true
         type: string
+  push:
+    branches: [fix/voice-stt-translation-20260925]
+    paths:
+      - .github/workflows/qa2-server-readonly-audit.yml
+      - tests/frontend/test_qa2_server_readonly_audit_workflow.mjs
 
 concurrency:
   group: urtruck-qa2-server-readonly-audit
@@ -26,12 +31,12 @@ jobs:
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SERVER_PASS: ${{ secrets.SERVER_PASS }}
-      AUDIT_SOURCE_SHA: ${{ inputs.source_sha }}
+      AUDIT_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
     steps:
       - name: Checkout the requested audit source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ env.AUDIT_SOURCE_SHA }}
           fetch-depth: 1
 
       - name: Require the exact branch and source
@@ -62,12 +67,13 @@ jobs:
           echo 'AUDIT_MODE=read-only'
           echo "AUDIT_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo 'SECTION=disk'
-          df -hP
+          df -hT
           echo 'SECTION=inodes'
           df -iP
 
           echo 'SECTION=memory'
           free -h
+          swapon --show --bytes || true
           awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ {print}' /proc/meminfo
           echo 'SECTION=vmstat'
           vmstat 1 3
@@ -75,6 +81,8 @@ jobs:
           cat /proc/pressure/memory
           echo 'SECTION=psi-io'
           cat /proc/pressure/io
+          echo 'SECTION=psi-cpu'
+          cat /proc/pressure/cpu
 
           echo 'SECTION=top-cpu'
           ps -eo pid,ppid,user,comm,%cpu,%mem,rss,lstart --sort=-%cpu | head -n 21
@@ -95,6 +103,7 @@ jobs:
             ps -p "$pid_8002" -o pid=,ppid=,user=,comm=,etime=,lstart=,%cpu=,%mem=,rss=
             echo "PROCESS_8002_EXEC=$(readlink -f "/proc/$pid_8002/exe" 2>/dev/null || true)"
             echo "PROCESS_8002_CWD=$(readlink -f "/proc/$pid_8002/cwd" 2>/dev/null || true)"
+            echo "PROCESS_8002_CMD=$(tr '\000' ' ' < "/proc/$pid_8002/cmdline" 2>/dev/null | sed -E 's/(token|password|secret|key)=[^ ]+/\1=REDACTED/Ig')"
             echo 'PROCESS_8002_CGROUP_BEGIN'
             cat "/proc/$pid_8002/cgroup" 2>/dev/null || true
             echo 'PROCESS_8002_CGROUP_END'
@@ -113,11 +122,14 @@ jobs:
           echo 'SECTION=systemd'
           for unit in urtruck-qa2.service urtruck-qa2-ai.service nginx.service docker.service; do
             echo "UNIT=$unit"
-            sudo -n systemctl show "$unit" -p Id -p ActiveState -p SubState -p MainPID -p ExecMainStartTimestamp --no-pager 2>&1 || true
+            sudo -n systemctl show "$unit" -p Id -p ActiveState -p SubState -p MainPID -p FragmentPath -p ExecMainStartTimestamp --no-pager 2>&1 || true
           done
 
           echo 'SECTION=nginx-routing'
-          sudo -n nginx -T 2>/dev/null | awk '/^[[:space:]]*(server_name|proxy_pass)[[:space:]]/ {gsub(/^[[:space:]]+/, ""); print}' || true
+          sudo -n nginx -T 2>/dev/null | awk '
+            /^[[:space:]]*server_name[[:space:]]/ {server=$0; gsub(/^[[:space:]]+/, "", server)}
+            /^[[:space:]]*proxy_pass[[:space:]]/ && server ~ /(qa2\.urtruck\.kz|pro-test\.urtruck\.kz)/ {line=$0; gsub(/^[[:space:]]+/, "", line); print server " -> " line}
+          ' || true
 
           echo 'SECTION=docker-images'
           sudo -n docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}' 2>&1 || true
@@ -127,9 +139,11 @@ jobs:
           sudo -n docker ps -a --format '{{.ID}} {{.Image}} {{.Names}} {{.Status}}' 2>&1 || true
           echo 'SECTION=docker-build-cache'
           sudo -n docker builder du 2>&1 || true
+          echo 'SECTION=docker-mount-links'
+          sudo -n docker ps -aq | xargs -r sudo -n docker inspect --format '{{.Name}} {{range .Mounts}}{{.Type}}:{{.Source}}->{{.Destination}} {{end}}' 2>&1 || true
 
           echo 'SECTION=technical-directory-sizes'
-          sudo -n du -sh /home/ubuntu/urtruck-qa2 /home/ubuntu/urtruck-qa2-ai /var/lib/docker /var/log/nginx 2>&1 || true
+          sudo -n du -sh /home/ubuntu/urtruck /home/ubuntu/urtruck-rollback /home/ubuntu/urtruck-releases /home/ubuntu/urtruck-backups /home/ubuntu/urtruck-qa2 /home/ubuntu/urtruck-qa2-ai /var/lib/docker /var/log /tmp 2>&1 || true
 
           health_summary() {
             local label="$1"
@@ -209,10 +223,39 @@ jobs:
           echo 'SYNTHETIC_INTERPRETATION=swap alone is not causal; use pswpin/pswpout deltas together with PSI memory and IO.'
           REMOTE
 
+      - name: Render sanitized JSON and Markdown summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/qa2-server-readonly-audit"
+          cp "$RUNNER_TEMP/qa2-server-readonly-audit.txt" "$RUNNER_TEMP/qa2-server-readonly-audit/audit.txt"
+          python3 - "$RUNNER_TEMP/qa2-server-readonly-audit.txt" "$RUNNER_TEMP/qa2-server-readonly-audit/audit.json" "$RUNNER_TEMP/qa2-server-readonly-audit/summary.md" <<'PY'
+          import json, sys
+          source, json_path, markdown_path = sys.argv[1:]
+          text = open(source, encoding='utf-8').read()
+          sections, current = {}, 'header'
+          for line in text.splitlines():
+              if line.startswith('SECTION='):
+                  current = line.split('=', 1)[1]
+                  sections.setdefault(current, [])
+              else:
+                  sections.setdefault(current, []).append(line)
+          json.dump({'sanitized': True, 'sections': sections}, open(json_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+          pid = next((line for line in text.splitlines() if line.startswith('PORT_8002_PID=')), 'PORT_8002_PID=unavailable')
+          swap = [line for line in text.splitlines() if line.startswith('SWAP_')]
+          routes = sections.get('nginx-routing', ['UNKNOWN'])
+          with open(markdown_path, 'w', encoding='utf-8') as out:
+              out.write('# QA2 read-only server audit\n\n')
+              out.write(f'- {pid}\n')
+              out.write('- Swap causality requires non-zero pswpin/pswpout deltas during the synthetic requests.\n')
+              out.write('\n## Swap snapshots\n\n```text\n' + '\n'.join(swap) + '\n```\n')
+              out.write('\n## QA2 / pro-test routing\n\n```text\n' + '\n'.join(routes) + '\n```\n')
+          PY
+
       - name: Upload non-sensitive technical artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qa2-server-readonly-audit-${{ inputs.source_sha }}
-          path: ${{ runner.temp }}/qa2-server-readonly-audit.txt
+          name: qa2-server-readonly-audit-${{ env.AUDIT_SOURCE_SHA }}
+          path: ${{ runner.temp }}/qa2-server-readonly-audit
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7

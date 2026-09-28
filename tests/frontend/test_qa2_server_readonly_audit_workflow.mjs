@@ -6,19 +6,21 @@ const workflow = fs.readFileSync('.github/workflows/qa2-server-readonly-audit.ym
 
 test('QA2 server audit is manual, exact-source and protected', () => {
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /push:\n\s+branches: \[fix\/voice-stt-translation-20260925\]/);
   assert.match(workflow, /AUDIT_SOURCE_SHA/);
   assert.match(workflow, /GITHUB_REF_NAME" = "fix\/voice-stt-translation-20260925/);
   assert.match(workflow, /git rev-parse HEAD\)" = "\$AUDIT_SOURCE_SHA/);
   assert.ok(workflow.includes('environment:\n      name: qa2'));
   assert.match(workflow, /actions\/upload-artifact@v4/);
+  assert.match(workflow, /retention-days: 7/);
 });
 
 test('QA2 server audit gathers only technical capacity and process evidence', () => {
   for (const required of [
-    'df -hP', 'df -iP', 'free -h', 'vmstat 1 3', '/proc/pressure/memory',
-    '/proc/pressure/io', 'PORT_8002_PID', 'PROCESS_8002_EXEC',
+    'df -hT', 'df -iP', 'free -h', 'swapon --show --bytes', 'vmstat 1 3', '/proc/pressure/memory',
+    '/proc/pressure/io', '/proc/pressure/cpu', 'PORT_8002_PID', 'PROCESS_8002_EXEC',
     'PROCESS_8002_CWD', 'PROCESS_8002_CGROUP_BEGIN', 'ActiveState',
-    'server_name|proxy_pass', 'docker image ls', 'docker volume ls',
+    'FragmentPath', 'PROCESS_8002_CMD', 'server_name[[:space:]]', 'docker image ls', 'docker volume ls',
     'docker builder du', 'technical-directory-sizes', 'source_sha',
     'synthetic_translation RU_TO_ZH', 'synthetic_translation ZH_TO_RU',
     'synthetic_translation EN_TO_ZH', 'pswpin', 'pswpout',
@@ -26,6 +28,7 @@ test('QA2 server audit gathers only technical capacity and process evidence', ()
     assert.ok(workflow.includes(required), `missing required read-only evidence: ${required}`);
   }
   assert.match(workflow, /allowed = \('status', 'source_sha', 'version', 'private', 'translation_model', 'speech_model', 'languages'\)/);
+  assert.match(workflow, /sanitized': True/);
   assert.doesNotMatch(workflow, /printenv|env\s*\||\.env|Authorization:|Bearer\s+/i);
 });
 
