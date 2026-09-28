@@ -82,23 +82,19 @@ jobs:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
           if [ -n "${ANDROID_GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
-            echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > google-services.json
+            echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
           else
             echo "::warning::ANDROID_GOOGLE_SERVICES_JSON_BASE64 не задан — push (FCM) не будет работать в dev-сборке, остальное тестируется нормально."
           fi
 
-      - name: Expo prebuild (Android, non-interactive)
-        # Preserve the approved native splash resources and launch wiring.
-        run: npx expo prebuild --platform android --no-install --non-interactive
-        env:
-          EXPO_NO_TELEMETRY: 1
-          CI: 1
-
-      - name: Target API 36 (Google Play требование с 31.08.2026)
-        run: |
-          printf '\nandroid.compileSdkVersion=36\nandroid.targetSdkVersion=36\nandroid.buildToolsVersion=36.0.0\n' >> android/gradle.properties
-
       - name: Build Debug APK with Gradle (debug-keystore, dev-client)
+        # payments (2026-09-28): собираем ПРЯМО из закоммиченного android/,
+        # БЕЗ expo prebuild — так же, как deploy-play.yml. prebuild
+        # перегенерирует android/build.gradle/app/build.gradle с нуля и стёр
+        # бы ручной override playBillingSdkVersion=8.0.0 (react-native-iap
+        # иначе падает на несовместимости Billing Library 7.x). Debug-сборка
+        # получает applicationIdSuffix .qa2 (см. app/build.gradle buildTypes.debug),
+        # т.е. живёт рядом с боевым com.urtruck.app, не конфликтует с ним.
         run: |
           cd android
           chmod +x gradlew
