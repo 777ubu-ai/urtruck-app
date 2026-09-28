@@ -457,6 +457,17 @@ MAX_OUTBOX_ATTEMPTS = 5
 STALE_PROCESSING_MINUTES = 5
 
 
+def configured_outbox_cutoff_id() -> int:
+    """Return a read-only cutoff that keeps legacy pending rows on hold."""
+    raw = os.getenv("PUSH_OUTBOX_CUTOFF_ID", "").strip()
+    if not raw:
+        return 0
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 0
+
+
 def _reclaim_stale_processing(c) -> int:
     """A worker that crashed (or was killed) between claiming a row
     (status='processing') and finishing it would otherwise leave that row
@@ -560,11 +571,12 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
             for r in c.execute(
                 """
                 SELECT id FROM push_outbox
-                WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
+                WHERE status = 'pending' AND id > ?
+                  AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
                 ORDER BY CASE priority WHEN 'critical' THEN 0 ELSE 1 END, created_at
                 LIMIT ?
                 """,
-                (bounded_limit,),
+                (configured_outbox_cutoff_id(), bounded_limit),
             ).fetchall()
         ]
 

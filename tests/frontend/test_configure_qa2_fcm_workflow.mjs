@@ -12,7 +12,7 @@ test('QA2 FCM workflow uses pinned SSH and native systemd supervision', () => {
   assert.doesNotMatch(workflow, /ssh-keyscan/);
   assert.match(workflow, /systemctl show -p MainPID/);
   assert.ok(workflow.includes('systemctl is-active urtruck-qa2.service'));
-  assert.ok(workflow.includes('systemctl restart urtruck-qa2.service'));
+  assert.ok(workflow.includes('sudo -n systemctl restart urtruck-qa2.service'));
   assert.match(workflow, /sport = :8002/);
 });
 
@@ -32,7 +32,15 @@ test('QA2 FCM workflow validates secrets and only writes native QA2 env', () => 
     'FCM_SERVICE_ACCOUNT_JSON',
     'com.urtruck.app.qa2',
     'PROD_VERSION_HASH_BEFORE',
+    'apns_not_configured',
+    'ANDROID_FCM=READY',
+    'IPHONE_APNS=BLOCKED',
+    'NATIVE_GATEWAY=PARTIAL',
+    '.env.fcm-backup.',
+    'Always remove temporary QA2 credentials and backup',
   ]) assert.ok(workflow.includes(name), 'missing ' + name);
   assert.equal(/echo\\s+.*QA2_FCM_(?:PROJECT_ID|SERVICE_ACCOUNT_JSON)/.test(workflow), false);
   assert.equal(/production.*\\.env/i.test(workflow), false);
+  assert.match(workflow, /\^\[a-z0-9\]\[a-z0-9-\]\{4,29\}\$/);
+  assert.match(workflow, /bash -s -- "\$QA2_FCM_PROJECT_ID"/);
 });

@@ -44,6 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$QA2_FCM_PROJECT_ID"
+          [[ "$QA2_FCM_PROJECT_ID" =~ ^[a-z0-9][a-z0-9-]{4,29}$ ]]
           test -n "$QA2_FCM_SERVICE_ACCOUNT_JSON"
           test -n "$QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64"
           python3 - "$RUNNER_TEMP/qa2-fcm-service-account.json" <<'PY'
@@ -133,8 +134,9 @@ jobs:
         run: |
           set -euo pipefail
           ssh_cmd=(ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS")
-          "${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" "QA2_FCM_PROJECT_ID=$QA2_FCM_PROJECT_ID" 'bash -s' <<'REMOTE'
+          "${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" bash -s -- "$QA2_FCM_PROJECT_ID" <<'REMOTE'
           set -euo pipefail
+          expected_project="$1"
           qa_env=/home/ubuntu/urtruck-qa2/backend/.env
           payload=/tmp/urtruck-qa2-fcm-service-account.json
           test -f "$qa_env" && test -f "$payload"
@@ -143,7 +145,7 @@ jobs:
           chmod 600 "$backup"
           printf 'BACKUP=%s\n' "$backup" > /tmp/urtruck-qa2-fcm.state
           chmod 600 /tmp/urtruck-qa2-fcm.state
-          python3 - "$qa_env" "$payload" "$QA2_FCM_PROJECT_ID" <<'PY'
+          python3 - "$qa_env" "$payload" "$expected_project" <<'PY'
           from pathlib import Path
           import json, os, sys
           env_path = Path(sys.argv[1])
@@ -169,7 +171,7 @@ jobs:
           payload_path.unlink(missing_ok=True)
           PY
           test "$(stat -c '%a' "$qa_env")" = 600
-          systemctl restart urtruck-qa2.service
+          sudo -n systemctl restart urtruck-qa2.service
           test "$(systemctl is-active urtruck-qa2.service)" = active
           main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
           listener_pid="$(ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
@@ -187,15 +189,21 @@ jobs:
           import json, sys
           root = json.load(open(sys.argv[1], encoding="utf-8"))
           gateway = root.get("native", {}).get("gateway", {})
-          if gateway.get("mode") != "native" or gateway.get("ready") is not True:
-              raise SystemExit("QA2_FCM_GATEWAY_NOT_READY")
-          if gateway.get("fcm", {}).get("configured") is not True:
+          fcm = gateway.get("fcm", {})
+          if gateway.get("mode") != "native":
+              raise SystemExit("QA2_PUSH_MODE_NOT_NATIVE")
+          if fcm.get("configured") is not True:
               raise SystemExit("QA2_FCM_NOT_CONFIGURED")
-          if gateway.get("config_errors"):
-              raise SystemExit("QA2_FCM_GATEWAY_HAS_CONFIG_ERRORS")
+          if fcm.get("errors"):
+              raise SystemExit("QA2_FCM_HAS_ERRORS")
+          errors = gateway.get("config_errors") or []
+          if any(error != "apns_not_configured" for error in errors):
+              raise SystemExit("QA2_FCM_GATEWAY_HAS_UNEXPECTED_ERRORS")
           if "expo" in json.dumps(gateway, ensure_ascii=False).lower():
               raise SystemExit("QA2_EXPO_PROVIDER_PRESENT")
-          print("QA2_FCM_GATEWAY=ready")
+          print("ANDROID_FCM=READY")
+          print("IPHONE_APNS=READY" if "apns_not_configured" not in errors else "IPHONE_APNS=BLOCKED")
+          print("NATIVE_GATEWAY=READY" if not errors else "NATIVE_GATEWAY=PARTIAL")
           PY
 
       - name: Verify production fingerprint unchanged
@@ -207,13 +215,6 @@ jobs:
           test "$after" = "$PROD_VERSION_HASH_BEFORE"
           echo "PRODUCTION_AFTER=healthy-unchanged"
 
-      - name: Remove temporary QA2 state after success
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS"             "$SERVER_USER@$SERVER_HOST" 'rm -f /tmp/urtruck-qa2-fcm.state /tmp/urtruck-qa2-fcm-service-account.json'
-
       - name: Roll back only QA2 env after failure
         if: failure()
         shell: bash
@@ -224,12 +225,37 @@ jobs:
           state=/tmp/urtruck-qa2-fcm.state
           test -f "$state" || exit 0
           . "$state"
+          case "$BACKUP" in
+            /home/ubuntu/urtruck-qa2/backend/.env.fcm-backup.*) ;;
+            *) echo QA2_FCM_BACKUP_PATH_INVALID >&2; exit 1 ;;
+          esac
           qa_env=/home/ubuntu/urtruck-qa2/backend/.env
           cp -- "$BACKUP" "$qa_env"
           chmod 600 "$qa_env"
-          rm -f /tmp/urtruck-qa2-fcm.state /tmp/urtruck-qa2-fcm-service-account.json
-          systemctl restart urtruck-qa2.service
+          rm -f -- "$BACKUP" /tmp/urtruck-qa2-fcm.state /tmp/urtruck-qa2-fcm-service-account.json
+          sudo -n systemctl restart urtruck-qa2.service
           test "$(systemctl is-active urtruck-qa2.service)" = active
           curl -fsS http://127.0.0.1:8002/health >/dev/null
           echo "QA2_FCM_ROLLBACK=restored"
+          REMOTE
+
+      - name: Always remove temporary QA2 credentials and backup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${QA2_SSH_KEY:-}" ]; then exit 0; fi
+          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          state=/tmp/urtruck-qa2-fcm.state
+          if test -f "$state"; then
+            backup="$(sed -n 's/^BACKUP=//p' "$state")"
+            case "$backup" in
+              /home/ubuntu/urtruck-qa2/backend/.env.fcm-backup.*) rm -f -- "$backup" ;;
+              *) echo QA2_FCM_BACKUP_PATH_INVALID >&2; exit 1 ;;
+            esac
+            rm -f -- "$state"
+          fi
+          rm -f -- /tmp/urtruck-qa2-fcm-service-account.json
           REMOTE
