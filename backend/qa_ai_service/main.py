@@ -34,6 +34,7 @@ LANG_ALIASES = {"cn": "zh", "zh-cn": "zh", "zh-hans": "zh", "kz": "kk", "kk-kz":
 NLLB_LANGS = {"ru": "rus_Cyrl", "zh": "zho_Hans", "kk": "kaz_Cyrl", "en": "eng_Latn"}
 KAZAKH_MARKERS = set("әғқңөұүһіӘҒҚҢӨҰҮҺІ")
 STT_MIN_WORD_CONFIDENCE = float(os.getenv("QA2_STT_MIN_WORD_CONFIDENCE", "0.50"))
+SOURCE_SHA = os.getenv("QA2_AI_SOURCE_SHA", "UNKNOWN").strip() or "UNKNOWN"
 class TranslateRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     source_lang: str | None = None
@@ -90,6 +91,7 @@ def health():
         "translation_model": (TRANSLATE_MODEL / "model.bin").is_file(),
         "speech_model": (WHISPER_MODEL / "model.bin").is_file(),
         "languages": sorted(SUPPORTED_LANGS),
+        "source_sha": SOURCE_SHA,
     }
 
 

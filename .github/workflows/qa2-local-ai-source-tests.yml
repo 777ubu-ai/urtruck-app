@@ -1,0 +1,39 @@
+name: QA2 Local AI Source Tests
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-contracts:
+    name: Non-mutating local-AI source contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements-test.txt
+      - name: Install backend test dependencies
+        working-directory: backend
+        run: pip install -r requirements-test.txt
+      - name: Run QA2 AI quality tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+          APP_ENV: test
+          CGR_IIN_SALT: ci-test-salt-not-a-secret
+        run: python -m pytest -q backend/tests/test_qa2_ai_quality_gate.py backend/tests/test_qa2_ai_quality_failure_reasons.py
+      - name: Compile changed Python sources
+        run: python -m py_compile backend/qa_ai_service/quality.py backend/qa_ai_service/main.py scripts/qa2_ai_readonly_diagnostic.py scripts/replay_qa2_ai_diagnostic.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Run QA2 AI runner and workflow tests
+        run: node --test tests/frontend/test_qa2_ai_readonly_diagnostic.mjs tests/frontend/test_qa_staging_recovery_workflow.mjs
+      - name: Verify whitespace-only diff safety
+        run: git diff --check HEAD^

@@ -647,27 +647,6 @@ jobs:
             | sed -E 's#(token|key|password|secret)=[^[:space:]]+#\1=<redacted>#Ig'
           REMOTE
 
-  cleanup_diagnostic_tmp:
-    if: inputs.confirmation == 'CLEANUP_QA2_DIAGNOSTIC_TMP'
-    name: Remove one failed read-only diagnostic temporary directory
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    env:
-      SERVER_HOST: ${{ secrets.SERVER_HOST }}
-      SERVER_USER: ${{ secrets.SERVER_USER }}
-      SERVER_PASS: ${{ secrets.SERVER_PASS }}
-    steps:
-      - name: Remove only the exact failed diagnostic directory
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "${{ inputs.confirmation }}" = "CLEANUP_QA2_DIAGNOSTIC_TMP"
-          target='/tmp/qa2-ai-readonly-diagnostic-36409260200'
-          test "$target" = '/tmp/qa2-ai-readonly-diagnostic-36409260200'
-          export SSHPASS="$SERVER_PASS"
-          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
-            "set -e; test -e '$target' || exit 0; sudo -n rm -rf -- '$target'; test ! -e '$target'"
-
   diagnose_ai:
     if: inputs.confirmation == 'DIAGNOSE_QA2_LOCAL_AI'
     name: Read-only QA2 AI resources and latency

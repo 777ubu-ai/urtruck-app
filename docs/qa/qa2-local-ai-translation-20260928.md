@@ -136,3 +136,19 @@ resolved by a dedicated no-AI cleanup job. Run
 successfully removed only `/tmp/qa2-ai-readonly-diagnostic-36409260200` and
 verified that it no longer exists. Its diagnostic, deploy and recovery jobs
 were skipped.
+
+## Source hardening before review
+
+The backend quality gate now owns the critical polarity checks for refrigerated
+transport, tent bodies and cargo readiness. It returns explicit reason codes
+for lost/flipped negation and readiness, rather than relying on the diagnostic
+checker. The source contract also exposes only `source_sha` in local-AI health
+and makes a future AI deploy fail unless that value equals the requested exact
+source SHA.
+
+The one-shot cleanup workflow job was removed after its successful run; the
+read-only diagnostic retains its guarded automatic cleanup. A second offline
+replay of the same saved 60 synthetic rows reaches **58/60**: `Уруми-Ци` is
+repaired only for Chinese `乌鲁木齐`, `Urumchi` is accepted as the explicit
+English alias, and case 28 fresh/warm remains FAIL due to invented travel
+history. No QA2 service was installed or restarted for this source result.

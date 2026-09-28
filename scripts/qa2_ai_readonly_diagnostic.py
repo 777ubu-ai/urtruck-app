@@ -85,7 +85,7 @@ FACT_PATTERNS = {
         "money_12000_usd": (r"(?:\$\s*12[\s,]?000|12[\s,]?000\s*(?:usd|us\s*dollars?))",),
         "weight_10": (r"10\s*(?:tonnes?|tons?)",), "weight_15": (r"15\s*(?:tonnes?|tons?)",),
         "weight_20": (r"20\s*(?:tonnes?|tons?)",), "city_almaty": (r"almaty",),
-        "city_astana": (r"astana",), "city_urumqi": (r"urumqi",), "warehouse": (r"warehouse",),
+        "city_astana": (r"astana",), "city_urumqi": (r"urumq[iy]|urumchi",), "warehouse": (r"warehouse",),
         "tent": (r"(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?",),
         "not_refrigerated": (r"not\s+(?:a\s+)?(?:refrigerated|reefer)",),
         "time_0930": (r"09\s*:\s*30",), "date_2026_10_01": (r"(?:2026[-/.]10[-/.]0?1|0?1[-/.]10[-/.]2026|october\s+1,?\s+2026)",),

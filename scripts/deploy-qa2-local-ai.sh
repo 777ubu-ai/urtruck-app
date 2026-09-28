@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${SERVER_HOST:?}" "${SERVER_USER:?}" "${SERVER_PASS:?}" "${QA_API_URL:?}" "${GITHUB_RUN_ID:?}"
+: "${SERVER_HOST:?}" "${SERVER_USER:?}" "${SERVER_PASS:?}" "${QA_API_URL:?}" "${GITHUB_RUN_ID:?}" "${QA_SOURCE_SHA:?}"
 test "$QA_API_URL" = "https://qa2.urtruck.kz"
 export SSHPASS="$SERVER_PASS"
 ssh_cmd=(sshpass -e ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=20 "$SERVER_USER@$SERVER_HOST")
@@ -111,10 +111,15 @@ test -f "$tokenizer/sentencepiece.bpe.model"
 rm -rf "$root/hf-cache"
 REMOTE
 
-"${ssh_cmd[@]}" 'bash -s' <<'REMOTE'
+"${ssh_cmd[@]}" 'bash -s' -- "$QA_SOURCE_SHA" <<'REMOTE'
 set -euo pipefail
+source_sha="$1"
+case "$source_sha" in
+  [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+  *) echo "invalid QA source SHA" >&2; exit 1 ;;
+esac
 service_tmp="$(mktemp)"
-cat > "$service_tmp" <<'SERVICE'
+cat > "$service_tmp" <<SERVICE
 [Unit]
 Description=UrTruck isolated QA2 local AI
 After=network.target
@@ -128,6 +133,7 @@ Environment=HF_HUB_OFFLINE=1
 Environment=TRANSFORMERS_OFFLINE=1
 Environment=QA2_AI_MODEL_ROOT=/home/ubuntu/urtruck-qa2-ai/models
 Environment=QA2_STT_MIN_WORD_CONFIDENCE=0.50
+Environment=QA2_AI_SOURCE_SHA=$source_sha
 ExecStart=/home/ubuntu/urtruck-qa2-ai/venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8003
 Restart=on-failure
 RestartSec=5
@@ -156,11 +162,12 @@ test "$ready" = yes || {
   sudo journalctl -u urtruck-qa2-ai.service -n 80 --no-pager
   exit 1
 }
-python3 - <<'PY'
+python3 - "$source_sha" <<'PY'
 import json
+import sys
 with open('/tmp/qa2-ai-health.json') as source:
     data=json.load(source)
-assert data == {'status':'ok','private':True,'translation_model':True,'speech_model':True,'languages':['en','kk','ru','zh']}
+assert data == {'status':'ok','private':True,'translation_model':True,'speech_model':True,'languages':['en','kk','ru','zh'],'source_sha':sys.argv[1]}
 PY
 ss -ltnH 'sport = :8003' | grep -Fq '127.0.0.1:8003'
 ! ss -ltnH 'sport = :8003' | grep -Fq '0.0.0.0:8003'

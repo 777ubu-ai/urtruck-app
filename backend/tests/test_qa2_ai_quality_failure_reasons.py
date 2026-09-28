@@ -5,6 +5,7 @@ from qa_ai_service.quality import (
     translation_quality_failures,
     translation_quality_ok,
 )
+from pathlib import Path
 
 
 def test_quality_boolean_is_exact_negation_of_failure_list():
@@ -78,3 +79,70 @@ def test_observed_city_body_and_reefer_repairs_are_narrow():
     ordinary_source = "Tent truck is parked near a waterfall."
     ordinary_candidate = "тент стоит у водопада."
     assert "водопад" in repair_logistics_translation(ordinary_source, ordinary_candidate, "en", "ru")
+
+
+def test_quality_gate_preserves_negation_and_readiness_in_all_six_directions():
+    negative_reefer = {
+        "ru": "Не рефрижератор.", "zh": "不是冷藏车。", "en": "Not a refrigerated truck.",
+    }
+    positive_reefer = {
+        "ru": "Нужен рефрижератор.", "zh": "需要冷藏车。", "en": "A refrigerated truck is required.",
+    }
+    negative_tent = {
+        "ru": "Тент не нужен.", "zh": "不需要篷布车。", "en": "Tent truck is not needed.",
+    }
+    positive_tent = {
+        "ru": "Нужен тент.", "zh": "需要篷布车。", "en": "A tent truck is required.",
+    }
+    ready = {
+        "ru": "Груз готов.", "zh": "货物准备好了。", "en": "Shipment is ready.",
+    }
+    not_ready = {
+        "ru": "Груз не готов.", "zh": "货物还没有准备好。", "en": "Shipment is not ready.",
+    }
+    for source, target in (("ru", "zh"), ("zh", "ru"), ("ru", "en"), ("en", "ru"), ("en", "zh"), ("zh", "en")):
+        assert not translation_quality_failures(negative_reefer[source], negative_reefer[target], source, target)
+        assert "negation_flipped:refrigerated" in translation_quality_failures(negative_reefer[source], positive_reefer[target], source, target)
+        assert not translation_quality_failures(negative_tent[source], negative_tent[target], source, target)
+        assert "negation_flipped:tent" in translation_quality_failures(negative_tent[source], positive_tent[target], source, target)
+        assert not translation_quality_failures(ready[source], ready[target], source, target)
+        assert "cargo_readiness_flipped" in translation_quality_failures(ready[source], not_ready[target], source, target)
+        assert "cargo_readiness_flipped" in translation_quality_failures(not_ready[source], ready[target], source, target)
+
+
+def test_quality_gate_rejects_lost_negation_and_question_no_readiness():
+    assert "negation_lost:refrigerated" in translation_quality_failures(
+        "Не рефрижератор.", "Truck is ready.", "ru", "en"
+    )
+    assert "negation_lost:tent" in translation_quality_failures(
+        "不需要篷布车。", "Требуется машина.", "zh", "ru"
+    )
+    assert "cargo_readiness_flipped" in translation_quality_failures(
+        "Goods are ready? No.", "货物准备好了。", "en", "zh"
+    )
+    assert "cargo_readiness_missing" in translation_quality_failures(
+        "Shipment is ready.", "司机到仓库。", "en", "zh"
+    )
+
+
+def test_urumqi_alias_and_repair_are_strictly_scoped():
+    assert not translation_quality_failures(
+        "Урумчи, склад, 09:30.", "Urumchi, warehouse, 09:30.", "ru", "en"
+    )
+    repaired = repair_logistics_translation(
+        "乌鲁木齐，仓库，09:30。", "Уруми-Ци, склад, 09:30.", "zh", "ru"
+    )
+    assert repaired == "Урумчи, склад, 09:30."
+    assert repair_logistics_translation(
+        "货物在仓库。", "Уруми-Ци, склад.", "zh", "ru"
+    ) == "Уруми-Ци, склад."
+
+
+def test_health_source_sha_and_deploy_verification_contract_are_present():
+    root = Path(__file__).resolve().parents[2]
+    main = (root / "backend/qa_ai_service/main.py").read_text()
+    deploy = (root / "scripts/deploy-qa2-local-ai.sh").read_text()
+    assert 'QA2_AI_SOURCE_SHA' in main and '"source_sha": SOURCE_SHA' in main
+    assert '"${QA_SOURCE_SHA:?}"' in deploy
+    assert 'Environment=QA2_AI_SOURCE_SHA=$source_sha' in deploy
+    assert "'source_sha':sys.argv[1]" in deploy

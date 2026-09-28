@@ -86,6 +86,7 @@ CITY_TERMS = {
     "beijing": {"ru": ("пекин",), "zh": ("北京",), "en": ("beijing",), "kk": ("пекин",)},
     "khorgos": {"ru": ("хоргос",), "zh": ("霍尔果斯",), "en": ("khorgos",), "kk": ("қорғас", "хоргос")},
     "dostyk": {"ru": ("достык",), "zh": ("多斯特克",), "en": ("dostyk",), "kk": ("достық", "достык")},
+    "urumqi": {"ru": ("урумчи",), "zh": ("乌鲁木齐",), "en": ("urumqi", "urumchi"), "kk": ("үрімжі", "урумчи")},
 }
 
 # NLLB's observed transliteration for Almaty is a city-preserving error that
@@ -296,6 +297,38 @@ def _currency_facts(text: str) -> list[str]:
     return facts
 
 
+POLARITY_PATTERNS = {
+    "refrigerated": {
+        "ru": {"negative": (r"не\s+(?:нужен\s+)?(?:рефрижератор\w*|холодильн\w*\s+грузовик)", r"(?:рефрижератор\w*|холодильн\w*\s+грузовик)\s+не\s+нужен"), "positive": (r"(?:нужен|требуется)\s+(?:рефрижератор\w*|холодильн\w*\s+грузовик)",)},
+        "en": {"negative": (r"not\s+(?:a\s+)?(?:refrigerated\s+truck|reefer)", r"(?:refrigerated\s+truck|reefer)\s+(?:is\s+)?not\s+needed"), "positive": (r"(?:need|requires?)\s+(?:a\s+)?(?:refrigerated\s+truck|reefer)", r"(?:a\s+)?(?:refrigerated\s+truck|reefer)\s+(?:is\s+)?required")},
+        "zh": {"negative": (r"(?:不是|不需要|没有)\s*冷藏(?:车|卡车)", r"冷藏(?:车|卡车)\s*不需要"), "positive": (r"(?:需要|要)\s*冷藏(?:车|卡车)",)},
+    },
+    "tent": {
+        "ru": {"negative": (r"не\s+(?:нужен\s+)?тент(?:ов\w*)?", r"тент(?:ов\w*)?\s+(?:тоже\s+)?не\s+нужен"), "positive": (r"(?:нужен|требуется)\s+тент(?:ов\w*)?",)},
+        "en": {"negative": (r"(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?\s+(?:is\s+)?(?:also\s+)?not\s+needed", r"not\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?"), "positive": (r"(?:need|requires?)\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?", r"(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?\s+(?:is\s+)?required")},
+        "zh": {"negative": (r"(?:不是|不需要|没有)\s*(?:篷布车|篷车|帆布车)", r"(?:篷布车|篷车|帆布车)\s*不需要"), "positive": (r"(?:需要|要)\s*(?:篷布车|篷车|帆布车)",)},
+    },
+    "cargo_readiness": {
+        "ru": {"negative": (r"груз\s+не\s+готов", r"груз\s+готов\s*\?\s*нет"), "positive": (r"груз\s+(?:готов|готовый)",)},
+        "en": {"negative": (r"(?:cargo|goods|shipment)\s+(?:is|are)\s+not\s+ready", r"(?:cargo|goods|shipment)\s+(?:(?:is|are)\s+)?ready\s*\?\s*no"), "positive": (r"(?:cargo|goods|shipment)\s+(?:is|are)\s+ready",)},
+        "zh": {"negative": (r"货物(?:还)?没(?:有)?准备好", r"货物准备好了吗?\s*[？?]?\s*不"), "positive": (r"货物(?:已)?准备好",)},
+    },
+}
+
+
+def _polarity(text: str, language: str, concept: str) -> str | None:
+    patterns = POLARITY_PATTERNS.get(concept, {}).get(language, {})
+    negative = any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns.get("negative", ()))
+    positive = any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns.get("positive", ()))
+    # A negative question/answer contains the positive lexical fragment
+    # (``Goods are ready? No``); its explicit negative relation wins.
+    if negative:
+        return "negative"
+    if positive:
+        return "positive"
+    return None
+
+
 def repair_logistics_translation(source_text: str, translated_text: str, source: str, target: str) -> str:
     """Apply narrow, deterministic repairs for observed logistics model errors."""
     repaired = translated_text
@@ -309,6 +342,8 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
     # ("route cleaning"), so repair only that observed false friend.
     if source == "en" and target == "zh" and _CLEAR_ROAD_SOURCE.search(source_text):
         repaired = repaired.replace("路线清理", "道路畅通")
+    if source == "zh" and target == "ru" and "乌鲁木齐" in source_text:
+        repaired = re.sub(r"Уруми-Ци", "Урумчи", repaired, flags=re.IGNORECASE)
     trailer_source = _contains_any(source_text, LOGISTICS_TERMS["trailer"][source])
     truck_source = _contains_any(source_text, LOGISTICS_TERMS["truck"][source])
     trailer_target = _contains_any(repaired, LOGISTICS_TERMS["trailer"][target])
@@ -505,12 +540,36 @@ def translation_quality_failures(source_text: str, translated_text: str, source:
         failures.append("numeric_facts_changed")
     if _currency_facts(source_text) != _currency_facts(translated_text):
         failures.append("currency_facts_changed")
-    source_has_body = _contains_any(source_text, VEHICLE_BODY_TERMS.get(source, ()))
+    for concept in ("refrigerated", "tent"):
+        source_polarity = _polarity(source_text, source, concept)
+        target_polarity = _polarity(translated_text, target, concept)
+        if source_polarity == "negative":
+            if target_polarity == "positive":
+                failures.append(f"negation_flipped:{concept}")
+            elif target_polarity != "negative":
+                failures.append(f"negation_lost:{concept}")
+        elif source_polarity == "positive" and target_polarity == "negative":
+            failures.append(f"negation_flipped:{concept}")
+    source_readiness = _polarity(source_text, source, "cargo_readiness")
+    target_readiness = _polarity(translated_text, target, "cargo_readiness")
+    if source_readiness:
+        if target_readiness is None:
+            failures.append("cargo_readiness_missing")
+        elif target_readiness != source_readiness:
+            failures.append("cargo_readiness_flipped")
+    source_has_vehicle_body = _contains_any(source_text, VEHICLE_BODY_TERMS.get(source, ()))
+    source_has_transport_variant = source_has_vehicle_body or _contains_any(
+        source_text, REFRIGERATED_TERMS.get(source, ())
+    )
     for name, variants in LOGISTICS_TERMS.items():
         # A specific body type (e.g. 篷布车) is stronger than the generic
         # ``truck`` bucket; its dedicated invariant below checks the exact
         # type instead of demanding a second generic vehicle word.
-        if name == "truck" and source_has_body:
+        if name == "truck" and source_has_transport_variant:
+            continue
+        # In a readiness statement, English ``shipment`` denotes cargo; it
+        # is not an additional delivery-event fact that must survive twice.
+        if name == "delivery" and source == "en" and _polarity(source_text, source, "cargo_readiness"):
             continue
         if _contains_any(source_text, variants[source]) and not _contains_any(translated_text, variants[target]):
             failures.append(f"logistics_term_missing:{name}")
@@ -533,7 +592,7 @@ def translation_quality_failures(source_text: str, translated_text: str, source:
     elif target_weights or target_unbound_units:
         # Do not allow a model to invent a weight where the source had none.
         failures.append("weight_invented")
-    if source_has_body and not _contains_any(translated_text, VEHICLE_BODY_TERMS.get(target, ())):
+    if source_has_vehicle_body and not _contains_any(translated_text, VEHICLE_BODY_TERMS.get(target, ())):
         failures.append("body_type_missing")
     if source == "en" and target == "zh" and _CLEAR_ROAD_SOURCE.search(source_text):
         if not _contains_any(translated_text, _CLEAR_ROAD_ZH):
