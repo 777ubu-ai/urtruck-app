@@ -32,10 +32,14 @@ test('queued translation and long transcription override the shared 20 second ti
   assert.match(frontendChatApi, /signal: controller\.signal/);
 });
 
-test('QA2 CPU speech inference uses bounded concurrent low-latency decoding', () => {
+test('QA2 CPU speech inference uses a bounded single-worker decoding contract', () => {
   assert.match(qa2Ai, /_translate_slot = threading\.BoundedSemaphore\(1\)/);
-  assert.match(qa2Ai, /_speech_slots = threading\.BoundedSemaphore\(2\)/);
-  assert.match(qa2Ai, /num_workers=2/);
+  // `bf3d9a5c` deliberately serialised large-v3-turbo inference on the
+  // four-core QA2 host.  Two concurrent CPU workers caused contention and
+  // made both phone requests less predictable; the bounded queue is the
+  // current contract, not a regression to paper over with a stale assertion.
+  assert.match(qa2Ai, /_speech_slots = threading\.BoundedSemaphore\(1\)/);
+  assert.match(qa2Ai, /num_workers=1/);
   assert.match(qa2Ai, /def transcribe\(file:/);
   assert.match(qa2Ai, /beam_size=1/);
   assert.match(qa2Ai, /best_of=1/);
