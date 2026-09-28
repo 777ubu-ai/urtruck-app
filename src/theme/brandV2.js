@@ -60,8 +60,8 @@ export const brandLight = {
   // everything else (background/border/icon) — do not repoint the base
   // tokens themselves, that would also (unnecessarily) darken every
   // existing background/border use of them.
-  errorText: '#D03B3B',
-  infoText: '#3273CC',
+  errorText: '#CB3636',
+  infoText: '#2F6FC6',
 
   // Map/illustration assist
   mapGray: '#E5E7EB',
