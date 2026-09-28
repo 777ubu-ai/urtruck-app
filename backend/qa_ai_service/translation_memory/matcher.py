@@ -50,5 +50,17 @@ class ExactMatcher:
                 continue
             captured = dict(slots)
             captured.update({name: value.strip() for name, value in found.groupdict().items()})
+            specs = {slot.name: slot.type for slot in candidate.slots}
+            valid_capture = True
+            for name, value in found.groupdict().items():
+                slot_type = specs.get(name, name)
+                if slot_type in {"weight", "amount", "volume", "percentage"} and not re.fullmatch(r"\d+(?:[.,]\d+)?", value.strip()):
+                    valid_capture = False
+                if slot_type.endswith("_unit") and not re.fullmatch(r"[^\s,.!?]+", value.strip()):
+                    valid_capture = False
+                if slot_type == "time" and not re.fullmatch(r"(?:[01]?\d|2[0-3]):[0-5]\d", value.strip()):
+                    valid_capture = False
+            if not valid_capture:
+                continue
             return MatchResult(candidate, captured, self.key(source_language, intent, normalized, captured))
         return None
