@@ -16,6 +16,9 @@ test('local AI deploy is manual and QA2-only', () => {
   assert.match(deployment, /\/home\/ubuntu\/urtruck-qa2-ai/);
   assert.match(deployment, /\/home\/ubuntu\/urtruck-qa2\/backend/);
   assert.doesNotMatch(deployment, /urtruck-pro/);
+  assert.match(workflow, /inputs\.confirmation == 'SOURCE_TESTS'/);
+  assert.match(workflow, /Non-mutating local-AI source contracts/);
+  assert.match(workflow, /git rev-parse HEAD\)" = "\$QA_SOURCE_SHA/);
 });
 
 test('AI service is private and resource bounded', () => {
@@ -48,6 +51,8 @@ test('production is fingerprinted and AI-only rollback is prepared', () => {
   assert.doesNotMatch(script, /\/home\/ubuntu\/urtruck-qa2\/\.env/);
   assert.doesNotMatch(script, /TRANSCRIBE_PROVIDER|TRANSLATE_PROVIDER/);
   assert.doesNotMatch(script, /urtruck-qa2\/backend\/(services|api)\/.*\.(py|env)/);
+  assert.match(script, /QA2_AI_SOURCE_SHA=\$source_sha/);
+  assert.match(script, /'source_sha':sys\.argv\[1\]/);
 });
 
 test('registered QA2 recovery workflow exposes the isolated local AI mode', () => {
