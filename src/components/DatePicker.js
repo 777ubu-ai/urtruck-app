@@ -59,7 +59,7 @@ export default function DatePicker({ value, onChange, onClose, placeholder = 'DD
   };
 
   const calendarGrid = (
-    <View style={[s.cal, { backgroundColor: theme.card, borderColor: theme.border }]}>
+    <View style={[s.cal, { backgroundColor: theme.card, borderColor: theme.border }]} testID="date-picker-calendar">
       <View style={s.calHeader}>
         <TouchableOpacity onPress={() => {
           if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); }
@@ -114,6 +114,7 @@ export default function DatePicker({ value, onChange, onClose, placeholder = 'DD
     <TouchableOpacity
       style={[s.input, { backgroundColor: theme.card, borderColor: theme.border }]}
       onPress={() => setShowPicker(true)}
+      testID="date-picker-open"
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Feather name="calendar" size={15} color={value ? theme.text : theme.textMuted} />

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 const profile = fs.readFileSync('src/screens/onboarding/ProfileV2Screen.js', 'utf8');
 const api = fs.readFileSync('backend/api/profile.py', 'utf8');
 const attachments = fs.readFileSync('src/components/deal/DealAttachments.js', 'utf8');
+const profileMenu = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
 
 test('active ProfileV2 keeps company optional for basic drivers and required for clients', () => {
   assert.match(profile, /id="name"/);
@@ -33,6 +34,16 @@ test('backend independently requires name+phone for drivers and company for clie
   assert.match(api, /role_norm == "client" and/);
   assert.match(api, /role_norm not in \("driver", "client"\)/);
   assert.doesNotMatch(api, /COUNTRY_REQUIRED/);
+});
+
+test('shipper has its own visual identity and never enters driver vehicle setup', () => {
+  assert.match(profile, /shipperTitle: 'Профиль грузоотправителя'/);
+  assert.match(profile, /shipperColors/);
+  assert.match(profile, /primary: '#C2410C'/);
+  assert.match(profile, /if \(role === 'driver'\)[\s\S]*navigation\.replace\('VehicleSetupCountry'/);
+  assert.match(profile, /setRole\(role\);\s*navigation\.reset/);
+  assert.doesNotMatch(profileMenu, /testID: 'profile-favorites'/);
+  assert.doesNotMatch(profileMenu, /icon: 'heart'/);
 });
 
 test('uploaded deal documents are openable signed attachments inside chat', () => {

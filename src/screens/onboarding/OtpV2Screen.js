@@ -37,7 +37,7 @@ import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import { push } from '../../utils/push';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
-import { brand, useBrand, radius, typography } from '../../theme/brandV2';
+import { brandLight as brand, radius, typography } from '../../theme/brandV2';
 
 const CODE_LEN = 4;
 const RESEND_SECS = 60;
@@ -71,7 +71,7 @@ const maskEmail = (raw) => {
 };
 
 export default function OtpV2Screen({ navigation, route }) {
-  const _b = useBrand();
+  const _b = brand;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
   const { toast } = useToast();

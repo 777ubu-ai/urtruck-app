@@ -10,6 +10,7 @@ import { fetchRates } from '../utils/exchangeRates';
 import { useMountedRef } from '../hooks/useMountedRef';
 import GradientText from '../components/GradientText';
 import Feather from '@expo/vector-icons/Feather';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 
 // Pilot currencies (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
 // Wallet display + FX widget reduced to the same set so the picker
@@ -27,7 +28,7 @@ const TYPE_ICONS = { deal_income: '💰', topup: '↑', contact_purchase: '👤'
 
 // FX widget shows USD → {KZT, CNY, RUB}. UZS removed in Stage 5.
 const FX_PAIRS = ['KZT', 'CNY', 'RUB'];
-const FX_FLAGS = { KZT: '🇰🇿', CNY: '🇨🇳', RUB: '🇷🇺' };
+const FX_FLAGS = { KZT: 'KZ', CNY: 'CN', RUB: 'RU' };
 
 export default function WalletScreen({ route }) {
   const v1 = useV1Colors();
@@ -106,24 +107,26 @@ export default function WalletScreen({ route }) {
           </View>
           {fxLoading ? (
             <ActivityIndicator color={accent} style={{ padding: 16 }} />
-          ) : (
+          ) : fx?.rates ? (
             <View style={s.fxGrid}>
               {FX_PAIRS.map(code => {
-                const rate = fx?.rates[code] || 0;
+                const rate = Number(fx.rates[code]);
                 const formatted = code === 'KZT' || code === 'RUB'
                   ? Math.round(rate).toLocaleString()
                   : rate.toFixed(2);
                 return (
                   <View key={code} style={[s.fxCard, { borderColor: theme.border }]}>
-                    <Text style={s.fxFlag}>{FX_FLAGS[code]}</Text>
+                    <CountryFlag code={FX_FLAGS[code]} width={28} />
                     <Text style={[s.fxPair, { color: theme.textMuted }]}>USD / {code}</Text>
                     <Text style={[s.fxRate, { color: theme.text }]}>{formatted}</Text>
                   </View>
                 );
               })}
             </View>
+          ) : (
+            <Text style={[s.fxUnavailable, { color: theme.textMuted }]}>{t('fx_rates_unavailable')}</Text>
           )}
-          {fx?.source === 'fallback' && (
+          {fx?.stale && (
             <Text style={[s.fxFallback, { color: theme.textMuted }]}>{t('fx_offline_cached')}</Text>
           )}
         </View>
@@ -210,6 +213,7 @@ const s = StyleSheet.create({
   fxPair: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   fxRate: { fontSize: 18, fontWeight: '900', marginTop: 2 },
   fxFallback: { fontSize: 11, textAlign: 'center', marginTop: 10 },
+  fxUnavailable: { fontSize: 13, fontWeight: '700', textAlign: 'center', paddingVertical: 18 },
   payRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   payIcon: { fontSize: 20 },
   payName: { flex: 1, fontSize: 13 },

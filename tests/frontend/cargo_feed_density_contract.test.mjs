@@ -10,11 +10,14 @@ test('cargo feed keeps the first screen dense enough for narrow mobile browsers'
   assert.match(cargoFeed, /routeSelector:\s*\{[\s\S]*minHeight:\s*68/);
   assert.match(cargoFeed, /filtersScroll:\s*\{ flexGrow:\s*0,\s*minHeight:\s*50,\s*maxHeight:\s*50 \}/);
   assert.match(cargoFeed, /filterPill:\s*\{[\s\S]*height:\s*40/);
-  // Unified Lists contract: a compact card has the common 108dp floor and
-  // delegates shrink-safe endpoint layout to RouteLine (12/16 city type).
-  assert.match(card, /card:\s*\{\s*padding:\s*12,\s*minHeight:\s*108/);
+  // Full-screen density: the card alone is 84dp; header, route controls,
+  // filters and bottom navigation are explicitly preserved outside it.
+  assert.match(card, /card:\s*\{\s*paddingHorizontal:\s*12,\s*paddingVertical:\s*7,\s*minHeight:\s*84/);
+  const bookmark = fs.readFileSync('src/components/ui/v1/BookmarkButton.js', 'utf8');
+  assert.match(bookmark, /width:\s*34,\s*height:\s*34/);
   const routeLine = fs.readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
-  assert.match(routeLine, /fontSize:\s*12,\s*lineHeight:\s*16/);
+  assert.match(routeLine, /CountryFlag code=\{fromFlag\} width=\{26\}/);
+  assert.match(routeLine, /fontSize:\s*15,\s*lineHeight:\s*19/);
   assert.doesNotMatch(card, /shadowOpacity/);
   // Price canon comes from v1Typography.price (17/22/800 tabular-nums).
   const designV1 = fs.readFileSync('src/theme/designV1.js', 'utf8');

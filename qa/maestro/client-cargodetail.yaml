@@ -14,8 +14,6 @@ env:
 - tapOn: { id: "bottom-nav-mywork" }
 - waitForAnimationToEnd
 # Вкладка «Мои грузы» (searching). Карточки = my-cargo-card.
-- tapOn: { id: "my-work-tab-searching" }
-- waitForAnimationToEnd
 - takeScreenshot: 30_mycargos_list
 # Первая карточка (index 0) = «Тент 20т» с входящей ставкой
 - tapOn:

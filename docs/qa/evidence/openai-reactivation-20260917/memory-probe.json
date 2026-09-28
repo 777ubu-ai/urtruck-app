@@ -1,0 +1,7 @@
+{
+  "kind": "server_translation_memory_probe",
+  "source_message_id": 1244,
+  "translated_text": "你好，你好，怎么样，怎么样？一二，你好，你好。",
+  "provider": "openai",
+  "second_lookup": "persistent_cache_hit"
+}

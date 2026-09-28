@@ -33,7 +33,12 @@ def test_catalog_is_specific_route_and_network_free_contract():
     assert data["cgr_requests"] == 0
     assert isinstance(data["checkpoints"], list)
     assert data["checkpoints"], "catalog may use DB seed or local legacy fallback, but must not be empty"
-    assert all({"id", "name", "country"}.issubset(row) for row in data["checkpoints"])
+    assert all({"id", "name", "country", "lat", "lon"}.issubset(row) for row in data["checkpoints"])
+    # Verified coordinates are passed through for road routing, while unknown
+    # coordinates remain null instead of being fabricated.
+    khorgos = next(row for row in data["checkpoints"] if row["id"] == "khorgos")
+    assert khorgos["lat"] == 44.211
+    assert khorgos["lon"] == 80.414
 
 
 def test_live_route_registered_before_legacy_dynamic_route():
@@ -43,3 +48,19 @@ def test_live_route_registered_before_legacy_dynamic_route():
     assert "/{border_id}" in paths
     assert paths.index("/catalog") < paths.index("/{border_id}")
     assert paths.index("/live/{code}") < paths.index("/{border_id}")
+
+
+def test_authoritative_seed_restores_the_owner_country_catalogue():
+    """The static catalogue remains available when CGR/live rows are absent."""
+    with ddb.get_conn() as c:
+        c.execute("DELETE FROM border_checkpoints")
+
+    inserted = cgr_dal.seed_border_checkpoints_from_legacy()
+    assert inserted > 0
+
+    for country in ("CN", "KG", "RU"):
+        response = client.get("/api/v1/borders/catalog", params={"country": country})
+        assert response.status_code == 200, response.text
+        rows = response.json()["checkpoints"]
+        assert rows, f"authoritative catalogue has no {country} checkpoints"
+        assert all(row["country"] == country for row in rows)

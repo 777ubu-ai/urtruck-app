@@ -29,6 +29,13 @@ test('BottomNav exposes Border and has no Profile tab branch', () => {
   assert.ok(!bottomNav.includes("route.name === 'Publish'"));
 });
 
+test('BottomNav follows the flat owner reference without shadow haze', () => {
+  assert.match(bottomNav, /bar:[\s\S]*shadowOpacity: 0[\s\S]*elevation: 0/);
+  assert.match(bottomNav, /pill:[\s\S]*shadowOpacity: 0[\s\S]*elevation: 0/);
+  assert.match(bottomNav, /isFocused && \{ backgroundColor: accent\.soft \}/);
+  assert.match(bottomNav, /route\.name === 'Deals' \? dealsUnread : 0/);
+});
+
 test('Profile remains stack-accessible from the top menu', () => {
   assert.ok(navigator.includes('<Stack.Screen name="Profile" component={ProfileScreen}'));
 });

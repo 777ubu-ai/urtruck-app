@@ -6,8 +6,7 @@ env:
   MAESTRO_ACTOR: boris
 ---
 - runFlow: _lib/qa-login.yaml
-- tapOn: { id: "bottom-nav-profile" }
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - takeScreenshot: C0_profile_before_logout
 - scrollUntilVisible:
     element: { id: "profile-logout" }

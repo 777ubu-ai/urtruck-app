@@ -16,17 +16,17 @@ env:
 # 4) UI чата обязан быть на EN без перезапуска, отправка — работать.
 - runFlow: _lib/qa-login.yaml
 - tapOn:
-    id: "bottom-nav-chats"
+    id: "bottom-nav-deals"
+- waitForAnimationToEnd
+- tapOn: { id: "deals-tab-active" }
 - waitForAnimationToEnd
 - tapOn:
-    id: "deal-room-list-card"
+    id: "deals-deal-card"
     index: 0
 - waitForAnimationToEnd
 - takeScreenshot: audit_langchat_01_chat_RU
 # ── Переключение языка при «живом» чате в стеке ──
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - tapOn:
     text: "English"
 - waitForAnimationToEnd:
@@ -34,10 +34,12 @@ env:
 - takeScreenshot: audit_langchat_02_profile_EN
 # ── Возврат в чат: смонтированный экран обязан перерисоваться на EN ──
 - tapOn:
-    id: "bottom-nav-chats"
+    id: "bottom-nav-deals"
+- waitForAnimationToEnd
+- tapOn: { id: "deals-tab-active" }
 - waitForAnimationToEnd
 - tapOn:
-    id: "deal-room-list-card"
+    id: "deals-deal-card"
     index: 0
 - waitForAnimationToEnd
 - takeScreenshot: audit_langchat_03_chat_EN
@@ -46,18 +48,16 @@ env:
     text: "Сообщение..."
 # Отправка после смены языка работает.
 - tapOn:
-    id: "chat-input"
+    id: "deal-chat-input"
 - inputText: "lang-switch smoke EN"
 - tapOn:
-    id: "chat-send-btn"
+    id: "deal-chat-send"
 - waitForAnimationToEnd
 - assertVisible:
     text: "lang-switch smoke EN"
 - takeScreenshot: audit_langchat_04_sent_EN
 # ── Возврат RU для следующих флоу ──
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - tapOn:
     text: "Русский"
 - waitForAnimationToEnd:

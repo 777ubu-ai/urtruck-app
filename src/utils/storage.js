@@ -108,3 +108,15 @@ export const storage = {
     } catch {}
   },
 };
+
+// Для очередей потеря записи недопустима: ошибки хранилища идут вызывающему
+// коду. Обычный UI storage сохраняет прежний best-effort контракт.
+export const durableStorage = {
+  get: baseGet,
+  set: baseSet,
+  remove: baseRemove,
+  async keys() {
+    if (isWeb) return typeof window === 'undefined' ? [] : Object.keys(window.localStorage);
+    return await AsyncStorage.getAllKeys();
+  },
+};

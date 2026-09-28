@@ -20,6 +20,10 @@ const { log } = require('../utils/qaReport');
 const ACTOR = 'agent-cargo-description';
 
 async function bootCreateCargoAsClient(page) {
+  // Generic auxiliary fallback is registered first; the specific handlers
+  // below take precedence and keep this isolated flow deterministic.
+  await page.route('**/api/v1/**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   // Все mock'и для backend (auth + main + cargos endpoints).
   await page.route('**/api/v1/register/me', (r) =>
     r.fulfill({ status: 200, contentType: 'application/json',
@@ -42,20 +46,19 @@ async function bootCreateCargoAsClient(page) {
   await page.route('**/api/v1/market/trips*', (r) =>
     r.fulfill({ status: 200, contentType: 'application/json', body: '{"trips":[]}' }));
 
-  // Сразу инжектим session в localStorage — это пропускает SMS/OTP/profile,
-  // AppNavigator (Stage 35) роутит сразу в Main по hasToken+session+role.
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
-  await page.evaluate(() => {
-    try {
-      window.localStorage.setItem('ur_reg_token', 'mock-stage42-cargo-token');
-      window.localStorage.setItem('ur_verification_level', '1');
-      window.localStorage.setItem('ur_session', JSON.stringify({
-        user: { id: 'u_mock_client', phone: '+77000000099', role: 'client' },
-      }));
-    } catch {}
+  // Install the verified client session before the first application script.
+  // Post-navigation injection races AuthProvider's asynchronous no-token cleanup.
+  await page.addInitScript(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem('ur_reg_token', 'mock-stage42-cargo-token');
+    localStorage.setItem('ur_verification_level', '1');
+    localStorage.setItem('ur_session', JSON.stringify({
+      user: { id: 'u_mock_client', phone: '+77000000099', role: 'client' },
+    }));
   });
-  await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
-  await page.waitForTimeout(2500);
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(1200);
 
   // Должны быть в Main как client. waitFor реально ждёт mount.
   let inMain = false;
@@ -75,22 +78,34 @@ async function bootCreateCargoAsClient(page) {
   }
   if (!inMain) return false;
 
-  // Тапнем publish-cargo-button или bottom-nav-publish (центральная +)
+  // Current navigation exposes publishing from the role-aware «My work» tab.
+  // Keep the older direct buttons as compatibility fallbacks for deployed builds.
+  const myWork = page.getByTestId('bottom-nav-mywork');
+  const placeCargo = page.getByTestId('mytrips-place-cargo');
   const pubBtn = page.getByTestId('publish-cargo-button');
   const navPub = page.getByTestId('bottom-nav-publish');
   let clickedSomething = false;
-  if (await pubBtn.isVisible().catch(() => false)) {
+  if (await myWork.isVisible().catch(() => false)) {
+    await myWork.click({ force: true }).catch(() => {});
+    await placeCargo.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    if (await placeCargo.isVisible().catch(() => false)) {
+      await placeCargo.click({ force: true }).catch(() => {});
+      clickedSomething = true;
+      log.info(ACTOR, 'boot-clicked-mytrips-place-cargo');
+    }
+  }
+  if (!clickedSomething && await pubBtn.isVisible().catch(() => false)) {
     await pubBtn.click({ force: true }).catch(() => {});
     clickedSomething = true;
     log.info(ACTOR, 'boot-clicked-publish-cargo-button');
-  } else if (await navPub.isVisible().catch(() => false)) {
+  } else if (!clickedSomething && await navPub.isVisible().catch(() => false)) {
     await navPub.click({ force: true }).catch(() => {});
     clickedSomething = true;
     log.info(ACTOR, 'boot-clicked-bottom-nav-publish');
   }
   if (!clickedSomething) {
     log.p1(ACTOR, 'boot-no-pub-btn-found',
-      `pub-btn=${await pubBtn.count()} nav-pub=${await navPub.count()}`);
+      `mywork=${await myWork.count()} place=${await placeCargo.count()} pub-btn=${await pubBtn.count()} nav-pub=${await navPub.count()}`);
     return false;
   }
   // Ждём CreateCargoScreen — cargo-desc-input должен появиться.
@@ -134,7 +149,9 @@ for (const desc of CUSTOM_DESCS) {
     await page.waitForTimeout(300);
 
     const valueAfterType = await descInput.inputValue().catch(() => '');
-    if (valueAfterType === desc) {
+    // Known catalog suggestions may normalize display capitalization while
+    // preserving the same user-entered cargo meaning.
+    if (valueAfterType.toLocaleLowerCase('ru-RU') === desc.toLocaleLowerCase('ru-RU')) {
       log.pass(ACTOR, `${desc}-input-accepts-typing`);
     } else {
       log.p0(ACTOR, `${desc}-input-accepts-typing`,
@@ -145,7 +162,7 @@ for (const desc of CUSTOM_DESCS) {
     await page.keyboard.press('Tab').catch(() => {});
     await page.waitForTimeout(300);
     const valueAfterBlur = await descInput.inputValue().catch(() => '');
-    if (valueAfterBlur === desc) {
+    if (valueAfterBlur.toLocaleLowerCase('ru-RU') === desc.toLocaleLowerCase('ru-RU')) {
       log.pass(ACTOR, `${desc}-input-survives-blur`);
     } else {
       log.p1(ACTOR, `${desc}-input-survives-blur`,
@@ -173,7 +190,8 @@ for (const desc of CUSTOM_DESCS) {
     } else {
       // Submit мог не пройти валидацию (нет from/to/date). Главное:
       // input всё ещё содержит наш custom text. Это и есть Stage 42 fix.
-      const stillInInput = (await descInput.inputValue().catch(() => '')) === desc;
+      const retainedValue = await descInput.inputValue().catch(() => '');
+      const stillInInput = retainedValue.toLocaleLowerCase('ru-RU') === desc.toLocaleLowerCase('ru-RU');
       if (stillInInput) {
         log.pass(ACTOR, `${desc}-input-survives-submit-attempt`);
       } else {

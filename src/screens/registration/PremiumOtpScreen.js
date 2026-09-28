@@ -134,13 +134,16 @@ export default function PremiumOtpScreen({ navigation, route }) {
           await refreshLevel?.().catch(() => {});
           navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: detectedRole } }] });
         } else {
-          // Существующий phone, но роли нет — отправим в Role,
-          // оттуда пользователь выберет driver/client и попадёт в
-          // PremiumProfile (без повторного SMS — token уже есть).
+          // FINAL 10/10 AUTH CANON CLOSURE (2026-09-14): phone identity is
+          // established (token already issued above), role is not — hand
+          // off to the CANONICAL role picker (RoleV2 → ProfileV2), same as
+          // every other AuthV2 method, not the legacy Role→PremiumRegister
+          // loop. No second SMS is sent; phone is threaded through only for
+          // RoleScreenV2's own display use.
           if (typeof console !== 'undefined') {
-            console.warn('[PremiumOtp] login: no role on backend, redirecting to Role');
+            console.warn('[PremiumOtp] login: no role on backend, redirecting to RoleV2');
           }
-          navigation.reset({ index: 0, routes: [{ name: 'Role' }] });
+          navigation.reset({ index: 0, routes: [{ name: 'RoleV2', params: { phone } }] });
         }
         return;
       }

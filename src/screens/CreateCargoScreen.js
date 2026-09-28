@@ -232,7 +232,10 @@ export default function CreateCargoScreen({ navigation, route }) {
         toast(r.detail || t('send_error'), 'error');
       }
     } catch (e) {
-      toast(t('network_error') + ': ' + (e?.message || ''), 'error');
+      // P1 UI-аудит 2026-09-13: не показывать сырой e.message (часто
+      // непереведённая браузерная строка вроде "Failed to fetch") — только
+      // локализованный текст, как во всех остальных catch-блоках рядом.
+      toast(t('network_error'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -354,7 +357,8 @@ export default function CreateCargoScreen({ navigation, route }) {
             featherIcon="calendar"
             label={t('pickupDate')}
             value={pickupDate}
-            onPress={() => setShowDatePicker((v) => !v)}
+            onPress={() => setShowDatePicker(true)}
+            testID="cargo-pickup-date-open"
           />
         </View>
       </View>
@@ -392,7 +396,7 @@ export default function CreateCargoScreen({ navigation, route }) {
       {errors.truckType ? <Text style={s.err}>⚠️ {errors.truckType}</Text> : null}
       {errors.pickupDate ? <Text style={s.err}>⚠️ {errors.pickupDate}</Text> : null}
 
-      {/* Stage 27: placeholder "—" заменён на пример числа,
+      {/* Пустые числовые поля без демонстрационных значений,
           label несёт единицу измерения ("Вес, т" / "Объём, м³").
           Раньше пользователь видел два пустых поля без подсказки —
           непонятно, где вес, где кубатура. */}
@@ -403,7 +407,7 @@ export default function CreateCargoScreen({ navigation, route }) {
             value={tons}
             onChangeText={(v) => { setTons(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
             keyboardType="decimal-pad"
-            placeholder={t('weight_placeholder') || 'Например: 31.5'}
+            placeholder=""
             testID="cargo-weight-field"
           />
         </View>
@@ -413,7 +417,7 @@ export default function CreateCargoScreen({ navigation, route }) {
             value={m3}
             onChangeText={(v) => { setM3(normalizeDecimal(v)); if (errors.weight) setErrors((e) => ({ ...e, weight: null })); }}
             keyboardType="decimal-pad"
-            placeholder={t('volume_placeholder') || 'Например: 110'}
+            placeholder=""
             testID="cargo-volume-field"
           />
         </View>

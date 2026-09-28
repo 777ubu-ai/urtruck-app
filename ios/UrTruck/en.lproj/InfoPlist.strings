@@ -1,6 +1,7 @@
 /* UrTruck — iOS system permission dialogs (EN). See ru.lproj for context. */
 "NSCameraUsageDescription" = "UrTruck uses the camera for your selfie and photos of documents";
 "NSMicrophoneUsageDescription" = "UrTruck uses the microphone to record voice messages in chat";
+"NSMotionUsageDescription" = "UrTruck uses motion activity data only during an active trip to reliably track the vehicle in the background.";
 "NSPhotoLibraryUsageDescription" = "UrTruck uses your photos for the avatar, cargo and documents";
 "NSLocationWhenInUseUsageDescription" = "UrTruck shows the shipper where their cargo is during the trip";
 "NSLocationAlwaysAndWhenInUseUsageDescription" = "UrTruck shares the vehicle location with the shipper only during an active trip, so they can see where the cargo is.";

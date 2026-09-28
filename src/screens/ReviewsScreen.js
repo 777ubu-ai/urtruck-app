@@ -49,17 +49,21 @@ export default function ReviewsScreen({ navigation, route }) {
 
   const [data, setData] = useState(null);   // { summary, reviews }
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const mounted = useRef(true);
 
   useEffect(() => {
     mounted.current = true;
     if (!targetId) { setLoading(false); return; }
+    setLoading(true);
+    setLoadError(false);
     reviewsAPI.forTarget(targetId)
       .then((r) => { if (mounted.current) setData(r || null); })
-      .catch(() => {})
+      .catch(() => { if (mounted.current) setLoadError(true); })
       .finally(() => { if (mounted.current) setLoading(false); });
     return () => { mounted.current = false; };
-  }, [targetId]);
+  }, [targetId, reloadKey]);
 
   const reviews = Array.isArray(data?.reviews) ? data.reviews : [];
   const total = data?.summary?.count ?? reviews.length;
@@ -109,6 +113,14 @@ export default function ReviewsScreen({ navigation, route }) {
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 48 }} color={v1Accent.main} />
+      ) : loadError ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 }} testID="reviews-load-error">
+          <Feather name="alert-circle" size={44} color={v1.textMuted} />
+          <Text style={{ color: v1.textMuted, fontSize: 14, textAlign: 'center' }}>{t('load_error')}</Text>
+          <TouchableOpacity onPress={() => setReloadKey((key) => key + 1)} style={{ minHeight: 44, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: v1Accent.main }} testID="reviews-retry">
+            <Text style={{ color: v1Accent.onAccent, fontSize: 14, fontWeight: '700' }}>{t('chat_attach_retry')}</Text>
+          </TouchableOpacity>
+        </View>
       ) : total === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 }}>
           <Feather name="star" size={48} color={v1.textMuted} />
@@ -146,4 +158,3 @@ export default function ReviewsScreen({ navigation, route }) {
     </SafeAreaView>
   );
 }
-

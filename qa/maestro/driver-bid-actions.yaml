@@ -11,23 +11,32 @@ env:
 # Предусловие (API-сид): serik-ставки (pending) на грузы boris в KZT.
 # Порядок: модалка/отмена ДО чата (чат открывается последним — из стека чата
 # нет стабильного testID «назад»). Проверяем: валюта ₸; bid-edit (BidModal),
-# bid-cancel (confirm→тост «Предложение отменено»), bid-chat (чат).
+# bid-cancel (confirm→тост «Предложение отменено»), чат после создания сделки.
 
 - runFlow: _lib/qa-login.yaml
 - waitForAnimationToEnd:
     timeout: 4000
 - tapOn:
-    id: "bottom-nav-mywork"
+    id: "bottom-nav-deals"
 - waitForAnimationToEnd:
     timeout: 3000
 - tapOn:
-    id: "my-work-tab-offers"
+    id: "deals-tab-offers"
 - waitForAnimationToEnd:
     timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "deals-driver-bid"
+    timeout: 10000
 - takeScreenshot: ../screenshots/deep-reg/A5-01-driver-offers
 # Валюта груза (KZT → ₸) на сумме моей ставки, НЕ хардкод $
 - assertVisible:
     text: ".*₸.*"
+- tapOn:
+    id: "deals-driver-bid"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 3000
 
 # РЕДАКТИРОВАТЬ → BidModal «Сохранить изменения»
 - tapOn:
@@ -60,12 +69,4 @@ env:
     text: "Предложение отменено"
     optional: true
 
-# ЧАТ по ставке (последним) → открывается комната
-- tapOn:
-    id: "bid-chat"
-    index: 0
-- extendedWaitUntil:
-    visible:
-      id: "chat-input"
-    timeout: 8000
-- takeScreenshot: ../screenshots/deep-reg/A5-04-bid-chat-open
+# Чат становится доступен только после создания сделки; это покрывает release-smoke.

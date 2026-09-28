@@ -29,19 +29,11 @@ test('registration client exposes the authenticated phone-change flow', () => {
   assert.match(source, /async confirmPhoneChange/);
 });
 
-test('shipper Queue hides the bell while driver Queue keeps it', () => {
-  const source = read('src/screens/QueueScreenLazyV2.js');
-  assert.match(source, /<RootHeader[^>]*hideBell=\{!isDriver\}/);
-  assert.match(source, /<RootHeader[^>]*onBellPress=\{async \(\) => \{/);
-});
-
-test('bell is limited to the two shipper main screens', () => {
+test('root headers do not restore the removed notification bell', () => {
+  const rootHeader = read('src/components/ui/v1/RootHeader.js');
   const myWork = read('src/screens/MyTripsScreen.js');
   const feed = read('src/screens/FeedScreen.js');
-  const deals = read('src/screens/DealsScreen.js');
-  const queue = read('src/screens/QueueScreenLazyV2.js');
-  assert.match(myWork, /bellTestID="mywork-notification-settings-btn"/);
-  assert.match(feed, /bellTestID="feed-notification-settings-btn"/);
-  assert.match(deals, /hideBell=\{!isDriver\}/);
-  assert.match(queue, /hideBell=\{!isDriver\}/);
+  assert.doesNotMatch(rootHeader, /BellBadge|bellTestID|hideBell/);
+  assert.doesNotMatch(myWork, /bellTestID=/);
+  assert.doesNotMatch(feed, /bellTestID=/);
 });

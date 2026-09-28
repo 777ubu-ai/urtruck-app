@@ -16,6 +16,14 @@ const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8'
 const chatApi = fs.readFileSync('src/utils/chatAPI.js', 'utf8');
 const chatPy = fs.readFileSync('backend/api/chat.py', 'utf8');
 
+test('native photo, voice, and document uploads use Expo File/Blob multipart parts', () => {
+  assert.match(chatApi, /import \{ File as ExpoFile \} from 'expo-file-system'/);
+  assert.match(chatApi, /const file = new ExpoFile\(uri\)/);
+  assert.match(chatApi, /form\.append\('file', file, name \|\| file\.name \|\| 'file\.bin'\)/);
+  assert.equal((chatApi.match(/appendNativeFile\(form, uri,/g) || []).length, 4, 'one helper plus photo, voice, and document call sites');
+  assert.doesNotMatch(chatApi, /form\.append\('file', \{\s*uri,/);
+});
+
 test('a signed photo/document URL is cached per message id, not re-fetched fresh on every 3s poll', () => {
   // The exact bug class this guards against: ChatScreen.js already fixed it
   // once (attachmentUrlCache); DealWorkspaceScreenV2.js never had the fix and

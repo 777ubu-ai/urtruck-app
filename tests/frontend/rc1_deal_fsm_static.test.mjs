@@ -24,18 +24,19 @@ const trackSrc = fs.readFileSync(new URL('../../src/screens/TrackTruckScreen.js'
 const webMapSrc = fs.readFileSync(new URL('../../src/components/TruckMap.web.js', import.meta.url), 'utf8');
 const geoSrc = fs.readFileSync(new URL('../../src/utils/geo.js', import.meta.url), 'utf8');
 
-test('opening the map hides the fixed chat header (and everything in it)', () => {
-  // compactHeader (which holds the map/status header buttons) is mounted
-  // inside the chat branch, above the messages list. Switching to the map
-  // view unmounts the complete chat branch rather than layering the map on it.
+test('deal chat keeps its only Back control fixed outside the scrolling message list', () => {
+  // The approved navigation canon supersedes the obsolete scroll-away header:
+  // a long chat must never scroll the Back control away.
   assert.match(dealWorkspace, /viewMode === VIEW_CHAT \? \(/);
-  assert.match(dealWorkspace, /\{compactHeader\}/);
+  assert.match(dealWorkspace, /testID="deal-compact-header"/);
+  assert.match(dealWorkspace, /testID="deal-workspace-back"/);
+  assert.match(dealWorkspace, /Navigation chrome is fixed OUTSIDE the scrolling message list/);
   assert.doesNotMatch(dealWorkspace, /ListHeaderComponent=\{compactHeader\}/);
 });
 
 test('the deal workspace opens its map in place, not by navigating to a separate screen', () => {
-  assert.match(dealWorkspace, /const openMap = \(\) => \{ setAttachOpen\(false\); setCallMenuOpen\(false\); setViewMode\(VIEW_MAP\); \};/);
-  assert.match(dealWorkspace, /const closeMap = \(\) => setViewMode\(VIEW_CHAT\);/);
+  assert.match(dealWorkspace, /const openMap = \(\) => \{ setAttachOpen\(false\); setCallMenuOpen\(false\); setMapExpanded\(false\); setViewMode\(VIEW_MAP\); \};/);
+  assert.match(dealWorkspace, /const closeMap = \(\) => \{ setMapExpanded\(false\); setViewMode\(VIEW_CHAT\); \};/);
   assert.match(dealWorkspace, /testID="deal-header-map"/);
   assert.match(dealWorkspace, /testID="deal-map-fullscreen"/);
   // Neither role's entry point should navigate away for the live map —
@@ -46,8 +47,9 @@ test('the deal workspace opens its map in place, not by navigating to a separate
 
 test('the embedded map is a modal-like overlay you explicitly collapse back to chat, not a permanent split view', () => {
   assert.match(dealWorkspace, /testID="deal-map-collapse"/);
-  assert.match(dealWorkspace, /onPress=\{closeMap\}\s+testID="deal-map-collapse"/);
-  assert.match(dealWorkspace, /onPress=\{closeMap\}\s+testID="deal-chat-dock"/);
+  assert.match(dealWorkspace, /setMapExpanded\(\(value\) => !value\)/);
+  assert.match(dealWorkspace, /testID="deal-map-back"/);
+  assert.doesNotMatch(dealWorkspace, /deal-chat-dock/);
 });
 
 test('deal route map is visible before first GPS point', () => {

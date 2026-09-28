@@ -5,6 +5,7 @@
    files localize them per system language. */
 "NSCameraUsageDescription" = "UrTruck использует камеру для селфи и фото документов";
 "NSMicrophoneUsageDescription" = "UrTruck использует микрофон для записи голосовых сообщений";
+"NSMotionUsageDescription" = "UrTruck использует данные движения устройства только во время активного рейса, чтобы надёжно отслеживать движение машины в фоне.";
 "NSPhotoLibraryUsageDescription" = "UrTruck использует фото для аватара, груза и документов";
 "NSLocationWhenInUseUsageDescription" = "UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки";
 "NSLocationAlwaysAndWhenInUseUsageDescription" = "UrTruck передаёт позицию машины грузоотправителю только во время активного рейса, чтобы он видел, где находится груз.";

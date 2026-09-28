@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Platform, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
@@ -12,18 +12,15 @@ import { formatPrice, normalizeTrip } from '../utils/normalizers';
 import { localizePlace, localizeCargoName } from '../utils/places';
 import EmptyState from '../components/ui/EmptyState';
 import EditCargoModal from '../components/EditCargoModal';
-import {v1Colors, useV1Colors, useDriverCeramicColors, useShipperCeramicColors, v1AccentFor, v1StatusColors, v1Spacing, v1Typography} from '../theme/designV1';
+import {v1Colors, useV1Colors, useDriverCeramicColors, v1AccentFor, v1StatusColors, v1Spacing, v1Typography} from '../theme/designV1';
 import { useMountedRef } from '../hooks/useMountedRef';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import FadeInUp from '../components/ui/FadeInUp';
 import Feather from '@expo/vector-icons/Feather';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
-import BellBadge from '../components/ui/v1/BellBadge';
-import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
-import { DRIVER_CERAMIC } from '../theme/designV1Palette';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS } from '../utils/AuthContext';
 
@@ -48,13 +45,21 @@ const myItemStatusColor = (colors, st) => {
   return colors.textDim;
 };
 
+// Latest request wins: a slow dashboard call can never trap the tab on a loader.
+const withTimeout = (promise, timeoutMs = 12000) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error('dashboard_timeout')), timeoutMs);
+  Promise.resolve(promise).then(
+    (value) => { clearTimeout(timer); resolve(value); },
+    (error) => { clearTimeout(timer); reject(error); },
+  );
+});
+
 export default function MyTripsScreen({ navigation, route }) {
   const v1Base = useV1Colors();
   const ceramic = useDriverCeramicColors();
-  const shipper = useShipperCeramicColors();
   const { role } = route.params || {};
   const isDriver = role === 'driver';
-  const v1 = isDriver ? ceramic : shipper;
+  const v1 = isDriver ? ceramic : v1Base;
   const s = React.useMemo(() => StyleSheet.create({
 
   // v1 brand bar (mirrors FeedScreen)
@@ -65,8 +70,6 @@ export default function MyTripsScreen({ navigation, route }) {
   brandText: { color: v1.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   ftlPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 2 },
   ftlText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
-  bellBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, backgroundColor: v1.surface },
-  bellIcon: { fontSize: 18 },
   menuBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   // Дизайн 2026 v4 (03.08): заголовок 26→19px. Раньше «Мои грузы» занимал
   // визуально столько же, сколько сам список — user жаловался «как для слепого».
@@ -111,20 +114,17 @@ export default function MyTripsScreen({ navigation, route }) {
   // «Для перчаток и солнца»: крупная тап-цель (≥44pt) и читаемый текст.
   miniBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexGrow: 1, flexShrink: 1, minWidth: 110, maxWidth: '100%', backgroundColor: 'rgba(148,163,184,0.14)' },
   miniBtnText: { fontSize: 14, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
+  // Active cargo actions are visually compact; hitSlop keeps a 44dp touch target.
+  cargoActions: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  cargoActionBtn: { height: 34, borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', flex: 1, backgroundColor: 'transparent' },
+  cargoActionText: { fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
   editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: v1Spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
   editBtnText: { color: v1.active || v1.driver, fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
   extendBtn: { flex: 1, backgroundColor: v1.active || v1.driver, borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
   extendBtnText: { color: v1.activeText || v1.driverOnAccent || '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
-  clientTopRow: { minHeight: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: v1.bg },
-  clientTopTitle: { flex: 1, color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
-  clientCreateBtn: { width: 144, height: 40, borderRadius: 14, borderWidth: 1, borderColor: v1.border, backgroundColor: v1.surfaceMuted, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, shadowColor: v1.shadow, shadowOpacity: 0.12, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
-  clientCreateText: { color: v1.text, fontSize: 13, fontWeight: '700' },
-  clientTabsRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
-  clientTab: { flex: 1, minHeight: 40, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  clientTabText: { fontSize: 13, fontWeight: '700' },
 
   }), [v1]);
-  const accent = isDriver ? DRIVER_CERAMIC.active : shipper.active;
+  const accent = isDriver ? ceramic.active : '#FF8400';
   const { t, lang } = useI18n();
   const { requireLevel, Gate } = useVerificationGate();
   const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
@@ -156,6 +156,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // (republish/продление); ставки (bid) переехали в «Сделки».
   const [busyBidId, setBusyBidId] = useState(null);
   const [extending, setExtending] = useState(null);  // Модель А: продление одним тапом
+  const loadRequestRef = useRef(0);
 
   // «Ещё актуально» — сбрасывает дату на сегодня, публикация снова живёт
   // 3 дня и возвращается в ленту. Без ручного ввода даты.
@@ -174,8 +175,7 @@ export default function MyTripsScreen({ navigation, route }) {
   // Источник статуса — regAPI.me(); UI не должен открывать CreateTrip всем
   // водителям подряд, потому что backend повторяет этот gate.
   // ({status, verification_level}). verState: loading|approved|review|
-  // rejected|unverified. Без fake-approved: CreateTrip открывается только
-  // при approved, иначе показываем gate-модалку → 5-шаговая проверка.
+  // rejected|unverified. Basic-профиль допускает публикацию без Pro-документов.
   const [verState, setVerState] = useState('loading');
   const [canPublish, setCanPublish] = useState(false);
   const [pubGateVisible, setPubGateVisible] = useState(false);
@@ -222,31 +222,37 @@ export default function MyTripsScreen({ navigation, route }) {
   };
 
   const load = useCallback(async ({ showLoading = true } = {}) => {
+    const requestId = ++loadRequestRef.current;
     if (showLoading) setLoading(true);
     else setRefreshingList(true);
     try {
-      const token = await require('../utils/storage').storage.get('ur_reg_token');
+      const token = await withTimeout(require('../utils/storage').storage.get('ur_reg_token'));
+      let next;
       if (!token) {
         if (isDriver) {
-          const trips = await marketAPI.listTrips({});
-          if (!mounted.current) return;  // QA-аудит P1-8: экран размонтирован
-          setData({ my_trips: trips.trips || [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true });
+          const trips = await withTimeout(marketAPI.listTrips({}));
+          next = { my_trips: trips.trips || [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true };
         } else {
-          if (!mounted.current) return;
-          setData({ my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true });
+          next = { my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true };
         }
       } else {
-        let d = await marketAPI.myDashboard();
-        if (d.serverError && isDriver) {
-          try { const trips = await marketAPI.listTrips({}); d = { ...d, my_trips: (trips.trips || []) }; } catch {}
+        let dashboard = await withTimeout(marketAPI.myDashboard());
+        if (dashboard.serverError && isDriver) {
+          try {
+            const trips = await withTimeout(marketAPI.listTrips({}));
+            dashboard = { ...dashboard, my_trips: trips.trips || [] };
+          } catch { /* preserve the dashboard response if its fallback fails */ }
         }
-        if (!mounted.current) return;
-        setData(d);
+        next = dashboard;
       }
-    } catch (e) { console.warn('[MyTrips] load error:', e.message); }
-    if (mounted.current) {
-      if (showLoading) setLoading(false);
-      else setRefreshingList(false);
+      if (mounted.current && requestId === loadRequestRef.current) setData(next);
+    } catch (e) {
+      console.warn('[MyTrips] load error:', e.message);
+    } finally {
+      if (mounted.current && requestId === loadRequestRef.current) {
+        setLoading(false);
+        setRefreshingList(false);
+      }
     }
   }, [isDriver, mounted]);
 
@@ -391,7 +397,7 @@ export default function MyTripsScreen({ navigation, route }) {
 
     return (
       <MarketplaceCard
-        variant={isDriver ? 'driver' : 'shipper'}
+        variant={isDriver ? 'driver' : 'default'}
         testID={isCargo ? 'my-cargo-card' : 'my-trip-card'}
         style={s.cardSpacing}
         onPress={() => {
@@ -407,7 +413,7 @@ export default function MyTripsScreen({ navigation, route }) {
           to: localizePlace(to, lang),
           fromFlag: flagCodeOrNull(item.from_country),
           toFlag: flagCodeOrNull(item.to_country),
-          numberOfLines: 2,
+          numberOfLines: 1,
         }}
         price={formatPrice(item.price, item.currency, t)}
         priceMeta={dateText}
@@ -502,20 +508,22 @@ export default function MyTripsScreen({ navigation, route }) {
         {/* Задача A: управление СВОИМ грузом — Изменить (цена/описание) + Удалить.
             Только для активного груза (taken/принятый редактировать нельзя). */}
         {isCargo && !isDriver && st === 'active' && (
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+          <View style={s.cargoActions}>
             <TouchableOpacity
               testID="my-cargo-edit-btn"
-              style={[s.miniBtn, { borderColor: v1.clientAccent || v1.warning, flex: 1 }]}
+              hitSlop={{ top: 5, right: 4, bottom: 5, left: 4 }}
+              style={[s.cargoActionBtn, { borderColor: v1.clientAccent || v1.warning }]}
               onPress={(e) => { e.stopPropagation && e.stopPropagation(); setEditCargo(item); }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Feather name="edit-3" size={14} color={v1.clientAccent || v1.warning} />
-                <Text style={[s.miniBtnText, { color: v1.warning }]}>{t('edit_btn')}</Text>
+                <Text style={[s.cargoActionText, { color: v1.warning }]}>{t('edit_btn')}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity
               testID="my-cargo-delete-btn"
-              style={[s.miniBtn, { borderColor: v1.error, flex: 1 }]}
+              hitSlop={{ top: 5, right: 4, bottom: 5, left: 4 }}
+              style={[s.cargoActionBtn, { borderColor: v1.error }]}
               onPress={async (e) => {
                 e.stopPropagation && e.stopPropagation();
                 if (!(await confirmAction(t('delete_cargo_confirm')))) return;
@@ -526,7 +534,7 @@ export default function MyTripsScreen({ navigation, route }) {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Feather name="trash-2" size={14} color={v1.error} />
-                <Text style={[s.miniBtnText, { color: v1.error }]}>{t('delete_btn')}</Text>
+                <Text style={[s.cargoActionText, { color: v1.error }]}>{t('delete_btn')}</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -583,7 +591,7 @@ export default function MyTripsScreen({ navigation, route }) {
           to: localizePlace(to, lang),
           fromFlag: flagCodeOrNull(item.from_country),
           toFlag: flagCodeOrNull(item.to_country),
-          numberOfLines: 2,
+          numberOfLines: 1,
         }}
         status={{ key: 'unpublished', label: formatStatus(item.status || 'unpublished'), color: v1.textDim }}
       >
@@ -617,7 +625,10 @@ export default function MyTripsScreen({ navigation, route }) {
 
   const renderEmpty = () => {
     if (data?.authRequired) {
-      return <EmptyState title={t('gate_login')} description={t('gate_login_desc')} actionLabel={t('gate_enter')} onAction={() => navigation.navigate('Role')} />;
+      // FINAL 10/10 AUTH CANON CLOSURE (2026-09-14): route through the
+      // canonical AuthV2 entry, not the legacy 'Role' screen — see
+      // VerificationGate.js's handleProceed for the same rule.
+      return <EmptyState title={t('gate_login')} description={t('gate_login_desc')} actionLabel={t('gate_enter')} onAction={() => navigation.navigate('PhoneV2', { role: isDriver ? 'driver' : 'client' })} />;
     }
     if (isDriver) {
       if (tab === 'routes') return <EmptyState title={t('no_trips_yet')} description={t('no_trips_desc')} actionLabel={t('publish_route')} onAction={onPublishRoute} />;
@@ -629,29 +640,15 @@ export default function MyTripsScreen({ navigation, route }) {
 
   return (
     <SafeAreaView testID="my-work-screen" style={[{ flex: 1, backgroundColor: v1.bg }]} edges={['top']}>
-      <DriverRouteBackdrop />
-      {isDriver ? <RootHeader ceramic navigation={navigation} role={role} testID="mywork-minimal-header" bellTestID="mywork-notification-settings-btn" menuTestID="mywork-menu-btn" onBellPress={async () => {
-            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-            if (ok) navigation.navigate('PushFilter', { role });
-          }} /> : (
-        <View style={s.clientTopRow} testID="mywork-minimal-header">
-          <Text style={s.clientTopTitle}>{t('my_cargos_title')}</Text>
-          <BellBadge onPress={async () => {
-            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-            if (ok) navigation.navigate('PushFilter', { role });
-          }} testID="mywork-notification-settings-btn" ceramic />
-          <TouchableOpacity
-            testID="mytrips-place-cargo"
-            style={s.clientCreateBtn}
-            onPress={() => navigation.navigate('CreateCargo', { role })}
-            activeOpacity={0.78}
-          >
-            <Feather name="plus" size={14} color={shipper.text} />
-            <Text style={s.clientCreateText}>{t('place_cargo')}</Text>
-          </TouchableOpacity>
-          <HeaderMenuButton navigation={navigation} role={role} testID="mywork-menu-btn" color={shipper.text} />
-        </View>
-      )}
+      {isDriver ? <DriverRouteBackdrop /> : null}
+      <RootHeader
+        ceramic={isDriver}
+        navigation={navigation}
+        role={role}
+        showBack={route?.name === 'MyTripsList'}
+        testID="mywork-minimal-header"
+        menuTestID="mywork-menu-btn"
+      />
 
       <FlatList
         data={listData}
@@ -659,26 +656,24 @@ export default function MyTripsScreen({ navigation, route }) {
         renderItem={listRender}
         ListHeaderComponent={(
           <>
-            <View style={[s.titleBlock, !isDriver && { display: 'none' }]}>
+            <View style={s.titleBlock}>
               <Text style={s.titleHero}>{isDriver ? t('my_trips_title') : t('my_cargos_title')}</Text>
               <Text style={s.titleSub}>{isDriver ? t('my_trips_subtitle') : t('my_cargos_subtitle')}</Text>
             </View>
-            {isDriver ? (
-              <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
-                <TouchableOpacity
-                  testID="mytrips-publish-route"
-                  onPress={onPublishRoute}
-                  activeOpacity={0.75}
-                  style={[s.publishRouteBtn, { borderColor: v1Accent.main }]}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Feather name="plus" size={14} color={v1Accent.main} />
-                    <Text style={[s.publishRouteText, { color: v1Accent.main }]}>{t('publish_route')}</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-            <View style={[{ paddingHorizontal: 16 }, !isDriver && { display: 'none' }]}>
+            <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+              <TouchableOpacity
+                testID={isDriver ? 'mytrips-publish-route' : 'mytrips-place-cargo'}
+                onPress={isDriver ? onPublishRoute : () => navigation.navigate('CreateCargo', { role })}
+                activeOpacity={0.75}
+                style={[s.publishRouteBtn, { borderColor: v1Accent.main }]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Feather name="plus" size={14} color={v1Accent.main} />
+                  <Text style={[s.publishRouteText, { color: v1Accent.main }]}>{isDriver ? t('publish_route') : t('place_cargo')}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+            <View style={{ paddingHorizontal: 16 }}>
               <TouchableOpacity
                 testID="my-work-archive-toggle"
                 onPress={() => setTab(tab === 'archive' ? (isDriver ? 'routes' : 'searching') : 'archive')}
@@ -690,25 +685,6 @@ export default function MyTripsScreen({ navigation, route }) {
                 </Text>
               </TouchableOpacity>
             </View>
-            {!isDriver ? (
-              <View style={s.clientTabsRow} testID="my-work-tabs">
-                {[
-                  ['searching', t('tab_active') || t('my_cargos_title'), clientSearching.length],
-                  ['archive', t('tab_archive'), clientArchive.length],
-                ].map(([key, label, count]) => (
-                  <TouchableOpacity
-                    key={key}
-                    testID={`my-work-tab-${key}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: tab === key }}
-                    onPress={() => setTab(key)}
-                    style={[s.clientTab, { borderColor: tab === key ? shipper.active : shipper.border, backgroundColor: tab === key ? shipper.activeSoft : shipper.surface }]}
-                  >
-                    <Text style={[s.clientTabText, { color: tab === key ? shipper.text : shipper.textMuted }]}>{label} {count}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : null}
           </>
         )}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
@@ -719,7 +695,6 @@ export default function MyTripsScreen({ navigation, route }) {
       <EditCargoModal
         visible={!!editCargo}
         cargo={editCargo}
-        role={role}
         onClose={() => setEditCargo(null)}
         onSaved={() => load()}
       />
@@ -742,25 +717,25 @@ export default function MyTripsScreen({ navigation, route }) {
             <Text style={s.pgTitle}>
               {verState === 'review' ? t('trips_gate_pending_title')
                 : verState === 'rejected' ? t('trips_gate_rejected_title')
-                : t('trips_gate_title')}
+                : t(verState === 'unverified' ? 'trips_gate_basic_title' : 'trips_gate_title')}
             </Text>
             <Text style={s.pgText}>
               {verState === 'review' ? t('trips_gate_pending_text')
                 : verState === 'rejected' ? t('trips_gate_rejected_text')
-                : t('trips_gate_text')}
+                : t(verState === 'unverified' ? 'trips_gate_basic_text' : 'trips_gate_text')}
             </Text>
             <TouchableOpacity
               style={s.pgBtn}
               testID="trips-publish-gate-cta"
               onPress={() => {
                 setPubGateVisible(false);
-                navigation.navigate(verState === 'review' ? 'Security' : verState === 'rejected' ? 'Citizenship' : 'ProfileV2', { role: 'driver' });
+                navigation.navigate(verState === 'review' ? 'Security' : verState === 'rejected' ? 'Citizenship' : 'VehicleSetupCountry', { role: 'driver', origin: 'CreateTrip' });
               }}
             >
               <Text style={s.pgBtnText}>
                 {verState === 'review' ? t('trips_gate_pending_btn')
                   : verState === 'rejected' ? t('trips_gate_rejected_btn')
-                  : t('trips_gate_btn')}
+                  : t(verState === 'unverified' ? 'trips_gate_basic_btn' : 'trips_gate_btn')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.pgCancel} onPress={() => setPubGateVisible(false)}>

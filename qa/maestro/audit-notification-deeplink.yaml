@@ -16,9 +16,7 @@ env:
 # (или как минимум пометить прочитанным с battery url=unknown).
 # Killed-state тап по реальному пушу — ручная проверка на iPhone.
 - runFlow: _lib/qa-login.yaml
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 # Колокольчик в брендбаре профиля → Notifications.
 - tapOn:
     text: "🔔"

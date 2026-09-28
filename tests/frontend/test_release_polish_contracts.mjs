@@ -5,7 +5,10 @@ const read = (path) => fs.readFileSync(new URL(`../../${path}`, import.meta.url)
 
 const chatApi = read('src/utils/chatAPI.js');
 assert.match(chatApi, /Platform\.OS === 'web'/, 'attachment upload must split web/native paths');
-assert.match(chatApi, /form\.append\('file', \{\s*uri,\s*name,\s*type: requestedType \|\| 'application\/octet-stream',?\s*\}\)/, 'native upload must use RN multipart descriptor with a real MIME fallback');
+assert.match(chatApi, /import \{ File as ExpoFile \} from 'expo-file-system'/, 'native upload must use Expo File/Blob on Expo 57');
+assert.match(chatApi, /const file = new ExpoFile\(uri\)/, 'native upload must construct a real Blob-compatible file');
+assert.match(chatApi, /form\.append\('file', file, name \|\| file\.name \|\| 'file\.bin'\)/, 'native multipart must append the Expo file with a filename');
+assert.doesNotMatch(chatApi, /form\.append\('file', \{\s*uri,\s*name,\s*type:/, 'legacy RN descriptors are rejected by Expo 57');
 
 const picker = read('src/components/LocationPickerModal.js');
 assert.match(picker, /stopPropagation/, 'favourite heart must not select its parent location row');

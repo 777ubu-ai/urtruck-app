@@ -45,6 +45,14 @@ def test_attachment_notifies_the_other_participant(monkeypatch):
     sent = []
     monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room_id: True)
     monkeypatch.setattr(deal_room.dr, "is_participant", lambda _room_id, _user_id: True)
+    # Third authorization step, added 2026-09-14 (P1 deal-room status gate).
+    # Stubbed for exactly the same reason room_exists/is_participant above
+    # are: this test isolates "a successful upload notifies the counterparty"
+    # and deliberately models no deals/chat_rooms rows (get_conn is the fake
+    # _Connection above). The gate's own behaviour — including that a
+    # cancelled/rejected deal must close this endpoint — is covered by
+    # tests/test_deal_room_status_gate.py.
+    monkeypatch.setattr(deal_room, "_assert_deal_room_open", lambda _room_id, _user_id: None)
     monkeypatch.setattr(deal_room.storage_service, "save_file", lambda *_args, **_kwargs: "/storage/document.pdf")
     monkeypatch.setattr(
         deal_room.dr,
@@ -82,4 +90,17 @@ def test_attachment_notifies_the_other_participant(monkeypatch):
         "recipient_id": "shipper-1",
         "event_key": "chat:room-1:attachment:attachment-1",
         "event": "chat.attachment",
+        "i18n_event": "chat_attachment",
+        "i18n_params": {"filename": "invoice.pdf"},
     }
+
+
+def test_attachment_push_uses_recipient_language_without_translating_filename():
+    from services.push_i18n import push_text
+    name = "Накладная №17 {invoice}.pdf"
+    expected = {"RU": "Новый документ", "KK": "Жаңа құжат", "ZH": "新文件", "EN": "New document"}
+    for locale, title in expected.items():
+        result = push_text("chat_attachment", locale, filename=name)
+        assert title in result[0]
+        assert result[1] == name
+    assert push_text("chat_photo", "zh-Hans-CN") == ("📷 照片", "收到新照片")

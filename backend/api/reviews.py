@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
@@ -45,6 +45,14 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
             detail="Оставить отзыв можно только после совместной сделки",
         )
 
+    if body.trip_id and not reviews_dal.has_completed_deal_reference(
+        user["id"], body.target_id, body.trip_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Отзыв не относится к завершённой совместной сделке",
+        )
+
     if body.trip_id and reviews_dal.has_already_reviewed(user["id"], body.trip_id):
         raise HTTPException(status_code=409, detail="Вы уже оставили отзыв по этому рейсу")
     # Дедуп по паре, когда рейс не указан (trip_id=None) — иначе спам отзывами.
@@ -79,6 +87,32 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
     except Exception as e:
         print(f"[notif] review failed: {e}")
     return {"id": rid, "ok": True}
+
+
+@reviews_router.get("/eligibility/{target_id}")
+def review_eligibility(
+    target_id: str,
+    trip_id: Optional[str] = Query(default=None),
+    user=Depends(require_level(1)),
+):
+    """Can the current participant leave a review for this completed deal?"""
+    if user["id"] == target_id:
+        return {"eligible": False, "already_reviewed": False, "reason": "self"}
+    completed = (
+        reviews_dal.has_completed_deal_reference(user["id"], target_id, trip_id)
+        if trip_id
+        else reviews_dal.has_deal_between(user["id"], target_id)
+    )
+    already = (
+        reviews_dal.has_already_reviewed(user["id"], trip_id)
+        if trip_id
+        else reviews_dal.has_reviewed_target(user["id"], target_id)
+    )
+    return {
+        "eligible": bool(completed and not already),
+        "already_reviewed": bool(already),
+        "reason": "already_reviewed" if already else (None if completed else "deal_not_completed"),
+    }
 
 
 @reviews_router.get("/for/{target_id}")

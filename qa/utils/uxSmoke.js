@@ -304,25 +304,20 @@ for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripS
   }
 }
 
-// Stage 27: forms must not use "—" as a placeholder for numeric
-// inputs (weight / volume). Real users couldn't tell which field
-// was tons and which was m³. Now we require a non-dash placeholder
-// that contains an example number AND a testID for QA.
+// Stage 27 revised by product decision 2026-09-19: the visible labels
+// already identify weight and volume, so new-listing numeric fields stay
+// genuinely empty. Example numbers (22/110/31.5) were mistaken for saved data.
 {
   for (const file of ['src/screens/CreateCargoScreen.js', 'src/screens/CreateTripScreen.js']) {
     const src = read(file);
-    // Within the row containing weight_label/volume_label, each
-    // Field must have a real placeholder (not "—") and a testID.
-    if (/label=\{t\(['"](?:weight_label|volume_label)['"]\)\}[\s\S]{0,200}?placeholder="—"/.test(src)) {
-      failures.push(`${file}: weight/volume Field still uses placeholder="—" — Stage 27 expects an example number`);
+    for (const [label, testID] of [['weight_label', /testID="(?:cargo|trip)-weight-field"/], ['volume_label', /testID="(?:cargo|trip)-volume-field"/]]) {
+      const field = new RegExp(String.raw`label=\{t\('${label}'\)\}[\s\S]{0,600}?placeholder=""`);
+      if (!field.test(src)) failures.push(`${file}: ${label} must keep an explicit empty placeholder`);
+      if (!testID.test(src)) failures.push(`${file}: ${label} lost its QA testID`);
     }
-    if (!/(weight|volume)_placeholder/.test(src)) {
-      failures.push(`${file}: weight/volume Field no longer reads t('weight_placeholder')/t('volume_placeholder')`);
+    if (/Например:\s*(?:22|31\.5|110)/.test(src)) {
+      failures.push(`${file}: misleading example weight/volume value returned`);
     }
-  }
-  // i18n must define the new keys in RU.
-  if (!/weight_placeholder:\s*['"]/.test(i18nSrc) || !/volume_placeholder:\s*['"]/.test(i18nSrc)) {
-    failures.push('i18n.js missing weight_placeholder / volume_placeholder keys (Stage 27)');
   }
   if (!/weight_label:\s*['"]Вес,/.test(i18nSrc)) {
     failures.push('i18n.js RU weight_label not in canonical "Вес, т" shape');
@@ -408,7 +403,7 @@ console.log('[ux] Stage 20 · RoleScreen carries no Animated/blink/SRC_HEADLIGHT
 console.log('[ux] Stage 18 · enterAs / navigation.navigate(Auth) flow preserved  ✓');
 console.log('[ux] Stage 26 · RoleScreen uses real Pressable buttons with role_*_title text (no invisible hotspots)  ✓');
 console.log('[ux] Stage 26 · ProfileScreen logout dialog uses real i18n message (no literal "?")  ✓');
-console.log('[ux] Stage 27 · weight/volume forms use real placeholders + testIDs (no "—")  ✓');
+console.log('[ux] Stage 27 · weight/volume fields are empty, labelled and keep testIDs  ✓');
 console.log('[ux] Stage 30 · VerificationGateSheet uses props.onClose (no undefined handleClose)  ✓');
 console.log('[ux] Stage 27 · RoleScreen has role-screen-column max-width wrapper  ✓');
 console.log('[ux] Stage 20 · TripDetail sticky collapsed to single trip-sticky-bid CTA (no chat dupe)  ✓');

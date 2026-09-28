@@ -59,6 +59,14 @@ test('cargo suggestions render/search localized labels while preserving canonica
   assert.match(cargoInput, /onChange\(item\.name\)/);
 });
 
+test('legacy glued cargo key is separated and localized without leaking an internal key', () => {
+  assert.equal(localizeCargoName('Аяқ киімHome_appliances_in_boxes', 'RU'), 'Обувь · Бытовая техника');
+  assert.equal(localizeCargoName('Аяқ киімHome_appliances_in_boxes', 'KK'), 'Аяқ киім · Тұрмыстық техника');
+  assert.equal(localizeCargoName('Аяқ киімHome_appliances_in_boxes', 'ZH'), '鞋类 · 家用电器');
+  assert.equal(localizeCargoName('Аяқ киімHome_appliances_in_boxes', 'EN'), 'Footwear · Home appliances');
+  assert.equal(localizeCargoName('Нестандартный груз', 'RU'), 'Нестандартный груз');
+});
+
 test('shared marketplace display localizes routes, cargo names and legacy truck types', () => {
   assert.match(normalizers, /import \{ localizeCargoName, localizePlace \} from '\.\/places'/);
   assert.match(normalizers, /from: localizePlace\(sanitizeForDisplay\(cargo\?\.from\), lang\)/);
@@ -82,7 +90,12 @@ test('deal workspace localizes dynamic cargo, body type, units and legacy system
   assert.match(workspace, /localizeCargoName\(rawCargoName, lang\)/);
   assert.match(workspace, /formatTruckType\(rawTruckType\)/);
   assert.match(workspace, /if \(lang === 'ZH'\) return `\$\{amount\} 吨`/);
-  assert.match(workspace, /\[roomId, session\?\.user\?\.id, lang\]/);
+  const loaderDependencies = workspace.match(/const loadMessages = React\.useCallback\([\s\S]*?\}, \[([^\]]*)\]\);/);
+  assert.ok(loaderDependencies, 'зависимости загрузчика сообщений должны быть найдены');
+  const dependencies = loaderDependencies[1].split(',').map((item) => item.trim());
+  for (const required of ['roomId', 'session?.user?.id', 'lang']) {
+    assert.ok(dependencies.includes(required), `loadMessages должен обновляться при изменении ${required}`);
+  }
   assert.match(timeline, /localizePlace\(meta\.place, lang\)/);
 });
 

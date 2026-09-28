@@ -10,9 +10,9 @@ env:
 - runFlow: _lib/qa-login.yaml
 # 1 непрочитанное → бейдж есть
 - extendedWaitUntil:
-    visible: { id: "bottom-nav-chats-badge" }
+    visible: { id: "bottom-nav-deals-badge" }
     timeout: 12000
-- assertVisible: { id: "bottom-nav-chats-badge" }
+- assertVisible: { id: "bottom-nav-deals-badge" }
 - takeScreenshot: PR1_badge_before_restart
 # рестарт приложения
 - stopApp
@@ -31,9 +31,9 @@ env:
     commands:
       - tapOn: { point: "50%,10%" }
 - extendedWaitUntil:
-    visible: { id: "bottom-nav-chats" }
+    visible: { id: "bottom-nav-deals" }
     timeout: 60000
 - takeScreenshot: PR2_after_restart
 # C2 не теряется на рестарте (до прочтения)
-- assertVisible: { id: "bottom-nav-chats-badge" }
+- assertVisible: { id: "bottom-nav-deals-badge" }
 - takeScreenshot: PR3_badge_persists

@@ -1,7 +1,8 @@
 // Сжатие изображений перед отправкой на сервер
 // Веб: через canvas. Нативный: через expo-image-manipulator (если установлен).
 
-import { Platform } from 'react-native';
+import { Image as NativeImage, Platform } from 'react-native';
+import { fitImageDimensions } from './imageDimensions';
 
 // ТЗ онбординг §1 — пресеты сжатия по типу фото. Документы жмём слабее
 // (1600px / q0.8), т.к. OCR нужен читаемый текст; селфи и фото грузовика —
@@ -11,6 +12,7 @@ export const PHOTO_PRESETS = {
   selfie:   { maxSide: 1080, quality: 0.7,  targetKB: 400 },
   document: { maxSide: 1600, quality: 0.8,  targetKB: 800 },
   truck:    { maxSide: 1280, quality: 0.75, targetKB: 600 },
+  chat:     { maxSide: 1600, quality: 0.85, targetKB: 1000 },
 };
 
 /**
@@ -54,10 +56,14 @@ async function compressOnce(uri, maxSide, quality) {
   // На нативе — используем expo-image-manipulator если есть
   try {
     const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
-    // Делаем два прохода: сначала resize, потом compress
+    const source = await new Promise((resolve, reject) => {
+      NativeImage.getSize(uri, (width, height) => resolve({ width, height }), reject);
+    });
+    const size = fitImageDimensions(source.width, source.height, maxSide);
+    const actions = size.width < source.width || size.height < source.height ? [{ resize: size }] : [];
     const result = await manipulateAsync(
       uri,
-      [{ resize: { width: maxSide } }],
+      actions,
       { compress: quality, format: SaveFormat.JPEG },
     );
     return result.uri;
@@ -94,10 +100,7 @@ async function compressWeb(uri, maxSide, quality) {
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       try {
-        let { width, height } = img;
-        const scale = Math.min(1, maxSide / Math.max(width, height));
-        width = Math.round(width * scale);
-        height = Math.round(height * scale);
+        const { width, height } = fitImageDimensions(img.width, img.height, maxSide);
 
         const canvas = document.createElement('canvas');
         canvas.width = width;

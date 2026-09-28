@@ -9,9 +9,9 @@ import BookmarkButton from './BookmarkButton';
 import StatusPill from './StatusPill';
 import { useV1Colors, useDriverCeramicColors, useV1Typography } from '../../../theme/designV1';
 
-// 108dp protects a complete price/currency; the route renderer owns the
-// complementary compact type scale for 390dp phones.
-const PRICE_COLUMN_WIDTH = 108;
+// Price sits in the lower metadata row so the route owns the full top row.
+// The narrow rail preserves compact 84dp cards and keeps amounts readable.
+const PRICE_COLUMN_WIDTH = 100;
 
 export default function MarketplaceCard({
   testID,
@@ -71,22 +71,22 @@ export default function MarketplaceCard({
         ) : (
       <Text style={[s.routeText, { color: palette.text }]} numberOfLines={1}>{routeLabel || '—'}</Text>
         )}
-        {price ? (
-          <View style={s.priceColumn}>
-            <Text style={[typo.price, s.price, { color: palette.text }]} numberOfLines={1} testID={priceTestID}>{price}</Text>
-            {priceMeta ? <Text style={[s.priceMeta, { color: palette.textMuted }]} numberOfLines={1}>{priceMeta}</Text> : null}
-          </View>
-        ) : null}
         {chevron ? <Feather name="chevron-right" size={18} color={colors.textDim} style={s.chevron} /> : null}
       </View>
 
-      {firstMeta ? <Text style={[s.meta, { color: palette.textMuted }]} numberOfLines={1}>{firstMeta}</Text> : null}
-      {body || status || rightMeta || bookmark || unread > 0 ? (
+      {firstMeta || body || status || price || rightMeta || bookmark || unread > 0 ? (
         <View style={s.bottomRow}>
           <View style={s.bottomText}>
-            {body ? <Text style={[s.description, { color: palette.textMuted }]} numberOfLines={1}>{body}</Text> : null}
+            {firstMeta ? <Text style={[s.meta, { color: palette.textMuted }]} numberOfLines={1}>{firstMeta}</Text> : null}
+            {body ? <Text style={[s.description, { color: palette.textMuted }]} numberOfLines={1} ellipsizeMode="tail">{body}</Text> : null}
             {status ? <StatusPill status={status.key} label={status.label} color={status.color} testID={status.testID} /> : null}
           </View>
+          {price ? (
+            <View style={s.priceColumn}>
+              <Text style={[typo.price, s.price, { color: palette.text }]} numberOfLines={1} testID={priceTestID}>{price}</Text>
+              {priceMeta ? <Text style={[s.priceMeta, { color: palette.textMuted }]} numberOfLines={1}>{priceMeta}</Text> : null}
+            </View>
+          ) : null}
           {rightMeta ? <Text style={[s.rightMeta, { color: palette.textMuted }]} numberOfLines={1}>{rightMeta}</Text> : null}
             {unread > 0 ? <View style={[s.unread, { backgroundColor: colors.error }]} testID="deals-card-unread"><Text style={s.unreadText}>{unread > 9 ? '9+' : unread}</Text></View> : null}
           {bookmark ? <BookmarkButton saved={bookmark.saved} onPress={bookmark.onToggle} testID={bookmark.testID} accessibilityLabel={bookmark.accessibilityLabel} /> : null}
@@ -98,18 +98,22 @@ export default function MarketplaceCard({
 }
 
 const s = StyleSheet.create({
-  card: { padding: 12, minHeight: 108, borderRadius: 15 },
+  // Card-only density contract. Screen header, route controls, filters and
+  // bottom navigation remain outside this component and keep their own sizes.
+  card: { paddingHorizontal: 12, paddingVertical: 7, minHeight: 84, borderRadius: 18 },
   dimmed: { opacity: 0.62 },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 0 },
   routeText: { flex: 1, minWidth: 0, fontSize: 16, lineHeight: 20, fontWeight: '700', letterSpacing: -0.15 },
-  priceColumn: { width: PRICE_COLUMN_WIDTH, marginLeft: 8, alignItems: 'flex-end', flexShrink: 0 },
-  price: { textAlign: 'right', fontVariant: ['tabular-nums'], letterSpacing: -0.1 },
-  priceMeta: { fontSize: 12, lineHeight: 16, fontWeight: '600', marginTop: 1, textAlign: 'right' },
+  priceColumn: { width: PRICE_COLUMN_WIDTH, marginLeft: 6, alignItems: 'flex-end', flexShrink: 0 },
+  // Stretch the two labels across the fixed rail. On Android this prevents
+  // an intrinsic-width Text node from ellipsizing a short price such as $8 000.
+  price: { alignSelf: 'stretch', textAlign: 'right', fontSize: 16, lineHeight: 20, fontVariant: ['tabular-nums'], letterSpacing: -0.1 },
+  priceMeta: { alignSelf: 'stretch', fontSize: 11, lineHeight: 13, fontWeight: '600', textAlign: 'right' },
   chevron: { marginLeft: 4, marginTop: 1, flexShrink: 0 },
-  meta: { marginTop: 6, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  bottomRow: { flexDirection: 'row', alignItems: 'center', minHeight: 40, marginTop: 2, gap: 8 },
+  meta: { fontSize: 12, lineHeight: 14, fontWeight: '600' },
+  bottomRow: { flexDirection: 'row', alignItems: 'center', minHeight: 34, marginTop: 1, gap: 7 },
   bottomText: { flex: 1, minWidth: 0, justifyContent: 'center' },
-  description: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  description: { fontSize: 12, lineHeight: 14, fontWeight: '500' },
   rightMeta: { fontSize: 12, lineHeight: 16, fontWeight: '600', flexShrink: 0 },
   unread: { minWidth: 19, height: 19, paddingHorizontal: 5, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   unreadText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },

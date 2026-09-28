@@ -85,6 +85,13 @@ def _rebuild_all_schemas():
     from database import subscription_dal
     subscription_dal.init_payments_schema()
 
+    # Saved-search notification tests import the router before the session
+    # fixture rebuilds the shared SQLite file. Recreate this schema here too,
+    # otherwise the full suite depends on collection order while the test
+    # passes in isolation.
+    import api.saved_searches as saved_searches
+    saved_searches._init()
+
     # deal_events immutable timeline schema used by status-FSM tests.
     _deal_room_schema = Path(__file__).resolve().parent.parent / "database" / "schemas" / "deal_room_schema.sql"
     if _deal_room_schema.exists():
@@ -104,6 +111,17 @@ def _ensure_full_schema():
     Path(canonical_db_path).unlink(missing_ok=True)
     _rebuild_all_schemas()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _isolate_presence_redis(monkeypatch):
+    # Unit-тесты не пишут пользовательскую активность в настоящий Redis.
+    from services import presence_service
+
+    def unavailable():
+        raise ConnectionError("Redis отключён в unit-тестах")
+
+    monkeypatch.setattr(presence_service, "_redis", unavailable)
 
 
 @pytest.fixture(autouse=True)

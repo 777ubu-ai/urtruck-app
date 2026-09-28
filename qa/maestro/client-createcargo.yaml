@@ -7,7 +7,9 @@ env:
   MAESTRO_ACTOR: boris
 ---
 - runFlow: _lib/qa-login.yaml
-- tapOn: { id: "bottom-nav-publish" }
+- tapOn: { id: "bottom-nav-mywork" }
+- waitForAnimationToEnd
+- tapOn: { id: "mytrips-place-cargo" }
 - waitForAnimationToEnd
 - extendedWaitUntil:
     visible: { id: "cargo-desc-input" }

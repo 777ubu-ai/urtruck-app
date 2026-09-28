@@ -65,8 +65,9 @@ test('RouteMap turns capacityTons into a partial VehicleSpec (payload_t, not wei
   assert.match(routeMap, /<TruckMap[\s\S]{0,600}vehicle=\{vehicle\}/);
 });
 
-test('TripDetail feeds the already-collected trip capacity into RouteMap (no new data collection)', () => {
-  assert.match(tripDetail, /<RouteMap[\s\S]{0,300}capacityTons=\{trip\.capacityTons\}/);
+test('TripDetail feeds the already-collected trip capacity into the compact route panel (no new data collection)', () => {
+  assert.match(tripDetail, /<TripRoutePanel[\s\S]{0,300}capacityTons=\{trip\.capacityTons\}/);
+  assert.doesNotMatch(tripDetail, /import RouteMap/);
 });
 
 test('DealWorkspaceScreenV2 builds vehicle.payload_t strictly from the trip\'s real capacity — no cargo-weight fallback', () => {
@@ -91,7 +92,7 @@ test('TrackTruckScreen builds a vehicle spec (payload_t, not weight_t) from the 
 
 test('both TruckMap platforms accept a vehicle prop and forward it to the authenticated road-routing call', () => {
   assert.match(webMap, /routingAPI\.roadRoute\(effectivePoints, vehicle\)/);
-  assert.match(nativeMap, /routingAPI\.roadRoute\(effectivePairs, vehicle\)/);
+  assert.match(nativeMap, /routingAPI\.roadRoute\(planned\.map\(toPair\), vehicle, \{ signal: controller.signal \}\)/);
 });
 
 test('capacityTons never reaches vehicle.weight_t anywhere in the frontend (round-2 review regression guard)', () => {

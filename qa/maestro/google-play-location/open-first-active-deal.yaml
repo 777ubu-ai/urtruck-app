@@ -26,5 +26,5 @@ name: open-first-active-deal
     index: 0
 - extendedWaitUntil:
     visible:
-      id: "deal-map-card-open"
+      id: "deal-header-map"
     timeout: 30000

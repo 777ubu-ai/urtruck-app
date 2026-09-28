@@ -1,0 +1,41 @@
+diff --git a/node_modules/expo-modules-core/ios/Core/Events/EventEmitter.swift b/node_modules/expo-modules-core/ios/Core/Events/EventEmitter.swift
+index 3046568..853783c 100644
+--- a/node_modules/expo-modules-core/ios/Core/Events/EventEmitter.swift
++++ b/node_modules/expo-modules-core/ios/Core/Events/EventEmitter.swift
+@@ -41,15 +41,12 @@ public extension EventEmitter {
+       log.warn("Trying to send event '\(event)' to \(type(of: self)), but the JS runtime has been lost")
+       return
+     }
+-    // The emitter is not necessarily `Sendable` - some modules hold non-sendable state — so we can't let
+-    // the compiler send `self` into the `@JavaScriptActor` region. Capturing it as `nonisolated(unsafe)` is
+-    // safe here because the scheduled closure only calls `withEventTarget`, which touches `@JavaScriptActor`-
+-    // isolated or `Sendable` state (the JS object, the registry, `appContext`) and the emitter's identity -
+-    // never the module's own mutable state.
+-    nonisolated(unsafe) weak let emitter = self
++    // The emitter is not necessarily `Sendable`, so move only a weak reference through the existing
++    // unchecked-Sendable compatibility box. The scheduled closure touches the emitter on the JS actor.
++    let emitterBox = NonisolatedUnsafeWeakVar(self)
+ 
+     runtime.schedule {
+-      guard let emitter else {
++      guard let emitter = emitterBox.value else {
+         return
+       }
+       let dispatched = emitter.withEventTarget { target in
+@@ -70,13 +67,11 @@ public extension EventEmitter {
+       log.warn("Trying to send event '\(event)' to \(type(of: self)), but the JS runtime has been lost")
+       return
+     }
+-    // See the note in `emit(event:payload:)` above - the emitter is captured as `nonisolated(unsafe)`
+-    // because it isn't necessarily `Sendable`, and the scheduled closure only reaches `@JavaScriptActor`-
+-    // isolated or `Sendable` state through it.
+-    nonisolated(unsafe) weak let emitter = self
++    // See the weak compatibility-box note in `emit(event:payload:)` above.
++    let emitterBox = NonisolatedUnsafeWeakVar(self)
+ 
+     runtime.schedule { [weak appContext] in
+-      guard let emitter, let appContext else {
++      guard let emitter = emitterBox.value, let appContext else {
+         return
+       }
+       let jsPayload: JavaScriptValue

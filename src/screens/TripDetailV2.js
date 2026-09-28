@@ -1,6 +1,7 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet } from 'react-native';
+import { ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import TripDetail from './TripDetail';
 import DealWorkspaceRoute from '../components/deal/DealWorkspaceRoute';
 import { marketAPI } from '../utils/marketAPI';
@@ -62,8 +63,17 @@ export default function TripDetailV2(props) {
 
   if (!checked) {
     return (
-      <SafeAreaView style={[s.loading, { backgroundColor: colors.bg }]} edges={['top']}>
-        <ActivityIndicator color="#168759" />
+      <SafeAreaView style={{ backgroundColor: colors.bg }} edges={['top']}>
+        <TouchableOpacity
+          onPress={() => props.navigation.goBack()}
+          style={s.loadingBack}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          testID="trip-detail-loading-back"
+        >
+          <Feather name="chevron-left" size={28} color={colors.text} />
+        </TouchableOpacity>
+        <ActivityIndicator style={s.loading} color="#168759" />
       </SafeAreaView>
     );
   }
@@ -89,4 +99,7 @@ export default function TripDetailV2(props) {
   return <TripDetail {...props} />;
 }
 
-const s = StyleSheet.create({ loading: { flex: 1, alignItems: 'center', justifyContent: 'center' } });
+const s = StyleSheet.create({
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingBack: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+});

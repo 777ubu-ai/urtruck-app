@@ -18,16 +18,41 @@ export FILE_SIGNING_KEY="$(grep -E '^FILE_SIGNING_KEY=' "$ENVF" | head -1 | cut 
 # login shell's /usr/bin/python3. Running the smoke with system python caused a
 # false release failure (`ModuleNotFoundError: httpx`) even while the deployed
 # API was healthy. Resolve the interpreter of the ACTUAL PM2 process first.
-source ~/.nvm/nvm.sh 2>/dev/null || true
+resolve_pm2() {
+  local candidate
+  if command -v pm2 >/dev/null 2>&1; then
+    command -v pm2
+    return 0
+  fi
+
+  for candidate in \
+    "$HOME"/.nvm/versions/node/*/bin/pm2 \
+    "$HOME"/.local/bin/pm2 \
+    "$HOME"/.local/share/pnpm/pm2 \
+    /usr/local/bin/pm2 \
+    /usr/bin/pm2
+  do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  echo "::error::PM2 executable not found for production user" >&2
+  return 1
+}
+
+PM2_BIN="$(resolve_pm2)"
+echo "PM2_RUNTIME=resolved"
 
 PM2_PROC="${PM2_PROC:-urtruck-security-api}"
-PM2_PID="$(pm2 jlist | python3 -c "
+PM2_PID="$("$PM2_BIN" jlist | python3 -c "
 import json, sys
 rows=json.load(sys.stdin)
 row=next((p for p in rows if p.get('name') == '$PM2_PROC'), None)
 print((row or {}).get('pid') or '')
 ")"
-PM2_INTERPRETER="$(pm2 jlist | python3 -c "
+PM2_INTERPRETER="$("$PM2_BIN" jlist | python3 -c "
 import json, sys
 rows=json.load(sys.stdin)
 row=next((p for p in rows if p.get('name') == '$PM2_PROC'), None)

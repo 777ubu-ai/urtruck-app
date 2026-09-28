@@ -1,0 +1,20 @@
+appId: host.exp.Exponent
+name: Open canonical profile route
+---
+- runFlow:
+    when:
+      visible: { id: "deal-workspace-screen" }
+    commands:
+      - tapOn: { id: "deal-workspace-back" }
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: { id: "bottom-nav-feed" }
+    timeout: 15000
+- tapOn: { id: "bottom-nav-feed" }
+- extendedWaitUntil:
+    visible: { id: "feed-menu-btn" }
+    timeout: 15000
+- tapOn: { id: "feed-menu-btn" }
+- extendedWaitUntil:
+    visible: { id: "profile-back" }
+    timeout: 15000

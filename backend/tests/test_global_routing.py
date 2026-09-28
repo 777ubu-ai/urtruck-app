@@ -209,6 +209,119 @@ def test_china_corridor_prefers_global_hgv_when_configured(monkeypatch):
     assert calls == [("global", "global-test-key")]
 
 
+def test_ors_distance_limit_is_retried_as_real_road_segments(monkeypatch):
+    body = routing.RoadRouteRequest(
+        points=[
+            routing.RoutePoint(lat=29.3079, lng=120.0762),
+            routing.RoutePoint(lat=55.7558, lng=37.6176),
+        ],
+    )
+    calls = []
+
+    async def fake_ors(segment_body, _api_key):
+        calls.append([(p.lat, p.lng) for p in segment_body.points])
+        if len(calls) == 1:
+            raise routing._ProviderRouteError(
+                "global_router_http_400: distance limit",
+                status=400,
+                code=2004,
+            )
+        start, end = segment_body.points
+        return {
+            "ok": True,
+            "provider": "openrouteservice",
+            "profile": "driving-hgv",
+            "distance_m": 4_000_000,
+            "duration_s": 100_000,
+            "geometry": [[start.lat, start.lng], [end.lat, end.lng]],
+            "cached": False,
+        }
+
+    monkeypatch.setattr(routing, "_request_ors", fake_ors)
+    async def snap_points(points, _key):
+        return [points[0], routing.RoutePoint(lat=43.851958, lng=74.723482), points[-1]]
+    monkeypatch.setattr(routing, "_snap_split_route_points", snap_points)
+    result = __import__("asyncio").run(
+        routing._request_ors_with_limit_fallback(body, "global-test-key")
+    )
+
+    assert result["ok"] is True
+    assert result["segmented"] is True
+    assert result["segments"] == 2
+    assert len(result["geometry"]) == 3
+    assert len(calls) == 3  # failed direct call + two provider-backed segments
+    assert calls[0] == [(29.3079, 120.0762), (55.7558, 37.6176)]
+    assert calls[1][0] == calls[0][0]
+    assert calls[1][1] == calls[2][0]
+    assert calls[2][1][0] == pytest.approx(calls[0][1][0])
+    assert calls[2][1][1] == pytest.approx(calls[0][1][1])
+
+
+def test_snap_boundary_skips_offroad_midpoint_and_preserves_original_addresses(monkeypatch):
+    body = routing.RoadRouteRequest(points=[{"lat":29.3079,"lng":120.0762},{"lat":55.7558,"lng":37.6176}])
+    class Client:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, headers, json):
+            assert url == routing._ORS_SNAP_URL
+            assert json['radius'] == routing._ORS_SNAP_RADIUS_M
+            points = json['locations']
+            # Центральная точка не найдена; третий кандидат находится на дороге.
+            locations = [None] * len(points)
+            locations[2] = {'location': points[2]}
+            return type('Response', (), {'status_code':200, 'json':lambda self: {'locations':locations}})()
+    monkeypatch.setattr(routing.httpx, 'AsyncClient', Client)
+    points = __import__('asyncio').run(routing._snap_split_route_points(body.points, 'test-key'))
+    assert points[0] == body.points[0] and points[-1] == body.points[-1]
+    assert points[1].lng == pytest.approx(74.72397)
+    assert len(points) == 3
+
+
+def test_snap_without_road_fails_closed(monkeypatch):
+    class Client:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, headers, json):
+            locations = [None] * len(json['locations'])
+            return type('Response', (), {'status_code':200, 'json':lambda self: {'locations':locations}})()
+    monkeypatch.setattr(routing.httpx, 'AsyncClient', Client)
+    points = [routing.RoutePoint(lat=29.3079,lng=120.0762),routing.RoutePoint(lat=55.7558,lng=37.6176)]
+    with pytest.raises(RuntimeError, match='boundary_not_on_road'):
+        __import__('asyncio').run(routing._snap_split_route_points(points, 'test-key'))
+
+
+def test_failed_china_provider_is_not_called_twice(monkeypatch):
+    os.environ['OPENROUTESERVICE_API_KEY'] = 'test-key'
+    calls = []
+    async def fail(*args):
+        calls.append(1)
+        raise RuntimeError('unavailable')
+    monkeypatch.setattr(routing, '_request_ors_with_limit_fallback', fail)
+    response = client.post('/api/v1/routing/road-route', json={'points':[{'lat':29.3,'lng':120.1},{'lat':55.7,'lng':37.6}]})
+    assert response.status_code == 502
+    assert len(calls) == 1
+
+
+def test_segment_gap_cannot_be_rendered_as_a_straight_line(monkeypatch):
+    calls = []
+    async def fake_ors(body, key):
+        calls.append(1)
+        if len(calls) == 1:
+            raise routing._ProviderRouteError('distance limit', status=400, code=2004)
+        geometry = [[p.lat,p.lng] for p in body.points]
+        if len(calls) == 3: geometry[0][0] += 0.1
+        return {'geometry':geometry,'distance_m':1000,'duration_s':100}
+    async def snap(points, key):
+        return [points[0],routing.RoutePoint(lat=43.85,lng=74.72),points[-1]]
+    monkeypatch.setattr(routing, '_request_ors', fake_ors)
+    monkeypatch.setattr(routing, '_snap_split_route_points', snap)
+    body = routing.RoadRouteRequest(points=[{'lat':29.3,'lng':120.1},{'lat':55.7,'lng':37.6}])
+    with pytest.raises(RuntimeError, match='discontinuous_segments'):
+        __import__('asyncio').run(routing._request_ors_with_limit_fallback(body, 'test-key'))
+
+
 def test_yandex_failure_can_fall_back_to_real_global_road(monkeypatch):
     os.environ["YANDEX_ROUTER_API_KEY"] = "yandex-test-key"
     os.environ["OPENROUTESERVICE_API_KEY"] = "global-test-key"

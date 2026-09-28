@@ -17,19 +17,21 @@ env:
 # сообщение при входе по roomId.
 - runFlow: _lib/qa-login.yaml
 - tapOn:
-    id: "bottom-nav-chats"
+    id: "bottom-nav-deals"
+- waitForAnimationToEnd
+- tapOn: { id: "deals-tab-active" }
 - waitForAnimationToEnd
 - takeScreenshot: audit_chat_01_rooms
 - tapOn:
-    id: "deal-room-list-card"
+    id: "deals-deal-card"
     index: 0
 - waitForAnimationToEnd
 - takeScreenshot: audit_chat_02_room_open
 - tapOn:
-    id: "chat-input"
+    id: "deal-chat-input"
 - inputText: "QA-audit persist 20260611"
 - tapOn:
-    id: "chat-send-btn"
+    id: "deal-chat-send"
 - waitForAnimationToEnd
 - assertVisible:
     text: "QA-audit persist 20260611"
@@ -38,10 +40,12 @@ env:
 - stopApp
 - runFlow: _lib/qa-login.yaml
 - tapOn:
-    id: "bottom-nav-chats"
+    id: "bottom-nav-deals"
+- waitForAnimationToEnd
+- tapOn: { id: "deals-tab-active" }
 - waitForAnimationToEnd
 - tapOn:
-    id: "deal-room-list-card"
+    id: "deals-deal-card"
     index: 0
 - waitForAnimationToEnd
 # Сообщение пережило рестарт = дошло до сервера (не только optimistic).

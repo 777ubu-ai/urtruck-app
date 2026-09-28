@@ -309,6 +309,9 @@ def confirm_phone_change(
     from database.db import get_conn, new_id
     now = datetime.utcnow().isoformat()
     with get_conn() as c:
+        # Блокировка до чтения исключает два подтверждения одного кода.
+        if not c.in_transaction:
+            c.execute("BEGIN IMMEDIATE")
         challenge = c.execute(
             "SELECT * FROM phone_change_challenges "
             "WHERE user_id = ? AND new_phone = ? AND purpose = 'phone_change' "
@@ -328,6 +331,8 @@ def confirm_phone_change(
             (attempts, challenge["id"]),
         )
         if not hmac.compare_digest(challenge["code_digest"], _phone_change_digest(code)):
+            # HTTPException прерывает get_conn до commit: попытку сохраняем явно.
+            c.commit()
             if attempts >= int(challenge["max_attempts"] or 5):
                 _phone_change_error("PHONE_CHANGE_OTP_ATTEMPTS_EXCEEDED", "Превышено число попыток", 429)
             _phone_change_error("PHONE_CHANGE_OTP_INVALID", "Неверный код")
@@ -354,11 +359,11 @@ def confirm_phone_change(
             "INSERT INTO phone_change_audit (id, user_id, event_type, phone_masked) VALUES (?, ?, ?, ?)",
             (new_id(), user["id"], "phone_changed", mask_phone(new_phone)),
         )
+        # Номер, потребление кода и ротация сессий — одна транзакция.
+        new_token = reg_dal.rotate_sessions_for_driver(user["id"], connection=c)
 
     old_authorization = request.headers.get("authorization", "")
     old_token = old_authorization.split(" ", 1)[1] if old_authorization.startswith("Bearer ") else ""
-    reg_dal.revoke_sessions_for_driver(user["id"])
-    new_token = reg_dal.create_session(user["id"])
     return {
         "ok": True,
         "phone_masked": mask_phone(new_phone),
@@ -476,6 +481,13 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         if role_norm not in ("driver", "client"):
             raise HTTPException(status_code=400, detail={"error": "INVALID_ROLE", "message": "role должен быть driver|client"})
 
+        # Сохранённая роль не меняется через общий endpoint профиля.
+        current_role = (current.get("role") or "").strip().lower()
+        if current_role in ("driver", "client") and current_role != role_norm:
+            raise HTTPException(status_code=409, detail={
+                "error": "ROLE_ALREADY_SET",
+                "message": "Роль уже выбрана и не может быть изменена",
+            })
         stored_phone = current.get("phone")
         effective_phone = body_phone or (stored_phone if _is_real_phone(stored_phone) else None)
         if not effective_phone:

@@ -79,6 +79,7 @@ def _seed_completed_deal(shipper_id, driver_id):
         keys = [k for k in base if k in cols]
         c.execute(f"INSERT INTO deals ({','.join(keys)}) VALUES ({','.join('?' for _ in keys)})",
                   [base[k] for k in keys])
+    return base["id"]
 
 
 def test_review_creates_in_app_notification_for_target():
@@ -111,6 +112,45 @@ def test_review_creates_in_app_notification_for_target():
     r2 = client.get("/api/v1/notifications/unread")
     assert r2.status_code == 200
     assert r2.json()["unread"] >= 1
+
+
+def test_completed_deal_review_eligibility_and_stable_reference():
+    author = "eligible-author-" + uuid.uuid4().hex[:8]
+    target = "eligible-target-" + uuid.uuid4().hex[:8]
+    deal_id = _seed_completed_deal(author, target)
+
+    _as(author)
+    eligible = client.get(f"/api/v1/reviews/eligibility/{target}?trip_id={deal_id}")
+    assert eligible.status_code == 200, eligible.text
+    assert eligible.json()["eligible"] is True
+
+    created = client.post("/api/v1/reviews/", json={
+        "target_id": target, "target_role": "driver", "rating": 5,
+        "text": "Completed transport", "trip_id": deal_id,
+    })
+    assert created.status_code == 200, created.text
+
+    duplicate = client.get(f"/api/v1/reviews/eligibility/{target}?trip_id={deal_id}")
+    assert duplicate.status_code == 200, duplicate.text
+    assert duplicate.json()["eligible"] is False
+    assert duplicate.json()["already_reviewed"] is True
+
+
+def test_review_rejects_reference_from_unrelated_deal():
+    author = "wrong-ref-author-" + uuid.uuid4().hex[:8]
+    target = "wrong-ref-target-" + uuid.uuid4().hex[:8]
+    _seed_completed_deal(author, target)
+    unrelated_id = _seed_completed_deal(
+        "other-shipper-" + uuid.uuid4().hex[:8],
+        "other-driver-" + uuid.uuid4().hex[:8],
+    )
+
+    _as(author)
+    response = client.post("/api/v1/reviews/", json={
+        "target_id": target, "target_role": "driver", "rating": 5,
+        "trip_id": unrelated_id,
+    })
+    assert response.status_code == 403, response.text
 
 
 def test_saved_search_notification_dedupes_by_cargo():

@@ -6,18 +6,26 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useI18n } from '../../utils/useI18n';
+import { formatPrice } from '../../utils/normalizers';
 
 const SUCCESS_GREEN = '#168759';
 const SUCCESS_BG = 'rgba(34, 197, 94, 0.14)';
 
 export default function PriceSavingsBadge({ listingPrice, bidPrice, currency = 'USD' }) {
+  const { t } = useI18n();
   if (listingPrice == null || bidPrice == null) return null;
   const savings = Number(listingPrice) - Number(bidPrice);
   if (!(savings > 0)) return null;
-  const cur = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : (currency + ' ');
+  // §15 i18n P2 fix: was a hardcoded Russian "экономия" label plus a
+  // Russian-locale-specific number-grouping call, shown as-is to ZH/KK/EN
+  // users. `price_savings_badge` is localized in all 4 locales; amount
+  // formatting reuses the same formatPrice() every other price in the app
+  // goes through (locale-neutral space grouping, not Russian-locale-specific).
+  const amount = formatPrice(savings, currency, t);
   return (
     <View style={s.badge}>
-      <Text style={s.text}>↓ экономия {cur}{savings.toLocaleString('ru-RU')}</Text>
+      <Text style={s.text}>{t('price_savings_badge').replace('{amount}', amount)}</Text>
     </View>
   );
 }

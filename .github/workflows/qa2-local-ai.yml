@@ -1,0 +1,39 @@
+name: QA2 Local AI
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type INSTALL_QA2_LOCAL_AI
+        required: true
+        type: string
+
+concurrency:
+  group: urtruck-qa2-local-ai
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: inputs.confirmation == 'INSTALL_QA2_LOCAL_AI'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      QA_API_URL: ${{ secrets.QA2_API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate local AI contracts
+        run: |
+          bash -n scripts/deploy-qa2-local-ai.sh
+          python3 -m py_compile backend/services/local_ai_client.py backend/qa_ai_service/main.py
+          node --test tests/frontend/test_qa2_local_ai_workflow.mjs
+      - name: Install deployment and voice-fixture tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync espeak-ng
+      - name: Install and verify private QA2 AI
+        shell: bash
+        run: bash scripts/deploy-qa2-local-ai.sh

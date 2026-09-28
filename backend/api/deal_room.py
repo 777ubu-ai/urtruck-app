@@ -16,6 +16,8 @@ from database import deal_room_dal as dr
 from services import storage_service
 from services import file_signing
 from api.push import send_to_user
+from starlette.concurrency import run_in_threadpool
+from urllib.parse import urlencode
 from api.notifications import create_notification
 from database.db import get_conn, new_id
 
@@ -33,6 +35,51 @@ _GENERIC_DECLARED_MIME = _uv.GENERIC_DECLARED_MIME
 _DECLARED_ALIASES = _uv.DECLARED_ALIASES
 _sniff_mime = _uv.sniff_mime
 _safe_original_name = _uv.sanitize_original_name
+
+
+def _assert_deal_room_open(conversation_id: str, user_id: str) -> None:
+    """Apply the SAME deal-status policy the legacy /chat/* door applies.
+
+    P1 (FINAL 10/10 audit, 2026-09-14): these deal-room endpoints authorized
+    on participation ALONE, while api/chat.py additionally gates on the deal
+    still being in a chat-eligible status via _assert_chat_is_accepted()
+    (_DEAL_CHAT_STATUSES deliberately excludes cancelled/rejected). Two doors
+    into the SAME room therefore enforced two different policies: after a deal
+    was cancelled, /chat/messages/{room} correctly returned 403 and the room
+    disappeared from /chat/rooms, but /chat/conversations/{id}/* kept serving
+    the transcript AND accepted NEW attachment uploads — which also fired a
+    bell + push to a counterparty who could no longer open that room.
+
+    Reproduced live before the fix (isolated backend, both real participants,
+    deal status forced to 'cancelled'): GET messages 200, GET attachments 200,
+    POST attachments 200 (new row created), POST read 200 — against 403 on
+    every legacy-door equivalent. No cross-account leak (outsiders and guests
+    were 403 on both doors in every state), hence P1 and not P0.
+
+    The policy itself is not ambiguous — backend/tests/test_deal_rooms.py
+    already asserts that a cancelled deal removes the room from my_rooms()
+    and makes send_message 403. This helper stops the second door from
+    contradicting it. Callers check participation FIRST, so an outsider still
+    gets "not a participant" and never learns deal-state detail.
+    """
+    from api.chat import _assert_chat_is_accepted
+
+    with get_conn() as c:
+        room = c.execute(
+            "SELECT participant_1, participant_2, cargo_id, trip_id "
+            "FROM chat_rooms WHERE id = ?",
+            (conversation_id,),
+        ).fetchone()
+    if not room:
+        raise HTTPException(status_code=404, detail="Беседа не найдена")
+    partner = (
+        room["participant_2"] if room["participant_1"] == user_id
+        else room["participant_1"]
+    )
+    _assert_chat_is_accepted(
+        user_id, partner, room_id=conversation_id,
+        cargo_id=room["cargo_id"], trip_id=room["trip_id"],
+    )
 
 
 def _ensure_attachment_columns() -> None:
@@ -144,7 +191,12 @@ def _sign_attachment(att: dict | None):
     if not isinstance(att, dict):
         return att
     if att.get("url"):
-        return {**att, "url": file_signing.sign(att["url"])}
+        url = file_signing.sign(att["url"])
+        # Имя UUID нужно хранилищу; получатель скачивает исходное имя документа.
+        if (url and att.get("kind") == "document" and att.get("original_name")
+                and storage_service.is_private_remote_ref(att["url"])):
+            url += ("&" if "?" in url else "?") + urlencode({"download": att["original_name"]})
+        return {**att, "url": url}
     return att
 
 
@@ -163,6 +215,7 @@ def conversation_messages(conversation_id: str, limit: int = 100, offset: int = 
         raise HTTPException(status_code=404, detail="Беседа не найдена")
     if not dr.is_participant(conversation_id, user["id"]):
         raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
+    _assert_deal_room_open(conversation_id, user["id"])
     msgs = dr.get_messages(conversation_id, limit, offset)
     for m in msgs:
         if m.get("photo_url"):
@@ -176,6 +229,7 @@ def conversation_read(conversation_id: str, user=Depends(require_level(1))):
         raise HTTPException(status_code=404, detail="Беседа не найдена")
     if not dr.is_participant(conversation_id, user["id"]):
         raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
+    _assert_deal_room_open(conversation_id, user["id"])
     receipts = dr.mark_read(conversation_id, user["id"])
     return {"ok": True, "new_receipts": receipts}
 
@@ -228,16 +282,17 @@ async def upload_attachment(
         raise HTTPException(status_code=404, detail="Беседа не найдена")
     if not dr.is_participant(conversation_id, user["id"]):
         raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
+    _assert_deal_room_open(conversation_id, user["id"])
 
     _ensure_attachment_columns()
     normalized_client_id = (client_upload_id or "").strip()[:120] or None
     existing = _existing_attachment(conversation_id, user["id"], normalized_client_id)
     if existing:
         if existing.get("url") and existing.get("upload_status") == "uploaded":
-            return {"attachment": _sign_attachment(existing), "deduplicated": True}
+            return {"attachment": await run_in_threadpool(_sign_attachment, existing), "deduplicated": True}
         raise HTTPException(status_code=409, detail="Файл уже загружается")
 
-    raw = await file.read()
+    raw = await file.read(_MAX_ATTACH_BYTES + 1)
     if not raw:
         raise HTTPException(status_code=400, detail="Пустой файл")
     if len(raw) > _MAX_ATTACH_BYTES:
@@ -273,11 +328,12 @@ async def upload_attachment(
         )
         if not created:
             if reservation.get("url") and reservation.get("upload_status") == "uploaded":
-                return {"attachment": _sign_attachment(reservation), "deduplicated": True}
+                return {"attachment": await run_in_threadpool(_sign_attachment, reservation), "deduplicated": True}
             raise HTTPException(status_code=409, detail="Файл уже загружается")
 
     try:
-        url = storage_service.save_file(
+        url = await run_in_threadpool(
+            storage_service.save_file,
             raw,
             "chat_attachments",
             ext=ext,
@@ -320,7 +376,7 @@ async def upload_attachment(
             row = c.execute("SELECT * FROM message_attachments WHERE id = ?", (att["id"],)).fetchone()
             att = dict(row) if row else att
 
-    att = _sign_attachment(att)
+    att = await run_in_threadpool(_sign_attachment, att)
 
     try:
         with get_conn() as c:
@@ -362,6 +418,8 @@ async def upload_attachment(
                     "recipient_id": recipient_id,
                     "event_key": event_key,
                     "event": "chat.attachment",
+                    "i18n_event": "chat_attachment" if resolved_kind == "document" else "chat_photo",
+                    "i18n_params": {"filename": original_name} if resolved_kind == "document" else {},
                 },
             )
     except Exception as exc:
@@ -376,6 +434,7 @@ def list_conversation_attachments(conversation_id: str, user=Depends(require_lev
         raise HTTPException(status_code=404, detail="Беседа не найдена")
     if not dr.is_participant(conversation_id, user["id"]):
         raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
+    _assert_deal_room_open(conversation_id, user["id"])
     _ensure_attachment_columns()
     atts = dr.list_attachments(conversation_id)
     return {"attachments": [_sign_attachment(a) for a in atts]}

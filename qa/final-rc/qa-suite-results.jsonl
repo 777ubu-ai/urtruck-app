@@ -1,0 +1,10 @@
+{"suite":"backend","status":"BLOCKED","reason":"pytest module unavailable in system Python"}
+{"suite":"frontend","status":"PASS","result":"557/557"}
+{"suite":"physical_android","status":"BLOCKED","reason":"guest smoke only; no QA identities"}
+{"suite":"auth","status":"BLOCKED","reason":"external QA auth credentials unavailable"}
+{"suite":"deals","status":"BLOCKED","reason":"authenticated two-phone FSM not run"}
+{"suite":"chat","status":"BLOCKED","reason":"authenticated deal room unavailable"}
+{"suite":"gps","status":"BLOCKED","reason":"active authenticated trip/router credential unavailable"}
+{"suite":"push","status":"BLOCKED","reason":"safe QA push credentials unavailable"}
+{"suite":"border","status":"PASS","result":"HTTP 200; 51 checkpoints/6 groups; unique IDs 51; duplicate names 0"}
+{"suite":"localization","status":"PASS","result":"RU/EN/KK/ZH parity"}

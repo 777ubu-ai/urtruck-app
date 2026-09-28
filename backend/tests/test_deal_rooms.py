@@ -88,6 +88,27 @@ def test_message_sync_both_directions():
     assert owner_view == driver_view    # одна и та же история
 
 
+@pytest.mark.parametrize("text,is_voice,event", [
+    (None, False, "chat_photo"),
+    (None, True, "chat_voice"),
+    ("Invoice 7800 USD", False, None),
+])
+def test_media_push_localizes_only_system_text(monkeypatch, text, is_voice, event):
+    from api import chat
+    o, d, cargo = (uuid.uuid4().hex for _ in range(3))
+    _mk_users(o, d)
+    room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
+    sent = []
+    monkeypatch.setattr(chat, "send_to_user", lambda *a, **kw: sent.append((a, kw)))
+    ref = chat.storage.LOCAL_PUBLIC_BASE + "/chat_photos/qa.jpg"
+    send_message(SendMessageIn(room_id=room, photo_url=ref, text=text, is_voice=is_voice), user=_u(o))
+    assert len(sent) == 1
+    assert sent[0][1]["data"].get("i18n_event") == event
+    if text:
+        assert sent[0][0][2] == text
+
+
 def test_received_deal_keeps_room_visible_and_chat_usable_until_completion():
     o, d = "own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6]
     cargo = "cg_" + uuid.uuid4().hex[:6]

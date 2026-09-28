@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS bids (
   bidder_id TEXT NOT NULL,
   bidder_name TEXT,
   bidder_phone TEXT,
+  vehicle_id TEXT,                     -- машина водителя для ставки на груз
   amount INTEGER NOT NULL,            -- предложенная цена $
   message TEXT,
   status TEXT DEFAULT 'pending',      -- pending | accepted | rejected | cancelled | countered

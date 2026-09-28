@@ -25,24 +25,22 @@ import DatePicker from '../components/DatePicker';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
-import BellBadge from '../components/ui/v1/BellBadge';
 import RootHeader from '../components/ui/v1/RootHeader';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import CompactFilterChip from '../components/ui/v1/CompactFilterChip';
 import CountryFlag from '../components/ui/v1/CountryFlag';
-import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
-import { SHIPPER_CERAMIC } from '../theme/designV1Palette';
+import { LIGHT as V1_LIGHT } from '../theme/designV1Palette';
 
 // Canonical driver accent from the designV1 palette (identical value in
 // DARK.driver) — no local hardcoded green.
-const ACCENT = SHIPPER_CERAMIC.active;
-const PAGE_BG = SHIPPER_CERAMIC.bg;
-const SURFACE = SHIPPER_CERAMIC.surface;
-const TEXT = SHIPPER_CERAMIC.text;
-const TEXT_SECONDARY = SHIPPER_CERAMIC.textMuted;
-const TEXT_MUTED = SHIPPER_CERAMIC.textDim;
-const BORDER = SHIPPER_CERAMIC.border;
+const ACCENT = V1_LIGHT.driver;
+const PAGE_BG = '#F7F9F7';
+const SURFACE = '#FFFFFF';
+const TEXT = '#17221E';
+const TEXT_SECONDARY = '#606B66';
+const TEXT_MUTED = '#808A85';
+const BORDER = '#E5EAE7';
 
 const COPY = {
   RU: {
@@ -83,8 +81,8 @@ const feedPalette = (theme, isDark) => ({
   // Canonical driver accent: no local hardcoded green. cardActiveBorder is
   // #168759 in both themes; cardActive is the theme-aware soft surface
   // (#E8F6EF light / #203329 dark) for active chips and favorites.
-  accent: SHIPPER_CERAMIC.active,
-  accentSoft: SHIPPER_CERAMIC.activeSoft,
+  accent: theme.cardActiveBorder || '#168759',
+  accentSoft: theme.cardActive || '#E8F6EF',
   filterActive: isDark ? (theme.surfaceAlt || theme.card || theme.surface || SURFACE) : '#FAFDFC',
   favoriteBg: isDark ? (theme.surfaceAlt || theme.card || theme.surface || SURFACE) : '#F5FBF8',
 });
@@ -103,14 +101,13 @@ function TripCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
     <MarketplaceCard
       testID={`trip-card-${item.id}`}
       onPress={onPress}
-      variant="shipper"
       style={styles.cardSpacing}
       route={{
         from: display.from,
         to: display.to,
         fromFlag: item.fromCountry || null,
         toFlag: item.toCountry || null,
-        numberOfLines: 2,
+        numberOfLines: 1,
       }}
       price={display.price}
       priceMeta={copy.perTrip}
@@ -210,6 +207,8 @@ export default function FeedScreen({ navigation }) {
       const result = await marketAPI.listTrips({
         fromCity: dirFrom.trim() || '',
         toCity: dirTo.trim() || '',
+        fromCountry: dirFromCountry,
+        toCountry: dirToCountry,
         truckType: filterType || '',
         limit: pageLimit,
       });
@@ -436,11 +435,7 @@ export default function FeedScreen({ navigation }) {
       edges={['top']}
       testID="trip-feed-screen"
     >
-      <DriverRouteBackdrop />
-      <RootHeader ceramic navigation={navigation} role={role} testID="trip-feed-minimal-header" bellTestID="feed-notification-settings-btn" menuTestID="feed-menu-btn" onBellPress={async () => {
-            const ok = await requireLevel(LEVELS.PHONE, 'push_settings', role);
-            if (ok) navigation.navigate('PushFilter', { role });
-          }} />
+      <RootHeader navigation={navigation} role={role} testID="trip-feed-minimal-header" menuTestID="feed-menu-btn" />
 
       <FlatList
         style={[styles.list, { backgroundColor: colors.pageBg }]}
@@ -519,6 +514,7 @@ export default function FeedScreen({ navigation }) {
         visible={activeFilter === 'date'}
         onClose={() => setActiveFilter(null)}
         title={t('filter_date')}
+        testID="filter-date-sheet"
       >
         <Text style={[styles.sheetLabel, { color: colors.textMuted }]}>{t('filter_date_from')}</Text>
         <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('date_placeholder')} />
@@ -531,7 +527,7 @@ export default function FeedScreen({ navigation }) {
           >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>
@@ -541,6 +537,7 @@ export default function FeedScreen({ navigation }) {
         visible={activeFilter === 'body'}
         onClose={() => setActiveFilter(null)}
         title={t('filter_body')}
+        testID="filter-body-sheet"
       >
         <View style={styles.bodyGrid}>
           <TouchableOpacity
@@ -590,7 +587,7 @@ export default function FeedScreen({ navigation }) {
           >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>
@@ -600,6 +597,7 @@ export default function FeedScreen({ navigation }) {
         visible={activeFilter === 'price'}
         onClose={() => setActiveFilter(null)}
         title={t('filter_price')}
+        testID="filter-price-sheet"
       >
         {[
           ['newest', t('filter_newest')],
@@ -634,7 +632,7 @@ export default function FeedScreen({ navigation }) {
           >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>

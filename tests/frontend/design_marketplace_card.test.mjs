@@ -27,21 +27,28 @@ const baseProps = {
   onPress: () => {},
   route: { from: 'Санкт-Петербург', to: 'Усть-Каменогорск', fromFlag: 'RU', toFlag: 'KZ', numberOfLines: 1 },
   price: '450 000 USD',
+  priceTestID: 'marketplace-card-price',
   priceMeta: '12 сен',
   meta: ['Тент · 20 т · 86 м³'],
   description: 'Стройматериалы в коробках',
   bookmark: { saved: false, onToggle: () => {}, testID: 'marketplace-card-bookmark', accessibilityLabel: 'В избранное' },
 };
 
-test('compact card keeps route and right-aligned price as siblings without absolute layout', () => {
+test('compact card gives the route a full top row and keeps price in a lower narrow rail', () => {
   const tree = MarketplaceCard(baseProps);
   const absolute = walk(tree).filter((el) => flatten(el.props?.style).position === 'absolute');
   assert.equal(absolute.length, 0);
-  const priceColumn = walk(tree).find((el) => flatten(el.props?.style).width === 108);
-  assert.ok(priceColumn, 'fixed right price rail exists');
+  const topRow = walk(tree).find((el) => flatten(el.props?.style).alignItems === 'flex-start');
+  assert.ok(topRow);
+  assert.ok(walk(topRow).some((el) => el.type === RouteLine), 'route owns the top row');
+  assert.equal(walk(topRow).some((el) => el.props?.testID === 'marketplace-card-price'), false);
+  const priceColumn = walk(tree).find((el) => flatten(el.props?.style).width === 100);
+  assert.ok(priceColumn, 'lower narrow price rail exists');
   assert.equal(flatten(priceColumn.props.style).alignItems, 'flex-end');
-  const card = walk(tree).find((el) => flatten(el.props?.style).minHeight === 108);
-  assert.ok(card, 'card is dense enough for five listings');
+  const price = walk(tree).find((el) => el.props?.testID === 'marketplace-card-price');
+  assert.equal(flatten(price.props.style).alignSelf, 'stretch', 'price label fills its fixed rail on Android');
+  const card = walk(tree).find((el) => flatten(el.props?.style).minHeight === 84);
+  assert.ok(card, 'card stays within the compact 82–88dp target');
 });
 
 test('route passes both ISO endpoints to shared CountryFlag renderer', () => {

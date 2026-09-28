@@ -8,13 +8,52 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { supabase } from '../../src/config/supabase.js';
 import {
+  __getAuthSessionCalls,
+  __resetAuthSessionMock,
+} from 'expo-web-browser';
+import {
   completeSocialAuth,
+  startSocialAuth,
   setPendingProvider,
   clearPendingProvider,
   AUTH_ERROR_CODES,
 } from '../../src/utils/socialAuth.js';
 
 const CALLBACK_URL = 'https://urtruck.kz/?social_auth=1&code=test-pkce-code-123';
+
+test('Google OAuth opens without waiting for the provider-settings preflight', async (t) => {
+  const originalFetch = global.fetch;
+  const originalSignIn = supabase.auth.signInWithOAuth;
+  let fetchCalls = 0;
+  let signInCalls = 0;
+
+  global.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error('Google start must not call provider settings');
+  };
+  supabase.auth.signInWithOAuth = async ({ provider }) => {
+    signInCalls += 1;
+    assert.equal(provider, 'google');
+    return { data: { url: 'https://accounts.google.com/o/oauth2/v2/auth' }, error: null };
+  };
+
+  __resetAuthSessionMock();
+  t.after(async () => {
+    global.fetch = originalFetch;
+    supabase.auth.signInWithOAuth = originalSignIn;
+    __resetAuthSessionMock();
+    await clearPendingProvider();
+  });
+
+  const result = await startSocialAuth('google');
+  assert.equal(fetchCalls, 0, 'Google must not wait on /auth/v1/settings');
+  assert.equal(signInCalls, 1, 'Google OAuth must start exactly once');
+  assert.equal(result.callbackUrl, 'urtruck://auth-social?code=test-pkce-code-123');
+  assert.deepEqual(__getAuthSessionCalls(), [{
+    url: 'https://accounts.google.com/o/oauth2/v2/auth',
+    redirectUrl: 'urtruck://auth-social',
+  }], 'native OAuth must use a tracked auth session and return its callback URL');
+});
 
 function withMocks(fn) {
   return async (t) => {

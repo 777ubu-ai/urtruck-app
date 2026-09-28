@@ -1,5 +1,7 @@
 import os
 import sys
+import io
+import zipfile
 from pathlib import Path
 
 DB_PATH = "/tmp/urtruck_test_deal_attachment_upload.db"
@@ -43,12 +45,14 @@ def test_pdf_magic_bytes_are_authoritative():
 
 def test_excel_and_csv_magic_bytes_are_authoritative():
     assert deal_room._sniff_mime(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 32) == "application/vnd.ms-excel"
-    xlsx = (
-        b"PK\x03\x04"
-        + b"[Content_Types].xml"
-        + b"\x00" * 32
-        + b"xl/workbook.xml"
-    )
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_STORED) as archive:
+        # Put more than the old 200 KB sniff window before the workbook.  The
+        # central directory still identifies this as a valid XLSX package.
+        archive.writestr("xl/worksheets/sheet1.xml", b"x" * 300_000)
+        archive.writestr("[Content_Types].xml", b"<Types/>")
+        archive.writestr("xl/workbook.xml", b"<workbook/>")
+    xlsx = payload.getvalue()
     assert deal_room._sniff_mime(xlsx) == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert deal_room._sniff_mime("name,price\nA,10\n".encode("utf-8")) == "text/csv"
 
@@ -58,6 +62,24 @@ def test_unicode_filename_is_preserved_without_paths_or_controls():
     assert result == "Платежное_поручение_№10 (2).pdf"
     assert "/" not in result
     assert "\x00" not in result
+
+
+def test_private_document_download_preserves_name_and_signature(monkeypatch):
+    from urllib.parse import urlsplit, parse_qs
+    monkeypatch.setattr(storage_service, "SUPABASE_BUCKET", "private")
+    monkeypatch.setattr(deal_room.file_signing, "sign", lambda ref: "https://storage.example/file.pdf?token=existing-signature")
+    original = {"url": "supabase://private/uuid.pdf", "kind": "document", "original_name": "Накладная №17 & invoice.pdf"}
+    signed = deal_room._sign_attachment(original)
+    params = parse_qs(urlsplit(signed["url"]).query)
+    assert params == {"token": ["existing-signature"], "download": [original["original_name"]]}
+    assert original["url"] == "supabase://private/uuid.pdf"
+
+
+def test_photo_stays_viewable_without_forced_download(monkeypatch):
+    monkeypatch.setattr(storage_service, "SUPABASE_BUCKET", "private")
+    monkeypatch.setattr(deal_room.file_signing, "sign", lambda ref: "https://storage.example/photo.jpg?token=test")
+    signed = deal_room._sign_attachment({"url": "supabase://private/photo.jpg", "kind": "photo", "original_name": "photo.jpg"})
+    assert "download=" not in signed["url"]
 
 
 def test_retry_reservation_is_atomic_and_deduplicated():

@@ -1,0 +1,18 @@
+[
+  {
+    "expected": "ru",
+    "elapsed_s": 22.73,
+    "transcript_text": "Здравствуйте, груз готов к отправке из Алматы, стоимость перевозки 7800 долларов. Подтвердите получение документов.",
+    "provider": "local_whisper",
+    "source_lang": "ru",
+    "usage": null
+  },
+  {
+    "expected": "zh",
+    "elapsed_s": 4.16,
+    "transcript_text": "您好,貨物已經準備好從義烏發往阿拉木圖,運費是7800美元,請確認收到運輸文件。",
+    "provider": "local_whisper",
+    "source_lang": "zh",
+    "usage": null
+  }
+]

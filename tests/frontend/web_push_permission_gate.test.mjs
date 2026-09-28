@@ -18,10 +18,10 @@ test('authenticated web UI has explicit push permission CTA', () => {
   assert.match(app, /<PushPermissionBanner enabled=\{hasToken\} \/>/);
 });
 
-test('native Android notifications use a dedicated audible channel', () => {
+test('native Android notifications use a dedicated system-sound channel', () => {
   assert.match(push, /NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2'/);
   assert.match(push, /setNotificationChannelAsync\(NATIVE_PUSH_CHANNEL_ID/);
   assert.match(push, /importance:\s*Notifications\.AndroidImportance\.MAX/);
-  assert.match(push, /sound:\s*'default'/);
+  assert.doesNotMatch(push, /sound:\s*['\"]default['\"]/);
   assert.match(push, /vibrationPattern:\s*\[0,\s*250,\s*250,\s*250\]/);
 });

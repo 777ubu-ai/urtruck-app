@@ -6,7 +6,9 @@ profile PRO-documents, chat photo/voice and deal-room attachments. Callers
 own the HTTP layer; this module raises UploadValidationError with a
 status_code (400/413/415) so endpoints can translate it 1:1.
 """
+import io
 import re
+import zipfile
 from typing import Optional, Tuple
 
 # ── Size limits ────────────────────────────────────────────────────────────
@@ -143,13 +145,21 @@ def sniff_audio_mime(raw: bytes) -> Optional[Tuple[str, str]]:
 def _looks_like_xlsx(raw: bytes) -> bool:
     if raw[:4] != _ZIP_SIG:
         return False
-    # A zip is xlsx only if it actually contains the OOXML spreadsheet parts,
-    # not just because it starts with PK (docx/pptx/plain .zip share that
-    # signature). Require BOTH the package manifest and a workbook part —
-    # either alone is not enough to rule out a same-signature docx/pptx.
-    head = raw[:8192]
-    body = raw[:200000]
-    return b"[Content_Types].xml" in head and (b"xl/workbook.xml" in body or b"xl/" in body)
+    # ZIP local headers are not guaranteed to place workbook.xml in the first
+    # 200 KB.  Real multi-megabyte XLSX files commonly keep the authoritative
+    # central directory at the end, so prefix scanning rejected valid cargo
+    # sheets.  Inspect names only (never extract/decompress file contents),
+    # keeping the operation bounded by the 12 MB upload ceiling and an entry
+    # count guard against pathological archives.
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            entries = archive.infolist()
+            if len(entries) > 4096:
+                return False
+            names = {entry.filename.replace("\\", "/").lstrip("/") for entry in entries}
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError, ValueError):
+        return False
+    return "[Content_Types].xml" in names and "xl/workbook.xml" in names
 
 
 def _looks_like_text(raw: bytes) -> bool:

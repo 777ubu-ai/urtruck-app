@@ -1,5 +1,6 @@
 """InApp Notifications API — история уведомлений с колокольчиком."""
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -58,9 +59,9 @@ _init()
 
 
 def create_notification(user_id: str, type: str, title: str, body: str = "", icon: str = "🔔",
-                        url: str = "/", event_key: str = None):
+                        url: str = "/", event_key: str = None, *, conn=None):
     """Create an in-app notification; event_key makes repeatable jobs idempotent."""
-    with get_conn() as c:
+    with (nullcontext(conn) if conn is not None else get_conn()) as c:
         if event_key:
             c.execute(
                 "INSERT INTO notifications (user_id, type, title, body, icon, url, event_key) "

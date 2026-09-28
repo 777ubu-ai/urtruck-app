@@ -136,3 +136,24 @@ if __name__ == "__main__":
             fails += 1; print(f"  ❌ {fn.__name__}: {e}")
     print(f"\n{'ВСЕ ЗЕЛЁНЫЕ' if not fails else str(fails)+' FAIL'}")
     sys.exit(1 if fails else 0)
+
+
+def test_preview_sender_matches_latest_message_even_with_equal_timestamps():
+    cargo_id, room_id = _seed_deal_with_message(None)
+    with get_conn() as c:
+        for sender, text in [('system', '🚛 Рейс начался'), (DRIVER_ID, '🚛 Рейс начался')]:
+            c.execute("INSERT INTO chat_messages (room_id, sender_id, text, created_at) VALUES (?,?,?,?)",
+                      (room_id, sender, text, '2026-09-17 12:00:00'))
+    for uid, role in [(CLIENT_ID, 'client'), (DRIVER_ID, 'driver')]:
+        as_user(uid, role)
+        response = client.get('/api/v1/market/my')
+        assert response.status_code == 200, response.text
+        deal = next(d for d in response.json()['my_deals'] if d['cargo_id'] == cargo_id)
+        assert deal['last_message'] == '🚛 Рейс начался'
+        assert deal['last_message_sender_id'] == DRIVER_ID
+    with get_conn() as c:
+        c.execute("INSERT INTO chat_messages (room_id, sender_id, text, created_at) VALUES (?,?,?,?)",
+                  (room_id, 'system', '🚛 Рейс начался', '2026-09-17 12:00:00'))
+    as_user(CLIENT_ID)
+    deal = next(d for d in client.get('/api/v1/market/my').json()['my_deals'] if d['cargo_id'] == cargo_id)
+    assert deal['last_message_sender_id'] == 'system'

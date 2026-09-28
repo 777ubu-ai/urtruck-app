@@ -329,3 +329,76 @@ def test_10_event_key_deduplicates_per_user_only():
         b = c.execute("SELECT COUNT(*) c FROM notifications WHERE user_id='u-b' AND event_key='same-key'").fetchone()["c"]
     assert a == 1
     assert b == 1
+
+
+def test_11_border_vehicle_upgrade_preserves_legacy_rows(tmp_path):
+    """Upgrade the actual pre-CGR tables in an isolated production-like DB."""
+    import subprocess
+
+    db_path = tmp_path / "legacy-border-vehicle.db"
+    script = r'''
+from database import db, registration_dal
+from database.db import get_conn
+
+db.init_db()
+registration_dal.init_registration_schema()
+import api.marketplace as marketplace
+
+with get_conn() as c:
+    for table, column in (
+        ("trips", "vehicle_id"),
+        ("bids", "vehicle_id"),
+        ("deals", "vehicle_id"),
+        ("deals", "vehicle_plate_snapshot"),
+        ("deals", "vehicle_country_snapshot"),
+        ("deals", "vehicle_make_snapshot"),
+        ("deals", "vehicle_model_snapshot"),
+        ("drivers_registration", "trailer_plate"),
+    ):
+        c.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+    c.execute("INSERT INTO trips(id,driver_id,from_city,to_city) VALUES('legacy-trip','driver-1','A','B')")
+    c.execute("INSERT INTO bids(id,trip_id,bidder_id,amount) VALUES('legacy-bid','legacy-trip','driver-1',100)")
+    c.execute("INSERT INTO deals(id,trip_id,bid_id,shipper_id,driver_id,from_city,to_city,amount) VALUES('legacy-deal','legacy-trip','legacy-bid','shipper-1','driver-1','A','B',100)")
+    c.execute("INSERT INTO drivers_registration(id,phone,vehicle_plate) VALUES('driver-1','legacy-phone','123ABC02')")
+    c.commit()
+
+registration_dal.init_registration_schema()
+marketplace._init()
+registration_dal.init_registration_schema()
+marketplace._init()
+
+required = {
+    "trips": {"vehicle_id"},
+    "bids": {"vehicle_id"},
+    "deals": {"vehicle_id", "vehicle_plate_snapshot", "vehicle_country_snapshot", "vehicle_make_snapshot", "vehicle_model_snapshot"},
+    "drivers_registration": {"trailer_plate"},
+}
+with get_conn() as c:
+    for table, expected in required.items():
+        actual = {row["name"] for row in c.execute(f"PRAGMA table_info({table})")}
+        assert expected <= actual, (table, expected - actual)
+    assert c.execute("SELECT COUNT(*) AS n FROM trips WHERE id='legacy-trip'").fetchone()["n"] == 1
+    assert c.execute("SELECT COUNT(*) AS n FROM bids WHERE id='legacy-bid'").fetchone()["n"] == 1
+    assert c.execute("SELECT COUNT(*) AS n FROM deals WHERE id='legacy-deal'").fetchone()["n"] == 1
+    row = c.execute("SELECT vehicle_plate, trailer_plate FROM drivers_registration WHERE id='driver-1'").fetchone()
+    assert row["vehicle_plate"] == "123ABC02"
+    assert row["trailer_plate"] is None
+'''
+    env = os.environ.copy()
+    env.update({
+        "DB_PATH": str(db_path),
+        "APP_ENV": "test",
+        "URTRUCK_ENV": "test",
+        "ENV": "test",
+        "CGR_IIN_SALT": "production-like-border-migration-test-salt",
+        "PYTHONPATH": str(ROOT.parent) + os.pathsep + str(ROOT),
+    })
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr

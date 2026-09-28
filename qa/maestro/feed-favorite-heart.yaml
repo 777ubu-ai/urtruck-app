@@ -34,9 +34,7 @@ env:
 - waitForAnimationToEnd
 - takeScreenshot: FAV_02_heart_tapped
 # Профиль → «Избранное»: перевозчик ДОЛЖЕН присутствовать (не пусто)
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - scrollUntilVisible:
     element:
       id: "profile-favorites"

@@ -6,9 +6,16 @@
 import React from "react";
 import { View, Text, StyleSheet, findNodeHandle } from "react-native";
 import { routingAPI } from "../utils/routingAPI";
+import { routeProgress } from "../utils/routeProgress";
+import { routeMetricNumbers } from "../utils/routeMetricNumbers";
 import { useI18n } from "../utils/useI18n";
 
 const asPoint = (p) => {
+  const rawLat = Array.isArray(p) ? p[0] : p?.lat ?? p?.latitude;
+  const rawLon = Array.isArray(p) ? p[1] : p?.lng ?? p?.lng ?? p?.longitude;
+  if (rawLat == null || rawLon == null || String(rawLat).trim() === '' || String(rawLon).trim() === ''
+      || !Number.isFinite(Number(rawLat)) || !Number.isFinite(Number(rawLon))
+      || Math.abs(Number(rawLat)) > 90 || Math.abs(Number(rawLon)) > 180) return null;
   if (Array.isArray(p) && p.length >= 2) {
     const lat = Number(p[0]);
     const lng = Number(p[1]);
@@ -32,7 +39,7 @@ const routeKey = (points) =>
 // Russian and leaked into ZH/EN/KK UI. Uses existing km_short / track_* keys.
 const distanceTextFromMeters = (value, t) => {
   const meters = Number(value);
-  if (!Number.isFinite(meters) || meters <= 0) return null;
+  if (value == null || !Number.isFinite(meters) || meters < 0) return null;
   const km = meters / 1000;
   const rounded = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
   return `${String(rounded).replace(".", ",")} ${t('km_short')}`;
@@ -103,6 +110,7 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
   const { t, lang } = useI18n();
   const hostRef = React.useRef(null);
   const mapRef = React.useRef(null);
+  const truckMarkerRef = React.useRef(null);
   const retryTimerRef = React.useRef(null);
   const routeRequestRef = React.useRef(0);
   const [status, setStatus] = React.useState("loading");
@@ -168,7 +176,7 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
               {
                 center: initial,
                 zoom: points.length > 1 ? 5 : 10,
-                controls: ["zoomControl", "fullscreenControl"],
+                controls: [],
               },
               { suppressMapOpenBlock: true },
             );
@@ -213,14 +221,14 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
     let cancelled = false;
     const requestId = ++routeRequestRef.current;
     map.geoObjects.removeAll();
+    truckMarkerRef.current = null;
     onRouteSummary?.(null);
     setFallbackActive(false);
 
     const destination = plannedPoints.length
       ? plannedPoints[plannedPoints.length - 1]
       : null;
-    const routingPoints =
-      livePoint && destination ? [livePoint, destination] : plannedPoints;
+    const routingPoints = plannedPoints;
 
     const emitSummary = (summary) => {
       if (cancelled || requestId !== routeRequestRef.current) return;
@@ -244,18 +252,6 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
           ),
         );
       });
-      if (livePoint) {
-        map.geoObjects.add(
-          new api.Placemark(
-            livePoint,
-            {
-              iconContent: "🚚",
-              hintContent: t('track_truck_marker'),
-            },
-            { preset: "islands#greenStretchyIcon", zIndex: 1000 },
-          ),
-        );
-      }
     };
 
     const fitBounds = () => {
@@ -280,17 +276,8 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
       );
       addMarkers();
       fitBounds();
-      const distanceText = distanceTextFromMeters(serverRoute?.distance_m, t);
-      const durationText = durationTextFromSeconds(serverRoute?.duration_s, t);
-      if (distanceText && durationText) {
-        emitSummary({
-          distanceText,
-          durationText,
-          blocked: false,
-          isRemaining: Boolean(livePoint),
-            provider: serverRoute?.provider || 'server-road',
-        });
-      }
+      // Живые метрики обновляются отдельным effect, без перерисовки
+      // дороги и сброса масштаба при каждом GPS callback.
       return () => {
         cancelled = true;
       };
@@ -354,7 +341,8 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
             distanceText: String(distance.text),
             durationText: String(duration.text),
             blocked: Boolean(activeRoute?.properties?.get?.("blocked")),
-            isRemaining: Boolean(livePoint),
+            // MultiRoute построен по plannedPoints: это полный маршрут.
+            isRemaining: false,
             provider: "yandex-js",
           });
         } catch {
@@ -375,15 +363,67 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
     // `lang` redraws markers/summary in the newly selected language.
   }, [
     status,
-    pointKey(livePoint),
     JSON.stringify(plannedPoints),
     serverRoute?.routeKey,
+    serverRoute?.geometry,
     serverRoute?.distance_m,
     serverRoute?.duration_s,
     onRouteSummary,
     lang,
     t,
   ]);
+
+  React.useEffect(() => {
+    if (status !== 'ready') return;
+    const geometry = serverRoute?.geometry;
+    if (!Array.isArray(geometry) || geometry.length < 2) return;
+    const progress = routeProgress(geometry, livePoint);
+    const numbers = routeMetricNumbers(serverRoute, progress);
+    const totalDistanceText = distanceTextFromMeters(numbers.totalMeters, t);
+    const totalDurationText = durationTextFromSeconds(numbers.totalDurationSeconds, t);
+    onRouteSummary?.(totalDistanceText ? {
+      distanceText: numbers.isRemaining ? distanceTextFromMeters(numbers.remainingMeters, t) : totalDistanceText,
+      durationText: totalDurationText,
+      totalDistanceText,
+      passedDistanceText: distanceTextFromMeters(numbers.passedMeters, t),
+      totalDurationText,
+      drivingDurationText: durationTextFromSeconds(numbers.drivingDurationSeconds, t),
+      progressPercent: numbers.progressPercent,
+      progressReason: progress.reason,
+      blocked: false,
+      isRemaining: numbers.isRemaining,
+      provider: serverRoute?.provider || 'server-road',
+    } : null);
+  }, [status, serverRoute, pointKey(livePoint), onRouteSummary, lang, t]);
+
+  React.useEffect(() => {
+    const map = mapRef.current;
+    const api = globalThis.ymaps;
+    if (status !== "ready" || !map || !api) return undefined;
+    if (!livePoint) {
+      if (truckMarkerRef.current) {
+        map.geoObjects.remove(truckMarkerRef.current);
+        truckMarkerRef.current = null;
+      }
+      return undefined;
+    }
+    try {
+      if (!truckMarkerRef.current) {
+        truckMarkerRef.current = new api.Placemark(
+          livePoint,
+          { iconContent: "🚚", hintContent: t('track_truck_marker') },
+          { preset: "islands#greenStretchyIcon", zIndex: 1000 },
+        );
+        map.geoObjects.add(truckMarkerRef.current);
+      } else {
+        truckMarkerRef.current.geometry.setCoordinates(livePoint);
+        truckMarkerRef.current.properties.set('hintContent', t('track_truck_marker'));
+      }
+    } catch (error) {
+      console.error('[TruckMap/Yandex] vehicle marker update failed', error);
+    }
+    return undefined;
+  }, [status, pointKey(livePoint), lang, t]);
 
   return (
     <View style={s.shell}>
@@ -464,10 +504,7 @@ export default function TruckMap({
   const destination = plannedPoints.length
     ? plannedPoints[plannedPoints.length - 1]
     : null;
-  const effectivePoints = React.useMemo(
-    () => (livePoint && destination ? [livePoint, destination] : plannedPoints),
-    [pointKey(livePoint), JSON.stringify(plannedPoints)],
-  );
+  const effectivePoints = React.useMemo(() => plannedPoints, [JSON.stringify(plannedPoints)]);
   const effectiveKey = routeKey(effectivePoints);
   const vehicleKey = vehicle ? JSON.stringify(vehicle) : '';
   const [serverRoute, setServerRoute] = React.useState(null);
@@ -483,6 +520,7 @@ export default function TruckMap({
       };
     }
     setServerLoading(true);
+    setServerRoute(null);
     routingAPI.roadRoute(effectivePoints, vehicle).then((result) => {
       if (cancelled) return;
       setServerLoading(false);
@@ -491,7 +529,7 @@ export default function TruckMap({
         Array.isArray(result.geometry) &&
         result.geometry.length >= 2
       ) {
-        setServerRoute({ ...result, routeKey: effectiveKey });
+        setServerRoute({ ...result, routeKey: effectiveKey, vehicleKey });
       } else {
         setServerRoute(null);
       }
@@ -501,7 +539,7 @@ export default function TruckMap({
     };
   }, [effectiveKey, externalRoute, vehicleKey]);
 
-  const resolvedRoute = externalRoute || serverRoute;
+  const resolvedRoute = externalRoute || (serverRoute?.routeKey === effectiveKey && serverRoute?.vehicleKey === vehicleKey ? serverRoute : null);
 
   return (
     <View style={s.shell}>

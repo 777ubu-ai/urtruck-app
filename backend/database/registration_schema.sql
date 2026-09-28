@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS drivers_registration (
   vehicle_type TEXT,                   -- car | van | truck | tent | ref | platform
   vehicle_capacity_kg INTEGER,
   vehicle_plate TEXT,
+  trailer_plate TEXT,                  -- госномер прицепа отдельно от тягача
   vehicle_brand TEXT,
   vehicle_year INTEGER,
   vehicle_vin TEXT,

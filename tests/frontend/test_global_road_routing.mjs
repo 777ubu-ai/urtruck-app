@@ -14,7 +14,7 @@ test('every deal route requests authenticated server road geometry, including Al
   // получает vehicle (partial VehicleSpec из уже собранной грузоподъёмности
   // рейса/груза) — второй аргумент, а не пустой вызов.
   assert.match(webMap, /routingAPI\.roadRoute\(effectivePoints, vehicle\)/);
-  assert.match(nativeMap, /routingAPI\.roadRoute\(effectivePairs, vehicle\)/);
+  assert.match(nativeMap, /routingAPI\.roadRoute\(planned\.map\(toPair\), vehicle, \{ signal: controller.signal \}\)/);
   assert.match(webMap, /truck-map-road-routing-loading/);
   // 2026-08-20 (#254): the label moved from a Russian literal to an i18n key
   // (it leaked Russian into ZH/EN/KK). Intent is unchanged — the dashed

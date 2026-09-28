@@ -2,7 +2,7 @@
   "expo": {
     "name": "UrTruck",
     "slug": "urtruck",
-    "version": "1.0.8",
+    "version": "1.0.9",
     "orientation": "portrait",
     "scheme": "urtruck",
     "platforms": [
@@ -11,11 +11,6 @@
       "web"
     ],
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash/urtruck-splash.png",
-      "backgroundColor": "#070B14",
-      "resizeMode": "contain"
-    },
     "web": {
       "bundler": "metro",
       "output": "single",
@@ -24,13 +19,14 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.urtruck.app",
-      "buildNumber": "27",
+      "buildNumber": "73",
       "usesAppleSignIn": true,
       "associatedDomains": [
         "applinks:urtruck.kz"
       ],
       "infoPlist": {
         "NSMicrophoneUsageDescription": "UrTruck использует микрофон для записи голосовых сообщений в чате",
+        "NSMotionUsageDescription": "UrTruck использует данные движения устройства только во время активного рейса, чтобы надёжно отслеживать движение машины в фоне.",
         "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
         "NSPhotoLibraryUsageDescription": "UrTruck использует фото для аватара, груза и документов",
         "NSLocationWhenInUseUsageDescription": "UrTruck показывает грузоотправителю, где сейчас находится его груз во время перевозки",
@@ -59,6 +55,21 @@
               "scheme": "https",
               "host": "urtruck.kz",
               "pathPrefix": "/notifications"
+            },
+            {
+              "scheme": "https",
+              "host": "urtruck.kz",
+              "pathPrefix": "/cargos"
+            },
+            {
+              "scheme": "https",
+              "host": "urtruck.kz",
+              "pathPrefix": "/trips"
+            },
+            {
+              "scheme": "https",
+              "host": "urtruck.kz",
+              "pathPrefix": "/driver"
             }
           ],
           "category": [
@@ -87,8 +98,9 @@
     },
     "plugins": [
       "./plugins/withAndroidBackCompatibility",
+      "./plugins/withAndroidSingleFcmHandler",
       [
-        "expo-av",
+        "expo-audio",
         {
           "microphonePermission": "UrTruck использует микрофон для записи голосовых сообщений"
         }

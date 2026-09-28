@@ -5,12 +5,14 @@
 import sys
 import json
 import re
-from datetime import datetime, timedelta
+import time
+import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Header, UploadFile, File
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 
 from database.db import get_conn, new_id
@@ -68,6 +70,64 @@ def _maybe_user(authorization: Optional[str]) -> Optional[dict]:
         return None
 
 
+def _can_view_non_public_listing(c, *, table: str, listing_id: str, row: dict,
+                                 owner_field: str, caller: Optional[dict]) -> bool:
+    """Fail closed for direct IDs while preserving owner/deal access.
+
+    Public detail URLs may expose only active, feed-eligible listings. Owners
+    and participants of an existing deal may still open their historical
+    record, including after unpublish/completion. A stranger never gets a
+    confirmation that a private ID exists.
+    """
+    caller_id = caller.get("id") if caller else None
+    # Owners must always be able to reopen their own listing, including an
+    # active QA-marked record intentionally excluded from the public feed.
+    # Public hygiene is an audience filter, not an ownership access rule.
+    if caller_id and caller_id == row.get(owner_field):
+        return True
+
+    is_public = str(row.get("status") or "") == "active"
+    if is_public:
+        if table == "cargos":
+            return _public_cargo_ok(row)
+        departure = _parse_iso_date(row.get("departure"))
+        if _is_dirty_text(row.get("driver_name"), row.get("from_city"),
+                          row.get("to_city"), row.get("truck_type")):
+            return False
+        if departure and departure < (datetime.utcnow().date() - timedelta(days=2)):
+            return False
+        return True
+
+    caller_id = caller.get("id") if caller else None
+    if not caller_id:
+        return False
+    if caller_id == row.get(owner_field):
+        return True
+    deal = c.execute(
+        f"SELECT 1 FROM deals WHERE {table[:-1]}_id = ? "
+        "AND (shipper_id = ? OR driver_id = ?) "
+        "AND status <> 'cancelled' LIMIT 1",
+        (listing_id, caller_id, caller_id),
+    ).fetchone()
+    if deal:
+        return True
+    # A bidder must be able to reopen their own archived offer after the
+    # listing becomes taken/closed. DealsScreen deliberately keeps rejected
+    # bids in Archive; without this participant grant, tapping that row hit
+    # the non-public listing guard and rendered a misleading not-found screen.
+    # This reveals no extra contact data: get_cargo/get_trip still strip owner
+    # phone/contact fields for every non-owner caller. Strangers remain 404.
+    bid = c.execute(
+        f"SELECT 1 FROM bids WHERE {table[:-1]}_id = ? AND bidder_id = ? LIMIT 1",
+        (listing_id, caller_id),
+    ).fetchone()
+    return bool(bid)
+    try:
+        return _extract_driver(authorization)
+    except HTTPException:
+        return None
+
+
 # ═══ Public-feed hygiene ═══
 #
 # Tokens we never want surfacing in the public cargos/trips list. Pre-pilot
@@ -85,7 +145,7 @@ DIRTY_TOKENS = (
 # pickup_date — anything older than this with no pickup is treated as stale
 # pre-pilot leftover.
 PUBLIC_CUTOFF_DATE = "2026-05-01"
-QA_RECORD_MARKER = "[ar-"
+QA_RECORD_MARKERS = ("[ar-", "qa2p_")
 
 
 def _parse_iso_date(s):
@@ -217,16 +277,14 @@ def _deal_country_guard(cur_status: str, new_status: str, from_country: Optional
 def _is_dirty_text(*fields) -> bool:
     """Cheap substring match for moderation tokens. Case-insensitive, RU+EN.
 
-    QA agents tag their records with "[ar-<runid>]" markers and rely on the
-    public feed showing them during a run (cleanup removes them after). Treat
-    a row carrying that marker as *not* dirty, even if some other field
-    incidentally matches a dirty token (e.g. "QA" inside an agent name).
+    QA records use either "[ar-<runid>]" or the mobile "QA2P_" prefix.
+    On a non-production backend they must remain visible during a run;
+    production still treats them as dirty even though they contain "qa".
     """
     blob = " ".join(str(f or "") for f in fields).lower()
-    # QA records are visible only from an explicitly non-production backend.
-    # The old exception made QA runs against the default production URL leak
-    # fixtures into the ordinary user feed.
-    if QA_RECORD_MARKER in blob:
+    # QA fixtures are visible only on a non-production backend. Production
+    # keeps them hidden even when their text contains an allowed QA marker.
+    if any(marker in blob for marker in QA_RECORD_MARKERS):
         return bool(IS_PRODUCTION)
     return any(tok in blob for tok in DIRTY_TOKENS)
 
@@ -286,7 +344,15 @@ def _init():
             cols = {row["name"] for row in c.execute("PRAGMA table_info(trips)").fetchall()}
             if "vehicle_id" not in cols:
                 c.execute("ALTER TABLE trips ADD COLUMN vehicle_id TEXT")
-                c.commit()
+            bid_cols = {row["name"] for row in c.execute("PRAGMA table_info(bids)").fetchall()}
+            if "vehicle_id" not in bid_cols:
+                c.execute("ALTER TABLE bids ADD COLUMN vehicle_id TEXT")
+            deal_cols = {row["name"] for row in c.execute("PRAGMA table_info(deals)").fetchall()}
+            for _name in ("vehicle_id", "vehicle_plate_snapshot", "vehicle_country_snapshot",
+                          "vehicle_make_snapshot", "vehicle_model_snapshot"):
+                if _name not in deal_cols:
+                    c.execute(f"ALTER TABLE deals ADD COLUMN {_name} TEXT")
+            c.commit()
             dup = c.execute(
                 "SELECT bid_id, COUNT(*) n FROM deals WHERE bid_id IS NOT NULL "
                 "GROUP BY bid_id HAVING n > 1 LIMIT 1"
@@ -337,6 +403,49 @@ def _init():
                     c.commit()
         except Exception as e:
             print(f"[startup] deals.{_col} active-UNIQUE index migration skipped: {e}", flush=True)
+
+    # P1 (2026-09-19): ровно одна активная ставка одного перевозчика на
+    # один груз/рейс. Старые версии могли оставить несколько pending/countered
+    # строк (например, после повторного запроса при плохой сети). Сохраняем
+    # самую новую строку, старые переводим в terminal cancelled, затем
+    # закрываем гонку partial UNIQUE-индексом на уровне SQLite.
+    for _listing_col, _idx_name in (
+        ("cargo_id", "idx_bids_active_cargo_bidder_unique"),
+        ("trip_id", "idx_bids_active_trip_bidder_unique"),
+    ):
+        try:
+            with get_conn() as c:
+                c.execute(f"""
+                    UPDATE bids
+                    SET status='cancelled', updated_at=CURRENT_TIMESTAMP
+                    WHERE {_listing_col} IS NOT NULL
+                      AND status IN ('pending','countered')
+                      AND EXISTS (
+                        SELECT 1 FROM bids newer
+                        WHERE newer.{_listing_col}=bids.{_listing_col}
+                          AND newer.bidder_id=bids.bidder_id
+                          AND newer.status IN ('pending','countered')
+                          AND (
+                            COALESCE(NULLIF(newer.updated_at,''), newer.created_at) >
+                              COALESCE(NULLIF(bids.updated_at,''), bids.created_at)
+                            OR (
+                              COALESCE(NULLIF(newer.updated_at,''), newer.created_at) =
+                                COALESCE(NULLIF(bids.updated_at,''), bids.created_at)
+                              AND newer.id > bids.id
+                            )
+                          )
+                      )
+                """)
+                c.execute(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {_idx_name} "
+                    f"ON bids({_listing_col}, bidder_id) "
+                    f"WHERE {_listing_col} IS NOT NULL "
+                    f"AND status IN ('pending','countered')"
+                )
+                c.commit()
+        except Exception as e:
+            print(f"[startup] bids.{_listing_col} active-UNIQUE migration skipped: {e}", flush=True)
+
     # Часть 3 (история цены): таблица price_events + связь chat_messages.event_id.
     # Аддитивно и идемпотентно. Бэкфилл старых ставок НЕ делаем.
     with get_conn() as c:
@@ -419,6 +528,7 @@ def _init():
                 lng        REAL NOT NULL,
                 heading    REAL,
                 speed      REAL,
+                captured_at_ms INTEGER,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -427,6 +537,20 @@ def _init():
         # тогда приложение имеет право посылать координаты. Одна строка на
         # сделку сохраняет последнее решение и не оставляет согласие только в
         # клиентском AsyncStorage.
+        location_cols = {r["name"] for r in c.execute("PRAGMA table_info(deal_locations)").fetchall()}
+        if "captured_at_ms" not in location_cols:
+            c.execute("ALTER TABLE deal_locations ADD COLUMN captured_at_ms INTEGER")
+
+        # Журнал подтверждённых измерений: повтор после потерянного HTTP-ответа
+        # не создаёт дубль, а старая FIFO-точка сохраняется без отката маркера.
+        c.execute("""CREATE TABLE IF NOT EXISTS deal_location_samples (
+            deal_id TEXT NOT NULL, sample_id TEXT NOT NULL,
+            captured_at_ms INTEGER NOT NULL, lat REAL NOT NULL, lng REAL NOT NULL,
+            heading REAL, speed REAL, received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (deal_id, sample_id)
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_location_samples_capture ON deal_location_samples(deal_id,captured_at_ms)")
+
         c.execute("""
             CREATE TABLE IF NOT EXISTS deal_tracking (
                 deal_id      TEXT PRIMARY KEY,
@@ -571,6 +695,7 @@ class TripPatchIn(BaseModel):
 class BidIn(BaseModel):
     cargo_id: Optional[str] = None
     trip_id: Optional[str] = None
+    vehicle_id: Optional[str] = None
     amount: int
     message: Optional[str] = None
 
@@ -745,6 +870,11 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     if not row:
         raise HTTPException(status_code=404, detail="Груз не найден")
     d = dict(row)
+    caller = _maybe_user(authorization)
+    with get_conn() as c:
+        if not _can_view_non_public_listing(c, table="cargos", listing_id=cargo_id,
+                                            row=d, owner_field="owner_id", caller=caller):
+            raise HTTPException(status_code=404, detail="Груз не найден")
     try:
         d["photos"] = _sign_cargo_photos(json.loads(d.get("photos") or "[]"))
     except Exception:
@@ -753,7 +883,6 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     # листинга. Раньше detail-эндпоинт делал SELECT * и возвращал телефон всем —
     # аноним перебором id мог собрать базу телефонов грузовладельцев. Список
     # /cargos телефон уже вырезал (:462), теперь и карточка тоже.
-    caller = _maybe_user(authorization)
     if not (caller and caller.get("id") == d.get("owner_id")):
         d.pop("owner_phone", None)
     # Блок 5 аудита (P1-2): пользователь реально открыл карточку груза —
@@ -1294,6 +1423,27 @@ def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
     fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
     tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
     with get_conn() as c:
+        resolved_vehicle_id = body.vehicle_id
+        try:
+            if resolved_vehicle_id:
+                owned = c.execute(
+                    "SELECT id FROM vehicles WHERE id = ? AND owner_user_id = ?",
+                    (resolved_vehicle_id, user["id"]),
+                ).fetchone()
+                if not owned:
+                    raise HTTPException(status_code=422, detail="Выберите свою сохранённую машину")
+            else:
+                owned_rows = c.execute(
+                    "SELECT id FROM vehicles WHERE owner_user_id = ? ORDER BY updated_at DESC LIMIT 2",
+                    (user["id"],),
+                ).fetchall()
+                if len(owned_rows) == 1:
+                    resolved_vehicle_id = owned_rows[0]["id"]
+                elif len(owned_rows) > 1:
+                    raise HTTPException(status_code=422, detail="Выберите машину для рейса")
+        except sqlite3.OperationalError:
+            # Legacy DB before the vehicles table existed: keep old clients working.
+            resolved_vehicle_id = body.vehicle_id
         c.execute("""
             INSERT INTO trips (id, driver_id, driver_phone, driver_name,
               from_city, to_city, transit, truck_type, vehicle_id,
@@ -1302,7 +1452,7 @@ def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
               to_country, to_point_type, to_point_name, published_at)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         """, (tid, user["id"], user.get("phone"), user.get("full_name"),
-              body.from_city, body.to_city, body.transit, body.truck_type, body.vehicle_id,
+              body.from_city, body.to_city, body.transit, body.truck_type, resolved_vehicle_id,
               body.capacity_tons, body.available_m3, body.price, currency,
               body.departure, body.arrival,
               fc, fpt, fpn, tc, tpt, tpn))
@@ -1492,9 +1642,13 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
     if not row:
         raise HTTPException(status_code=404)
     d = dict(row)
+    caller = _maybe_user(authorization)
+    with get_conn() as c:
+        if not _can_view_non_public_listing(c, table="trips", listing_id=trip_id,
+                                            row=d, owner_field="driver_id", caller=caller):
+            raise HTTPException(status_code=404)
     # Security (B2): driver_phone — только владельцу рейса. Аноним/чужой по id
     # телефон водителя не получает (сбор базы контактов перебором).
-    caller = _maybe_user(authorization)
     if not (caller and caller.get("id") == d.get("driver_id")):
         d.pop("driver_phone", None)
     # Блок 5 аудита (P1-2): аналогично get_cargo — гасим уведомления,
@@ -1544,6 +1698,48 @@ def _money(amount, currency):
     cur = (currency or "USD").upper()
     sym = _CURRENCY_SYMBOLS.get(cur, "$")
     return f"{amount} {sym}" if cur == "UZS" else f"{sym}{amount}"
+
+
+def _dedupe_active_bid_rows(rows):
+    """Return at most one active bid per bidder/listing.
+
+    Accepted wins over pending/countered because it is authoritative deal
+    truth. Otherwise the most recently updated row wins. Terminal history is
+    preserved unchanged. This also protects reads while a legacy database is
+    still waiting for the startup cleanup/UNIQUE migration.
+    """
+    active = {"pending", "countered", "accepted"}
+    chosen = {}
+
+    def _key(row):
+        if row.get("cargo_id"):
+            return "cargo", row.get("cargo_id"), row.get("bidder_id")
+        if row.get("trip_id"):
+            return "trip", row.get("trip_id"), row.get("bidder_id")
+        return None
+
+    def _rank(row):
+        accepted = 1 if row.get("status") == "accepted" else 0
+        changed = row.get("updated_at") or row.get("created_at") or ""
+        return accepted, changed, row.get("id") or ""
+
+    for row in rows:
+        if row.get("status") not in active or not row.get("bidder_id"):
+            continue
+        key = _key(row)
+        if key is None:
+            continue
+        current = chosen.get(key)
+        if current is None or _rank(row) > _rank(current):
+            chosen[key] = row
+
+    return [
+        row for row in rows
+        if row.get("status") not in active
+        or not row.get("bidder_id")
+        or _key(row) is None
+        or chosen.get(_key(row), {}).get("id") == row.get("id")
+    ]
 
 
 def _bid_currency(c, bid) -> str:
@@ -1613,6 +1809,28 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
     post_notifs: list = []  # каждый элемент: (recipient_id, title, body, icon, url, push)
 
     with get_conn() as c:
+        resolved_bid_vehicle_id = body.vehicle_id
+        if body.cargo_id:
+            try:
+                if resolved_bid_vehicle_id:
+                    owned = c.execute(
+                        "SELECT id FROM vehicles WHERE id = ? AND owner_user_id = ?",
+                        (resolved_bid_vehicle_id, user["id"]),
+                    ).fetchone()
+                    if not owned:
+                        raise HTTPException(status_code=422, detail="Выберите свою сохранённую машину")
+                else:
+                    owned_rows = c.execute(
+                        "SELECT id FROM vehicles WHERE owner_user_id = ? ORDER BY updated_at DESC LIMIT 2",
+                        (user["id"],),
+                    ).fetchall()
+                    if len(owned_rows) == 1:
+                        resolved_bid_vehicle_id = owned_rows[0]["id"]
+                    elif len(owned_rows) > 1:
+                        raise HTTPException(status_code=422, detail="Выберите машину для предложения")
+            except sqlite3.OperationalError:
+                resolved_bid_vehicle_id = body.vehicle_id
+
         # M1: нельзя ставить на уже занятый/истёкший груз или рейс. Пустой/
         # None status (legacy-строки) не блокируем — только явный не-active.
         if body.cargo_id:
@@ -1647,7 +1865,8 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
         dup = c.execute(
             "SELECT id, amount, message FROM bids WHERE bidder_id = ? "
             "AND status IN ('pending','countered') "
-            "AND ((cargo_id IS NOT NULL AND cargo_id = ?) OR (trip_id IS NOT NULL AND trip_id = ?))",
+            "AND ((cargo_id IS NOT NULL AND cargo_id = ?) OR (trip_id IS NOT NULL AND trip_id = ?)) "
+            "ORDER BY COALESCE(NULLIF(updated_at,''), created_at) DESC, id DESC LIMIT 1",
             (user["id"], body.cargo_id, body.trip_id),
         ).fetchone()
         if dup:
@@ -1659,11 +1878,33 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
                 "existing_message": dup["message"],
             })
 
-        c.execute("""
-            INSERT INTO bids (id, cargo_id, trip_id, bidder_id, bidder_name, bidder_phone, amount, message)
-            VALUES (?,?,?,?,?,?,?,?)
-        """, (bid_id, body.cargo_id, body.trip_id, user["id"],
-              user.get("full_name"), user.get("phone"), body.amount, body.message))
+        try:
+            c.execute("""
+                INSERT INTO bids (id, cargo_id, trip_id, bidder_id, bidder_name, bidder_phone, vehicle_id, amount, message)
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """, (bid_id, body.cargo_id, body.trip_id, user["id"],
+                  user.get("full_name"), user.get("phone"), resolved_bid_vehicle_id, body.amount, body.message))
+        except sqlite3.IntegrityError as exc:
+            # DB-level active-bid UNIQUE guard won a concurrent create race.
+            # Return the same actionable 409 contract as the pre-insert check,
+            # never leak a raw SQLite 500 to the mobile client.
+            existing = c.execute(
+                "SELECT id, amount, message FROM bids WHERE bidder_id = ? "
+                "AND status IN ('pending','countered') "
+                "AND ((cargo_id IS NOT NULL AND cargo_id = ?) OR "
+                "(trip_id IS NOT NULL AND trip_id = ?)) "
+                "ORDER BY COALESCE(NULLIF(updated_at,''), created_at) DESC, id DESC LIMIT 1",
+                (user["id"], body.cargo_id, body.trip_id),
+            ).fetchone()
+            if existing:
+                raise HTTPException(status_code=409, detail={
+                    "error": "duplicate_bid",
+                    "message": "У вас уже есть активная ставка — измените её",
+                    "existing_bid_id": existing["id"],
+                    "existing_amount": existing["amount"],
+                    "existing_message": existing["message"],
+                }) from exc
+            raise
         # Часть 3: событие цены — предложение (автор ставки = bidder).
         _record_price_event(c, bid_id, user["id"], "bidder", body.amount, "proposed", body.message)
 
@@ -1747,7 +1988,10 @@ def list_bids(
             WHERE {' AND '.join(where)}
             ORDER BY b.created_at DESC LIMIT 100
         """, params).fetchall()
-    bids = [dict(r) for r in rows]
+    # Legacy/race safety: one authoritative active row per bidder/listing.
+    # Dedupe before count, my_bid and visibility filters so every caller sees
+    # the same price and the counter is not inflated by stale active rows.
+    bids = _dedupe_active_bid_rows([dict(r) for r in rows])
     # Часть 1: сырой список ДО dirty-фильтра — из него честно считаем число
     # предложений и находим собственную ставку вызывающего (dirty-фильтр по
     # prefix 'agent-'/'guest-' иначе прячет и его собственную ставку в QA).
@@ -1829,11 +2073,13 @@ def list_bids(
     except Exception:
         _bids_confidential = False
     if _bids_confidential and not is_owner:
-        # Только принятые (публично видимы) + собственная ставка бидера (из сырого
-        # списка — если dirty-фильтр её убрал, возвращаем через my_bid).
+        # Only accepted bids stay public in confidential mode.
         bids = [b for b in bids if b.get("status") == "accepted"]
-        if my_bid and not any(b.get("id") == my_bid.get("id") for b in bids):
-            bids.append(my_bid)
+    # A caller must always see their own active bid. Public anti-QA/guest
+    # filtering may hide namespaced bidder IDs from other users, but it must
+    # never hide the row from its author (in either open or confidential mode).
+    if my_bid and not any(b.get("id") == my_bid.get("id") for b in bids):
+        bids.append(my_bid)
     # Security (B2): bidder_phone виден ТОЛЬКО владельцу листинга (он ведёт
     # переговоры). Публичным/чужим вызовам /bids телефон оферента не отдаём —
     # раньше SELECT b.* возвращал bidder_phone любому, кто знает cargo_id.
@@ -1967,11 +2213,13 @@ def my_dashboard(user=Depends(require_level(1))):
             "dt.status AS tracking_status, "
             "CASE WHEN d.driver_id = ? AND dt.status = 'pending' THEN 1 ELSE 0 END AS tracking_action_required, "
             "(SELECT m.text FROM chat_messages m WHERE m.room_id = d.chat_room_id "
-            " ORDER BY m.created_at DESC LIMIT 1) AS last_message, "
+            " ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message, "
             "(SELECT m.created_at FROM chat_messages m WHERE m.room_id = d.chat_room_id "
-            " ORDER BY m.created_at DESC LIMIT 1) AS last_message_at, "
+            " ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_at, "
+            "(SELECT m.sender_id FROM chat_messages m WHERE m.room_id = d.chat_room_id "
+            " ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_sender_id, "
             "(SELECT COUNT(*) FROM chat_messages m WHERE m.room_id = d.chat_room_id "
-            " AND m.is_read = 0 AND m.sender_id != ?) AS unread_count "
+            " AND m.is_read = 0 AND m.sender_id != ? AND m.sender_id != 'system') AS unread_count "
             "FROM deals d "
             "LEFT JOIN cargos c ON d.cargo_id = c.id "
             "LEFT JOIN trips t ON d.trip_id = t.id "
@@ -2172,7 +2420,7 @@ def driver_profile(driver_id: str):
     # Активные рейсы
     with get_conn() as c:
         trips = c.execute(
-            "SELECT id, from_city, to_city, truck_type, price, departure, status FROM trips WHERE driver_id = ? ORDER BY created_at DESC LIMIT 10",
+            "SELECT id, from_city, to_city, truck_type, price, departure, status FROM trips WHERE driver_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 10",
             (driver_id,),
         ).fetchall()
     d["trips"] = [dict(t) for t in trips]
@@ -2271,6 +2519,39 @@ def _notify_rejected_siblings(rejected_siblings):
             pass
 
 
+def _vehicle_snapshot_for_deal(c, driver_id: str, *, vehicle_id: str | None = None, trip_id: str | None = None) -> dict:
+    """Resolve one canonical vehicle for the deal. Never use legacy profile.vehicle_plate.
+
+    Priority: explicit bid vehicle -> trip.vehicle_id -> the driver's only saved vehicle.
+    If multiple saved vehicles exist and none is bound, fail closed by returning empty data.
+    """
+    resolved = vehicle_id
+    try:
+        if not resolved and trip_id:
+            row = c.execute("SELECT vehicle_id FROM trips WHERE id = ?", (trip_id,)).fetchone()
+            resolved = row["vehicle_id"] if row else None
+        if not resolved:
+            rows = c.execute(
+                "SELECT id FROM vehicles WHERE owner_user_id = ? ORDER BY updated_at DESC LIMIT 2",
+                (driver_id,),
+            ).fetchall()
+            if len(rows) == 1:
+                resolved = rows[0]["id"]
+        if not resolved:
+            return {}
+        v = c.execute(
+            "SELECT id, license_plate, vehicle_registration_country_code, make, model "
+            "FROM vehicles WHERE id = ? AND owner_user_id = ?",
+            (resolved, driver_id),
+        ).fetchone()
+        if not v:
+            return {}
+        return dict(v)
+    except sqlite3.OperationalError:
+        # Unit/rollback compatibility with a pre-vehicles/pre-vehicle_id schema.
+        return {}
+
+
 def _finalize_accept_inline(c, user, bid: dict, final_amount, acceptor_id: str | None = None,
                             expected_status: str = "pending"):
     """Shared accept logic used by accept_bid and counter/accept.
@@ -2336,7 +2617,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, acceptor_id: str |
 
     if bid["trip_id"]:
         trip = c.execute(
-            "SELECT driver_id, from_city, to_city FROM trips WHERE id = ?", (bid["trip_id"],)
+            "SELECT driver_id, from_city, to_city, vehicle_id FROM trips WHERE id = ?", (bid["trip_id"],)
         ).fetchone()
         # P0 (аудит 2026-08-21): раньше здесь был `if trip:` без else —
         # ставка на несуществующий/удалённый рейс проваливалась мимо ВСЕЙ
@@ -2446,17 +2727,38 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, acceptor_id: str |
         c, shipper_id, driver_id, bid.get("cargo_id"), bid.get("trip_id")
     )
 
-    deal_id = new_id()
-    c.execute(
-        """
-        INSERT INTO deals (id, cargo_id, trip_id, bid_id, shipper_id, driver_id,
-                           from_city, to_city, amount, status, chat_room_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)
-        """,
-        (deal_id, bid.get("cargo_id"), bid.get("trip_id"), bid_id,
-         shipper_id, driver_id, from_city, to_city, final_amount,
-         "accepted", chat_room_id),
+    vehicle_snapshot = _vehicle_snapshot_for_deal(
+        c, driver_id, vehicle_id=bid.get("vehicle_id"), trip_id=bid.get("trip_id")
     )
+    deal_id = new_id()
+    deal_cols = {row["name"] for row in c.execute("PRAGMA table_info(deals)").fetchall()}
+    snapshot_cols = {"vehicle_id", "vehicle_plate_snapshot", "vehicle_country_snapshot",
+                     "vehicle_make_snapshot", "vehicle_model_snapshot"}
+    if snapshot_cols.issubset(deal_cols):
+        c.execute(
+            """
+            INSERT INTO deals (id, cargo_id, trip_id, bid_id, shipper_id, driver_id,
+                               vehicle_id, vehicle_plate_snapshot, vehicle_country_snapshot,
+                               vehicle_make_snapshot, vehicle_model_snapshot,
+                               from_city, to_city, amount, status, chat_room_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (deal_id, bid.get("cargo_id"), bid.get("trip_id"), bid_id,
+             shipper_id, driver_id, vehicle_snapshot.get("id"),
+             vehicle_snapshot.get("license_plate"), vehicle_snapshot.get("vehicle_registration_country_code"),
+             vehicle_snapshot.get("make"), vehicle_snapshot.get("model"),
+             from_city, to_city, final_amount, "accepted", chat_room_id),
+        )
+    else:
+        # Rolling-deploy / isolated unit-test compatibility before the migration runs.
+        c.execute(
+            """INSERT INTO deals (id, cargo_id, trip_id, bid_id, shipper_id, driver_id,
+                                  from_city, to_city, amount, status, chat_room_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (deal_id, bid.get("cargo_id"), bid.get("trip_id"), bid_id, shipper_id, driver_id,
+             from_city, to_city, final_amount, "accepted", chat_room_id),
+        )
+
     # Списание месячного лимита принятия — в той же транзакции, что и INSERT
     # сделки (conn=c — иначе SQLite write-lock). INSERT OR IGNORE по
     # UNIQUE(user_id, deal_id): повторный accept той же сделки не тратит
@@ -2918,38 +3220,36 @@ def accept_counter(bid_id: str, user=Depends(require_active_level(1))):
         # Часть 3: событие — bidder принял контр-оффер (actor=bidder).
         _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
 
-    # Push to both sides.
-    # M3: роль того, кто согласился, зависит от типа ставки. cargo-bid →
-    # bidder это водитель; trip-bid → bidder это грузовладелец. Иначе
-    # владельцу рейса приходило неверное «Водитель согласился».
-    agreed_word = "Водитель" if bid.get("cargo_id") else "Грузовладелец"
-    # «Дом заказа»: пуш о сделке ведёт в карточку заказа, а не в Deal Room.
-    if bid.get("cargo_id"):
-        deal_url = f"/cargos/{bid['cargo_id']}"
-    elif bid.get("trip_id"):
-        deal_url = f"/trips/{bid['trip_id']}"
-    else:
-        deal_url = f"/deals/{result['deal_id']}"
-    with get_conn() as c2:
-        cur = _bid_currency(c2, bid)
-    money = _money(counter, cur)
-    from api.notifications import create_notification
-    # 🔴 fix: раньше accept_counter слал ТОЛЬКО push (ненадёжный) и НЕ создавал
-    # in-app уведомление → при недоставленном пуше сторона о сделке не узнавала
-    # («наверх приходит, вниз нет»). Теперь и push, и надёжный колокольчик обеим
-    # сторонам + deep-link на /deals/{id} + сумма в валюте листинга.
-    recipients = (
-        (owner_id, "✅ Контр-оффер принят", f"{agreed_word} согласился на {money}. Сделка создана."),
-        (bid["bidder_id"], "✅ Сделка создана", f"Цена: {money}"),
-    )
+        # Сначала сохраняем обе доставки в той же транзакции, что и сделку.
+        # Сбой процесса после commit не должен терять уведомления.
+        agreed_word = "Водитель" if bid.get("cargo_id") else "Грузовладелец"
+        if bid.get("cargo_id"):
+            deal_url = f"/cargos/{bid['cargo_id']}"
+        elif bid.get("trip_id"):
+            deal_url = f"/trips/{bid['trip_id']}"
+        else:
+            deal_url = f"/deals/{result['deal_id']}"
+        money = _money(counter, _bid_currency(c, bid))
+        from api.notifications import create_notification
+        event_key = f"bid:{bid_id}:counter_accepted:{result['deal_id']}"
+        data = {"event_key": event_key, "event": "bid.counter_accepted",
+                "deal_id": result["deal_id"], "kind": "deal_created", "url": deal_url}
+        recipients = (
+            (owner_id, "✅ Контр-оффер принят", f"{agreed_word} согласился на {money}. Сделка создана."),
+            (bid["bidder_id"], "✅ Сделка создана", f"Цена: {money}"),
+        )
+        for uid_, title_, text_ in recipients:
+            push_gateway.enqueue_event(event_key, "bid.counter_accepted", uid_,
+                {"title": title_, "body": text_, "url": deal_url, "kind": "bid", "data": data},
+                conn=c)
+            create_notification(uid_, "deal_created", title_, text_, "✅",
+                                url=deal_url, event_key=event_key, conn=c)
+
     for uid_, title_, text_ in recipients:
         try:
-            send_to_user(uid_, title_, text_, url=deal_url)
+            send_to_user(uid_, title_, text_, url=deal_url, kind="bid", data=data)
         except Exception:
-            pass
-        try:
-            create_notification(uid_, "deal_created", title_, text_, "✅", url=deal_url)
-        except Exception:
+            # Надёжный worker повторит сохранённое событие.
             pass
 
     # Уведомляем авторов перебитых ставок (auto-reject внутри _finalize).
@@ -3141,10 +3441,14 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
                 d.setdefault("from_country", tr["from_country"])
                 d.setdefault("to_country", tr["to_country"])
                 d.setdefault("trip_capacity_tons", tr["capacity_tons"])
-                if tr["driver_id"]:
-                    vp = c.execute("SELECT vehicle_plate FROM drivers_registration WHERE id = ?", (tr["driver_id"],)).fetchone()
-                    if vp and vp["vehicle_plate"]:
-                        d.setdefault("plate", vp["vehicle_plate"])
+                if d.get("vehicle_plate_snapshot"):
+                    d.setdefault("plate", d["vehicle_plate_snapshot"])
+                elif tr["driver_id"]:
+                    snap = _vehicle_snapshot_for_deal(c, tr["driver_id"], trip_id=d.get("trip_id"))
+                    if snap.get("license_plate"):
+                        d.setdefault("plate", snap["license_plate"])
+                        d.setdefault("vehicle_id", snap.get("id"))
+                        d.setdefault("vehicle_registration_country_code", snap.get("vehicle_registration_country_code"))
         # Блок 4 (P0-3): нормализованный вердикт по стране — ЕДИНЫЙ источник
         # истины для фронта. Раньше MyTripsScreen.js и TripDetail.js каждый
         # вычисляли "международный/внутренний" по-своему (и TripDetail.js
@@ -3383,17 +3687,32 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
     if deal.get("trip_id") and new_status in _DEAL_TO_TRIP:
         c.execute("UPDATE trips SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                    (_DEAL_TO_TRIP[new_status], deal["trip_id"]))
-    # Once cargo is picked up, GPS evidence belongs to the deal. Delivery or
-    # an in-transit cancellation stops new updates but never deletes the last
-    # point or consent record. A pre-pickup cancellation stays private.
+    # Once cargo is picked up, GPS evidence belongs to the deal. Delivery keeps
+    # the tracking row active long enough for both parties to inspect the last
+    # point, but terminal completion/cancellation must stop tracking
+    # semantically as well. In all cases preserve the last point and consent
+    # record as evidence. A pre-pickup cancellation stays private.
     if new_status in ("delivered", "cancelled"):
         c.execute(
             "UPDATE deal_tracking SET completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP "
             "WHERE deal_id = ? AND locked_at IS NOT NULL",
             (deal_id,),
         )
+        if new_status == "cancelled":
+            c.execute(
+                "UPDATE deal_tracking SET status='stopped', stopped_at=COALESCE(stopped_at, CURRENT_TIMESTAMP), "
+                "updated_at=CURRENT_TIMESTAMP WHERE deal_id = ? AND locked_at IS NOT NULL",
+                (deal_id,),
+            )
         if cur_status == "accepted":
             c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
+    if new_status == "completed":
+        c.execute(
+            "UPDATE deal_tracking SET status='stopped', stopped_at=COALESCE(stopped_at, CURRENT_TIMESTAMP), "
+            "completed_at=COALESCE(completed_at, CURRENT_TIMESTAMP), updated_at=CURRENT_TIMESTAMP "
+            "WHERE deal_id = ? AND locked_at IS NOT NULL",
+            (deal_id,),
+        )
     event_payload = {"status": new_status, "old_status": cur_status, "request_id": request_id}
     if new_status == "cancelled" and cur_status in ("in_progress", "at_border"):
         event_payload["mid_transit_cancel"] = True
@@ -3637,6 +3956,8 @@ def check_gps_heartbeats_job() -> dict:
     """Emit one lost event per stale active-trip episode."""
     fired = 0
     with get_conn() as c:
+        if not c.in_transaction:
+            c.execute("BEGIN IMMEDIATE")
         stale = c.execute(
             """SELECT dt.deal_id, d.shipper_id FROM deal_tracking dt
                JOIN deals d ON d.id = dt.deal_id
@@ -3818,10 +4139,25 @@ def stop_deal_tracking(deal_id: str, user=Depends(require_level(1))):
     return {"ok": True, "tracking": tracking}
 
 class DealLocationIn(BaseModel):
-    lat: float
-    lng: float
+    """Финальный аудит (§31, 2026-09-14): у lat/lng НЕ БЫЛО границ, в отличие
+    от RoutePoint в api/routing.py (там `Field(ge=-90, le=90)` /
+    `Field(ge=-180, le=180)` стоят с самого начала). Подтверждённый баг:
+    POST /deals/{id}/location с `{"lat": 0, "lng": 999}` отвечал 200 и
+    записывал 999 в deal_locations. Дальше эта точка уходила грузоотправителю
+    через GET /deals/{id}/location и рисовалась на карте как есть —
+    клиент диапазон тоже не проверяет (RouteMap.js / DealWorkspaceScreenV2 /
+    TrackTruckScreen читают location без валидации), а
+    POST /routing/road-route такую точку уже отвергает (422) — то есть
+    полилиния и ETA молча ломались. Валидируем на входе, единым правилом с
+    RoutePoint: сервер — единственное место, где это можно гарантировать для
+    любого клиента (web / Expo Go / нативная сборка / фоновый task)."""
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
     heading: Optional[float] = None
     speed: Optional[float] = None
+    # Client capture time survives the persistent offline FIFO. Unix ms.
+    captured_at_ms: Optional[int] = Field(default=None, ge=946684800000, le=4102444800000)
+    sample_id: Optional[str] = Field(default=None, min_length=1, max_length=300)
 
 
 @mp_router.post("/deals/{deal_id}/location")
@@ -3829,6 +4165,8 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
     """Водитель сделки шлёт свою гео-позицию. Только driver сделки и только
     только после забора груза (in_progress/at_border)."""
     with get_conn() as c:
+        if not c.in_transaction:
+            c.execute("BEGIN IMMEDIATE")
         d = c.execute("SELECT driver_id, status FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not d:
             raise HTTPException(status_code=404, detail="Сделка не найдена")
@@ -3840,20 +4178,53 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
         if tracking.get("status") != "active":
             raise HTTPException(status_code=409, detail="GPS не разрешён водителем для этой сделки")
         was_lost = _latest_gps_signal_marker(c, deal_id) == "gps_lost"
+        now_ms = int(time.time() * 1000)
+        captured_ms = int(body.captured_at_ms or now_ms)
+        # Reject clocks far in the future instead of making GPS look healthy forever.
+        if captured_ms > now_ms + 5 * 60 * 1000:
+            raise HTTPException(status_code=422, detail="Некорректное время GPS-точки")
+        import hashlib
+        sample_id = body.sample_id or hashlib.sha256(
+            f"{captured_ms}:{body.lat}:{body.lng}".encode()
+        ).hexdigest()
+        recorded = c.execute(
+            "SELECT captured_at_ms,lat,lng FROM deal_location_samples WHERE deal_id=? AND sample_id=?",
+            (deal_id, sample_id),
+        ).fetchone()
+        if recorded:
+            if (recorded["captured_at_ms"], recorded["lat"], recorded["lng"]) != (captured_ms, body.lat, body.lng):
+                raise HTTPException(status_code=409, detail="Идентификатор GPS-точки уже использован")
+            return {"ok": True, "deduplicated": True, "sample_id": sample_id}
         c.execute(
-            "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, updated_at) "
-            "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP) "
-            "ON CONFLICT(deal_id) DO UPDATE SET lat=excluded.lat, lng=excluded.lng, "
-            "heading=excluded.heading, speed=excluded.speed, updated_at=CURRENT_TIMESTAMP",
-            (deal_id, body.lat, body.lng, body.heading, body.speed),
+            "INSERT INTO deal_location_samples (deal_id,sample_id,captured_at_ms,lat,lng,heading,speed) VALUES (?,?,?,?,?,?,?)",
+            (deal_id, sample_id, captured_ms, body.lat, body.lng, body.heading, body.speed),
         )
-        c.execute(
-            "UPDATE deal_tracking SET last_signal_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE deal_id=?",
-            (deal_id,),
-        )
+        captured_sql = datetime.fromtimestamp(captured_ms / 1000.0, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        existing = c.execute(
+            "SELECT captured_at_ms FROM deal_locations WHERE deal_id=?", (deal_id,)
+        ).fetchone()
+        existing_ms = int(existing["captured_at_ms"] or 0) if existing else 0
+        # Retry/drain is idempotent and monotonic: an older queued sample never
+        # overwrites a newer location that already reached the server.
+        if captured_ms >= existing_ms:
+            c.execute(
+                "INSERT INTO deal_locations (deal_id, lat, lng, heading, speed, captured_at_ms, updated_at) "
+                "VALUES (?,?,?,?,?,?,?) "
+                "ON CONFLICT(deal_id) DO UPDATE SET lat=excluded.lat, lng=excluded.lng, "
+                "heading=excluded.heading, speed=excluded.speed, captured_at_ms=excluded.captured_at_ms, updated_at=excluded.updated_at",
+                (deal_id, body.lat, body.lng, body.heading, body.speed, captured_ms, captured_sql),
+            )
+            c.execute(
+                "UPDATE deal_tracking SET last_signal_at=?, updated_at=CURRENT_TIMESTAMP WHERE deal_id=? "
+                "AND (last_signal_at IS NULL OR last_signal_at <= ?)",
+                (captured_sql, deal_id, captured_sql),
+            )
+        # A historical FIFO sample may be valid route evidence but must not
+        # resurrect GPS health. Only a near-live sample clears gps_lost.
+        fresh_for_restore = (now_ms - captured_ms) <= 180 * 1000
         shipper_id = None
         ev_id = None
-        if was_lost:
+        if was_lost and fresh_for_restore:
             _ev = c.execute(
                 "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'gps_restored', ?)",
                 (deal_id, user["id"]),
@@ -3864,7 +4235,7 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
     if was_lost and shipper_id:
         _tracking_notify(shipper_id, "gps_restored", deal_id, "gps_restored",
                          event_key=f"deal:{deal_id}:gps_restored:{ev_id}")
-    return {"ok": True}
+    return {"ok": True, "sample_id": sample_id}
 
 
 @mp_router.get("/deals/{deal_id}/location")
@@ -3881,7 +4252,7 @@ def get_deal_location(deal_id: str, user=Depends(require_level(1))):
         if tracking.get("status") != "active":
             return {"ok": True, "has_location": False, "tracking_status": tracking.get("status", "not_requested")}
         loc = c.execute(
-            "SELECT lat, lng, heading, speed, updated_at FROM deal_locations WHERE deal_id = ?",
+            "SELECT lat, lng, heading, speed, captured_at_ms, updated_at FROM deal_locations WHERE deal_id = ?",
             (deal_id,),
         ).fetchone()
     if not loc:

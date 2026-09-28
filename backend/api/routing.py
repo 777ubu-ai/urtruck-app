@@ -29,9 +29,24 @@ routing_router = APIRouter(tags=["routing"])
 
 _YANDEX_URL = "https://api.routing.yandex.net/v2/route"
 _ORS_URL = "https://api.heigit.org/openrouteservice/v2/directions/driving-hgv/geojson"
+_ORS_SNAP_URL = "https://api.heigit.org/openrouteservice/v2/snap/driving-hgv/json"
+_ORS_SNAP_RADIUS_M = 2000
+_ORS_MAX_SEGMENTS = 16
 _CACHE_TTL_SECONDS = 15 * 60
 _CACHE_MAX_ITEMS = 256
+# HeiGIT/ORS rejects an individual request whose approximated route exceeds
+# 6,000 km. Keep automatic fallback segments comfortably below that provider
+# limit. Geometry still comes exclusively from ORS for every segment; these
+# intermediate points are request boundaries, never a drawn straight line.
+_ORS_SEGMENT_TARGET_DISTANCE_M = 4_000_000
 _route_cache: dict[str, tuple[float, dict]] = {}
+
+
+class _ProviderRouteError(RuntimeError):
+    def __init__(self, message: str, *, status: int | None = None, code=None):
+        super().__init__(message)
+        self.status = status
+        self.code = code
 
 
 class RoutePoint(BaseModel):
@@ -270,16 +285,22 @@ async def _request_ors(body: RoadRouteRequest, api_key: str) -> dict:
 
     if response.status_code >= 400:
         detail = "global_router_failed"
+        provider_code = None
         try:
             data = response.json()
             err = data.get("error")
             if isinstance(err, dict):
                 detail = err.get("message") or detail
+                provider_code = err.get("code")
             elif err:
                 detail = str(err)
         except Exception:
             pass
-        raise RuntimeError(f"global_router_http_{response.status_code}: {detail}")
+        raise _ProviderRouteError(
+            f"global_router_http_{response.status_code}: {detail}",
+            status=response.status_code,
+            code=provider_code,
+        )
 
     try:
         data = response.json()
@@ -304,6 +325,150 @@ async def _request_ors(body: RoadRouteRequest, api_key: str) -> dict:
         "geometry": geometry,
         "cached": False,
     }
+
+
+def _approx_distance_m(start: RoutePoint, end: RoutePoint) -> float:
+    """Cheap equirectangular estimate used only to split provider requests."""
+    lat_factor = math.pi / 180
+    mean_lat = (start.lat + end.lat) * 0.5 * lat_factor
+    x = (end.lng - start.lng) * lat_factor * math.cos(mean_lat)
+    y = (end.lat - start.lat) * lat_factor
+    return 6_371_000 * math.sqrt(x * x + y * y)
+
+
+def _split_route_points(points: List[RoutePoint]) -> list[RoutePoint]:
+    """Insert non-rendered request boundaries for overlong provider legs."""
+    if len(points) < 2:
+        return list(points)
+
+    result = [points[0]]
+    for start, end in zip(points, points[1:]):
+        pieces = max(1, math.ceil(_approx_distance_m(start, end) / _ORS_SEGMENT_TARGET_DISTANCE_M))
+        for index in range(1, pieces + 1):
+            ratio = index / pieces
+            candidate = RoutePoint(
+                lat=start.lat + (end.lat - start.lat) * ratio,
+                lng=start.lng + (end.lng - start.lng) * ratio,
+            )
+            result.append(candidate)
+    return result
+
+
+async def _request_ors_with_limit_fallback(body: RoadRouteRequest, api_key: str) -> dict:
+    """Retry an ORS distance-limit rejection as several real-road segments."""
+    try:
+        return await _request_ors(body, api_key)
+    except _ProviderRouteError as exc:
+        distance_limit = (
+            exc.status == 400
+            and (str(exc.code) == "2004" or "6,000,000" in str(exc))
+        )
+        if not distance_limit:
+            raise
+
+    split_points = await _snap_split_route_points(body.points, api_key)
+    if len(split_points) <= len(body.points):
+        raise RuntimeError("global_router_distance_limit_unsplittable")
+
+    geometry: list[list[float]] = []
+    distance_m = 0.0
+    duration_s = 0.0
+    segment_count = 0
+    profile = "driving-hgv"
+    for start, end in zip(split_points, split_points[1:]):
+        segment = await _request_ors(
+            RoadRouteRequest(points=[start, end], vehicle=body.vehicle),
+            api_key,
+        )
+        incoming = segment.get("geometry") or []
+        if geometry and incoming:
+            gap = _approx_distance_m(
+                RoutePoint(lat=geometry[-1][0], lng=geometry[-1][1]),
+                RoutePoint(lat=incoming[0][0], lng=incoming[0][1]),
+            )
+            if gap > 5:
+                raise RuntimeError("global_router_discontinuous_segments")
+        _append_polyline(geometry, segment.get("geometry") or [])
+        distance_m += float(segment.get("distance_m") or 0)
+        duration_s += float(segment.get("driving_duration_s") or segment.get("duration_s") or 0)
+        profile = segment.get("profile") or profile
+        segment_count += 1
+
+    if len(geometry) < 2 or distance_m <= 0 or duration_s <= 0:
+        raise RuntimeError("global_router_segmented_empty_route")
+
+    return {
+        "ok": True,
+        "provider": "openrouteservice",
+        "profile": profile,
+        "distance_m": round(distance_m),
+        "duration_s": round(duration_s),
+        "geometry": _downsample(geometry),
+        "cached": False,
+        "segmented": True,
+        "segments": segment_count,
+    }
+
+
+async def _snap_split_route_points(points: List[RoutePoint], api_key: str) -> list[RoutePoint]:
+    """Границы длинных участков должны лежать на сети HGV, а не в горах.
+
+    Проверяем максимум пять кандидатов около каждой границы одним snap-запросом.
+    Исходные адреса не сдвигаем. Snap-точки никогда не выдаём за геометрию дороги.
+    """
+    groups = []
+    coordinates = []
+    segment_count = 0
+    for start, end in zip(points, points[1:]):
+        pieces = max(1, math.ceil(_approx_distance_m(start, end) / _ORS_SEGMENT_TARGET_DISTANCE_M))
+        segment_count += pieces
+        if segment_count > _ORS_MAX_SEGMENTS:
+            raise RuntimeError("global_router_too_many_segments")
+        for index in range(1, pieces):
+            candidates = []
+            for offset in (0, -0.1, 0.1, -0.2, 0.2):
+                ratio = (index + offset) / pieces
+                candidate = RoutePoint(lat=start.lat + (end.lat-start.lat)*ratio,
+                                       lng=start.lng + (end.lng-start.lng)*ratio)
+                candidates.append(len(coordinates))
+                coordinates.append([candidate.lng, candidate.lat])
+            groups.append(candidates)
+        groups.append(end)
+    if not coordinates:
+        return list(points)
+    async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=7.0)) as client:
+        response = await client.post(_ORS_SNAP_URL, headers={"Authorization": api_key},
+                                     json={"locations": coordinates, "radius": _ORS_SNAP_RADIUS_M})
+    if response.status_code >= 400:
+        raise RuntimeError("global_router_snap_unavailable")
+    locations = response.json().get("locations")
+    if not isinstance(locations, list) or len(locations) != len(coordinates):
+        raise RuntimeError("global_router_snap_invalid_response")
+    result = [points[0]]
+    for group in groups:
+        if isinstance(group, RoutePoint):
+            result.append(group)
+            continue
+        snapped = None
+        for index in group:
+            item = locations[index]
+            if not isinstance(item, dict):
+                continue
+            location = item.get("location")
+            if not isinstance(location, list) or len(location) != 2:
+                continue
+            try:
+                candidate = RoutePoint(lat=location[1], lng=location[0])
+            except (ValueError, TypeError):
+                continue
+            original = RoutePoint(lat=coordinates[index][1], lng=coordinates[index][0])
+            if _approx_distance_m(original, candidate) <= _ORS_SNAP_RADIUS_M:
+                snapped = candidate
+                break
+        if snapped is None:
+            raise RuntimeError("global_router_boundary_not_on_road")
+        result.append(snapped)
+    return result
 
 
 # 2026-08-19 (owner, live production report: "3978 км за 2 дня 5 часов не
@@ -359,7 +524,7 @@ async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
 
     if prefer_global and ors_key:
         try:
-            payload = _apply_realistic_duration(await _request_ors(body, ors_key))
+            payload = _apply_realistic_duration(await _request_ors_with_limit_fallback(body, ors_key))
             _cache_put(key, payload)
             return payload
         except Exception:
@@ -373,9 +538,9 @@ async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
         except Exception:
             pass
 
-    if ors_key:
+    if ors_key and not prefer_global:
         try:
-            payload = _apply_realistic_duration(await _request_ors(body, ors_key))
+            payload = _apply_realistic_duration(await _request_ors_with_limit_fallback(body, ors_key))
             _cache_put(key, payload)
             return payload
         except Exception:
@@ -384,3 +549,33 @@ async def build_road_route(body: RoadRouteRequest, _user=Depends(get_user)):
     if not yandex_key and not ors_key:
         raise HTTPException(status_code=503, detail="road_routing_not_configured")
     raise HTTPException(status_code=502, detail="road_route_unavailable")
+
+
+def info() -> dict:
+    """Preflight/diagnostics snapshot for GET /api/v1/system/info.
+
+    Hardening B (2026-09-14): mirrors email_service.info() — presence
+    booleans only, never the key value itself (a leaked Yandex/ORS key is a
+    billable-quota incident, same class of risk as a leaked SMTP password).
+    Read live from os.getenv() (not module-load-time globals) so it reflects
+    the current process env even if a test or operator changes it without a
+    restart, matching build_road_route's own lookup style.
+    """
+    yandex_configured = bool((os.getenv("YANDEX_ROUTER_API_KEY") or "").strip())
+    ors_configured = bool((os.getenv("OPENROUTESERVICE_API_KEY") or os.getenv("ORS_API_KEY") or "").strip())
+    if yandex_configured and ors_configured:
+        provider = "yandex+openrouteservice"
+    elif yandex_configured:
+        provider = "yandex"
+    elif ors_configured:
+        provider = "openrouteservice"
+    else:
+        provider = "none"
+    return {
+        "provider": provider,
+        "yandex_configured": yandex_configured,
+        "ors_configured": ors_configured,
+        "configured": yandex_configured or ors_configured,
+        "cache_ttl_seconds": _CACHE_TTL_SECONDS,
+        "cache_items": len(_route_cache),
+    }

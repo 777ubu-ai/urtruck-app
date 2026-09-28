@@ -43,16 +43,26 @@ test('Shipper · TripDetail does not crash on Подробнее', async ({ page
   await page.waitForTimeout(1500);
   await snap(page, 'shipper-trip-crash', 'home');
 
-  // Role select — shipper button (translated four ways).
-  // Stage 18: full-image RoleScreen — prefer testID hotspot.
-  const shipper = page.getByTestId('role-client').or(page.getByText(/Я грузовладелец|I'm a shipper|cargo owner|client/i)).first();
+  // Legacy builds expose the shipper role directly. Current builds enter
+  // the public feed through OnboardingV2, then use the Cargos/Trips toggle.
+  const shipper = page.getByTestId('role-client').first();
+  const guest = page.getByTestId('onb-v2-cta-guest').first();
   if (await shipper.isVisible().catch(() => false)) {
-    await shipper.click().catch(() => {});
+    await shipper.click({ force: true }).catch(() => {});
     await page.waitForTimeout(1500);
+  } else if (await guest.isVisible().catch(() => false)) {
+    await guest.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(2000);
+    const tripsTab = page.getByTestId('guest-tab-trips');
+    if (await tripsTab.isVisible().catch(() => false)) {
+      await tripsTab.click({ force: true }).catch(() => {});
+      await page.waitForTimeout(1000);
+    }
+    log.pass(ACTOR, 'current-onboarding-guest-entry');
   } else {
-    log.p2(ACTOR, 'role-pick-not-visible', 'shipper role tile not in current layout');
+    log.p1(ACTOR, 'entry-surface-visible', 'neither OnboardingV2 nor legacy shipper role is visible');
   }
-  await snap(page, 'shipper-trip-crash', 'after-role');
+  await snap(page, 'shipper-trip-crash', 'after-entry');
 
   // Locate any trip card (data-testid added by FeedScreen) or the
   // generic "Подробнее" button text.
@@ -67,7 +77,7 @@ test('Shipper · TripDetail does not crash on Подробнее', async ({ page
     await detailsBtn.click().catch(() => {});
     tappedSomething = true;
   } else {
-    log.p2(ACTOR, 'card-not-found', 'no trip-card / Подробнее in viewport');
+    log.info(ACTOR, 'card-click-path', 'no trip card in the current viewport; authoritative tripId deeplink runs next');
   }
 
   if (tappedSomething) {

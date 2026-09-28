@@ -19,6 +19,7 @@ import { useToast } from '../../components/Toast';
 import { saveProfile } from '../../utils/store';
 import { regAPI } from '../../utils/registration';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
+import BackButton from '../../components/ui/v1/BackButton';
 
 const COPY = {
   RU: {
@@ -148,6 +149,7 @@ export default function PremiumProfileScreen({ navigation, route }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={s.header}>
+            <BackButton onPress={() => navigation.goBack()} label={t('back')} testID="prem-reg-profile-back" />
             <View style={[s.roleBadge, { backgroundColor: accent.soft, borderColor: accent.main }]}>
               <Feather name={role === 'driver' ? 'truck' : 'package'} size={14} color={accent.main} />
               <Text style={[s.roleBadgeText, { color: accent.main }]}>
@@ -276,7 +278,7 @@ const makeStyles = (c) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: c.bg },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 24 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, marginBottom: 24 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, marginBottom: 24 },
   roleBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   roleBadgeText: { fontSize: 12, fontWeight: '800' },
   title: { color: c.text, fontSize: 26, fontWeight: '800', letterSpacing: -0.5, marginBottom: 8 },

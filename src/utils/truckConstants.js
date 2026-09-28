@@ -4,10 +4,9 @@
 // Order matters — the chip-row in create forms reads keys top-to-bottom.
 
 export const TRUCK_KEYS = [
-  'tent', 'ref', 'platform', 'auto', 'izoterm',
-  'cont20', 'cont40', 'jumbo', 'mega', 'curtain',
-  'lowloader', 'tanker', 'dumptruck', 'grain', 'livestock',
-  'logger', 'hazmat', 'open_truck', 'closed', 'longliner', 'microvan',
+  'tent', 'ref', 'izoterm', 'closed', 'container', 'platform', 'tandem', 'longliner',
+  'lcv_tent', 'lcv_van', 'lcv_flatbed', 'lcv_ref', 'microvan',
+  'tanker', 'dumptruck', 'auto', 'lowloader', 'grain', 'livestock', 'logger', 'manipulator',
 ];
 
 export const TRUCK_ICONS = {
@@ -30,7 +29,8 @@ export const TRUCK_MCI = {
   lowloader: 'truck-flatbed', tanker: 'tanker-truck', dumptruck: 'dump-truck',
   grain: 'truck', livestock: 'cow', logger: 'pine-tree', hazmat: 'radioactive',
   open_truck: 'truck-flatbed', closed: 'van-utility', longliner: 'truck-trailer',
-  microvan: 'van-passenger',
+  microvan: 'van-passenger', container: 'truck-cargo-container', tandem: 'truck-trailer',
+  lcv_tent: 'truck', lcv_van: 'van-utility', lcv_flatbed: 'truck-flatbed', lcv_ref: 'snowflake', manipulator: 'truck-flatbed',
 };
 
 // Brand v3: tent (default) → emerald; sky/blue swapped to graphite slate.
@@ -41,6 +41,7 @@ export const TRUCK_COLORS = {
   curtain: '#8B5CF6', lowloader: '#F97316', tanker: '#10B981', dumptruck: '#EAB308',
   grain: '#CA8A04', livestock: '#84CC16', logger: '#65A30D', hazmat: '#DC2626',
   open_truck: '#334155', closed: '#475569', longliner: '#7C3AED', microvan: '#64748B',
+  container: '#4F46E5', tandem: '#7C3AED', lcv_tent: '#168759', lcv_van: '#475569', lcv_flatbed: '#334155', lcv_ref: '#0891B2', manipulator: '#E06D00',
 };
 
 // ──────────────────────────────────────────────────────────────────────

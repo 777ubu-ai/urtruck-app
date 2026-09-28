@@ -418,21 +418,32 @@ def test_counter_amount_must_be_positive():
 
 def test_counter_accept_creates_deal_and_chat():
     print("\n=== test_counter_accept_creates_deal_and_chat ===")
-    cargo_id, bid_id = _new_pending_bid("co-owner-5", "co-driver-5", 1500)
+    # Canonical owner scenario: listing 8000, driver proposes 7600,
+    # shipper counters 7800. Accepting the counter MUST create the deal at
+    # 7800 — never at the stale original bid 7600.
+    cargo_id, bid_id = _new_pending_bid("co-owner-5", "co-driver-5", 7600)
     as_user("co-owner-5")
-    client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 1300})
+    counter_r = client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 7800})
+    expect(counter_r.status_code == 200, f"counter 200 (got {counter_r.status_code} {counter_r.text})")
+    expect(counter_r.json()["bid"]["counter_amount"] == 7800, "counter amount stored = 7800")
 
     as_user("co-driver-5")
     r = client.post(f"/api/v1/market/bids/{bid_id}/counter/accept")
     expect(r.status_code == 200, f"counter/accept 200 (got {r.status_code} {r.text})")
     body = r.json()
-    expect(body["amount"] == 1300, "amount echoed = 1300")
+    expect(body["amount"] == 7800, "accepted amount echoed = counter 7800")
     expect(bool(body.get("deal_id")), "deal_id returned")
     expect(bool(body.get("chat_room_id")), "chat_room_id returned")
 
     final = get_bid(bid_id)
     expect(final["status"] == "accepted", "bid is accepted")
-    expect(final["amount"] == 1300, "bid.amount overwritten with counter_amount")
+    expect(final["amount"] == 7800, "bid.amount overwritten with accepted counter 7800")
+
+    from database.db import get_conn
+    with get_conn() as c:
+        deal = c.execute("SELECT amount FROM deals WHERE id = ?", (body["deal_id"],)).fetchone()
+    expect(deal is not None, "deal row exists")
+    expect(deal["amount"] == 7800, "deal.amount = accepted counter 7800, not original 7600")
 
 
 def test_counter_accept_403_for_non_bidder():
@@ -722,3 +733,101 @@ def test_counter_cancel_by_owner_notifies_bidder():
     r2 = client.post(f"/api/v1/market/bids/{bid_id}/counter/cancel")
     expect(r2.status_code == 409, f"repeat cancel on pending bid → 409 (got {r2.status_code})")
     expect(len(query_notifications(driver)) == len(notifs), "repeat cancel must not create a second notification")
+
+
+def test_list_bids_keeps_namespaced_callers_own_bid(monkeypatch):
+    """Anti-QA/guest public filtering must not hide a bidder's own row."""
+    from api import marketplace
+    from database.db import get_conn, new_id
+
+    trip_id = seed_trip(driver_id="driver-own-bid")
+    bid_id = new_id()
+    bidder_id = "agent-own-bid"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO bids (id,trip_id,bidder_id,bidder_name,amount,status) "
+            "VALUES (?,?,?,?,?,'pending')",
+            (bid_id, trip_id, bidder_id, "Namespaced bidder", 4500),
+        )
+    monkeypatch.setattr(marketplace, "_maybe_user", lambda _authorization: {"id": bidder_id})
+    body = marketplace.list_bids(trip_id=trip_id, authorization="Bearer own")
+    expect(any(row["id"] == bid_id for row in body["bids"]), "caller sees own namespaced bid")
+    expect(body["my_bid"]["id"] == bid_id, "my_bid points at caller's active bid")
+
+
+def test_list_bids_dedupes_legacy_active_rows_for_same_bidder():
+    """Owner/public UI must never receive two active prices from one bidder."""
+    from api.marketplace import list_bids
+    from database.db import get_conn
+
+    cargo_id = seed_cargo(owner_id="dedupe-owner")
+    old_id = f"legacy-old-{cargo_id}"
+    new_id = f"legacy-new-{cargo_id}"
+    index_name = "idx_bids_active_cargo_bidder_unique"
+
+    with get_conn() as c:
+        c.execute(f"DROP INDEX IF EXISTS {index_name}")
+        c.execute(
+            "INSERT INTO bids (id,cargo_id,bidder_id,bidder_name,amount,status,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,'pending',datetime('now','-31 minutes'),datetime('now','-31 minutes'))",
+            (old_id, cargo_id, "same-bidder", "Cargo 888", 5700),
+        )
+        c.execute(
+            "INSERT INTO bids (id,cargo_id,bidder_id,bidder_name,amount,status,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,'countered',datetime('now','-5 minutes'),datetime('now','-5 minutes'))",
+            (new_id, cargo_id, "same-bidder", "Cargo 888", 4550),
+        )
+
+    try:
+        body = list_bids(cargo_id=cargo_id, authorization=None)
+        active = [b for b in body["bids"] if b["status"] in ("pending", "countered", "accepted")]
+        expect(body["count"] == 1, f"deduped proposal count=1 (got {body['count']})")
+        expect(len(active) == 1, f"one active row returned (got {len(active)})")
+        expect(active[0]["id"] == new_id and active[0]["amount"] == 4550,
+               f"newest active price wins (got {active})")
+    finally:
+        with get_conn() as c:
+            c.execute("UPDATE bids SET status='cancelled' WHERE id IN (?,?)", (old_id, new_id))
+            c.execute(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
+                "ON bids(cargo_id,bidder_id) "
+                "WHERE cargo_id IS NOT NULL AND status IN ('pending','countered')"
+            )
+
+
+def test_active_bid_unique_index_blocks_concurrent_duplicate():
+    """DB defense-in-depth closes the create_bid SELECT/INSERT race."""
+    import sqlite3
+    from database.db import get_conn
+
+    cargo_id = seed_cargo(owner_id="unique-owner")
+    first_id = f"unique-first-{cargo_id}"
+    second_id = f"unique-second-{cargo_id}"
+
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO bids (id,cargo_id,bidder_id,bidder_name,amount,status) "
+            "VALUES (?,?,?,?,?,'pending')",
+            (first_id, cargo_id, "unique-bidder", "Unique bidder", 5000),
+        )
+    try:
+        with get_conn() as c:
+            c.execute(
+                "INSERT INTO bids (id,cargo_id,bidder_id,bidder_name,amount,status) "
+                "VALUES (?,?,?,?,?,'countered')",
+                (second_id, cargo_id, "unique-bidder", "Unique bidder", 4900),
+            )
+        raise AssertionError("second active bid unexpectedly inserted")
+    except sqlite3.IntegrityError:
+        pass
+
+
+def test_active_bid_dedupe_preserves_unbound_demo_rows():
+    """Legacy local/demo bids have no shared listing identity and stay intact."""
+    from api.marketplace import _dedupe_active_bid_rows
+
+    rows = [
+        {"id": "demo-a", "bidder_id": "demo-user", "status": "pending", "amount": 100},
+        {"id": "demo-b", "bidder_id": "demo-user", "status": "pending", "amount": 200},
+    ]
+    expect(_dedupe_active_bid_rows(rows) == rows, "unbound demo rows are not collapsed together")

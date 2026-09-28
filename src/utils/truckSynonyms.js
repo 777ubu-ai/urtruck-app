@@ -17,6 +17,8 @@ const SYNONYMS = {
   izoterm:    ['изотерм', 'изотермич', 'isotherm', 'isothermal', 'термос'],
   cont20:     ['конт20', 'контейнер 20', 'container 20', '20 фут', '20ft', 'cont20'],
   cont40:     ['конт40', 'контейнер 40', 'container 40', '40 фут', '40ft', 'cont40'],
+  container:  ['контейнеровоз', 'контейнер', 'container carrier', 'container', '20ft', '40ft', '45ft'],
+  tandem:     ['сцепка', 'тандем', 'tandem', 'road train', 'автопоезд'],
   // 'конт' / 'контейнер' без размера — оба контейнера показываем
   curtain:    ['штора', 'шторка', 'curtain', 'тент-штора'],
   jumbo:      ['джамбо', 'jumbo'],
@@ -32,6 +34,11 @@ const SYNONYMS = {
   closed:     ['закрытый', 'фургон', 'closed', 'box truck'],
   longliner:  ['длинномер', 'longliner', 'long liner'],
   microvan:   ['микроавтобус', 'микро', 'microvan', 'микроавт', 'фолькс'],
+  lcv_tent:   ['газель тент', 'малотоннажный тент', 'light curtain'],
+  lcv_van:    ['цельнометаллический', 'спринтер', 'транзит', 'panel van'],
+  lcv_flatbed:['газель борт', 'малотоннажный борт', 'light flatbed'],
+  lcv_ref:    ['малотоннажный реф', 'термобудка', 'light reefer'],
+  manipulator:['манипулятор', 'кму', 'truck crane'],
 };
 
 const norm = (s) => String(s || '').toLowerCase().trim();
@@ -59,6 +66,7 @@ export const matchTruckTypes = (query) => {
   if (q === 'конт' || q.startsWith('контейнер') || q === 'cont' || q === 'container') {
     if (!matched.includes('cont20')) matched.push('cont20');
     if (!matched.includes('cont40')) matched.push('cont40');
+    if (!matched.includes('container')) matched.push('container');
   }
   return matched;
 };

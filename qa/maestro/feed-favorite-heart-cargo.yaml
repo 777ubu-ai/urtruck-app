@@ -37,9 +37,7 @@ env:
 - waitForAnimationToEnd
 - takeScreenshot: FAVCG_02_heart_double_tapped
 # Профиль → «Избранное»: груз ДОЛЖЕН присутствовать, ровно одна карточка.
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - scrollUntilVisible:
     element:
       id: "profile-favorites"
@@ -72,9 +70,7 @@ env:
 - tapOn:
     id: "bottom-nav-feed"
 - waitForAnimationToEnd
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - tapOn:
     id: "profile-favorites"
 - waitForAnimationToEnd

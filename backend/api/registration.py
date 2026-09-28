@@ -166,6 +166,9 @@ def get_me(driver_id: str = Depends(get_current_driver)):
     driver = reg_dal.get_driver(driver_id)
     if not driver:
         raise HTTPException(status_code=404, detail="Не найден")
+    if driver.get("role") == "driver":
+        from api.driver_registration import reconcile_basic_onboarding
+        driver = reconcile_basic_onboarding(driver)
     return {
         "id": driver["id"],
         "phone": driver.get("phone"),
@@ -315,12 +318,19 @@ def email_send(req: EmailSendRequest, request: Request = None):
     reg_dal.save_code(email, code)
     result = otp_service.send_otp(email, code, channel="email")
     is_mock = bool(result.get("mock"))
+    is_beta = bool(result.get("beta"))
     delivered = bool(result.get("sent")) and not result.get("error")
     return {
         "sent": delivered or is_mock,
         "channel": "email",
         "mock": is_mock,
-        "code": result.get("code") if (is_mock and not IS_PRODUCTION) else None,
+        # FINAL 10/10 AUTH CANON CLOSURE (2026-09-14): mirrors the
+        # whatsapp/sms send endpoint below (`is_beta` in the response,
+        # `code` gated on `is_mock or is_beta`) — this was the actual root
+        # cause of `code: null` on the email channel in BETA_MODE, on top
+        # of otp_service.send_otp()'s own now-fixed mock:False falsehood.
+        "beta": is_beta,
+        "code": result.get("code") if ((is_mock or is_beta) and not IS_PRODUCTION) else None,
         "error": None if (delivered or is_mock) else (result.get("error") or "delivery_failed"),
     }
 
@@ -343,9 +353,11 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
     # BETA bypass — для тестеров, когда включён BETA_MODE (на проде выключен).
     is_beta_login = BETA_MODE and req.code.strip() == BETA_OTP_CODE
     if not (is_beta_login or is_reviewer):
-        if not reg_dal.check_code(email, req.code):
+        # §23 hardening (2026-09-14): consume_code() validates AND deletes
+        # in one atomic transaction so a concurrent duplicate request for
+        # the same email/code cannot also pass -- see its docstring.
+        if not reg_dal.consume_code(email, req.code):
             raise HTTPException(status_code=400, detail="Неверный или истёкший код")
-        reg_dal.delete_code(email)
     guest_id = reg_dal.get_driver_by_token(req.guest_token) if req.guest_token else None
     try:
         driver = reg_dal.get_or_create_driver(email, upgrade_guest_id=guest_id)
@@ -409,9 +421,11 @@ def wa_verify(req: VerifyCodeRequest, request: Request = None):
     # ── BETA BYPASS ──────────────────────────────────────────
     is_beta_login = BETA_MODE and req.code.strip() == BETA_OTP_CODE
     if not is_beta_login:
-        if not reg_dal.check_code(phone_clean, req.code):
+        # §23 hardening (2026-09-14): consume_code() validates AND deletes
+        # in one atomic transaction so a concurrent duplicate request for
+        # the same phone/code cannot also pass -- see its docstring.
+        if not reg_dal.consume_code(phone_clean, req.code):
             raise HTTPException(status_code=400, detail="Неверный или истёкший код")
-        reg_dal.delete_code(phone_clean)
 
     # Если пришёл guest-токен — апгрейдим существующую сессию
     guest_id = None
@@ -430,7 +444,17 @@ def wa_verify(req: VerifyCodeRequest, request: Request = None):
             updates["full_name"] = tester_name
         if (driver.get("verification_level") or 0) < 2:
             updates["verification_level"] = 2
-        if driver.get("role") in (None, "guest", "client"):
+        # Security audit fix (2026-09-13, same root cause as the 3 P0 role-flip
+        # fixes elsewhere in this session, b9ea7527/3dcaf1b6): this used to
+        # include "client" here, so the universal BETA_OTP_CODE could silently
+        # flip an ALREADY-registered client account to driver too, not just
+        # provision a fresh guest/None-role tester. email_verify()'s equivalent
+        # block below never included "client" in this set — narrowed to match
+        # (defense-in-depth: BETA_MODE is already off-by-default and
+        # boot-time-guarded in production, see services/env_check.py + this
+        # session's test_beta_mode_production_boot_gate.py, but the auto-role
+        # logic itself must not depend solely on that outer guard).
+        if driver.get("role") in (None, "guest"):
             updates["role"] = "driver"
         if not driver.get("security_score"):
             updates["security_score"] = 75

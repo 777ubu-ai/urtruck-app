@@ -7,6 +7,8 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 const app = read('App.js');
 const push = read('src/utils/push.js');
 const notifications = read('src/screens/NotificationsScreen.js');
+const notificationsAPI = read('src/utils/notificationsAPI.js');
+const dealsScreen = read('src/screens/DealsScreen.js');
 const appJson = JSON.parse(read('app.json'));
 const aasa = JSON.parse(read('web/apple-app-site-association'));
 const wellKnownAasa = JSON.parse(read('web/.well-known/apple-app-site-association'));
@@ -19,13 +21,16 @@ test('native push tap routing keeps canonical deep-links for cargo, trip, deal, 
   assert.match(app, /navigate\('CargoDetail', \{ cargoId: id, bidId: params\.bid \|\| null, role \}\)/);
   assert.match(app, /if \(kind === 'trips' && id\)/);
   assert.match(app, /navigate\('TripDetail', \{ tripId: id, bidId: params\.bid \|\| null, role \}\)/);
+  assert.match(app, /if \(kind === 'deals' && !id\)/);
+  assert.match(app, /navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
   assert.match(app, /if \(kind === 'deals' && id\)/);
   // action is threaded through (Track: Claude harness fix, P1) — backend's
   // tracking-request/approved/declined/stopped pushes set
   // url=/deals/{id}?action=tracking and it must not be dropped here.
-  assert.match(app, /navigate\('Chat', \{ dealId: id, role, action: params\.action \|\| null \}\)/);
+  assert.match(app, /navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
+  assert.match(app, /setTimeout\(\(\) => navRef\.current\?\.navigate\('Chat', \{ dealId: id, role, action: params\.action \|\| null \}\), 0\)/);
   assert.match(app, /if \(kind === 'chats' && id\)/);
-  assert.match(app, /navigate\('Chat', \{ roomId: id, role \}\)/);
+  assert.match(app, /setTimeout\(\(\) => navRef\.current\?\.navigate\('Chat', \{ roomId: id, role \}\), 0\)/);
   assert.match(app, /else if \(kind === 'profile'\)/);
   assert.match(app, /navigate\('Profile'\)/);
   assert.match(app, /else if \(kind === 'notifications'\)/);
@@ -37,6 +42,8 @@ test('notifications screen uses the same deep-link families as native push tap r
   assert.match(notifications, /navigation\.navigate\("CargoDetail", \{/);
   assert.match(notifications, /if \(kind === "trips" && id\)/);
   assert.match(notifications, /navigation\.navigate\("TripDetail", \{/);
+  assert.match(notifications, /if \(kind === "deals" && !id\)/);
+  assert.match(notifications, /navigation\.navigate\("Main", \{ screen: "Deals", params: \{ role \} \}\)/);
   assert.match(notifications, /if \(kind === "deals" && id\)/);
   assert.match(notifications, /navigation\.navigate\("Chat", \{ dealId: id, role, action: params\.action \|\| null \}\)/);
   assert.match(notifications, /else if \(\(kind === "chats" \|\| kind === "chat"\) && id\)/);
@@ -55,6 +62,20 @@ test('notification reads update both in-app source-of-truth and the app icon bad
   assert.match(notifications, /notifyNotifRead\(\);/);
   assert.match(notifications, /refreshAppIconBadge\(\);/);
   assert.match(notifications, /await notificationsAPI\.read\(item\.id\);/);
+});
+
+test('server unread stays authoritative when the local verification cache is stale', () => {
+  const unreadBlock = notificationsAPI.slice(notificationsAPI.indexOf('async unread()'), notificationsAPI.indexOf('async readAll()'));
+  assert.match(unreadBlock, /if \(!h\.Authorization\) return \{ unread: 0 \}/);
+  assert.match(unreadBlock, /fetch\(`\$\{BASE\}\/unread`/);
+  assert.doesNotMatch(unreadBlock, /ur_verification_level/);
+});
+
+test('Deals has no Bell or notification-inbox entry point; notification routing stays deep-link compatible', () => {
+  assert.doesNotMatch(dealsScreen, /useUnreadNotifications\(hasToken\)/);
+  assert.doesNotMatch(dealsScreen, /notificationUnread > 0/);
+  assert.doesNotMatch(dealsScreen, /testID="deals-notification-inbox"/);
+  assert.doesNotMatch(dealsScreen, /navigation\.navigate\('Notifications', \{ role \}\)/);
 });
 
 test('auth and notification cold-start deeplinks are queued until nav and auth are ready', () => {
@@ -106,4 +127,14 @@ test('deploy paths keep .well-known release files instead of dropping hidden ent
   assert.match(productionDeploy, /scp -C -r dist\/\. "\$SERVER_USER@\$SERVER_HOST:\$REMOTE_DIR\/"/);
   assert.match(deployScript, /scp -i ~\/\.ssh\/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist\/\. "\$\{SERVER\}:\$\{REMOTE_DIR\}\/"/);
   assert.match(deployScript, /scp -i ~\/\.ssh\/urtruck -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -r dist\/\. "\$\{SERVER\}:\$\{VERSIONS_DIR\}\/v\$NEW_VERSION\/"/);
+});
+
+
+test('push chat/deal targets establish Deals as their Back parent', () => {
+  const dealBranch = app.slice(app.indexOf("kind === 'deals' && id"), app.indexOf("kind === 'chats' && id"));
+  const chatBranch = app.slice(app.indexOf("kind === 'chats' && id"), app.indexOf("kind === 'driver' && id"));
+  for (const block of [dealBranch, chatBranch]) {
+    assert.match(block, /navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
+    assert.match(block, /setTimeout\(/);
+  }
 });

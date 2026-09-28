@@ -1,4 +1,5 @@
-import { Linking, Platform } from 'react-native';
+import { Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/supabase';
 import { API_BASE } from '../config/env';
 import { storage } from './storage';
@@ -14,6 +15,7 @@ const NATIVE_REDIRECT = 'urtruck://auth-social';
 // both Google and Apple simultaneously (#P1-D), and so the error banner can
 // be attributed to the right provider (#P1-C).
 const PENDING_PROVIDER_KEY = 'ur_social_pending_provider';
+export const PENDING_PROVIDER_MAX_AGE_MS = 10 * 60 * 1000;
 // Idempotency guard, round 2 (owner review 25.08.2026): the PKCE `code`
 // Supabase issues is single-use, but a transient failure AFTER the code was
 // already exchanged (backend 500, network blip) must stay retryable — it
@@ -138,12 +140,50 @@ const redirectUrl = () => {
   return NATIVE_REDIRECT;
 };
 
+const parsePendingProviderState = (value) => {
+  if (!value) return null;
+  let candidate = value;
+  if (typeof value === 'string') {
+    try { candidate = JSON.parse(value); } catch {
+      // Старые сборки хранили только имя провайдера. Без callback это уже
+      // нельзя считать живой OAuth-сессией: иначе Email и Google остаются
+      // заблокированы после закрытия браузера.
+      return ['google', 'apple'].includes(value)
+        ? { provider: value, startedAt: null, legacy: true }
+        : null;
+    }
+  }
+  if (!candidate || typeof candidate !== 'object') return null;
+  if (!['google', 'apple'].includes(candidate.provider)) return null;
+  return {
+    provider: candidate.provider,
+    startedAt: Number.isFinite(candidate.startedAt) ? candidate.startedAt : null,
+    legacy: candidate.legacy === true,
+  };
+};
+
+export function isPendingProviderStale(state, now = Date.now()) {
+  if (!state?.provider) return false;
+  if (state.legacy || state.startedAt == null) return true;
+  return now - state.startedAt > PENDING_PROVIDER_MAX_AGE_MS;
+}
+
+export function shouldRestorePendingProvider(state, { hasCallback = false, now = Date.now() } = {}) {
+  return Boolean(state?.provider) && (hasCallback || !isPendingProviderStale(state, now));
+}
+
 export async function setPendingProvider(provider) {
-  try { await storage.set(PENDING_PROVIDER_KEY, provider); } catch {}
+  try {
+    await storage.set(PENDING_PROVIDER_KEY, JSON.stringify({ provider, startedAt: Date.now() }));
+  } catch {}
 }
 
 export async function getPendingProvider() {
-  try { return await storage.get(PENDING_PROVIDER_KEY); } catch { return null; }
+  try { return (await getPendingProviderState())?.provider || null; } catch { return null; }
+}
+
+export async function getPendingProviderState() {
+  try { return parsePendingProviderState(await storage.get(PENDING_PROVIDER_KEY)); } catch { return null; }
 }
 
 export async function clearPendingProvider() {
@@ -172,6 +212,47 @@ export async function getSocialProviderAvailability() {
   }
 }
 
+/** Explicit platform/config gate for Apple sign-in (FINAL 10/10 AUTH CANON
+ * CLOSURE, 2026-09-14 — replaces the old bare `SHOW_APPLE_AUTH = false`
+ * constant that hid the button unconditionally, on every platform, with no
+ * recorded reason).
+ *
+ * Product/platform contract (owner decision): Apple sign-in is offered ONLY
+ * on iOS — Android/web deliberately never show it, which is a platform
+ * decision, not a config problem, so it short-circuits without a network
+ * call. On iOS the button appears ONLY when Supabase's own Apple provider
+ * config is confirmed live; every other outcome is a distinct, named
+ * BLOCKED reason — never a silent, unexplained absence:
+ *
+ *   PLATFORM_NOT_IOS    — Android/web; by design, not queried further.
+ *   PROVIDER_UNAVAILABLE — iOS, but Supabase confirms Apple is off.
+ *   CHECK_UNREACHABLE   — iOS, but availability could not be verified
+ *                          (network/CORS/Supabase down) — fails closed,
+ *                          same philosophy as startSocialAuth() itself.
+ *   null (show: true)   — iOS AND Supabase confirms Apple is live.
+ *
+ * Every resolution is logged via logAuthStage so "Apple PASS because the
+ * button is hidden" can never be claimed from a screenshot alone — the
+ * exact reason is always in the log.
+ */
+export async function getAppleAuthGate() {
+  if (Platform.OS !== 'ios') {
+    logAuthStage('apple_gate_resolved', { code: 'PLATFORM_NOT_IOS' });
+    return { show: false, reason: 'PLATFORM_NOT_IOS' };
+  }
+  const availability = await getSocialProviderAvailability();
+  if (!availability.checked) {
+    logAuthStage('apple_gate_resolved', { code: 'CHECK_UNREACHABLE' });
+    return { show: false, reason: 'CHECK_UNREACHABLE' };
+  }
+  if (availability.apple !== true) {
+    logAuthStage('apple_gate_resolved', { code: 'PROVIDER_UNAVAILABLE' });
+    return { show: false, reason: 'PROVIDER_UNAVAILABLE' };
+  }
+  logAuthStage('apple_gate_resolved', { code: 'AVAILABLE' });
+  return { show: true, reason: null };
+}
+
 export async function startSocialAuth(provider) {
   if (!['google', 'apple'].includes(provider)) {
     throw new SocialAuthError(AUTH_ERROR_CODES.PROVIDER_CONFIG_INVALID, 'unsupported_social_provider', { provider });
@@ -179,17 +260,22 @@ export async function startSocialAuth(provider) {
   const correlationId = newCorrelationId();
   logAuthStage('oauth_start', { provider, correlationId });
 
-  const availability = await getSocialProviderAvailability();
-  if (!availability.checked) {
-    logAuthStage('oauth_start_failed', { provider, code: AUTH_ERROR_CODES.NETWORK_UNAVAILABLE, correlationId });
-    throw new SocialAuthError(AUTH_ERROR_CODES.NETWORK_UNAVAILABLE, 'social_availability_unreachable', { provider, correlationId });
-  }
-  if (availability[provider] !== true) {
-    // Supabase itself confirms this provider is switched off — this is a
-    // CONFIG state, never a network failure. Conflating the two is exactly
-    // what made the real Apple root cause show as "Нет связи с сервером".
-    logAuthStage('oauth_start_failed', { provider, code: AUTH_ERROR_CODES.PROVIDER_UNAVAILABLE, correlationId });
-    throw new SocialAuthError(AUTH_ERROR_CODES.PROVIDER_UNAVAILABLE, 'social_provider_unavailable', { provider, correlationId });
+  // Google is the always-visible production provider. Do not put a second
+  // `/auth/v1/settings` request in front of its OAuth URL: on a real mobile
+  // network that preflight can take many seconds and makes the button look
+  // frozen. Supabase still validates OAuth and UrTruck independently
+  // validates the returned provider token. Apple stays fail-closed because
+  // its visibility depends on the iOS provider/config gate.
+  if (provider === 'apple') {
+    const availability = await getSocialProviderAvailability();
+    if (!availability.checked) {
+      logAuthStage('oauth_start_failed', { provider, code: AUTH_ERROR_CODES.NETWORK_UNAVAILABLE, correlationId });
+      throw new SocialAuthError(AUTH_ERROR_CODES.NETWORK_UNAVAILABLE, 'social_availability_unreachable', { provider, correlationId });
+    }
+    if (availability.apple !== true) {
+      logAuthStage('oauth_start_failed', { provider, code: AUTH_ERROR_CODES.PROVIDER_UNAVAILABLE, correlationId });
+      throw new SocialAuthError(AUTH_ERROR_CODES.PROVIDER_UNAVAILABLE, 'social_provider_unavailable', { provider, correlationId });
+    }
   }
 
   const options = {
@@ -214,7 +300,23 @@ export async function startSocialAuth(provider) {
       await clearPendingProvider();
       throw new SocialAuthError(AUTH_ERROR_CODES.PROVIDER_CONFIG_INVALID, `${provider} OAuth URL unavailable`, { provider, correlationId });
     }
-    await Linking.openURL(data.url);
+    const browserResult = await WebBrowser.openAuthSessionAsync(data.url, NATIVE_REDIRECT);
+    if (browserResult?.type === 'success' && browserResult.url) {
+      return { ...data, callbackUrl: browserResult.url };
+    }
+    await clearPendingProvider();
+    if (browserResult?.type === 'cancel' || browserResult?.type === 'dismiss') {
+      throw new SocialAuthError(
+        AUTH_ERROR_CODES.OAUTH_CANCELLED,
+        'oauth_cancelled',
+        { provider, correlationId },
+      );
+    }
+    throw new SocialAuthError(
+      AUTH_ERROR_CODES.OAUTH_CALLBACK_FAILED,
+      'oauth_callback_missing',
+      { provider, correlationId },
+    );
   }
 
   return data;

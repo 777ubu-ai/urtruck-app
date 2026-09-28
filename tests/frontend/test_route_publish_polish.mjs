@@ -22,7 +22,7 @@ test('route CTA opens a fullscreen map inside UrTruck and never deep-links exter
   assert.doesNotMatch(webMap, /Linking\.openURL/);
   assert.doesNotMatch(nativeMap, /https:\/\/yandex\.(?:ru|kz)\/maps/);
   assert.doesNotMatch(webMap, /https:\/\/yandex\.(?:ru|kz)\/maps/);
-  assert.match(nativeMap, /testID="truck-map-yandex-webview"/);
+  assert.match(nativeMap, /testID="truck-map-yandex-mapkit"/);
   assert.match(webMap, /testID="truck-map-yandex-web"/);
 });
 
@@ -31,6 +31,13 @@ test('publish currency fields show one clear code, not duplicated symbol plus co
   assert.match(createTrip, /value=\{currency\}/);
   assert.doesNotMatch(createCargo, /\{c\.l\} \{c\.k\}/);
   assert.doesNotMatch(createTrip, /\{c\.l\} \{c\.k\}/);
+});
+
+test('cargo loading date trigger opens one controlled calendar and closes cleanly', () => {
+  assert.match(createCargo, /onPress=\{\(\) => setShowDatePicker\(true\)\}/);
+  assert.match(createCargo, /testID="cargo-pickup-date-open"/);
+  assert.match(createCargo, /<DatePicker[\s\S]*defaultOpen[\s\S]*onClose=\{\(\) => setShowDatePicker\(false\)\}/);
+  assert.doesNotMatch(createCargo, /setShowDatePicker\(\(v\) => !v\)/);
 });
 
 test('China-to-Kazakhstan border crossings are displayed in logistics direction', () => {

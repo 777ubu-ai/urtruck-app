@@ -19,6 +19,7 @@ export function installExpoAvRequireShim() {
     createAsyncThrows: null, // Error | null — force Sound.createAsync to reject
     playAsyncThrows: null,   // Error | null — force sound.playAsync() to reject
     nextDurationMillis: 5000,
+    events: [],
   };
 
   function makeSound(uri, initialStatus) {
@@ -45,8 +46,12 @@ export function installExpoAvRequireShim() {
           });
         } catch { /* тестовый подписчик не должен ломать эмиттер */ }
       },
-      setOnPlaybackStatusUpdate(cb) { this.onStatusUpdate = cb; },
+      setOnPlaybackStatusUpdate(cb) {
+        state.events.push('setOnPlaybackStatusUpdate');
+        this.onStatusUpdate = cb;
+      },
       async playAsync() {
+        state.events.push('playAsync');
         if (state.playAsyncThrows) throw state.playAsyncThrows;
         this.playing = true;
         this._emit();
@@ -83,6 +88,7 @@ export function installExpoAvRequireShim() {
     Sound: {
       async createAsync(source, initialStatus) {
         if (state.createAsyncThrows) throw state.createAsyncThrows;
+        state.events.push(`createAsync:${String(initialStatus?.shouldPlay)}`);
         const sound = makeSound(source?.uri, initialStatus);
         state.sounds.push(sound);
         return { sound };
@@ -98,7 +104,7 @@ export function installExpoAvRequireShim() {
 
   const previous = globalThis.require;
   globalThis.require = (specifier) => {
-    if (specifier === 'expo-av') return { Audio };
+    if (specifier === './expoAudioCompat') return { Audio };
     if (typeof previous === 'function') return previous(specifier);
     throw new Error(`expo_av_shim: unmocked require('${specifier}')`);
   };

@@ -1,0 +1,4 @@
+# Дополнение к requirements.txt для отдельного CPU STT worker.
+# Модель устанавливается заранее; OpenAI остаётся доступным провайдером.
+faster-whisper==1.2.1
+ctranslate2==4.8.2

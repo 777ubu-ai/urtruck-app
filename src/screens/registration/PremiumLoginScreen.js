@@ -1,20 +1,31 @@
 // PremiumLoginScreen — Stage 37.
 //
-// Тёмный premium-экран входа в существующий аккаунт. Заменяет старый
-// AuthScreen со светлым дизайном и Telegram/SMS-кнопками в основном
-// flow. Старый AuthScreen сохранён только в qaPreview как 'LegacyAuth'.
+// FINAL 10/10 AUTH CANON CLOSURE (2026-09-14, owner decision): this is now
+// the INTERNAL phone/SMS step of the one canonical AuthV2 entry
+// (PhoneV2Screen's "Continue with phone" is the only live navigate() into
+// route 'Login') — not a second, parallel auth architecture. Its own
+// send-code/verify-code flow handles BOTH new and existing phone numbers
+// uniformly (backend get_or_create_driver), so it doubles as the phone
+// registration path too; PremiumRegisterScreen/RegOtp/RegProfile (the old
+// role-first phone flow) are unreachable from live navigation now — kept
+// registered only for qaPreview / backward-compat, per the same allowance
+// as legacy RoleScreen.
 //
 // Поведение:
 //  - phone-only вход через Mobizon SMS.
-//  - Без пароля, без Apple/Google, без Telegram — только phone+OTP.
+//  - Без пароля, без Apple/Google, без Telegram — только phone+OTP (Google/
+//    Email/Apple живут one level up, on PhoneV2Screen).
 //  - Consent НЕ требуется на login (он был принят при регистрации).
-//  - Если пользователь нажимает «Зарегистрироваться» — уходим на Role,
-//    где он выберет driver/client и пройдёт PremiumRegister.
+//  - «Нет аккаунта?» ведёт назад на AuthV2 (PhoneV2) — тот же номер,
+//    отправленный отсюда через «Получить код», и так создаст новый
+//    аккаунт при первом verify; отдельного «режима регистрации» для
+//    телефона больше нет.
 //
 // После клика «Получить код» отправляем SMS и навигируем на
 // PremiumOtpScreen с params { mode: 'login', phone }. PremiumOtp в
 // login-режиме после verify вызывает regAPI.me() и решает: если у
-// юзера в backend уже есть role — идём в Main; если нет — на Role.
+// юзера в backend уже есть role — идём в Main; если нет — на RoleV2
+// (канонический выбор роли, тот же экран, что и у Google/Email/Apple).
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -219,7 +230,12 @@ export default function PremiumLoginScreen({ navigation }) {
           </Pressable>
 
           <Pressable
-            onPress={() => navigation.navigate('Role')}
+            // FINAL 10/10 AUTH CANON CLOSURE (2026-09-14): back to the
+            // canonical AuthV2 entry, not legacy 'Role'. Submitting the
+            // same phone number from there via "Continue with phone" works
+            // for a brand-new number just as well — there is no separate
+            // phone "register mode" anymore.
+            onPress={() => navigation.navigate('PhoneV2')}
             testID="prem-login-no-account"
             style={s.linkRow}
           >

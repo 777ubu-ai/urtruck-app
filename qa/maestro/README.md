@@ -23,11 +23,13 @@ npx expo start --ios
 # из qa/maestro/screenshots/ — чтобы PNG'и легли сюда же
 cd qa/maestro/screenshots
 
-# между прогонами Expo Go надо терминировать
-xcrun simctl terminate booted host.exp.Exponent && maestro test ../driver-tabs.yaml
-xcrun simctl terminate booted host.exp.Exponent && maestro test ../client-tabs.yaml
-xcrun simctl terminate booted host.exp.Exponent && maestro test ../profile-queue-chats.yaml
-xcrun simctl terminate booted host.exp.Exponent && maestro test ../verification-render.yaml
+# канонический release-smoke
+xcrun simctl terminate booted host.exp.Exponent
+maestro test ../smoke-suite.yaml
+
+# отдельные роли с локальной QA-аутентификацией
+xcrun simctl terminate booted host.exp.Exponent && maestro test ../driver-auth.yaml
+xcrun simctl terminate booted host.exp.Exponent && maestro test ../client-auth.yaml
 ```
 
 ## QA Auth Path (authenticated flows)
@@ -79,14 +81,14 @@ xcrun simctl terminate booted host.exp.Exponent && maestro test ../createcargo-a
 
 | Файл | Селекторы | Статус |
 | --- | --- | --- |
-| `driver-auth.yaml` | runScript `_lib/ensure-actor.js` (actor=serik) → `qa-debug-token`/`qa-debug-submit` → driver Main + 5 табов, Profile→`profile-my-status`, Queue→`queue-title`, Chats→`deal-room-list` | требует локального backend |
-| `client-auth.yaml` | actor=boris → клиентский tab-bar (Publish видим, Queue/Chats скрыты), `cargo-from-input` после `bottom-nav-publish` | требует локального backend |
-| `verification-authenticated.yaml` | actor=serik → Profile → My status → опционально `profile-pro-cta` → Identity (`identity-first-name`, `identity-iin`, `identity-help`) | требует локального backend |
-| `createcargo-authenticated.yaml` | actor=boris → `bottom-nav-publish` → форма CreateCargo (`cargo-from/to/desc/weight/volume/submit`). Submit НЕ нажимается, чтобы не плодить QA-записи. | требует локального backend |
-| `driver-tabs.yaml` | `onb-v2-cta-guest`, `bottom-nav-{feed,mywork,queue,chats,profile}` | ✅ PASS |
-| `client-tabs.yaml` | `onb-v2-cta-{phone,guest}`, `bottom-nav-{feed,profile}` | ✅ PASS (полный client-tab-bar — NOT PROVEN без OTP) |
-| `profile-queue-chats.yaml` | `profile-push-filter`, `profile-my-status`, `profile-pro-cta`, `queue-title`, `queue-cgr-link`, `deal-room-list`, `chats-header`, `deal-room-search` + `assertNotVisible "Обновить приложение"` | ✅ PASS |
-| `verification-render.yaml` | `onb-v2-cta-phone`, `phone-v2-input`, `phone-v2-cta`. Опциональная ветка `identity-step-screen` → `identity-first-name`, `identity-last-name`, `identity-birth`, `identity-iin`, `identity-help` | ✅ PASS до Auth, Identity-step — NOT PROVEN без реального OTP |
+| `smoke-suite.yaml` | актуальные guest-навигация, Border/CGR и onboarding/verification render | release entry |
+| `driver-auth.yaml` | actor=serik → четыре вкладки Feed/MyWork/Deals/Queue, профиль через `feed-menu-btn`, Border/CGR | требует локального backend |
+| `client-auth.yaml` | actor=boris → четыре вкладки MyWork/Feed/Deals/Queue; CreateCargo через `mytrips-place-cargo` | требует локального backend |
+| `verification-authenticated.yaml` | профиль через общий `_lib/open-profile.yaml` → My status → Identity/PRO | требует локального backend |
+| `createcargo-authenticated.yaml` | MyWork → `mytrips-place-cargo` → форма CreateCargo; submit не выполняется | требует локального backend |
+| `driver-4tabs.yaml` / `client-4tabs.yaml` | канонические четыре вкладки без Chats/Profile/Publish | release smoke |
+| `driver-queue-cgr.yaml` | role-aware Border/CGR и свёрнутый manual lookup | release smoke |
+| `verification-render.yaml` | onboarding/auth render и стабильные Identity testID | release smoke |
 
 Все assert и tap идут через `id:` (XCUITest accessibility identifier).
 Текстовый fallback оставлен только там, где элемент рисуется самим Expo Go
@@ -107,9 +109,10 @@ xcrun simctl terminate booted host.exp.Exponent && maestro test ../createcargo-a
 
 ### BottomNav (`src/components/ui/v1/BottomNav.js`)
 - `bottom-nav` — контейнер
-- `bottom-nav-feed` / `bottom-nav-mywork` / `bottom-nav-queue` / `bottom-nav-chats` / `bottom-nav-profile`
-- `bottom-nav-publish` (клиентский Publish-таб)
-- `bottom-nav-chats-badge` — счётчик непрочитанных
+- `bottom-nav-feed` / `bottom-nav-mywork` / `bottom-nav-deals` / `bottom-nav-queue`
+- `bottom-nav-deals-badge` — счётчик внимания на «Сделках»
+- Profile не является вкладкой: `feed-menu-btn`, `mywork-menu-btn`, `deals-menu-btn`
+- публикация живёт внутри MyWork: `mytrips-publish-route` / `mytrips-place-cargo`
 
 ### ProfileScreen (`src/screens/ProfileScreen.js`) — *обновлено в этой ветке*
 - `profile-my-status` — карточка «Мой статус» (driver-only)
@@ -119,18 +122,17 @@ xcrun simctl terminate booted host.exp.Exponent && maestro test ../createcargo-a
 - `profile-change-role` — DEV-only переключатель роли
 - `profile-logout` — выход
 
-### QueueScreen (`src/screens/QueueScreen.js`) — *обновлено в этой ветке*
-- `queue-title` — заголовок «Очереди на границах»
-- `queue-gate` — экран ожидания верификации
-- `queue-gate-cta` — кнопка «Заполнить документы»
-- `queue-cgr-link` / `queue-cgr-link-approved` — переход в CargoRuqsatInfo
+### QueueScreenLazyV2 (`src/screens/QueueScreenLazyV2.js`)
+- `border-screen-v2` — канонический экран Border/CGR
+- `border-driver-vehicle-card` — контекст машины водителя
+- `border-driver-manual-toggle` — явное раскрытие ручного поиска
 
-### ChatsListScreen (`src/screens/ChatsListScreen.js`) — *обновлено в этой ветке*
-- `deal-room-list` — контейнер списка чатов
-- `chats-header` — заголовок «Сделки»
+### DealsScreen (`src/screens/DealsScreen.js`)
+- `deal-room-list` / `deals-list` — контейнер канонических «Сделок»
+- `deals-minimal-header` / `deals-menu-btn` — шапка и вход в профиль
+- `deals-tab-offers|active|archive` — актуальные сегменты
+- `deals-driver-bid` / `deals-deal-card` — предложение и сделка
 - `deal-room-search` — поиск
-- `deal-room-filter-all|unread|active|archive` — чипы фильтра
-- `deal-room-list-card` / `deal-room-list-unread` — элементы списка
 
 ### Identity Step (`src/screens/registration/IdentityStepScreen.js`)
 - `identity-step-screen` (контейнер)
@@ -144,7 +146,7 @@ xcrun simctl terminate booted host.exp.Exponent && maestro test ../createcargo-a
 ## Что не покрыто (Expo Go SDK 52 ограничения)
 
 - **OTP-флоу.** Симулятор не получает SMS — registration после `phone-v2-cta` недоступна.
-- **Клиентский tab-bar.** Гостевой режим даёт driver-табы; client-табы (Машины / Грузы / Разместить / Профиль) — только после OTP + явного role-switch в Profile.
+- **Production-аутентификация.** Guest-smoke не заменяет actor-flow: обе роли имеют четыре вкладки, а QA actor-login доступен только в dev/Expo Go.
 - `expo-notifications` push в Expo Go SDK 52 урезан.
 - Камера/галерея/реальные фото документов и OCR — на симуляторе ограничено.
 - `urtruck://` deeplink (Expo Go использует только `exp://`).

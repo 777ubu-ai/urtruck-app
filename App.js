@@ -9,6 +9,7 @@ import { ToastProvider } from './src/components/Toast';
 import OfflineBanner from './src/components/OfflineBanner';
 import PushPermissionBanner from './src/components/PushPermissionBanner';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import AndroidBrandedLaunchSplash from './src/components/AndroidBrandedLaunchSplash';
 import AppNavigator from './src/navigation/AppNavigator';
 import { flushOutbox } from './src/utils/outbox';
 // Фоновый GPS: сам импорт регистрирует TaskManager-таску (обязательно на
@@ -32,6 +33,21 @@ if (Platform.OS !== 'web') {
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import * as Sentry from '@sentry/react-native';
+
+// Yandex MapKit is a native-only provider. The key is supplied by the native
+// build environment (EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY), never committed to
+// source. Web keeps its own Yandex JS key and never loads this module.
+if (Platform.OS !== 'web') {
+  const mapKitKey = String(process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY || '').trim();
+  if (mapKitKey) {
+    try {
+      const YaMap = require('react-native-yamap').default;
+      YaMap.init(mapKitKey).catch((error) => console.warn('[yamap] init skipped:', error?.message || error));
+    } catch (error) {
+      console.warn('[yamap] native module unavailable:', error?.message || error);
+    }
+  }
+}
 
 // Глобально убираем браузерную синюю обводку фокуса (outline) с полей ввода и
 // нажимаемых элементов на web/PWA. react-native-web рендерит TextInput как
@@ -104,6 +120,9 @@ function parseNotifUrl(url) {
   const segments = pathPart.split('/').filter(Boolean);
   if (segments.length === 0) return null;
   const kind = segments[0].toLowerCase();
+  // Старые share links были singular. Нормализуем их на входе, чтобы уже
+  // опубликованные ссылки продолжили открывать canonical listing screen.
+  const canonicalKind = ({ cargo: 'cargos', trip: 'trips' })[kind] || kind;
   const id = segments[1] || null;
   const params = {};
   if (queryPart) {
@@ -115,7 +134,7 @@ function parseNotifUrl(url) {
       catch { params[rawK] = rawV; }
     }
   }
-  return { kind, id, params };
+  return { kind: canonicalKind, id, params };
 }
 
 function navigateFromUrl(navRef, url, role) {
@@ -129,7 +148,20 @@ function navigateFromUrl(navRef, url, role) {
       navRef.current.navigate('CargoDetail', { cargoId: id, bidId: params.bid || null, role });
     } else if (kind === 'trips' && id) {
       navRef.current.navigate('TripDetail', { tripId: id, bidId: params.bid || null, role });
+    } else if (kind === 'deals' && !id) {
+      // Root Deals push/deeplink: open the canonical bottom-tab destination,
+      // not a standalone child route. This preserves meaningful Back/tab
+      // semantics and prevents a /deals notification tap from silently
+      // leaving the user on whatever root screen happened to be active.
+      navRef.current.navigate('Main', { screen: 'Deals', params: { role } });
     } else if (kind === 'deals' && id) {
+      // A push target is a nested screen. First make Deals the meaningful
+      // parent tab, then push the exact deal. Hardware Back must never return
+      // to an unrelated root (for example Cargo Feed) just because that was
+      // foreground before the notification arrived.
+      navRef.current.navigate('Main', { screen: 'Deals', params: { role } });
+      setTimeout(() => navRef.current?.navigate('Chat', { dealId: id, role, action: params.action || null }), 0);
+      return;
       // BUG-002: deals → Deal Room (ChatScreen с dealId), как в
       // NotificationsScreen. Раньше кидало в общий список чатов без контекста.
       // GPS-consent P1 fix: backend's tracking-request/approved/declined/
@@ -141,9 +173,20 @@ function navigateFromUrl(navRef, url, role) {
       // ChatScreenV2/DealWorkspaceRoute already forward the full params
       // object (spread, not a named allow-list), so this alone is enough
       // for DealWorkspaceScreenV2 to see it on mount.
-      navRef.current.navigate('Chat', { dealId: id, role, action: params.action || null });
     } else if (kind === 'chats' && id) {
-      navRef.current.navigate('Chat', { roomId: id, role });
+      navRef.current.navigate('Main', { screen: 'Deals', params: { role } });
+      setTimeout(() => navRef.current?.navigate('Chat', { roomId: id, role }), 0);
+      return;
+    } else if (kind === 'driver' && id) {
+      // Deep-link audit P1 (2026-09-14): ShareModal builds
+      // `${WEB_URL}/driver/{id}` for a shared driver profile (src/components/
+      // ShareModal.js), but this router never had a 'driver' branch — the
+      // link fell through silently. DriverDetail already tolerates a
+      // minimal `{ id }` object: it hydrates rating/vehicle from
+      // marketAPI.listDrivers() and shows a friendly placeholder while the
+      // id is unresolved (see DriverDetail.js `_profileMissing`/`!driver`
+      // guards), so no extra backend endpoint is needed here.
+      navRef.current.navigate('DriverDetail', { driver: { id, _server: true, _isDriver: true }, role });
     } else if (kind === 'chat' || kind === 'chats') {
       navRef.current.navigate('ChatsList');
     } else if (kind === 'profile') {
@@ -178,10 +221,9 @@ function notificationResponseUrl(response) {
   return typeof data.url === 'string' ? data.url : null;
 }
 
-// Welcome-splash показывает НАТИВНЫЙ splash (app.json → splash.image), он сам
-// уходит, когда отрисован первый кадр JS. JS-оверлей убран (баг: всплывал ПОВЕРХ
-// уже загруженной ленты → «двоение UrTruck», как и в предыдущий раз 14.06).
-// Нативного splash достаточно во всех прод-сборках.
+// Android 12+ системный splash поддерживает только компактную иконку. Полный
+// UrTruck poster показывается один раз поверх первого кадра JS в
+// AndroidBrandedLaunchSplash; iOS продолжает использовать свой native splash.
 
 // AppInner живёт ПОД AuthProvider — поэтому знает состояние сессии и может
 // (а) откладывать deep-link до готовности навигатора и авторизованного стека,
@@ -217,9 +259,10 @@ function AppInner() {
   const base = isDark ? DarkTheme : DefaultTheme;
   const navTheme = { ...base, colors: { ...base.colors, background: theme.bg } };
 
-  // Авторизован ли для «глубоких» экранов (Chat/ChatsList/CargoDetail…) —
-  // они существуют только в полном стеке (session + роль). До этого маршрут
-  // отсутствует, navigate падал и тап по пушу «терялся».
+  // Авторизован ли для закрытых «глубоких» экранов (Chat/Deals/Profile…).
+  // Карточки активных грузов/рейсов — публичный marketplace: guest-стек уже
+  // регистрирует CargoDetail/TripDetail, а backend анонимно отдаёт только
+  // active-объявления. Поэтому share-link обязан открыть карточку до входа.
   const authedForDeepLink = !!(session && session.user && session.user.role);
 
   // P5: единая точка навигации по url из пуша. Если навигатор не готов или
@@ -228,7 +271,7 @@ function AppInner() {
   const routeFromUrl = (url) => {
     if (!url) return;
     const parsed = parseNotifUrl(url);
-    const needsAuth = parsed && ['chats', 'chat', 'deals', 'cargos', 'trips', 'profile', 'notifications'].includes(parsed.kind);
+    const needsAuth = parsed && ['chats', 'chat', 'deals', 'driver', 'profile', 'notifications'].includes(parsed.kind);
     if (!navReadyRef.current || !navRef.current || (needsAuth && !authedForDeepLink)) {
       pendingUrlRef.current = url;  // отложить
       return;
@@ -259,11 +302,11 @@ function AppInner() {
   }, [authedForDeepLink]);
 
   // App/universal links outside push taps: urtruck://notifications,
-  // https://urtruck.kz/notifications и другие поддержанные url должны
-  // открывать те же экраны, что и tap по push. Unknown/social-auth urls
-  // спокойно игнорируются parseNotifUrl/navigateFromUrl.
+  // https://urtruck.kz/cargos/{id}, /trips/{id} и другие поддержанные url
+  // должны открывать точный экран. Это нужно и web: мессенджер часто
+  // открывает share-link во встроенном браузере, а не как universal link.
+  // Unknown/social-auth urls спокойно игнорируются parseNotifUrl/navigateFromUrl.
   useEffect(() => {
-    if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
     let active = true;
     Linking.getInitialURL()
       .then((url) => {
@@ -362,13 +405,15 @@ function AppInner() {
 
 function App() {
   return (
-    <ErrorBoundary>
-    <ThemeProvider>
-      <AuthProvider>
-        <AppInner />
-      </AuthProvider>
-    </ThemeProvider>
-    </ErrorBoundary>
+    <AndroidBrandedLaunchSplash>
+      <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppInner />
+        </AuthProvider>
+      </ThemeProvider>
+      </ErrorBoundary>
+    </AndroidBrandedLaunchSplash>
   );
 }
 

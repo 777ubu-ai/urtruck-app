@@ -17,9 +17,10 @@ const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
 const counts = report.counts || {};
 const p0 = Number(counts.P0 || 0);
 const p1 = Number(counts.P1 || 0);
+const p2 = Number(counts.P2 || 0);
 
-console.log(`[qa-gate] report=${reportPath} P0=${p0} P1=${p1}`);
-if (p0 > 0 || p1 > 0) {
-  console.error('[qa-gate] blocking release: report contains P0/P1 findings');
+console.log(`[qa-gate] report=${reportPath} P0=${p0} P1=${p1} P2=${p2}`);
+if (p0 > 0 || p1 > 0 || p2 > 0) {
+  console.error('[qa-gate] blocking release: report contains unresolved P0/P1/P2 findings');
   process.exit(1);
 }

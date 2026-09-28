@@ -27,6 +27,13 @@ const IMG = {
   closed: require('../../assets/truck-icons/closed.png'),
   longliner: require('../../assets/truck-icons/longliner.png'),
   microvan: require('../../assets/truck-icons/microvan.png'),
+  container: require('../../assets/truck-icons/cont40.png'),
+  tandem: require('../../assets/truck-icons/jumbo.png'),
+  lcv_tent: require('../../assets/truck-icons/tent.png'),
+  lcv_van: require('../../assets/truck-icons/closed.png'),
+  lcv_flatbed: require('../../assets/truck-icons/open_truck.png'),
+  lcv_ref: require('../../assets/truck-icons/ref.png'),
+  manipulator: require('../../assets/truck-icons/lowloader.png'),
 };
 
 export default function TruckTypeIcon({ type, width = 62 }) {

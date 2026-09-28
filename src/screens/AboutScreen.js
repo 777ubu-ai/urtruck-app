@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
@@ -40,7 +40,7 @@ export default function AboutScreen({ navigation }) {
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
         <View style={[s.hero, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={s.heroEmoji}>🚛</Text>
+          <Image source={require('../../assets/icon.png')} style={s.heroLogo} resizeMode="contain" accessibilityLabel="UrTruck" />
           <Text style={[s.heroTitle, { color: theme.text }]}>UrTruck</Text>
           <Text style={[s.heroSub, { color: theme.textMuted }]}>
             {t('about_hero_sub')}
@@ -98,7 +98,7 @@ const s = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '800' },
 
   hero: { padding: 24, borderRadius: 18, borderWidth: 1, alignItems: 'center', marginBottom: 20 },
-  heroEmoji: { fontSize: 56, marginBottom: 8 },
+  heroLogo: { width: 76, height: 76, borderRadius: 18, marginBottom: 10 },
   heroTitle: { fontSize: 28, fontWeight: '900', letterSpacing: -1 },
   heroSub: { fontSize: 13, textAlign: 'center', lineHeight: 19, marginTop: 8 },
 

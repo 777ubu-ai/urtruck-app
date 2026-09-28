@@ -10,16 +10,18 @@ env:
 - runFlow: _lib/qa-login.yaml
 - tapOn: { id: "bottom-nav-deals" }
 - waitForAnimationToEnd
+- tapOn: { id: "deals-tab-active" }
+- waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: { id: "deal-room-list-card" }
+    visible: { id: "deals-deal-card" }
     timeout: 15000
-- tapOn: { id: "deal-room-list-card", index: 0 }
+- tapOn: { id: "deals-deal-card", index: 0 }
 - extendedWaitUntil:
     visible: { id: "deal-action-start-delivery" }
     timeout: 15000
 - takeScreenshot: GPS_03_driver_start_trip
 - tapOn: { id: "deal-action-start-delivery" }
 - extendedWaitUntil:
-    visible: { id: "deal-action-mark-at-border" }
+    visible: { id: "deal-action-next" }
     timeout: 15000
 - takeScreenshot: GPS_04_driver_tracking_in_transit

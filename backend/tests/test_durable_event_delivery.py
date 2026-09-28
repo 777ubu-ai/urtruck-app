@@ -25,6 +25,8 @@ import sys
 import uuid
 from pathlib import Path
 
+import pytest
+
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_durable_delivery.db")
 if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
     Path(TEST_DB).unlink(missing_ok=True)
@@ -82,6 +84,16 @@ import api.marketplace as marketplace_module
 import api.chat as chat_module
 
 
+@pytest.fixture(autouse=True)
+def _explicit_legacy_provider_for_this_legacy_path_suite(monkeypatch):
+    """These tests intentionally exercise the retained Expo legacy path.
+
+    The production default is native now, so make the old-provider intent
+    explicit instead of relying on an implicit module default.
+    """
+    monkeypatch.setattr(push_gateway, "PUSH_PROVIDER_MODE", "expo")
+
+
 def _synchronous_send_to_user(user_id, title, body, url="/", kind="info", data=None):
     """api.push.send_to_user() (the real production entry point) spawns a
     daemon Thread and returns immediately — correct for a live server (an
@@ -122,8 +134,7 @@ def seed_cargo(owner_id, price=1234):
 
 def seed_device(user_id, locale=None):
     """Register an active push_devices row so send_to_devices() actually
-    targets this user (mode='expo' default only sees push_provider='expo'
-    devices — with none registered, nothing is attempted at all)."""
+    targets this user in the explicitly selected legacy Expo mode."""
     with get_conn() as c:
         c.execute(
             "INSERT INTO push_devices (user_id, device_id, platform, push_provider, push_token, locale, enabled) "
@@ -524,7 +535,7 @@ def test_system_push_is_localized_per_device_not_per_last_seen():
     result = push_gateway.send_to_devices(user, "fallback", "fallback", {
         "event_key": "event:mixed-locale-final", "i18n_event": "bid_created",
         "i18n_params": {"amount": "$1", "route": "A→B"},
-    }, badge=1, expo_send_one=capture)
+    }, badge=1, expo_send_one=capture, mode="expo")
     assert result["sent"] == 2
     texts = " ".join(f"{title} {body}" for _, title, body in captured)
     assert "New bid" in texts and "新报价" in texts
@@ -547,6 +558,70 @@ def test_counter_rounds_within_one_timestamp_have_distinct_event_keys(monkeypatc
     assert client.post(f"/api/v1/market/bids/{bid_id}/counter", json={"amount": 1300}).status_code == 200
     keys = [d["event_key"] for d in captured if d.get("event") == "bid.countered"]
     assert len(keys) == 2 and len(set(keys)) == 2
+
+
+def _prepare_counter(monkeypatch):
+    monkeypatch.setattr(marketplace_module, "send_to_user", lambda *a, **k: None)
+    owner, driver = "owner-" + uuid.uuid4().hex, "driver-" + uuid.uuid4().hex
+    cargo = seed_cargo(owner, 7600)
+    as_user(driver, role="driver")
+    bid = client.post("/api/v1/market/bids", json={"cargo_id": cargo, "amount": 7600}).json()["id"]
+    as_user(owner)
+    assert client.post(f"/api/v1/market/bids/{bid}/counter", json={"amount": 7800}).status_code == 200
+    _reset_outbox()
+    as_user(driver, role="driver")
+    return owner, driver, bid
+
+
+def test_counter_accept_persists_before_inline_send_and_retries_both(monkeypatch):
+    owner, driver, bid = _prepare_counter(monkeypatch)
+    for uid in (owner, driver):
+        seed_device(uid)
+    observed = []
+    def stopped_send(*args, **kwargs):
+        # Читаем отдельным соединением: commit уже завершён до отправки.
+        observed.append(len(outbox_rows(owner)) + len(outbox_rows(driver)))
+        raise RuntimeError("имитация сбоя inline delivery")
+    monkeypatch.setattr(marketplace_module, "send_to_user", stopped_send)
+    response = client.post(f"/api/v1/market/bids/{bid}/counter/accept")
+    assert response.status_code == 200, response.text
+    assert response.json()["amount"] == 7800
+    assert observed == [2, 2]
+    for uid in (owner, driver):
+        row = outbox_rows(uid)[0]
+        assert row["event_type"] == "bid.counter_accepted"
+        assert row["event_type"] in push_gateway.PUSH_EVENT_CATALOG
+        assert row["priority"] == "critical"
+    flaky = _FlakyExpo(fail_times=0)
+    for uid in (owner, driver):
+        assert outbox_rows(uid)[0]["status"] == "pending"
+        _force_due(uid)
+    assert push_gateway.process_pending_once(flaky, limit=10)["sent"] == 2
+    assert len(flaky.successful_payloads) == 2
+    assert all(p["data"]["deal_id"] == response.json()["deal_id"] for p in flaky.successful_payloads)
+    assert client.post(f"/api/v1/market/bids/{bid}/counter/accept").status_code == 409
+    for uid in (owner, driver):
+        assert len(outbox_rows(uid)) == 1
+        assert len([n for n in notifications(uid) if n["event_key"] == outbox_rows(uid)[0]["event_id"]]) == 1
+
+
+def test_counter_accept_rolls_back_if_durable_event_cannot_be_saved(monkeypatch):
+    owner, driver, bid = _prepare_counter(monkeypatch)
+    calls = 0
+    original = push_gateway.enqueue_event
+    def unavailable(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("имитация ошибки outbox storage")
+        return original(*args, **kwargs)
+    monkeypatch.setattr(push_gateway, "enqueue_event", unavailable)
+    with pytest.raises(RuntimeError, match="outbox storage"):
+        client.post(f"/api/v1/market/bids/{bid}/counter/accept")
+    with get_conn() as c:
+        assert c.execute("SELECT status FROM bids WHERE id=?", (bid,)).fetchone()[0] == "countered"
+        assert c.execute("SELECT COUNT(*) FROM deals WHERE bid_id=?", (bid,)).fetchone()[0] == 0
+    assert not outbox_rows(owner) and not outbox_rows(driver)
 
 
 if __name__ == "__main__":

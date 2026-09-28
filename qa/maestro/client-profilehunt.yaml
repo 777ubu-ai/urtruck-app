@@ -8,8 +8,7 @@ env:
   MAESTRO_ACTOR: boris
 ---
 - runFlow: _lib/qa-login.yaml
-- tapOn: { id: "bottom-nav-profile" }
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - takeScreenshot: 70_profile_top
 # F2: нет «Прямой импортёр» под именем
 - assertNotVisible: "Прямой импортёр"

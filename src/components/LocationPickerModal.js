@@ -153,12 +153,15 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     sectRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
     sectLabelInline: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', color: v1.textMuted },
     row: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingHorizontal: 16, paddingVertical: 12 },
-    lead: { width: 38, height: 38, borderRadius: 11, backgroundColor: v1.surface, borderWidth: 1, borderColor: v1.border, alignItems: 'center', justifyContent: 'center' },
+    // CountryFlag owns its complete circular treatment (white inner rim,
+    // subtle gray outer ring and shadow). Keep this layout slot transparent
+    // so a flag never becomes a button/card inside an already tappable row.
+    lead: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
     leadText: { fontSize: 19 },
     name: { fontSize: 15, fontWeight: '700', color: v1.text },
     sub: { fontSize: 12, color: v1.textMuted, marginTop: 2 },
     chev: { fontSize: 18, color: v1.textMuted },
-    geoLead: { backgroundColor: 'rgba(0,230,118,0.12)', borderColor: 'rgba(0,230,118,0.3)' },
+    geoLead: { backgroundColor: 'rgba(0,230,118,0.12)', borderColor: 'rgba(0,230,118,0.3)', borderWidth: 1, borderRadius: 11 },
     divider: { height: 1, backgroundColor: v1.border, marginHorizontal: 16, marginVertical: 6 },
     empty: { color: v1.textMuted, fontSize: 13, padding: 16 },
   }), [v1]);

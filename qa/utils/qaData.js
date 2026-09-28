@@ -19,8 +19,9 @@ function serikTripPayload(overrides = {}) {
     available_m3: 82,
     price: 12000,
     currency: 'USD',
-    departure: '2026-05-06',
-    arrival: '2026-05-08',
+    // Keep release QA evergreen: backend correctly rejects past departures.
+    departure: new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10),
+    arrival: new Date(Date.now() + 16 * 864e5).toISOString().slice(0, 10),
     ...overrides,
   };
 }

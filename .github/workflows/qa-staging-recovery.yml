@@ -1,0 +1,539 @@
+name: Bootstrap or Recover QA2 Backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type RECOVER_QA2 to bootstrap or recover only isolated QA2
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      confirmation:
+        description: Explicit QA2 bootstrap/recovery confirmation
+        required: true
+        type: string
+    secrets:
+      QA2_API_URL:
+        required: true
+      SERVER_HOST:
+        required: true
+      SERVER_USER:
+        required: true
+      SERVER_PASS:
+        required: true
+      QA2_OPENAI_API_KEY:
+        required: true
+
+concurrency:
+  group: urtruck-qa2-runtime-recovery
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  QA_SOURCE_SHA: ${{ github.sha }}
+
+jobs:
+  recover:
+    if: inputs.confirmation == 'RECOVER_QA2'
+    name: Bootstrap or recover isolated QA2 runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      QA_API_URL: ${{ secrets.QA2_API_URL }}
+      QA2_OPENAI_API_KEY: ${{ secrets.QA2_OPENAI_API_KEY }}
+    steps:
+      - name: Require explicit QA-only recovery confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = "RECOVER_QA2" || {
+            echo "::error::QA2 recovery confirmation mismatch"
+            exit 1
+          }
+
+      - name: Checkout exact QA2 source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.QA_SOURCE_SHA }}
+
+      - name: Validate QA2 recovery workflow contract
+        run: node --test tests/frontend/test_qa_staging_recovery_workflow.mjs
+
+      - name: Validate isolated target and fingerprint production
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$QA_API_URL" && test -n "$QA2_OPENAI_API_KEY"
+          host="$(python3 - <<'PY'
+          from urllib.parse import urlparse
+          import os
+          parsed = urlparse(os.environ["QA_API_URL"])
+          if parsed.scheme != "https":
+              raise SystemExit(2)
+          print(parsed.hostname or "")
+          PY
+          )"
+          test "$host" = "qa2.urtruck.kz" || {
+            echo "::error::QA recovery URL must be exactly https://qa2.urtruck.kz"
+            exit 1
+          }
+          prod_body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          test -n "$prod_body"
+          prod_hash="$(printf '%s' "$prod_body" | sha256sum | awk '{print $1}')"
+          echo "PROD_VERSION_HASH_BEFORE=$prod_hash" >> "$GITHUB_ENV"
+          echo "PRODUCTION_BEFORE=healthy-fingerprinted"
+
+      - name: Install SSH and rsync
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+
+      - name: Inspect existing server capacity for isolated QA2 AI
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "QA_AI_ARCH=$(uname -m)"
+          echo "QA_AI_CPU_COUNT=$(nproc)"
+          echo "QA_AI_CPU_MODEL=$(lscpu | sed -n 's/^Model name:[[:space:]]*//p' | head -1)"
+          echo "QA_AI_RAM_BYTES=$(awk '/MemTotal:/ {print $2 * 1024}' /proc/meminfo)"
+          echo "QA_AI_RAM_AVAILABLE_BYTES=$(awk '/MemAvailable:/ {print $2 * 1024}' /proc/meminfo)"
+          echo "QA_AI_SWAP_BYTES=$(awk '/SwapTotal:/ {print $2 * 1024}' /proc/meminfo)"
+          echo "QA_AI_DISK_AVAILABLE_BYTES=$(df -B1 --output=avail /home/ubuntu | tail -1 | tr -d ' ')"
+          echo "QA_AI_LOAD=$(cut -d' ' -f1-3 /proc/loadavg)"
+          if command -v nvidia-smi >/dev/null 2>&1; then
+            echo "QA_AI_GPU=nvidia"
+            nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+          else
+            echo "QA_AI_GPU=none"
+          fi
+          if systemctl is-active --quiet urtruck-qa2.service; then
+            echo "QA_AI_QA2_SERVICE=active"
+            systemctl show urtruck-qa2.service -p MemoryCurrent -p CPUUsageNSec --no-pager
+          else
+            echo "QA_AI_QA2_SERVICE=inactive"
+          fi
+          REMOTE
+
+      - name: Prepare isolated QA2 directories and backup code
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_backend="$qa_root/backend"
+          state=/tmp/urtruck-qa2-recovery.state
+          test "$(id -u)" -ne 0
+          test "$(id -un)" = ubuntu
+          sudo -n true
+          command -v rsync >/dev/null
+          command -v python3 >/dev/null
+          test "$qa_root" != /home/ubuntu/urtruck-security
+          root_preexisting=no
+          test -e "$qa_root" && root_preexisting=yes
+          mkdir -p "$qa_backend" "$qa_root/database" "$qa_root/storage" "$qa_root/backups"
+          chmod 700 "$qa_root" "$qa_root/database" "$qa_root/storage" "$qa_root/backups"
+          listener_pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          if test -n "$listener_pid"; then
+            cmd="$(tr '\0' ' ' < "/proc/$listener_pid/cmdline" 2>/dev/null || true)"
+            cwd="$(readlink -f "/proc/$listener_pid/cwd" 2>/dev/null || true)"
+            printf '%s' "$cmd" | grep -Fq 'main:app' || {
+              echo "::error::QA_RECOVERY_PORT_8002_NOT_FREE"
+              exit 1
+            }
+            case "$cwd" in "$qa_root"|"$qa_root"/*) ;; *)
+              echo "::error::QA_RECOVERY_PORT_8002_NOT_FREE"
+              exit 1
+            esac
+          fi
+          backup_id="backend-code-recovery-$(date -u +%Y%m%dT%H%M%SZ)"
+          backup_dir="$qa_root/backups/$backup_id"
+          mkdir -p "$backup_dir"
+          if test -n "$(find "$qa_backend" -mindepth 1 -maxdepth 1 -print -quit)"; then
+            rsync -a \
+              --exclude='venv/' --exclude='.venv/' --exclude='storage/' --exclude='backups/' \
+              --exclude='.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
+              --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm' \
+              --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log' \
+              "$qa_backend/" "$backup_dir/"
+          fi
+          umask 077
+          cat > "$state" <<STATE
+          BACKUP_ID=$backup_id
+          ROOT_PREEXISTING=$root_preexisting
+          STATE
+          echo "QA_RECOVERY_BACKUP_ID=$backup_id"
+          echo "QA_RECOVERY_ROOT_PREEXISTING=$root_preexisting"
+          echo "QA_RECOVERY_PROTECTED_PATHS=production-and-pro-untouched"
+          REMOTE
+
+      - name: Mirror exact backend source without QA2 data
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          rsync -az --delete \
+            --exclude='venv/' --exclude='.venv/' --exclude='storage/' --exclude='backups/' \
+            --exclude='.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
+            --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm' \
+            --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log' \
+            -e 'sshpass -e ssh -o StrictHostKeyChecking=no' \
+            backend/ "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/"
+
+      - name: Provision isolated QA2 environment and AI providers
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          local_secret="$(mktemp)"
+          remote_secret="/tmp/urtruck-qa2-ai-$GITHUB_RUN_ID.env"
+          trap 'rm -f "$local_secret"' EXIT INT TERM
+          {
+            printf 'OPENAI_API_KEY=%s\n' "$QA2_OPENAI_API_KEY"
+            printf 'TRANSCRIBE_PROVIDER=openai\n'
+            printf 'TRANSCRIBE_MODEL=gpt-4o-mini-transcribe\n'
+            printf 'TRANSLATE_PROVIDER=openai\n'
+            printf 'TRANSLATE_MODEL=gpt-4o-mini\n'
+          } > "$local_secret"
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e scp -o StrictHostKeyChecking=no "$local_secret" \
+            "$SERVER_USER@$SERVER_HOST:$remote_secret"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            bash -s -- "$remote_secret" <<'REMOTE'
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_env="$qa_root/.env"
+          incoming="$1"
+          trap 'rm -f "$incoming"' EXIT INT TERM
+          umask 077
+          if ! test -f "$qa_env"; then
+            signing="$(openssl rand -hex 32)"
+            phone_secret="$(openssl rand -hex 32)"
+            admin_pass="$(openssl rand -hex 32)"
+            api_key="$(openssl rand -hex 32)"
+            admin_token="$(openssl rand -hex 32)"
+            cat > "$qa_env" <<ENV
+          URTRUCK_ENV=qa2
+          ENV=qa2
+          DB_PATH=$qa_root/database/security.db
+          STORAGE_PROVIDER=local
+          STORAGE_LOCAL_ROOT=$qa_root/storage
+          STORAGE_LOCAL_PUBLIC_BASE=/storage
+          BETA_MODE=true
+          BETA_OTP_CODE=0000
+          CORS_ORIGINS=https://qa2.urtruck.kz
+          FILE_SIGNING_KEY=$signing
+          PHONE_CHANGE_OTP_SECRET=$phone_secret
+          URTRUCK_ADMIN_USER=qa2-admin
+          URTRUCK_ADMIN_PASS=$admin_pass
+          URTRUCK_API_KEY=$api_key
+          URTRUCK_ADMIN_TOKEN=$admin_token
+          SENTRY_ENVIRONMENT=qa2
+          ENV
+          fi
+          python3 - "$qa_root" "$qa_env" "$incoming" <<'PY'
+          import os
+          import stat
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1]).resolve()
+          env_path = Path(sys.argv[2])
+          incoming_path = Path(sys.argv[3])
+          values = {}
+          lines = env_path.read_text(encoding="utf-8").splitlines()
+          for raw in lines:
+              key, sep, value = raw.partition("=")
+              if sep and key.strip():
+                  values[key.strip()] = value.strip().strip('"').strip("'")
+          environment = (values.get("URTRUCK_ENV") or values.get("ENV") or "").lower()
+          if environment in {"", "production", "prod"}:
+              raise SystemExit("QA_ENVIRONMENT_NOT_ISOLATED")
+          raw_db = values.get("DB_PATH") or values.get("URTRUCK_DB_PATH") or ""
+          if raw_db.startswith("sqlite:///"):
+              raw_db = raw_db[len("sqlite:///"):]
+          db_path = Path(raw_db)
+          if not db_path.is_absolute():
+              db_path = root / db_path
+          db_path = db_path.resolve()
+          if root not in db_path.parents or "urtruck-security" in str(db_path):
+              raise SystemExit("QA_DATABASE_NOT_ISOLATED")
+          allowed = {
+              "OPENAI_API_KEY", "TRANSCRIBE_PROVIDER", "TRANSCRIBE_MODEL",
+              "TRANSLATE_PROVIDER", "TRANSLATE_MODEL",
+          }
+          incoming_values = {}
+          for raw in incoming_path.read_text(encoding="utf-8").splitlines():
+              key, sep, value = raw.partition("=")
+              if sep and key in allowed and value:
+                  incoming_values[key] = value
+          if set(incoming_values) != allowed:
+              raise SystemExit("QA_AI_BOOTSTRAP_INCOMPLETE")
+          kept = [line for line in lines if line.partition("=")[0].strip() not in allowed]
+          updated = kept + [f"{key}={incoming_values[key]}" for key in sorted(allowed)]
+          tmp = env_path.with_name(f".{env_path.name}.qa2-{os.getpid()}")
+          tmp.write_text("\n".join(updated) + "\n", encoding="utf-8")
+          os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)
+          os.replace(tmp, env_path)
+          db_path.parent.mkdir(parents=True, exist_ok=True)
+          print("QA_RECOVERY_DATABASE=isolated")
+          PY
+          chmod 600 "$qa_env"
+          ln -sfn ../.env "$qa_root/backend/.env"
+          test "$(readlink -f "$qa_root/backend/.env")" = "$(readlink -f "$qa_env")"
+          echo "QA_RECOVERY_AI=isolated-secret-provisioned"
+          REMOTE
+
+      - name: Build and start isolated QA2 service on port 8002
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<REMOTE
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_backend="\$qa_root/backend"
+          source_sha='$QA_SOURCE_SHA'
+          cd "\$qa_backend"
+          test -f database/vehicles_dal.py || {
+            echo "::error::QA_RECOVERY_DATABASE_CODE_MISSING"
+            exit 1
+          }
+          if ! test -x venv/bin/python; then
+            rm -rf venv
+            python3 -m venv venv
+          fi
+          venv/bin/python -m pip install --disable-pip-version-check -q -r requirements-test.txt
+          venv/bin/python -m py_compile main.py
+          venv/bin/python -m pytest tests/test_qa_data_isolation.py -q
+          printf '%s\n' "\$source_sha" > .qa-source-sha
+          service_tmp="/tmp/urtruck-qa2-$GITHUB_RUN_ID.service"
+          cat > "\$service_tmp" <<'SERVICE'
+          [Unit]
+          Description=UrTruck isolated QA2 API
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=ubuntu
+          WorkingDirectory=/home/ubuntu/urtruck-qa2/backend
+          EnvironmentFile=/home/ubuntu/urtruck-qa2/.env
+          Environment=PYTHONUNBUFFERED=1
+          ExecStart=/home/ubuntu/urtruck-qa2/backend/venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8002
+          Restart=on-failure
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          SERVICE
+          if sudo test -f /etc/systemd/system/urtruck-qa2.service; then
+            sudo grep -Fq '/home/ubuntu/urtruck-qa2/backend' /etc/systemd/system/urtruck-qa2.service
+            sudo grep -Fq -- '--port 8002' /etc/systemd/system/urtruck-qa2.service
+          fi
+          sudo install -o root -g root -m 0644 "\$service_tmp" /etc/systemd/system/urtruck-qa2.service
+          rm -f "\$service_tmp"
+          old_pid="\$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          if test -n "\$old_pid"; then
+            old_cwd="\$(readlink -f "/proc/\$old_pid/cwd" 2>/dev/null || true)"
+            case "\$old_cwd" in "\$qa_root"|"\$qa_root"/*) ;; *) exit 1 ;; esac
+            kill -TERM "\$old_pid"
+            for _ in {1..20}; do kill -0 "\$old_pid" 2>/dev/null || break; sleep 0.5; done
+            kill -0 "\$old_pid" 2>/dev/null && kill -KILL "\$old_pid" || true
+          fi
+          sudo systemctl daemon-reload
+          sudo systemctl enable urtruck-qa2.service
+          sudo systemctl restart urtruck-qa2.service
+          healthy=no
+          for _ in {1..60}; do
+            if curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1; then
+              healthy=yes
+              break
+            fi
+            sleep 1
+          done
+          test "\$healthy" = yes || {
+            sudo journalctl -u urtruck-qa2.service -n 40 --no-pager \
+              | sed -E 's#(token|key|password|secret)=[^[:space:]]+#\1=<redacted>#Ig'
+            exit 1
+          }
+          sudo systemctl is-active --quiet urtruck-qa2.service
+          curl -fsS http://127.0.0.1:8002/api/version >/dev/null
+          info="\$(curl -fsS http://127.0.0.1:8002/api/v1/chat/translate/info)"
+          printf '%s' "\$info" | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          if d.get("provider") != "openai" or not d.get("openai_key_exists"):
+              raise SystemExit(2)
+          '
+          set -a
+          . "\$qa_root/.env"
+          set +a
+          venv/bin/python - <<'PY'
+          from services.translate_service import translate_text
+
+          result = translate_text("Груз готов", "zh", "ru")
+          translated = str(result.get("translated_text") or "").strip()
+          if result.get("provider") != "openai" or not translated or translated == "Груз готов":
+              raise SystemExit("QA_TRANSLATION_SMOKE_FAILED")
+          print("QA_RECOVERY_TRANSLATION=healthy")
+          PY
+          echo "QA_RECOVERED_SOURCE_SHA=\$source_sha"
+          echo "QA_RECOVERY_API_8002=healthy"
+          REMOTE
+
+      - name: Configure dedicated Nginx host and TLS for QA2
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          site=/etc/nginx/sites-available/urtruck-qa2
+          enabled=/etc/nginx/sites-enabled/urtruck-qa2
+          backup=/home/ubuntu/urtruck-qa2/backups/nginx-urtruck-qa2.before
+          command -v nginx >/dev/null
+          command -v certbot >/dev/null
+          if sudo test -f "$site"; then
+            sudo grep -Fq 'server_name qa2.urtruck.kz' "$site"
+            sudo cp -a "$site" "$backup"
+          else
+            rm -f "$backup"
+          fi
+          tmp="$(mktemp)"
+          cat > "$tmp" <<'NGINX'
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name qa2.urtruck.kz;
+              client_max_body_size 64m;
+              location / {
+                  proxy_pass http://127.0.0.1:8002;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "upgrade";
+                  proxy_read_timeout 300s;
+              }
+          }
+          NGINX
+          sudo install -o root -g root -m 0644 "$tmp" "$site"
+          rm -f "$tmp"
+          sudo ln -sfn "$site" "$enabled"
+          sudo nginx -t
+          sudo systemctl reload nginx
+          if ! sudo certbot --nginx --non-interactive --agree-tos \
+              --register-unsafely-without-email --redirect -d qa2.urtruck.kz; then
+            if test -f "$backup"; then
+              sudo cp -a "$backup" "$site"
+            else
+              sudo rm -f "$site" "$enabled"
+            fi
+            sudo nginx -t && sudo systemctl reload nginx
+            echo "::error::QA_RECOVERY_TLS_CONFIGURATION_FAILED"
+            exit 1
+          fi
+          sudo nginx -t
+          sudo systemctl reload nginx
+          echo "QA_RECOVERY_NGINX=dedicated-host"
+          echo "QA_RECOVERY_TLS=valid"
+          REMOTE
+
+      - name: Verify external QA2 and protected environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          healthy=no
+          for _ in {1..30}; do
+            if curl -fsS --max-time 20 "$QA_API_URL/health" >/dev/null; then
+              healthy=yes
+              break
+            fi
+            sleep 2
+          done
+          test "$healthy" = yes || {
+            echo "::error::QA_RECOVERY_EXTERNAL_API_UNHEALTHY"
+            exit 1
+          }
+          curl -fsS --max-time 20 "$QA_API_URL/api/version" >/dev/null
+          prod_body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          prod_after="$(printf '%s' "$prod_body" | sha256sum | awk '{print $1}')"
+          test "$prod_after" = "$PROD_VERSION_HASH_BEFORE" || {
+            echo "::error::Production fingerprint changed during QA2 recovery"
+            exit 1
+          }
+          echo "QA_RECOVERY_EXTERNAL_API=healthy"
+          echo "PRODUCTION_AFTER=healthy-unchanged"
+
+      - name: Remove temporary recovery state after success
+        if: success()
+        shell: bash
+        run: |
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            'rm -f /tmp/urtruck-qa2-recovery.state'
+
+  local_ai:
+    if: inputs.confirmation == 'INSTALL_QA2_LOCAL_AI'
+    name: Deploy private local AI to isolated QA2
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      QA_API_URL: ${{ secrets.QA2_API_URL }}
+    steps:
+      - name: Checkout exact QA2 source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.QA_SOURCE_SHA }}
+
+      - name: Validate local AI contracts
+        run: |
+          test "${{ inputs.confirmation }}" = "INSTALL_QA2_LOCAL_AI"
+          bash -n scripts/deploy-qa2-local-ai.sh
+          python3 -m py_compile backend/services/local_ai_client.py backend/qa_ai_service/main.py
+          node --test tests/frontend/test_qa2_local_ai_workflow.mjs
+
+      - name: Install SSH, rsync and voice fixture generator
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync espeak-ng
+
+      - name: Install and verify private QA2 AI
+        shell: bash
+        run: bash scripts/deploy-qa2-local-ai.sh
+
+  inspect_ai:
+    if: inputs.confirmation == 'INSPECT_QA2_LOCAL_AI'
+    name: Inspect private QA2 AI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+    steps:
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Read private AI health and sanitized logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = "INSPECT_QA2_LOCAL_AI"
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          curl -fsS http://127.0.0.1:8003/health
+          sudo systemctl show urtruck-qa2-ai.service -p ActiveState -p SubState -p MemoryCurrent -p MemoryPeak -p CPUUsageNSec --no-pager
+          sudo journalctl -u urtruck-qa2-ai.service -n 120 --no-pager \
+            | sed -E 's#(token|key|password|secret)=[^[:space:]]+#\1=<redacted>#Ig'
+          REMOTE

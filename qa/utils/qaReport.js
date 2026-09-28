@@ -55,7 +55,9 @@ function suggestNextFix(state) {
   if (p0.length) return `Fix P0 first: ${p0.slice(0, 3).map((e) => `[${e.actor}] ${e.step}`).join('; ')}`;
   const p1 = state.entries.filter((e) => e.severity === 'P1');
   if (p1.length) return `Resolve P1 batch: ${p1.slice(0, 3).map((e) => `[${e.actor}] ${e.step}`).join('; ')}`;
-  return 'No P0/P1 — pilot ready for next QA cycle.';
+  const p2 = state.entries.filter((e) => e.severity === 'P2');
+  if (p2.length) return `Resolve P2 batch: ${p2.slice(0, 3).map((e) => `[${e.actor}] ${e.step}`).join('; ')}`;
+  return 'No unresolved P0/P1/P2 findings — QA gate is clean.';
 }
 
 function writeReport() {

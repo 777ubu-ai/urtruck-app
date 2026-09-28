@@ -8,10 +8,11 @@ const keyboard = readFileSync('src/components/ui/v1/KeyboardSafeLayout.js', 'utf
 const identity = readFileSync('src/screens/registration/IdentityStepScreen.js', 'utf8');
 const theme = readFileSync('src/theme/designV1.js', 'utf8');
 
-test('Track 2 root header owns canonical left bell and right menu', () => {
-  assert.match(root, /<BellBadge[\s\S]*<HeaderMenuButton/);
+test('Track 2 root header is menu-only; Bell UI is intentionally absent', () => {
+  assert.doesNotMatch(root, /BellBadge|useUnreadNotifications/);
+  assert.match(root, /<HeaderMenuButton/);
   assert.match(root, /minHeight: 56/);
-  assert.match(root, /paddingHorizontal: 16/);
+  assert.match(root, /justifyContent: 'flex-end'/);
 });
 
 test('Track 2 shared controls expose 44px touch and accessibility contracts', () => {

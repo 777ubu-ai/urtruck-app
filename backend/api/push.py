@@ -254,6 +254,39 @@ def _migrate_ownership_columns():
             WHERE event_id IS NOT NULL AND status = 'sent'
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_delivery_event ON push_delivery_log(event_id)")
+        # One-time/idempotent reconciliation for legacy workers that marked
+        # an entire outbox event `dead` even when at least one provider had
+        # already confirmed delivery. Preserve the secondary-provider error
+        # in last_error, but report the truthful terminal state.
+        c.execute("""
+            UPDATE push_outbox AS o
+            SET status = 'sent_partial',
+                sent_at = COALESCE(sent_at, (
+                    SELECT MIN(l.sent_at) FROM push_delivery_log l
+                    WHERE l.event_id = o.event_id
+                      AND l.recipient_user_id = o.recipient_user_id
+                      AND l.status = 'sent'
+                ))
+            WHERE o.status = 'dead'
+              AND EXISTS (
+                    SELECT 1 FROM push_delivery_log l
+                    WHERE l.event_id = o.event_id
+                      AND l.recipient_user_id = o.recipient_user_id
+                      AND l.status = 'sent'
+              )
+        """)
+        c.execute("""
+            UPDATE push_outbox AS o
+            SET status = 'skipped_no_devices',
+                last_error = 'no_active_devices'
+            WHERE o.status = 'dead'
+              AND NOT EXISTS (
+                    SELECT 1 FROM push_devices d
+                    WHERE d.user_id = o.recipient_user_id
+                      AND d.enabled = 1
+                      AND d.invalidated_at IS NULL
+              )
+        """)
         if not _deferred_receipt_index:
             c.execute("""
                 CREATE INDEX IF NOT EXISTS idx_push_delivery_receipt_pending

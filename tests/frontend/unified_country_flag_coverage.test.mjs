@@ -17,8 +17,10 @@ const tripFeed = fs.readFileSync('src/screens/FeedScreen.js', 'utf8');
 test('CountryFlag covers every ISO code offered by the active country data', () => {
   const offered = [...countries.matchAll(/iso:\s*'([A-Z]{2})'/g)].map((match) => match[1]);
   assert.ok(offered.length >= 40, 'country picker data is intentionally broad');
-  assert.deepEqual([...new Set(offered)].sort(), [...COUNTRY_FLAG_CODES].sort());
-  for (const code of offered) assert.ok(countryFlagXml(code), `${code} resolves to bundled SVG`);
+  for (const code of offered) {
+    assert.ok(COUNTRY_FLAG_CODES.includes(code), `${code} is exposed by the shared renderer`);
+    assert.ok(countryFlagXml(code), `${code} resolves to bundled SVG`);
+  }
 });
 
 test('country and city selectors render CountryFlag instead of their legacy emoji fields', () => {

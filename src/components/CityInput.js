@@ -67,7 +67,7 @@ export default function CityInput({ value, onChange, placeholder, style, testID 
               onPress={() => pick(c)}
             >
               {c.isCustom ? (
-                <Feather name="plus" size={18} color={theme.textMuted} style={s.flag} />
+        <Feather name="plus" size={18} color={theme.textMuted} style={s.icon} />
               ) : (
                 <CountryFlag code={c.country} width={24} />
               )}
@@ -100,7 +100,7 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   item: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
-  flag: { fontSize: 20 },
+  icon: { fontSize: 20 },
   cityName: { fontSize: 14, fontWeight: '600' },
   countryName: { fontSize: 11, marginTop: 1 },
 });

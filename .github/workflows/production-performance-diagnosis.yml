@@ -61,4 +61,136 @@ jobs:
               -w "$target code=%{http_code} connect=%{time_connect}s ttfb=%{time_starttransfer}s total=%{time_total}s\\n" \
               "$target" || true
           done
+
+          echo
+          echo '=== Social auth failure evidence (PII/token-free) ==='
+          pm2 logs urtruck-security-api --nostream --lines 1200 2>&1 \
+            | grep -E '\[social-auth\]|POST /api/v1/register/social/verify' \
+            | sed -E 's/[?&](access_token|token)=[^& ]+/\1=REDACTED/g' \
+            | tail -120 || true
+          echo
+          echo '=== Android push aggregate forensics ==='
+          cd /home/ubuntu/urtruck-security
+          python3 - <<'PY'
+          import json, os, sqlite3, urllib.request
+          from pathlib import Path
+
+          env = {}
+          env_path = Path('.env')
+          if env_path.is_file():
+              for raw in env_path.read_text(encoding='utf-8').splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith('#') or '=' not in line:
+                      continue
+                  key, value = line.split('=', 1)
+                  env[key.strip()] = value.strip().strip("'\"")
+
+          # The active API runs from an atomic release directory, so its
+          # process environment is the authoritative source for DB/token
+          # configuration. Read values in memory and never print them.
+          for proc in Path('/proc').iterdir():
+              if not proc.name.isdigit():
+                  continue
+              try:
+                  cmdline = (proc / 'cmdline').read_bytes().replace(b'\0', b' ').decode('utf-8', 'ignore')
+                  if 'uvicorn' not in cmdline or '--port 8001' not in cmdline:
+                      continue
+                  for item in (proc / 'environ').read_bytes().split(b'\0'):
+                      if b'=' not in item:
+                          continue
+                      key, value = item.split(b'=', 1)
+                      env[key.decode('utf-8', 'ignore')] = value.decode('utf-8', 'ignore')
+                  break
+              except (OSError, PermissionError):
+                  continue
+
+          configured = env.get('URTRUCK_DB_PATH') or env.get('DB_PATH') or ''
+          if configured.startswith('sqlite:///'):
+              configured = configured.removeprefix('sqlite:///')
+              if not configured.startswith('/'):
+                  configured = '/' + configured
+          candidates = []
+          if configured:
+              candidates.append(Path(configured) if os.path.isabs(configured) else Path.cwd() / configured)
+          candidates.extend([
+              Path('/home/ubuntu/urtruck/backend/database/security.db'),
+              Path('/home/ubuntu/urtruck-security/database/security.db'),
+              Path('/home/ubuntu/urtruck-security/security.db'),
+              Path('/home/ubuntu/urtruck-security/urtruck.db'),
+          ])
+          db_file = next((path.resolve() for path in candidates if path.is_file() and os.access(path, os.R_OK)), None)
+          if db_file is None:
+              print('PUSH_FORENSICS=BLOCKED_DATABASE_NOT_FOUND')
+              raise SystemExit(2)
+          conn = sqlite3.connect(f'file:{db_file}?mode=ro', uri=True)
+          conn.row_factory = sqlite3.Row
+          category_sql = """
+          CASE
+            WHEN last_error LIKE '%provider_not_configured%' THEN 'provider_not_configured'
+            WHEN last_error LIKE '%invalid_token%' THEN 'invalid_token'
+            WHEN last_error LIKE '%delivery_not_confirmed%' OR last_error IS NULL THEN 'delivery_not_confirmed'
+            WHEN last_error LIKE '%invalid_provider_mode%' THEN 'invalid_provider_mode'
+            ELSE 'other'
+          END
+          """
+          for row in conn.execute(f"SELECT {category_sql} category, COUNT(*) count FROM push_outbox WHERE status='dead' GROUP BY category ORDER BY count DESC"):
+              print(f"DEAD_CATEGORY {row['category']}={row['count']}")
+          for row in conn.execute("SELECT event_type, COUNT(*) count FROM push_outbox WHERE status='dead' GROUP BY event_type ORDER BY count DESC"):
+              print(f"DEAD_EVENT {row['event_type']}={row['count']}")
+          for row in conn.execute("""
+              SELECT CASE WHEN EXISTS (
+                  SELECT 1 FROM push_devices d
+                  WHERE d.user_id = o.recipient_user_id
+                    AND d.enabled = 1 AND d.invalidated_at IS NULL
+              ) THEN 'recipient_has_active_device' ELSE 'recipient_has_no_device' END category,
+              COUNT(*) count
+              FROM push_outbox o WHERE o.status='dead'
+              GROUP BY category ORDER BY count DESC
+          """):
+              print(f"DEAD_RECIPIENT {row['category']}={row['count']}")
+          for row in conn.execute("SELECT push_provider, platform, COUNT(*) count FROM push_devices WHERE enabled=1 AND invalidated_at IS NULL GROUP BY push_provider, platform ORDER BY count DESC"):
+              print(f"ACTIVE_DEVICE {row['push_provider']}/{row['platform']}={row['count']}")
+          for row in conn.execute("""
+              SELECT l.provider, l.status, COALESCE(l.error_code, 'none') error_code,
+                     COUNT(*) count
+              FROM push_delivery_log l
+              JOIN push_outbox o
+                ON o.event_id = l.event_id
+               AND o.recipient_user_id = l.recipient_user_id
+              WHERE o.status = 'dead'
+              GROUP BY l.provider, l.status, COALESCE(l.error_code, 'none')
+              ORDER BY count DESC
+          """):
+              print(f"DEAD_DELIVERY {row['provider']}/{row['status']}/{row['error_code']}={row['count']}")
+          conn.close()
+
+          token = env.get('QA_AGENT_TOKEN', '')
+          if not token:
+              print('DIRECT_ANDROID_PUSH=BLOCKED_QA_AGENT_TOKEN_UNSET')
+              raise SystemExit(0)
+
+          def post(path, body):
+              request = urllib.request.Request(
+                  'http://127.0.0.1:8001/api/v1/qa/' + path,
+                  data=json.dumps(body).encode('utf-8'),
+                  headers={'Content-Type': 'application/json', 'X-QA-Agent-Token': token},
+                  method='POST',
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return json.loads(response.read().decode('utf-8'))
+
+          for actor in ('serik', 'boris'):
+              diagnostic = post('push/native-tokens', {'actor': actor})
+              print('TOKEN_DIAGNOSTIC', actor, json.dumps(diagnostic, ensure_ascii=False, sort_keys=True))
+              result = post('push/test-direct', {
+                  'actor': actor,
+                  'provider': 'fcm',
+                  'title': 'UrTruck Android QA',
+                  'body': f'Прямая проверка push: {actor}',
+                  'url': '/notifications',
+                  'kind': 'qa_push_test',
+              })
+              safe = {key: result.get(key) for key in ('sent', 'providers', 'devices', 'mode', 'error')}
+              print('DIRECT_ANDROID_PUSH', actor, json.dumps(safe, ensure_ascii=False, sort_keys=True))
+          PY
           REMOTE

@@ -6,20 +6,20 @@ env:
   MAESTRO_ACTOR: boris
 ---
 - runFlow: _lib/qa-login.yaml
-- tapOn: { id: "bottom-nav-mywork" }
+- tapOn: { id: "bottom-nav-deals" }
 - waitForAnimationToEnd
-- tapOn: { id: "my-work-tab-enroute" }
-- tapOn: { id: "my-order-card", index: 0 }
+- tapOn: { id: "deals-tab-active" }
+- tapOn: { id: "deals-deal-card", index: 0 }
 - extendedWaitUntil:
-    visible: { id: "deal-track-truck" }
+    visible: { id: "deal-header-map" }
     timeout: 20000
-- tapOn: { id: "deal-track-truck" }
+- tapOn: { id: "deal-header-map" }
 - extendedWaitUntil:
-    visible: { id: "track-message-driver" }
-    timeout: 10000
+    visible: { id: "deal-map-fullscreen" }
+    timeout: 12000
 - takeScreenshot: GPS_06_shipper_live_map_locked_route
-- tapOn: { id: "track-message-driver" }
+- tapOn: { id: "deal-map-back" }
 - extendedWaitUntil:
-    visible: { id: "chat-partner-name" }
+    visible: { id: "deal-chat-input" }
     timeout: 10000
 - takeScreenshot: GPS_07_shipper_returned_to_driver_chat

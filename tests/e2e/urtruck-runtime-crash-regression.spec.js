@@ -50,9 +50,12 @@ const CRASH_PATTERNS = [
 const ERROR_OVERLAY_RE = /Что-то пошло не так|Something went wrong|发生错误|Қате орын алды|Бір нәрсе дұрыс болмады/;
 const isCrash = (t) => CRASH_PATTERNS.some((rx) => rx.test(t));
 
-async function mockBackend(page) {
+async function mockBackend(page, role) {
   const json = (body) => (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  await page.route('**/api/v1/register/me', json({ id: 'crash-user', role: 'guest', verification_level: 1, phone: null }));
+  // Catch auxiliary endpoints (favorites, tracking, badges) so a fake-token
+  // 401 cannot emit auth-expired and tear down the injected session.
+  await page.route('**/api/v1/**', json({}));
+  await page.route('**/api/v1/register/me', json({ id: `crash-${role}`, role, verification_level: 1, phone: null }));
   await page.route('**/api/v1/users/me', json({ name: 'QA Crash User', city: 'Алматы' }));
   await page.route('**/api/v1/push/**', json({}));
   await page.route('**/api/v1/notifications/**', json({ items: [], count: 0 }));
@@ -76,19 +79,18 @@ async function runRoleFlow(page, role) {
     if (m.type() === 'error' && isCrash(m.text())) crashes.push({ where: 'console', text: m.text() });
   });
 
-  await mockBackend(page);
-  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.evaluate(() => { try { localStorage.clear(); sessionStorage.clear(); } catch {} });
+  await mockBackend(page, role);
 
-  // Инъекция верифицированной сессии с ролью — приложение грузится сразу в Main
-  // (то самое состояние, где рендерятся Feed/Deals — оба ранее падавших экрана).
-  // Инъекция только для детерминированного входа; см. onboarding.v2 спек.
-  await page.evaluate((r) => {
+  // Install the verified session before the first application script runs.
+  // Injecting after an initial navigation races AuthProvider's no-token cleanup.
+  await page.addInitScript((r) => {
+    localStorage.clear();
+    sessionStorage.clear();
     localStorage.setItem('ur_reg_token', 'crash-regression-token');
     localStorage.setItem('ur_session', JSON.stringify({ user: { phone: null, role: r, id: 'crash-' + r } }));
     localStorage.setItem('ur_verification_level', '1');
   }, role);
-  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
   // ── ОБЯЗАТЕЛЬНО: вход в приложение (role → Main). Не достигли — тест падает. ──
   await expect(page.getByTestId('bottom-nav'), `bottom-nav must render for ${role}`).toBeVisible({ timeout: 20000 });

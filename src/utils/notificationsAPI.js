@@ -20,13 +20,11 @@ export const notificationsAPI = {
   },
 
   async unread() {
-    // Stage 28/29: тот же short-circuit что в chatAPI.unread —
-    // не вызываем endpoint если у пользователя нет phone-level
-    // верификации (guest token недостаточно).
+    // The server token/session is authoritative. A stale or missing local
+    // verification-level cache must never hide durable notifications while
+    // APNs/FCM still shows their badge on the app icon.
     const h = await headers();
     if (!h.Authorization) return { unread: 0 };
-    const lvl = parseInt((await storage.get('ur_verification_level')) || '0', 10);
-    if (!lvl || lvl < 1) return { unread: 0 };
     const r = await fetch(`${BASE}/unread`, { headers: h });
     if (!r.ok) return { unread: 0 };
     return r.json();

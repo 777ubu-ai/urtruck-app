@@ -49,11 +49,13 @@ export function notifyAuthExpired() {
 const DEFAULT_TIMEOUT_MS = 20000;
 
 // Drop-in замена fetch: идентичное поведение + сайд-эффект на 401 + таймаут.
+// Multipart callers may inject expo/fetch, which understands ExpoFile blobs;
+// ordinary JSON traffic keeps the global fetch transport by default.
 // Возвращает тот же Response, чтобы вызывающий код не менялся.
-export async function authedFetch(input, init) {
+export async function authedFetch(input, init, fetchImpl = fetch) {
   // Если вызывающий уже передал свой signal — не перетираем его.
   if (init && init.signal) {
-    const r = await fetch(input, init);
+    const r = await fetchImpl(input, init);
     if (r && r.status === 401) notifyAuthExpired();
     return r;
   }
@@ -64,7 +66,7 @@ export async function authedFetch(input, init) {
     timer = setTimeout(() => { try { controller.abort(); } catch {} }, DEFAULT_TIMEOUT_MS);
   }
   try {
-    const r = await fetch(input, controller ? { ...(init || {}), signal: controller.signal } : init);
+    const r = await fetchImpl(input, controller ? { ...(init || {}), signal: controller.signal } : init);
     if (r && r.status === 401) notifyAuthExpired();
     return r;
   } finally {

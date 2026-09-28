@@ -9,6 +9,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_unread_dedup.db")
 if not os.environ.get("URTRUCK_TEST_HARNESS_OWNS_DB"):
     # Standalone execution — under pytest, conftest.py owns DB_PATH/schema.
@@ -106,7 +108,22 @@ def fake_maybe_user(authorization):
     return None
 
 
-marketplace_api._maybe_user = fake_maybe_user
+_ORIGINAL_MAYBE_USER = marketplace_api._maybe_user
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _isolated_optional_auth_fixture():
+    """Keep this module's optional-auth harness from leaking into the suite.
+
+    The previous import-time assignment changed the production module global
+    for every test collected after this file, making the full suite order
+    dependent. Restore the real helper when this module finishes.
+    """
+    marketplace_api._maybe_user = fake_maybe_user
+    try:
+        yield
+    finally:
+        marketplace_api._maybe_user = _ORIGINAL_MAYBE_USER
 
 
 def get_entity(uid: str, path: str):

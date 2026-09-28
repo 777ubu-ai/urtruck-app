@@ -2,7 +2,8 @@
 // every country and crossing the operator listed for Stage 7.
 //
 // Pass criteria:
-//   1. COUNTRIES has the 21 countries the brief named.
+//   1. COUNTRIES has the 21 countries the brief named and keeps canonical
+//      country data (visual flags are owned by CountryFlag, not this registry).
 //   2. POINT_TYPES contains city / border / terminal.
 //   3. The five strategic CN↔KZ border crossings are present:
 //      Нур Жолы / Достык / Бахты / Майкапчагай / Калжат.
@@ -37,7 +38,7 @@ const src = fs.readFileSync(GEO, 'utf8');
 
 // 1. Countries
 for (const code of REQUIRED_COUNTRIES) {
-  const re = new RegExp(`\\b${code}:\\s*\\{\\s*flag:`);
+  const re = new RegExp(`\\b${code}:\\s*\\{\\s*name:`);
   if (!re.test(src)) failures.push(`country ${code} missing from COUNTRIES`);
 }
 

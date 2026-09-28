@@ -26,9 +26,54 @@ async function isCrash(page) {
   return CRASH_MARKERS.some((s) => txt && txt.includes(s));
 }
 
+async function mockPublicBackend(page) {
+  const json = (body) => (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  });
+  // UI smoke owns rendering/navigation only. Actor specs exercise the real
+  // backend; isolated responses avoid exhausting the public guest rate-limit.
+  await page.route('**/api/v1/**', json({}));
+  await page.route('**/api/v1/register/guest', json({
+    token: 'ui-smoke-guest-token',
+    user_id: 'ui-smoke-guest',
+    verification_level: 0,
+  }));
+  await page.route('**/api/v1/register/me', json({
+    id: 'ui-smoke-guest',
+    role: 'guest',
+    verification_level: 0,
+  }));
+  await page.route('**/api/v1/market/cargos*', json({ cargos: [], total: 0 }));
+  await page.route('**/api/v1/market/trips*', json({ trips: [], total: 0 }));
+}
+
+async function enterGuestFeed(page) {
+  await mockPublicBackend(page);
+  const nav = page.getByTestId('bottom-nav');
+  if (!(await nav.isVisible().catch(() => false))) {
+    const guestEntry = page.getByTestId('onb-v2-cta-guest')
+      .or(page.getByTestId('role-browse-guest'))
+      .first();
+    if (!(await guestEntry.isVisible().catch(() => false))) return false;
+    await guestEntry.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (!(await nav.isVisible({ timeout: 5000 }).catch(() => false))) return false;
+
+  // Client/guest Main starts on MyWork by design. Select the canonical Feed
+  // tab explicitly before asserting feed controls or its profile menu.
+  const feedTab = page.getByTestId('bottom-nav-feed');
+  if (!(await feedTab.isVisible().catch(() => false))) return false;
+  await feedTab.click({ force: true }).catch(() => {});
+  await page.waitForTimeout(800);
+  return true;
+}
+
 test.describe.configure({ mode: 'serial' });
 
-test('UI · landing + role select', async ({ page }) => {
+test('UI · landing + guest feed', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -42,18 +87,12 @@ test('UI · landing + role select', async ({ page }) => {
     log.pass(ACTOR, 'landing-loads');
   }
 
-  // Role pick: Driver branch
-  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
-  // Prefer the stable testID hotspot, fall back to legacy text matcher.
-  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
-  if (await driverBtn.isVisible().catch(() => false)) {
-    await driverBtn.click().catch(() => {});
-    await page.waitForTimeout(1500);
-    await snap(page, 'ui-smoke', 'driver-feed');
-    if (await isCrash(page)) log.p0(ACTOR, 'driver-feed-loads', 'crash after role pick');
-    else log.pass(ACTOR, 'driver-feed-loads');
+  if (await enterGuestFeed(page)) {
+    await snap(page, 'ui-smoke', 'guest-feed');
+    if (await isCrash(page)) log.p0(ACTOR, 'guest-feed-loads', 'crash after guest entry');
+    else log.pass(ACTOR, 'guest-feed-loads');
   } else {
-    log.p2(ACTOR, 'driver-feed-loads', 'driver role button not found in current layout');
+    log.p1(ACTOR, 'guest-feed-loads', 'neither OnboardingV2 guest CTA nor bottom nav became visible');
   }
 
   if (errors.length) {
@@ -63,48 +102,59 @@ test('UI · landing + role select', async ({ page }) => {
   }
 });
 
-test('UI · filter chips open distinct sheets', async ({ page }) => {
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
-  await page.waitForTimeout(1200);
-
-  // Stage 34: role-driver больше не делает guest-shortcut в
-  // Main-feed; теперь ведёт в Reg (телефон + SMS). Чтобы тест
-  // фильтр-чипов работал, попадаем в Cargos feed через прямой
-  // /cargos URL — feed публичный для гостя.
-  await page.goto(`${BASE_URL.replace(/\/$/, '')}/cargos`, { waitUntil: 'networkidle' }).catch(() => {});
-  await page.waitForTimeout(1500);
-
-  // Each chip → its own sheet. We assert the OPPOSITE sheets do NOT
-  // appear; for instance, clicking Date should not reveal a "Направление"
-  // section header at the same time.
+test('UI · filter chips open distinct sheets', async ({ browser }) => {
   const chipCases = [
-    { chip: /🧭|Направление|Direction/i, expect: /Направление|Direction|Откуда|From/i, forbid: [/Тип кузова|Truck type/i, /Сортировка|Sort/i] },
-    { chip: /📅|Дата|Date/i,             expect: /Дата|Date|Бастап|ДД\.ММ\.ГГГГ|ДД|Apply|Применить/i, forbid: [/Тип кузова|Truck type/i, /Сортировка|Sort/i, /Направление\b|Direction\b/i] },
-    { chip: /🚛|Кузов|Body/i,            expect: /Тип кузова|Truck type|Кузов түрі|LKW-Typ/i, forbid: [/Сортировка|Sort/i, /Направление\b|Direction\b/i] },
-    { chip: /💰|Цена|Price/i,            expect: /Сортировка|Sort|Tri|Sortierung/i, forbid: [/Тип кузова|Truck type/i, /Направление\b|Direction\b/i] },
+    { key: 'date', sheet: 'filter-date-sheet' },
+    { key: 'body', sheet: 'filter-body-sheet' },
+    { key: 'price', sheet: 'filter-price-sheet' },
   ];
 
-  for (const c of chipCases) {
-    const btn = page.getByText(c.chip).first();
-    if (!(await btn.isVisible().catch(() => false))) {
-      log.p2(ACTOR, `chip-${c.chip.source}-found`, 'chip not visible in current viewport');
+  for (let index = 0; index < chipCases.length; index += 1) {
+    const c = chipCases[index];
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+    await page.waitForTimeout(900);
+
+    if (!(await enterGuestFeed(page))) {
+      log.p1(ACTOR, `chip-${c.key}-feed-reachable`, 'guest feed did not open from the current onboarding');
+      await context.close();
       continue;
     }
-    await btn.click().catch(() => {});
-    await page.waitForTimeout(700);
-    const after = await bodyText(page);
-    const opens = c.expect.test(after);
-    const leaks = c.forbid.find((re) => re.test(after));
-    if (!opens) {
-      log.p1(ACTOR, `chip-${c.chip.source}-opens-own-sheet`, `expected ${c.expect}, body=${after.slice(0, 120)}`);
-    } else if (leaks) {
-      log.p0(ACTOR, `chip-${c.chip.source}-no-leak`, `leaked unrelated section ${leaks}`);
-    } else {
-      log.pass(ACTOR, `chip-${c.chip.source}-opens-only-its-sheet`);
+
+    if (index === 0) {
+      const from = page.getByTestId('feed-route-from');
+      const to = page.getByTestId('feed-route-to');
+      if (await from.isVisible().catch(() => false) && await to.isVisible().catch(() => false)) {
+        log.pass(ACTOR, 'route-direction-controls-visible');
+      } else {
+        log.p1(ACTOR, 'route-direction-controls-visible', 'From/To controls are not both visible');
+      }
     }
-    // Close: tap outside or press Escape — the BottomSheet wraps a Modal
-    await page.keyboard.press('Escape').catch(() => {});
-    await page.waitForTimeout(400);
+
+    const btn = page.getByTestId(`trip-filter-${c.key}`)
+      .or(page.getByTestId(`cargo-filter-${c.key}`))
+      .first();
+    if (!(await btn.isVisible().catch(() => false))) {
+      log.p1(ACTOR, `chip-${c.key}-visible`, 'canonical filter chip is not visible');
+      await context.close();
+      continue;
+    }
+    await btn.click({ force: true }).catch(() => {});
+    const ownSheet = page.getByTestId(c.sheet);
+    if (!(await ownSheet.isVisible({ timeout: 2000 }).catch(() => false))) {
+      log.p1(ACTOR, `chip-${c.key}-opens-own-sheet`, `${c.sheet} is not visible`);
+      await context.close();
+      continue;
+    }
+
+    const leaked = [];
+    for (const other of chipCases.filter((x) => x.key !== c.key)) {
+      if (await page.getByTestId(other.sheet).isVisible().catch(() => false)) leaked.push(other.sheet);
+    }
+    if (leaked.length) log.p0(ACTOR, `chip-${c.key}-no-leak`, `also visible: ${leaked.join(',')}`);
+    else log.pass(ACTOR, `chip-${c.key}-opens-only-its-sheet`);
+    await context.close();
   }
 });
 
@@ -117,12 +167,9 @@ test('UI · Public feed shows no QA / debug markers', async ({ page }) => {
   // through landing → role → driver feed.
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1500);
-  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
-  // Prefer the stable testID hotspot, fall back to legacy text matcher.
-  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
-  if (await driverBtn.isVisible().catch(() => false)) {
-    await driverBtn.click().catch(() => {});
-    await page.waitForTimeout(2000);
+  if (!(await enterGuestFeed(page))) {
+    log.p1(ACTOR, 'public-feed-reachable', 'guest feed did not open from the current onboarding');
+    return;
   }
   const body = await page.locator('body').innerText({ timeout: 4000 }).catch(() => '');
   // Markers that must not appear in any visible card / detail.
@@ -164,79 +211,65 @@ test('UI · Date chip opens real calendar/date picker', async ({ page }) => {
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1200);
 
-  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
-  // Prefer the stable testID hotspot, fall back to legacy text matcher.
-  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
-  if (await driverBtn.isVisible().catch(() => false)) {
-    await driverBtn.click().catch(() => {});
-    await page.waitForTimeout(1500);
-  }
-
-  const dateChip = page.getByText(/📅|Дата|Date/i).first();
-  if (!(await dateChip.isVisible().catch(() => false))) {
-    log.p2(ACTOR, 'date-chip-found', 'Date chip not visible');
+  if (!(await enterGuestFeed(page))) {
+    log.p1(ACTOR, 'date-filter-feed-reachable', 'guest feed did not open from the current onboarding');
     return;
   }
-  await dateChip.click().catch(() => {});
+
+  const dateChip = page.getByTestId('trip-filter-date')
+    .or(page.getByTestId('cargo-filter-date'))
+    .first();
+  if (!(await dateChip.isVisible().catch(() => false))) {
+    log.p1(ACTOR, 'date-chip-visible', 'canonical Date chip is not visible');
+    return;
+  }
+  await dateChip.click({ force: true }).catch(() => {});
   await page.waitForTimeout(700);
 
-  // Web: DatePicker renders a real <input type="date">. On native the
-  // component opens a custom Modal calendar, but Playwright runs the
-  // web bundle — so we assert the native HTML date input is reachable.
-  const dateInput = page.locator('input[type="date"]');
-  const cnt = await dateInput.count().catch(() => 0);
-  if (cnt >= 1) {
-    log.pass(ACTOR, 'date-chip-opens-real-calendar', `${cnt} <input type=date> elements`);
+  // The current cross-platform DatePicker intentionally renders the same
+  // custom calendar grid on web and native instead of an HTML date input.
+  const openCalendar = page.getByTestId('date-picker-open').first();
+  await openCalendar.click({ force: true }).catch(() => {});
+  const calendar = page.getByTestId('date-picker-calendar').first();
+  if (await calendar.isVisible({ timeout: 2000 }).catch(() => false)) {
+    log.pass(ACTOR, 'date-chip-opens-real-calendar');
   } else {
-    log.p0(ACTOR, 'date-chip-opens-real-calendar', 'no <input type=date> rendered — chip falls back to TextInput');
+    log.p0(ACTOR, 'date-chip-opens-real-calendar', 'custom calendar grid did not render');
   }
 
-  // Belt-and-braces: confirm the dedicated testID exists.
-  const sheet = page.locator('[data-testid="filter-date-sheet"]');
+  const sheet = page.getByTestId('filter-date-sheet');
   const sheetVisible = await sheet.isVisible({ timeout: 2000 }).catch(() => false);
   if (sheetVisible) log.pass(ACTOR, 'date-sheet-testid-rendered');
   else log.p2(ACTOR, 'date-sheet-testid-rendered', 'data-testid filter-date-sheet not visible (older bundle?)');
 });
 
-test('UI · bottom-nav has plus button + balanced cells', async ({ page }) => {
+test('UI · bottom-nav has balanced cells', async ({ page }) => {
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1500);
 
-  // Make sure we're past role-pick
-  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
-  // Prefer the stable testID hotspot, fall back to legacy text matcher.
-  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
-  if (await driverBtn.isVisible().catch(() => false)) {
-    await driverBtn.click().catch(() => {});
-    await page.waitForTimeout(1500);
-  }
-
-  const nav = page.locator('[data-testid="bottom-nav"]');
-  const navVisible = await nav.isVisible({ timeout: 4000 }).catch(() => false);
-  if (!navVisible) {
-    log.p2(ACTOR, 'bottom-nav-mounted', 'guest may not see MainTabs without auth');
+  if (!(await enterGuestFeed(page))) {
+    log.p1(ACTOR, 'bottom-nav-mounted', 'guest feed did not expose the canonical bottom nav');
     return;
   }
-  const plusBtn = page.locator('[data-testid="bottom-nav-publish"]');
-  const plusVisible = await plusBtn.isVisible({ timeout: 2000 }).catch(() => false);
-  if (plusVisible) log.pass(ACTOR, 'bottom-nav-plus-button-visible');
-  else log.p1(ACTOR, 'bottom-nav-plus-button-visible', 'central + button missing');
+
+  const nav = page.getByTestId('bottom-nav');
+  log.pass(ACTOR, 'bottom-nav-mounted');
 
   // Cells should sit on a shared horizontal baseline. Compare bounding
   // boxes of two non-publish cells — Y delta of more than 6 px means
   // the publish overlay is dragging neighbours up again.
-  const feed = page.locator('[data-testid="bottom-nav-feed"]');
-  const profile = page.locator('[data-testid="bottom-nav-profile"]');
-  if (await feed.isVisible().catch(() => false) && await profile.isVisible().catch(() => false)) {
+  const feed = page.getByTestId('bottom-nav-feed');
+  const queue = page.getByTestId('bottom-nav-queue');
+  if (await feed.isVisible().catch(() => false) && await queue.isVisible().catch(() => false)) {
     const a = await feed.boundingBox();
-    const b = await profile.boundingBox();
+    const b = await queue.boundingBox();
     if (a && b && Math.abs(a.y - b.y) <= 6) {
       log.pass(ACTOR, 'bottom-nav-cells-aligned', `Δy=${Math.abs(a.y - b.y).toFixed(1)}px`);
     } else {
       log.p1(ACTOR, 'bottom-nav-cells-aligned', `Δy=${a && b ? Math.abs(a.y - b.y).toFixed(1) : '?'}px`);
     }
   } else {
-    log.p2(ACTOR, 'bottom-nav-cells-aligned', 'not enough visible cells to measure');
+    log.p1(ACTOR, 'bottom-nav-cells-aligned', 'canonical Feed/Queue cells are not both visible');
   }
 });
 
@@ -244,33 +277,24 @@ test('UI · bottom navigation tabs reachable', async ({ page }) => {
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1200);
 
-  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
-  // Prefer the stable testID hotspot, fall back to legacy text matcher.
-  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
-  if (await driverBtn.isVisible().catch(() => false)) {
-    await driverBtn.click().catch(() => {});
-    await page.waitForTimeout(1500);
+  if (!(await enterGuestFeed(page))) {
+    log.p1(ACTOR, 'bottom-tabs-reachable', 'guest feed did not expose the canonical bottom nav');
+    return;
   }
 
-  // Tab labels are localised; match against the four core surfaces
-  const tabs = [
-    { re: /Лента|Feed|🏠/i,     name: 'Feed' },
-    { re: /Маршрут|Track|🚛/i,   name: 'Track' },
-    { re: /Кошелек|Wallet|💼/i,  name: 'Wallet' },
-    { re: /Профиль|Profile|👤/i, name: 'Profile' },
-  ];
+  const tabs = ['feed', 'mywork', 'deals', 'queue'];
   for (const tab of tabs) {
-    const tabBtn = page.getByText(tab.re).first();
+    const tabBtn = page.getByTestId(`bottom-nav-${tab}`);
     if (!(await tabBtn.isVisible().catch(() => false))) {
-      log.p2(ACTOR, `tab-${tab.name}-visible`, 'tab not in viewport');
+      log.p1(ACTOR, `tab-${tab}-visible`, 'canonical tab not in viewport');
       continue;
     }
     await tabBtn.click().catch(() => {});
     await page.waitForTimeout(900);
     if (await isCrash(page)) {
-      log.p0(ACTOR, `tab-${tab.name}-no-crash`, 'crash after tab click');
+      log.p0(ACTOR, `tab-${tab}-no-crash`, 'crash after tab click');
     } else {
-      log.pass(ACTOR, `tab-${tab.name}-no-crash`);
+      log.pass(ACTOR, `tab-${tab}-no-crash`);
     }
   }
 });
@@ -279,31 +303,31 @@ test('UI · language selector lists only 4 enabled languages', async ({ page }) 
   await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(1500);
 
-  // Stage 18: full-image RoleScreen — labels live inside the bitmap.
-  // Prefer the stable testID hotspot, fall back to legacy text matcher.
-  const driverBtn = page.getByTestId('role-driver').or(page.getByText(/Я водитель|driver/i)).first();
-  if (await driverBtn.isVisible().catch(() => false)) {
-    await driverBtn.click().catch(() => {});
-    await page.waitForTimeout(1500);
+  if (!(await enterGuestFeed(page))) {
+    log.p1(ACTOR, 'profile-language-reachable', 'guest feed did not open from the current onboarding');
+    return;
   }
-  const profile = page.getByText(/Профиль|Profile/i).first();
-  if (await profile.isVisible().catch(() => false)) {
-    await profile.click().catch(() => {});
-    await page.waitForTimeout(1500);
+  const menu = page.getByTestId('feed-menu-btn');
+  if (!(await menu.isVisible().catch(() => false))) {
+    log.p1(ACTOR, 'profile-language-reachable', 'feed profile menu is not visible');
+    return;
   }
-  const txt = await bodyText(page);
-  const enabled = { 'Русский': 'RU', 'English': 'EN', 'Қазақша': 'KK', '中文': 'ZH' };
-  const removed = { "O'zbek": 'UZ', 'Узбек': 'UZ', 'Uzbek': 'UZ', 'Кыргызча': 'KG', 'Deutsch': 'DE', 'Français': 'FR' };
-  const seenEnabled = Object.entries(enabled).filter(([n]) => txt.includes(n)).map(([, c]) => c);
-  const leakedRemoved = Object.entries(removed).filter(([n]) => txt.includes(n)).map(([, c]) => c);
-  if (leakedRemoved.length) {
-    log.p0(ACTOR, 'no-removed-langs-in-selector', `leaked codes: ${[...new Set(leakedRemoved)].join(',')}`);
-  } else {
-    log.pass(ACTOR, 'no-removed-langs-in-selector');
+  await menu.click({ force: true }).catch(() => {});
+  await page.waitForTimeout(1000);
+
+  const enabled = ['ru', 'en', 'kk', 'zh'];
+  const removed = ['uz', 'kg', 'de', 'fr'];
+  const missing = [];
+  for (const code of enabled) {
+    if (!(await page.getByTestId(`profile-lang-${code}`).isVisible().catch(() => false))) missing.push(code);
   }
-  if (seenEnabled.length >= 2) {
-    log.pass(ACTOR, 'language-selector-lists-enabled', `seen: ${seenEnabled.join(',')}`);
-  } else {
-    log.p2(ACTOR, 'language-selector-lists-enabled', `only ${seenEnabled.length}/4 names visible (profile may not be reached without auth)`);
+  const leaked = [];
+  for (const code of removed) {
+    if (await page.getByTestId(`profile-lang-${code}`).count().catch(() => 0)) leaked.push(code);
   }
+  if (leaked.length) log.p0(ACTOR, 'no-removed-langs-in-selector', `leaked codes: ${leaked.join(',')}`);
+  else log.pass(ACTOR, 'no-removed-langs-in-selector');
+
+  if (missing.length) log.p1(ACTOR, 'language-selector-lists-enabled', `missing: ${missing.join(',')}`);
+  else log.pass(ACTOR, 'language-selector-lists-enabled', enabled.join(',').toUpperCase());
 });

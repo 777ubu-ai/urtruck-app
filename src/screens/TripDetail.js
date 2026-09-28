@@ -7,20 +7,19 @@ import { useI18n } from '../utils/useI18n';
 import { formatBids, formatStatus } from '../utils/i18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from '../components/Toast';
-import RouteMap from '../components/RouteMap';
-import { localizePlace } from '../utils/places';
+import TripRoutePanel from '../components/TripRoutePanel';
 import GradientText from '../components/GradientText';
 import ShareModal from '../components/ShareModal';
-import { routeStats } from '../utils/geo';
+
 import { TRIP_STATES, TRIP_STATE_INFO } from '../utils/store';
 import { useVerificationGate } from '../components/VerificationGate';
 import { LEVELS, useAuth } from '../utils/AuthContext';
 import BidModal from '../components/BidModal';
 import { marketAPI } from '../utils/marketAPI';
 import { normalizeTrip, tripDisplay, formatPrice } from '../utils/normalizers';
-import { buildTripShareText } from '../utils/share';
+import { buildTripShareText, publicListingPath } from '../utils/share';
 import { WEB_URL } from '../config/env';
-import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
+import {v1Colors, useV1Colors, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
@@ -96,7 +95,7 @@ export default function TripDetail({ navigation, route }) {
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
 
   }), [v1]);
-  const { trip: rawTrip, tripId, role, dealId: routeDealId } = route.params || {};
+  const { trip: rawTrip, tripId, role, dealId: routeDealId, readOnly = false } = route.params || {};
   const [serverTrip, setServerTrip] = React.useState(null);
   // Canonical shape: TripDetail never reads raw fields directly. If we got
   // a trip object via navigation, use it; otherwise fall back to whatever the
@@ -164,6 +163,13 @@ export default function TripDetail({ navigation, route }) {
   const [myActiveBid, setMyActiveBid] = React.useState(null);
   const [cancelling, setCancelling] = React.useState(false);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
+  // Deep-link audit P1 (2026-09-14): a shared /trips/{id} link (or push
+  // payload) with an unknown/removed id used to fall through silently —
+  // serverTrip stayed null forever and the screen rendered the empty
+  // placeholder `trip` object from the useMemo above with no explanation.
+  // Only fires for the deep-link entry (no rawTrip/serverTrip at all) — a
+  // normal in-app open always carries a trip object already.
+  const [tripNotFound, setTripNotFound] = React.useState(false);
   const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
     new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
   ), [t]);
@@ -222,8 +228,11 @@ export default function TripDetail({ navigation, route }) {
   const [reviewRating, setReviewRating] = React.useState(0);
   const [reviewText, setReviewText] = React.useState('');
   const [reviewSent, setReviewSent] = React.useState(false);
+  const [reviewChecked, setReviewChecked] = React.useState(false);
   const [reviewLoading, setReviewLoading] = React.useState(false);
   const tid = (trip && trip.id) || tripId;
+  const reviewTargetId = isShipper ? (driverId || trip.driverId) : shipperId;
+  const reviewReferenceId = dealId || tid;
 
   // Один источник ставок — GET /bids?trip_id (как CargoDetail): даёт счётчик
   // предложений, confidential-режим, owner-вид и МОЮ ставку со встречкой
@@ -265,7 +274,10 @@ export default function TripDetail({ navigation, route }) {
     if (!tid) return;
     // Свежий рейс с сервера — актуальная цена/статус + driver_rating/
     // driver_verified для карточки водителя (get_trip обогащает).
-    marketAPI.getTrip(tid).then(d => { if (d && !d.detail) setServerTrip(d); }).catch(() => {});
+    marketAPI.getTrip(tid).then(d => {
+      if (d && !d.detail) { setServerTrip(d); setTripNotFound(false); }
+      else if (!rawTrip) setTripNotFound(true);
+    }).catch(() => { if (!rawTrip) setTripNotFound(true); });
     loadBids();
     const seq = ++dealFetchSeq.current;
     // dealId (state) — авторитетнее routeDealId: если сделка создана уже
@@ -288,6 +300,27 @@ export default function TripDetail({ navigation, route }) {
     const iv = setInterval(refreshAll, 15000);
     return () => clearInterval(iv);
   }, [refreshAll]));
+
+  useFocusEffect(React.useCallback(() => {
+    let active = true;
+    if (dealStatus !== 'completed' || !reviewTargetId || !reviewReferenceId) {
+      setReviewChecked(false);
+      return () => { active = false; };
+    }
+    setReviewChecked(false);
+    reviewsAPI.eligibility(reviewTargetId, reviewReferenceId)
+      .then((result) => {
+        if (!active) return;
+        setReviewSent(Boolean(result?.already_reviewed));
+        setReviewChecked(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        setReviewSent(false);
+        setReviewChecked(true);
+      });
+    return () => { active = false; };
+  }, [dealStatus, reviewTargetId, reviewReferenceId]));
 
   React.useEffect(() => { if (refreshBidTick > 0) refreshAll(); }, [refreshBidTick]);
 
@@ -483,8 +516,9 @@ export default function TripDetail({ navigation, route }) {
     );
   }
 
-  const stats = routeStats(trip.from, trip.to, trip.transit);
   const view = tripDisplay(trip, t, lang);
+  const tripWeather = (serverTrip || rawTrip)?.weather || null;
+  const trackingAvailable = Boolean(dealId && chatRoomId && ['in_progress', 'at_border'].includes(dealStatus));
   // Принятая ставка → в блоке цены показываем сумму сделки, не листинг.
   const acceptedBid = bids.find(b => b.status === 'accepted');
 
@@ -510,6 +544,21 @@ export default function TripDetail({ navigation, route }) {
   const v1Accent = v1AccentFor(role === 'client' || role === 'shipper' ? 'client' : 'driver');
   const insets = useSafeAreaInsets();
 
+  // Deep-link audit P1: invalid/removed trip id → explicit not-found state
+  // instead of the empty-fields placeholder card. All hooks above this
+  // point already ran unconditionally, so branching here is safe.
+  if (tripNotFound && !rawTrip) {
+    return (
+      <SafeAreaView style={[s.container, { backgroundColor: v1.bg, alignItems: 'center', justifyContent: 'center' }]} edges={['top']}>
+        <Text style={{ fontSize: 48 }}>🔍</Text>
+        <Text style={{ color: v1.text, fontSize: 15, fontWeight: '700', marginTop: 8 }}>{t('incomplete_data')}</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
+          <Text style={{ color: '#168759', fontSize: 14, fontWeight: '600' }}>← {t('back_short')}</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare
@@ -524,48 +573,25 @@ export default function TripDetail({ navigation, route }) {
             language across detail titles. */}
         <Text style={s.pageTitle}>{t('trip_title')}</Text>
 
-        {/* Маршрут на карте */}
-        <View style={{ marginBottom: 10, borderRadius: v1Radius.card, overflow: 'hidden' }}>
-          <RouteMap
-            from={trip.from}
-            to={trip.to}
-            transit={trip.transit}
-            dealId={dealId}
-            dealStatus={dealStatus}
-            driverName={trip.driverName}
-            capacityTons={trip.capacityTons}
-          />
-        </View>
-
-        {/* Информация о рейсе */}
-        <GlassCard>
-          <SectionTitle featherIcon="map" label={t('trip_route')} />
-          <View style={s.routeRow}>
-            <View style={[s.dot, { backgroundColor: '#EF4444' }]} />
-            <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.from, lang)}</Text>
-          </View>
-          {view.transit ? (
-            <View style={s.routeRow}>
-              <View style={[s.dot, { backgroundColor: '#334155' }]} />
-              <Text style={[s.transitCity, { color: theme.textSecondary }]}>{t('trip_via')} {localizePlace(view.transit, lang)}</Text>
-            </View>
-          ) : null}
-          <View style={s.routeRow}>
-            <View style={[s.dot, { backgroundColor: '#168759' }]} />
-            <Text style={[s.city, { color: theme.text }]}>{localizePlace(view.to, lang)}</Text>
-          </View>
-
-          {stats && (
-            <View style={s.statsRow}>
-              <View style={[s.statPill, { backgroundColor: theme.border }]}>
-                <Text style={[s.statText, { color: theme.text }]}>📏 {stats.km} {t('km_short')}</Text>
-              </View>
-              <View style={[s.statPill, { backgroundColor: theme.border }]}>
-                <Text style={[s.statText, { color: theme.text }]}>⏱ ~{stats.days} {t('days_short')}</Text>
-              </View>
-            </View>
-          )}
-        </GlassCard>
+        {/* Compact trip dashboard: no duplicate native map is mounted here.
+            Road metrics come only from the authenticated UrTruck routing API.
+            Live GPS remains available inside the accepted deal workspace. */}
+        <TripRoutePanel
+          from={trip.from}
+          to={trip.to}
+          transit={trip.transit}
+          capacityTons={trip.capacityTons}
+          weather={tripWeather}
+          role={role}
+          onOpenRates={session?.user?.id ? () => navigation.navigate('Wallet', { role }) : undefined}
+          onOpenWeather={tripWeather && trackingAvailable ? () => navigation.navigate('Chat', {
+            roomId: chatRoomId, dealId, role, tripId: trip.id, action: 'tracking',
+          }) : undefined}
+          onOpenBorder={() => navigation.navigate('Main', { screen: 'Queue', params: { role } })}
+          onOpenTracking={trackingAvailable ? () => navigation.navigate('Chat', {
+            roomId: chatRoomId, dealId, role, tripId: trip.id, action: 'tracking',
+          }) : undefined}
+        />
 
         {/* Даты */}
         <GlassCard>
@@ -717,7 +743,7 @@ export default function TripDetail({ navigation, route }) {
                     (05.08.2026, п.16 ТЗ). */}
                 <Text style={[s.bidAmt, { color: '#E06D00' }]}>{formatPrice(b.amount, b.currency || trip.currency, t)}</Text>
               </View>
-              {b.status === 'pending' && !hasAccepted ? (
+              {!readOnly && b.status === 'pending' && !hasAccepted ? (
                 <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                   {/* Приказ владельца 03.08 (скриншоты): до создания сделки
                       никакого чата. Иерархия — одна большая «Принять»,
@@ -753,7 +779,7 @@ export default function TripDetail({ navigation, route }) {
                   </TouchableOpacity>
                 </View>
               ) : null}
-              {isCountered ? (
+              {!readOnly && isCountered ? (
                 <View style={{ marginTop: 10, gap: 8, alignSelf: 'stretch' }}>
                   {b.counterAmount ? (
                     <Text style={{ color: '#E06D00', fontSize: 12, fontWeight: '700' }}>
@@ -861,7 +887,7 @@ export default function TripDetail({ navigation, route }) {
       {/* Отзыв после доставки. Trip-сделка не проходит через CargoDetail,
           поэтому без этого блока участникам trip-сделки было негде оценить
           друг друга. Клиент оценивает водителя, водитель — клиента. */}
-      {dealStatus === 'completed' && !reviewSent && (isShipper ? (driverId || trip.driverId) : shipperId) ? (
+      {dealStatus === 'completed' && reviewChecked && !reviewSent && reviewTargetId ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={[s.reviewBlock, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[s.reviewTitle, { color: theme.text }]}>{isShipper ? t('rate_driver') : t('rate_shipper')}</Text>
@@ -886,16 +912,23 @@ export default function TripDetail({ navigation, route }) {
               onPress={async () => {
                 setReviewLoading(true);
                 try {
-                  await reviewsAPI.create({
-                    targetId: isShipper ? (driverId || trip.driverId) : shipperId,
+                  const result = await reviewsAPI.create({
+                    tripId: dealId || tid,
+                    targetId: reviewTargetId,
                     targetRole: isShipper ? 'driver' : 'client',
                     rating: reviewRating,
                     text: reviewText.trim() || null,
                   });
+                  if (!result?.ok) throw new Error(result?.detail || 'review_failed');
                   setReviewSent(true);
                   toast(t('thanks_for_review'), 'success');
-                } catch {
-                  toast(t('review_failed'), 'error');
+                } catch (error) {
+                  if (error?.status === 409) {
+                    setReviewSent(true);
+                    toast(t('thanks_for_review'), 'success');
+                  } else {
+                    toast(t('review_failed'), 'error');
+                  }
                 }
                 setReviewLoading(false);
               }}
@@ -916,7 +949,7 @@ export default function TripDetail({ navigation, route }) {
           отправки предложения на карточке рейса не было НИКАКОЙ обратной
           связи (дошло/не дошло/можно ли изменить/где чат). Плашка + два
           действия: изменить сумму или сразу перейти в чат. */}
-      {myActiveBid && !dealStatus && !isOwner ? (
+      {!readOnly && myActiveBid && !dealStatus && !isOwner ? (
         <View style={[s.myBidCard, { borderColor: v1Accent.main, backgroundColor: v1.card }]} testID="trip-my-active-bid">
           <View style={s.myBidHeader}>
             <Text style={[s.myBidLabel, { color: v1.textMuted }]}>{t('my_bid_label')}</Text>
@@ -1014,7 +1047,7 @@ export default function TripDetail({ navigation, route }) {
           Только «Предложить цену» — свободный чат до сделки убран (решение
           владельца 03.08): после accept ставки автоматически создаётся комната
           сделки, до этого переговоры ведутся через ставку/контрпредложение. */}
-      {!isOwner && !dealStatus && role === 'client' && !myActiveBid ? (
+      {!readOnly && !isOwner && !dealStatus && role === 'client' && !myActiveBid ? (
         <StickyCTABar
           accent={v1Accent.main}
           primary={{
@@ -1063,8 +1096,8 @@ export default function TripDetail({ navigation, route }) {
       <ShareModal
         visible={shareModal}
         onClose={() => setShareModal(false)}
-        shareText={buildTripShareText({ ...trip, truckTypeLabel: view.truckType }, `${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`, lang)}
-        url={`${WEB_URL || 'https://urtruck.kz'}/trip/${trip.id}`}
+        shareText={buildTripShareText({ ...trip, truckTypeLabel: view.truckType }, `${WEB_URL || 'https://urtruck.kz'}${publicListingPath('trip', trip.id)}`, lang)}
+        url={`${WEB_URL || 'https://urtruck.kz'}${publicListingPath('trip', trip.id)}`}
       />
       {/* Stage 17: RatingModal removed alongside the inline
           "Оставить отзыв" CTA. Reviews live on CargoDetail's

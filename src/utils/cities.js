@@ -1,20 +1,10 @@
 // Города по странам с координатами
 export const COUNTRIES = {
-  KZ: { flag: '🇰🇿', name: 'Казахстан' },
-  RU: { flag: '🇷🇺', name: 'Россия' },
-  UZ: { flag: '🇺🇿', name: 'Узбекистан' },
-  KG: { flag: '🇰🇬', name: 'Кыргызстан' },
-  CN: { flag: '🇨🇳', name: 'Китай' },
-  TJ: { flag: '🇹🇯', name: 'Таджикистан' },
-  TM: { flag: '🇹🇲', name: 'Туркменистан' },
-  GE: { flag: '🇬🇪', name: 'Грузия' },
-  BY: { flag: '🇧🇾', name: 'Беларусь' },
-  AM: { flag: '🇦🇲', name: 'Армения' },
-  AZ: { flag: '🇦🇿', name: 'Азербайджан' },
-  TR: { flag: '🇹🇷', name: 'Турция' },
-  DE: { flag: '🇩🇪', name: 'Германия' },
-  PL: { flag: '🇵🇱', name: 'Польша' },
-  AE: { flag: '🇦🇪', name: 'ОАЭ' },
+  KZ: { name: 'Казахстан' }, RU: { name: 'Россия' }, UZ: { name: 'Узбекистан' },
+  KG: { name: 'Кыргызстан' }, CN: { name: 'Китай' }, TJ: { name: 'Таджикистан' },
+  TM: { name: 'Туркменистан' }, GE: { name: 'Грузия' }, BY: { name: 'Беларусь' },
+  AM: { name: 'Армения' }, AZ: { name: 'Азербайджан' }, TR: { name: 'Турция' },
+  DE: { name: 'Германия' }, PL: { name: 'Польша' }, AE: { name: 'ОАЭ' },
 };
 
 const BASE_CITIES = [
@@ -158,4 +148,4 @@ export const searchCities = (query) => {
   return result;
 };
 
-export const formatCity = (cityObj) => `${cityObj.name}, ${COUNTRIES[cityObj.country]?.flag || ''}`;
+export const formatCity = (cityObj) => cityObj?.name || '';

@@ -11,9 +11,7 @@ env:
 ---
 # UI-проверка PushFilter — открытие, скриншот, отсутствие crash.
 - runFlow: _lib/qa-login.yaml
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - scrollUntilVisible:
     element:
       id: "profile-push-filter"

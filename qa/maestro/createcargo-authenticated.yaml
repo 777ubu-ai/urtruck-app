@@ -13,7 +13,10 @@ env:
 - runFlow: _lib/qa-login.yaml
 - takeScreenshot: 01_after_qa_login_publish
 - tapOn:
-    id: "bottom-nav-publish"
+    id: "bottom-nav-mywork"
+- waitForAnimationToEnd
+- tapOn:
+    id: "mytrips-place-cargo"
 - waitForAnimationToEnd
 # cargo-from-input / cargo-to-input рендерятся внутри RoutePointPicker и
 # появляются только после раскрытия. Базовая форма всегда даёт

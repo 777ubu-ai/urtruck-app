@@ -44,9 +44,33 @@ def is_configured() -> bool:
 
 
 def info() -> dict:
+    """Preflight/diagnostics snapshot for GET /api/v1/system/info.
+
+    Hardening B (2026-09-14): callers (ops dashboards, deploy health-checks)
+    need to tell "provider not configured" apart from "provider configured
+    but the port/host looks wrong" WITHOUT a real send attempt and WITHOUT
+    ever exposing EMAIL_SMTP_PASSWORD (not even its length/presence in a way
+    that could be brute-forced) — only presence booleans for the
+    non-secret fields, matching translate_service.get_info()'s
+    "openai_key_exists" pattern (fact-of-existence only, never the value).
+    """
+    port = int(EMAIL_SMTP_PORT) if str(EMAIL_SMTP_PORT).strip() else 0
+    # Port 465 is implicit-TLS (SMTP_SSL) regardless of EMAIL_USE_TLS — the
+    # connection is encrypted from the first byte. Any other port relies on
+    # EMAIL_USE_TLS (STARTTLS) being on; if it's off, credentials/OTP codes
+    # would cross the network in plaintext — that's an invalid TLS config,
+    # not just a stylistic choice.
+    uses_implicit_tls = port == 465
+    tls_config_valid = uses_implicit_tls or bool(EMAIL_USE_TLS)
     return {
         "mode": "MOCK" if EMAIL_MOCK else "REAL",
+        "configured": not EMAIL_MOCK,
         "host": EMAIL_SMTP_HOST or None,
+        "host_present": bool(EMAIL_SMTP_HOST),
+        "port_present": bool(port),
+        "username_present": bool(EMAIL_SMTP_USER),
+        "sender_present": bool(EMAIL_FROM),
+        "tls_config_valid": tls_config_valid,
         "from": EMAIL_FROM,
     }
 
@@ -78,6 +102,21 @@ def send_otp(email: str, code: str) -> dict:
 
     В MOCK-режиме (нет SMTP-реквизитов) код печатается в лог и возвращается —
     для локальной разработки. В REAL-режиме шлём письмо через SMTP.
+
+    Hardening B (2026-09-14): the exception branch used to collapse every
+    failure — a wrong password, an unreachable host, a 15s connect timeout —
+    into the same generic "email_delivery_failed", indistinguishable from a
+    caller's point of view. That matters for two reasons: (1) an
+    authentication failure is a permanent operator misconfiguration (retrying
+    the same OTP send will never succeed until the credential is fixed),
+    while a timeout/connection failure is transient (retrying, or falling
+    back to another channel, may well succeed) — mirrors the `retryable`
+    contract already used by speech_to_text_service.SpeechToTextError and
+    translate_service.TranslationError; (2) never print/return anything that
+    could contain the SMTP password (smtplib exceptions sometimes echo the
+    server's own response line, which does not include the submitted
+    password, but out of caution the log line here stays fixed-text with the
+    exception TYPE only, not the raw message body).
     """
     email = (email or "").strip()
     if EMAIL_MOCK:
@@ -101,6 +140,28 @@ def send_otp(email: str, code: str) -> dict:
                 s.login(EMAIL_SMTP_USER, EMAIL_SMTP_PASSWORD)
                 s.send_message(msg)
         return {"sent": True, "mock": False, "channel": "email"}
+    except smtplib.SMTPAuthenticationError as e:
+        # Wrong EMAIL_SMTP_USER/PASSWORD — permanent, an operator config
+        # issue. Retrying the exact same send will keep failing; this is a
+        # startup/health-check signal, not something to fall back-and-retry.
+        print(f"[EMAIL] auth rejected by SMTP host for {mask_email(email)} "
+              f"(check EMAIL_SMTP_USER/EMAIL_SMTP_PASSWORD): {type(e).__name__}", flush=True)
+        return {
+            "sent": False, "mock": False, "channel": "email",
+            "error": "email_auth_failed", "retryable": False,
+        }
+    except (TimeoutError, smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, OSError) as e:
+        # Host unreachable / connection dropped / 15s connect timeout —
+        # transient network condition, safe to retry or fall back to another
+        # OTP channel (see services/otp_service.py's fallback chain).
+        print(f"[EMAIL] transient delivery failure to {mask_email(email)}: {type(e).__name__}", flush=True)
+        return {
+            "sent": False, "mock": False, "channel": "email",
+            "error": "email_timeout", "retryable": True,
+        }
     except Exception as e:
-        print(f"[EMAIL] send failed to {mask_email(email)}: {e}", flush=True)
-        return {"sent": False, "mock": False, "channel": "email", "error": "email_delivery_failed"}
+        print(f"[EMAIL] send failed to {mask_email(email)}: {type(e).__name__}", flush=True)
+        return {
+            "sent": False, "mock": False, "channel": "email",
+            "error": "email_delivery_failed", "retryable": False,
+        }

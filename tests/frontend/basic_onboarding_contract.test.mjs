@@ -36,8 +36,13 @@ test('VehicleSetupSuccess completes basic onboarding before opening trip creatio
   assert.match(client, /async completeBasic\(\)/);
   assert.match(client, /DRIVER_REG_BASE}\/complete-basic/);
   assert.match(success, /regAPI\.completeBasic\(\)/);
+  assert.match(success, /catch \{/);
   assert.match(success, /setRole\('driver'\)/);
   assert.match(success, /navigation\.replace\('CreateTrip'/);
+  assert.match(success, /basicState === 'done' \? </);
+  assert.match(success, /'basic-onboarding-publish'/);
+  assert.match(success, /testID=\{`basic-onboarding-\$\{basicState\}`\}/);
+  assert.doesNotMatch(success, /<Pressable disabled=\{basicState !== 'done'\}/);
   assert.match(review, /truck_kind: d\.vehicle_type/);
   assert.match(review, /vehicle_registration_country: d\.vehicle_registration_country_code/);
 });
@@ -50,7 +55,7 @@ test('driver profile continues to vehicle setup and does not commit driver role 
 });
 
 test('vehicle save without publication still completes basic onboarding and errors have retry', () => {
-  assert.match(review, /if \(!publish\) \{ const completed = await regAPI\.completeBasic\(\)/);
+  assert.match(review, /if \(!publish && !returnOrigin\) \{ const completed = await regAPI\.completeBasic\(\)/);
   assert.match(review, /setRole\('driver'\)/);
   assert.match(review, /testID="vehicle-setup-retry"/);
   assert.doesNotMatch(review, /c\.documents/);

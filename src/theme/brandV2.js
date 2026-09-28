@@ -8,7 +8,7 @@
 // в логотипе, GREEN primary CTA (как в inDrive — зелёная кнопка
 // "Продолжить"). Outline secondary CTA — navy border + navy text.
 
-const brandLight = {
+export const brandLight = {
   // Backgrounds
   bg: '#FFFFFF',
   surface: '#FFFFFF',

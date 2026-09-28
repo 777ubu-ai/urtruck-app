@@ -15,18 +15,19 @@ test('foreground deal activity uses the Deals badge without a duplicate top bann
   assert.match(bottomNav, /computeDealsUnread/);
   assert.match(bottomNav, /setDealsUnread\(next\)/);
   assert.match(bottomNav, /bottom-nav-deals-badge/);
-  assert.match(bottomNav, /route\.name === 'Deals' \? Math\.max\(chatUnread, dealsUnread\) : 0/);
+  assert.match(bottomNav, /route\.name === 'Deals' \? dealsUnread : 0/);
+  assert.doesNotMatch(bottomNav, /Math\.max\(chatUnread, dealsUnread\)/);
   assert.doesNotMatch(bottomNav, /route\.name === 'Chats' \? chatUnread/);
   assert.doesNotMatch(bottomNav, /useToast/);
   assert.doesNotMatch(bottomNav, /новое событие/);
   assert.doesNotMatch(bottomNav, /actionLabel:\s*t\('open_action'\)/);
 });
 
-test('native push remains configured to show banners and play the default sound', () => {
+test('native push remains configured to show banners and use the Android system sound', () => {
   assert.match(push, /shouldShowBanner:\s*true/);
   assert.match(push, /shouldPlaySound:\s*true/);
   assert.match(push, /AndroidImportance\.MAX/);
-  assert.match(push, /sound:\s*'default'/);
+  assert.doesNotMatch(push, /sound:\s*['\"]default['\"]/);
 });
 
 test('shipper machine feed saves an individual trip and exposes the same saved filter as driver cargo feed', () => {
@@ -57,8 +58,9 @@ test('deal header uses map and status buttons, not the old call button', () => {
   assert.match(workspace, /statusActionIcon/);
 });
 
-test('status history opens from the status card and keeps the next status action at the bottom', () => {
-  assert.match(workspace, /onPress=\{\(\) => setStatusModalOpen\(true\)\}/);
+test('status history refreshes before opening from the status card and keeps the next status action at the bottom', () => {
+  assert.match(workspace, /const openStatusModal = React\.useCallback\(\(\) => \{[\s\S]*?setStatusModalOpen\(true\);[\s\S]*?refreshDeal\(\);[\s\S]*?refreshTimeline\(\);/);
+  assert.match(workspace, /onPress=\{openStatusModal\}/);
   assert.match(workspace, /<DealStatusTimeline events=\{timeline\} fallbackStatus=\{statusLabel\}/);
   // Design v1 Commit 4: the next-action CTA is the canonical Button primary
   // (dealActionResolver labels/transitions untouched, testID contract kept).
@@ -71,13 +73,33 @@ test('status history opens from the status card and keeps the next status action
   assert.match(timeline, /currentCard/);
 });
 
-test('profile PRO state is explicit and no longer depends on a bare percent label', () => {
+test('profile separates verification, trust tier and PRO completion truthfully', () => {
   assert.match(profile, /proStatusTitle = proActive \? t\('pro_active_badge'\) : t\('pro_inactive_badge'\)/);
-  assert.match(profile, /verificationStatusText = profile\.is_verified \? t\('verification_passed_short'\) : t\('verification_failed_short'\)/);
+  assert.match(profile, /verificationStatusText = profile\.is_verified \? t\('verification_passed_short'\) : ''/);
+  assert.doesNotMatch(profile, /t\('verification_failed_short'\)/);
+  assert.match(profile, /t\('pro_progress_filled'\)/);
+  assert.match(profile, /profile\.truckType \? t\(`vt_\$\{profile\.truckType\}`\) : t\('tent'\)/);
   assert.match(profile, /proStatusBadge/);
   assert.doesNotMatch(profile, /<Text style=\{\[s\.proPercent/);
   assert.match(i18n, /pro_inactive_badge:\s*'PRO не активен'/);
+  assert.match(i18n, /pro_progress_filled:\s*'Заполнено'/);
   assert.match(i18n, /verification_passed_short:\s*'Проверка пройдена'/);
+});
+
+test('trust screen does not promise unavailable bank or biometric scoring', () => {
+  const security = fs.readFileSync('src/screens/SecurityScreen.js', 'utf8');
+  assert.doesNotMatch(security, /security_tip_confirm_account/);
+  assert.doesNotMatch(security, /security_tip_biometry_desc/);
+  assert.match(security, /security_tip_verify_docs/);
+});
+
+test('help copy matches the current basic onboarding and deal completion flow', () => {
+  assert.doesNotMatch(i18n, /WhatsApp-код → селфи/);
+  assert.doesNotMatch(i18n, /получаешь оплату/);
+  assert.doesNotMatch(i18n, /11 языков/);
+  assert.match(i18n, /Документы для повышения доверия можно загрузить позже/);
+  assert.match(i18n, /После подтверждения получения сделка завершается/);
+  assert.match(i18n, /Интерфейс на 4 языках/);
 });
 
 test('route filter can select a whole country without forcing a city', () => {

@@ -12,9 +12,7 @@ env:
 # Quick lang switch — RU → EN → KK → ZH, screenshot Profile/Queue/Chats для
 # визуальной проверки переводов и переполнения.
 - runFlow: _lib/qa-login.yaml
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 - takeScreenshot: 01_profile_RU
 
 # Switch EN
@@ -28,12 +26,10 @@ env:
 - waitForAnimationToEnd
 - takeScreenshot: 03_queue_EN
 - tapOn:
-    id: "bottom-nav-chats"
+    id: "bottom-nav-deals"
 - waitForAnimationToEnd
 - takeScreenshot: 04_chats_EN
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 
 # Switch KK
 - tapOn:
@@ -45,9 +41,7 @@ env:
     id: "bottom-nav-queue"
 - waitForAnimationToEnd
 - takeScreenshot: 06_queue_KK
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 
 # Switch ZH
 - tapOn:
@@ -59,9 +53,7 @@ env:
     id: "bottom-nav-queue"
 - waitForAnimationToEnd
 - takeScreenshot: 08_queue_ZH
-- tapOn:
-    id: "bottom-nav-profile"
-- waitForAnimationToEnd
+- runFlow: _lib/open-profile.yaml
 
 # Back to RU
 - tapOn:
@@ -81,6 +73,6 @@ env:
 - waitForAnimationToEnd
 - takeScreenshot: 11_queue_dark
 - tapOn:
-    id: "bottom-nav-chats"
+    id: "bottom-nav-deals"
 - waitForAnimationToEnd
 - takeScreenshot: 12_chats_dark
