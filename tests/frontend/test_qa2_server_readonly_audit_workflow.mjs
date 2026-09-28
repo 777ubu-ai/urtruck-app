@@ -22,7 +22,7 @@ test('QA2 server audit gathers only technical capacity and process evidence', ()
   for (const required of [
     'df -hT', 'df -iP', 'free -h', 'swapon --show --bytes', 'vmstat 1 3', '/proc/pressure/memory',
     '/proc/pressure/io', '/proc/pressure/cpu', 'PORT_8002_PID', 'PROCESS_8002_EXEC',
-    'PROCESS_8002_CWD', 'PROCESS_8002_CGROUP_BEGIN', 'ActiveState',
+    'PROCESS_8002_CWD', 'PROCESS_8002_CGROUP', 'ActiveState',
     'FragmentPath', 'server_name[[:space:]]', 'docker image ls', 'docker volume ls',
     'docker builder du', 'technical-directory-sizes', 'source_sha',
     'synthetic_translation RU_TO_ZH', 'synthetic_translation ZH_TO_RU',
@@ -42,14 +42,15 @@ test('QA2 server audit gathers only technical capacity and process evidence', ()
 test('allowlist artifact sanitizer removes command-line and header secrets from every output', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa2-audit-'));
   const input = path.join(dir, 'input.txt');
-  const json = path.join(dir, 'audit.json');
-  const markdown = path.join(dir, 'summary.md');
+  const json = path.join(dir, 'nested', 'audit.json');
+  const markdown = path.join(dir, 'nested', 'summary.md');
   fs.writeFileSync(input, [
     'SECTION=port-8002-process',
     'PROCESS_8002_CMD=python --password example-secret --token=example-token',
     'PROCESS_8002_CGROUP_BEGIN',
     'cgroup=/system.slice/urtruck-qa2.service',
     'SECTION=health',
+    'CUSTOM_SECRET=example-secret',
     'Authorization: Bearer example-token',
     'postgres://user:example-password@host/db',
     'SECTION=nginx-routing',

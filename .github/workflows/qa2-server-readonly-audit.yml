@@ -97,7 +97,7 @@ jobs:
           echo 'SECTION=listeners'
           for port in 8001 8002 8003 3101; do
             echo "PORT=$port"
-            sudo -n ss -ltnpH "sport = :$port" 2>&1 || true
+            sudo -n ss -ltnpH "sport = :$port" 2>/dev/null || true
           done
 
           listener_8002="$(sudo -n ss -ltnpH 'sport = :8002' 2>/dev/null || true)"
@@ -105,13 +105,19 @@ jobs:
           echo "PORT_8002_PID=${pid_8002:-unavailable}"
           if test -n "$pid_8002" && test -r "/proc/$pid_8002/status"; then
             echo 'SECTION=port-8002-process'
-            ps -p "$pid_8002" -o pid=,ppid=,user=,comm=,etime=,lstart=,%cpu=,%mem=,rss=
+            ppid_8002="$(ps -p "$pid_8002" -o ppid= | tr -d ' ')"
+            echo "PROCESS_8002_PID=$pid_8002"
+            echo "PROCESS_8002_PPID=$ppid_8002"
+            echo "PROCESS_8002_USER=$(ps -p "$pid_8002" -o user= | tr -d ' ')"
+            echo "PROCESS_8002_COMM=$(ps -p "$pid_8002" -o comm= | tr -d ' ')"
+            echo "PROCESS_8002_ELAPSED=$(ps -p "$pid_8002" -o etime= | tr -d ' ')"
+            echo "PROCESS_8002_CPU_PCT=$(ps -p "$pid_8002" -o %cpu= | tr -d ' ')"
+            echo "PROCESS_8002_MEM_PCT=$(ps -p "$pid_8002" -o %mem= | tr -d ' ')"
+            echo "PROCESS_8002_RSS_KB=$(ps -p "$pid_8002" -o rss= | tr -d ' ')"
             echo "PROCESS_8002_EXEC=$(readlink -f "/proc/$pid_8002/exe" 2>/dev/null || true)"
             echo "PROCESS_8002_CWD=$(readlink -f "/proc/$pid_8002/cwd" 2>/dev/null || true)"
-            echo 'PROCESS_8002_CGROUP_BEGIN'
-            cat "/proc/$pid_8002/cgroup" 2>/dev/null || true
-            echo 'PROCESS_8002_CGROUP_END'
-            ppid_8002="$(ps -p "$pid_8002" -o ppid= | tr -d ' ')"
+            cgroup_8002="$(cat "/proc/$pid_8002/cgroup" 2>/dev/null | head -n 1 | sed 's/.*://')"
+            echo "PROCESS_8002_CGROUP=systemd:${cgroup_8002:-unknown}"
             if grep -Fq 'urtruck-qa2.service' "/proc/$pid_8002/cgroup" 2>/dev/null; then
               echo 'PROCESS_8002_SUPERVISION=systemd-unit-cgroup'
             elif test "$ppid_8002" = '1'; then
@@ -126,28 +132,28 @@ jobs:
           echo 'SECTION=systemd'
           for unit in urtruck-qa2.service urtruck-qa2-ai.service nginx.service docker.service; do
             echo "UNIT=$unit"
-            sudo -n systemctl show "$unit" -p Id -p ActiveState -p SubState -p MainPID -p FragmentPath -p ExecMainStartTimestamp --no-pager 2>&1 || true
+            sudo -n systemctl show "$unit" -p Id -p ActiveState -p SubState -p MainPID -p FragmentPath -p ExecMainStartTimestamp --no-pager 2>/dev/null || true
           done
 
           echo 'SECTION=nginx-routing'
           sudo -n nginx -T 2>/dev/null | awk '
-            /^[[:space:]]*server_name[[:space:]]/ {server=$0; gsub(/^[[:space:]]+/, "", server)}
-            /^[[:space:]]*proxy_pass[[:space:]]/ && server ~ /(qa2\.urtruck\.kz|pro-test\.urtruck\.kz)/ {line=$0; gsub(/^[[:space:]]+/, "", line); print server " -> " line}
+            /^[[:space:]]*server_name[[:space:]]/ {server=$0; gsub(/^[[:space:]]+/, "", server); gsub(/;$/, "", server)}
+            /^[[:space:]]*proxy_pass[[:space:]]/ && server ~ /(qa2\.urtruck\.kz|pro-test\.urtruck\.kz)/ {line=$0; gsub(/^[[:space:]]+/, "", line); gsub(/;$/, "", line); print server " -> " line}
           ' || true
 
           echo 'SECTION=docker-images'
-          sudo -n docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}' 2>&1 || true
+          sudo -n docker image ls --format 'DOCKER_IMAGE={{.Repository}}:{{.Tag}}|{{.ID}}|{{.Size}}' 2>/dev/null || true
           echo 'SECTION=docker-volumes'
-          sudo -n docker volume ls --format '{{.Driver}} {{.Name}}' 2>&1 || true
+          sudo -n docker volume ls --format 'DOCKER_VOLUME={{.Driver}}|{{.Name}}' 2>/dev/null || true
           echo 'SECTION=docker-containers'
-          sudo -n docker ps -a --format '{{.ID}} {{.Image}} {{.Names}} {{.Status}}' 2>&1 || true
+          sudo -n docker ps -a --format 'DOCKER_CONTAINER={{.ID}}|{{.Image}}|{{.Names}}|{{.Status}}' 2>/dev/null || true
           echo 'SECTION=docker-build-cache'
-          sudo -n docker builder du 2>&1 || true
+          sudo -n docker builder du --format '{{.ID}}|{{.Size}}' 2>/dev/null | sed 's/^/DOCKER_BUILD_CACHE=/' || true
           echo 'SECTION=docker-mount-links'
-          sudo -n docker ps -aq | xargs -r sudo -n docker inspect --format '{{.Name}} {{range .Mounts}}{{.Type}}:{{.Source}}->{{.Destination}} {{end}}' 2>&1 || true
+          sudo -n docker ps -aq | xargs -r sudo -n docker inspect --format '{{.Name}}|{{range .Mounts}}{{.Type}}->{{.Destination}} {{end}}' 2>/dev/null | sed -E 's#^/([^|]+)\|([^ ]+).*$#DOCKER_MOUNT=\1|\2#' || true
 
           echo 'SECTION=technical-directory-sizes'
-          sudo -n du -sh /home/ubuntu/urtruck /home/ubuntu/urtruck-rollback /home/ubuntu/urtruck-releases /home/ubuntu/urtruck-backups /home/ubuntu/urtruck-qa2 /home/ubuntu/urtruck-qa2-ai /var/lib/docker /var/log /tmp 2>&1 || true
+          sudo -n du -sh /home/ubuntu/urtruck /home/ubuntu/urtruck-rollback /home/ubuntu/urtruck-releases /home/ubuntu/urtruck-backups /home/ubuntu/urtruck-qa2 /home/ubuntu/urtruck-qa2-ai /var/lib/docker /var/log /tmp 2>/dev/null || true
 
           health_summary() {
             local label="$1"
@@ -211,7 +217,7 @@ jobs:
             swap_snapshot "${label}_BEFORE"
             psi_snapshot "${label}_BEFORE"
             ai_snapshot "${label}_BEFORE"
-            response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code} %{time_total}' --max-time 90 --header 'content-type: application/json' --data "$payload" http://127.0.0.1:8003/translate 2>&1 || true)"
+            response="$(curl --silent --output /dev/null --write-out '%{http_code} %{time_total}' --max-time 90 --header 'content-type: application/json' --data "$payload" http://127.0.0.1:8003/translate 2>/dev/null || true)"
             echo "SYNTHETIC_${label}_RESULT=$response"
             ai_snapshot "${label}_AFTER"
             psi_snapshot "${label}_AFTER"
