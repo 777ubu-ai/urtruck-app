@@ -80,7 +80,7 @@ FACT_PATTERNS = {
         "refrigerated": (r"(?:refrigerated|reefer)",),
         "positive_refrigerated": (r"(?:need|requires?)\s+(?:a\s+)?(?:refrigerated|reefer)", r"(?:a\s+)?(?:refrigerated|reefer)\s+(?:truck\s+)?is\s+required"),
         "not_tent": (r"not\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?", r"(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?\s+(?:is\s+)?(?:also\s+)?not\s+needed"),
-        "cargo_ready": (r"cargo\s+is\s+ready", r"goods\s+are\s+ready"), "not_cargo_ready": (r"cargo\s+(?:is\s+)?not\s+ready", r"goods\s+are\s+not\s+ready", r"cargo\s+(?:is\s+)?ready\s*\?\s*no"),
+        "cargo_ready": (r"cargo\s+is\s+ready", r"goods\s+are\s+ready"), "not_cargo_ready": (r"cargo\s+(?:is\s+)?not\s+ready", r"goods\s+are\s+not\s+ready", r"(?:the\s+)?(?:cargo|goods)\s+(?:is|are)\s+ready\s*\?\s*no"),
     },
     "zh": {
         "money_1500_usd": (r"1500\s*(?:usd|美元)",), "money_12000_usd": (r"12000\s*(?:usd|美元)",),

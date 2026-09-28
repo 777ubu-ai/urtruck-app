@@ -29,6 +29,14 @@ ZH→EN is 2/10. The two promoted rows are `Good, the goods are ready.`. This is
 a checker false-negative correction, not a model-quality improvement. The
 remaining `tent -> waterfall` cases remain FAIL.
 
+Reproduction (the source JSON is intentionally not committed):
+`python3` imports `scripts/qa2_ai_readonly_diagnostic.py`, reads the 60
+`safe_translation` JSON lines from run `#36388079397`, and calls
+`semantic_check(target_lang, phrase_kind, translated_text)` only. Source
+SHA-256: `9eab17345d24f3a218b288fdf2933b87d4ce14ab413ceb293f2d20cb57c337db`.
+The per-direction PASS counts are RU→ZH 4/10, ZH→RU 2/10, RU→EN 2/10,
+EN→RU 4/10, EN→ZH 4/10 and ZH→EN 2/10.
+
 ## Blockers
 
 - Translation: QA2 matrix pending; source tests are not QA2 acceptance.
