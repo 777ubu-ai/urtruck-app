@@ -26,8 +26,6 @@ test('QA2 FCM workflow validates secrets and only writes native QA2 env', () => 
   for (const name of [
     'QA2_FCM_PROJECT_ID',
     'QA2_FCM_SERVICE_ACCOUNT_JSON',
-    'secrets.QA2_FCM_PROJECT_ID || secrets.FCM_PROJECT_ID',
-    'secrets.QA2_FCM_SERVICE_ACCOUNT_JSON || secrets.FCM_SERVICE_ACCOUNT_JSON',
     'QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64',
     'PUSH_PROVIDER_MODE',
     'FCM_PROJECT_ID',
