@@ -79,6 +79,14 @@ test('QA2 exposes a diagnostic-only local AI runner without mutation commands', 
   assert.doesNotMatch(workflow, /diagnose_ai[\s\S]*systemctl restart/);
 });
 
+test('QA2 cleanup job can remove only the exact failed diagnostic directory', () => {
+  assert.match(workflow, /CLEANUP_QA2_DIAGNOSTIC_TMP/);
+  assert.match(workflow, /target='\/tmp\/qa2-ai-readonly-diagnostic-36409260200'/);
+  assert.match(workflow, /test "\$target" = '\/tmp\/qa2-ai-readonly-diagnostic-36409260200'/);
+  assert.match(workflow, /sudo -n rm -rf -- '\$target'/);
+  assert.doesNotMatch(workflow, /cleanup_diagnostic_tmp[\s\S]*\/tmp\/qa2-ai-readonly-diagnostic-\*/);
+});
+
 test('QA2 has a dedicated Nginx host and certificate', () => {
   assert.match(workflow, /server_name qa2\.urtruck\.kz/);
   assert.match(workflow, /proxy_pass http:\/\/127\.0\.0\.1:8002/);
