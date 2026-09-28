@@ -47,6 +47,7 @@ def test_qa_push_diagnostics_are_token_guarded_and_masked():
 
 def test_direct_push_diagnostics_are_native_only():
     sender = (ROOT / 'backend/services/push_sender.py').read_text(encoding='utf-8')
+
     assert 'def send_native_debug(' in sender
     assert 'push_gateway.send_to_devices(' in sender
 

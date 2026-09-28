@@ -22,8 +22,8 @@ and a real (temp) SQLite push_outbox/push_devices — not source-regex — that:
       own outbox row 'sent' on success is what stops the worker from ever
       re-sending it — the actual delivery-ownership contract, end to end.
 
-Provider responses are simulated via the deterministic ``provider_send_one``
-seam accepted by the outbox worker.  No real FCM/APNs network call is made.
+Provider responses are simulated via the deterministic `provider_send_one`
+seam; no provider network call is made.
 """
 import os
 import sys
@@ -60,7 +60,7 @@ def setup_function(_function):
 def _make_user_with_device(provider="fcm"):
     guest = reg_dal.create_guest()
     uid = guest["id"] if isinstance(guest, dict) else guest
-    token = f"fcm-{uuid.uuid4().hex}"
+    token = f"fcm-test-{uuid.uuid4().hex}"
     device_id = uuid.uuid4().hex
     with get_conn() as c:
         c.execute(
@@ -320,7 +320,7 @@ def test_11_immediate_success_prevents_worker_duplicate(monkeypatch):
     uid, _ = _make_user_with_device()
     calls = {"native": 0}
 
-    def fake_send_native(user_id, title, body, data, badge=None):
+    def fake_send_native(user_id, title, body, data, badge=None, provider=None):
         calls["native"] += 1
         return 1, 1  # (sent, total_devices) — push-closure track signature
 
