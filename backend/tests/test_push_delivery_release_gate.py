@@ -87,7 +87,8 @@ def test_native_is_the_safe_default_and_invalid_mode_never_becomes_expo():
     assert 'os.getenv("PUSH_PROVIDER_MODE") or "native"' in gateway
     assert 'mode = "expo"' not in gateway
     sender = _read("services/push_sender.py")
-    assert 'configured_mode not in ("expo", "dual")' in sender
+    assert "legacy rows remain stored" in sender
+    assert "Expo" not in sender
     assert '"config_errors"' in gateway
 
 

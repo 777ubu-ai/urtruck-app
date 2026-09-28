@@ -1,7 +1,7 @@
-"""Push API — Web Push (VAPID) + Native (Expo/FCM).
+"""Push API — Web Push (VAPID) + direct native FCM/APNs.
 
 - POST /subscribe        — web push (endpoint + p256dh + auth)
-- POST /register-native  — native (Expo push token / FCM token)
+- POST /register-native  — native FCM/APNs token
 - POST /unsubscribe      — снять подписку web
 - POST /unregister-native— удалить native-токен
 - POST /test             — тест себе
@@ -441,9 +441,12 @@ _CONFLICT_DETAIL = {
 
 
 def _provider_name(data) -> str:
-    provider = (data.provider or "expo").strip().lower()
-    if provider not in ("expo", "fcm", "apns"):
-        raise HTTPException(status_code=400, detail="provider must be expo, fcm or apns")
+    provider = (data.provider or "").strip().lower()
+    if provider not in ("fcm", "apns"):
+        raise HTTPException(status_code=400, detail="provider must be fcm or apns")
+    expected = "fcm" if (data.platform or "").lower() == "android" else "apns"
+    if provider != expected:
+        raise HTTPException(status_code=400, detail="provider does not match platform")
     return provider
 
 
@@ -515,8 +518,8 @@ class SubscribeIn(BaseModel):
 
 
 class NativeTokenIn(BaseModel):
-    token: str                              # Expo push token или FCM token
-    provider: Optional[str] = "expo"        # 'expo' | 'fcm' | 'apns'
+    token: str                              # native FCM/APNs token
+    provider: Optional[str] = None          # 'fcm' | 'apns'
     platform: Optional[str] = None          # 'ios' | 'android'
     device_name: Optional[str] = None
     device_id: Optional[str] = None         # UUID, генерируется клиентом один раз (P0-1)
@@ -597,7 +600,7 @@ def subscribe(sub: SubscribeIn, authorization: Optional[str] = Header(None)):
         # голое заявление в новом запросе. Узкий побочный эффект: если
         # пользователь НЕ разлогинился явно (POST /push/logout-cleanup) и
         # новый пользователь на том же устройстве регистрирует НОВЫЙ токен
-        # (обычный случай при первом входе Expo выдаёт новый токен) — старая
+        # (обычный случай при первом входе native SDK выдаёт новый токен) — старая
         # активная запись сама по себе не деактивируется этим путём; она
         # гасится штатно через logout-cleanup (основной сценарий) или когда
         # реальный владелец сам явно выйдет.
@@ -648,7 +651,7 @@ def unsubscribe(sub: dict, authorization: Optional[str] = Header(None)):
 
 @push_router.post("/register-native")
 def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(None)):
-    """Регистрация Expo/FCM push токена (native apps).
+    """Регистрация прямого FCM/APNs push-токена (native apps).
 
     P0-1 fix: см. subscribe() — тот же принцип, реализован для
     push_tokens_native.
@@ -679,7 +682,7 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
                 "  device_name = COALESCE(excluded.device_name, device_name), device_id = excluded.device_id, "
                 "  app_version = COALESCE(excluded.app_version, app_version), "
                 "  active = 1, invalidated_at = NULL, invalidated_reason = NULL, last_seen = CURRENT_TIMESTAMP",
-                (user_id, data.token, data.provider or "expo", data.platform, data.device_name, device_id, data.app_version),
+                (user_id, data.token, data.provider, data.platform, data.device_name, device_id, data.app_version),
             )
         else:
             if decision == "new" and user_id is not None:
@@ -694,7 +697,7 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
                 "  device_id = COALESCE(excluded.device_id, device_id), "
                 "  app_version = COALESCE(excluded.app_version, app_version), "
                 "  active = 1, last_seen = CURRENT_TIMESTAMP",
-                (user_id, data.token, data.provider or "expo", data.platform, data.device_name, device_id, data.app_version),
+                (user_id, data.token, data.provider, data.platform, data.device_name, device_id, data.app_version),
             )
         # См. комментарий в subscribe() выше — device-wide зачистка только
         # после подтверждённого reassign, не на голое заявление device_id
@@ -820,9 +823,8 @@ def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str 
     появляется на iPhone home screen даже при включённых notifications.
 
     QA-аудит P1 (blocking push): push_sender.send делает синхронный
-    httpx.post к Expo с timeout=10s. Все callsites (accept_bid, chat send,
-    admin approve) вызывали его ВНУТРИ обработчика запроса → при тормозах
-    Expo каждый accept/сообщение висели до 10 секунд и выедали threadpool.
+    Отправка через прямой native gateway выполняется в фоне, чтобы сетевые
+    задержки FCM/APNs не блокировали обработчик запроса.
     Теперь отправка уходит в daemon-поток; возвращаемое значение нигде не
     использовалось (проверено по всем callsites), /push/test зовёт
     push_sender.send напрямую и сохраняет диагностику.

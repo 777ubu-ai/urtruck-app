@@ -1,15 +1,9 @@
-"""Native push gateway: FCM/APNs primary, Expo legacy path.
+"""Native push gateway: direct FCM/APNs delivery.
 
 This module is deliberately additive. Existing business call-sites still call
 services.push_sender.send(), while the sender delegates native delivery here
-according to PUSH_PROVIDER_MODE:
-
-  expo   -> legacy Expo Push only
-  native -> direct FCM/APNs only
-  dual   -> direct FCM/APNs first, Expo only for devices without native token
-
-The canonical default is ``native``. Expo is only selected when the operator
-explicitly sets ``PUSH_PROVIDER_MODE=expo`` (or ``dual``).
+The only supported mode is ``native``. Device rows with legacy providers are
+kept for audit/migration but are never selected for delivery.
 """
 from __future__ import annotations
 
@@ -25,7 +19,7 @@ import httpx
 from database.db import get_conn
 
 PUSH_PROVIDER_MODE = (os.getenv("PUSH_PROVIDER_MODE") or "native").strip().lower()
-SUPPORTED_PUSH_PROVIDER_MODES = {"expo", "native", "dual"}
+SUPPORTED_PUSH_PROVIDER_MODES = {"native"}
 NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
 
 FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "")
@@ -276,23 +270,6 @@ class APNsProvider(PushProvider):
         return ProviderResult("apns", "failed", response=body_json, error_code=code, retryable=retryable)
 
 
-class ExpoProvider(PushProvider):
-    name = "expo"
-
-    def __init__(self, send_one):
-        self._send_one = send_one
-
-    def send(self, token: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> ProviderResult:
-        result = self._send_one([token], title, body, data, badge=badge)
-        if result.get("sent", 0) > 0:
-            ticket = (result.get("tickets") or [{}])[0]
-            return ProviderResult("expo", "sent", message_id=ticket.get("id"), response=ticket)
-        ticket = (result.get("tickets") or [{}])[0]
-        details = ticket.get("details") or {}
-        error_code = result.get("error") or details.get("error") or ticket.get("message") or "send_failed"
-        return ProviderResult("expo", "failed", response=ticket, error_code=str(error_code), retryable=False)
-
-
 def active_devices(user_id: str) -> list[dict[str, Any]]:
     with get_conn() as c:
         rows = c.execute(
@@ -387,20 +364,6 @@ def log_delivery(event_id: Optional[str], user_id: str, device: dict, result: Pr
         return
 
 
-def _dedupe_for_dual(devices: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    native_keys = {
-        d.get("device_id")
-        for d in devices
-        if d.get("device_id") and d.get("push_provider") in ("fcm", "apns")
-    }
-    selected = []
-    for d in devices:
-        if d.get("push_provider") == "expo" and d.get("device_id") in native_keys:
-            continue
-        selected.append(d)
-    return selected
-
-
 def _already_sent_to_device(event_id: Optional[str], device_registry_id: Optional[int]) -> bool:
     if not event_id or not device_registry_id:
         return False
@@ -421,32 +384,25 @@ def send_to_devices(
     body: str,
     data: dict,
     badge: Optional[int],
-    expo_send_one,
     mode: Optional[str] = None,
     provider_filter: Optional[str] = None,
 ) -> dict[str, Any]:
     mode = (mode or PUSH_PROVIDER_MODE or "native").lower()
     if mode not in SUPPORTED_PUSH_PROVIDER_MODES:
-        # Never turn a typo/misconfiguration into an implicit Expo delivery.
+        # Never turn a typo/misconfiguration into an implicit provider fallback.
         return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "error": "invalid_provider_mode"}
 
     devices = active_devices(user_id)
     if not devices:
         return {"sent": 0, "providers": {}, "devices": 0, "mode": mode}
 
-    if mode == "expo":
-        devices = [d for d in devices if d.get("push_provider") == "expo"]
-    elif mode == "native":
-        devices = [d for d in devices if d.get("push_provider") in ("fcm", "apns")]
-    else:
-        devices = _dedupe_for_dual(devices)
-    if provider_filter in ("expo", "fcm", "apns"):
+    devices = [d for d in devices if d.get("push_provider") in ("fcm", "apns")]
+    if provider_filter in ("fcm", "apns"):
         devices = [d for d in devices if d.get("push_provider") == provider_filter]
 
     providers = {
         "fcm": FCMProvider(),
         "apns": APNsProvider(),
-        "expo": ExpoProvider(expo_send_one),
     }
     sent = 0
     already_delivered = 0
@@ -582,7 +538,7 @@ def _skip_row_without_devices(row_id: int, attempt: int) -> str:
     return "skipped"
 
 
-def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
+def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, int]:
     """Process one small outbox batch. Safe to call repeatedly/concurrently
     (idempotent — a row already 'sent'/'dead', or already claimed by a
     concurrent caller, is simply skipped) and safe after a crash (stale
@@ -624,8 +580,7 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
             # Retry-payload-integrity fix (push-closure track): the enqueued
             # payload (services/push_sender.py send() -> enqueue_event) never
             # included `badge` at all — every retried delivery silently sent
-            # badge=None (Expo: the "badge" field is omitted entirely when
-            # None, so the OS keeps showing whatever stale number it already
+            # badge=None would omit the badge and leave stale OS state, so
             # had). Recompute fresh here rather than trying to persist a
             # static number: unread counts can legitimately change between
             # the original attempt and a retry minutes later, so a stored
@@ -637,14 +592,18 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
                     badge = _compute_recipient_badge(row["recipient_user_id"])
                 except Exception:
                     badge = None
-            result = send_to_devices(
-                row["recipient_user_id"],
-                payload.get("title") or "UrTruck",
-                payload.get("body") or "",
-                payload.get("data") or payload,
-                badge,
-                expo_send_one=expo_send_one,
-            )
+            title = payload.get("title") or "UrTruck"
+            body = payload.get("body") or ""
+            data = payload.get("data") or payload
+            if provider_send_one is not None:
+                # Compatibility seam for deterministic unit tests only. The
+                # runtime path always uses direct FCM/APNs below.
+                devices = [d for d in active_devices(row["recipient_user_id"]) if d.get("push_provider") in ("fcm", "apns")]
+                tokens = [d.get("push_token") for d in devices if d.get("push_token")]
+                callback_result = provider_send_one(tokens, title, body, data, badge=badge) if tokens else {"sent": 0}
+                result = {"devices": len(tokens), "sent": int(callback_result.get("sent", 0) if isinstance(callback_result, dict) else callback_result), "already_delivered": 0, "errors": {}}
+            else:
+                result = send_to_devices(row["recipient_user_id"], title, body, data, badge)
             # Multi-device fix (push-closure track): "sent" here must mean
             # EVERY currently-active device was reached, not merely at
             # least one — `result["sent"]` alone conflates "fully
@@ -706,93 +665,12 @@ def mark_event_sent(event_id: Optional[str], recipient_user_id: str) -> bool:
         return False
 
 
-RECEIPT_MIN_AGE_MINUTES = 15  # Expo's own guidance: receipts are not reliably available before this
-RECEIPT_MAX_AGE_DAYS = 1      # Expo retains receipts ~1 day; querying older rows would waste a call for nothing
-
-
-def poll_pending_receipts(expo_receipts_fn, limit: int = 50) -> dict[str, int]:
-    """Bounded, once-per-row Expo delivery-receipt reconciliation (push-
-    recovery track, Phase 5).
-
-    Complements the immediate ticket-level DeviceNotRegistered handling
-    services.push_sender._send_expo already does (that only sees errors Expo
-    already knows about at send time) — some invalid-token errors only
-    surface in the DELAYED receipt, not the immediate ticket. Each
-    push_delivery_log row is queried at MOST ONCE (receipt_checked_at guard
-    below, set unconditionally whether or not Expo had an answer yet), in a
-    bounded age window (RECEIPT_MIN_AGE_MINUTES..RECEIPT_MAX_AGE_DAYS) — this
-    can never grow into an unbounded query or re-poll the same row forever.
-    A row whose receipt never resolves in that window simply stays
-    delivered_at=NULL — no retry loop, no aggressive polling.
-    """
-    bounded_limit = max(1, min(int(limit or 50), 200))
-    with get_conn() as c:
-        rows = [
-            dict(r)
-            for r in c.execute(
-                """
-                SELECT id, device_registry_id, provider_message_id FROM push_delivery_log
-                WHERE provider = 'expo' AND status = 'sent' AND delivered_at IS NULL
-                  AND receipt_checked_at IS NULL AND provider_message_id IS NOT NULL
-                  AND sent_at IS NOT NULL
-                  AND sent_at <= datetime(CURRENT_TIMESTAMP, ?)
-                  AND sent_at >= datetime(CURRENT_TIMESTAMP, ?)
-                LIMIT ?
-                """,
-                (f"-{RECEIPT_MIN_AGE_MINUTES} minutes", f"-{RECEIPT_MAX_AGE_DAYS} days", bounded_limit),
-            ).fetchall()
-        ]
-
-    stats = {"checked": 0, "delivered": 0, "invalid_token": 0, "errors": 0}
-    if not rows:
-        return stats
-
-    # Same ticket could theoretically repeat across rows; a dict is fine —
-    # we only need the row to update per ticket, not a list of duplicates.
-    by_ticket = {r["provider_message_id"]: r for r in rows}
-    try:
-        result = expo_receipts_fn(list(by_ticket.keys())) or {}
-    except Exception:
-        return stats  # transient provider failure — rows stay unchecked, next tick retries them
-    receipts = result.get("receipts") or {}
-
-    with get_conn() as c:
-        for ticket_id, row in by_ticket.items():
-            stats["checked"] += 1
-            c.execute(
-                "UPDATE push_delivery_log SET receipt_checked_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (row["id"],),
-            )
-            receipt = receipts.get(ticket_id)
-            if not receipt:
-                continue  # not resolved yet / Expo has no record for it — leave delivered_at NULL
-            if receipt.get("status") == "ok":
-                c.execute(
-                    "UPDATE push_delivery_log SET delivered_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (row["id"],),
-                )
-                stats["delivered"] += 1
-                continue
-            details = receipt.get("details") or {}
-            if details.get("error") == "DeviceNotRegistered" and row.get("device_registry_id"):
-                c.execute(
-                    "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                    "invalidated_reason = 'expo_receipt_device_not_registered' WHERE id = ?",
-                    (row["device_registry_id"],),
-                )
-                stats["invalid_token"] += 1
-            else:
-                stats["errors"] += 1
-        c.commit()
-    return stats
-
-
 def info() -> dict[str, Any]:
-    counts = {"devices_active": 0, "expo": 0, "fcm": 0, "apns": 0, "outbox_pending": 0, "outbox_dead": 0, "outbox_sent_partial": 0, "outbox_skipped_no_devices": 0}
+    counts = {"devices_active": 0, "fcm": 0, "apns": 0, "outbox_pending": 0, "outbox_dead": 0, "outbox_sent_partial": 0, "outbox_skipped_no_devices": 0}
     try:
         with get_conn() as c:
             counts["devices_active"] = int(c.execute("SELECT COUNT(*) FROM push_devices WHERE enabled = 1").fetchone()[0])
-            for provider in ("expo", "fcm", "apns"):
+            for provider in ("fcm", "apns"):
                 counts[provider] = int(c.execute(
                     "SELECT COUNT(*) FROM push_devices WHERE enabled = 1 AND push_provider = ?",
                     (provider,),
@@ -830,7 +708,7 @@ def info() -> dict[str, Any]:
     config_errors = []
     if PUSH_PROVIDER_MODE not in SUPPORTED_PUSH_PROVIDER_MODES:
         config_errors.append("invalid_provider_mode")
-    elif PUSH_PROVIDER_MODE in ("native", "dual"):
+    elif PUSH_PROVIDER_MODE == "native":
         if not fcm_configured:
             config_errors.append("fcm_not_configured")
         if not apns_configured:
