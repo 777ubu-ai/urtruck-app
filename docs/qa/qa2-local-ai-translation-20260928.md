@@ -92,3 +92,24 @@ the temporary platform key expires automatically after one hour.
   `gate_reason_provenance=diagnostic_source`; they are diagnostic evidence,
   not proof that QA2 has the source commit installed. Runtime-provided reason
   codes are marked `server`.
+
+## Read-only result on `cd2d298e` — 2026-09-28
+
+Run [#36409260200](https://github.com/777ubu-ai/urtruck-app/actions/runs/36409260200)
+used source SHA `cd2d298eb4b7f1c0d8f51a7ea7202f62224cbe4a` and sent the same
+60 public synthetic rows once. It produced 18 semantic PASS, 26 HTTP 422 and
+16 semantic FAIL. The matrix deliberately returned exit code 1 because it is
+not green; this is a diagnostic outcome, not a deployment failure.
+
+All 26 HTTP 422 responses carried `detail.candidate`; none carried runtime
+`gate_failure_reasons`. The source-copy fallback generated reasons for all 26,
+each marked `gate_reason_provenance=diagnostic_source` and
+`runtime_reason_codes_available=false`. No row is marked `server`. QA2 runtime
+SHA remains **UNKNOWN**, as the workflow's deploy/recovery jobs were skipped.
+
+Per direction: RU→ZH 4 PASS / 4 HTTP / 2 semantic; ZH→RU 2 / 4 / 4;
+RU→EN 2 / 2 / 6; EN→RU 4 / 4 / 2; EN→ZH 4 / 6 / 0; ZH→EN 2 / 6 / 2.
+The new structured evidence identifies genuine candidate loss (for example a
+missing weight unit or city) separately from apparent gate false rejects caused
+by numeric formatting, inflection, or equivalent date representation. No
+quality-gate rule was changed based on this diagnostic run.
