@@ -1,0 +1,60 @@
+name: QA2 Server Read-only Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact QA2 source SHA to record with this audit
+        required: true
+        type: string
+
+concurrency:
+  group: qa2-server-readonly-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Collect sanitized QA2 evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: qa2
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+      - name: Validate exact branch, source and read-only contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "fix/voice-stt-translation-20260925"
+          test "$(git rev-parse HEAD)" = "${{ inputs.source_sha }}"
+          bash -n scripts/qa2_server_readonly_audit.sh
+          python3 -m py_compile scripts/render_qa2_server_audit_summary.py
+          node --test tests/frontend/test_qa2_server_readonly_audit_workflow.mjs
+      - name: Install SSH transport on the ephemeral runner
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Collect sanitized read-only evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa-artifacts/qa2-server-audit
+          bash scripts/qa2_server_readonly_audit.sh | tee qa-artifacts/qa2-server-audit/audit.jsonl
+          python3 scripts/render_qa2_server_audit_summary.py \
+            qa-artifacts/qa2-server-audit/audit.jsonl \
+            qa-artifacts/qa2-server-audit/summary.md
+      - name: Upload sanitized QA2 audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa2-server-readonly-audit-${{ inputs.source_sha }}
+          path: qa-artifacts/qa2-server-audit
+          if-no-files-found: warn
+          retention-days: 7
