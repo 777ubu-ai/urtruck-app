@@ -91,6 +91,7 @@ def main() -> int:
     swap = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("SWAP_"))
     psi = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("PSI_"))
     latency = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("SYNTHETIC_") and "_RESULT=" in line)
+    ai = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("AI_"))
     markdown_path.write_text(
         "# QA2 read-only server audit\n\n"
         f"- Listener evidence: `{pid}`\n"
@@ -98,6 +99,7 @@ def main() -> int:
         "## Synthetic latency\n\n```text\n" + latency + "\n```\n\n"
         "## Swap snapshots\n\n```text\n" + swap + "\n```\n\n"
         "## PSI snapshots\n\n```text\n" + psi + "\n```\n\n"
+        "## AI process snapshots\n\n```text\n" + ai + "\n```\n\n"
         "## QA2 / pro-test routing\n\n```text\n" + routes + "\n```\n",
         encoding="utf-8",
     )

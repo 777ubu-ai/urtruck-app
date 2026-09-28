@@ -85,6 +85,7 @@ test('representative server output keeps PID, latency, swap, PSI and sizes', () 
   assert.ok(payload.sections['synthetic-translation-observation'].some((line) => line.startsWith('PSI_')));
   assert.match(published, /PORT_8002_PID=12345/);
   assert.match(published, /200 8\.420123/);
+  assert.match(published, /AI_RU_TO_ZH_BEFORE_PROCESS=pid=1234 ppid=1 comm=python3 pcpu=2\.1 pmem=1\.2 rss=123456/);
   assert.match(published, /5\.6G \/home\/ubuntu\/urtruck-qa2/);
   assert.match(published, /1\.56G \/var\/lib\/docker/);
   assert.doesNotMatch(published, /example-secret|password|token|Authorization|postgres:/i);

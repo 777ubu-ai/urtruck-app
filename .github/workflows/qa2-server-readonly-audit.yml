@@ -197,7 +197,8 @@ jobs:
           ai_snapshot() {
             local label="$1"
             if test -n "$ai_pid" && test "$ai_pid" != '0' && test -r "/proc/$ai_pid/stat"; then
-              echo "AI_${label}_PROCESS=$(ps -p "$ai_pid" -o pid=,ppid=,comm=,%cpu=,%mem=,rss= | xargs)"
+              read -r ai_pid_value ai_ppid_value ai_comm_value ai_cpu_value ai_mem_value ai_rss_value < <(ps -p "$ai_pid" -o pid=,ppid=,comm=,%cpu=,%mem=,rss=)
+              echo "AI_${label}_PROCESS=pid=${ai_pid_value} ppid=${ai_ppid_value} comm=${ai_comm_value} pcpu=${ai_cpu_value} pmem=${ai_mem_value} rss=${ai_rss_value}"
             else
               echo "AI_${label}_PROCESS=unavailable"
             fi
