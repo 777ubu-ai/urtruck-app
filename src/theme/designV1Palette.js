@@ -29,11 +29,11 @@ export const withAlpha = (hex, alpha) => {
 };
 export const LIGHT = {
   bg: '#F7F3EC',
-  bgDeep: '#F3EBDD',
+  bgDeep: '#F5EEE3',
   surface: '#FFFFFF',
   surfaceLift: '#FFFCF7',
   surfaceMuted: '#FAF8F4',
-  chatCanvas: '#F3EBDD',
+  chatCanvas: '#F5EEE3',
   chatPattern: '#8C7D68',
 
   border: '#D8D2C9',
