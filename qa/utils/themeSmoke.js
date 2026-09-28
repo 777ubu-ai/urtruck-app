@@ -13,6 +13,7 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const DESIGN_V1 = path.join(ROOT, 'src', 'theme', 'designV1.js');
 const DESIGN_V1_PALETTE = path.join(ROOT, 'src', 'theme', 'designV1Palette.js');
 const THEME_CONTEXT = path.join(ROOT, 'src', 'utils', 'ThemeContext.js');
+const DEAL_WORKSPACE = path.join(ROOT, 'src', 'screens', 'DealWorkspaceScreenV2.js');
 
 const FRAME_COMPONENTS = [
   'Screen.js', 'BottomNav.js', 'BottomSheet.js',
@@ -66,14 +67,33 @@ if (!/export const LIGHT\s*=/.test(tokensSrc)) {
 if (!/export const DARK\s*=/.test(tokensSrc)) {
   failures.push('designV1Palette.js missing DARK export');
 }
-if (!/export const LIGHT = \{[\s\S]*?bg:\s*'#F6F8F7'/.test(tokensSrc)) {
-  failures.push('designV1Palette.js LIGHT.bg is not the expected light surface');
+if (!/export const LIGHT = \{[\s\S]*?bg:\s*'#F7F3EC'/.test(tokensSrc)) {
+  failures.push('designV1Palette.js LIGHT.bg is not the approved warm surface');
+}
+if (!/chatCanvas:\s*'#F3EBDD'/.test(tokensSrc) || !/chatPattern:\s*'#8C7D68'/.test(tokensSrc)) {
+  failures.push('designV1Palette.js is missing the approved warm chat wallpaper tokens');
 }
 if (!/export const DARK = \{[\s\S]*?bg:\s*'#0F1512'/.test(tokensSrc)) {
   failures.push('designV1Palette.js DARK.bg is not the approved dark surface');
 }
 
-// 3. Frame components consume the hook.
+// 3. The chat wallpaper is presentation-only: warm in LIGHT, absent in DARK,
+// and mounted under messages in the sole live deal/chat workspace.
+const dealWorkspaceSrc = fs.readFileSync(DEAL_WORKSPACE, 'utf8');
+if (!/ChatWallpaperPattern/.test(dealWorkspaceSrc)) {
+  failures.push('DealWorkspaceScreenV2.js is missing ChatWallpaperPattern');
+}
+if (!/visible=\{!isDark\}/.test(dealWorkspaceSrc)) {
+  failures.push('chat wallpaper is not explicitly disabled in dark mode');
+}
+if (!/backgroundColor:\s*isDark\s*\?\s*colors\.bg\s*:\s*colors\.chatCanvas/.test(dealWorkspaceSrc)) {
+  failures.push('chat canvas does not use the theme-aware warm background contract');
+}
+if (!/pointerEvents="none"/.test(dealWorkspaceSrc)) {
+  failures.push('chat wallpaper may intercept gestures');
+}
+
+// 4. Frame components consume the hook.
 for (const file of FRAME_COMPONENTS) {
   const p = path.join(ROOT, 'src', 'components', 'ui', 'v1', file);
   if (!fs.existsSync(p)) {
@@ -86,7 +106,7 @@ for (const file of FRAME_COMPONENTS) {
   }
 }
 
-// 4. Screens must not bind theme-dependent surface/text tokens to frozen v1Colors.
+// 5. Screens must not bind theme-dependent surface/text tokens to frozen v1Colors.
 const SCREENS_DIR = path.join(ROOT, 'src', 'screens');
 const themeTokenRe = new RegExp(`\\bv1Colors\\.(${THEME_KEYS.join('|')})\\b`, 'g');
 const screenFiles = fs.readdirSync(SCREENS_DIR).filter((n) => n.endsWith('.js'));
