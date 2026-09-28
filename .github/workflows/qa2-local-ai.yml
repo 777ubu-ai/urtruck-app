@@ -13,7 +13,7 @@ on:
         type: string
 
 concurrency:
-  group: urtruck-qa2-local-ai
+  group: ${{ inputs.confirmation == 'SOURCE_TESTS' && 'urtruck-qa2-local-ai-source-tests' || 'urtruck-qa2-local-ai' }}
   cancel-in-progress: false
 
 permissions:
