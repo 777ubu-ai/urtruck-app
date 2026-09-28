@@ -140,17 +140,27 @@ jobs:
           qa_env=/home/ubuntu/urtruck-qa2/backend/.env
           payload=/tmp/urtruck-qa2-fcm-service-account.json
           test -f "$qa_env" && test -f "$payload"
+          cd /home/ubuntu/urtruck-qa2/backend
+          cutoff="$(venv/bin/python - <<'PY'
+          from database.db import get_conn
+          with get_conn() as c:
+              row = c.execute("SELECT COALESCE(MAX(id), 0) FROM push_outbox").fetchone()
+          print(int(row[0] or 0))
+          PY
+          )"
+          [[ "$cutoff" =~ ^[0-9]+$ ]]
           backup="/home/ubuntu/urtruck-qa2/backend/.env.fcm-backup.$(date -u +%Y%m%dT%H%M%SZ)"
           cp -- "$qa_env" "$backup"
           chmod 600 "$backup"
           printf 'BACKUP=%s\n' "$backup" > /tmp/urtruck-qa2-fcm.state
           chmod 600 /tmp/urtruck-qa2-fcm.state
-          python3 - "$qa_env" "$payload" "$expected_project" <<'PY'
+          python3 - "$qa_env" "$payload" "$expected_project" "$cutoff" <<'PY'
           from pathlib import Path
           import json, os, sys
           env_path = Path(sys.argv[1])
           payload_path = Path(sys.argv[2])
           expected_project = sys.argv[3]
+          cutoff = sys.argv[4]
           service = json.loads(payload_path.read_text(encoding="utf-8"))
           if service.get("type") != "service_account" or service.get("project_id") != expected_project:
               raise SystemExit("QA2_FCM_REMOTE_VALIDATION_FAILED")
@@ -158,6 +168,7 @@ jobs:
               "PUSH_PROVIDER_MODE": "native",
               "FCM_PROJECT_ID": expected_project,
               "FCM_SERVICE_ACCOUNT_JSON": json.dumps(service, separators=(",", ":")),
+              "PUSH_OUTBOX_CUTOFF_ID": cutoff,
           }
           kept = [
               line for line in env_path.read_text(encoding="utf-8").splitlines()
@@ -171,6 +182,7 @@ jobs:
           payload_path.unlink(missing_ok=True)
           PY
           test "$(stat -c '%a' "$qa_env")" = 600
+          echo "QA2_PUSH_OUTBOX_CUTOFF_ID=$cutoff"
           sudo -n systemctl restart urtruck-qa2.service
           test "$(systemctl is-active urtruck-qa2.service)" = active
           main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
