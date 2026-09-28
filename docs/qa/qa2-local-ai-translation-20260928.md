@@ -57,8 +57,20 @@ source SHA check, secure QA2 configuration backup and rollback, plus Xiaomi↔OP
 physical verification on approved recordings. The mini STT model has a planned
 API removal on 26.02.2027; benchmark `gpt-transcribe` before that date.
 
+## Direct OpenAI STT check — 28.09.2026
+
+A dedicated one-hour project key was created through the encrypted OpenAI key
+flow and decrypted only on the Mac. Two new non-personal system-voice fixtures
+were submitted directly to `gpt-4o-mini-transcribe`: RU 9.817 s and ZH
+10.878 s. Both requests reached OpenAI but returned HTTP 429 before inference:
+`type=insufficient_quota`, `code=credit_balance_exhausted` (RU 1.42 s, ZH
+1.28 s on the diagnostic rerun). No transcript was produced and no model
+quality or latency PASS can be claimed. Local key and audio files were removed;
+the temporary platform key expires automatically after one hour.
+
 ## Blockers
 
+- OpenAI STT: BLOCKED until the API project has positive billing credit.
 - Translation: QA2 matrix pending; source tests are not QA2 acceptance.
 - STT: BLOCKED pending approved non-personal RU/ZH fixtures with references.
 - Native push: BLOCKED pending QA2 FCM configuration and physical delivery.
