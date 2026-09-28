@@ -45,12 +45,12 @@ export default function BottomNav({ state, navigation }) {
   const { t, sp } = useI18n();
   const role = session?.user?.role || state.routes[0]?.params?.role || 'client';
   const isDriver = role === 'driver';
-  // Values are palette tokens; fallbacks are defensive only.
-  const accent = isDriver
-    ? { main: ceramic.active, soft: ceramic.activeSoft }
-    : { main: colors.clientNavIcon ?? '#5F6E7E', soft: colors.clientNavPill ?? '#E5EBF0' };
-  const focusedIconColor = isDriver ? accent.main : (colors.clientNavIcon ?? '#5F6E7E');
-  const focusedLabelColor = isDriver ? accent.main : (colors.clientNavLabel ?? '#52606D');
+  // Owner-approved active state: one UrTruck green for both roles, with no
+  // background pill. The filled icon, label and slim underline are the only
+  // selected-state signals.
+  const focusedColor = isDark
+    ? (colors.success ?? '#63D69A')
+    : (colors.driver ?? '#168759');
   // Theme-aware inactive label: light resolves to the same #617067 the old
   // frozen designSystemV2 token carried; dark now resolves to the dark
   // textMuted instead of staying frozen light.
@@ -158,8 +158,8 @@ export default function BottomNav({ state, navigation }) {
           const iconKey = ICONS[route.name]?.[isDriver ? 'driver' : 'client'];
           const iconName = iconKey?.[isFocused ? 'active' : 'inactive'] || 'circle-outline';
           const label = labelOf(route.name);
-          const iconColor = isFocused ? focusedIconColor : inactiveColor;
-          const labelColor = isFocused ? focusedLabelColor : inactiveColor;
+          const iconColor = isFocused ? focusedColor : inactiveColor;
+          const labelColor = isFocused ? focusedColor : inactiveColor;
           // Deals badge is intentionally dashboard-only. Global chat unread is
           // used by the Bell/app-icon contract and must not leak into Deals.
           const tabBadgeCount = route.name === 'Deals' ? dealsUnread : 0;
@@ -178,12 +178,7 @@ export default function BottomNav({ state, navigation }) {
               testID={`bottom-nav-${route.name.toLowerCase()}`}
               style={styles.cell}
             >
-              <View
-                style={[
-                  styles.pill,
-                  isFocused && { backgroundColor: accent.soft },
-                ]}
-              >
+              <View style={styles.pill}>
                 <MaterialCommunityIcons name={iconName} size={23} color={iconColor} />
                 {showBadge ? (
                   <View style={[styles.iconBadge, { backgroundColor: isDriver ? ceramic.error : colors.error, borderColor: barBg }]} testID={badgeTestID}>
@@ -191,9 +186,23 @@ export default function BottomNav({ state, navigation }) {
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.label, { color: labelColor, fontSize: sp(11) }]} numberOfLines={1}>
+              <Text
+                style={[
+                  styles.label,
+                  isFocused ? styles.labelActive : styles.labelInactive,
+                  { color: labelColor, fontSize: sp(11) },
+                ]}
+                numberOfLines={1}
+              >
                 {label}
               </Text>
+              <View
+                testID={isFocused ? `bottom-nav-${route.name.toLowerCase()}-indicator` : undefined}
+                style={[
+                  styles.activeIndicator,
+                  { backgroundColor: isFocused ? focusedColor : 'transparent' },
+                ]}
+              />
             </TouchableOpacity>
           );
         })}
@@ -214,16 +223,19 @@ const styles = StyleSheet.create({
   },
   cell: {
     flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: 2,
-    minHeight: PILL_H + LABEL_H + 3,
+    minHeight: PILL_H + LABEL_H + 9,
   },
   pill: {
     height: PILL_H, minWidth: 54, borderRadius: 999, alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 12, shadowColor: 'transparent', shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0,
   },
   label: {
-    height: LABEL_H, fontSize: 11, fontWeight: '700', marginTop: 2,
+    height: LABEL_H, fontSize: 11, marginTop: 2,
     textAlign: 'center', includeFontPadding: false,
   },
+  labelActive: { fontWeight: '800' },
+  labelInactive: { fontWeight: '600' },
+  activeIndicator: { width: 20, height: 3, borderRadius: 2, marginTop: 4 },
   iconBadge: {
     position: 'absolute', top: -4, right: 4, minWidth: 18, height: 18, borderRadius: 9,
     paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 2,

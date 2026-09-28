@@ -126,15 +126,13 @@ group('brandV2 DARK', [
   ['accentIcon on surfaceMuted', brandDark.accentIcon, brandDark.surfaceMuted, 3],
 ]);
 
-group('BottomNav client focused tab (real render surfaces)', [
-  // Render surfaces come from the same palette tokens BottomNav.js renders
-  // with — the bar bg is `colors.surface` (light) / `colors.bg` (dark) and
-  // the focused pill is `clientNavPill`, so these pairs ARE the runtime
-  // pairs, not a hand-copied approximation.
-  ['icon on focused pill (LIGHT)', V1_LIGHT.clientNavIcon, V1_LIGHT.clientNavPill, 3],
-  ['icon on focused pill (DARK)', V1_DARK.clientNavIcon, V1_DARK.clientNavPill, 3],
-  ['label on light bar', V1_LIGHT.clientNavLabel, V1_LIGHT.surface, 4.5],
-  ['label on dark bar', V1_DARK.clientNavLabel, V1_DARK.bg, 4.5],
+group('BottomNav focused tab (real render surfaces)', [
+  // Both roles now use the shared UrTruck green directly on the bar. There
+  // is deliberately no selected-tab background pill.
+  ['icon on light bar', V1_LIGHT.driver, V1_LIGHT.surface, 3],
+  ['icon on dark bar', V1_DARK.success, V1_DARK.bg, 3],
+  ['label on light bar', V1_LIGHT.driver, V1_LIGHT.surface, 4.5],
+  ['label on dark bar', V1_DARK.success, V1_DARK.bg, 4.5],
 ]);
 
 // Drift guards: the bright client accent is a pill/shadow accent ONLY. If

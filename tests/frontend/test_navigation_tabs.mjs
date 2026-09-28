@@ -34,7 +34,10 @@ test('BottomNav follows the flat owner reference without shadow haze', () => {
   assert.match(bottomNav, /bar:[\s\S]*shadowOpacity: 0[\s\S]*elevation: 0/);
   assert.match(bottomNav, /pill:[\s\S]*minWidth: 54[\s\S]*borderRadius: 999[\s\S]*shadowOpacity: 0[\s\S]*elevation: 0/);
   assert.match(bottomNav, /MaterialCommunityIcons name=\{iconName\} size=\{23\}/);
-  assert.match(bottomNav, /isFocused && \{ backgroundColor: accent\.soft \}/);
+  assert.match(bottomNav, /const focusedColor = isDark[\s\S]*colors\.success \?\? '#63D69A'[\s\S]*colors\.driver \?\? '#168759'/);
+  assert.doesNotMatch(bottomNav, /isFocused && \{ backgroundColor:/);
+  assert.match(bottomNav, /activeIndicator: \{ width: 20, height: 3, borderRadius: 2, marginTop: 4 \}/);
+  assert.match(bottomNav, /bottom-nav-\$\{route\.name\.toLowerCase\(\)\}-indicator/);
   assert.match(bottomNav, /route\.name === 'Deals' \? dealsUnread : 0/);
 });
 
