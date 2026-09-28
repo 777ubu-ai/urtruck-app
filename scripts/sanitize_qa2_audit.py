@@ -13,17 +13,18 @@ ALLOWED = {
     "docker-build-cache", "docker-mount-links", "technical-directory-sizes",
     "health", "synthetic-translation-observation",
 }
+SIZE = r"\d+(?:\.\d+)?[KMGTP]?"
 FIELD_PATTERNS = {
-    "disk": re.compile(r"^(Filesystem|/[^ ]+|tmpfs|overlay|udev|devtmpfs|/dev/[^ ]+)\s+[^ ]+\s+\d+[KMGTP]?\s+\d+[KMGTP]?\s+\d+[KMGTP]?\s+\d+%\s+[-A-Za-z0-9_./]+$"),
-    "inodes": re.compile(r"^(Filesystem|/[^ ]+|tmpfs|overlay|udev|devtmpfs|/dev/[^ ]+)\s+\d+[KMGTP]?\s+\d+[KMGTP]?\s+\d+[KMGTP]?\s+\d+%\s+[-A-Za-z0-9_./]+$"),
+    "disk": re.compile(rf"^(Filesystem\s+Type\s+Size\s+Used\s+Avail\s+Use%\s+Mounted on|(?:/[^ ]+|tmpfs|overlay|udev|devtmpfs|/dev/[^ ]+)\s+[^ ]+\s+{SIZE}\s+{SIZE}\s+{SIZE}\s+\d+%\s+[-A-Za-z0-9_./]+)$"),
+    "inodes": re.compile(rf"^(Filesystem\s+Inodes\s+IUsed\s+IFree\s+IUse%\s+Mounted on|(?:/[^ ]+|tmpfs|overlay|udev|devtmpfs|/dev/[^ ]+)\s+{SIZE}\s+{SIZE}\s+{SIZE}\s+\d+%\s+[-A-Za-z0-9_./]+)$"),
     "memory": re.compile(r"^(MemTotal|MemAvailable|SwapTotal|SwapFree):\s+\d+\s*(kB|KiB|MiB|GiB)?$|^(Mem|Swap):\s+.*$"),
-    "vmstat": re.compile(r"^(procs|memory|swap|io|system|cpu|r|b|swpd|free|buff|cache|si|so|bi|bo|in|cs|us|sy|id|wa|st|[0-9])\s+[0-9 .]+$"),
+    "vmstat": re.compile(r"^(?:procs|memory|swap|io|system|cpu)\b.*|^r\s+b\s+.*|^\d+(?:\s+\d+)+$"),
     "psi-memory": re.compile(r"^(some|full)\s+avg10=[0-9.]+\s+avg60=[0-9.]+\s+avg300=[0-9.]+\s+total=\d+$"),
     "psi-io": re.compile(r"^(some|full)\s+avg10=[0-9.]+\s+avg60=[0-9.]+\s+avg300=[0-9.]+\s+total=\d+$"),
     "psi-cpu": re.compile(r"^some\s+avg10=[0-9.]+\s+avg60=[0-9.]+\s+avg300=[0-9.]+\s+total=\d+$"),
     "top-cpu": re.compile(r"^(PID|\s*\d+\s+\d+\s+[A-Za-z0-9._-]+\s+[A-Za-z0-9._-]+\s+[0-9.]+\s+[0-9.]+\s+\d+\s+.+)$"),
     "top-rss": re.compile(r"^(PID|\s*\d+\s+\d+\s+[A-Za-z0-9._-]+\s+[A-Za-z0-9._-]+\s+[0-9.]+\s+[0-9.]+\s+\d+\s+.+)$"),
-    "listeners": re.compile(r"^PORT=(?:8001|8002|8003|3101)$"),
+    "listeners": re.compile(r"^(?:PORT=(?:8001|8002|8003|3101)|PORT_8002_PID=\d+)$"),
     "port-8002-process": re.compile(r"^(PROCESS_8002_(PID|PPID|USER|COMM|ELAPSED|CPU_PCT|MEM_PCT|RSS_KB|EXEC|CWD|SUPERVISION)=|PROCESS_8002_CGROUP=(systemd|user|docker|unknown):[-A-Za-z0-9_./:]+$)"),
     "systemd": re.compile(r"^(UNIT=urtruck-(qa2|factory)(-ai)?\.service|(?:Id|ActiveState|SubState|MainPID|FragmentPath|ExecMainStartTimestamp)=([A-Za-z0-9_./:+ -]+))$"),
     "nginx-routing": re.compile(r"^server_name (qa2\.urtruck\.kz|pro-test\.urtruck\.kz) -> proxy_pass http://127\.0\.0\.1:[0-9]{1,5}$"),
@@ -32,9 +33,9 @@ FIELD_PATTERNS = {
     "docker-containers": re.compile(r"^DOCKER_CONTAINER=[0-9a-f]{12,64}\|[A-Za-z0-9./:_-]+\|[A-Za-z0-9._-]+\|[A-Za-z0-9 ()-]+$"),
     "docker-build-cache": re.compile(r"^DOCKER_BUILD_CACHE=[A-Za-z0-9._:/-]+\|[0-9.]+[KMGTP]B$"),
     "docker-mount-links": re.compile(r"^DOCKER_MOUNT=[A-Za-z0-9._-]+\|(bind|volume|tmpfs)->/[A-Za-z0-9._/-]+$"),
-    "technical-directory-sizes": re.compile(r"^\d+[KMGTP]?\s+/(?:home/ubuntu/(?:urtruck(?:-rollback|-releases|-backups|-qa2(?:-ai)?)?)|var/lib/docker|var/log|tmp)$"),
+    "technical-directory-sizes": re.compile(rf"^{SIZE}\s+/(?:home/ubuntu/(?:urtruck(?:-rollback|-releases|-backups|-qa2(?:-ai)?)?)|var/lib/docker|var/log|tmp)$"),
     "health": re.compile(r"^HEALTH_(qa2-8002|ai-8003)=\{.*\}$"),
-    "synthetic-translation-observation": re.compile(r"^(SYNTHETIC_CASE=(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)|SYNTHETIC_(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)_RESULT=(?:[245][0-9]{2}|[0-9]+\.[0-9]+)|SWAP_[A-Z0-9_]+=(?:pswpin=\d+;pswpout=\d+;?)|PSI_[A-Z0-9_]+_(?:MEMORY|IO)=some .*|AI_[A-Z0-9_]+_PROCESS=pid=\d+ ppid=\d+ comm=[A-Za-z0-9._-]+ pcpu=[0-9.]+ pmem=[0-9.]+ rss=\d+)$"),
+    "synthetic-translation-observation": re.compile(r"^(SYNTHETIC_CASE=(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)|SYNTHETIC_(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)_RESULT=\d{3}\s+\d+\.\d+|SWAP_[A-Z0-9_]+=(?:pswpin=\d+;pswpout=\d+;?)|PSI_[A-Z0-9_]+_(?:MEMORY|IO)=some .*|AI_[A-Z0-9_]+_PROCESS=pid=\d+ ppid=\d+ comm=[A-Za-z0-9._-]+ pcpu=[0-9.]+ pmem=[0-9.]+ rss=\d+)$"),
 }
 SECRET_PATTERNS = (
     (re.compile(r"(--password(?:=|\s+))[^\s]+", re.I), r"\1REDACTED"),
@@ -81,18 +82,22 @@ def main() -> int:
             continue
         if current in ALLOWED:
             safe = sanitize(raw)
-            if safe is not None and FIELD_PATTERNS[current].match(safe):
+            if safe is not None and FIELD_PATTERNS[current].fullmatch(safe):
                 sections[current].append(safe)
     payload = {"sanitized": True, "sections": sections}
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     routes = "\n".join(sections.get("nginx-routing", ["UNKNOWN"]))
-    pid = next((line for line in sections.get("listeners", []) if ":8002" in line), "PORT_8002=unavailable")
+    pid = next((line for line in sections.get("listeners", []) if line.startswith("PORT_8002_PID=")), "PORT_8002_PID=unavailable")
     swap = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("SWAP_"))
+    psi = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("PSI_"))
+    latency = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("SYNTHETIC_") and "_RESULT=" in line)
     markdown_path.write_text(
         "# QA2 read-only server audit\n\n"
         f"- Listener evidence: `{pid}`\n"
         "- Swap causality requires non-zero `pswpin/pswpout` deltas together with PSI and request latency.\n\n"
+        "## Synthetic latency\n\n```text\n" + latency + "\n```\n\n"
         "## Swap snapshots\n\n```text\n" + swap + "\n```\n\n"
+        "## PSI snapshots\n\n```text\n" + psi + "\n```\n\n"
         "## QA2 / pro-test routing\n\n```text\n" + routes + "\n```\n",
         encoding="utf-8",
     )

@@ -66,6 +66,31 @@ test('allowlist artifact sanitizer removes command-line and header secrets from 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('representative server output keeps PID, latency, swap, PSI and sizes', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa2-audit-fixture-'));
+  const json = path.join(dir, 'audit.json');
+  const markdown = path.join(dir, 'summary.md');
+  const result = spawnSync(
+    'python3',
+    ['scripts/sanitize_qa2_audit.py', 'tests/fixtures/qa2_server_readonly_audit_sample.txt', json, markdown],
+    { encoding: 'utf8' },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(fs.readFileSync(json, 'utf8'));
+  const published = `${fs.readFileSync(json, 'utf8')}\n${fs.readFileSync(markdown, 'utf8')}`;
+  assert.equal(payload.sanitized, true);
+  assert.ok(payload.sections.listeners.includes('PORT_8002_PID=12345'));
+  assert.ok(payload.sections['synthetic-translation-observation'].includes('SYNTHETIC_RU_TO_ZH_RESULT=200 8.420123'));
+  assert.ok(payload.sections['synthetic-translation-observation'].some((line) => line.startsWith('SWAP_')));
+  assert.ok(payload.sections['synthetic-translation-observation'].some((line) => line.startsWith('PSI_')));
+  assert.match(published, /PORT_8002_PID=12345/);
+  assert.match(published, /200 8\.420123/);
+  assert.match(published, /5\.6G \/home\/ubuntu\/urtruck-qa2/);
+  assert.match(published, /1\.56G \/var\/lib\/docker/);
+  assert.doesNotMatch(published, /example-secret|password|token|Authorization|postgres:/i);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('QA2 server audit rejects server-mutating commands', () => {
   const forbidden = [
     /\brm\b/i,
