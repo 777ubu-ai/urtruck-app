@@ -67,7 +67,7 @@ jobs:
         with:
           node-version: '20'
       - name: Run QA2 AI runner and workflow tests
-        run: node --test tests/frontend/test_qa2_ai_readonly_diagnostic.mjs tests/frontend/test_qa_staging_recovery_workflow.mjs tests/frontend/test_qa2_local_ai_workflow.mjs tests/frontend/test_qa2_server_readonly_audit_workflow.mjs
+        run: node --test tests/frontend/test_qa2_ai_readonly_diagnostic.mjs tests/frontend/test_qa_staging_recovery_workflow.mjs tests/frontend/test_qa2_local_ai_workflow.mjs tests/frontend/test_qa2_server_readonly_audit_workflow.mjs tests/frontend/test_configure_qa2_fcm_workflow.mjs
       - name: Verify whitespace-only diff safety
         run: git diff --check HEAD^
 

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: Type CONFIGURE_QA2_FCM to update only the QA2 FCM gateway
+        description: Type CONFIGURE_QA2_FCM to update only QA2 native FCM
         required: true
         type: string
 
@@ -19,25 +19,27 @@ jobs:
   configure:
     name: Validate and configure isolated QA2 FCM
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     environment:
       name: qa2
     env:
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
-      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
       QA2_API_URL: ${{ secrets.QA2_API_URL }}
       QA2_FCM_PROJECT_ID: ${{ secrets.QA2_FCM_PROJECT_ID }}
       QA2_FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.QA2_FCM_SERVICE_ACCOUNT_JSON }}
       QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+
     steps:
-      - name: Require an explicit QA2-only confirmation
+      - name: Require explicit QA2-only confirmation
         shell: bash
         run: |
           set -euo pipefail
           test "${{ inputs.confirmation }}" = "CONFIGURE_QA2_FCM"
 
-      - name: Validate the QA2 Firebase project without printing credentials
+      - name: Validate Firebase secrets without printing them
         shell: bash
         run: |
           set -euo pipefail
@@ -45,40 +47,52 @@ jobs:
           test -n "$QA2_FCM_SERVICE_ACCOUNT_JSON"
           test -n "$QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64"
           python3 - "$RUNNER_TEMP/qa2-fcm-service-account.json" <<'PY'
-          import base64
-          import json
-          import os
+          import base64, json, os, sys
           from pathlib import Path
-
           expected_package = "com.urtruck.app.qa2"
           project_id = os.environ["QA2_FCM_PROJECT_ID"].strip()
           try:
-              service_account = json.loads(os.environ["QA2_FCM_SERVICE_ACCOUNT_JSON"])
+              service = json.loads(os.environ["QA2_FCM_SERVICE_ACCOUNT_JSON"])
               android = json.loads(base64.b64decode(
                   os.environ["QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64"], validate=True
               ))
           except Exception as exc:
               raise SystemExit(f"QA2_FCM_SECRET_INVALID: {type(exc).__name__}")
-          service_project = str(service_account.get("project_id") or "")
+          service_project = str(service.get("project_id") or "")
           android_project = str(android.get("project_info", {}).get("project_id") or "")
           packages = {
-              str(client.get("client_info", {}).get("android_client_info", {}).get("package_name") or "")
-              for client in android.get("client", [])
+              str(c.get("client_info", {}).get("android_client_info", {}).get("package_name") or "")
+              for c in android.get("client", [])
           }
-          if service_account.get("type") != "service_account":
+          if service.get("type") != "service_account":
               raise SystemExit("QA2_FCM_SERVICE_ACCOUNT_TYPE_INVALID")
           if not project_id or project_id != service_project or project_id != android_project:
               raise SystemExit("Firebase project IDs differ")
-          if expected_package not in packages:
+          if packages != {expected_package}:
               raise SystemExit("QA2_FCM_ANDROID_PACKAGE_MISMATCH")
-          target = Path(__import__("sys").argv[1])
-          target.write_text(json.dumps(service_account, separators=(",", ":")), encoding="utf-8")
+          target = Path(sys.argv[1])
+          target.write_text(json.dumps(service, separators=(",", ":")), encoding="utf-8")
           target.chmod(0o600)
           print("QA2_FCM_PROJECT_AND_ANDROID_PACKAGE=validated")
           PY
 
-      - name: Install isolated transport tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Prepare pinned SSH transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+          key="$RUNNER_TEMP/qa2-fcm-key"
+          known="$RUNNER_TEMP/qa2-fcm-known-hosts"
+          umask 077
+          printf '%s\n' "$SERVER_SSH_KEY" > "$key"
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known"
+          chmod 600 "$key" "$known"
+          test -s "$known"
+          {
+            echo "QA2_SSH_KEY=$key"
+            echo "QA2_SSH_KNOWN_HOSTS=$known"
+          } >> "$GITHUB_ENV"
 
       - name: Fingerprint production before QA2 configuration
         shell: bash
@@ -89,104 +103,98 @@ jobs:
           printf '%s' "$body" | sha256sum | awk '{print "PROD_VERSION_HASH_BEFORE=" $1}' >> "$GITHUB_ENV"
           echo "PRODUCTION_BEFORE=healthy-fingerprinted"
 
-      - name: Back up only QA2 configuration
+      - name: Verify existing QA2 systemd supervision
         shell: bash
         run: |
           set -euo pipefail
-          export SSHPASS="$SERVER_PASS"
-          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          ssh_cmd=(ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS")
+          "${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          qa_root=/home/ubuntu/urtruck-qa2
-          qa_backend="$qa_root/backend"
-          root_env="$qa_root/.env"
-          backend_env="$qa_backend/.env"
-          test -f "$root_env"
-          test -f "$backend_env"
-          backup="$qa_root/backups/fcm-$(date -u +%Y%m%dT%H%M%SZ)"
-          mkdir -p "$backup"
-          cp -- "$root_env" "$backup/qa2-root-fcm.env"
-          cp -- "$backend_env" "$backup/qa2-backend-fcm.env"
-          chmod 600 "$backup/qa2-root-fcm.env" "$backup/qa2-backend-fcm.env"
+          unit=/etc/systemd/system/urtruck-qa2.service
+          test -f "$unit"
+          grep -Fq '/home/ubuntu/urtruck-qa2/backend' "$unit"
+          grep -Eq '(^|[[:space:]])(--port[= ]8002|8002)([[:space:]]|$)' "$unit"
+          test "$(systemctl is-active urtruck-qa2.service)" = active
+          main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
+          test "$main_pid" -gt 0
+          listener_pid="$(ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          test -n "$listener_pid" && test "$listener_pid" = "$main_pid"
+          echo "QA2_SUPERVISION=active_and_pid_matched"
+          REMOTE
+
+      - name: Upload validated service account over pinned SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -q -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS"             "$RUNNER_TEMP/qa2-fcm-service-account.json" "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-qa2-fcm-service-account.json"
+
+      - name: Back up and update only QA2 backend env, then restart systemd unit
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh_cmd=(ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS")
+          "${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" "QA2_FCM_PROJECT_ID=$QA2_FCM_PROJECT_ID" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          qa_env=/home/ubuntu/urtruck-qa2/backend/.env
+          payload=/tmp/urtruck-qa2-fcm-service-account.json
+          test -f "$qa_env" && test -f "$payload"
+          backup="/home/ubuntu/urtruck-qa2/backend/.env.fcm-backup.$(date -u +%Y%m%dT%H%M%SZ)"
+          cp -- "$qa_env" "$backup"
+          chmod 600 "$backup"
           printf 'BACKUP=%s\n' "$backup" > /tmp/urtruck-qa2-fcm.state
           chmod 600 /tmp/urtruck-qa2-fcm.state
-          echo 'QA2_FCM_BACKUP=ready'
-          REMOTE
-
-      - name: Update only QA2 FCM values and restart its isolated backend
-        shell: bash
-        run: |
-          set -euo pipefail
-          export SSHPASS="$SERVER_PASS"
-          remote_payload=/tmp/urtruck-qa2-fcm-service-account.json
-          sshpass -e scp -q -o StrictHostKeyChecking=no "$RUNNER_TEMP/qa2-fcm-service-account.json" "$SERVER_USER@$SERVER_HOST:$remote_payload"
-          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
-            "QA2_FCM_PROJECT_ID='$QA2_FCM_PROJECT_ID' bash -s" <<'REMOTE'
-          set -euo pipefail
-          qa_root=/home/ubuntu/urtruck-qa2
-          qa_backend="$qa_root/backend"
-          root_env="$qa_root/.env"
-          backend_env="$qa_backend/.env"
-          payload=/tmp/urtruck-qa2-fcm-service-account.json
-          project_id="$QA2_FCM_PROJECT_ID"
-          python3 - "$root_env" "$backend_env" "$payload" "$project_id" <<'PY'
+          python3 - "$qa_env" "$payload" "$QA2_FCM_PROJECT_ID" <<'PY'
           from pathlib import Path
-          import json
-          import os
-          import sys
-
-          env_paths = {Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()}
-          payload_path = Path(sys.argv[3])
-          expected_project = sys.argv[4]
-          service_account = json.loads(payload_path.read_text(encoding="utf-8"))
-          if service_account.get("type") != "service_account" or service_account.get("project_id") != expected_project:
+          import json, os, sys
+          env_path = Path(sys.argv[1])
+          payload_path = Path(sys.argv[2])
+          expected_project = sys.argv[3]
+          service = json.loads(payload_path.read_text(encoding="utf-8"))
+          if service.get("type") != "service_account" or service.get("project_id") != expected_project:
               raise SystemExit("QA2_FCM_REMOTE_VALIDATION_FAILED")
           replacement = {
-              "FCM_PROJECT_ID": expected_project,
-              "FCM_SERVICE_ACCOUNT_JSON": json.dumps(service_account, separators=(",", ":")),
               "PUSH_PROVIDER_MODE": "native",
+              "FCM_PROJECT_ID": expected_project,
+              "FCM_SERVICE_ACCOUNT_JSON": json.dumps(service, separators=(",", ":")),
           }
-          for env_path in env_paths:
-              kept = []
-              for line in env_path.read_text(encoding="utf-8").splitlines():
-                  key = line.split("=", 1)[0].strip() if "=" in line else ""
-                  if key not in replacement:
-                      kept.append(line)
-              kept.extend(f"{key}={value}" for key, value in replacement.items())
-              temp = env_path.with_suffix(".fcm.tmp")
-              temp.write_text("\n".join(kept) + "\n", encoding="utf-8")
-              os.chmod(temp, 0o600)
-              temp.replace(env_path)
+          kept = [
+              line for line in env_path.read_text(encoding="utf-8").splitlines()
+              if "=" not in line or line.split("=", 1)[0].strip() not in replacement
+          ]
+          kept.extend(f"{key}={value}" for key, value in replacement.items())
+          temp = env_path.with_name(env_path.name + ".fcm.tmp")
+          temp.write_text("\n".join(kept) + "\n", encoding="utf-8")
+          os.chmod(temp, 0o600)
+          temp.replace(env_path)
           payload_path.unlink(missing_ok=True)
           PY
-          cd "$qa_root/backend"
-          pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
-          test -n "$pid"
-          command="$(tr '\0' ' ' < "/proc/$pid/cmdline")"
-          printf '%s' "$command" | grep -Eq 'uvicorn|gunicorn'
-          printf '%s' "$command" | grep -Fq 'main:app'
-          test "$(ps -o user= -p "$pid" | xargs)" = "$(id -un)"
-          kill -TERM "$pid"
-          for _ in {1..20}; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
-          kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true
-          nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
-          for _ in {1..40}; do curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1 && exit 0; sleep 1; done
-          exit 1
+          test "$(stat -c '%a' "$qa_env")" = 600
+          systemctl restart urtruck-qa2.service
+          test "$(systemctl is-active urtruck-qa2.service)" = active
+          main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
+          listener_pid="$(ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          test "$main_pid" -gt 0 && test "$listener_pid" = "$main_pid"
           REMOTE
 
-      - name: Verify only QA2 native FCM is ready
+      - name: Verify QA2 native FCM readiness
         shell: bash
         run: |
           set -euo pipefail
+          curl -fsS --max-time 20 "$QA2_API_URL/health" >/dev/null
+          curl -fsS --max-time 20 "$QA2_API_URL/api/version" >/dev/null
           curl -fsS --max-time 20 "$QA2_API_URL/api/v1/push/info" -o "$RUNNER_TEMP/qa2-push-info.json"
           python3 - "$RUNNER_TEMP/qa2-push-info.json" <<'PY'
-          import json
-          import sys
-          info = json.load(open(sys.argv[1], encoding="utf-8")).get("native", {}).get("gateway", {})
-          fcm = info.get("fcm", {})
-          if info.get("mode") != "native" or not info.get("ready") or not fcm.get("configured"):
+          import json, sys
+          root = json.load(open(sys.argv[1], encoding="utf-8"))
+          gateway = root.get("native", {}).get("gateway", {})
+          if gateway.get("mode") != "native" or gateway.get("ready") is not True:
               raise SystemExit("QA2_FCM_GATEWAY_NOT_READY")
-          if info.get("config_errors"):
+          if gateway.get("fcm", {}).get("configured") is not True:
+              raise SystemExit("QA2_FCM_NOT_CONFIGURED")
+          if gateway.get("config_errors"):
               raise SystemExit("QA2_FCM_GATEWAY_HAS_CONFIG_ERRORS")
+          if "expo" in json.dumps(gateway, ensure_ascii=False).lower():
+              raise SystemExit("QA2_EXPO_PROVIDER_PRESENT")
           print("QA2_FCM_GATEWAY=ready")
           PY
 
@@ -199,34 +207,29 @@ jobs:
           test "$after" = "$PROD_VERSION_HASH_BEFORE"
           echo "PRODUCTION_AFTER=healthy-unchanged"
 
-      - name: Remove temporary QA2 FCM state after success
+      - name: Remove temporary QA2 state after success
         if: success()
         shell: bash
         run: |
-          export SSHPASS="$SERVER_PASS"
-          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'rm -f /tmp/urtruck-qa2-fcm.state /tmp/urtruck-qa2-fcm-service-account.json'
+          set -euo pipefail
+          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS"             "$SERVER_USER@$SERVER_HOST" 'rm -f /tmp/urtruck-qa2-fcm.state /tmp/urtruck-qa2-fcm-service-account.json'
 
-      - name: Roll back QA2 FCM configuration after a failed validation
+      - name: Roll back only QA2 env after failure
         if: failure()
         shell: bash
         run: |
           set -euo pipefail
-          export SSHPASS="$SERVER_PASS"
-          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS"             "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           state=/tmp/urtruck-qa2-fcm.state
-          test -f "$state" || { echo 'QA2_FCM_ROLLBACK=state-missing-no-action'; exit 0; }
+          test -f "$state" || exit 0
           . "$state"
-          qa_root=/home/ubuntu/urtruck-qa2
-          cp -- "$BACKUP/qa2-root-fcm.env" "$qa_root/.env"
-          cp -- "$BACKUP/qa2-backend-fcm.env" "$qa_root/backend/.env"
-          chmod 600 "$qa_root/.env" "$qa_root/backend/.env"
-          rm -f /tmp/urtruck-qa2-fcm-service-account.json
-          cd "$qa_root/backend"
-          pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
-          if test -n "$pid"; then kill -TERM "$pid" || true; sleep 2; kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true; fi
-          nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
-          for _ in {1..40}; do curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1 && break; sleep 1; done
+          qa_env=/home/ubuntu/urtruck-qa2/backend/.env
+          cp -- "$BACKUP" "$qa_env"
+          chmod 600 "$qa_env"
+          rm -f /tmp/urtruck-qa2-fcm.state /tmp/urtruck-qa2-fcm-service-account.json
+          systemctl restart urtruck-qa2.service
+          test "$(systemctl is-active urtruck-qa2.service)" = active
           curl -fsS http://127.0.0.1:8002/health >/dev/null
-          echo 'QA2_FCM_ROLLBACK=restored'
+          echo "QA2_FCM_ROLLBACK=restored"
           REMOTE
