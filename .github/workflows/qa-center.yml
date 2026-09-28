@@ -25,6 +25,16 @@ on:
         required: false
         default: ''
         type: string
+      pilot_qa2_openai_stt:
+        description: Run synthetic RU/ZH OpenAI STT pilot without changing QA2 runtime
+        required: false
+        default: false
+        type: boolean
+      qa2_stt_confirmation:
+        description: Type PILOT_QA2_STT to approve synthetic API calls
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: qa-center-${{ github.event.pull_request.number || github.ref }}
@@ -146,6 +156,28 @@ jobs:
     with:
       confirmation: ${{ inputs.qa2_confirmation }}
     secrets: inherit
+
+  qa2-openai-stt-pilot:
+    name: Protected QA2 OpenAI speech pilot
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.pilot_qa2_openai_stt == true && inputs.deploy_qa2 != true && inputs.recover_qa2 != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: qa2
+    env:
+      QA2_OPENAI_API_KEY: ${{ secrets.QA2_OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate exact working branch and confirmation
+        run: |
+          set -euo pipefail
+          test "${{ inputs.qa2_stt_confirmation }}" = PILOT_QA2_STT
+          test "$GITHUB_REF_NAME" = fix/voice-stt-translation-20260925
+          echo "PILOT_SOURCE_SHA=$(git rev-parse HEAD)"
+      - name: Install synthetic audio generator
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq espeak-ng
+      - name: Run six non-personal RU/ZH voice checks
+        run: python3 scripts/qa2_openai_stt_pilot.py
 
   qa2-runtime-recovery:
     name: QA2 runtime recovery

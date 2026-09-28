@@ -37,6 +37,26 @@ SHA-256: `9eab17345d24f3a218b288fdf2933b87d4ce14ab413ceb293f2d20cb57c337db`.
 The per-direction PASS counts are RU→ZH 4/10, ZH→RU 2/10, RU→EN 2/10,
 EN→RU 4/10, EN→ZH 4/10 and ZH→EN 2/10.
 
+## OpenAI mini STT pilot — 28.09.2026
+
+PRE-FLIGHT: branch `fix/voice-stt-translation-20260925`, base `fb4c6816`.
+Known-good: only historical partial RU→ZH physical voice on Xiaomi (17.09);
+current QA2 local STT took about 40.53 s for 8 s audio. Production source SHA
+and actual QA2 runtime source SHA are UNKNOWN; do not transfer historical PASS.
+Scope: a protected, manually dispatched CI pilot of `gpt-4o-mini-transcribe`
+on six newly synthesized, non-personal RU/ZH 10/15/20 s clips with fixed
+reference facts. Text translation, installed QA2 service, production, phones,
+APK, push, database and storage are not changed. The repository already has
+a separate `QA2_OPENAI_API_KEY` secret; its value must not appear in logs.
+Checks: Python compile, QA Center YAML, workflow contract tests, six response
+HTTP/timing/fact checks and independent review of transcripts. p50/p95 in run
+logs are based on three calls per language, so they are preliminary only.
+Rollback: the pilot makes no runtime mutation; if any fact or HTTP call fails,
+leave QA2 on local AI. A future deployment needs its own protected workflow,
+source SHA check, secure QA2 configuration backup and rollback, plus Xiaomi↔OPPO
+physical verification on approved recordings. The mini STT model has a planned
+API removal on 26.02.2027; benchmark `gpt-transcribe` before that date.
+
 ## Blockers
 
 - Translation: QA2 matrix pending; source tests are not QA2 acceptance.
