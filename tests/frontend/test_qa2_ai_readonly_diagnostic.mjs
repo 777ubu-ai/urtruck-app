@@ -69,6 +69,8 @@ assert not module.semantic_check('zh', 'negation', '不是冷藏车，篷布车�
 # A question followed by no is a negative answer, not cargo readiness.
 assert module.semantic_check('ru', 'short', 'Да, груз готов.')[0]
 assert module.semantic_check('en', 'short', 'Yes, the cargo is ready.')[0]
+assert module.semantic_check('en', 'short', 'Good, the goods are ready.')[0]
+assert not module.semantic_check('en', 'short', 'The goods are not ready.')[0]
 assert module.semantic_check('zh', 'short', '是的，货物已准备好。')[0]
 assert not module.semantic_check('ru', 'short', 'Груз готов? Нет.')[0]
 assert not module.semantic_check('en', 'short', 'Cargo ready? No.')[0]

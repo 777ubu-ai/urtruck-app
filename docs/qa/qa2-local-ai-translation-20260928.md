@@ -18,10 +18,16 @@ an added refrigerator, a negated tent, and a negative short answer such as
 ## Evidence pending
 
 Read-only run [#36388079397](https://github.com/777ubu-ai/urtruck-app/actions/runs/36388079397)
-was started for source SHA `57bdd434d7edf1cf6a978134a50f4baf0c6e1857` and
-was still running when this note was written. Its 60 rows and matrix summary
-must be preserved here after completion before changing NLLB settings or the
-service quality gate.
+completed for source SHA `57bdd434d7edf1cf6a978134a50f4baf0c6e1857`: 60/60
+synthetic rows, 16 PASS, 26 HTTP 422 and 18 semantic FAIL. Its workflow failed
+correctly because the matrix was red; no deploy job ran.
+
+The 60 saved synthetic JSON rows were rechecked locally, without AI requests,
+by source SHA `7a0ac8db`. Adding only the verified English equivalent `goods
+are ready` changes the result to 18 PASS, 26 HTTP FAIL and 16 semantic FAIL;
+ZH→EN is 2/10. The two promoted rows are `Good, the goods are ready.`. This is
+a checker false-negative correction, not a model-quality improvement. The
+remaining `tent -> waterfall` cases remain FAIL.
 
 ## Blockers
 
