@@ -46,6 +46,18 @@ def test_exact_match_returns_only_when_enabled(monkeypatch):
     assert result.fallback_required is False
 
 
+def test_slot_template_uses_anchored_exact_match(monkeypatch):
+    monkeypatch.setenv("TRANSLATION_MEMORY_ENABLED", "true")
+    record = TemplateRecord(
+        "weight", "cargo", 1, "approved", "cargo_weight",
+        (SlotSpec("weight", "weight"), SlotSpec("weight_unit", "weight_unit")),
+        {"ru": "Вес груза: {weight} {weight_unit}.", "en": "Cargo weight: {weight} tons."},
+    )
+    tm = TranslationMemory([record])
+    assert tm.translate("Вес груза: 10 тонн.", "ru", "en", "cargo_weight").text == "Cargo weight: 10 tons."
+    assert tm.translate("Вес груза: 10 тонн и ещё что-то.", "ru", "en", "cargo_weight").hit is False
+
+
 def test_normalization_nfkc_whitespace_and_slots():
     assert normalize_text("  １５００  USD\u00a0 ") == "1500 usd"
     assert normalized_slot_key({"weight": "1 500", "weight_unit": "тонн"}) == "weight=1500|weight_unit=ton"
