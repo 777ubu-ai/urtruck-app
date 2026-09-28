@@ -50,6 +50,12 @@ assert module.semantic_check('ru', 'schedule', 'Урумчи, 09:30, дата 20
 assert not module.semantic_check('ru', 'cargo', 'Алматы — Астана: 1500 USD, 10 тонн, водопад.')[0]
 assert not module.semantic_check('zh', 'negation', '不是篷布车，需要冷藏车，20吨。')[0]
 assert not module.semantic_check('en', 'price', 'Price 12,000, weight 15 tonnes.')[0]
+assert not module.semantic_check('ru', 'negation', 'Не рефрижератор, но нужен рефрижератор, тент, 20 тонн.')[0]
+assert not module.semantic_check('en', 'negation', 'Not a refrigerated truck, but a refrigerated truck is required; tent truck, 20 tonnes.')[0]
+assert not module.semantic_check('zh', 'negation', '不是冷藏车，但需要冷藏车和篷布车，20吨。')[0]
+assert not module.semantic_check('ru', 'short', 'Груз не готов.')[0]
+assert not module.semantic_check('en', 'short', 'The cargo is not ready.')[0]
+assert not module.semantic_check('zh', 'short', '货物还没有准备好。')[0]
 `;
   const result = spawnSync('python3', ['-c', code], { cwd: process.cwd(), encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);

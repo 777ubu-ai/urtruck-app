@@ -52,7 +52,7 @@ REQUIRED_FACTS = {
     "negation": ("not_refrigerated", "tent", "weight_20"),
     "schedule": ("city_urumqi", "time_0930", "date_2026_10_01"),
     "price": ("money_12000_usd", "weight_15"),
-    "short": (),
+    "short": ("cargo_ready",),
 }
 
 FACT_PATTERNS = {
@@ -64,6 +64,8 @@ FACT_PATTERNS = {
         "city_astana": (r"астана",), "city_urumqi": (r"урумчи",), "tent": (r"тент(?:ов\w*)?",),
         "not_refrigerated": (r"не\s+(?:нужен\s+)?рефриж",), "time_0930": (r"09\s*:\s*30",),
         "date_2026_10_01": (r"2026[-/.]10[-/.]0?1",), "refrigerated": (r"рефриж",),
+        "positive_refrigerated": (r"(?:нужен|требуется)\s+(?:рефриж\w*)",),
+        "cargo_ready": (r"груз\s+(?:готов|готовый)",), "not_cargo_ready": (r"груз\s+не\s+готов",),
     },
     "en": {
         "money_1500_usd": (r"1500\s*(?:usd|us\s*dollars?)",),
@@ -75,6 +77,8 @@ FACT_PATTERNS = {
         "not_refrigerated": (r"not\s+(?:a\s+)?(?:refrigerated|reefer)",),
         "time_0930": (r"09\s*:\s*30",), "date_2026_10_01": (r"2026[-/.]10[-/.]0?1",),
         "refrigerated": (r"(?:refrigerated|reefer)",),
+        "positive_refrigerated": (r"(?:need|requires?)\s+(?:a\s+)?(?:refrigerated|reefer)", r"(?:a\s+)?(?:refrigerated|reefer)\s+(?:truck\s+)?is\s+required"),
+        "cargo_ready": (r"cargo\s+is\s+ready",), "not_cargo_ready": (r"cargo\s+(?:is\s+)?not\s+ready",),
     },
     "zh": {
         "money_1500_usd": (r"1500\s*(?:usd|美元)",), "money_12000_usd": (r"12000\s*(?:usd|美元)",),
@@ -82,7 +86,8 @@ FACT_PATTERNS = {
         "city_almaty": (r"阿拉木图",), "city_astana": (r"阿斯塔纳",), "city_urumqi": (r"乌鲁木齐",),
         "tent": (r"(?:篷布车|篷车|帆布车)",), "not_refrigerated": (r"(?:不[是要]?|非)\s*冷藏车",),
         "time_0930": (r"09\s*[:：]\s*30",), "date_2026_10_01": (r"2026(?:[-/.]10[-/.]0?1|年10月0?1日?)",),
-        "refrigerated": (r"冷藏车",),
+        "refrigerated": (r"冷藏车",), "positive_refrigerated": (r"(?:需要|要)\s*冷藏车",),
+        "cargo_ready": (r"货物(?:已)?准备好",), "not_cargo_ready": (r"货物(?:还)?没(?:有)?准备好",),
     },
 }
 FORBIDDEN_BODY = {"ru": ("водопад",), "en": ("waterfall",), "zh": ("瀑布",)}
@@ -160,10 +165,14 @@ def semantic_check(target: str, key: str, translated: str | None) -> tuple[bool,
     has_refrigerated = any(re.search(pattern, translated, re.IGNORECASE) for pattern in patterns["refrigerated"])
     if has_refrigerated and "not_refrigerated" not in required:
         forbidden.append("added_refrigerated")
-    if "not_refrigerated" in required and has_refrigerated and "not_refrigerated" not in missing:
-        pass
-    elif "not_refrigerated" in required and has_refrigerated:
+    if "not_refrigerated" in required and any(
+        re.search(pattern, translated, re.IGNORECASE) for pattern in patterns["positive_refrigerated"]
+    ):
         forbidden.append("opposite_refrigerated")
+    if "cargo_ready" in required and any(
+        re.search(pattern, translated, re.IGNORECASE) for pattern in patterns["not_cargo_ready"]
+    ):
+        forbidden.append("opposite_cargo_ready")
     return not missing and not forbidden, missing, forbidden
 
 
