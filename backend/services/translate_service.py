@@ -35,6 +35,7 @@ LANG_ALIAS = {
 }
 
 TRANSLATION_PROMPT_VERSION = "logistics-v2-nllb-quality-gate"
+_TRANSLATION_MEMORY = None
 
 
 def _translation_memory_shadow(text: str, target_lang: str, source_lang: str | None):
@@ -44,8 +45,11 @@ def _translation_memory_shadow(text: str, target_lang: str, source_lang: str | N
     try:
         from qa_ai_service.translation_memory.engine import TranslationMemory
         from pathlib import Path
+        global _TRANSLATION_MEMORY
         data = Path(__file__).resolve().parents[1] / "qa_ai_service" / "translation_memory" / "data"
-        tm = TranslationMemory.from_jsonl(data)
+        if _TRANSLATION_MEMORY is None:
+            _TRANSLATION_MEMORY = TranslationMemory.from_jsonl(data)
+        tm = _TRANSLATION_MEMORY
         result = tm.translate(text, source_lang or "auto", target_lang, os.environ.get("TRANSLATION_MEMORY_INTENT", "generic"))
         if result.text and os.environ.get("TRANSLATION_MEMORY_ENABLED", "false").casefold() == "true":
             return {"translated_text": result.text, "provider": "translation_memory", "source_lang": source_lang or "auto"}
