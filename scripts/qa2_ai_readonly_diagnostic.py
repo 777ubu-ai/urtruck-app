@@ -50,7 +50,7 @@ PAIRS = (("ru", "zh"), ("zh", "ru"), ("ru", "en"), ("en", "ru"), ("en", "zh"), (
 REQUIRED_FACTS = {
     "cargo": ("money_1500_usd", "weight_10", "city_almaty", "city_astana", "tent"),
     "negation": ("not_refrigerated", "tent", "weight_20"),
-    "schedule": ("city_urumqi", "time_0930", "date_2026_10_01"),
+    "schedule": ("city_urumqi", "warehouse", "time_0930", "date_2026_10_01"),
     "price": ("money_12000_usd", "weight_15"),
     "short": ("cargo_ready",),
 }
@@ -61,33 +61,36 @@ FACT_PATTERNS = {
         "money_12000_usd": (r"12[\s,]?000\s*(?:usd|доллар(?:ов|а)?\s*сша|долл?\.?\s*сша)",),
         "weight_10": (r"10\s*(?:тонн\w*|т\b)",), "weight_15": (r"15\s*(?:тонн\w*|т\b)",),
         "weight_20": (r"20\s*(?:тонн\w*|т\b)",), "city_almaty": (r"алматы",),
-        "city_astana": (r"астана",), "city_urumqi": (r"урумчи",), "tent": (r"тент(?:ов\w*)?",),
+        "city_astana": (r"астана",), "city_urumqi": (r"урумчи",), "warehouse": (r"склад",), "tent": (r"тент(?:ов\w*)?",),
         "not_refrigerated": (r"не\s+(?:нужен\s+)?рефриж",), "time_0930": (r"09\s*:\s*30",),
         "date_2026_10_01": (r"2026[-/.]10[-/.]0?1",), "refrigerated": (r"рефриж",),
         "positive_refrigerated": (r"(?:нужен|требуется)\s+(?:рефриж\w*)",),
-        "cargo_ready": (r"груз\s+(?:готов|готовый)",), "not_cargo_ready": (r"груз\s+не\s+готов",),
+        "not_tent": (r"не\s+тент(?:ов\w*)?",), "cargo_ready": (r"груз\s+(?:готов|готовый)",),
+        "not_cargo_ready": (r"груз\s+не\s+готов", r"груз\s+готов\s*\?\s*нет"),
     },
     "en": {
         "money_1500_usd": (r"1500\s*(?:usd|us\s*dollars?)",),
         "money_12000_usd": (r"12[\s,]?000\s*(?:usd|us\s*dollars?)",),
         "weight_10": (r"10\s*(?:tonnes?|tons?)",), "weight_15": (r"15\s*(?:tonnes?|tons?)",),
         "weight_20": (r"20\s*(?:tonnes?|tons?)",), "city_almaty": (r"almaty",),
-        "city_astana": (r"astana",), "city_urumqi": (r"urumqi",),
+        "city_astana": (r"astana",), "city_urumqi": (r"urumqi",), "warehouse": (r"warehouse",),
         "tent": (r"(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?",),
         "not_refrigerated": (r"not\s+(?:a\s+)?(?:refrigerated|reefer)",),
         "time_0930": (r"09\s*:\s*30",), "date_2026_10_01": (r"2026[-/.]10[-/.]0?1",),
         "refrigerated": (r"(?:refrigerated|reefer)",),
         "positive_refrigerated": (r"(?:need|requires?)\s+(?:a\s+)?(?:refrigerated|reefer)", r"(?:a\s+)?(?:refrigerated|reefer)\s+(?:truck\s+)?is\s+required"),
-        "cargo_ready": (r"cargo\s+is\s+ready",), "not_cargo_ready": (r"cargo\s+(?:is\s+)?not\s+ready",),
+        "not_tent": (r"not\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?",),
+        "cargo_ready": (r"cargo\s+is\s+ready",), "not_cargo_ready": (r"cargo\s+(?:is\s+)?not\s+ready", r"cargo\s+(?:is\s+)?ready\s*\?\s*no"),
     },
     "zh": {
         "money_1500_usd": (r"1500\s*(?:usd|美元)",), "money_12000_usd": (r"12000\s*(?:usd|美元)",),
         "weight_10": (r"10\s*吨",), "weight_15": (r"15\s*吨",), "weight_20": (r"20\s*吨",),
-        "city_almaty": (r"阿拉木图",), "city_astana": (r"阿斯塔纳",), "city_urumqi": (r"乌鲁木齐",),
+        "city_almaty": (r"阿拉木图",), "city_astana": (r"阿斯塔纳",), "city_urumqi": (r"乌鲁木齐",), "warehouse": (r"仓库",),
         "tent": (r"(?:篷布车|篷车|帆布车)",), "not_refrigerated": (r"(?:不[是要]?|非)\s*冷藏车",),
         "time_0930": (r"09\s*[:：]\s*30",), "date_2026_10_01": (r"2026(?:[-/.]10[-/.]0?1|年10月0?1日?)",),
         "refrigerated": (r"冷藏车",), "positive_refrigerated": (r"(?:需要|要)\s*冷藏车",),
-        "cargo_ready": (r"货物(?:已)?准备好",), "not_cargo_ready": (r"货物(?:还)?没(?:有)?准备好",),
+        "not_tent": (r"(?:不[是要]?|非)\s*(?:篷布车|篷车|帆布车)",),
+        "cargo_ready": (r"货物(?:已)?准备好",), "not_cargo_ready": (r"货物(?:还)?没(?:有)?准备好", r"货物准备好了吗?\s*[？?]?\s*不"),
     },
 }
 FORBIDDEN_BODY = {"ru": ("водопад",), "en": ("waterfall",), "zh": ("瀑布",)}
@@ -169,6 +172,10 @@ def semantic_check(target: str, key: str, translated: str | None) -> tuple[bool,
         re.search(pattern, translated, re.IGNORECASE) for pattern in patterns["positive_refrigerated"]
     ):
         forbidden.append("opposite_refrigerated")
+    if "tent" in required and any(
+        re.search(pattern, translated, re.IGNORECASE) for pattern in patterns["not_tent"]
+    ):
+        forbidden.append("opposite_tent")
     if "cargo_ready" in required and any(
         re.search(pattern, translated, re.IGNORECASE) for pattern in patterns["not_cargo_ready"]
     ):

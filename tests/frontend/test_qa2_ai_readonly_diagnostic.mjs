@@ -46,7 +46,7 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 assert module.semantic_check('zh', 'cargo', '阿拉木图到阿斯塔纳：货物1500美元，10吨，篷布车。')[0]
 assert module.semantic_check('en', 'negation', 'Not a refrigerated truck; a tent truck is required, 20 tonnes.')[0]
-assert module.semantic_check('ru', 'schedule', 'Урумчи, 09:30, дата 2026-10-01.')[0]
+assert module.semantic_check('ru', 'schedule', 'Урумчи, склад, 09:30, дата 2026-10-01.')[0]
 assert not module.semantic_check('ru', 'cargo', 'Алматы — Астана: 1500 USD, 10 тонн, водопад.')[0]
 assert not module.semantic_check('zh', 'negation', '不是篷布车，需要冷藏车，20吨。')[0]
 assert not module.semantic_check('en', 'price', 'Price 12,000, weight 15 tonnes.')[0]
@@ -56,6 +56,27 @@ assert not module.semantic_check('zh', 'negation', '不是冷藏车，但需要�
 assert not module.semantic_check('ru', 'short', 'Груз не готов.')[0]
 assert not module.semantic_check('en', 'short', 'The cargo is not ready.')[0]
 assert not module.semantic_check('zh', 'short', '货物还没有准备好。')[0]
+# Tent is required positively, not merely mentioned.
+assert module.semantic_check('ru', 'cargo', 'Алматы — Астана: груз 1500 USD, 10 тонн, тент.')[0]
+assert module.semantic_check('en', 'cargo', 'Almaty to Astana: cargo 1500 USD, 10 tonnes, tent truck.')[0]
+assert module.semantic_check('zh', 'cargo', '阿拉木图到阿斯塔纳：货物1500美元，10吨，篷布车。')[0]
+assert not module.semantic_check('ru', 'cargo', 'Алматы — Астана: груз 1500 USD, 10 тонн, не тент.')[0]
+assert not module.semantic_check('en', 'cargo', 'Almaty to Astana: cargo 1500 USD, 10 tonnes, not a tent truck.')[0]
+assert not module.semantic_check('zh', 'cargo', '阿拉木图到阿斯塔纳：货物1500美元，10吨，不是篷布车。')[0]
+# A question followed by no is a negative answer, not cargo readiness.
+assert module.semantic_check('ru', 'short', 'Да, груз готов.')[0]
+assert module.semantic_check('en', 'short', 'Yes, the cargo is ready.')[0]
+assert module.semantic_check('zh', 'short', '是的，货物已准备好。')[0]
+assert not module.semantic_check('ru', 'short', 'Груз готов? Нет.')[0]
+assert not module.semantic_check('en', 'short', 'Cargo ready? No.')[0]
+assert not module.semantic_check('zh', 'short', '货物准备好了吗？不。')[0]
+# Warehouse is as mandatory as city, time and date in the schedule scenario.
+assert module.semantic_check('ru', 'schedule', 'Урумчи, склад, 09:30, дата 2026-10-01.')[0]
+assert module.semantic_check('en', 'schedule', 'Urumqi, warehouse, 09:30, date 2026-10-01.')[0]
+assert module.semantic_check('zh', 'schedule', '乌鲁木齐，仓库，09:30，日期2026年10月1日。')[0]
+assert not module.semantic_check('ru', 'schedule', 'Урумчи, 09:30, дата 2026-10-01.')[0]
+assert not module.semantic_check('en', 'schedule', 'Urumqi, 09:30, date 2026-10-01.')[0]
+assert not module.semantic_check('zh', 'schedule', '乌鲁木齐，09:30，日期2026年10月1日。')[0]
 `;
   const result = spawnSync('python3', ['-c', code], { cwd: process.cwd(), encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
