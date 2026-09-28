@@ -70,7 +70,7 @@ if (!/export const DARK\s*=/.test(tokensSrc)) {
 if (!/export const LIGHT = \{[\s\S]*?bg:\s*'#F7F3EC'/.test(tokensSrc)) {
   failures.push('designV1Palette.js LIGHT.bg is not the approved warm surface');
 }
-if (!/chatCanvas:\s*'#F3EBDD'/.test(tokensSrc) || !/chatPattern:\s*'#8C7D68'/.test(tokensSrc)) {
+if (!/chatCanvas:\s*'#F5EEE3'/.test(tokensSrc) || !/chatPattern:\s*'#8C7D68'/.test(tokensSrc)) {
   failures.push('designV1Palette.js is missing the approved warm chat wallpaper tokens');
 }
 if (!/export const DARK = \{[\s\S]*?bg:\s*'#0F1512'/.test(tokensSrc)) {
