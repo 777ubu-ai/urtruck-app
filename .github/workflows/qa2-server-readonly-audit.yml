@@ -11,6 +11,7 @@ on:
     branches: [fix/voice-stt-translation-20260925]
     paths:
       - .github/workflows/qa2-server-readonly-audit.yml
+      - scripts/sanitize_qa2_audit.py
       - tests/frontend/test_qa2_server_readonly_audit_workflow.mjs
 
 concurrency:
