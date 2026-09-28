@@ -113,3 +113,19 @@ The new structured evidence identifies genuine candidate loss (for example a
 missing weight unit or city) separately from apparent gate false rejects caused
 by numeric formatting, inflection, or equivalent date representation. No
 quality-gate rule was changed based on this diagnostic run.
+
+## Offline repair replay — source only
+
+The saved 60 synthetic rows from run `#36409260200` were replayed locally by
+`scripts/replay_qa2_ai_diagnostic.py`; it made no HTTP request. Before repair,
+the matrix had 18 PASS. After deterministic repair, strict quality checks and
+the semantic checker it has 54 PASS: 24 earlier HTTP 422 candidates become
+safe to accept and 12 earlier semantic failures become PASS. Every promoted
+row still passed required price/currency, weight, city, time/date, body-type
+and negation checks.
+
+Six rows remain red: case 28 fresh/warm stays a confirmed NLLB hallucination
+(`This is the first time I've been...`) and retains a non-equivalent date;
+cases 8 fresh/warm (`Уруми-Ци`) and 13 fresh/warm (`Urumchi`) require manual
+language review before adding any city alias. This is offline source evidence
+only; QA2 remains unmodified and its runtime SHA remains **UNKNOWN**.

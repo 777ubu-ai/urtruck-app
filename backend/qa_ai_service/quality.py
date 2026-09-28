@@ -81,7 +81,7 @@ def stt_prompt(language: str) -> str:
 
 CITY_TERMS = {
     "almaty": {"ru": ("алматы",), "zh": ("阿拉木图",), "en": ("almaty",), "kk": ("алматы",)},
-    "astana": {"ru": ("астана",), "zh": ("阿斯塔纳",), "en": ("astana",), "kk": ("астана",)},
+    "astana": {"ru": ("астана", "астану", "астане", "астаны"), "zh": ("阿斯塔纳",), "en": ("astana",), "kk": ("астана",)},
     "moscow": {"ru": ("москва",), "zh": ("莫斯科",), "en": ("moscow",), "kk": ("мәскеу", "москва")},
     "beijing": {"ru": ("пекин",), "zh": ("北京",), "en": ("beijing",), "kk": ("пекин",)},
     "khorgos": {"ru": ("хоргос",), "zh": ("霍尔果斯",), "en": ("khorgos",), "kk": ("қорғас", "хоргос")},
@@ -91,12 +91,16 @@ CITY_TERMS = {
 # NLLB's observed transliteration for Almaty is a city-preserving error that
 # must be normalized before the strict invariant check.
 CITY_OBSERVED_CONFUSIONS = {
+    # Exact QA2 NLLB output for Chinese 阿拉木图. This is a model spelling
+    # error, not a general transliteration rule.
+    ("almaty", "ru"): ("Арматутян",),
     ("almaty", "zh"): ("阿尔马塔",),
     # NLLB occasionally truncates 阿斯塔纳 to 阿斯塔 and joins it to the
     # following noun (for example ``阿斯塔货物``).  Normalize only this
     # observed city-preserving error; unknown omissions remain a quality FAIL.
     ("astana", "zh"): ("阿斯塔",),
 }
+CITY_REPAIR_CANONICAL = {("almaty", "ru"): "Алматы"}
 
 # Exact, observed QA2 repairs.  These are deliberately not a general phrase
 # dictionary: they only recover a source string that NLLB left untranslated,
@@ -107,6 +111,18 @@ _EXACT_TRANSLATION_REPAIRS = {
 
 _CLEAR_ROAD_SOURCE = re.compile(r"\b(?:road|route)\s+(?:is\s+)?clear\b", re.IGNORECASE)
 _CLEAR_ROAD_ZH = ("道路畅通", "道路通畅", "路况畅通", "路况良好")
+REFRIGERATED_TERMS = {
+    "ru": ("рефрижератор", "рефрижераторный"),
+    "en": ("refrigerated truck", "reefer"),
+    "zh": ("冷藏车",),
+    "kk": ("рефрижератор",),
+}
+LITERAL_BODY_CONFUSION_TERMS = {
+    "ru": ("водопад", "ковёр", "ковер"),
+    "en": ("waterfall", "carpet"),
+    "zh": ("瀑布", "地毯"),
+    "kk": (),
+}
 
 
 def _contains_any(text: str, variants: tuple[str, ...]) -> bool:
@@ -197,7 +213,6 @@ def _normalize_number_words(text: str) -> str:
     replacements = {
         "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
         "ноль": "0", "один": "1", "одна": "1", "два": "2", "две": "2", "три": "3", "четыре": "4", "пять": "5",
-        "一个": "1", "一": "1", "两个": "2", "两": "2", "二": "2", "三": "3", "四": "4", "五": "5",
     }
     normalized = text.casefold()
     for word, number in replacements.items():
@@ -205,10 +220,19 @@ def _normalize_number_words(text: str) -> str:
             normalized = re.sub(rf"(?<!\w){re.escape(word)}(?!\w)", number, normalized)
         else:
             normalized = normalized.replace(word, number)
+    # Chinese classifiers such as ``一个`` describe an object, not a cargo
+    # numeric fact. Convert a Han digit only immediately before a measurable
+    # logistics/time/date unit; leave ``一个帐卡车`` non-numeric.
+    han_digits = {"一": "1", "二": "2", "三": "3", "四": "4", "五": "5", "六": "6", "七": "7", "八": "8", "九": "9", "两": "2"}
+    normalized = re.sub(
+        r"([一二三四五六七八九两])(?=\s*(?:吨|美元|点|时|月|日))",
+        lambda match: han_digits[match.group(1)],
+        normalized,
+    )
     return normalized
 
 
-def _numeric_facts(text: str) -> tuple[list[tuple[int, int]], list[Decimal]]:
+def _numeric_facts(text: str) -> tuple[list[tuple[int, int]], list[tuple[int, int, int]], list[Decimal]]:
     times: list[tuple[int, int]] = []
 
     def replace_clock(match: re.Match) -> str:
@@ -216,6 +240,27 @@ def _numeric_facts(text: str) -> tuple[list[tuple[int, int]], list[Decimal]]:
         return " "
 
     remaining = re.sub(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", replace_clock, _normalize_number_words(text))
+
+    dates: list[tuple[int, int, int]] = []
+
+    def replace_ymd(match: re.Match) -> str:
+        dates.append((int(match.group(1)), int(match.group(2)), int(match.group(3))))
+        return " "
+
+    def replace_dmy(match: re.Match) -> str:
+        dates.append((int(match.group(3)), int(match.group(2)), int(match.group(1))))
+        return " "
+
+    remaining = re.sub(r"(?<!\d)(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)", replace_ymd, remaining)
+    remaining = re.sub(r"(?<!\d)(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?!\d)", replace_dmy, remaining)
+    remaining = re.sub(r"(?<!\d)(\d{4})年(\d{1,2})月(\d{1,2})日?(?!\d)", replace_ymd, remaining)
+    month_names = {"january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12}
+
+    def replace_month_name(match: re.Match) -> str:
+        dates.append((int(match.group(3)), month_names[match.group(1).casefold()], int(match.group(2))))
+        return " "
+
+    remaining = re.sub(r"\b(" + "|".join(month_names) + r")\s+(\d{1,2}),?\s+(\d{4})\b", replace_month_name, remaining, flags=re.IGNORECASE)
 
     def replace_chinese_clock(match: re.Match) -> str:
         period, hour_text, minute_text = match.groups()
@@ -229,8 +274,26 @@ def _numeric_facts(text: str) -> tuple[list[tuple[int, int]], list[Decimal]]:
         return " "
 
     remaining = re.sub(r"(上午|下午)?\s*(\d{1,2})\s*(?:点|时)(半|\d{1,2}分?)?", replace_chinese_clock, remaining)
+    # A separator followed by exactly three digits is a grouping separator,
+    # never a decimal fraction. Thus 12 000, 12,000 and $12,000 match 12000,
+    # while 12,5 stays a decimal value.
+    remaining = re.sub(
+        r"(?<!\d)(\d{1,3}(?:[\s,\u00a0]\d{3})+)(?!\d)",
+        lambda match: re.sub(r"[\s,\u00a0]", "", match.group(1)),
+        remaining,
+    )
     numbers = [Decimal(value.replace(",", ".")) for value in re.findall(r"\d+(?:[.,]\d+)?", remaining)]
-    return times, numbers
+    return times, dates, numbers
+
+
+def _currency_facts(text: str) -> list[str]:
+    lowered = text.casefold()
+    facts: list[str] = []
+    if re.search(r"\$|\busd\b|美元|доллар", lowered):
+        facts.append("USD")
+    if re.search(r"€|\beur\b|евро|欧元", lowered):
+        facts.append("EUR")
+    return facts
 
 
 def repair_logistics_translation(source_text: str, translated_text: str, source: str, target: str) -> str:
@@ -319,41 +382,58 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
         # otherwise the bad word survives beside the correct word and is then
         # cached as a successful translation.
         observed_body_confusions = {
-            "en": (),
+            "en": ("waterfall",),
             "ru": ("тренажер", "водопад"),
-            "zh": (),
+            "zh": ("地毯", "帐卡车"),
             "kk": (),
         }
-        for confused in observed_body_confusions.get(target, ()):
-            if confused.casefold() in repaired.casefold():
-                if _contains_any(repaired, VEHICLE_BODY_TERMS.get(target, ())):
-                    # A previous repair may already have appended the
-                    # canonical body type; remove only the hallucinated word
-                    # to avoid returning «тент, тент».
-                    repaired = re.sub(
-                        rf"{re.escape(confused)}\s*[,，]?\s*",
-                        "",
-                        repaired,
-                        count=1,
-                        flags=re.IGNORECASE,
-                    )
-                else:
-                    repaired = re.sub(
-                        re.escape(confused),
-                        VEHICLE_BODY_CANONICAL[target],
-                        repaired,
-                        count=1,
-                        flags=re.IGNORECASE,
-                    )
+        # Do not rewrite a real waterfall/carpet that occurs in the source.
+        # The glossary is solely for the observed NLLB body-type confusions.
+        if not _contains_any(source_text, LITERAL_BODY_CONFUSION_TERMS.get(source, ())):
+            for confused in observed_body_confusions.get(target, ()):
+                if confused.casefold() in repaired.casefold():
+                    if _contains_any(repaired, VEHICLE_BODY_TERMS.get(target, ())):
+                        # A previous repair may already have appended the
+                        # canonical body type; remove the hallucination rather
+                        # than retaining both terms in a cached translation.
+                        repaired = re.sub(
+                            rf"{re.escape(confused)}\s*[,，]?\s*",
+                            "",
+                            repaired,
+                            count=1,
+                            flags=re.IGNORECASE,
+                        )
+                    else:
+                        repaired = re.sub(
+                            re.escape(confused),
+                            VEHICLE_BODY_CANONICAL[target],
+                            repaired,
+                            count=1,
+                            flags=re.IGNORECASE,
+                        )
         if not _contains_any(repaired, VEHICLE_BODY_TERMS.get(target, ())):
             repaired = _append_before_punctuation(repaired, VEHICLE_BODY_CANONICAL[target])
+
+    # A household refrigerator is not a logistics refrigerated vehicle. The
+    # substitution is allowed only when the source explicitly names a reefer,
+    # so ordinary household text is never rewritten.
+    if _contains_any(source_text, REFRIGERATED_TERMS.get(source, ())):
+        observed_refrigerator_confusions = {
+            "en": (("refrigerator", "refrigerated truck"),),
+            "ru": (("холодильный грузовик", "рефрижератор"), ("холодильник", "рефрижератор")),
+            "zh": (("冰箱", "冷藏车"),),
+            "kk": (),
+        }
+        for confused, canonical in observed_refrigerator_confusions.get(target, ()):
+            repaired = re.sub(re.escape(confused), canonical, repaired, flags=re.IGNORECASE)
 
     # Normalize only the observed Almaty transliteration; missing cities are
     # left for the quality gate to reject rather than guessed or invented.
     for city in _city_keys(source_text, source):
         for confused in CITY_OBSERVED_CONFUSIONS.get((city, target), ()):
             if confused.casefold() in repaired.casefold() and not _contains_any(repaired, CITY_TERMS[city][target]):
-                repaired = re.sub(re.escape(confused), CITY_TERMS[city][target][0], repaired, count=1, flags=re.IGNORECASE)
+                canonical = CITY_REPAIR_CANONICAL.get((city, target), CITY_TERMS[city][target][0])
+                repaired = re.sub(re.escape(confused), canonical, repaired, count=1, flags=re.IGNORECASE)
                 break
 
     source_times = re.findall(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", source_text)
@@ -423,6 +503,8 @@ def translation_quality_failures(source_text: str, translated_text: str, source:
     failures: list[str] = []
     if _numeric_facts(source_text) != _numeric_facts(translated_text):
         failures.append("numeric_facts_changed")
+    if _currency_facts(source_text) != _currency_facts(translated_text):
+        failures.append("currency_facts_changed")
     source_has_body = _contains_any(source_text, VEHICLE_BODY_TERMS.get(source, ()))
     for name, variants in LOGISTICS_TERMS.items():
         # A specific body type (e.g. 篷布车) is stronger than the generic

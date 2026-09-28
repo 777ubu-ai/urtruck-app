@@ -70,6 +70,10 @@ test('QA2 exposes a diagnostic-only local AI runner without mutation commands', 
   assert.match(workflow, /systemctl show urtruck-qa2-ai\.service/);
   assert.match(workflow, /QA2_DIAGNOSTIC_QUALITY_PATH/);
   assert.match(workflow, /sudo -n env .*\/home\/ubuntu\/urtruck-qa2-ai\/venv\/bin\/python/);
+  assert.match(workflow, /PYTHONDONTWRITEBYTECODE=1/);
+  assert.match(workflow, /\/tmp\/qa2-ai-readonly-diagnostic-\[0-9\]\*/);
+  assert.match(workflow, /sudo -n rm -rf -- '\$remote_dir'/);
+  assert.match(workflow, /test ! -e '\$remote_dir'/);
   assert.doesNotMatch(workflow, /QA2_DIAGNOSTIC_SAFE_CORPUS=1/);
   assert.doesNotMatch(workflow, /QA2_DIAGNOSTIC_VOICE_ONLY=1/);
   assert.doesNotMatch(workflow, /diagnose_ai[\s\S]*systemctl restart/);

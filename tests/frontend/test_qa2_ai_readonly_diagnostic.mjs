@@ -70,7 +70,10 @@ assert not module.semantic_check('zh', 'negation', '不是冷藏车，篷布车�
 assert module.semantic_check('ru', 'short', 'Да, груз готов.')[0]
 assert module.semantic_check('en', 'short', 'Yes, the cargo is ready.')[0]
 assert module.semantic_check('en', 'short', 'Good, the goods are ready.')[0]
+assert module.semantic_check('en', 'short', 'Yes, the shipment is ready.')[0]
 assert not module.semantic_check('en', 'short', 'The goods are not ready.')[0]
+assert not module.semantic_check('en', 'short', 'Shipment is not ready.')[0]
+assert not module.semantic_check('en', 'short', 'Shipment ready? No.')[0]
 assert not module.semantic_check('en', 'short', 'Goods are ready? No.')[0]
 assert not module.semantic_check('en', 'short', 'The goods are ready? No.')[0]
 assert module.semantic_check('zh', 'short', '是的，货物已准备好。')[0]
@@ -84,6 +87,8 @@ assert module.semantic_check('zh', 'schedule', '乌鲁木齐，仓库，09:30，
 assert not module.semantic_check('ru', 'schedule', 'Урумчи, 09:30, дата 2026-10-01.')[0]
 assert not module.semantic_check('en', 'schedule', 'Urumqi, 09:30, date 2026-10-01.')[0]
 assert not module.semantic_check('zh', 'schedule', '乌鲁木齐，09:30，日期2026年10月1日。')[0]
+# A preserved date does not excuse invented travel history.
+assert not module.semantic_check('en', 'schedule', "This is the first time I've been to Urumqi, warehouse, 09:30, date 10-01-2026.")[0]
 `;
   const result = spawnSync('python3', ['-c', code], { cwd: process.cwd(), encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);

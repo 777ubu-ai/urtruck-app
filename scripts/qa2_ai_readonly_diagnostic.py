@@ -69,11 +69,11 @@ REQUIRED_FACTS = {
 
 FACT_PATTERNS = {
     "ru": {
-        "money_1500_usd": (r"1500\s*(?:usd|доллар(?:ов|а)?\s*сша|долл?\.?\s*сша)",),
-        "money_12000_usd": (r"12[\s,]?000\s*(?:usd|доллар(?:ов|а)?\s*сша|долл?\.?\s*сша)",),
+        "money_1500_usd": (r"1500\s*(?:usd|доллар(?:ов|а)?(?:\s*сша)?|долл?\.?\s*сша)",),
+        "money_12000_usd": (r"12[\s,]?000\s*(?:usd|доллар(?:ов|а)?(?:\s*сша)?|долл?\.?\s*сша)",),
         "weight_10": (r"10\s*(?:тонн\w*|т\b)",), "weight_15": (r"15\s*(?:тонн\w*|т\b)",),
         "weight_20": (r"20\s*(?:тонн\w*|т\b)",), "city_almaty": (r"алматы",),
-        "city_astana": (r"астана",), "city_urumqi": (r"урумчи",), "warehouse": (r"склад",), "tent": (r"тент(?:ов\w*)?",),
+        "city_astana": (r"астан(?:а|у|е|ы)",), "city_urumqi": (r"урумчи",), "warehouse": (r"склад",), "tent": (r"тент(?:ов\w*)?",),
         "not_refrigerated": (r"не\s+(?:нужен\s+)?рефриж",), "time_0930": (r"09\s*:\s*30",),
         "date_2026_10_01": (r"2026[-/.]10[-/.]0?1",), "refrigerated": (r"рефриж",),
         "positive_refrigerated": (r"(?:нужен|требуется)\s+(?:рефриж\w*)",),
@@ -81,31 +81,36 @@ FACT_PATTERNS = {
         "not_cargo_ready": (r"груз\s+не\s+готов", r"груз\s+готов\s*\?\s*нет"),
     },
     "en": {
-        "money_1500_usd": (r"1500\s*(?:usd|us\s*dollars?)",),
-        "money_12000_usd": (r"12[\s,]?000\s*(?:usd|us\s*dollars?)",),
+        "money_1500_usd": (r"(?:\$\s*1[\s,]?500|1[\s,]?500\s*(?:usd|us\s*dollars?))",),
+        "money_12000_usd": (r"(?:\$\s*12[\s,]?000|12[\s,]?000\s*(?:usd|us\s*dollars?))",),
         "weight_10": (r"10\s*(?:tonnes?|tons?)",), "weight_15": (r"15\s*(?:tonnes?|tons?)",),
         "weight_20": (r"20\s*(?:tonnes?|tons?)",), "city_almaty": (r"almaty",),
         "city_astana": (r"astana",), "city_urumqi": (r"urumqi",), "warehouse": (r"warehouse",),
         "tent": (r"(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?",),
         "not_refrigerated": (r"not\s+(?:a\s+)?(?:refrigerated|reefer)",),
-        "time_0930": (r"09\s*:\s*30",), "date_2026_10_01": (r"2026[-/.]10[-/.]0?1",),
+        "time_0930": (r"09\s*:\s*30",), "date_2026_10_01": (r"(?:2026[-/.]10[-/.]0?1|0?1[-/.]10[-/.]2026|october\s+1,?\s+2026)",),
         "refrigerated": (r"(?:refrigerated|reefer)",),
         "positive_refrigerated": (r"(?:need|requires?)\s+(?:a\s+)?(?:refrigerated|reefer)", r"(?:a\s+)?(?:refrigerated|reefer)\s+(?:truck\s+)?is\s+required"),
         "not_tent": (r"not\s+(?:a\s+)?(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?", r"(?:tent|curtain[ -]sided)\s*(?:truck|trailer)?\s+(?:is\s+)?(?:also\s+)?not\s+needed"),
-        "cargo_ready": (r"cargo\s+is\s+ready", r"goods\s+are\s+ready"), "not_cargo_ready": (r"cargo\s+(?:is\s+)?not\s+ready", r"goods\s+are\s+not\s+ready", r"(?:the\s+)?(?:cargo|goods)\s+(?:is|are)\s+ready\s*\?\s*no"),
+        "cargo_ready": (r"cargo\s+is\s+ready", r"goods\s+are\s+ready", r"shipment\s+is\s+ready"), "not_cargo_ready": (r"cargo\s+(?:is\s+)?not\s+ready", r"goods\s+are\s+not\s+ready", r"shipment\s+is\s+not\s+ready", r"(?:the\s+)?(?:cargo|goods|shipment)\s+(?:(?:is|are)\s+)?ready\s*\?\s*no"),
     },
     "zh": {
-        "money_1500_usd": (r"1500\s*(?:usd|美元)",), "money_12000_usd": (r"12000\s*(?:usd|美元)",),
+        "money_1500_usd": (r"1500\s*(?:usd|美元)",), "money_12000_usd": (r"12[\s,]?000\s*(?:usd|美元)",),
         "weight_10": (r"10\s*吨",), "weight_15": (r"15\s*吨",), "weight_20": (r"20\s*吨",),
         "city_almaty": (r"阿拉木图",), "city_astana": (r"阿斯塔纳",), "city_urumqi": (r"乌鲁木齐",), "warehouse": (r"仓库",),
-        "tent": (r"(?:篷布车|篷车|帆布车)",), "not_refrigerated": (r"(?:不[是要]?|非)\s*冷藏车",),
+        "tent": (r"(?:篷布车|篷车|帆布车)",), "not_refrigerated": (r"(?:不[是要]?|非|没有)\s*冷藏(?:车|卡车)",),
         "time_0930": (r"09\s*[:：]\s*30",), "date_2026_10_01": (r"2026(?:[-/.]10[-/.]0?1|年10月0?1日?)",),
-        "refrigerated": (r"冷藏车",), "positive_refrigerated": (r"(?:需要|要)\s*冷藏车",),
+        "refrigerated": (r"冷藏(?:车|卡车)",), "positive_refrigerated": (r"(?:需要|要)\s*冷藏(?:车|卡车)",),
         "not_tent": (r"(?:不[是要]?|非)\s*(?:篷布车|篷车|帆布车)", r"(?:篷布车|篷车|帆布车)也?不需要"),
         "cargo_ready": (r"货物(?:已)?准备好",), "not_cargo_ready": (r"货物(?:还)?没(?:有)?准备好", r"货物准备好了吗?\s*[？?]?\s*不"),
     },
 }
 FORBIDDEN_BODY = {"ru": ("водопад",), "en": ("waterfall",), "zh": ("瀑布",)}
+INVENTED_SCHEDULE_HISTORY = {
+    "en": (r"this\s+is\s+the\s+first\s+time\s+i(?:'ve|\s+have)\s+been\s+to",),
+    "ru": (),
+    "zh": (),
+}
 
 
 def emit(kind: str, **values: object) -> None:
@@ -175,6 +180,11 @@ def semantic_check(target: str, key: str, translated: str | None) -> tuple[bool,
     patterns = FACT_PATTERNS[target]
     missing = [fact for fact in required if not any(re.search(pattern, translated, re.IGNORECASE) for pattern in patterns[fact])]
     forbidden = [term for term in FORBIDDEN_BODY[target] if term in translated.casefold()]
+    if key == "schedule" and any(
+        re.search(pattern, translated, re.IGNORECASE)
+        for pattern in INVENTED_SCHEDULE_HISTORY.get(target, ())
+    ):
+        forbidden.append("invented_travel_history")
     # A refrigerator may appear only when it is explicitly negated in the
     # scenario that requires that relation; otherwise it changes the cargo.
     has_refrigerated = any(re.search(pattern, translated, re.IGNORECASE) for pattern in patterns["refrigerated"])
