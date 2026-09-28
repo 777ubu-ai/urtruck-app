@@ -40,6 +40,13 @@ test('live QA2 keeps MapKit and Firebase secret injection and the isolated packa
   assert.ok(workflow.includes('URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2'));
 });
 
+test('QA2 Android build reinstalls its pinned NDK after disk cleanup', () => {
+  const cleanup = workflow.indexOf('/usr/local/lib/android/sdk/ndk');
+  const install = workflow.indexOf('sdkmanager "ndk;27.1.12297006"');
+  assert.ok(cleanup >= 0, 'workflow must declare NDK cleanup explicitly');
+  assert.ok(install > cleanup, 'required NDK must be installed after cleanup');
+});
+
 test('explicit QA release stays in the isolated QA2 package', () => {
   assert.ok(androidAppBuild.includes("project.hasProperty('URTRUCK_QA2')"));
   assert.ok(androidAppBuild.includes('applicationIdSuffix ".qa2"'));
