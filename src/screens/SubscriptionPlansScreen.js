@@ -19,12 +19,14 @@ import GlassCard from '../components/ui/v1/GlassCard';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import Feather from '@expo/vector-icons/Feather';
 
-// react-native-iap — нативный модуль, на web не поддержан. Динамический
+// react-native-iap — нативный модуль (Nitro), на web не поддержан. Динамический
 // require под Platform-гейтом, чтобы веб-бандл вообще не трогал его.
 let RNIap = null;
+let isUserCancelledError = null;
 if (Platform.OS !== 'web') {
   // eslint-disable-next-line global-require
   RNIap = require('react-native-iap');
+  isUserCancelledError = RNIap.isUserCancelledError;
 }
 
 const FREE_DEAL_LIMIT = 5;
@@ -68,10 +70,9 @@ export default function SubscriptionPlansScreen({ navigation, route }) {
     let errorSub;
     (async () => {
       try {
+        // v16 (Nitro): flushFailedPurchasesCachedAsPendingAndroid убран —
+        // Billing Library 8+ сама разруливает pending-покупки при коннекте.
         await RNIap.initConnection();
-        if (Platform.OS === 'android') {
-          await RNIap.flushFailedPurchasesCachedAsPendingAndroid().catch(() => {});
-        }
       } catch {
         // соединение с Google Play недоступно — экран остаётся рабочим,
         // кнопка покупки просто ошибётся
@@ -96,8 +97,9 @@ export default function SubscriptionPlansScreen({ navigation, route }) {
       errorSub = RNIap.purchaseErrorListener((err) => {
         if (!mountedRef.current) return;
         setPurchasing(false);
-        // E_USER_CANCELLED — обычный отказ пользователя, без тоста-ошибки.
-        if (err?.code !== 'E_USER_CANCELLED') {
+        // Отказ пользователя (v16: код 'user-cancelled', сверяем через
+        // хелпер библиотеки, а не строкой) — без тоста-ошибки.
+        if (!isUserCancelledError?.(err)) {
           toast(t('subscription_purchase_error'));
         }
       });
@@ -115,17 +117,16 @@ export default function SubscriptionPlansScreen({ navigation, route }) {
     setPurchasing(true);
     try {
       const productId = status.google_product_id;
-      let request = { sku: productId };
-      if (Platform.OS === 'android') {
-        // Google Play Billing 5+: покупка подписки требует offerToken
-        // выбранного базового плана — берём первый оффер из каталога.
-        const subs = await RNIap.getSubscriptions({ skus: [productId] });
-        const offerToken = subs?.[0]?.subscriptionOfferDetails?.[0]?.offerToken;
-        if (offerToken) {
-          request = { subscriptionOffers: [{ sku: productId, offerToken }] };
-        }
-      }
-      await RNIap.requestSubscription(request);
+      // Google Play Billing 5+: покупка подписки требует offerToken
+      // выбранного базового плана — берём первый оффер из каталога.
+      // v16 (Nitro): getSubscriptions → fetchProducts({type:'subs'}),
+      // subscriptionOfferDetails[].offerToken → subscriptionOffers[].offerTokenAndroid.
+      const subs = await RNIap.fetchProducts({ skus: [productId], type: 'subs' });
+      const offerToken = subs?.[0]?.subscriptionOffers?.[0]?.offerTokenAndroid;
+      const google = offerToken
+        ? { skus: [productId], subscriptionOffers: [{ sku: productId, offerToken }] }
+        : { skus: [productId] };
+      await RNIap.requestPurchase({ request: { google }, type: 'subs' });
     } catch {
       setPurchasing(false);
       toast(t('subscription_purchase_error'));

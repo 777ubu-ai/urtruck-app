@@ -95,9 +95,6 @@ android {
         // CI passes a unique monotonic code for every Play upload.
         versionCode (project.hasProperty('URTRUCK_VERSION_CODE') ? URTRUCK_VERSION_CODE.toInteger() : 9)
         versionName "1.0.9"
-        // react-native-iap публикует flavor-варианты play/amazon; приложение без
-        // flavor-измерения обязано явно выбрать вариант Google Play.
-        missingDimensionStrategy 'store', 'play'
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
