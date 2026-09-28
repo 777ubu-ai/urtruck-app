@@ -237,6 +237,26 @@ test('изменённый original не использует перевод п�
   assert.equal(calls.length, 2);
 });
 
+test('poll с первым server transcript снимает устаревший 409 и возобновляет только открытый перевод', async () => {
+  const { state, calls } = fixture({
+    transcribe: async () => { throw Object.assign(new Error('in progress'), { code: 'TRANSCRIPTION_IN_PROGRESS' }); },
+    translate: async (_, lang) => translated(lang, '你好'),
+  });
+  await state.toggle({ id: 'v-stale', voice: true }, 'ZH');
+  // Имитируем первый /transcribe, который получил 409, пока другой запрос
+  // записывал STT. В записи ещё нет original, а пользователь уже раскрыл текст.
+  const entry = state.view('v-stale', 'zh');
+  assert.equal(entry.translationError, false);
+  assert.equal(entry.errorText, 'voice_transcription_unavailable');
+  const resumed = state.hydrate([{
+    id: 'v-stale', voice: true, transcript: 'Привет', transcriptLang: 'ru', transcriptProvider: 'local_ai',
+  }]);
+  assert.deepEqual(resumed, ['v-stale']);
+  await state.retry({ id: 'v-stale' }, 'ZH');
+  assert.deepEqual(calls, [['stt', 'v-stale', 'zh'], ['translate', 'v-stale', 'zh']]);
+  assert.equal(state.view('v-stale', 'zh').translatedText, '你好');
+});
+
 test('unmount/account switch отменяет публикацию результата и последующие этапы', async () => {
   const wait = deferred();
   const { state, calls, api } = fixture({ transcribe: () => wait.promise });

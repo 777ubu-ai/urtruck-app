@@ -39,21 +39,40 @@ export function createVoiceTranscriptState(api) {
     if (typeof text !== 'string' || !text.trim()) return false;
     const source = normalizeVoiceLanguage(sourceLang);
     const originalProvider = provider || null;
-    if (entry.transcriptText === text && entry.sourceLang === source && entry.provider === originalProvider) return false;
+    if (entry.transcriptText === text && entry.sourceLang === source && entry.provider === originalProvider) {
+      return { changed: false, resume: false };
+    }
     // Новый original не должен наследовать перевод старой версии текста.
-    if (entry.transcriptText && entry.transcriptText !== text) entry.targets.clear();
+    // В частности, первый poll может принести transcript уже после того, как
+    // prewarm получил 409 TRANSCRIPTION_IN_PROGRESS. Это не ошибка перевода:
+    // старое состояние нужно снять и один раз продолжить перевод original,
+    // иначе пользователь навсегда видит «распознавание выполняется».
+    const previousText = entry.transcriptText;
+    const changed = previousText !== text;
+    // Не очищаем target, который держит текущий успешный STT: load() уже
+    // ожидает его Promise. Сброс требуется лишь когда original действительно
+    // меняется после уже сохранённого текста.
+    if (previousText && changed) entry.targets.clear();
+    const resume = !previousText && changed && [...entry.targets.values()]
+      .some((target) => target?.error?.code === 'TRANSCRIPTION_IN_PROGRESS');
     Object.assign(entry, { transcriptText: text, sourceLang: source, provider: originalProvider });
-    return true;
+    return { changed, resume };
   }
 
   function hydrate(messages) {
     if (!active) return;
     let changed = false;
+    const resumed = [];
     for (const item of messages) {
       if (!item?.voice || !item.id || !item.transcript) continue;
-      changed = setOriginal(entryFor(item.id), item.transcript, item.transcriptLang, item.transcriptProvider) || changed;
+      const entry = entryFor(item.id);
+      const wasVisible = entry.visible;
+      const original = setOriginal(entry, item.transcript, item.transcriptLang, item.transcriptProvider);
+      changed = original.changed || changed;
+      if (original.resume && wasVisible && entry.sourceLang) resumed.push(entry.id);
     }
     if (changed) emit();
+    return resumed;
   }
 
   function transcribe(entry, lang, isCurrent) {
