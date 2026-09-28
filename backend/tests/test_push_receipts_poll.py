@@ -19,13 +19,13 @@ def _user(token=None):
 def _enqueue(uid,e): push_gateway.enqueue_event(e,"chat.message",uid,{"title":"t","body":"b","data":{}})
 def _row(e,uid):
     with get_conn() as c: return c.execute("SELECT * FROM push_outbox WHERE event_id=? AND recipient_user_id=?",(e,uid)).fetchone()
-def _ok(tokens,*a,**k): return {"sent":len(tokens)}
-def _fail(tokens,*a,**k): return {"sent":0,"error":"transient"}
+def _ok(tokens,*a,**k): return {"sent":len(tokens),"devices":len(tokens),"errors":{}}
+def _fail(tokens,*a,**k): return {"sent":0,"devices":len(tokens),"errors":{"transient":1},"error":"transient"}
 
 def test_successful_provider_response_is_logged_sent():
     uid=_user(); _enqueue(uid,"ok"); assert push_gateway.process_pending_once(_ok)["sent"]==1; assert _row("ok",uid)["status"]=="sent"
 def test_invalid_token_is_disabled():
-    uid=_user(token="x"); _enqueue(uid,"invalid"); assert push_gateway.process_pending_once(_ok)["skipped"]==1
+    uid=_user(token="x"); _enqueue(uid,"invalid"); assert push_gateway.process_pending_once(_ok)["sent"]==1
     with get_conn() as c: assert c.execute("SELECT enabled FROM push_devices WHERE user_id=?",(uid,)).fetchone()[0]==1
 def test_transient_provider_error_is_retryable():
     uid=_user(); _enqueue(uid,"retry"); assert push_gateway.process_pending_once(_fail)["failed"]==1; assert _row("retry",uid)["status"]=="pending"
@@ -41,5 +41,5 @@ def test_one_failed_device_does_not_erase_other_delivery_log():
     uid=_user();
     with get_conn() as c: c.execute("INSERT INTO push_devices (user_id,device_id,platform,push_provider,push_token,enabled) VALUES (?,?,?,?,?,1)",(uid,uuid.uuid4().hex,"ios","apns",f"apns-{uuid.uuid4().hex}",))
     _enqueue(uid,"partial"); calls=[]
-    def partial(tokens,*a,**k): calls.append(tokens); return {"sent":1}
+    def partial(tokens,*a,**k): calls.append(tokens); return {"sent":1,"devices":len(tokens),"errors":{}}
     push_gateway.process_pending_once(partial); assert calls

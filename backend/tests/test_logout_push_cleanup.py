@@ -22,6 +22,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from database import db as ddb
 from database import registration_dal as reg_dal
+from database.db import get_conn
 
 ddb.init_db()
 reg_dal.init_registration_schema()
@@ -47,6 +48,10 @@ client = _NativeClient()
 def _native_tokens(uid):
     return [d for d in push_gateway.active_devices(uid) if d.get("push_provider") in ("fcm", "apns")]
 
+def _web_subs(uid):
+    with get_conn() as c:
+        return c.execute("SELECT * FROM push_subscriptions WHERE user_id=? AND active=1", (uid,)).fetchall()
+
 
 def _new_user_token():
     guest = reg_dal.create_guest()
@@ -70,7 +75,7 @@ def test_logout_cleanup_deactivates_both_web_and_native():
     }, headers=_auth(tok))
 
     assert len(_native_tokens(uid)) == 1
-    assert len(push_sender._web_subs(uid)) == 1
+    assert len(_web_subs(uid)) == 1
 
     r = client.post("/api/v1/push/logout-cleanup", json={"device_id": "d-lc-1"}, headers=_auth(tok))
     assert r.status_code == 200, r.text
@@ -78,7 +83,7 @@ def test_logout_cleanup_deactivates_both_web_and_native():
     assert body["web"] == 1 and body["native"] == 1
 
     assert _native_tokens(uid) == []
-    assert push_sender._web_subs(uid) == []
+    assert _web_subs(uid) == []
 
 
 def test_logout_cleanup_requires_auth():
@@ -143,14 +148,14 @@ def test_register_logout_server_side_deactivates_push_and_frees_same_device_for_
     }, headers=_auth(tok_a))
     assert r2.status_code == 200, r2.text
     assert len(_native_tokens(uid_a)) == 1
-    assert len(push_sender._web_subs(uid_a)) == 1
+    assert len(_web_subs(uid_a)) == 1
 
     logout = client.post("/api/v1/register/logout", headers=_auth(tok_a))
     assert logout.status_code == 200, logout.text
     assert logout.json()["ok"] is True
     assert logout.json()["revoked"] is True
     assert _native_tokens(uid_a) == []
-    assert push_sender._web_subs(uid_a) == []
+    assert _web_subs(uid_a) == []
 
     r3 = client.post("/api/v1/push/register-native", json={"token": tok_native_b, "device_id": device}, headers=_auth(tok_b))
     assert r3.status_code == 200, r3.text

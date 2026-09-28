@@ -280,7 +280,7 @@ def test_chat_message_durable_event_excludes_sender_and_retry_does_not_duplicate
     # bookkeeping from a clean slate once setup is done (same pattern as
     # test_deal_status_transitions_create_durable_events above).
     monkeypatch.setattr(push_sender, "_send_native",
-                        lambda tokens, *a, **k: {"sent": len(tokens), "tickets": [{"status": "ok"}] * len(tokens)})
+                        lambda tokens, *a, **k: {"sent": len(tokens), "devices": len(tokens), "errors": {}})
 
     as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1800}).json()["id"]
@@ -366,7 +366,7 @@ def test_deal_status_transitions_create_durable_events(monkeypatch):
     # test (monkeypatch.setattr can be called more than once per test; only
     # the final binding before teardown matters for restoration).
     monkeypatch.setattr(push_sender, "_send_native",
-                        lambda tokens, *a, **k: {"sent": len(tokens), "tickets": [{"status": "ok"}] * len(tokens)})
+                        lambda tokens, *a, **k: {"sent": len(tokens), "devices": len(tokens), "errors": {}})
 
     as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1200}).json()["id"]
@@ -384,9 +384,11 @@ def test_deal_status_transitions_create_durable_events(monkeypatch):
 
     rows = outbox_rows(owner)
     event_types = {row["event_type"] for row in rows}
-    assert "deal.status.in_progress" in event_types
-    assert "deal.status.at_border" in event_types
-    assert "deal.status.delivered" in event_types
+    assert event_types == {"deal_status"}
+    payloads = " ".join(row["payload"] for row in rows)
+    assert ":status:in_progress" in payloads
+    assert ":status:at_border" in payloads
+    assert ":status:delivered" in payloads
     assert all(row["status"] == "pending" for row in rows), "provider never succeeded -> all must stay retryable, not lost"
 
 
@@ -511,16 +513,13 @@ def test_partial_multi_device_retry_completes_without_resending_success(monkeypa
     })
     calls = []
     def partial(tokens, title, body, data, badge=None):
-        token = tokens[0]
-        calls.append(token)
-        if len(calls) == 1:
-            return {"sent": 0, "tickets": [{"status": "error", "details": {"error": "transient"}}]}
-        return {"sent": 1, "tickets": [{"status": "ok", "id": token}]}
+        calls.append(list(tokens))
+        return {"sent": 1, "devices": len(tokens), "errors": {"transient": 1} if len(calls) == 1 else {}}
     assert push_gateway.process_pending_once(partial, limit=10)["failed"] == 1
     _force_due(user)
     assert push_gateway.process_pending_once(partial, limit=10)["sent"] == 1
     assert outbox_rows(user)[0]["status"] == "sent"
-    assert len(calls) == 3, "the successful first-attempt device must not be re-sent"
+    assert len(calls) == 2 and len(calls[1]) == 1, "the successful first-attempt device must not be re-sent"
 
 
 def test_system_push_is_localized_per_device_not_per_last_seen(monkeypatch):

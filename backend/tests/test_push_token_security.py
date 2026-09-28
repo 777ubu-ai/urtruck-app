@@ -39,6 +39,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from database import db as ddb
 from database import registration_dal as reg_dal
+from database.db import get_conn
 
 ddb.init_db()
 reg_dal.init_registration_schema()
@@ -222,7 +223,7 @@ def test_same_device_user_switch_via_explicit_logout_still_works():
     assert tok_a_native not in [t["push_token"] for t in _native_tokens(uid_a)]
 
 
-def test_invalid_native_token_marked_inactive_not_deleted(monkeypatch=None):
+def test_invalid_native_token_marked_inactive_not_deleted(monkeypatch):
     """Invalid/unregistered native delivery deactivates, never deletes."""
     uid_a, tok_a = _new_user_token()
     dead_tok = "fcm-unit-test-dead0001"

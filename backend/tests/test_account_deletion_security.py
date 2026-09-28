@@ -68,6 +68,10 @@ def _auth(token):
 def _native_tokens(uid):
     return [d for d in push_gateway.active_devices(uid) if d.get("push_provider") in ("fcm", "apns")]
 
+def _web_subs(uid):
+    with get_conn() as c:
+        return c.execute("SELECT * FROM push_subscriptions WHERE user_id=? AND active=1", (uid,)).fetchall()
+
 
 def _delete(token, method="delete"):
     if method == "post":
@@ -144,10 +148,10 @@ def test_delete_deactivates_native_and_web_push():
     uid, token = _new_user(name="Push cleanup")
     _register_push(token, "both")
     assert len(_native_tokens(uid)) == 1
-    assert len(push_sender._web_subs(uid)) == 1
+    assert len(_web_subs(uid)) == 1
     _delete(token)
     assert _native_tokens(uid) == []
-    assert push_sender._web_subs(uid) == []
+    assert _web_subs(uid) == []
 
 
 def test_delete_does_not_affect_other_user():
@@ -159,7 +163,7 @@ def test_delete_does_not_affect_other_user():
     assert reg_dal.get_driver(uid_a)["status"] == "deleted"
     assert reg_dal.get_driver(uid_b)["status"] != "deleted"
     assert len(_native_tokens(uid_b)) == 1
-    assert len(push_sender._web_subs(uid_b)) == 1
+    assert len(_web_subs(uid_b)) == 1
     assert reg_dal.get_driver_by_token(token_b) == uid_b
 
 

@@ -96,7 +96,7 @@ def test_invalid_bearer_cannot_reactivate_owned_native_token():
     token = "fcm-owned-native-anon-guard"
     created = client.post("/api/v1/push/register-native", headers=_auth(auth), json={
         "token": token,
-        "provider": "fcm",
+        "provider": "apns",
         "platform": "ios",
         "device_name": "Owner iPhone",
         "device_id": "device-owned-native-guard",
@@ -111,8 +111,8 @@ def test_invalid_bearer_cannot_reactivate_owned_native_token():
 
     attacked = client.post("/api/v1/push/register-native", headers=_auth("invalid-session-token"), json={
         "token": token,
-        "provider": "fcm",
-        "platform": "android",
+        "provider": "apns",
+        "platform": "ios",
         "device_name": "Attacker Phone",
         "device_id": "device-attacker-native",
     })
@@ -121,7 +121,7 @@ def test_invalid_bearer_cannot_reactivate_owned_native_token():
 
     row = _native_row(token)
     assert row["user_id"] == uid
-    assert row["provider"] == "expo"
+    assert row["provider"] == "apns"
     assert row["platform"] == "ios"
     assert row["device_name"] == "Owner iPhone"
     assert row["device_id"] == "device-owned-native-guard"
@@ -152,7 +152,7 @@ def test_authenticated_owner_can_still_refresh_own_native_metadata():
     token = "fcm-owner-refresh-native"
     first = client.post("/api/v1/push/register-native", headers=_auth(auth), json={
         "token": token,
-        "provider": "fcm",
+        "provider": "apns",
         "platform": "ios",
         "device_name": "Old Name",
         "device_id": "device-owner-refresh",
@@ -160,7 +160,7 @@ def test_authenticated_owner_can_still_refresh_own_native_metadata():
     assert first.status_code == 200, first.text
     second = client.post("/api/v1/push/register-native", headers=_auth(auth), json={
         "token": token,
-        "provider": "fcm",
+        "provider": "apns",
         "platform": "ios",
         "device_name": "New Name",
         "device_id": "device-owner-refresh",

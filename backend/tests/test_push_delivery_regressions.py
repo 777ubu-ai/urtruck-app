@@ -19,9 +19,8 @@ def test_trip_bid_push_targets_driver_id():
 
 def test_push_info_has_safe_registration_counts():
     src = (ROOT / 'backend/services/push_sender.py').read_text(encoding='utf-8')
-    assert '"native_android"' in src
-    assert '"native_ios"' in src
-    assert '"web_active"' in src
+    assert '"web"' in src and '"native"' in src
+    assert '"active"' in src and '"legacy_ignored"' in src
 
 
 def test_native_push_uses_dedicated_audible_android_channel():
@@ -41,8 +40,8 @@ def test_qa_push_diagnostics_are_token_guarded_and_masked():
     assert qa.count('_require_agent_token(x_qa_agent_token)') >= 3
     assert 'native_token_diagnostics(uid)' in qa
     assert 'send_native_debug(' in qa
-    assert '"token_masked": _mask_token(t.get("token"))' in sender
-    assert '"token": t.get("token")' not in sender
+    assert '"token": _mask_token(d.get("push_token") or "")' in sender
+    assert '"token": d.get("push_token")' not in sender
 
 
 def test_direct_push_diagnostics_are_native_only():

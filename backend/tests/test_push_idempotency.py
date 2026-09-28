@@ -24,4 +24,4 @@ def test_push_sender_skips_successfully_delivered_event(monkeypatch):
     )
 
     assert result["duplicate"] is True
-    assert result["total"] == 0
+    assert result["sent"] == 0

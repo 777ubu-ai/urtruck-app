@@ -85,11 +85,11 @@ def _row(event_key, uid):
 
 
 def _always_ok(tokens, title, body, data, badge=None):
-    return {"sent": len(tokens), "tickets": [{"status": "ok", "id": f"ticket-{i}"} for i in range(len(tokens))]}
+    return {"sent": len(tokens), "devices": len(tokens), "errors": {}}
 
 
 def _always_fail_transient(tokens, title, body, data, badge=None):
-    return {"sent": 0, "tickets": [{"status": "error", "details": {"error": "RATE_LIMIT_EXCEEDED"}}], "error": "rate_limited"}
+    return {"sent": 0, "devices": len(tokens), "errors": {"rate_limited": 1}, "error": "rate_limited"}
 
 
 class _FlakyThenOk:
@@ -102,8 +102,8 @@ class _FlakyThenOk:
     def __call__(self, tokens, title, body, data, badge=None):
         self.calls += 1
         if self.calls <= self.fail_times:
-            return {"sent": 0, "tickets": [{"status": "error", "details": {"error": "transient"}}], "error": "transient"}
-        return {"sent": len(tokens), "tickets": [{"status": "ok"}] * len(tokens)}
+            return {"sent": 0, "devices": len(tokens), "errors": {"transient": 1}, "error": "transient"}
+        return {"sent": len(tokens), "devices": len(tokens), "errors": {}}
 
 
 def _poison(tokens, title, body, data, badge=None):
@@ -322,7 +322,7 @@ def test_11_immediate_success_prevents_worker_duplicate(monkeypatch):
 
     def fake_send_native(user_id, title, body, data, badge=None, provider=None):
         calls["native"] += 1
-        return 1, 1  # (sent, total_devices) — push-closure track signature
+        return {"sent": 1, "devices": 1, "already_delivered": 0, "errors": {}}
 
     monkeypatch.setattr(push_sender, "_send_web", lambda *a, **k: 0)
     monkeypatch.setattr(push_sender, "_send_native", fake_send_native)
