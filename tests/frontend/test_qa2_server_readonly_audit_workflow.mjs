@@ -92,6 +92,37 @@ test('representative server output keeps PID, latency, swap, PSI and sizes', () 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('port-8002 process fields require strict safe values', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa2-audit-process-'));
+  const input = path.join(dir, 'input.txt');
+  const json = path.join(dir, 'audit.json');
+  const markdown = path.join(dir, 'summary.md');
+  fs.writeFileSync(input, [
+    'SECTION=port-8002-process',
+    'PROCESS_8002_PID=12345',
+    'PROCESS_8002_PPID=1',
+    'PROCESS_8002_USER=ubuntu',
+    'PROCESS_8002_COMM=uvicorn',
+    'PROCESS_8002_CPU_PCT=2.1',
+    'PROCESS_8002_MEM_PCT=1.2',
+    'PROCESS_8002_CGROUP=systemd:/system.slice/urtruck-qa2.service',
+    'PROCESS_8002_SUPERVISION=systemd-unit-cgroup',
+    'PROCESS_8002_PID=not-a-pid',
+    'PROCESS_8002_CPU_PCT=2%',
+    'PROCESS_8002_USER=ubuntu secret',
+    'PROCESS_8002_CGROUP=systemd:/bad path',
+    'PROCESS_8002_SUPERVISION=arbitrary-command',
+  ].join('\n'));
+  const result = spawnSync('python3', ['scripts/sanitize_qa2_audit.py', input, json, markdown], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const published = fs.readFileSync(json, 'utf8');
+  assert.match(published, /PROCESS_8002_PID=12345/);
+  assert.match(published, /PROCESS_8002_CPU_PCT=2\.1/);
+  assert.match(published, /PROCESS_8002_CGROUP=systemd:\/system\.slice\/urtruck-qa2\.service/);
+  assert.doesNotMatch(published, /not-a-pid|2%|ubuntu secret|bad path|arbitrary-command/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('QA2 server audit rejects server-mutating commands', () => {
   const forbidden = [
     /\brm\b/i,

@@ -25,7 +25,14 @@ FIELD_PATTERNS = {
     "top-cpu": re.compile(r"^(PID|\s*\d+\s+\d+\s+[A-Za-z0-9._-]+\s+[A-Za-z0-9._-]+\s+[0-9.]+\s+[0-9.]+\s+\d+\s+.+)$"),
     "top-rss": re.compile(r"^(PID|\s*\d+\s+\d+\s+[A-Za-z0-9._-]+\s+[A-Za-z0-9._-]+\s+[0-9.]+\s+[0-9.]+\s+\d+\s+.+)$"),
     "listeners": re.compile(r"^(?:PORT=(?:8001|8002|8003|3101)|PORT_8002_PID=\d+)$"),
-    "port-8002-process": re.compile(r"^(PROCESS_8002_(PID|PPID|USER|COMM|ELAPSED|CPU_PCT|MEM_PCT|RSS_KB|EXEC|CWD|SUPERVISION)=|PROCESS_8002_CGROUP=(systemd|user|docker|unknown):[-A-Za-z0-9_./:]+$)"),
+    "port-8002-process": re.compile(
+        r"(?:PROCESS_8002_(?:PID|PPID|RSS_KB)=\d+|"
+        r"PROCESS_8002_(?:USER|COMM)=[A-Za-z0-9._-]+|"
+        r"PROCESS_8002_ELAPSED=[0-9:-]+|"
+        r"PROCESS_8002_(?:CPU_PCT|MEM_PCT)=\d+(?:\.\d+)?|"
+        r"PROCESS_8002_SUPERVISION=(?:systemd-unit-cgroup|ppid-1-needs-systemd-correlation|parent-\d+|listener-unavailable)|"
+        r"PROCESS_8002_CGROUP=(?:systemd|user|docker|unknown):[-A-Za-z0-9_./:]+)"
+    ),
     "systemd": re.compile(r"^(UNIT=urtruck-(qa2|factory)(-ai)?\.service|(?:Id|ActiveState|SubState|MainPID|FragmentPath|ExecMainStartTimestamp)=([A-Za-z0-9_./:+ -]+))$"),
     "nginx-routing": re.compile(r"^server_name (qa2\.urtruck\.kz|pro-test\.urtruck\.kz) -> proxy_pass http://127\.0\.0\.1:[0-9]{1,5}$"),
     "docker-images": re.compile(r"^DOCKER_IMAGE=[A-Za-z0-9./_-]+:[A-Za-z0-9._-]+\|sha256:[0-9a-f]{12,64}\|[0-9.]+[KMGTP]B$"),
