@@ -162,8 +162,8 @@ The public synthetic corpus is now a checked-in fixture at
 ## Deterministic Translation Memory foundation
 
 Source commits: `b9f6364e` (engine), `18b806f4` (candidate data), `c1901d07`
-(tests/report), `69f67d69` (CI inclusion), and `731666dd` (typed exact-slot
-matching). The
+(tests/report), `69f67d69` (CI inclusion), `731666dd` (typed exact-slot
+matching), and `7f67e2e3` (cached shadow index). The
 engine is exact-match only, language/intent/slot/version scoped, and validates
 typed logistics facts and polarity after whitelist rendering. It is disabled
 by default (`TRANSLATION_MEMORY_ENABLED=false`) and shadow-enabled by default;
@@ -196,3 +196,7 @@ After tightening the typed-slot matcher, source CI run
 on `731666dd` passed: 79 backend tests, 25 Node workflow tests, replay and
 compile checks passed; `deploy` was skipped. The additional test proves that a
 trailing unmatched phrase cannot be swallowed by a final slot capture.
+
+Final source-only run [#36445664465](https://github.com/777ubu-ai/urtruck-app/actions/runs/36445664465)
+on `7f67e2e3` passed with 79 backend tests and 25 Node workflow tests; replay
+and compile checks passed, and `deploy` remained skipped.
