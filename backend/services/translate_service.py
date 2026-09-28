@@ -36,6 +36,24 @@ LANG_ALIAS = {
 
 TRANSLATION_PROMPT_VERSION = "logistics-v2-nllb-quality-gate"
 
+
+def _translation_memory_shadow(text: str, target_lang: str, source_lang: str | None):
+    """Run the local TM only when explicitly enabled; never logs raw text."""
+    if os.environ.get("TRANSLATION_MEMORY_ENABLED", "false").casefold() != "true" and os.environ.get("TRANSLATION_MEMORY_SHADOW_MODE", "true").casefold() != "true":
+        return None
+    try:
+        from qa_ai_service.translation_memory.engine import TranslationMemory
+        from pathlib import Path
+        data = Path(__file__).resolve().parents[1] / "qa_ai_service" / "translation_memory" / "data"
+        tm = TranslationMemory.from_jsonl(data)
+        result = tm.translate(text, source_lang or "auto", target_lang, os.environ.get("TRANSLATION_MEMORY_INTENT", "generic"))
+        if result.text and os.environ.get("TRANSLATION_MEMORY_ENABLED", "false").casefold() == "true":
+            return {"translated_text": result.text, "provider": "translation_memory", "source_lang": source_lang or "auto"}
+    except (ImportError, OSError, ValueError, KeyError):
+        # TM is an accelerator, never a reason to break the existing provider.
+        return None
+    return None
+
 SYSTEM_PROMPT = (
     "You are a logistics translation engine. "
     "Translate the text exactly and neutrally. "
@@ -108,6 +126,10 @@ def translate_text(text: str, target_lang: str, source_lang: str = None) -> dict
     source_lang = _normalize_lang_code(source_lang) or source_lang
     if source_lang and target_lang == source_lang:
         return {"translated_text": text, "provider": "skip_same_lang", "source_lang": source_lang}
+
+    memory_result = _translation_memory_shadow(text, target_lang, source_lang)
+    if memory_result:
+        return memory_result
 
     provider = _get_provider()
     api_key = _get_api_key()

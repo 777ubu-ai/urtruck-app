@@ -158,3 +158,28 @@ The public synthetic corpus is now a checked-in fixture at
 `f8439956a911f49677df217011b7e9ee3f42e5c42a4fb389adb67528c36be97a`.
 `SOURCE_TESTS` verifies that checksum and requires exactly 58 PASS with case
 28 as the only failing case ID; it makes no AI or QA2 request.
+
+## Deterministic Translation Memory foundation
+
+Source commits: `b9f6364e` (engine) and `18b806f4` (candidate data). The
+engine is exact-match only, language/intent/slot/version scoped, and validates
+typed logistics facts and polarity after whitelist rendering. It is disabled
+by default (`TRANSLATION_MEMORY_ENABLED=false`) and shadow-enabled by default;
+the existing NLLB path and beam/model settings are unchanged. No QA2 deploy,
+APK build or production change was made.
+
+All ten JSONL seed files contain 25 candidate templates and terminology rows
+(`approved` count: 0); Chinese
+logistics terms and border names remain pending native/domain review. Protected
+values are passed as validated slots and are not written to metrics. The
+optional `translate_service` hook can return a TM result only when the feature
+flag is explicitly enabled; otherwise it falls through to the configured
+provider.
+
+Local source checks: Python compile PASS; `git diff --check` PASS. A 1,000-call
+local exact-match benchmark measured p50 0.032 ms and p95 0.042 ms on this
+machine (the test budget is p50 <=50 ms and p95 <=200 ms). Pytest is not
+installed in the current Mac interpreter, so the full backend test count must
+come from the normal CI environment. QA2 runtime SHA remains UNKNOWN; the
+feature is not approved for user responses until terminology and template
+review plus shadow evidence are complete.

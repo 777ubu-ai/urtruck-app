@@ -12,7 +12,7 @@ def normalize_text(text: str) -> str:
     value = re.sub(r"\s+", " ", value)
     value = re.sub(r"\s*([,;:!?])\s*", r"\1 ", value)
     value = re.sub(r"\s*-\s*", "-", value)
-    return value.strip(" ".strip())
+    return value.strip()
 
 
 def normalize_number(value: str) -> str:
