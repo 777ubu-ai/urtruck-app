@@ -675,7 +675,7 @@ jobs:
           sshpass -e scp -o StrictHostKeyChecking=no scripts/qa2_ai_readonly_diagnostic.py \
             "$SERVER_USER@$SERVER_HOST:$remote_script"
           sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
-            "set -e; trap 'rm -f '$remote_script'' EXIT; sudo -n env QA2_DIAGNOSTIC_SAFE_CORPUS=1 /home/ubuntu/urtruck-qa2-ai/venv/bin/python '$remote_script'"
+            "set -e; trap 'rm -f '$remote_script'' EXIT; sudo -n /home/ubuntu/urtruck-qa2-ai/venv/bin/python '$remote_script'"
           echo '--- host resources after ---'
           sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
             'set -e; date -Iseconds; free -h; sudo systemctl show urtruck-qa2-ai.service -p MemoryCurrent -p MemoryPeak -p CPUUsageNSec --no-pager'
