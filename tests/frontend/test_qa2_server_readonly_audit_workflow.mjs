@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 const workflow = fs.readFileSync('.github/workflows/qa2-server-readonly-audit.yml', 'utf8');
@@ -20,7 +23,7 @@ test('QA2 server audit gathers only technical capacity and process evidence', ()
     'df -hT', 'df -iP', 'free -h', 'swapon --show --bytes', 'vmstat 1 3', '/proc/pressure/memory',
     '/proc/pressure/io', '/proc/pressure/cpu', 'PORT_8002_PID', 'PROCESS_8002_EXEC',
     'PROCESS_8002_CWD', 'PROCESS_8002_CGROUP_BEGIN', 'ActiveState',
-    'FragmentPath', 'PROCESS_8002_CMD', 'server_name[[:space:]]', 'docker image ls', 'docker volume ls',
+    'FragmentPath', 'server_name[[:space:]]', 'docker image ls', 'docker volume ls',
     'docker builder du', 'technical-directory-sizes', 'source_sha',
     'synthetic_translation RU_TO_ZH', 'synthetic_translation ZH_TO_RU',
     'synthetic_translation EN_TO_ZH', 'pswpin', 'pswpout',
@@ -28,8 +31,38 @@ test('QA2 server audit gathers only technical capacity and process evidence', ()
     assert.ok(workflow.includes(required), `missing required read-only evidence: ${required}`);
   }
   assert.match(workflow, /allowed = \('status', 'source_sha', 'version', 'private', 'translation_model', 'speech_model', 'languages'\)/);
-  assert.match(workflow, /sanitized': True/);
+  assert.match(workflow, /sanitize_qa2_audit\.py/);
+  assert.doesNotMatch(workflow, /PROCESS_8002_CMD/);
+  assert.match(workflow, /SERVER_SSH_KNOWN_HOSTS/);
+  assert.match(workflow, /StrictHostKeyChecking=yes/);
+  assert.doesNotMatch(workflow, /StrictHostKeyChecking=no/);
   assert.doesNotMatch(workflow, /printenv|env\s*\||\.env|Authorization:|Bearer\s+/i);
+});
+
+test('allowlist artifact sanitizer removes command-line and header secrets from every output', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa2-audit-'));
+  const input = path.join(dir, 'input.txt');
+  const json = path.join(dir, 'audit.json');
+  const markdown = path.join(dir, 'summary.md');
+  fs.writeFileSync(input, [
+    'SECTION=port-8002-process',
+    'PROCESS_8002_CMD=python --password example-secret --token=example-token',
+    'PROCESS_8002_CGROUP_BEGIN',
+    'cgroup=/system.slice/urtruck-qa2.service',
+    'SECTION=health',
+    'Authorization: Bearer example-token',
+    'postgres://user:example-password@host/db',
+    'SECTION=nginx-routing',
+    'server_name qa2.urtruck.kz -> proxy_pass http://127.0.0.1:8002',
+  ].join('\n'));
+  const result = spawnSync('python3', ['scripts/sanitize_qa2_audit.py', input, json, markdown], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const published = `${fs.readFileSync(json, 'utf8')}\n${fs.readFileSync(markdown, 'utf8')}`;
+  for (const secret of ['--password example-secret', '--token=example-token', 'postgres://user:example-password@host/db', 'Authorization: Bearer example-token']) {
+    assert.equal(published.includes(secret), false, `secret leaked: ${secret}`);
+  }
+  assert.equal(published.includes('PROCESS_8002_CMD'), false);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('QA2 server audit rejects server-mutating commands', () => {
