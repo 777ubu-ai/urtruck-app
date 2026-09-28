@@ -27,6 +27,18 @@ AI_ROOT = Path(os.getenv("QA2_AI_ROOT", "/home/ubuntu/urtruck-qa2-ai"))
 AI_URL = "http://127.0.0.1:8003"
 MESSAGE_TARGETS = {146: "zh", 147: "ru", 148: "zh"}
 
+# This corpus is intentionally public, synthetic QA text.  It is the only
+# text emitted by the safe diagnostic mode; saved deal messages and voice
+# transcripts are never opened in that mode.
+SAFE_TRANSLATION_CASES = (
+    ("ru", "zh", "Алматы — Астана, груз 1500 USD, 10 тонн, тент."),
+    ("zh", "ru", "阿拉木图—阿斯塔纳，货物1500美元，10吨，篷布车。"),
+    ("ru", "en", "Алматы — Астана, груз 1500 USD, 10 тонн, тент."),
+    ("en", "ru", "Almaty — Astana, cargo 1500 USD, 10 tonnes, tent truck."),
+    ("en", "zh", "Almaty — Astana, cargo 1500 USD, 10 tonnes, tent truck."),
+    ("zh", "en", "阿拉木图—阿斯塔纳，货物1500美元，10吨，篷布车。"),
+)
+
 
 def emit(kind: str, **values):
     print(json.dumps({"kind": kind, **values}, ensure_ascii=False), flush=True)
@@ -168,6 +180,86 @@ def endpoint_translate(message_id: int, text: str, target: str):
         )
 
 
+def safe_translation_corpus():
+    """Exercise only prepared logistics phrases against the existing AI API.
+
+    `/translate` is the private model endpoint, so it has a warm model but no
+    message/translation-memory cache.  We report that distinction explicitly
+    instead of fabricating a cache hit or a queue duration that the installed
+    service does not expose.
+    """
+    for index, (source, target, text) in enumerate(SAFE_TRANSLATION_CASES, start=1):
+        for attempt in ("fresh", "warm_repeat"):
+            started = time.perf_counter()
+            try:
+                status, payload = post_json(
+                    "/translate",
+                    {"text": text, "source_lang": source, "target_lang": target},
+                )
+                elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+                detail = payload.get("detail") if isinstance(payload, dict) else None
+                error = (
+                    detail.get("message") if isinstance(detail, dict) else detail
+                ) if status >= 400 else None
+                emit(
+                    "safe_translation",
+                    case_id=index,
+                    attempt=attempt,
+                    source_lang=source,
+                    target_lang=target,
+                    input_text=text,
+                    http=status,
+                    translated_text=payload.get("translated_text") if status < 400 else None,
+                    error_code=error if status >= 400 else None,
+                    cache_hit=False,
+                    cache_scope="ai_endpoint_has_no_translation_memory",
+                    queue_ms="unavailable",
+                    model_load_ms="preloaded_or_unavailable",
+                    inference_ms="unavailable",
+                    response_ms=elapsed_ms,
+                )
+            except Exception as exc:
+                emit(
+                    "safe_translation",
+                    case_id=index,
+                    attempt=attempt,
+                    source_lang=source,
+                    target_lang=target,
+                    input_text=text,
+                    http=None,
+                    translated_text=None,
+                    error_code=type(exc).__name__,
+                    cache_hit=False,
+                    cache_scope="ai_endpoint_has_no_translation_memory",
+                    queue_ms="unavailable",
+                    model_load_ms="preloaded_or_unavailable",
+                    inference_ms="unavailable",
+                    response_ms=round((time.perf_counter() - started) * 1000, 2),
+                )
+
+
+def model_inventory():
+    """Report only local model directory names and sizes; never download."""
+    models = AI_ROOT / "models"
+    if not models.is_dir():
+        emit("model_inventory", status="models_directory_missing")
+        return
+    for path in sorted(models.iterdir()):
+        if not path.is_dir():
+            continue
+        try:
+            bytes_total = sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
+        except OSError:
+            bytes_total = None
+        emit(
+            "model_inventory",
+            model_name=path.name,
+            bytes_total=bytes_total,
+            candidate_kind=(
+                "installed_large_whisper" if "large-v3-turbo" in path.name
+                else "other_local_model"
+            ),
+        )
 def beam_benchmark(rows):
     sys.path.insert(0, str(AI_ROOT / "app"))
     from ctranslate2 import Translator
@@ -404,12 +496,19 @@ def voice_local_benchmark(row):
 
 def main():
     snapshot("start")
+    if os.getenv("QA2_DIAGNOSTIC_SAFE_CORPUS") == "1":
+        model_inventory()
+        safe_translation_corpus()
+        snapshot("finish")
+        return
     rows, latest_voice = load_rows()
     emit("database", path=str(DB_PATH), messages_found=[row["id"] for row in rows], latest_voice_id=latest_voice["id"] if latest_voice else None)
     if os.getenv("QA2_DIAGNOSTIC_VOICE_ONLY") == "1":
-        voice_measurement(latest_voice)
-        snapshot("after_voice_endpoint")
-        voice_local_benchmark(latest_voice)
+        # Legacy mode is kept fail-closed: it no longer reads stored voice or
+        # emits a transcript.  A future benchmark needs explicitly approved,
+        # non-private 10/15/20-second fixtures.
+        emit("voice_benchmark", status="approved_non_private_fixtures_required")
+        model_inventory()
         snapshot("finish")
         return
     for row in rows:

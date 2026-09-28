@@ -68,6 +68,7 @@ test('QA2 exposes a diagnostic-only local AI runner without mutation commands', 
   assert.match(workflow, /du -sh \/home\/ubuntu\/urtruck-qa2-ai/);
   assert.match(workflow, /free -h/);
   assert.match(workflow, /systemctl show urtruck-qa2-ai\.service/);
+  assert.match(workflow, /QA2_DIAGNOSTIC_SAFE_CORPUS=1/);
   assert.doesNotMatch(workflow, /diagnose_ai[\s\S]*systemctl restart/);
 });
 
