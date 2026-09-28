@@ -15,11 +15,23 @@ import resource
 import time
 import urllib.error
 import urllib.request
+import importlib.util
 from pathlib import Path
 from urllib.parse import urlparse
 
 AI_ROOT = Path(os.getenv("QA2_AI_ROOT", "/home/ubuntu/urtruck-qa2-ai"))
 AI_URL = os.getenv("QA2_AI_URL", "http://127.0.0.1:8003").rstrip("/")
+DIAGNOSTIC_SOURCE_SHA = os.getenv("QA2_DIAGNOSTIC_SOURCE_SHA", "unknown")
+QUALITY_PATH = Path(os.getenv("QA2_DIAGNOSTIC_QUALITY_PATH", ""))
+
+def quality_failures_from_source(text: str, candidate: str, source: str, target: str) -> list[str] | None:
+    if not QUALITY_PATH.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("qa2_diagnostic_quality", QUALITY_PATH)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    return module.translation_quality_failures(text, candidate, source, target)
 
 # Public, synthetic logistics texts.  Each direction exercises price/currency,
 # weight, cities, body type, negation, date, and a short reply.
@@ -204,12 +216,18 @@ def run_corpus() -> bool:
                 error = detail.get("message") if isinstance(detail, dict) else detail
                 rejected_candidate = detail.get("candidate") if status == 422 and isinstance(detail, dict) else None
                 gate_failure_reasons = detail.get("gate_failure_reasons") if status == 422 and isinstance(detail, dict) else None
+                provenance = "server" if gate_failure_reasons else None
+                if status == 422 and rejected_candidate and not gate_failure_reasons:
+                    gate_failure_reasons = quality_failures_from_source(text, rejected_candidate, source, target)
+                    provenance = "diagnostic_source" if gate_failure_reasons is not None else None
                 semantic_pass, missing, forbidden = semantic_check(target, key, translated)
                 row = {
                     "case_id": case_id, "phrase_kind": key, "attempt": attempt,
                     "source_lang": source, "target_lang": target, "input_text": text,
                     "http": status, "translated_text": translated,
                     "rejected_candidate": rejected_candidate, "gate_failure_reasons": gate_failure_reasons,
+                    "gate_reason_provenance": provenance, "diagnostic_source_sha": DIAGNOSTIC_SOURCE_SHA,
+                    "runtime_reason_codes_available": bool(detail.get("gate_failure_reasons")) if isinstance(detail, dict) else False,
                     "error_code": error if status is None or status >= 400 else None,
                     "semantic_pass": semantic_pass if status == 200 else False,
                     "missing_markers": missing, "forbidden_terms": forbidden,

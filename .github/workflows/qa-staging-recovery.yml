@@ -671,11 +671,12 @@ jobs:
           echo '--- host resources before ---'
           sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
             'set -e; date -Iseconds; df -h /home/ubuntu; du -sh /home/ubuntu/urtruck-qa2-ai /home/ubuntu/urtruck-qa2; free -h; nproc; uptime; sudo systemctl show urtruck-qa2-ai.service -p ActiveState -p SubState -p MemoryCurrent -p MemoryPeak -p CPUUsageNSec --no-pager'
-          remote_script="/tmp/qa2-ai-readonly-diagnostic-${GITHUB_RUN_ID}.py"
-          sshpass -e scp -o StrictHostKeyChecking=no scripts/qa2_ai_readonly_diagnostic.py \
-            "$SERVER_USER@$SERVER_HOST:$remote_script"
+          remote_dir="/tmp/qa2-ai-readonly-diagnostic-${GITHUB_RUN_ID}"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "mkdir -p '$remote_dir'"
+          sshpass -e scp -o StrictHostKeyChecking=no scripts/qa2_ai_readonly_diagnostic.py backend/qa_ai_service/quality.py \
+            "$SERVER_USER@$SERVER_HOST:$remote_dir/"
           sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
-            "set -e; trap 'rm -f '$remote_script'' EXIT; sudo -n /home/ubuntu/urtruck-qa2-ai/venv/bin/python '$remote_script'"
+            "set -e; trap 'rm -rf '$remote_dir'' EXIT; sudo -n env QA2_DIAGNOSTIC_QUALITY_PATH='$remote_dir/quality.py' QA2_DIAGNOSTIC_SOURCE_SHA='${QA_SOURCE_SHA}' /home/ubuntu/urtruck-qa2-ai/venv/bin/python '$remote_dir/qa2_ai_readonly_diagnostic.py'"
           echo '--- host resources after ---'
           sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
             'set -e; date -Iseconds; free -h; sudo systemctl show urtruck-qa2-ai.service -p MemoryCurrent -p MemoryPeak -p CPUUsageNSec --no-pager'

@@ -89,6 +89,45 @@ assert not module.semantic_check('zh', 'schedule', '乌鲁木齐，09:30，日�
   assert.equal(result.status, 0, result.stderr);
 });
 
+test('HTTP 422 keeps the candidate and derives reason codes from the supplied source copy', () => {
+  const sourceQuality = path.join(process.cwd(), 'backend/qa_ai_service/quality.py');
+  const temporaryQuality = path.join(os.tmpdir(), `urtruck-quality-${process.pid}.py`);
+  fs.copyFileSync(sourceQuality, temporaryQuality);
+  const code = String.raw`
+import contextlib
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+os.environ['QA2_DIAGNOSTIC_QUALITY_PATH'] = ${JSON.stringify(temporaryQuality)}
+os.environ['QA2_DIAGNOSTIC_SOURCE_SHA'] = 'test-source-sha'
+spec = importlib.util.spec_from_file_location('diagnostic', 'scripts/qa2_ai_readonly_diagnostic.py')
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.post_translate = lambda text, source, target: (422, {'detail': {'message': 'translation confidence too low', 'candidate': 'waterfall'}}, 1.0)
+buffer = io.StringIO()
+with contextlib.redirect_stdout(buffer):
+    assert module.run_corpus() is False
+rows = [json.loads(line) for line in buffer.getvalue().splitlines() if line]
+translations = [row for row in rows if row['kind'] == 'safe_translation']
+assert len(translations) == 60
+assert all(row['http'] == 422 for row in translations)
+assert all(row['rejected_candidate'] == 'waterfall' for row in translations)
+assert all(row['gate_reason_provenance'] == 'diagnostic_source' for row in translations)
+assert all(row['diagnostic_source_sha'] == 'test-source-sha' for row in translations)
+assert all(row['runtime_reason_codes_available'] is False for row in translations)
+assert all(isinstance(row['gate_failure_reasons'], list) for row in translations)
+assert all(row['semantic_pass'] is False for row in translations)
+`;
+  try {
+    const result = spawnSync('python3', ['-c', code], { cwd: process.cwd(), encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    fs.rmSync(temporaryQuality, { force: true });
+  }
+});
+
 test('QA2 AI diagnostic source has no legacy application-data paths', () => {
   const source = fs.readFileSync(path.join(process.cwd(), runner), 'utf8');
   for (const forbidden of ['sqlite3', 'chat_messages', '/transcribe', 'transcript_text', 'voice_duration']) {

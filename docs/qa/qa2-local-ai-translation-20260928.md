@@ -74,3 +74,21 @@ the temporary platform key expires automatically after one hour.
 - Translation: QA2 matrix pending; source tests are not QA2 acceptance.
 - STT: BLOCKED pending approved non-personal RU/ZH fixtures with references.
 - Native push: BLOCKED pending QA2 FCM configuration and physical delivery.
+
+## Read-only gate-reason diagnostic — source only
+
+- Source commit `0f57275e47f57b211a8dc8c9e5e54654a048fe9e` adds structured
+  `gate_failure_reasons` to a new QA2 AI-service response. It does **not**
+  weaken the quality gate: `translation_quality_ok(...)` is exactly the
+  negation of `translation_quality_failures(...)`.
+- QA2 runtime has not been installed or changed, therefore runtime source SHA
+  remains **UNKNOWN**. A future diagnostic-only workflow copies the runner and
+  this source revision of `backend/qa_ai_service/quality.py` only into a
+  temporary `/tmp` directory, executes the synthetic loopback corpus, then
+  removes that directory. It does not deploy or restart the AI service.
+- On an older runtime that returns HTTP 422 with `detail.candidate` but without
+  reason codes, the runner records that candidate and computes its structured
+  reasons with the temporary source copy. Such rows are explicitly marked
+  `gate_reason_provenance=diagnostic_source`; they are diagnostic evidence,
+  not proof that QA2 has the source commit installed. Runtime-provided reason
+  codes are marked `server`.
