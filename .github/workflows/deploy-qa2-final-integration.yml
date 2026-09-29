@@ -11,6 +11,9 @@ on:
         description: Exact SHA already merged into qa2/integration-candidate
         required: true
         type: string
+  push:
+    tags:
+      - 'qa2-final-deploy-*'
 
 concurrency:
   group: urtruck-qa2-final-integration
@@ -27,7 +30,7 @@ jobs:
     environment:
       name: qa2
     env:
-      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      QA_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
@@ -42,12 +45,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${{ inputs.confirmation }}" = DEPLOY_QA2_FINAL
-          test "$GITHUB_REF_NAME" = qa2/integration-candidate
           test "$QA_SOURCE_SHA" != ""
+          if test "$GITHUB_EVENT_NAME" = workflow_dispatch; then
+            test "${{ inputs.confirmation }}" = DEPLOY_QA2_FINAL
+            test "$GITHUB_REF_NAME" = qa2/integration-candidate
+          else
+            test "$GITHUB_REF_TYPE" = tag
+            test "$GITHUB_REF_NAME" = "qa2-final-deploy-$QA_SOURCE_SHA"
+            test "$QA_SOURCE_SHA" = "$GITHUB_SHA"
+          fi
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ inputs.source_sha || github.sha }}
           fetch-depth: 1
       - name: Verify exact merged source
         shell: bash

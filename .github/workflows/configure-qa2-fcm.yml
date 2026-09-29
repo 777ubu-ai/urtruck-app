@@ -7,6 +7,9 @@ on:
         description: Type CONFIGURE_QA2_FCM to update only QA2 native FCM
         required: true
         type: string
+  push:
+    tags:
+      - 'qa2-final-fcm-*'
 
 concurrency:
   group: urtruck-qa2-fcm-configuration
@@ -23,6 +26,7 @@ jobs:
     environment:
       name: qa2
     env:
+      QA_SOURCE_SHA: ${{ github.sha }}
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
@@ -37,7 +41,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${{ inputs.confirmation }}" = "CONFIGURE_QA2_FCM"
+          if test "$GITHUB_EVENT_NAME" = workflow_dispatch; then
+            test "${{ inputs.confirmation }}" = "CONFIGURE_QA2_FCM"
+            test "$GITHUB_REF_NAME" = qa2/integration-candidate
+          else
+            test "$GITHUB_REF_TYPE" = tag
+            test "$GITHUB_REF_NAME" = "qa2-final-fcm-$QA_SOURCE_SHA"
+            test "$QA_SOURCE_SHA" = "$GITHUB_SHA"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Verify exact merged source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
+          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
 
       - name: Validate Firebase secrets without printing them
         shell: bash
