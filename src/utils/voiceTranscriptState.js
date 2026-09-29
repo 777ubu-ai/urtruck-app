@@ -43,36 +43,26 @@ export function createVoiceTranscriptState(api) {
       return { changed: false, resume: false };
     }
     // Новый original не должен наследовать перевод старой версии текста.
-    // В частности, первый poll может принести transcript уже после того, как
-    // prewarm получил 409 TRANSCRIPTION_IN_PROGRESS. Это не ошибка перевода:
-    // старое состояние нужно снять и один раз продолжить перевод original,
-    // иначе пользователь навсегда видит «распознавание выполняется».
     const previousText = entry.transcriptText;
     const changed = previousText !== text;
     // Не очищаем target, который держит текущий успешный STT: load() уже
     // ожидает его Promise. Сброс требуется лишь когда original действительно
     // меняется после уже сохранённого текста.
     if (previousText && changed) entry.targets.clear();
-    const resume = !previousText && changed && [...entry.targets.values()]
-      .some((target) => target?.error?.code === 'TRANSCRIPTION_IN_PROGRESS');
     Object.assign(entry, { transcriptText: text, sourceLang: source, provider: originalProvider });
-    return { changed, resume };
+    return { changed };
   }
 
   function hydrate(messages) {
     if (!active) return;
     let changed = false;
-    const resumed = [];
     for (const item of messages) {
       if (!item?.voice || !item.id || !item.transcript) continue;
       const entry = entryFor(item.id);
-      const wasVisible = entry.visible;
       const original = setOriginal(entry, item.transcript, item.transcriptLang, item.transcriptProvider);
       changed = original.changed || changed;
-      if (original.resume && wasVisible && entry.sourceLang) resumed.push(entry.id);
     }
     if (changed) emit();
-    return resumed;
   }
 
   function transcribe(entry, lang, isCurrent) {
@@ -153,18 +143,6 @@ export function createVoiceTranscriptState(api) {
   return {
     hydrate,
     view,
-    prewarm(id) {
-      if (!active || !id) return Promise.resolve();
-      const entry = entryFor(id);
-      const requestGeneration = generation;
-      const isCurrent = () => active && generation === requestGeneration;
-      const pending = transcribe(entry, '', isCurrent);
-      // Publish the in-flight state immediately. If the user taps “В текст”
-      // while background STT is running, toggle() reuses this same promise
-      // instead of issuing a second request that receives HTTP 409.
-      emit();
-      return pending.catch(() => null);
-    },
     connect(listener) {
       active = true;
       listeners.add(listener);
@@ -203,10 +181,6 @@ export function createVoiceTranscriptState(api) {
       if (!target?.translatedText) return;
       target.showOriginal = !target.showOriginal;
       emit();
-    },
-    ensureVisible(language) {
-      return Promise.all([...entries.values()].filter((entry) => entry.visible)
-        .map((entry) => load(entry, normalizeVoiceLanguage(language))));
     },
   };
 }
