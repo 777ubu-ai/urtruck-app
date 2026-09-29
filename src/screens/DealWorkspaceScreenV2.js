@@ -57,6 +57,7 @@ import VoiceMessageBubble from '../components/VoiceMessageBubble';
 import { createVoiceTranscriptState } from '../utils/voiceTranscriptState';
 import { routeMetricValues } from '../utils/routeMetricValues';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
+import { storage } from '../utils/storage';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
@@ -93,6 +94,21 @@ const VOICE_MAX_DURATION_SEC = 60;
 // Stop slightly before the contract boundary: native stop/unload is async and
 // can otherwise make a nominal 60s recording persist as 60.xs / 61s.
 const VOICE_AUTO_STOP_GUARD_MS = 500;
+
+// Язык в строках истории старых версий backend не сохранялся. Нам не нужна
+// стопроцентная лингвистическая классификация: эта эвристика лишь решает,
+// показывать ли явную кнопку перевода у входящего текста. Неизвестный и
+// смешанный текст остаётся переводимым по нажатию.
+function inferChatTextLanguage(text) {
+  const value = String(text || '');
+  const han = (value.match(/[\u3400-\u9fff]/g) || []).length;
+  const cyrillic = (value.match(/[\u0400-\u04ff]/g) || []).length;
+  const latin = (value.match(/[A-Za-z]/g) || []).length;
+  if (han > 0 && han >= cyrillic && han >= latin) return 'zh';
+  if (cyrillic > 0 && cyrillic >= latin) return 'ru';
+  if (latin > 0) return 'en';
+  return null;
+}
 
 // WhatsApp-style chat is the default view; the trip map is a deliberate,
 // button-triggered secondary view (PR #255 review: "map-first бардак" was the
@@ -390,11 +406,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [translations, setTranslations] = React.useState({});
   const [translationErrors, setTranslationErrors] = React.useState({});
   const [translating, setTranslating] = React.useState(null);
-  const [autoTranslate, setAutoTranslate] = React.useState(false);
-  // Не повторять автоматический перевод при опросе сообщений каждые 3 секунды.
-  const autoTranslationRef = React.useRef({
-    scope: null, running: false, enabled: false, attempted: new Set(), pending: new Set(),
-  });
+  const translationScope = JSON.stringify([roomId, session?.user?.id || null, lang.toLowerCase()]);
+  const translationScopeRef = React.useRef(translationScope);
+  translationScopeRef.current = translationScope;
+  const translationCacheKey = `ur_chat_translation_v1:${roomId || 'none'}:${session?.user?.id || 'anonymous'}:${lang.toLowerCase()}`;
   const [voiceRevision, setVoiceRevision] = React.useState(0);
   const voiceScope = JSON.stringify([roomId, session?.user?.id || null]);
   const historyStatus = historyState?.scope === voiceScope ? historyState.status : 'loading';
@@ -635,14 +650,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           read: !!message.is_read,
         };
       });
-      const resumedVoiceTranslations = voiceText.hydrate(mapped) || [];
-      // Если poll принёс transcript после 409 «распознавание выполняется»,
-      // продолжить только уже открытый пользователем перевод. Не трогаем
-      // скрытые сообщения и не запускаем повтор на каждом poll: hydrate
-      // возвращает id исключительно при новом original.
-      resumedVoiceTranslations.forEach((messageId) => {
-        void voiceText.retry({ id: messageId }, lang);
-      });
+      // hydrate только восстанавливает сохранённые результаты. Он не должен
+      // сам запускать STT/перевод при polling или после перезапуска чата.
+      voiceText.hydrate(mapped);
       const serverDocs = (attachResult?.attachments || [])
         .filter((a) => a.kind === 'document')
         .map((a) => {
@@ -765,63 +775,23 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [messages.length]);
 
   React.useEffect(() => {
-    const targetLang = getLanguage().toLowerCase();
-    const scope = JSON.stringify([roomId, session?.user?.id || null, targetLang]);
-    const queue = autoTranslationRef.current;
-    if (queue.scope !== scope) {
-      queue.scope = scope;
-      queue.running = false;
-      queue.attempted = new Set();
-      queue.pending = new Set();
-      // Перевод принадлежит конкретной комнате и языку получателя.
-      setTranslations({});
-      setTranslationErrors({});
-      return undefined;
-    }
-    queue.enabled = autoTranslate;
-    if (!autoTranslate || historyStatus !== 'ready' || queue.running) return undefined;
-    const pending = messages.filter((m) => m?.id && !m.mine && !m.system
-      && m.text && !m.photo && !m.voice && !translations[m.id]
-      && !queue.attempted.has(m.id) && !queue.pending.has(m.id)).slice(0, 6);
-    if (!pending.length) return undefined;
-    queue.running = true;
-    pending.forEach((item) => queue.pending.add(item.id));
-    (async () => {
-      for (const item of pending) {
-        if (queue.scope !== scope || !queue.enabled) break;
-        queue.attempted.add(item.id);
-        try {
-          const result = await chatAPI.translate(item.id, targetLang);
-          if (queue.scope === scope && queue.enabled && result?.translated_text) {
-            setTranslations((prev) => (prev[item.id] ? prev : ({
-              ...prev,
-              [item.id]: { text: result.translated_text, provider: result.provider, showOriginal: false },
-            })));
-          } else if (queue.scope === scope && !queue.enabled) {
-            queue.attempted.delete(item.id);
-          }
-        } catch {
-          // Ошибка качества не вызывает новый AI-запрос на каждом опросе.
-          // Повторить можно существующей кнопкой перевода.
-          if (queue.scope === scope && !queue.enabled) queue.attempted.delete(item.id);
-        } finally {
-          if (queue.scope === scope) queue.pending.delete(item.id);
-        }
-      }
-      if (queue.scope === scope) {
-        pending.forEach((item) => queue.pending.delete(item.id));
-        queue.running = false;
-      }
-    })();
-    return undefined;
-  }, [autoTranslate, messages, translations, roomId, session?.user?.id, lang, historyStatus]);
+    // Это локальный read-only cache уже выполненных ручных переводов. Он не
+    // запускает модель при открытии чата и не смешивает комнаты/аккаунты.
+    let cancelled = false;
+    setTranslations({});
+    setTranslationErrors({});
+    setTranslating(null);
+    void storage.get(translationCacheKey).then((raw) => {
+      if (cancelled || !raw) return;
+      try {
+        const cached = JSON.parse(raw);
+        if (cached && typeof cached === 'object' && !Array.isArray(cached)) setTranslations(cached);
+      } catch { /* повреждённый кэш не мешает открытому чату */ }
+    });
+    return () => { cancelled = true; };
+  }, [translationCacheKey]);
 
   React.useEffect(() => voiceText.connect(() => setVoiceRevision((value) => value + 1)), [voiceText]);
-
-  React.useEffect(() => {
-    // Уже раскрытый голос при смене языка получает новый перевод из original.
-    voiceText.ensureVisible(lang);
-  }, [voiceText, lang]);
 
   const toggleVoiceTranscript = React.useCallback(async (item) => {
     if (item.voiceScope !== voiceScope) return;
@@ -1081,15 +1051,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     sendRawText(t('deal_chat_call_link_text'));
   }, [sendRawText, t]);
 
-  const toggleAutoTranslate = React.useCallback(() => {
-    setAttachOpen(false);
-    setAutoTranslate((current) => {
-      const next = !current;
-      toast(next ? t('autotranslate_on') : t('autotranslate_off'), 'info', 1800);
-      return next;
-    });
-  }, [toast, t]);
-
   const sendLocation = React.useCallback(async () => {
     setAttachOpen(false);
     if (locationSending) return;
@@ -1331,7 +1292,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       return;
     }
     try {
-      const sentVoice = await chatAPI.send({
+      await chatAPI.send({
         roomId, toUserId: recipientId, text: `🎤 ${ui.voiceMessage}`, photoUrl: upload.voice_key,
         isVoice: true, voiceDuration: duration,
         cargoId: deal?.cargo_id || params.cargoId || null, tripId: deal?.trip_id || params.tripId || null,
@@ -1339,19 +1300,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       });
       setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'sent' } : m)));
       setTimeout(loadMessages, 120);
-      // Start STT while the user is still reading the chat. The visible
-      // "В текст" action then uses the server-cached result instead of making
-      // the user wait for CPU inference after the tap.
-      if (sentVoice?.message_id) {
-        voiceText.prewarm(sentVoice.message_id)
-          .then(() => loadMessages());
-      }
     } catch {
       const message = t('voice_error_send');
       failVoice(message);
       toast(message, 'error');
     }
-  }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, voiceText, toast, t]);
+  }, [recording, roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
 
   const retryFailedVoice = React.useCallback(async (item) => {
     if (!item?.voiceUri || !roomId || !recipientId) return;
@@ -1364,7 +1318,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         type: item.voiceMime || null,
       });
       if (!upload?.voice_key) throw new Error('voice upload did not return a key');
-      const sentVoice = await chatAPI.send({
+      await chatAPI.send({
         roomId,
         toUserId: recipientId,
         text: `🎤 ${ui.voiceMessage}`,
@@ -1375,10 +1329,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         tripId: deal?.trip_id || params.tripId || null,
         clientMsgId: item.clientMsgId || item.id,
       });
-      if (sentVoice?.message_id) {
-        voiceText.prewarm(sentVoice.message_id)
-          .then(() => loadMessages());
-      }
       setMessages((items) => items.map((message) => (
         message.id === item.id ? { ...message, sendStatus: 'sent', sendError: null } : message
       )));
@@ -1390,7 +1340,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       )));
       toast(message, 'error');
     }
-  }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, voiceText, toast, t]);
+  }, [roomId, recipientId, deal?.cargo_id, deal?.trip_id, params.cargoId, params.tripId, ui.voiceMessage, loadMessages, toast, t]);
 
   // The timer effect uses a ref so the 60-second hard stop always invokes the
   // latest callback without restarting the timer on every render.
@@ -1514,56 +1464,47 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             ) : item.text ? (
               <>
                 <Text style={[s.messageText, { color: item.mine ? bubbleMineColors.textColor : colors.text }]}>
-                  {translations[item.id] && !translations[item.id].showOriginal ? translations[item.id].text : item.text}
+                  {item.text}
                 </Text>
-                {!item.mine && !item.system ? (
+                {!item.mine && !item.system && (!inferChatTextLanguage(item.text) || inferChatTextLanguage(item.text) !== lang.toLowerCase()) ? (
                   <>
                   <TouchableOpacity
                     style={s.translateBtn}
-                    disabled={translating === item.id}
+                    disabled={translating === item.id || !!translations[item.id]}
                     onPress={async () => {
-                      const current = translations[item.id];
-                      if (current) {
-                        setTranslations((prev) => ({ ...prev, [item.id]: { ...current, showOriginal: !current.showOriginal } }));
-                        return;
-                      }
-                      const queue = autoTranslationRef.current;
-                      const scope = JSON.stringify([roomId, session?.user?.id || null, getLanguage().toLowerCase()]);
-                      if (queue.scope === scope && queue.pending.has(item.id)) return;
-                      // Ручной запрос участвует в той же single-flight очереди, что и auto.
-                      // Иначе включение auto между нажатием и ответом создаст второй запрос.
-                      if (queue.scope === scope) {
-                        queue.pending.add(item.id);
-                        queue.attempted.add(item.id);
-                      }
+                      if (translations[item.id] || translating === item.id) return;
+                      const requestScope = translationScopeRef.current;
                       setTranslating(item.id);
-                      let translated = false;
                       try {
                         const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
                         // Не показывать запоздалый ответ в другой комнате или на другом языке.
-                        if (queue.scope === scope && result?.translated_text) {
-                          translated = true;
-                          setTranslations((prev) => ({
-                            ...prev,
-                            [item.id]: { text: result.translated_text, provider: result.provider, showOriginal: false },
-                          }));
+                        if (translationScopeRef.current === requestScope && result?.translated_text) {
+                          setTranslations((prev) => {
+                            const next = {
+                              ...prev,
+                              [item.id]: { text: result.translated_text, provider: result.provider },
+                            };
+                            // В памяти backend уже есть canonical cache; этот
+                            // небольшой UI-cache нужен, чтобы раскрытый
+                            // перевод остался видимым после перезапуска app.
+                            void storage.set(translationCacheKey, JSON.stringify(next));
+                            return next;
+                          });
                           setTranslationErrors((prev) => {
                             if (!prev[item.id]) return prev;
                             const next = { ...prev };
                             delete next[item.id];
                             return next;
                           });
-                        } else if (queue.scope === scope) {
+                        } else if (translationScopeRef.current === requestScope) {
                           setTranslationErrors((prev) => ({ ...prev, [item.id]: { code: null } }));
                         }
                       } catch (error) {
-                        if (queue.scope === scope) {
+                        if (translationScopeRef.current === requestScope) {
                           setTranslationErrors((prev) => ({ ...prev, [item.id]: { code: error?.code || null } }));
                         }
                       } finally {
-                        if (queue.scope === scope) {
-                          queue.pending.delete(item.id);
-                          if (!translated) queue.attempted.delete(item.id);
+                        if (translationScopeRef.current === requestScope) {
                           setTranslating(null);
                         }
                       }
@@ -1572,14 +1513,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   >
                     <Feather name="globe" size={11} color={colors.info} />
                     <Text style={[s.translateText, { color: colors.info }]}>
-                      {translating === item.id ? '...' : translations[item.id] ? (translations[item.id].showOriginal ? t('hide_original') : t('show_original')) : translationErrors[item.id] ? t('repeat_action') : t('translate')}
+                      {translating === item.id ? '...' : translations[item.id] ? t('translation_ready') : translationErrors[item.id] ? t('repeat_action') : t('translate')}
                     </Text>
                   </TouchableOpacity>
+                  {translations[item.id] ? (
+                    <Text style={[s.translatedText, { color: item.mine ? bubbleMineColors.textColor : colors.text }]} testID="deal-chat-message-translation">
+                      {translations[item.id].text}
+                    </Text>
+                  ) : null}
                   {translationErrors[item.id] ? (
                     <Text style={[s.translateError, { color: colors.textMuted }]} testID="deal-chat-translation-error">
-                      {translationErrors[item.id].code && t(`err_${translationErrors[item.id].code}`) !== `err_${translationErrors[item.id].code}`
-                        ? t(`err_${translationErrors[item.id].code}`)
-                        : t('translation_unavailable')}
+                      {t('translation_failed')}
                     </Text>
                   ) : null}
                   </>
@@ -1622,7 +1566,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         </View>
       </React.Fragment>
     );
-  }, [colors, translations, translationErrors, translating, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
+  }, [colors, translations, translationErrors, translating, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor, translationCacheKey]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
@@ -1773,7 +1717,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     { key: 'location', icon: 'map-marker-alt', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' },
     { key: 'document', icon: 'file-alt', label: ui.attachDocument, onPress: pickAndSendDocument, testID: 'deal-chat-attach-document' },
     { key: 'contact', icon: 'user-alt', label: ui.attachContact, onPress: sendContactCard, testID: 'deal-chat-attach-contact' },
-    { key: 'translate', icon: 'language', label: ui.attachTranslate, onPress: toggleAutoTranslate, testID: 'deal-chat-attach-translate' },
   ];
 
   const hasComposerText = input.length > 0;
@@ -2325,6 +2268,7 @@ const s = StyleSheet.create({
   photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
   translateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   translateText: { fontSize: 11, fontWeight: '700' },
+  translatedText: { marginTop: 4, fontSize: 14, lineHeight: 20, fontStyle: 'italic' },
   translateError: { marginTop: 2, fontSize: 11, lineHeight: 15 },
   emptyText: { textAlign: 'center', marginTop: 24, fontSize: 13 },
   jumpLatest: { position: 'absolute', right: 14, bottom: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#168759', paddingHorizontal: 11, height: 34, borderRadius: 17, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, elevation: 3 },

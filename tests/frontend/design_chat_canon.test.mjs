@@ -140,10 +140,11 @@ test('DWSV2: dead styles removed (pager dots, disabled circle, recording button,
   for (const dead of ['attachPager', 'attachPagerDot', 'attachPagerDotActive', 'composerCircleDisabled', 'recordingButton', 'voiceRow']) {
     assert.ok(!new RegExp(`\\b${dead}\\b`).test(workspaceSrc), `${dead} must be gone`);
   }
-  assert.match(workspaceSrc, /PLUS_MENU\.map/, 'attach menu stays data-driven with all 8 localized labels');
-  for (const key of ['attachPhoto', 'attachCamera', 'attachShare', 'statuses', 'attachLocation', 'attachDocument', 'attachContact', 'attachTranslate']) {
+  assert.match(workspaceSrc, /PLUS_MENU\.map/, 'attach menu stays data-driven with localized labels');
+  for (const key of ['attachPhoto', 'attachCamera', 'attachShare', 'statuses', 'attachLocation', 'attachDocument', 'attachContact']) {
     assert.match(workspaceSrc, new RegExp(`label: ui\\.${key}\\b`));
   }
+  assert.doesNotMatch(workspaceSrc, /deal-chat-attach-translate/);
 });
 
 // ══ 3. VoiceMessageBubble gray-box render (light theme via stubbed hooks) ══

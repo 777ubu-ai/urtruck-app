@@ -122,7 +122,12 @@ export default function VoiceMessageBubble({
   const primaryTranscript = hasTranslation && !transcript?.showOriginal
     ? transcript.translatedText
     : transcript?.transcriptText;
-  const transcriptLabel = transcribing ? '…' : textVisible ? t('voice_hide_text') : transcript?.transcriptText ? t('voice_show_text') : t('voice_to_text');
+  // До явного действия не запускается ни STT, ни перевод. Аудио доступно
+  // независимо от этого действия; кнопка только раскрывает сохранённый либо
+  // вручную запрошенный текстовый перевод.
+  const transcriptLabel = transcribing ? '…' : textVisible ? t('voice_hide_text')
+    : transcript?.needsTranslation ? t('voice_translate')
+      : transcript?.transcriptText ? t('voice_show_text') : t('voice_translate');
 
   return (
     <View style={s.wrap} testID={testID}>
