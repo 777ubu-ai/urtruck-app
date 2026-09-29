@@ -43,9 +43,13 @@ def test_qa2_fcm_workflow_validates_android_project_and_rolls_back():
     raw = WORKFLOW.read_text(encoding="utf-8")
     assert "com.urtruck.app.qa2" in raw
     assert "QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64" in raw
-    assert '/home/ubuntu/urtruck-qa2/backend/.env' in raw
+    # The protected workflow reads the QA2 service environment directly.
+    # It must not fall back to a separate backend/.env path (that would
+    # select the wrong runtime database before calculating the outbox cutoff).
+    assert 'qa_env=/home/ubuntu/urtruck-qa2/.env' in raw
+    assert 'qa_env=/home/ubuntu/urtruck-qa2/backend/.env' not in raw
     assert "Firebase project IDs differ" in raw
-    assert "/home/ubuntu/urtruck-qa2/backend/.env.fcm-backup." in raw
+    assert "/home/ubuntu/urtruck-qa2/.env.fcm-backup." in raw
     assert "BACKUP=" in raw
     assert "QA2_FCM_ROLLBACK" in raw
     assert "PRODUCTION_AFTER=healthy-unchanged" in raw
