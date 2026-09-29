@@ -173,7 +173,7 @@ jobs:
           "${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" bash -s -- "$QA2_FCM_PROJECT_ID" <<'REMOTE'
           set -euo pipefail
           expected_project="$1"
-          qa_env=/home/ubuntu/urtruck-qa2/backend/.env
+          qa_env=/home/ubuntu/urtruck-qa2/.env
           payload=/tmp/urtruck-qa2-fcm-service-account.json
           test -f "$qa_env" && test -f "$payload"
           cd /home/ubuntu/urtruck-qa2/backend
@@ -185,7 +185,7 @@ jobs:
           PY
           )"
           [[ "$cutoff" =~ ^[0-9]+$ ]]
-          backup="/home/ubuntu/urtruck-qa2/backend/.env.fcm-backup.$(date -u +%Y%m%dT%H%M%SZ)"
+          backup="/home/ubuntu/urtruck-qa2/.env.fcm-backup.$(date -u +%Y%m%dT%H%M%SZ)"
           cp -- "$qa_env" "$backup"
           chmod 600 "$backup"
           printf 'BACKUP=%s\n' "$backup" > /tmp/urtruck-qa2-fcm.state
@@ -280,10 +280,10 @@ jobs:
           test -f "$state" || exit 0
           . "$state"
           case "$BACKUP" in
-            /home/ubuntu/urtruck-qa2/backend/.env.fcm-backup.*) ;;
+            /home/ubuntu/urtruck-qa2/.env.fcm-backup.*) ;;
             *) echo QA2_FCM_BACKUP_PATH_INVALID >&2; exit 1 ;;
           esac
-          qa_env=/home/ubuntu/urtruck-qa2/backend/.env
+          qa_env=/home/ubuntu/urtruck-qa2/.env
           cp -- "$BACKUP" "$qa_env"
           chmod 600 "$qa_env"
           rm -f -- "$BACKUP" /tmp/urtruck-qa2-fcm.state /tmp/urtruck-qa2-fcm-service-account.json
@@ -306,7 +306,7 @@ jobs:
           if test -f "$state"; then
             backup="$(sed -n 's/^BACKUP=//p' "$state")"
             case "$backup" in
-              /home/ubuntu/urtruck-qa2/backend/.env.fcm-backup.*) rm -f -- "$backup" ;;
+              /home/ubuntu/urtruck-qa2/.env.fcm-backup.*) rm -f -- "$backup" ;;
               *) echo QA2_FCM_BACKUP_PATH_INVALID >&2; exit 1 ;;
             esac
             rm -f -- "$state"
