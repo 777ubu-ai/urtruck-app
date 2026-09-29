@@ -220,7 +220,14 @@ jobs:
           test "$(stat -c '%a' "$qa_env")" = 600
           echo "QA2_PUSH_OUTBOX_CUTOFF_ID=$cutoff"
           sudo -n systemctl restart urtruck-qa2.service
+          for attempt in $(seq 1 30); do
+            if test "$(systemctl is-active urtruck-qa2.service)" = active && curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
           test "$(systemctl is-active urtruck-qa2.service)" = active
+          curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null
           main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
           listener_pid="$(sudo -n ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
           service_cgroup="$(systemctl show -p ControlGroup --value urtruck-qa2.service)"
@@ -288,8 +295,14 @@ jobs:
           chmod 600 "$qa_env"
           rm -f -- "$BACKUP" /tmp/urtruck-qa2-fcm.state /tmp/urtruck-qa2-fcm-service-account.json
           sudo -n systemctl restart urtruck-qa2.service
+          for attempt in $(seq 1 30); do
+            if test "$(systemctl is-active urtruck-qa2.service)" = active && curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
           test "$(systemctl is-active urtruck-qa2.service)" = active
-          curl -fsS http://127.0.0.1:8002/health >/dev/null
+          curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null
           echo "QA2_FCM_ROLLBACK=restored"
           REMOTE
 
