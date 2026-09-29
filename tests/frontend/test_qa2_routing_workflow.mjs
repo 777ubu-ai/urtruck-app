@@ -30,5 +30,6 @@ test('routing procedure preserves local AI and systemd supervision with rollback
   assert.match(workflow, /Roll back QA2 routing settings on failure/);
   assert.match(workflow, /cp -- "\$BACKUP" "\$qa_env"/);
   assert.match(workflow, /systemctl restart urtruck-qa2\.service/);
+  assert.equal(script.match(/sudo -n ss -ltnpH 'sport = :8002'/g)?.length, 2);
   assert.doesNotMatch(script, /kill -TERM|kill -KILL|nohup|StrictHostKeyChecking=no|sshpass/);
 });
