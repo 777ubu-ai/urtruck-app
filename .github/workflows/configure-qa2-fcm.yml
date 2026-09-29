@@ -245,7 +245,24 @@ jobs:
           python3 - "$RUNNER_TEMP/qa2-push-info.json" <<'PY'
           import json, sys
           root = json.load(open(sys.argv[1], encoding="utf-8"))
-          gateway = root.get("native", {}).get("gateway", {})
+          def find_gateway(value):
+              if isinstance(value, dict):
+                  if {"mode", "fcm", "config_errors"}.issubset(value):
+                      return value
+                  for child in value.values():
+                      found = find_gateway(child)
+                      if found is not None:
+                          return found
+              elif isinstance(value, list):
+                  for child in value:
+                      found = find_gateway(child)
+                      if found is not None:
+                          return found
+              return None
+          gateway = find_gateway(root)
+          if gateway is None:
+              safe_keys = sorted(root) if isinstance(root, dict) else [type(root).__name__]
+              raise SystemExit(f"QA2_PUSH_GATEWAY_NOT_FOUND keys={safe_keys}")
           fcm = gateway.get("fcm", {})
           if gateway.get("mode") != "native":
               raise SystemExit("QA2_PUSH_MODE_NOT_NATIVE")
