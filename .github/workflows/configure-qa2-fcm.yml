@@ -10,6 +10,8 @@ on:
   push:
     tags:
       - 'qa2-final-fcm-*'
+    branches:
+      - 'qa2-final-fcm-*'
 
 concurrency:
   group: urtruck-qa2-fcm-configuration
@@ -45,7 +47,7 @@ jobs:
             test "${{ inputs.confirmation }}" = "CONFIGURE_QA2_FCM"
             test "$GITHUB_REF_NAME" = qa2/integration-candidate
           else
-            test "$GITHUB_REF_TYPE" = tag
+            test "$GITHUB_REF_TYPE" = tag -o "$GITHUB_REF_TYPE" = branch
             test "$GITHUB_REF_NAME" = "qa2-final-fcm-$QA_SOURCE_SHA"
             test "$QA_SOURCE_SHA" = "$GITHUB_SHA"
           fi

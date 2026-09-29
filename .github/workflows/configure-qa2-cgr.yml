@@ -10,6 +10,8 @@ on:
   push:
     tags:
       - 'qa2-final-cgr-*'
+    branches:
+      - 'qa2-final-cgr-*'
 
 concurrency:
   group: urtruck-qa2-cgr-config
@@ -46,7 +48,7 @@ jobs:
             test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
             test "${{ inputs.confirmation }}" = CONFIGURE_QA2_CGR
           else
-            test "$GITHUB_REF_TYPE" = tag
+            test "$GITHUB_REF_TYPE" = tag -o "$GITHUB_REF_TYPE" = branch
             test "$GITHUB_REF_NAME" = "qa2-final-cgr-$QA_SOURCE_SHA"
             test "$QA_SOURCE_SHA" = "$GITHUB_SHA"
           fi

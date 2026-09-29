@@ -14,6 +14,8 @@ on:
   push:
     tags:
       - 'qa2-final-routing-*'
+    branches:
+      - 'qa2-final-routing-*'
 
 concurrency:
   group: urtruck-qa2-routing-secure
@@ -46,7 +48,7 @@ jobs:
             test "${{ inputs.confirmation }}" = CONFIGURE_QA2_ROUTING_SECURE
             test "$GITHUB_REF_NAME" = qa2/integration-candidate
           else
-            test "$GITHUB_REF_TYPE" = tag
+            test "$GITHUB_REF_TYPE" = tag -o "$GITHUB_REF_TYPE" = branch
             test "$GITHUB_REF_NAME" = "qa2-final-routing-$QA_SOURCE_SHA"
             test "$QA_SOURCE_SHA" = "$GITHUB_SHA"
           fi
