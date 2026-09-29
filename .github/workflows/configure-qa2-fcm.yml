@@ -103,7 +103,7 @@ jobs:
               raise SystemExit("QA2_FCM_SERVICE_ACCOUNT_TYPE_INVALID")
           if not project_id or project_id != service_project or project_id != android_project:
               raise SystemExit("Firebase project IDs differ")
-          if packages != {expected_package}:
+          if expected_package not in packages:
               raise SystemExit("QA2_FCM_ANDROID_PACKAGE_MISMATCH")
           target = Path(sys.argv[1])
           target.write_text(json.dumps(service, separators=(",", ":")), encoding="utf-8")
@@ -266,6 +266,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${QA2_SSH_KEY:-}" ]; then
+            echo "QA2_FCM_ROLLBACK=not_required_before_remote_change"
+            exit 0
+          fi
           ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS"             "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           state=/tmp/urtruck-qa2-fcm.state

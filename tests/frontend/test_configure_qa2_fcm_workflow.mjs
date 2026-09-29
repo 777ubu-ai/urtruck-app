@@ -45,4 +45,7 @@ test('QA2 FCM workflow validates secrets and only writes native QA2 env', () => 
   assert.equal(/production.*\\.env/i.test(workflow), false);
   assert.match(workflow, /\^\[a-z0-9\]\[a-z0-9-\]\{4,29\}\$/);
   assert.match(workflow, /bash -s -- "\$QA2_FCM_PROJECT_ID"/);
+  assert.match(workflow, /if expected_package not in packages:/);
+  assert.doesNotMatch(workflow, /if packages != \{expected_package\}:/);
+  assert.ok(workflow.includes('QA2_FCM_ROLLBACK=not_required_before_remote_change'));
 });
