@@ -113,7 +113,7 @@ jobs:
           test -f "$qa_env" -a -f "$unit"
           grep -Fq "$qa_backend" "$unit"
           test "$(systemctl is-active urtruck-qa2.service)" = active
-          backup="$qa_backend/.env.cgr-backup.$(date -u +%Y%m%dT%H%M%SZ)"
+          backup="$qa_env.cgr-backup.$(date -u +%Y%m%dT%H%M%SZ)"
           cp -- "$qa_env" "$backup"
           chmod 600 "$backup"
           printf 'BACKUP=%s\n' "$backup" > /tmp/urtruck-qa2-cgr.state
@@ -161,14 +161,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          base="${QA2_API_URL%/}"
           for code in khorgos dostyk bakhty; do
-            curl -fsS --max-time 45 "$QA2_API_URL/api/v1/borders/live/$code?force=true" > "$RUNNER_TEMP/cgr-$code.json"
-            python3 - "$RUNNER_TEMP/cgr-$code.json" <<'PY'
+            body="$RUNNER_TEMP/cgr-$code.json"
+            http="$(curl --silent --show-error --max-time 45 --output "$body" --write-out '%{http_code}' "$base/api/v1/borders/live/$code?force=true" || true)"
+            case "$http" in
+              200)
+                python3 - "$body" <<'PY'
           import json, sys
           data = json.load(open(sys.argv[1], encoding="utf-8"))
           if not data.get("updated_at") and not data.get("fetched_at"):
               raise SystemExit("QA2_CGR_LIVE_TIMESTAMP_MISSING")
           PY
+                echo "QA2_CGR_${code}=live"
+                ;;
+              502)
+                python3 - "$body" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          if data.get("detail") != "CGR временно недоступен":
+              raise SystemExit("QA2_CGR_UNEXPECTED_502")
+          PY
+                echo "QA2_CGR_${code}=degraded-official-upstream"
+                ;;
+              *)
+                echo "QA2_CGR_${code}=failed-http-$http" >&2
+                exit 1
+                ;;
+            esac
           done
       - name: Verify production fingerprint unchanged
         shell: bash
