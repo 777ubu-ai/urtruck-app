@@ -14,6 +14,7 @@ test('QA2 FCM workflow uses pinned SSH and native systemd supervision', () => {
   assert.ok(workflow.includes('systemctl is-active urtruck-qa2.service'));
   assert.ok(workflow.includes('sudo -n systemctl restart urtruck-qa2.service'));
   assert.match(workflow, /sport = :8002/);
+  assert.equal(workflow.match(/sudo -n ss -ltnpH 'sport = :8002'/g)?.length, 2);
 });
 
 test('QA2 FCM workflow has no manual process replacement', () => {
