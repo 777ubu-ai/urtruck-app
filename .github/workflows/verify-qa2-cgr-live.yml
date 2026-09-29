@@ -1,0 +1,71 @@
+name: Verify QA2 CGR Live Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type VERIFY_QA2_CGR_LIVE
+        required: true
+        type: string
+      source_sha:
+        description: Exact SHA already merged into qa2/integration-candidate
+        required: true
+        type: string
+
+concurrency:
+  group: urtruck-qa2-cgr-live
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: qa2
+    env:
+      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      QA2_API_URL: ${{ secrets.QA2_API_URL }}
+    steps:
+      - name: Require QA2-only verification intent
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = VERIFY_QA2_CGR_LIVE
+          test "$GITHUB_REF_NAME" = qa2/integration-candidate
+          test -n "$QA_SOURCE_SHA"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 1
+      - name: Verify exact merged source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
+          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
+      - name: Record real CGR endpoint evidence without mock substitution
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${QA2_API_URL%/}"
+          mkdir -p cgr-evidence
+          status=0
+          for checkpoint in khorgos dostyk bakhty; do
+            code="$(curl --silent --show-error --output "cgr-evidence/$checkpoint.json" --write-out '%{http_code}' --max-time 25 "$base/api/v1/borders/live/$checkpoint" || true)"
+            printf '%s\n' "$code" > "cgr-evidence/$checkpoint.http-status"
+            case "$code" in
+              200) echo "CGR_$checkpoint=live" ;;
+              404|503) echo "CGR_$checkpoint=blocked-http-$code"; status=1 ;;
+              *) echo "CGR_$checkpoint=failed-http-$code"; status=1 ;;
+            esac
+          done
+          test "$status" = 0
+      - name: Upload CGR evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa2-cgr-live-evidence
+          path: cgr-evidence/
+          if-no-files-found: error

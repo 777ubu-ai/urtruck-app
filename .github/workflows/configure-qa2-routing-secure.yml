@@ -1,0 +1,164 @@
+name: Configure QA2 Routing Securely
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type CONFIGURE_QA2_ROUTING_SECURE
+        required: true
+        type: string
+      source_sha:
+        description: Exact SHA already merged into qa2/integration-candidate
+        required: true
+        type: string
+
+concurrency:
+  group: urtruck-qa2-routing-secure
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: qa2
+    env:
+      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      QA2_API_URL: ${{ secrets.QA2_API_URL }}
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+      QA_ROOT: /home/ubuntu/urtruck-qa2
+    steps:
+      - name: Require isolated QA2 routing intent
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = CONFIGURE_QA2_ROUTING_SECURE
+          test "$GITHUB_REF_NAME" = qa2/integration-candidate
+          test -n "$QA_SOURCE_SHA" && test -n "$OPENROUTESERVICE_API_KEY"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 1
+      - name: Verify exact merged source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
+          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
+      - name: Configure pinned SSH
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_SSH_KEY" && test -n "$SERVER_SSH_KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/qa2_routing_key
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > ~/.ssh/qa2_routing_known_hosts
+          chmod 600 ~/.ssh/qa2_routing_key ~/.ssh/qa2_routing_known_hosts
+          cat >> ~/.ssh/config <<EOF
+          Host qa2-routing
+            HostName $SERVER_HOST
+            User $SERVER_USER
+            IdentityFile ~/.ssh/qa2_routing_key
+            UserKnownHostsFile ~/.ssh/qa2_routing_known_hosts
+            StrictHostKeyChecking yes
+            BatchMode yes
+          EOF
+          ssh qa2-routing 'test "$(id -u)" -ne 0'
+      - name: Fingerprint production and QA2 state
+        run: |
+          set -euo pipefail
+          before="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256sum | awk '{print $1}')"
+          test -n "$before"
+          echo "PRODUCTION_VERSION_HASH_BEFORE=$before" >> "$GITHUB_ENV"
+          curl -fsS --max-time 20 "${QA2_API_URL%/}/api/v1/system/info" > qa2-routing-before.json
+      - name: Back up only QA2 env and set ORS key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key_file="$RUNNER_TEMP/qa2-ors-key"
+          umask 077
+          printf '%s' "$OPENROUTESERVICE_API_KEY" > "$key_file"
+          scp -q "$key_file" qa2-routing:/tmp/urtruck-qa2-ors-key
+          rm -f "$key_file"
+          ssh qa2-routing "QA_ROOT='$QA_ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          qa_env="$QA_ROOT/.env"
+          remote_key=/tmp/urtruck-qa2-ors-key
+          test -f "$qa_env" && test -f "$remote_key"
+          backup="$QA_ROOT/backups/routing-secure-$(date -u +%Y%m%dT%H%M%SZ)"
+          mkdir -p "$backup"
+          cp -p "$qa_env" "$backup/qa2.env"
+          chmod 600 "$backup/qa2.env"
+          python3 - "$qa_env" "$remote_key" <<'PY'
+          from pathlib import Path
+          import os, stat, sys
+          env_path, key_path = map(Path, sys.argv[1:])
+          key = key_path.read_text(encoding="utf-8").strip()
+          if not key: raise SystemExit("QA2_ORS_KEY_EMPTY")
+          values = {}
+          for raw in env_path.read_text(encoding="utf-8").splitlines():
+              if "=" in raw and not raw.lstrip().startswith("#"):
+                  name, value = raw.split("=", 1)
+                  values[name.strip()] = value.strip().strip('"').strip("'")
+          if values.get("TRANSCRIBE_PROVIDER") != "local_ai" or values.get("TRANSLATE_PROVIDER") != "local_ai":
+              raise SystemExit("QA2_LOCAL_AI_PROVIDER_PRECONDITION_FAILED")
+          lines = [line for line in env_path.read_text(encoding="utf-8").splitlines()
+                   if not line.startswith("OPENROUTESERVICE_API_KEY=")]
+          candidate = env_path.with_suffix(".routing.tmp")
+          candidate.write_text("\n".join(lines + [f"OPENROUTESERVICE_API_KEY={key}"]) + "\n", encoding="utf-8")
+          os.chmod(candidate, stat.S_IRUSR | stat.S_IWUSR)
+          candidate.replace(env_path)
+          key_path.unlink(missing_ok=True)
+          PY
+          printf 'BACKUP=%s\n' "$backup" > /tmp/urtruck-qa2-routing-secure.state
+          chmod 600 /tmp/urtruck-qa2-routing-secure.state
+          sudo systemctl restart urtruck-qa2.service
+          sudo systemctl is-active --quiet urtruck-qa2.service
+          curl -fsS --max-time 20 http://127.0.0.1:8002/health >/dev/null
+          REMOTE
+      - name: Verify real QA2 routing provider
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 "${QA2_API_URL%/}/health" >/dev/null
+          curl -fsS --max-time 20 "${QA2_API_URL%/}/api/v1/system/info" > qa2-routing-after.json
+          python3 - qa2-routing-after.json <<'PY'
+          import json, sys
+          routing = json.load(open(sys.argv[1], encoding="utf-8")).get("routing", {})
+          if routing.get("provider") == "none":
+              raise SystemExit("QA2_ROUTING_PROVIDER_NONE")
+          if not routing.get("ors_configured") and not routing.get("yandex_configured"):
+              raise SystemExit("QA2_ROUTING_NOT_CONFIGURED")
+          print("QA2_ROUTING_PROVIDER=" + str(routing.get("provider")))
+          PY
+          after="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256sum | awk '{print $1}')"
+          test "$after" = "$PRODUCTION_VERSION_HASH_BEFORE"
+          echo "PRODUCTION_FINGERPRINT_UNCHANGED=pass"
+      - name: Roll back only QA2 routing env after failure
+        if: failure()
+        run: |
+          set -euo pipefail
+          ssh qa2-routing "QA_ROOT='$QA_ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          state=/tmp/urtruck-qa2-routing-secure.state
+          test -f "$state" || exit 0
+          . "$state"
+          case "$BACKUP" in "$QA_ROOT"/backups/routing-secure-*) ;; *) exit 1 ;; esac
+          test -f "$BACKUP/qa2.env"
+          cp -p "$BACKUP/qa2.env" "$QA_ROOT/.env"
+          rm -f "$state" /tmp/urtruck-qa2-ors-key
+          sudo systemctl restart urtruck-qa2.service
+          sudo systemctl is-active --quiet urtruck-qa2.service
+          curl -fsS --max-time 20 http://127.0.0.1:8002/health >/dev/null
+          echo QA2_ROUTING_ROLLBACK=completed
+          REMOTE
+      - name: Remove temporary routing key
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/qa2-ors-key"
+          ssh qa2-routing 'rm -f /tmp/urtruck-qa2-ors-key' || true
