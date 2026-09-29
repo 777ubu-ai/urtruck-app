@@ -44,7 +44,9 @@ grep -Eq '(^|[[:space:]])(--port[= ]8002|8002)([[:space:]]|$)' "$unit"
 test "$(systemctl is-active urtruck-qa2.service)" = active
 main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
 listener_pid="$(sudo -n ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
-test "$main_pid" -gt 0 -a -n "$listener_pid" -a "$listener_pid" = "$main_pid"
+service_cgroup="$(systemctl show -p ControlGroup --value urtruck-qa2.service)"
+test "$main_pid" -gt 0 -a -n "$listener_pid" -a -n "$service_cgroup"
+grep -Fq "$service_cgroup" "/proc/$listener_pid/cgroup"
 
 backup="$qa_backend/.env.routing-backup.$(date -u +%Y%m%dT%H%M%SZ)"
 cp -- "$env_file" "$backup"
@@ -84,7 +86,9 @@ done
 test "$(systemctl is-active urtruck-qa2.service)" = active
 main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
 listener_pid="$(sudo -n ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
-test "$main_pid" -gt 0 -a "$listener_pid" = "$main_pid"
+service_cgroup="$(systemctl show -p ControlGroup --value urtruck-qa2.service)"
+test "$main_pid" -gt 0 -a -n "$listener_pid" -a -n "$service_cgroup"
+grep -Fq "$service_cgroup" "/proc/$listener_pid/cgroup"
 curl -fsS http://127.0.0.1:8002/health >/dev/null
 info="$(curl -fsS http://127.0.0.1:8002/api/v1/system/info)"
 printf '%s' "$info" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["routing"]["provider"] == "openrouteservice"'
