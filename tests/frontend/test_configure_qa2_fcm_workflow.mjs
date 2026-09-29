@@ -51,4 +51,6 @@ test('QA2 FCM workflow validates secrets and only writes native QA2 env', () => 
   assert.match(workflow, /if expected_package not in packages:/);
   assert.doesNotMatch(workflow, /if packages != \{expected_package\}:/);
   assert.ok(workflow.includes('QA2_FCM_ROLLBACK=not_required_before_remote_change'));
+  assert.ok(workflow.includes('qa_env=/home/ubuntu/urtruck-qa2/.env'));
+  assert.equal(workflow.includes('qa_env=/home/ubuntu/urtruck-qa2/backend/.env'), false);
 });
