@@ -15,8 +15,10 @@ from transformers import AutoTokenizer
 
 try:
     from .quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
+    from .translation_decoding import TRANSLATE_BEAM_SIZE, translation_max_decoding_length
 except ImportError:  # uvicorn runs this file as top-level main.py in QA2
     from quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
+    from translation_decoding import TRANSLATE_BEAM_SIZE, translation_max_decoding_length
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _translate_slot = threading.BoundedSemaphore(1)
@@ -35,6 +37,11 @@ NLLB_LANGS = {"ru": "rus_Cyrl", "zh": "zho_Hans", "kk": "kaz_Cyrl", "en": "eng_L
 KAZAKH_MARKERS = set("әғқңөұүһіӘҒҚҢӨҰҮҺІ")
 STT_MIN_WORD_CONFIDENCE = float(os.getenv("QA2_STT_MIN_WORD_CONFIDENCE", "0.50"))
 SOURCE_SHA = os.getenv("QA2_AI_SOURCE_SHA", "UNKNOWN").strip() or "UNKNOWN"
+# NLLB on the four-CPU QA2 host was configured with an unnecessarily costly
+# five-way beam and a fixed 512-token output ceiling.  Short chat messages then
+# spent tens of seconds decoding even when their valid translation is only a
+# few tokens.  Keep a conservative two-way beam and size the ceiling from the
+# source length; the semantic quality gate below remains mandatory.
 class TranslateRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     source_lang: str | None = None
@@ -114,8 +121,8 @@ def translate(body: TranslateRequest):
         result = translator.translate_batch(
             [source_tokens],
             target_prefix=[[target_token]],
-            beam_size=5,
-            max_decoding_length=512,
+            beam_size=TRANSLATE_BEAM_SIZE,
+            max_decoding_length=translation_max_decoding_length(len(source_tokens)),
         )[0]
         target_tokens = result.hypotheses[0][1:]
         translated = tokenizer.decode(
