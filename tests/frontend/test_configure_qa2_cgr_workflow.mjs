@@ -21,7 +21,7 @@ test('QA2 CGR workflow uses systemd, rollback and live gates', () => {
     '.env.cgr-backup.',
     'systemctl restart urtruck-qa2.service',
     '/api/v1/borders/catalog',
-    'khorgos dostyk bakhty',
+    'nur_zholy_horgos dostyk_alashankou bakhty_pokitu',
     'QA2_CGR_LIVE_TIMESTAMP_MISSING',
     'Verify production fingerprint unchanged',
     'Roll back QA2 CGR settings on failure',
