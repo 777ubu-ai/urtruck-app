@@ -25,6 +25,20 @@ test('повторный tap не вызывает модель, а ошибка
   assert.match(source, /storage\.set\(translationCacheKey, JSON\.stringify\(next\)\)/);
 });
 
+test('поздний текстовый ответ не публикуется после смены комнаты, пользователя, языка или закрытия экрана', () => {
+  assert.match(source, /const translationScope = JSON\.stringify\(\[roomId, session\?\.user\?\.id \|\| null, lang\.toLowerCase\(\)\]\)/);
+  assert.match(source, /translationScopeRef\.current = translationScope/);
+  assert.match(source, /mounted\.current && translationScopeRef\.current === requestScope && result\?\.translated_text/);
+  assert.match(source, /const translationCacheKey = `ur_chat_translation_v1:\$\{roomId \|\| 'none'\}:\$\{session\?\.user\?\.id \|\| 'anonymous'\}:\$\{lang\.toLowerCase\(\)\}`/);
+});
+
+test('кэш приватного текста недоступен без исходного пользователя и не вызывает модель при загрузке', () => {
+  const cacheEffect = source.slice(source.indexOf('React.useEffect(() => {\n    // Это локальный read-only cache'), source.indexOf('React.useEffect(() => voiceText.connect'));
+  assert.match(cacheEffect, /storage\.get\(translationCacheKey\)/);
+  assert.doesNotMatch(cacheEffect, /chatAPI\.translate|chatAPI\.transcribe/);
+  assert.match(source, /session\?\.user\?\.id \|\| 'anonymous'/);
+});
+
 test('голос не выполняет скрытый STT или перевод после отправки и polling', () => {
   assert.doesNotMatch(source, /voiceText\.prewarm|voiceText\.ensureVisible/);
   assert.doesNotMatch(voiceState, /\bprewarm\(|\bensureVisible\(/);
