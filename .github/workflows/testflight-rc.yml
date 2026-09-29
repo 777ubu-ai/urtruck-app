@@ -1,31 +1,49 @@
-name: UrTruck TestFlight Local Fallback
+name: UrTruck QA2 TestFlight
 
 on:
   workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type BUILD_QA2_TESTFLIGHT
+        required: true
+        type: string
+      source_sha:
+        description: Exact SHA already merged into qa2/integration-candidate
+        required: true
+        type: string
+  push:
+    branches:
+      - 'qa2-final-testflight-*'
 
 permissions:
   contents: read
 
 concurrency:
-  group: urtruck-testflight-local
-  cancel-in-progress: true
+  group: urtruck-qa2-testflight
+  cancel-in-progress: false
 
 jobs:
   build-and-upload:
     runs-on: macos-15
     timeout-minutes: 180
     env:
+      QA_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      EXPO_PUBLIC_API_URL: https://urtruck.kz
+      QA2_API_URL: ${{ secrets.QA2_API_URL }}
+      EXPO_PUBLIC_API_URL: ${{ secrets.QA2_API_URL }}
+      URTRUCK_BUILD_FLAVOR: qa2
+      URTRUCK_VERSION_NAME: 1.0.9
+      URTRUCK_MIN_IOS_BUILD: 76
       EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
       EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
       YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
       OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
 
     steps:
-      - name: Checkout exact release candidate
+      - name: Checkout exact QA2 candidate
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           fetch-depth: 0
 
       - name: Setup Node
@@ -37,25 +55,67 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify exact branch and credentials
+      - name: Verify protected QA2 TestFlight intent
         shell: bash
         run: |
           set -euo pipefail
-          case "${GITHUB_REF_NAME}" in
-            main|qa/master-hard-qa-20260916|fix/cgr-border-deal-integration-20260919) ;;
-            *)
-              echo "::error::TestFlight RC may only be built from main or an approved canonical QA branch."
-              exit 1
-              ;;
-          esac
+          test -n "$QA_SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          if test -n "${{ inputs.confirmation }}"; then
+            test "${{ inputs.confirmation }}" = BUILD_QA2_TESTFLIGHT
+            test "$GITHUB_REF_NAME" = qa2/integration-candidate
+          else
+            test "$GITHUB_REF_TYPE" = branch
+            test "$GITHUB_REF_NAME" = "qa2-final-testflight-$QA_SOURCE_SHA"
+            test "$GITHUB_SHA" = "$QA_SOURCE_SHA"
+          fi
+          git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
+          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
           test -n "${EXPO_TOKEN:-}"
           test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
           test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
-          echo "SHA=$(git rev-parse HEAD)"
+          test -n "${QA2_API_URL:-}"
+          QA_HOST="$(python3 - <<'PY'
+          from urllib.parse import urlparse
+          import os
+          print(urlparse(os.environ['QA2_API_URL']).hostname or '')
+          PY
+          )"
+          test "$QA_HOST" = qa2.urtruck.kz || {
+            echo "::error::QA2 TestFlight must target exactly qa2.urtruck.kz"
+            exit 1
+          }
+          test "${QA2_API_URL%/}" != https://urtruck.kz
+          curl -fsS --max-time 20 "${QA2_API_URL%/}/health" >/dev/null
+          echo "SOURCE_SHA=$QA_SOURCE_SHA"
+          echo "QA2_API_HOST=$QA_HOST"
           npx eas-cli@latest whoami
-          # Cloud-build diagnostic contract: npx eas-cli@latest build:view "$BUILD_ID" --json
 
-      - name: Inject release runtime configuration
+      - name: Verify resolved Expo QA2 configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx expo config --type public --json > "$RUNNER_TEMP/expo-public.json"
+          node - "$RUNNER_TEMP/expo-public.json" "$QA2_API_URL" <<'NODE'
+          const fs = require('fs');
+          const [configPath, expectedApi] = process.argv.slice(2);
+          const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          if (config.ios?.bundleIdentifier !== 'com.urtruck.app') {
+            throw new Error(`Unexpected iOS bundle: ${config.ios?.bundleIdentifier}`);
+          }
+          if (config.version !== '1.0.9') {
+            throw new Error(`Unexpected version: ${config.version}`);
+          }
+          if (config.extra?.urtruckBuildFlavor !== 'qa2') {
+            throw new Error(`Unexpected build flavor: ${config.extra?.urtruckBuildFlavor}`);
+          }
+          if ((config.extra?.urtruckApiUrl || '').replace(/\/+$/, '') !== expectedApi.replace(/\/+$/, '')) {
+            throw new Error('Resolved Expo config does not contain the exact QA2 API URL');
+          }
+          console.log('QA2_EXPO_CONFIG=pass');
+          NODE
+
+      - name: Inject QA2 runtime configuration
         shell: bash
         run: |
           node <<'NODE'
@@ -63,7 +123,9 @@ jobs:
           const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
           eas.build.production.env = {
             ...(eas.build.production.env || {}),
-            EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+            URTRUCK_BUILD_FLAVOR: process.env.URTRUCK_BUILD_FLAVOR,
+            URTRUCK_VERSION_NAME: process.env.URTRUCK_VERSION_NAME,
+            EXPO_PUBLIC_API_URL: process.env.QA2_API_URL,
             EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY,
             EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY
           };
@@ -85,23 +147,50 @@ jobs:
           sudo xcode-select -s "$XCODE_APP/Contents/Developer"
           xcodebuild -version
 
-      - name: Build signed IPA locally
+      - name: Build signed QA2 IPA locally
         shell: bash
         run: |
           set -euo pipefail
-          npx eas-cli@latest build --platform ios --profile production --local --non-interactive --output "$RUNNER_TEMP/UrTruck.ipa"
-          test -s "$RUNNER_TEMP/UrTruck.ipa"
-          shasum -a 256 "$RUNNER_TEMP/UrTruck.ipa" | tee "$RUNNER_TEMP/UrTruck.ipa.sha256"
+          npx eas-cli@latest build --platform ios --profile production --local --non-interactive --output "$RUNNER_TEMP/UrTruck-QA2.ipa"
+          test -s "$RUNNER_TEMP/UrTruck-QA2.ipa"
+          shasum -a 256 "$RUNNER_TEMP/UrTruck-QA2.ipa" | tee "$RUNNER_TEMP/UrTruck-QA2.ipa.sha256"
 
-      - name: Upload private IPA artifact
+      - name: Verify signed QA2 IPA identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ipa-unpacked"
+          unzip -q "$RUNNER_TEMP/UrTruck-QA2.ipa" -d "$RUNNER_TEMP/ipa-unpacked"
+          APP_DIR="$(find "$RUNNER_TEMP/ipa-unpacked/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$APP_DIR"
+          INFO="$APP_DIR/Info.plist"
+          BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw -o - "$INFO")"
+          VERSION_NAME="$(plutil -extract CFBundleShortVersionString raw -o - "$INFO")"
+          BUILD_NUMBER="$(plutil -extract CFBundleVersion raw -o - "$INFO")"
+          test "$BUNDLE_ID" = com.urtruck.app
+          test "$VERSION_NAME" = 1.0.9
+          case "$BUILD_NUMBER" in (*[!0-9]*|'') echo "::error::Non-numeric iOS build number"; exit 1;; esac
+          test "$BUILD_NUMBER" -gt "$URTRUCK_MIN_IOS_BUILD"
+          grep -R -a -F -q "${QA2_API_URL%/}" "$APP_DIR"
+          {
+            echo "sourceSHA=$QA_SOURCE_SHA"
+            echo "bundleIdentifier=$BUNDLE_ID"
+            echo "versionName=$VERSION_NAME"
+            echo "buildNumber=$BUILD_NUMBER"
+            echo "apiHost=qa2.urtruck.kz"
+            echo "ipaSHA256=$(shasum -a 256 "$RUNNER_TEMP/UrTruck-QA2.ipa" | awk '{print $1}')"
+          } | tee "$RUNNER_TEMP/UrTruck-QA2-manifest.txt"
+
+      - name: Upload private QA2 IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: UrTruck-TestFlight-IPA
+          name: UrTruck-QA2-TestFlight-IPA
           path: |
-            ${{ runner.temp }}/UrTruck.ipa
-            ${{ runner.temp }}/UrTruck.ipa.sha256
+            ${{ runner.temp }}/UrTruck-QA2.ipa
+            ${{ runner.temp }}/UrTruck-QA2.ipa.sha256
+            ${{ runner.temp }}/UrTruck-QA2-manifest.txt
           retention-days: 14
 
-      - name: Submit IPA to TestFlight
+      - name: Submit QA2 IPA to TestFlight
         shell: bash
-        run: npx eas-cli@latest submit --platform ios --profile production --path "$RUNNER_TEMP/UrTruck.ipa" --non-interactive --wait
+        run: npx eas-cli@latest submit --platform ios --profile production --path "$RUNNER_TEMP/UrTruck-QA2.ipa" --non-interactive --wait

@@ -54,10 +54,17 @@ test('explicit QA release stays in the isolated QA2 package', () => {
   assert.ok(androidAppBuild.includes("URTRUCK_ALLOW_DEBUG_SIGNED_RELEASE"));
 });
 
-test('TestFlight accepts the canonical Border QA branch and still rejects arbitrary refs', () => {
-  assert.ok(testflightWorkflow.includes('main|qa/master-hard-qa-20260916|fix/cgr-border-deal-integration-20260919'));
-  assert.ok(testflightWorkflow.includes('TestFlight RC may only be built from main or an approved canonical QA branch.'));
-  assert.ok(testflightWorkflow.includes('npx eas-cli@latest build:view "$BUILD_ID" --json'));
+test('TestFlight uses a protected exact-SHA QA2 trigger and never the production API', () => {
+  assert.ok(testflightWorkflow.includes("'qa2-final-testflight-*'"));
+  assert.ok(testflightWorkflow.includes('BUILD_QA2_TESTFLIGHT'));
+  assert.ok(testflightWorkflow.includes('QA_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}'));
+  assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = "qa2-final-testflight-$QA_SOURCE_SHA"'));
+  assert.ok(testflightWorkflow.includes('git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate'));
+  assert.ok(testflightWorkflow.includes('QA2_API_URL: ${{ secrets.QA2_API_URL }}'));
+  assert.ok(testflightWorkflow.includes('test "$QA_HOST" = qa2.urtruck.kz'));
+  assert.ok(!testflightWorkflow.includes('EXPO_PUBLIC_API_URL: https://urtruck.kz'));
+  assert.ok(testflightWorkflow.includes('test "$BUILD_NUMBER" -gt "$URTRUCK_MIN_IOS_BUILD"'));
+  assert.ok(testflightWorkflow.includes('bundleIdentifier=$BUNDLE_ID'));
 });
 
 test('Expo SDK 57 native iOS project uses the required deployment target and architecture', () => {
