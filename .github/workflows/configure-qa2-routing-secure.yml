@@ -137,8 +137,14 @@ jobs:
           printf 'BACKUP=%s\n' "$backup" > /tmp/urtruck-qa2-routing-secure.state
           chmod 600 /tmp/urtruck-qa2-routing-secure.state
           sudo systemctl restart urtruck-qa2.service
+          for attempt in $(seq 1 30); do
+            if sudo systemctl is-active --quiet urtruck-qa2.service && curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
           sudo systemctl is-active --quiet urtruck-qa2.service
-          curl -fsS --max-time 20 http://127.0.0.1:8002/health >/dev/null
+          curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null
           REMOTE
       - name: Verify real QA2 routing provider
         run: |
@@ -171,8 +177,14 @@ jobs:
           cp -p "$BACKUP/qa2.env" "$QA_ROOT/.env"
           rm -f "$state" /tmp/urtruck-qa2-ors-key
           sudo systemctl restart urtruck-qa2.service
+          for attempt in $(seq 1 30); do
+            if sudo systemctl is-active --quiet urtruck-qa2.service && curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
           sudo systemctl is-active --quiet urtruck-qa2.service
-          curl -fsS --max-time 20 http://127.0.0.1:8002/health >/dev/null
+          curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null
           echo QA2_ROUTING_ROLLBACK=completed
           REMOTE
       - name: Remove temporary routing key
