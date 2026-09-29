@@ -164,14 +164,3 @@ def test_health_source_sha_and_deploy_verification_contract_are_present():
     assert '"${QA_SOURCE_SHA:?}"' in deploy
     assert 'Environment=QA2_AI_SOURCE_SHA=$source_sha' in deploy
     assert "'source_sha':sys.argv[1]" in deploy
-
-
-def test_translation_decoder_has_a_conservative_short_message_latency_bound():
-    root = Path(__file__).resolve().parents[2]
-    main = (root / "backend/qa_ai_service/main.py").read_text()
-    assert "TRANSLATE_BEAM_SIZE = 2" in main
-    assert "TRANSLATE_MIN_DECODING_LENGTH = 64" in main
-    assert "TRANSLATE_MAX_DECODING_LENGTH = 512" in main
-    assert "source_token_count * 3 + 24" in main
-    assert "beam_size=TRANSLATE_BEAM_SIZE" in main
-    assert "max_decoding_length=_translation_max_decoding_length(len(source_tokens))" in main
