@@ -143,11 +143,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rsync -az --delete             --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='__pycache__/'             -e 'ssh -F ~/.ssh/config' backend/ qa2-final:"$QA_ROOT/backend/"
-          rsync -az --delete             --exclude='venv/' --exclude='models/' --exclude='__pycache__/'             -e 'ssh -F ~/.ssh/config' backend/qa_ai_service/ qa2-final:"$QA_AI_ROOT/"
+          rsync -az --delete             --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='__pycache__/'             -e "ssh -F $HOME/.ssh/config" backend/ qa2-final:"$QA_ROOT/backend/"
+          rsync -az --delete             --exclude='venv/' --exclude='models/' --exclude='__pycache__/'             -e "ssh -F $HOME/.ssh/config" backend/qa_ai_service/ qa2-final:"$QA_AI_ROOT/"
           release="$QA_WEB_ROOT/releases/$QA_SOURCE_SHA"
           ssh qa2-final "mkdir -p '$release'"
-          rsync -az --delete -e 'ssh -F ~/.ssh/config' dist/ qa2-final:"$release/"
+          rsync -az --delete -e "ssh -F $HOME/.ssh/config" dist/ qa2-final:"$release/"
           ssh qa2-final "test -s '$release/index.html' && grep -q 'api-maps.yandex.ru/2.1/' '$release/index.html'"
       - name: Activate QA2 services through systemd only
         shell: bash
