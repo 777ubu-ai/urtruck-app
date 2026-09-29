@@ -9,6 +9,11 @@ on:
       source_ref:
         description: Exact source commit SHA to build
         required: true
+  workflow_call:
+    inputs:
+      source_ref:
+        required: true
+        type: string
   push:
     branches: [main, "claude/**"]
 
