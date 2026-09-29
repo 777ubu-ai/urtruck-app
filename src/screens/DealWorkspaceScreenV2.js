@@ -55,6 +55,7 @@ import { compressImage } from '../utils/imageCompress';
 import { voice } from '../utils/voiceRecorder';
 import VoiceMessageBubble from '../components/VoiceMessageBubble';
 import { createVoiceTranscriptState } from '../utils/voiceTranscriptState';
+import { createManualTextTranslationState } from '../utils/manualTextTranslationState';
 import { routeMetricValues } from '../utils/routeMetricValues';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { storage } from '../utils/storage';
@@ -403,13 +404,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [fullImage, setFullImage] = React.useState(null);
   const [pdfPreview, setPdfPreview] = React.useState(null);
   const [locationSending, setLocationSending] = React.useState(false);
-  const [translations, setTranslations] = React.useState({});
-  const [translationErrors, setTranslationErrors] = React.useState({});
-  const [translating, setTranslating] = React.useState(null);
   const translationScope = JSON.stringify([roomId, session?.user?.id || null, lang.toLowerCase()]);
-  const translationScopeRef = React.useRef(translationScope);
-  translationScopeRef.current = translationScope;
-  const translationCacheKey = `ur_chat_translation_v1:${roomId || 'none'}:${session?.user?.id || 'anonymous'}:${lang.toLowerCase()}`;
+  const textTranslation = React.useMemo(() => createManualTextTranslationState(chatAPI, storage, {
+    roomId, userId: session?.user?.id, language: lang,
+  }), [translationScope]);
+  const [textTranslationRevision, setTextTranslationRevision] = React.useState(0);
   const [voiceRevision, setVoiceRevision] = React.useState(0);
   const voiceScope = JSON.stringify([roomId, session?.user?.id || null]);
   const historyStatus = historyState?.scope === voiceScope ? historyState.status : 'loading';
@@ -774,22 +773,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     lastCountRef.current = messages.length;
   }, [messages.length]);
 
-  React.useEffect(() => {
-    // Это локальный read-only cache уже выполненных ручных переводов. Он не
-    // запускает модель при открытии чата и не смешивает комнаты/аккаунты.
-    let cancelled = false;
-    setTranslations({});
-    setTranslationErrors({});
-    setTranslating(null);
-    void storage.get(translationCacheKey).then((raw) => {
-      if (cancelled || !raw) return;
-      try {
-        const cached = JSON.parse(raw);
-        if (cached && typeof cached === 'object' && !Array.isArray(cached)) setTranslations(cached);
-      } catch { /* повреждённый кэш не мешает открытому чату */ }
-    });
-    return () => { cancelled = true; };
-  }, [translationCacheKey]);
+  React.useEffect(() => textTranslation.connect(() => setTextTranslationRevision((value) => value + 1)), [textTranslation]);
+  React.useEffect(() => { void textTranslation.hydrate(); }, [textTranslation]);
 
   React.useEffect(() => voiceText.connect(() => setVoiceRevision((value) => value + 1)), [voiceText]);
 
@@ -1370,6 +1355,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, []);
 
   const renderMessage = React.useCallback(({ item, index }) => {
+    const messageTranslation = textTranslation.view(item.id);
     const datePill = (index === 0 || dayKeyOf(messages[index - 1]) !== dayKeyOf(item)) ? (
       <View style={s.datePillRow} testID="deal-chat-date-separator">
         <View style={[s.datePill, { backgroundColor: colors.surfaceMuted }]} pointerEvents="none">
@@ -1470,58 +1456,21 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   <>
                   <TouchableOpacity
                     style={s.translateBtn}
-                    disabled={translating === item.id || !!translations[item.id]}
-                    onPress={async () => {
-                      if (translations[item.id] || translating === item.id) return;
-                      const requestScope = translationScopeRef.current;
-                      setTranslating(item.id);
-                      try {
-                        const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
-                        // Не показывать запоздалый ответ в другой комнате или на другом языке.
-                        if (mounted.current && translationScopeRef.current === requestScope && result?.translated_text) {
-                          setTranslations((prev) => {
-                            const next = {
-                              ...prev,
-                              [item.id]: { text: result.translated_text, provider: result.provider },
-                            };
-                            // В памяти backend уже есть canonical cache; этот
-                            // небольшой UI-cache нужен, чтобы раскрытый
-                            // перевод остался видимым после перезапуска app.
-                            void storage.set(translationCacheKey, JSON.stringify(next));
-                            return next;
-                          });
-                          setTranslationErrors((prev) => {
-                            if (!prev[item.id]) return prev;
-                            const next = { ...prev };
-                            delete next[item.id];
-                            return next;
-                          });
-                        } else if (mounted.current && translationScopeRef.current === requestScope) {
-                          setTranslationErrors((prev) => ({ ...prev, [item.id]: { code: null } }));
-                        }
-                      } catch (error) {
-                        if (mounted.current && translationScopeRef.current === requestScope) {
-                          setTranslationErrors((prev) => ({ ...prev, [item.id]: { code: error?.code || null } }));
-                        }
-                      } finally {
-                        if (mounted.current && translationScopeRef.current === requestScope) {
-                          setTranslating(null);
-                        }
-                      }
-                    }}
+                    disabled={messageTranslation.pending || !!messageTranslation.translation}
+                    onPress={() => textTranslation.translate(item.id)}
                     testID="deal-chat-message-translate"
                   >
                     <Feather name="globe" size={11} color={colors.info} />
                     <Text style={[s.translateText, { color: colors.info }]}>
-                      {translating === item.id ? '...' : translations[item.id] ? t('translation_ready') : translationErrors[item.id] ? t('repeat_action') : t('translate')}
+                      {messageTranslation.pending ? '...' : messageTranslation.translation ? t('translation_ready') : messageTranslation.error ? t('repeat_action') : t('translate')}
                     </Text>
                   </TouchableOpacity>
-                  {translations[item.id] ? (
+                  {messageTranslation.translation ? (
                     <Text style={[s.translatedText, { color: item.mine ? bubbleMineColors.textColor : colors.text }]} testID="deal-chat-message-translation">
-                      {translations[item.id].text}
+                      {messageTranslation.translation.text}
                     </Text>
                   ) : null}
-                  {translationErrors[item.id] ? (
+                  {messageTranslation.error ? (
                     <Text style={[s.translateError, { color: colors.textMuted }]} testID="deal-chat-translation-error">
                       {t('translation_failed')}
                     </Text>
@@ -1566,7 +1515,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         </View>
       </React.Fragment>
     );
-  }, [colors, translations, translationErrors, translating, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor, translationCacheKey]);
+  }, [colors, textTranslation, textTranslationRevision, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage

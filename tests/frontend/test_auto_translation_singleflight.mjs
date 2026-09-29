@@ -8,35 +8,31 @@ const voiceState = readFileSync('src/utils/voiceTranscriptState.js', 'utf8');
 test('перевод текста не ставится в очередь при загрузке или polling', () => {
   assert.doesNotMatch(source, /autoTranslationRef|autoTranslate|toggleAutoTranslate/);
   assert.doesNotMatch(source, /messages\.filter\([\s\S]{0,500}chatAPI\.translate/);
-  assert.match(source, /onPress=\{async \(\) => \{[\s\S]{0,1600}chatAPI\.translate\(item\.id, getLanguage\(\)\.toLowerCase\(\)\)/);
+  assert.match(source, /onPress=\{\(\) => textTranslation\.translate\(item\.id\)\}/);
 });
 
 test('оригинал текста всегда остаётся в пузыре, перевод рисуется отдельно', () => {
   assert.match(source, /\{item\.text\}/);
-  assert.match(source, /testID="deal-chat-message-translation"[\s\S]{0,180}\{translations\[item\.id\]\.text\}/);
+  assert.match(source, /testID="deal-chat-message-translation"[\s\S]{0,180}\{messageTranslation\.translation\.text\}/);
   assert.match(source, /!item\.mine && !item\.system && \(!inferChatTextLanguage\(item\.text\) \|\| inferChatTextLanguage\(item\.text\) !== lang\.toLowerCase\(\)\)/);
 });
 
-test('повторный tap не вызывает модель, а ошибка оставляет Retry', () => {
-  assert.match(source, /if \(translations\[item\.id\] \|\| translating === item\.id\) return;/);
-  assert.match(source, /translationErrors\[item\.id\] \? t\('repeat_action'\) : t\('translate'\)/);
+test('экран использует state-machine ручного перевода, а ошибка оставляет Retry', () => {
+  assert.match(source, /createManualTextTranslationState/);
+  assert.match(source, /messageTranslation\.error \? t\('repeat_action'\) : t\('translate'\)/);
   assert.match(source, /testID="deal-chat-translation-error"/);
-  assert.match(source, /storage\.get\(translationCacheKey\)/);
-  assert.match(source, /storage\.set\(translationCacheKey, JSON\.stringify\(next\)\)/);
+  assert.match(source, /textTranslation\.hydrate\(\)/);
 });
 
-test('поздний текстовый ответ не публикуется после смены комнаты, пользователя, языка или закрытия экрана', () => {
+test('экран создаёт отдельный text state для room/user/language scope', () => {
   assert.match(source, /const translationScope = JSON\.stringify\(\[roomId, session\?\.user\?\.id \|\| null, lang\.toLowerCase\(\)\]\)/);
-  assert.match(source, /translationScopeRef\.current = translationScope/);
-  assert.match(source, /mounted\.current && translationScopeRef\.current === requestScope && result\?\.translated_text/);
-  assert.match(source, /const translationCacheKey = `ur_chat_translation_v1:\$\{roomId \|\| 'none'\}:\$\{session\?\.user\?\.id \|\| 'anonymous'\}:\$\{lang\.toLowerCase\(\)\}`/);
+  assert.match(source, /createManualTextTranslationState\(chatAPI, storage, \{/);
+  assert.match(source, /\}\), \[translationScope\]\);/);
 });
 
-test('кэш приватного текста недоступен без исходного пользователя и не вызывает модель при загрузке', () => {
-  const cacheEffect = source.slice(source.indexOf('React.useEffect(() => {\n    // Это локальный read-only cache'), source.indexOf('React.useEffect(() => voiceText.connect'));
-  assert.match(cacheEffect, /storage\.get\(translationCacheKey\)/);
-  assert.doesNotMatch(cacheEffect, /chatAPI\.translate|chatAPI\.transcribe/);
-  assert.match(source, /session\?\.user\?\.id \|\| 'anonymous'/);
+test('кэш приватного текста гидратируется без AI', () => {
+  assert.match(source, /textTranslation\.hydrate\(\)/);
+  assert.doesNotMatch(source, /autoTranslationRef|autoTranslate|toggleAutoTranslate/);
 });
 
 test('голос не выполняет скрытый STT или перевод после отправки и polling', () => {
