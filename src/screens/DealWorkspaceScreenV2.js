@@ -1478,7 +1478,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       try {
                         const result = await chatAPI.translate(item.id, getLanguage().toLowerCase());
                         // Не показывать запоздалый ответ в другой комнате или на другом языке.
-                        if (translationScopeRef.current === requestScope && result?.translated_text) {
+                        if (mounted.current && translationScopeRef.current === requestScope && result?.translated_text) {
                           setTranslations((prev) => {
                             const next = {
                               ...prev,
@@ -1496,15 +1496,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                             delete next[item.id];
                             return next;
                           });
-                        } else if (translationScopeRef.current === requestScope) {
+                        } else if (mounted.current && translationScopeRef.current === requestScope) {
                           setTranslationErrors((prev) => ({ ...prev, [item.id]: { code: null } }));
                         }
                       } catch (error) {
-                        if (translationScopeRef.current === requestScope) {
+                        if (mounted.current && translationScopeRef.current === requestScope) {
                           setTranslationErrors((prev) => ({ ...prev, [item.id]: { code: error?.code || null } }));
                         }
                       } finally {
-                        if (translationScopeRef.current === requestScope) {
+                        if (mounted.current && translationScopeRef.current === requestScope) {
                           setTranslating(null);
                         }
                       }
