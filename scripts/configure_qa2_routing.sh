@@ -43,7 +43,7 @@ grep -Fq "$qa_backend" "$unit"
 grep -Eq '(^|[[:space:]])(--port[= ]8002|8002)([[:space:]]|$)' "$unit"
 test "$(systemctl is-active urtruck-qa2.service)" = active
 main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
-listener_pid="$(ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+listener_pid="$(sudo -n ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
 test "$main_pid" -gt 0 -a -n "$listener_pid" -a "$listener_pid" = "$main_pid"
 
 backup="$qa_backend/.env.routing-backup.$(date -u +%Y%m%dT%H%M%SZ)"
@@ -83,7 +83,7 @@ for _ in {1..40}; do
 done
 test "$(systemctl is-active urtruck-qa2.service)" = active
 main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
-listener_pid="$(ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+listener_pid="$(sudo -n ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
 test "$main_pid" -gt 0 -a "$listener_pid" = "$main_pid"
 curl -fsS http://127.0.0.1:8002/health >/dev/null
 info="$(curl -fsS http://127.0.0.1:8002/api/v1/system/info)"
