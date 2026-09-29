@@ -76,6 +76,20 @@ jobs:
             printf '%s\n' "$code" > "cgr-evidence/$checkpoint.http-status"
             case "$code" in
               200) echo "CGR_$checkpoint=live" ;;
+              502)
+                if python3 - "cgr-evidence/$checkpoint.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          if data.get("detail") != "CGR временно недоступен":
+              raise SystemExit(1)
+          PY
+                then
+                  echo "CGR_$checkpoint=degraded-official-upstream"
+                else
+                  echo "CGR_$checkpoint=failed-unexpected-502"
+                  status=1
+                fi
+                ;;
               404|503) echo "CGR_$checkpoint=blocked-http-$code"; status=1 ;;
               *) echo "CGR_$checkpoint=failed-http-$code"; status=1 ;;
             esac
