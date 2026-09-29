@@ -20,6 +20,7 @@ import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
 import CountryFlag from '../components/ui/v1/CountryFlag';
 import { API_BASE } from '../config/env';
 import { localizeCheckpointName } from '../utils/checkpointNames';
+import { localizePlace } from '../utils/places';
 import { storage } from '../utils/storage';
 import { vehicleAPI } from '../utils/vehicleAPI';
 import { marketAPI } from '../utils/marketAPI';
@@ -648,7 +649,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 <View style={{ flex: 1 }}>
                   <Text style={[s.vehicleName, { color: theme.text }]}>{[selectedDeal?.make || selectedVehicle?.make, selectedDeal?.model || selectedVehicle?.model].filter(Boolean).join(' ') || selectedVehicle?.vehicle_type || '—'}</Text>
                   <View style={s.plateRow}><Text style={[s.plateBadge, { color: theme.text, borderColor: theme.border }]}>{normalizePlate(activePlate) || '—'}</Text>{(selectedDeal?.vehicle_country || selectedVehicle?.vehicle_registration_country_code) ? <Text style={[s.countryBadge, { color: theme.textMuted }]}>{selectedDeal?.vehicle_country || selectedVehicle?.vehicle_registration_country_code}</Text> : null}</View>
-                  {selectedDeal ? <Text style={[s.routeLine, { color: theme.textMuted }]}>{selectedDeal.from_city} → {selectedDeal.to_city}</Text> : null}
+                  {selectedDeal ? <Text style={[s.routeLine, { color: theme.textMuted }]}>{localizePlace(selectedDeal.from_city, lang)} → {localizePlace(selectedDeal.to_city, lang)}</Text> : null}
                 </View>
               </View>
             ) : (
@@ -673,7 +674,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               const activeDeal = String(item.deal_id) === String(selectedDeal?.deal_id);
               return <TouchableOpacity key={item.deal_id} onPress={() => setSelectedDealId(item.deal_id)} style={[s.shipmentRow, { borderColor: activeDeal ? activeColor : theme.border, backgroundColor: activeDeal ? activeColor + '0D' : v1.surfaceMuted }]} testID="border-shipper-deal-row">
                 <View style={[s.shipmentTruck, { backgroundColor: theme.card }]}><Feather name="truck" size={26} color={activeColor} /></View>
-                <View style={{ flex: 1 }}><Text style={[s.shipmentRoute, { color: theme.text }]}>{item.from_city} → {item.to_city}</Text><Text style={[s.shipmentMeta, { color: theme.textMuted }]}>{item.driver_name || '—'} · {[item.make, item.model].filter(Boolean).join(' ') || '—'} · {normalizePlate(item.plate) || '—'}</Text></View>
+                <View style={{ flex: 1 }}><Text style={[s.shipmentRoute, { color: theme.text }]}>{localizePlace(item.from_city, lang)} → {localizePlace(item.to_city, lang)}</Text><Text style={[s.shipmentMeta, { color: theme.textMuted }]}>{item.driver_name || '—'} · {[item.make, item.model].filter(Boolean).join(' ') || '—'} · {normalizePlate(item.plate) || '—'}</Text></View>
                 <Feather name="chevron-right" size={20} color={theme.textDim} />
               </TouchableOpacity>;
             }) : <Text style={[s.emptyContext, { color: theme.textMuted }]}>{R.noActiveShipments}</Text>}
