@@ -35,6 +35,9 @@ test('QA2 FCM workflow validates secrets and only writes native QA2 env', () => 
     'FCM_SERVICE_ACCOUNT_JSON',
     'PUSH_OUTBOX_CUTOFF_ID',
     'SELECT COALESCE(MAX(id), 0) FROM push_outbox',
+    'QA2_RUNTIME_DB_PATH_MISSING',
+    'QA2_RUNTIME_DB_PATH_INVALID',
+    'mode=ro',
     'com.urtruck.app.qa2',
     'PROD_VERSION_HASH_BEFORE',
     'apns_not_configured',
@@ -53,4 +56,5 @@ test('QA2 FCM workflow validates secrets and only writes native QA2 env', () => 
   assert.ok(workflow.includes('QA2_FCM_ROLLBACK=not_required_before_remote_change'));
   assert.ok(workflow.includes('qa_env=/home/ubuntu/urtruck-qa2/.env'));
   assert.equal(workflow.includes('qa_env=/home/ubuntu/urtruck-qa2/backend/.env'), false);
+  assert.equal(workflow.includes('from database.db import get_conn'), false);
 });
