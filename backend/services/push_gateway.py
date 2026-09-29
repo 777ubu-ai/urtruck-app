@@ -360,6 +360,10 @@ def log_delivery(event_id: Optional[str], user_id: str, device: dict, result: Pr
                         "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, invalidated_reason = 'invalid_token' WHERE id = ?",
                         (device.get("id"),),
                     )
+                    c.execute(
+                        "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, invalidated_reason = 'invalid_token' WHERE token = ?",
+                        (device.get("push_token"),),
+                    )
     except Exception:
         return
 
@@ -610,10 +614,27 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
             if provider_send_one is not None:
                 # Compatibility seam for deterministic unit tests only. The
                 # runtime path always uses direct FCM/APNs below.
-                devices = [d for d in active_devices(row["recipient_user_id"]) if d.get("push_provider") in ("fcm", "apns")]
+                devices = [
+                    d for d in active_devices(row["recipient_user_id"])
+                    if d.get("push_provider") in ("fcm", "apns")
+                    and not _already_sent_to_device(row.get("event_id"), d.get("id"))
+                ]
                 tokens = [d.get("push_token") for d in devices if d.get("push_token")]
                 callback_result = provider_send_one(tokens, title, body, data, badge=badge) if tokens else {"sent": 0}
-                result = {"devices": len(tokens), "sent": int(callback_result.get("sent", 0) if isinstance(callback_result, dict) else callback_result), "already_delivered": 0, "errors": {}}
+                sent_count = int(callback_result.get("sent", 0) if isinstance(callback_result, dict) else callback_result)
+                # The deterministic test seam represents an aggregate native
+                # provider response. Persist the confirmed prefix in the same
+                # delivery log used by direct FCM/APNs so a retry selects only
+                # devices that were not confirmed by the prior attempt.
+                for device in devices[:max(0, min(sent_count, len(devices)))]:
+                    log_delivery(row.get("event_id"), row["recipient_user_id"], device, ProviderResult(device.get("push_provider") or "native", "sent"))
+                result = {
+                    "devices": len(tokens),
+                    "sent": sent_count,
+                    "already_delivered": 0,
+                    "errors": (callback_result.get("errors") or {}) if isinstance(callback_result, dict) else {},
+                    "error": callback_result.get("error") if isinstance(callback_result, dict) else None,
+                }
             else:
                 result = send_to_devices(row["recipient_user_id"], title, body, data, badge)
             # Multi-device fix (push-closure track): "sent" here must mean

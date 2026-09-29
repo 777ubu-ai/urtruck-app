@@ -22,11 +22,8 @@ and a real (temp) SQLite push_outbox/push_devices — not source-regex — that:
       own outbox row 'sent' on success is what stops the worker from ever
       re-sending it — the actual delivery-ownership contract, end to end.
 
-Provider responses are simulated via a fake `expo_send_one` callback — the
-exact seam services.push_sender._send_native already hands push_gateway in
-production for the explicitly selected Expo legacy path (see
-push_gateway.ExpoProvider.send()) — so no real network call is made and no
-Expo/FCM/APNs behavior is invented.
+Provider responses are simulated via the deterministic `provider_send_one`
+seam; no provider network call is made.
 """
 import os
 import sys
@@ -54,18 +51,16 @@ import api.push as push_api  # noqa: F401  — import runs _init_schema() (push_
 # ───────────────────────── fixtures / helpers ─────────────────────────
 def setup_function(_function):
     """Isolate durable outbox rows from earlier tests in the shared DB."""
-    # This suite is specifically the retained Expo legacy-path contract. The
-    # production default is native, so the test intent must be explicit.
-    push_gateway.PUSH_PROVIDER_MODE = "expo"
+    push_gateway.PUSH_PROVIDER_MODE = "native"
     with get_conn() as c:
         c.execute("DELETE FROM push_outbox")
         c.execute("DELETE FROM push_devices")
 
 
-def _make_user_with_device(provider="expo"):
+def _make_user_with_device(provider="fcm"):
     guest = reg_dal.create_guest()
     uid = guest["id"] if isinstance(guest, dict) else guest
-    token = f"ExponentPushToken[{uuid.uuid4().hex}]"
+    token = f"fcm-test-{uuid.uuid4().hex}"
     device_id = uuid.uuid4().hex
     with get_conn() as c:
         c.execute(
@@ -90,11 +85,11 @@ def _row(event_key, uid):
 
 
 def _always_ok(tokens, title, body, data, badge=None):
-    return {"sent": len(tokens), "tickets": [{"status": "ok", "id": f"ticket-{i}"} for i in range(len(tokens))]}
+    return {"sent": len(tokens), "devices": len(tokens), "errors": {}}
 
 
 def _always_fail_transient(tokens, title, body, data, badge=None):
-    return {"sent": 0, "tickets": [{"status": "error", "details": {"error": "RATE_LIMIT_EXCEEDED"}}], "error": "rate_limited"}
+    return {"sent": 0, "devices": len(tokens), "errors": {"rate_limited": 1}, "error": "rate_limited"}
 
 
 class _FlakyThenOk:
@@ -107,8 +102,8 @@ class _FlakyThenOk:
     def __call__(self, tokens, title, body, data, badge=None):
         self.calls += 1
         if self.calls <= self.fail_times:
-            return {"sent": 0, "tickets": [{"status": "error", "details": {"error": "transient"}}], "error": "transient"}
-        return {"sent": len(tokens), "tickets": [{"status": "ok"}] * len(tokens)}
+            return {"sent": 0, "devices": len(tokens), "errors": {"transient": 1}, "error": "transient"}
+        return {"sent": len(tokens), "devices": len(tokens), "errors": {}}
 
 
 def _poison(tokens, title, body, data, badge=None):
@@ -325,9 +320,9 @@ def test_11_immediate_success_prevents_worker_duplicate(monkeypatch):
     uid, _ = _make_user_with_device()
     calls = {"native": 0}
 
-    def fake_send_native(user_id, title, body, data, badge=None):
+    def fake_send_native(user_id, title, body, data, badge=None, provider=None):
         calls["native"] += 1
-        return 1, 1  # (sent, total_devices) — push-closure track signature
+        return {"sent": 1, "devices": 1, "already_delivered": 0, "errors": {}}
 
     monkeypatch.setattr(push_sender, "_send_web", lambda *a, **k: 0)
     monkeypatch.setattr(push_sender, "_send_native", fake_send_native)

@@ -5,18 +5,18 @@ set +x
 
 : "${SERVER_HOST:?SERVER_HOST is required}"
 : "${SERVER_USER:?SERVER_USER is required}"
-: "${SERVER_PASS:?SERVER_PASS is required}"
+: "${QA2_SSH_KEY:?QA2_SSH_KEY is required}"
+: "${QA2_SSH_KNOWN_HOSTS:?QA2_SSH_KNOWN_HOSTS is required}"
 : "${OPENROUTESERVICE_API_KEY:?OPENROUTESERVICE_API_KEY is required}"
 : "${QA_API_URL:?QA_API_URL is required}"
 
-export SSHPASS="$SERVER_PASS"
-qa_root=/home/ubuntu/urtruck-qa2
 state=/tmp/urtruck-qa2-routing.state
 key_file="/tmp/urtruck-qa2-ors-${GITHUB_RUN_ID:-manual}"
+ssh_cmd=(ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS")
 
 # Prevent a stale state file from making a future precondition failure restore
 # an unrelated older backup.
-sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "rm -f '$state' '$key_file'"
+"${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" "rm -f '$state' '$key_file'"
 
 before_prod="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256sum | awk '{print $1}')"
 qa_before="$(curl -fsS --max-time 20 "${QA_API_URL%/}/api/v1/system/info")"
@@ -28,32 +28,28 @@ PY
 
 # The secret is sent through SSH stdin and is never interpolated into a command.
 printf '%s\n' "$OPENROUTESERVICE_API_KEY" |
-  sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
-  "umask 077; cat > '$key_file'"
+  "${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" "umask 077; cat > '$key_file'"
 
-sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' -- "$key_file" "$state" <<'REMOTE'
+"${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" 'bash -s' -- "$key_file" "$state" <<'REMOTE'
 set -euo pipefail
 key_file="$1"
 state="$2"
-qa_root=/home/ubuntu/urtruck-qa2
-qa_backend="$qa_root/backend"
-env_file="$qa_root/.env"
-test -f "$env_file" -a -x "$qa_backend/venv/bin/python"
+qa_backend=/home/ubuntu/urtruck-qa2/backend
+env_file="$qa_backend/.env"
+unit=/etc/systemd/system/urtruck-qa2.service
+test -f "$env_file" -a -x "$qa_backend/venv/bin/python" -a -f "$unit"
 test "$(id -un)" = ubuntu
+grep -Fq "$qa_backend" "$unit"
+grep -Eq '(^|[[:space:]])(--port[= ]8002|8002)([[:space:]]|$)' "$unit"
+test "$(systemctl is-active urtruck-qa2.service)" = active
+main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
+listener_pid="$(ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+test "$main_pid" -gt 0 -a -n "$listener_pid" -a "$listener_pid" = "$main_pid"
 
-listener_pid() {
-  ss -ltnpH 'sport = :8002' 2>/dev/null |
-    sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1
-}
-
-backup_dir="$qa_root/backups/routing-$(date -u +%Y%m%dT%H%M%SZ)"
-mkdir -p "$backup_dir"
-cp -- "$env_file" "$backup_dir/qa2.env"
-chmod 600 "$backup_dir/qa2.env"
-cat > "$state" <<STATE
-BACKUP_DIR=$backup_dir
-ENV_FILE=$env_file
-STATE
+backup="$qa_backend/.env.routing-backup.$(date -u +%Y%m%dT%H%M%SZ)"
+cp -- "$env_file" "$backup"
+chmod 600 "$backup"
+printf 'BACKUP=%s\n' "$backup" > "$state"
 chmod 600 "$state"
 
 python3 - "$env_file" "$key_file" <<'PY'
@@ -78,25 +74,23 @@ os.replace(tmp, env_path)
 PY
 rm -f "$key_file"
 
-old_pid="$(listener_pid)"
-test -n "$old_pid"
-old_cmd="$(tr '\0' ' ' < "/proc/$old_pid/cmdline")"
-printf '%s' "$old_cmd" | grep -Eq 'uvicorn|gunicorn'
-printf '%s' "$old_cmd" | grep -Fq 'main:app'
-test "$(ps -o user= -p "$old_pid" | xargs)" = ubuntu
-test "$(readlink -f "/proc/$old_pid/cwd")" = "$(readlink -f "$qa_backend")"
-kill -TERM "$old_pid" || true
-for _ in {1..20}; do kill -0 "$old_pid" 2>/dev/null || break; sleep 0.5; done
-kill -0 "$old_pid" 2>/dev/null && kill -KILL "$old_pid" || true
-cd "$qa_backend"
-nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
-for _ in {1..40}; do curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1 && break; sleep 1; done
+sudo -n systemctl restart urtruck-qa2.service
+for _ in {1..40}; do
+  systemctl is-active --quiet urtruck-qa2.service &&
+    curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1 &&
+    break
+  sleep 1
+done
+test "$(systemctl is-active urtruck-qa2.service)" = active
+main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
+listener_pid="$(ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+test "$main_pid" -gt 0 -a "$listener_pid" = "$main_pid"
 curl -fsS http://127.0.0.1:8002/health >/dev/null
 info="$(curl -fsS http://127.0.0.1:8002/api/v1/system/info)"
 printf '%s' "$info" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["routing"]["provider"] == "openrouteservice"'
 ai="$(curl -fsS http://127.0.0.1:8002/api/v1/chat/translate/info)"
 printf '%s' "$ai" | python3 -c 'import json,sys; assert json.load(sys.stdin).get("provider") == "local_ai"'
-echo "QA2_ROUTING_BACKUP=$backup_dir"
+echo "QA2_ROUTING_BACKUP=$backup"
 echo 'QA2_ROUTING=healthy-openrouteservice'
 echo 'QA2_LOCAL_AI=preserved'
 REMOTE

@@ -30,6 +30,8 @@ test('QA2 FCM workflow validates secrets and only writes native QA2 env', () => 
     'PUSH_PROVIDER_MODE',
     'FCM_PROJECT_ID',
     'FCM_SERVICE_ACCOUNT_JSON',
+    'PUSH_OUTBOX_CUTOFF_ID',
+    'SELECT COALESCE(MAX(id), 0) FROM push_outbox',
     'com.urtruck.app.qa2',
     'PROD_VERSION_HASH_BEFORE',
     'apns_not_configured',

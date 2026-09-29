@@ -26,7 +26,7 @@ test('QA086 checks out and records an explicitly supplied exact source SHA', () 
   assert.ok(!sourceInput.includes('default:'), 'QA2 build must not silently reuse a stale source SHA');
   assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));
   assert.ok(workflow.includes('test "$RESOLVED_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"'));
-  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040088'));
+  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040089'));
   assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
 });
 
@@ -38,6 +38,13 @@ test('live QA2 keeps MapKit and Firebase secret injection and the isolated packa
   assert.ok(workflow.includes("play-services-location:21.3.0"));
   assert.ok(!workflow.includes("play-services-location:21.0.1"));
   assert.ok(workflow.includes('URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2'));
+});
+
+test('QA2 Android build reinstalls its pinned NDK after disk cleanup', () => {
+  const cleanup = workflow.indexOf('/usr/local/lib/android/sdk/ndk');
+  const install = workflow.indexOf('sdkmanager "ndk;27.1.12297006"');
+  assert.ok(cleanup >= 0, 'workflow must declare NDK cleanup explicitly');
+  assert.ok(install > cleanup, 'required NDK must be installed after cleanup');
 });
 
 test('explicit QA release stays in the isolated QA2 package', () => {
