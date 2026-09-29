@@ -139,12 +139,9 @@ test('voice send renders an optimistic bubble immediately before upload and reus
   assert.match(workspace, /server\.clientMsgId === item\.id/);
   assert.match(body, /sendStatus: 'failed', sendError: message/);
   assert.match(workspace, /testID=\{item\.voice \? 'deal-chat-voice-error' : 'deal-chat-message-retry'\}/);
-  assert.match(body, /const sentVoice = await chatAPI\.send/);
-  assert.match(body, /voiceText\.prewarm\(sentVoice\.message_id\)/);
-  assert.ok(
-    body.indexOf('voiceText.prewarm(sentVoice.message_id)') > body.indexOf("sendStatus: 'sent'"),
-    'background STT must start only after the voice message is committed',
-  );
+  assert.match(body, /await chatAPI\.send/);
+  assert.doesNotMatch(body, /voiceText\.prewarm|chatAPI\.transcribe|chatAPI\.translate/,
+    'голос не должен запускать STT или перевод до явного нажатия получателя');
 });
 
 test('voice failures distinguish record vs upload vs send, each with its own message', () => {
