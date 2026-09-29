@@ -71,7 +71,7 @@ jobs:
           base="${QA2_API_URL%/}"
           mkdir -p cgr-evidence
           status=0
-          for checkpoint in nur_zholy_horgos dostyk_alashankou bakhty_pokitu; do
+          for checkpoint in nur_zholy_horgos dostyk_alashankou bahty_pokitu; do
             code="$(curl --silent --show-error --output "cgr-evidence/$checkpoint.json" --write-out '%{http_code}' --max-time 25 "$base/api/v1/borders/live/$checkpoint" || true)"
             printf '%s\n' "$code" > "cgr-evidence/$checkpoint.http-status"
             case "$code" in

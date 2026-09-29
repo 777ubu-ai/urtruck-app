@@ -61,7 +61,7 @@ test('secure routing path is protected, reversible and systemd-based', () => {
 test('CGR verification reports live evidence and treats 404/503 as blocked', () => {
   assertPresent(cgr, [
     'VERIFY_QA2_CGR_LIVE', 'source_sha:', 'name: qa2',
-    'qa2/integration-candidate', 'nur_zholy_horgos dostyk_alashankou bakhty_pokitu',
+    'qa2/integration-candidate', 'nur_zholy_horgos dostyk_alashankou bahty_pokitu',
     '404|503', 'blocked-http', 'actions/upload-artifact@v4',
   ]);
   assertAbsent(cgr, ['com.urtruck.protest', 'urtruck-pro']);
