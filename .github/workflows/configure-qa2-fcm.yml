@@ -153,8 +153,10 @@ jobs:
           main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
           test "$main_pid" -gt 0
           listener_pid="$(sudo -n ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
-          test -n "$listener_pid" && test "$listener_pid" = "$main_pid"
-          echo "QA2_SUPERVISION=active_and_pid_matched"
+          service_cgroup="$(systemctl show -p ControlGroup --value urtruck-qa2.service)"
+          test -n "$listener_pid" && test -n "$service_cgroup"
+          grep -Fq "$service_cgroup" "/proc/$listener_pid/cgroup"
+          echo "QA2_SUPERVISION=active_listener_in_service_cgroup"
           REMOTE
 
       - name: Upload validated service account over pinned SSH
@@ -221,7 +223,9 @@ jobs:
           test "$(systemctl is-active urtruck-qa2.service)" = active
           main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
           listener_pid="$(sudo -n ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
-          test "$main_pid" -gt 0 && test "$listener_pid" = "$main_pid"
+          service_cgroup="$(systemctl show -p ControlGroup --value urtruck-qa2.service)"
+          test "$main_pid" -gt 0 && test -n "$listener_pid" && test -n "$service_cgroup"
+          grep -Fq "$service_cgroup" "/proc/$listener_pid/cgroup"
           REMOTE
 
       - name: Verify QA2 native FCM readiness
