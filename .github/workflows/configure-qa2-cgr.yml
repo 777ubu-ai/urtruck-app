@@ -97,7 +97,7 @@ jobs:
           set -euo pipefail
           salt_file="$1"
           qa_backend=/home/ubuntu/urtruck-qa2/backend
-          qa_env="$qa_backend/.env"
+          qa_env=/home/ubuntu/urtruck-qa2/.env
           unit=/etc/systemd/system/urtruck-qa2.service
           test -f "$qa_env" -a -f "$unit"
           grep -Fq "$qa_backend" "$unit"
@@ -172,10 +172,10 @@ jobs:
           test -f "$state" || exit 0
           . "$state"
           case "$BACKUP" in
-            /home/ubuntu/urtruck-qa2/backend/.env.cgr-backup.*) ;;
+            /home/ubuntu/urtruck-qa2/.env.cgr-backup.*) ;;
             *) echo QA2_CGR_BACKUP_PATH_INVALID >&2; exit 1 ;;
           esac
-          qa_env=/home/ubuntu/urtruck-qa2/backend/.env
+          qa_env=/home/ubuntu/urtruck-qa2/.env
           cp -- "$BACKUP" "$qa_env"
           chmod 600 "$qa_env"
           rm -f -- "$BACKUP" "$state" /tmp/urtruck-qa2-cgr-salt-*
@@ -195,7 +195,7 @@ jobs:
           if test -f "$state"; then
             backup="$(sed -n 's/^BACKUP=//p' "$state")"
             case "$backup" in
-              /home/ubuntu/urtruck-qa2/backend/.env.cgr-backup.*) rm -f -- "$backup" ;;
+              /home/ubuntu/urtruck-qa2/.env.cgr-backup.*) rm -f -- "$backup" ;;
               *) echo QA2_CGR_BACKUP_PATH_INVALID >&2; exit 1 ;;
             esac
             rm -f -- "$state"
