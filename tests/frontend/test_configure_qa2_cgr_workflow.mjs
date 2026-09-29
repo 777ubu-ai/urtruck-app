@@ -27,5 +27,7 @@ test('QA2 CGR workflow uses systemd, rollback and live gates', () => {
     'Roll back QA2 CGR settings on failure',
   ]) assert.ok(workflow.includes(marker), `missing ${marker}`);
   assert.match(workflow, /sudo -n ss -ltnpH 'sport = :8002'/);
+  assert.match(workflow, /systemctl show -p ControlGroup/);
+  assert.equal(workflow.includes('listener_pid" = "$main_pid'), false);
   assert.doesNotMatch(workflow, /kill -TERM|kill -KILL|nohup/);
 });
