@@ -7,6 +7,9 @@ on:
         description: Type CONFIGURE_QA2_CGR
         required: true
         type: string
+  push:
+    tags:
+      - 'qa2-final-cgr-*'
 
 concurrency:
   group: urtruck-qa2-cgr-config
@@ -17,12 +20,13 @@ permissions:
 
 jobs:
   configure:
-    if: inputs.confirmation == 'CONFIGURE_QA2_CGR'
+    if: github.event_name == 'push' || inputs.confirmation == 'CONFIGURE_QA2_CGR'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
       name: qa2
     env:
+      QA_SOURCE_SHA: ${{ github.sha }}
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
@@ -31,11 +35,24 @@ jobs:
       CGR_IIN_SALT: ${{ secrets.CGR_IIN_SALT }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
       - name: Validate protected QA2 CGR procedure
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
+          if test "$GITHUB_EVENT_NAME" = workflow_dispatch; then
+            test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
+            test "${{ inputs.confirmation }}" = CONFIGURE_QA2_CGR
+          else
+            test "$GITHUB_REF_TYPE" = tag
+            test "$GITHUB_REF_NAME" = "qa2-final-cgr-$QA_SOURCE_SHA"
+            test "$QA_SOURCE_SHA" = "$GITHUB_SHA"
+          fi
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
+          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
           test "${#CGR_IIN_SALT}" -ge 32
           node --test tests/frontend/test_configure_qa2_cgr_workflow.mjs
       - name: Prepare pinned SSH transport
