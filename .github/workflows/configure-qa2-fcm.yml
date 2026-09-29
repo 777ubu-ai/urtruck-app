@@ -176,11 +176,34 @@ jobs:
           qa_env=/home/ubuntu/urtruck-qa2/.env
           payload=/tmp/urtruck-qa2-fcm-service-account.json
           test -f "$qa_env" && test -f "$payload"
-          cd /home/ubuntu/urtruck-qa2/backend
-          cutoff="$(venv/bin/python - <<'PY'
-          from database.db import get_conn
-          with get_conn() as c:
-              row = c.execute("SELECT COALESCE(MAX(id), 0) FROM push_outbox").fetchone()
+          cutoff="$(python3 - "$qa_env" <<'PY'
+          # This command is not started by systemd, so it must never fall
+          # back to config.py's production-default DB_PATH.  Read only the
+          # isolated QA2 DB selector from the already-validated QA2 env and
+          # open it read-only before placing the cutoff above legacy rows.
+          import os, sqlite3, sys
+          from pathlib import Path
+
+          env_path = Path(sys.argv[1])
+          selected = None
+          for raw in env_path.read_text(encoding="utf-8").splitlines():
+              line = raw.strip()
+              if not line or line.startswith("#") or "=" not in line:
+                  continue
+              key, value = line.split("=", 1)
+              if key.strip() in {"DB_PATH", "URTRUCK_DB_PATH"}:
+                  selected = value.strip().strip("'\\\"")
+          if not selected:
+              raise SystemExit("QA2_RUNTIME_DB_PATH_MISSING")
+          if selected.startswith("sqlite:///"):
+              selected = selected.removeprefix("sqlite:///")
+              if not selected.startswith("/"):
+                  selected = "/" + selected
+          db_path = Path(selected)
+          if not db_path.is_absolute() or not db_path.is_file():
+              raise SystemExit("QA2_RUNTIME_DB_PATH_INVALID")
+          with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+              row = conn.execute("SELECT COALESCE(MAX(id), 0) FROM push_outbox").fetchone()
           print(int(row[0] or 0))
           PY
           )"
