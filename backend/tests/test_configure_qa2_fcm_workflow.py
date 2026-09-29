@@ -49,3 +49,12 @@ def test_qa2_fcm_workflow_validates_android_project_and_rolls_back():
     assert "BACKUP=" in raw
     assert "QA2_FCM_ROLLBACK" in raw
     assert "PRODUCTION_AFTER=healthy-unchanged" in raw
+
+
+def test_qa2_fcm_cutoff_reads_only_the_runtime_qa2_database():
+    raw = WORKFLOW.read_text(encoding="utf-8")
+    assert 'python3 - "$qa_env"' in raw
+    assert "QA2_RUNTIME_DB_PATH_MISSING" in raw
+    assert "QA2_RUNTIME_DB_PATH_INVALID" in raw
+    assert 'sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)' in raw
+    assert "from database.db import get_conn" not in raw
