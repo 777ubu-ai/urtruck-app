@@ -1,0 +1,185 @@
+name: Deploy QA2 Final Integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type DEPLOY_QA2_FINAL
+        required: true
+        type: string
+      source_sha:
+        description: Exact SHA already merged into qa2/integration-candidate
+        required: true
+        type: string
+
+concurrency:
+  group: urtruck-qa2-final-integration
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy exact QA2 backend, web and local AI
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: qa2
+    env:
+      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      QA2_API_URL: ${{ secrets.QA2_API_URL }}
+      YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+      QA_ROOT: /home/ubuntu/urtruck-qa2
+      QA_WEB_ROOT: /home/ubuntu/urtruck-qa2-web
+      QA_AI_ROOT: /home/ubuntu/urtruck-qa2-ai/app
+    steps:
+      - name: Require final QA2 intent and branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = DEPLOY_QA2_FINAL
+          test "$GITHUB_REF_NAME" = qa2/integration-candidate
+          test "$QA_SOURCE_SHA" != ""
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 1
+      - name: Verify exact merged source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
+          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
+          test -f backend/main.py
+          test -f backend/qa_ai_service/main.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Build immutable QA2 web release
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY"
+          npm ci
+          npm run build:web
+          node scripts/injectYandexMaps.mjs
+          grep -q 'api-maps.yandex.ru/2.1/' dist/index.html
+          cp sw-template.js dist/sw.js
+      - name: Install pinned SSH transport
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq rsync openssh-client
+      - name: Configure pinned SSH identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST" && test -n "$SERVER_USER"
+          test -n "$SERVER_SSH_KEY" && test -n "$SERVER_SSH_KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/qa2_deploy_key
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > ~/.ssh/qa2_known_hosts
+          chmod 600 ~/.ssh/qa2_deploy_key ~/.ssh/qa2_known_hosts
+          cat >> ~/.ssh/config <<EOF
+          Host qa2-final
+            HostName $SERVER_HOST
+            User $SERVER_USER
+            IdentityFile ~/.ssh/qa2_deploy_key
+            UserKnownHostsFile ~/.ssh/qa2_known_hosts
+            StrictHostKeyChecking yes
+            BatchMode yes
+          EOF
+          ssh qa2-final 'test "$(id -u)" -ne 0'
+      - name: Fingerprint production before QA2 deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          before="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256sum | awk '{print $1}')"
+          test -n "$before"
+          echo "PRODUCTION_VERSION_HASH_BEFORE=$before" >> "$GITHUB_ENV"
+      - name: Create QA2 code-only rollback backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh qa2-final "QA_ROOT='$QA_ROOT' QA_WEB_ROOT='$QA_WEB_ROOT' QA_AI_ROOT='$QA_AI_ROOT' QA_SOURCE_SHA='$QA_SOURCE_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)-$QA_SOURCE_SHA"
+          backup="$QA_ROOT/backups/final-$stamp"
+          mkdir -p "$backup/backend" "$backup/ai"
+          test -f "$QA_ROOT/.env" && cp -p "$QA_ROOT/.env" "$backup/qa2.env"
+          rsync -a --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='__pycache__/' "$QA_ROOT/backend/" "$backup/backend/"
+          rsync -a --exclude='venv/' --exclude='models/' --exclude='__pycache__/' "$QA_AI_ROOT/" "$backup/ai/"
+          previous_web="$(readlink "$QA_WEB_ROOT/current" || true)"
+          printf '%s\n' "$previous_web" > "$backup/previous-web-release"
+          printf '%s\n' "$stamp" > /tmp/urtruck-qa2-final-rollback-id
+          test -s "$backup/qa2.env"
+          echo "QA2_ROLLBACK_BACKUP=$backup"
+          REMOTE
+      - name: Deploy exact backend, web and AI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -az --delete             --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='__pycache__/'             -e 'ssh -F ~/.ssh/config' backend/ qa2-final:"$QA_ROOT/backend/"
+          rsync -az --delete             --exclude='venv/' --exclude='models/' --exclude='__pycache__/'             -e 'ssh -F ~/.ssh/config' backend/qa_ai_service/ qa2-final:"$QA_AI_ROOT/"
+          release="$QA_WEB_ROOT/releases/$QA_SOURCE_SHA"
+          ssh qa2-final "mkdir -p '$release'"
+          rsync -az --delete -e 'ssh -F ~/.ssh/config' dist/ qa2-final:"$release/"
+          ssh qa2-final "test -s '$release/index.html' && grep -q 'api-maps.yandex.ru/2.1/' '$release/index.html'"
+      - name: Activate QA2 services through systemd only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh qa2-final "QA_ROOT='$QA_ROOT' QA_WEB_ROOT='$QA_WEB_ROOT' QA_AI_ROOT='$QA_AI_ROOT' QA_SOURCE_SHA='$QA_SOURCE_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          printf '%s\n' "$QA_SOURCE_SHA" > "$QA_ROOT/backend/.qa-source-sha"
+          printf '%s\n' "$QA_SOURCE_SHA" > "$QA_AI_ROOT/.qa-source-sha"
+          ln -sfn "$QA_WEB_ROOT/releases/$QA_SOURCE_SHA" "$QA_WEB_ROOT/current"
+          sudo systemctl restart urtruck-qa2.service
+          sudo systemctl restart urtruck-qa2-ai.service
+          sudo systemctl reload nginx
+          sudo systemctl is-active --quiet urtruck-qa2.service
+          sudo systemctl is-active --quiet urtruck-qa2-ai.service
+          curl -fsS --max-time 20 http://127.0.0.1:8002/health >/dev/null
+          REMOTE
+      - name: Verify exact QA2 runtime and production unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="${QA2_API_URL%/}"
+          curl -fsS --max-time 20 "$api/health" | tee qa2-health.json
+          curl -fsS --max-time 20 "$api/api/version" | tee qa2-version.json
+          ssh qa2-final "grep -Fx '$QA_SOURCE_SHA' '$QA_ROOT/backend/.qa-source-sha'"
+          ssh qa2-final "grep -Fx '$QA_SOURCE_SHA' '$QA_AI_ROOT/.qa-source-sha'"
+          grep -Fq "$QA_SOURCE_SHA" <(ssh qa2-final "readlink '$QA_WEB_ROOT/current'")
+          after="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256sum | awk '{print $1}')"
+          test "$after" = "$PRODUCTION_VERSION_HASH_BEFORE"
+          echo "QA2_RUNTIME_SOURCE_SHA=$QA_SOURCE_SHA"
+          echo "PRODUCTION_FINGERPRINT_UNCHANGED=pass"
+      - name: Roll back only QA2 if final deployment fails
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh qa2-final "QA_ROOT='$QA_ROOT' QA_WEB_ROOT='$QA_WEB_ROOT' QA_AI_ROOT='$QA_AI_ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          stamp="$(cat /tmp/urtruck-qa2-final-rollback-id)"
+          backup="$QA_ROOT/backups/final-$stamp"
+          test -d "$backup/backend" && test -f "$backup/qa2.env" && test -d "$backup/ai"
+          rsync -a --delete --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='__pycache__/' "$backup/backend/" "$QA_ROOT/backend/"
+          rsync -a --delete --exclude='venv/' --exclude='models/' --exclude='__pycache__/' "$backup/ai/" "$QA_AI_ROOT/"
+          cp -p "$backup/qa2.env" "$QA_ROOT/.env"
+          previous_web="$(cat "$backup/previous-web-release")"
+          if test -n "$previous_web"; then ln -sfn "$previous_web" "$QA_WEB_ROOT/current"; fi
+          sudo systemctl restart urtruck-qa2.service
+          sudo systemctl restart urtruck-qa2-ai.service
+          sudo systemctl reload nginx
+          sudo systemctl is-active --quiet urtruck-qa2.service
+          sudo systemctl is-active --quiet urtruck-qa2-ai.service
+          curl -fsS --max-time 20 http://127.0.0.1:8002/health >/dev/null
+          echo "QA2_ROLLBACK=completed"
+          REMOTE
