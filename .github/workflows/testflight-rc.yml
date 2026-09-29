@@ -23,7 +23,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  quality-gate:
+    uses: ./.github/workflows/quality-gate-reusable.yml
+
   build-and-upload:
+    needs: quality-gate
     runs-on: macos-15
     timeout-minutes: 180
     env:

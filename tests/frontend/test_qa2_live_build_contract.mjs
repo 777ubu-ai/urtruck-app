@@ -55,6 +55,8 @@ test('explicit QA release stays in the isolated QA2 package', () => {
 });
 
 test('TestFlight uses a protected exact-SHA QA2 trigger and never the production API', () => {
+  assert.ok(testflightWorkflow.includes('uses: ./.github/workflows/quality-gate-reusable.yml'));
+  assert.ok(testflightWorkflow.includes('needs: quality-gate'));
   assert.ok(testflightWorkflow.includes("'qa2-final-testflight-*'"));
   assert.ok(testflightWorkflow.includes('BUILD_QA2_TESTFLIGHT'));
   assert.ok(testflightWorkflow.includes('QA_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}'));
