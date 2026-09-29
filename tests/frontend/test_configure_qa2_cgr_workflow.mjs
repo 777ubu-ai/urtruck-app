@@ -26,5 +26,6 @@ test('QA2 CGR workflow uses systemd, rollback and live gates', () => {
     'Verify production fingerprint unchanged',
     'Roll back QA2 CGR settings on failure',
   ]) assert.ok(workflow.includes(marker), `missing ${marker}`);
+  assert.match(workflow, /sudo -n ss -ltnpH 'sport = :8002'/);
   assert.doesNotMatch(workflow, /kill -TERM|kill -KILL|nohup/);
 });
