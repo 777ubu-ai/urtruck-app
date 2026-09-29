@@ -1,0 +1,175 @@
+name: Configure QA2 CGR
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type CONFIGURE_QA2_CGR
+        required: true
+        type: string
+
+concurrency:
+  group: urtruck-qa2-cgr-config
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    if: inputs.confirmation == 'CONFIGURE_QA2_CGR'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: qa2
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      QA2_API_URL: ${{ secrets.QA2_API_URL }}
+      CGR_IIN_SALT: ${{ secrets.CGR_IIN_SALT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate protected QA2 CGR procedure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
+          test "${#CGR_IIN_SALT}" -ge 32
+          node --test tests/frontend/test_configure_qa2_cgr_workflow.mjs
+      - name: Prepare pinned SSH transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/qa2-cgr-key"
+          known="$RUNNER_TEMP/qa2-cgr-known-hosts"
+          umask 077
+          printf '%s\n' "$SERVER_SSH_KEY" > "$key"
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known"
+          chmod 600 "$key" "$known"
+          test -s "$key" -a -s "$known"
+          {
+            echo "QA2_SSH_KEY=$key"
+            echo "QA2_SSH_KNOWN_HOSTS=$known"
+          } >> "$GITHUB_ENV"
+      - name: Fingerprint production before QA2 configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          printf '%s' "$body" | sha256sum | awk '{print "PROD_VERSION_HASH_BEFORE=" $1}' >> "$GITHUB_ENV"
+      - name: Back up and enable CGR on QA2
+        shell: bash
+        run: |
+          set -euo pipefail
+          salt_file="/tmp/urtruck-qa2-cgr-salt-${GITHUB_RUN_ID}"
+          ssh_cmd=(ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS")
+          printf '%s\n' "$CGR_IIN_SALT" | "${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" "umask 077; cat > '$salt_file'"
+          "${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" bash -s -- "$salt_file" <<'REMOTE'
+          set -euo pipefail
+          salt_file="$1"
+          qa_backend=/home/ubuntu/urtruck-qa2/backend
+          qa_env="$qa_backend/.env"
+          unit=/etc/systemd/system/urtruck-qa2.service
+          test -f "$qa_env" -a -f "$unit"
+          grep -Fq "$qa_backend" "$unit"
+          test "$(systemctl is-active urtruck-qa2.service)" = active
+          backup="$qa_backend/.env.cgr-backup.$(date -u +%Y%m%dT%H%M%SZ)"
+          cp -- "$qa_env" "$backup"
+          chmod 600 "$backup"
+          printf 'BACKUP=%s\n' "$backup" > /tmp/urtruck-qa2-cgr.state
+          chmod 600 /tmp/urtruck-qa2-cgr.state
+          python3 - "$qa_env" "$salt_file" <<'PY'
+          from pathlib import Path
+          import os, sys
+          env_path, salt_path = map(Path, sys.argv[1:])
+          salt = salt_path.read_text(encoding="utf-8").strip()
+          if len(salt) < 32:
+              raise SystemExit("QA2_CGR_SALT_TOO_SHORT")
+          replacement = {
+              "CGR_FEATURE_ENABLED": "true",
+              "CGR_IIN_SALT": salt,
+              "CGR_SCOREBOARD_INTERVAL_MIN": "5",
+          }
+          kept = [
+              line for line in env_path.read_text(encoding="utf-8").splitlines()
+              if "=" not in line or line.split("=", 1)[0].strip() not in replacement
+          ]
+          kept.extend(f"{key}={value}" for key, value in replacement.items())
+          temp = env_path.with_name(env_path.name + ".cgr.tmp")
+          temp.write_text("\n".join(kept) + "\n", encoding="utf-8")
+          os.chmod(temp, 0o600)
+          temp.replace(env_path)
+          salt_path.unlink(missing_ok=True)
+          PY
+          sudo -n systemctl restart urtruck-qa2.service
+          test "$(systemctl is-active urtruck-qa2.service)" = active
+          main_pid="$(systemctl show -p MainPID --value urtruck-qa2.service)"
+          listener_pid="$(ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          test "$main_pid" -gt 0 -a "$listener_pid" = "$main_pid"
+          curl -fsS http://127.0.0.1:8002/health >/dev/null
+          curl -fsS http://127.0.0.1:8002/api/v1/borders/catalog >/dev/null
+          REMOTE
+      - name: Verify live CGR checkpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          for code in khorgos dostyk bakhty; do
+            curl -fsS --max-time 45 "$QA2_API_URL/api/v1/borders/live/$code?force=true" > "$RUNNER_TEMP/cgr-$code.json"
+            python3 - "$RUNNER_TEMP/cgr-$code.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          if not data.get("updated_at") and not data.get("fetched_at"):
+              raise SystemExit("QA2_CGR_LIVE_TIMESTAMP_MISSING")
+          PY
+          done
+      - name: Verify production fingerprint unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          after="$(printf '%s' "$body" | sha256sum | awk '{print $1}')"
+          test "$after" = "$PROD_VERSION_HASH_BEFORE"
+      - name: Roll back QA2 CGR settings on failure
+        if: failure() && env.QA2_SSH_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          state=/tmp/urtruck-qa2-cgr.state
+          test -f "$state" || exit 0
+          . "$state"
+          case "$BACKUP" in
+            /home/ubuntu/urtruck-qa2/backend/.env.cgr-backup.*) ;;
+            *) echo QA2_CGR_BACKUP_PATH_INVALID >&2; exit 1 ;;
+          esac
+          qa_env=/home/ubuntu/urtruck-qa2/backend/.env
+          cp -- "$BACKUP" "$qa_env"
+          chmod 600 "$qa_env"
+          rm -f -- "$BACKUP" "$state" /tmp/urtruck-qa2-cgr-salt-*
+          sudo -n systemctl restart urtruck-qa2.service
+          test "$(systemctl is-active urtruck-qa2.service)" = active
+          curl -fsS http://127.0.0.1:8002/health >/dev/null
+          REMOTE
+      - name: Always remove temporary CGR material
+        if: always() && env.QA2_SSH_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          state=/tmp/urtruck-qa2-cgr.state
+          if test -f "$state"; then
+            backup="$(sed -n 's/^BACKUP=//p' "$state")"
+            case "$backup" in
+              /home/ubuntu/urtruck-qa2/backend/.env.cgr-backup.*) rm -f -- "$backup" ;;
+              *) echo QA2_CGR_BACKUP_PATH_INVALID >&2; exit 1 ;;
+            esac
+            rm -f -- "$state"
+          fi
+          rm -f -- /tmp/urtruck-qa2-cgr-salt-*
+          REMOTE

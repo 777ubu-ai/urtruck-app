@@ -5,25 +5,30 @@ import test from 'node:test';
 const workflow = readFileSync('.github/workflows/configure-qa2-routing.yml', 'utf8');
 const script = readFileSync('scripts/configure_qa2_routing.sh', 'utf8');
 
-test('QA2 routing workflow is protected and uses only the existing ORS secret', () => {
+test('QA2 routing workflow is manually protected and uses pinned SSH', () => {
   assert.match(workflow, /environment:\n\s+name: qa2/);
   assert.match(workflow, /OPENROUTESERVICE_API_KEY:\s*\$\{\{ secrets\.OPENROUTESERVICE_API_KEY \}\}/);
+  assert.match(workflow, /SERVER_SSH_KEY:\s*\$\{\{ secrets\.SERVER_SSH_KEY \}\}/);
+  assert.match(workflow, /SERVER_SSH_KNOWN_HOSTS:\s*\$\{\{ secrets\.SERVER_SSH_KNOWN_HOSTS \}\}/);
   assert.match(workflow, /CONFIGURE_QA2_ROUTING/);
-  assert.match(workflow, /push:\n\s+branches:\n\s+- fix\/voice-stt-translation-20260925/);
-  assert.match(workflow, /github\.event\.head_commit\.message, '\[qa2-routing\]'/);
-  assert.doesNotMatch(workflow, /production-deploy|refs\/heads\/main/);
+  assert.match(workflow, /test "\$GITHUB_REF_NAME" = "qa2\/integration-candidate"/);
+  assert.doesNotMatch(workflow, /\npush:/);
+  assert.doesNotMatch(workflow, /SERVER_PASS|sshpass|StrictHostKeyChecking=no|refs\/heads\/main/);
 });
 
-test('routing procedure preserves local AI and provides a rollback backup', () => {
+test('routing procedure preserves local AI and systemd supervision with rollback', () => {
   for (const marker of [
-    'backup_dir=',
+    '.env.routing-backup.',
     'TRANSCRIBE_PROVIDER',
     'TRANSLATE_PROVIDER',
     'LOCAL_AI_URL',
     'OPENROUTESERVICE_API_KEY',
+    'systemctl restart urtruck-qa2.service',
     'QA2_ROUTING=healthy-openrouteservice',
     'QA2_LOCAL_AI=preserved',
   ]) assert.ok(script.includes(marker), `missing ${marker}`);
   assert.match(workflow, /Roll back QA2 routing settings on failure/);
-  assert.match(workflow, /cp -- "\$BACKUP_DIR\/qa2\.env" "\$ENV_FILE"/);
+  assert.match(workflow, /cp -- "\$BACKUP" "\$qa_env"/);
+  assert.match(workflow, /systemctl restart urtruck-qa2\.service/);
+  assert.doesNotMatch(script, /kill -TERM|kill -KILL|nohup|StrictHostKeyChecking=no|sshpass/);
 });
