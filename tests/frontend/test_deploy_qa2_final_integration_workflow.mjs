@@ -33,11 +33,16 @@ test('final QA2 deployment uses pinned SSH and systemd', () => {
     'SERVER_SSH_KEY', 'SERVER_SSH_KNOWN_HOSTS', 'StrictHostKeyChecking yes',
     'BatchMode yes', 'systemctl restart urtruck-qa2.service',
     'systemctl restart urtruck-qa2-ai.service', 'systemctl reload nginx',
+    'Type=simple', 'WorkingDirectory=/home/ubuntu/urtruck-qa2/backend',
+    'ExecStart=/home/ubuntu/urtruck-qa2/backend/venv/bin/python -m uvicorn',
+    'QA2_SYSTEMD_SUPERVISION=active_listener_in_unit_cgroup',
+    'old_cwd', '"$QA_ROOT/backend"',
   ]);
   assertAbsent(finalDeploy, [
     'SERVER_PASS', 'sshpass', 'StrictHostKeyChecking=no', 'nohup',
-    'kill -TERM', 'kill -KILL', 'com.urtruck.protest', 'urtruck-pro',
+    'com.urtruck.protest', 'urtruck-pro',
   ]);
+  assert.ok(finalDeploy.indexOf('old_cwd=') < finalDeploy.indexOf('kill -TERM'));
 });
 
 test('secure routing path is protected, reversible and systemd-based', () => {

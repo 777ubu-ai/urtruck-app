@@ -158,12 +158,58 @@ jobs:
           printf '%s\n' "$QA_SOURCE_SHA" > "$QA_ROOT/backend/.qa-source-sha"
           printf '%s\n' "$QA_SOURCE_SHA" > "$QA_AI_ROOT/.qa-source-sha"
           ln -sfn "$QA_WEB_ROOT/releases/$QA_SOURCE_SHA" "$QA_WEB_ROOT/current"
+
+          service_tmp="$(mktemp)"
+          cat > "$service_tmp" <<'SERVICE'
+          [Unit]
+          Description=UrTruck isolated QA2 API
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=ubuntu
+          WorkingDirectory=/home/ubuntu/urtruck-qa2/backend
+          EnvironmentFile=/home/ubuntu/urtruck-qa2/.env
+          Environment=PYTHONUNBUFFERED=1
+          ExecStart=/home/ubuntu/urtruck-qa2/backend/venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8002
+          Restart=on-failure
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          SERVICE
+          sudo install -o root -g root -m 0644 "$service_tmp" /etc/systemd/system/urtruck-qa2.service
+          rm -f "$service_tmp"
+
+          old_pid="$(sudo -n ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          if test -n "$old_pid" && ! grep -Fq 'urtruck-qa2.service' "/proc/$old_pid/cgroup"; then
+            test "$(ps -p "$old_pid" -o user= | tr -d ' ')" = ubuntu
+            old_cwd="$(sudo -n readlink -f "/proc/$old_pid/cwd")"
+            case "$old_cwd" in "$QA_ROOT/backend"|"$QA_ROOT/backend"/*) ;; *) exit 1 ;; esac
+            kill -TERM "$old_pid"
+            for _ in {1..20}; do kill -0 "$old_pid" 2>/dev/null || break; sleep 0.5; done
+            kill -0 "$old_pid" 2>/dev/null && kill -KILL "$old_pid" || true
+          fi
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable urtruck-qa2.service
           sudo systemctl restart urtruck-qa2.service
           sudo systemctl restart urtruck-qa2-ai.service
           sudo systemctl reload nginx
-          sudo systemctl is-active --quiet urtruck-qa2.service
+          healthy=no
+          for _ in {1..60}; do
+            if sudo systemctl is-active --quiet urtruck-qa2.service && curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null 2>&1; then
+              healthy=yes
+              break
+            fi
+            sleep 1
+          done
+          test "$healthy" = yes
+          listener_pid="$(sudo -n ss -ltnpH 'sport = :8002' | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          test -n "$listener_pid"
+          grep -Fq 'urtruck-qa2.service' "/proc/$listener_pid/cgroup"
           sudo systemctl is-active --quiet urtruck-qa2-ai.service
-          curl -fsS --max-time 20 http://127.0.0.1:8002/health >/dev/null
+          echo QA2_SYSTEMD_SUPERVISION=active_listener_in_unit_cgroup
           REMOTE
       - name: Verify exact QA2 runtime and production unchanged
         shell: bash

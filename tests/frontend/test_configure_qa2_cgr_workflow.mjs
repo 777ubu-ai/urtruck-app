@@ -29,5 +29,7 @@ test('QA2 CGR workflow uses systemd, rollback and live gates', () => {
   assert.match(workflow, /sudo -n ss -ltnpH 'sport = :8002'/);
   assert.match(workflow, /systemctl show -p ControlGroup/);
   assert.equal(workflow.includes('listener_pid" = "$main_pid'), false);
+  assert.ok(workflow.includes('qa_env=/home/ubuntu/urtruck-qa2/.env'));
+  assert.equal(workflow.includes('qa_env=/home/ubuntu/urtruck-qa2/backend/.env'), false);
   assert.doesNotMatch(workflow, /kill -TERM|kill -KILL|nohup/);
 });
