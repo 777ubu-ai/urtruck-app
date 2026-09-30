@@ -141,6 +141,7 @@ from database import db
 from database import registration_dal
 from database import reviews_dal
 from database import consent_dal
+from api.runtime_errors import install_runtime_error_handlers
 from blacklist import manager as blacklist_mgr
 from services import storage_service
 
@@ -157,6 +158,7 @@ app = FastAPI(
     redoc_url=None if _IS_PRODUCTION else "/redoc",
     openapi_url=None if _IS_PRODUCTION else "/openapi.json",
 )
+install_runtime_error_handlers(app)
 
 ALLOWED_ORIGINS = os.getenv(
     "CORS_ORIGINS",

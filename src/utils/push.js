@@ -29,6 +29,12 @@ const DEVICE_ID_KEY = 'ur_device_id';
 // хранится один раз на процесс: повторный app-active/login не должен
 // множить callbacks и регистрацию одного токена.
 let nativeTokenListenerBound = false;
+// Android may deliver several token-change callbacks in the same event-loop
+// turn (notably while the notification bridge is restoring after process
+// recreation).  Registration is an idempotent *network write*, but without
+// coalescing each callback opened another OkHttp request and could starve the
+// authenticated marketplace traffic on the same device.
+let nativeRegistrationInFlight = null;
 
 function _uuidv4() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -268,6 +274,20 @@ export const push = {
   },
 
   async registerNative() {
+    // Keep one registration flight per JS runtime.  Callers still receive the
+    // same result, while a token-listener burst cannot turn into a request
+    // storm or monopolise the mobile HTTP dispatcher.
+    if (nativeRegistrationInFlight) return nativeRegistrationInFlight;
+    const flight = this._registerNativeOnce();
+    nativeRegistrationInFlight = flight;
+    try {
+      return await flight;
+    } finally {
+      if (nativeRegistrationInFlight === flight) nativeRegistrationInFlight = null;
+    }
+  },
+
+  async _registerNativeOnce() {
     if (!this.isNative()) return { ok: false, reason: 'web' };
     let Notifications, Device;
     try {
