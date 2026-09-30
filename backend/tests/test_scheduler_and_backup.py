@@ -43,10 +43,13 @@ def test_scheduler_singleton_idempotent():
         assert s2 is s1, "повторный start должен вернуть тот же scheduler (без второго процесса джоб)"
         # Native scheduler jobs are registered exactly once; Expo receipt
         # polling is intentionally absent after the FCM/APNs migration.
+        # Hidden STT gets a separate bounded drain, so slow inference cannot
+        # delay chat delivery or the push outbox worker.
         ids = sorted(j.id for j in s1.get_jobs())
         assert ids == sorted(["telegram_parse", "monthly_rescore", "db_backup",
                               "push_reminders", "expired_notify", "no_bids_notify",
-                              "push_outbox_drain", "gps_heartbeat_check"]), ids
+                              "push_outbox_drain", "voice_processing_drain",
+                              "gps_heartbeat_check"]), ids
     finally:
         jobs.stop_scheduler()
         os.environ.pop("URTRUCK_SCHEDULER_LOCK", None)
