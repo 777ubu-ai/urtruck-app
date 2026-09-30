@@ -56,6 +56,25 @@ test('repeated registration keeps one provider and stable device id', async () =
   } finally { f.restore(); shim.uninstall(); }
 });
 
+test('concurrent native registration is coalesced into one network write', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  let release;
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), body: JSON.parse(opts.body) });
+    await new Promise((resolve) => { release = resolve; });
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'u-1' }) };
+  };
+  try {
+    const push = await freshPush();
+    const pending = Promise.all(Array.from({ length: 25 }, () => push.registerNative()));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(calls.filter((x) => x.url.includes('/register-native')).length, 1);
+    release();
+    assert.ok((await pending).every((result) => result.ok));
+  } finally { globalThis.fetch = old; shim.uninstall(); }
+});
+
 test('native token rotation re-registers the current installation once', async () => {
   await reset(); const shim = installNativeRequireShim(); const f = fetchMock();
   try {
