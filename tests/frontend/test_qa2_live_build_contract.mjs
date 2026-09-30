@@ -31,6 +31,7 @@ test('QA086 checks out and records an explicitly supplied exact source SHA', () 
   assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));
   assert.ok(workflow.includes('test "$RESOLVED_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"'));
   assert.ok(workflow.includes("require('./config/qa2-android-build-metadata')"));
+  assert.ok(workflow.includes("process.stdout.write([metadata.QA2_ANDROID_VERSION_CODE, metadata.QA2_ANDROID_PREVIOUS_VERSION_CODE].join(' ') + '\\\\n')"), 'metadata line must terminate so bash read succeeds under set -e');
   assert.ok(workflow.includes('QA2 Android versionCode must be greater than the previous QA2 APK'));
   assert.ok(!workflow.includes('211040090'), 'workflow must not silently rebuild the previous QA2 APK');
   assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
