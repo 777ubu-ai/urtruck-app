@@ -61,6 +61,11 @@ on:
         required: true
         default: true
         type: boolean
+      api_url:
+        description: "Override EXPO_PUBLIC_API_URL (leave default for production)"
+        required: true
+        default: "https://urtruck.kz"
+        type: string
 
 # Play принимает только уникальные versionCode. Сериализация гарантирует, что
 # два push/manual запуска не дойдут до вычисления кода в одну секунду.
@@ -169,7 +174,7 @@ jobs:
 
       - name: Build release AAB
         env:
-          EXPO_PUBLIC_API_URL: https://urtruck.kz
+          EXPO_PUBLIC_API_URL: ${{ inputs.api_url || 'https://urtruck.kz' }}
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
           EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
@@ -217,6 +222,33 @@ jobs:
           echo "AAB SHA-256=${aab_sha}"
           echo "Upload certificate SHA-256=${cert_sha}"
 
+      - name: Build installable universal APK (manual runs only)
+        # Локальный тест реального IAP (Google Play Billing) требует точного
+        # applicationId com.urtruck.app, подписанного боевым upload-ключом —
+        # AAB нельзя поставить напрямую через adb install, а debug/QA2-сборки
+        # используют applicationIdSuffix .qa2, под которым в Play Console нет
+        # зарегистрированных товаров. bundletool здесь переиспользует тот же
+        # ключ/AAB, что уже проверены выше — Play Console не трогается.
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          aab="android/app/build/outputs/bundle/release/app-release.aab"
+          bundletool_jar="$RUNNER_TEMP/bundletool.jar"
+          java -jar "$bundletool_jar" build-apks \
+            --bundle="$aab" \
+            --output="$RUNNER_TEMP/app.apks" \
+            --mode=universal \
+            --ks="$RUNNER_TEMP/urtruck-upload-key.jks" \
+            --ks-pass="pass:${ANDROID_KEYSTORE_PASSWORD}" \
+            --ks-key-alias="${ANDROID_KEY_ALIAS}" \
+            --key-pass="pass:${ANDROID_KEY_PASSWORD}"
+          unzip -p "$RUNNER_TEMP/app.apks" universal.apk > android/app/build/outputs/bundle/release/UrTruck-universal.apk
+          test -s android/app/build/outputs/bundle/release/UrTruck-universal.apk
+
       - name: Remove keystore from runner
         if: always()
         run: rm -f "$RUNNER_TEMP/urtruck-upload-key.jks"
@@ -227,6 +259,15 @@ jobs:
           name: UrTruck-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
           retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload installable universal APK as workflow artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-universal-apk
+          path: android/app/build/outputs/bundle/release/UrTruck-universal.apk
+          retention-days: 7
           if-no-files-found: error
 
       - name: Upload to Google Play

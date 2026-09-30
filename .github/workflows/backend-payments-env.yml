@@ -1,0 +1,119 @@
+name: Backend payments env
+
+# Одноразовая настройка env платежей на прод-сервере (08.09.2026):
+# PREMIUM_CONTACT_LIMIT=30 + GOOGLE_PLAY_SERVICE_ACCOUNT_JSON (real-режим
+# верификации покупок вместо MOCK). CONTACTS_MONETIZATION_ENABLED НЕ трогает —
+# платный гейт включается только по решению владельца.
+#
+# Запуск: Actions → Backend payments env → Run workflow (ветка payments).
+# Требует секреты SERVER_HOST / SERVER_USER / SERVER_PASS / PLAY_SERVICE_ACCOUNT_JSON.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  update-env:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
+      - name: Build env patch and merge script
+        env:
+          SA_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          sa = os.environ["SA_JSON"].strip()
+          json.loads(sa)  # валидация: это корректный JSON
+          assert "'" not in sa, "unexpected single quote in service account JSON"
+          with open("/tmp/env_patch", "w", encoding="utf-8") as f:
+              f.write("PREMIUM_CONTACT_LIMIT=30\n")
+              f.write("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON='%s'\n" % sa)
+          print("patch bytes:", os.path.getsize("/tmp/env_patch"))
+          PY
+          cat > /tmp/merge_env.py <<'PY'
+          import sys
+          patch_path, env_path = sys.argv[1], sys.argv[2]
+          patch = {}
+          with open(patch_path, encoding="utf-8") as f:
+              for line in f:
+                  line = line.rstrip("\n")
+                  if not line or line.lstrip().startswith("#") or "=" not in line:
+                      continue
+                  k, v = line.split("=", 1)
+                  patch[k.strip()] = v
+          lines = open(env_path, encoding="utf-8").read().splitlines()
+          seen, out = set(), []
+          for line in lines:
+              if "=" in line and not line.lstrip().startswith("#"):
+                  k = line.split("=", 1)[0].strip()
+                  if k in patch:
+                      out.append("%s=%s" % (k, patch[k]))
+                      seen.add(k)
+                      continue
+              out.append(line)
+          for k, v in patch.items():
+              if k not in seen:
+                  out.append("%s=%s" % (k, v))
+          with open(env_path, "w", encoding="utf-8") as f:
+              f.write("\n".join(out) + "\n")
+          print("patched keys:", ", ".join(sorted(patch)))
+          PY
+
+      - name: Copy patch to server
+        env:
+          SSH_USER: ${{ secrets.SERVER_USER }}
+          SSH_HOST: ${{ secrets.SERVER_HOST }}
+          SSH_PASS: ${{ secrets.SERVER_PASS }}
+        run: |
+          set -euo pipefail
+          sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=accept-new \
+            /tmp/env_patch /tmp/merge_env.py \
+            "$SSH_USER@$SSH_HOST":/tmp/
+
+      - name: Backup .env and apply patch
+        env:
+          SSH_USER: ${{ secrets.SERVER_USER }}
+          SSH_HOST: ${{ secrets.SERVER_HOST }}
+          SSH_PASS: ${{ secrets.SERVER_PASS }}
+        run: |
+          set -euo pipefail
+          sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" '
+            set -euo pipefail
+            cd /home/ubuntu/urtruck/backend
+            test -f .env
+            cp .env ".env.bak.payments-$(date +%Y%m%d_%H%M%S)"
+            python3 /tmp/merge_env.py /tmp/env_patch .env
+            rm -f /tmp/env_patch /tmp/merge_env.py
+          '
+
+      - name: Validate config parses, restart uvicorn, verify
+        env:
+          SSH_USER: ${{ secrets.SERVER_USER }}
+          SSH_HOST: ${{ secrets.SERVER_HOST }}
+          SSH_PASS: ${{ secrets.SERVER_PASS }}
+        run: |
+          set -euo pipefail
+          sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" '
+            set -euo pipefail
+            cd /home/ubuntu/urtruck/backend
+            venv/bin/python -c "import config; assert config.PREMIUM_CONTACT_LIMIT == 30, config.PREMIUM_CONTACT_LIMIT; print(\"config OK: limit=30 monetization=\", config.CONTACTS_MONETIZATION_ENABLED, \"sa_set=\", bool(config.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON))"
+            PIDS=$(pgrep -af "uvicorn.*main:app.*--port 8001" | awk "{print \$1}" || true)
+            if [ -n "$PIDS" ]; then
+              kill -TERM $PIDS || true
+              sleep 3
+              LEFT=$(pgrep -af "uvicorn.*main:app.*--port 8001" | awk "{print \$1}" || true)
+              [ -z "$LEFT" ] || { kill -KILL $LEFT || true; sleep 1; }
+            fi
+            nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8001 > uvicorn.log 2>&1 &
+            disown || true
+            sleep 5
+            test "$(pgrep -cf "uvicorn.*main:app.*--port 8001")" -ge 1
+            echo -n "version: "; curl -fsS http://127.0.0.1:8001/api/version
+            echo
+            echo -n "payments router (ожидаем 401/403 без авторизации): "
+            curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8001/api/v1/payments/subscription/status
+          '

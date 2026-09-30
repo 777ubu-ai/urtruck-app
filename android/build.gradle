@@ -1,16 +1,30 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
+// buildToolsVersion/minSdk/compileSdk/targetSdk/kotlinVersion/ndkVersion не
+// переопределяются здесь — expo-root-project plugin (apply ниже) сам
+// подставляет корректные дефолты под Expo SDK 57 / RN 0.86, включая Kotlin
+// >= 2.1.20. Явный pin kotlinVersion=1.9.25 из pre-Expo-57 версии этого
+// файла ломал сборку ("Kotlin 1.9.25 is not supported by Expo modules").
+// react-native-iap (с 16.x, Nitro) сам резолвит Billing Library через свою
+// openiap-google обёртку — ручной playBillingSdkVersion override (нужный
+// для 13.x) больше не читается модулем, убран.
 buildscript {
-  repositories {
-    google()
-    mavenCentral()
-  }
-  dependencies {
-        classpath 'com.google.gms:google-services:4.4.4'
-    classpath('com.android.tools.build:gradle')
-    classpath('com.facebook.react:react-native-gradle-plugin')
-    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
-  }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath('com.android.tools.build:gradle')
+        classpath('com.facebook.react:react-native-gradle-plugin')
+        classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+        // P1 fix (26.08.2026): Android FCM push requires this plugin to turn
+        // app/google-services.json into real Firebase runtime config
+        // (google_app_id, gcm_defaultSenderId, ...). See
+        // docs/release/android-firebase-config.md. Applied conditionally in
+        // app/build.gradle — the classpath itself is always available so
+        // that conditional `apply plugin` doesn't fail to resolve.
+        classpath('com.google.gms:google-services:4.4.4')
+    }
 }
 
 allprojects {

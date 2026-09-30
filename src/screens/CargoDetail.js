@@ -370,7 +370,13 @@ export default function CargoDetail({ navigation, route }) {
         // в чат сделки, а не «ищите сами кнопку внизу карточки».
         if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
       } else {
-        toast(r.detail || t('accept_failed'), 'error');
+        if (r.dealLimitExceeded) {
+          // Месячный лимит принятия сделок исчерпан — ведём на экран тарифов.
+          toast(t('plans_limit_exceeded'), 'error');
+          navigation.navigate('SubscriptionPlans');
+        } else {
+          toast(r.detail || t('accept_failed'), 'error');
+        }
       }
     } catch {
       toast(t('no_connection'), 'error');
@@ -778,7 +784,13 @@ export default function CargoDetail({ navigation, route }) {
                             // WhatsApp-упрощение (04.08.2026, п.9 ТЗ): сразу в чат сделки.
                             if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
                           } else {
-                            toast(r.detail || t('accept_failed'), 'error');
+                            if (r.dealLimitExceeded) {
+                              // Месячный лимит принятия сделок исчерпан — ведём на экран тарифов.
+                              toast(t('plans_limit_exceeded'), 'error');
+                              navigation.navigate('SubscriptionPlans');
+                            } else {
+                              toast(r.detail || t('accept_failed'), 'error');
+                            }
                           }
                         } catch {
                           toast(t('no_connection'), 'error');

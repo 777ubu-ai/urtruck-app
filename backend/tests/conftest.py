@@ -80,6 +80,11 @@ def _rebuild_all_schemas():
     import api.favorites as favorites
     favorites._init()
 
+    # payments (подписка на контакты, Google Play Billing) — та же история:
+    # схема payments_schema.sql применяется здесь заново после удаления БД.
+    from database import subscription_dal
+    subscription_dal.init_payments_schema()
+
     # Saved-search notification tests import the router before the session
     # fixture rebuilds the shared SQLite file. Recreate this schema here too,
     # otherwise the full suite depends on collection order while the test
