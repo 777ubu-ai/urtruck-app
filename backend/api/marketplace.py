@@ -2763,7 +2763,17 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, acceptor_id: str |
     # сделки (conn=c — иначе SQLite write-lock). INSERT OR IGNORE по
     # UNIQUE(user_id, deal_id): повторный accept той же сделки не тратит
     # лимит дважды; отмена сделки лимит не возвращает.
+    #
+    # Владелец продукта (2026-09-30): списывать ОБЕИМ сторонам сделки, не
+    # только acceptor_id — у контрагента (тот, чью ставку приняли) лимит
+    # тоже расходуется. Проверка can_accept_deal() выше — ТОЛЬКО для
+    # acceptor_id: контрагент, уже исчерпавший свой лимит, эту сделку не
+    # блокирует (он его больше не инициирует), его счётчик просто уходит в
+    # минус относительно лимита — это ограничит уже ЕГО следующую попытку
+    # самому принять сделку.
     _sub_dal.record_deal_accept(acceptor_id, deal_id, conn=c)
+    _counterparty_id = driver_id if acceptor_id == shipper_id else shipper_id
+    _sub_dal.record_deal_accept(_counterparty_id, deal_id, conn=c)
 
     # PR4 — immutable юридическое событие сделки. actor = текущий пользователь
     # (из auth), created_at ставит сервер. Роль actor'а: тот, кто принял ставку,
