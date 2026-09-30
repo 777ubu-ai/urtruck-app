@@ -637,9 +637,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           voiceScope: isVoice ? voiceScope : null,
           mediaUrl,
           voiceDuration: Number(message.voice_duration || 0),
-          transcript: message.voice_transcript || null,
-          transcriptLang: message.voice_transcript_lang || null,
-          transcriptProvider: message.voice_transcript_provider || null,
+          // Polling receives only hidden-STT readiness metadata. Text itself
+          // is fetched on the user's explicit "Показать текст" action.
+          voiceProcessingStatus: message.voice_processing_status || null,
+          voiceTranscriptReady: !!message.voice_transcript_ready,
           time: fmtMessageTime(message.created_at),
           createdAt: message.created_at,
           read: !!message.is_read,
@@ -760,6 +761,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [voiceText, voiceScope, lang]);
 
   const translateVoiceTranscript = React.useCallback(async (item) => {
+    if (item.voiceScope !== voiceScope) return;
+    await voiceText.retry(item, lang);
+  }, [voiceText, voiceScope, lang]);
+
+  const retryVoiceTranscript = React.useCallback(async (item) => {
     if (item.voiceScope !== voiceScope) return;
     await voiceText.retry(item, lang);
   }, [voiceText, voiceScope, lang]);
@@ -1416,7 +1422,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 transcribing={!!voiceTranscripts[item.id]?.transcribing}
                 onToggleTranscript={() => toggleVoiceTranscript(item)}
                 onToggleOriginal={() => toggleVoiceOriginal(item)}
-                onRetryTranscript={() => toggleVoiceTranscript(item)}
+                onRetryTranscript={() => retryVoiceTranscript(item)}
                 onRetryTranslation={() => translateVoiceTranscript(item)}
                 t={t}
                 onError={() => toast(t('voice_play_fail'), 'error')}
@@ -1489,7 +1495,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         </View>
       </React.Fragment>
     );
-  }, [colors, textTranslation, textTranslationRevision, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
+  }, [colors, textTranslation, textTranslationRevision, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, retryVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage

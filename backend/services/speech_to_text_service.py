@@ -156,7 +156,9 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
         # the user as "this recording can't be transcribed."
         status = exc.response.status_code if exc.response is not None else 0
         body = exc.response.text[:300] if exc.response is not None else ""
-        print(f"[stt] OpenAI HTTP {status}: {body}", flush=True)
+        # Provider bodies may reflect request content. Keep only a status
+        # category in runtime logs; transcript/audio details are never logs.
+        print(f"[stt] provider HTTP {status}", flush=True)
         # A generic 429 is a transient rate-limit condition. OpenAI also
         # returns 429 for exhausted billing credit; that one cannot recover by
         # retrying and must not be shown as a timeout.
@@ -182,7 +184,7 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
         # Malformed 2xx body (STT-hardening spec item 4) — a provider that
         # returns success with an unparsable body must still fail closed,
         # not bubble up as an unhandled 500.
-        print(f"[stt] OpenAI returned non-JSON 2xx body: {response.text[:300]!r}", flush=True)
+        print("[stt] provider returned malformed success response", flush=True)
         raise SpeechToTextError("Распознавание голоса вернуло некорректный ответ", provider="openai", code="TRANSCRIPTION_FAILED") from exc
     transcript = str(data.get("text") or "").strip()
     detected_lang = None

@@ -47,10 +47,12 @@ test('QA2 CPU speech inference uses a bounded single-worker decoding contract', 
   assert.match(qa2Ai, /word_timestamps=False/);
 });
 
-test('persisted transcript reaches the second participant through the message API', () => {
-  assert.match(workspace, /transcript: message\.voice_transcript \|\| null/);
-  assert.match(workspace, /transcriptLang: message\.voice_transcript_lang \|\| null/);
-  assert.match(workspace, /transcriptProvider: message\.voice_transcript_provider \|\| null/);
+test('persisted transcript stays hidden from polling until an explicit voice-text request', () => {
+  assert.match(workspace, /voiceProcessingStatus: message\.voice_processing_status \|\| null/);
+  assert.match(workspace, /voiceTranscriptReady: !!message\.voice_transcript_ready/);
+  assert.match(frontendChatApi, /async voiceText\(messageId, targetLang = null\)/);
+  assert.match(chatApi, /@chat_router\.get\("\/voice\/\{message_id\}\/text"\)/);
+  assert.match(chatApi, /m\.pop\("voice_transcript", None\)/);
   assert.match(chatApi, /UPDATE chat_messages SET voice_transcript =/);
 });
 

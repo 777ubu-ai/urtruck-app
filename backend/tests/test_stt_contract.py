@@ -157,8 +157,8 @@ def test_02_real_voice_upload_then_send_succeeds():
     assert STATE["message_id"]
 
 
-def test_02b_voice_duration_boundary_rejects_over_60_seconds():
-    """The API must enforce the voice-duration contract server-side."""
+def test_02b_voice_duration_ui_timer_is_not_authoritative():
+    """The API keeps the audio-file duration contract, not a client timer."""
     _as(B)
     for duration in (0, 60):
         r = client.post("/api/v1/chat/send", json={
@@ -174,7 +174,11 @@ def test_02b_voice_duration_boundary_rejects_over_60_seconds():
             "photo_url": STATE["voice_key"], "voice_duration": duration,
             "client_msg_id": f"voice-boundary-{duration}-{uuid.uuid4().hex}",
         })
-        assert r.status_code == 422, f"{duration}s must be rejected: {r.status_code} {r.text}"
+        assert r.status_code == 200, f"UI duration must not reject real audio: {r.status_code} {r.text}"
+        message_id = r.json()["message_id"]
+        with get_conn() as c:
+            stored = c.execute("SELECT voice_duration FROM chat_messages WHERE id=?", (message_id,)).fetchone()[0]
+        assert stored is None, "unsupported test fixture must not preserve the UI timer as fact"
 
 
 # ───────────────────────── 2. access control ────────────────────────────
@@ -189,6 +193,14 @@ def test_04_stranger_cannot_translate():
     _as(C)
     r = client.post("/api/v1/chat/translate", json={"message_id": STATE["message_id"], "target_lang": "en"})
     assert r.status_code == 403, r.text
+
+
+def test_04b_stranger_cannot_reveal_or_requeue_hidden_voice_result():
+    _as(C)
+    shown = client.get(f"/api/v1/chat/voice/{STATE['message_id']}/text")
+    assert shown.status_code == 403, shown.text
+    requeued = client.post(f"/api/v1/chat/voice/{STATE['message_id']}/recognize")
+    assert requeued.status_code == 403, requeued.text
 
 
 # ──────────────── 3. deal-status gate (participant, but deal ineligible) ────
@@ -244,6 +256,19 @@ def test_06_transcribe_success_and_idempotent_on_repeat(monkeypatch):
     assert body2["transcript_text"] == "hello world"
     assert body2["cached"] is True
     assert calls["n"] == 1, "a cached transcript must never re-invoke the STT provider"
+
+
+def test_06b_history_hides_result_until_authorized_explicit_reveal():
+    _as(A)
+    history = client.get(f"/api/v1/chat/messages/{STATE['room_id']}")
+    assert history.status_code == 200, history.text
+    voice = next(m for m in history.json()["messages"] if m["id"] == STATE["message_id"])
+    assert "voice_transcript" not in voice
+    assert voice["voice_processing_status"] == "ready"
+    shown = client.get(f"/api/v1/chat/voice/{STATE['message_id']}/text?target_lang=en")
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["status"] == "ready"
+    assert shown.json()["transcript_text"] == "hello world"
 
 
 # ─────────────── 5. concurrent-claim race + stale-claim self-heal ──────────

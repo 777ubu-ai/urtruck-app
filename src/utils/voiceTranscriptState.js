@@ -25,7 +25,10 @@ export function createVoiceTranscriptState(api) {
   const emit = () => { if (active) listeners.forEach((listener) => listener()); };
   const entryFor = (id) => {
     const key = String(id);
-    if (!entries.has(key)) entries.set(key, { id: key, targets: new Map(), visible: false });
+    if (!entries.has(key)) entries.set(key, {
+      id: key, targets: new Map(), visible: false,
+      backgroundStatus: null, transcriptReady: false,
+    });
     return entries.get(key);
   };
   const targetFor = (entry, lang) => {
@@ -57,10 +60,19 @@ export function createVoiceTranscriptState(api) {
     if (!active) return;
     let changed = false;
     for (const item of messages) {
-      if (!item?.voice || !item.id || !item.transcript) continue;
+      if (!item?.voice || !item.id) continue;
       const entry = entryFor(item.id);
-      const original = setOriginal(entry, item.transcript, item.transcriptLang, item.transcriptProvider);
-      changed = original.changed || changed;
+      if (item.voiceProcessingStatus && entry.backgroundStatus !== item.voiceProcessingStatus) {
+        entry.backgroundStatus = item.voiceProcessingStatus;
+        entry.transcriptReady = item.voiceTranscriptReady === true || item.voiceProcessingStatus === 'ready';
+        changed = true;
+      }
+      // Compatibility for a manually opened legacy response only. Normal chat
+      // polling no longer supplies transcript fields.
+      if (item.transcript) {
+        const original = setOriginal(entry, item.transcript, item.transcriptLang, item.transcriptProvider);
+        changed = original.changed || changed;
+      }
     }
     if (changed) emit();
   }
@@ -118,6 +130,34 @@ export function createVoiceTranscriptState(api) {
     return target.pending;
   }
 
+  function revealHidden(entry, lang) {
+    const target = targetFor(entry, lang);
+    if (target.pending) return target.pending;
+    target.error = null;
+    target.pending = Promise.resolve().then(async () => {
+      const result = await api.voiceText(entry.id, lang);
+      entry.backgroundStatus = result?.status || 'unavailable';
+      entry.transcriptReady = entry.backgroundStatus === 'ready';
+      if (entry.backgroundStatus !== 'ready') return;
+      if (!result?.transcript_text?.trim()) throw unavailable();
+      setOriginal(entry, result.transcript_text, result.source_lang, result.provider);
+      if (validTranslation({
+        translated_text: result.translated_text,
+        provider: result.translation_provider,
+        target_lang: result.target_lang,
+      }, lang)) {
+        Object.assign(target, { translatedText: result.translated_text, provider: result.translation_provider });
+      }
+    }).catch((error) => {
+      target.error = { code: error?.code || null, key: 'voice_transcription_unavailable' };
+    }).finally(() => {
+      target.pending = null;
+      emit();
+    });
+    emit();
+    return target.pending;
+  }
+
   function view(id, language, t = (key) => key) {
     const entry = entries.get(String(id));
     if (!entry) return undefined;
@@ -137,6 +177,8 @@ export function createVoiceTranscriptState(api) {
       transcribing: !!entry.sttPending || !!target.pending,
       translationError: !!target.error && !!entry.transcriptText,
       errorText: target.error ? (localized && localized !== errorKey ? localized : t(target.error.key)) : null,
+      backgroundStatus: entry.backgroundStatus,
+      transcriptReady: entry.transcriptReady,
     };
   }
 
@@ -165,14 +207,26 @@ export function createVoiceTranscriptState(api) {
       if (entry.visible && ready(entry, lang)) { entry.visible = false; emit(); return Promise.resolve(); }
       entry.visible = true;
       emit();
+      if (!entry.transcriptText && typeof api.voiceText === 'function') return revealHidden(entry, lang);
       return load(entry, lang);
     },
     retry(item, language) {
       if (!active || !item?.id) return Promise.resolve();
       hydrate([item]);
       const entry = entryFor(item.id);
+      const lang = normalizeVoiceLanguage(language);
+      if (!entry.transcriptText && typeof api.recognizeVoiceAgain === 'function'
+        && ['expired', 'failed_retryable', 'failed_permanent'].includes(entry.backgroundStatus)) {
+        return Promise.resolve(api.recognizeVoiceAgain(entry.id)).then((result) => {
+          entry.backgroundStatus = result?.status || 'queued';
+          entry.transcriptReady = false;
+          entry.visible = false;
+          emit();
+        });
+      }
       entry.visible = true;
-      return load(entry, normalizeVoiceLanguage(language));
+      if (!entry.transcriptText && typeof api.voiceText === 'function') return revealHidden(entry, lang);
+      return load(entry, lang);
     },
     toggleOriginal(id, language) {
       if (!active) return;
