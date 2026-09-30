@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
+const require = createRequire(import.meta.url);
+const qa2AndroidMetadata = require('../../config/qa2-android-build-metadata');
 const workflow = readFileSync('.github/workflows/build-android-apk.yml', 'utf8');
 const testflightWorkflow = readFileSync('.github/workflows/testflight-rc.yml', 'utf8');
 const playWorkflow = readFileSync('.github/workflows/deploy-play.yml', 'utf8');
@@ -26,8 +30,32 @@ test('QA086 checks out and records an explicitly supplied exact source SHA', () 
   assert.ok(!sourceInput.includes('default:'), 'QA2 build must not silently reuse a stale source SHA');
   assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));
   assert.ok(workflow.includes('test "$RESOLVED_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"'));
-  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040090'));
+  assert.ok(workflow.includes("require('./config/qa2-android-build-metadata')"));
+  assert.ok(workflow.includes('QA2 Android versionCode must be greater than the previous QA2 APK'));
+  assert.ok(!workflow.includes('211040090'), 'workflow must not silently rebuild the previous QA2 APK');
   assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
+});
+
+test('QA2 Android APK versionCode is sourced from config and is newer than the installed baseline', () => {
+  const output = execFileSync(
+    process.execPath,
+    ['-e', "const config = require('./app.config.js')({ config: { android: {}, extra: {} } }); process.stdout.write(String(config.android.versionCode));"],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        URTRUCK_BUILD_FLAVOR: 'qa2',
+        URTRUCK_VERSION_CODE: String(qa2AndroidMetadata.QA2_ANDROID_VERSION_CODE),
+        EXPO_PUBLIC_API_URL: 'https://qa2.example.test',
+      },
+    },
+  ).toString();
+
+  assert.equal(Number(output), qa2AndroidMetadata.QA2_ANDROID_VERSION_CODE);
+  assert.ok(
+    qa2AndroidMetadata.QA2_ANDROID_VERSION_CODE
+      > qa2AndroidMetadata.QA2_ANDROID_PREVIOUS_VERSION_CODE,
+  );
 });
 
 test('live QA2 keeps MapKit and Firebase secret injection and the isolated package', () => {
