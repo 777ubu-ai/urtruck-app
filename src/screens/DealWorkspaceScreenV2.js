@@ -64,6 +64,7 @@ import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
 import { SERVER_URL } from '../config/env';
 import { reviewsAPI } from '../utils/reviews';
+import { normalizeComposerHeight, reconcileChatMessages, selectVoiceDurationSeconds } from '../utils/chatMessageListState';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const LOCATION_HISTORY_STATUSES = [...LIVE_TRACKING_STATUSES, 'delivered', 'received', 'completed'];
@@ -431,18 +432,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const nearBottomRef = React.useRef(true);
   const userScrolledAwayRef = React.useRef(false);
   const pendingAutoScrollRef = React.useRef(false);
-  // Android can dispatch FlatList's content-size callback before the newly
-  // received row has been measured. A single immediate scrollToEnd then
-  // leaves the receiver one row behind until a manual swipe.
+  // Let the next FlatList measurement consume a single pending receiver
+  // update. Repeating delayed scrolls on every poll caused a visible iOS
+  // flicker and displaced a user who was reading earlier history.
   const scheduleAutoScrollRef = React.useRef(null);
   scheduleAutoScrollRef.current = () => {
-    const scroll = () => {
-      if (!mounted.current || (userScrolledAwayRef.current && !nearBottomRef.current)) return;
-      listRef.current?.scrollToEnd?.({ animated: false });
-    };
-    scroll();
-    setTimeout(scroll, 80);
-    setTimeout(scroll, 220);
+    if (!mounted.current || (userScrolledAwayRef.current && !nearBottomRef.current)) return;
+    listRef.current?.scrollToEnd?.({ animated: false });
   };
   const initialMessagesLoadedRef = React.useRef(false);
   const lastCountRef = React.useRef(0);
@@ -671,34 +667,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             docSize: a.size_bytes,
             docKind: documentKindFromFile(a.mime_type, a.original_name),
             docUrl,
+            docDownloadUrl: a.download_url || docUrl,
             docStatus: 'uploaded',
             time: fmtMessageTime(a.created_at),
             createdAt: a.created_at,
           };
         });
-      const merged = [...mapped, ...serverDocs].sort((x, y) => {
-        const dx = parseServerDate(x.createdAt)?.getTime() || 0;
-        const dy = parseServerDate(y.createdAt)?.getTime() || 0;
-        return dx - dy;
-      });
-      if (merged.length > lastCountRef.current
-        && (!userScrolledAwayRef.current || nearBottomRef.current)) {
-        pendingAutoScrollRef.current = true;
-      }
       setMessages((previous) => {
-        const optimisticRemaining = previous.filter((item) => {
-          if (!item.optimistic) return false;
-          if (item.kind === 'document') return !serverDocs.some((d) => d.clientUploadId === item.id);
-          // P1 30.08.2026: сверять по client_msg_id, а текст — только когда
-          // сервер id не вернул (старый бэк). Прежнее «или по тексту» роняло
-          // ВТОРОЕ одинаковое сообщение: отправил «Привет» дважды — второй
-          // пузырь удалялся, как только приходил первый с сервера, хотя сам
-          // он ещё не был сохранён. Снаружи — «отправил, а оно исчезло».
-          return !merged.some((server) => (server.clientMsgId
-            ? server.clientMsgId === item.id
-            : (server.mine && item.text && server.text === item.text)));
-        });
-        return [...merged, ...optimisticRemaining];
+        const next = reconcileChatMessages(previous, mapped, serverDocs);
+        if (next !== previous && next.length > previous.length
+          && (!userScrolledAwayRef.current || nearBottomRef.current)) pendingAutoScrollRef.current = true;
+        return next;
       });
       // The first server payload can trigger FlatList's scroll callback before
       // its content height is known, leaving nearBottomRef=false even though
@@ -763,15 +742,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     return () => sub?.remove?.();
   }, [roomId, session?.user?.id, loadMessages, t]);
 
-  React.useEffect(() => {
-    if (messages.length > lastCountRef.current) {
-      if (!userScrolledAwayRef.current || nearBottomRef.current) {
-        scheduleAutoScrollRef.current?.();
-      }
-      else setShowJumpLatest(true);
-    }
-    lastCountRef.current = messages.length;
-  }, [messages.length]);
+  React.useEffect(() => { lastCountRef.current = messages.length; }, [messages.length]);
 
   React.useEffect(() => textTranslation.connect(() => setTextTranslationRevision((value) => value + 1)), [textTranslation]);
   React.useEffect(() => { void textTranslation.hydrate(); }, [textTranslation]);
@@ -1212,9 +1183,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       result = await voice.stopRecording();
     } catch { toast(t('voice_error_record'), 'error'); return; }
     if (!result?.uri) { toast(t('voice_error_record'), 'error'); return; }
-    const measuredDurationMs = Number(result.durationMillis)
-      || Math.max(0, Date.now() - recordStartRef.current);
-    const measuredDuration = result.duration || Math.ceil(measuredDurationMs / 1000);
+    const measuredDuration = selectVoiceDurationSeconds({
+      elapsedMs: Math.max(0, Date.now() - recordStartRef.current),
+      durationMillis: result.durationMillis,
+      durationSeconds: result.duration,
+      maximum: VOICE_MAX_DURATION_SEC,
+    });
     // expo-av may report codec/container tail time slightly above the actual
     // file duration after our guarded auto-stop. That file is already below
     // the boundary; keep it accepted without allowing a manual 60.1s stop to
@@ -1389,7 +1363,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                   setPdfPreview({ url: item.docUrl, title: item.docName });
                   return;
                 }
-                Linking.openURL(item.docUrl).catch(() => {});
+                Linking.openURL(item.docDownloadUrl || item.docUrl).catch(() => {});
               }}
               style={[s.docBubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}
               testID="deal-chat-document-bubble"
@@ -1773,6 +1747,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       const nearBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 80;
                       nearBottomRef.current = nearBottom;
                       if (nearBottom) userScrolledAwayRef.current = false;
+                      if (!nearBottom && userScrolledAwayRef.current) setShowJumpLatest(true);
                       if (nearBottom && showJumpLatest) setShowJumpLatest(false);
                     }}
                     onScrollBeginDrag={() => {
@@ -1781,7 +1756,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     }}
                     scrollEventThrottle={80}
                     onContentSizeChange={() => {
-                      if (!userScrolledAwayRef.current || pendingAutoScrollRef.current || nearBottomRef.current) {
+                      if (pendingAutoScrollRef.current && (!userScrolledAwayRef.current || nearBottomRef.current)) {
                         scheduleAutoScrollRef.current?.();
                         pendingAutoScrollRef.current = false;
                       }
@@ -1885,8 +1860,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                               setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
                               return;
                             }
-                            const nextHeight = Math.ceil(event.nativeEvent.contentSize.height + COMPOSER_INPUT_VERTICAL_PADDING);
-                            setInputHeight(Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.min(COMPOSER_INPUT_MAX_HEIGHT, nextHeight)));
+                            const nextHeight = normalizeComposerHeight(
+                              input,
+                              event.nativeEvent.contentSize.height,
+                              COMPOSER_INPUT_MIN_HEIGHT,
+                              COMPOSER_INPUT_MAX_HEIGHT,
+                              COMPOSER_INPUT_VERTICAL_PADDING,
+                            );
+                            // iOS may emit a stale contentSize during polling.
+                            // Ignore it instead of resizing the focused composer.
+                            if (nextHeight != null) setInputHeight((current) => current === nextHeight ? current : nextHeight);
                           }}
                           multiline
                           scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}

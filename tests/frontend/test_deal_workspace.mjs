@@ -173,7 +173,7 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /onContentSizeChange/);
   assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 32/);
   assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
-  assert.match(workspace, /Math\.min\(COMPOSER_INPUT_MAX_HEIGHT/);
+  assert.match(workspace, /normalizeComposerHeight/);
   assert.match(workspace, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
@@ -221,18 +221,18 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
 });
 
-test('receiver auto-scroll retries after native FlatList layout settles', () => {
-  // Android can report the new content size before the appended message cell
-  // is measured. The deferred retries keep a realtime text/voice message
-  // visible without requiring a manual swipe, while preserving the explicit
-  // user-scrolled-away guard.
+test('receiver auto-scroll is coalesced to one content-size update', () => {
+  // Repeated delayed scrolls made iOS visibly flicker on every poll.  A new
+  // row raises one pending flag, consumed by the next FlatList measurement;
+  // reading history must remain stationary.
   assert.match(workspace, /const scheduleAutoScrollRef = React\.useRef\(null\)/);
   assert.match(workspace, /scheduleAutoScrollRef\.current = \(\) =>/);
-  assert.match(workspace, /setTimeout\(scroll, 80\)/);
-  assert.match(workspace, /setTimeout\(scroll, 220\)/);
+  assert.doesNotMatch(workspace, /setTimeout\(scroll, 80\)/);
+  assert.doesNotMatch(workspace, /setTimeout\(scroll, 220\)/);
   assert.match(workspace, /userScrolledAwayRef\.current && !nearBottomRef\.current/);
   assert.match(workspace, /onContentSizeChange=\{\(\) => \{/);
-  assert.match(workspace, /scheduleAutoScrollRef\.current\?\.\(\)/);
+  assert.match(workspace, /pendingAutoScrollRef\.current && \(!userScrolledAwayRef\.current \|\| nearBottomRef\.current\)/);
+  assert.match(workspace, /scheduleAutoScrollRef\.current\?\.\(\);\s+pendingAutoScrollRef\.current = false/);
 });
 
 test('empty web composer cannot expand from an initial multiline content measurement', () => {
@@ -333,7 +333,7 @@ test('chat distinguishes a user scroll from programmatic receiver updates', () =
   assert.match(workspace, /userScrolledAwayRef\.current = true;\s+pendingAutoScrollRef\.current = false/);
   assert.match(workspace, /!userScrolledAwayRef\.current \|\| nearBottomRef\.current/);
   assert.match(workspace, /if \(nearBottom\) userScrolledAwayRef\.current = false/);
-  assert.match(workspace, /!userScrolledAwayRef\.current \|\| pendingAutoScrollRef\.current \|\| nearBottomRef\.current/);
+  assert.match(workspace, /pendingAutoScrollRef\.current && \(!userScrolledAwayRef\.current \|\| nearBottomRef\.current\)/);
 });
 
 test('statuses render a detailed vertical timeline instead of compact system chips', () => {

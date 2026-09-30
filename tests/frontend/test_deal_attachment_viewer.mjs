@@ -26,7 +26,7 @@ test('deal document bubbles route PDF to the same viewer', () => {
   assert.match(workspace, /meta\.ext === 'pdf'/);
   assert.match(workspace, /setPdfPreview\(\{ url: item\.docUrl, title: item\.docName \}\)/);
   assert.match(workspace, /<PdfPreviewModal/);
-  assert.match(workspace, /Linking\.openURL\(item\.docUrl\)/);
+  assert.match(workspace, /Linking\.openURL\(item\.docDownloadUrl \|\| item\.docUrl\)/);
 });
 
 test('native viewer dependency is explicit and locked', () => {

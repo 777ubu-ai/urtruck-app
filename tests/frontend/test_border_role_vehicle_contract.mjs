@@ -22,9 +22,13 @@ test('Border loads canonical private vehicle/deal context with auth', () => {
   assert.match(border, /testID="border-shipper-deals-card"/);
 });
 
-test('Border never keeps the CGR-online badge after the live source failed', () => {
-  assert.match(border, /const cgrLiveAvailable = !catalogError && !liveError/);
-  assert.match(border, /cgrLiveAvailable \? R\.cgrOnline : R\.cgrUnavailable/);
+test('Border shows CGR online only after a successful live response', () => {
+  assert.match(border, /const \[liveStatus, setLiveStatus\] = useState\('unchecked'\)/);
+  assert.match(border, /const cgrLiveAvailable = liveStatus === 'ready' && !!live && !liveError/);
+  assert.match(border, /liveStatus === 'checking' \? R\.cgrChecking/);
+  assert.match(border, /liveStatus === 'unchecked' \? R\.cgrUnchecked/);
+  assert.match(border, /setLiveStatus\('ready'\)/);
+  assert.match(border, /setLiveStatus\('unavailable'\)/);
   assert.match(border, /!cgrLiveAvailable && s\.unavailablePill/);
   assert.match(border, /cgrUnavailable: 'CGR 暂不可用'/);
 });

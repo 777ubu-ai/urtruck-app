@@ -29,6 +29,61 @@ DEAL_NOTIFICATION_TYPES = {
     "tracking",
 }
 
+_CHAT_NOTIFICATION_TYPES = ("chat_message", "chat_attachment")
+_ACTIVE_CHAT_BADGE_DEAL_STATUSES = (
+    "accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received",
+)
+
+
+def unread_badge_count(user_id: str) -> int:
+    """Return the one authoritative native-app badge total for ``user_id``.
+
+    The mobile client intentionally combines two disjoint counters: durable
+    non-chat notifications and unread participant messages in live deal rooms.
+    Counting every unread notification here looks similar, but retains old
+    ``chat_message`` rows after a completed/cancelled deal and leaves a stale
+    APNs/FCM badge on the launcher.  Keep this query in lockstep with
+    ``/notifications/unread`` and ``/chat/unread``.
+    """
+    if not user_id:
+        return 0
+    placeholders = ",".join("?" for _ in _ACTIVE_CHAT_BADGE_DEAL_STATUSES)
+    chat_query = f"""
+        SELECT COUNT(*) AS cnt FROM chat_messages m
+        JOIN chat_rooms r ON m.room_id = r.id
+        WHERE (r.participant_1 = ? OR r.participant_2 = ?)
+          AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0
+          AND (
+            (r.cargo_id IS NULL AND r.trip_id IS NULL
+             AND NOT EXISTS (SELECT 1 FROM deals d0 WHERE d0.chat_room_id = r.id))
+            OR EXISTS (
+              SELECT 1 FROM deals d
+              WHERE d.status IN ({placeholders})
+                AND (
+                  d.chat_room_id = r.id
+                  OR (d.chat_room_id IS NULL AND (
+                    (r.cargo_id IS NOT NULL AND d.cargo_id = r.cargo_id)
+                    OR (r.trip_id IS NOT NULL AND d.trip_id = r.trip_id)
+                  ))
+                )
+            )
+          )
+    """
+    try:
+        with get_conn() as c:
+            notification_row = c.execute(
+                "SELECT COUNT(*) AS cnt FROM notifications "
+                "WHERE user_id = ? AND is_read = 0 AND type NOT IN (?, ?)",
+                (user_id, *_CHAT_NOTIFICATION_TYPES),
+            ).fetchone()
+            chat_row = c.execute(
+                chat_query,
+                (user_id, user_id, user_id, *_ACTIVE_CHAT_BADGE_DEAL_STATUSES),
+            ).fetchone()
+        return int(notification_row["cnt"] if notification_row else 0) + int(chat_row["cnt"] if chat_row else 0)
+    except Exception:
+        return 0
+
 
 def _init():
     schema = Path(__file__).resolve().parent.parent / "database" / "notifications_schema.sql"

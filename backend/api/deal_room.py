@@ -192,10 +192,12 @@ def _sign_attachment(att: dict | None):
         return att
     if att.get("url"):
         url = file_signing.sign(att["url"])
-        # Имя UUID нужно хранилищу; получатель скачивает исходное имя документа.
+        # Preview URL remains inline. Download receives a separate signed URL
+        # with Content-Disposition so iOS WebView never gets an attachment.
         if (url and att.get("kind") == "document" and att.get("original_name")
                 and storage_service.is_private_remote_ref(att["url"])):
-            url += ("&" if "?" in url else "?") + urlencode({"download": att["original_name"]})
+            download_url = url + ("&" if "?" in url else "?") + urlencode({"download": att["original_name"]})
+            return {**att, "url": url, "download_url": download_url}
         return {**att, "url": url}
     return att
 

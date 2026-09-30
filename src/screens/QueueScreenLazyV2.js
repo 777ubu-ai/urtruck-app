@@ -97,7 +97,7 @@ const COPY = {
 const ROLE_COPY = {
   RU: {
     myVehicle: 'Моя машина', change: 'Сменить', myBorderDeals: 'Мои перевозки на границе',
-    active: 'активных', cgrOnline: 'CGR online', cgrUnavailable: 'CGR недоступен', selectedShipment: 'Выбранная перевозка',
+    active: 'активных', cgrOnline: 'CGR online', cgrUnchecked: 'Не проверено', cgrChecking: 'Проверяем CGR', cgrUnavailable: 'CGR недоступен', selectedShipment: 'Выбранная перевозка',
     toCheckpoint: 'До КПП', trackingOn: 'Отслеживание включено', openDeal: 'Открыть сделку',
     history: 'История статусов', messageDriver: 'Написать водителю', borderSituation: 'Обстановка на границе',
     checkOther: 'Проверить другой номер', addVehicle: 'Добавить машину', noVehicle: 'Добавьте машину, чтобы UrTruck сам проверял очередь по госномеру.',
@@ -109,7 +109,7 @@ const ROLE_COPY = {
   },
   KK: {
     myVehicle: 'Менің көлігім', change: 'Ауыстыру', myBorderDeals: 'Шекарадағы тасымалдарым',
-    active: 'белсенді', cgrOnline: 'CGR online', cgrUnavailable: 'CGR қолжетімсіз', selectedShipment: 'Таңдалған тасымал',
+    active: 'белсенді', cgrOnline: 'CGR online', cgrUnchecked: 'Тексерілмеген', cgrChecking: 'CGR тексерілуде', cgrUnavailable: 'CGR қолжетімсіз', selectedShipment: 'Таңдалған тасымал',
     toCheckpoint: 'Бекетке дейін', trackingOn: 'Бақылау қосулы', openDeal: 'Мәмілені ашу',
     history: 'Күй тарихы', messageDriver: 'Жүргізушіге жазу', borderSituation: 'Шекарадағы жағдай',
     checkOther: 'Басқа нөмірді тексеру', addVehicle: 'Көлік қосу', noVehicle: 'Кезекті автоматты тексеру үшін көлік қосыңыз.',
@@ -121,7 +121,7 @@ const ROLE_COPY = {
   },
   EN: {
     myVehicle: 'My vehicle', change: 'Change', myBorderDeals: 'My border shipments',
-    active: 'active', cgrOnline: 'CGR online', cgrUnavailable: 'CGR unavailable', selectedShipment: 'Selected shipment',
+    active: 'active', cgrOnline: 'CGR online', cgrUnchecked: 'Not checked', cgrChecking: 'Checking CGR', cgrUnavailable: 'CGR unavailable', selectedShipment: 'Selected shipment',
     toCheckpoint: 'To checkpoint', trackingOn: 'Tracking on', openDeal: 'Open deal',
     history: 'Status history', messageDriver: 'Message driver', borderSituation: 'Border situation',
     checkOther: 'Check another plate', addVehicle: 'Add vehicle', noVehicle: 'Add a vehicle so UrTruck can check the queue automatically.',
@@ -133,7 +133,7 @@ const ROLE_COPY = {
   },
   ZH: {
     myVehicle: '我的车辆', change: '切换', myBorderDeals: '我的边境运输',
-    active: '进行中', cgrOnline: 'CGR 在线', cgrUnavailable: 'CGR 暂不可用', selectedShipment: '已选运输',
+    active: '进行中', cgrOnline: 'CGR 在线', cgrUnchecked: '未检查', cgrChecking: '正在检查 CGR', cgrUnavailable: 'CGR 暂不可用', selectedShipment: '已选运输',
     toCheckpoint: '距口岸', trackingOn: '跟踪已开启', openDeal: '打开交易',
     history: '状态记录', messageDriver: '联系司机', borderSituation: '边境情况',
     checkOther: '查询其他车牌', addVehicle: '添加车辆', noVehicle: '添加车辆后，UrTruck 可自动查询排队状态。',
@@ -292,6 +292,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const [liveById, setLiveById] = useState({});
   const [liveLoading, setLiveLoading] = useState(false);
   const [liveError, setLiveError] = useState('');
+  const [liveStatus, setLiveStatus] = useState('unchecked');
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState('');
   const [favorites, setFavorites] = useState([]);
@@ -481,7 +482,11 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   // A selected checkpoint with a failed live request must never retain the
   // optimistic "CGR online" badge. The catalogue can still be usable while
   // the actual public live source is unavailable.
-  const cgrLiveAvailable = !catalogError && !liveError;
+  const cgrLiveAvailable = liveStatus === 'ready' && !!live && !liveError;
+  const cgrStatusLabel = cgrLiveAvailable ? R.cgrOnline
+    : liveStatus === 'checking' ? R.cgrChecking
+      : liveStatus === 'unchecked' ? R.cgrUnchecked
+        : R.cgrUnavailable;
   const calendarRows = useMemo(() => completeBookingCalendar(live), [live]);
 
   useEffect(() => {
@@ -517,10 +522,13 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     setSelectedId(checkpoint.id);
     setLiveLoading(true);
     setLiveError('');
+    setLiveStatus('checking');
     try {
       const data = await fetchJson(`${BASE}/live/${encodeURIComponent(checkpoint.id)}${force ? '?force=true' : ''}`);
+      if (!data || typeof data !== 'object') throw new Error('invalid_cgr_live_payload');
       setLiveById((previous) => ({ ...previous, [String(checkpoint.id)]: data }));
-    } catch { setLiveError(L.sourceError); }
+      setLiveStatus('ready');
+    } catch { setLiveError(L.sourceError); setLiveStatus('unavailable'); }
     finally { setLiveLoading(false); }
   }, [liveLoading, L.sourceError]);
 
@@ -528,6 +536,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     setSelectedCountry(code);
     setSelectedId(null);
     setLiveError('');
+    setLiveStatus('unchecked');
     checkpointCarouselX.current = 0;
     checkpointCarouselRef.current?.scrollTo({ x: 0, animated: false });
   }, []);
@@ -668,7 +677,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
           <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-shipper-deals-card">
             <View style={s.contextHeader}>
               <View style={s.contextTitleRow}><Feather name="truck" size={20} color={theme.textMuted} /><Text style={[s.contextTitle, { color: theme.text }]}>{R.myBorderDeals}</Text></View>
-              <View style={s.headerPills}><View style={s.countPill}><Text style={s.countPillText}>{privateContext.deals.length} {R.active}</Text></View><View style={[s.onlinePill, !cgrLiveAvailable && s.unavailablePill]}><View style={[s.onlineDot, !cgrLiveAvailable && s.unavailableDot]} /><Text style={[s.onlineText, !cgrLiveAvailable && s.unavailableText]}>{cgrLiveAvailable ? R.cgrOnline : R.cgrUnavailable}</Text></View></View>
+              <View style={s.headerPills}><View style={s.countPill}><Text style={s.countPillText}>{privateContext.deals.length} {R.active}</Text></View><View style={[s.onlinePill, !cgrLiveAvailable && s.unavailablePill]}><View style={[s.onlineDot, !cgrLiveAvailable && s.unavailableDot]} /><Text style={[s.onlineText, !cgrLiveAvailable && s.unavailableText]}>{cgrStatusLabel}</Text></View></View>
             </View>
             {contextLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 14 }} /> : privateContext.deals.length ? privateContext.deals.slice(0, 4).map((item) => {
               const activeDeal = String(item.deal_id) === String(selectedDeal?.deal_id);

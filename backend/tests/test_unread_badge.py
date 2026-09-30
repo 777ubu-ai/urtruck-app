@@ -223,6 +223,29 @@ def test_closed_deal_room_cannot_create_phantom_badge(status):
     assert push_sender._compute_recipient_badge(o) == 0
 
 
+def test_completed_deal_chat_notification_cannot_leave_native_badge_stuck():
+    """The APNs/FCM payload must use the same total as the mobile client.
+
+    A real incoming message creates both a raw chat row and a durable Bell
+    row.  Once its deal is completed, both client unread endpoints exclude the
+    event; counting raw notifications in the native push sender used to leave
+    this one historical event on the launcher badge indefinitely.
+    """
+    o, d = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, o, d)
+    deal_id = _mk_accepted_deal(cargo, o, d, room)
+    send_message(SendMessageIn(room_id=room, text="historical"), user=_u(d))
+    assert unread_count(user=_u(o))["unread"] == 1
+    assert push_sender._compute_recipient_badge(o) == 1
+
+    with get_conn() as c:
+        c.execute("UPDATE deals SET status = 'completed' WHERE id = ?", (deal_id,))
+
+    assert unread_count(user=_u(o))["unread"] == 0
+    assert push_sender._compute_recipient_badge(o) == 0
+
+
 def test_mine_flag_regression():
     """Регресс фикса чат-эхо (85cb3c8): get_messages помечает mine по uid."""
     o, d = _ids()

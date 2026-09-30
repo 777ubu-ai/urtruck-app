@@ -87,14 +87,11 @@ def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optiona
 
 
 def _compute_recipient_badge(user_id: str) -> int:
-    try:
-        with get_conn() as c:
-            row = c.execute(
-                "SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND is_read = 0", (user_id,)
-            ).fetchone()
-        return int(row["n"] if row else 0)
-    except Exception:
-        return 0
+    # Native APNs/FCM badge must equal the mobile client's combined unread
+    # formula.  In particular, completed-deal chat rows must not resurrect a
+    # stale launcher badge after the user has returned to the app.
+    from api.notifications import unread_badge_count
+    return unread_badge_count(user_id)
 
 
 def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional[dict] = None,
