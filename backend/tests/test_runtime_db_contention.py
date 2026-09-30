@@ -96,8 +96,11 @@ def test_cargo_post_returns_within_three_seconds_during_push_and_stt_db_activity
         started = time.monotonic()
         response = client.post("/api/v1/market/cargos", json=_cargo_body())
         elapsed = time.monotonic() - started
-        statuses = [future.result(timeout=3) for future in work if future.done()]
+        # Push tasks return HTTP status while STT tasks return a row count;
+        # both are only background pressure for this contract.  They must
+        # complete, but their result types must not be conflated.
+        for future in work:
+            future.result(timeout=3)
 
     assert elapsed < 3.0, f"cargo POST took {elapsed:.3f}s"
     assert response.status_code in (200, 503), response.text
-    assert all(status in (200, 503) for status in statuses)
