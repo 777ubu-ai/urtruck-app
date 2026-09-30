@@ -1,6 +1,7 @@
 """P0 regression coverage for QA2 marketplace availability under DB pressure."""
 import contextvars
 import os
+import sqlite3
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -18,6 +19,7 @@ from api import marketplace
 from api.marketplace import mp_router
 from api.push import push_router
 from api.runtime_errors import install_runtime_error_handlers
+import config
 from database.db import DatabaseBusyError, get_conn
 from tests.auth_harness import override_require_level
 
@@ -76,6 +78,32 @@ def test_database_busy_is_a_retryable_503_not_an_unhandled_timeout(monkeypatch):
     assert response.json()["detail"] == {"code": "database_busy", "retryable": True}
 
 
+def test_real_sqlite_writer_lock_returns_retryable_503_without_partial_cargo():
+    """Exercise SQLite itself rather than monkeypatching DatabaseBusyError."""
+    _as_owner()
+    with get_conn() as conn:
+        before = conn.execute("SELECT COUNT(*) FROM cargos").fetchone()[0]
+
+    blocker = sqlite3.connect(config.DB_PATH, timeout=0, isolation_level=None)
+    blocker.execute("PRAGMA busy_timeout=0")
+    blocker.execute("BEGIN IMMEDIATE")
+    started = time.monotonic()
+    try:
+        response = client.post("/api/v1/market/cargos", json=_cargo_body())
+    finally:
+        elapsed = time.monotonic() - started
+        blocker.rollback()
+        blocker.close()
+
+    assert response.status_code == 503, response.text
+    assert response.headers["retry-after"] == "1"
+    assert response.json()["detail"] == {"code": "database_busy", "retryable": True}
+    assert elapsed < 6.5, f"writer lock response silently hung for {elapsed:.3f}s"
+    with get_conn() as conn:
+        after = conn.execute("SELECT COUNT(*) FROM cargos").fetchone()[0]
+    assert after == before, "a failed locked request must not partially create cargo"
+
+
 def test_cargo_post_returns_within_three_seconds_during_push_and_stt_db_activity():
     """Concurrent QA2 workers may cause a retryable 503, never a silent hang."""
     _as_owner()
@@ -103,4 +131,5 @@ def test_cargo_post_returns_within_three_seconds_during_push_and_stt_db_activity
             future.result(timeout=3)
 
     assert elapsed < 3.0, f"cargo POST took {elapsed:.3f}s"
-    assert response.status_code in (200, 503), response.text
+    assert response.status_code == 200, response.text
+    assert response.json().get("id"), response.text
