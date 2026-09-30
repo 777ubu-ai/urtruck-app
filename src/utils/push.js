@@ -35,6 +35,12 @@ let nativeTokenListenerBound = false;
 // coalescing each callback opened another OkHttp request and could starve the
 // authenticated marketplace traffic on the same device.
 let nativeRegistrationInFlight = null;
+// A provider token can rotate while the current registration request is still
+// on the wire.  Such a callback is not an identical concurrent caller: after
+// the old request settles we must read the provider token again and register
+// the latest value.  A boolean deliberately coalesces callback bursts into a
+// single trailing write.
+let nativeRegistrationQueued = false;
 
 function _uuidv4() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -283,7 +289,13 @@ export const push = {
     try {
       return await flight;
     } finally {
-      if (nativeRegistrationInFlight === flight) nativeRegistrationInFlight = null;
+      if (nativeRegistrationInFlight === flight) {
+        nativeRegistrationInFlight = null;
+        if (nativeRegistrationQueued) {
+          nativeRegistrationQueued = false;
+          this.registerNative().catch(() => {});
+        }
+      }
     }
   },
 
@@ -430,6 +442,10 @@ export const push = {
     if (!nativeTokenListenerBound && typeof Notifications.addPushTokenListener === 'function') {
       nativeTokenListenerBound = true;
       Notifications.addPushTokenListener(() => {
+        if (nativeRegistrationInFlight) {
+          nativeRegistrationQueued = true;
+          return;
+        }
         this.registerNative().catch(() => {});
       });
     }
