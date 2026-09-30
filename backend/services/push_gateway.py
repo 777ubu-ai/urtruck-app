@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+import random
+import re
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -97,6 +99,95 @@ def _json_dumps(value: Any) -> str:
     return json.dumps(value or {}, ensure_ascii=False, separators=(",", ":"))[:4000]
 
 
+def _safe_collapse_key(value: Any) -> Optional[str]:
+    """Return a provider-safe collapse key or None.
+
+    APNs limits ``apns-collapse-id`` to 64 bytes.  Keep only a conservative
+    identifier alphabet; this also prevents a user supplied message body from
+    becoming an OS grouping key.
+    """
+    if not isinstance(value, str):
+        return None
+    key = re.sub(r"[^A-Za-z0-9:_.-]", "", value.strip())[:64]
+    return key or None
+
+
+def _event_ttl_seconds(event_type: str, payload: Optional[dict[str, Any]] = None) -> int:
+    """Classify delivery freshness, not business-record retention.
+
+    Push is only a signal: the in-app notification and backend state stay
+    durable.  A delayed ephemeral signal is worse than no push because it
+    opens stale work.  This policy intentionally accepts no caller-provided
+    TTL, so untrusted payload data cannot extend a notification indefinitely.
+    """
+    data = (payload or {}).get("data") if isinstance(payload, dict) else {}
+    data = data if isinstance(data, dict) else {}
+    kind = f"{event_type or ''} {data.get('type') or ''}".lower()
+    if "deal.status.delivered" in kind or "deal.status.completed" in kind:
+        return 48 * 60 * 60
+    if "gps" in kind:
+        return 5 * 60
+    if "chat" in kind:
+        return 24 * 60 * 60
+    if "bid" in kind:
+        return 30 * 60
+    if "deal.status" in kind:
+        return 24 * 60 * 60
+    return 60 * 60
+
+
+def _collapse_key(event_type: str, payload: Optional[dict[str, Any]] = None) -> Optional[str]:
+    """Collapse only high-volume chat notifications within one room.
+
+    Critical deal/GPS lifecycle updates must always remain individually visible
+    and are consequently never collapsed.
+    """
+    if event_type in CRITICAL_EVENTS:
+        return None
+    payload = payload if isinstance(payload, dict) else {}
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    explicit = _safe_collapse_key(data.get("collapse_key"))
+    if explicit:
+        return explicit
+    kind = f"{event_type or ''} {data.get('type') or ''}".lower()
+    room_id = data.get("room_id")
+    if "chat" in kind and isinstance(room_id, str):
+        return _safe_collapse_key(f"chat:{room_id}")
+    return None
+
+
+def enrich_event_data(event_type: str, data: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Attach only non-sensitive transport controls to a provider payload.
+
+    The timestamp is fixed at event creation, so a retry never gets a fresh
+    TTL window.  Provider-only keys are stripped before the data reaches the
+    client application.
+    """
+    safe = dict(data or {})
+    ttl_seconds = _event_ttl_seconds(event_type, {"data": safe})
+    key = _collapse_key(event_type, {"data": safe})
+    safe["_push_expires_at"] = int(time.time()) + ttl_seconds
+    if key:
+        safe["collapse_key"] = key
+    return safe
+
+
+def _provider_data(data: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Do not expose backend-only transport metadata to the mobile client."""
+    return {
+        str(k): v for k, v in (data or {}).items()
+        if k not in {"apns_topic", "_push_expires_at", "collapse_key"}
+    }
+
+
+def _remaining_ttl_seconds(data: Optional[dict[str, Any]]) -> Optional[int]:
+    try:
+        epoch = int((data or {}).get("_push_expires_at"))
+    except (TypeError, ValueError):
+        return None
+    return max(0, epoch - int(time.time()))
+
+
 def _service_account_info() -> Optional[dict[str, Any]]:
     raw = FCM_SERVICE_ACCOUNT_JSON.strip()
     if raw:
@@ -172,19 +263,27 @@ class FCMProvider(PushProvider):
         access_token = self._access_token()
         if not project_id or not access_token:
             return ProviderResult("fcm", "failed", error_code="provider_not_configured", retryable=False)
+        collapse_key = _safe_collapse_key((data or {}).get("collapse_key"))
+        ttl_seconds = _remaining_ttl_seconds(data)
+        android = {
+            "priority": "HIGH",
+            "notification": {
+                "channel_id": NATIVE_PUSH_CHANNEL_ID,
+                "sound": "default",
+                "notification_count": int(badge or 0),
+            },
+        }
+        if collapse_key:
+            android["collapse_key"] = collapse_key
+            android["notification"]["tag"] = collapse_key
+        if ttl_seconds is not None:
+            android["ttl"] = f"{ttl_seconds}s"
         payload = {
             "message": {
                 "token": token,
                 "notification": {"title": title, "body": body},
-                "data": {str(k): "" if v is None else str(v) for k, v in (data or {}).items()},
-                "android": {
-                    "priority": "HIGH",
-                    "notification": {
-                        "channel_id": NATIVE_PUSH_CHANNEL_ID,
-                        "sound": "default",
-                        "notification_count": int(badge or 0),
-                    },
-                },
+                "data": {str(k): "" if v is None else str(v) for k, v in _provider_data(data).items()},
+                "android": android,
             }
         }
         try:
@@ -237,20 +336,35 @@ class APNsProvider(PushProvider):
         if not auth or not topic:
             return ProviderResult("apns", "failed", error_code="provider_not_configured", retryable=False)
         host = "api.sandbox.push.apple.com" if APNS_USE_SANDBOX else "api.push.apple.com"
+        collapse_key = _safe_collapse_key((data or {}).get("collapse_key"))
+        expires_at = (data or {}).get("_push_expires_at")
+        aps = {"alert": {"title": title, "body": body}, "sound": "default", "badge": int(badge or 0)}
+        if collapse_key:
+            # thread-id groups the retained records in Notification Center;
+            # apns-collapse-id replaces an older undismissed alert for the
+            # same chat without coalescing critical business transitions.
+            aps["thread-id"] = collapse_key
         payload = {
-            "aps": {"alert": {"title": title, "body": body}, "sound": "default", "badge": int(badge or 0)},
-            **{str(k): v for k, v in (data or {}).items() if k != "apns_topic"},
+            "aps": aps,
+            **_provider_data(data),
         }
+        headers = {
+            "authorization": f"bearer {auth}",
+            "apns-topic": topic,
+            "apns-push-type": "alert",
+            "apns-priority": "10",
+        }
+        if collapse_key:
+            headers["apns-collapse-id"] = collapse_key
+        try:
+            headers["apns-expiration"] = str(max(0, int(expires_at)))
+        except (TypeError, ValueError):
+            pass
         try:
             with httpx.Client(http2=True, timeout=10.0) as client:
                 resp = client.post(
                     f"https://{host}/3/device/{token}",
-                    headers={
-                        "authorization": f"bearer {auth}",
-                        "apns-topic": topic,
-                        "apns-push-type": "alert",
-                        "apns-priority": "10",
-                    },
+                    headers=headers,
                     json=payload,
                 )
         except Exception as exc:
@@ -303,14 +417,25 @@ def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payloa
     if not (event_id and event_type and recipient_user_id):
         return False
     prio = priority or ("critical" if event_type in CRITICAL_EVENTS else "normal")
+    safe_payload = dict(payload or {})
+    data = safe_payload.get("data")
+    if not isinstance(data, dict):
+        data = {}
+    else:
+        data = dict(data)
+    data = enrich_event_data(event_type, data)
+    collapse_key = _safe_collapse_key(data.get("collapse_key"))
+    safe_payload["data"] = data
+    ttl_seconds = _event_ttl_seconds(event_type, safe_payload)
+    expires_epoch = data.get("_push_expires_at")
     with (nullcontext(conn) if conn is not None else get_conn()) as c:
         cursor = c.execute(
             """
-            INSERT INTO push_outbox(event_id, event_type, recipient_user_id, payload, priority)
-            VALUES(?,?,?,?,?)
+            INSERT INTO push_outbox(event_id, event_type, recipient_user_id, payload, priority, expires_at, collapse_key)
+            VALUES(?,?,?,?,?,datetime(?, 'unixepoch'),?)
             ON CONFLICT(event_id, recipient_user_id) DO NOTHING
             """,
-            (event_id, event_type, recipient_user_id, _json_dumps(payload), prio),
+            (event_id, event_type, recipient_user_id, _json_dumps(safe_payload), prio, int(expires_epoch), collapse_key),
         )
         return cursor.rowcount > 0
 
@@ -412,6 +537,7 @@ def send_to_devices(
     already_delivered = 0
     by_provider: dict[str, int] = {}
     errors: dict[str, int] = {}
+    retryable = True
     event_id = (data or {}).get("event_id") or (data or {}).get("event_key")
     for device in devices:
         if _already_sent_to_device(event_id, device.get("id")):
@@ -447,6 +573,8 @@ def send_to_devices(
         else:
             error_code = result.error_code or "provider_send_failed"
             errors[error_code] = errors.get(error_code, 0) + 1
+            if not result.retryable:
+                retryable = False
     return {
         "sent": sent,
         "already_delivered": already_delivered,
@@ -454,11 +582,19 @@ def send_to_devices(
         "devices": len(devices),
         "mode": mode,
         "errors": errors,
+        # All failures must be transient before the outbox is allowed to
+        # retry. A mixed multi-device send remains retryable only when the
+        # outstanding devices have transient errors; invalid tokens are
+        # deactivated by log_delivery and never reselected.
+        "retryable": retryable,
     }
 
 
 MAX_OUTBOX_ATTEMPTS = 5
 STALE_PROCESSING_MINUTES = 5
+WORKER_HEARTBEAT_STALE_SECONDS = 120
+WORKER_NAME = "outbox_drain"
+WORKER_ID = f"{WORKER_NAME}:{os.getpid()}"
 
 
 def configured_outbox_cutoff_id() -> int:
@@ -479,13 +615,63 @@ def _reclaim_stale_processing(c) -> int:
     Reclaim anything that has been 'processing' longer than a worker could
     plausibly still be legitimately running (a single send_to_devices call is
     a handful of HTTP requests with a 10s timeout each, never minutes)."""
+    # A cutoff is a strict safety boundary: historical QA rows stay held even
+    # if a long-dead worker had claimed them before the cutoff was introduced.
     cur = c.execute(
-        "UPDATE push_outbox SET status='pending', claimed_at=NULL "
-        "WHERE status='processing' AND claimed_at IS NOT NULL "
-        "AND claimed_at <= datetime(CURRENT_TIMESTAMP, ?)",
-        (f"-{STALE_PROCESSING_MINUTES} minutes",),
+        "UPDATE push_outbox SET status='retry', attempt_count=attempt_count+1, "
+        "next_attempt_at=datetime(CURRENT_TIMESTAMP, '+10 seconds'), "
+        "last_error='worker_lease_expired', claimed_at=NULL, locked_by=NULL "
+        "WHERE status='processing' AND id > ? AND claimed_at IS NOT NULL "
+        "AND claimed_at <= datetime(CURRENT_TIMESTAMP, ?) "
+        "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)",
+        (configured_outbox_cutoff_id(), f"-{STALE_PROCESSING_MINUTES} minutes"),
     )
     return cur.rowcount
+
+
+def _expire_due_events(c) -> int:
+    """Terminally expire stale pending notifications without touching data.
+
+    Expiry is intentionally a distinct terminal status rather than ``dead``:
+    it records that delivery was correctly suppressed by freshness policy, not
+    that FCM/APNs failed.  A previously-claimed event is reclaimed first by
+    the caller, so a crashed worker cannot bypass expiration.
+    """
+    cur = c.execute(
+        "UPDATE push_outbox SET status='expired', failed_at=CURRENT_TIMESTAMP, "
+        "last_error='notification_expired', claimed_at=NULL, locked_by=NULL "
+        "WHERE status IN ('pending','retry') AND expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP"
+    )
+    return cur.rowcount
+
+
+def _record_worker_heartbeat(c, *, picked: int = 0, error: Optional[str] = None) -> None:
+    """Record only worker liveness; never payloads, user ids or tokens."""
+    try:
+        c.execute(
+            """
+            INSERT INTO push_worker_heartbeat(worker_name, last_heartbeat_at, last_batch_picked, last_error)
+            VALUES(?, CURRENT_TIMESTAMP, ?, ?)
+            ON CONFLICT(worker_name) DO UPDATE SET
+              last_heartbeat_at=CURRENT_TIMESTAMP,
+              last_batch_picked=excluded.last_batch_picked,
+              last_error=excluded.last_error
+            """,
+            (WORKER_NAME, max(0, int(picked or 0)), (error or "")[:500] or None),
+        )
+    except Exception:
+        # Legacy DB initialization must not fail merely because observability
+        # is unavailable; the schema migration will make this succeed later.
+        return
+
+
+def _retry_delay_seconds(attempt: int, rng=None) -> int:
+    """Exponential retry with bounded jitter, never below FCM's 10 seconds."""
+    base = min(300, (2 ** max(1, int(attempt))) * 5)
+    spread = min(60, max(1, base // 5))
+    lower = max(10, base - spread)
+    upper = min(300, base + spread)
+    return (rng or random.SystemRandom()).randint(lower, upper)
 
 
 def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
@@ -497,9 +683,9 @@ def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
     same row."""
     with get_conn() as c:
         cur = c.execute(
-            "UPDATE push_outbox SET status='processing', claimed_at=CURRENT_TIMESTAMP "
-            "WHERE id=? AND status='pending'",
-            (row_id,),
+            "UPDATE push_outbox SET status='processing', claimed_at=CURRENT_TIMESTAMP, locked_by=? "
+            "WHERE id=? AND status IN ('pending','retry')",
+            (WORKER_ID, row_id),
         )
         if cur.rowcount != 1:
             return None
@@ -508,7 +694,8 @@ def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
 
 
 def _finish_row(
-    row_id: int, attempt: int, sent: bool, error: Optional[str], *, partially_sent: bool = False
+    row_id: int, attempt: int, sent: bool, error: Optional[str], *, partially_sent: bool = False,
+    retryable: bool = True,
 ) -> str:
     """Apply the terminal/retry decision for one claimed row. Shared by both
     the normal (no delivery) and exception (poison event) paths so a handler
@@ -517,23 +704,30 @@ def _finish_row(
     with get_conn() as c:
         if sent:
             c.execute(
-                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=?, claimed_at=NULL WHERE id=?",
+                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
                 (attempt, row_id),
             )
             return "sent"
+        if not retryable:
+            terminal_status = "sent_partial" if partially_sent else "failed"
+            c.execute(
+                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
+                (terminal_status, attempt, (error or "non_retryable_provider_error")[:500], row_id),
+            )
+            return "partial" if partially_sent else "failed"
         if attempt >= MAX_OUTBOX_ATTEMPTS:
             terminal_status = "sent_partial" if partially_sent else "dead"
             c.execute(
-                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL WHERE id=?",
+                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
                 (terminal_status, attempt, (error or "delivery_not_confirmed")[:500], row_id),
             )
             return "partial" if partially_sent else "dead"
-        delay = min(300, 2 ** attempt * 5)
+        delay = _retry_delay_seconds(attempt)
         c.execute(
-            "UPDATE push_outbox SET status='pending', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, claimed_at=NULL WHERE id=?",
+            "UPDATE push_outbox SET status='retry', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
             (attempt, f"+{delay} seconds", (error or "delivery_not_confirmed")[:500], row_id),
         )
-        return "failed"
+        return "retry"
 
 
 def _skip_row_without_devices(row_id: int, attempt: int) -> str:
@@ -547,7 +741,7 @@ def _skip_row_without_devices(row_id: int, attempt: int) -> str:
     with get_conn() as c:
         c.execute(
             "UPDATE push_outbox SET status='skipped_no_devices', failed_at=CURRENT_TIMESTAMP, "
-            "attempt_count=?, last_error='no_active_devices', claimed_at=NULL WHERE id=?",
+            "attempt_count=?, last_error='no_active_devices', claimed_at=NULL, locked_by=NULL WHERE id=?",
             (attempt, row_id),
         )
     return "skipped"
@@ -570,21 +764,24 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
     bounded_limit = max(1, min(int(limit or 100), 500))
     with get_conn() as c:
         _reclaim_stale_processing(c)
+        expired = _expire_due_events(c)
         candidate_ids = [
             r["id"]
             for r in c.execute(
                 """
                 SELECT id FROM push_outbox
-                WHERE status = 'pending' AND id > ?
+                WHERE status IN ('pending','retry') AND id > ?
                   AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
+                  AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
                 ORDER BY CASE priority WHEN 'critical' THEN 0 ELSE 1 END, created_at
                 LIMIT ?
                 """,
                 (configured_outbox_cutoff_id(), bounded_limit),
             ).fetchall()
         ]
+        _record_worker_heartbeat(c, picked=len(candidate_ids))
 
-    stats = {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0}
+    stats = {"picked": 0, "sent": 0, "retry": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0, "expired": expired}
     for row_id in candidate_ids:
         row = _claim_row(row_id)
         if row is None:
@@ -634,6 +831,7 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
                     "already_delivered": 0,
                     "errors": (callback_result.get("errors") or {}) if isinstance(callback_result, dict) else {},
                     "error": callback_result.get("error") if isinstance(callback_result, dict) else None,
+                    "retryable": bool(callback_result.get("retryable", True)) if isinstance(callback_result, dict) else True,
                 }
             else:
                 result = send_to_devices(row["recipient_user_id"], title, body, data, badge)
@@ -663,14 +861,17 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
                     sent=fully_delivered,
                     error=failure_reason,
                     partially_sent=confirmed > 0,
+                    retryable=bool(result.get("retryable", True)),
                 )
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside
             # its own try/except, etc.) — must not crash the worker or loop
             # forever without backoff; goes through the exact same
             # attempt/backoff/dead ladder as an ordinary delivery failure.
-            outcome = _finish_row(row["id"], attempt, sent=False, error=str(exc))
+            outcome = _finish_row(row["id"], attempt, sent=False, error=str(exc), retryable=True)
         stats[outcome] += 1
+    with get_conn() as c:
+        _record_worker_heartbeat(c, picked=stats["picked"])
     return stats
 
 
@@ -689,8 +890,8 @@ def mark_event_sent(event_id: Optional[str], recipient_user_id: str) -> bool:
     try:
         with get_conn() as c:
             cur = c.execute(
-                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL "
-                "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','processing')",
+                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL, locked_by=NULL "
+                "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry','processing')",
                 (event_id, recipient_user_id),
             )
             return cur.rowcount > 0
@@ -699,7 +900,36 @@ def mark_event_sent(event_id: Optional[str], recipient_user_id: str) -> bool:
 
 
 def info() -> dict[str, Any]:
-    counts = {"devices_active": 0, "fcm": 0, "apns": 0, "outbox_pending": 0, "outbox_dead": 0, "outbox_sent_partial": 0, "outbox_skipped_no_devices": 0}
+    counts = {
+        "devices_active": 0,
+        "fcm": 0,
+        "apns": 0,
+        "outbox_pending": 0,
+        "outbox_retry": 0,
+        "outbox_pending_eligible": 0,
+        "outbox_held_by_cutoff": 0,
+        "outbox_processing": 0,
+        "outbox_stale_processing": 0,
+        "outbox_expired": 0,
+        "outbox_dead": 0,
+        "outbox_sent_partial": 0,
+        "outbox_skipped_no_devices": 0,
+        "oldest_eligible_pending_seconds": None,
+    }
+    observability: dict[str, Any] = {
+        "cutoff_id": configured_outbox_cutoff_id(),
+        "worker": {"last_heartbeat_at": None, "age_seconds": None, "stale": True},
+        "delivery_errors_24h": {},
+        "last_success_at": {"fcm": None, "apns": None},
+        "delivery_24h": {
+            "provider_accepted": 0,
+            "client_received": 0,
+            "notification_opened": 0,
+            "provider_acceptance_rate": None,
+            "avg_created_to_provider_accepted_seconds": None,
+            "avg_provider_accepted_to_client_received_seconds": None,
+        },
+    }
     try:
         with get_conn() as c:
             counts["devices_active"] = int(c.execute("SELECT COUNT(*) FROM push_devices WHERE enabled = 1").fetchone()[0])
@@ -709,9 +939,89 @@ def info() -> dict[str, Any]:
                     (provider,),
                 ).fetchone()[0])
             counts["outbox_pending"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'pending'").fetchone()[0])
+            counts["outbox_retry"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'retry'").fetchone()[0])
+            cutoff = configured_outbox_cutoff_id()
+            counts["outbox_pending_eligible"] = int(c.execute(
+                "SELECT COUNT(*) FROM push_outbox WHERE status IN ('pending','retry') AND id > ? "
+                "AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP) "
+                "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)", (cutoff,)
+            ).fetchone()[0])
+            counts["outbox_held_by_cutoff"] = int(c.execute(
+                "SELECT COUNT(*) FROM push_outbox WHERE status IN ('pending','retry') AND id <= ?", (cutoff,)
+            ).fetchone()[0])
+            counts["outbox_processing"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status='processing'").fetchone()[0])
+            counts["outbox_stale_processing"] = int(c.execute(
+                "SELECT COUNT(*) FROM push_outbox WHERE status='processing' AND claimed_at IS NOT NULL "
+                "AND claimed_at <= datetime(CURRENT_TIMESTAMP, ?)", (f"-{STALE_PROCESSING_MINUTES} minutes",)
+            ).fetchone()[0])
+            counts["outbox_expired"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status='expired'").fetchone()[0])
             counts["outbox_dead"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'dead'").fetchone()[0])
             counts["outbox_sent_partial"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'sent_partial'").fetchone()[0])
             counts["outbox_skipped_no_devices"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'skipped_no_devices'").fetchone()[0])
+            oldest = c.execute(
+                "SELECT CAST((julianday(CURRENT_TIMESTAMP) - julianday(MIN(created_at))) * 86400 AS INTEGER) "
+                "FROM push_outbox WHERE status IN ('pending','retry') AND id > ? "
+                "AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP) "
+                "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)", (cutoff,)
+            ).fetchone()[0]
+            counts["oldest_eligible_pending_seconds"] = max(0, int(oldest)) if oldest is not None else None
+            heartbeat = c.execute(
+                "SELECT last_heartbeat_at, CAST((julianday(CURRENT_TIMESTAMP) - julianday(last_heartbeat_at)) * 86400 AS INTEGER) AS age "
+                "FROM push_worker_heartbeat WHERE worker_name='outbox_drain'"
+            ).fetchone()
+            if heartbeat:
+                age = max(0, int(heartbeat["age"] or 0))
+                observability["worker"] = {
+                    "last_heartbeat_at": heartbeat["last_heartbeat_at"],
+                    "age_seconds": age,
+                    "stale": age > WORKER_HEARTBEAT_STALE_SECONDS,
+                }
+            error_rows = c.execute(
+                "SELECT provider, COALESCE(error_code, 'unknown') AS error_code, COUNT(*) AS count "
+                "FROM push_delivery_log WHERE status != 'sent' "
+                "AND created_at >= datetime(CURRENT_TIMESTAMP, '-24 hours') "
+                "GROUP BY provider, COALESCE(error_code, 'unknown')"
+            ).fetchall()
+            observability["delivery_errors_24h"] = {
+                f"{row['provider']}:{row['error_code']}": int(row["count"]) for row in error_rows
+            }
+            for provider in ("fcm", "apns"):
+                row = c.execute(
+                    "SELECT MAX(last_success_at) FROM push_devices WHERE push_provider=?", (provider,)
+                ).fetchone()
+                observability["last_success_at"][provider] = row[0] if row else None
+            delivery = c.execute(
+                "SELECT COUNT(*) AS attempted, "
+                "SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS accepted, "
+                "SUM(CASE WHEN received_at IS NOT NULL THEN 1 ELSE 0 END) AS received, "
+                "SUM(CASE WHEN opened_at IS NOT NULL THEN 1 ELSE 0 END) AS opened "
+                "FROM push_delivery_log WHERE created_at >= datetime(CURRENT_TIMESTAMP, '-24 hours')"
+            ).fetchone()
+            attempted = int(delivery["attempted"] or 0)
+            accepted = int(delivery["accepted"] or 0)
+            observability["delivery_24h"].update({
+                "provider_accepted": accepted,
+                "client_received": int(delivery["received"] or 0),
+                "notification_opened": int(delivery["opened"] or 0),
+                "provider_acceptance_rate": (accepted / attempted) if attempted else None,
+            })
+            latency = c.execute(
+                "SELECT "
+                "AVG((julianday(l.sent_at)-julianday(o.created_at))*86400.0) AS provider_seconds, "
+                "AVG((julianday(l.received_at)-julianday(l.sent_at))*86400.0) AS receipt_seconds "
+                "FROM push_delivery_log l LEFT JOIN push_outbox o "
+                "ON o.event_id=l.event_id AND o.recipient_user_id=l.recipient_user_id "
+                "WHERE l.created_at >= datetime(CURRENT_TIMESTAMP, '-24 hours') AND l.status='sent'"
+            ).fetchone()
+            if latency:
+                provider_seconds = latency["provider_seconds"]
+                receipt_seconds = latency["receipt_seconds"]
+                observability["delivery_24h"]["avg_created_to_provider_accepted_seconds"] = (
+                    round(float(provider_seconds), 3) if provider_seconds is not None else None
+                )
+                observability["delivery_24h"]["avg_provider_accepted_to_client_received_seconds"] = (
+                    round(float(receipt_seconds), 3) if receipt_seconds is not None else None
+                )
     except Exception:
         pass
     service_account = _service_account_info()
@@ -754,4 +1064,5 @@ def info() -> dict[str, Any]:
         "fcm": {"configured": fcm_configured, "errors": fcm_errors},
         "apns": {"configured": apns_configured, "errors": apns_errors, "sandbox": APNS_USE_SANDBOX},
         "registry": counts,
+        "observability": observability,
     }

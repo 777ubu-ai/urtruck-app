@@ -102,6 +102,9 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
     event_type = event_type if event_type != "generic" else str(data.get("type") or kind)
     if event_id:
         data.setdefault("event_id", event_id)
+    # Freeze TTL/collapse controls once at business-event creation so the
+    # immediate path and a later durable retry deliver the same semantics.
+    data = push_gateway.enrich_event_data(event_type, data)
     badge = _compute_recipient_badge(user_id) if badge is None else badge
     if event_id and _already_delivered(event_id, user_id):
         return {"sent": 0, "duplicate": True, "event_id": event_id}
@@ -115,15 +118,31 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
     sent = web_sent + int(native.get("sent") or 0)
     native_devices = int(native.get("devices") or 0)
     native_sent = int(native.get("sent") or 0) + int(native.get("already_delivered") or 0)
-    fully_delivered = bool(web_sent) or (native_devices > 0 and native_sent >= native_devices)
-    if event_id and fully_delivered:
+    # A web subscription cannot stand in for a registered native device: the
+    # recipient may have both.  Only close a native outbox event after every
+    # active native target is provider-accepted; otherwise the drain worker
+    # owns the retry.  If the provider classified the remaining failure as
+    # permanent, close it truthfully now instead of scheduling futile retry.
+    fully_delivered = native_sent >= native_devices if native_devices > 0 else bool(web_sent)
+    native_retryable = bool(native.get("retryable", True))
+    native_errors = native.get("errors") or {}
+    safe_error = ",".join(sorted(str(code) for code in native_errors))[:500] or "non_retryable_provider_error"
+    if event_id and (fully_delivered or (native_devices > 0 and not native_retryable)):
         try:
             with get_conn() as c:
-                c.execute(
-                    "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP "
-                    "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','processing')",
-                    (event_id, user_id),
-                )
+                if fully_delivered:
+                    c.execute(
+                        "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL, locked_by=NULL "
+                        "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry','processing')",
+                        (event_id, user_id),
+                    )
+                else:
+                    terminal = "sent_partial" if native_sent else "failed"
+                    c.execute(
+                        "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, last_error=?, claimed_at=NULL, locked_by=NULL "
+                        "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry','processing')",
+                        (terminal, safe_error, event_id, user_id),
+                    )
         except Exception:
             pass
     _log(event_id, user_id, "native", "sent" if sent else "not_sent", native.get("error"))

@@ -28,7 +28,7 @@ def test_invalid_token_is_disabled():
     uid=_user(token="x"); _enqueue(uid,"invalid"); assert push_gateway.process_pending_once(_ok)["sent"]==1
     with get_conn() as c: assert c.execute("SELECT enabled FROM push_devices WHERE user_id=?",(uid,)).fetchone()[0]==1
 def test_transient_provider_error_is_retryable():
-    uid=_user(); _enqueue(uid,"retry"); assert push_gateway.process_pending_once(_fail)["failed"]==1; assert _row("retry",uid)["status"]=="pending"
+    uid=_user(); _enqueue(uid,"retry"); assert push_gateway.process_pending_once(_fail)["retry"]==1; assert _row("retry",uid)["status"]=="retry"
 def test_backoff_prevents_immediate_repeat():
     uid=_user(); _enqueue(uid,"backoff"); push_gateway.process_pending_once(_fail); assert push_gateway.process_pending_once(_fail)["picked"]==0
 def test_exhausted_attempts_become_dead():

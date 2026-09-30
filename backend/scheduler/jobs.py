@@ -45,7 +45,8 @@ def push_outbox_drain_job():
         if stats.get("picked"):
             print(
                 f"[push-outbox] picked={stats['picked']} sent={stats['sent']} "
-                f"failed={stats['failed']} dead={stats['dead']}",
+                f"retry={stats.get('retry', 0)} failed={stats['failed']} "
+                f"expired={stats.get('expired', 0)} dead={stats['dead']}",
                 flush=True,
             )
     except Exception as e:

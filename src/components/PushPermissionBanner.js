@@ -12,28 +12,36 @@ const COPY = {
     body: 'Включите уведомления UrTruck — новые ставки и изменения сделки придут сразу.',
     enable: 'Включить',
     denied: 'Уведомления заблокированы в браузере. Разрешите их для urtruck.kz в настройках сайта.',
+    deniedNative: 'Уведомления отключены в настройках телефона. Разрешите их для UrTruck.',
     retry: 'Проверить снова',
+    settings: 'Открыть настройки',
   },
   EN: {
     title: 'Don’t miss new offers',
     body: 'Enable UrTruck notifications to receive bids and deal updates immediately.',
     enable: 'Enable',
     denied: 'Notifications are blocked by the browser. Allow them for urtruck.kz in site settings.',
+    deniedNative: 'Notifications are disabled in your phone settings. Allow them for UrTruck.',
     retry: 'Check again',
+    settings: 'Open settings',
   },
   ZH: {
     title: '不要错过新报价',
     body: '开启 UrTruck 通知，及时收到新报价和交易状态变化。',
     enable: '开启通知',
     denied: '浏览器已阻止通知。请在网站设置中允许 urtruck.kz 发送通知。',
+    deniedNative: '手机设置已关闭通知。请允许 UrTruck 发送通知。',
     retry: '重新检查',
+    settings: '打开设置',
   },
   KK: {
     title: 'Ұсыныстарды өткізіп алмаңыз',
     body: 'UrTruck хабарламаларын қосыңыз — жаңа ұсыныстар мен мәміле өзгерістері бірден келеді.',
     enable: 'Қосу',
     denied: 'Браузер хабарламаларды бұғаттаған. Сайт баптауларында urtruck.kz үшін рұқсат беріңіз.',
+    deniedNative: 'Телефон баптауларында хабарламалар өшірулі. UrTruck үшін рұқсат беріңіз.',
     retry: 'Қайта тексеру',
+    settings: 'Баптауларды ашу',
   },
 };
 
@@ -51,31 +59,41 @@ export default function PushPermissionBanner({ enabled }) {
   const { isDark } = useTheme();
   const accentColor = isDark ? colors.success : colors.driver;
   const c = COPY[lang] || COPY.RU;
-  const deniedCopy = c.denied.replace('urtruck.kz', getPushPermissionHost());
+  const native = push.isNative();
+  const deniedCopy = native ? c.deniedNative : c.denied.replace('urtruck.kz', getPushPermissionHost());
   const [permission, setPermission] = useState('loading');
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (Platform.OS !== 'web' || !enabled || !push.isSupported()) {
+    const supported = Platform.OS === 'web' ? push.isSupported() : native;
+    if (!enabled || !supported) {
       setPermission('hidden');
       return;
     }
-    const p = await push.permission();
+    const p = Platform.OS === 'web' ? await push.permission() : await push.nativePermission();
     setPermission(p);
     if (p === 'granted') {
-      // Re-bind an existing browser subscription to the current authenticated
-      // user. This is idempotent and repairs a token after login/account switch.
-      push.subscribe({ requestPermission: false }).catch(() => {});
+      // Re-bind an existing permission to the current authenticated user.
+      // This is idempotent and repairs a rotated native token after login or
+      // an existing web subscription after account switch.
+      push.autoRegister().catch(() => {});
     }
-  }, [enabled]);
+  }, [enabled, native]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
   const enablePush = async () => {
     setBusy(true);
     try {
-      const r = await push.subscribe({ requestPermission: true });
-      setPermission(r?.ok ? 'granted' : (r?.reason === 'denied' ? 'denied' : (await push.permission())));
+      if (native && permission === 'denied') {
+        await push.openNativeNotificationSettings();
+        return;
+      }
+      const r = Platform.OS === 'web'
+        ? await push.subscribe({ requestPermission: true })
+        : await push.registerNative();
+      const current = Platform.OS === 'web' ? await push.permission() : await push.nativePermission();
+      setPermission(r?.ok ? 'granted' : (r?.reason === 'denied' ? 'denied' : current));
     } catch {
       await refresh();
     } finally {
@@ -95,11 +113,11 @@ export default function PushPermissionBanner({ enabled }) {
       </View>
       <TouchableOpacity
         style={[s.action, { borderColor: accentColor }]}
-        onPress={denied ? refresh : enablePush}
+        onPress={denied && !native ? refresh : enablePush}
         disabled={busy}
         testID="push-permission-enable"
       >
-        <Text style={[s.actionText, { color: accentColor }]}>{denied ? c.retry : c.enable}</Text>
+        <Text style={[s.actionText, { color: accentColor }]}>{denied ? (native ? c.settings : c.retry) : c.enable}</Text>
       </TouchableOpacity>
     </View>
   );

@@ -10,10 +10,8 @@
 // конфликтует (оба сходятся к одному числу).
 
 import { Platform } from 'react-native';
-import { chatAPI } from './chatAPI';
 import { notificationsAPI } from './notificationsAPI';
 
-const pick = (r) => (r && (r.unread ?? r.count ?? r.total)) || 0;
 let refreshVersion = 0;
 
 export function setAppIconBadge(total) {
@@ -34,12 +32,10 @@ export async function refreshAppIconBadge() {
   let Notifications;
   try { Notifications = require('expo-notifications'); } catch { return; }
   try {
-    const [c, n] = await Promise.all([
-      chatAPI.unread().catch(() => null),
-      notificationsAPI.unread().catch(() => null),
-    ]);
+    const canonical = await notificationsAPI.badge();
     if (version !== refreshVersion) return;
-    const total = (Number(pick(c)) || 0) + (Number(pick(n)) || 0);
-    Notifications.setBadgeCountAsync?.(total).catch(() => {});
+    // Always write zero as well: a stale OS badge cannot be fixed by waiting
+    // for a future push, and the backend owns the combined unread formula.
+    Notifications.setBadgeCountAsync?.(Number(canonical?.badge) || 0).catch(() => {});
   } catch {}
 }

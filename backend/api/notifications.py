@@ -202,6 +202,12 @@ def unread_count(user=Depends(require_level(1))):
     return {"unread": row["cnt"] if row else 0}
 
 
+@notif_router.get("/badge")
+def badge_count(user=Depends(require_level(1))):
+    """Canonical launcher badge, including zero after completed deals."""
+    return {"badge": unread_badge_count(user["id"])}
+
+
 @notif_router.post("/read-all")
 def mark_all_read(user=Depends(require_level(1))):
     with get_conn() as c:
