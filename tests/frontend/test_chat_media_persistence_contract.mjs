@@ -11,6 +11,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { reconcileChatMessages } from '../../src/utils/chatMessageListState.js';
 
 const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
 const chatApi = fs.readFileSync('src/utils/chatAPI.js', 'utf8');
@@ -80,13 +81,18 @@ test('document upload retry reuses the same clientUploadId — no duplicate file
 });
 
 test('the feed merges chat_messages and message_attachments chronologically by created_at, not by insertion order', () => {
-  assert.match(workspace, /parseServerDate/);
-  assert.match(workspace, /const merged = \[\.\.\.mapped, \.\.\.serverDocs\]\.sort/);
-  assert.match(workspace, /dx - dy/);
+  const messages = [{ id: 'message-newer', kind: 'text', createdAt: '2026-09-30T12:00:00Z' }];
+  const documents = [{ id: 'document-earlier', kind: 'document', createdAt: '2026-09-30T11:00:00Z' }];
+  assert.deepEqual(
+    reconcileChatMessages([], messages, documents).map((item) => item.id),
+    ['document-earlier', 'message-newer'],
+  );
 });
 
 test('an optimistic document bubble is dropped once the server confirms it, matched by clientUploadId', () => {
-  assert.match(workspace, /serverDocs\.some\(\(d\) => d\.clientUploadId === item\.id\)/);
+  const optimistic = [{ id: 'upload-1', optimistic: true, kind: 'document', docName: 'CMR.pdf' }];
+  const confirmed = [{ id: 'attachment-1', kind: 'document', clientUploadId: 'upload-1', createdAt: '2026-09-30T12:00:00Z' }];
+  assert.deepEqual(reconcileChatMessages(optimistic, [], confirmed).map((item) => item.id), ['attachment-1']);
 });
 
 test('text send failures keep the real backend status/detail instead of one generic message', () => {
@@ -136,7 +142,7 @@ test('voice send renders an optimistic bubble immediately before upload and reus
   assert.match(body, /const clientId = newClientId\('voice'\)/);
   assert.match(body, /sendStatus: 'sending'/);
   assert.match(body, /clientMsgId: clientId/);
-  assert.match(workspace, /server\.clientMsgId === item\.id/);
+  assert.match(workspace, /reconcileChatMessages/);
   assert.match(body, /sendStatus: 'failed', sendError: message/);
   assert.match(workspace, /testID=\{item\.voice \? 'deal-chat-voice-error' : 'deal-chat-message-retry'\}/);
   assert.match(body, /await chatAPI\.send/);

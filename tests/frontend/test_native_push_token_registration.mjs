@@ -55,3 +55,19 @@ test('repeated registration keeps one provider and stable device id', async () =
     assert.ok(calls.every((x) => ['fcm', 'apns'].includes(x.body.provider)));
   } finally { f.restore(); shim.uninstall(); }
 });
+
+test('native token rotation re-registers the current installation once', async () => {
+  await reset(); const shim = installNativeRequireShim(); const f = fetchMock();
+  try {
+    const push = await freshPush();
+    await push.registerNative();
+    assert.equal(shim.state.tokenListeners.length, 1);
+    shim.state.nativeDeviceToken = 'rotated-native-device-token-abc123';
+    await shim.NotificationsMock.__emitTokenRotation();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const calls = f.calls.filter((x) => x.url.includes('/register-native'));
+    assert.equal(calls.length, 2);
+    assert.equal(calls.at(-1).body.token, 'rotated-native-device-token-abc123');
+    assert.equal(calls[0].body.device_id, calls[1].body.device_id);
+  } finally { f.restore(); shim.uninstall(); }
+});

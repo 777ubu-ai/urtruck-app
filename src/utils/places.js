@@ -435,7 +435,13 @@ const localizeSingleCargoName = (raw, lang) => {
 export function localizeCargoName(raw, lang) {
   const l = String(lang || '').toLowerCase();
   if (!raw) return raw;
-  const key = String(raw).trim();
+  const rawKey = String(raw).trim();
+  let key = rawKey;
+  // Legacy payloads may contain percent-encoded descriptions. Decode once for
+  // display, but leave malformed sequences untouched instead of crashing UI.
+  if (/%[0-9A-Fa-f]{2}/.test(rawKey)) {
+    try { key = decodeURIComponent(rawKey); } catch { key = rawKey; }
+  }
   const machineSuffix = Object.keys(CARGO_MACHINE_ALIASES)
     .find((alias) => key.toLowerCase().endsWith(alias) && key.length > alias.length);
   if (machineSuffix) {

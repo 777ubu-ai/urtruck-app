@@ -30,6 +30,14 @@ export const notificationsAPI = {
     return r.json();
   },
 
+  async badge() {
+    const h = await headers();
+    if (!h.Authorization) return { badge: 0 };
+    const r = await fetch(`${BASE}/badge`, { headers: h });
+    if (!r.ok) return { badge: 0 };
+    return r.json();
+  },
+
   async readAll() {
     const r = await fetch(`${BASE}/read-all`, { method: 'POST', headers: await headers() });
     return r.json();

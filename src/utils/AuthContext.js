@@ -4,6 +4,8 @@ import { regAPI } from './registration';
 import { clearSocialAuthSession } from './socialAuth';
 import { subscribeAuthExpired, setAuthExpirySuppressed } from './authEvents';
 import { push } from './push';
+import { clearAppIconBadge } from './appBadge';
+import { clearPushEventDedup } from './pushEventDedup';
 import { clearOutbox } from './outbox';
 import { clearQueue } from './offlineQueue';
 
@@ -156,6 +158,14 @@ export const AuthProvider = ({ children }) => {
     setVerificationLevel(0);
     setHasToken(false);
     await regAPI.clearToken();
+
+    // Badge и dedupe принадлежат текущей локальной сессии. Их нельзя
+    // оставлять до следующего пуша или успешного сетевого cleanup: иначе
+    // следующий пользователь общего телефона унаследует старое "8" и
+    // подавленные event_id. Это локальная операция, поэтому она не зависит
+    // от доступности QA2 backend.
+    clearAppIconBadge();
+    try { await clearPushEventDedup(); } catch {}
 
     // Блок 2 аудита (P1-3/P1-4): деактивируем push ТЕКУЩЕГО пользователя на
     // backend, пока токен ещё валиден — ОБЯЗАТЕЛЬНО до regAPI.logout()

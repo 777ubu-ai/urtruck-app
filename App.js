@@ -33,6 +33,8 @@ if (Platform.OS !== 'web') {
 }
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
+import { claimPushEvent } from './src/utils/pushEventDedup';
+import { clearAppIconBadge, refreshAppIconBadge } from './src/utils/appBadge';
 import * as Sentry from '@sentry/react-native';
 
 // Глобально убираем браузерную синюю обводку фокуса (outline) с полей ввода и
@@ -207,6 +209,12 @@ function notificationResponseUrl(response) {
   return typeof data.url === 'string' ? data.url : null;
 }
 
+function notificationResponseEventId(response) {
+  const data = response?.notification?.request?.content?.data || {};
+  const eventId = data.event_id || data.event_key;
+  return typeof eventId === 'string' && eventId.trim() ? eventId.trim() : null;
+}
+
 // Android 12+ системный splash поддерживает только компактную иконку. Полный
 // UrTruck poster показывается один раз поверх первого кадра JS в
 // AndroidBrandedLaunchSplash; iOS продолжает использовать свой native splash.
@@ -332,12 +340,20 @@ function AppInner() {
     // на части версий Expo SDK срабатывают ОБА для одного и того же тапа →
     // двойная навигация. Дедуп по identifier уведомления в общем замыкании.
     const handled = new Set();
-    const handleResponse = (response) => {
+    const handleResponse = async (response) => {
       const rid = response?.notification?.request?.identifier;
       if (rid) {
         if (handled.has(rid)) return;
         handled.add(rid);
       }
+      // A provider retry can have another notification identifier while still
+      // representing one backend event. Route that event only once per local
+      // device; foreground display uses a separate claim so the first tap is
+      // never lost.
+      const eventId = notificationResponseEventId(response);
+      if (eventId) push.acknowledgeReceipt?.(eventId, { opened: true }).catch(() => {});
+      refreshAppIconBadge();
+      if (eventId && !(await claimPushEvent(eventId, 'navigation'))) return;
       const url = notificationResponseUrl(response);
       if (url) routeFromUrl(url);
     };
@@ -382,6 +398,20 @@ function AppInner() {
     refreshPushBinding();
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') refreshPushBinding();
+    });
+    return () => sub?.remove?.();
+  }, [hasToken]);
+
+  // Reconcile the server-owned badge at login and every foreground return.
+  // This explicitly clears an old iOS/Android launcher count such as "8".
+  useEffect(() => {
+    if (!hasToken) {
+      clearAppIconBadge();
+      return undefined;
+    }
+    refreshAppIconBadge();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshAppIconBadge();
     });
     return () => sub?.remove?.();
   }, [hasToken]);

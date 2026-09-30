@@ -47,3 +47,31 @@ CREATE INDEX IF NOT EXISTS idx_chat_rooms_p2 ON chat_rooms(participant_2);
 CREATE INDEX IF NOT EXISTS idx_chat_rooms_cargo ON chat_rooms(cargo_id);
 CREATE INDEX IF NOT EXISTS idx_chat_msg_room ON chat_messages(room_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_msg_unread ON chat_messages(room_id, is_read, sender_id);
+
+-- Background STT is created only for newly sent voice messages. The tuple
+-- makes audio/model changes explicit and prevents duplicate inference under
+-- retries or multiple worker processes. Transcript text stays on the message
+-- but is not returned by chat history until an authorized explicit request.
+CREATE TABLE IF NOT EXISTS voice_processing_jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id INTEGER NOT NULL,
+  audio_version TEXT NOT NULL,
+  model_version TEXT NOT NULL,
+  source_lang TEXT,
+  target_lang TEXT,
+  status TEXT NOT NULL DEFAULT 'queued',
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_retry_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  locked_at TEXT,
+  locked_by TEXT,
+  force_reprocess INTEGER NOT NULL DEFAULT 0,
+  expires_at TEXT NOT NULL,
+  last_error TEXT,
+  ready_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(message_id, audio_version, model_version)
+);
+-- The ready index is created by ``api.chat._ensure_columns`` after additive
+-- upgrades have supplied all columns on a database created by an older queue
+-- revision.  Keeping it out of this script avoids startup failure when an
+-- existing table lacks a newly introduced indexed column.

@@ -125,9 +125,14 @@ export default function VoiceMessageBubble({
   // До явного действия не запускается ни STT, ни перевод. Аудио доступно
   // независимо от этого действия; кнопка только раскрывает сохранённый либо
   // вручную запрошенный текстовый перевод.
-  const transcriptLabel = transcribing ? '…' : textVisible ? t('voice_hide_text')
-    : transcript?.needsTranslation ? t('voice_translate')
-      : transcript?.transcriptText ? t('voice_show_text') : t('voice_translate');
+  const hiddenStatus = transcript?.backgroundStatus;
+  const remoteProcessing = hiddenStatus === 'queued' || hiddenStatus === 'processing';
+  const transcriptLabel = transcribing || remoteProcessing ? t('voice_transcription_processing')
+    : hiddenStatus === 'expired' ? t('voice_recognize_again')
+      : textVisible ? t('voice_hide_text')
+        : transcript?.transcriptReady ? t('voice_show_text')
+          : transcript?.needsTranslation ? t('voice_translate')
+            : transcript?.transcriptText ? t('voice_show_text') : t('voice_translate');
 
   return (
     <View style={s.wrap} testID={testID}>
@@ -176,9 +181,9 @@ export default function VoiceMessageBubble({
         </TouchableOpacity>
       ) : null}
       {onToggleTranscript ? (
-        <TouchableOpacity onPress={onToggleTranscript} disabled={transcribing} style={s.transcriptButton} accessibilityRole="button" testID="voice-transcription-btn">
+        <TouchableOpacity onPress={onToggleTranscript} disabled={transcribing || remoteProcessing} style={s.transcriptButton} accessibilityRole="button" testID="voice-transcription-btn">
           <Feather name="align-left" size={12} color={baseMuted} />
-          {transcribing ? <ActivityIndicator size="small" color={baseMuted} testID="voice-transcription-loading" /> : null}
+          {transcribing || remoteProcessing ? <ActivityIndicator size="small" color={baseMuted} testID="voice-transcription-loading" /> : null}
           <Text style={[s.transcriptLabel, { color: baseMuted, fontSize: sp(11) }]}>{transcriptLabel}</Text>
         </TouchableOpacity>
       ) : null}

@@ -1,9 +1,10 @@
 // Push клиент — Web Push (PWA/браузер) + native FCM/APNs через expo-notifications.
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { getActiveRoom } from './activeRoom';  // QA-аудит P2-2
 import { t as tGlobal } from './i18n';
+import { claimPushEvent, clearPushEventDedup } from './pushEventDedup';
 
 const BASE = `${API_BASE}/push`;
 
@@ -23,6 +24,11 @@ export const NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2';
 // использует его, чтобы отличить «тот же физический телефон сменил
 // пользователя» (легитимно) от «кто-то узнал чужой токен» (блокируется).
 const DEVICE_ID_KEY = 'ur_device_id';
+
+// Expo вызывает этот listener при ротации нативного FCM/APNs token. Binding
+// хранится один раз на процесс: повторный app-active/login не должен
+// множить callbacks и регистрацию одного токена.
+let nativeTokenListenerBound = false;
 
 function _uuidv4() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -76,6 +82,26 @@ export const push = {
   async permission() {
     if (!this.isSupported()) return 'unsupported';
     return Notification.permission; // 'default' | 'granted' | 'denied'
+  },
+
+  async nativePermission() {
+    if (!this.isNative()) return 'unsupported';
+    try {
+      const Notifications = require('expo-notifications');
+      return (await Notifications.getPermissionsAsync()).status || 'undetermined';
+    } catch {
+      return 'unsupported';
+    }
+  },
+
+  async openNativeNotificationSettings() {
+    if (!this.isNative() || typeof Linking?.openSettings !== 'function') return false;
+    try {
+      await Linking.openSettings();
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   async subscribe(options = {}) {
@@ -204,13 +230,37 @@ export const push = {
         },
         body: JSON.stringify({ device_id: deviceId }),
       });
-      return resp.ok ? await resp.json() : { ok: false, status: resp.status };
+      const result = resp.ok ? await resp.json() : { ok: false, status: resp.status };
+      if (result.ok) await clearPushEventDedup();
+      return result;
     } catch (e) {
       return { ok: false, reason: 'network_error', error: String(e) };
     }
   },
 
   getOrCreateDeviceId,
+
+  // Provider success is not device receipt. This best-effort acknowledgement
+  // creates diagnostic evidence only; failures never affect chat delivery,
+  // notification presentation, or retry ownership on the server.
+  async acknowledgeReceipt(eventId, { opened = false } = {}) {
+    if (!this.isNative() || typeof eventId !== 'string' || !eventId.trim()) {
+      return { ok: false, reason: 'invalid_receipt' };
+    }
+    try {
+      const token = await storage.get(TOKEN_KEY);
+      if (!token) return { ok: false, reason: 'no_token' };
+      const deviceId = await getOrCreateDeviceId();
+      const response = await fetch(`${BASE}/receipt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ event_id: eventId.trim(), device_id: deviceId, opened: !!opened, platform: Platform.OS }),
+      });
+      return { ok: response.ok, status: response.status };
+    } catch {
+      return { ok: false, reason: 'network_error' };
+    }
+  },
 
   // ── Native token bridge (expo-notifications permissions/listeners only) ──
   isNative() {
@@ -242,6 +292,17 @@ export const push = {
             // SDK 52: shouldShowAlert устарел → дублируем shouldShowBanner/
             // shouldShowList, иначе баннер не подавляется. shouldSetBadge
             // false — сообщение читается прямо сейчас.
+            return {
+              shouldShowAlert: false, shouldShowBanner: false, shouldShowList: false,
+              shouldPlaySound: false, shouldSetBadge: false,
+            };
+          }
+          // Providers cannot offer exactly-once presentation. Suppress only
+          // duplicate foreground banners identified by the durable backend
+          // event id; the original message still arrives through chat/API.
+          const eventId = typeof data.event_id === 'string' ? data.event_id : data.event_key;
+          if (eventId) this.acknowledgeReceipt(eventId).catch(() => {});
+          if (eventId && !(await claimPushEvent(eventId, 'display'))) {
             return {
               shouldShowAlert: false, shouldShowBanner: false, shouldShowList: false,
               shouldPlaySound: false, shouldSetBadge: false,
@@ -342,6 +403,16 @@ export const push = {
       }
       return { ok: true, token: pushToken, provider, user_id: regUserId };
     };
+
+    // Token may rotate without a login (restore, OS/provider maintenance).
+    // Re-enter registerNative so each callback obtains fresh auth, locale and
+    // installation metadata rather than reusing this invocation's snapshot.
+    if (!nativeTokenListenerBound && typeof Notifications.addPushTokenListener === 'function') {
+      nativeTokenListenerBound = true;
+      Notifications.addPushTokenListener(() => {
+        this.registerNative().catch(() => {});
+      });
+    }
 
     let nativeResult = null;
     try {

@@ -92,6 +92,13 @@ test('chat notification tap prefers its structured room_id over an aggregated di
   assert.match(app, /const url = notificationResponseUrl\(response\);/);
 });
 
+test('native push deduplicates provider retries by backend event id without losing the first deeplink tap', () => {
+  assert.match(push, /claimPushEvent\(eventId, 'display'\)/);
+  assert.match(app, /function notificationResponseEventId\(response\)/);
+  assert.match(app, /claimPushEvent\(eventId, 'navigation'\)/);
+  assert.match(app, /const eventId = data\.event_id \|\| data\.event_key/);
+});
+
 test('custom-scheme and universal-link notification entrypoints are parsed as Notifications', () => {
   assert.match(app, /parsed\.protocol === 'urtruck:' \|\| parsed\.protocol === 'com\.urtruck\.app:'/);
   assert.match(app, /const hostPart = parsed\.hostname \? `\/\$\{parsed\.hostname\}` : ''/);

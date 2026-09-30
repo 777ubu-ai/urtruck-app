@@ -325,6 +325,41 @@ def test_anonymous_request_cannot_deactivate_owned_push():
     assert r3.status_code == 200, f"анонимную (без владельца) подписку аноним отписать обязан: {r3.status_code} {r3.text}"
 
 
+def test_push_receipt_is_write_only_for_own_event_and_installation():
+    """Receipt ACK не раскрывает и не подтверждает чужое событие/устройство."""
+    owner_id, owner_token = _new_user_token()
+    _outsider_id, outsider_token = _new_user_token()
+    event_id = "receipt-event-owner-only"
+    device_id = "device-receipt-0001"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO push_delivery_log "
+            "(event_id,recipient_user_id,device_id,provider,status,sent_at) "
+            "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)",
+            (event_id, owner_id, device_id, "fcm", "sent"),
+        )
+
+    received = client.post("/api/v1/push/receipt", json={
+        "event_id": event_id, "device_id": device_id, "opened": True,
+    }, headers=_auth(owner_token))
+    assert received.status_code == 200, received.text
+    # Повтор ACK идемпотентен.
+    assert client.post("/api/v1/push/receipt", json={
+        "event_id": event_id, "device_id": device_id,
+    }, headers=_auth(owner_token)).status_code == 200
+
+    outsider = client.post("/api/v1/push/receipt", json={
+        "event_id": event_id, "device_id": device_id, "opened": True,
+    }, headers=_auth(outsider_token))
+    assert outsider.status_code == 404, outsider.text
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT received_at,opened_at FROM push_delivery_log WHERE event_id=? AND recipient_user_id=?",
+            (event_id, owner_id),
+        ).fetchone()
+    assert row["received_at"] and row["opened_at"]
+
+
 if __name__ == "__main__":
     fails = 0
     for fn in [test_register_then_reregister_same_owner_no_duplicate,
@@ -337,7 +372,8 @@ if __name__ == "__main__":
                test_multiple_devices_same_user_both_active,
                test_web_push_hijack_blocked,
                test_unsubscribe_requires_ownership,
-               test_anonymous_request_cannot_deactivate_owned_push]:
+               test_anonymous_request_cannot_deactivate_owned_push,
+               test_push_receipt_is_write_only_for_own_event_and_installation]:
         try:
             fn(); print(f"  ✅ {fn.__name__}")
         except Exception as e:

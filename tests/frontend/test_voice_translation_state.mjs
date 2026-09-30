@@ -26,6 +26,14 @@ function fixture(overrides = {}) {
       calls.push(['translate', id, lang]);
       return overrides.translate ? overrides.translate(id, lang) : translated(lang);
     },
+    voiceText: overrides.voiceText ? async (id, lang) => {
+      calls.push(['voiceText', id, lang]);
+      return overrides.voiceText(id, lang);
+    } : undefined,
+    recognizeVoiceAgain: overrides.recognizeVoiceAgain ? async (id) => {
+      calls.push(['recognizeAgain', id]);
+      return overrides.recognizeVoiceAgain(id);
+    } : undefined,
   };
   return { state: createVoiceTranscriptState(api), calls };
 }
@@ -155,4 +163,30 @@ test('размонтирование/смена пользователя не п
   await pending;
   assert.equal(state.view('private-voice', 'RU'), undefined);
   assert.equal(calls.length, 1);
+});
+
+test('готовый background STT скрыт до Show text и не запускает inference повторно', async () => {
+  const { state, calls } = fixture({ voiceText: async () => ({
+    status: 'ready', transcript_text: 'Груз 10 тонн', source_lang: 'ru', provider: 'openai',
+    translated_text: '货物10吨', target_lang: 'zh', translation_provider: 'openai',
+  }) });
+  const message = { id: 'bg-ready', voice: true, voiceProcessingStatus: 'ready', voiceTranscriptReady: true };
+  state.hydrate([message]);
+  assert.deepEqual(calls, []);
+  await state.toggle(message, 'ZH');
+  assert.deepEqual(calls, [['voiceText', 'bg-ready', 'zh']]);
+  assert.equal(state.view('bg-ready', 'ZH').transcriptText, 'Груз 10 тонн');
+  assert.equal(state.view('bg-ready', 'ZH').translatedText, '货物10吨');
+});
+
+test('queued/expired background state never starts STT from polling and requeue is explicit', async () => {
+  const { state, calls } = fixture({
+    voiceText: async () => ({ status: 'expired' }),
+    recognizeVoiceAgain: async () => ({ status: 'queued' }),
+  });
+  const message = { id: 'bg-expired', voice: true, voiceProcessingStatus: 'expired' };
+  state.hydrate([message]);
+  await state.retry(message, 'RU');
+  assert.deepEqual(calls, [['recognizeAgain', 'bg-expired']]);
+  assert.equal(state.view('bg-expired', 'RU').backgroundStatus, 'queued');
 });

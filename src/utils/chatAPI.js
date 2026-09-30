@@ -202,6 +202,28 @@ export const chatAPI = {
     return data;
   },
 
+  // Hidden background STT cache: this read never starts inference. The chat
+  // poll exposes only its status; a user must tap "Show text" to retrieve
+  // an already-ready transcript/translation.
+  async voiceText(messageId, targetLang = null) {
+    const suffix = targetLang ? `?target_lang=${encodeURIComponent(targetLang)}` : '';
+    const r = await authedFetchWithTimeout(`${BASE}/voice/${messageId}/text${suffix}`, {
+      headers: await headers(),
+    }, 30000);
+    const data = await r.json().catch(() => null);
+    if (!r.ok) throw chatApiError(data?.detail, 'voice_transcription_unavailable');
+    return data;
+  },
+
+  async recognizeVoiceAgain(messageId) {
+    const r = await authedFetchWithTimeout(`${BASE}/voice/${messageId}/recognize`, {
+      method: 'POST', headers: await headers(),
+    }, 30000);
+    const data = await r.json().catch(() => null);
+    if (!r.ok) throw chatApiError(data?.detail, 'voice_transcription_unavailable');
+    return data;
+  },
+
   async conversations() {
     const r = await authedFetch(`${BASE}/conversations`, { headers: await headers() });
     return r.json();

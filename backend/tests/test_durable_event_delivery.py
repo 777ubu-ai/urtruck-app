@@ -515,7 +515,7 @@ def test_partial_multi_device_retry_completes_without_resending_success(monkeypa
     def partial(tokens, title, body, data, badge=None):
         calls.append(list(tokens))
         return {"sent": 1, "devices": len(tokens), "errors": {"transient": 1} if len(calls) == 1 else {}}
-    assert push_gateway.process_pending_once(partial, limit=10)["failed"] == 1
+    assert push_gateway.process_pending_once(partial, limit=10)["retry"] == 1
     _force_due(user)
     assert push_gateway.process_pending_once(partial, limit=10)["sent"] == 1
     assert outbox_rows(user)[0]["status"] == "sent"

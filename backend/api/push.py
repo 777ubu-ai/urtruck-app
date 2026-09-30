@@ -87,6 +87,21 @@ def _init_schema():
             # schema synchronously below.
             defer_receipt_index = receipt_index is None
 
+        # The schema below creates an index involving expires_at.  Add these
+        # columns before executescript for a legacy outbox, otherwise SQLite
+        # aborts at CREATE INDEX before the later additive migration can run.
+        outbox_exists = c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='push_outbox'"
+        ).fetchone()
+        if outbox_exists:
+            outbox_cols = {row["name"] for row in c.execute("PRAGMA table_info(push_outbox)").fetchall()}
+            if "expires_at" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN expires_at TEXT")
+            if "collapse_key" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN collapse_key TEXT")
+            if "locked_by" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN locked_by TEXT")
+
         schema_sql = schema.read_text(encoding="utf-8")
         if defer_receipt_index:
             schema_sql = _RECEIPT_INDEX_PATTERN.sub("", schema_sql, count=1)
@@ -218,10 +233,28 @@ def _migrate_ownership_columns():
             outbox_cols = {r["name"] for r in c.execute("PRAGMA table_info(push_outbox)").fetchall()}
             if "claimed_at" not in outbox_cols:
                 c.execute("ALTER TABLE push_outbox ADD COLUMN claimed_at TEXT")
+            # Additive migration for the reliability policy. Existing rows
+            # deliberately keep NULL expiry/collapse values: inventing a TTL
+            # retroactively could silently discard historical evidence.
+            if "expires_at" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN expires_at TEXT")
+            if "collapse_key" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN collapse_key TEXT")
+            if "locked_by" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN locked_by TEXT")
         except Exception:
             pass
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_status_next ON push_outbox(status, next_attempt_at)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_event_type ON push_outbox(event_type)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_pending_expiry ON push_outbox(status, expires_at)")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS push_worker_heartbeat (
+                worker_name TEXT PRIMARY KEY,
+                last_heartbeat_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_batch_picked INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT
+            )
+        """)
         c.execute("""
             CREATE TABLE IF NOT EXISTS push_delivery_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -246,6 +279,10 @@ def _migrate_ownership_columns():
             delivery_cols = {r["name"] for r in c.execute("PRAGMA table_info(push_delivery_log)").fetchall()}
             if "receipt_checked_at" not in delivery_cols:
                 c.execute("ALTER TABLE push_delivery_log ADD COLUMN receipt_checked_at TEXT")
+            if "received_at" not in delivery_cols:
+                c.execute("ALTER TABLE push_delivery_log ADD COLUMN received_at TEXT")
+            if "opened_at" not in delivery_cols:
+                c.execute("ALTER TABLE push_delivery_log ADD COLUMN opened_at TEXT")
         except Exception:
             pass
         c.execute("""
@@ -529,6 +566,14 @@ class NativeTokenIn(BaseModel):
     os_version: Optional[str] = None
 
 
+class PushReceiptIn(BaseModel):
+    event_id: str
+    device_id: str
+    opened: bool = False
+    platform: Optional[str] = None
+    app_version: Optional[str] = None
+
+
 @push_router.get("/public-key")
 def get_public_key():
     return {"public_key": VAPID_PUBLIC, "mock": PUSH_MOCK}
@@ -748,6 +793,44 @@ def unregister_native(body: dict, authorization: Optional[str] = Header(None)):
         )
         _audit(c, "push_tokens_native", token, row["device_id"] if "device_id" in row.keys() else None,
                owner, owner, "deactivated")
+        c.commit()
+    return {"ok": True}
+
+
+@push_router.post("/receipt")
+def receipt(body: PushReceiptIn, user=Depends(get_user)):
+    """Idempotently record client receipt/opening of its own native push.
+
+    FCM/APNs success means provider acceptance only.  This endpoint therefore
+    does not trigger retries or expose payloads; it adds diagnostic evidence
+    solely when the authenticated recipient's *same installation* has a
+    matching provider-accepted delivery-log row.
+    """
+    event_id = (body.event_id or "").strip()
+    device_id = _clean_device_id(body.device_id)
+    if not event_id or len(event_id) > 256 or not device_id:
+        raise HTTPException(status_code=400, detail="Некорректный push receipt")
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT id FROM push_delivery_log WHERE event_id=? AND recipient_user_id=? "
+            "AND device_id=? AND status='sent' ORDER BY id DESC LIMIT 1",
+            (event_id, user["id"], device_id),
+        ).fetchone()
+        if row is None:
+            # Do not reveal whether this event exists for another account or
+            # installation. A 404 is safe and keeps the endpoint write-only.
+            raise HTTPException(status_code=404, detail="Push delivery не найдена")
+        if body.opened:
+            c.execute(
+                "UPDATE push_delivery_log SET received_at=COALESCE(received_at, CURRENT_TIMESTAMP), "
+                "opened_at=COALESCE(opened_at, CURRENT_TIMESTAMP) WHERE id=?",
+                (row["id"],),
+            )
+        else:
+            c.execute(
+                "UPDATE push_delivery_log SET received_at=COALESCE(received_at, CURRENT_TIMESTAMP) WHERE id=?",
+                (row["id"],),
+            )
         c.commit()
     return {"ok": True}
 

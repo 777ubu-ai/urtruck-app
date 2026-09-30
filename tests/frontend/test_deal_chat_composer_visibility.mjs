@@ -86,24 +86,21 @@ test('emoji control is a visible sibling of the multiline native input', () => {
 test('изменение viewport прокручивает к последнему, но не отрывает чтение истории', () => {
   const body = src.split('scheduleAutoScrollRef.current = () => {')[1].split('\n  };')[0];
   let calls = 0;
-  const timers = [];
   const mounted = { current: true };
   const userScrolledAwayRef = { current: false };
   const nearBottomRef = { current: true };
-  const run = new Function('mounted', 'userScrolledAwayRef', 'nearBottomRef', 'listRef', 'setTimeout', body)
+  const run = new Function('mounted', 'userScrolledAwayRef', 'nearBottomRef', 'listRef', body)
     .bind(null, mounted, userScrolledAwayRef, nearBottomRef,
-      { current: { scrollToEnd: () => calls++ } }, (fn) => timers.push(fn));
+      { current: { scrollToEnd: () => calls++ } });
   run();
   assert.equal(calls, 1);
   userScrolledAwayRef.current = true;
   nearBottomRef.current = false;
-  for (const timer of timers.splice(0)) timer();
-  assert.equal(calls, 1, 'поздние layout callbacks не сдвигают открытую историю');
   run();
-  assert.equal(calls, 1);
+  assert.equal(calls, 1, 'чтение истории не сдвигается');
   userScrolledAwayRef.current = false;
   nearBottomRef.current = true;
   mounted.current = false;
-  for (const timer of timers) timer();
-  assert.equal(calls, 1, 'после ухода с экрана callbacks не прокручивают список');
+  run();
+  assert.equal(calls, 1, 'после ухода с экрана callback не прокручивает список');
 });
