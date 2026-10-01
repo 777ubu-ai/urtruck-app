@@ -557,11 +557,20 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     # from the stored audio container, otherwise a Xiaomi/iOS timer bug turns
     # into an authoritative value for the other participant.
     authoritative_voice_duration = None
+    sender_lang = recipient_lang = None
     if body.is_voice:
         from services.audio_metadata import duration_seconds_from_ref
         authoritative_voice_duration = duration_seconds_from_ref(body.photo_url)
         if authoritative_voice_duration is not None and authoritative_voice_duration > MAX_CHAT_VOICE_DURATION_SEC:
             raise HTTPException(status_code=422, detail="Голосовое сообщение не может быть длиннее 60 секунд")
+        # Locale is a non-critical cache optimization. Queue durability must
+        # not depend on this lookup and is committed below with the message.
+        try:
+            from services.push_gateway import get_recipient_locale
+            sender_lang = _normalize_lang_code(get_recipient_locale(user["id"]))
+            recipient_lang = _normalize_lang_code(get_recipient_locale(recipient_id))
+        except Exception:
+            sender_lang = recipient_lang = None
 
     with get_conn() as c:
         # QA-аудит P1-3: дедуп ретраев из офлайн-очереди. Если сообщение с
@@ -586,25 +595,18 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         message_id = cursor.lastrowid
         preview = (("🎤 Голосовое сообщение" if body.is_voice else (body.text or "📷 Фото")))[:50]
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
-
-    # Create a durable hidden-STT job for this newly committed voice only.
-    # Failure to enqueue never blocks delivery of the original audio; no scan
-    # exists that could accidentally process historic voice messages later.
-    if body.is_voice:
-        try:
-            from services.voice_processing import enqueue_new_voice
-            from services.push_gateway import get_recipient_locale
-            sender_lang = _normalize_lang_code(get_recipient_locale(user["id"]))
-            recipient_lang = _normalize_lang_code(get_recipient_locale(recipient_id))
-            enqueue_new_voice(
-                message_id, body.photo_url,
+        # The new voice and its hidden STT job commit atomically.  If SQLite
+        # cannot create the queue row, neither the message nor push side
+        # effects escape this transaction, so no voice can be stranded.
+        if body.is_voice:
+            from services.voice_processing import enqueue_new_voice_in_transaction
+            created = enqueue_new_voice_in_transaction(
+                c, message_id, body.photo_url,
                 source_lang=sender_lang,
                 target_lang=recipient_lang if recipient_lang and recipient_lang != sender_lang else None,
             )
-        except Exception:
-            # Original voice, chat message and push are already durable. Do
-            # not log storage refs, signed URLs or transcript contents here.
-            pass
+            if not created:
+                raise RuntimeError("voice_processing_job_not_created")
 
     event_key = f"chat:{room_id}:msg:{message_id}"
     # Bell is a durable inbox, independent of provider delivery. Persist the
