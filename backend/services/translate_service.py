@@ -12,11 +12,12 @@ import json
 # `message` is a RU-language fallback for callers that don't localize it,
 # never raw provider text.
 class TranslationError(RuntimeError):
-    def __init__(self, message: str, *, provider: str = "", retryable: bool = False, code: str = "TRANSLATION_FAILED"):
+    def __init__(self, message: str, *, provider: str = "", retryable: bool = False, code: str = "TRANSLATION_FAILED", reason_codes=()):
         super().__init__(message)
         self.provider = provider
         self.retryable = retryable
         self.code = code
+        self.reason_codes = tuple(reason_codes)
 
 
 LANG_NAMES = {
@@ -148,6 +149,7 @@ def translate_text(text: str, target_lang: str, source_lang: str = None) -> dict
             raise TranslationError(
                 "Перевод временно недоступен", provider="local_nllb_1_3b",
                 retryable=exc.retryable, code=exc.code,
+                reason_codes=exc.reason_codes,
             ) from exc
 
     # A provider stub must never return the source text as a successful

@@ -17,6 +17,7 @@ test('chat provider/backend errors fail closed to localized text', () => {
   const fn = chatApi.match(/function chatApiError\(detail, fallbackKey\) \{([\s\S]*?)\n\}/);
   assert.ok(fn, 'chatApiError must remain centralized');
   assert.match(fn[1], /localized \|\| fallback/);
+  assert.match(fn[1], /error\.reasonCodes = Array\.isArray\(detail\.reason_codes\)/);
   assert.doesNotMatch(fn[1], /detail\.hint/);
   assert.doesNotMatch(fn[1], /typeof detail === 'string' && detail/);
 });

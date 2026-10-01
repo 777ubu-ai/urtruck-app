@@ -18,6 +18,7 @@ test('voice one-tap STT attaches the current-language translation and remains re
   assert.match(voiceTextState, /api\.transcribe\(entry\.id, lang\)/);
   assert.match(voiceTextState, /translation_provider/);
   assert.match(voiceTextState, /translation_error/);
+  assert.match(chatApi, /"translation_reason_codes": translation_reason_codes/);
   assert.match(workspace, /const toggleVoiceOriginal = React\.useCallback/);
   assert.match(workspace, /onRetryTranslation=\{\(\) => translateVoiceTranscript\(item\)\}/);
   assert.match(bubble, /const primaryTranscript = hasTranslation/);

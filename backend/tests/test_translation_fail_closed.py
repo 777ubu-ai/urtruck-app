@@ -291,14 +291,21 @@ def test_06_endpoint_surfaces_structured_error_not_fake_success(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake")
 
     def fake_translate_text(*a, **kw):
-        raise ts.TranslationError("x", code="TRANSLATION_FAILED", retryable=False)
+        raise ts.TranslationError(
+            "x", code="TRANSLATION_QUALITY_FAILED", retryable=False,
+            reason_codes=("city_missing:almaty",),
+        )
 
     monkeypatch.setattr(ts, "translate_text", fake_translate_text)
 
     _as(A)
     r = client.post("/api/v1/chat/translate", json={"message_id": STATE["message_id"], "target_lang": "ru"})
     assert r.status_code == 422, f"a translation failure must be a real error status: {r.status_code} {r.text}"
-    assert r.json()["detail"]["error"] == "TRANSLATION_FAILED"
+    assert r.json()["detail"] == {
+        "error": "TRANSLATION_QUALITY_FAILED",
+        "reason_codes": ["city_missing:almaty"],
+    }
+    assert "hint" not in r.json()["detail"]
 
 
 def test_07_failed_attempt_is_never_cached_retry_calls_provider_again(monkeypatch):

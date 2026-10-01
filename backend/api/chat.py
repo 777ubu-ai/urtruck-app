@@ -1344,7 +1344,10 @@ def translate_message(body: TranslateIn, user=Depends(require_level(1))):
         result = translate_text(source_text, target_lang, source_lang=source_lang)
     except TranslationError as exc:
         status = 503 if exc.retryable else 422
-        raise HTTPException(status_code=status, detail={"error": exc.code, "hint": str(exc)}) from exc
+        detail = {"error": exc.code}
+        if exc.reason_codes:
+            detail["reason_codes"] = list(exc.reason_codes)
+        raise HTTPException(status_code=status, detail=detail) from exc
 
     # Сохраняем в кэш — only a genuine success reaches this point.
     with get_conn() as c:
@@ -1486,6 +1489,7 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
             )
 
     translated_text = None
+    translation_reason_codes = []
     translation_provider = None
     translation_cached = False
     translation_error = None
@@ -1549,6 +1553,7 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
                         )
                 except TranslationError as exc:
                     translation_error = exc.code
+                    translation_reason_codes = list(exc.reason_codes)
 
     return {
         "message_id": body.message_id,
@@ -1561,4 +1566,5 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
         "translation_provider": translation_provider,
         "translation_cached": translation_cached,
         "translation_error": translation_error,
+        "translation_reason_codes": translation_reason_codes,
     }
