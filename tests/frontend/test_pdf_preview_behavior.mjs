@@ -5,6 +5,7 @@ import { createPdfPreviewCallbacks } from '../../src/components/deal/pdfPreviewC
 import {
   deletePrivatePdfCachePath,
   isPrivatePdfCachePath,
+  sweepStalePrivatePdfCaches,
 } from '../../src/components/deal/privatePdfCache.js';
 
 test('native renderer reports page content only after valid metadata and page callback', () => {
@@ -54,4 +55,25 @@ test('private PDF cleanup deletes only files below the app cache root', () => {
   assert.equal(deletePrivatePdfCachePath(privatePath, { cacheUri, createFile }), true);
   assert.equal(deletePrivatePdfCachePath(externalPath, { cacheUri, createFile }), false);
   assert.deepEqual(deleted, [privatePath]);
+});
+
+test('startup sweep removes only stale private PDFs and keeps active preview', () => {
+  const deleted = [];
+  const cacheUri = 'file:///data/user/0/com.urtruck.app.qa2/cache/';
+  const active = `${cacheUri}urtruck-private-pdf-active.pdf`;
+  const stale = `${cacheUri}urtruck-private-pdf-stale.pdf`;
+  const unrelated = `${cacheUri}shared-thumbnail.pdf`;
+  const entries = [
+    { name: 'urtruck-private-pdf-active.pdf', uri: active },
+    { name: 'urtruck-private-pdf-stale.pdf', uri: stale },
+    { name: 'shared-thumbnail.pdf', uri: unrelated },
+  ];
+  const count = sweepStalePrivatePdfCaches({
+    entries,
+    excludePath: active,
+    cacheUri,
+    createFile: (path) => ({ exists: true, delete: () => deleted.push(path) }),
+  });
+  assert.equal(count, 1);
+  assert.deepEqual(deleted, [stale]);
 });
