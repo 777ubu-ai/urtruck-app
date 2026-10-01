@@ -1,6 +1,7 @@
-export function createPdfPreviewCallbacks({ onMetadata, onRendered, onError }) {
+export function createPdfPreviewCallbacks({ onMetadata, onRendered, onError, onCacheFile }) {
   return {
-    onLoadComplete(pages, _path, size) {
+    onLoadComplete(pages, path, size) {
+      if (path) onCacheFile?.(path);
       if (pages > 0 && size?.width > 0 && size?.height > 0) {
         onMetadata?.({ pages, width: size.width, height: size.height });
       } else {
