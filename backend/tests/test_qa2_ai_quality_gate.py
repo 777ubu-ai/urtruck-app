@@ -215,6 +215,16 @@ def test_physical_message_248_almaty_variant_is_repaired_without_bypassing_gate(
     assert translation_quality_ok(source, repaired, "ru", "zh") is True
 
 
+def test_all_observed_almaty_variants_are_repaired_in_mixed_candidate():
+    source = "Алматы — важный город. Мы едем в Алматы."
+    mixed = "阿拉木图是一个重要城市。我们要去阿尔马图， затем 阿尔马塔。"
+    repaired = repair_logistics_translation(source, mixed, "ru", "zh")
+    assert repaired.count("阿拉木图") == 3
+    assert "阿尔马图" not in repaired
+    assert "阿尔马塔" not in repaired
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
 def test_message_248_missing_city_still_fails_quality_gate():
     source = (
         "Привет! Где находится машина? Документы готовы. Мы едем в Алматы. "
