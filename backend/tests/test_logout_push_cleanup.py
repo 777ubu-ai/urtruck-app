@@ -10,6 +10,9 @@ Exit != 0 на любой ошибке. Совместим с pytest.
 """
 import os
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_logout_push.db")
@@ -243,6 +246,50 @@ def test_register_logout_wildcard_fence_rejects_missing_or_invalid_device_id():
         assert stale.status_code == 409, stale.text
         assert stale.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
         assert _native_tokens(uid) == []
+
+
+def test_logout_cannot_commit_between_tombstone_check_and_native_upsert(monkeypatch):
+    """The whole registration write is serialized against canonical logout."""
+    import api.push as push_api
+
+    uid, tok = _new_user_token()
+    token = "fcm-unit-test-interleaved-logout"
+    device = "d-register-logout-interleaved"
+    initial = client.post(
+        "/api/v1/push/register-native",
+        json={"token": token, "device_id": device},
+        headers=_auth(tok),
+    )
+    assert initial.status_code == 200, initial.text
+
+    checked = threading.Event()
+    release = threading.Event()
+    original = push_api._resolve_ownership
+
+    def pause_after_checks(*args, **kwargs):
+        result = original(*args, **kwargs)
+        checked.set()
+        assert release.wait(3), "registration pause timed out"
+        return result
+
+    monkeypatch.setattr(push_api, "_resolve_ownership", pause_after_checks)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        registration = pool.submit(
+            client.post,
+            "/api/v1/push/register-native",
+            json={"token": token, "device_id": device},
+            headers=_auth(tok),
+        )
+        assert checked.wait(2), "registration did not reach ownership check"
+        logout = pool.submit(client.post, "/api/v1/register/logout", headers=_auth(tok))
+        time.sleep(0.1)
+        assert not logout.done(), "logout must wait for the registration writer transaction"
+        release.set()
+        assert registration.result(timeout=3).status_code == 200
+        logout_response = logout.result(timeout=3)
+
+    assert logout_response.status_code == 200, logout_response.text
+    assert _native_tokens(uid) == []
 
 
 if __name__ == "__main__":
