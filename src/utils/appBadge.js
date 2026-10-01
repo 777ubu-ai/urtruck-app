@@ -13,6 +13,8 @@ import { Platform } from 'react-native';
 import { notificationsAPI } from './notificationsAPI';
 
 let refreshVersion = 0;
+let latestSuccessfulVersion = 0;
+let applyQueue = Promise.resolve();
 
 function normalizedBadge(total) {
   const value = Number(total);
@@ -54,20 +56,29 @@ export async function setAppIconBadge(total) {
 }
 
 export function clearAppIconBadge() {
-  refreshVersion += 1;
-  return setAppIconBadge(0);
+  const version = ++refreshVersion;
+  latestSuccessfulVersion = version;
+  applyQueue = applyQueue.then(() => setAppIconBadge(0));
+  return applyQueue;
 }
 
 export async function refreshAppIconBadge() {
-  if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
-    return { badge: 0, applied: false, reason: 'platform_unsupported' };
-  }
   const version = ++refreshVersion;
   try {
     const canonical = await notificationsAPI.badge();
     const badge = normalizedBadge(canonical?.badge);
-    if (version !== refreshVersion) return { badge, applied: false, reason: 'superseded' };
-    return setAppIconBadge(badge);
+    if (version < latestSuccessfulVersion) {
+      return { badge, applied: false, reason: 'superseded' };
+    }
+    latestSuccessfulVersion = version;
+    const apply = applyQueue.then(async () => {
+      if (version < latestSuccessfulVersion) {
+        return { badge, applied: false, reason: 'superseded' };
+      }
+      return setAppIconBadge(badge);
+    });
+    applyQueue = apply.catch(() => {});
+    return apply;
   } catch {
     return { badge: null, applied: false, reason: 'canonical_unavailable' };
   }

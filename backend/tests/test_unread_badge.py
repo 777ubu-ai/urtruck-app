@@ -125,6 +125,43 @@ def test_canonical_badge_counts_disjoint_non_chat_events_and_active_chat_once():
     assert push_sender._compute_recipient_badge(o) == 2
 
 
+def test_canonical_badge_sequence_bid_message_mirrors_then_reads_to_zero():
+    """0 → bid 1 → duplicate mirror 1 → message 2 → mirror 2 → reads 0."""
+    o, d = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
+    assert unread_badge_count(o) == 0
+
+    bid_event_key = "bid-created-" + uuid.uuid4().hex
+    create_notification(o, "bid_created", "New bid", event_key=bid_event_key)
+    assert unread_badge_count(o) == 1
+    # Retry/mirror of the same business event is idempotent.
+    create_notification(o, "bid_created", "New bid", event_key=bid_event_key)
+    assert unread_badge_count(o) == 1
+
+    sent = send_message(SendMessageIn(room_id=room, text="one message"), user=_u(d))
+    assert sent["ok"] is True
+    assert unread_badge_count(o) == 2
+    create_notification(
+        o, "chat_message", "Message mirror",
+        event_key="chat-message-" + uuid.uuid4().hex,
+    )
+    assert unread_badge_count(o) == 2
+    assert push_sender._compute_recipient_badge(o) == 2
+
+    with get_conn() as c:
+        c.execute(
+            "UPDATE notifications SET is_read=1 "
+            "WHERE user_id=? AND event_key=?",
+            (o, bid_event_key),
+        )
+    assert unread_badge_count(o) == 1
+    get_messages(room, user=_u(o))
+    assert unread_badge_count(o) == 0
+    assert push_sender._compute_recipient_badge(o) == 0
+
+
 def test_inv3_read_marks_only_opened_room():
     """INV-3: get_messages помечает прочитанной ТОЛЬКО открытую комнату (H5)."""
     o, d = _ids()
