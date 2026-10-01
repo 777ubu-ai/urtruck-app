@@ -7,7 +7,10 @@ Included:
 
 1. Every unread durable `notifications` row except `chat_message` and
    `chat_attachment`. The database `event_key` uniqueness rule prevents one
-   business event from being counted twice.
+   business event from being counted twice. This explicitly includes an
+   actionable `bid_created` notification: therefore a new bid contributes one
+   to the number shown on the Deals tab as well as the canonical launcher
+   badge.
 2. Every unread, non-system message sent by the other participant in a chat
    that is standalone or belongs to an active deal with status `accepted`,
    `in_progress`, `at_border`, `awaiting_confirmation`, `delivered` or
