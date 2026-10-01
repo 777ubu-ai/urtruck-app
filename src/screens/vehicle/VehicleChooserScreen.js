@@ -4,8 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { vehicleAPI } from '../../utils/vehicleAPI';
 import { storage } from '../../utils/storage';
-import { useVehicleCopy, styles } from '../../components/vehicle/VehicleSetupUI';
-import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
+import { useVehicleCopy, useVehicleSetupStyles } from '../../components/vehicle/VehicleSetupUI';
+import { useDriverCeramicColors } from '../../theme/designV1';
 import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
 import BackButton from '../../components/ui/v1/BackButton';
 import AppConfirmModal from '../../components/ui/AppConfirmModal';
@@ -13,6 +13,8 @@ const DRAFT_KEY = 'ur_vehicle_setup_draft';
 
 export default function VehicleChooserScreen({ navigation, route }) {
   const { c } = useVehicleCopy();
+  const styles = useVehicleSetupStyles();
+  const ceramic = useDriverCeramicColors();
   const [vehicles, setVehicles] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -58,7 +60,7 @@ export default function VehicleChooserScreen({ navigation, route }) {
   };
 
   const header = <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, alignItems: 'flex-start' }}><BackButton onPress={() => navigation.goBack()} label={c.back} testID="vehicle-chooser-back" /></View>;
-  if (!vehicles) return <SafeAreaView style={styles.safe}><DriverRouteBackdrop />{header}<ActivityIndicator color={DRIVER_CERAMIC.active} style={{ marginTop: 56 }} /></SafeAreaView>;
+  if (!vehicles) return <SafeAreaView style={styles.safe}><DriverRouteBackdrop />{header}<ActivityIndicator color={ceramic.active} style={{ marginTop: 56 }} /></SafeAreaView>;
   return <SafeAreaView style={styles.safe}><DriverRouteBackdrop />{header}<View style={{ paddingHorizontal: 20, paddingBottom: 20, flex: 1 }}>
     <Text style={styles.title}>{c.myVehicles}</Text>
     <FlatList
@@ -66,9 +68,9 @@ export default function VehicleChooserScreen({ navigation, route }) {
       keyExtractor={(item) => String(item.id)}
       renderItem={({ item }) => <Pressable style={styles.reviewCard} onPress={() => openVehicle(item)} testID="vehicle-chooser-item">
         <View style={styles.reviewHeader}>
-          <Feather name="truck" size={23} color={DRIVER_CERAMIC.active} />
+          <Feather name="truck" size={23} color={ceramic.active} />
           <Text style={[styles.reviewTitle, localStyles.vehicleTitle]}>{item.make} {item.model}</Text>
-          <Feather name={origin === 'CreateTrip' ? 'chevron-right' : 'edit-2'} size={20} color={DRIVER_CERAMIC.textMuted} />
+          <Feather name={origin === 'CreateTrip' ? 'chevron-right' : 'edit-2'} size={20} color={ceramic.textMuted} />
           {origin !== 'CreateTrip' ? <Pressable
             accessibilityRole="button"
             accessibilityLabel={c.deleteVehicle}
@@ -79,7 +81,7 @@ export default function VehicleChooserScreen({ navigation, route }) {
               setPendingDelete(item);
             }}
           >
-            <Feather name="trash-2" size={19} color={DRIVER_CERAMIC.error} />
+            <Feather name="trash-2" size={19} color={ceramic.error} />
           </Pressable> : null}
         </View>
         <Text style={styles.subtitle}>{bodyLabel(item)} · {item.payload_tons} т · {item.cargo_volume_m3} м³</Text>
