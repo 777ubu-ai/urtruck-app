@@ -143,19 +143,23 @@ def _fake_urlopen_http_error(status, body=b"provider said no"):
     return _raise
 
 
-def test_01_4xx_is_not_retryable_and_does_not_leak_raw_body(monkeypatch):
+def test_01_4xx_is_not_retryable_and_does_not_leak_raw_body(monkeypatch, capsys):
     from services import translate_service as ts
 
     monkeypatch.setenv("TRANSLATE_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake")
-    monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen_http_error(400, b"bad request details"))
+    private_text = "private message: Алматы 1450 USD"
+    monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen_http_error(400, private_text.encode("utf-8")))
     try:
         ts.translate_text("hello", "ru", source_lang="en")
         assert False, "must raise, not silently return the original text"
     except ts.TranslationError as exc:
         assert exc.code == "TRANSLATION_FAILED"
         assert exc.retryable is False
-        assert "bad request details" not in str(exc), "raw provider body must not leak to the caller"
+        assert private_text not in str(exc), "raw provider body must not leak to the caller"
+    captured = capsys.readouterr()
+    assert private_text not in captured.out
+    assert private_text not in captured.err
 
 
 def test_02_5xx_is_retryable(monkeypatch):
@@ -221,7 +225,7 @@ def test_03_network_timeout_is_retryable(monkeypatch):
         assert exc.retryable is True
 
 
-def test_04_malformed_response_fails_closed(monkeypatch):
+def test_04_malformed_response_fails_closed(monkeypatch, capsys):
     from services import translate_service as ts
 
     class _FakeResp:
@@ -232,7 +236,7 @@ def test_04_malformed_response_fails_closed(monkeypatch):
             return False
 
         def read(self):
-            return b"<html>not json</html>"
+            return b"<html>private message: Almaty 1450 USD</html>"
 
     monkeypatch.setenv("TRANSLATE_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake")
@@ -242,7 +246,10 @@ def test_04_malformed_response_fails_closed(monkeypatch):
         assert False, "a malformed 2xx body must not silently succeed"
     except ts.TranslationError as exc:
         assert exc.code == "TRANSLATION_FAILED"
-        assert "not json" not in str(exc)
+        assert "private message" not in str(exc)
+    captured = capsys.readouterr()
+    assert "private message" not in captured.out
+    assert "private message" not in captured.err
 
 
 def test_05_success_case_still_works(monkeypatch):
