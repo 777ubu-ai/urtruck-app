@@ -308,6 +308,15 @@ export const push = {
       handleNotification: async (notification) => {
         try {
           const data = notification?.request?.content?.data || {};
+          const eventId = typeof data.event_id === 'string' ? data.event_id : data.event_key;
+          // Receipt telemetry is independent from presentation policy.  A
+          // chat that is already open intentionally suppresses its banner,
+          // but the native delivery still reached this installation and must
+          // therefore be acknowledged exactly once per backend event.
+          // The server makes received_at idempotent. Do not claim this in the
+          // persistent presentation cache: if the phone is temporarily
+          // offline, a later provider callback must be allowed to retry ACK.
+          if (eventId) await this.acknowledgeReceipt(eventId);
           if ((data.type === 'chat_message' || data.type === 'chat_attachment') && data.room_id && data.room_id === getActiveRoom()) {
             // SDK 52: shouldShowAlert устарел → дублируем shouldShowBanner/
             // shouldShowList, иначе баннер не подавляется. shouldSetBadge
@@ -320,8 +329,6 @@ export const push = {
           // Providers cannot offer exactly-once presentation. Suppress only
           // duplicate foreground banners identified by the durable backend
           // event id; the original message still arrives through chat/API.
-          const eventId = typeof data.event_id === 'string' ? data.event_id : data.event_key;
-          if (eventId) this.acknowledgeReceipt(eventId).catch(() => {});
           if (eventId && !(await claimPushEvent(eventId, 'display'))) {
             return {
               shouldShowAlert: false, shouldShowBanner: false, shouldShowList: false,
