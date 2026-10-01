@@ -11,7 +11,8 @@ const finalizer = readFileSync('scripts/finalize-web-export.mjs', 'utf8');
 
 test('cargo and trip shares use the canonical plural listing path', () => {
   assert.match(share, /publicListingPath/);
-  assert.match(cargo, /publicListingPath\('cargo', c\.id\)/);
+  assert.match(cargo, /buildPublicCargoShare\(c, PUBLIC_WEB_ORIGIN, lang\)/);
+  assert.match(share, /publicCargoShareUrl/);
   assert.match(trip, /publicListingPath\('trip', trip\.id\)/);
   assert.doesNotMatch(cargo, /WEB_URL[^\n]*\/cargo\//);
   assert.doesNotMatch(trip, /WEB_URL[^\n]*\/trip\//);

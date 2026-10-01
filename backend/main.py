@@ -130,6 +130,7 @@ from api.metrics import metrics_router, MetricsMiddleware
 from api.leaderboard import leader_router
 from api.saved_searches import ss_router
 from api.marketplace import mp_router
+from api.public_share import share_router
 from api.chat import chat_router
 from api.deal_room import deal_room_router
 from api.notifications import notif_router
@@ -200,6 +201,9 @@ app.include_router(fav_router, prefix="/api/v1/favorites")
 app.include_router(borders_router, prefix="/api/v1/borders")
 app.include_router(leader_router, prefix="/api/v1/leaderboard")
 app.include_router(mp_router, prefix="/api/v1/market")
+# Browser-facing cargo links are intentionally separate from the API. nginx
+# proxies only this exact public path, while all other SPA routes stay static.
+app.include_router(share_router)
 app.include_router(chat_router, prefix="/api/v1/chat")
 # Deal Room foundation — новые endpoints (/chat/conversations, /deals/{id}/timeline,
 # /support/escalate) под /api/v1. Старые /chat/rooms, /chat/messages не трогаются.

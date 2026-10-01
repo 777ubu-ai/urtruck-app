@@ -6,14 +6,21 @@
 import { localizeCargoName, localizePlace } from './places';
 
 const ZW_RE = /[­​‌‍﻿�]/g;
-const norm = (s) => String(s || '').replace(ZW_RE, '').trim();
+// Share text reaches third-party clients.  Keep a user-controlled value on
+// one visual line so a crafted description cannot inject labels, duplicate
+// URLs or misleading paragraphs into a message preview.
+const norm = (s) => String(s || '')
+  .replace(ZW_RE, '')
+  .replace(/[\u0000-\u001f\u007f]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
 const dash = (s, fallback = '—') => (norm(s) || fallback);
 
 const SHARE_COPY = {
-  RU: { trip: 'UrTruck рейс', cargo: 'UrTruck груз', departure: 'Выезд', date: 'Дата погрузки', price: 'Цена', negotiable: 'По договорённости', ton: 'т', volume: 'м³' },
-  KK: { trip: 'UrTruck рейсі', cargo: 'UrTruck жүгі', departure: 'Шығу', date: 'Тиеу күні', price: 'Бағасы', negotiable: 'Келісім бойынша', ton: 'т', volume: 'м³' },
-  ZH: { trip: 'UrTruck 行程', cargo: 'UrTruck 货物', departure: '出发日期', date: '装货日期', price: '运费', negotiable: '面议', ton: '吨', volume: '立方米' },
-  EN: { trip: 'UrTruck trip', cargo: 'UrTruck cargo', departure: 'Departure', date: 'Pickup date', price: 'Price', negotiable: 'Negotiable', ton: 't', volume: 'm³' },
+  RU: { trip: 'UrTruck рейс', cargo: 'UrTruck груз', departure: 'Выезд', date: 'Дата погрузки', price: 'Цена', viewCargo: 'Смотреть груз', negotiable: 'По договорённости', ton: 'т', volume: 'м³' },
+  KK: { trip: 'UrTruck рейсі', cargo: 'UrTruck жүгі', departure: 'Шығу', date: 'Тиеу күні', price: 'Бағасы', viewCargo: 'Жүкті қарау', negotiable: 'Келісім бойынша', ton: 'т', volume: 'м³' },
+  ZH: { trip: 'UrTruck 行程', cargo: 'UrTruck 货物', departure: '出发日期', date: '装货日期', price: '运费', viewCargo: '查看货物', negotiable: '面议', ton: '吨', volume: '立方米' },
+  EN: { trip: 'UrTruck trip', cargo: 'UrTruck cargo', departure: 'Departure', date: 'Pickup date', price: 'Price', viewCargo: 'View cargo', negotiable: 'Negotiable', ton: 't', volume: 'm³' },
 };
 
 const copyFor = (lang) => SHARE_COPY[String(lang || 'RU').toUpperCase()] || SHARE_COPY.EN;
@@ -25,6 +32,29 @@ export const publicListingPath = (kind, id) => {
   const normalizedKind = String(kind || '').toLowerCase();
   const prefix = normalizedKind === 'trip' || normalizedKind === 'trips' ? 'trips' : 'cargos';
   return `/${prefix}/${encodeURIComponent(String(id || ''))}`;
+};
+
+export const publicCargoShareUrl = (origin, cargoId) => {
+  const safeOrigin = String(origin || '').replace(/\/+$/, '');
+  const id = norm(cargoId);
+  if (!/^https:\/\/(?:urtruck\.kz|qa2\.urtruck\.kz)$/.test(safeOrigin) || !id) return '';
+  return `${safeOrigin}${publicListingPath('cargo', id)}`;
+};
+
+// A public share is a different permission boundary from opening a cargo
+// inside the authenticated app.  Only a currently active listing may be
+// exported; the server repeats this check before rendering crawler HTML.
+export const buildPublicCargoShare = (cargo, origin, lang = 'RU') => {
+  const c = cargo || {};
+  if (String(c.status || '').toLowerCase() !== 'active') return null;
+  const visibleText = [c.from, c.from_city, c.to, c.to_city, c.cargoDesc, c.cargo_desc, c.cargo].map(norm).join(' ');
+  // Test-outbox labels and build signatures are never user-facing cargo
+  // copy.  Refuse to export them rather than trying to redact an ambiguous
+  // payload into a misleading public listing.
+  if (/\b(?:qa\d*|push\s*e2e|versioncode|reboot-push)\b/i.test(visibleText)) return null;
+  const url = publicCargoShareUrl(origin, c.id);
+  if (!url) return null;
+  return { url, text: buildCargoShareText(c, url, lang) };
 };
 
 const CURRENCY_ALIASES = {
@@ -140,7 +170,7 @@ export const buildCargoShareText = (cargo, url, lang = 'RU') => {
     pickup ? `${copy.date}: ${pickup}` : '',
     `${copy.price}: ${priceText}`,
     '',
-    norm(url),
+    url ? `${copy.viewCargo}: ${norm(url)}` : '',
   ].filter((line, i, arr) => line || i === 0 || arr[i - 1] !== '').join('\n').trim();
 };
 
