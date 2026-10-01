@@ -33,8 +33,8 @@ import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { normalizeCargo, cargoDisplay, sanitizeForDisplay, formatPrice } from '../utils/normalizers';
 import { localizePlace } from '../utils/places';
 import { formatDateForDisplay } from '../utils/dateInput';
-import { buildCargoShareText, publicListingPath } from '../utils/share';
-import { WEB_URL } from '../config/env';
+import { buildPublicCargoShare } from '../utils/share';
+import { PUBLIC_WEB_ORIGIN } from '../config/env';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
@@ -510,6 +510,10 @@ export default function CargoDetail({ navigation, route }) {
   };
 
   const view = cargoDisplay(c, t, lang);
+  const publicShare = React.useMemo(
+    () => buildPublicCargoShare(c, PUBLIC_WEB_ORIGIN, lang),
+    [c, lang],
+  );
   // Если по грузу есть ПРИНЯТАЯ ставка — в блоке цены показываем СУММУ СДЕЛКИ,
   // а не цену объявления. Раньше заголовок висел «$12 000» (листинг), хотя
   // сделка принята за $12 100 — на одном экране две разные цены путали.
@@ -561,7 +565,10 @@ export default function CargoDetail({ navigation, route }) {
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
-        onShare={() => setShareModal(true)}
+        onShare={() => {
+          if (publicShare) setShareModal(true);
+          else toast(t('shareError'), 'error');
+        }}
         accent={v1Accent.main}
         rightTestID="cargo-share-btn"
       />
@@ -1162,8 +1169,8 @@ export default function CargoDetail({ navigation, route }) {
       <ShareModal
         visible={shareModal}
         onClose={() => setShareModal(false)}
-        shareText={buildCargoShareText(c, `${WEB_URL || 'https://urtruck.kz'}${publicListingPath('cargo', c.id)}`, lang)}
-        url={`${WEB_URL || 'https://urtruck.kz'}${publicListingPath('cargo', c.id)}`}
+        shareText={publicShare?.text || ''}
+        url={publicShare?.url || ''}
       />
       <AppConfirmModal
         visible={!!confirmDialog}
