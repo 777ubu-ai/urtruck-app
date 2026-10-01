@@ -120,7 +120,7 @@ const createStyles = (brand) => ({
   select: { minHeight: 52, borderWidth: 1, borderColor: brand.borderStrong, borderRadius: 10, flexDirection: 'row', alignItems: 'center', paddingRight: 12, backgroundColor: brand.surface },
   iconBox: { width: 48, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: brand.divider },
   selectText: { flex: 1, paddingHorizontal: 12, ...typography.bodyLarge, color: brand.textPrimary, fontWeight: '600' },
-  empty: { color: 'transparent' },
+  empty: { color: brand.textTertiary },
   input: { minHeight: 52, borderWidth: 1, borderColor: brand.borderStrong, borderRadius: 10, paddingHorizontal: 14, ...typography.bodyLarge, color: brand.textPrimary, backgroundColor: brand.surface },
   row: { flexDirection: 'row', gap: 10 },
   fieldCell: { flex: 1, minWidth: 0 },
