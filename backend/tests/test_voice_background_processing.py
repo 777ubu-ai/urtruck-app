@@ -1,6 +1,8 @@
 """Behavioral coverage for hidden background STT queue (SQLite, no provider)."""
 import os
 import sys
+import threading
+import time
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_voice_background.db")
@@ -92,6 +94,36 @@ def test_expired_worker_cannot_overwrite_the_new_lease_result(monkeypatch):
     with get_conn() as c:
         assert c.execute("SELECT voice_transcript FROM chat_messages WHERE id=1").fetchone()[0] == "fresh owner result"
         assert c.execute("SELECT status FROM voice_processing_jobs WHERE id=?", (job_id,)).fetchone()[0] == "ready"
+
+
+def test_long_transcription_renews_lease_so_a_second_worker_cannot_start(monkeypatch):
+    """A slow provider call owns one job until it returns; a crash still has TTL recovery."""
+    _voice_message()
+    jobs.enqueue_new_voice(1, "chat_voice/1.m4a")
+    started = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    def slow_transcribe(*_args, **_kwargs):
+        calls.append("stt")
+        started.set()
+        assert release.wait(8)
+        return {"transcript_text": "only one provider call", "source_lang": "ru", "provider": "test-stt"}
+
+    monkeypatch.setattr(jobs, "LEASE_SECONDS", 2)
+    monkeypatch.setattr("services.speech_to_text_service.transcribe_audio_ref", slow_transcribe)
+    worker = threading.Thread(target=lambda: jobs.process_pending_once(), daemon=True)
+    worker.start()
+    assert started.wait(3)
+    # Cross the original TTL; heartbeat must keep the job out of the retry
+    # scan, so a second worker cannot run the provider concurrently.
+    time.sleep(2.4)
+    assert jobs.process_pending_once()["picked"] == 0
+    assert calls == ["stt"]
+    release.set()
+    worker.join(5)
+    assert not worker.is_alive()
+    assert _job(1)["status"] == "ready"
 
 
 def test_success_prepares_hidden_transcript_and_translation_once(monkeypatch):

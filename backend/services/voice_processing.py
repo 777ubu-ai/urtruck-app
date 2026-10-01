@@ -11,6 +11,7 @@ import hashlib
 import os
 import random
 import time
+import threading
 import uuid
 from pathlib import Path
 from typing import Any, Optional
@@ -141,6 +142,63 @@ def _lease_is_current(connection, job: dict[str, Any]) -> bool:
     return bool(row)
 
 
+def _renew_lease(job: dict[str, Any]) -> bool:
+    """Extend only the exact lease held by this worker.
+
+    A provider call may legitimately outlive LEASE_SECONDS.  Without a
+    heartbeat another worker could reclaim the row and start a second costly
+    transcription while the first call was still in flight.  A dead process
+    has no heartbeat, so its lease remains recoverable by _reclaim_and_expire.
+    """
+    lease_id = str(job.get("lease_id") or "")
+    if not lease_id:
+        return False
+    with get_conn() as c:
+        updated = c.execute(
+            """UPDATE voice_processing_jobs SET locked_at=CURRENT_TIMESTAMP
+               WHERE id=? AND status='processing' AND locked_by=?""",
+            (job["id"], lease_id),
+        )
+    return updated.rowcount == 1
+
+
+class _LeaseHeartbeat:
+    """Keep a synchronous provider call owned without holding a DB transaction."""
+
+    def __init__(self, job: dict[str, Any]):
+        self.job = job
+        self.lost = False
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> bool:
+        if not _renew_lease(self.job):
+            self.lost = True
+            return False
+        interval = max(1, LEASE_SECONDS // 3)
+
+        def beat() -> None:
+            while not self._stop.wait(interval):
+                try:
+                    if not _renew_lease(self.job):
+                        self.lost = True
+                        self._stop.set()
+                except Exception:
+                    # Do not steal/rewrite a lease after a DB failure.  The
+                    # current timestamp remains valid until its normal TTL;
+                    # a later heartbeat can still renew it.
+                    continue
+
+        self._thread = threading.Thread(target=beat, name="voice-stt-lease", daemon=True)
+        self._thread.start()
+        return True
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=1)
+
+
 def _participant_language(user_id: str) -> Optional[str]:
     from services.push_gateway import get_recipient_locale
     value = get_recipient_locale(user_id)
@@ -188,6 +246,9 @@ def _process(job: dict[str, Any]) -> str:
     transcript_lang = str(message["voice_transcript_lang"] or "").strip().lower() or None
     transcript_provider = message["voice_transcript_provider"] or None
     if not transcript_text:
+        heartbeat = _LeaseHeartbeat(job)
+        if not heartbeat.start():
+            return "stale"
         try:
             guessed_name = Path(str(message["photo_url"])).name or f"voice-{job['message_id']}.m4a"
             transcript = transcribe_audio_ref(
@@ -195,7 +256,12 @@ def _process(job: dict[str, Any]) -> str:
                 language=job.get("source_lang") or _participant_language(message["sender_id"]),
             )
         except SpeechToTextError as exc:
+            heartbeat.stop()
             return _finish_failure(job, retryable=bool(exc.retryable), error=exc.code)
+        finally:
+            heartbeat.stop()
+        if heartbeat.lost:
+            return "stale"
         transcript_text = str(transcript.get("transcript_text") or "").strip()
         if not transcript_text:
             return _finish_failure(job, retryable=False, error="TRANSCRIPTION_FAILED")
@@ -225,6 +291,9 @@ def _process(job: dict[str, Any]) -> str:
                 (job["message_id"], target_lang),
             ).fetchone()
         if not cached:
+            heartbeat = _LeaseHeartbeat(job)
+            if not heartbeat.start():
+                return "stale"
             try:
                 translated = translate_text(transcript_text, target_lang, source_lang=transcript_lang)
                 with get_conn() as c:
@@ -238,6 +307,10 @@ def _process(job: dict[str, Any]) -> str:
                 # User can request translation later through the established,
                 # separately cached translation endpoint.
                 pass
+            finally:
+                heartbeat.stop()
+            if heartbeat.lost:
+                return "stale"
 
     with get_conn() as c:
         if not _lease_is_current(c, job):
