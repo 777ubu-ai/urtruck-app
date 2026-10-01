@@ -29,6 +29,8 @@ const REQUIRED_ROUTE_CODES = [
   'ES', 'US', 'GB', 'JP', 'KR', 'IN', 'AE',
 ];
 
+const COMPOSITION_SENSITIVE_CODES = ['CN', 'KZ', 'UZ', 'BY', 'TM', 'AZ', 'TJ', 'KG'];
+
 test('CountryFlag keeps standards-based SVG artwork and ISO lookup', () => {
   assert.match(source, /country-flag-icons\/string\/1x1/);
   assert.match(source, /normalizeCountryCode/);
@@ -47,6 +49,17 @@ test('the canonical ISO renderer covers every required route country', () => {
   for (const code of REQUIRED_ROUTE_CODES) {
     assert.ok(FLAG_XML[code], `${code} has bundled canonical artwork`);
   }
+});
+
+test('composition-sensitive flags retain bundled master artwork without center-crop', () => {
+  for (const code of COMPOSITION_SENSITIVE_CODES) {
+    const xml = FLAG_XML[code];
+    assert.ok(xml, `${code} has bundled artwork`);
+    assert.match(xml, /viewBox="[^"]+"/, `${code} has complete SVG viewBox geometry`);
+  }
+  assert.match(source, /useFullKzArtwork/);
+  assert.match(source, /KZ_FULL_FLAG_XML/);
+  assert.doesNotMatch(source, /preserveAspectRatio=["'][^"']*slice/);
 });
 
 test('round CountryFlag is an enamel badge with an unclipped shadow and no white shell', () => {

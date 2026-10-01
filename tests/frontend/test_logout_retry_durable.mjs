@@ -74,6 +74,41 @@ test('logout revoke is durable before the live token can be removed by a crash',
   }
 });
 
+test('every post-stage logout interruption keeps the revoke durable until restart confirms it', async (t) => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ok: true, revoked: true }) });
+  try {
+    for (const checkpoint of [
+      'after-stage',
+      'after-auth-state-reset',
+      'after-live-bearer-removal',
+      'after-push-cleanup',
+      'after-local-cache-cleanup',
+    ]) {
+      await t.test(checkpoint, async () => {
+        const store = await reset();
+        const api = await freshRegistration();
+        await store.setItem('ur_reg_token', 'durable-revoke-test-bearer');
+
+        // AuthContext stages before every subsequent local cleanup action.
+        // A process death at any one of these checkpoints therefore leaves
+        // the next launch enough information to make the server revoke.
+        await api.stageLogoutRevoke(await api.getToken());
+        if (checkpoint !== 'after-stage' && checkpoint !== 'after-auth-state-reset') {
+          await api.clearToken();
+        }
+
+        assert.deepEqual(JSON.parse(await store.getItem(pendingKey)), ['durable-revoke-test-bearer']);
+        const restarted = await freshRegistration();
+        assert.equal((await restarted.flushPendingLogout()).ok, true);
+        assert.equal(await store.getItem(pendingKey), null);
+      });
+    }
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
 test('failed logouts from different accounts are both retained and flushed', async () => {
   const store = await reset();
   const oldFetch = globalThis.fetch;
