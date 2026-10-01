@@ -38,3 +38,9 @@ test('vehicle fields use the active theme for placeholder and loading contrast',
   assert.doesNotMatch(country, /placeholderTextColor="#728096"/);
   assert.doesNotMatch(machine, /placeholderTextColor: '#6B7A71'/);
 });
+
+test('review preserves a manually entered Other model instead of rendering the technical selector value', () => {
+  const review = screens[2];
+  assert.match(review, /d\.model === 'Other' \? \(d\.model_custom \|\| c\.model\)/);
+  assert.doesNotMatch(review, /d\.model === 'Other' \? \(d\.model \|\| c\.model\)/);
+});
