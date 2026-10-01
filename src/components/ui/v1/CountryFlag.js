@@ -1,12 +1,12 @@
 // CountryFlag — the single, offline country-flag renderer for UrTruck.
 // SVG artwork comes from `country-flag-icons` and is bundled with the app.
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import * as ReactNativeSvg from 'react-native-svg';
 import * as FLAG_XML from 'country-flag-icons/string/1x1';
 import { countryCode } from '../../../utils/countryFlags';
 
-const { SvgXml } = ReactNativeSvg;
+const { SvgXml, Svg, Defs, LinearGradient, Stop, Circle, Ellipse } = ReactNativeSvg;
 
 // `country-flag-icons` is the bundled ISO source for every country. Its KZ
 // artwork, however, omits the eagle and reduces the ornament to blocks. Keep
@@ -69,32 +69,83 @@ const numericSize = (value, fallback = 24) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const BADGE_SIZES = Object.freeze({ compact: 28, regular: 32, picker: 36, large: 48 });
+
+function MetalRim({ size }) {
+  const middle = size / 2;
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Defs>
+        <LinearGradient id="country-flag-metal-rim" x1="0%" y1="0%" x2="100%" y2="100%">
+          <Stop offset="0%" stopColor="#E3D7B9" />
+          <Stop offset="42%" stopColor="#B5A37C" />
+          <Stop offset="72%" stopColor="#948466" />
+          <Stop offset="100%" stopColor="#746A55" />
+        </LinearGradient>
+      </Defs>
+      <Circle cx={middle} cy={middle} r={middle} fill="url(#country-flag-metal-rim)" />
+    </Svg>
+  );
+}
+
+function EnamelGloss({ size }) {
+  const middle = size / 2;
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Defs>
+        <LinearGradient id="country-flag-enamel-gloss" x1="0%" y1="0%" x2="0%" y2="100%">
+          <Stop offset="0%" stopColor="rgba(255,255,255,0.22)" />
+          <Stop offset="28%" stopColor="rgba(255,255,255,0.10)" />
+          <Stop offset="50%" stopColor="rgba(255,255,255,0.02)" />
+          <Stop offset="72%" stopColor="rgba(0,0,0,0)" />
+          <Stop offset="100%" stopColor="rgba(0,0,0,0)" />
+        </LinearGradient>
+      </Defs>
+      <Circle cx={middle} cy={middle} r={middle} fill="url(#country-flag-enamel-gloss)" />
+      <Ellipse cx={size * 0.32} cy={size * 0.22} rx={size * 0.22} ry={size * 0.12} fill="rgba(255,255,255,0.09)" />
+    </Svg>
+  );
+}
+
+function InnerShade({ size }) {
+  const middle = size / 2;
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Defs>
+        <LinearGradient id="country-flag-inner-shade" x1="0%" y1="0%" x2="0%" y2="100%">
+          <Stop offset="0%" stopColor="rgba(8,18,14,0)" />
+          <Stop offset="66%" stopColor="rgba(8,18,14,0)" />
+          <Stop offset="100%" stopColor="rgba(8,18,14,0.10)" />
+        </LinearGradient>
+      </Defs>
+      <Circle cx={middle} cy={middle} r={middle} fill="url(#country-flag-inner-shade)" />
+    </Svg>
+  );
+}
+
 /**
  * Canonical UrTruck flag renderer.
  *
- * Round mode intentionally uses three separate layers:
- *  1) a soft offset depth disc (visible on web/iOS/Android),
- *  2) a clean white circular shell,
- *  3) a square SVG artwork layer.
- *
- * Keeping the shadow outside the clipped SVG fixes the old issue where a
- * round flag could lose its depth because `overflow: hidden` clipped the
- * shadow on iOS/web. Square ISO artwork preserves full symbols inside the
- * circular badge: no emoji, no rectangular country chips and no stretched
- * flags.
+ * Enamel badge: the root deliberately stays unclipped for its two soft
+ * shadows, while only the artwork and enamel layers are circularly clipped.
+ * This keeps the official square masters legible without a white shell,
+ * lower stripe or platform around the flag.
  */
 export default function CountryFlag({
   code,
-  width = 24,
+  countryCode: countryCodeValue,
+  width,
   height,
+  size = 'compact',
+  state = 'default',
   round = true,
   style,
   testID,
   accessibilityLabel,
 }) {
-  const normalized = normalizeCountryCode(code);
+  const normalized = normalizeCountryCode(code || countryCodeValue);
   const xml = countryFlagXml(normalized);
-  const resolvedWidth = numericSize(width);
+  const resolvedWidth = numericSize(width, BADGE_SIZES[size] || BADGE_SIZES.compact);
   const resolvedHeight = round
     ? resolvedWidth
     : numericSize(height, Math.round(resolvedWidth * 2 / 3));
@@ -102,68 +153,48 @@ export default function CountryFlag({
     xml ? `Country flag: ${normalized}` : `Unknown country: ${normalized || 'none'}`
   );
 
-  if (!xml) {
-    warnMissingFlag(normalized);
-    if (round) {
-      return (
-        <View
-          testID={testID}
-          accessibilityLabel={label}
-          accessibilityRole="image"
-          style={[s.roundRoot, s.unknownRoot, { width: resolvedWidth, height: resolvedHeight }, style]}
-        >
-          <View pointerEvents="none" style={s.depthDisc} />
-          <View style={s.roundShell}>
-            <View style={[s.roundClip, s.unknownRound]} />
-          </View>
-        </View>
-      );
-    }
-
-    return (
-      <View
-        testID={testID}
-        accessibilityLabel={label}
-        accessibilityRole="image"
-        style={[s.rectUnknown, { width: resolvedWidth, height: resolvedHeight }, style]}
-      />
-    );
-  }
-
   if (!round) {
     return (
       <View
         testID={testID}
         accessibilityLabel={label}
         accessibilityRole="image"
-        style={[s.rectFrame, { width: resolvedWidth, height: resolvedHeight }, style]}
+        style={[xml ? s.rectFrame : s.rectUnknown, { width: resolvedWidth, height: resolvedHeight }, style]}
       >
-        <SvgXml xml={xml} width="100%" height="100%" />
+        {xml ? <SvgXml xml={xml} width="100%" height="100%" /> : <Text style={s.fallbackCode}>{normalized || '—'}</Text>}
       </View>
     );
   }
 
-  const rim = Math.max(1, Math.round(resolvedWidth * 0.055));
+  if (!xml) warnMissingFlag(normalized);
+  const rim = resolvedWidth >= 36 ? 1.25 : 1;
   const useFullKzArtwork = normalized === 'KZ' && KZ_FULL_FLAG_XML;
+  const innerSize = Math.max(1, resolvedWidth - rim * 2);
 
   return (
     <View
       testID={testID}
       accessibilityLabel={label}
       accessibilityRole="image"
-      style={[s.roundRoot, { width: resolvedWidth, height: resolvedHeight }, style]}
+      style={[s.roundRoot, state === 'pressed' && s.pressedRoot, { width: resolvedWidth, height: resolvedHeight }, style]}
     >
-      <View pointerEvents="none" style={s.depthDisc} />
-      <View style={s.roundShell}>
-        <View style={[s.roundClip, { margin: rim }]}>
-          {useFullKzArtwork ? (
+      <View pointerEvents="none" style={s.metalRim}>
+        <MetalRim size={resolvedWidth} />
+      </View>
+      <View style={[s.flagClip, { left: rim, top: rim, width: innerSize, height: innerSize }]}>
+        {xml ? (
+          useFullKzArtwork ? (
             <SvgXml xml={KZ_FULL_FLAG_XML} width="100%" height="100%" />
           ) : (
             <SvgXml xml={xml} width="100%" height="100%" />
-          )}
-        </View>
-        <View pointerEvents="none" style={s.highlightRing} />
+          )
+        ) : (
+          <View style={s.fallbackRound}><Text style={s.fallbackCode}>{normalized || '—'}</Text></View>
+        )}
+        <View pointerEvents="none" style={s.enamelGloss}><EnamelGloss size={innerSize} /></View>
+        <View pointerEvents="none" style={s.innerShade}><InnerShade size={innerSize} /></View>
       </View>
+      <View pointerEvents="none" style={[s.innerSeparator, { margin: rim }]} />
     </View>
   );
 }
@@ -175,59 +206,47 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 999,
+    boxShadow: '0px 2px 4px rgba(21,32,27,0.18), 0px 1px 2px rgba(21,32,27,0.07)',
   },
-  depthDisc: {
+  pressedRoot: {
+    transform: [{ scale: 0.97 }],
+    boxShadow: '0px 1px 4px rgba(21,32,27,0.10), 0px 1px 2px rgba(21,32,27,0.07)',
+  },
+  metalRim: {
     position: 'absolute',
-    left: 1.5,
-    top: 2.5,
     width: '100%',
     height: '100%',
     borderRadius: 999,
-    backgroundColor: 'rgba(77, 91, 98, 0.18)',
   },
-  roundShell: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#FFFFFF',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(27, 39, 34, 0.12)',
-    shadowColor: '#5F6E76',
-    shadowOpacity: 0.18,
-    shadowRadius: 2.5,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
-  },
-  roundClip: {
-    flex: 1,
+  flagClip: {
+    position: 'absolute',
     overflow: 'hidden',
     borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.94)',
-    backgroundColor: '#FFFFFF',
   },
-  highlightRing: {
+  enamelGloss: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  innerShade: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  innerSeparator: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 999,
-    borderWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.98)',
-    borderLeftColor: 'rgba(255,255,255,0.90)',
-    borderRightColor: 'rgba(99,112,119,0.10)',
-    borderBottomColor: 'rgba(99,112,119,0.16)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(102,95,81,0.30)',
   },
-  unknownRound: {
-    margin: 1,
-    backgroundColor: '#DDE6E0',
-  },
-  unknownRoot: {
-    backgroundColor: '#DDE6E0',
+  fallbackRound: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E7E3DA',
   },
   rectFrame: {
     overflow: 'hidden',
     borderRadius: 3,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(20,34,28,0.12)',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'transparent',
   },
   rectUnknown: {
     alignItems: 'center',
@@ -235,6 +254,12 @@ const s = StyleSheet.create({
     borderRadius: 3,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(20,34,28,0.12)',
-    backgroundColor: '#DDE6E0',
+    backgroundColor: '#E7E3DA',
+  },
+  fallbackCode: {
+    color: '#59665F',
+    fontSize: 10,
+    fontWeight: '600',
+    includeFontPadding: false,
   },
 });
