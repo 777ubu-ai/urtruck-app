@@ -100,10 +100,16 @@ const publicOrigin = (value) => {
 // Share links are deliberately stricter than WEB_URL.  WEB_URL predates QA2
 // and retains its compatibility fallback for terms/privacy.  A cargo link
 // must fail closed instead of accidentally publishing a production URL from
-// an unconfigured preview build.
+// an unconfigured preview build.  On web, the browser's own HTTPS origin is
+// a concrete runtime environment; it is still checked against the same tiny
+// allow-list, so a copied static bundle on an unknown host cannot publish a
+// link to that host or silently fall back to production.
+const WEB_RUNTIME_ORIGIN = IS_WEB && typeof window !== 'undefined'
+  ? window.location?.origin || ''
+  : '';
 export const PUBLIC_WEB_ORIGIN = APP_ENV === 'production'
   ? 'https://urtruck.kz'
-  : publicOrigin(PUBLIC_WEB_OVERRIDE || ENV_OVERRIDE);
+  : publicOrigin(PUBLIC_WEB_OVERRIDE || ENV_OVERRIDE || WEB_RUNTIME_ORIGIN);
 
 // Beta pricing flag — keeps premium features free during the
 // pilot. Toggling to false enables paywalls; coordinate with

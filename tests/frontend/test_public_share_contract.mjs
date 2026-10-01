@@ -8,6 +8,7 @@ const trip = readFileSync('src/screens/TripDetail.js', 'utf8');
 const app = readFileSync('App.js', 'utf8');
 const marketplace = readFileSync('backend/api/marketplace.py', 'utf8');
 const finalizer = readFileSync('scripts/finalize-web-export.mjs', 'utf8');
+const env = readFileSync('src/config/env.js', 'utf8');
 
 test('cargo and trip shares use the canonical plural listing path', () => {
   assert.match(share, /publicListingPath/);
@@ -41,4 +42,10 @@ test('direct listing detail is fail-closed for non-public rows', () => {
   assert.match(marketplace, /_can_view_non_public_listing/);
   assert.match(marketplace, /status <> 'cancelled'/);
   assert.match(marketplace, /AND status = 'active'/);
+});
+
+test('cargo public origin is allow-listed and browser runtime origin is never an implicit arbitrary fallback', () => {
+  assert.match(env, /WEB_RUNTIME_ORIGIN/);
+  assert.match(env, /window\.location\?\.origin/);
+  assert.match(env, /host !== 'urtruck\.kz' && host !== 'www\.urtruck\.kz' && host !== 'qa2\.urtruck\.kz'/);
 });
