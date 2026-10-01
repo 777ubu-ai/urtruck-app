@@ -25,7 +25,7 @@ export default function PdfPreviewModal({ visible, url, title = 'PDF', onClose }
   }, [url, visible]);
 
   if (!url) return null;
-  const content = (
+  const content = visible ? (
     <PdfPreviewContent
       url={url}
       title={title}
@@ -34,7 +34,7 @@ export default function PdfPreviewModal({ visible, url, title = 'PDF', onClose }
       onRendered={({ page, pages }) => setPageState({ page, pages, rendered: true })}
       onError={() => setRenderError(true)}
     />
-  );
+  ) : null;
   return (
     <Modal
       visible={visible}
