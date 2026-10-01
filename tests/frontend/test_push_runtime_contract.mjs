@@ -26,7 +26,9 @@ test('iOS has APNs entitlement and foreground presentation handler', () => {
 
 test('badge reconciliation reads canonical backend value and explicitly writes zero', () => {
   assert.match(badge, /notificationsAPI\.badge\(\)/);
-  assert.match(badge, /Number\(canonical\?\.badge\) \|\| 0/);
+  assert.match(badge, /normalizedBadge\(canonical\?\.badge\)/);
+  assert.match(badge, /launcher_badge_unsupported/);
+  assert.match(badge, /return \{ badge, applied: false, reason \}/);
   assert.match(push, /clearPushEventDedup/);
 });
 

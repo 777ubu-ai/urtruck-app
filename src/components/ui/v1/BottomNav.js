@@ -6,11 +6,8 @@ import { useV1Colors, useDriverCeramicColors } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 import { useAuth } from '../../../utils/AuthContext';
 import { useI18n } from '../../../utils/useI18n';
-import { chatAPI } from '../../../utils/chatAPI';
-import { marketAPI } from '../../../utils/marketAPI';
 import { subscribeChatRead } from '../../../utils/unreadEvents';
 import { useUnreadNotifications } from '../../../utils/useUnreadNotifications';
-import { computeDealsUnread } from '../../../utils/dealsUnread';
 import { clearAppIconBadge, refreshAppIconBadge } from '../../../utils/appBadge';
 
 const UNREAD_POLL_MS = 12000;
@@ -59,18 +56,18 @@ export default function BottomNav({ state, navigation }) {
   const [dealsUnread, setDealsUnread] = useState(0);
   const pollTimer = useRef(null);
   const notifUnread = useUnreadNotifications(hasToken);
-  const syncIcon = () => hasToken ? refreshAppIconBadge() : clearAppIconBadge();
 
   useEffect(() => {
     if (!hasToken) {
-      syncIcon();
+      setDealsUnread(0);
+      clearAppIconBadge();
       return undefined;
     }
 
     const fetchUnread = async () => {
       try {
-        await chatAPI.unread();
-        syncIcon();
+        const result = await refreshAppIconBadge();
+        if (Number.isFinite(result?.badge)) setDealsUnread(result.badge);
       } catch {
         // Keep the previous value on temporary network errors.
       }
@@ -91,43 +88,11 @@ export default function BottomNav({ state, navigation }) {
   }, [hasToken]);
 
   useEffect(() => {
-    syncIcon();
-  }, [notifUnread]);
-
-  useEffect(() => {
-    let mounted = true;
-    if (!hasToken) {
-      setDealsUnread(0);
-      return undefined;
-    }
-
-    const fetchDealsUnread = async () => {
-      try {
-        const dashboard = await marketAPI.myDashboard();
-        const next = computeDealsUnread(dashboard);
-        if (mounted) setDealsUnread(next);
-        // Deliberately no foreground toast/banner here. The Deals badge is the
-        // in-app signal. System push remains responsible for background/closed
-        // app delivery and deep-link routing.
-      } catch {
-        // Keep the previous badge value on temporary network errors.
-      }
-    };
-
-    fetchDealsUnread();
-    const timer = setInterval(fetchDealsUnread, UNREAD_POLL_MS);
-    const appStateSub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') fetchDealsUnread();
+    if (!hasToken) return;
+    refreshAppIconBadge().then((result) => {
+      if (Number.isFinite(result?.badge)) setDealsUnread(result.badge);
     });
-    const readSub = subscribeChatRead(fetchDealsUnread);
-
-    return () => {
-      mounted = false;
-      clearInterval(timer);
-      appStateSub?.remove?.();
-      readSub?.();
-    };
-  }, [hasToken]);
+  }, [notifUnread]);
 
   const labelOf = (name) => {
     if (name === 'Feed') return isDriver ? t('tab_feed') : t('tab_feed_client');
@@ -160,8 +125,9 @@ export default function BottomNav({ state, navigation }) {
           const label = labelOf(route.name);
           const iconColor = isFocused ? focusedColor : inactiveColor;
           const labelColor = isFocused ? focusedColor : inactiveColor;
-          // Deals badge is intentionally dashboard-only. Global chat unread is
-          // used by the Bell/app-icon contract and must not leak into Deals.
+          // One server-owned value drives the tab, native push payload and
+          // launcher badge.  OEM launchers may reject the numeric icon write,
+          // but the in-app number must remain canonical and visible.
           const tabBadgeCount = route.name === 'Deals' ? dealsUnread : 0;
           const showBadge = tabBadgeCount > 0;
           const badgeLabel = tabBadgeCount > 9 ? '9+' : String(tabBadgeCount);

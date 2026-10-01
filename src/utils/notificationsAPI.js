@@ -34,7 +34,11 @@ export const notificationsAPI = {
     const h = await headers();
     if (!h.Authorization) return { badge: 0 };
     const r = await fetch(`${BASE}/badge`, { headers: h });
-    if (!r.ok) return { badge: 0 };
+    if (!r.ok) {
+      const error = new Error(`badge request failed ${r.status}`);
+      error.status = r.status;
+      throw error;
+    }
     return r.json();
   },
 
