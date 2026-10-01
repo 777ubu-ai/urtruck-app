@@ -69,20 +69,17 @@ def unread_badge_count(user_id: str) -> int:
             )
           )
     """
-    try:
-        with get_conn() as c:
-            notification_row = c.execute(
-                "SELECT COUNT(*) AS cnt FROM notifications "
-                "WHERE user_id = ? AND is_read = 0 AND type NOT IN (?, ?)",
-                (user_id, *_CHAT_NOTIFICATION_TYPES),
-            ).fetchone()
-            chat_row = c.execute(
-                chat_query,
-                (user_id, user_id, user_id, *_ACTIVE_CHAT_BADGE_DEAL_STATUSES),
-            ).fetchone()
-        return int(notification_row["cnt"] if notification_row else 0) + int(chat_row["cnt"] if chat_row else 0)
-    except Exception:
-        return 0
+    with get_conn() as c:
+        notification_row = c.execute(
+            "SELECT COUNT(*) AS cnt FROM notifications "
+            "WHERE user_id = ? AND is_read = 0 AND type NOT IN (?, ?)",
+            (user_id, *_CHAT_NOTIFICATION_TYPES),
+        ).fetchone()
+        chat_row = c.execute(
+            chat_query,
+            (user_id, user_id, user_id, *_ACTIVE_CHAT_BADGE_DEAL_STATUSES),
+        ).fetchone()
+    return int(notification_row["cnt"] if notification_row else 0) + int(chat_row["cnt"] if chat_row else 0)
 
 
 def _init():

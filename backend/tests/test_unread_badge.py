@@ -299,6 +299,24 @@ def test_completed_deal_chat_notification_cannot_leave_native_badge_stuck():
     assert push_sender._compute_recipient_badge(o) == 0
 
 
+def test_database_busy_never_becomes_authoritative_zero_badge(monkeypatch):
+    """Contention must trigger retry, not erase a previously visible badge."""
+    from contextlib import contextmanager
+    from api import notifications
+    from database.db import DatabaseBusyError
+
+    @contextmanager
+    def busy_connection():
+        raise DatabaseBusyError("SQLite temporarily busy")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(notifications, "get_conn", busy_connection)
+    with pytest.raises(DatabaseBusyError):
+        notifications.unread_badge_count("badge-owner")
+    with pytest.raises(DatabaseBusyError):
+        push_sender._compute_recipient_badge("badge-owner")
+
+
 def test_mine_flag_regression():
     """Регресс фикса чат-эхо (85cb3c8): get_messages помечает mine по uid."""
     o, d = _ids()
