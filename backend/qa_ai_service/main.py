@@ -136,7 +136,10 @@ def translate(body: TranslateRequest):
         if gate_failures:
             raise HTTPException(
                 status_code=422,
-                detail={"message": "translation confidence too low", "candidate": translated, "gate_failure_reasons": gate_failures},
+                # The candidate may contain private chat/voice text. Return
+                # only stable machine-readable quality reasons across the
+                # loopback boundary; callers can safely expose these codes.
+                detail={"message": "translation confidence too low", "reason_codes": gate_failures},
             )
         return {
             "translated_text": translated,

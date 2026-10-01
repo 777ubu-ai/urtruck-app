@@ -1,10 +1,19 @@
 """Quality gates for the isolated QA2 speech and translation service."""
+from pathlib import Path
+
 from qa_ai_service.quality import (
     repair_logistics_translation,
     stt_prompt,
     transcription_quality_ok,
+    translation_quality_failures,
     translation_quality_ok,
 )
+
+
+def test_quality_422_exposes_reason_codes_without_candidate_text():
+    service = (Path(__file__).parents[1] / "qa_ai_service" / "main.py").read_text()
+    assert '"reason_codes": gate_failures' in service
+    assert '"candidate": translated' not in service
 
 
 def test_stt_prompt_contains_vehicle_body_vocabulary_without_rewrite_rules():
@@ -190,6 +199,62 @@ def test_message_81_phrase_repair_is_bound_to_the_only_weight_number():
     repaired = repair_logistics_translation(source, raw, "ru", "zh")
     assert repaired == "阿拉木图,阿斯塔纳,货物,10 吨, 篷布车."
     assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
+def test_physical_message_248_almaty_variant_is_repaired_without_bypassing_gate():
+    # Exact transcript and NLLB candidate captured for physical voice message
+    # 248. The repair is intentionally bound to this observed city spelling.
+    source = (
+        "Привет! Где находится машина? Документы готовы. Мы едем в Алматы. "
+        "Сообщите время прибытия на границу."
+    )
+    observed_nllb = "你好!车在哪里?文件准备好了.我们要去阿尔马图.请告诉我们抵达边境的时间."
+    repaired = repair_logistics_translation(source, observed_nllb, "ru", "zh")
+    assert "阿拉木图" in repaired
+    assert "阿尔马图" not in repaired
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
+def test_all_observed_almaty_variants_are_repaired_in_mixed_candidate():
+    source = "Алматы — важный город. Мы едем в Алматы."
+    mixed = "阿拉木图是一个重要城市。我们要去阿尔马图， затем 阿尔马塔。"
+    repaired = repair_logistics_translation(source, mixed, "ru", "zh")
+    assert repaired.count("阿拉木图") == 3
+    assert "阿尔马图" not in repaired
+    assert "阿尔马塔" not in repaired
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
+def test_message_248_missing_city_still_fails_quality_gate():
+    source = (
+        "Привет! Где находится машина? Документы готовы. Мы едем в Алматы. "
+        "Сообщите время прибытия на границу."
+    )
+    candidate = "你好!车在哪里?文件准备好了.我们正在路上.请告诉我们抵达边境的时间."
+    assert "city_missing:almaty" in translation_quality_failures(source, candidate, "ru", "zh")
+
+
+def test_message_248_unknown_almaty_spelling_is_not_guessed_or_allowlisted():
+    source = "Мы едем в Алматы."
+    unknown = "我们要去阿尔玛蒂."
+    assert repair_logistics_translation(source, unknown, "ru", "zh") == unknown
+    assert "city_missing:almaty" in translation_quality_failures(source, unknown, "ru", "zh")
+
+
+def test_other_city_cannot_be_repaired_as_almaty():
+    source = "Мы едем в Астану."
+    wrong_city = "我们要去阿尔马图."
+    assert repair_logistics_translation(source, wrong_city, "ru", "zh") == wrong_city
+    assert "city_missing:astana" in translation_quality_failures(source, wrong_city, "ru", "zh")
+
+
+def test_message_248_repair_does_not_hide_changed_price_or_number():
+    source = "Мы едем в Алматы. Цена 1450 USD, груз 10 тонн."
+    changed = "我们要去阿尔马图.价格 1500 USD,货物 10 吨."
+    repaired = repair_logistics_translation(source, changed, "ru", "zh")
+    failures = translation_quality_failures(source, repaired, "ru", "zh")
+    assert "阿拉木图" in repaired
+    assert "numeric_facts_changed" in failures
 
 
 def test_message_81_phrase_repair_is_bound_to_the_only_weight_number_zh_ru():

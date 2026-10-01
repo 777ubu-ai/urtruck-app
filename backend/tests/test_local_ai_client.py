@@ -61,13 +61,18 @@ def test_translation_quality_rejection_has_stable_safe_code(monkeypatch):
         client.httpx,
         "post",
         lambda *a, **k: FakeResponse(
-            {"detail": {"message": "translation confidence too low", "candidate": "private"}},
+            {"detail": {
+                "message": "translation confidence too low",
+                "candidate": "private",
+                "reason_codes": ["city_missing:almaty", "not safe text!"],
+            }},
             status=422,
         ),
     )
     with pytest.raises(client.LocalAIError) as error:
         client.translate("Груз", "ru", "zh")
     assert error.value.code == "TRANSLATION_QUALITY_FAILED"
+    assert error.value.reason_codes == ("city_missing:almaty",)
     assert "private" not in str(error.value)
 
 

@@ -95,7 +95,7 @@ CITY_OBSERVED_CONFUSIONS = {
     # Exact QA2 NLLB output for Chinese 阿拉木图. This is a model spelling
     # error, not a general transliteration rule.
     ("almaty", "ru"): ("Арматутян",),
-    ("almaty", "zh"): ("阿尔马塔",),
+    ("almaty", "zh"): ("阿尔马塔", "阿尔马图"),
     # NLLB occasionally truncates 阿斯塔纳 to 阿斯塔 and joins it to the
     # following noun (for example ``阿斯塔货物``).  Normalize only this
     # observed city-preserving error; unknown omissions remain a quality FAIL.
@@ -466,10 +466,17 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
     # left for the quality gate to reject rather than guessed or invented.
     for city in _city_keys(source_text, source):
         for confused in CITY_OBSERVED_CONFUSIONS.get((city, target), ()):
-            if confused.casefold() in repaired.casefold() and not _contains_any(repaired, CITY_TERMS[city][target]):
+            if confused.casefold() in repaired.casefold():
                 canonical = CITY_REPAIR_CANONICAL.get((city, target), CITY_TERMS[city][target][0])
-                repaired = re.sub(re.escape(confused), canonical, repaired, count=1, flags=re.IGNORECASE)
-                break
+                # Replace every observed bad variant even if the provider also
+                # emitted one canonical occurrence. Otherwise the presence-only
+                # quality gate accepts and caches a mixed correct/incorrect text.
+                pattern = re.escape(confused)
+                if canonical.casefold().startswith(confused.casefold()):
+                    canonical_suffix = canonical[len(confused):]
+                    if canonical_suffix:
+                        pattern += f"(?!{re.escape(canonical_suffix)})"
+                repaired = re.sub(pattern, canonical, repaired, flags=re.IGNORECASE)
 
     source_times = re.findall(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", source_text)
     if len(source_times) == 1:
