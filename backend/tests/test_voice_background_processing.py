@@ -66,6 +66,34 @@ def test_two_workers_cannot_claim_one_stt_job():
     assert jobs._claim(job_id) is None
 
 
+def test_expired_worker_cannot_overwrite_the_new_lease_result(monkeypatch):
+    """A slow old worker must become stale after another worker reclaimed it."""
+    _voice_message()
+    jobs.enqueue_new_voice(1, "chat_voice/1.m4a")
+    with get_conn() as c:
+        job_id = c.execute("SELECT id FROM voice_processing_jobs WHERE message_id=1").fetchone()["id"]
+
+    old_job = jobs._claim(job_id)
+    assert old_job is not None
+    with get_conn() as c:
+        c.execute("UPDATE voice_processing_jobs SET locked_at=datetime('now','-3 minutes') WHERE id=?", (job_id,))
+        jobs._reclaim_and_expire(c)
+        c.execute("UPDATE voice_processing_jobs SET next_retry_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
+    fresh_job = jobs._claim(job_id)
+    assert fresh_job is not None
+    assert fresh_job["lease_id"] != old_job["lease_id"]
+
+    monkeypatch.setattr(
+        "services.speech_to_text_service.transcribe_audio_ref",
+        lambda *_args, **_kwargs: {"transcript_text": "fresh owner result", "source_lang": "ru", "provider": "test-stt"},
+    )
+    assert jobs._process(old_job) == "stale"
+    assert jobs._process(fresh_job) == "ready"
+    with get_conn() as c:
+        assert c.execute("SELECT voice_transcript FROM chat_messages WHERE id=1").fetchone()[0] == "fresh owner result"
+        assert c.execute("SELECT status FROM voice_processing_jobs WHERE id=?", (job_id,)).fetchone()[0] == "ready"
+
+
 def test_success_prepares_hidden_transcript_and_translation_once(monkeypatch):
     _voice_message()
     jobs.enqueue_new_voice(1, "chat_voice/1.m4a", source_lang="ru", target_lang="zh")

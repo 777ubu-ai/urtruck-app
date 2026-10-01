@@ -283,6 +283,16 @@ export const regAPI = {
     return await storage.remove(TOKEN_KEY);
   },
 
+  // Persist the server-revoke intent before AuthContext removes the only
+  // locally held bearer.  Native storage is SecureStore-backed, so this
+  // survives an app kill/offline interval and is retried at the next boot.
+  async stageLogoutRevoke(token = null) {
+    const authToken = token || await this.getToken();
+    if (!authToken) return { ok: true, pending: false };
+    await mutatePendingLogoutTokens((tokens) => [...tokens, authToken]);
+    return { ok: true, pending: true };
+  },
+
   // QA-аудит P1-7: серверный revoke токена при logout. Best-effort —
   // вызывать ДО clearToken (нужен сам токен). Сетевые/любые ошибки
   // глушим: logout на клиенте всё равно должен пройти.
@@ -292,7 +302,7 @@ export const regAPI = {
     // Persist before the request: AuthContext intentionally clears the live
     // session immediately, while a timeout/503 must remain retryable after a
     // process restart. This key uses SecureStore on native platforms.
-    await mutatePendingLogoutTokens((tokens) => [...tokens, authToken]);
+    await this.stageLogoutRevoke(authToken);
     try {
       const r = await fetch(`${BASE}/logout`, {
         method: 'POST',
