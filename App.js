@@ -334,6 +334,11 @@ function AppInner() {
   // Native (iOS/Android) — tap по пушу в фоне/закрытом приложении + cold start.
   useEffect(() => {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+    // Cold-start responses may be delivered before AuthContext has restored
+    // the bearer token.  Waiting for the authenticated navigation gate keeps
+    // a real notification tap from being acknowledged as `no_token` and then
+    // lost for the rest of the process lifetime.
+    if (!authedForDeepLink) return;
     let Notifications;
     try { Notifications = require('expo-notifications'); } catch { return; }
     // BUG-006: getLastNotificationResponseAsync (запускающий тап) и listener
@@ -351,7 +356,11 @@ function AppInner() {
       // device; foreground display uses a separate claim so the first tap is
       // never lost.
       const eventId = notificationResponseEventId(response);
-      if (eventId) push.acknowledgeReceipt?.(eventId, { opened: true }).catch(() => {});
+      // Do not persistently claim telemetry before the network succeeds: a
+      // transient offline tap must be eligible for a later retry. The server
+      // applies COALESCE to opened_at, providing exactly-once storage even if
+      // both the cold-start response and listener report the same tap.
+      if (eventId) await push.acknowledgeReceipt?.(eventId, { opened: true });
       refreshAppIconBadge();
       if (eventId && !(await claimPushEvent(eventId, 'navigation'))) return;
       const url = notificationResponseUrl(response);

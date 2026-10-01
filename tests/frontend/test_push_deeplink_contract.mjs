@@ -57,6 +57,14 @@ test('foreground push suppression is source-of-truth aware for open chat rooms o
   assert.match(push, /shouldShowAlert: true, shouldShowBanner: true, shouldShowList: true/);
 });
 
+test('open-chat suppression still records native receipt before presentation policy returns', () => {
+  const receipt = push.indexOf('await this.acknowledgeReceipt(eventId)');
+  const sameRoom = push.indexOf("data.room_id === getActiveRoom()");
+  assert.ok(receipt >= 0, 'native receipt must be acknowledged');
+  assert.ok(sameRoom > receipt, 'receipt acknowledgement must happen before same-room banner suppression');
+  assert.doesNotMatch(push, /claimPushEvent\(eventId, 'receipt'\)/);
+});
+
 test('notification reads update both in-app source-of-truth and the app icon badge', () => {
   assert.match(notifications, /await notificationsAPI\.readAll\(\);/);
   assert.match(notifications, /notifyNotifRead\(\);/);
@@ -83,6 +91,7 @@ test('auth and notification cold-start deeplinks are queued until nav and auth a
   assert.match(app, /if \(pendingUrlRef\.current && navReadyRef\.current && authedForDeepLink\)/);
   assert.match(app, /Notifications\.getLastNotificationResponseAsync/);
   assert.match(app, /Notifications\.addNotificationResponseReceivedListener/);
+  assert.match(app, /if \(!authedForDeepLink\) return/);
 });
 
 test('chat notification tap prefers its structured room_id over an aggregated display URL', () => {
@@ -96,6 +105,8 @@ test('native push deduplicates provider retries by backend event id without losi
   assert.match(push, /claimPushEvent\(eventId, 'display'\)/);
   assert.match(app, /function notificationResponseEventId\(response\)/);
   assert.match(app, /claimPushEvent\(eventId, 'navigation'\)/);
+  assert.match(app, /acknowledgeReceipt\?\.\(eventId, \{ opened: true \}\)/);
+  assert.doesNotMatch(app, /claimPushEvent\(eventId, 'opened'\)/);
   assert.match(app, /const eventId = data\.event_id \|\| data\.event_key/);
 });
 

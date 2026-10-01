@@ -400,6 +400,35 @@ def test_push_receipt_is_write_only_for_own_event_and_installation():
     assert row["received_at"] and row["opened_at"]
 
 
+def test_push_open_receipt_keeps_the_first_recorded_timestamps():
+    """Repeated response callbacks must not create a second logical open."""
+    owner_id, owner_token = _new_user_token()
+    event_id = "receipt-event-idempotent-open"
+    device_id = "device-receipt-idempotent"
+    first_received = "2026-10-01 06:00:00"
+    first_opened = "2026-10-01 06:00:01"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO push_delivery_log "
+            "(event_id,recipient_user_id,device_id,provider,status,sent_at,received_at,opened_at) "
+            "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,?,?)",
+            (event_id, owner_id, device_id, "fcm", "sent", first_received, first_opened),
+        )
+
+    for _ in range(2):
+        response = client.post("/api/v1/push/receipt", json={
+            "event_id": event_id, "device_id": device_id, "opened": True,
+        }, headers=_auth(owner_token))
+        assert response.status_code == 200, response.text
+
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT received_at,opened_at FROM push_delivery_log WHERE event_id=? AND recipient_user_id=?",
+            (event_id, owner_id),
+        ).fetchone()
+    assert dict(row) == {"received_at": first_received, "opened_at": first_opened}
+
+
 if __name__ == "__main__":
     fails = 0
     for fn in [test_register_then_reregister_same_owner_no_duplicate,
