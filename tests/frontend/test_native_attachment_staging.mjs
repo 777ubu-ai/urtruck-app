@@ -6,6 +6,7 @@ import {
   sweepStaleNativeUploads,
   withNativeUploadFile,
 } from '../../src/utils/nativeAttachmentStaging.js';
+import fs from 'node:fs';
 
 function fakeFs() {
   const files = new Map();
@@ -79,4 +80,13 @@ test('a later upload sweeps abandoned staging directories older than 24 hours', 
   assert.equal(fs.directories.get(stale.uri).deleted, true);
   assert.equal(fs.directories.get(fresh.uri).deleted, false);
   assert.equal(safeNativeUploadName('  накладная-义乌.pdf  '), 'накладная-义乌.pdf');
+});
+
+test('app startup invokes native staging cleanup without touching web storage', () => {
+  const app = fs.readFileSync('App.js', 'utf8');
+  const nativeStartup = fs.readFileSync('src/utils/nativeAttachmentStagingStartup.native.js', 'utf8');
+  const webStartup = fs.readFileSync('src/utils/nativeAttachmentStagingStartup.web.js', 'utf8');
+  assert.match(app, /sweepNativeAttachmentStaging\(\)/);
+  assert.match(nativeStartup, /sweepStaleNativeUploads\(\{ Directory, cacheRoot: Paths\.cache \}\)/);
+  assert.doesNotMatch(webStartup, /expo-file-system|sweepStaleNativeUploads/);
 });
