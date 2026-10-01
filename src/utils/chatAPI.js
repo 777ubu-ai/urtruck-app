@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { File as ExpoFile } from 'expo-file-system';
+import { Directory, File as ExpoFile, Paths } from 'expo-file-system';
 import { fetch as expoFetch } from 'expo/fetch';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
@@ -86,12 +86,43 @@ function mimeFromName(name, fallback = 'application/octet-stream') {
   return fallback;
 }
 
-function appendNativeFile(form, uri, name) {
+function safeNativeUploadName(name) {
+  const cleaned = String(name || 'file.bin')
+    .normalize('NFC')
+    .replace(/[\\/\u0000-\u001f\u007f]/g, '_')
+    .trim();
+  return cleaned || 'file.bin';
+}
+
+async function appendNativeFile(form, uri, name, { preserveName = false } = {}) {
   // Expo 57 rejects React Native's legacy multipart { uri, name, type }
   // object before the request reaches the server. ExpoFile implements Blob,
   // so the native and web paths now use the same standards-based contract.
   const file = new ExpoFile(uri);
-  form.append('file', file, name || file.name || 'file.bin');
+  if (!preserveName) {
+    form.append('file', file, name || file.name || 'file.bin');
+    return null;
+  }
+
+  // Android's document picker commonly returns a UUID cache basename. Expo's
+  // native multipart encoder uses the Blob/File name, ignoring the optional
+  // third FormData filename argument. Copy the bytes to a private cache entry
+  // whose basename is the picker-provided original name so the server receives
+  // that exact Unicode name. The cache directory is removed after the request.
+  const uploadDirectory = new Directory(
+    Paths.cache,
+    `urtruck-upload-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  );
+  uploadDirectory.create({ idempotent: true, intermediates: true });
+  const stagedFile = new ExpoFile(uploadDirectory, safeNativeUploadName(name));
+  try {
+    await file.copy(stagedFile);
+    form.append('file', stagedFile, stagedFile.name);
+    return uploadDirectory;
+  } catch (error) {
+    try { uploadDirectory.delete(); } catch {}
+    throw error;
+  }
 }
 
 // Shared document classification for the chat "+" document flow — the same
@@ -350,6 +381,7 @@ export const chatAPI = {
     const token = await storage.get(TOKEN_KEY);
     const form = new FormData();
     const requestedType = type || mimeFromName(name);
+    let nativeUploadDirectory = null;
 
     // Safari/PWA may expose a selected PDF as Blob with empty/octet-stream
     // MIME. Re-wrap the bytes using the picker-provided/extension-derived MIME
@@ -377,7 +409,7 @@ export const chatAPI = {
         : new Blob([blob], { type: finalType || 'application/octet-stream' });
       form.append('file', part, name);
     } else {
-      appendNativeFile(form, uri, name);
+      nativeUploadDirectory = await appendNativeFile(form, uri, name, { preserveName: true });
     }
     form.append('kind', kind);
     if (clientUploadId) form.append('client_upload_id', String(clientUploadId));
@@ -391,6 +423,8 @@ export const chatAPI = {
       }, expoFetch);
     } catch (error) {
       throw attachmentError('network', { isNetwork: true, detail: error?.message || 'network' });
+    } finally {
+      try { nativeUploadDirectory?.delete(); } catch {}
     }
 
     const data = await response.json().catch(() => ({}));
