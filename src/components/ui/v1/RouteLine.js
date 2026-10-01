@@ -79,7 +79,7 @@ const s = StyleSheet.create({
   crossingRow: { minWidth: 0, flexDirection: 'row', alignItems: 'flex-start' },
   crossingOrigin: { flexBasis: 88, maxWidth: 92, minWidth: 0, flexShrink: 1 },
   crossingCheckpoint: { marginTop: 1, fontSize: 12, lineHeight: 15, fontWeight: '700' },
-  crossingCheckpointWithFlag: { marginLeft: 29 },
+  crossingCheckpointWithFlag: { marginLeft: 35 },
   crossingDestination: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', paddingTop: 1 },
   crossingArrow: { width: 20, marginHorizontal: 3, textAlign: 'center', flexShrink: 0 },
 });
