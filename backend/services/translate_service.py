@@ -208,7 +208,10 @@ def _translate_openai(text, target_lang, source_lang, api_key):
             detail_body = exc.read().decode("utf-8", errors="replace")[:300]
         except Exception:
             pass
-        print(f"[translate] OpenAI HTTP {status}: {detail_body}", flush=True)
+        # Provider error bodies may echo the source message, prompt or
+        # account metadata. They are used only for the bounded quota-shape
+        # classifier above and must never reach runtime logs.
+        print(f"[translate] OpenAI HTTP {status}", flush=True)
         quota_exhausted = status == 429 and _is_quota_exhausted(detail_body)
         is_retryable = status >= 500 or (status == 429 and not quota_exhausted)
         code = (
@@ -223,7 +226,7 @@ def _translate_openai(text, target_lang, source_lang, api_key):
             code=code,
         ) from exc
     except (urllib.error.URLError, socket.timeout) as exc:
-        print(f"[translate] OpenAI network error: {exc}", flush=True)
+        print("[translate] OpenAI network error", flush=True)
         raise TranslationError("Перевод временно недоступен", provider="openai", retryable=True, code="TRANSLATION_TIMEOUT") from exc
 
     try:
@@ -239,7 +242,7 @@ def _translate_openai(text, target_lang, source_lang, api_key):
         if not translated:
             raise ValueError("response has no output_text")
     except (ValueError, KeyError, IndexError, TypeError) as exc:
-        print(f"[translate] OpenAI returned an unparsable response: {raw[:300]!r}", flush=True)
+        print("[translate] OpenAI returned an unparsable response", flush=True)
         raise TranslationError("Перевод вернул некорректный ответ", provider="openai", code="TRANSLATION_FAILED") from exc
 
     return {
