@@ -20,7 +20,7 @@ test('voice one-tap STT attaches the current-language translation and remains re
   assert.match(voiceTextState, /translation_error/);
   assert.match(chatApi, /"translation_reason_codes": translation_reason_codes/);
   assert.match(workspace, /const toggleVoiceOriginal = React\.useCallback/);
-  assert.match(workspace, /onRetryTranslation=\{\(\) => translateVoiceTranscript\(item\)\}/);
+  assert.match(workspace, /onRetryTranslation: \(\) => translateVoiceTranscript\(item\)/);
   assert.match(bubble, /const primaryTranscript = hasTranslation/);
   assert.match(bubble, /testID="voice-original-btn"/);
   assert.match(bubble, /testID="voice-transcription-retry"/);
@@ -55,6 +55,15 @@ test('persisted transcript stays hidden from polling until an explicit voice-tex
   assert.match(chatApi, /@chat_router\.get\("\/voice\/\{message_id\}\/text"\)/);
   assert.match(chatApi, /m\.pop\("voice_transcript", None\)/);
   assert.match(chatApi, /UPDATE chat_messages SET voice_transcript =/);
+});
+
+test('sender has no transcript controls, while recipient can reveal their own cached result', () => {
+  assert.match(workspace, /const voiceTranscriptHandlers = item\.voice && !item\.mine \?/);
+  assert.match(workspace, /transcript=\{item\.mine \? undefined : voiceTranscripts\[item\.id\]\}/);
+  assert.match(workspace, /onToggleTranscript: \(\) => toggleVoiceTranscript\(item\)/);
+  assert.match(workspace, /\{\.\.\.voiceTranscriptHandlers\}/);
+  assert.match(chatApi, /m\.pop\("voice_transcript", None\)/);
+  assert.match(chatApi, /@chat_router\.get\("\/voice\/\{message_id\}\/text"\)/);
 });
 
 test('voice push has its own event and is localized per device', () => {
