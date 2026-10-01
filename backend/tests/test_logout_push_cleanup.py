@@ -172,6 +172,53 @@ def test_register_logout_server_side_deactivates_push_and_frees_same_device_for_
     assert new_row["user_id"] == uid_b and new_row["active"] == 1
 
 
+def test_register_logout_wildcard_fence_rejects_already_authenticated_stale_writes(monkeypatch):
+    """The canonical logout must be sufficient when logout-cleanup is lost.
+
+    Monkeypatching the auth lookup models requests which captured ``user_id``
+    before logout but only reached their SQLite write afterwards.
+    """
+    import api.push as push_api
+
+    uid, tok = _new_user_token()
+    device = "d-register-logout-race-1"
+    native_token = "fcm-unit-test-register-logout-race"
+    endpoint = "https://fcm.googleapis.com/fcm/send/register-logout-race"
+
+    native = client.post(
+        "/api/v1/push/register-native",
+        json={"token": native_token, "device_id": device},
+        headers=_auth(tok),
+    )
+    web = client.post(
+        "/api/v1/push/subscribe",
+        json={"endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}, "device_id": device},
+        headers=_auth(tok),
+    )
+    assert native.status_code == 200 and web.status_code == 200
+
+    logout = client.post("/api/v1/register/logout", headers=_auth(tok))
+    assert logout.status_code == 200, logout.text
+    assert _native_tokens(uid) == [] and _web_subs(uid) == []
+
+    monkeypatch.setattr(push_api, "_optional_user_id", lambda _authorization: uid)
+    stale_native = client.post(
+        "/api/v1/push/register-native",
+        json={"token": native_token, "device_id": device},
+        headers=_auth(tok),
+    )
+    stale_web = client.post(
+        "/api/v1/push/subscribe",
+        json={"endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}, "device_id": device},
+        headers=_auth(tok),
+    )
+    assert stale_native.status_code == 409, stale_native.text
+    assert stale_web.status_code == 409, stale_web.text
+    assert stale_native.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
+    assert stale_web.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
+    assert _native_tokens(uid) == [] and _web_subs(uid) == []
+
+
 if __name__ == "__main__":
     fails = 0
     for fn in [test_logout_cleanup_deactivates_both_web_and_native,
