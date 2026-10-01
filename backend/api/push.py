@@ -428,11 +428,35 @@ def _reject_logged_out_session(c, user_id: Optional[str], device_id: Optional[st
         return
     row = c.execute(
         "SELECT 1 FROM push_logout_sessions "
-        "WHERE user_id=? AND device_id=? AND session_hash=?",
+        "WHERE user_id=? AND device_id IN (?, '*') AND session_hash=?",
         (user_id, device_id, session_hash),
     ).fetchone()
     if row:
         raise HTTPException(status_code=409, detail="PUSH_SESSION_LOGGED_OUT")
+
+
+def _insert_logout_tombstone(c, user_id: str, authorization: str, device_id: Optional[str] = None) -> bool:
+    """Invalidate future push writes from one authenticated session.
+
+    ``device_id='*'`` is deliberately used by the canonical /register/logout
+    fallback: that route may run when the best-effort mobile
+    /push/logout-cleanup request never reached the server, so it cannot trust
+    that a device id is still available. Fresh login sessions have a new
+    bearer hash and are unaffected.
+    """
+    session_hash = _session_hash(authorization)
+    if not user_id or not session_hash:
+        return False
+    c.execute(
+        "INSERT OR IGNORE INTO push_logout_sessions "
+        "(user_id, device_id, session_hash) VALUES (?,?,?)",
+        (user_id, device_id or "*", session_hash),
+    )
+    c.execute(
+        "DELETE FROM push_logout_sessions "
+        "WHERE created_at < datetime('now', '-30 days')"
+    )
+    return True
 
 
 def _resolve_ownership(c, table: str, id_col: str, id_val: str,
@@ -878,52 +902,87 @@ def receipt(body: PushReceiptIn, user=Depends(get_user)):
     return {"ok": True}
 
 
-def deactivate_user_push(user_id: str, device_id: Optional[str] = None, reason: str = "logout") -> dict:
+def deactivate_user_push(
+    user_id: str,
+    device_id: Optional[str] = None,
+    reason: str = "logout",
+    *,
+    connection=None,
+) -> dict:
     """P1-3/P1-4: используется при logout/удалении аккаунта (api/registration.py).
     Деактивирует ВСЕ push_subscriptions/push_tokens_native текущего user_id
     (опционально — только конкретного device_id, если известен). Мягко
     (active=0), не удаляет исторические записи (аудит/дебаг)."""
     if not user_id:
         return {"web": 0, "native": 0}
-    with get_conn() as c:
-        if device_id:
-            web = c.execute(
-                "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ? WHERE user_id = ? AND device_id = ? AND (active = 1 OR active IS NULL)",
-                (reason, user_id, device_id),
-            ).rowcount
-            native = c.execute(
-                "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ? WHERE user_id = ? AND device_id = ? AND (active = 1 OR active IS NULL)",
-                (reason, user_id, device_id),
-            ).rowcount
-            devices = c.execute(
-                "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ?, updated_at = CURRENT_TIMESTAMP "
-                "WHERE user_id = ? AND device_id = ? AND enabled = 1",
-                (reason, user_id, device_id),
-            ).rowcount
-        else:
-            web = c.execute(
-                "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ? WHERE user_id = ? AND (active = 1 OR active IS NULL)",
-                (reason, user_id),
-            ).rowcount
-            native = c.execute(
-                "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ? WHERE user_id = ? AND (active = 1 OR active IS NULL)",
-                (reason, user_id),
-            ).rowcount
-            devices = c.execute(
-                "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ?, updated_at = CURRENT_TIMESTAMP "
-                "WHERE user_id = ? AND enabled = 1",
-                (reason, user_id),
-            ).rowcount
-        if web or native or devices:
-            _audit(c, "push_subscriptions+native", f"user:{user_id}", device_id, user_id, None, "deactivated")
-        c.commit()
+    if connection is None:
+        with get_conn() as c:
+            result = deactivate_user_push(
+                user_id,
+                device_id=device_id,
+                reason=reason,
+                connection=c,
+            )
+            c.commit()
+            return result
+    c = connection
+    if device_id:
+        web = c.execute(
+            "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ? WHERE user_id = ? AND device_id = ? AND (active = 1 OR active IS NULL)",
+            (reason, user_id, device_id),
+        ).rowcount
+        native = c.execute(
+            "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ? WHERE user_id = ? AND device_id = ? AND (active = 1 OR active IS NULL)",
+            (reason, user_id, device_id),
+        ).rowcount
+        devices = c.execute(
+            "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE user_id = ? AND device_id = ? AND enabled = 1",
+            (reason, user_id, device_id),
+        ).rowcount
+    else:
+        web = c.execute(
+            "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ? WHERE user_id = ? AND (active = 1 OR active IS NULL)",
+            (reason, user_id),
+        ).rowcount
+        native = c.execute(
+            "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ? WHERE user_id = ? AND (active = 1 OR active IS NULL)",
+            (reason, user_id),
+        ).rowcount
+        devices = c.execute(
+            "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE user_id = ? AND enabled = 1",
+            (reason, user_id),
+        ).rowcount
+    if web or native or devices:
+        _audit(c, "push_subscriptions+native", f"user:{user_id}", device_id, user_id, None, "deactivated")
     return {"web": web, "native": native, "devices": devices}
+
+
+def logout_session_and_deactivate_push(user_id: str, raw_token: str) -> dict:
+    """Atomically fence the old session, deactivate push and revoke auth.
+
+    Sharing one SQLite transaction with push registration gives deterministic
+    ordering: a registration that commits first is deactivated by logout; a
+    registration that tries to write afterwards observes the wildcard
+    tombstone (or loses its stale read transaction with retryable DB busy).
+    """
+    authorization = f"Bearer {raw_token}"
+    with get_conn() as c:
+        _insert_logout_tombstone(c, user_id, authorization)
+        result = deactivate_user_push(user_id, reason="logout", connection=c)
+        revoked = c.execute(
+            "DELETE FROM reg_sessions WHERE token=? AND driver_id=?",
+            (raw_token, user_id),
+        ).rowcount > 0
+        c.commit()
+    return {**result, "revoked": revoked}
 
 
 @push_router.post("/logout-cleanup")
@@ -937,19 +996,9 @@ def logout_cleanup(
     пользователя (+ конкретного device_id, если передан — иначе все
     устройства этого пользователя)."""
     device_id = _clean_device_id(body.get("device_id"))
-    session_hash = _session_hash(authorization)
-    if device_id and session_hash:
+    if device_id:
         with get_conn() as c:
-            c.execute(
-                "INSERT OR IGNORE INTO push_logout_sessions "
-                "(user_id, device_id, session_hash) VALUES (?,?,?)",
-                (user["id"], device_id, session_hash),
-            )
-            # Bounded housekeeping; no token/user payload is deleted.
-            c.execute(
-                "DELETE FROM push_logout_sessions "
-                "WHERE created_at < datetime('now', '-30 days')"
-            )
+            _insert_logout_tombstone(c, user["id"], authorization, device_id)
     result = deactivate_user_push(user["id"], device_id=device_id, reason="logout")
     return {"ok": True, **result}
 
