@@ -161,6 +161,10 @@ export const AuthProvider = ({ children }) => {
     // Сохраняем токен только в памяти для best-effort серверной очистки.
     // Auth-state сбрасываем сразу: навигация не должна ждать сеть.
     const authToken = await regAPI.getToken();
+    // Persist the canonical server revoke BEFORE deleting the last local
+    // bearer.  A process kill after clearToken used to make offline logout
+    // unrecoverable: the next boot had neither token nor retry record.
+    try { await regAPI.stageLogoutRevoke(authToken); } catch {}
     setSession(null);
     setVerificationLevel(0);
     setHasToken(false);

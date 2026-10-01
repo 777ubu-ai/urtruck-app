@@ -53,6 +53,27 @@ test('network failure keeps exactly the old bearer queued', async () => {
   }
 });
 
+test('logout revoke is durable before the live token can be removed by a crash', async () => {
+  const store = await reset();
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ok: true, revoked: true }) });
+  try {
+    const api = await freshRegistration();
+    await store.setItem('ur_reg_token', 'bearer-before-crash');
+
+    // This models the precise AuthContext crash window: the user has pressed
+    // logout, but the process dies immediately after the live bearer is gone.
+    await api.stageLogoutRevoke('bearer-before-crash');
+    await store.removeItem('ur_reg_token');
+
+    assert.deepEqual(JSON.parse(await store.getItem(pendingKey)), ['bearer-before-crash']);
+    assert.equal((await api.flushPendingLogout()).ok, true);
+    assert.equal(await store.getItem(pendingKey), null);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
 test('failed logouts from different accounts are both retained and flushed', async () => {
   const store = await reset();
   const oldFetch = globalThis.fetch;
