@@ -42,3 +42,19 @@ def test_qa2p_fixture_is_visible_only_in_non_production(monkeypatch):
     assert marketplace._public_cargo_ok(row) is True
     monkeypatch.setattr(marketplace, "IS_PRODUCTION", True)
     assert marketplace._public_cargo_ok(row) is False
+
+
+def test_physical_qa_push_cargo_is_visible_only_in_non_production(monkeypatch):
+    """The controlled Xiaomi payload must reach the real QA2 driver feed."""
+    row = {
+        "cargo_desc": "QA2 PUSH E2E 211040091 electronics",
+        "from_city": "Иу",
+        "to_city": "Алматы",
+        "cargo_type": "tent",
+        "pickup_date": "2026-10-05",
+        "created_at": "2026-09-30 22:06:53",
+    }
+    monkeypatch.setattr(marketplace, "IS_PRODUCTION", False)
+    assert marketplace._public_cargo_ok(row) is True
+    monkeypatch.setattr(marketplace, "IS_PRODUCTION", True)
+    assert marketplace._public_cargo_ok(row) is False
