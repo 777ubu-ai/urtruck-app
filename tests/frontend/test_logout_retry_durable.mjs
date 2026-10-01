@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 const pendingKey = 'ur_pending_logout_token';
 
@@ -51,6 +52,39 @@ test('network failure keeps exactly the old bearer queued', async () => {
   } finally {
     globalThis.fetch = oldFetch;
   }
+});
+
+test('protected-storage write failure aborts logout staging instead of silently losing the bearer', async () => {
+  const store = await reset();
+  const originalSet = store.setItem;
+  try {
+    await originalSet('ur_reg_token', 'opaque-test-bearer');
+    store.setItem = async (key, value) => {
+      if (key === pendingKey) throw new Error('secure storage unavailable');
+      return originalSet(key, value);
+    };
+    const api = await freshRegistration();
+
+    await assert.rejects(
+      api.stageLogoutRevoke(await api.getToken()),
+      (error) => error?.code === 'PENDING_LOGOUT_REVOKE_NOT_DURABLE',
+    );
+    // AuthContext must see this failure and keep the bearer rather than
+    // clearing the session into an unrecoverable logout state.
+    assert.equal(await api.getToken(), 'opaque-test-bearer');
+    assert.equal(await store.getItem(pendingKey), null);
+  } finally {
+    store.setItem = originalSet;
+  }
+});
+
+test('AuthContext does not clear the bearer when durable revoke staging is unverified', () => {
+  const source = readFileSync('src/utils/AuthContext.js', 'utf8');
+  const stage = source.indexOf('await regAPI.stageLogoutRevoke(authToken)');
+  const abort = source.indexOf("return { ok: false, reason: 'PENDING_LOGOUT_REVOKE_NOT_DURABLE' }");
+  const clear = source.indexOf('await regAPI.clearToken()');
+  assert.ok(stage >= 0 && abort > stage && clear > abort,
+    'logout must return before clearToken when durable staging is unavailable');
 });
 
 test('logout revoke is durable before the live token can be removed by a crash', async () => {

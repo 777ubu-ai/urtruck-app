@@ -290,6 +290,17 @@ export const regAPI = {
     const authToken = token || await this.getToken();
     if (!authToken) return { ok: true, pending: false };
     await mutatePendingLogoutTokens((tokens) => [...tokens, authToken]);
+    // `storage.set` intentionally preserves its historic best-effort UI
+    // contract and can swallow a SecureStore/AsyncStorage write failure.
+    // A logout revoke is different: clearing the only live bearer after an
+    // unverified write loses any way to revoke the server session on a later
+    // launch. Re-read the durable intent without ever exposing the bearer.
+    const persisted = await pendingLogoutTokens();
+    if (!persisted.includes(authToken)) {
+      const error = new Error('PENDING_LOGOUT_REVOKE_NOT_DURABLE');
+      error.code = 'PENDING_LOGOUT_REVOKE_NOT_DURABLE';
+      throw error;
+    }
     return { ok: true, pending: true };
   },
 
