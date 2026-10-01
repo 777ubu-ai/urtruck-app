@@ -13,7 +13,7 @@ test('PDF viewer stays inside UrTruck and receives the original signed URL', () 
   assert.doesNotMatch(viewer, /react-native-pdf/);
   assert.match(nativeViewer, /import Pdf from 'react-native-pdf'/);
   assert.match(webViewer, /iframe/);
-  assert.match(nativeViewer, /source=\{\{ uri: url \}\}/);
+  assert.match(nativeViewer, /source=\{\{ uri: url, cacheFileName \}\}/);
   assert.match(viewer, /testID="pdf-preview-modal"/);
   assert.match(viewer, /testID="pdf-preview-close"/);
 });
