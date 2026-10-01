@@ -14,28 +14,61 @@ import { notificationsAPI } from './notificationsAPI';
 
 let refreshVersion = 0;
 
-export function setAppIconBadge(total) {
-  if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+function normalizedBadge(total) {
+  const value = Number(total);
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+function badgeFailureReason(error) {
+  const detail = `${error?.name || ''} ${error?.message || ''}`.toLowerCase();
+  if (detail.includes('shortcutbadgeexception') || detail.includes('unable to execute badge')) {
+    return 'launcher_badge_unsupported';
+  }
+  return 'native_badge_failed';
+}
+
+export async function setAppIconBadge(total) {
+  const badge = normalizedBadge(total);
+  if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+    return { badge, applied: false, reason: 'platform_unsupported' };
+  }
   let Notifications;
-  try { Notifications = require('expo-notifications'); } catch { return; }
-  Notifications.setBadgeCountAsync?.(Number(total) || 0).catch(() => {});
+  try { Notifications = require('expo-notifications'); } catch {
+    return { badge, applied: false, reason: 'notifications_unavailable' };
+  }
+  try {
+    const applied = await Notifications.setBadgeCountAsync?.(badge);
+    return {
+      badge,
+      applied: applied !== false,
+      reason: applied === false ? 'launcher_badge_unsupported' : null,
+    };
+  } catch (error) {
+    // Xiaomi launchers can reject Android's legacy BADGE_COUNT_UPDATE
+    // intent.  Keep the canonical server value intact for the in-app tab;
+    // never pretend that a failed launcher write successfully reset to zero.
+    const reason = badgeFailureReason(error);
+    if (typeof __DEV__ !== 'undefined' && __DEV__) console.warn('[badge]', reason);
+    return { badge, applied: false, reason };
+  }
 }
 
 export function clearAppIconBadge() {
   refreshVersion += 1;
-  setAppIconBadge(0);
+  return setAppIconBadge(0);
 }
 
 export async function refreshAppIconBadge() {
-  if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+  if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+    return { badge: 0, applied: false, reason: 'platform_unsupported' };
+  }
   const version = ++refreshVersion;
-  let Notifications;
-  try { Notifications = require('expo-notifications'); } catch { return; }
   try {
     const canonical = await notificationsAPI.badge();
-    if (version !== refreshVersion) return;
-    // Always write zero as well: a stale OS badge cannot be fixed by waiting
-    // for a future push, and the backend owns the combined unread formula.
-    Notifications.setBadgeCountAsync?.(Number(canonical?.badge) || 0).catch(() => {});
-  } catch {}
+    const badge = normalizedBadge(canonical?.badge);
+    if (version !== refreshVersion) return { badge, applied: false, reason: 'superseded' };
+    return setAppIconBadge(badge);
+  } catch {
+    return { badge: null, applied: false, reason: 'canonical_unavailable' };
+  }
 }

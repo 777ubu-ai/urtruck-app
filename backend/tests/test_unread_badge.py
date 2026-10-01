@@ -29,6 +29,7 @@ from api.chat import (
     unread_count, SendMessageIn,
 )
 from services import push_sender
+from api.notifications import create_notification, unread_badge_count
 
 
 @pytest.fixture(autouse=True)
@@ -107,6 +108,21 @@ def test_inv2_badge_matches_unread():
     send_message(SendMessageIn(room_id=room, text="m1"), user=_u(d))
     send_message(SendMessageIn(room_id=room, text="m2"), user=_u(d))
     assert push_sender._compute_recipient_badge(o) == unread_count(user=_u(o))["unread"]
+
+
+def test_canonical_badge_counts_disjoint_non_chat_events_and_active_chat_once():
+    """Tab, provider payload and launcher share this exact inclusion set."""
+    o, d = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
+    send_message(SendMessageIn(room_id=room, text="one chat event"), user=_u(d))
+    create_notification(o, "bid_created", "One actionable bid", event_key="badge-bid-" + uuid.uuid4().hex)
+    # The durable Bell mirror of the same chat message is deliberately
+    # excluded, otherwise one message would increment the canonical badge twice.
+    create_notification(o, "chat_message", "Mirrored chat", event_key="badge-chat-" + uuid.uuid4().hex)
+    assert unread_badge_count(o) == 2
+    assert push_sender._compute_recipient_badge(o) == 2
 
 
 def test_inv3_read_marks_only_opened_room():
