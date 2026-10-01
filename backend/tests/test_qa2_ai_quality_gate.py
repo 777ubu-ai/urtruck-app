@@ -5,6 +5,7 @@ from qa_ai_service.quality import (
     repair_logistics_translation,
     stt_prompt,
     transcription_quality_ok,
+    translation_quality_failures,
     translation_quality_ok,
 )
 
@@ -200,7 +201,9 @@ def test_message_81_phrase_repair_is_bound_to_the_only_weight_number():
     assert translation_quality_ok(source, repaired, "ru", "zh") is True
 
 
-def test_physical_voice_almaty_variant_is_repaired_without_bypassing_gate():
+def test_physical_message_248_almaty_variant_is_repaired_without_bypassing_gate():
+    # Exact transcript and NLLB candidate captured for physical voice message
+    # 248. The repair is intentionally bound to this observed city spelling.
     source = (
         "Привет! Где находится машина? Документы готовы. Мы едем в Алматы. "
         "Сообщите время прибытия на границу."
@@ -210,6 +213,38 @@ def test_physical_voice_almaty_variant_is_repaired_without_bypassing_gate():
     assert "阿拉木图" in repaired
     assert "阿尔马图" not in repaired
     assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
+def test_message_248_missing_city_still_fails_quality_gate():
+    source = (
+        "Привет! Где находится машина? Документы готовы. Мы едем в Алматы. "
+        "Сообщите время прибытия на границу."
+    )
+    candidate = "你好!车在哪里?文件准备好了.我们正在路上.请告诉我们抵达边境的时间."
+    assert "city_missing:almaty" in translation_quality_failures(source, candidate, "ru", "zh")
+
+
+def test_message_248_unknown_almaty_spelling_is_not_guessed_or_allowlisted():
+    source = "Мы едем в Алматы."
+    unknown = "我们要去阿尔玛蒂."
+    assert repair_logistics_translation(source, unknown, "ru", "zh") == unknown
+    assert "city_missing:almaty" in translation_quality_failures(source, unknown, "ru", "zh")
+
+
+def test_other_city_cannot_be_repaired_as_almaty():
+    source = "Мы едем в Астану."
+    wrong_city = "我们要去阿尔马图."
+    assert repair_logistics_translation(source, wrong_city, "ru", "zh") == wrong_city
+    assert "city_missing:astana" in translation_quality_failures(source, wrong_city, "ru", "zh")
+
+
+def test_message_248_repair_does_not_hide_changed_price_or_number():
+    source = "Мы едем в Алматы. Цена 1450 USD, груз 10 тонн."
+    changed = "我们要去阿尔马图.价格 1500 USD,货物 10 吨."
+    repaired = repair_logistics_translation(source, changed, "ru", "zh")
+    failures = translation_quality_failures(source, repaired, "ru", "zh")
+    assert "阿拉木图" in repaired
+    assert "numeric_facts_changed" in failures
 
 
 def test_message_81_phrase_repair_is_bound_to_the_only_weight_number_zh_ru():
