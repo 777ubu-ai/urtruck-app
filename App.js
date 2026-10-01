@@ -34,6 +34,7 @@ if (Platform.OS !== 'web') {
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import { claimPushEvent } from './src/utils/pushEventDedup';
+import { handlePushTap } from './src/utils/pushRuntime';
 import { clearAppIconBadge, refreshAppIconBadge } from './src/utils/appBadge';
 import * as Sentry from '@sentry/react-native';
 
@@ -334,6 +335,11 @@ function AppInner() {
   // Native (iOS/Android) — tap по пушу в фоне/закрытом приложении + cold start.
   useEffect(() => {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+    // Cold-start responses may be delivered before AuthContext has restored
+    // the bearer token.  Waiting for the authenticated navigation gate keeps
+    // a real notification tap from being acknowledged as `no_token` and then
+    // lost for the rest of the process lifetime.
+    if (!authedForDeepLink) return;
     let Notifications;
     try { Notifications = require('expo-notifications'); } catch { return; }
     // BUG-006: getLastNotificationResponseAsync (запускающий тап) и listener
@@ -351,11 +357,15 @@ function AppInner() {
       // device; foreground display uses a separate claim so the first tap is
       // never lost.
       const eventId = notificationResponseEventId(response);
-      if (eventId) push.acknowledgeReceipt?.(eventId, { opened: true }).catch(() => {});
-      refreshAppIconBadge();
-      if (eventId && !(await claimPushEvent(eventId, 'navigation'))) return;
       const url = notificationResponseUrl(response);
-      if (url) routeFromUrl(url);
+      await handlePushTap({
+        eventId,
+        acknowledge: (id, options) => push.acknowledgeReceipt?.(id, options),
+        claimNavigation: (id) => claimPushEvent(id, 'navigation'),
+        refreshBadge: refreshAppIconBadge,
+        url,
+        route: routeFromUrl,
+      });
     };
     Notifications.getLastNotificationResponseAsync?.()
       .then((resp) => { if (resp) handleResponse(resp); })
