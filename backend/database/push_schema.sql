@@ -155,6 +155,19 @@ CREATE TABLE IF NOT EXISTS push_log (
 
 CREATE INDEX IF NOT EXISTS idx_push_log_user ON push_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_log_kind ON push_log(kind);
+
+-- A logout tombstone prevents an already-started register-native/subscribe
+-- request from reactivating this installation with the just-logged-out auth
+-- session. Only a SHA-256 session fingerprint is stored; never the bearer.
+CREATE TABLE IF NOT EXISTS push_logout_sessions (
+  user_id TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  session_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, device_id, session_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_push_logout_sessions_created
+  ON push_logout_sessions(created_at);
 -- PR#187: уникальный индекс дедупа НЕ создаём здесь — на legacy-БД (push_log
 -- без event_key) он падал бы «no such column». Индекс создаётся в
 -- api/push._migrate_ownership_columns СТРОГО после ADD COLUMN event_key

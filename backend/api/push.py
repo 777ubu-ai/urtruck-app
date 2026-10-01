@@ -22,6 +22,7 @@ import os
 import sys
 import re
 import threading
+import hashlib
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -209,6 +210,19 @@ def _migrate_ownership_columns():
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_device ON push_devices(device_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_provider ON push_devices(push_provider, platform)")
         c.execute("""
+            CREATE TABLE IF NOT EXISTS push_logout_sessions (
+                user_id TEXT NOT NULL,
+                device_id TEXT NOT NULL,
+                session_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(user_id, device_id, session_hash)
+            )
+        """)
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_push_logout_sessions_created "
+            "ON push_logout_sessions(created_at)"
+        )
+        c.execute("""
             CREATE TABLE IF NOT EXISTS push_outbox (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_id TEXT NOT NULL,
@@ -392,6 +406,33 @@ def _clean_device_id(device_id: Optional[str]) -> Optional[str]:
     if not _DEVICE_ID_RE.match(device_id):
         return None
     return device_id
+
+
+def _session_hash(authorization: Optional[str]) -> Optional[str]:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        return None
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _reject_logged_out_session(c, user_id: Optional[str], device_id: Optional[str], authorization: Optional[str]):
+    """Reject an in-flight registration from the session that logged out.
+
+    The bearer itself is never stored. A fresh login receives a different
+    session token and therefore may register the same physical device.
+    """
+    session_hash = _session_hash(authorization)
+    if not user_id or not device_id or not session_hash:
+        return
+    row = c.execute(
+        "SELECT 1 FROM push_logout_sessions "
+        "WHERE user_id=? AND device_id=? AND session_hash=?",
+        (user_id, device_id, session_hash),
+    ).fetchone()
+    if row:
+        raise HTTPException(status_code=409, detail="PUSH_SESSION_LOGGED_OUT")
 
 
 def _resolve_ownership(c, table: str, id_col: str, id_val: str,
@@ -600,6 +641,7 @@ def subscribe(sub: SubscribeIn, authorization: Optional[str] = Header(None)):
     device_id = _clean_device_id(sub.device_id)
 
     with get_conn() as c:
+        _reject_logged_out_session(c, user_id, device_id, authorization)
         decision, row = _resolve_ownership(c, "push_subscriptions", "endpoint", sub.endpoint, user_id, device_id)
         if decision == "conflict":
             _audit(c, "push_subscriptions", sub.endpoint, device_id, row["user_id"], user_id, "conflict_rejected")
@@ -712,6 +754,7 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
     device_id = _clean_device_id(data.device_id)
 
     with get_conn() as c:
+        _reject_logged_out_session(c, user_id, device_id, authorization)
         decision, row = _resolve_ownership(c, "push_tokens_native", "token", tok, user_id, device_id)
         if decision == "conflict":
             _audit(c, "push_tokens_native", tok, device_id, row["user_id"], user_id, "conflict_rejected")
@@ -884,12 +927,29 @@ def deactivate_user_push(user_id: str, device_id: Optional[str] = None, reason: 
 
 
 @push_router.post("/logout-cleanup")
-def logout_cleanup(body: dict, user=Depends(get_user)):
+def logout_cleanup(
+    body: dict,
+    user=Depends(get_user),
+    authorization: Optional[str] = Header(None),
+):
     """P1-3/P1-4: явный endpoint для фронта — вызывается при logout ДО
     удаления локального токена авторизации. Деактивирует push для текущего
     пользователя (+ конкретного device_id, если передан — иначе все
     устройства этого пользователя)."""
     device_id = _clean_device_id(body.get("device_id"))
+    session_hash = _session_hash(authorization)
+    if device_id and session_hash:
+        with get_conn() as c:
+            c.execute(
+                "INSERT OR IGNORE INTO push_logout_sessions "
+                "(user_id, device_id, session_hash) VALUES (?,?,?)",
+                (user["id"], device_id, session_hash),
+            )
+            # Bounded housekeeping; no token/user payload is deleted.
+            c.execute(
+                "DELETE FROM push_logout_sessions "
+                "WHERE created_at < datetime('now', '-30 days')"
+            )
     result = deactivate_user_push(user["id"], device_id=device_id, reason="logout")
     return {"ok": True, **result}
 
