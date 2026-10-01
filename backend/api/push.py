@@ -446,6 +446,16 @@ def _reject_logged_out_session(c, user_id: Optional[str], device_id: Optional[st
         raise HTTPException(status_code=409, detail="PUSH_SESSION_LOGGED_OUT")
 
 
+def _begin_push_registration(c):
+    """Serialize logout fences with ownership checks and the final UPSERT.
+
+    Python sqlite SELECT does not start a transaction. Without an explicit
+    writer transaction, logout can commit after the tombstone SELECT but
+    before the stale request's UPSERT, reactivating private push afterwards.
+    """
+    c.execute("BEGIN IMMEDIATE")
+
+
 def _insert_logout_tombstone(c, user_id: str, authorization: str, device_id: Optional[str] = None) -> bool:
     """Invalidate future push writes from one authenticated session.
 
@@ -676,6 +686,7 @@ def subscribe(sub: SubscribeIn, authorization: Optional[str] = Header(None)):
     device_id = _clean_device_id(sub.device_id)
 
     with get_conn() as c:
+        _begin_push_registration(c)
         _reject_logged_out_session(c, user_id, device_id, authorization)
         decision, row = _resolve_ownership(c, "push_subscriptions", "endpoint", sub.endpoint, user_id, device_id)
         if decision == "conflict":
@@ -789,6 +800,7 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
     device_id = _clean_device_id(data.device_id)
 
     with get_conn() as c:
+        _begin_push_registration(c)
         _reject_logged_out_session(c, user_id, device_id, authorization)
         decision, row = _resolve_ownership(c, "push_tokens_native", "token", tok, user_id, device_id)
         if decision == "conflict":

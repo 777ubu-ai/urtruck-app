@@ -12,6 +12,33 @@ const DRIVER_REG_BASE = `${API_BASE}/driver/registration`;
 const TOKEN_KEY = 'ur_reg_token';
 const LEVEL_KEY = 'ur_verification_level';
 const PENDING_LOGOUT_KEY = 'ur_pending_logout_token';
+let pendingLogoutMutation = Promise.resolve();
+
+function parsePendingLogoutTokens(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return [...new Set(parsed.filter((value) => typeof value === 'string' && value))];
+  } catch {}
+  // Backward compatibility with the first scalar implementation.
+  return typeof raw === 'string' ? [raw] : [];
+}
+
+async function pendingLogoutTokens() {
+  return parsePendingLogoutTokens(await storage.get(PENDING_LOGOUT_KEY));
+}
+
+function mutatePendingLogoutTokens(mutate) {
+  const work = pendingLogoutMutation.then(async () => {
+    const tokens = await pendingLogoutTokens();
+    const next = [...new Set(mutate(tokens).filter(Boolean))];
+    if (next.length) await storage.set(PENDING_LOGOUT_KEY, JSON.stringify(next));
+    else await storage.remove(PENDING_LOGOUT_KEY);
+    return next;
+  });
+  pendingLogoutMutation = work.catch(() => {});
+  return work;
+}
 
 // PR-C2: см. marketAPI.normalizeDetail — те же причины. Backend
 // иногда возвращает detail как object (verification_required),
@@ -265,7 +292,7 @@ export const regAPI = {
     // Persist before the request: AuthContext intentionally clears the live
     // session immediately, while a timeout/503 must remain retryable after a
     // process restart. This key uses SecureStore on native platforms.
-    await storage.set(PENDING_LOGOUT_KEY, authToken);
+    await mutatePendingLogoutTokens((tokens) => [...tokens, authToken]);
     try {
       const r = await fetch(`${BASE}/logout`, {
         method: 'POST',
@@ -273,9 +300,7 @@ export const regAPI = {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) return { ok: false, status: r.status, ...data };
-      if (await storage.get(PENDING_LOGOUT_KEY) === authToken) {
-        await storage.remove(PENDING_LOGOUT_KEY);
-      }
+      await mutatePendingLogoutTokens((tokens) => tokens.filter((value) => value !== authToken));
       return { ok: true, ...data };
     } catch {
       return { ok: false };
@@ -283,9 +308,11 @@ export const regAPI = {
   },
 
   async flushPendingLogout() {
-    const token = await storage.get(PENDING_LOGOUT_KEY);
-    if (!token) return { ok: true, pending: false };
-    return await this.logout(token);
+    const tokens = await pendingLogoutTokens();
+    if (!tokens.length) return { ok: true, pending: false };
+    const results = [];
+    for (const token of tokens) results.push(await this.logout(token));
+    return { ok: results.every((result) => result?.ok), pending: true, results };
   },
 
   // PR-C1: GET /api/v1/users/me — расширенный профиль (name + city + about
