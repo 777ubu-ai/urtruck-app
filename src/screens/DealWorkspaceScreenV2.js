@@ -1336,6 +1336,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const renderMessage = React.useCallback(({ item, index }) => {
     const messageTranslation = textTranslation.view(item.id);
+    // Расшифровка — личное действие получателя. Отправитель видит только
+    // аудио/длительность: polling не раскрывает текст, а UI не может
+    // инициировать отдельный STT или перевод от его имени.
+    const voiceTranscriptHandlers = item.voice && !item.mine ? {
+      onToggleTranscript: () => toggleVoiceTranscript(item),
+      onToggleOriginal: () => toggleVoiceOriginal(item),
+      onRetryTranscript: () => retryVoiceTranscript(item),
+      onRetryTranslation: () => translateVoiceTranscript(item),
+    } : {};
     const datePill = (index === 0 || dayKeyOf(messages[index - 1]) !== dayKeyOf(item)) ? (
       <View style={s.datePillRow} testID="deal-chat-date-separator">
         <View style={[s.datePill, { backgroundColor: colors.surfaceMuted }]} pointerEvents="none">
@@ -1418,12 +1427,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 uri={item.mediaUrl}
                 fallbackDurationSec={item.voiceDuration}
                 mine={item.mine}
-                transcript={voiceTranscripts[item.id]}
-                transcribing={!!voiceTranscripts[item.id]?.transcribing}
-                onToggleTranscript={() => toggleVoiceTranscript(item)}
-                onToggleOriginal={() => toggleVoiceOriginal(item)}
-                onRetryTranscript={() => retryVoiceTranscript(item)}
-                onRetryTranslation={() => translateVoiceTranscript(item)}
+                transcript={item.mine ? undefined : voiceTranscripts[item.id]}
+                transcribing={!item.mine && !!voiceTranscripts[item.id]?.transcribing}
+                {...voiceTranscriptHandlers}
                 t={t}
                 onError={() => toast(t('voice_play_fail'), 'error')}
               />

@@ -18,6 +18,11 @@ export function installExpoAvRequireShim() {
     audioModeCalls: [],      // every setAudioModeAsync payload
     createAsyncThrows: null, // Error | null — force Sound.createAsync to reject
     playAsyncThrows: null,   // Error | null — force sound.playAsync() to reject
+    stopAsyncThrows: null,   // Error | null — force physical stop to fail
+    pauseAsyncThrows: null,  // Error | null — force fallback pause to fail
+    unloadAsyncThrows: null, // Error | null — unload may fail after a safe stop
+    deferCreate: null,       // Promise | null — emulate slow native sound creation
+    deferUnload: null,       // Promise | null — emulate slow Xiaomi unload
     nextDurationMillis: 5000,
     events: [],
   };
@@ -57,10 +62,18 @@ export function installExpoAvRequireShim() {
         this._emit();
         return {};
       },
-      async pauseAsync() { this.playing = false; this._emit(); return {}; },
-      async stopAsync() { this.playing = false; this.positionMillis = 0; this._emit(); return {}; },
+      async pauseAsync() {
+        if (state.pauseAsyncThrows) throw state.pauseAsyncThrows;
+        this.playing = false; this._emit(); return {};
+      },
+      async stopAsync() {
+        if (state.stopAsyncThrows) throw state.stopAsyncThrows;
+        this.playing = false; this.positionMillis = 0; this._emit(); return {};
+      },
       async unloadAsync() {
         this.unloadCalls += 1;
+        if (state.deferUnload) await state.deferUnload;
+        if (state.unloadAsyncThrows) throw state.unloadAsyncThrows;
         this.loaded = false;
         this.playing = false;
         this.unloaded = true;
@@ -87,6 +100,7 @@ export function installExpoAvRequireShim() {
   const Audio = {
     Sound: {
       async createAsync(source, initialStatus) {
+        if (state.deferCreate) await state.deferCreate;
         if (state.createAsyncThrows) throw state.createAsyncThrows;
         state.events.push(`createAsync:${String(initialStatus?.shouldPlay)}`);
         const sound = makeSound(source?.uri, initialStatus);

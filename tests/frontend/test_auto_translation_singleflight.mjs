@@ -38,7 +38,7 @@ test('кэш приватного текста гидратируется без
 test('голос не выполняет скрытый STT или перевод после отправки и polling', () => {
   assert.doesNotMatch(source, /voiceText\.prewarm|voiceText\.ensureVisible/);
   assert.doesNotMatch(voiceState, /\bprewarm\(|\bensureVisible\(/);
-  assert.match(source, /onToggleTranscript=\{\(\) => toggleVoiceTranscript\(item\)\}/);
+  assert.match(source, /onToggleTranscript: \(\) => toggleVoiceTranscript\(item\)/);
 });
 
 test('push отправляется из сохранённого original до любых переводов', () => {
