@@ -34,6 +34,7 @@ if (Platform.OS !== 'web') {
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import { claimPushEvent } from './src/utils/pushEventDedup';
+import { handlePushTap } from './src/utils/pushRuntime';
 import { clearAppIconBadge, refreshAppIconBadge } from './src/utils/appBadge';
 import * as Sentry from '@sentry/react-native';
 
@@ -356,15 +357,15 @@ function AppInner() {
       // device; foreground display uses a separate claim so the first tap is
       // never lost.
       const eventId = notificationResponseEventId(response);
-      // Do not persistently claim telemetry before the network succeeds: a
-      // transient offline tap must be eligible for a later retry. The server
-      // applies COALESCE to opened_at, providing exactly-once storage even if
-      // both the cold-start response and listener report the same tap.
-      if (eventId) await push.acknowledgeReceipt?.(eventId, { opened: true });
-      refreshAppIconBadge();
-      if (eventId && !(await claimPushEvent(eventId, 'navigation'))) return;
       const url = notificationResponseUrl(response);
-      if (url) routeFromUrl(url);
+      await handlePushTap({
+        eventId,
+        acknowledge: (id, options) => push.acknowledgeReceipt?.(id, options),
+        claimNavigation: (id) => claimPushEvent(id, 'navigation'),
+        refreshBadge: refreshAppIconBadge,
+        url,
+        route: routeFromUrl,
+      });
     };
     Notifications.getLastNotificationResponseAsync?.()
       .then((resp) => { if (resp) handleResponse(resp); })
