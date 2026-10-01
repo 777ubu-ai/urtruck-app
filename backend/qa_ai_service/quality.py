@@ -95,7 +95,7 @@ CITY_OBSERVED_CONFUSIONS = {
     # Exact QA2 NLLB output for Chinese 阿拉木图. This is a model spelling
     # error, not a general transliteration rule.
     ("almaty", "ru"): ("Арматутян",),
-    ("almaty", "zh"): ("阿尔马塔",),
+    ("almaty", "zh"): ("阿尔马塔", "阿尔马图"),
     # NLLB occasionally truncates 阿斯塔纳 to 阿斯塔 and joins it to the
     # following noun (for example ``阿斯塔货物``).  Normalize only this
     # observed city-preserving error; unknown omissions remain a quality FAIL.

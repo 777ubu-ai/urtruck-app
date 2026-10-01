@@ -50,12 +50,16 @@ function chatApiError(detail, fallbackKey) {
     // known localized error code may override the generic localized fallback.
     const error = new Error(localized || fallback);
     error.code = detail.error || null;
+    error.reasonCodes = Array.isArray(detail.reason_codes)
+      ? detail.reason_codes.filter((value) => typeof value === 'string')
+      : [];
     return error;
   }
   // String `detail` is intentionally not shown to users either. The backend
   // may return a provider body or a Russian-only implementation message.
   const error = new Error(fallback);
   error.code = null;
+  error.reasonCodes = [];
   return error;
 }
 

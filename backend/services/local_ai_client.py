@@ -1,32 +1,50 @@
 """Loopback-only client for the isolated QA2 AI service."""
 import os
+import re
 from pathlib import Path
 
 import httpx
 
 
 class LocalAIError(RuntimeError):
-    def __init__(self, code: str, *, retryable: bool = False):
+    def __init__(self, code: str, *, retryable: bool = False, reason_codes=()):
         super().__init__(code)
         self.code = code
         self.retryable = retryable
+        self.reason_codes = tuple(reason_codes)
 
 
-def _safe_error_code(response, fallback: str) -> str:
-    """Map private AI 4xx details to stable safe codes without leaking text."""
+_SAFE_REASON_CODE = re.compile(r"^[a-z0-9_]+(?::[a-z0-9_]+)?$")
+
+
+def _safe_error_details(response, fallback: str) -> tuple[str, tuple[str, ...]]:
+    """Map private AI 4xx details to safe codes without leaking chat text."""
     try:
         detail = response.json().get("detail")
     except (AttributeError, TypeError, ValueError):
-        return fallback
+        return fallback, ()
+    reason_codes = ()
     if isinstance(detail, dict):
+        raw_reasons = detail.get("reason_codes") or detail.get("gate_failure_reasons") or ()
+        if isinstance(raw_reasons, list):
+            reason_codes = tuple(
+                value for value in (str(item or "").strip().lower() for item in raw_reasons)
+                if _SAFE_REASON_CODE.fullmatch(value)
+            )
         detail = detail.get("message") or detail.get("error")
     detail = str(detail or "").strip().lower()
-    return {
+    code = {
         "translation confidence too low": "TRANSLATION_QUALITY_FAILED",
         "transcription quality too low": "TRANSCRIPTION_QUALITY_FAILED",
         "no speech detected": "TRANSCRIPTION_NO_SPEECH",
         "audio could not be decoded": "TRANSCRIPTION_AUDIO_INVALID",
     }.get(detail, fallback)
+    return code, reason_codes
+
+
+def _safe_error_code(response, fallback: str) -> str:
+    """Map private AI 4xx details to stable safe codes without leaking text."""
+    return _safe_error_details(response, fallback)[0]
 
 
 def _base_url() -> str:
@@ -49,10 +67,11 @@ def translate(text: str, source_lang: str | None, target_lang: str) -> dict:
         raise LocalAIError("TRANSLATION_TIMEOUT", retryable=True) from exc
     except httpx.HTTPStatusError as exc:
         retryable = exc.response.status_code >= 500
-        code = "TRANSLATION_TIMEOUT" if retryable else _safe_error_code(
-            exc.response, "TRANSLATION_FAILED"
+        code, reason_codes = (
+            ("TRANSLATION_TIMEOUT", ()) if retryable
+            else _safe_error_details(exc.response, "TRANSLATION_FAILED")
         )
-        raise LocalAIError(code, retryable=retryable) from exc
+        raise LocalAIError(code, retryable=retryable, reason_codes=reason_codes) from exc
     except (httpx.HTTPError, ValueError) as exc:
         raise LocalAIError("TRANSLATION_UNAVAILABLE", retryable=True) from exc
     translated = str(data.get("translated_text") or "").strip()

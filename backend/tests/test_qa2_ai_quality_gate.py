@@ -1,10 +1,18 @@
 """Quality gates for the isolated QA2 speech and translation service."""
+from pathlib import Path
+
 from qa_ai_service.quality import (
     repair_logistics_translation,
     stt_prompt,
     transcription_quality_ok,
     translation_quality_ok,
 )
+
+
+def test_quality_422_exposes_reason_codes_without_candidate_text():
+    service = (Path(__file__).parents[1] / "qa_ai_service" / "main.py").read_text()
+    assert '"reason_codes": gate_failures' in service
+    assert '"candidate": translated' not in service
 
 
 def test_stt_prompt_contains_vehicle_body_vocabulary_without_rewrite_rules():
@@ -189,6 +197,18 @@ def test_message_81_phrase_repair_is_bound_to_the_only_weight_number():
     raw = "阿尔马塔,阿斯塔纳,货物,10,."
     repaired = repair_logistics_translation(source, raw, "ru", "zh")
     assert repaired == "阿拉木图,阿斯塔纳,货物,10 吨, 篷布车."
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
+def test_physical_voice_almaty_variant_is_repaired_without_bypassing_gate():
+    source = (
+        "Привет! Где находится машина? Документы готовы. Мы едем в Алматы. "
+        "Сообщите время прибытия на границу."
+    )
+    observed_nllb = "你好!车在哪里?文件准备好了.我们要去阿尔马图.请告诉我们抵达边境的时间."
+    repaired = repair_logistics_translation(source, observed_nllb, "ru", "zh")
+    assert "阿拉木图" in repaired
+    assert "阿尔马图" not in repaired
     assert translation_quality_ok(source, repaired, "ru", "zh") is True
 
 
