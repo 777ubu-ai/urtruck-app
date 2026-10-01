@@ -15,17 +15,18 @@ import { reconcileChatMessages } from '../../src/utils/chatMessageListState.js';
 
 const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
 const chatApi = fs.readFileSync('src/utils/chatAPI.js', 'utf8');
+const nativeStaging = fs.readFileSync('src/utils/nativeAttachmentStaging.js', 'utf8');
 const chatPy = fs.readFileSync('backend/api/chat.py', 'utf8');
 
 test('native photo, voice, and document uploads use Expo File/Blob multipart parts', () => {
   assert.match(chatApi, /import \{ Directory, File as ExpoFile, Paths \} from 'expo-file-system'/);
   assert.match(chatApi, /const file = new ExpoFile\(uri\)/);
-  assert.match(chatApi, /form\.append\('file', stagedFile, stagedFile\.name\)/);
-  assert.match(chatApi, /await file\.copy\(stagedFile\)/);
-  assert.match(chatApi, /safeNativeUploadName\(name\)/);
-  assert.match(chatApi, /normalize\('NFC'\)/);
-  assert.match(chatApi, /nativeUploadDirectory\?\.delete\(\)/);
-  assert.equal((chatApi.match(/appendNativeFile\(form, uri,/g) || []).length, 4, 'one helper plus photo, voice, and document call sites');
+  assert.match(nativeStaging, /form\.append\('file', staged, staged\.name\)/);
+  assert.match(nativeStaging, /await source\.copy\(staged\)/);
+  assert.match(nativeStaging, /safeNativeUploadName\(name\)/);
+  assert.match(nativeStaging, /normalize\('NFC'\)/);
+  assert.match(nativeStaging, /uploadDirectory\.delete\(\)/);
+  assert.equal((chatApi.match(/appendNativeFile\(form, uri,/g) || []).length, 3, 'one helper plus photo and voice call sites');
   assert.doesNotMatch(chatApi, /form\.append\('file', \{\s*uri,/);
 });
 

@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Pdf from 'react-native-pdf';
+import PdfPreviewContent from './PdfPreviewContent';
 
 /**
  * Renders a private, already-authorized PDF URL inside UrTruck.
@@ -25,36 +25,16 @@ export default function PdfPreviewModal({ visible, url, title = 'PDF', onClose }
   }, [url, visible]);
 
   if (!url) return null;
-  const content = Platform.OS === 'web'
-    ? React.createElement('iframe', {
-      title,
-      src: url,
-      style: { flex: 1, width: '100%', border: 0, backgroundColor: '#0F1512' },
-      sandbox: 'allow-same-origin allow-scripts',
-    })
-    : (
-      <Pdf
-        testID="pdf-preview-native"
-        source={{ uri: url }}
-        style={s.pdf}
-        cache
-        trustAllCerts={false}
-        onLoadComplete={(pages, _path, size) => {
-          if (pages > 0 && size?.width > 0 && size?.height > 0) {
-            setPageState((state) => ({ ...state, pages }));
-          } else {
-            setRenderError(true);
-          }
-        }}
-        onPageChanged={(page, pages) => {
-          // react-native-pdf emits this only after the native renderer has
-          // produced page content, so a white/empty WebView can no longer be
-          // mistaken for a successful preview.
-          setPageState({ page, pages, rendered: page > 0 && pages > 0 });
-        }}
-        onError={() => setRenderError(true)}
-      />
-    );
+  const content = (
+    <PdfPreviewContent
+      url={url}
+      title={title}
+      style={s.pdf}
+      onMetadata={({ pages }) => setPageState((state) => ({ ...state, pages }))}
+      onRendered={({ page, pages }) => setPageState({ page, pages, rendered: true })}
+      onError={() => setRenderError(true)}
+    />
+  );
   return (
     <Modal
       visible={visible}

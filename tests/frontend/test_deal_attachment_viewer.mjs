@@ -5,25 +5,25 @@ import fs from 'node:fs';
 const attachments = fs.readFileSync('src/components/deal/DealAttachments.js', 'utf8');
 const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
 const viewer = fs.readFileSync('src/components/deal/PdfPreviewModal.js', 'utf8');
+const nativeViewer = fs.readFileSync('src/components/deal/PdfPreviewContent.native.js', 'utf8');
+const webViewer = fs.readFileSync('src/components/deal/PdfPreviewContent.web.js', 'utf8');
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 
 test('PDF viewer stays inside UrTruck and receives the original signed URL', () => {
-  assert.match(viewer, /import Pdf from 'react-native-pdf'/);
-  assert.match(viewer, /iframe/);
-  assert.match(viewer, /source=\{\{ uri: url \}\}/);
+  assert.doesNotMatch(viewer, /react-native-pdf/);
+  assert.match(nativeViewer, /import Pdf from 'react-native-pdf'/);
+  assert.match(webViewer, /iframe/);
+  assert.match(nativeViewer, /source=\{\{ uri: url \}\}/);
   assert.match(viewer, /testID="pdf-preview-modal"/);
   assert.match(viewer, /testID="pdf-preview-close"/);
 });
 
 test('native PDF preview only reports success after real page content is rendered', () => {
-  assert.match(viewer, /testID="pdf-preview-native"/);
-  assert.match(viewer, /onLoadComplete=\{\(pages, _path, size\)/);
-  assert.match(viewer, /size\?\.width > 0 && size\?\.height > 0/);
-  assert.match(viewer, /onPageChanged=\{\(page, pages\)/);
-  assert.match(viewer, /rendered: page > 0 && pages > 0/);
+  assert.match(nativeViewer, /testID="pdf-preview-native"/);
+  assert.match(nativeViewer, /createPdfPreviewCallbacks/);
   assert.match(viewer, /testID="pdf-preview-page-rendered"/);
   assert.match(viewer, /testID="pdf-preview-render-error"/);
-  assert.match(viewer, /trustAllCerts=\{false\}/);
+  assert.match(nativeViewer, /trustAllCerts=\{false\}/);
 });
 
 test('attachment list routes PDF to the in-app viewer but keeps non-PDF fallback unchanged', () => {
