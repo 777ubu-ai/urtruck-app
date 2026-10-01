@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
+import PdfPreviewContent from './PdfPreviewContent';
 
 /**
  * Renders a private, already-authorized PDF URL inside UrTruck.
@@ -16,25 +16,25 @@ import { WebView } from 'react-native-webview';
  * authority for participant access and signed-link expiry.
  */
 export default function PdfPreviewModal({ visible, url, title = 'PDF', onClose }) {
+  const [pageState, setPageState] = React.useState({ page: 0, pages: 0, rendered: false });
+  const [renderError, setRenderError] = React.useState(false);
+
+  React.useEffect(() => {
+    setPageState({ page: 0, pages: 0, rendered: false });
+    setRenderError(false);
+  }, [url, visible]);
+
   if (!url) return null;
-  const content = Platform.OS === 'web'
-    ? React.createElement('iframe', {
-      title,
-      src: url,
-      style: { flex: 1, width: '100%', border: 0, backgroundColor: '#0F1512' },
-      sandbox: 'allow-same-origin allow-scripts',
-    })
-    : (
-      <WebView
-        testID="pdf-preview-webview"
-        source={{ uri: url }}
-        originWhitelist={['*']}
-        startInLoadingState
-        javaScriptEnabled
-        domStorageEnabled
-        allowFileAccess={false}
-      />
-    );
+  const content = visible ? (
+    <PdfPreviewContent
+      url={url}
+      title={title}
+      style={s.pdf}
+      onMetadata={({ pages }) => setPageState((state) => ({ ...state, pages }))}
+      onRendered={({ page, pages }) => setPageState({ page, pages, rendered: true })}
+      onError={() => setRenderError(true)}
+    />
+  ) : null;
   return (
     <Modal
       visible={visible}
@@ -51,6 +51,14 @@ export default function PdfPreviewModal({ visible, url, title = 'PDF', onClose }
           </TouchableOpacity>
         </View>
         {content}
+        {Platform.OS !== 'web' && pageState.rendered ? (
+          <Text testID="pdf-preview-page-rendered" style={s.pageStatus}>
+            {pageState.page}/{pageState.pages}
+          </Text>
+        ) : null}
+        {Platform.OS !== 'web' && renderError ? (
+          <Text testID="pdf-preview-render-error" style={s.error}>PDF preview unavailable</Text>
+        ) : null}
       </SafeAreaView>
     </Modal>
   );
@@ -68,4 +76,7 @@ const s = StyleSheet.create({
   },
   title: { flex: 1, color: '#F3F7F4', fontSize: 16, fontWeight: '700', marginRight: 12 },
   close: { color: '#F3F7F4', fontSize: 32, lineHeight: 34, fontWeight: '300' },
+  pdf: { flex: 1, width: '100%', backgroundColor: '#0F1512' },
+  pageStatus: { color: '#DDE7E1', textAlign: 'center', paddingVertical: 6, backgroundColor: '#151E19' },
+  error: { color: '#F2A8A8', textAlign: 'center', padding: 16 },
 });

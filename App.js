@@ -17,6 +17,8 @@ import { flushOutbox } from './src/utils/outbox';
 // верхнем уровне, до маунта) — старт/стоп управляется из broadcast-хука.
 import './src/utils/backgroundLocation';
 import { captureSocialCallbackUrl } from './src/utils/socialAuth';
+import { sweepPrivatePdfCache } from './src/components/deal/privatePdfCacheStartup';
+import { sweepNativeAttachmentStaging } from './src/utils/nativeAttachmentStagingStartup';
 
 // P0 auth-fix 28.08.2026 («двойной тап Google»): возврат из OAuth ловили
 // только СМОНТИРОВАННЫЕ экраны (PhoneV2/OnboardingV2). На native есть мёртвое
@@ -445,6 +447,10 @@ function AppInner() {
 }
 
 function App() {
+  useEffect(() => {
+    sweepPrivatePdfCache();
+    sweepNativeAttachmentStaging();
+  }, []);
   return (
     <AndroidBrandedLaunchSplash>
       <ErrorBoundary>

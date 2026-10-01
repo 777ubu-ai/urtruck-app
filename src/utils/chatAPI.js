@@ -1,10 +1,11 @@
 import { Platform } from 'react-native';
-import { File as ExpoFile } from 'expo-file-system';
+import { Directory, File as ExpoFile, Paths } from 'expo-file-system';
 import { fetch as expoFetch } from 'expo/fetch';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';
 import translations, { getLanguage } from './i18n';
+import { withNativeUploadFile } from './nativeAttachmentStaging';
 
 const BASE = `${API_BASE}/chat`;
 const TOKEN_KEY = 'ur_reg_token';
@@ -376,19 +377,25 @@ export const chatAPI = {
         ? new File([blob], name, { type: finalType || 'application/octet-stream' })
         : new Blob([blob], { type: finalType || 'application/octet-stream' });
       form.append('file', part, name);
-    } else {
-      appendNativeFile(form, uri, name);
     }
     form.append('kind', kind);
     if (clientUploadId) form.append('client_upload_id', String(clientUploadId));
 
+    const send = () => authedFetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    }, expoFetch);
+
     let response;
     try {
-      response = await authedFetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, expoFetch);
+      response = Platform.OS === 'web'
+        ? await send()
+        : await withNativeUploadFile(form, uri, name, send, {
+          Directory,
+          File: ExpoFile,
+          cacheRoot: Paths.cache,
+        });
     } catch (error) {
       throw attachmentError('network', { isNetwork: true, detail: error?.message || 'network' });
     }
