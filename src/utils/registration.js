@@ -11,6 +11,7 @@ const DRIVER_REG_BASE = `${API_BASE}/driver/registration`;
 
 const TOKEN_KEY = 'ur_reg_token';
 const LEVEL_KEY = 'ur_verification_level';
+const PENDING_LOGOUT_KEY = 'ur_pending_logout_token';
 
 // PR-C2: см. marketAPI.normalizeDetail — те же причины. Backend
 // иногда возвращает detail как object (verification_required),
@@ -259,17 +260,32 @@ export const regAPI = {
   // вызывать ДО clearToken (нужен сам токен). Сетевые/любые ошибки
   // глушим: logout на клиенте всё равно должен пройти.
   async logout(token = null) {
+    const authToken = token || await this.getToken();
+    if (!authToken) return { ok: true, revoked: false };
+    // Persist before the request: AuthContext intentionally clears the live
+    // session immediately, while a timeout/503 must remain retryable after a
+    // process restart. This key uses SecureStore on native platforms.
+    await storage.set(PENDING_LOGOUT_KEY, authToken);
     try {
-      const authToken = token || await this.getToken();
-      if (!authToken) return { ok: true, revoked: false };
       const r = await fetch(`${BASE}/logout`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${authToken}` },
       });
-      return await r.json().catch(() => ({ ok: true }));
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return { ok: false, status: r.status, ...data };
+      if (await storage.get(PENDING_LOGOUT_KEY) === authToken) {
+        await storage.remove(PENDING_LOGOUT_KEY);
+      }
+      return { ok: true, ...data };
     } catch {
       return { ok: false };
     }
+  },
+
+  async flushPendingLogout() {
+    const token = await storage.get(PENDING_LOGOUT_KEY);
+    if (!token) return { ok: true, pending: false };
+    return await this.logout(token);
   },
 
   // PR-C1: GET /api/v1/users/me — расширенный профиль (name + city + about

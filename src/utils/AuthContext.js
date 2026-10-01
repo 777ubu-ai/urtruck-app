@@ -41,6 +41,13 @@ export const AuthProvider = ({ children }) => {
   const [hasToken, setHasToken] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // A failed canonical logout must not silently leave the bearer and push
+  // ownership active until server TTL. One bounded retry is made on each app
+  // start; failures stay durably queued without blocking navigation.
+  useEffect(() => {
+    withTimeout(regAPI.flushPendingLogout()).catch(() => {});
+  }, []);
+
   const refreshLevel = useCallback(async () => {
     const me = await regAPI.me();
     if (me && typeof me.verification_level === 'number') {

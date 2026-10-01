@@ -219,6 +219,32 @@ def test_register_logout_wildcard_fence_rejects_already_authenticated_stale_writ
     assert _native_tokens(uid) == [] and _web_subs(uid) == []
 
 
+def test_register_logout_wildcard_fence_rejects_missing_or_invalid_device_id():
+    """A revoked bearer cannot return as an anonymous registration."""
+    uid, tok = _new_user_token()
+    native_token = "fcm-unit-test-register-logout-no-device"
+    created = client.post(
+        "/api/v1/push/register-native",
+        json={"token": native_token, "device_id": "d-register-logout-no-device"},
+        headers=_auth(tok),
+    )
+    assert created.status_code == 200, created.text
+
+    logout = client.post("/api/v1/register/logout", headers=_auth(tok))
+    assert logout.status_code == 200, logout.text
+    assert _native_tokens(uid) == []
+
+    for payload in ({"token": native_token}, {"token": native_token, "device_id": "invalid"}):
+        stale = client.post(
+            "/api/v1/push/register-native",
+            json=payload,
+            headers=_auth(tok),
+        )
+        assert stale.status_code == 409, stale.text
+        assert stale.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
+        assert _native_tokens(uid) == []
+
+
 if __name__ == "__main__":
     fails = 0
     for fn in [test_logout_cleanup_deactivates_both_web_and_native,

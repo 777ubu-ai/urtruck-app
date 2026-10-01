@@ -424,13 +424,24 @@ def _reject_logged_out_session(c, user_id: Optional[str], device_id: Optional[st
     session token and therefore may register the same physical device.
     """
     session_hash = _session_hash(authorization)
-    if not user_id or not device_id or not session_hash:
+    if not session_hash:
         return
-    row = c.execute(
-        "SELECT 1 FROM push_logout_sessions "
-        "WHERE user_id=? AND device_id IN (?, '*') AND session_hash=?",
-        (user_id, device_id, session_hash),
-    ).fetchone()
+    if device_id:
+        row = c.execute(
+            "SELECT 1 FROM push_logout_sessions "
+            "WHERE device_id IN (?, '*') AND session_hash=?",
+            (device_id, session_hash),
+        ).fetchone()
+    else:
+        # The canonical /register/logout fallback deliberately writes a
+        # wildcard tombstone because the client-side cleanup may never have
+        # delivered a device id. The old bearer may already be revoked here,
+        # so user_id is not a reliable lookup key; the one-way session hash is.
+        row = c.execute(
+            "SELECT 1 FROM push_logout_sessions "
+            "WHERE device_id='*' AND session_hash=?",
+            (session_hash,),
+        ).fetchone()
     if row:
         raise HTTPException(status_code=409, detail="PUSH_SESSION_LOGGED_OUT")
 
