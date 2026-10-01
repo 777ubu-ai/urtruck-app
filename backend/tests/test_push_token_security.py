@@ -150,6 +150,46 @@ def test_logout_deactivates_native_token():
     assert push_tok not in [t["token"] for t in tokens]
 
 
+def test_stale_registration_cannot_reactivate_token_after_logout_cleanup():
+    """A request holding the old bearer must lose to logout ordering."""
+    uid_a, tok_a = _new_user_token()
+    push_tok = "fcm-unit-test-stale-after-logout"
+    device = "d-stale-logout-01"
+    headers = _auth(tok_a)
+    first = client.post(
+        "/api/v1/push/register-native",
+        json={"token": push_tok, "device_id": device},
+        headers=headers,
+    )
+    assert first.status_code == 200, first.text
+
+    cleanup = client.post(
+        "/api/v1/push/logout-cleanup",
+        json={"device_id": device},
+        headers=headers,
+    )
+    assert cleanup.status_code == 200, cleanup.text
+    assert _native_row(push_tok)["active"] == 0
+
+    stale = client.post(
+        "/api/v1/push/register-native",
+        json={"token": push_tok, "device_id": device},
+        headers=headers,
+    )
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
+    assert _native_row(push_tok)["active"] == 0
+
+    fresh_token = reg_dal.create_session(uid_a)
+    fresh = client.post(
+        "/api/v1/push/register-native",
+        json={"token": push_tok, "device_id": device},
+        headers=_auth(fresh_token),
+    )
+    assert fresh.status_code == 200, fresh.text
+    assert _native_row(push_tok)["active"] == 1
+
+
 def test_after_logout_token_can_be_safely_reclaimed_by_another_user():
     uid_a, tok_a = _new_user_token()
     uid_b, tok_b = _new_user_token()

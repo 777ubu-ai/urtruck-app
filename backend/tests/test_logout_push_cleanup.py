@@ -10,6 +10,9 @@ Exit != 0 на любой ошибке. Совместим с pytest.
 """
 import os
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_logout_push.db")
@@ -170,6 +173,123 @@ def test_register_logout_server_side_deactivates_push_and_frees_same_device_for_
     assert old_row["active"] == 0 and old_row["invalidated_reason"] == "logout"
     assert old_web["active"] == 0 and old_web["invalidated_reason"] == "logout"
     assert new_row["user_id"] == uid_b and new_row["active"] == 1
+
+
+def test_register_logout_wildcard_fence_rejects_already_authenticated_stale_writes(monkeypatch):
+    """The canonical logout must be sufficient when logout-cleanup is lost.
+
+    Monkeypatching the auth lookup models requests which captured ``user_id``
+    before logout but only reached their SQLite write afterwards.
+    """
+    import api.push as push_api
+
+    uid, tok = _new_user_token()
+    device = "d-register-logout-race-1"
+    native_token = "fcm-unit-test-register-logout-race"
+    endpoint = "https://fcm.googleapis.com/fcm/send/register-logout-race"
+
+    native = client.post(
+        "/api/v1/push/register-native",
+        json={"token": native_token, "device_id": device},
+        headers=_auth(tok),
+    )
+    web = client.post(
+        "/api/v1/push/subscribe",
+        json={"endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}, "device_id": device},
+        headers=_auth(tok),
+    )
+    assert native.status_code == 200 and web.status_code == 200
+
+    logout = client.post("/api/v1/register/logout", headers=_auth(tok))
+    assert logout.status_code == 200, logout.text
+    assert _native_tokens(uid) == [] and _web_subs(uid) == []
+
+    monkeypatch.setattr(push_api, "_optional_user_id", lambda _authorization: uid)
+    stale_native = client.post(
+        "/api/v1/push/register-native",
+        json={"token": native_token, "device_id": device},
+        headers=_auth(tok),
+    )
+    stale_web = client.post(
+        "/api/v1/push/subscribe",
+        json={"endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}, "device_id": device},
+        headers=_auth(tok),
+    )
+    assert stale_native.status_code == 409, stale_native.text
+    assert stale_web.status_code == 409, stale_web.text
+    assert stale_native.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
+    assert stale_web.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
+    assert _native_tokens(uid) == [] and _web_subs(uid) == []
+
+
+def test_register_logout_wildcard_fence_rejects_missing_or_invalid_device_id():
+    """A revoked bearer cannot return as an anonymous registration."""
+    uid, tok = _new_user_token()
+    native_token = "fcm-unit-test-register-logout-no-device"
+    created = client.post(
+        "/api/v1/push/register-native",
+        json={"token": native_token, "device_id": "d-register-logout-no-device"},
+        headers=_auth(tok),
+    )
+    assert created.status_code == 200, created.text
+
+    logout = client.post("/api/v1/register/logout", headers=_auth(tok))
+    assert logout.status_code == 200, logout.text
+    assert _native_tokens(uid) == []
+
+    for payload in ({"token": native_token}, {"token": native_token, "device_id": "invalid"}):
+        stale = client.post(
+            "/api/v1/push/register-native",
+            json=payload,
+            headers=_auth(tok),
+        )
+        assert stale.status_code == 409, stale.text
+        assert stale.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
+        assert _native_tokens(uid) == []
+
+
+def test_logout_cannot_commit_between_tombstone_check_and_native_upsert(monkeypatch):
+    """The whole registration write is serialized against canonical logout."""
+    import api.push as push_api
+
+    uid, tok = _new_user_token()
+    token = "fcm-unit-test-interleaved-logout"
+    device = "d-register-logout-interleaved"
+    initial = client.post(
+        "/api/v1/push/register-native",
+        json={"token": token, "device_id": device},
+        headers=_auth(tok),
+    )
+    assert initial.status_code == 200, initial.text
+
+    checked = threading.Event()
+    release = threading.Event()
+    original = push_api._resolve_ownership
+
+    def pause_after_checks(*args, **kwargs):
+        result = original(*args, **kwargs)
+        checked.set()
+        assert release.wait(3), "registration pause timed out"
+        return result
+
+    monkeypatch.setattr(push_api, "_resolve_ownership", pause_after_checks)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        registration = pool.submit(
+            client.post,
+            "/api/v1/push/register-native",
+            json={"token": token, "device_id": device},
+            headers=_auth(tok),
+        )
+        assert checked.wait(2), "registration did not reach ownership check"
+        logout = pool.submit(client.post, "/api/v1/register/logout", headers=_auth(tok))
+        time.sleep(0.1)
+        assert not logout.done(), "logout must wait for the registration writer transaction"
+        release.set()
+        assert registration.result(timeout=3).status_code == 200
+        logout_response = logout.result(timeout=3)
+
+    assert logout_response.status_code == 200, logout_response.text
+    assert _native_tokens(uid) == []
 
 
 if __name__ == "__main__":
