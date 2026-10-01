@@ -16,8 +16,10 @@ test('vehicle setup styles are resolved from the active driver theme', () => {
   assert.match(ui, /import \{ useDriverCeramicColors \} from '..\/..\/theme\/designV1'/);
   assert.match(ui, /export const useVehicleSetupStyles = \(\) => \{/);
   assert.match(ui, /StyleSheet\.create\(createStyles\(vehicleBrand\(colors\)\)\)/);
+  assert.match(ui, /empty: \{ color: brand\.textTertiary \}/);
   assert.doesNotMatch(ui, /import \{ DRIVER_CERAMIC \} from/);
   assert.doesNotMatch(ui, /backgroundColor: '#E3EAF0'|backgroundColor: '#D8DEE5'|backgroundColor: '#FCEBEC'/);
+  assert.doesNotMatch(ui, /empty: \{ color: 'transparent' \}/);
 });
 
 test('every live vehicle surface obtains dynamic styles instead of the light-only export', () => {
