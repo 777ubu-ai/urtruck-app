@@ -23,6 +23,10 @@ chat._ensure_translation_schema()
 def setup_function(_):
     chat._ensure_translation_schema()
     with get_conn() as c:
+        # Metrics are append-only operational evidence.  The test database is
+        # shared across examples, so isolate assertions from an earlier job
+        # with the same synthetic message id.
+        c.execute("DELETE FROM voice_processing_metrics")
         c.execute("DELETE FROM voice_processing_jobs")
         c.execute("DELETE FROM chat_translations")
         c.execute("DELETE FROM chat_messages")
@@ -192,7 +196,7 @@ def test_translation_outcome_is_recorded_as_a_separate_safe_stage(monkeypatch):
         metric = c.execute(
             "SELECT provider,stage,outcome,error_category FROM voice_processing_metrics WHERE message_id=1 AND stage='translation'"
         ).fetchone()
-    assert tuple(metric) == ("local_nllb_1_3b", "translation", "translated", None)
+    assert tuple(metric) == ("test-translate", "translation", "translated", None)
 
 
 def test_transient_failure_retries_with_lease_recovery_and_permanent_stops(monkeypatch):
