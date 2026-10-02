@@ -23,6 +23,10 @@ chat._ensure_translation_schema()
 def setup_function(_):
     chat._ensure_translation_schema()
     with get_conn() as c:
+        # Metrics are append-only operational evidence.  The test database is
+        # shared across examples, so isolate assertions from an earlier job
+        # with the same synthetic message id.
+        c.execute("DELETE FROM voice_processing_metrics")
         c.execute("DELETE FROM voice_processing_jobs")
         c.execute("DELETE FROM chat_translations")
         c.execute("DELETE FROM chat_messages")
@@ -131,7 +135,7 @@ def test_success_prepares_hidden_transcript_and_translation_once(monkeypatch):
     jobs.enqueue_new_voice(1, "chat_voice/1.m4a", source_lang="ru", target_lang="zh")
     monkeypatch.setattr(
         "services.speech_to_text_service.transcribe_audio_ref",
-        lambda *a, **k: {"transcript_text": "Груз 10 тонн", "source_lang": "ru", "provider": "test-stt"},
+        lambda *a, **k: {"transcript_text": "Груз 10 тонн", "source_lang": "ru", "provider": "test-stt", "model": "test-stt-model"},
     )
     monkeypatch.setattr(
         "services.translate_service.translate_text",
@@ -143,15 +147,56 @@ def test_success_prepares_hidden_transcript_and_translation_once(monkeypatch):
         transcript = c.execute("SELECT voice_transcript FROM chat_messages WHERE id=1").fetchone()[0]
         translation = c.execute("SELECT translated_text FROM chat_translations WHERE message_id=1 AND target_lang='zh'").fetchone()[0]
         metric = c.execute(
-            "SELECT provider,outcome,latency_ms,usage_total_tokens FROM voice_processing_metrics WHERE message_id=1"
+            "SELECT provider,model,stage,outcome,latency_ms,usage_total_tokens FROM voice_processing_metrics WHERE message_id=1 AND stage='stt'"
         ).fetchone()
         metric_columns = {row["name"] for row in c.execute("PRAGMA table_info(voice_processing_metrics)")}
     assert transcript == "Груз 10 тонн"
     assert translation == "货物10吨"
     assert metric["provider"] == "test-stt"
+    assert metric["model"] == "test-stt-model"
+    assert metric["stage"] == "stt"
     assert metric["outcome"] == "transcribed"
     assert metric["latency_ms"] is not None
     assert not {"audio", "transcript", "translation", "raw_response", "api_key"} & metric_columns
+
+
+def test_failed_openai_then_local_fallback_is_not_recorded_as_openai(monkeypatch):
+    _voice_message()
+    jobs.enqueue_new_voice(1, "chat_voice/1.m4a")
+    monkeypatch.setattr(
+        "services.speech_to_text_service.transcribe_audio_ref",
+        lambda *a, **k: (_ for _ in ()).throw(SpeechToTextError(
+            "fallback failed", provider="openai_then_local_ai", retryable=True,
+            code="TRANSCRIPTION_UNAVAILABLE",
+        )),
+    )
+    assert jobs.process_pending_once()["failed_retryable"] == 1
+    with get_conn() as c:
+        metric = c.execute(
+            "SELECT provider,stage,outcome,fallback,error_category FROM voice_processing_metrics WHERE message_id=1"
+        ).fetchone()
+    assert tuple(metric) == (
+        "openai_then_local_ai", "stt", "failed_retryable", 1, "TRANSCRIPTION_UNAVAILABLE"
+    )
+
+
+def test_translation_outcome_is_recorded_as_a_separate_safe_stage(monkeypatch):
+    _voice_message()
+    jobs.enqueue_new_voice(1, "chat_voice/1.m4a", source_lang="ru", target_lang="zh")
+    monkeypatch.setattr(
+        "services.speech_to_text_service.transcribe_audio_ref",
+        lambda *a, **k: {"transcript_text": "controlled", "source_lang": "ru", "provider": "openai", "model": "gpt-4o-mini-transcribe"},
+    )
+    monkeypatch.setattr(
+        "services.translate_service.translate_text",
+        lambda *a, **k: {"translated_text": "controlled", "provider": "local_nllb_1_3b"},
+    )
+    assert jobs.process_pending_once()["ready"] == 1
+    with get_conn() as c:
+        metric = c.execute(
+            "SELECT provider,stage,outcome,error_category FROM voice_processing_metrics WHERE message_id=1 AND stage='translation'"
+        ).fetchone()
+    assert tuple(metric) == ("local_nllb_1_3b", "translation", "translated", None)
 
 
 def test_transient_failure_retries_with_lease_recovery_and_permanent_stops(monkeypatch):

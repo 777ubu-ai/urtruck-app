@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS voice_processing_metrics (
   usage_output_tokens INTEGER,
   usage_total_tokens INTEGER,
   estimated_cost_microusd INTEGER,
+  -- `stt`, `translation` or `persist`; no user content is stored here.
+  stage TEXT NOT NULL DEFAULT 'stt',
   outcome TEXT NOT NULL,
   fallback INTEGER NOT NULL DEFAULT 0,
   error_category TEXT,

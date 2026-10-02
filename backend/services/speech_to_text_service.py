@@ -284,6 +284,7 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
     return {
         "transcript_text": transcript,
         "provider": "openai",
+        "model": OPENAI_STT_MODEL,
         "source_lang": detected_lang or "auto",
         "usage": data.get("usage"),
     }
