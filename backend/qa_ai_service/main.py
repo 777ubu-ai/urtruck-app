@@ -15,11 +15,11 @@ from transformers import AutoTokenizer
 
 try:
     from .quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
-    from .structured_tokens import protect, restore
+    from .structured_tokens import split_for_translation
     from .translation_decoding import TRANSLATE_BEAM_SIZE, translation_max_decoding_length
 except ImportError:  # uvicorn runs this file as top-level main.py in QA2
     from quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
-    from structured_tokens import protect, restore
+    from structured_tokens import split_for_translation
     from translation_decoding import TRANSLATE_BEAM_SIZE, translation_max_decoding_length
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -86,6 +86,26 @@ def _load_whisper():
     return _whisper
 
 
+def _translate_prose_piece(text: str, *, source: str, target: str, translator, tokenizer) -> str:
+    """Translate one non-identifier prose piece with the loaded NLLB model."""
+    if not text.strip():
+        return text
+    source_ids = tokenizer.encode(text.strip())
+    source_tokens = tokenizer.convert_ids_to_tokens(source_ids)
+    target_token = NLLB_LANGS[target]
+    result = translator.translate_batch(
+        [source_tokens],
+        target_prefix=[[target_token]],
+        beam_size=TRANSLATE_BEAM_SIZE,
+        max_decoding_length=translation_max_decoding_length(len(source_tokens)),
+    )[0]
+    target_tokens = result.hypotheses[0][1:]
+    return tokenizer.decode(
+        tokenizer.convert_tokens_to_ids(target_tokens),
+        skip_special_tokens=True,
+    ).strip()
+
+
 @app.on_event("startup")
 def preload_models():
     _load_translation()
@@ -115,29 +135,17 @@ def translate(body: TranslateRequest):
     if not _translate_slot.acquire(timeout=75):
         raise HTTPException(status_code=503, detail="busy")
     try:
-        protected = protect(body.text)
         translator, tokenizer = _load_translation()
         tokenizer.src_lang = NLLB_LANGS[source]
-        source_ids = tokenizer.encode(protected.text.strip())
-        source_tokens = tokenizer.convert_ids_to_tokens(source_ids)
-        target_token = NLLB_LANGS[target]
-        result = translator.translate_batch(
-            [source_tokens],
-            target_prefix=[[target_token]],
-            beam_size=TRANSLATE_BEAM_SIZE,
-            max_decoding_length=translation_max_decoding_length(len(source_tokens)),
-        )[0]
-        target_tokens = result.hypotheses[0][1:]
-        translated = tokenizer.decode(
-            tokenizer.convert_tokens_to_ids(target_tokens),
-            skip_special_tokens=True,
-        ).strip()
-        translated = restore(translated, protected)
-        if translated is None:
-            raise HTTPException(
-                status_code=422,
-                detail={"message": "translation confidence too low", "reason_codes": ["structured_token_missing"]},
+        # Opaque values are never given to NLLB.  This avoids both the old
+        # plate-corruption bug and the newly observed marker-drop failure;
+        # identifiers are copied only by this deterministic local operation.
+        translated = "".join(
+            value if is_identifier else _translate_prose_piece(
+                value, source=source, target=target, translator=translator, tokenizer=tokenizer
             )
+            for is_identifier, value in split_for_translation(body.text)
+        ).strip()
         translated = repair_logistics_translation(body.text, translated, source, target)
         if not translated:
             raise RuntimeError("empty translation")
