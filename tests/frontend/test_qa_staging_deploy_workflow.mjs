@@ -109,20 +109,26 @@ test('QA2 deploy waits for local health and emits only sanitized startup diagnos
   assert.doesNotMatch(workflow, /cat "\\$qa_root\/\.env"/);
 });
 
-test('QA2 deploy preserves private local AI and rejects provider substitution', () => {
-  assert.match(workflow, /Verify QA2 local AI policy before any server mutation/);
-  assert.match(workflow, /QA2_LOCAL_AI_POLICY_OPENAI_SUBSTITUTION_BLOCKED/);
-  assert.match(workflow, /QA2_LOCAL_AI_POLICY_BLOCKED_BEFORE_MUTATION/);
+test('QA2 deploy keeps NLLB local and configures only the approved OpenAI STT route', () => {
+  assert.match(workflow, /Verify existing QA2 secret and local NLLB policy before mutation/);
+  assert.match(workflow, /QA2_OPENAI_STT_SECRET_MISSING/);
+  assert.match(workflow, /QA2_LOCAL_NLLB_POLICY_BLOCKED_BEFORE_MUTATION/);
   assert.match(workflow, /QA2_LOCAL_AI_URL_POLICY_BLOCKED_BEFORE_MUTATION/);
   assert.match(workflow, /qa_env=\/home\/ubuntu\/urtruck-qa2\/\.env/);
-  assert.match(workflow, /TRANSCRIBE_PROVIDER.*local_ai/);
+  assert.match(workflow, /Configure the bounded QA2-only OpenAI STT route/);
+  assert.match(workflow, /TRANSCRIBE_PROVIDER': 'openai'/);
+  assert.match(workflow, /TRANSCRIBE_MODEL': 'gpt-4o-mini-transcribe'/);
+  assert.match(workflow, /TRANSCRIBE_FALLBACK_PROVIDER': 'local_ai'/);
+  assert.match(workflow, /QA2_OPENAI_STT_TIMEOUT_SECONDS': '8'/);
   assert.match(workflow, /TRANSLATE_PROVIDER.*local_ai/);
-  assert.match(workflow, /QA2_LOCAL_AI_PROVIDER_NOT_READY/);
-  assert.match(workflow, /QA2_LOCAL_AI_SETTINGS_NOT_READY/);
+  assert.match(workflow, /QA2_OPENAI_STT_CONFIGURATION_NOT_READY/);
+  assert.match(workflow, /QA2_OPENAI_STT_SETTINGS_NOT_READY/);
+  assert.match(workflow, /QA_STT_PROVIDER=openai-ready/);
+  assert.match(workflow, /QA_TRANSLATE_PROVIDER=local-nllb-ready/);
   assert.match(workflow, /ENV_BACKUP=.*qa2\.env/);
   assert.match(workflow, /QA_ROLLBACK_LOCAL_AI_SETTINGS_NOT_RESTORED/);
-  assert.doesNotMatch(workflow, /printf[^\n]*TRANSCRIBE_PROVIDER=openai/);
-  assert.doesNotMatch(workflow, /printf[^\n]*TRANSLATE_PROVIDER=openai/);
+  assert.doesNotMatch(workflow, /OPENAI_API_KEY.*print\(/);
+  assert.doesNotMatch(workflow, /OPENAI_API_KEY.*echo/);
   assert.doesNotMatch(workflow, /urtruck-security.*\.env/);
 });
 
