@@ -6,7 +6,12 @@ from qa_ai_service.quality import (
     translation_quality_failures,
     translation_quality_ok,
 )
-from qa_ai_service.structured_tokens import protect, restore
+from qa_ai_service.structured_tokens import (
+    protect,
+    restore,
+    split_for_translation,
+    translate_preserving_identifiers,
+)
 from pathlib import Path
 
 
@@ -36,6 +41,36 @@ def test_changed_or_dropped_plate_marker_fails_closed_instead_of_guessing():
     protected = protect("Госномер A123AA01.")
     assert restore("车牌 123A01。", protected) is None
     assert restore("车牌 URTRUCKPROTECTEDTOKEN0X и URTRUCKPROTECTEDTOKEN0X。", protected) is None
+
+
+def test_translation_split_keeps_identifier_out_of_nllb_input_and_preserves_it_exactly():
+    # Regression from the physical QA2 EN→ZH smoke: NLLB dropped the old
+    # ASCII marker, causing ``structured_token_missing`` for a valid plate.
+    # The production path now sends only prose to NLLB and splices the known
+    # identifier back locally, so there is no marker for the model to lose.
+    source = "Truck A123AA01 is at Bakhty."
+    assert split_for_translation(source) == (
+        (False, "Truck "),
+        (True, "A123AA01"),
+        (False, " is at Bakhty."),
+    )
+    prose = [value for is_identifier, value in split_for_translation(source) if not is_identifier]
+    assert all("A123AA01" not in value for value in prose)
+    assert "".join(("卡车", "A123AA01", "在巴克图。")) == "卡车A123AA01在巴克图。"
+
+
+def test_nllb_route_never_receives_plate_and_splices_original_after_translation():
+    """The live EN→ZH regression must not depend on NLLB copying a marker."""
+    seen = []
+
+    def fake_nllb(prose):
+        seen.append(prose)
+        return {"Truck ": "卡车", " is at Bakhty.": "在巴克图。"}[prose]
+
+    translated = translate_preserving_identifiers("Truck A123AA01 is at Bakhty.", fake_nllb)
+
+    assert seen == ["Truck ", " is at Bakhty."]
+    assert translated == "卡车A123AA01在巴克图。"
 
 
 def test_container_and_document_identifiers_are_opaque_tokens_too():

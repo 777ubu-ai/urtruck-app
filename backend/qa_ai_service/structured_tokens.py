@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+from typing import Callable
 
 
 # Confirmed QA2 regression: ``A123AA01`` was returned as ``123A01``.  Each
@@ -29,6 +30,37 @@ _IDENTIFIER = re.compile(
 class ProtectedTokens:
     text: str
     replacements: tuple[tuple[str, str], ...]
+
+
+def split_for_translation(text: str) -> tuple[tuple[bool, str], ...]:
+    """Split text into ordinary prose and opaque identifiers.
+
+    NLLB is not reliable at copying long synthetic ASCII markers: the
+    QA2 EN→ZH smoke showed it dropping ``URTRUCKPROTECTEDTOKEN0X``.  Passing
+    the original identifier to NLLB is not safe either, because it previously
+    rewrote ``A123AA01``.  Callers therefore translate only the prose pieces
+    and splice identifier pieces back byte-for-byte.
+
+    The boolean is true only for an identifier recognised by ``_IDENTIFIER``.
+    Empty prose pieces are deliberately retained so callers preserve the
+    original token boundaries without guessing their position.
+    """
+    pieces: list[tuple[bool, str]] = []
+    cursor = 0
+    for match in _IDENTIFIER.finditer(text):
+        pieces.append((False, text[cursor:match.start()]))
+        pieces.append((True, match.group(0)))
+        cursor = match.end()
+    pieces.append((False, text[cursor:]))
+    return tuple(pieces)
+
+
+def translate_preserving_identifiers(text: str, translate_prose: Callable[[str], str]) -> str:
+    """Translate prose only; splice recognised identifiers back unchanged."""
+    return "".join(
+        value if is_identifier else translate_prose(value)
+        for is_identifier, value in split_for_translation(text)
+    )
 
 
 def protect(text: str) -> ProtectedTokens:
