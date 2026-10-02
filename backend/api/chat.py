@@ -204,6 +204,13 @@ def _ensure_columns(c):
             "CREATE INDEX IF NOT EXISTS idx_voice_processing_ready "
             "ON voice_processing_jobs(status, next_retry_at, expires_at)"
         )
+    metrics_exists = c.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='voice_processing_metrics'"
+    ).fetchone()
+    if metrics_exists:
+        metric_cols = {r["name"] for r in c.execute("PRAGMA table_info(voice_processing_metrics)").fetchall()}
+        if "stage" not in metric_cols:
+            c.execute("ALTER TABLE voice_processing_metrics ADD COLUMN stage TEXT NOT NULL DEFAULT 'stt'")
 
 
 def _init():

@@ -41,6 +41,7 @@ with get_conn() as c:
     assert {'message_id','audio_version','model_version','status','locked_at','locked_by',
             'next_retry_at','expires_at','force_reprocess','last_error'} <= columns
     assert c.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_voice_processing_ready'").fetchone()
+    assert "stage" in {r['name'] for r in c.execute('PRAGMA table_info(voice_processing_metrics)')}
     assert c.execute('SELECT COUNT(*) FROM voice_processing_jobs').fetchone()[0] == 0
 """)
 

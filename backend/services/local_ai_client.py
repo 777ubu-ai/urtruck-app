@@ -114,6 +114,7 @@ def transcribe(path: str, filename: str | None = None, language: str | None = No
     return {
         "transcript_text": transcript,
         "provider": str(data.get("provider") or "local_faster_whisper_large_v3_turbo"),
+        "model": str(data.get("model") or "faster-whisper-large-v3-turbo"),
         "source_lang": source_lang,
         "confidence": data.get("confidence"),
         "usage": None,

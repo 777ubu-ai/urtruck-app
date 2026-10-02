@@ -256,6 +256,7 @@ def transcribe(file: UploadFile = File(...), language: str | None = Form(default
             "transcript_text": transcript,
             "source_lang": source_language,
             "provider": "local_faster_whisper_large_v3_turbo",
+            "model": WHISPER_MODEL.name,
             "confidence": round(confidence, 4),
         }
     except HTTPException:

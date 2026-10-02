@@ -218,7 +218,7 @@ def _participant_language(user_id: str) -> Optional[str]:
 def _record_metric(
     job: dict[str, Any], *, provider: str, outcome: str, latency_ms: Optional[int] = None,
     audio_duration_seconds: Optional[int] = None, usage: Any = None, fallback: bool = False,
-    error_category: Optional[str] = None,
+    error_category: Optional[str] = None, model: Optional[str] = None, stage: str = "stt",
 ) -> None:
     """Persist only numerical/categorical QA evidence, never conversation data."""
     usage = usage if isinstance(usage, dict) else {}
@@ -235,13 +235,13 @@ def _record_metric(
                 """INSERT INTO voice_processing_metrics(
                      job_id,message_id,provider,model,latency_ms,audio_duration_seconds,
                      usage_input_tokens,usage_output_tokens,usage_total_tokens,
-                     outcome,fallback,error_category
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                     stage,outcome,fallback,error_category
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     job.get("id"), job.get("message_id"), str(provider or "unknown")[:120],
-                    str(job.get("model_version") or "")[:180], latency_ms,
+                    str(model if model is not None else job.get("model_version") or "")[:180], latency_ms,
                     audio_duration_seconds, integer("input_tokens"), integer("output_tokens"),
-                    integer("total_tokens"), str(outcome)[:64], int(bool(fallback)),
+                    integer("total_tokens"), str(stage or "stt")[:32], str(outcome)[:64], int(bool(fallback)),
                     str(error_category)[:120] if error_category else None,
                 ),
             )
@@ -251,7 +251,10 @@ def _record_metric(
         return
 
 
-def _finish_failure(job: dict[str, Any], *, retryable: bool, error: str) -> str:
+def _finish_failure(
+    job: dict[str, Any], *, retryable: bool, error: str,
+    provider: str = "voice_worker", model: Optional[str] = None, fallback: bool = False,
+) -> str:
     attempt = int(job.get("attempt_count") or 0) + 1
     with get_conn() as c:
         if not _lease_is_current(c, job):
@@ -272,7 +275,10 @@ def _finish_failure(job: dict[str, Any], *, retryable: bool, error: str) -> str:
             )
             outcome = "failed_permanent" if updated.rowcount == 1 else "stale"
     if outcome != "stale":
-        _record_metric(job, provider="openai", outcome=outcome, error_category=error)
+        _record_metric(
+            job, provider=provider, model=model, fallback=fallback,
+            outcome=outcome, error_category=error, stage="stt",
+        )
     return outcome
 
 
@@ -287,7 +293,7 @@ def _process(job: dict[str, Any]) -> str:
             (job["message_id"],),
         ).fetchone()
     if not message or not message["photo_url"]:
-        return _finish_failure(job, retryable=False, error="audio_unavailable")
+        return _finish_failure(job, retryable=False, error="audio_unavailable", provider="storage")
 
     # A legacy/manual request may have won the race. Reuse its saved result;
     # never invoke the model a second time.
@@ -311,14 +317,18 @@ def _process(job: dict[str, Any]) -> str:
             )
         except SpeechToTextError as exc:
             heartbeat.stop()
-            return _finish_failure(job, retryable=bool(exc.retryable), error=exc.code)
+            return _finish_failure(
+                job, retryable=bool(exc.retryable), error=exc.code,
+                provider=exc.provider or "unknown",
+                fallback=(exc.provider == "openai_then_local_ai"),
+            )
         finally:
             heartbeat.stop()
         if heartbeat.lost:
             return "stale"
         transcript_text = str(transcript.get("transcript_text") or "").strip()
         if not transcript_text:
-            return _finish_failure(job, retryable=False, error="TRANSCRIPTION_FAILED")
+            return _finish_failure(job, retryable=False, error="TRANSCRIPTION_FAILED", provider=transcript_provider or "unknown")
         transcript_lang = str(transcript.get("source_lang") or "auto").strip().lower()
         transcript_provider = str(transcript.get("provider") or "unknown")[:120]
         _record_metric(
@@ -326,7 +336,9 @@ def _process(job: dict[str, Any]) -> str:
             latency_ms=round((time.monotonic() - started) * 1000),
             audio_duration_seconds=message["voice_duration"], usage=transcript.get("usage"),
             fallback=transcript_provider.endswith("_fallback"),
+            model=transcript.get("model"), stage="stt",
         )
+        persist_started = time.monotonic()
         with get_conn() as c:
             if not _lease_is_current(c, job):
                 return "stale"
@@ -336,6 +348,10 @@ def _process(job: dict[str, Any]) -> str:
                    voice_transcribe_claimed_at=NULL WHERE id=?""",
                 (transcript_text, transcript_lang, transcript_provider, job["message_id"]),
             )
+        _record_metric(
+            job, provider="voice_worker", model="", stage="persist", outcome="persisted",
+            latency_ms=round((time.monotonic() - persist_started) * 1000),
+        )
 
     # Translation is a hidden cache attachment. Its failure must not discard a
     # ready transcript or make a working audio message appear failed.
@@ -354,6 +370,7 @@ def _process(job: dict[str, Any]) -> str:
             heartbeat = _LeaseHeartbeat(job)
             if not heartbeat.start():
                 return "stale"
+            translation_started = time.monotonic()
             try:
                 translated = translate_text(
                     transcript_text, target_lang,
@@ -366,10 +383,22 @@ def _process(job: dict[str, Any]) -> str:
                         "INSERT OR REPLACE INTO chat_translations(message_id,target_lang,translated_text,provider) VALUES(?,?,?,?)",
                         (job["message_id"], target_lang, translated["translated_text"], translated["provider"]),
                     )
-            except TranslationError:
+                from services.translate_service import get_cache_identity
+                _record_metric(
+                    job, provider=translated.get("provider") or "unknown",
+                    model=get_cache_identity().get("model") or "", stage="translation", outcome="translated",
+                    latency_ms=round((time.monotonic() - translation_started) * 1000),
+                )
+            except TranslationError as exc:
                 # User can request translation later through the established,
                 # separately cached translation endpoint.
-                pass
+                from services.translate_service import get_cache_identity
+                _record_metric(
+                    job, provider=exc.provider or "unknown", model=get_cache_identity().get("model") or "",
+                    stage="translation", outcome="translation_error",
+                    latency_ms=round((time.monotonic() - translation_started) * 1000),
+                    error_category=exc.code,
+                )
             finally:
                 heartbeat.stop()
             if heartbeat.lost:
@@ -416,7 +445,7 @@ def process_pending_once(limit: int = DEFAULT_LIMIT) -> dict[str, int]:
             # A storage/database/provider implementation error must release
             # the lease too.  Keep diagnostics categorical: neither audio
             # references nor recognized text may enter runtime logs.
-            outcome = _finish_failure(job, retryable=True, error="worker_exception")
+            outcome = _finish_failure(job, retryable=True, error="worker_exception", provider="voice_worker")
         if outcome in stats:
             stats[outcome] += 1
     return stats
