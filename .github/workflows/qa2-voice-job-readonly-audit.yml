@@ -1,0 +1,169 @@
+name: QA2 Voice Job Read-only Audit
+
+on:
+  push:
+    branches: [fix/qa2-voice-job-readonly-audit]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact deployed QA2 source SHA
+        required: true
+        type: string
+      cargo_id:
+        description: Controlled QA2 cargo UUID only
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Read one controlled voice job without content
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: qa2
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      # `workflow_dispatch` supplies the source explicitly.  A branch-push
+      # has no `inputs`, so it must use the audited QA2 candidate rather than
+      # fail before reaching the read-only SQL contract.
+      QA_SOURCE_SHA: ${{ inputs.source_sha || '0a4a63d008d60b707786bfbc172da5cd865d6b2f' }}
+      # The push path is deliberately limited to the one controlled QA2
+      # cargo created for this investigation. workflow_dispatch may override
+      # it only with another UUID after the audit workflow exists on default.
+      CONTROLLED_CARGO_ID: ${{ inputs.cargo_id || '49cd2e4a-83bb-4194-8b00-265bd0c27fbf' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Require controlled QA2 source and cargo
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "fix/qa2-voice-job-readonly-audit"
+          git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
+          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
+          [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CONTROLLED_CARGO_ID" =~ ^[0-9a-fA-F-]{36}$ ]]
+
+      - name: Verify read-only audit contract
+        run: node --test tests/frontend/test_qa2_voice_job_readonly_audit_workflow.mjs
+
+      - name: Install pinned SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
+      - name: Collect safe job and worker state
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST" && test -n "$SERVER_USER" && test -n "$SERVER_PASS" && test -n "$SERVER_SSH_KNOWN_HOSTS"
+          known_hosts_file="$RUNNER_TEMP/qa2-known-hosts"
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known_hosts_file"
+          chmod 600 "$known_hosts_file"
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o UserKnownHostsFile="$known_hosts_file" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" \
+            "CONTROLLED_CARGO_ID='$CONTROLLED_CARGO_ID' bash -s" > "$RUNNER_TEMP/voice-job-audit.txt" <<'REMOTE'
+          set -euo pipefail
+          export LC_ALL=C
+          [[ "$CONTROLLED_CARGO_ID" =~ ^[0-9a-fA-F-]{36}$ ]]
+          echo 'SECTION=voice-job'
+          python3 - <<'PY'
+          import os
+          import re
+          import sqlite3
+          from pathlib import Path
+
+          cargo_id = os.environ['CONTROLLED_CARGO_ID']
+          roots = (Path('/home/ubuntu/urtruck-qa2'),)
+          candidates = []
+          for root in roots:
+              candidates.extend(root.rglob('*.db'))
+          seen = set()
+          emitted = False
+          for candidate in candidates:
+              if candidate in seen or not candidate.is_file():
+                  continue
+              seen.add(candidate)
+              try:
+                  conn = sqlite3.connect(f'file:{candidate}?mode=ro', uri=True, timeout=2)
+                  conn.execute('PRAGMA query_only=ON')
+                  table = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='voice_processing_jobs'").fetchone()
+                  if not table:
+                      conn.close(); continue
+                  rows = conn.execute('''
+                    SELECT j.id,j.message_id,j.status,j.created_at,j.locked_at,j.locked_by,
+                           j.attempt_count,j.next_retry_at,j.expires_at,j.last_error,
+                           m.voice_duration
+                    FROM voice_processing_jobs j
+                    JOIN chat_messages m ON m.id=j.message_id
+                    JOIN chat_rooms r ON r.id=m.room_id
+                    WHERE r.cargo_id=? AND m.is_voice=1
+                    ORDER BY j.id DESC LIMIT 12
+                  ''', (cargo_id,)).fetchall()
+                  for row in rows:
+                      job_id, message_id, status, created_at, locked_at, locked_by, attempts, next_retry, expires, error, duration = row
+                      if not re.fullmatch(r'[a-z_]+', str(status or '')):
+                          continue
+                      safe_error = str(error or '') if re.fullmatch(r'[A-Za-z0-9_:-]{0,120}', str(error or '')) else 'redacted'
+                      worker = 'present' if locked_by else 'none'
+                      print('JOB id=%s message_id=%s status=%s created_at=%s lease_at=%s lease_worker=%s attempts=%s next_retry_at=%s expires_at=%s last_error=%s duration_seconds=%s' % (
+                          job_id, message_id, status, created_at or 'none', locked_at or 'none', worker,
+                          attempts, next_retry or 'none', expires or 'none', safe_error or 'none', duration or 0,
+                      ))
+                      metric_columns = {item[1] for item in conn.execute("PRAGMA table_info(voice_processing_metrics)")}
+                      metric_stage = "stage" if "stage" in metric_columns else "'stt'"
+                      metrics = conn.execute(f'''
+                        SELECT provider,model,latency_ms,audio_duration_seconds,usage_input_tokens,
+                               usage_output_tokens,usage_total_tokens,outcome,fallback,error_category,created_at,
+                               {metric_stage} AS stage
+                        FROM voice_processing_metrics WHERE job_id=? ORDER BY id
+                      ''', (job_id,)).fetchall()
+                      for metric in metrics:
+                          provider, model, latency, audio_seconds, in_tokens, out_tokens, total_tokens, outcome, fallback, category, event_at, stage = metric
+                          if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,120}', str(provider or 'unknown')):
+                              provider = 'redacted'
+                          if not re.fullmatch(r'[A-Za-z0-9_.:-]{0,180}', str(model or '')):
+                              model = 'redacted'
+                          if not re.fullmatch(r'[A-Za-z_]{1,64}', str(outcome or 'unknown')):
+                              outcome = 'redacted'
+                          if not re.fullmatch(r'[A-Za-z0-9_:-]{0,120}', str(category or '')):
+                              category = 'redacted'
+                          if not re.fullmatch(r'[a-z_]{1,32}', str(stage or '')):
+                              stage = 'redacted'
+                          print('METRIC job_id=%s provider=%s model=%s latency_ms=%s duration_seconds=%s input_tokens=%s output_tokens=%s total_tokens=%s stage=%s outcome=%s fallback=%s error_category=%s created_at=%s' % (
+                              job_id, provider, model or 'none', latency if latency is not None else 'none',
+                              audio_seconds if audio_seconds is not None else 'none', in_tokens if in_tokens is not None else 'none',
+                              out_tokens if out_tokens is not None else 'none', total_tokens if total_tokens is not None else 'none',
+                              stage, outcome, int(bool(fallback)), category or 'none', event_at or 'none',
+                          ))
+                      emitted = True
+                  conn.close()
+              except (OSError, sqlite3.Error):
+                  continue
+          if not emitted:
+              print('JOB none')
+          PY
+          echo 'SECTION=worker'
+          sudo -n systemctl show urtruck-qa2.service -p ActiveState -p SubState -p MainPID -p ExecMainStartTimestamp --no-pager
+          sudo -n journalctl -u urtruck-qa2.service --since '2026-10-02 10:00:00 UTC' --no-pager 2>/dev/null \
+            | grep -E '^.*\[(voice-stt|stt)\] (picked=[0-9]+ ready=[0-9]+ failed_retryable=[0-9]+ failed_permanent=[0-9]+ stale=[0-9]+|provider=(openai|local_ai) result=(success|[A-Z_]+)( fallback=(disabled|local_ai)| selected=local_fallback)?)$' \
+            | tail -200 || true
+          REMOTE
+
+      - name: Publish only safe categorical evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/sanitize_qa2_voice_job_audit.py "$RUNNER_TEMP/voice-job-audit.txt" "$RUNNER_TEMP/voice-job-audit"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qa2-voice-job-readonly-audit-${{ env.QA_SOURCE_SHA }}
+          path: ${{ runner.temp }}/voice-job-audit
+          retention-days: 7
