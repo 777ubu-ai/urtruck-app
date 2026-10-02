@@ -87,6 +87,16 @@ def test_plate_only_short_sentence_keeps_context_and_plate_byte_for_byte():
     assert translated == "卡车。 A123AA01"
 
 
+def test_exact_qa2_english_truck_regressions_repair_only_known_prose():
+    """Observed NLLB hallucination must not reach the user or alter the plate."""
+    assert repair_logistics_translation(
+        "Truck.", "卡车这里是我的家。", "en", "zh"
+    ) == "卡车。"
+    assert repair_logistics_translation(
+        "Truck is at Bakhty.", "这里是我的家。", "en", "zh"
+    ) == "卡车在巴克图。"
+
+
 def test_container_and_document_identifiers_are_opaque_tokens_too():
     source = "KZ 777 ABC 02; MSCU1234567; TGHU7654321; 20GP; 40HC; CMR-2026-001; INV-77821; PL-2026-09."
     protected = protect(source)
