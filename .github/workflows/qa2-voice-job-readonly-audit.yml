@@ -1,6 +1,8 @@
 name: QA2 Voice Job Read-only Audit
 
 on:
+  push:
+    branches: [fix/qa2-voice-job-readonly-audit]
   workflow_dispatch:
     inputs:
       source_sha:
@@ -28,7 +30,10 @@ jobs:
       SERVER_PASS: ${{ secrets.SERVER_PASS }}
       SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
       QA_SOURCE_SHA: ${{ inputs.source_sha }}
-      CONTROLLED_CARGO_ID: ${{ inputs.cargo_id }}
+      # The push path is deliberately limited to the one controlled QA2
+      # cargo created for this investigation. workflow_dispatch may override
+      # it only with another UUID after the audit workflow exists on default.
+      CONTROLLED_CARGO_ID: ${{ inputs.cargo_id || '49cd2e4a-83bb-4194-8b00-265bd0c27fbf' }}
     steps:
       - uses: actions/checkout@v4
         with:

@@ -7,6 +7,7 @@ const sanitizer = fs.readFileSync('scripts/sanitize_qa2_voice_job_audit.py', 'ut
 
 test('voice audit is manually dispatched, exact-source and read-only', () => {
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /push:\n\s+branches: \[fix\/qa2-voice-job-readonly-audit\]/);
   assert.match(workflow, /fix\/qa2-voice-job-readonly-audit/);
   assert.match(workflow, /git merge-base --is-ancestor/);
   assert.match(workflow, /PRAGMA query_only=ON/);
