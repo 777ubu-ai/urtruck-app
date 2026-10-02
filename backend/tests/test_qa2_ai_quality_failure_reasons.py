@@ -39,9 +39,46 @@ def test_changed_or_dropped_plate_marker_fails_closed_instead_of_guessing():
 
 
 def test_container_and_document_identifiers_are_opaque_tokens_too():
-    protected = protect("Контейнер 20GP, документ CMR-2026-001.")
-    assert protected.text == "Контейнер URTRUCKPROTECTEDTOKEN0X, документ URTRUCKPROTECTEDTOKEN1X."
-    assert restore("集装箱 URTRUCKPROTECTEDTOKEN0X，文件 URTRUCKPROTECTEDTOKEN1X。", protected) == "集装箱 20GP，文件 CMR-2026-001。"
+    source = "KZ 777 ABC 02; MSCU1234567; TGHU7654321; 20GP; 40HC; CMR-2026-001; INV-77821; PL-2026-09."
+    protected = protect(source)
+    assert protected.text == (
+        "URTRUCKPROTECTEDTOKEN0X; URTRUCKPROTECTEDTOKEN1X; URTRUCKPROTECTEDTOKEN2X; "
+        "URTRUCKPROTECTEDTOKEN3X; URTRUCKPROTECTEDTOKEN4X; URTRUCKPROTECTEDTOKEN5X; "
+        "URTRUCKPROTECTEDTOKEN6X; URTRUCKPROTECTEDTOKEN7X."
+    )
+    translated = (
+        "URTRUCKPROTECTEDTOKEN0X；URTRUCKPROTECTEDTOKEN1X；URTRUCKPROTECTEDTOKEN2X；"
+        "URTRUCKPROTECTEDTOKEN3X；URTRUCKPROTECTEDTOKEN4X；URTRUCKPROTECTEDTOKEN5X；"
+        "URTRUCKPROTECTEDTOKEN6X；URTRUCKPROTECTEDTOKEN7X。"
+    )
+    assert restore(translated, protected) == (
+        "KZ 777 ABC 02；MSCU1234567；TGHU7654321；20GP；40HC；CMR-2026-001；INV-77821；PL-2026-09。"
+    )
+
+
+def test_structured_money_weight_volume_range_date_and_time_keep_their_facts():
+    source = "Цена 12 500 USD, 0.4%, 18 000 кг, 90 м³, 5–10 машин, 02.10.2026 в 15:30."
+    good = "价格 12500 USD、0.4%、18000 千克、90 立方米、5–10 辆车，2026年10月2日 15:30。"
+    bad = "价格 12500 USD、0.95%、18000 千克、105 立方米、5–10 辆车，2026年10月2日 15:30。"
+    assert translation_quality_failures(source, good, "ru", "zh") == []
+    assert "numeric_facts_changed" in translation_quality_failures(source, bad, "ru", "zh")
+
+
+def test_textual_day_month_and_weekday_are_compared_as_logistics_facts():
+    assert translation_quality_failures("Погрузка 2 октября.", "装货日期为10月2日。", "ru", "zh") == []
+    assert "numeric_facts_changed" in translation_quality_failures("Погрузка 2 октября.", "装货日期为10月3日。", "ru", "zh")
+    assert translation_quality_failures("Monday loading.", "星期一装货。", "en", "zh") == []
+    assert "weekday_missing:monday" in translation_quality_failures("Monday loading.", "星期二装货。", "en", "zh")
+
+
+def test_allowlisted_cross_border_locations_cannot_silently_disappear():
+    source = "Алматы → Урумчи через Бахты и Алашанькоу, Kazakhstan, Germany."
+    good = "阿拉木图→乌鲁木齐，经巴克图和阿拉山口，哈萨克斯坦，德国。"
+    missing = "阿拉木图→乌鲁木齐。"
+    assert translation_quality_failures(source, good, "ru", "zh") == []
+    failures = translation_quality_failures(source, missing, "ru", "zh")
+    for place in ("bakhty", "alashankou", "kazakhstan", "germany"):
+        assert f"city_missing:{place}" in failures
 
 
 def test_failure_reasons_explain_changed_numbers_weight_city_and_body_type():

@@ -10,12 +10,17 @@ from dataclasses import dataclass
 import re
 
 
-# Confirmed QA2 regression: ``A123AA01`` was returned as ``123A01``.  The
-# pattern deliberately targets only compact, opaque alphanumeric identifiers
-# (plates, container IDs and document codes), not ordinary prose or amounts.
+# Confirmed QA2 regression: ``A123AA01`` was returned as ``123A01``.  Each
+# alternative is a known logistics identifier shape; intentionally do not add
+# a generic alphanumeric-word pattern, which would mask ordinary chat text.
 _IDENTIFIER = re.compile(
-    r"(?<![A-Za-z0-9])(?:[A-Z]{1,3}\s*)?\d{1,4}\s*[A-Z]{1,4}\d{0,2}(?![A-Za-z0-9])"
-    r"|(?<![A-Za-z0-9])[A-Z]{2,8}-\d{2,8}(?:-\d{1,8})*(?![A-Za-z0-9])",
+    r"(?<![A-Za-z0-9])(?:"
+    r"[A-Z]{4}\d{7}"                          # ISO 6346 container: MSCU1234567
+    r"|[A-Z]{1,3}\s+\d{1,4}\s+[A-Z]{1,4}(?:\s+\d{1,2})?"  # KZ 777 ABC 02
+    r"|[A-Z]\d{3}[A-Z]{2}\d{2}"              # A123AA01
+    r"|(?:20|40)(?:GP|HC)"                     # container type
+    r"|[A-Z]{2,8}-\d{2,8}(?:-\d{1,8})*"       # CMR-2026-001
+    r")(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
 

@@ -87,6 +87,20 @@ CITY_TERMS = {
     "khorgos": {"ru": ("хоргос",), "zh": ("霍尔果斯",), "en": ("khorgos",), "kk": ("қорғас", "хоргос")},
     "dostyk": {"ru": ("достык",), "zh": ("多斯特克",), "en": ("dostyk",), "kk": ("достық", "достык")},
     "urumqi": {"ru": ("урумчи",), "zh": ("乌鲁木齐",), "en": ("urumqi", "urumchi"), "kk": ("үрімжі", "урумчи")},
+    "bakhty": {"ru": ("бахты",), "zh": ("巴克图",), "en": ("bakhty",), "kk": ("бақты", "бахты")},
+    "alashankou": {"ru": ("алашанькоу",), "zh": ("阿拉山口",), "en": ("alashankou",), "kk": ("алашанькоу",)},
+    "kazakhstan": {"ru": ("казахстан",), "zh": ("哈萨克斯坦",), "en": ("kazakhstan",), "kk": ("қазақстан", "казахстан")},
+    "germany": {"ru": ("германия",), "zh": ("德国",), "en": ("germany",), "kk": ("германия",)},
+}
+
+WEEKDAY_TERMS = {
+    "monday": {"ru": ("понедельник",), "zh": ("星期一", "周一"), "en": ("monday",), "kk": ("дүйсенбі",)},
+    "tuesday": {"ru": ("вторник",), "zh": ("星期二", "周二"), "en": ("tuesday",), "kk": ("сейсенбі",)},
+    "wednesday": {"ru": ("среда",), "zh": ("星期三", "周三"), "en": ("wednesday",), "kk": ("сәрсенбі",)},
+    "thursday": {"ru": ("четверг",), "zh": ("星期四", "周四"), "en": ("thursday",), "kk": ("бейсенбі",)},
+    "friday": {"ru": ("пятница",), "zh": ("星期五", "周五"), "en": ("friday",), "kk": ("жұма",)},
+    "saturday": {"ru": ("суббота",), "zh": ("星期六", "周六"), "en": ("saturday",), "kk": ("сенбі",)},
+    "sunday": {"ru": ("воскресенье",), "zh": ("星期日", "星期天", "周日"), "en": ("sunday",), "kk": ("жексенбі",)},
 }
 
 # NLLB's observed transliteration for Almaty is a city-preserving error that
@@ -199,7 +213,21 @@ def _target_weight(text: str, target: str) -> bool:
 
 
 def _city_keys(text: str, language: str) -> list[str]:
-    return [key for key, variants in CITY_TERMS.items() if _contains_any(text, variants.get(language, ()))]
+    # Logistics chat regularly mixes a Russian sentence with an English
+    # country/city spelling.  These are a small explicit vocabulary, so look
+    # across its known aliases rather than silently dropping the location
+    # merely because the message-level language is RU or ZH.
+    return [
+        key for key, variants in CITY_TERMS.items()
+        if _contains_any(text, tuple(alias for values in variants.values() for alias in values))
+    ]
+
+
+def _weekday_keys(text: str, language: str) -> list[str]:
+    return [
+        key for key, variants in WEEKDAY_TERMS.items()
+        if _contains_any(text, tuple(alias for values in variants.values() for alias in values))
+    ]
 
 
 def _append_before_punctuation(text: str, addition: str) -> str:
@@ -256,12 +284,33 @@ def _numeric_facts(text: str) -> tuple[list[tuple[int, int]], list[tuple[int, in
     remaining = re.sub(r"(?<!\d)(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?!\d)", replace_dmy, remaining)
     remaining = re.sub(r"(?<!\d)(\d{4})年(\d{1,2})月(\d{1,2})日?(?!\d)", replace_ymd, remaining)
     month_names = {"january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12}
+    ru_month_names = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6, "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
 
     def replace_month_name(match: re.Match) -> str:
         dates.append((int(match.group(3)), month_names[match.group(1).casefold()], int(match.group(2))))
         return " "
 
     remaining = re.sub(r"\b(" + "|".join(month_names) + r")\s+(\d{1,2}),?\s+(\d{4})\b", replace_month_name, remaining, flags=re.IGNORECASE)
+
+    # A source may omit the year (``2 октября``), as may a correct Chinese
+    # translation (``10月2日``).  Preserve the day/month fact with a zero year
+    # sentinel so those equivalent forms do not become a false quality FAIL.
+    def replace_ru_day_month(match: re.Match) -> str:
+        dates.append((0, ru_month_names[match.group(2).casefold()], int(match.group(1))))
+        return " "
+
+    remaining = re.sub(
+        r"(?<!\d)(\d{1,2})\s+(" + "|".join(ru_month_names) + r")(?![\w])",
+        replace_ru_day_month,
+        remaining,
+        flags=re.IGNORECASE,
+    )
+
+    def replace_chinese_day_month(match: re.Match) -> str:
+        dates.append((0, int(match.group(1)), int(match.group(2))))
+        return " "
+
+    remaining = re.sub(r"(?<!\d)(\d{1,2})月(\d{1,2})日?(?!\d)", replace_chinese_day_month, remaining)
 
     def replace_chinese_clock(match: re.Match) -> str:
         period, hour_text, minute_text = match.groups()
@@ -607,6 +656,9 @@ def translation_quality_failures(source_text: str, translated_text: str, source:
     for city in _city_keys(source_text, source):
         if not _contains_any(translated_text, CITY_TERMS[city].get(target, ())):
             failures.append(f"city_missing:{city}")
+    for weekday in _weekday_keys(source_text, source):
+        if not _contains_any(translated_text, WEEKDAY_TERMS[weekday].get(target, ())):
+            failures.append(f"weekday_missing:{weekday}")
     return list(dict.fromkeys(failures))
 
 
