@@ -19,6 +19,24 @@ def test_uses_only_gpt_4o_mini_transcribe(monkeypatch):
         assert error.code == "TRANSCRIPTION_UNAVAILABLE"
 
 
+def test_openai_does_not_treat_ui_locale_as_spoken_language(monkeypatch, tmp_path):
+    _qa2_openai(monkeypatch)
+    monkeypatch.setenv("QA2_OPENAI_STT_TIMEOUT_SECONDS", "8")
+    seen = {}
+
+    class Response:
+        def raise_for_status(self): pass
+        def json(self): return {"text": "русская речь", "usage": {"total_tokens": 1}}
+
+    monkeypatch.setattr(stt.httpx, "post", lambda *_a, **kw: seen.update(kw) or Response())
+    audio = tmp_path / "voice.m4a"
+    audio.write_bytes(b"test")
+    result = stt._transcribe_openai(str(audio), filename="voice.m4a", language="zh", api_key="test")
+    assert "language" not in seen["data"]
+    assert result["source_lang"] == "auto"
+    assert seen["timeout"] == 8
+
+
 def test_openai_success_does_not_start_local_provider(monkeypatch):
     _qa2_openai(monkeypatch)
     monkeypatch.setenv("TRANSCRIBE_FALLBACK_PROVIDER", "local_ai")
