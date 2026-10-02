@@ -72,6 +72,38 @@ def _api_key() -> str:
     return os.getenv("OPENAI_API_KEY", "").strip()
 
 
+def get_info() -> dict:
+    """Safe QA diagnostics: configuration identity, never secret material."""
+    configured_model = os.getenv("TRANSCRIBE_MODEL", OPENAI_STT_MODEL).strip() or OPENAI_STT_MODEL
+    raw_timeout = os.getenv("QA2_OPENAI_STT_TIMEOUT_SECONDS", "").strip()
+    try:
+        timeout = float(raw_timeout)
+    except ValueError:
+        timeout = None
+    return {
+        "provider": _provider(),
+        "model": configured_model,
+        "model_allowed": configured_model == OPENAI_STT_MODEL,
+        "fallback_provider": os.getenv("TRANSCRIBE_FALLBACK_PROVIDER", "").strip().lower() or None,
+        "timeout_seconds": timeout,
+        "key_configured": bool(_api_key()),
+    }
+
+
+def _openai_timeout_seconds() -> float:
+    """QA2 must set this from the measured short-voice latency budget."""
+    raw = os.getenv("QA2_OPENAI_STT_TIMEOUT_SECONDS", "").strip()
+    if not raw and (os.getenv("APP_ENV") == "test" or os.getenv("ENV") == "test"):
+        return 8.0
+    try:
+        value = float(raw)
+    except ValueError:
+        value = 0
+    if not 0 < value <= 10:
+        raise SpeechToTextError("Распознавание голоса не настроено", provider="openai", code="TRANSCRIPTION_UNAVAILABLE")
+    return value
+
+
 def _is_quota_exhausted(body: str) -> bool:
     """Distinguish a transient 429 rate limit from a billing stop.
 
@@ -180,9 +212,9 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
         "model": _model(),
         "response_format": "json",
     }
-    normalized_lang = _normalize_lang_code(language)
-    if normalized_lang:
-        form["language"] = normalized_lang
+    # UI locale is not evidence of the language actually spoken.  Do not send
+    # it as an OpenAI hint and do not let it poison NLLB's source_lang.
+    timeout = _openai_timeout_seconds()
     try:
         with open(path, "rb") as audio_file:
             response = httpx.post(
@@ -190,7 +222,7 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
                 headers={"Authorization": f"Bearer {api_key}"},
                 data=form,
                 files={"file": (file_name, audio_file, mime)},
-                timeout=60.0,
+                timeout=timeout,
             )
         response.raise_for_status()
     except httpx.TimeoutException as exc:
@@ -242,15 +274,16 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
         print("[stt] provider returned malformed success response", flush=True)
         raise SpeechToTextError("Распознавание голоса вернуло некорректный ответ", provider="openai", code="TRANSCRIPTION_FAILED") from exc
     transcript = str(data.get("text") or "").strip()
-    detected_lang = None
-    languages = data.get("languages")
-    if isinstance(languages, list) and languages:
-      first = languages[0] or {}
-      if isinstance(first, dict):
-          detected_lang = _normalize_lang_code(first.get("code"))
+    # The documented JSON response for this model guarantees text/usage, not
+    # a detected language. Accept a future explicit field but otherwise retain
+    # ``auto`` — never infer it from the participant's UI preference.
+    detected_lang = _normalize_lang_code(data.get("language"))
+    if not detected_lang and isinstance(data.get("languages"), list):
+        first = data["languages"][0] if data["languages"] else None
+        detected_lang = _normalize_lang_code(first.get("code")) if isinstance(first, dict) else None
     return {
         "transcript_text": transcript,
         "provider": "openai",
-        "source_lang": detected_lang or normalized_lang or "auto",
+        "source_lang": detected_lang or "auto",
         "usage": data.get("usage"),
     }

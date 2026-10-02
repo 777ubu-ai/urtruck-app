@@ -20,7 +20,6 @@ from database.db import get_conn
 
 MAX_ATTEMPTS = 5
 LEASE_SECONDS = 120
-CACHE_SECONDS = 7 * 24 * 60 * 60
 DEFAULT_LIMIT = 1
 WORKER_ID = f"voice_stt:{os.getpid()}"
 
@@ -44,6 +43,17 @@ def _retry_delay(attempt: int) -> int:
     return random.SystemRandom().randint(max(10, base - spread), min(300, base + spread))
 
 
+def _speech_language(value: Optional[str]) -> Optional[str]:
+    """Return an actual language hint, never the sentinel used for detection.
+
+    ``auto`` is an internal marker for "the provider did not report a
+    language".  It is not an ISO language and must never be sent to NLLB (or
+    used as a substitute for the sender's UI locale).
+    """
+    normalized = str(value or "").strip().lower()
+    return None if normalized in {"", "auto", "null", "none"} else normalized
+
+
 def enqueue_new_voice_in_transaction(
     connection,
     message_id: int,
@@ -65,7 +75,7 @@ def enqueue_new_voice_in_transaction(
         VALUES (?, ?, ?, ?, ?, 'queued', datetime(CURRENT_TIMESTAMP, '+7 days'))
         ON CONFLICT(message_id, audio_version, model_version) DO NOTHING
         """,
-        (int(message_id), audio_version(audio_ref), model_version(), source_lang, target_lang),
+        (int(message_id), audio_version(audio_ref), model_version(), _speech_language(source_lang), target_lang),
     )
     return row.rowcount == 1
 
@@ -100,8 +110,8 @@ def _reclaim_and_expire(c) -> None:
         """
         UPDATE voice_processing_jobs
         SET status='expired', locked_at=NULL, locked_by=NULL, last_error='cache_expired'
-        WHERE status IN ('queued','processing','ready','failed_retryable')
-          AND expires_at <= CURRENT_TIMESTAMP
+        WHERE status IN ('queued','processing','failed_retryable')
+          AND expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP
         """
     )
 
@@ -205,6 +215,42 @@ def _participant_language(user_id: str) -> Optional[str]:
     return str(value or "").lower() or None
 
 
+def _record_metric(
+    job: dict[str, Any], *, provider: str, outcome: str, latency_ms: Optional[int] = None,
+    audio_duration_seconds: Optional[int] = None, usage: Any = None, fallback: bool = False,
+    error_category: Optional[str] = None,
+) -> None:
+    """Persist only numerical/categorical QA evidence, never conversation data."""
+    usage = usage if isinstance(usage, dict) else {}
+
+    def integer(name: str) -> Optional[int]:
+        try:
+            return int(usage[name]) if usage.get(name) is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        with get_conn() as c:
+            c.execute(
+                """INSERT INTO voice_processing_metrics(
+                     job_id,message_id,provider,model,latency_ms,audio_duration_seconds,
+                     usage_input_tokens,usage_output_tokens,usage_total_tokens,
+                     outcome,fallback,error_category
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    job.get("id"), job.get("message_id"), str(provider or "unknown")[:120],
+                    str(job.get("model_version") or "")[:180], latency_ms,
+                    audio_duration_seconds, integer("input_tokens"), integer("output_tokens"),
+                    integer("total_tokens"), str(outcome)[:64], int(bool(fallback)),
+                    str(error_category)[:120] if error_category else None,
+                ),
+            )
+    except Exception:
+        # Observability must never alter the durable job outcome.  Do not log
+        # exception text: a provider/storage implementation can reflect data.
+        return
+
+
 def _finish_failure(job: dict[str, Any], *, retryable: bool, error: str) -> str:
     attempt = int(job.get("attempt_count") or 0) + 1
     with get_conn() as c:
@@ -217,13 +263,17 @@ def _finish_failure(job: dict[str, Any], *, retryable: bool, error: str) -> str:
                    last_error=? WHERE id=? AND status='processing' AND locked_by=?""",
                 (attempt, f"+{_retry_delay(attempt)} seconds", error[:120], job["id"], job["lease_id"]),
             )
-            return "failed_retryable" if updated.rowcount == 1 else "stale"
-        updated = c.execute(
-            """UPDATE voice_processing_jobs SET status='failed_permanent', attempt_count=?,
-               locked_at=NULL, locked_by=NULL, last_error=? WHERE id=? AND status='processing' AND locked_by=?""",
-            (attempt, error[:120], job["id"], job["lease_id"]),
-        )
-    return "failed_permanent" if updated.rowcount == 1 else "stale"
+            outcome = "failed_retryable" if updated.rowcount == 1 else "stale"
+        else:
+            updated = c.execute(
+                """UPDATE voice_processing_jobs SET status='failed_permanent', attempt_count=?,
+                   locked_at=NULL, locked_by=NULL, last_error=? WHERE id=? AND status='processing' AND locked_by=?""",
+                (attempt, error[:120], job["id"], job["lease_id"]),
+            )
+            outcome = "failed_permanent" if updated.rowcount == 1 else "stale"
+    if outcome != "stale":
+        _record_metric(job, provider="openai", outcome=outcome, error_category=error)
+    return outcome
 
 
 def _process(job: dict[str, Any]) -> str:
@@ -232,7 +282,7 @@ def _process(job: dict[str, Any]) -> str:
 
     with get_conn() as c:
         message = c.execute(
-            "SELECT id,sender_id,photo_url,voice_transcript,voice_transcript_lang,voice_transcript_provider "
+            "SELECT id,sender_id,photo_url,voice_duration,voice_transcript,voice_transcript_lang,voice_transcript_provider "
             "FROM chat_messages WHERE id=? AND is_voice=1",
             (job["message_id"],),
         ).fetchone()
@@ -249,11 +299,15 @@ def _process(job: dict[str, Any]) -> str:
         heartbeat = _LeaseHeartbeat(job)
         if not heartbeat.start():
             return "stale"
+        started = time.monotonic()
         try:
             guessed_name = Path(str(message["photo_url"])).name or f"voice-{job['message_id']}.m4a"
             transcript = transcribe_audio_ref(
                 message["photo_url"], filename=guessed_name,
-                language=job.get("source_lang") or _participant_language(message["sender_id"]),
+                # A participant locale is UI preference, not evidence of
+                # spoken language.  Let the provider detect it when the job
+                # has no explicit, verified language.
+                language=_speech_language(job.get("source_lang")),
             )
         except SpeechToTextError as exc:
             heartbeat.stop()
@@ -267,6 +321,12 @@ def _process(job: dict[str, Any]) -> str:
             return _finish_failure(job, retryable=False, error="TRANSCRIPTION_FAILED")
         transcript_lang = str(transcript.get("source_lang") or "auto").strip().lower()
         transcript_provider = str(transcript.get("provider") or "unknown")[:120]
+        _record_metric(
+            job, provider=transcript_provider, outcome="transcribed",
+            latency_ms=round((time.monotonic() - started) * 1000),
+            audio_duration_seconds=message["voice_duration"], usage=transcript.get("usage"),
+            fallback=transcript_provider.endswith("_fallback"),
+        )
         with get_conn() as c:
             if not _lease_is_current(c, job):
                 return "stale"
@@ -295,7 +355,10 @@ def _process(job: dict[str, Any]) -> str:
             if not heartbeat.start():
                 return "stale"
             try:
-                translated = translate_text(transcript_text, target_lang, source_lang=transcript_lang)
+                translated = translate_text(
+                    transcript_text, target_lang,
+                    source_lang=_speech_language(transcript_lang),
+                )
                 with get_conn() as c:
                     if not _lease_is_current(c, job):
                         return "stale"
@@ -317,7 +380,11 @@ def _process(job: dict[str, Any]) -> str:
             return "stale"
         updated = c.execute(
             """UPDATE voice_processing_jobs SET status='ready', ready_at=CURRENT_TIMESTAMP,
-               locked_at=NULL, locked_by=NULL, force_reprocess=0, last_error=NULL
+               -- Legacy SQLite schemas made expires_at NOT NULL.  This
+               -- sentinel is never consulted for ready rows and keeps those
+               -- existing databases compatible without rebuilding them.
+               expires_at='9999-12-31 23:59:59', locked_at=NULL, locked_by=NULL,
+               force_reprocess=0, last_error=NULL
                WHERE id=? AND status='processing' AND locked_by=?""",
             (job["id"], job["lease_id"]),
         )

@@ -191,8 +191,15 @@ def _ensure_columns(c):
                 c.execute(f"ALTER TABLE voice_processing_jobs ADD COLUMN {name} {definition}")
         c.execute(
             "UPDATE voice_processing_jobs SET next_retry_at=COALESCE(next_retry_at, created_at, CURRENT_TIMESTAMP), "
-            "expires_at=COALESCE(expires_at, datetime(CURRENT_TIMESTAMP, '+7 days'))"
+            "expires_at=COALESCE(expires_at, datetime(CURRENT_TIMESTAMP, '+7 days')) "
+            "WHERE status <> 'ready'"
         )
+        # A ready transcript is message data, not a retry-cache entry.  This
+        # additive migration preserves every historic message/audio/result.
+        # Older SQLite schemas declared expires_at NOT NULL, so a far-future
+        # compatibility sentinel is used instead of rebuilding their table;
+        # all readers/workers explicitly ignore expiry for status=ready.
+        c.execute("UPDATE voice_processing_jobs SET expires_at='9999-12-31 23:59:59' WHERE status='ready'")
         c.execute(
             "CREATE INDEX IF NOT EXISTS idx_voice_processing_ready "
             "ON voice_processing_jobs(status, next_retry_at, expires_at)"
@@ -996,7 +1003,10 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
                     (m["id"],),
                 ).fetchone()
                 now = status_conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
-            status = "expired" if job and job["expires_at"] <= now else (job["status"] if job else None)
+            status = (
+                "expired" if job and job["status"] != "ready" and job["expires_at"]
+                and job["expires_at"] <= now else (job["status"] if job else None)
+            )
             m["voice_processing_status"] = status or ("ready" if m.get("voice_transcript") else "unavailable")
             m["voice_transcript_ready"] = m["voice_processing_status"] == "ready"
             m.pop("voice_transcript", None)
@@ -1039,7 +1049,8 @@ def voice_text(message_id: int, target_lang: Optional[str] = None, user=Depends(
     """Reveal an already-produced voice text only after an explicit request.
 
     Polling `/messages` never returns transcript or translation content. This
-    endpoint does not run STT/translation; it serves a valid seven-day cache.
+    endpoint does not run STT/translation; it serves the message's durable
+    ready result.  The seven-day TTL applies only to unfinished jobs.
     """
     message = _voice_message_for_participant(message_id, user["id"])
     _ensure_translation_schema()
@@ -1050,7 +1061,7 @@ def voice_text(message_id: int, target_lang: Optional[str] = None, user=Depends(
                ORDER BY id DESC LIMIT 1""",
             (message_id,),
         ).fetchone()
-        if job and job["expires_at"] <= c.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]:
+        if job and job["status"] != "ready" and job["expires_at"] and job["expires_at"] <= c.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]:
             status = "expired"
         else:
             status = job["status"] if job else ("ready" if message["voice_transcript"] else None)
@@ -1153,6 +1164,13 @@ def unread_count(user=Depends(require_level(1))):
 def translate_info():
     """Debug: какой провайдер, есть ли ключ. Сам ключ НЕ показывает."""
     from services.translate_service import get_info
+    return get_info()
+
+
+@chat_router.get("/transcribe/info")
+def transcribe_info():
+    """Safe QA STT configuration identity; intentionally exposes no key/text."""
+    from services.speech_to_text_service import get_info
     return get_info()
 
 @chat_router.post("/photo")

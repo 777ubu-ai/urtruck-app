@@ -271,6 +271,39 @@ def test_06b_history_hides_result_until_authorized_explicit_reveal():
     assert shown.json()["transcript_text"] == "hello world"
 
 
+def test_06c_ready_result_survives_eight_days_without_another_openai_call(monkeypatch):
+    """Ready transcripts/translations are durable message data, not a TTL cache."""
+    calls = {"n": 0}
+
+    def must_not_run(*_args, **_kwargs):
+        calls["n"] += 1
+        raise AssertionError("reading a durable result must not call STT")
+
+    from services import speech_to_text_service
+    monkeypatch.setattr(speech_to_text_service, "transcribe_audio_ref", must_not_run)
+    with get_conn() as c:
+        c.execute(
+            "UPDATE voice_processing_jobs SET status='ready', ready_at=datetime('now','-8 days'), "
+            "expires_at=datetime('now','-1 second') WHERE message_id=?",
+            (STATE["message_id"],),
+        )
+        c.execute(
+            "INSERT OR REPLACE INTO chat_translations(message_id,target_lang,translated_text,provider) VALUES(?,?,?,?)",
+            (STATE["message_id"], "zh", "controlled translation", "local_nllb_1_3b"),
+        )
+
+    _as(B)
+    shown = client.get(f"/api/v1/chat/voice/{STATE['message_id']}/text?target_lang=zh")
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["status"] == "ready"
+    assert shown.json()["translated_text"] == "controlled translation"
+    assert calls["n"] == 0
+
+    _as(C)
+    outsider = client.get(f"/api/v1/chat/voice/{STATE['message_id']}/text")
+    assert outsider.status_code == 403, outsider.text
+
+
 # ─────────────── 5. concurrent-claim race + stale-claim self-heal ──────────
 
 def test_07_concurrent_claim_returns_409_and_stale_claim_self_heals():

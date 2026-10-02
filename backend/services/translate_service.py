@@ -103,7 +103,7 @@ def get_cache_identity():
 
 def _normalize_lang_code(value: str | None) -> str | None:
     raw = str(value or "").strip().lower()
-    if not raw:
+    if raw in {"", "auto", "null", "none"}:
         return None
     if raw in LANG_ALIAS:
         return LANG_ALIAS[raw]

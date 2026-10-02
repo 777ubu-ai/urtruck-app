@@ -65,12 +65,37 @@ CREATE TABLE IF NOT EXISTS voice_processing_jobs (
   locked_at TEXT,
   locked_by TEXT,
   force_reprocess INTEGER NOT NULL DEFAULT 0,
-  expires_at TEXT NOT NULL,
+  -- Only queued/processing/retryable jobs expire.  A ready result belongs to
+  -- its chat message and uses a never-expire legacy-compatible sentinel.
+  expires_at TEXT,
   last_error TEXT,
   ready_at TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(message_id, audio_version, model_version)
 );
+
+-- Operational STT evidence deliberately excludes raw audio, transcript,
+-- translation and provider payloads.  It is separate from message content so
+-- bounded QA2 cost/latency reporting cannot become a conversation dataset.
+CREATE TABLE IF NOT EXISTS voice_processing_metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER,
+  message_id INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT,
+  latency_ms INTEGER,
+  audio_duration_seconds INTEGER,
+  usage_input_tokens INTEGER,
+  usage_output_tokens INTEGER,
+  usage_total_tokens INTEGER,
+  estimated_cost_microusd INTEGER,
+  outcome TEXT NOT NULL,
+  fallback INTEGER NOT NULL DEFAULT 0,
+  error_category TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_voice_processing_metrics_message
+  ON voice_processing_metrics(message_id, created_at);
 -- The ready index is created by ``api.chat._ensure_columns`` after additive
 -- upgrades have supplied all columns on a database created by an older queue
 -- revision.  Keeping it out of this script avoids startup failure when an
