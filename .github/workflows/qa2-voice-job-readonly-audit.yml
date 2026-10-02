@@ -1,8 +1,6 @@
 name: QA2 Voice Job Read-only Audit
 
 on:
-  push:
-    branches: [fix/qa2-voice-job-readonly-audit]
   workflow_dispatch:
     inputs:
       source_sha:
@@ -29,14 +27,10 @@ jobs:
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SERVER_PASS: ${{ secrets.SERVER_PASS }}
       SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
-      # `workflow_dispatch` supplies the source explicitly.  A branch-push
-      # has no `inputs`, so it must use the audited QA2 candidate rather than
-      # fail before reaching the read-only SQL contract.
-      QA_SOURCE_SHA: ${{ inputs.source_sha || '0a4a63d008d60b707786bfbc172da5cd865d6b2f' }}
-      # The push path is deliberately limited to the one controlled QA2
-      # cargo created for this investigation. workflow_dispatch may override
-      # it only with another UUID after the audit workflow exists on default.
-      CONTROLLED_CARGO_ID: ${{ inputs.cargo_id || '49cd2e4a-83bb-4194-8b00-265bd0c27fbf' }}
+      # These are required workflow_dispatch inputs.  The audited deployed
+      # SHA is explicit and is never inferred from this diagnostics commit.
+      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      CONTROLLED_CARGO_ID: ${{ inputs.cargo_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = "fix/qa2-voice-job-readonly-audit"
+          test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
           git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
           git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
           [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]

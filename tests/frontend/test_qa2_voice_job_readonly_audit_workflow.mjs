@@ -7,9 +7,9 @@ const sanitizer = fs.readFileSync('scripts/sanitize_qa2_voice_job_audit.py', 'ut
 
 test('voice audit is manually dispatched, exact-source and read-only', () => {
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /push:\n\s+branches: \[fix\/qa2-voice-job-readonly-audit\]/);
-  assert.match(workflow, /fix\/qa2-voice-job-readonly-audit/);
-  assert.match(workflow, /inputs\.source_sha \|\| '0a4a63d008d60b707786bfbc172da5cd865d6b2f'/);
+  assert.doesNotMatch(workflow, /\npush:/);
+  assert.match(workflow, /GITHUB_REF_NAME" = "qa2\/integration-candidate"/);
+  assert.match(workflow, /QA_SOURCE_SHA: \$\{\{ inputs\.source_sha \}\}/);
   assert.match(workflow, /git merge-base --is-ancestor/);
   assert.match(workflow, /PRAGMA query_only=ON/);
   assert.match(workflow, /mode=ro/);
