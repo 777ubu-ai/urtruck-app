@@ -15,11 +15,11 @@ from transformers import AutoTokenizer
 
 try:
     from .quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
-    from .structured_tokens import split_for_translation
+    from .structured_tokens import translate_preserving_identifiers
     from .translation_decoding import TRANSLATE_BEAM_SIZE, translation_max_decoding_length
 except ImportError:  # uvicorn runs this file as top-level main.py in QA2
     from quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
-    from structured_tokens import split_for_translation
+    from structured_tokens import translate_preserving_identifiers
     from translation_decoding import TRANSLATE_BEAM_SIZE, translation_max_decoding_length
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -140,11 +140,11 @@ def translate(body: TranslateRequest):
         # Opaque values are never given to NLLB.  This avoids both the old
         # plate-corruption bug and the newly observed marker-drop failure;
         # identifiers are copied only by this deterministic local operation.
-        translated = "".join(
-            value if is_identifier else _translate_prose_piece(
+        translated = translate_preserving_identifiers(
+            body.text,
+            lambda value: _translate_prose_piece(
                 value, source=source, target=target, translator=translator, tokenizer=tokenizer
-            )
-            for is_identifier, value in split_for_translation(body.text)
+            ),
         ).strip()
         translated = repair_logistics_translation(body.text, translated, source, target)
         if not translated:

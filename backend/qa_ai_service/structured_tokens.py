@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+from typing import Callable
 
 
 # Confirmed QA2 regression: ``A123AA01`` was returned as ``123A01``.  Each
@@ -52,6 +53,14 @@ def split_for_translation(text: str) -> tuple[tuple[bool, str], ...]:
         cursor = match.end()
     pieces.append((False, text[cursor:]))
     return tuple(pieces)
+
+
+def translate_preserving_identifiers(text: str, translate_prose: Callable[[str], str]) -> str:
+    """Translate prose only; splice recognised identifiers back unchanged."""
+    return "".join(
+        value if is_identifier else translate_prose(value)
+        for is_identifier, value in split_for_translation(text)
+    )
 
 
 def protect(text: str) -> ProtectedTokens:
