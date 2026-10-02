@@ -116,13 +116,16 @@ jobs:
                           job_id, message_id, status, created_at or 'none', locked_at or 'none', worker,
                           attempts, next_retry or 'none', expires or 'none', safe_error or 'none', duration or 0,
                       ))
-                      metrics = conn.execute('''
+                      metric_columns = {item[1] for item in conn.execute("PRAGMA table_info(voice_processing_metrics)")}
+                      metric_stage = "stage" if "stage" in metric_columns else "'stt'"
+                      metrics = conn.execute(f'''
                         SELECT provider,model,latency_ms,audio_duration_seconds,usage_input_tokens,
-                               usage_output_tokens,usage_total_tokens,outcome,fallback,error_category,created_at
+                               usage_output_tokens,usage_total_tokens,outcome,fallback,error_category,created_at,
+                               {metric_stage} AS stage
                         FROM voice_processing_metrics WHERE job_id=? ORDER BY id
                       ''', (job_id,)).fetchall()
                       for metric in metrics:
-                          provider, model, latency, audio_seconds, in_tokens, out_tokens, total_tokens, outcome, fallback, category, event_at = metric
+                          provider, model, latency, audio_seconds, in_tokens, out_tokens, total_tokens, outcome, fallback, category, event_at, stage = metric
                           if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,120}', str(provider or 'unknown')):
                               provider = 'redacted'
                           if not re.fullmatch(r'[A-Za-z0-9_.:-]{0,180}', str(model or '')):
@@ -131,11 +134,13 @@ jobs:
                               outcome = 'redacted'
                           if not re.fullmatch(r'[A-Za-z0-9_:-]{0,120}', str(category or '')):
                               category = 'redacted'
-                          print('METRIC job_id=%s provider=%s model=%s latency_ms=%s duration_seconds=%s input_tokens=%s output_tokens=%s total_tokens=%s outcome=%s fallback=%s error_category=%s created_at=%s' % (
+                          if not re.fullmatch(r'[a-z_]{1,32}', str(stage or '')):
+                              stage = 'redacted'
+                          print('METRIC job_id=%s provider=%s model=%s latency_ms=%s duration_seconds=%s input_tokens=%s output_tokens=%s total_tokens=%s stage=%s outcome=%s fallback=%s error_category=%s created_at=%s' % (
                               job_id, provider, model or 'none', latency if latency is not None else 'none',
                               audio_seconds if audio_seconds is not None else 'none', in_tokens if in_tokens is not None else 'none',
                               out_tokens if out_tokens is not None else 'none', total_tokens if total_tokens is not None else 'none',
-                              outcome, int(bool(fallback)), category or 'none', event_at or 'none',
+                              stage, outcome, int(bool(fallback)), category or 'none', event_at or 'none',
                           ))
                       emitted = True
                   conn.close()

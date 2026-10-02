@@ -27,4 +27,5 @@ test('sanitizer never permits conversation or credential fields', () => {
   assert.match(sanitizer, /voice_job/);
   assert.match(sanitizer, /error_category/);
   assert.match(sanitizer, /latency_ms/);
+  assert.match(sanitizer, /stage/);
 });

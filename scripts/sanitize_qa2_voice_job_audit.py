@@ -17,7 +17,7 @@ JOB = re.compile(
 METRIC = re.compile(
     r"^METRIC job_id=\d+ provider=[A-Za-z0-9_.:-]+ model=[A-Za-z0-9_.:-]+ "
     r"latency_ms=(?:\d+|none) duration_seconds=(?:\d+|none) input_tokens=(?:\d+|none) "
-    r"output_tokens=(?:\d+|none) total_tokens=(?:\d+|none) outcome=[A-Za-z_]+ fallback=[01] "
+    r"output_tokens=(?:\d+|none) total_tokens=(?:\d+|none) stage=[a-z_]+ outcome=[A-Za-z_]+ fallback=[01] "
     r"error_category=[A-Za-z0-9_:-]+ created_at=[0-9T: .+\-]+$"
 )
 WORKER = re.compile(r"^(ActiveState|SubState|MainPID|ExecMainStartTimestamp)=[A-Za-z0-9_: .+\-]+$")
