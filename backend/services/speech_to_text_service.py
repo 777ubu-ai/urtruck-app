@@ -27,11 +27,13 @@ class SpeechToTextError(RuntimeError):
     internals — model name, account/plan details — that shouldn't reach an
     end user; see _transcribe_openai's own comment for what's logged
     instead)."""
-    def __init__(self, message: str, *, provider: str = "", retryable: bool = False, code: str = "TRANSCRIPTION_FAILED"):
+    def __init__(self, message: str, *, provider: str = "", retryable: bool = False,
+                 code: str = "TRANSCRIPTION_FAILED", fallback_allowed: bool = True):
         super().__init__(message)
         self.provider = provider
         self.retryable = retryable
         self.code = code
+        self.fallback_allowed = fallback_allowed
 
 
 def _normalize_lang_code(value: str | None) -> str | None:
@@ -150,6 +152,7 @@ def _can_fallback_to_local(error: SpeechToTextError) -> bool:
         and error.provider == "openai"
         and error.code in {"TRANSCRIPTION_TIMEOUT", "TRANSCRIPTION_UNAVAILABLE"}
         and error.retryable
+        and error.fallback_allowed
     )
 
 
@@ -209,13 +212,14 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
         # A generic 429 is a transient rate-limit condition. OpenAI also
         # returns 429 for exhausted billing credit; that one cannot recover by
         # retrying and must not be shown as a timeout.
-        # A rate limit is observable billing/capacity evidence in this QA2
-        # pilot, not a reason to substitute a local success and claim OpenAI
-        # worked.  Keep it permanent and categorical.
+        # A 429 stays retryable when it is an ordinary rate-limit, preserving
+        # the queue's bounded backoff.  It is nevertheless never eligible for
+        # local fallback: the QA2 evidence must say OpenAI was rate-limited,
+        # not silently substitute a local result.  A billing 429 is permanent.
         quota_exhausted = status == 429 and _is_quota_exhausted(body)
-        is_retryable = status >= 500
+        is_retryable = status >= 500 or (status == 429 and not quota_exhausted)
         code = (
-            "TRANSCRIPTION_UNAVAILABLE" if status == 429 or quota_exhausted
+            "TRANSCRIPTION_UNAVAILABLE" if quota_exhausted
             else "TRANSCRIPTION_TIMEOUT" if is_retryable
             else "TRANSCRIPTION_FAILED"
         )
@@ -224,6 +228,7 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
             provider="openai",
             retryable=is_retryable,
             code=code,
+            fallback_allowed=status != 429,
         ) from exc
     except httpx.HTTPError as exc:
         raise SpeechToTextError("Сервис распознавания голоса недоступен", provider="openai", retryable=True, code="TRANSCRIPTION_UNAVAILABLE") from exc

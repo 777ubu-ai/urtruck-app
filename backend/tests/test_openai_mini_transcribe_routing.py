@@ -52,6 +52,24 @@ def test_timeout_falls_back_once_and_sequentially(monkeypatch):
     assert result["provider"] == "local_faster_whisper_fallback"
 
 
+def test_network_and_5xx_are_eligible_for_one_local_fallback(monkeypatch):
+    _qa2_openai(monkeypatch)
+    monkeypatch.setenv("TRANSCRIBE_FALLBACK_PROVIDER", "local_ai")
+    for code in ("TRANSCRIPTION_UNAVAILABLE", "TRANSCRIPTION_TIMEOUT"):
+        calls = []
+
+        def failed_openai(*_args, **_kwargs):
+            calls.append("openai")
+            raise stt.SpeechToTextError("transient", provider="openai", retryable=True, code=code)
+
+        monkeypatch.setattr(stt, "_transcribe_openai", failed_openai)
+        monkeypatch.setattr(stt, "_transcribe_local_ai", lambda *a, **k: calls.append("local") or {
+            "transcript_text": "ok", "source_lang": "ru", "provider": "local_faster_whisper", "usage": None,
+        })
+        assert stt.transcribe_audio_path("unused.m4a")["provider"] == "local_faster_whisper_fallback"
+        assert calls == ["openai", "local"]
+
+
 def test_429_never_substitutes_a_local_result(monkeypatch):
     _qa2_openai(monkeypatch)
     monkeypatch.setenv("TRANSCRIBE_FALLBACK_PROVIDER", "local_ai")
@@ -59,7 +77,10 @@ def test_429_never_substitutes_a_local_result(monkeypatch):
 
     def rate_limited(*_args, **_kwargs):
         calls.append("openai")
-        raise stt.SpeechToTextError("rate limited", provider="openai", retryable=False, code="TRANSCRIPTION_UNAVAILABLE")
+        raise stt.SpeechToTextError(
+            "rate limited", provider="openai", retryable=True,
+            code="TRANSCRIPTION_TIMEOUT", fallback_allowed=False,
+        )
 
     monkeypatch.setattr(stt, "_transcribe_openai", rate_limited)
     monkeypatch.setattr(stt, "_transcribe_local_ai", lambda *a, **k: calls.append("local") or {})
@@ -67,5 +88,41 @@ def test_429_never_substitutes_a_local_result(monkeypatch):
         stt.transcribe_audio_path("unused.m4a", language="ru")
         assert False, "429 must remain an OpenAI blocker"
     except stt.SpeechToTextError as error:
-        assert error.code == "TRANSCRIPTION_UNAVAILABLE"
+        assert error.code == "TRANSCRIPTION_TIMEOUT"
     assert calls == ["openai"]
+
+
+def test_permanent_openai_or_fallback_failure_never_fabricates_transcript(monkeypatch):
+    _qa2_openai(monkeypatch)
+    monkeypatch.setenv("TRANSCRIBE_FALLBACK_PROVIDER", "local_ai")
+    monkeypatch.setattr(
+        stt, "_transcribe_openai",
+        lambda *a, **k: (_ for _ in ()).throw(stt.SpeechToTextError(
+            "bad request", provider="openai", retryable=False, code="TRANSCRIPTION_FAILED",
+        )),
+    )
+    try:
+        stt.transcribe_audio_path("unused.m4a")
+        assert False
+    except stt.SpeechToTextError as error:
+        assert error.code == "TRANSCRIPTION_FAILED"
+
+    monkeypatch.setattr(
+        stt, "_transcribe_openai",
+        lambda *a, **k: (_ for _ in ()).throw(stt.SpeechToTextError(
+            "network", provider="openai", retryable=True, code="TRANSCRIPTION_UNAVAILABLE",
+        )),
+    )
+    monkeypatch.setattr(
+        stt, "_transcribe_local_ai",
+        lambda *a, **k: (_ for _ in ()).throw(stt.SpeechToTextError(
+            "local unavailable", provider="local_faster_whisper", retryable=True,
+            code="TRANSCRIPTION_UNAVAILABLE",
+        )),
+    )
+    try:
+        stt.transcribe_audio_path("unused.m4a")
+        assert False
+    except stt.SpeechToTextError as error:
+        assert error.provider == "openai_then_local_ai"
+        assert error.retryable is True
