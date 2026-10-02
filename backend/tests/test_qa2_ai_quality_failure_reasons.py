@@ -6,6 +6,7 @@ from qa_ai_service.quality import (
     translation_quality_failures,
     translation_quality_ok,
 )
+from qa_ai_service.structured_tokens import protect, restore
 from pathlib import Path
 
 
@@ -18,6 +19,66 @@ def test_quality_boolean_is_exact_negation_of_failure_list():
     assert translation_quality_ok(source, bad, "ru", "zh") is (
         not translation_quality_failures(source, bad, "ru", "zh")
     )
+
+
+def test_plate_identifier_is_restored_byte_for_byte_after_nllb_translation():
+    source = "Машина A123AA01 будет у Бахты завтра."
+    protected = protect(source)
+    assert protected.text == "Машина URTRUCKPROTECTEDTOKEN0X будет у Бахты завтра."
+    # Regression from the physical QA2 run: without protection NLLB returned
+    # `123A01`, dropping the leading letter.  Only the exact original token
+    # may be restored into a successful translation.
+    translated = "车辆 URTRUCKPROTECTEDTOKEN0X 明天到巴克图。"
+    assert restore(translated, protected) == "车辆 A123AA01 明天到巴克图。"
+
+
+def test_changed_or_dropped_plate_marker_fails_closed_instead_of_guessing():
+    protected = protect("Госномер A123AA01.")
+    assert restore("车牌 123A01。", protected) is None
+    assert restore("车牌 URTRUCKPROTECTEDTOKEN0X и URTRUCKPROTECTEDTOKEN0X。", protected) is None
+
+
+def test_container_and_document_identifiers_are_opaque_tokens_too():
+    source = "KZ 777 ABC 02; MSCU1234567; TGHU7654321; 20GP; 40HC; CMR-2026-001; INV-77821; PL-2026-09."
+    protected = protect(source)
+    assert protected.text == (
+        "URTRUCKPROTECTEDTOKEN0X; URTRUCKPROTECTEDTOKEN1X; URTRUCKPROTECTEDTOKEN2X; "
+        "URTRUCKPROTECTEDTOKEN3X; URTRUCKPROTECTEDTOKEN4X; URTRUCKPROTECTEDTOKEN5X; "
+        "URTRUCKPROTECTEDTOKEN6X; URTRUCKPROTECTEDTOKEN7X."
+    )
+    translated = (
+        "URTRUCKPROTECTEDTOKEN0X；URTRUCKPROTECTEDTOKEN1X；URTRUCKPROTECTEDTOKEN2X；"
+        "URTRUCKPROTECTEDTOKEN3X；URTRUCKPROTECTEDTOKEN4X；URTRUCKPROTECTEDTOKEN5X；"
+        "URTRUCKPROTECTEDTOKEN6X；URTRUCKPROTECTEDTOKEN7X。"
+    )
+    assert restore(translated, protected) == (
+        "KZ 777 ABC 02；MSCU1234567；TGHU7654321；20GP；40HC；CMR-2026-001；INV-77821；PL-2026-09。"
+    )
+
+
+def test_structured_money_weight_volume_range_date_and_time_keep_their_facts():
+    source = "Цена 12 500 USD, 0.4%, 18 000 кг, 90 м³, 5–10 машин, 02.10.2026 в 15:30."
+    good = "价格 12500 USD、0.4%、18000 千克、90 立方米、5–10 辆车，2026年10月2日 15:30。"
+    bad = "价格 12500 USD、0.95%、18000 千克、105 立方米、5–10 辆车，2026年10月2日 15:30。"
+    assert translation_quality_failures(source, good, "ru", "zh") == []
+    assert "numeric_facts_changed" in translation_quality_failures(source, bad, "ru", "zh")
+
+
+def test_textual_day_month_and_weekday_are_compared_as_logistics_facts():
+    assert translation_quality_failures("Погрузка 2 октября.", "装货日期为10月2日。", "ru", "zh") == []
+    assert "numeric_facts_changed" in translation_quality_failures("Погрузка 2 октября.", "装货日期为10月3日。", "ru", "zh")
+    assert translation_quality_failures("Monday loading.", "星期一装货。", "en", "zh") == []
+    assert "weekday_missing:monday" in translation_quality_failures("Monday loading.", "星期二装货。", "en", "zh")
+
+
+def test_allowlisted_cross_border_locations_cannot_silently_disappear():
+    source = "Алматы → Урумчи через Бахты и Алашанькоу, Kazakhstan, Germany."
+    good = "阿拉木图→乌鲁木齐，经巴克图和阿拉山口，哈萨克斯坦，德国。"
+    missing = "阿拉木图→乌鲁木齐。"
+    assert translation_quality_failures(source, good, "ru", "zh") == []
+    failures = translation_quality_failures(source, missing, "ru", "zh")
+    for place in ("bakhty", "alashankou", "kazakhstan", "germany"):
+        assert f"city_missing:{place}" in failures
 
 
 def test_failure_reasons_explain_changed_numbers_weight_city_and_body_type():
