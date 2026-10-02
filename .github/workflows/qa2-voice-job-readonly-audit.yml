@@ -34,7 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # Ancestry is a security control: the explicitly audited deployed
+          # SHA must be provably reachable from this integration branch.
+          fetch-depth: 0
 
       - name: Require controlled QA2 source and cargo
         shell: bash
@@ -43,10 +45,10 @@ jobs:
           test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
           [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$CONTROLLED_CARGO_ID" =~ ^[0-9a-fA-F-]{36}$ ]]
-          # checkout uses depth 1.  Fetch a small bounded history for both
-          # refs so the explicit deployed SHA is resolvable and ancestry can
-          # be verified before any server connection is attempted.
-          git fetch --no-tags --depth=50 origin \
+          # Fetch the exact, validated source ref before any server
+          # connection. checkout above has the full branch history needed
+          # for a reliable merge-base check.
+          git fetch --no-tags origin \
             qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate \
             "$QA_SOURCE_SHA"
           git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
