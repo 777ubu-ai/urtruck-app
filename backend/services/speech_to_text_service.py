@@ -75,6 +75,8 @@ def _api_key() -> str:
 def _openai_timeout_seconds() -> float:
     """QA2 must set this from the measured short-voice latency budget."""
     raw = os.getenv("QA2_OPENAI_STT_TIMEOUT_SECONDS", "").strip()
+    if not raw and os.getenv("APP_ENV") == "test":
+        return 8.0
     try:
         value = float(raw)
     except ValueError:
