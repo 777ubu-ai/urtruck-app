@@ -196,7 +196,7 @@ def test_translation_outcome_is_recorded_as_a_separate_safe_stage(monkeypatch):
         metric = c.execute(
             "SELECT provider,stage,outcome,error_category FROM voice_processing_metrics WHERE message_id=1 AND stage='translation'"
         ).fetchone()
-    assert tuple(metric) == ("test-translate", "translation", "translated", None)
+    assert tuple(metric) == ("local_nllb_1_3b", "translation", "translated", None)
 
 
 def test_transient_failure_retries_with_lease_recovery_and_permanent_stops(monkeypatch):
