@@ -1,0 +1,71 @@
+"""Unit contract for the bounded QA2 OpenAI-STT pilot (no network/audio)."""
+from services import speech_to_text_service as stt
+
+
+def _qa2_openai(monkeypatch):
+    monkeypatch.setenv("TRANSCRIBE_PROVIDER", "openai")
+    monkeypatch.setenv("TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-secret")
+
+
+def test_uses_only_gpt_4o_mini_transcribe(monkeypatch):
+    _qa2_openai(monkeypatch)
+    assert stt._model() == "gpt-4o-mini-transcribe"
+    monkeypatch.setenv("TRANSCRIBE_MODEL", "gpt-transcribe")
+    try:
+        stt._model()
+        assert False, "another paid OpenAI STT model must fail closed"
+    except stt.SpeechToTextError as error:
+        assert error.code == "TRANSCRIPTION_UNAVAILABLE"
+
+
+def test_openai_success_does_not_start_local_provider(monkeypatch):
+    _qa2_openai(monkeypatch)
+    monkeypatch.setenv("TRANSCRIBE_FALLBACK_PROVIDER", "local_ai")
+    calls = []
+    monkeypatch.setattr(stt, "_transcribe_openai", lambda *a, **k: calls.append("openai") or {
+        "transcript_text": "Москва 10 тонн", "source_lang": "ru", "provider": "openai", "usage": None,
+    })
+    monkeypatch.setattr(stt, "_transcribe_local_ai", lambda *a, **k: calls.append("local") or {})
+    result = stt.transcribe_audio_path("unused.m4a", language="ru")
+    assert calls == ["openai"]
+    assert result["provider"] == "openai"
+
+
+def test_timeout_falls_back_once_and_sequentially(monkeypatch):
+    _qa2_openai(monkeypatch)
+    monkeypatch.setenv("TRANSCRIBE_FALLBACK_PROVIDER", "local_ai")
+    calls = []
+
+    def timed_out(*_args, **_kwargs):
+        calls.append("openai")
+        raise stt.SpeechToTextError("timeout", provider="openai", retryable=True, code="TRANSCRIPTION_TIMEOUT")
+
+    def local(*_args, **_kwargs):
+        calls.append("local")
+        return {"transcript_text": "北京 500 USD", "source_lang": "zh", "provider": "local_faster_whisper", "usage": None}
+
+    monkeypatch.setattr(stt, "_transcribe_openai", timed_out)
+    monkeypatch.setattr(stt, "_transcribe_local_ai", local)
+    result = stt.transcribe_audio_path("unused.m4a", language="zh")
+    assert calls == ["openai", "local"]
+    assert result["provider"] == "local_faster_whisper_fallback"
+
+
+def test_429_never_substitutes_a_local_result(monkeypatch):
+    _qa2_openai(monkeypatch)
+    monkeypatch.setenv("TRANSCRIBE_FALLBACK_PROVIDER", "local_ai")
+    calls = []
+
+    def rate_limited(*_args, **_kwargs):
+        calls.append("openai")
+        raise stt.SpeechToTextError("rate limited", provider="openai", retryable=False, code="TRANSCRIPTION_UNAVAILABLE")
+
+    monkeypatch.setattr(stt, "_transcribe_openai", rate_limited)
+    monkeypatch.setattr(stt, "_transcribe_local_ai", lambda *a, **k: calls.append("local") or {})
+    try:
+        stt.transcribe_audio_path("unused.m4a", language="ru")
+        assert False, "429 must remain an OpenAI blocker"
+    except stt.SpeechToTextError as error:
+        assert error.code == "TRANSCRIPTION_UNAVAILABLE"
+    assert calls == ["openai"]

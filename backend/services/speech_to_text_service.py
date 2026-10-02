@@ -8,6 +8,7 @@ import httpx
 from services import storage_service as storage
 
 OPENAI_TRANSCRIPT_URL = "https://api.openai.com/v1/audio/transcriptions"
+OPENAI_STT_MODEL = "gpt-4o-mini-transcribe"
 
 LANG_ALIAS = {
     "cn": "zh",
@@ -51,7 +52,18 @@ def _provider() -> str:
 
 
 def _model() -> str:
-    return os.getenv("TRANSCRIBE_MODEL", "gpt-transcribe").strip() or "gpt-transcribe"
+    """Return the only OpenAI STT model allowed for the QA2 rollout.
+
+    This is deliberately fail-closed: a secret/environment typo must not
+    silently switch a voice message to another paid model.
+    """
+    configured = os.getenv("TRANSCRIBE_MODEL", OPENAI_STT_MODEL).strip() or OPENAI_STT_MODEL
+    if configured != OPENAI_STT_MODEL:
+        raise SpeechToTextError(
+            "Распознавание голоса не настроено", provider="openai",
+            code="TRANSCRIPTION_UNAVAILABLE",
+        )
+    return OPENAI_STT_MODEL
 
 
 def _api_key() -> str:
@@ -85,14 +97,7 @@ def transcribe_audio_ref(audio_ref: str, *, filename: str | None = None, languag
 def transcribe_audio_path(path: str, *, filename: str | None = None, language: str | None = None) -> dict:
     provider = _provider()
     if provider == "local_ai":
-        from services.local_ai_client import LocalAIError, transcribe
-        try:
-            return transcribe(path, filename=filename, language=_normalize_lang_code(language))
-        except LocalAIError as exc:
-            raise SpeechToTextError(
-                "Распознавание голоса временно недоступно", provider="local_faster_whisper",
-                retryable=exc.retryable, code=exc.code,
-            ) from exc
+        return _transcribe_local_ai(path, filename=filename, language=language)
     if provider == "local_whisper":
         from services.local_speech_service import LocalSpeechError, transcribe
         try:
@@ -114,7 +119,49 @@ def transcribe_audio_path(path: str, *, filename: str | None = None, language: s
         # trust boundary (STT-hardening spec item 7's "no raw internal
         # exception" applies to config detail too, not just provider text).
         raise SpeechToTextError("Распознавание голоса не настроено", provider=provider, code="TRANSCRIPTION_UNAVAILABLE")
-    return _transcribe_openai(path, filename=filename, language=language, api_key=api_key)
+    try:
+        result = _transcribe_openai(path, filename=filename, language=language, api_key=api_key)
+        print("[stt] provider=openai result=success", flush=True)
+        return result
+    except SpeechToTextError as exc:
+        # 429/billing and malformed/empty provider answers are intentionally
+        # not masked by a local result.  A fallback is only a sequential
+        # availability measure for a timeout, connection failure, or 5xx.
+        if not _can_fallback_to_local(exc):
+            print(f"[stt] provider=openai result={exc.code} fallback=disabled", flush=True)
+            raise
+        print(f"[stt] provider=openai result={exc.code} fallback=local_ai", flush=True)
+        try:
+            result = _transcribe_local_ai(path, filename=filename, language=language)
+        except SpeechToTextError as fallback_exc:
+            print(f"[stt] provider=local_ai result={fallback_exc.code}", flush=True)
+            raise SpeechToTextError(
+                "Распознавание голоса временно недоступно", provider="openai_then_local_ai",
+                retryable=True, code=fallback_exc.code,
+            ) from fallback_exc
+        result["provider"] = "local_faster_whisper_fallback"
+        print("[stt] provider=local_ai result=success selected=local_fallback", flush=True)
+        return result
+
+
+def _can_fallback_to_local(error: SpeechToTextError) -> bool:
+    return (
+        os.getenv("TRANSCRIBE_FALLBACK_PROVIDER", "").strip().lower() == "local_ai"
+        and error.provider == "openai"
+        and error.code in {"TRANSCRIPTION_TIMEOUT", "TRANSCRIPTION_UNAVAILABLE"}
+        and error.retryable
+    )
+
+
+def _transcribe_local_ai(path: str, *, filename: str | None = None, language: str | None = None) -> dict:
+    from services.local_ai_client import LocalAIError, transcribe
+    try:
+        return transcribe(path, filename=filename, language=_normalize_lang_code(language))
+    except LocalAIError as exc:
+        raise SpeechToTextError(
+            "Распознавание голоса временно недоступно", provider="local_faster_whisper",
+            retryable=exc.retryable, code=exc.code,
+        ) from exc
 
 
 def _transcribe_openai(path: str, *, filename: str | None = None, language: str | None = None, api_key: str) -> dict:
@@ -162,10 +209,13 @@ def _transcribe_openai(path: str, *, filename: str | None = None, language: str 
         # A generic 429 is a transient rate-limit condition. OpenAI also
         # returns 429 for exhausted billing credit; that one cannot recover by
         # retrying and must not be shown as a timeout.
+        # A rate limit is observable billing/capacity evidence in this QA2
+        # pilot, not a reason to substitute a local success and claim OpenAI
+        # worked.  Keep it permanent and categorical.
         quota_exhausted = status == 429 and _is_quota_exhausted(body)
-        is_retryable = status >= 500 or (status == 429 and not quota_exhausted)
+        is_retryable = status >= 500
         code = (
-            "TRANSCRIPTION_UNAVAILABLE" if quota_exhausted
+            "TRANSCRIPTION_UNAVAILABLE" if status == 429 or quota_exhausted
             else "TRANSCRIPTION_TIMEOUT" if is_retryable
             else "TRANSCRIPTION_FAILED"
         )
