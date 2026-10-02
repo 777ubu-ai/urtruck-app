@@ -56,11 +56,35 @@ def split_for_translation(text: str) -> tuple[tuple[bool, str], ...]:
 
 
 def translate_preserving_identifiers(text: str, translate_prose: Callable[[str], str]) -> str:
-    """Translate prose only; splice recognised identifiers back unchanged."""
-    return "".join(
-        value if is_identifier else translate_prose(value)
-        for is_identifier, value in split_for_translation(text)
-    )
+    """Translate one contextual prose sentence and retain IDs byte-for-byte.
+
+    A previous implementation called NLLB once for every prose fragment on
+    either side of an identifier.  For example, ``Truck A123AA01 is at
+    Bakhty.`` became two independent model requests: ``Truck `` and `` is at
+    Bakhty.``.  The physical QA2 run proved that this loses enough context for
+    the quality gate to reject an otherwise valid translation.
+
+    The model must still never receive an opaque identifier or a synthetic
+    marker.  We therefore remove recognised IDs, translate the remaining
+    sentence in one request, then append the original IDs in source order.
+    The position is intentionally deterministic rather than guessed: the
+    translated prose remains meaningful and every identifier is preserved
+    exactly once without asking NLLB to copy it.
+    """
+    pieces = split_for_translation(text)
+    identifiers = [value for is_identifier, value in pieces if is_identifier]
+    prose = "".join(value for is_identifier, value in pieces if not is_identifier)
+    # Removing an inline ID can leave a doubled ASCII space.  Normalise only
+    # whitespace passed to NLLB; never normalise the original opaque values.
+    prose = re.sub(r"[ \t]+", " ", prose).strip()
+    prose = re.sub(r"\s+([,.;:!?。！？])", r"\1", prose)
+    if not prose:
+        return " ".join(identifiers)
+
+    translated = translate_prose(prose).strip()
+    if not identifiers:
+        return translated
+    return f"{translated} {' '.join(identifiers)}".strip()
 
 
 def protect(text: str) -> ProtectedTokens:
