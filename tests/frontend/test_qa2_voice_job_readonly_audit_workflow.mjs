@@ -10,7 +10,8 @@ test('voice audit is manually dispatched, exact-source and read-only', () => {
   assert.doesNotMatch(workflow, /\npush:/);
   assert.match(workflow, /GITHUB_REF_NAME" = "qa2\/integration-candidate"/);
   assert.match(workflow, /QA_SOURCE_SHA: \$\{\{ inputs\.source_sha \}\}/);
-  assert.match(workflow, /git fetch --no-tags --depth=50/);
+  assert.match(workflow, /fetch-depth: 0/);
+  assert.match(workflow, /git fetch --no-tags origin/);
   assert.match(workflow, /git merge-base --is-ancestor/);
   assert.match(workflow, /PRAGMA query_only=ON/);
   assert.match(workflow, /mode=ro/);
