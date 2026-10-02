@@ -50,7 +50,7 @@ class TranslateRequest(BaseModel):
 
 def _lang(value: str | None) -> str | None:
     raw = str(value or "").strip().lower()
-    if not raw:
+    if raw in {"", "auto", "null", "none"}:
         return None
     return LANG_ALIASES.get(raw, LANG_ALIASES.get(raw.split("-", 1)[0], raw.split("-", 1)[0]))
 

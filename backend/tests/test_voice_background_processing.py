@@ -142,8 +142,16 @@ def test_success_prepares_hidden_transcript_and_translation_once(monkeypatch):
     with get_conn() as c:
         transcript = c.execute("SELECT voice_transcript FROM chat_messages WHERE id=1").fetchone()[0]
         translation = c.execute("SELECT translated_text FROM chat_translations WHERE message_id=1 AND target_lang='zh'").fetchone()[0]
+        metric = c.execute(
+            "SELECT provider,outcome,latency_ms,usage_total_tokens FROM voice_processing_metrics WHERE message_id=1"
+        ).fetchone()
+        metric_columns = {row["name"] for row in c.execute("PRAGMA table_info(voice_processing_metrics)")}
     assert transcript == "Груз 10 тонн"
     assert translation == "货物10吨"
+    assert metric["provider"] == "test-stt"
+    assert metric["outcome"] == "transcribed"
+    assert metric["latency_ms"] is not None
+    assert not {"audio", "transcript", "translation", "raw_response", "api_key"} & metric_columns
 
 
 def test_transient_failure_retries_with_lease_recovery_and_permanent_stops(monkeypatch):
@@ -170,12 +178,39 @@ def test_transient_failure_retries_with_lease_recovery_and_permanent_stops(monke
     assert _job(1)["status"] == "failed_permanent"
 
 
-def test_ready_cache_expires_without_touching_original_audio_or_historic_job():
+def test_ready_result_persists_after_eight_days_and_never_becomes_a_retry_job():
     _voice_message()
     jobs.enqueue_new_voice(1, "chat_voice/1.m4a")
     with get_conn() as c:
-        c.execute("UPDATE voice_processing_jobs SET status='ready', expires_at=datetime('now','-1 second') WHERE message_id=1")
+        c.execute(
+            "UPDATE voice_processing_jobs SET status='ready', ready_at=datetime('now','-8 days'), "
+            "expires_at=datetime('now','-1 second') WHERE message_id=1"
+        )
+    with get_conn() as c:
+        chat._ensure_columns(c)
     jobs.process_pending_once()
-    assert _job(1)["status"] == "expired"
+    ready = _job(1)
+    assert ready["status"] == "ready"
     with get_conn() as c:
         assert c.execute("SELECT photo_url FROM chat_messages WHERE id=1").fetchone()[0] == "chat_voice/1.m4a"
+        # The additive migration replaces a legacy expiry marker with the
+        # permanent compatibility sentinel but never rewrites message/audio.
+        assert c.execute("SELECT expires_at FROM voice_processing_jobs WHERE message_id=1").fetchone()[0] == "9999-12-31 23:59:59"
+
+
+def test_auto_source_language_is_not_sent_to_nllb(monkeypatch):
+    _voice_message()
+    jobs.enqueue_new_voice(1, "chat_voice/1.m4a", source_lang="auto", target_lang="zh")
+    observed = {}
+    monkeypatch.setattr(
+        "services.speech_to_text_service.transcribe_audio_ref",
+        lambda *a, **k: {"transcript_text": "controlled", "source_lang": "auto", "provider": "openai"},
+    )
+
+    def fake_translate(_text, _target, *, source_lang=None):
+        observed["source_lang"] = source_lang
+        return {"translated_text": "controlled translation", "provider": "local_nllb_1_3b"}
+
+    monkeypatch.setattr("services.translate_service.translate_text", fake_translate)
+    assert jobs.process_pending_once()["ready"] == 1
+    assert observed["source_lang"] is None

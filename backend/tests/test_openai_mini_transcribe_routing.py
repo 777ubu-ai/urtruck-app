@@ -6,6 +6,7 @@ def _qa2_openai(monkeypatch):
     monkeypatch.setenv("TRANSCRIBE_PROVIDER", "openai")
     monkeypatch.setenv("TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-secret")
+    monkeypatch.setenv("QA2_OPENAI_STT_TIMEOUT_SECONDS", "8")
 
 
 def test_uses_only_gpt_4o_mini_transcribe(monkeypatch):
@@ -35,6 +36,33 @@ def test_openai_does_not_treat_ui_locale_as_spoken_language(monkeypatch, tmp_pat
     assert "language" not in seen["data"]
     assert result["source_lang"] == "auto"
     assert seen["timeout"] == 8
+
+
+def test_openai_only_uses_explicit_provider_language_not_ui_locale(monkeypatch, tmp_path):
+    """RU speech under zh UI, ZH speech under ru UI and mixed speech stay auto."""
+    _qa2_openai(monkeypatch)
+    audio = tmp_path / "voice.m4a"
+    audio.write_bytes(b"test")
+    for ui_locale in ("zh", "ru", "en", "ru-ZH"):
+        seen = {}
+
+        class Response:
+            def raise_for_status(self): pass
+            def json(self): return {"text": "controlled", "usage": {"total_tokens": 1}}
+
+        monkeypatch.setattr(stt.httpx, "post", lambda *_a, **kw: seen.update(kw) or Response())
+        result = stt._transcribe_openai(str(audio), filename="voice.m4a", language=ui_locale, api_key="test")
+        assert "language" not in seen["data"]
+        assert result["source_lang"] == "auto"
+
+
+def test_auto_empty_and_null_are_local_nllb_auto_detection_not_language_codes():
+    from services.translate_service import _normalize_lang_code
+
+    assert _normalize_lang_code("auto") is None
+    assert _normalize_lang_code("") is None
+    assert _normalize_lang_code(None) is None
+    assert _normalize_lang_code("zh-CN") == "zh"
 
 
 def test_openai_success_does_not_start_local_provider(monkeypatch):

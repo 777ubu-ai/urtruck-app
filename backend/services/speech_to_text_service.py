@@ -72,10 +72,28 @@ def _api_key() -> str:
     return os.getenv("OPENAI_API_KEY", "").strip()
 
 
+def get_info() -> dict:
+    """Safe QA diagnostics: configuration identity, never secret material."""
+    configured_model = os.getenv("TRANSCRIBE_MODEL", OPENAI_STT_MODEL).strip() or OPENAI_STT_MODEL
+    raw_timeout = os.getenv("QA2_OPENAI_STT_TIMEOUT_SECONDS", "").strip()
+    try:
+        timeout = float(raw_timeout)
+    except ValueError:
+        timeout = None
+    return {
+        "provider": _provider(),
+        "model": configured_model,
+        "model_allowed": configured_model == OPENAI_STT_MODEL,
+        "fallback_provider": os.getenv("TRANSCRIBE_FALLBACK_PROVIDER", "").strip().lower() or None,
+        "timeout_seconds": timeout,
+        "key_configured": bool(_api_key()),
+    }
+
+
 def _openai_timeout_seconds() -> float:
     """QA2 must set this from the measured short-voice latency budget."""
     raw = os.getenv("QA2_OPENAI_STT_TIMEOUT_SECONDS", "").strip()
-    if not raw and os.getenv("APP_ENV") == "test":
+    if not raw and (os.getenv("APP_ENV") == "test" or os.getenv("ENV") == "test"):
         return 8.0
     try:
         value = float(raw)

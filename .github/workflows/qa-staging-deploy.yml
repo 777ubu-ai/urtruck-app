@@ -90,14 +90,10 @@ jobs:
       - name: Install SSH and rsync
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
 
-      - name: Verify QA2 local AI policy before any server mutation
+      - name: Verify existing QA2 secret and local NLLB policy before mutation
         shell: bash
         run: |
           set -euo pipefail
-          if grep -Eq 'TRANSCRIBE_PROVIDER=openai|TRANSLATE_PROVIDER=openai' .github/workflows/qa-staging-deploy.yml; then
-            echo '::error::QA2_LOCAL_AI_POLICY_OPENAI_SUBSTITUTION_BLOCKED'
-            exit 1
-          fi
           export SSHPASS="$SERVER_PASS"
           sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
@@ -111,11 +107,13 @@ jobs:
               if '=' in raw and not raw.lstrip().startswith('#'):
                   key, value = raw.split('=', 1)
                   values[key.strip()] = value.strip().strip('"').strip("'")
-          if values.get('TRANSCRIBE_PROVIDER') != 'local_ai' or values.get('TRANSLATE_PROVIDER') != 'local_ai':
-              raise SystemExit('QA2_LOCAL_AI_POLICY_BLOCKED_BEFORE_MUTATION')
+          if values.get('TRANSLATE_PROVIDER') != 'local_ai':
+              raise SystemExit('QA2_LOCAL_NLLB_POLICY_BLOCKED_BEFORE_MUTATION')
           if values.get('LOCAL_AI_URL') != 'http://127.0.0.1:8003':
               raise SystemExit('QA2_LOCAL_AI_URL_POLICY_BLOCKED_BEFORE_MUTATION')
-          print('QA2_LOCAL_AI_PRECHECK=pass')
+          if not values.get('OPENAI_API_KEY'):
+              raise SystemExit('QA2_OPENAI_STT_SECRET_MISSING')
+          print('QA2_OPENAI_STT_SECRET_PRESENT=yes')
           PY
           REMOTE
 
@@ -219,6 +217,50 @@ jobs:
             -e 'sshpass -e ssh -o StrictHostKeyChecking=no' \
             golden-source/backend/ "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/"
 
+      - name: Configure the bounded QA2-only OpenAI STT route
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          qa_env=/home/ubuntu/urtruck-qa2/.env
+          python3 - "$qa_env" <<'PY'
+          from pathlib import Path
+          import os, sys
+          path = Path(sys.argv[1])
+          lines = path.read_text(encoding='utf-8').splitlines()
+          values = {}
+          for raw in lines:
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  key, value = raw.split('=', 1)
+                  values[key.strip()] = value
+          if not values.get('OPENAI_API_KEY', '').strip():
+              raise SystemExit('QA2_OPENAI_STT_SECRET_MISSING')
+          updates = {
+              'TRANSCRIBE_PROVIDER': 'openai',
+              'TRANSCRIBE_MODEL': 'gpt-4o-mini-transcribe',
+              'TRANSCRIBE_FALLBACK_PROVIDER': 'local_ai',
+              'QA2_OPENAI_STT_TIMEOUT_SECONDS': '8',
+          }
+          result, seen = [], set()
+          for raw in lines:
+              if '=' in raw and not raw.lstrip().startswith('#'):
+                  key = raw.split('=', 1)[0].strip()
+                  if key in updates:
+                      result.append(f'{key}={updates[key]}')
+                      seen.add(key)
+                      continue
+              result.append(raw)
+          result.extend(f'{key}={value}' for key, value in updates.items() if key not in seen)
+          tmp = path.with_suffix('.qa2-stt.tmp')
+          tmp.write_text('\n'.join(result) + '\n', encoding='utf-8')
+          os.chmod(tmp, 0o600)
+          os.replace(tmp, path)
+          print('QA2_OPENAI_STT_CONFIGURATION=written')
+          PY
+          REMOTE
+
       - name: Validate deployed source, restart exact QA2 listener and verify protected state
         shell: bash
         run: |
@@ -303,7 +345,18 @@ jobs:
           import json, sys
           info = json.load(sys.stdin)
           if info.get("provider") != "local_ai":
-              raise SystemExit("QA2_LOCAL_AI_PROVIDER_NOT_READY")
+              raise SystemExit("QA2_LOCAL_NLLB_PROVIDER_NOT_READY")
+          '
+          stt_info="\$(curl -fsS http://127.0.0.1:8002/api/v1/chat/transcribe/info)"
+          printf '%s' "\$stt_info" | python3 -c '
+          import json, sys
+          info = json.load(sys.stdin)
+          expected = {
+              "provider": "openai", "model": "gpt-4o-mini-transcribe",
+              "fallback_provider": "local_ai", "timeout_seconds": 8.0,
+          }
+          if any(info.get(key) != value for key, value in expected.items()) or not info.get("model_allowed") or not info.get("key_configured"):
+              raise SystemExit("QA2_OPENAI_STT_CONFIGURATION_NOT_READY")
           '
           python3 - "\$qa_root/.env" <<'PY'
           from pathlib import Path
@@ -313,12 +366,20 @@ jobs:
               key, sep, value = raw.partition("=")
               if sep:
                   values[key.strip()] = value.strip()
-          if values.get("TRANSCRIBE_PROVIDER") != "local_ai" or values.get("TRANSLATE_PROVIDER") != "local_ai":
-              raise SystemExit("QA2_LOCAL_AI_SETTINGS_NOT_READY")
+          required = {
+              "TRANSCRIBE_PROVIDER": "openai",
+              "TRANSCRIBE_MODEL": "gpt-4o-mini-transcribe",
+              "TRANSCRIBE_FALLBACK_PROVIDER": "local_ai",
+              "QA2_OPENAI_STT_TIMEOUT_SECONDS": "8",
+              "TRANSLATE_PROVIDER": "local_ai",
+          }
+          if any(values.get(key) != value for key, value in required.items()) or not values.get("OPENAI_API_KEY"):
+              raise SystemExit("QA2_OPENAI_STT_SETTINGS_NOT_READY")
           if values.get("LOCAL_AI_URL") != "http://127.0.0.1:8003":
               raise SystemExit("QA2_LOCAL_AI_URL_NOT_READY")
           PY
-          echo 'QA_AI_PROVIDER=local-ai-ready'
+          echo 'QA_STT_PROVIDER=openai-ready'
+          echo 'QA_TRANSLATE_PROVIDER=local-nllb-ready'
           test "\$(cat .qa-source-sha)" = "\$source_sha"
           db_path="\$(python3 - "\$qa_root" "\$qa_root/.env" <<'PY'
           from pathlib import Path
