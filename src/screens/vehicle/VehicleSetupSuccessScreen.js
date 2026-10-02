@@ -3,8 +3,8 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
-import { styles, useVehicleCopy } from '../../components/vehicle/VehicleSetupUI';
-import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
+import { useVehicleSetupStyles, useVehicleCopy } from '../../components/vehicle/VehicleSetupUI';
+import { useDriverCeramicColors } from '../../theme/designV1';
 import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
 import { useI18n } from '../../utils/useI18n';
@@ -44,6 +44,8 @@ const completionMessage = (result, c, lang) => {
 
 export default function VehicleSetupSuccessScreen({ navigation, route }) {
   const { c } = useVehicleCopy();
+  const styles = useVehicleSetupStyles();
+  const ceramic = useDriverCeramicColors();
   const { lang } = useI18n();
   const { setRole } = useAuth();
   const origin = route?.params?.origin;
@@ -104,7 +106,7 @@ export default function VehicleSetupSuccessScreen({ navigation, route }) {
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
       {basicState === 'done' ? <>
         <View accessible accessibilityLabel={c.savedAccessibility} style={styles.successCircle}>
-          <Feather name="check" size={46} color="#fff" />
+          <Feather name="check" size={46} color={ceramic.activeText} />
         </View>
         <Text style={[styles.title, { textAlign: 'center', marginTop: 24 }]}>
           {c.registrationComplete || c.success}
@@ -114,8 +116,8 @@ export default function VehicleSetupSuccessScreen({ navigation, route }) {
         </Pressable>
       </> : <>
         {basicState === 'loading'
-          ? <ActivityIndicator size="large" color={DRIVER_CERAMIC.active} />
-          : <View style={styles.errorCircle}><Feather name="alert-circle" size={40} color={DRIVER_CERAMIC.error} /></View>}
+          ? <ActivityIndicator size="large" color={ceramic.active} />
+          : <View style={styles.errorCircle}><Feather name="alert-circle" size={40} color={ceramic.error} /></View>}
         <Text style={[styles.title, { textAlign: 'center', marginTop: 20 }]}>
           {basicState === 'loading' ? c.loading : (c.finishErrorTitle || c.saveError)}
         </Text>

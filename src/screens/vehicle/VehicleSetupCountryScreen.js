@@ -10,10 +10,10 @@ import {
   OptionSheet,
   SelectRow,
   countryLabel,
-  styles,
   useVehicleCopy,
+  useVehicleSetupStyles,
 } from '../../components/vehicle/VehicleSetupUI';
-import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
+import { useDriverCeramicColors } from '../../theme/designV1';
 import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
 import { storage } from '../../utils/storage';
@@ -66,6 +66,8 @@ const decimal = (value) => String(value || '')
 
 export default function VehicleSetupCountryScreen({ navigation, route }) {
   const { lang, c } = useVehicleCopy();
+  const styles = useVehicleSetupStyles();
+  const ceramic = useDriverCeramicColors();
   const { t } = useI18n();
   const { signOut } = useAuth();
   const [draft, setDraft] = useState(EMPTY_DRAFT);
@@ -201,7 +203,7 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
       {...props}
       value={String(draft[key] || '')}
       onChangeText={props.onChangeText || ((value) => setValue(key, value))}
-      placeholderTextColor="#728096"
+      placeholderTextColor={ceramic.textDim}
       style={[styles.input, { minHeight: 64 }, props.style]}
     />
   );
@@ -209,7 +211,7 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
   const selectModel = (value) => setValues({ model: value, model_custom: '' });
 
   if (loading) {
-    return <SafeAreaView style={styles.safe}><DriverRouteBackdrop /><ActivityIndicator color={DRIVER_CERAMIC.active} style={{ marginTop: 80 }} /></SafeAreaView>;
+    return <SafeAreaView style={styles.safe}><DriverRouteBackdrop /><ActivityIndicator color={ceramic.active} style={{ marginTop: 80 }} /></SafeAreaView>;
   }
 
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']} testID="vehicle-setup-single-screen">
@@ -254,7 +256,7 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
     </KeyboardSafeScrollView>
     <View style={styles.footer}>
       <Pressable disabled={incomplete || saving} onPress={save} style={[styles.cta, (incomplete || saving) && styles.ctaDisabled]} testID="vehicle-save">
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={[styles.ctaText, incomplete && styles.disabledText]}>{c.saveVehicle || c.saveOnly}</Text>}
+        {saving ? <ActivityIndicator color={ceramic.activeText} /> : <Text style={[styles.ctaText, incomplete && styles.disabledText]}>{c.saveVehicle || c.saveOnly}</Text>}
       </Pressable>
     </View>
     <CountrySheet visible={sheet === 'citizenship'} title={c.citizenshipSheet} onClose={() => setSheet(null)} onSelect={(iso) => setValue('driver_citizenship_country_code', iso)} />

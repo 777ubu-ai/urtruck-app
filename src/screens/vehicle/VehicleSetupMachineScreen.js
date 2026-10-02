@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { storage } from '../../utils/storage';
-import { useVehicleCopy, ProgressHeader, SelectRow, Label, OptionSheet, styles } from '../../components/vehicle/VehicleSetupUI';
+import { useVehicleCopy, ProgressHeader, SelectRow, Label, OptionSheet, useVehicleSetupStyles } from '../../components/vehicle/VehicleSetupUI';
 import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
 import { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
+import { useDriverCeramicColors } from '../../theme/designV1';
 
 const KEY = 'ur_vehicle_setup_draft';
 const TYPES = ['tractor_semitrailer', 'solo_truck', 'light_truck', 'road_train', 'container_truck', 'dump_truck', 'car_carrier', 'lowboy', 'tanker', 'other'];
@@ -15,6 +16,8 @@ const decimal = (value) => String(value || '').replace(',', '.').replace(/[^\d.]
 
 export default function VehicleSetupMachineScreen({ navigation, route }) {
   const { lang, c } = useVehicleCopy();
+  const styles = useVehicleSetupStyles();
+  const ceramic = useDriverCeramicColors();
   const otherMake = c.otherMake || c.makes.Other;
   const otherModel = c.otherModel || ({ RU: 'Другая модель', ZH: '其他型号', KK: 'Басқа модель', EN: 'Other model' }[lang] || 'Other model');
   const [draft, setDraft] = useState({});
@@ -64,8 +67,8 @@ export default function VehicleSetupMachineScreen({ navigation, route }) {
         <View style={styles.fieldCell}><Label>{c.make}</Label><SelectRow icon="settings" value={draft.make === 'Other' ? (draft.make_custom || c.makes.Other) : (draft.make ? c.makes[draft.make] : '')} onPress={() => setSheet('make')} testID="vehicle-make-selector" /></View>
         <View style={styles.fieldCell}><Label>{c.model}</Label><SelectRow icon="truck" value={draft.model === 'Other' ? (draft.model_custom || otherModel) : (draft.model || '')} onPress={() => draft.make && setSheet('model')} testID="vehicle-model-selector" /></View>
       </View>
-      {draft.make === 'Other' ? input('make_custom', { placeholder: otherMake, placeholderTextColor: '#6B7A71', testID: 'vehicle-make-manual' }) : null}
-      {draft.model === 'Other' ? input('model_custom', { placeholder: otherModel, placeholderTextColor: '#6B7A71', testID: 'vehicle-model-manual' }) : null}
+      {draft.make === 'Other' ? input('make_custom', { placeholder: otherMake, placeholderTextColor: ceramic.textDim, testID: 'vehicle-make-manual' }) : null}
+      {draft.model === 'Other' ? input('model_custom', { placeholder: otherModel, placeholderTextColor: ceramic.textDim, testID: 'vehicle-model-manual' }) : null}
       <Label>{c.plate}</Label>
       {input('license_plate', { autoCapitalize: 'characters', testID: 'vehicle-license-plate', onChangeText: (value) => setValue('license_plate', value.toUpperCase()), accessibilityLabel: c.plate })}
       <View style={styles.row}>
@@ -74,7 +77,7 @@ export default function VehicleSetupMachineScreen({ navigation, route }) {
       </View>
       <Label optional={c.optional}>{c.extra}</Label>
       <View style={styles.dimensionGrid}>
-        {[['cargo_length_m', c.length, 'vehicle-length'], ['cargo_width_m', c.width, 'vehicle-width'], ['cargo_height_m', c.height, 'vehicle-height']].map(([key, label, testID]) => <View key={key} style={styles.dimensionCell}><Label>{label}</Label>{input(key, { keyboardType: 'decimal-pad', testID, placeholder: '0', placeholderTextColor: '#6B7A71', accessibilityLabel: label, onChangeText: (value) => setValue(key, decimal(value)) })}</View>)}
+        {[['cargo_length_m', c.length, 'vehicle-length'], ['cargo_width_m', c.width, 'vehicle-width'], ['cargo_height_m', c.height, 'vehicle-height']].map(([key, label, testID]) => <View key={key} style={styles.dimensionCell}><Label>{label}</Label>{input(key, { keyboardType: 'decimal-pad', testID, placeholder: '0', placeholderTextColor: ceramic.textDim, accessibilityLabel: label, onChangeText: (value) => setValue(key, decimal(value)) })}</View>)}
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </KeyboardSafeScrollView>

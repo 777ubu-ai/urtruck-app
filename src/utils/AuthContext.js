@@ -161,6 +161,19 @@ export const AuthProvider = ({ children }) => {
     // Сохраняем токен только в памяти для best-effort серверной очистки.
     // Auth-state сбрасываем сразу: навигация не должна ждать сеть.
     const authToken = await regAPI.getToken();
+    // Persist the canonical server revoke BEFORE deleting the last local
+    // bearer.  A process kill after clearToken used to make offline logout
+    // unrecoverable: the next boot had neither token nor retry record.
+    try {
+      await regAPI.stageLogoutRevoke(authToken);
+    } catch {
+      // Do not clear the only bearer when the durable revoke intent could not
+      // be verified. Retaining the local session is safer than silently
+      // creating an unrecoverable server/push ownership window; the user can
+      // retry logout after protected storage recovers.
+      setAuthExpirySuppressed(false);
+      return { ok: false, reason: 'PENDING_LOGOUT_REVOKE_NOT_DURABLE' };
+    }
     setSession(null);
     setVerificationLevel(0);
     setHasToken(false);

@@ -109,6 +109,36 @@ def test_media_push_localizes_only_system_text(monkeypatch, text, is_voice, even
         assert sent[0][0][2] == text
 
 
+def test_voice_commit_rolls_back_when_durable_stt_enqueue_cannot_be_written(monkeypatch):
+    """A crash/error between voice INSERT and enqueue must leave no orphan voice."""
+    from api import chat
+    from services import voice_processing
+
+    owner, driver, cargo = (uuid.uuid4().hex for _ in range(3))
+    _mk_users(owner, driver)
+    room = get_or_create_deal_room(cargo, owner, driver)
+    _mk_accepted_deal(cargo, owner, driver, room)
+    client_msg_id = f"voice-atomic-{uuid.uuid4().hex}"
+    ref = chat.storage.LOCAL_PUBLIC_BASE + "/chat_photos/voice-atomic.m4a"
+
+    def enqueue_failed(*_args, **_kwargs):
+        raise RuntimeError("queue write interrupted")
+
+    monkeypatch.setattr(voice_processing, "enqueue_new_voice_in_transaction", enqueue_failed)
+    with pytest.raises(RuntimeError, match="queue write interrupted"):
+        send_message(
+            SendMessageIn(room_id=room, photo_url=ref, is_voice=True, client_msg_id=client_msg_id),
+            user=_u(owner),
+        )
+
+    with get_conn() as c:
+        assert c.execute(
+            "SELECT 1 FROM chat_messages WHERE sender_id=? AND client_msg_id=?",
+            (owner, client_msg_id),
+        ).fetchone() is None
+        assert c.execute("SELECT 1 FROM voice_processing_jobs WHERE message_id IN (SELECT id FROM chat_messages WHERE client_msg_id=?)", (client_msg_id,)).fetchone() is None
+
+
 def test_received_deal_keeps_room_visible_and_chat_usable_until_completion():
     o, d = "own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6]
     cargo = "cg_" + uuid.uuid4().hex[:6]

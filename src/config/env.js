@@ -43,6 +43,10 @@ const PROD_API = 'https://urtruck.kz';
 // inliner. Optional chaining around process.env is not reliably replaced in
 // release bundles, which can silently drop the QA endpoint override.
 const ENV_OVERRIDE = process.env.EXPO_PUBLIC_API_URL || '';
+// A listing link is public-facing, so it must never silently inherit an
+// arbitrary API host.  QA web builds set this explicitly; preview mobile can
+// use the same QA2 host as its API only when it is the allow-listed QA2 host.
+const PUBLIC_WEB_OVERRIDE = process.env.EXPO_PUBLIC_WEB_URL || '';
 const CONFIG_OVERRIDE = Constants?.expoConfig?.extra?.urtruckApiUrl || '';
 
 // Build-profile signal from EAS / app.json `extra.eas.profile`.
@@ -81,6 +85,32 @@ export const WEB_URL = IS_WEB
   ? 'https://urtruck.kz'
   : (ENV_OVERRIDE || 'https://urtruck.kz').replace(/\/+$/, '');
 
+const publicOrigin = (value) => {
+  try {
+    const parsed = new URL(String(value || ''));
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) return '';
+    const host = parsed.hostname.toLowerCase();
+    if (host !== 'urtruck.kz' && host !== 'www.urtruck.kz' && host !== 'qa2.urtruck.kz') return '';
+    return host === 'www.urtruck.kz' ? 'https://urtruck.kz' : `https://${host}`;
+  } catch {
+    return '';
+  }
+};
+
+// Share links are deliberately stricter than WEB_URL.  WEB_URL predates QA2
+// and retains its compatibility fallback for terms/privacy.  A cargo link
+// must fail closed instead of accidentally publishing a production URL from
+// an unconfigured preview build.  On web, the browser's own HTTPS origin is
+// a concrete runtime environment; it is still checked against the same tiny
+// allow-list, so a copied static bundle on an unknown host cannot publish a
+// link to that host or silently fall back to production.
+const WEB_RUNTIME_ORIGIN = IS_WEB && typeof window !== 'undefined'
+  ? window.location?.origin || ''
+  : '';
+export const PUBLIC_WEB_ORIGIN = APP_ENV === 'production'
+  ? 'https://urtruck.kz'
+  : publicOrigin(PUBLIC_WEB_OVERRIDE || ENV_OVERRIDE || WEB_RUNTIME_ORIGIN);
+
 // Beta pricing flag — keeps premium features free during the
 // pilot. Toggling to false enables paywalls; coordinate with
 // product before flipping.
@@ -117,5 +147,6 @@ export default {
   API_BASE,
   API_BASE_URL,
   WEB_URL,
+  PUBLIC_WEB_ORIGIN,
   IS_BETA,
 };
