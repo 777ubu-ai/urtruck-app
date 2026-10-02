@@ -15,9 +15,11 @@ from transformers import AutoTokenizer
 
 try:
     from .quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
+    from .structured_tokens import protect, restore
     from .translation_decoding import TRANSLATE_BEAM_SIZE, translation_max_decoding_length
 except ImportError:  # uvicorn runs this file as top-level main.py in QA2
     from quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
+    from structured_tokens import protect, restore
     from translation_decoding import TRANSLATE_BEAM_SIZE, translation_max_decoding_length
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -113,9 +115,10 @@ def translate(body: TranslateRequest):
     if not _translate_slot.acquire(timeout=75):
         raise HTTPException(status_code=503, detail="busy")
     try:
+        protected = protect(body.text)
         translator, tokenizer = _load_translation()
         tokenizer.src_lang = NLLB_LANGS[source]
-        source_ids = tokenizer.encode(body.text.strip())
+        source_ids = tokenizer.encode(protected.text.strip())
         source_tokens = tokenizer.convert_ids_to_tokens(source_ids)
         target_token = NLLB_LANGS[target]
         result = translator.translate_batch(
@@ -129,6 +132,12 @@ def translate(body: TranslateRequest):
             tokenizer.convert_tokens_to_ids(target_tokens),
             skip_special_tokens=True,
         ).strip()
+        translated = restore(translated, protected)
+        if translated is None:
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "translation confidence too low", "reason_codes": ["structured_token_missing"]},
+            )
         translated = repair_logistics_translation(body.text, translated, source, target)
         if not translated:
             raise RuntimeError("empty translation")

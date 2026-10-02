@@ -6,6 +6,7 @@ from qa_ai_service.quality import (
     translation_quality_failures,
     translation_quality_ok,
 )
+from qa_ai_service.structured_tokens import protect, restore
 from pathlib import Path
 
 
@@ -18,6 +19,29 @@ def test_quality_boolean_is_exact_negation_of_failure_list():
     assert translation_quality_ok(source, bad, "ru", "zh") is (
         not translation_quality_failures(source, bad, "ru", "zh")
     )
+
+
+def test_plate_identifier_is_restored_byte_for_byte_after_nllb_translation():
+    source = "Машина A123AA01 будет у Бахты завтра."
+    protected = protect(source)
+    assert protected.text == "Машина URTRUCKPROTECTEDTOKEN0X будет у Бахты завтра."
+    # Regression from the physical QA2 run: without protection NLLB returned
+    # `123A01`, dropping the leading letter.  Only the exact original token
+    # may be restored into a successful translation.
+    translated = "车辆 URTRUCKPROTECTEDTOKEN0X 明天到巴克图。"
+    assert restore(translated, protected) == "车辆 A123AA01 明天到巴克图。"
+
+
+def test_changed_or_dropped_plate_marker_fails_closed_instead_of_guessing():
+    protected = protect("Госномер A123AA01.")
+    assert restore("车牌 123A01。", protected) is None
+    assert restore("车牌 URTRUCKPROTECTEDTOKEN0X и URTRUCKPROTECTEDTOKEN0X。", protected) is None
+
+
+def test_container_and_document_identifiers_are_opaque_tokens_too():
+    protected = protect("Контейнер 20GP, документ CMR-2026-001.")
+    assert protected.text == "Контейнер URTRUCKPROTECTEDTOKEN0X, документ URTRUCKPROTECTEDTOKEN1X."
+    assert restore("集装箱 URTRUCKPROTECTEDTOKEN0X，文件 URTRUCKPROTECTEDTOKEN1X。", protected) == "集装箱 20GP，文件 CMR-2026-001。"
 
 
 def test_failure_reasons_explain_changed_numbers_weight_city_and_body_type():
