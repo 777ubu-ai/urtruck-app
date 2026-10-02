@@ -29,7 +29,10 @@ jobs:
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SERVER_PASS: ${{ secrets.SERVER_PASS }}
       SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
-      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      # `workflow_dispatch` supplies the source explicitly.  A branch-push
+      # has no `inputs`, so it must use the audited QA2 candidate rather than
+      # fail before reaching the read-only SQL contract.
+      QA_SOURCE_SHA: ${{ inputs.source_sha || '0a4a63d008d60b707786bfbc172da5cd865d6b2f' }}
       # The push path is deliberately limited to the one controlled QA2
       # cargo created for this investigation. workflow_dispatch may override
       # it only with another UUID after the audit workflow exists on default.
