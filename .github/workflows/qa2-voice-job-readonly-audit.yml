@@ -41,10 +41,15 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
-          git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
-          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
           [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$CONTROLLED_CARGO_ID" =~ ^[0-9a-fA-F-]{36}$ ]]
+          # checkout uses depth 1.  Fetch a small bounded history for both
+          # refs so the explicit deployed SHA is resolvable and ancestry can
+          # be verified before any server connection is attempted.
+          git fetch --no-tags --depth=50 origin \
+            qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate \
+            "$QA_SOURCE_SHA"
+          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
 
       - name: Verify read-only audit contract
         run: node --test tests/frontend/test_qa2_voice_job_readonly_audit_workflow.mjs
