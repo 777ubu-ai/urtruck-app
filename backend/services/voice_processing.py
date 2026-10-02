@@ -28,7 +28,7 @@ WORKER_ID = f"voice_stt:{os.getpid()}"
 def model_version() -> str:
     """A stable non-secret identity used in the idempotency key."""
     provider = (os.getenv("TRANSCRIBE_PROVIDER") or "auto").strip().lower() or "auto"
-    model = (os.getenv("TRANSCRIBE_MODEL") or "gpt-transcribe").strip() or "gpt-transcribe"
+    model = (os.getenv("TRANSCRIBE_MODEL") or "gpt-4o-mini-transcribe").strip() or "gpt-4o-mini-transcribe"
     return f"{provider}:{model}"[:180]
 
 

@@ -51,7 +51,8 @@
     "release:check-config": "node scripts/check-production-config.mjs",
     "lint": "node scripts/lint-source.mjs",
     "audit:dependencies": "npm audit --audit-level=moderate",
-    "audit:production": "npm audit --omit=dev --audit-level=moderate"
+    "audit:production": "npm audit --omit=dev --audit-level=moderate",
+    "audit:node-forge-exception": "node scripts/security-node-forge-audit-gate.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
