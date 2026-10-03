@@ -393,8 +393,27 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
     repaired = translated_text
     normalized_source = source_text.strip().casefold()
     forced_repair = _EXACT_FORCED_TRANSLATIONS.get((normalized_source, source, target))
+    # The chat translation-memory revalidator receives the complete user
+    # message, whereas the NLLB path deliberately receives its prose with
+    # opaque identifiers removed.  Match the same two observed EN→ZH
+    # hallucinations in either representation.  The identifier is then
+    # reattached from the source, never inferred from stale model output.
+    # Import locally to keep this shared quality module usable both as a
+    # package module and by the standalone QA AI service entrypoint.
+    identifiers: list[str] = []
+    if not forced_repair:
+        try:
+            from .structured_tokens import split_for_translation
+        except ImportError:  # pragma: no cover - direct service invocation
+            from structured_tokens import split_for_translation
+        pieces = split_for_translation(source_text)
+        identifiers = [value for is_identifier, value in pieces if is_identifier]
+        prose = "".join(value for is_identifier, value in pieces if not is_identifier)
+        prose = re.sub(r"[ \t]+", " ", prose).strip()
+        prose = re.sub(r"\s+([,.;:!?。！？])", r"\1", prose)
+        forced_repair = _EXACT_FORCED_TRANSLATIONS.get((prose.casefold(), source, target))
     if forced_repair:
-        return forced_repair
+        return f"{forced_repair} {' '.join(identifiers)}".strip()
     exact_repair = _EXACT_TRANSLATION_REPAIRS.get((normalized_source, source, target))
     if exact_repair and repaired.strip().casefold() == normalized_source:
         repaired = exact_repair
