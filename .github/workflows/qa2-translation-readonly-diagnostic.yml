@@ -68,7 +68,7 @@ jobs:
           chmod 600 "$known_hosts_file"
           export SSHPASS="$SERVER_PASS"
           sshpass -e ssh -o UserKnownHostsFile="$known_hosts_file" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" \
-            "CONTROLLED_CARGO_ID='$CONTROLLED_CARGO_ID' CONTROLLED_DAY_UTC='$CONTROLLED_DAY_UTC' python3 -" \
+            "QA_SOURCE_SHA='$QA_SOURCE_SHA' CONTROLLED_CARGO_ID='$CONTROLLED_CARGO_ID' CONTROLLED_DAY_UTC='$CONTROLLED_DAY_UTC' python3 -" \
             < scripts/qa2_translation_readonly_diagnostic.py > "$RUNNER_TEMP/qa2-translation-readonly.jsonl"
 
       - name: Validate the safe artifact schema
