@@ -7,6 +7,7 @@ kept for audit/migration but are never selected for delivery.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import random
@@ -26,6 +27,10 @@ NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
 
 FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "")
 FCM_SERVICE_ACCOUNT_JSON = os.getenv("FCM_SERVICE_ACCOUNT_JSON", "")
+# systemd EnvironmentFile treats backslashes as escapes.  A service-account
+# JSON contains ``\\n`` inside its PEM, so storing raw JSON there silently
+# corrupts the private key.  QA2 writes this transport-safe representation.
+FCM_SERVICE_ACCOUNT_JSON_BASE64 = os.getenv("FCM_SERVICE_ACCOUNT_JSON_BASE64", "")
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 
 APNS_KEY_ID = os.getenv("APNS_KEY_ID", "")
@@ -189,6 +194,12 @@ def _remaining_ttl_seconds(data: Optional[dict[str, Any]]) -> Optional[int]:
 
 
 def _service_account_info() -> Optional[dict[str, Any]]:
+    encoded = FCM_SERVICE_ACCOUNT_JSON_BASE64.strip()
+    if encoded:
+        try:
+            return json.loads(base64.b64decode(encoded, validate=True).decode("utf-8"))
+        except Exception:
+            return None
     raw = FCM_SERVICE_ACCOUNT_JSON.strip()
     if raw:
         try:
@@ -203,6 +214,19 @@ def _service_account_info() -> Optional[dict[str, Any]]:
         except Exception:
             return None
     return None
+
+
+def _service_account_private_key_valid(info: Optional[dict[str, Any]]) -> bool:
+    """Validate the PEM locally without logging or exporting key material."""
+    if not info or not info.get("private_key"):
+        return False
+    try:
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
+        load_pem_private_key(str(info["private_key"]).encode("utf-8"), password=None)
+        return True
+    except Exception:
+        return False
 
 
 class PushProvider:
@@ -226,6 +250,9 @@ class PushProvider:
 class FCMProvider(PushProvider):
     name = "fcm"
 
+    def __init__(self):
+        self._credential_error: Optional[str] = None
+
     def supports_platform(self, platform: Optional[str]) -> bool:
         return (platform or "").lower() == "android"
 
@@ -245,7 +272,11 @@ class FCMProvider(PushProvider):
             "iat": now,
             "exp": now + 3600,
         }
-        assertion = jwt.encode(claim, info.get("private_key"), algorithm="RS256")
+        try:
+            assertion = jwt.encode(claim, info.get("private_key"), algorithm="RS256")
+        except Exception:
+            self._credential_error = "invalid_credentials"
+            return None
         resp = httpx.post(
             "https://oauth2.googleapis.com/token",
             data={
@@ -262,7 +293,12 @@ class FCMProvider(PushProvider):
         project_id = FCM_PROJECT_ID or (_service_account_info() or {}).get("project_id")
         access_token = self._access_token()
         if not project_id or not access_token:
-            return ProviderResult("fcm", "failed", error_code="provider_not_configured", retryable=False)
+            return ProviderResult(
+                "fcm",
+                "failed",
+                error_code=self._credential_error or "provider_not_configured",
+                retryable=False,
+            )
         collapse_key = _safe_collapse_key((data or {}).get("collapse_key"))
         ttl_seconds = _remaining_ttl_seconds(data)
         android = {
@@ -1025,11 +1061,13 @@ def info() -> dict[str, Any]:
     except Exception:
         pass
     service_account = _service_account_info()
+    fcm_private_key_valid = _service_account_private_key_valid(service_account)
     fcm_configured = bool(
         (FCM_PROJECT_ID or (service_account or {}).get("project_id"))
         and service_account
         and service_account.get("client_email")
         and service_account.get("private_key")
+        and fcm_private_key_valid
     )
     fcm_errors = []
     if not (FCM_PROJECT_ID or (service_account or {}).get("project_id")):
@@ -1041,6 +1079,8 @@ def info() -> dict[str, Any]:
             fcm_errors.append("service_account_client_email_missing")
         if not service_account.get("private_key"):
             fcm_errors.append("service_account_private_key_missing")
+        elif not fcm_private_key_valid:
+            fcm_errors.append("service_account_private_key_invalid")
     try:
         import jwt  # noqa: F401
     except Exception:

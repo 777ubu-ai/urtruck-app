@@ -12,6 +12,7 @@ This proves the gateway's own code (payload shape, host selection, error
 classification, credential wiring) is correct and exercisable today,
 independent of whether real production credentials are ever configured.
 """
+import base64
 import json
 
 import pytest
@@ -82,6 +83,7 @@ class _FakeHttpxClient:
 def fcm_configured(monkeypatch):
     monkeypatch.setattr(push_gateway, "FCM_PROJECT_ID", "urtruck-test")
     monkeypatch.setattr(push_gateway, "FCM_SERVICE_ACCOUNT_JSON", FAKE_FCM_SERVICE_ACCOUNT)
+    monkeypatch.setattr(push_gateway, "FCM_SERVICE_ACCOUNT_JSON_BASE64", "")
     monkeypatch.setattr(push_gateway, "GOOGLE_APPLICATION_CREDENTIALS", "")
 
 
@@ -168,6 +170,7 @@ def test_fcm_priority_channel_and_badge_shape(fcm_configured, monkeypatch):
 def test_fcm_not_configured_fails_closed_without_network(monkeypatch):
     monkeypatch.setattr(push_gateway, "FCM_PROJECT_ID", "")
     monkeypatch.setattr(push_gateway, "FCM_SERVICE_ACCOUNT_JSON", "")
+    monkeypatch.setattr(push_gateway, "FCM_SERVICE_ACCOUNT_JSON_BASE64", "")
     monkeypatch.setattr(push_gateway, "GOOGLE_APPLICATION_CREDENTIALS", "")
 
     def fail_if_called(*a, **k):
@@ -177,6 +180,34 @@ def test_fcm_not_configured_fails_closed_without_network(monkeypatch):
     result = push_gateway.FCMProvider().send("tok", "T", "B", {}, badge=0)
     assert result.status == "failed"
     assert result.error_code == "provider_not_configured"
+
+
+def test_fcm_service_account_base64_preserves_pem_for_environment_file(monkeypatch):
+    monkeypatch.setattr(push_gateway, "FCM_SERVICE_ACCOUNT_JSON", "")
+    monkeypatch.setattr(
+        push_gateway,
+        "FCM_SERVICE_ACCOUNT_JSON_BASE64",
+        base64.b64encode(FAKE_FCM_SERVICE_ACCOUNT.encode("utf-8")).decode("ascii"),
+    )
+    info = push_gateway._service_account_info()
+    assert info and push_gateway._service_account_private_key_valid(info) is True
+
+
+def test_fcm_malformed_private_key_is_safe_nonretryable_credential_failure(monkeypatch):
+    malformed = json.dumps({
+        "type": "service_account", "project_id": "urtruck-test",
+        "client_email": "test@urtruck-test.iam.gserviceaccount.com",
+        "private_key": "-----BEGIN PRIVATE KEY-----broken",
+    })
+    monkeypatch.setattr(push_gateway, "FCM_PROJECT_ID", "urtruck-test")
+    monkeypatch.setattr(push_gateway, "FCM_SERVICE_ACCOUNT_JSON", malformed)
+    monkeypatch.setattr(push_gateway, "FCM_SERVICE_ACCOUNT_JSON_BASE64", "")
+    monkeypatch.setattr(push_gateway, "GOOGLE_APPLICATION_CREDENTIALS", "")
+    monkeypatch.setattr(push_gateway.httpx, "post", lambda *a, **k: pytest.fail("must not call FCM with malformed PEM"))
+    result = push_gateway.FCMProvider().send("fcm-token-1", "T", "B", {}, badge=0)
+    assert result.error_code == "invalid_credentials"
+    assert result.retryable is False
+    assert "service_account_private_key_invalid" in push_gateway.info()["fcm"]["errors"]
 
 
 # ───────────────────────── APNs fixtures ─────────────────────────
