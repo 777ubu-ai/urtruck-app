@@ -96,7 +96,7 @@ test('country picker leaves CountryFlag directly on the screen without a square 
   assert.doesNotMatch(leadStyle, /backgroundColor|borderWidth|borderColor/);
 });
 
-test('deal route flags use the specified 32 dp enamel size', () => {
+test('deal route flags use the specified 28 dp enamel size', () => {
   assert.match(routeLineSource, /<CountryFlag code=\{fromFlag\} width=\{32\}/);
   assert.match(routeLineSource, /<CountryFlag code=\{toFlag\} width=\{32\}/);
 });
