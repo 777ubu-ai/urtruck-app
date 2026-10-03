@@ -10,6 +10,7 @@ const pushRuntime = read('src/utils/pushRuntime.js');
 const notifications = read('src/screens/NotificationsScreen.js');
 const notificationsAPI = read('src/utils/notificationsAPI.js');
 const dealsScreen = read('src/screens/DealsScreen.js');
+const dealWorkspace = read('src/screens/DealWorkspaceScreenV2.js');
 const appJson = JSON.parse(read('app.json'));
 const aasa = JSON.parse(read('web/apple-app-site-association'));
 const wellKnownAasa = JSON.parse(read('web/.well-known/apple-app-site-association'));
@@ -56,6 +57,16 @@ test('foreground push suppression is source-of-truth aware for open chat rooms o
   assert.match(pushRuntime, /data\.room_id === activeRoom/);
   assert.match(pushRuntime, /shouldShowAlert: false/);
   assert.match(pushRuntime, /shouldShowAlert: true/);
+});
+
+test('deal workspace tracks active chat by navigation focus rather than mounted stack lifetime', () => {
+  assert.match(dealWorkspace, /useFocusEffect/);
+  assert.match(dealWorkspace, /setActiveRoom\(roomId\)/);
+  assert.match(dealWorkspace, /return \(\) => setActiveRoom\(null\)/);
+  const pollStart = dealWorkspace.indexOf('React.useEffect(() => {\n    if (!roomId) return undefined;\n    loadMessages();');
+  const focusStart = dealWorkspace.indexOf('useFocusEffect(', pollStart);
+  assert.ok(pollStart >= 0 && focusStart > pollStart);
+  assert.doesNotMatch(dealWorkspace.slice(pollStart, focusStart), /setActiveRoom/);
 });
 
 test('open-chat suppression still records native receipt before presentation policy returns', () => {
