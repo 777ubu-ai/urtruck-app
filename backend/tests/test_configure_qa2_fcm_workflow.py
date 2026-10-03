@@ -49,6 +49,10 @@ def test_qa2_fcm_workflow_validates_android_project_and_rolls_back():
     assert 'qa_env=/home/ubuntu/urtruck-qa2/.env' in raw
     assert 'qa_env=/home/ubuntu/urtruck-qa2/backend/.env' not in raw
     assert "Firebase project IDs differ" in raw
+    assert "load_pem_private_key" in raw
+    assert "QA2_FCM_SERVICE_ACCOUNT_PRIVATE_KEY_INVALID" in raw
+    assert "FCM_SERVICE_ACCOUNT_JSON_BASE64" in raw
+    assert '"FCM_SERVICE_ACCOUNT_JSON"' in raw  # removes legacy raw JSON from EnvironmentFile
     assert "/home/ubuntu/urtruck-qa2/.env.fcm-backup." in raw
     assert "BACKUP=" in raw
     assert "QA2_FCM_ROLLBACK" in raw
