@@ -10,7 +10,7 @@ from pathlib import Path
 _ALLOWED = {
     "diagnostic_policy": {"kind", "sqlite_mode", "sqlite_query_only", "application_mutation", "application_content_output", "provider_payload_output"},
     "stored_controlled_message": {"kind", "case", "message_id", "created_at", "stored_source_lang", "stored_target_lang", "message_cache", "shared_cache", "reason_codes"},
-    "provider_contract_case": {"kind", "case", "attempt", "source_lang_requested", "target_lang_requested", "source_lang_reported", "http", "reason_codes", "identifier_exact", "city_semantic_present", "response_ms", "cache_source"},
+    "provider_contract_case": {"kind", "case", "attempt", "source_lang_requested", "source_lang_expected", "target_lang_requested", "source_lang_reported", "http", "reason_codes", "identifier_exact", "city_semantic_present", "response_ms", "cache_source"},
     "reason_code_trace": {"kind", "backend", "mobile", "persistence"},
 }
 

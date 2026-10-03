@@ -135,8 +135,10 @@ def _safe_message_lookup(cargo_id: str, day: str) -> None:
             _emit("stored_controlled_message", case=label, message_id="UNKNOWN_not_found_in_scoped_cargo_day")
 
 
-def _call_ai(label: str, text: str, source: str, target: str, wants_plate: bool, wants_city: bool, attempt: str) -> None:
-    payload = json.dumps({"text": text, "source_lang": source, "target_lang": target}, ensure_ascii=False).encode("utf-8")
+def _call_ai(label: str, text: str, expected_source: str, target: str, wants_plate: bool, wants_city: bool, attempt: str) -> None:
+    # /chat/translate sends None for text-message source_lang, so this is the
+    # actual production auto-detection path — not a test-only UI-locale hint.
+    payload = json.dumps({"text": text, "source_lang": None, "target_lang": target}, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         "http://127.0.0.1:8003/translate", data=payload,
         headers={"Content-Type": "application/json"}, method="POST",
@@ -169,7 +171,8 @@ def _call_ai(label: str, text: str, source: str, target: str, wants_plate: bool,
         "provider_contract_case",
         case=label,
         attempt=attempt,
-        source_lang_requested=source,
+        source_lang_requested="auto",
+        source_lang_expected=expected_source,
         target_lang_requested=target,
         source_lang_reported=detected if detected in {"ru", "zh", "en", "kk"} else "UNKNOWN",
         http=status if isinstance(status, int) and status in _SAFE_HTTP else "UNKNOWN",
