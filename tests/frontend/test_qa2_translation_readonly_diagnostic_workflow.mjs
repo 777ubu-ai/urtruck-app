@@ -93,6 +93,15 @@ test('strict validator rejects invalid HTTP types and negative latency', () => {
   assert.notEqual(validate(rows).status, 0);
 });
 
+test('strict validator accepts a terminal runtime-mismatch artifact without provider results', () => {
+  const rows = [
+    artifact()[0],
+    { kind: 'runtime_identity', stage: 'before', expected_source_sha: SHA, backend_source_sha: 'UNKNOWN', ai_source_sha: SHA, status: 'runtime_mismatch' },
+    { kind: 'diagnostic_abort', reason: 'runtime_mismatch_before_provider_probe' },
+  ];
+  assert.equal(validate(rows).status, 0);
+});
+
 test('validator source excludes content-bearing evidence fields', () => {
   for (const forbidden of ['translated_text', 'voice_transcript', 'audio', 'api_key', 'bearer', 'room_id', 'sender_id']) {
     assert.equal(validator.includes(forbidden), false, `unsafe artifact field: ${forbidden}`);
