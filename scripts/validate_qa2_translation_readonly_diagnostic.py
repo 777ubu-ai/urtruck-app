@@ -212,7 +212,9 @@ def main() -> int:
     if len(sys.argv) != 2:
         _fail("artifact path required")
     try:
-        lines = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+        source = sys.argv[1]
+        content = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
+        lines = content.splitlines()
         rows = [_validate_row(json.loads(line)) for line in lines if line.strip()]
     except (OSError, json.JSONDecodeError) as error:
         _fail(f"invalid diagnostic artifact: {type(error).__name__}")

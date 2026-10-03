@@ -40,7 +40,7 @@ function artifact() {
 }
 
 function validate(rows) {
-  return spawnSync('python3', [validatorPath, '/dev/stdin'], {
+  return spawnSync('python3', [validatorPath, '-'], {
     input: `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`, encoding: 'utf8',
   });
 }
