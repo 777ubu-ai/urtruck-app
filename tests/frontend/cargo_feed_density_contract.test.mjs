@@ -16,9 +16,9 @@ test('cargo feed keeps the first screen dense enough for narrow mobile browsers'
   const bookmark = fs.readFileSync('src/components/ui/v1/BookmarkButton.js', 'utf8');
   assert.match(bookmark, /width:\s*34,\s*height:\s*34/);
   const routeLine = fs.readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
-  // Owner-approved Enamel Badge v1 deliberately uses 32 dp in deal routes.
-  assert.match(routeLine, /CountryFlag code=\{fromFlag\} width=\{32\}/);
-  assert.match(routeLine, /crossingCheckpointWithFlag:\s*\{ marginLeft:\s*35 \}/);
+  // Owner-approved compact Enamel Badge uses 28 dp in deal routes.
+  assert.match(routeLine, /CountryFlag code=\{fromFlag\} width=\{28\}/);
+  assert.match(routeLine, /crossingCheckpointWithFlag:\s*\{ marginLeft:\s*31 \}/);
   assert.match(routeLine, /fontSize:\s*15,\s*lineHeight:\s*19/);
   assert.doesNotMatch(card, /shadowOpacity/);
   // Price canon comes from v1Typography.price (17/22/800 tabular-nums).
