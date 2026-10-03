@@ -84,6 +84,7 @@ jobs:
           python3 - "$RUNNER_TEMP/qa2-fcm-service-account.json" <<'PY'
           import base64, json, os, sys
           from pathlib import Path
+          from cryptography.hazmat.primitives.serialization import load_pem_private_key
           expected_package = "com.urtruck.app.qa2"
           project_id = os.environ["QA2_FCM_PROJECT_ID"].strip()
           try:
@@ -101,6 +102,10 @@ jobs:
           }
           if service.get("type") != "service_account":
               raise SystemExit("QA2_FCM_SERVICE_ACCOUNT_TYPE_INVALID")
+          try:
+              load_pem_private_key(str(service.get("private_key") or "").encode("utf-8"), password=None)
+          except Exception as exc:
+              raise SystemExit(f"QA2_FCM_SERVICE_ACCOUNT_PRIVATE_KEY_INVALID: {type(exc).__name__}")
           if not project_id or project_id != service_project or project_id != android_project:
               raise SystemExit("Firebase project IDs differ")
           if expected_package not in packages:
@@ -215,7 +220,7 @@ jobs:
           chmod 600 /tmp/urtruck-qa2-fcm.state
           python3 - "$qa_env" "$payload" "$expected_project" "$cutoff" <<'PY'
           from pathlib import Path
-          import json, os, sys
+          import base64, json, os, sys
           env_path = Path(sys.argv[1])
           payload_path = Path(sys.argv[2])
           expected_project = sys.argv[3]
@@ -226,12 +231,19 @@ jobs:
           replacement = {
               "PUSH_PROVIDER_MODE": "native",
               "FCM_PROJECT_ID": expected_project,
-              "FCM_SERVICE_ACCOUNT_JSON": json.dumps(service, separators=(",", ":")),
+              # systemd EnvironmentFile consumes backslash escapes.  Base64
+              # preserves PEM newlines without placing secret material in a
+              # separate file or exposing it in workflow output.
+              "FCM_SERVICE_ACCOUNT_JSON_BASE64": base64.b64encode(
+                  json.dumps(service, separators=(",", ":")).encode("utf-8")
+              ).decode("ascii"),
               "PUSH_OUTBOX_CUTOFF_ID": cutoff,
           }
           kept = [
               line for line in env_path.read_text(encoding="utf-8").splitlines()
-              if "=" not in line or line.split("=", 1)[0].strip() not in replacement
+              if "=" not in line or line.split("=", 1)[0].strip() not in {
+                  *replacement, "FCM_SERVICE_ACCOUNT_JSON"
+              }
           ]
           kept.extend(f"{key}={value}" for key, value in replacement.items())
           temp = env_path.with_name(env_path.name + ".fcm.tmp")
