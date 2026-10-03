@@ -18,6 +18,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -708,11 +709,22 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   React.useEffect(() => {
     if (!roomId) return undefined;
     loadMessages();
-    setActiveRoom(roomId);
     const timer = setInterval(loadMessages, 3000);
     const appState = AppState.addEventListener('change', (state) => { if (state === 'active') loadMessages(); });
-    return () => { clearInterval(timer); appState?.remove?.(); setActiveRoom(null); };
+    return () => { clearInterval(timer); appState?.remove?.(); };
   }, [roomId, loadMessages]);
+
+  // A screen may stay mounted in the navigation stack after the user returns
+  // to Deals. Foreground push suppression must follow actual focus, not mount
+  // lifetime, otherwise the previous room remains "active" and notifications
+  // for it are incorrectly hidden while the user is on another screen.
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!roomId) return undefined;
+      setActiveRoom(roomId);
+      return () => setActiveRoom(null);
+    }, [roomId]),
+  );
 
   // P0 30.08.2026: комната сделки — единственный реальный чат обеих ролей
   // (CLAUDE.md: переписка живёт внутри «Сделок»), но она только КЛАЛА
