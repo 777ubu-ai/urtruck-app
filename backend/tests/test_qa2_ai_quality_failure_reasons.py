@@ -97,6 +97,16 @@ def test_exact_qa2_english_truck_regressions_repair_only_known_prose():
     ) == "卡车在巴克图。"
 
 
+def test_stale_shared_cache_repair_keeps_exact_plate_and_never_reuses_hallucination():
+    """The cache revalidator sees the original sentence, not NLLB's prose."""
+    assert repair_logistics_translation(
+        "Truck A123AA01.", "卡车A123AA01这里是我的家.", "en", "zh"
+    ) == "卡车。 A123AA01"
+    assert repair_logistics_translation(
+        "Truck A123AA01 is at Bakhty.", "卡车A123AA01这里是我的家.", "en", "zh"
+    ) == "卡车在巴克图。 A123AA01"
+
+
 def test_container_and_document_identifiers_are_opaque_tokens_too():
     source = "KZ 777 ABC 02; MSCU1234567; TGHU7654321; 20GP; 40HC; CMR-2026-001; INV-77821; PL-2026-09."
     protected = protect(source)
