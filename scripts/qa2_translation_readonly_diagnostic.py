@@ -64,7 +64,12 @@ def _database_candidates() -> list[Path]:
 
 
 def _safe_message_lookup(cargo_id: str, day: str) -> None:
-    wanted = {label: (_digest(text), target) for label, text, _source, target, _plate, _city in _CASES if label.endswith("plate_city")}
+    wanted_labels = {"ru02_plate_city", "zh02_plate_city"}
+    wanted = {
+        label: (_digest(text), target)
+        for label, text, _source, target, _plate, _city in _CASES
+        if label in wanted_labels
+    }
     emitted: set[str] = set()
     for candidate in _database_candidates():
         try:
