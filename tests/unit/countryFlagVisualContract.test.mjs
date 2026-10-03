@@ -91,12 +91,12 @@ test('CountryFlag defaults to round rendering without emoji fallback', () => {
 });
 
 test('country picker leaves CountryFlag directly on the screen without a square holder', () => {
-  assert.match(locationPickerSource, /<CountryFlag code=\{code\} width=\{36\}/);
+  assert.match(locationPickerSource, /<CountryFlag code=\{code\} width=\{32\}/);
   const leadStyle = locationPickerSource.match(/lead:\s*\{([^}]*)\}/)?.[1] || '';
   assert.doesNotMatch(leadStyle, /backgroundColor|borderWidth|borderColor/);
 });
 
-test('deal route flags use the specified 32 dp enamel size', () => {
-  assert.match(routeLineSource, /<CountryFlag code=\{fromFlag\} width=\{32\}/);
-  assert.match(routeLineSource, /<CountryFlag code=\{toFlag\} width=\{32\}/);
+test('deal route flags use the specified 28 dp enamel size', () => {
+  assert.match(routeLineSource, /<CountryFlag code=\{fromFlag\} width=\{28\}/);
+  assert.match(routeLineSource, /<CountryFlag code=\{toFlag\} width=\{28\}/);
 });
