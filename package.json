@@ -52,7 +52,8 @@
     "lint": "node scripts/lint-source.mjs",
     "audit:dependencies": "npm audit --audit-level=moderate",
     "audit:production": "npm audit --omit=dev --audit-level=moderate",
-    "audit:node-forge-exception": "node scripts/security-node-forge-audit-gate.mjs"
+    "audit:node-forge-exception": "node scripts/security-node-forge-audit-gate.mjs",
+    "security:check-braces-upstream": "node scripts/security-check-braces-upstream.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
@@ -64,6 +65,7 @@
     "@sentry/react-native": "~7.11.0",
     "@supabase/supabase-js": "^2.45.0",
     "@types/react": "~19.2.4",
+    "braces": "file:vendor/braces-3.0.4-d0d575e",
     "country-flag-icons": "1.6.15",
     "expo": "^57.0.24",
     "expo-application": "~57.0.3",
