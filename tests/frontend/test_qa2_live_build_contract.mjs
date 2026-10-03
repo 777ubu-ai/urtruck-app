@@ -35,6 +35,26 @@ test('QA086 checks out and records an explicitly supplied exact source SHA', () 
   assert.ok(workflow.includes('QA2 Android versionCode must be greater than the previous QA2 APK'));
   assert.ok(!workflow.includes('211040090'), 'workflow must not silently rebuild the previous QA2 APK');
   assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
+  assert.ok(workflow.includes('URTRUCK_VERSION_NAME=1.0.9-qa2'), 'QA2 artifact must carry an explicit -qa2 versionName');
+});
+
+test('QA2 Android config carries explicit qa2 versionName', () => {
+  const output = execFileSync(
+    process.execPath,
+    ['-e', "const config = require('./app.config.js')({ config: { version: '1.0.9', android: {}, extra: {} } }); process.stdout.write(String(config.version));"],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        URTRUCK_BUILD_FLAVOR: 'qa2',
+        URTRUCK_VERSION_NAME: '1.0.9-qa2',
+        URTRUCK_VERSION_CODE: String(qa2AndroidMetadata.QA2_ANDROID_VERSION_CODE),
+        EXPO_PUBLIC_API_URL: 'https://qa2.example.test',
+      },
+    },
+  ).toString();
+
+  assert.equal(output, '1.0.9-qa2');
 });
 
 test('QA2 Android APK versionCode is sourced from config and is newer than the installed baseline', () => {
