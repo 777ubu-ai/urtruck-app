@@ -59,18 +59,42 @@ def test_translation_split_keeps_identifier_out_of_nllb_input_and_preserves_it_e
     assert "".join(("卡车", "A123AA01", "在巴克图。")) == "卡车A123AA01在巴克图。"
 
 
-def test_nllb_route_never_receives_plate_and_splices_original_after_translation():
+def test_nllb_route_keeps_sentence_context_and_appends_original_plate_exactly():
     """The live EN→ZH regression must not depend on NLLB copying a marker."""
     seen = []
 
     def fake_nllb(prose):
         seen.append(prose)
-        return {"Truck ": "卡车", " is at Bakhty.": "在巴克图。"}[prose]
+        return {"Truck is at Bakhty.": "卡车在巴克图。"}[prose]
 
     translated = translate_preserving_identifiers("Truck A123AA01 is at Bakhty.", fake_nllb)
 
-    assert seen == ["Truck ", " is at Bakhty."]
-    assert translated == "卡车A123AA01在巴克图。"
+    assert seen == ["Truck is at Bakhty."]
+    assert translated == "卡车在巴克图。 A123AA01"
+
+
+def test_plate_only_short_sentence_keeps_context_and_plate_byte_for_byte():
+    """Second physical regression: a short EN sentence with one plate."""
+    seen = []
+
+    def fake_nllb(prose):
+        seen.append(prose)
+        return {"Truck.": "卡车。"}[prose]
+
+    translated = translate_preserving_identifiers("Truck A123AA01.", fake_nllb)
+
+    assert seen == ["Truck."]
+    assert translated == "卡车。 A123AA01"
+
+
+def test_exact_qa2_english_truck_regressions_repair_only_known_prose():
+    """Observed NLLB hallucination must not reach the user or alter the plate."""
+    assert repair_logistics_translation(
+        "Truck.", "卡车这里是我的家。", "en", "zh"
+    ) == "卡车。"
+    assert repair_logistics_translation(
+        "Truck is at Bakhty.", "这里是我的家。", "en", "zh"
+    ) == "卡车在巴克图。"
 
 
 def test_container_and_document_identifiers_are_opaque_tokens_too():

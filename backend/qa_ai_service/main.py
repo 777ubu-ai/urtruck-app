@@ -140,12 +140,16 @@ def translate(body: TranslateRequest):
         # Opaque values are never given to NLLB.  This avoids both the old
         # plate-corruption bug and the newly observed marker-drop failure;
         # identifiers are copied only by this deterministic local operation.
-        translated = translate_preserving_identifiers(
-            body.text,
-            lambda value: _translate_prose_piece(
+        def translate_contextual_prose(value: str) -> str:
+            raw = _translate_prose_piece(
                 value, source=source, target=target, translator=translator, tokenizer=tokenizer
-            ),
-        ).strip()
+            )
+            # Repair only the prose sent to NLLB.  Structured identifiers are
+            # appended afterwards by translate_preserving_identifiers(), so a
+            # narrow repair can never rewrite or remove a plate/document ID.
+            return repair_logistics_translation(value, raw, source, target)
+
+        translated = translate_preserving_identifiers(body.text, translate_contextual_prose).strip()
         translated = repair_logistics_translation(body.text, translated, source, target)
         if not translated:
             raise RuntimeError("empty translation")
