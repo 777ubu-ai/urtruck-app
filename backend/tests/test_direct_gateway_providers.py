@@ -217,6 +217,7 @@ def apns_configured(monkeypatch):
     monkeypatch.setattr(push_gateway, "APNS_TEAM_ID", "TESTTEAMID")
     monkeypatch.setattr(push_gateway, "APNS_BUNDLE_ID", "com.urtruck.app")
     monkeypatch.setattr(push_gateway, "APNS_AUTH_KEY_P8", FAKE_APNS_KEY_P8)
+    monkeypatch.setattr(push_gateway, "APNS_AUTH_KEY_P8_BASE64", "")
 
 
 def _mock_apns_transport(monkeypatch, response):
@@ -305,6 +306,7 @@ def test_apns_not_configured_fails_closed_without_network(monkeypatch):
     monkeypatch.setattr(push_gateway, "APNS_KEY_ID", "")
     monkeypatch.setattr(push_gateway, "APNS_TEAM_ID", "")
     monkeypatch.setattr(push_gateway, "APNS_AUTH_KEY_P8", "")
+    monkeypatch.setattr(push_gateway, "APNS_AUTH_KEY_P8_BASE64", "")
 
     def fail_if_called(*a, **k):
         raise AssertionError("must not attempt a network call when unconfigured")
@@ -313,3 +315,40 @@ def test_apns_not_configured_fails_closed_without_network(monkeypatch):
     result = push_gateway.APNsProvider().send("tok", "T", "B", {}, badge=0)
     assert result.status == "failed"
     assert result.error_code == "provider_not_configured"
+
+
+def test_apns_base64_key_preserves_multiline_p8_for_systemd_environment_file(monkeypatch):
+    monkeypatch.setattr(push_gateway, "APNS_AUTH_KEY_P8", "")
+    monkeypatch.setattr(
+        push_gateway,
+        "APNS_AUTH_KEY_P8_BASE64",
+        base64.b64encode(FAKE_APNS_KEY_P8.encode("utf-8")).decode("ascii"),
+    )
+    key, error = push_gateway._apns_auth_key()
+    assert error is None
+    assert key == FAKE_APNS_KEY_P8
+    assert push_gateway._apns_private_key_valid(key) is True
+
+
+def test_apns_malformed_base64_fails_closed_without_network(monkeypatch):
+    monkeypatch.setattr(push_gateway, "APNS_KEY_ID", "TESTKEYID1")
+    monkeypatch.setattr(push_gateway, "APNS_TEAM_ID", "TESTTEAMID")
+    monkeypatch.setattr(push_gateway, "APNS_BUNDLE_ID", "com.urtruck.app")
+    monkeypatch.setattr(push_gateway, "APNS_AUTH_KEY_P8", "")
+    monkeypatch.setattr(push_gateway, "APNS_AUTH_KEY_P8_BASE64", "not-base64!")
+    monkeypatch.setattr(push_gateway.httpx, "Client", lambda *a, **k: pytest.fail("must not call APNs with malformed key"))
+    result = push_gateway.APNsProvider().send("tok", "T", "B", {}, badge=0)
+    assert result.error_code == "provider_not_configured"
+    assert "auth_key_base64_invalid" in push_gateway.info()["apns"]["errors"]
+
+
+def test_apns_invalid_p8_fails_closed_without_network(monkeypatch):
+    monkeypatch.setattr(push_gateway, "APNS_KEY_ID", "TESTKEYID1")
+    monkeypatch.setattr(push_gateway, "APNS_TEAM_ID", "TESTTEAMID")
+    monkeypatch.setattr(push_gateway, "APNS_BUNDLE_ID", "com.urtruck.app")
+    monkeypatch.setattr(push_gateway, "APNS_AUTH_KEY_P8", "-----BEGIN PRIVATE KEY-----\\nbroken")
+    monkeypatch.setattr(push_gateway, "APNS_AUTH_KEY_P8_BASE64", "")
+    monkeypatch.setattr(push_gateway.httpx, "Client", lambda *a, **k: pytest.fail("must not call APNs with malformed P8"))
+    result = push_gateway.APNsProvider().send("tok", "T", "B", {}, badge=0)
+    assert result.error_code == "provider_not_configured"
+    assert "auth_key_invalid" in push_gateway.info()["apns"]["errors"]
