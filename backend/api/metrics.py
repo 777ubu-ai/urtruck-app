@@ -5,6 +5,7 @@
 """
 import sys
 import time
+from time import monotonic
 from collections import defaultdict
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -22,50 +23,77 @@ _request_count = defaultdict(int)      # {method_path: count}
 _request_errors = defaultdict(int)     # {method_path: 5xx count}
 _request_client_errors = defaultdict(int)  # {method_path: 4xx count}
 _request_duration = defaultdict(float) # {method_path: total_seconds}
+# Fixed buckets keep the endpoint label bounded while preserving the request
+# distribution needed to calculate p95.  Export the standard Prometheus
+# histogram triplet; a collector must aggregate buckets first and then use
+# histogram_quantile, never average per-process p95 values.
+_REQUEST_DURATION_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5,
+                             1.0, 2.5, 5.0, 10.0)
+_request_duration_histogram = defaultdict(
+    lambda: [0] * (len(_REQUEST_DURATION_BUCKETS) + 1)
+)  # {method_path: cumulative bucket observations including +Inf}
 _startup_time = time.time()
+_metrics_window_started_at = time.time()
+
+
+def _request_metric_key(path: str, method: str) -> str:
+    """Return a bounded route family, never a user-supplied URL label."""
+    # Группируем по prefix чтобы не раздувать кардинальность
+    if path.startswith("/api/v1/register"):
+        key = "register"
+    elif path.startswith("/api/v1/reviews"):
+        key = "reviews"
+    elif path.startswith("/api/v1/push"):
+        key = "push"
+    elif path.startswith("/api/v1/borders/scoreboard"):
+        key = "borders_scoreboard"
+    elif path.startswith("/api/v1/borders/bookings"):
+        key = "borders_bookings"
+    elif path.startswith("/api/v1/borders"):
+        key = "borders"
+    elif path.startswith("/api/v1/favorites"):
+        key = "favorites"
+    elif path.startswith("/api/v1/qr"):
+        key = "qr"
+    elif path.startswith("/api/v1/docs"):
+        key = "docs"
+    elif path.startswith("/admin"):
+        key = "admin"
+    elif path.startswith("/api/v1"):
+        key = "api_other"
+    else:
+        key = "static"
+    return f"{method}_{key}"
+
+
+def _observe_request(method_key: str, duration: float, status_code: int) -> None:
+    """Record one completed or failed request without exposing request data."""
+    # Monotonic durations can only be non-negative. Guarding here keeps a
+    # faulty clock/test double from corrupting every cumulative bucket.
+    duration = max(0.0, duration)
+    _request_count[method_key] += 1
+    _request_duration[method_key] += duration
+    buckets = _request_duration_histogram[method_key]
+    for index, upper_bound in enumerate(_REQUEST_DURATION_BUCKETS):
+        if duration <= upper_bound:
+            buckets[index] += 1
+    buckets[-1] += 1  # +Inf always includes every observation.
+    if status_code >= 500:
+        _request_errors[method_key] += 1
+    elif status_code >= 400:
+        _request_client_errors[method_key] += 1
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        start = time.time()
-        response = await call_next(request)
-        duration = time.time() - start
-
-        path = request.url.path
-        # Группируем по prefix чтобы не раздувать кардинальность
-        if path.startswith("/api/v1/register"):
-            key = "register"
-        elif path.startswith("/api/v1/reviews"):
-            key = "reviews"
-        elif path.startswith("/api/v1/push"):
-            key = "push"
-        elif path.startswith("/api/v1/borders/scoreboard"):
-            key = "borders_scoreboard"
-        elif path.startswith("/api/v1/borders/bookings"):
-            key = "borders_bookings"
-        elif path.startswith("/api/v1/borders"):
-            key = "borders"
-        elif path.startswith("/api/v1/favorites"):
-            key = "favorites"
-        elif path.startswith("/api/v1/qr"):
-            key = "qr"
-        elif path.startswith("/api/v1/docs"):
-            key = "docs"
-        elif path.startswith("/admin"):
-            key = "admin"
-        elif path.startswith("/api/v1"):
-            key = "api_other"
-        else:
-            key = "static"
-
-        method_key = f"{request.method}_{key}"
-        _request_count[method_key] += 1
-        _request_duration[method_key] += duration
-        if response.status_code >= 500:
-            _request_errors[method_key] += 1
-        elif response.status_code >= 400:
-            _request_client_errors[method_key] += 1
-
+        start = monotonic()
+        method_key = _request_metric_key(request.url.path, request.method)
+        try:
+            response = await call_next(request)
+        except Exception:
+            _observe_request(method_key, monotonic() - start, 500)
+            raise
+        _observe_request(method_key, monotonic() - start, response.status_code)
         return response
 
 
@@ -92,6 +120,24 @@ def prometheus_metrics(_admin: str = Depends(check_admin)):
     lines.append("# TYPE urtruck_duration_seconds_total counter")
     for k, v in sorted(_request_duration.items()):
         lines.append(f'urtruck_duration_seconds_total{{endpoint="{k}"}} {v:.3f}')
+
+    lines.append("# HELP urtruck_request_duration_seconds Request duration histogram")
+    lines.append("# TYPE urtruck_request_duration_seconds histogram")
+    for key, buckets in sorted(_request_duration_histogram.items()):
+        for upper_bound, count in zip(_REQUEST_DURATION_BUCKETS, buckets):
+            lines.append(
+                f'urtruck_request_duration_seconds_bucket{{endpoint="{key}",le="{upper_bound:g}"}} {count}'
+            )
+        lines.append(
+            f'urtruck_request_duration_seconds_bucket{{endpoint="{key}",le="+Inf"}} {buckets[-1]}'
+        )
+        lines.append(f'urtruck_request_duration_seconds_count{{endpoint="{key}"}} {buckets[-1]}')
+        lines.append(
+            f'urtruck_request_duration_seconds_sum{{endpoint="{key}"}} {_request_duration[key]:.6f}'
+        )
+    lines.append("# HELP urtruck_metrics_window_start_unixtime Metrics process window start")
+    lines.append("# TYPE urtruck_metrics_window_start_unixtime gauge")
+    lines.append(f"urtruck_metrics_window_start_unixtime {_metrics_window_started_at:.3f}")
 
     # Gauges
     lines.append("# HELP urtruck_uptime_seconds Server uptime")
