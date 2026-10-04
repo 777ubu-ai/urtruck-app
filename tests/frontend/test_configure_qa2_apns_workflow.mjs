@@ -13,9 +13,13 @@ const recovery = fs.readFileSync(path.join(root, 'scripts/qa2_apns_recovery.py')
 test('QA2 APNs workflow is environment-scoped and does not use privileged PR triggers', () => {
   assert.match(workflow, /environment:\s*\n\s*name: qa2/);
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /push:\s*\n\s*tags:\s*\n[\s\S]*qa2-apns-apply-\*/);
   assert.doesNotMatch(workflow, /pull_request_target/);
   assert.match(workflow, /test "\$GITHUB_REF_NAME" = "qa2\/integration-candidate"/);
   assert.match(workflow, /test "\$QA_SOURCE_SHA" = "\$GITHUB_SHA"/);
+  assert.match(workflow, /\^qa2-apns-apply-\(\[0-9a-f\]\{40\}\)\$/);
+  assert.match(workflow, /test "\$\{BASH_REMATCH\[1\]\}" = "\$GITHUB_SHA"/);
+  assert.match(workflow, /test "\$QA_SOURCE_SHA" = "\$\(git rev-parse origin\/qa2\/integration-candidate\)"/);
 });
 
 test('QA2 APNs workflow validates all secret names and TestFlight contract without printing values', () => {

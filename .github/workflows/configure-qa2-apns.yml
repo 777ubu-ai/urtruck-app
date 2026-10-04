@@ -11,6 +11,12 @@ on:
         description: Exact merged qa2/integration-candidate SHA
         required: true
         type: string
+  push:
+    tags:
+      # `workflow_dispatch` cannot be invoked while this workflow is absent
+      # from the repository default branch. This tag is an explicit, restricted
+      # launch path for the reviewed QA2 integration commit only.
+      - 'qa2-apns-apply-*'
 
 concurrency:
   group: urtruck-qa2-apns-configuration
@@ -27,7 +33,7 @@ jobs:
     environment:
       name: qa2
     env:
-      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      QA_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
@@ -40,12 +46,21 @@ jobs:
       QA2_APNS_USE_SANDBOX: ${{ secrets.QA2_APNS_USE_SANDBOX }}
 
     steps:
-      - name: Require explicit QA2-only confirmation and exact source
+      - name: Require explicit QA2-only invocation and exact source
         shell: bash
         run: |
           set -euo pipefail
-          test "${{ inputs.confirmation }}" = "CONFIGURE_QA2_APNS"
-          test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            test "${{ inputs.confirmation }}" = "CONFIGURE_QA2_APNS"
+            test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
+          elif [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            test "$GITHUB_REF_TYPE" = "tag"
+            [[ "$GITHUB_REF_NAME" =~ ^qa2-apns-apply-([0-9a-f]{40})$ ]]
+            test "${BASH_REMATCH[1]}" = "$GITHUB_SHA"
+          else
+            echo "QA2_APNS_INVOCATION_REJECTED" >&2
+            exit 1
+          fi
           [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$QA_SOURCE_SHA" = "$GITHUB_SHA"
 
@@ -60,7 +75,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
           git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
-          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
+          test "$QA_SOURCE_SHA" = "$(git rev-parse origin/qa2/integration-candidate)"
 
       - name: Validate APNs secrets without printing them
         shell: bash
