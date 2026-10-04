@@ -80,6 +80,28 @@ export const API_URL = SERVER_URL;
 export const API_BASE = `${SERVER_URL}/api/v1`;
 export const API_BASE_URL = SERVER_URL;
 
+// A mobile package can be updated from a production-backed build to a QA2
+// build without Android/iOS clearing its local storage.  A bearer is valid
+// only for the API that issued it, so keep session material in a namespace
+// derived from the concrete API origin.  Do not use APP_ENV here: preview
+// TestFlight builds may intentionally use QA2 while APP_ENV is "preview".
+const sessionStorageScope = (origin) => {
+  try {
+    const host = new URL(origin || PROD_API).hostname.toLowerCase();
+    if (host === 'qa2.urtruck.kz') return 'qa2';
+    if (host === 'urtruck.kz' || host === 'www.urtruck.kz') return 'production';
+    // Development hosts must not share a bearer with either public API or
+    // with another local endpoint. Hostnames are safe storage-key fragments.
+    return `isolated-${host.replace(/[^a-z0-9.-]/g, '_') || 'unknown'}`;
+  } catch {
+    return 'isolated-invalid-origin';
+  }
+};
+
+export const SESSION_STORAGE_SCOPE = sessionStorageScope(
+  IS_WEB ? (WEB_RUNTIME_ORIGIN || ENV_OVERRIDE || PROD_API) : (SERVER_URL || PROD_API),
+);
+
 // Public website / share links. Always HTTPS in production.
 export const WEB_URL = IS_WEB
   ? 'https://urtruck.kz'
@@ -146,6 +168,7 @@ export default {
   API_URL,
   API_BASE,
   API_BASE_URL,
+  SESSION_STORAGE_SCOPE,
   WEB_URL,
   PUBLIC_WEB_ORIGIN,
   IS_BETA,

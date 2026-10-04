@@ -13,6 +13,11 @@ async function reset() {
 async function freshRegistration() {
   return (await import(`../../src/utils/registration.js?t=${Date.now()}-${Math.random()}`)).regAPI;
 }
+async function pendingTokens() {
+  const { storage } = await import('../../src/utils/storage.js');
+  const raw = await storage.get(pendingKey);
+  return raw ? JSON.parse(raw) : null;
+}
 
 test('503 logout is persisted and retried successfully after restart', async () => {
   const store = await reset();
@@ -30,12 +35,12 @@ test('503 logout is persisted and retried successfully after restart', async () 
     const failed = await api.logout('old-session-token');
     assert.equal(failed.ok, false);
     assert.equal(failed.status, 503);
-    assert.deepEqual(JSON.parse(await store.getItem(pendingKey)), ['old-session-token']);
+    assert.deepEqual(await pendingTokens(), ['old-session-token']);
 
     const retried = await api.flushPendingLogout();
     assert.equal(retried.ok, true);
     assert.equal(calls, 2);
-    assert.equal(await store.getItem(pendingKey), null);
+    assert.equal(await pendingTokens(), null);
   } finally {
     globalThis.fetch = oldFetch;
   }
@@ -48,7 +53,7 @@ test('network failure keeps exactly the old bearer queued', async () => {
   try {
     const api = await freshRegistration();
     assert.equal((await api.logout('session-to-revoke')).ok, false);
-    assert.deepEqual(JSON.parse(await store.getItem(pendingKey)), ['session-to-revoke']);
+    assert.deepEqual(await pendingTokens(), ['session-to-revoke']);
   } finally {
     globalThis.fetch = oldFetch;
   }
@@ -60,19 +65,19 @@ test('protected-storage write failure aborts logout staging instead of silently 
   try {
     await originalSet('ur_reg_token', 'opaque-test-bearer');
     store.setItem = async (key, value) => {
-      if (key === pendingKey) throw new Error('secure storage unavailable');
+      if (key.includes('ur_pending_logout_token')) throw new Error('secure storage unavailable');
       return originalSet(key, value);
     };
     const api = await freshRegistration();
 
     await assert.rejects(
       api.stageLogoutRevoke(await api.getToken()),
-      (error) => error?.code === 'PENDING_LOGOUT_REVOKE_NOT_DURABLE',
+      (error) => error?.code === 'SECURE_WRITE_FAILED',
     );
     // AuthContext must see this failure and keep the bearer rather than
     // clearing the session into an unrecoverable logout state.
     assert.equal(await api.getToken(), 'opaque-test-bearer');
-    assert.equal(await store.getItem(pendingKey), null);
+    assert.equal(await pendingTokens(), null);
   } finally {
     store.setItem = originalSet;
   }
@@ -100,9 +105,9 @@ test('logout revoke is durable before the live token can be removed by a crash',
     await api.stageLogoutRevoke('bearer-before-crash');
     await store.removeItem('ur_reg_token');
 
-    assert.deepEqual(JSON.parse(await store.getItem(pendingKey)), ['bearer-before-crash']);
+    assert.deepEqual(await pendingTokens(), ['bearer-before-crash']);
     assert.equal((await api.flushPendingLogout()).ok, true);
-    assert.equal(await store.getItem(pendingKey), null);
+    assert.equal(await pendingTokens(), null);
   } finally {
     globalThis.fetch = oldFetch;
   }
@@ -132,10 +137,10 @@ test('every post-stage logout interruption keeps the revoke durable until restar
           await api.clearToken();
         }
 
-        assert.deepEqual(JSON.parse(await store.getItem(pendingKey)), ['durable-revoke-test-bearer']);
+        assert.deepEqual(await pendingTokens(), ['durable-revoke-test-bearer']);
         const restarted = await freshRegistration();
         assert.equal((await restarted.flushPendingLogout()).ok, true);
-        assert.equal(await store.getItem(pendingKey), null);
+        assert.equal(await pendingTokens(), null);
       });
     }
   } finally {
@@ -158,13 +163,13 @@ test('failed logouts from different accounts are both retained and flushed', asy
     const api = await freshRegistration();
     await api.logout('account-a-token');
     await api.logout('account-b-token');
-    assert.deepEqual(JSON.parse(await store.getItem(pendingKey)), ['account-a-token', 'account-b-token']);
+    assert.deepEqual(await pendingTokens(), ['account-a-token', 'account-b-token']);
 
     offline = false;
     const result = await api.flushPendingLogout();
     assert.equal(result.ok, true);
     assert.deepEqual(seen, ['account-a-token', 'account-b-token', 'account-a-token', 'account-b-token']);
-    assert.equal(await store.getItem(pendingKey), null);
+    assert.equal(await pendingTokens(), null);
   } finally {
     globalThis.fetch = oldFetch;
   }
