@@ -41,6 +41,36 @@ export function normalizeComposerHeight(input, reportedHeight, minimum, maximum,
   return Math.max(minimum, Math.min(maximum, next));
 }
 
+// Native TextInput measurements are not a layout contract on iOS: the same
+// text can briefly report neighbouring heights while React is reconciling a
+// polling update.  Map measurements to line-height steps and accept at most
+// one result per text value.  That makes 40→48→40 jitter a no-op instead of a
+// visible composer resize.
+export function stableComposerHeight({
+  input,
+  previousInput,
+  currentHeight,
+  reportedHeight,
+  minimum,
+  maximum,
+  lineHeight = 20,
+  verticalPadding = 8,
+}) {
+  const text = String(input || '');
+  const previous = String(previousInput || '');
+  if (!text.trim()) return minimum;
+  if (text === previous) return currentHeight;
+  const raw = Number(reportedHeight);
+  if (!Number.isFinite(raw) || raw <= 0) return currentHeight;
+  const steps = Math.max(0, Math.round((raw - (minimum + verticalPadding)) / lineHeight));
+  const candidate = Math.max(minimum, Math.min(maximum, minimum + (steps * lineHeight)));
+  // Appending must never make the composer shrink; deletion may shrink only
+  // to the canonical measured line state.
+  return text.length < previous.length
+    ? Math.min(currentHeight, candidate)
+    : Math.max(currentHeight, candidate);
+}
+
 export function selectVoiceDurationSeconds({ elapsedMs, durationMillis, durationSeconds, maximum = 60 }) {
   const elapsed = Math.max(0, Number(elapsedMs) || 0) / 1000;
   const fileMillis = Math.max(0, Number(durationMillis) || 0) / 1000;
