@@ -65,7 +65,12 @@ import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
 import { SERVER_URL } from '../config/env';
 import { reviewsAPI } from '../utils/reviews';
-import { reconcileChatMessages, selectVoiceDurationSeconds, stableComposerHeight } from '../utils/chatMessageListState';
+import {
+  reconcileChatMessages,
+  selectVoiceDurationSeconds,
+  stableComposerHeight,
+  stableComposerHeightFromLineCount,
+} from '../utils/chatMessageListState';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const LOCATION_HISTORY_STATUSES = [...LIVE_TRACKING_STATUSES, 'delivered', 'received', 'completed'];
@@ -376,8 +381,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [input, setInput] = React.useState('');
   const [inputHeight, setInputHeight] = React.useState(COMPOSER_INPUT_MIN_HEIGHT);
+  const [composerInputWidth, setComposerInputWidth] = React.useState(0);
   const composerTextRef = React.useRef('');
   const composerMeasuredTextRef = React.useRef('');
+  const composerMirrorMeasuredTextRef = React.useRef('');
   const [keyboardVisible, setKeyboardVisible] = React.useState(false);
   const [textSending, setTextSending] = React.useState(false);
   const [timeline, setTimeline] = React.useState([]);
@@ -487,6 +494,27 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setAttachOpen(false);
     setCallMenuOpen(false);
     setEmojiOpen(false);
+  }, []);
+
+  // iOS TextInput может отдать content height второй перенесённой строки как
+  // 40 или 48. Этого недостаточно, чтобы отличить реальный soft-wrap от
+  // native layout jitter. Невидимый Text той же ширины использует собственный
+  // iOS line-breaking и сообщает фактическое visual line count. Высота
+  // переводится в bucket, поэтому повторный layout того же числа строк не
+  // двигает focused composer и cursor во время polling.
+  const applyComposerMirrorLines = React.useCallback((lineCount) => {
+    const currentText = composerTextRef.current;
+    const previousText = composerMirrorMeasuredTextRef.current;
+    composerMirrorMeasuredTextRef.current = currentText;
+    setInputHeight((current) => stableComposerHeightFromLineCount({
+      input: currentText,
+      previousInput: previousText,
+      currentHeight: current,
+      lineCount,
+      minimum: COMPOSER_INPUT_MIN_HEIGHT,
+      maximum: COMPOSER_INPUT_MAX_HEIGHT,
+      lineHeight: 20,
+    }));
   }, []);
 
   const collapseComposer = React.useCallback(() => {
@@ -1875,12 +1903,22 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                             setInput(value);
                             if (!value) {
                               composerMeasuredTextRef.current = value;
+                              composerMirrorMeasuredTextRef.current = value;
                               setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
                             }
                             if (roomId) chatAPI.typing(roomId);
                           }}
                           onFocus={onComposerFocus}
+                          onLayout={(event) => {
+                            const width = Math.max(0, Math.round(event.nativeEvent.layout.width));
+                            setComposerInputWidth((current) => (Math.abs(current - width) < 1 ? current : width));
+                          }}
                           onContentSizeChange={(event) => {
+                            // Когда известна реальная ширина iOS input,
+                            // onTextLayout зеркала — источник истины для
+                            // soft-wrap. Здесь остаётся только fallback до
+                            // layout и native measurement Android.
+                            if (Platform.OS === 'ios' && composerInputWidth > 0) return;
                             const currentText = composerTextRef.current;
                             const previousText = composerMeasuredTextRef.current;
                             composerMeasuredTextRef.current = currentText;
@@ -1903,6 +1941,20 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                           accessibilityHint={t('chat_message_input_hint')}
                           testID="deal-chat-input"
                         />
+                        {Platform.OS === 'ios' && composerInputWidth > 0 && input ? (
+                          <Text
+                            key={`composer-mirror-${input}`}
+                            pointerEvents="none"
+                            accessibilityElementsHidden
+                            importantForAccessibility="no-hide-descendants"
+                            onTextLayout={(event) => {
+                              applyComposerMirrorLines(event.nativeEvent.lines?.length || 1);
+                            }}
+                            style={[s.composerTextMeasure, { width: Math.max(1, composerInputWidth - 20) }]}
+                          >
+                            {input}
+                          </Text>
+                        ) : null}
                         {!hasComposerText ? (
                           <TouchableOpacity
                             style={s.inputEmojiButton}
@@ -2274,6 +2326,10 @@ const s = StyleSheet.create({
   // over by four lines of text and stays visibly available at every height.
   inputShell: { flex: 1, minHeight: 32, maxHeight: 88, borderRadius: 999, flexDirection: 'row', alignItems: 'flex-end' },
   input: { flex: 1, minHeight: 32, maxHeight: 88, paddingLeft: 12, paddingRight: 8, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  // Невидимое iOS-only зеркало: та же content width TextInput (ширина input
+  // минус горизонтальные padding 12+8) и те же font metrics. Оно не
+  // интерактивно и не доступно assistive technology.
+  composerTextMeasure: { position: 'absolute', left: 0, top: 0, opacity: 0, fontSize: 15, lineHeight: 20, padding: 0, margin: 0 },
   inputEmojiButton: { flexShrink: 0, marginRight: 4, marginBottom: 3, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   inputEmojiSpacer: { flexShrink: 0, marginRight: 4, marginBottom: 3, width: 40, height: 40 },
   sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
