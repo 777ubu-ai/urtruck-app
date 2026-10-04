@@ -122,77 +122,24 @@ jobs:
             echo "QA2_SSH_KNOWN_HOSTS=$known"
           } >> "$GITHUB_ENV"
 
-      - name: Upload temporary APNs configuration over pinned SSH
+      - name: Upload temporary APNs configuration and recovery helper over pinned SSH
         shell: bash
         run: |
           set -euo pipefail
           scp -q -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
             "$RUNNER_TEMP/qa2-apns.env" "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-qa2-apns.env"
+          scp -q -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            scripts/qa2_apns_recovery.py "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-qa2-apns-recovery.py"
 
       - name: Back up and update only QA2 APNs environment, then restart systemd unit
         shell: bash
         run: |
           set -euo pipefail
           ssh_cmd=(ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS")
-          "${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          qa_env=/home/ubuntu/urtruck-qa2/.env
-          payload=/tmp/urtruck-qa2-apns.env
-          test -f "$qa_env" && test -f "$payload"
-          backup="/home/ubuntu/urtruck-qa2/.env.apns-backup.$(date -u +%Y%m%dT%H%M%SZ)"
-          cp -- "$qa_env" "$backup"
-          chmod 600 "$backup"
-          printf 'BACKUP=%s\n' "$backup" > /tmp/urtruck-qa2-apns.state
-          chmod 600 /tmp/urtruck-qa2-apns.state
-          python3 - "$qa_env" "$payload" <<'PY'
-          import base64, re, sys
-          from pathlib import Path
-          env_path, payload_path = map(Path, sys.argv[1:])
-          required = {
-              "APNS_KEY_ID", "APNS_TEAM_ID", "APNS_AUTH_KEY_P8_BASE64",
-              "APNS_BUNDLE_ID", "APNS_USE_SANDBOX",
-          }
-          values = {}
-          for line in payload_path.read_text(encoding="utf-8").splitlines():
-              if "=" not in line:
-                  raise SystemExit("QA2_APNS_PAYLOAD_MALFORMED")
-              name, value = line.split("=", 1)
-              if name in values or name not in required:
-                  raise SystemExit("QA2_APNS_PAYLOAD_KEYS_INVALID")
-              values[name] = value
-          if set(values) != required or values["APNS_USE_SANDBOX"] != "false":
-              raise SystemExit("QA2_APNS_PAYLOAD_CONTRACT_INVALID")
-          if values["APNS_BUNDLE_ID"] != "com.urtruck.app":
-              raise SystemExit("QA2_APNS_PAYLOAD_BUNDLE_MISMATCH")
-          if not re.fullmatch(r"[A-Z0-9]{10}", values["APNS_KEY_ID"]):
-              raise SystemExit("QA2_APNS_PAYLOAD_KEY_ID_INVALID")
-          if not re.fullmatch(r"[A-Z0-9]{10}", values["APNS_TEAM_ID"]):
-              raise SystemExit("QA2_APNS_PAYLOAD_TEAM_ID_INVALID")
-          try:
-              base64.b64decode(values["APNS_AUTH_KEY_P8_BASE64"], validate=True)
-          except Exception:
-              raise SystemExit("QA2_APNS_PAYLOAD_BASE64_INVALID")
-          remove = required | {"APNS_AUTH_KEY_P8"}
-          kept = [line for line in env_path.read_text(encoding="utf-8").splitlines()
-                  if "=" not in line or line.split("=", 1)[0].strip() not in remove]
-          kept.extend(f"{name}={values[name]}" for name in sorted(required))
-          temp = env_path.with_name(env_path.name + ".apns.tmp")
-          temp.write_text("\n".join(kept) + "\n", encoding="utf-8")
-          temp.chmod(0o600)
-          temp.replace(env_path)
-          payload_path.unlink(missing_ok=True)
-          PY
-          test "$(stat -c '%a' "$qa_env")" = 600
-          sudo -n systemctl restart urtruck-qa2.service
-          for attempt in $(seq 1 30); do
-            if test "$(systemctl is-active urtruck-qa2.service)" = active && curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null; then
-              break
-            fi
-            sleep 2
-          done
-          test "$(systemctl is-active urtruck-qa2.service)" = active
-          curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null
-          REMOTE
+          "${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" 'python3 /tmp/urtruck-qa2-apns-recovery.py apply \
+            --env /home/ubuntu/urtruck-qa2/.env \
+            --payload /tmp/urtruck-qa2-apns.env \
+            --state /tmp/urtruck-qa2-apns.state'
 
       - name: Verify QA2 APNs readiness and preserve FCM
         shell: bash
@@ -227,22 +174,21 @@ jobs:
             exit 0
           fi
           ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
-            "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          state=/tmp/urtruck-qa2-apns.state
-          test -f "$state" || exit 0
-          . "$state"
-          case "$BACKUP" in
-            /home/ubuntu/urtruck-qa2/.env.apns-backup.*) ;;
-            *) echo QA2_APNS_BACKUP_PATH_INVALID >&2; exit 1 ;;
-          esac
-          cp -- "$BACKUP" /home/ubuntu/urtruck-qa2/.env
-          chmod 600 /home/ubuntu/urtruck-qa2/.env
-          rm -f -- "$BACKUP" /tmp/urtruck-qa2-apns.state /tmp/urtruck-qa2-apns.env
-          sudo -n systemctl restart urtruck-qa2.service
-          REMOTE
+            "$SERVER_USER@$SERVER_HOST" 'test ! -f /tmp/urtruck-qa2-apns.state || python3 /tmp/urtruck-qa2-apns-recovery.py rollback \
+              --env /home/ubuntu/urtruck-qa2/.env \
+              --state /tmp/urtruck-qa2-apns.state'
 
-      - name: Always remove temporary APNs material and backup
+      - name: Remove confirmed primary recovery material
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            "$SERVER_USER@$SERVER_HOST" 'python3 /tmp/urtruck-qa2-apns-recovery.py cleanup-primary \
+              --env /home/ubuntu/urtruck-qa2/.env \
+              --state /tmp/urtruck-qa2-apns.state'
+
+      - name: Always remove only temporary APNs key material
         if: always()
         shell: bash
         run: |
@@ -252,14 +198,5 @@ jobs:
           ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
             "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          state=/tmp/urtruck-qa2-apns.state
-          if test -f "$state"; then
-            backup="$(sed -n 's/^BACKUP=//p' "$state")"
-            case "$backup" in
-              /home/ubuntu/urtruck-qa2/.env.apns-backup.*) rm -f -- "$backup" ;;
-              *) echo QA2_APNS_BACKUP_PATH_INVALID >&2; exit 1 ;;
-            esac
-            rm -f -- "$state"
-          fi
-          rm -f -- /tmp/urtruck-qa2-apns.env
+          rm -f -- /tmp/urtruck-qa2-apns.env /tmp/urtruck-qa2-apns-recovery.py
           REMOTE

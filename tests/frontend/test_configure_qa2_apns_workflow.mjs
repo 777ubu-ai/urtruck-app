@@ -8,6 +8,7 @@ const workflow = fs.readFileSync(
   path.join(root, '.github/workflows/configure-qa2-apns.yml'),
   'utf8',
 );
+const recovery = fs.readFileSync(path.join(root, 'scripts/qa2_apns_recovery.py'), 'utf8');
 
 test('QA2 APNs workflow is environment-scoped and does not use privileged PR triggers', () => {
   assert.match(workflow, /environment:\s*\n\s*name: qa2/);
@@ -35,11 +36,14 @@ test('QA2 APNs workflow validates all secret names and TestFlight contract witho
 });
 
 test('QA2 APNs workflow preserves FCM and outbox state while providing rollback', () => {
-  assert.match(workflow, /APNS_AUTH_KEY_P8_BASE64/);
-  assert.match(workflow, /APNS_AUTH_KEY_P8/);
+  assert.match(workflow, /qa2_apns_recovery\.py/);
+  assert.match(recovery, /APNS_AUTH_KEY_P8_BASE64/);
+  assert.match(recovery, /APNS_AUTH_KEY_P8/);
   assert.doesNotMatch(workflow, /PUSH_OUTBOX_CUTOFF_ID/);
   assert.match(workflow, /QA2_FCM_REGRESSION/);
   assert.match(workflow, /QA2_APNS_ROLLBACK/);
-  assert.match(workflow, /\.env\.apns-backup\./);
+  assert.match(recovery, /\.apns-backup\./);
+  assert.match(workflow, /Remove confirmed primary recovery material/);
+  assert.match(workflow, /Always remove only temporary APNs key material/);
   assert.match(workflow, /rm -f -- \/tmp\/urtruck-qa2-apns\.env/);
 });
