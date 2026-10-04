@@ -42,10 +42,10 @@ export function normalizeComposerHeight(input, reportedHeight, minimum, maximum,
 }
 
 // Native TextInput measurements are not a layout contract on iOS: the same
-// text can briefly report neighbouring heights while React is reconciling a
-// polling update.  Map measurements to line-height steps and accept at most
-// one result per text value.  That makes 40→48→40 jitter a no-op instead of a
-// visible composer resize.
+// visual line count can briefly report neighbouring heights while React is
+// reconciling a polling update. Map the content measurement to canonical text
+// line buckets. In particular, iOS can report 40–48 for a real second line;
+// that is content height, not the whole composer height.
 export function stableComposerHeight({
   input,
   previousInput,
@@ -54,21 +54,23 @@ export function stableComposerHeight({
   minimum,
   maximum,
   lineHeight = 20,
-  verticalPadding = 8,
 }) {
   const text = String(input || '');
   const previous = String(previousInput || '');
   if (!text.trim()) return minimum;
-  if (text === previous) return currentHeight;
   const raw = Number(reportedHeight);
   if (!Number.isFinite(raw) || raw <= 0) return currentHeight;
-  const steps = Math.max(0, Math.round((raw - (minimum + verticalPadding)) / lineHeight));
-  const candidate = Math.max(minimum, Math.min(maximum, minimum + (steps * lineHeight)));
-  // Appending must never make the composer shrink; deletion may shrink only
-  // to the canonical measured line state.
-  return text.length < previous.length
-    ? Math.min(currentHeight, candidate)
-    : Math.max(currentHeight, candidate);
+  const maxLines = Math.max(1, Math.ceil((maximum - minimum) / lineHeight) + 1);
+  const lineCount = Math.max(1, Math.min(maxLines, Math.round(raw / lineHeight)));
+  const candidate = Math.max(minimum, Math.min(maximum, minimum + ((lineCount - 1) * lineHeight)));
+
+  // Appending may receive a stale layout result from the preceding line, and
+  // deletion may receive one from the preceding larger line. Preserve the
+  // direction while the text changes. Once the text is unchanged, a later
+  // valid native measurement is still allowed to reach its canonical bucket.
+  if (text.length > previous.length) return Math.max(currentHeight, candidate);
+  if (text.length < previous.length) return Math.min(currentHeight, candidate);
+  return candidate;
 }
 
 export function selectVoiceDurationSeconds({ elapsedMs, durationMillis, durationSeconds, maximum = 60 }) {

@@ -92,7 +92,6 @@ const CHAT_WALLPAPER_MARKS = Object.freeze([
   { name: 'truck-outline', top: '76%', left: '79%', size: 23, rotate: '-9deg' },
   { name: 'map-marker-path', top: '93%', left: '58%', size: 23, rotate: '6deg' },
 ]);
-const COMPOSER_INPUT_VERTICAL_PADDING = 8;
 const VOICE_MAX_DURATION_SEC = 60;
 // Stop slightly before the contract boundary: native stop/unload is async and
 // can otherwise make a nominal 60s recording persist as 60.xs / 61s.
@@ -1893,7 +1892,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                               minimum: COMPOSER_INPUT_MIN_HEIGHT,
                               maximum: COMPOSER_INPUT_MAX_HEIGHT,
                               lineHeight: 20,
-                              verticalPadding: COMPOSER_INPUT_VERTICAL_PADDING,
                             }));
                           }}
                           multiline

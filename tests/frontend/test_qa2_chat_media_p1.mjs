@@ -17,29 +17,43 @@ test('composer ignores invalid iOS content-size and stays at one-line height', (
   assert.equal(normalizeComposerHeight('hello', 36, 32, 88, 8), 44);
 });
 
-test('composer keeps a canonical height for unchanged iOS measurement jitter', () => {
-  let height = 32;
-  let previous = '';
+test('composer maps unchanged iOS second-line jitter to one canonical height', () => {
+  let height = 52;
   for (const measurement of [40, 48, 40, 48, 40]) {
-    const next = stableComposerHeight({ input: 'текст', previousInput: previous, currentHeight: height, reportedHeight: measurement, minimum: 32, maximum: 88 });
-    previous = 'текст';
-    assert.equal(next, 32);
-    height = next;
+    height = stableComposerHeight({
+      input: 'две строки', previousInput: 'две строки', currentHeight: height,
+      reportedHeight: measurement, minimum: 32, maximum: 88,
+    });
+    assert.equal(height, 52);
   }
 });
 
-test('composer grows and shrinks only by canonical text-line states', () => {
-  const common = { minimum: 32, maximum: 88, lineHeight: 20, verticalPadding: 8 };
-  let height = stableComposerHeight({ ...common, input: 'one', previousInput: '', currentHeight: 32, reportedHeight: 40 });
+test('composer auto-grows and shrinks through every canonical line bucket', () => {
+  const common = { minimum: 32, maximum: 88, lineHeight: 20 };
+  let height = stableComposerHeight({ ...common, input: 'one', previousInput: '', currentHeight: 32, reportedHeight: 20 });
   assert.equal(height, 32);
-  height = stableComposerHeight({ ...common, input: 'one\ntwo', previousInput: 'one', currentHeight: height, reportedHeight: 52 });
+  height = stableComposerHeight({ ...common, input: 'one\ntwo', previousInput: 'one', currentHeight: height, reportedHeight: 40 });
   assert.equal(height, 52);
-  height = stableComposerHeight({ ...common, input: 'one\ntwo\nthree', previousInput: 'one\ntwo', currentHeight: height, reportedHeight: 72 });
+  height = stableComposerHeight({ ...common, input: 'one\ntwo\nthree', previousInput: 'one\ntwo', currentHeight: height, reportedHeight: 60 });
   assert.equal(height, 72);
-  height = stableComposerHeight({ ...common, input: 'one\ntwo', previousInput: 'one\ntwo\nthree', currentHeight: height, reportedHeight: 52 });
+  height = stableComposerHeight({ ...common, input: 'one\ntwo\nthree\nfour', previousInput: 'one\ntwo\nthree', currentHeight: height, reportedHeight: 80 });
+  assert.equal(height, 88);
+  height = stableComposerHeight({ ...common, input: 'one\ntwo\nthree', previousInput: 'one\ntwo\nthree\nfour', currentHeight: height, reportedHeight: 60 });
+  assert.equal(height, 72);
+  height = stableComposerHeight({ ...common, input: 'one\ntwo', previousInput: 'one\ntwo\nthree', currentHeight: height, reportedHeight: 40 });
   assert.equal(height, 52);
-  height = stableComposerHeight({ ...common, input: '', previousInput: 'one\ntwo', currentHeight: height, reportedHeight: 999 });
+  height = stableComposerHeight({ ...common, input: 'one', previousInput: 'one\ntwo', currentHeight: height, reportedHeight: 20 });
   assert.equal(height, 32);
+  height = stableComposerHeight({ ...common, input: '', previousInput: 'one', currentHeight: height, reportedHeight: 999 });
+  assert.equal(height, 32);
+});
+
+test('composer accepts a later valid measurement for unchanged text', () => {
+  const next = stableComposerHeight({
+    input: 'строка переносится по ширине', previousInput: 'строка переносится по ширине',
+    currentHeight: 32, reportedHeight: 40, minimum: 32, maximum: 88, lineHeight: 20,
+  });
+  assert.equal(next, 52);
 });
 
 test('composer source keeps focused polling independent and preserves emoji geometry', () => {
