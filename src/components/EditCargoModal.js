@@ -31,6 +31,10 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved, role 
   const shipper = useShipperCeramicColors();
   const theme = role === 'driver' ? baseTheme : shipper;
   const { toast } = useToast();
+  // Ceramic role palettes expose surface/bg but intentionally do not define
+  // legacy card/cardElevated tokens. Keep the bottom sheet opaque across all
+  // themes instead of letting an undefined background expose the dimmed screen.
+  const sheetBackground = theme.cardElevated || theme.card || theme.surface || theme.bg || '#FFFFFF';
   // Символ валюты — из самого груза (USD→$, KZT→₸…), не хардкод ₸.
   const curSym = CURRENCY_SYMBOLS[String(cargo?.currency || 'USD').toUpperCase()] || '$';
   const [price, setPrice] = useState(String(cargo?.price ?? ''));
@@ -108,7 +112,7 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved, role 
         keyboardVerticalOffset={0}
       >
         <Pressable style={[s.backdrop, { backgroundColor: theme.overlay || 'rgba(0,0,0,0.5)' }]} onPress={onClose}>
-          <Pressable style={[s.sheet, { backgroundColor: theme.cardElevated || theme.card }]} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={[s.sheet, { backgroundColor: sheetBackground }]} onPress={(e) => e.stopPropagation()}>
             <View style={[s.handle, { backgroundColor: theme.border }]} />
             <KeyboardSafeScrollView
               keyboardShouldPersistTaps="handled"
