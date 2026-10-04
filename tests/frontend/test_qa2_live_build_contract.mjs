@@ -133,3 +133,13 @@ test('Play workflow can build a signed AAB without submitting and records releas
   assert.ok(playWorkflow.includes('AAB SHA-256=${aab_sha}'));
   assert.ok(playWorkflow.includes('Upload certificate SHA-256=${cert_sha}'));
 });
+
+test('manual Play test build defaults to QA2 and cannot silently use production API', () => {
+  assert.ok(playWorkflow.includes('api_environment:'));
+  assert.ok(playWorkflow.includes('default: "qa2"'));
+  assert.ok(playWorkflow.includes('QA2_API_URL: ${{ secrets.QA2_API_URL }}'));
+  assert.ok(playWorkflow.includes('QA2 Play test build must target exactly qa2.urtruck.kz'));
+  assert.ok(playWorkflow.includes('EXPO_PUBLIC_API_URL: ${{ env.EXPO_PUBLIC_API_URL }}'));
+  assert.ok(playWorkflow.includes('Production API is only allowed with the production Play track'));
+  assert.ok(playWorkflow.includes('PLAY_API_TARGET=$target'));
+});
