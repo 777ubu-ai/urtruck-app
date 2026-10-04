@@ -16,6 +16,7 @@ const webMap = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
 const timeline = fs.readFileSync('src/components/deal/DealStatusTimeline.js', 'utf8');
 const profile = fs.readFileSync('src/screens/onboarding/ProfileV2Screen.js', 'utf8');
 const profileApi = fs.readFileSync('backend/api/profile.py', 'utf8');
+const composerState = fs.readFileSync('src/utils/chatMessageListState.js', 'utf8');
 
 test('accepted deal chat is routed into the canonical gated workspace', () => {
   assert.match(nav, /import ChatScreenV2 from '\.\.\/screens\/ChatScreenV2'/);
@@ -173,7 +174,7 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /onContentSizeChange/);
   assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 32/);
   assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
-  assert.match(workspace, /normalizeComposerHeight/);
+  assert.match(workspace, /stableComposerHeight/);
   assert.match(workspace, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
@@ -237,10 +238,11 @@ test('receiver auto-scroll is coalesced to one content-size update', () => {
 
 test('empty web composer cannot expand from an initial multiline content measurement', () => {
   assert.match(workspace, /onContentSizeChange=\{\(event\) => \{/);
+  assert.match(workspace, /stableComposerHeight\(\{/);
   assert.match(
-    workspace,
-    /if \(!input\.trim\(\)\) \{\s*setInputHeight\(COMPOSER_INPUT_MIN_HEIGHT\);\s*return;/,
-    'empty multiline input must stay at the compact height',
+    composerState,
+    /if \(!text\.trim\(\)\) return minimum;/,
+    'empty multiline input must stay at the compact height through the shared stable-height contract',
   );
 });
 
