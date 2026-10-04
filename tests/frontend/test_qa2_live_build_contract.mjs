@@ -77,6 +77,10 @@ test('QA2 Android APK versionCode is sourced from config and is newer than the i
     qa2AndroidMetadata.QA2_ANDROID_VERSION_CODE
       > qa2AndroidMetadata.QA2_ANDROID_PREVIOUS_VERSION_CODE,
   );
+  assert.ok(
+    qa2AndroidMetadata.QA2_ANDROID_VERSION_CODE > 211040099,
+    'QA2 APK должен обновлять физически установленную V1 test-wave сборку',
+  );
 });
 
 test('live QA2 keeps MapKit and Firebase secret injection and the isolated package', () => {
