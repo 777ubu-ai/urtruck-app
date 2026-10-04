@@ -1,0 +1,297 @@
+name: QA2 Test Wave Controller
+
+on:
+  push:
+    branches:
+      - 'qa2/testwave-control-*'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: urtruck-qa2-testwave-preview
+  cancel-in-progress: false
+
+env:
+  PREVIEW_SHA: 32623cab6a686f10b3cd44b1d42d4b49e64fe44d
+  BASE_SHA: 4068398fc82fcc0e75a5ab574ea93d405a7a1f86
+  JOINT_GATE_RUN: '37195439679'
+
+jobs:
+  provenance:
+    name: Verify immutable test-wave provenance
+    runs-on: ubuntu-latest
+    outputs:
+      preview_sha: ${{ steps.verify.outputs.preview_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = branch
+          case "$GITHUB_REF_NAME" in qa2/testwave-control-*) ;; *) exit 1;; esac
+          test "$(node -p \"require('./.testwave/preview-source.json').preview_sha\")" = "$PREVIEW_SHA"
+          test "$(node -p \"require('./.testwave/preview-source.json').base_sha\")" = "$BASE_SHA"
+          test "$(node -p \"require('./.testwave/preview-source.json').joint_quality_gate_run\")" = "$JOINT_GATE_RUN"
+          result="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$JOINT_GATE_RUN" --jq '.head_sha + ":" + .conclusion')"
+          test "$result" = "$PREVIEW_SHA:success"
+          git fetch --no-tags origin "$PREVIEW_SHA" qa2/integration-candidate
+          git merge-base --is-ancestor "$BASE_SHA" "$PREVIEW_SHA"
+          ! git merge-base --is-ancestor "$PREVIEW_SHA" origin/qa2/integration-candidate
+          echo "preview_sha=$PREVIEW_SHA" >> "$GITHUB_OUTPUT"
+          echo "TESTWAVE_PROVENANCE=pass"
+
+  deploy_qa2:
+    name: Deploy exact preview to QA2 only
+    needs: provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: qa2
+    env:
+      QA_SOURCE_SHA: ${{ needs.provenance.outputs.preview_sha }}
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      QA2_API_URL: ${{ secrets.QA2_API_URL }}
+      YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+      QA_ROOT: /home/ubuntu/urtruck-qa2
+      QA_WEB_ROOT: /home/ubuntu/urtruck-qa2-web
+      QA_AI_ROOT: /home/ubuntu/urtruck-qa2-ai/app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.provenance.outputs.preview_sha }}
+          fetch-depth: 1
+      - name: Verify exact preview source and QA2 target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          test -f backend/main.py
+          test -f backend/qa_ai_service/main.py
+          test "${QA2_API_URL%/}" = https://qa2.urtruck.kz
+          test "${QA2_API_URL%/}" != https://urtruck.kz
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Build immutable QA2 web
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.QA2_API_URL }}
+          URTRUCK_BUILD_FLAVOR: qa2
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY"
+          npm ci
+          npm run build:web
+          node scripts/injectYandexMaps.mjs
+          grep -q 'api-maps.yandex.ru/2.1/' dist/index.html
+          cp sw-template.js dist/sw.js
+      - name: Configure pinned SSH transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq rsync openssh-client
+          test -n "$SERVER_HOST" && test -n "$SERVER_USER"
+          test -n "$SERVER_SSH_KEY" && test -n "$SERVER_SSH_KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/qa2_deploy_key
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > ~/.ssh/qa2_known_hosts
+          chmod 600 ~/.ssh/qa2_deploy_key ~/.ssh/qa2_known_hosts
+          cat >> ~/.ssh/config <<EOF
+          Host qa2-testwave
+            HostName $SERVER_HOST
+            User $SERVER_USER
+            IdentityFile ~/.ssh/qa2_deploy_key
+            UserKnownHostsFile ~/.ssh/qa2_known_hosts
+            StrictHostKeyChecking yes
+            BatchMode yes
+          EOF
+          ssh qa2-testwave 'test "$(id -u)" -ne 0'
+      - name: Fingerprint production before QA2-only deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          before="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256sum | awk '{print $1}')"
+          test -n "$before"
+          echo "PRODUCTION_VERSION_HASH_BEFORE=$before" >> "$GITHUB_ENV"
+      - name: Create recoverable QA2 code backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          backup="$(ssh qa2-testwave "QA_ROOT='$QA_ROOT' QA_WEB_ROOT='$QA_WEB_ROOT' QA_AI_ROOT='$QA_AI_ROOT' QA_SOURCE_SHA='$QA_SOURCE_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)-$QA_SOURCE_SHA"
+          backup="$QA_ROOT/backups/testwave-$stamp"
+          mkdir -p "$backup/backend" "$backup/ai"
+          cp -p "$QA_ROOT/.env" "$backup/qa2.env"
+          rsync -a --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='__pycache__/' "$QA_ROOT/backend/" "$backup/backend/"
+          rsync -a --exclude='venv/' --exclude='models/' --exclude='__pycache__/' "$QA_AI_ROOT/" "$backup/ai/"
+          readlink "$QA_WEB_ROOT/current" > "$backup/previous-web-release" || true
+          printf '%s\n' "$backup"
+          REMOTE
+          )"
+          test -n "$backup"
+          echo "QA2_BACKUP_PATH=$backup" >> "$GITHUB_ENV"
+      - name: Deploy preview code and activate QA2 only
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -az --delete --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='__pycache__/' -e "ssh -F $HOME/.ssh/config" backend/ qa2-testwave:"$QA_ROOT/backend/"
+          rsync -az --delete --exclude='venv/' --exclude='models/' --exclude='__pycache__/' -e "ssh -F $HOME/.ssh/config" backend/qa_ai_service/ qa2-testwave:"$QA_AI_ROOT/"
+          release="$QA_WEB_ROOT/releases/$QA_SOURCE_SHA"
+          ssh qa2-testwave "mkdir -p '$release'"
+          rsync -az --delete -e "ssh -F $HOME/.ssh/config" dist/ qa2-testwave:"$release/"
+          ssh qa2-testwave "QA_ROOT='$QA_ROOT' QA_WEB_ROOT='$QA_WEB_ROOT' QA_AI_ROOT='$QA_AI_ROOT' QA_SOURCE_SHA='$QA_SOURCE_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          printf '%s\n' "$QA_SOURCE_SHA" > "$QA_ROOT/backend/.qa-source-sha"
+          printf '%s\n' "$QA_SOURCE_SHA" > "$QA_AI_ROOT/.qa-source-sha"
+          ln -sfn "$QA_WEB_ROOT/releases/$QA_SOURCE_SHA" "$QA_WEB_ROOT/current"
+          sudo systemctl restart urtruck-qa2.service
+          sudo systemctl restart urtruck-qa2-ai.service
+          sudo systemctl reload nginx
+          for _ in {1..60}; do
+            sudo systemctl is-active --quiet urtruck-qa2.service && curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null && break
+            sleep 1
+          done
+          sudo systemctl is-active --quiet urtruck-qa2.service
+          sudo systemctl is-active --quiet urtruck-qa2-ai.service
+          curl -fsS --max-time 5 http://127.0.0.1:8002/health >/dev/null
+          REMOTE
+      - name: Verify runtime identity and unchanged production
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 "${QA2_API_URL%/}/health" > qa2-health.json
+          curl -fsS --max-time 20 "${QA2_API_URL%/}/api/version" > qa2-version.json
+          ssh qa2-testwave "grep -Fx '$QA_SOURCE_SHA' '$QA_ROOT/backend/.qa-source-sha' && grep -Fx '$QA_SOURCE_SHA' '$QA_AI_ROOT/.qa-source-sha'"
+          grep -Fq "$QA_SOURCE_SHA" <(ssh qa2-testwave "readlink '$QA_WEB_ROOT/current'")
+          after="$(curl -fsS --max-time 20 https://urtruck.kz/api/version | sha256sum | awk '{print $1}')"
+          test "$after" = "$PRODUCTION_VERSION_HASH_BEFORE"
+          echo "QA2_TESTWAVE_DEPLOY=pass"
+      - name: Restore QA2 backup after failed activation
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${QA2_BACKUP_PATH:-}"
+          ssh qa2-testwave "QA_ROOT='$QA_ROOT' QA_WEB_ROOT='$QA_WEB_ROOT' QA_AI_ROOT='$QA_AI_ROOT' BACKUP='$QA2_BACKUP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          test -f "$BACKUP/qa2.env" && test -d "$BACKUP/backend" && test -d "$BACKUP/ai"
+          rsync -a --delete --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='__pycache__/' "$BACKUP/backend/" "$QA_ROOT/backend/"
+          rsync -a --delete --exclude='venv/' --exclude='models/' --exclude='__pycache__/' "$BACKUP/ai/" "$QA_AI_ROOT/"
+          cp -p "$BACKUP/qa2.env" "$QA_ROOT/.env"
+          previous="$(cat "$BACKUP/previous-web-release" || true)"
+          if test -n "$previous"; then ln -sfn "$previous" "$QA_WEB_ROOT/current"; fi
+          sudo systemctl restart urtruck-qa2.service
+          sudo systemctl restart urtruck-qa2-ai.service
+          sudo systemctl reload nginx
+          sudo systemctl is-active --quiet urtruck-qa2.service
+          sudo systemctl is-active --quiet urtruck-qa2-ai.service
+          curl -fsS --max-time 10 http://127.0.0.1:8002/health >/dev/null
+          echo 'QA2_TESTWAVE_ROLLBACK=completed'
+          REMOTE
+
+  testflight:
+    name: Build and submit QA2 TestFlight preview
+    needs: [provenance, deploy_qa2]
+    runs-on: macos-15
+    timeout-minutes: 180
+    environment:
+      name: qa2
+    env:
+      QA_SOURCE_SHA: ${{ needs.provenance.outputs.preview_sha }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      QA2_API_URL: ${{ secrets.QA2_API_URL }}
+      EXPO_PUBLIC_API_URL: ${{ secrets.QA2_API_URL }}
+      URTRUCK_BUILD_FLAVOR: qa2
+      URTRUCK_VERSION_NAME: 1.0.9
+      EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+      EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+      YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.provenance.outputs.preview_sha }}
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Verify QA2 iOS build contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          test "${QA2_API_URL%/}" = https://qa2.urtruck.kz
+          test -n "$EXPO_TOKEN" && test -n "$EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY" && test -n "$EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY"
+      - name: Install dependencies and resolve QA2 Expo config
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npx expo config --type public --json > "$RUNNER_TEMP/expo-public.json"
+          node - "$RUNNER_TEMP/expo-public.json" <<'NODE'
+          const config = require(process.argv[2]);
+          if (config.ios?.bundleIdentifier !== 'com.urtruck.app' || config.version !== '1.0.9' || config.extra?.urtruckBuildFlavor !== 'qa2' || config.extra?.urtruckApiUrl?.replace(/\/+$/, '') !== 'https://qa2.urtruck.kz') throw new Error('Invalid QA2 TestFlight Expo configuration');
+          console.log('QA2_TESTFLIGHT_CONFIG=pass');
+          NODE
+      - name: Inject QA2 runtime configuration for local signed build
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          eas.build.production.env = {...(eas.build.production.env || {}), URTRUCK_BUILD_FLAVOR: process.env.URTRUCK_BUILD_FLAVOR, URTRUCK_VERSION_NAME: process.env.URTRUCK_VERSION_NAME, EXPO_PUBLIC_API_URL: process.env.QA2_API_URL, EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY, EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY};
+          if (process.env.YANDEX_ROUTER_API_KEY) eas.build.production.env.YANDEX_ROUTER_API_KEY = process.env.YANDEX_ROUTER_API_KEY;
+          if (process.env.OPENROUTESERVICE_API_KEY) eas.build.production.env.OPENROUTESERVICE_API_KEY = process.env.OPENROUTESERVICE_API_KEY;
+          fs.writeFileSync('eas.json', JSON.stringify(eas, null, 2) + '\n');
+          NODE
+      - name: Select Xcode 26 and build signed IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcode_app="$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' | sort -V | tail -1)"
+          test -n "$xcode_app"
+          sudo xcode-select -s "$xcode_app/Contents/Developer"
+          npx eas-cli@latest build --platform ios --profile production --local --non-interactive --output "$RUNNER_TEMP/UrTruck-QA2-TestWave.ipa"
+          test -s "$RUNNER_TEMP/UrTruck-QA2-TestWave.ipa"
+      - name: Verify IPA and upload private artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q "$RUNNER_TEMP/UrTruck-QA2-TestWave.ipa" -d "$RUNNER_TEMP/ipa-unpacked"
+          app_dir="$(find "$RUNNER_TEMP/ipa-unpacked/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$app_dir"
+          bundle="$(plutil -extract CFBundleIdentifier raw -o - "$app_dir/Info.plist")"
+          version="$(plutil -extract CFBundleShortVersionString raw -o - "$app_dir/Info.plist")"
+          build="$(plutil -extract CFBundleVersion raw -o - "$app_dir/Info.plist")"
+          test "$bundle" = com.urtruck.app && test "$version" = 1.0.9
+          case "$build" in (*[!0-9]*|'') exit 1;; esac
+          grep -R -a -F -q 'https://qa2.urtruck.kz' "$app_dir"
+          sha="$(shasum -a 256 "$RUNNER_TEMP/UrTruck-QA2-TestWave.ipa" | awk '{print $1}')"
+          printf 'sourceSHA=%s\nbundleIdentifier=%s\nversionName=%s\nbuildNumber=%s\napiHost=qa2.urtruck.kz\nipaSHA256=%s\n' "$QA_SOURCE_SHA" "$bundle" "$version" "$build" "$sha" > "$RUNNER_TEMP/UrTruck-QA2-TestWave-manifest.txt"
+          shasum -a 256 "$RUNNER_TEMP/UrTruck-QA2-TestWave.ipa" > "$RUNNER_TEMP/UrTruck-QA2-TestWave.ipa.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-QA2-TestWave-IPA
+          path: |
+            ${{ runner.temp }}/UrTruck-QA2-TestWave.ipa
+            ${{ runner.temp }}/UrTruck-QA2-TestWave.ipa.sha256
+            ${{ runner.temp }}/UrTruck-QA2-TestWave-manifest.txt
+          retention-days: 14
+      - name: Submit only to TestFlight
+        shell: bash
+        run: npx eas-cli@latest submit --platform ios --profile production --path "$RUNNER_TEMP/UrTruck-QA2-TestWave.ipa" --non-interactive --wait
