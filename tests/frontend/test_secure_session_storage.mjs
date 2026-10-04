@@ -42,7 +42,7 @@ async function reset() {
   await AsyncStorage.__reset();
 }
 
-test('legacy token survives a failed SecureStore migration', async () => {
+test('legacy AsyncStorage token survives a failed SecureStore migration', async () => {
   await reset();
   const secure = secureDouble();
   secure.failSet = new Error('simulated secure write failure');
@@ -56,6 +56,27 @@ test('legacy token survives a failed SecureStore migration', async () => {
     assert.equal(await AsyncStorage.getItem('ur_reg_token'), 'synthetic-legacy-token');
     assert.equal(secure.values.size, 0);
   } finally { harness.restore(); }
+});
+
+test('legacy SecureStore token migrates only after a verified scoped write', async () => {
+  await reset();
+  const secure = secureDouble();
+  secure.values.set('ur_reg_token', 'synthetic-legacy-secure-token');
+  const harness = await freshStorage(secure);
+  try {
+    assert.equal(await harness.storage.get('ur_reg_token'), 'synthetic-legacy-secure-token');
+    assert.equal(secure.values.get('ur_secure_v2_production_ur_reg_token'), 'synthetic-legacy-secure-token');
+    assert.equal(secure.values.has('ur_reg_token'), false);
+  } finally { harness.restore(); }
+});
+
+test('SecureStore namespace keys use only the portable native key format', async () => {
+  const { SECURE_STORE_KEY_PATTERN, secureKeyFor } = await import('../../src/utils/storage.js?secure-key-format');
+  const key = secureKeyFor('ur_reg_token', 'qa2');
+  assert.equal(key, 'ur_secure_v2_qa2_ur_reg_token');
+  assert.ok(SECURE_STORE_KEY_PATTERN.test(key));
+  assert.equal(key.includes(':'), false);
+  assert.throws(() => secureKeyFor('bad:key', 'qa2'), (error) => error?.code === 'SECURE_KEY_INVALID');
 });
 
 test('failed replacement cannot claim B while an older secure A remains authoritative', async () => {

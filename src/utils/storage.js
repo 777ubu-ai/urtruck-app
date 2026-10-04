@@ -32,7 +32,19 @@ const isSensitiveNativeKey = (key) => isNative && SECURE_KEYS.has(key);
 // v2 deliberately differs from the historic raw key. A production bearer
 // must never be treated as a QA2 bearer merely because the package was
 // updated in place. The old raw key is a migration source only (see below).
-const secureKey = (key) => `ur_secure_v2:${SESSION_STORAGE_SCOPE}:${key}`;
+// Expo SecureStore keys are restricted to the portable native key subset.
+// Keep the format deliberately narrow so the same key works on Android's
+// Keystore-backed implementation and iOS Keychain. In particular, do not use
+// ':' as a namespace separator.
+export const SECURE_STORE_KEY_PATTERN = /^[A-Za-z0-9._-]+$/;
+export const secureKeyFor = (key, scope = SESSION_STORAGE_SCOPE) => {
+  const candidate = `ur_secure_v2_${scope}_${key}`;
+  if (!SECURE_STORE_KEY_PATTERN.test(candidate)) {
+    throw secureError('SECURE_KEY_INVALID');
+  }
+  return candidate;
+};
+const secureKey = (key) => secureKeyFor(key);
 const canMigrateUnscopedLegacy = () => SESSION_STORAGE_SCOPE === 'production';
 
 export class SecureStorageError extends Error {
@@ -61,6 +73,33 @@ function runSensitive(key, operation) {
 
 function requireSecureStore() {
   if (!secureReady()) throw secureError('SECURE_STORE_UNAVAILABLE');
+}
+
+async function readLegacySecureValue(key) {
+  try {
+    return await SecureStore.getItemAsync(key);
+  } catch (error) {
+    throw secureError('SECURE_LEGACY_READ_FAILED', error);
+  }
+}
+
+async function writeVerifiedSecureValue(key, value, errorCode) {
+  try {
+    await SecureStore.setItemAsync(secureKey(key), value);
+    const verified = await SecureStore.getItemAsync(secureKey(key));
+    if (verified !== value) throw new Error('secure value verification failed');
+  } catch (error) {
+    throw secureError(errorCode, error);
+  }
+}
+
+async function removeProductionLegacyCopies(key, errorCode) {
+  try {
+    await SecureStore.deleteItemAsync(key);
+    await AsyncStorage.removeItem(key);
+  } catch (error) {
+    throw secureError(errorCode, error);
+  }
 }
 
 // Базовый (несекьюрный) слой — прежнее поведение.
@@ -92,31 +131,30 @@ export const storage = {
       }
       if (value != null) return value;
 
-      const legacy = await AsyncStorage.getItem(key);
-      if (legacy == null) return null;
-
       // An unscoped token from a previous production Play build is ambiguous
       // after switching the same package to QA2. Never send it to QA2.
       if (!canMigrateUnscopedLegacy()) return null;
 
-      try {
-        await SecureStore.setItemAsync(secureKey(key), legacy);
-        const verified = await SecureStore.getItemAsync(secureKey(key));
-        if (verified !== legacy) throw new Error('secure value verification failed');
-      } catch (error) {
-        // Keep the only legacy copy intact. The session can continue on the
-        // production host and migration will be retried on a later read.
-        throw secureError('SECURE_MIGRATION_WRITE_FAILED', error);
+      // Historic native releases already used SecureStore under the raw key.
+      // It is a valid migration source only for the production namespace; a
+      // QA2 build must neither read nor delete this unscoped bearer.
+      let legacy = await readLegacySecureValue(key);
+      if (legacy == null) {
+        try {
+          legacy = await AsyncStorage.getItem(key);
+        } catch (error) {
+          throw secureError('SECURE_LEGACY_READ_FAILED', error);
+        }
       }
+      if (legacy == null) return null;
 
-      // SecureStore is now authoritative. A failed legacy cleanup cannot make
-      // a subsequent read return a stale value, but it is still surfaced so
-      // the app/operator can retry cleanup rather than masking it.
-      try {
-        await AsyncStorage.removeItem(key);
-      } catch (error) {
-        throw secureError('SECURE_MIGRATION_LEGACY_CLEANUP_FAILED', error);
-      }
+      // Keep the only legacy copy intact until the scoped secure copy has
+      // been read back successfully.
+      await writeVerifiedSecureValue(key, legacy, 'SECURE_MIGRATION_WRITE_FAILED');
+
+      // SecureStore is now authoritative. Cleanup is still explicit: leaving
+      // the raw key behind would make a later downgrade ambiguous.
+      await removeProductionLegacyCopies(key, 'SECURE_MIGRATION_LEGACY_CLEANUP_FAILED');
       return legacy;
     });
   },
@@ -124,19 +162,12 @@ export const storage = {
     if (!isSensitiveNativeKey(key)) return await baseSet(key, value);
     return runSensitive(key, async () => {
       requireSecureStore();
-      try {
-        await SecureStore.setItemAsync(secureKey(key), value);
-        const verified = await SecureStore.getItemAsync(secureKey(key));
-        if (verified !== value) throw new Error('secure value verification failed');
-      } catch (error) {
-        // Do not write a new bearer into AsyncStorage as a fallback: an older
-        // secure bearer would then win future reads and cross-account auth.
-        throw secureError('SECURE_WRITE_FAILED', error);
-      }
+      // Do not write a new bearer into AsyncStorage as a fallback: an older
+      // secure bearer would then win future reads and cross-account auth.
+      await writeVerifiedSecureValue(key, value, 'SECURE_WRITE_FAILED');
       // Only production may own and clean up the historic unscoped key.
       if (canMigrateUnscopedLegacy()) {
-        try { await AsyncStorage.removeItem(key); }
-        catch (error) { throw secureError('SECURE_LEGACY_CLEANUP_FAILED', error); }
+        await removeProductionLegacyCopies(key, 'SECURE_LEGACY_CLEANUP_FAILED');
       }
     });
   },
@@ -148,8 +179,10 @@ export const storage = {
       // fails the secure bearer remains live, so a failed logout cannot erase
       // the sole usable session or later resurrect it from stale storage.
       if (canMigrateUnscopedLegacy()) {
-        try { await AsyncStorage.removeItem(key); }
-        catch (error) { throw secureError('SECURE_LEGACY_REMOVE_FAILED', error); }
+        // An old native app stored the bearer under this raw SecureStore key.
+        // Delete it in the same ordered operation so logout cannot resurrect
+        // that legacy session after an update.
+        await removeProductionLegacyCopies(key, 'SECURE_DELETE_FAILED');
       }
       try {
         await SecureStore.deleteItemAsync(secureKey(key));

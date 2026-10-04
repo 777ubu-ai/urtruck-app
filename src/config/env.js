@@ -80,6 +80,13 @@ export const API_URL = SERVER_URL;
 export const API_BASE = `${SERVER_URL}/api/v1`;
 export const API_BASE_URL = SERVER_URL;
 
+// Browser origin is also the concrete session boundary for web.  Keep this
+// declaration before SESSION_STORAGE_SCOPE: module initialisation must not
+// touch a temporal-dead-zone binding in an exported value.
+const WEB_RUNTIME_ORIGIN = IS_WEB && typeof window !== 'undefined'
+  ? window.location?.origin || ''
+  : '';
+
 // A mobile package can be updated from a production-backed build to a QA2
 // build without Android/iOS clearing its local storage.  A bearer is valid
 // only for the API that issued it, so keep session material in a namespace
@@ -126,9 +133,6 @@ const publicOrigin = (value) => {
 // a concrete runtime environment; it is still checked against the same tiny
 // allow-list, so a copied static bundle on an unknown host cannot publish a
 // link to that host or silently fall back to production.
-const WEB_RUNTIME_ORIGIN = IS_WEB && typeof window !== 'undefined'
-  ? window.location?.origin || ''
-  : '';
 export const PUBLIC_WEB_ORIGIN = APP_ENV === 'production'
   ? 'https://urtruck.kz'
   : publicOrigin(PUBLIC_WEB_OVERRIDE || ENV_OVERRIDE || WEB_RUNTIME_ORIGIN);
