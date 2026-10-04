@@ -227,7 +227,12 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
+          # Упаковка четырёх ABI React Native после компиляции может превысить
+          # стандартный heap daemon в 2 GiB. Переопределение ограничено
+          # hosted QA2 APK job: runtime приложения и локальные сборки не меняются.
           ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary \
+            -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=768m" \
+            --max-workers=2 \
             -PURTRUCK_VERSION_CODE="$URTRUCK_VERSION_CODE" \
             -PURTRUCK_QA2=true \
             -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true
