@@ -36,9 +36,9 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REF_TYPE" = branch
           case "$GITHUB_REF_NAME" in qa2/testwave-control-*) ;; *) exit 1;; esac
-          test "$(node -p \"require('./.testwave/preview-source.json').preview_sha\")" = "$PREVIEW_SHA"
-          test "$(node -p \"require('./.testwave/preview-source.json').base_sha\")" = "$BASE_SHA"
-          test "$(node -p \"require('./.testwave/preview-source.json').joint_quality_gate_run\")" = "$JOINT_GATE_RUN"
+          test "$(node -p "require('./.testwave/preview-source.json').preview_sha")" = "$PREVIEW_SHA"
+          test "$(node -p "require('./.testwave/preview-source.json').base_sha")" = "$BASE_SHA"
+          test "$(node -p "require('./.testwave/preview-source.json').joint_quality_gate_run")" = "$JOINT_GATE_RUN"
           result="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$JOINT_GATE_RUN" --jq '.head_sha + ":" + .conclusion')"
           test "$result" = "$PREVIEW_SHA:success"
           git fetch --no-tags origin "$PREVIEW_SHA" qa2/integration-candidate
