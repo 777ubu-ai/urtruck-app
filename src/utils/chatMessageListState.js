@@ -41,11 +41,72 @@ export function normalizeComposerHeight(input, reportedHeight, minimum, maximum,
   return Math.max(minimum, Math.min(maximum, next));
 }
 
-// Native TextInput measurements are not a layout contract on iOS: the same
-// visual line count can briefly report neighbouring heights while React is
-// reconciling a polling update. Map the content measurement to canonical text
-// line buckets. In particular, iOS can report 40–48 for a real second line;
-// that is content height, not the whole composer height.
+export function composerHeightForLineCount({
+  lineCount,
+  minimum,
+  maximum,
+  lineHeight = 20,
+}) {
+  const maxLines = Math.max(1, Math.ceil((maximum - minimum) / lineHeight) + 1);
+  const boundedLines = Math.max(1, Math.min(maxLines, Math.round(Number(lineCount) || 1)));
+  return Math.max(minimum, Math.min(maximum, minimum + ((boundedLines - 1) * lineHeight)));
+}
+
+// Это детерминированный контракт для зеркала, учитывающего ширину. Нативный
+// <Text onTextLayout> остаётся источником истины в runtime: только он знает
+// правила начертания и переноса конкретной платформы. Чистая модель здесь
+// позволяет регрессиям проверить soft-wrap и явные переводы строки.
+export function countComposerSoftWrapLines({ input, usableWidth, measureText }) {
+  const width = Number(usableWidth);
+  const text = String(input || '');
+  if (!text || !Number.isFinite(width) || width <= 0) return 1;
+  const measure = typeof measureText === 'function' ? measureText : (value) => String(value).length;
+
+  return text.split('\n').reduce((total, paragraph) => {
+    if (!paragraph) return total + 1;
+    let lines = 1;
+    let currentLine = '';
+    for (const glyph of Array.from(paragraph)) {
+      const nextLine = `${currentLine}${glyph}`;
+      if (currentLine && measure(nextLine) > width) {
+        lines += 1;
+        currentLine = glyph;
+      } else {
+        currentLine = nextLine;
+      }
+    }
+    return total + lines;
+  }, 0);
+}
+
+// Одно измерение нативного TextInput не является layout-контрактом iOS: один
+// и тот же visual line count может кратко вернуть соседние высоты во время
+// reconciliation polling. Поэтому iOS composer получает число строк от
+// нативного Text-зеркала той же ширины. Helper переводит его в устойчивые
+// канонические bucket и отбрасывает поздние измерения прежнего текста, не
+// блокируя позднее валидное измерение для неизменившегося текста.
+export function stableComposerHeightFromLineCount({
+  input,
+  previousInput,
+  currentHeight,
+  lineCount,
+  minimum,
+  maximum,
+  lineHeight = 20,
+}) {
+  const text = String(input || '');
+  const previous = String(previousInput || '');
+  if (!text.trim()) return minimum;
+  const candidate = composerHeightForLineCount({ lineCount, minimum, maximum, lineHeight });
+
+  if (text.length > previous.length) return Math.max(currentHeight, candidate);
+  if (text.length < previous.length) return Math.min(currentHeight, candidate);
+  return candidate;
+}
+
+// Android и fallback до первого layout по-прежнему сообщают content height.
+// Он переводится в те же канонические bucket; iOS использует зеркало выше,
+// как только известна фактическая ширина input.
 export function stableComposerHeight({
   input,
   previousInput,
@@ -60,17 +121,16 @@ export function stableComposerHeight({
   if (!text.trim()) return minimum;
   const raw = Number(reportedHeight);
   if (!Number.isFinite(raw) || raw <= 0) return currentHeight;
-  const maxLines = Math.max(1, Math.ceil((maximum - minimum) / lineHeight) + 1);
-  const lineCount = Math.max(1, Math.min(maxLines, Math.round(raw / lineHeight)));
-  const candidate = Math.max(minimum, Math.min(maximum, minimum + ((lineCount - 1) * lineHeight)));
-
-  // Appending may receive a stale layout result from the preceding line, and
-  // deletion may receive one from the preceding larger line. Preserve the
-  // direction while the text changes. Once the text is unchanged, a later
-  // valid native measurement is still allowed to reach its canonical bucket.
-  if (text.length > previous.length) return Math.max(currentHeight, candidate);
-  if (text.length < previous.length) return Math.min(currentHeight, candidate);
-  return candidate;
+  const lineCount = Math.max(1, Math.round(raw / lineHeight));
+  return stableComposerHeightFromLineCount({
+    input: text,
+    previousInput: previous,
+    currentHeight,
+    lineCount,
+    minimum,
+    maximum,
+    lineHeight,
+  });
 }
 
 export function selectVoiceDurationSeconds({ elapsedMs, durationMillis, durationSeconds, maximum = 60 }) {
