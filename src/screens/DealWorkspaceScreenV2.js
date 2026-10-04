@@ -65,7 +65,7 @@ import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
 import { SERVER_URL } from '../config/env';
 import { reviewsAPI } from '../utils/reviews';
-import { normalizeComposerHeight, reconcileChatMessages, selectVoiceDurationSeconds } from '../utils/chatMessageListState';
+import { reconcileChatMessages, selectVoiceDurationSeconds, stableComposerHeight } from '../utils/chatMessageListState';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const LOCATION_HISTORY_STATUSES = [...LIVE_TRACKING_STATUSES, 'delivered', 'received', 'completed'];
@@ -377,6 +377,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [input, setInput] = React.useState('');
   const [inputHeight, setInputHeight] = React.useState(COMPOSER_INPUT_MIN_HEIGHT);
+  const composerTextRef = React.useRef('');
+  const composerMeasuredTextRef = React.useRef('');
   const [keyboardVisible, setKeyboardVisible] = React.useState(false);
   const [textSending, setTextSending] = React.useState(false);
   const [timeline, setTimeline] = React.useState([]);
@@ -1870,30 +1872,29 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                           ref={inputRef}
                           value={input}
                           onChangeText={(value) => {
+                            composerTextRef.current = value;
                             setInput(value);
-                            if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+                            if (!value) {
+                              composerMeasuredTextRef.current = value;
+                              setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+                            }
                             if (roomId) chatAPI.typing(roomId);
                           }}
                           onFocus={onComposerFocus}
                           onContentSizeChange={(event) => {
-                            // Web can report the textarea's max content box
-                            // for the initial empty multiline control. Do not
-                            // let that transient measurement turn the idle
-                            // composer into a tall white panel.
-                            if (!input.trim()) {
-                              setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
-                              return;
-                            }
-                            const nextHeight = normalizeComposerHeight(
-                              input,
-                              event.nativeEvent.contentSize.height,
-                              COMPOSER_INPUT_MIN_HEIGHT,
-                              COMPOSER_INPUT_MAX_HEIGHT,
-                              COMPOSER_INPUT_VERTICAL_PADDING,
-                            );
-                            // iOS may emit a stale contentSize during polling.
-                            // Ignore it instead of resizing the focused composer.
-                            if (nextHeight != null) setInputHeight((current) => current === nextHeight ? current : nextHeight);
+                            const currentText = composerTextRef.current;
+                            const previousText = composerMeasuredTextRef.current;
+                            composerMeasuredTextRef.current = currentText;
+                            setInputHeight((current) => stableComposerHeight({
+                              input: currentText,
+                              previousInput: previousText,
+                              currentHeight: current,
+                              reportedHeight: event.nativeEvent.contentSize.height,
+                              minimum: COMPOSER_INPUT_MIN_HEIGHT,
+                              maximum: COMPOSER_INPUT_MAX_HEIGHT,
+                              lineHeight: 20,
+                              verticalPadding: COMPOSER_INPUT_VERTICAL_PADDING,
+                            }));
                           }}
                           multiline
                           scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
@@ -1914,7 +1915,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                           >
                             <Feather name="smile" size={22} color={colors.text} />
                           </TouchableOpacity>
-                        ) : null}
+                        ) : <View style={s.inputEmojiSpacer} pointerEvents="none" />}
                       </View>
                       {!hasComposerText ? (
                         <TouchableOpacity
@@ -2276,6 +2277,7 @@ const s = StyleSheet.create({
   inputShell: { flex: 1, minHeight: 32, maxHeight: 88, borderRadius: 999, flexDirection: 'row', alignItems: 'flex-end' },
   input: { flex: 1, minHeight: 32, maxHeight: 88, paddingLeft: 12, paddingRight: 8, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
   inputEmojiButton: { flexShrink: 0, marginRight: 4, marginBottom: 3, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  inputEmojiSpacer: { flexShrink: 0, marginRight: 4, marginBottom: 3, width: 40, height: 40 },
   sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 
   mapFullscreen: { flex: 1 },

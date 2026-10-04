@@ -79,6 +79,20 @@ def test_pr_quality_gate_calls_the_reusable_workflow():
     assert job.get("uses") == "./.github/workflows/quality-gate-reusable.yml"
 
 
+def test_pr_quality_gate_covers_main_and_qa2_integration_without_privileged_trigger():
+    """PRs targeting QA2 are release candidates too.
+
+    Keep the shared, unprivileged ``pull_request`` trigger: changing this to
+    ``pull_request_target`` would execute untrusted PR code with the base
+    repository's privileges and is not an acceptable shortcut for secrets.
+    """
+    doc = _load("pr-quality-gate.yml")
+    triggers = doc.get(True, doc.get("on"))
+    assert "pull_request_target" not in triggers
+    bases = triggers["pull_request"]["branches"]
+    assert {"main", "qa2/integration-candidate"}.issubset(set(bases))
+
+
 def test_deploy_release_gate_requires_the_quality_gate_first():
     """The confirmed original defect: deploy.yml's release-gate job used to
     run standalone (only map checks), with nothing gating it on the full
