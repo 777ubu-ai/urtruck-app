@@ -14,9 +14,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PREVIEW_SHA: aaef50ff4055d8818194f04efb17c0169919d8e1
+  PREVIEW_SHA: 2a1aff2bcd1e28b9aa9ac56647a59b2587e0ae5d
   BASE_SHA: 4068398fc82fcc0e75a5ab574ea93d405a7a1f86
-  JOINT_GATE_RUN: '37220249917'
+  JOINT_GATE_RUN: '37231000253'
 
 jobs:
   provenance:
