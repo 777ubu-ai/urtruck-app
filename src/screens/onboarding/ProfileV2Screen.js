@@ -1,5 +1,6 @@
 // ProfileV2Screen — личные данные после выбора роли.
-// Водитель после этого шага обязательно добавляет машину на одной странице.
+// Базовая регистрация заканчивается здесь: машина не блокирует вход в UrTruck.
+// Машина добавляется позже из рабочего сценария/профиля; Pro-документы остаются отдельным контуром.
 // Компания, страна/город и preferred messenger — необязательные контактные данные.
 // Дата рождения и ИИН не запрашиваются в базовой регистрации.
 // Email принадлежит auth-identity и повторно у пользователя не спрашивается.
@@ -27,7 +28,7 @@ import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
 const COPY = {
   RU: {
     driverTitle: 'Профиль водителя',
-    driverSubtitle: 'Личные данные для рейсов и автомобиля',
+    driverSubtitle: 'Личные данные для работы в UrTruck',
     shipperTitle: 'Профиль грузоотправителя',
     shipperSubtitle: 'Данные компании и контактного лица',
     nameLabel: 'Фамилия и имя *',
@@ -56,7 +57,7 @@ const COPY = {
   },
   EN: {
     driverTitle: 'Driver profile',
-    driverSubtitle: 'Personal details for trips and your vehicle',
+    driverSubtitle: 'Personal details for using UrTruck',
     shipperTitle: 'Shipper profile',
     shipperSubtitle: 'Company and contact person details',
     nameLabel: 'First and last name *',
@@ -85,7 +86,7 @@ const COPY = {
   },
   ZH: {
     driverTitle: '司机资料',
-    driverSubtitle: '填写运输和车辆所需的个人信息',
+    driverSubtitle: '填写使用 UrTruck 所需的个人信息',
     shipperTitle: '货主资料',
     shipperSubtitle: '填写公司和联系人信息',
     nameLabel: '姓名 *',
@@ -114,7 +115,7 @@ const COPY = {
   },
   KK: {
     driverTitle: 'Жүргізуші профилі',
-    driverSubtitle: 'Рейстер мен көлікке арналған жеке деректер',
+    driverSubtitle: 'UrTruck-та жұмыс істеуге арналған жеке деректер',
     shipperTitle: 'Жүк жөнелтуші профилі',
     shipperSubtitle: 'Компания және байланыс тұлғасының деректері',
     nameLabel: 'Тегі және аты *',
@@ -350,25 +351,9 @@ export default function ProfileV2Screen({ navigation, route }) {
         throw new Error(typeof detail === 'string' ? detail : 'profile_save_failed');
       }
 
-      if (role === 'driver') {
-        const draftSaved = await regAPI.saveDriverDraft({
-          full_name: name.trim(),
-        });
-        if (!draftSaved?.ok) throw new Error('basic_profile_save_failed');
-      }
-
-      // Для водителя машина входит в обязательный базовый onboarding.
-      // Роль фиксируется в AuthContext только после сохранения машины и
-      // успешного complete-basic на финальном экране.
-      if (role === 'driver') {
-        navigation.replace('VehicleSetupCountry', {
-          role: 'driver',
-          origin: 'basic_onboarding',
-        });
-        return;
-      }
-
-      // Для не-driver ролей сохраняем прежний переход после профиля.
+      // Basic onboarding заканчивается после успешного сохранения профиля.
+      // Машина больше не является registration gate: водитель добавит её
+      // контекстно при первом создании рейса либо позже из профиля.
       setRole(role);
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
     } catch {

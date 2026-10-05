@@ -50,11 +50,11 @@ test('backend independently requires only name+phone for both roles', () => {
   assert.doesNotMatch(api, /COUNTRY_REQUIRED/);
 });
 
-test('shipper has its own visual identity while only driver enters vehicle setup', () => {
+test('shipper keeps its own visual identity and both roles enter Main after profile', () => {
   assert.match(profile, /shipperTitle: 'Профиль грузоотправителя'/);
   assert.match(profile, /shipperColors/);
   assert.match(profile, /primary: '#C2410C'/);
-  assert.match(profile, /if \(role === 'driver'\)[\s\S]*navigation\.replace\('VehicleSetupCountry'/);
+  assert.doesNotMatch(profile, /navigation\.replace\('VehicleSetupCountry'/);
   assert.match(profile, /setRole\(role\);\s*navigation\.reset/);
   assert.doesNotMatch(profileMenu, /testID: 'profile-favorites'/);
   assert.doesNotMatch(profileMenu, /icon: 'heart'/);

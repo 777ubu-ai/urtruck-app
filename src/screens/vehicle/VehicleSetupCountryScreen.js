@@ -187,6 +187,17 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
         setError(draftSaved?.detail || c.saveError);
         return;
       }
+      // Если машина добавлена из рабочего сценария создания рейса,
+      // не возвращаем пользователя в legacy basic-onboarding completion:
+      // профиль уже является достаточной базовой регистрацией.
+      if (route?.params?.origin === 'CreateTrip') {
+        navigation.replace('CreateTrip', {
+          role: route?.params?.role || 'driver',
+          vehicle: result.vehicle,
+          vehicleId: result.vehicle?.id,
+        });
+        return;
+      }
       navigation.replace('VehicleSetupSuccess', {
         ...route?.params,
         vehicle: result.vehicle,
