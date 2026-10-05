@@ -53,15 +53,20 @@ test('VehicleSetupSuccess completes basic onboarding before opening trip creatio
   assert.match(setup, /vehicle_registration_country: draft\.vehicle_registration_country_code/);
 });
 
-test('driver profile continues to the required single-page vehicle setup', () => {
+test('driver basic onboarding finishes after profile without a vehicle registration gate', () => {
   assert.doesNotMatch(profile, /const completed = await regAPI\.completeBasic\(\)/);
-  assert.doesNotMatch(profile, /setRole\('driver'\)/);
-  assert.match(profile, /navigation\.replace\('VehicleSetupCountry', \{[\s\S]*role: 'driver',[\s\S]*origin: 'basic_onboarding'/);
+  assert.doesNotMatch(profile, /regAPI\.saveDriverDraft\(/);
+  assert.doesNotMatch(profile, /navigation\.replace\('VehicleSetupCountry'/);
+  assert.match(profile, /setRole\(role\);\s*navigation\.reset\(\{ index: 0, routes: \[\{ name: 'Main', params: \{ role \} \}\] \}\)/);
+  assert.match(trips, /vehicles\.length === 0\) navigation\.navigate\('VehicleSetupCountry', \{ origin: 'CreateTrip', role \}\)/);
 });
 
-test('single-page vehicle save continues through compact completion and errors have retry', () => {
+test('single-page vehicle save continues contextually and errors have retry', () => {
   assert.match(setup, /vehicleAPI\.save/);
   assert.match(setup, /regAPI\.saveDriverDraft/);
+  assert.match(setup, /origin === 'CreateTrip'/);
+  assert.match(setup, /navigation\.replace\('CreateTrip'/);
+  assert.match(setup, /vehicleId: result\.vehicle\?\.id/);
   assert.match(setup, /navigation\.replace\('VehicleSetupSuccess'/);
   assert.doesNotMatch(setup, /VehicleSetupReview/);
   assert.match(success, /testID="basic-onboarding-retry"/);
