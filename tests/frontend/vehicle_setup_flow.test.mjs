@@ -62,14 +62,15 @@ test('dependent selectors, numeric validation, and localized body names remain i
   assert.match(copy, /curtain_sider: 'Тент'/);
 });
 
-test('vehicle is saved before the compact success page', () => {
+test('vehicle is saved before contextual continuation', () => {
   assert.match(setup, /vehicleAPI\.save\(payload, route\?\.params\?\.vehicleId\)/);
   assert.match(setup, /regAPI\.saveDriverDraft/);
+  assert.match(setup, /origin === 'CreateTrip'/);
+  assert.match(setup, /navigation\.replace\('CreateTrip'/);
+  assert.match(setup, /vehicleId: result\.vehicle\?\.id/);
   assert.match(setup, /navigation\.replace\('VehicleSetupSuccess'/);
   assert.match(api, /driver\/vehicles/);
   assert.match(success, /registrationComplete/);
-  assert.match(success, /goToLoads/);
-  assert.match(success, /basic-onboarding-loads/);
   assert.doesNotMatch(success, /benefits|successSub|slogan|publishRoutes/);
   assert.doesNotMatch(success, /ProgressHeader/);
 });
