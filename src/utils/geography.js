@@ -20,22 +20,26 @@
 //     point object is also returned via the second arg to `onChange`
 //     for screens that want it.
 
-export const COUNTRIES = {
-  CN: { name: 'Китай' }, KZ: { name: 'Казахстан' }, UZ: { name: 'Узбекистан' },
-  KG: { name: 'Кыргызстан' }, RU: { name: 'Россия' }, BY: { name: 'Беларусь' },
-  TJ: { name: 'Таджикистан' }, TM: { name: 'Туркменистан' }, AM: { name: 'Армения' },
-  GE: { name: 'Грузия' }, AZ: { name: 'Азербайджан' }, PL: { name: 'Польша' },
-  LT: { name: 'Литва' }, LV: { name: 'Латвия' }, EE: { name: 'Эстония' },
-  HU: { name: 'Венгрия' }, RO: { name: 'Румыния' }, SK: { name: 'Словакия' },
-  TR: { name: 'Турция' }, BG: { name: 'Болгария' }, GR: { name: 'Греция' },
-};
+import { COUNTRY_CATALOG } from './countries.js';
+
+// Route selectors and marketplace filters share the complete country catalog
+// with vehicle, citizenship and profile selectors. Route-specific ordering and
+// points live here; names and ISO identities do not.
+export const COUNTRIES = Object.freeze(Object.fromEntries(COUNTRY_CATALOG.map((country) => [
+  country.iso,
+  { name: country.names.RU, names: country.names },
+])));
 
 // Stable order in pickers — corridor matters: CN/KZ on top, then CIS,
 // then EU.
-export const COUNTRY_ORDER = [
+const ROUTE_PRIORITY_COUNTRIES = [
   'CN', 'KZ', 'UZ', 'KG', 'RU', 'BY', 'TJ', 'TM',
   'AM', 'GE', 'AZ', 'TR',
   'PL', 'LT', 'LV', 'EE', 'HU', 'RO', 'SK', 'BG', 'GR',
+];
+export const COUNTRY_ORDER = [
+  ...ROUTE_PRIORITY_COUNTRIES,
+  ...COUNTRY_CATALOG.map((country) => country.iso).filter((iso) => !ROUTE_PRIORITY_COUNTRIES.includes(iso)),
 ];
 
 // Point taxonomy. `key` is what we store internally; `label` /
@@ -204,6 +208,26 @@ export const POINTS = [
   c('GR', 'Пирей',     ['Piraeus']),
   c('GR', 'Салоники',  ['Thessaloniki']),
 
+  // ── Europe — capitals for the complete shared country catalog ─────
+  c('GB', 'Лондон', ['London']), c('IE', 'Дублин', ['Dublin']),
+  c('DK', 'Копенгаген', ['Copenhagen']), c('NO', 'Осло', ['Oslo']),
+  c('SE', 'Стокгольм', ['Stockholm']), c('FI', 'Хельсинки', ['Helsinki']),
+  c('IS', 'Рейкьявик', ['Reykjavik']),
+  c('DE', 'Берлин', ['Berlin']), c('FR', 'Париж', ['Paris']), c('AT', 'Вена', ['Vienna']),
+  c('BE', 'Брюссель', ['Brussels']), c('NL', 'Амстердам', ['Amsterdam']),
+  c('LU', 'Люксембург', ['Luxembourg']), c('CH', 'Берн', ['Bern']),
+  c('LI', 'Вадуц', ['Vaduz']), c('MC', 'Монако', ['Monaco']),
+  c('IT', 'Рим', ['Rome']), c('ES', 'Мадрид', ['Madrid']),
+  c('PT', 'Лиссабон', ['Lisbon']), c('VA', 'Ватикан', ['Vatican City']),
+  c('SM', 'Сан-Марино', ['San Marino']), c('MT', 'Валлетта', ['Valletta']),
+  c('CY', 'Никосия', ['Nicosia']), c('AL', 'Тирана', ['Tirana']),
+  c('AD', 'Андорра-ла-Велья', ['Andorra la Vella']),
+  c('SI', 'Любляна', ['Ljubljana']), c('HR', 'Загреб', ['Zagreb']),
+  c('BA', 'Сараево', ['Sarajevo']), c('RS', 'Белград', ['Belgrade']),
+  c('ME', 'Подгорица', ['Podgorica']), c('MK', 'Скопье', ['Skopje']),
+  c('UA', 'Киев', ['Kyiv', 'Kiev']), c('CZ', 'Прага', ['Prague']),
+  c('MD', 'Кишинёв', ['Chisinau', 'Chișinău']),
+
   // ── Logistics terminals / multimodal hubs ──────────────────────────
   // Малашевичи — primary EU rail terminal for China–Europe routes.
   // We list it BOTH as a city (so people typing "Малашевичи" find it
@@ -231,7 +255,8 @@ export const searchPoints = (query, { country, type } = {}) => {
     if (p.name.toLowerCase().includes(q)) return true;
     if ((p.aliases || []).some((a) => a.toLowerCase().includes(q))) return true;
     const country = COUNTRIES[p.country];
-    if (country && country.name.toLowerCase().includes(q)) return true;
+    if (country && Object.values(country.names || { RU: country.name })
+      .some((name) => String(name).toLowerCase().includes(q))) return true;
     return false;
   });
   hits.sort((a, b) => {

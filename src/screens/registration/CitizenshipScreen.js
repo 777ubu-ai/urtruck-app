@@ -15,23 +15,17 @@ import { brand, radius, typography } from '../../theme/brandV2';
 import BackButton from '../../components/ui/v1/BackButton';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 import CountryFlag from '../../components/ui/v1/CountryFlag';
+import { CountrySheet } from '../../components/vehicle/VehicleSetupUI';
+import { getCountryName } from '../../utils/countries';
 
 const TOTAL_STEPS = 4;
 const STEP = 1;
 
-const COUNTRIES = [
-  { code: 'KZ', key: 'cit_kz' },
-  { code: 'RU', key: 'cit_ru' },
-  { code: 'UZ', key: 'cit_uz' },
-  { code: 'KG', key: 'cit_kg' },
-  { code: 'TJ', key: 'cit_tj' },
-  { code: 'other', key: 'cit_other' },
-];
-
 export default function CitizenshipScreen({ navigation }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const accent = brand.primary;
   const [selected, setSelected] = useState(null);
+  const [countrySheetOpen, setCountrySheetOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Повторный вход — подтягиваем уже выбранное гражданство.
@@ -69,22 +63,18 @@ export default function CitizenshipScreen({ navigation }) {
           <Text style={s.title}>{t('cit_step_title')}</Text>
           <Text style={s.subtitle}>{t('cit_step_subtitle')}</Text>
 
-          <View style={{ gap: 10, marginTop: 20 }}>
-            {COUNTRIES.map((c) => {
-              const active = selected === c.code;
-              return (
-                <Pressable
-                  key={c.code}
-                  testID={`citizenship-${c.code}`}
-                  onPress={() => setSelected(c.code)}
-                  style={[s.option, active && s.optionActive]}
-                >
-                  <View style={s.optionLeft}>{c.code === 'other' ? <Feather name="globe" size={22} color={brand.textSecondary} /> : <CountryFlag code={c.code} width={28} />}<Text style={[s.optionText, { color: brand.textPrimary }]}>{t(c.key)}</Text>{c.code !== 'other' ? <Text style={s.iso}>{c.code}</Text> : null}</View>
-                  {active ? <Feather name="check-circle" size={20} color={accent} /> : null}
-                </Pressable>
-              );
-            })}
-          </View>
+          <Pressable
+            testID="citizenship-country-selector"
+            onPress={() => setCountrySheetOpen(true)}
+            style={[s.option, selected && s.optionActive, { marginTop: 20 }]}
+          >
+            <View style={s.optionLeft}>
+              {selected ? <CountryFlag code={selected} width={28} /> : <Feather name="globe" size={22} color={brand.textSecondary} />}
+              <Text style={[s.optionText, { color: brand.textPrimary }]}>{selected ? getCountryName({ iso: selected }, lang) : t('cit_other')}</Text>
+              {selected ? <Text style={s.iso}>{selected}</Text> : null}
+            </View>
+            {selected ? <Feather name="check-circle" size={20} color={accent} /> : <Feather name="chevron-down" size={20} color={brand.textSecondary} />}
+          </Pressable>
         </KeyboardSafeScrollView>
 
         <View style={s.ctaWrap}>
@@ -99,6 +89,12 @@ export default function CitizenshipScreen({ navigation }) {
           </Pressable>
         </View>
       </KeyboardSafeLayout>
+      <CountrySheet
+        visible={countrySheetOpen}
+        onClose={() => setCountrySheetOpen(false)}
+        onSelect={setSelected}
+        title={t('cit_step_title')}
+      />
     </SafeAreaView>
   );
 }

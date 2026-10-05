@@ -24,6 +24,9 @@ import { brandLight, radius, typography } from '../../theme/brandV2';
 import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
+import { CountrySheet } from '../../components/vehicle/VehicleSetupUI';
+import CountryFlag from '../../components/ui/v1/CountryFlag';
+import { getCountryName } from '../../utils/countries';
 
 const COPY = {
   RU: {
@@ -282,7 +285,8 @@ export default function ProfileV2Screen({ navigation, route }) {
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
   const [company, setCompany] = useState('');
-  const [country, setCountry] = useState('');
+  const [countryCode, setCountryCode] = useState('');
+  const [countrySheetOpen, setCountrySheetOpen] = useState(false);
   const [city, setCity] = useState('');
   const [messengerType, setMessengerType] = useState('');
   const [messengerId, setMessengerId] = useState('');
@@ -330,7 +334,9 @@ export default function ProfileV2Screen({ navigation, route }) {
         phone: phone.trim(),
         role,
         company_name: company.trim(),
-        country: country.trim(),
+        // Backend continues to receive its existing human-readable profile
+        // value, while the UI keeps the canonical ISO identifier.
+        country: countryCode ? getCountryName({ iso: countryCode }, lang) : '',
         city: city.trim(),
         messenger_type: messengerType,
         messenger_id: messengerType ? effectiveMessengerId : '',
@@ -439,20 +445,18 @@ export default function ProfileV2Screen({ navigation, route }) {
           />
           <Text style={s.helperText}>{ui.companyOptionalHint}</Text>
 
-          <ProfileField
-            id="country"
-            label={ui.countryLabel}
-            value={country}
-            onChange={setCountry}
-            placeholder=""
-            autoCapitalize="words"
-            s={s}
-            colors={colors}
-            focused={focused}
-            setFocused={setFocused}
-            errors={errors}
-            setErrors={setErrors}
-          />
+          <Text style={s.label}>{ui.countryLabel}</Text>
+          <Pressable
+            testID="profile-country-selector"
+            onPress={() => setCountrySheetOpen(true)}
+            style={[s.input, s.countrySelector]}
+          >
+            {countryCode ? <CountryFlag code={countryCode} width={24} /> : <Feather name="globe" size={20} color={colors.textSecondary} />}
+            <Text style={[s.countrySelectorText, !countryCode && { color: colors.textSecondary }]} numberOfLines={1}>
+              {countryCode ? getCountryName({ iso: countryCode }, lang) : ui.countryPlaceholder}
+            </Text>
+            <Feather name="chevron-down" size={20} color={colors.textSecondary} />
+          </Pressable>
 
           <ProfileField
             id="city"
@@ -561,6 +565,12 @@ export default function ProfileV2Screen({ navigation, route }) {
           </Pressable>
         </View>
       </KeyboardSafeLayout>
+      <CountrySheet
+        visible={countrySheetOpen}
+        onClose={() => setCountrySheetOpen(false)}
+        onSelect={setCountryCode}
+        title={ui.countryLabel}
+      />
     </SafeAreaView>
   );
 }
@@ -665,6 +675,16 @@ const makeStyles = (colors) => StyleSheet.create({
     paddingVertical: 13,
     ...typography.bodyLarge,
     color: colors.textPrimary,
+  },
+  countrySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  countrySelectorText: {
+    ...typography.bodyLarge,
+    color: colors.textPrimary,
+    flex: 1,
   },
   inputFocused: {
     borderColor: colors.primary,

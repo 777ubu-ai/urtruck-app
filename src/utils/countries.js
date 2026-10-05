@@ -53,6 +53,15 @@ export const ALL_COUNTRIES = ALL_ISO.map((iso) => ({
   dial: '',
 }));
 
+// Единственный справочник стран для продуктовых селекторов. Экран телефона
+// по-прежнему использует `COUNTRIES`, потому что у него есть дополнительный
+// контракт с телефонным кодом; route/profile/vehicle/citizenship работают с
+// этим полным ISO-каталогом и не держат собственные списки стран.
+export const COUNTRY_CATALOG = ALL_COUNTRIES;
+export const COUNTRY_BY_ISO = Object.freeze(
+  Object.fromEntries(COUNTRY_CATALOG.map((country) => [country.iso, country])),
+);
+
 export const COUNTRIES = [
   { iso: 'KZ', name: 'Казахстан', dial: '7' }, { iso: 'CN', name: 'Китай', dial: '86' },
   { iso: 'RU', name: 'Россия', dial: '7' }, { iso: 'UZ', name: 'Узбекистан', dial: '998' },

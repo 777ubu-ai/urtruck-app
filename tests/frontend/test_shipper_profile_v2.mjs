@@ -12,7 +12,8 @@ test('active ProfileV2 keeps company and location optional for both roles', () =
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /id="country"/);
+  assert.match(profile, /testID="profile-country-selector"/);
+  assert.match(profile, /CountrySheet/);
   assert.match(profile, /id="city"/);
   assert.match(profile, /const basicFormValid = validName && validPhone && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
@@ -22,7 +23,7 @@ test('active ProfileV2 keeps company and location optional for both roles', () =
   assert.match(profile, /name:\s*name\.trim\(\)/);
   assert.match(profile, /phone:\s*phone\.trim\(\)/);
   assert.match(profile, /company_name:\s*company\.trim\(\)/);
-  assert.match(profile, /country:\s*country\.trim\(\)/);
+  assert.match(profile, /country:\s*countryCode \? getCountryName/);
   assert.match(profile, /city:\s*city\.trim\(\)/);
   assert.doesNotMatch(profile, /COUNTRY_REQUIRED/);
 });

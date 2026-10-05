@@ -6,7 +6,7 @@ import { register } from 'node:module';
 register('./mocks/render-env-hooks.mjs', import.meta.url);
 
 const { COUNTRY_FLAG_CODES, countryFlagXml } = await import('../../src/components/ui/v1/CountryFlag.js');
-const countries = fs.readFileSync('src/utils/countries.js', 'utf8');
+const { COUNTRY_CATALOG } = await import('../../src/utils/countries.js');
 const routePicker = fs.readFileSync('src/components/RoutePointPicker.js', 'utf8');
 const countryPicker = fs.readFileSync('src/screens/onboarding/CountryPickerSheet.js', 'utf8');
 const cityInput = fs.readFileSync('src/components/CityInput.js', 'utf8');
@@ -15,8 +15,8 @@ const cargoFeed = fs.readFileSync('src/screens/CargoFeedScreen.js', 'utf8');
 const tripFeed = fs.readFileSync('src/screens/FeedScreen.js', 'utf8');
 
 test('CountryFlag covers every ISO code offered by the active country data', () => {
-  const offered = [...countries.matchAll(/iso:\s*'([A-Z]{2})'/g)].map((match) => match[1]);
-  assert.ok(offered.length >= 40, 'country picker data is intentionally broad');
+  const offered = COUNTRY_CATALOG.map((country) => country.iso);
+  assert.ok(offered.length >= 200, 'product selectors use the complete ISO catalogue');
   for (const code of offered) {
     assert.ok(COUNTRY_FLAG_CODES.includes(code), `${code} is exposed by the shared renderer`);
     assert.ok(countryFlagXml(code), `${code} resolves to bundled SVG`);
