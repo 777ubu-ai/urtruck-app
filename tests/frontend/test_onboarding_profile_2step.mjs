@@ -37,7 +37,7 @@ test('profile step keeps company, country and city optional', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /id="country"/);
+  assert.match(profile, /testID="profile-country-selector"/);
   assert.match(profile, /id="city"/);
   assert.match(profile, /const basicFormValid = validName && validPhone && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
@@ -51,10 +51,10 @@ test('profile step keeps company, country and city optional', () => {
 
 test('short onboarding keeps company and location editable but optional', () => {
   assert.match(profile, /id="company"/);
-  assert.match(profile, /id="country"/);
+  assert.match(profile, /testID="profile-country-selector"/);
   assert.match(profile, /id="city"/);
   assert.match(profile, /company_name:\s*company\.trim\(\)/);
-  assert.match(profile, /country:\s*country\.trim\(\)/);
+  assert.match(profile, /country:\s*countryCode \? getCountryName/);
   assert.match(profile, /city:\s*city\.trim\(\)/);
   assert.doesNotMatch(profile, /validCompany/);
   assert.doesNotMatch(profile, /id="email"/);

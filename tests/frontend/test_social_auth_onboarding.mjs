@@ -110,7 +110,7 @@ test('backend social validation uses the same live Supabase project/key family a
 test('phone remains required while company and location stay optional after email/social signup', () => {
   assert.match(profileV2, /id="phone"/);
   assert.match(profileV2, /id="company"/);
-  assert.match(profileV2, /id="country"/);
+  assert.match(profileV2, /testID="profile-country-selector"/);
   assert.match(profileV2, /id="city"/);
   assert.match(profileV2, /const validPhone = isRealPhone\(phone\)/);
   assert.match(profileV2, /const basicFormValid = validName && validPhone && validMessenger/);
