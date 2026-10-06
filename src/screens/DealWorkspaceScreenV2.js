@@ -71,6 +71,7 @@ import {
   stableComposerHeight,
   stableComposerHeightFromLineCount,
 } from '../utils/chatMessageListState';
+import { nearBottomFromScrollEvent } from '../utils/chatScrollMetrics';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const LOCATION_HISTORY_STATUSES = [...LIVE_TRACKING_STATUSES, 'delivered', 'received', 'completed'];
@@ -1796,8 +1797,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     // New messages remain anchored by the content-size handler below.
                     keyboardShouldPersistTaps="handled"
                     onScroll={(event) => {
-                      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-                      const nearBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 80;
+                      const nearBottom = nearBottomFromScrollEvent(event);
+                      if (nearBottom === null) return;
                       nearBottomRef.current = nearBottom;
                       if (nearBottom) userScrolledAwayRef.current = false;
                       if (!nearBottom && userScrolledAwayRef.current) setShowJumpLatest(true);

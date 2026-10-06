@@ -318,7 +318,8 @@ test('chat history scroll does not yank user from old messages when new messages
   assert.match(workspace, /nearBottomRef/);
   assert.match(workspace, /setShowJumpLatest\(true\)/);
   assert.match(workspace, /testID="deal-chat-jump-latest"/);
-  assert.match(workspace, /contentOffset/);
+  assert.match(workspace, /nearBottomFromScrollEvent\(event\)/);
+  assert.match(workspace, /if \(nearBottom === null\) return;/);
 });
 
 test('chat anchors the first loaded history to the latest message', () => {

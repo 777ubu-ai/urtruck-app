@@ -48,26 +48,31 @@ on:
           - beta
           - production
       status:
-        description: "Release status на выбранном треке"
+        description: "Release status на выбранном треке; draft не раздаётся пользователям"
         required: true
-        default: "completed"
+        default: "draft"
         type: choice
         options:
+          - draft
           - completed
           - inProgress
           - halted
+      user_fraction:
+        description: "Только для существующего staged rollout: точная доля (0 < value < 1), не разрешение выпуска"
+        required: false
+        default: ""
+        type: string
       submit_to_play:
         description: "Upload the resulting AAB to Google Play"
         required: true
         default: true
         type: boolean
       api_environment:
-        description: "API environment embedded into a manually distributed AAB"
+        description: "API embedded in the production package. QA2 builds use the isolated QA2 build workflows."
         required: true
-        default: "qa2"
+        default: "production"
         type: choice
         options:
-          - qa2
           - production
 
 # Play принимает только уникальные versionCode. Сериализация гарантирует, что
@@ -85,9 +90,6 @@ jobs:
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      QA2_API_URL: ${{ secrets.QA2_API_URL }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -181,52 +183,91 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # A push to main is the existing production release path. Manual
-          # test distribution defaults to isolated QA2 and must never silently
-          # inherit production just because the selected Play track is alpha.
+          # This workflow builds package com.urtruck.app for Google Play.
+          # QA2 binaries use a different application ID and their isolated QA2 workflows.
           target="production"
           if test "$GITHUB_EVENT_NAME" = workflow_dispatch; then
             target="${{ inputs.api_environment }}"
           fi
-          case "$target" in
-            qa2)
-              test -n "${QA2_API_URL:-}" || {
-                echo "::error::QA2_API_URL is required for a QA2 Play test build"
-                exit 1
-              }
-              host="$(python3 - <<'PY'
-          from urllib.parse import urlparse
-          import os
-          print(urlparse(os.environ['QA2_API_URL']).hostname or '')
-          PY
-              )"
-              test "$host" = qa2.urtruck.kz || {
-                echo "::error::QA2 Play test build must target exactly qa2.urtruck.kz"
-                exit 1
-              }
-              test "${QA2_API_URL%/}" != https://urtruck.kz
-              curl -fsS --max-time 20 "${QA2_API_URL%/}/health" >/dev/null
-              api_url="${QA2_API_URL%/}"
+          test "$target" = production || {
+            echo "::error::The production Play package cannot target QA2"
+            exit 1
+          }
+          if test "$GITHUB_EVENT_NAME" = workflow_dispatch && test "${{ inputs.submit_to_play }}" = "true"; then
+            test "${{ inputs.track }}" = production || {
+              echo "::error::Production API uploads are restricted to the production Play track"
+              exit 1
+            }
+          fi
+          api_url="https://urtruck.kz"
+          curl -fsS --max-time 20 "$api_url/health" >/dev/null
+          status="${{ inputs.status || 'draft' }}"
+          fraction=""
+          case "$status" in
+            draft|completed)
               ;;
-            production)
-              # Production API may only be embedded by the existing main push
-              # path or an explicit production-track manual release.
-              if test "$GITHUB_EVENT_NAME" = workflow_dispatch; then
-                test "${{ inputs.track }}" = production || {
-                  echo "::error::Production API is only allowed with the production Play track"
-                  exit 1
-                }
-              fi
-              api_url="https://urtruck.kz"
+            halted)
+              fraction="${{ inputs.user_fraction }}"
+              ;;
+            inProgress)
+              fraction="${{ inputs.user_fraction }}"
+              ;;
+            draft|completed)
               ;;
             *)
-              echo "::error::Unknown API environment"
+              echo "::error::Unsupported Play release status"
               exit 1
               ;;
           esac
+          if test "$status" = halted || test "$status" = inProgress; then
+            test -n "$fraction" || {
+              echo "::error::user_fraction is required for a staged rollout action"
+              exit 1
+            }
+              python3 - "$fraction" <<'PY'
+          from decimal import Decimal, InvalidOperation
+          import sys
+          try:
+              value = Decimal(sys.argv[1])
+          except InvalidOperation:
+              raise SystemExit("::error::user_fraction must be a decimal number")
+          if not Decimal("0") < value < Decimal("1"):
+              raise SystemExit("::error::user_fraction must be greater than 0 and less than 1")
+          PY
+          fi
           echo "EXPO_PUBLIC_API_URL=$api_url" >> "$GITHUB_ENV"
           echo "URTRUCK_PLAY_API_ENVIRONMENT=$target" >> "$GITHUB_ENV"
+          echo "URTRUCK_BUILD_PLATFORM=android" >> "$GITHUB_ENV"
+          echo "URTRUCK_BUILD_FLAVOR=production" >> "$GITHUB_ENV"
+          echo "PLAY_RELEASE_STATUS=$status" >> "$GITHUB_ENV"
+          echo "PLAY_USER_FRACTION=$fraction" >> "$GITHUB_ENV"
           echo "PLAY_API_TARGET=$target"
+          echo "PLAY_RELEASE_STATUS=$status"
+          echo "PLAY_USER_FRACTION=$fraction"
+
+      - name: Verify resolved production Android config
+        env:
+          EXPO_PUBLIC_API_URL: ${{ env.EXPO_PUBLIC_API_URL }}
+          URTRUCK_BUILD_PLATFORM: android
+          URTRUCK_BUILD_FLAVOR: production
+        run: |
+          set -euo pipefail
+          npx expo config --type public --json > "$RUNNER_TEMP/expo-public.json"
+          node - "$RUNNER_TEMP/expo-public.json" <<'NODE'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (config.android?.package !== 'com.urtruck.app') {
+            throw new Error(`Unexpected Android package: ${config.android?.package}`);
+          }
+          if (config.extra?.urtruckBuildFlavor !== 'production') {
+            throw new Error(`Unexpected build flavor: ${config.extra?.urtruckBuildFlavor}`);
+          }
+          if (config.extra?.urtruckApiUrl !== 'https://urtruck.kz') {
+            throw new Error(`Unexpected production API: ${config.extra?.urtruckApiUrl}`);
+          }
+          console.log('ANDROID_PACKAGE=com.urtruck.app');
+          console.log('ANDROID_API=https://urtruck.kz');
+          NODE
 
       - name: Build release AAB
         env:
@@ -292,6 +333,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload to Google Play
+        id: upload_to_play
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.submit_to_play }}
         uses: r0adkll/upload-google-play@v1
         with:
@@ -299,7 +341,8 @@ jobs:
           packageName: com.urtruck.app
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
           tracks: ${{ inputs.track || 'internal' }}
-          status: ${{ inputs.status || 'completed' }}
+          status: ${{ inputs.status || 'draft' }}
+          userFraction: ${{ (inputs.status == 'halted' && '0.01') || (inputs.status == 'inProgress' && inputs.user_fraction) || '' }}
           inAppUpdatePriority: 2
 
       - name: Record Google Play release evidence
@@ -308,7 +351,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RESULT: ${{ job.status }}
           TRACK: ${{ inputs.track || 'internal' }}
-          RELEASE_STATUS: ${{ inputs.status || 'completed' }}
+          RELEASE_STATUS: ${{ inputs.status || 'draft' }}
           SUBMIT_TO_PLAY: ${{ github.event_name != 'workflow_dispatch' || inputs.submit_to_play }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
