@@ -171,8 +171,8 @@ test('chat has no permanent second tab — status/history lives behind one icon-
 test('composer uses the approved WeChat-like bottom bar and attachment menu', () => {
   assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
-  assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 32/);
-  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
+  assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 44/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 104/);
   assert.match(workspace, /normalizeComposerHeight/);
   assert.match(workspace, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
@@ -213,7 +213,7 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'flex-end'/);
   assert.match(workspace, /borderRadius: 30/);
   assert.match(workspace, /shadowOpacity: 0\.1/);
-  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 88, borderRadius: 999/);
+  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 44, maxHeight: 104, borderRadius: 999/);
   // The approved composer is visually empty in its idle state; the localized
   // copy remains available to screen readers through accessibilityLabel.
   assert.doesNotMatch(workspace, /placeholder=\{isDriver \? ui\.writeShipper : ui\.write\}/);
@@ -239,7 +239,7 @@ test('empty web composer cannot expand from an initial multiline content measure
   assert.match(workspace, /onContentSizeChange=\{\(event\) => \{/);
   assert.match(
     workspace,
-    /if \(!input\.trim\(\)\) \{\s*setInputHeight\(COMPOSER_INPUT_MIN_HEIGHT\);\s*return;/,
+    /if \(!currentText\.trim\(\)\) \{\s*setComposerHeight\(COMPOSER_INPUT_MIN_HEIGHT\);\s*return;/,
     'empty multiline input must stay at the compact height',
   );
 });
@@ -268,7 +268,7 @@ test('emoji button opens a real bottom emoji picker instead of a coming-soon toa
   assert.match(workspace, /const insertEmoji = React\.useCallback/);
   assert.match(workspace, /testID="deal-chat-emoji-menu"/);
   assert.match(workspace, /testID=\{`deal-chat-emoji-option-\$\{index\}`\}/);
-  assert.match(workspace, /setInput\(\(value\) => `\$\{value\}\$\{emoji\}`\)/);
+  assert.match(workspace, /setInput\(\(value\) => \{[\s\S]*const next = `\$\{value\}\$\{emoji\}`;[\s\S]*inputValueRef\.current = next/);
   assert.match(workspace, /onPress=\{toggleEmojiMenu\}/);
   assert.doesNotMatch(workspace, /showEmojiComingSoon/);
   assert.doesNotMatch(workspace, /toast\(ui\.comingSoon/);
@@ -293,7 +293,7 @@ test('toggleAttachMenu dismisses the keyboard and blurs input before opening the
   assert.doesNotMatch(workspace, /setComposerFocused/);
   // Multiline/emoji contract must survive: multiline input with emoji gutter.
   assert.match(workspace, /multiline/);
-  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 104/);
   assert.match(workspace, /testID="deal-chat-emoji"/);
   assert.match(workspace, /testID="deal-chat-composer"/);
 });

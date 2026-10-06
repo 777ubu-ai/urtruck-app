@@ -71,8 +71,12 @@ const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const LOCATION_HISTORY_STATUSES = [...LIVE_TRACKING_STATUSES, 'delivered', 'received', 'completed'];
 const MAP_WORK_STATUSES = ['accepted', 'in_progress', 'at_border'];
 const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected', 'expired'];
-const COMPOSER_INPUT_MIN_HEIGHT = 32;
-const COMPOSER_INPUT_MAX_HEIGHT = 88;
+// Keep the native multiline input in a compact, stable range.  The wrapper
+// owns the row width; the TextInput owns only this explicit vertical height.
+// This prevents iOS from oscillating between flex measurement and its native
+// content-size measurement while the keyboard is animating.
+const COMPOSER_INPUT_MIN_HEIGHT = 44;
+const COMPOSER_INPUT_MAX_HEIGHT = 104;
 
 // Декоративные метки живут только под сообщениями: без изображений,
 // сетевых запросов и влияния на карту/жесты/доступность.
@@ -424,6 +428,19 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const listRef = React.useRef(null);
   const inputRef = React.useRef(null);
+  const inputValueRef = React.useRef('');
+  const inputHeightRef = React.useRef(COMPOSER_INPUT_MIN_HEIGHT);
+  const setComposerHeight = React.useCallback((value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return;
+    const next = Math.max(
+      COMPOSER_INPUT_MIN_HEIGHT,
+      Math.min(COMPOSER_INPUT_MAX_HEIGHT, Math.round(numeric)),
+    );
+    if (inputHeightRef.current === next) return;
+    inputHeightRef.current = next;
+    setInputHeight(next);
+  }, []);
   const mounted = React.useRef(true);
   const recordStartRef = React.useRef(0);
   const recordStopRequestedRef = React.useRef(false);
@@ -999,7 +1016,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     textSendBusyRef.current = true;
     setTextSending(true);
     setInput('');
-    setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+    inputValueRef.current = '';
+    setComposerHeight(COMPOSER_INPUT_MIN_HEIGHT);
     setEmojiOpen(false);
     try {
       await sendRawText(body);
@@ -1007,7 +1025,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       textSendBusyRef.current = false;
       setTextSending(false);
     }
-  }, [input, sendRawText]);
+  }, [input, sendRawText, setComposerHeight]);
 
   const retryFailedText = React.useCallback((item) => {
     setMessages((items) => items.filter((m) => m.id !== item.id));
@@ -1343,7 +1361,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, []);
 
   const insertEmoji = React.useCallback((emoji) => {
-    setInput((value) => `${value}${emoji}`);
+    setInput((value) => {
+      const next = `${value}${emoji}`;
+      inputValueRef.current = next;
+      return next;
+    });
   }, []);
 
   const renderMessage = React.useCallback(({ item, index }) => {
@@ -1875,8 +1897,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                           ref={inputRef}
                           value={input}
                           onChangeText={(value) => {
+                            inputValueRef.current = value;
                             setInput(value);
-                            if (!value) setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+                            if (!value.trim()) setComposerHeight(COMPOSER_INPUT_MIN_HEIGHT);
                             if (roomId) chatAPI.typing(roomId);
                           }}
                           onFocus={onComposerFocus}
@@ -1885,8 +1908,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                             // for the initial empty multiline control. Do not
                             // let that transient measurement turn the idle
                             // composer into a tall white panel.
-                            if (!input.trim()) {
-                              setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+                            const currentText = inputValueRef.current;
+                            if (!currentText.trim()) {
+                              setComposerHeight(COMPOSER_INPUT_MIN_HEIGHT);
                               return;
                             }
                             // Native TextInput can emit a partial event while mounting,
@@ -1894,7 +1918,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                             // last valid composer height instead of crashing the deal room.
                             const reportedHeight = event?.nativeEvent?.contentSize?.height;
                             const nextHeight = normalizeComposerHeight(
-                              input,
+                              currentText,
                               reportedHeight,
                               COMPOSER_INPUT_MIN_HEIGHT,
                               COMPOSER_INPUT_MAX_HEIGHT,
@@ -1902,7 +1926,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                             );
                             // iOS may emit a stale contentSize during polling.
                             // Ignore it instead of resizing the focused composer.
-                            if (nextHeight != null) setInputHeight((current) => current === nextHeight ? current : nextHeight);
+                            if (nextHeight != null) setComposerHeight(nextHeight);
                           }}
                           multiline
                           scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
@@ -2282,8 +2306,11 @@ const s = StyleSheet.create({
   // siblings, even with zIndex/elevation. Keep the emoji in the same visual
   // input area but make it a flex sibling instead: it can never be painted
   // over by four lines of text and stays visibly available at every height.
-  inputShell: { flex: 1, minHeight: 32, maxHeight: 88, borderRadius: 999, flexDirection: 'row', alignItems: 'flex-end' },
-  input: { flex: 1, minHeight: 32, maxHeight: 88, paddingLeft: 12, paddingRight: 8, paddingTop: 6, paddingBottom: 6, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
+  inputShell: { flex: 1, minHeight: 44, maxHeight: 104, borderRadius: 999, flexDirection: 'row', alignItems: 'flex-end' },
+  // flexGrow/flexShrink are horizontal width constraints in this row.  The
+  // vertical axis is intentionally controlled only by the explicit height
+  // supplied from native contentSize, so iOS cannot run a flex/height loop.
+  input: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minHeight: 44, maxHeight: 104, paddingLeft: 12, paddingRight: 8, paddingTop: 8, paddingBottom: 8, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
   inputEmojiButton: { flexShrink: 0, marginRight: 4, marginBottom: 3, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 
