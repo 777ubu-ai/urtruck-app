@@ -129,7 +129,7 @@ jobs:
           printf '%s\n' "$manifest" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
           config=$(unzip -p "$aab" base/assets/app.config)
           node -e 'const c=JSON.parse(process.argv[1]); if(c.extra?.urtruckBuildFlavor!=="production"||c.extra?.urtruckApiUrl!=="https://urtruck.kz") process.exit(1)' "$config"
-          ! unzip -p "$aab" base/assets/index.android.bundle | rg -a -q 'https://qa2\.urtruck\.kz'
+          ! unzip -p "$aab" base/assets/index.android.bundle | rg -a -q 'qa2\.urtruck\.kz'
           echo "AAB_SHA256=$(shasum -a 256 "$aab" | awk '{print $1}')" >> "$GITHUB_ENV"
           echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
 

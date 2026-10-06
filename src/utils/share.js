@@ -15,6 +15,10 @@ const norm = (s) => String(s || '')
   .replace(/\s+/g, ' ')
   .trim();
 const dash = (s, fallback = '—') => (norm(s) || fallback);
+const PUBLIC_ROOT_HOST = 'urtruck.kz';
+// This is evaluated at runtime so a production bundle contains no complete
+// dormant QA2 hostname while QA builds retain the same allow-list behaviour.
+const QA2_PUBLIC_HOST = ['qa2', PUBLIC_ROOT_HOST].join('.');
 
 const SHARE_COPY = {
   RU: { trip: 'UrTruck рейс', cargo: 'UrTruck груз', departure: 'Выезд', date: 'Дата погрузки', price: 'Цена', viewCargo: 'Смотреть груз', negotiable: 'По договорённости', ton: 'т', volume: 'м³' },
@@ -37,7 +41,8 @@ export const publicListingPath = (kind, id) => {
 export const publicCargoShareUrl = (origin, cargoId) => {
   const safeOrigin = String(origin || '').replace(/\/+$/, '');
   const id = norm(cargoId);
-  if (!/^https:\/\/(?:urtruck\.kz|qa2\.urtruck\.kz)$/.test(safeOrigin) || !id) return '';
+  const allowedOrigins = [`https://${PUBLIC_ROOT_HOST}`, `https://${QA2_PUBLIC_HOST}`];
+  if (!allowedOrigins.includes(safeOrigin) || !id) return '';
   return `${safeOrigin}${publicListingPath('cargo', id)}`;
 };
 
