@@ -50,12 +50,18 @@ on:
       status:
         description: "Release status на выбранном треке"
         required: true
-        default: "completed"
+        default: "draft"
         type: choice
         options:
+          - draft
           - completed
           - inProgress
           - halted
+      user_fraction:
+        description: "Required for halted/inProgress: exact existing staged rollout fraction (0 < value < 1)"
+        required: false
+        default: ""
+        type: string
       submit_to_play:
         description: "Upload the resulting AAB to Google Play"
         required: true
@@ -167,6 +173,12 @@ jobs:
           echo "URTRUCK_VERSION_CODE=${version_code}" >> "$GITHUB_ENV"
           echo "Android versionCode=${version_code} (seconds since 2020-01-01 UTC)"
 
+      - name: Validate Play release inputs
+        env:
+          RELEASE_STATUS: ${{ inputs.status || 'draft' }}
+          USER_FRACTION: ${{ inputs.user_fraction || '' }}
+        run: node scripts/validate-play-release-inputs.mjs
+
       - name: Build release AAB
         env:
           EXPO_PUBLIC_API_URL: https://urtruck.kz
@@ -230,6 +242,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload to Google Play
+        id: upload_to_play
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.submit_to_play }}
         uses: r0adkll/upload-google-play@v1
         with:
@@ -237,7 +250,8 @@ jobs:
           packageName: com.urtruck.app
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
           tracks: ${{ inputs.track || 'internal' }}
-          status: ${{ inputs.status || 'completed' }}
+          status: ${{ inputs.status || 'draft' }}
+          userFraction: ${{ env.PLAY_USER_FRACTION }}
           inAppUpdatePriority: 2
 
       - name: Record Google Play release evidence
@@ -246,7 +260,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RESULT: ${{ job.status }}
           TRACK: ${{ inputs.track || 'internal' }}
-          RELEASE_STATUS: ${{ inputs.status || 'completed' }}
+          RELEASE_STATUS: ${{ inputs.status || 'draft' }}
+          UPLOAD_OUTCOME: ${{ steps.upload_to_play.outcome }}
           SUBMIT_TO_PLAY: ${{ github.event_name != 'workflow_dispatch' || inputs.submit_to_play }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -261,7 +276,8 @@ jobs:
           - package: \`com.urtruck.app\`
           - track: \`${TRACK}\`
           - release status: \`${RELEASE_STATUS}\`
-          - submitted to Play: \`${SUBMIT_TO_PLAY}\`
+          - upload requested: \`${SUBMIT_TO_PLAY}\`
+          - upload outcome: \`${UPLOAD_OUTCOME:-skipped}\`
           - versionCode: \`${version_code}\`
           - AAB SHA-256: \`${AAB_SHA256:-unknown}\`
           - upload certificate SHA-256: \`${UPLOAD_CERT_SHA256:-unknown}\`
