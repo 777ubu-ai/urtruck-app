@@ -35,7 +35,10 @@ async function openAs(page, session) {
 test.describe('Deal MVP — current local beta flow', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test('shipper cargo → driver bid → accept creates one deal and current Deals opens it', async ({ page, request }) => {
+  test('shipper cargo → driver bid → accept creates one deal and current Deals opens it', async ({ page, request, browser }) => {
+    if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(H.BASE)) {
+      throw new Error('Deal MVP mutations require the disposable local backend');
+    }
     const shipper = await actor(request, `deal-shipper-${RUN}@urtruck.qa`, 'client');
     const driver = await actor(request, `deal-driver-${RUN}@urtruck.qa`, 'driver');
 
@@ -78,5 +81,41 @@ test.describe('Deal MVP — current local beta flow', () => {
     await card.click();
     await expect(page.locator(H.tid('deal-workspace-screen'))).toBeVisible({ timeout: 15000 });
     await expect(page.locator(H.tid('deal-chat-composer-dock'))).toBeVisible();
+
+    const shipperContext = await browser.newContext({ locale: 'ru-RU' });
+    try {
+      const shipperPage = await shipperContext.newPage();
+      const errors = [];
+      for (const actorPage of [page, shipperPage]) {
+        actorPage.on('pageerror', (error) => errors.push(error.message));
+      }
+      await openAs(shipperPage, shipper);
+      await shipperPage.getByTestId('bottom-nav-deals').click();
+      await shipperPage.getByTestId('deals-tab-active').click();
+      await shipperPage.getByTestId('deals-deal-card').click();
+      await expect(shipperPage.getByTestId('deal-chat-input')).toBeVisible();
+      const driverText = `QA driver to shipper ${RUN}`;
+      await page.getByTestId('deal-chat-input').fill(driverText);
+      const driverSent = page.waitForResponse((r) => r.url().endsWith('/chat/send') && r.request().method() === 'POST');
+      await page.getByTestId('deal-chat-send').click();
+      expect((await driverSent).status()).toBeLessThan(300);
+      await expect(shipperPage.getByText(driverText, { exact: true })).toBeVisible({ timeout: 20000 });
+
+      const shipperText = `QA shipper to driver ${RUN}`;
+      await shipperPage.getByTestId('deal-chat-input').fill(shipperText);
+      const shipperSent = shipperPage.waitForResponse((r) => r.url().endsWith('/chat/send') && r.request().method() === 'POST');
+      await shipperPage.getByTestId('deal-chat-send').click();
+      expect((await shipperSent).status()).toBeLessThan(300);
+      await expect(page.getByText(shipperText, { exact: true })).toBeVisible({ timeout: 20000 });
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.getByTestId('bottom-nav-deals').click();
+      await page.getByTestId('deals-tab-active').click();
+      await page.getByTestId('deals-deal-card').click();
+      await expect(page.getByText(driverText, { exact: true })).toBeVisible();
+      await expect(page.getByText(shipperText, { exact: true })).toBeVisible();
+      expect(errors).toEqual([]);
+    } finally {
+      await shipperContext.close();
+    }
   });
 });
