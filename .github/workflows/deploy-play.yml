@@ -61,6 +61,14 @@ on:
         required: true
         default: true
         type: boolean
+      api_environment:
+        description: "API environment embedded into a manually distributed AAB"
+        required: true
+        default: "qa2"
+        type: choice
+        options:
+          - qa2
+          - production
 
 # Play принимает только уникальные versionCode. Сериализация гарантирует, что
 # два push/manual запуска не дойдут до вычисления кода в одну секунду.
@@ -77,6 +85,8 @@ jobs:
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      QA2_API_URL: ${{ secrets.QA2_API_URL }}
 
     steps:
       - name: Checkout
@@ -167,9 +177,60 @@ jobs:
           echo "URTRUCK_VERSION_CODE=${version_code}" >> "$GITHUB_ENV"
           echo "Android versionCode=${version_code} (seconds since 2020-01-01 UTC)"
 
+      - name: Select and validate embedded API environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A push to main is the existing production release path. Manual
+          # test distribution defaults to isolated QA2 and must never silently
+          # inherit production just because the selected Play track is alpha.
+          target="production"
+          if test "$GITHUB_EVENT_NAME" = workflow_dispatch; then
+            target="${{ inputs.api_environment }}"
+          fi
+          case "$target" in
+            qa2)
+              test -n "${QA2_API_URL:-}" || {
+                echo "::error::QA2_API_URL is required for a QA2 Play test build"
+                exit 1
+              }
+              host="$(python3 - <<'PY'
+          from urllib.parse import urlparse
+          import os
+          print(urlparse(os.environ['QA2_API_URL']).hostname or '')
+          PY
+              )"
+              test "$host" = qa2.urtruck.kz || {
+                echo "::error::QA2 Play test build must target exactly qa2.urtruck.kz"
+                exit 1
+              }
+              test "${QA2_API_URL%/}" != https://urtruck.kz
+              curl -fsS --max-time 20 "${QA2_API_URL%/}/health" >/dev/null
+              api_url="${QA2_API_URL%/}"
+              ;;
+            production)
+              # Production API may only be embedded by the existing main push
+              # path or an explicit production-track manual release.
+              if test "$GITHUB_EVENT_NAME" = workflow_dispatch; then
+                test "${{ inputs.track }}" = production || {
+                  echo "::error::Production API is only allowed with the production Play track"
+                  exit 1
+                }
+              fi
+              api_url="https://urtruck.kz"
+              ;;
+            *)
+              echo "::error::Unknown API environment"
+              exit 1
+              ;;
+          esac
+          echo "EXPO_PUBLIC_API_URL=$api_url" >> "$GITHUB_ENV"
+          echo "URTRUCK_PLAY_API_ENVIRONMENT=$target" >> "$GITHUB_ENV"
+          echo "PLAY_API_TARGET=$target"
+
       - name: Build release AAB
         env:
-          EXPO_PUBLIC_API_URL: https://urtruck.kz
+          EXPO_PUBLIC_API_URL: ${{ env.EXPO_PUBLIC_API_URL }}
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
           EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
@@ -195,7 +256,8 @@ jobs:
           manifest_xml=$(java -jar "$bundletool_jar" dump manifest --bundle "$aab" --module base)
           printf '%s\n' "$manifest_xml" | grep -q 'package="com.urtruck.app"'
           printf '%s\n' "$manifest_xml" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
-          echo "Verified com.urtruck.app versionCode=${URTRUCK_VERSION_CODE} inside AAB"
+          printf '%s\n' "$manifest_xml" | grep -q 'android:versionName="1.0.9"'
+          echo "Verified com.urtruck.app versionCode=${URTRUCK_VERSION_CODE} versionName=1.0.9 inside AAB"
 
       - name: Record AAB checksum and upload certificate
         env:
@@ -259,6 +321,7 @@ jobs:
           - run: ${RUN_URL}
           - result: \`${RESULT}\`
           - package: \`com.urtruck.app\`
+          - API environment: \`${URTRUCK_PLAY_API_ENVIRONMENT:-unknown}\`
           - track: \`${TRACK}\`
           - release status: \`${RELEASE_STATUS}\`
           - submitted to Play: \`${SUBMIT_TO_PLAY}\`
