@@ -69,7 +69,7 @@ const numericSize = (value, fallback = 24) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const BADGE_SIZES = Object.freeze({ compact: 28, regular: 32, picker: 36, large: 48 });
+const BADGE_SIZES = Object.freeze({ compact: 22, regular: 26, picker: 29, large: 38 });
 
 function MetalRim({ size }) {
   const middle = size / 2;

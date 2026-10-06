@@ -51,7 +51,7 @@ export function SelectRow({ icon, value, placeholder, onPress, testID, countryCo
   const styles = useVehicleSetupStyles();
   const brand = vehicleBrand(useDriverCeramicColors());
   return <Pressable testID={testID} onPress={onPress} style={({ pressed }) => [styles.select, pressed && { opacity: 0.75 }]} accessibilityRole="button">
-    <View style={styles.iconBox}>{countryCode ? <CountryFlag code={countryCode} width={28} /> : <Feather name={icon} size={22} color={brand.textSecondary} />}</View>
+    <View style={styles.iconBox}>{countryCode ? <CountryFlag code={countryCode} width={22} /> : <Feather name={icon} size={22} color={brand.textSecondary} />}</View>
     <Text style={[styles.selectText, !value && styles.empty]} numberOfLines={1}>{value || placeholder || ''}</Text>
     <Feather name="chevron-down" size={22} color={brand.textSecondary} />
   </Pressable>;
@@ -80,7 +80,7 @@ export function CountrySheet({ visible, onClose, onSelect, title }) {
       windowSize={7}
       renderItem={({ item: country }) => (
         <Pressable style={styles.option} onPress={() => { onSelect(country.iso); setQuery(''); onClose(); }}>
-          <CountryFlag code={country.iso} width={26} />
+          <CountryFlag code={country.iso} width={21} />
           <Text style={styles.optionText}>{getCountryName(country, lang)}</Text>
           <Text style={styles.iso}>{country.iso}</Text>
         </Pressable>

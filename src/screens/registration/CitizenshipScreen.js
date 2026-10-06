@@ -69,7 +69,7 @@ export default function CitizenshipScreen({ navigation }) {
             style={[s.option, selected && s.optionActive, { marginTop: 20 }]}
           >
             <View style={s.optionLeft}>
-              {selected ? <CountryFlag code={selected} width={28} /> : <Feather name="globe" size={22} color={brand.textSecondary} />}
+              {selected ? <CountryFlag code={selected} width={22} /> : <Feather name="globe" size={22} color={brand.textSecondary} />}
               <Text style={[s.optionText, { color: brand.textPrimary }]}>{selected ? getCountryName({ iso: selected }, lang) : t('cit_other')}</Text>
               {selected ? <Text style={s.iso}>{selected}</Text> : null}
             </View>

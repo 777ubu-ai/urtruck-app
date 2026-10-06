@@ -36,7 +36,7 @@ const Row = ({ s, country, label, onPress }) => (
     ]}
     testID={`country-row-${country.iso}`}
   >
-    <CountryFlag code={country.iso} width={27} />
+    <CountryFlag code={country.iso} width={22} />
     <Text style={s.countryName}>{label}</Text>
     <Text style={s.iso}>{country.iso}</Text>
     <Text style={s.dial}>+{country.dial}</Text>
