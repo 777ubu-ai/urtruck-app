@@ -17,6 +17,16 @@ test('composer ignores invalid iOS content-size and stays at one-line height', (
   assert.equal(normalizeComposerHeight('hello', 36, 32, 88, 8), 44);
 });
 
+test('deal composer safely reads partial native content-size events', () => {
+  const workspace = readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
+  assert.match(workspace, /const reportedHeight = event\?\.nativeEvent\?\.contentSize\?\.height/);
+  assert.doesNotMatch(workspace, /event\.nativeEvent\.contentSize\.height/);
+  for (const measured of [undefined, null, NaN]) {
+    assert.doesNotThrow(() => normalizeComposerHeight('draft', measured, 32, 88, 8));
+    assert.equal(normalizeComposerHeight('draft', measured, 32, 88, 8), null);
+  }
+});
+
 test('voice duration trusts monotonic elapsed time when native value is implausible', () => {
   for (const seconds of [5, 10, 12, 30]) {
     assert.equal(selectVoiceDurationSeconds({ elapsedMs: seconds * 1000, durationMillis: seconds * 1000 }), seconds);

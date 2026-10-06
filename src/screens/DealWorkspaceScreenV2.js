@@ -1884,9 +1884,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                               setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
                               return;
                             }
+                            // Native TextInput can emit a partial event while mounting,
+                            // returning from background, or reconciling an IME. Keep the
+                            // last valid composer height instead of crashing the deal room.
+                            const reportedHeight = event?.nativeEvent?.contentSize?.height;
                             const nextHeight = normalizeComposerHeight(
                               input,
-                              event.nativeEvent.contentSize.height,
+                              reportedHeight,
                               COMPOSER_INPUT_MIN_HEIGHT,
                               COMPOSER_INPUT_MAX_HEIGHT,
                               COMPOSER_INPUT_VERTICAL_PADDING,
