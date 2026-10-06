@@ -1,0 +1,217 @@
+name: Configure QA2 APNs
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type CONFIGURE_QA2_APNS to update only QA2 APNs
+        required: true
+        type: string
+      source_sha:
+        description: Exact merged qa2/integration-candidate SHA
+        required: true
+        type: string
+  push:
+    tags:
+      # `workflow_dispatch` cannot be invoked while this workflow is absent
+      # from the repository default branch. This tag is an explicit, restricted
+      # launch path for the reviewed QA2 integration commit only.
+      - 'qa2-apns-apply-*'
+
+concurrency:
+  group: urtruck-qa2-apns-configuration
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    name: Validate and configure isolated QA2 APNs
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: qa2
+    env:
+      QA_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      QA2_API_URL: ${{ secrets.QA2_API_URL }}
+      QA2_APNS_KEY_ID: ${{ secrets.QA2_APNS_KEY_ID }}
+      QA2_APNS_TEAM_ID: ${{ secrets.QA2_APNS_TEAM_ID }}
+      QA2_APNS_AUTH_KEY_P8_BASE64: ${{ secrets.QA2_APNS_AUTH_KEY_P8_BASE64 }}
+      QA2_APNS_BUNDLE_ID: ${{ secrets.QA2_APNS_BUNDLE_ID }}
+      QA2_APNS_USE_SANDBOX: ${{ secrets.QA2_APNS_USE_SANDBOX }}
+
+    steps:
+      - name: Require explicit QA2-only invocation and exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            test "${{ inputs.confirmation }}" = "CONFIGURE_QA2_APNS"
+            test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
+          elif [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            test "$GITHUB_REF_TYPE" = "tag"
+            [[ "$GITHUB_REF_NAME" =~ ^qa2-apns-apply-([0-9a-f]{40})$ ]]
+            test "${BASH_REMATCH[1]}" = "$GITHUB_SHA"
+          else
+            echo "QA2_APNS_INVOCATION_REJECTED" >&2
+            exit 1
+          fi
+          [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$QA_SOURCE_SHA" = "$GITHUB_SHA"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 1
+
+      - name: Verify exact merged source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
+          test "$QA_SOURCE_SHA" = "$(git rev-parse origin/qa2/integration-candidate)"
+
+      - name: Validate APNs secrets without printing them
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/qa2-apns.env" <<'PY'
+          import base64, os, re, sys
+          from pathlib import Path
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.primitives.asymmetric import ec
+
+          required = {
+              "APNS_KEY_ID": os.environ.get("QA2_APNS_KEY_ID", "").strip(),
+              "APNS_TEAM_ID": os.environ.get("QA2_APNS_TEAM_ID", "").strip(),
+              "APNS_AUTH_KEY_P8_BASE64": os.environ.get("QA2_APNS_AUTH_KEY_P8_BASE64", "").strip(),
+              "APNS_BUNDLE_ID": os.environ.get("QA2_APNS_BUNDLE_ID", "").strip(),
+              "APNS_USE_SANDBOX": os.environ.get("QA2_APNS_USE_SANDBOX", "").strip().lower(),
+          }
+          for name, value in required.items():
+              if not value:
+                  raise SystemExit(f"QA2_{name}_MISSING")
+          if not re.fullmatch(r"[A-Z0-9]{10}", required["APNS_KEY_ID"]):
+              raise SystemExit("QA2_APNS_KEY_ID_INVALID")
+          if not re.fullmatch(r"[A-Z0-9]{10}", required["APNS_TEAM_ID"]):
+              raise SystemExit("QA2_APNS_TEAM_ID_INVALID")
+          if required["APNS_BUNDLE_ID"] != "com.urtruck.app":
+              raise SystemExit("QA2_APNS_BUNDLE_ID_MISMATCH")
+          if required["APNS_USE_SANDBOX"] != "false":
+              raise SystemExit("QA2_APNS_USE_SANDBOX_MUST_BE_FALSE")
+          try:
+              key_bytes = base64.b64decode(required["APNS_AUTH_KEY_P8_BASE64"], validate=True)
+              key = serialization.load_pem_private_key(key_bytes, password=None)
+          except Exception as exc:
+              raise SystemExit(f"QA2_APNS_AUTH_KEY_INVALID:{type(exc).__name__}")
+          if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
+              raise SystemExit("QA2_APNS_AUTH_KEY_NOT_P256")
+          target = Path(sys.argv[1])
+          target.write_text("\n".join(f"{name}={value}" for name, value in required.items()) + "\n", encoding="utf-8")
+          target.chmod(0o600)
+          print("QA2_APNS_SECRET_CONTRACT=validated")
+          PY
+
+      - name: Prepare pinned SSH transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST"
+          test -n "$SERVER_USER"
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+          key="$RUNNER_TEMP/qa2-apns-key"
+          known="$RUNNER_TEMP/qa2-apns-known-hosts"
+          umask 077
+          printf '%s\n' "$SERVER_SSH_KEY" > "$key"
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known"
+          chmod 600 "$key" "$known"
+          {
+            echo "QA2_SSH_KEY=$key"
+            echo "QA2_SSH_KNOWN_HOSTS=$known"
+          } >> "$GITHUB_ENV"
+
+      - name: Upload temporary APNs configuration and recovery helper over pinned SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -q -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            "$RUNNER_TEMP/qa2-apns.env" "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-qa2-apns.env"
+          scp -q -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            scripts/qa2_apns_recovery.py "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-qa2-apns-recovery.py"
+
+      - name: Back up and update only QA2 APNs environment, then restart systemd unit
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh_cmd=(ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS")
+          "${ssh_cmd[@]}" "$SERVER_USER@$SERVER_HOST" 'python3 /tmp/urtruck-qa2-apns-recovery.py apply \
+            --env /home/ubuntu/urtruck-qa2/.env \
+            --payload /tmp/urtruck-qa2-apns.env \
+            --state /tmp/urtruck-qa2-apns.state'
+
+      - name: Verify QA2 APNs readiness and preserve FCM
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 "$QA2_API_URL/health" >/dev/null
+          curl -fsS --max-time 20 "$QA2_API_URL/api/v1/push/info" -o "$RUNNER_TEMP/qa2-push-info.json"
+          python3 - "$RUNNER_TEMP/qa2-push-info.json" <<'PY'
+          import json, sys
+          gateway = json.load(open(sys.argv[1], encoding="utf-8")).get("gateway")
+          if not isinstance(gateway, dict):
+              raise SystemExit("QA2_PUSH_GATEWAY_NOT_FOUND")
+          apns = gateway.get("apns") or {}
+          fcm = gateway.get("fcm") or {}
+          if apns.get("configured") is not True or apns.get("errors") or apns.get("sandbox") is not False:
+              raise SystemExit("QA2_APNS_NOT_READY")
+          if fcm.get("configured") is not True or fcm.get("errors"):
+              raise SystemExit("QA2_FCM_REGRESSION")
+          if "apns_not_configured" in (gateway.get("config_errors") or []):
+              raise SystemExit("QA2_APNS_GATEWAY_NOT_READY")
+          print("QA2_APNS_CONFIGURATION=READY")
+          print("QA2_FCM=UNCHANGED")
+          PY
+
+      - name: Roll back only QA2 APNs environment after failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${QA2_SSH_KEY:-}" ]; then
+            echo "QA2_APNS_ROLLBACK=not_required_before_remote_change"
+            exit 0
+          fi
+          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            "$SERVER_USER@$SERVER_HOST" 'test ! -f /tmp/urtruck-qa2-apns.state || python3 /tmp/urtruck-qa2-apns-recovery.py rollback \
+              --env /home/ubuntu/urtruck-qa2/.env \
+              --state /tmp/urtruck-qa2-apns.state'
+
+      - name: Remove confirmed primary recovery material
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            "$SERVER_USER@$SERVER_HOST" 'python3 /tmp/urtruck-qa2-apns-recovery.py cleanup-primary \
+              --env /home/ubuntu/urtruck-qa2/.env \
+              --state /tmp/urtruck-qa2-apns.state'
+
+      - name: Always remove only temporary APNs key material
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f -- "$RUNNER_TEMP/qa2-apns.env"
+          if [ -z "${QA2_SSH_KEY:-}" ]; then exit 0; fi
+          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          rm -f -- /tmp/urtruck-qa2-apns.env /tmp/urtruck-qa2-apns-recovery.py
+          REMOTE

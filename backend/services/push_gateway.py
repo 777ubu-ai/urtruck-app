@@ -37,6 +37,11 @@ APNS_KEY_ID = os.getenv("APNS_KEY_ID", "")
 APNS_TEAM_ID = os.getenv("APNS_TEAM_ID", "")
 APNS_BUNDLE_ID = os.getenv("APNS_BUNDLE_ID", "")
 APNS_AUTH_KEY_P8 = os.getenv("APNS_AUTH_KEY_P8", "")
+# A systemd EnvironmentFile consumes backslashes, which corrupts a raw
+# multi-line P8.  QA2 stores this one-line transport form and decodes it only
+# in process memory.  The legacy raw variable remains supported for existing
+# non-QA deployments.
+APNS_AUTH_KEY_P8_BASE64 = os.getenv("APNS_AUTH_KEY_P8_BASE64", "")
 APNS_USE_SANDBOX = (os.getenv("APNS_USE_SANDBOX") or "").lower() in ("1", "true", "yes")
 
 # Push-forensic finding (STT/push-hardening track): this set is read by
@@ -102,6 +107,37 @@ def mask_token(token: str) -> str:
 
 def _json_dumps(value: Any) -> str:
     return json.dumps(value or {}, ensure_ascii=False, separators=(",", ":"))[:4000]
+
+
+def _apns_auth_key() -> tuple[Optional[str], Optional[str]]:
+    """Read the P8 without exposing it, preferring transport-safe base64.
+
+    The error code is intentionally non-secret and is used only by the
+    operator-only configuration summary.  A malformed value must fail closed;
+    it is never sent to APNs and never falls back to a possibly stale raw key.
+    """
+    encoded = (APNS_AUTH_KEY_P8_BASE64 or "").strip()
+    if encoded:
+        try:
+            return base64.b64decode(encoded, validate=True).decode("utf-8"), None
+        except (ValueError, UnicodeDecodeError):
+            return None, "auth_key_base64_invalid"
+    raw = (APNS_AUTH_KEY_P8 or "").strip()
+    if not raw:
+        return None, "auth_key_missing"
+    return raw.replace("\\n", "\n"), None
+
+
+def _apns_private_key_valid(key: Optional[str]) -> bool:
+    if not key:
+        return False
+    try:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        private_key = serialization.load_pem_private_key(key.encode("utf-8"), password=None)
+        return isinstance(private_key, ec.EllipticCurvePrivateKey) and private_key.curve.name == "secp256r1"
+    except Exception:
+        return False
 
 
 def _safe_collapse_key(value: Any) -> Optional[str]:
@@ -353,18 +389,19 @@ class APNsProvider(PushProvider):
         return (platform or "").lower() == "ios"
 
     def _jwt(self) -> Optional[str]:
-        if not (APNS_KEY_ID and APNS_TEAM_ID and APNS_AUTH_KEY_P8):
+        key, key_error = _apns_auth_key()
+        if not (APNS_KEY_ID and APNS_TEAM_ID and key) or key_error:
             return None
         try:
             import jwt  # PyJWT, optional until APNs is configured
+            return jwt.encode(
+                {"iss": APNS_TEAM_ID, "iat": int(time.time())},
+                key,
+                algorithm="ES256",
+                headers={"alg": "ES256", "kid": APNS_KEY_ID},
+            )
         except Exception:
             return None
-        return jwt.encode(
-            {"iss": APNS_TEAM_ID, "iat": int(time.time())},
-            APNS_AUTH_KEY_P8.replace("\\n", "\n"),
-            algorithm="ES256",
-            headers={"alg": "ES256", "kid": APNS_KEY_ID},
-        )
 
     def send(self, token: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> ProviderResult:
         auth = self._jwt()
@@ -1086,8 +1123,22 @@ def info() -> dict[str, Any]:
     except Exception:
         fcm_errors.append("pyjwt_missing")
 
-    apns_configured = bool(APNS_KEY_ID and APNS_TEAM_ID and APNS_AUTH_KEY_P8 and APNS_BUNDLE_ID)
-    apns_errors = [] if apns_configured else ["apns_credentials_missing"]
+    apns_key, apns_key_error = _apns_auth_key()
+    apns_key_valid = _apns_private_key_valid(apns_key)
+    apns_configured = bool(APNS_KEY_ID and APNS_TEAM_ID and APNS_BUNDLE_ID and apns_key_valid)
+    apns_errors = []
+    if not APNS_KEY_ID:
+        apns_errors.append("key_id_missing")
+    if not APNS_TEAM_ID:
+        apns_errors.append("team_id_missing")
+    if not APNS_BUNDLE_ID:
+        apns_errors.append("bundle_id_missing")
+    if apns_key_error:
+        apns_errors.append(apns_key_error)
+    elif apns_key and not apns_key_valid:
+        apns_errors.append("auth_key_invalid")
+    if not apns_configured and not apns_errors:
+        apns_errors.append("apns_credentials_missing")
     config_errors = []
     if PUSH_PROVIDER_MODE not in SUPPORTED_PUSH_PROVIDER_MODES:
         config_errors.append("invalid_provider_mode")
