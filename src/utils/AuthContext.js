@@ -24,11 +24,13 @@ const AuthContext = createContext({
   setRole: () => {},
   ensureGuest: async () => {},
   refreshLevel: async () => {},
+  storageError: null,
   loading: true,
 });
 
 const KEY = 'ur_session';
 const LOGOUT_NETWORK_TIMEOUT_MS = 3000;
+const STORAGE_RETRY_DELAY_MS = 250;
 
 const withTimeout = (promise, timeoutMs = LOGOUT_NETWORK_TIMEOUT_MS) => Promise.race([
   promise,
@@ -40,6 +42,23 @@ export const AuthProvider = ({ children }) => {
   const [verificationLevel, setVerificationLevel] = useState(0);
   const [hasToken, setHasToken] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [storageError, setStorageError] = useState(null);
+  // Every auth-changing action advances this generation. Late async reads
+  // must not restore an account after logout or account switching.
+  const authEpoch = useRef(0);
+
+  const readTokenWithBoundedRetry = useCallback(async () => {
+    try {
+      return await regAPI.getToken();
+    } catch (firstError) {
+      await new Promise((resolve) => setTimeout(resolve, STORAGE_RETRY_DELAY_MS));
+      try {
+        return await regAPI.getToken();
+      } catch (secondError) {
+        throw secondError || firstError;
+      }
+    }
+  }, []);
 
   // A failed canonical logout must not silently leave the bearer and push
   // ownership active until server TTL. One bounded retry is made on each app
@@ -49,7 +68,9 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const refreshLevel = useCallback(async () => {
+    const epoch = authEpoch.current;
     const me = await regAPI.me();
+    if (epoch !== authEpoch.current) return null;
     if (me && typeof me.verification_level === 'number') {
       setVerificationLevel(me.verification_level);
       const hasRealRole = me.role && me.role !== 'guest';
@@ -81,9 +102,22 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     (async () => {
-      const token = await regAPI.getToken();
+      const epoch = authEpoch.current;
+      let token;
+      try {
+        token = await readTokenWithBoundedRetry();
+      } catch (error) {
+        if (epoch !== authEpoch.current) return;
+        // A protected-storage failure is not a user logout. Preserve local
+        // state and expose a recoverable condition rather than deleting it.
+        setStorageError(error?.code || 'SECURE_STORAGE_UNAVAILABLE');
+        setLoading(false);
+        return;
+      }
+      if (epoch !== authEpoch.current) return;
       if (!token) {
         await storage.remove(KEY);
+        if (epoch !== authEpoch.current) return;
         setSession(null);
         setHasToken(false);
         setVerificationLevel(0);
@@ -94,6 +128,7 @@ export const AuthProvider = ({ children }) => {
         }
         return;
       }
+      setStorageError(null);
       setHasToken(true);
       const raw = await storage.get(KEY);
       let restored = null;
@@ -101,6 +136,7 @@ export const AuthProvider = ({ children }) => {
         try { restored = JSON.parse(raw); setSession(restored); } catch {}
       }
       const savedLevel = await regAPI.getLevel();
+      if (epoch !== authEpoch.current) return;
       setVerificationLevel(savedLevel);
       setLoading(false);
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
@@ -113,8 +149,11 @@ export const AuthProvider = ({ children }) => {
         });
       }
       refreshLevel().catch(() => {});
-    })();
-  }, [refreshLevel]);
+    })().catch((error) => {
+      setStorageError(error?.code || 'SESSION_RESTORE_FAILED');
+      setLoading(false);
+    });
+  }, [readTokenWithBoundedRetry, refreshLevel]);
 
   const ensureGuest = useCallback(async () => {
     const data = await regAPI.ensureGuest();
@@ -126,11 +165,12 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const signIn = async (phone, level = 1, token = null) => {
+    const epoch = ++authEpoch.current;
     if (token) {
       await storage.set('ur_reg_token', token);
     }
     const existing = await regAPI.getToken();
-    if (!existing) {
+    if (epoch !== authEpoch.current || !existing) {
       throw new Error('NO_TOKEN');
     }
     const prevRole = session?.user?.role || null;
@@ -139,6 +179,8 @@ export const AuthProvider = ({ children }) => {
     setVerificationLevel(level);
     setHasToken(true);
     await storage.set(KEY, JSON.stringify(s));
+    if (epoch !== authEpoch.current) return false;
+    setStorageError(null);
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       // eslint-disable-next-line no-console
       console.warn('[Auth] login success', { identifier: phone, level, role: prevRole });
@@ -156,11 +198,19 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signOut = async () => {
+    const epoch = ++authEpoch.current;
     setAuthExpirySuppressed(true);
 
     // Сохраняем токен только в памяти для best-effort серверной очистки.
     // Auth-state сбрасываем сразу: навигация не должна ждать сеть.
-    const authToken = await regAPI.getToken();
+    let authToken;
+    try {
+      authToken = await readTokenWithBoundedRetry();
+    } catch (error) {
+      setStorageError(error?.code || 'SECURE_STORAGE_UNAVAILABLE');
+      setAuthExpirySuppressed(false);
+      return { ok: false, reason: 'SECURE_STORAGE_UNAVAILABLE' };
+    }
     // Persist the canonical server revoke BEFORE deleting the last local
     // bearer.  A process kill after clearToken used to make offline logout
     // unrecoverable: the next boot had neither token nor retry record.
@@ -174,10 +224,21 @@ export const AuthProvider = ({ children }) => {
       setAuthExpirySuppressed(false);
       return { ok: false, reason: 'PENDING_LOGOUT_REVOKE_NOT_DURABLE' };
     }
+    try {
+      await regAPI.clearToken();
+    } catch (error) {
+      // Revoke intent is durable, but the bearer may still be readable.
+      // Do not report a completed logout or clear the account UI in that
+      // state: a restart could otherwise silently restore it.
+      setStorageError(error?.code || 'SECURE_DELETE_FAILED');
+      setAuthExpirySuppressed(false);
+      return { ok: false, reason: 'SECURE_DELETE_FAILED' };
+    }
+    if (epoch !== authEpoch.current) return { ok: false, reason: 'AUTH_OPERATION_SUPERSEDED' };
     setSession(null);
     setVerificationLevel(0);
     setHasToken(false);
-    await regAPI.clearToken();
+    setStorageError(null);
 
     // Badge и dedupe принадлежат текущей локальной сессии. Их нельзя
     // оставлять до следующего пуша или успешного сетевого cleanup: иначе
@@ -246,7 +307,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{
-      session, verificationLevel, hasToken,
+      session, verificationLevel, hasToken, storageError,
       signIn, signOut, setRole,
       ensureGuest, refreshLevel, loading,
     }}>
