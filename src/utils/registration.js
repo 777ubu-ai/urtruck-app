@@ -391,7 +391,7 @@ export const regAPI = {
     });
     let data = {};
     try { data = await r.json(); } catch {}
-    return { ok: r.ok, ...data };
+    return { ...data, ok: r.ok, status: r.status };
   },
 
   // Безопасная смена телефона: generic PATCH намеренно не принимает phone.

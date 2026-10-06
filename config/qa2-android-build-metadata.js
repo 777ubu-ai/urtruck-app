@@ -4,8 +4,10 @@
  * Keep this separate from production Android metadata: QA2 artifacts are
  * installed directly on physical test devices and never submitted to Play.
  */
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 211040097;
-const QA2_ANDROID_VERSION_CODE = 211040098;
+// The physical audit already observed QA2 candidate 211040101 on Huawei.
+// The next candidate must update it without uninstalling its QA account/data.
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 211040101;
+const QA2_ANDROID_VERSION_CODE = 211040102;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {

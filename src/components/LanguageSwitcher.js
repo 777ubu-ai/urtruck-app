@@ -103,7 +103,7 @@ export default function LanguageSwitcher({ style, testID = 'language-switcher', 
                     // ломать существующие Stage 45 Playwright spec'и.
                     testID={`lang-${l.display.toLowerCase()}`}
                   >
-                    <CountryFlag code={l.country} width={30} />
+                    <CountryFlag code={l.country} width={24} />
                     <Text style={[s.rowText, { color: theme.text }]}>{l.label}</Text>
                     {active && <Text style={{ color: '#168759', fontSize: 16, fontWeight: '700' }}>✓</Text>}
                   </TouchableOpacity>

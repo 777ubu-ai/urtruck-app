@@ -48,6 +48,10 @@ const COPY = {
     messengerContact: 'Контакт в мессенджере',
     messengerPlaceholder: 'ID, логин или номер',
     messengerRequired: 'Укажите контакт выбранного мессенджера',
+    phoneChangeRequired: 'Этот аккаунт уже имеет подтверждённый номер. Используйте его для регистрации; новый номер можно подтвердить кодом в профиле.',
+    phoneAlreadyInUse: 'Этот номер уже используется. Введите другой номер или войдите в свой существующий аккаунт.',
+    roleAlreadySet: 'Для этого аккаунта уже выбрана другая роль. Вернитесь и выберите сохранённую роль.',
+    retryLater: 'Слишком много попыток. Подождите и повторите сохранение.',
     other: 'Другой',
     samePhone: 'Совпадает с основным телефоном',
     emailConfirmed: 'Email уже подтверждён и повторно не запрашивается',
@@ -77,6 +81,10 @@ const COPY = {
     messengerContact: 'Messenger contact',
     messengerPlaceholder: 'ID, username or number',
     messengerRequired: 'Enter a contact for the selected messenger',
+    phoneChangeRequired: 'This account already has a verified phone. Use it to finish registration; verify a new number with a code in your profile.',
+    phoneAlreadyInUse: 'This number is already in use. Enter another number or sign in to your existing account.',
+    roleAlreadySet: 'This account already has a different role. Go back and select the saved role.',
+    retryLater: 'Too many attempts. Wait before saving again.',
     other: 'Other',
     samePhone: 'Same as primary phone',
     emailConfirmed: 'Email is already verified and is not requested again',
@@ -106,6 +114,10 @@ const COPY = {
     messengerContact: '即时通讯联系方式',
     messengerPlaceholder: 'ID、账号或手机号',
     messengerRequired: '请输入所选即时通讯的联系方式',
+    phoneChangeRequired: '此账号已有已验证的手机号。请使用该号码完成注册；之后可在个人资料中通过验证码更换号码。',
+    phoneAlreadyInUse: '此号码已被使用。请输入其他号码，或登录您的现有账号。',
+    roleAlreadySet: '此账号已选择其他角色。请返回并选择已保存的角色。',
+    retryLater: '尝试次数过多。请稍后再次保存。',
     other: '其他',
     samePhone: '与主要手机号相同',
     emailConfirmed: '邮箱已验证，无需再次填写',
@@ -135,6 +147,10 @@ const COPY = {
     messengerContact: 'Мессенджердегі байланыс',
     messengerPlaceholder: 'ID, логин немесе нөмір',
     messengerRequired: 'Таңдалған мессенджердегі байланысты көрсетіңіз',
+    phoneChangeRequired: 'Бұл аккаунтта расталған нөмір бар. Тіркелуді сол нөмірмен аяқтаңыз; жаңа нөмірді профильде кодпен растауға болады.',
+    phoneAlreadyInUse: 'Бұл нөмір қолданылып жатыр. Басқа нөмір енгізіңіз немесе өз аккаунтыңызға кіріңіз.',
+    roleAlreadySet: 'Бұл аккаунт үшін басқа рөл таңдалған. Артқа оралып, сақталған рөлді таңдаңыз.',
+    retryLater: 'Әрекет саны тым көп. Біраз күтіп, қайта сақтаңыз.',
     other: 'Басқа',
     samePhone: 'Негізгі телефонмен бірдей',
     emailConfirmed: 'Email расталған, оны қайта енгізудің қажеті жоқ',
@@ -347,7 +363,29 @@ export default function ProfileV2Screen({ navigation, route }) {
           setErrors((prev) => ({ ...prev, name: t('profile_v2_err_name') }));
           return;
         }
-        throw new Error(typeof detail === 'string' ? detail : 'profile_save_failed');
+        const fieldErrors = {
+          PHONE_CHANGE_OTP_REQUIRED: ['phone', ui.phoneChangeRequired],
+          PHONE_ALREADY_IN_USE: ['phone', ui.phoneAlreadyInUse],
+          MESSENGER_CONTACT_REQUIRED: ['messenger', ui.messengerRequired],
+        };
+        if (Object.hasOwn(fieldErrors, code)) {
+          const [field, message] = fieldErrors[code];
+          setErrors((prev) => ({ ...prev, [field]: message }));
+          return;
+        }
+        if (code === 'ROLE_ALREADY_SET') {
+          setServerError(ui.roleAlreadySet);
+          return;
+        }
+        if (saved?.authRequired || saved?.status === 401 || code === 'AUTH_REQUIRED') {
+          setServerError(t('session_expired'));
+          return;
+        }
+        if (saved?.status === 429) {
+          setServerError(ui.retryLater);
+          return;
+        }
+        throw new Error('profile_save_failed');
       }
 
       if (role === 'driver') {
