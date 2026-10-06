@@ -69,14 +69,16 @@ test('composer switches controls by input state and protects rapid send', () => 
   assert.match(src, /textSendBusyRef\.current/);
   assert.match(src, /blurOnSubmit=\{false\}/);
   assert.match(src, /returnKeyType="default"/);
-  assert.match(src, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
+  assert.match(src, /COMPOSER_INPUT_MAX_HEIGHT = 104/);
 });
 
 test('emoji control is a visible sibling of the multiline native input', () => {
   assert.match(src, /inputShell: \{[^\n]*flexDirection: 'row', alignItems: 'flex-end'/,
     'the input and emoji must use a shared row, never overlapping native layers');
-  assert.match(src, /input: \{[^\n]*flex: 1[^\n]*paddingRight: 8/,
-    'the native input must occupy only its own flex slot');
+  assert.match(src, /input: \{[^\n]*flexGrow: 1[^\n]*flexShrink: 1[^\n]*flexBasis: 0[^\n]*paddingRight: 8/,
+    'the native input must occupy only its own horizontal flex slot');
+  assert.doesNotMatch(src, /input: \{[^\n]*flex: 1[^\n]*height/,
+    'the native input must not combine shorthand flex with dynamic height');
   assert.match(src, /inputEmojiButton: \{[^\n]*flexShrink: 0[^\n]*width: 40, height: 40/,
     'the emoji must retain an independent, visible 40dp control at multiline height');
   assert.doesNotMatch(src, /inputEmojiButton: \{[^\n]*position: 'absolute'/,
