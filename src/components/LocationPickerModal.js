@@ -216,7 +216,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
       activeOpacity={0.7}
       testID={`loc-country-${code}`}
     >
-      <View style={s.countryLead}><CountryFlag code={code} width={32} /></View>
+      <View style={s.countryLead}><CountryFlag code={code} width={26} /></View>
       <View style={{ flex: 1 }}><Text style={s.name} numberOfLines={1}>{countryLabel(code)}</Text></View>
       <Text style={s.chev}>›</Text>
     </TouchableOpacity>
