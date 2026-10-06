@@ -67,6 +67,16 @@ Result: **PASS** for client → driver cargo publication, driver feed refresh, c
 - `node --test tests/frontend/test_chat_scroll_metrics.mjs tests/frontend/rc1_deal_fsm_static.mjs`: **PASS 8/8**; the incomplete scroll-event and deal-FSM guards pass on this checkout.
 - No source/product files were changed in these checks; only the existing untracked evidence files remain.
 
+## iPhone USB physical smoke — 2026-10-06
+
+- USB/CoreDevice connection: **PASS**. iPhone 15 Pro Max was controlled through macOS iPhone Mirroring; no reinstall, logout, storage clear, permission change or account mutation was performed.
+- Profile/role screen: current installed account visibly resolves to a driver profile; account provenance and QA/test status are **UNVERIFIED**, so no business-mutating actions were taken.
+- Deals list: **PASS (read-only)**. Existing deal list loaded; active deal room opened and message history loaded without a blank composer or crash.
+- Chat scroll/background smoke: **PASS (limited)**. Composer focus remained available, history scrolled, app was sent to Home and relaunched through `devicectl`; the same deal room and history returned. No message was typed into a sent payload and no message was submitted.
+- iPhone map: **FAIL**. At approximately 16:10 local time, the deal map view showed `Карта недоступна`; expanding the map produced a blank map surface, `—` for distance/remaining/ETA/GPS metrics, and no visible Retry action. Returning to chat worked. This is physical evidence on the installed iOS build 85; provider/backend root cause is **UNVERIFIED**.
+- Crash evidence: no UrTruck crash report appeared in the filtered system crash list after this smoke. The older Jetsam snapshot contains a UrTruck process entry but does not attribute an app crash or termination; status is **NOT REPRODUCED**, not PASS for a new candidate.
+- Push, bid/deal mutation, GPS start/permission, network-offline recovery and lock-screen notification were **NOT TESTED/BLOCKED** because the visible iPhone account/deal was not proven to be the designated disposable QA entity and those steps would create business events or change deal state.
+
 ## Latest controlled deal run — 2026-10-06 14:56–15:03 +05:00
 
 - Roles used were the previously confirmed separate QA2 accounts: Huawei as `client`, OPPO as `driver`. The existing controlled cargo marker was `QA2-E2E-20261006`; no additional cargo was created.
