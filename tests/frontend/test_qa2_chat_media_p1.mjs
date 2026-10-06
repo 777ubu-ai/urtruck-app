@@ -63,6 +63,18 @@ test('composer accepts a later valid measurement for unchanged text', () => {
   assert.equal(next, 52);
 });
 
+test('composer tolerates null and partial native content-size events', () => {
+  const common = { input: 'draft', previousInput: 'draft', currentHeight: 52, minimum: 32, maximum: 88, lineHeight: 20 };
+  for (const event of [null, {}, { nativeEvent: null }, { nativeEvent: {} }, { nativeEvent: { contentSize: {} } }]) {
+    const reportedHeight = event?.nativeEvent?.contentSize?.height;
+    assert.doesNotThrow(() => stableComposerHeight({ ...common, reportedHeight }));
+    assert.equal(stableComposerHeight({ ...common, reportedHeight }), 52);
+  }
+  const workspace = readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
+  assert.match(workspace, /const reportedHeight = event\?\.nativeEvent\?\.contentSize\?\.height/);
+  assert.doesNotMatch(workspace, /event\.nativeEvent\.contentSize\.height/);
+});
+
 test('composer mirror maps actual visual lines to stable canonical heights', () => {
   const common = { minimum: 32, maximum: 88, lineHeight: 20 };
   assert.equal(composerHeightForLineCount({ ...common, lineCount: 1 }), 32);

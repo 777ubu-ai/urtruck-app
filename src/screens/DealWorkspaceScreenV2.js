@@ -1922,12 +1922,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                             if (Platform.OS === 'ios' && composerInputWidth > 0) return;
                             const currentText = composerTextRef.current;
                             const previousText = composerMeasuredTextRef.current;
+                            // Native TextInput may emit a partial/null event
+                            // while mounting, being backgrounded, or during
+                            // IME reconciliation. Missing measurements must
+                            // keep the last trusted height, never crash the
+                            // whole deal room.
+                            const reportedHeight = event?.nativeEvent?.contentSize?.height;
                             composerMeasuredTextRef.current = currentText;
                             setInputHeight((current) => stableComposerHeight({
                               input: currentText,
                               previousInput: previousText,
                               currentHeight: current,
-                              reportedHeight: event.nativeEvent.contentSize.height,
+                              reportedHeight,
                               minimum: COMPOSER_INPUT_MIN_HEIGHT,
                               maximum: COMPOSER_INPUT_MAX_HEIGHT,
                               lineHeight: 20,

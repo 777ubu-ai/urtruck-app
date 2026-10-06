@@ -99,3 +99,26 @@ Result: **PASS** for client → driver cargo publication, driver feed refresh, c
 ## Current verdict
 
 **NO-GO.** The core Android QA2 deal path is now physically reproduced through one delivered chat message, but the installed APK has a confirmed P1 crash in the deal workspace. New production AAB verification, iPhone, push and GPS remain open and must be re-run on a newly signed fixed build.
+
+## Urgent Android ↔ iPhone follow-up — 2026-10-06
+
+### Play Console read-only check
+
+Play Console opened in the UrTruck developer account. The account reports that publishing applications is currently unavailable until identity and phone verification are completed. No app list, track, version, staged rollout or halt state can be read back from this account. Therefore rollout status is **BLOCKED/UNAVAILABLE**, not evidence that a public rollout exists; no rollout mutation was attempted.
+
+### P1 source remediation and regression checks
+
+- Pre-flight source SHA: `62a2a7fe3dcdb5142b94aa1bfd404af71cb9dcd4`, branch `fix/production-build84-country-catalog`; scope limited to the existing DealWorkspace composer handler and its regression test.
+- The remaining crash path was confirmed at `DealWorkspaceScreenV2`: `onContentSizeChange` dereferenced `event.nativeEvent.contentSize.height` directly. It now reads `event?.nativeEvent?.contentSize?.height`; a missing native measurement preserves the last trusted composer height through `stableComposerHeight`.
+- Added regression coverage for `null`, missing `nativeEvent`, missing `contentSize`, missing `height`, unchanged-text measurement stability and source-level absence of the unsafe dereference.
+- Focused result: **46/46 PASS** (`test_chat_scroll_metrics`, `test_deal_workspace`, `test_deal_chat_composer_visibility`, `test_qa2_chat_media_p1`).
+- This fix is source-level only until a newly built, signed Android/iOS candidate is installed. The old Android APK that physically reproduced the P1 remains a pre-fix artifact; no claim of physical fix is made.
+
+### iPhone map and cross-device flow status
+
+- The connected iPhone 15 Pro Max build 85 still has the previously recorded physical map **FAIL** (`Карта недоступна`, blank expanded map, no distance/ETA/GPS and no Retry). Static native code has explicit fail-closed branches for missing MapKit module/key and failed Yandex initialization; the runtime provider/key/route/coordinate state on build 85 is not observable from the current physical tooling, so root cause remains **UNVERIFIED**.
+- No new disposable iPhone QA deal marker was created. The visible iPhone account/deal is not proven disposable QA, so bid/deal mutation, reply-direction chat, push, GPS start and offline retry remain **BLOCKED/NOT TESTED**.
+
+## Updated verdict
+
+**NO-GO / BLOCKED for physical acceptance.** The P1 source fix and focused regressions pass, but a new signed candidate has not been installed on Android or iPhone; Play rollout data is unavailable; the iPhone map failure is unresolved; and the full disposable Android ↔ iPhone bid/deal/room/chat/push/GPS run is not closed.
