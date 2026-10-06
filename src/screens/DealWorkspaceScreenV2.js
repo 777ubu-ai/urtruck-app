@@ -1767,8 +1767,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                     // New messages remain anchored by the content-size handler below.
                     keyboardShouldPersistTaps="handled"
                     onScroll={(event) => {
-                      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-                      const nearBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 80;
+                      // Неполное событие при IME/layout не меняет последнее достоверное состояние.
+                      const contentHeight = event?.nativeEvent?.contentSize?.height;
+                      const offsetY = event?.nativeEvent?.contentOffset?.y;
+                      const viewportHeight = event?.nativeEvent?.layoutMeasurement?.height;
+                      if (![contentHeight, offsetY, viewportHeight].every(Number.isFinite)
+                          || contentHeight < 0 || viewportHeight <= 0) return;
+                      const nearBottom = contentHeight - (offsetY + viewportHeight) < 80;
                       nearBottomRef.current = nearBottom;
                       if (nearBottom) userScrolledAwayRef.current = false;
                       if (!nearBottom && userScrolledAwayRef.current) setShowJumpLatest(true);
