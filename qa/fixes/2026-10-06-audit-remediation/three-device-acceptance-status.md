@@ -79,3 +79,14 @@ This run supersedes the blocked acceptance state above for the Huawei/OPPO pair.
 1. **QA2 functional verdict:** PARTIAL — visibility, bid, accept, deal, common chat and one direction of text PASS; reverse text blocked by confirmed old-APK P1.
 2. **Production artifact verdict:** BLOCKED — current-source signed AAB has not been built/forensically checked.
 3. **Store rollout verdict:** NO-GO.
+
+
+## 2026-10-06 — OPPO map recheck
+
+Physical test on OPPO (WGCA9PSGOFUOWC7D) in the existing QA2 deal:
+- opened the deal header action `deal-header-map`;
+- UI tree confirmed `deal-map-fullscreen` and `truck-map-yandex-mapkit`;
+- map showed endpoints Иу and Алматы and route metric 4935 км;
+- logcat was cleared immediately before the action; the post-action filtered log contained no UrTruck/MapKit fatal or exception.
+
+Result: **PASS for map-open/render on OPPO Android old QA2 APK only**. It does not prove Huawei or iPhone, and it does not prove GPS tracking or push delivery.
