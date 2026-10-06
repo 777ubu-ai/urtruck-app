@@ -51,3 +51,18 @@ Result: **PASS** for client → driver cargo publication, driver feed refresh, c
 ## Current verdict
 
 **NO-GO for production release remains.** The controlled QA2 visibility path now passes, but the installed production-package APK still embeds the QA2 endpoint. Its source lineage is unverified; there is no newly built and forensic-verified production AAB/APK, and the iOS, push, full bid → deal → room, GPS, store availability and remaining release gates are not closed.
+
+## iPhone and production-artifact update — 2026-10-06
+
+- Physical iPhone `iPhone Bah (2)` is paired/connected and booted: iPhone 15 Pro Max, iOS `27.0.1`, build `24A446`.
+- Installed app: `com.urtruck.app`, version `1.0.9`, build `85`; process is present. TestFlight/source commit provenance is **UNVERIFIED**; this is not evidence of the new candidate's fix.
+- Preserved CI AAB `qa/fixes/2026-10-06-audit-remediation/artifact-213392855/app-release.aab` was independently checked: SHA-256 `d0073702f51bdc01d013744f03ab686f17197e4eef3148b733c449a06d8331e3`; package `com.urtruck.app`; version `1.0.9`; versionCode `213392855`; embedded app config has production host `https://urtruck.kz`.
+- The same AAB **FAILS the strict artifact gate** because its bundled `index.android.bundle` still contains one `qa2.urtruck.kz` literal. Context is the runtime allow-list string, not proof of a live QA2 request, but the TЗ requires absence of the QA2 host. Signing certificate is present; its stable SHA-256 digest is recorded in the prior audit evidence, not repeated here.
+- This AAB is therefore **NOT ACCEPTED as the new production artifact**. Its recorded CI/source provenance belongs to the earlier audit candidate, not the current checkout `8804ec3aa1f79ad9c93feb40362a65f3f603b125`; no new signed AAB was built or uploaded in this pass.
+
+## Current-checkout automatic checks
+
+- Current checkout observed: `fix/production-build84-country-catalog` / `8804ec3aa1f79ad9c93feb40362a65f3f603b125`.
+- `EXPO_PUBLIC_API_URL=https://urtruck.kz EXPO_PUBLIC_IS_BETA=false URTRUCK_BUILD_FLAVOR=production npm run release:check-config`: **PASS** (native config parity; Android config versionCode source default remains 9 before CI monotonic override).
+- `node --test tests/frontend/test_chat_scroll_metrics.mjs tests/frontend/rc1_deal_fsm_static.mjs`: **PASS 8/8**; the incomplete scroll-event and deal-FSM guards pass on this checkout.
+- No source/product files were changed in these checks; only the existing untracked evidence files remain.
