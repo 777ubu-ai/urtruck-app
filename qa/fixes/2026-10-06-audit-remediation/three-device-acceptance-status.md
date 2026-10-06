@@ -51,3 +51,31 @@ Before any entity-creating action, the owner must confirm without identifiers th
 1. **QA2 functional verdict:** BLOCKED — no role-confirmed three-device controlled flow has begun.
 2. **Production artifact verdict:** PARTIAL — existing AAB static config PASS, current-SHA signed AAB BLOCKED.
 3. **Store rollout verdict:** NO-GO — no upload/read-back/manual approval attempted.
+
+## Superseding physical run — 2026-10-06 14:56–15:03 +05:00
+
+This run supersedes the blocked acceptance state above for the Huawei/OPPO pair.
+
+| Gate | Result | Physical evidence |
+| --- | --- | --- |
+| Separate-role visibility | PASS | Existing Huawei-client cargo `QA2-E2E-20261006` was visible on OPPO-driver after refresh. |
+| One driver offer | PASS | OPPO sent one $1,450 offer; Huawei showed the exact marker, driver label and amount. |
+| Acceptance / deal | PASS | Huawei explicit confirmation accepted once; Huawei showed `Сделка создана · 1450`, OPPO showed `Принят`. |
+| Same room / OPPO → Huawei text | PASS | Both opened the deal chat; Huawei displayed exact OPPO message `QA2 E2E driver message`. |
+| Huawei reply / reverse text | FAIL | Old installed Huawei APK crashed before reply. |
+| Crash attribution | FAIL (confirmed) | `Cannot read property 'contentSize' of null` in `DealWorkspaceScreenV2`, bundle `1:1464470`; error returns after relaunch. |
+| Push | NOT TESTED | No device notification was attributable to this test deal. |
+| GPS | NOT TESTED | Cannot obtain a reliable active-deal client session after the crash. |
+| iPhone 15 Pro Max | UNVERIFIED | Device/build 85 is connected; no interactive test or TestFlight provenance evidence. |
+
+## New build status
+
+- Source fix exists and is covered by scroll/FSM checks (8/8 PASS), but this physical run was on the old APK and does not validate it.
+- Commit `2111b0a7` removes the dormant QA2 hostname literal from production-bundle source paths; focused share checks 3/3 PASS, production config PASS, production web-bundle literal scan PASS.
+- The branch is pushed. The build-only workflow could not be dispatched because GitHub requires its workflow file to be present on the default branch. No signed AAB or Store mutation was produced.
+
+## Updated verdicts
+
+1. **QA2 functional verdict:** PARTIAL — visibility, bid, accept, deal, common chat and one direction of text PASS; reverse text blocked by confirmed old-APK P1.
+2. **Production artifact verdict:** BLOCKED — current-source signed AAB has not been built/forensically checked.
+3. **Store rollout verdict:** NO-GO.

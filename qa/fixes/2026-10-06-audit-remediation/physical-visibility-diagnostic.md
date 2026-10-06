@@ -66,3 +66,26 @@ Result: **PASS** for client → driver cargo publication, driver feed refresh, c
 - `EXPO_PUBLIC_API_URL=https://urtruck.kz EXPO_PUBLIC_IS_BETA=false URTRUCK_BUILD_FLAVOR=production npm run release:check-config`: **PASS** (native config parity; Android config versionCode source default remains 9 before CI monotonic override).
 - `node --test tests/frontend/test_chat_scroll_metrics.mjs tests/frontend/rc1_deal_fsm_static.mjs`: **PASS 8/8**; the incomplete scroll-event and deal-FSM guards pass on this checkout.
 - No source/product files were changed in these checks; only the existing untracked evidence files remain.
+
+## Latest controlled deal run — 2026-10-06 14:56–15:03 +05:00
+
+- Roles used were the previously confirmed separate QA2 accounts: Huawei as `client`, OPPO as `driver`. The existing controlled cargo marker was `QA2-E2E-20261006`; no additional cargo was created.
+- OPPO sent exactly one offer for **$1,450**. The OPPO cargo page changed to `1 предложение`.
+- Huawei displayed the same offer in `Предложения`: marker `QA2-E2E-20261006`, driver label `Zavod Zavod`, amount `$1,450`. The explicit confirmation dialog was accepted once.
+- Huawei confirmed `Сделка создана · 1450`. OPPO then showed the same cargo with current status `Принят` and deal price `$1,450`.
+- Both devices opened the same deal chat. OPPO sent the exact control message `QA2 E2E driver message`; Huawei displayed that exact message. This is physical evidence for cargo → offer → acceptance → one deal → one room → driver-to-client text delivery on the installed QA2-configured Android APK pair.
+- Immediately after the client attempted to type a reply, Huawei reproduced the old P1: `TypeError: Cannot read property 'contentSize' of null` in `DealWorkspaceScreenV2` (bundle offset `1:1464470`). The error boundary repeatedly reappeared after relaunch. This is a **physical FAIL** of the installed APK, not an inference. It prevented the reply-direction chat check, background/foreground push acceptance and GPS flow.
+- Push: **NOT TESTED / not proven**. Notification icons/badges were not attributed to this deal, so they are not evidence of UrTruck push delivery.
+- GPS: **NOT TESTED** because the client app fails before a reliable active-deal run.
+- iPhone 15 Pro Max remains connected (UrTruck 1.0.9 build 85), but TestFlight provenance and interactive iPhone flow are still **UNVERIFIED**; no iPhone action is claimed here.
+- Current source contains the null-safe scroll handler; its focused scroll/FSM tests pass. The installed Android APK predates that source, so this run cannot validate the fix.
+
+## Artifact recovery status
+
+- Commit `2111b0a7` removes the complete dormant QA2 hostname from production-bundle source paths while preserving runtime QA2 allow-list behaviour, and strengthens the build-only artifact gate to reject any `qa2.urtruck.kz` literal.
+- Focused checks: share contract **3/3 PASS**, scroll/FSM **8/8 PASS**, production config PASS, and exported production web bundle contains no `qa2.urtruck.kz` literal.
+- The branch was pushed. A build-only workflow dispatch was attempted but GitHub rejected it because the workflow is not yet present on the repository default branch. No signed AAB, Play upload, rollout, deployment, key or production mutation was created by that attempt.
+
+## Current verdict
+
+**NO-GO.** The core Android QA2 deal path is now physically reproduced through one delivered chat message, but the installed APK has a confirmed P1 crash in the deal workspace. New production AAB verification, iPhone, push and GPS remain open and must be re-run on a newly signed fixed build.
