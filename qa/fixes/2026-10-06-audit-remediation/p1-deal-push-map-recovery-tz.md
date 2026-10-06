@@ -105,3 +105,11 @@ PASS возможен только при наличии одновременн�
 3. Android: D1 → D2 → D3 → D4 → D5 на Huawei/OPPO.
 4. iPhone: тот же сценарий только на проверяемом build 85 либо новом build с доказанной source provenance.
 5. Обновить evidence и вынести один из verdict: PASS / FAIL / BLOCKED.
+
+## 7. Supply-chain исправление (добавлено по фактическому EAS failure)
+
+1. EAS preview обязан получать `EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY` только через защищённое EAS environment. В `preview` не допускается пустой список variables перед запуском native build. Значение ключа не хранить в git, issue, логе или артефакте отчёта.
+2. Release Gradle guard обязан принимать два и только два доверенных источника подписи: локальные `URTRUCK_UPLOAD_*` properties либо release signingConfig, который инжектирует EAS. Debug fallback допустим только с явным QA flag и никогда не подходит для production/Play.
+3. Перед сборкой: проверить наличие переменной по имени без вывода значения, проверять signing path dry-run.
+4. После сборки: forensic-проверка APK (package/versionCode/certificate/config/MapKit presence) до установки.
+5. Фактический сбой build `121d82ca-ba18-4879-a0c8-af0657135fcc`: signing guard не распознал уже инжектированную EAS release подпись. Код исправлен; этот build не имеет artefact и не устанавливался.
