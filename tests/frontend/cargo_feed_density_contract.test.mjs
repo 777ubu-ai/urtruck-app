@@ -16,8 +16,8 @@ test('cargo feed keeps the first screen dense enough for narrow mobile browsers'
   const bookmark = fs.readFileSync('src/components/ui/v1/BookmarkButton.js', 'utf8');
   assert.match(bookmark, /width:\s*34,\s*height:\s*34/);
   const routeLine = fs.readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
-  // Owner-approved compact Enamel Badge uses 28 dp in deal routes.
-  assert.match(routeLine, /CountryFlag code=\{fromFlag\} width=\{28\}/);
+  // Owner-approved 20 percent reduction: 28 dp becomes 22 dp after rounding.
+  assert.match(routeLine, /CountryFlag code=\{fromFlag\} width=\{22\}/);
   assert.match(routeLine, /crossingCheckpointWithFlag:\s*\{ marginLeft:\s*31 \}/);
   assert.match(routeLine, /fontSize:\s*15,\s*lineHeight:\s*19/);
   assert.doesNotMatch(card, /shadowOpacity/);
