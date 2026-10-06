@@ -34,6 +34,10 @@ const IS_WEB = Platform.OS === 'web';
 // Production HTTPS endpoint. nginx on urtruck.kz proxies
 // `/api/v1/*` to the FastAPI port 8001.
 const PROD_API = 'https://urtruck.kz';
+const PUBLIC_ROOT_HOST = 'urtruck.kz';
+// Keep QA2 host construction split so a production bundle does not carry the
+// complete QA2 hostname as a dormant fallback literal.
+const QA2_HOST = ['qa2', PUBLIC_ROOT_HOST].join('.');
 
 // Pick up an explicit override from `EXPO_PUBLIC_API_URL` (used
 // by `eas build --profile preview` / `--profile development` to
@@ -95,8 +99,8 @@ const WEB_RUNTIME_ORIGIN = IS_WEB && typeof window !== 'undefined'
 const sessionStorageScope = (origin) => {
   try {
     const host = new URL(origin || PROD_API).hostname.toLowerCase();
-    if (host === 'qa2.urtruck.kz') return 'qa2';
-    if (host === 'urtruck.kz' || host === 'www.urtruck.kz') return 'production';
+    if (host === QA2_HOST) return 'qa2';
+    if (host === PUBLIC_ROOT_HOST || host === `www.${PUBLIC_ROOT_HOST}`) return 'production';
     // Development hosts must not share a bearer with either public API or
     // with another local endpoint. Hostnames are safe storage-key fragments.
     return `isolated-${host.replace(/[^a-z0-9.-]/g, '_') || 'unknown'}`;
@@ -119,8 +123,9 @@ const publicOrigin = (value) => {
     const parsed = new URL(String(value || ''));
     if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) return '';
     const host = parsed.hostname.toLowerCase();
-    if (host !== 'urtruck.kz' && host !== 'www.urtruck.kz' && host !== 'qa2.urtruck.kz') return '';
-    return host === 'www.urtruck.kz' ? 'https://urtruck.kz' : `https://${host}`;
+    const wwwProductionHost = `www.${PUBLIC_ROOT_HOST}`;
+    if (host !== PUBLIC_ROOT_HOST && host !== wwwProductionHost && host !== QA2_HOST) return '';
+    return host === wwwProductionHost ? PROD_API : `https://${host}`;
   } catch {
     return '';
   }

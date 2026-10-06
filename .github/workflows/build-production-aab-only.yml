@@ -1,0 +1,156 @@
+name: Build Production Android AAB (No Play Upload)
+
+# This workflow is deliberately build-only. It creates a signed, inspectable
+# artifact for physical acceptance and has no Play service-account credential,
+# upload step, track, rollout status, or release mutation.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-aab-only-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify production AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK platform 36 / build-tools 36.0.0
+        run: |
+          set -euo pipefail
+          sdkmanager_bin=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)
+          test -x "$sdkmanager_bin"
+          yes | "$sdkmanager_bin" --licenses > /dev/null || true
+          "$sdkmanager_bin" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk || true
+          df -h
+
+      - name: Install npm dependencies
+        run: npm ci --legacy-peer-deps --ignore-scripts
+
+      - name: Apply checked-in patches
+        run: |
+          if [ -d patches ] && [ "$(ls -A patches 2>/dev/null)" ]; then
+            npx patch-package
+          fi
+
+      - name: Decode upload keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo '::error::ANDROID_KEYSTORE_BASE64 is required for a signed acceptance artifact'; exit 1; }
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/urtruck-upload-key.jks"
+
+      - name: Materialize Firebase configuration
+        env:
+          ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" || { echo '::error::ANDROID_GOOGLE_SERVICES_JSON_BASE64 is required for FCM acceptance'; exit 1; }
+          echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
+          python3 scripts/verify_android_firebase_config.py --check-source android/app/google-services.json
+          python3 scripts/verify_android_firebase_config.py --check-plugin android
+
+      - name: Compute monotonic versionCode
+        run: |
+          set -euo pipefail
+          version_code=$(( $(date -u +%s) - 1577836800 ))
+          test "$version_code" -gt 213392855 || { echo '::error::versionCode must exceed the verified prior production artifact'; exit 1; }
+          test "$version_code" -lt 2100000000 || { echo '::error::versionCode exceeds Google Play range'; exit 1; }
+          echo "URTRUCK_VERSION_CODE=$version_code" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$version_code"
+
+      - name: Verify resolved production configuration
+        env:
+          EXPO_PUBLIC_API_URL: https://urtruck.kz
+          EXPO_PUBLIC_IS_BETA: "false"
+          URTRUCK_BUILD_FLAVOR: production
+          URTRUCK_BUILD_PLATFORM: android
+        run: |
+          set -euo pipefail
+          npx expo config --type public --json > "$RUNNER_TEMP/expo-public.json"
+          node - "$RUNNER_TEMP/expo-public.json" <<'NODE'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (config.android?.package !== 'com.urtruck.app') throw new Error('unexpected Android package');
+          if (config.extra?.urtruckBuildFlavor !== 'production') throw new Error('unexpected Android flavor');
+          if (config.extra?.urtruckApiUrl !== 'https://urtruck.kz') throw new Error('unexpected production API');
+          console.log('RESOLVED_PACKAGE=com.urtruck.app');
+          console.log('RESOLVED_API=https://urtruck.kz');
+          NODE
+
+      - name: Build signed production AAB
+        env:
+          EXPO_PUBLIC_API_URL: https://urtruck.kz
+          EXPO_PUBLIC_IS_BETA: "false"
+          URTRUCK_BUILD_FLAVOR: production
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ runner.temp }}/urtruck-upload-key.jks
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ORG_GRADLE_PROJECT_URTRUCK_VERSION_CODE: ${{ env.URTRUCK_VERSION_CODE }}
+        run: |
+          set -euo pipefail
+          cd android
+          chmod +x gradlew
+          ./gradlew bundleRelease --no-daemon --stacktrace --warning-mode=summary
+
+      - name: Verify artifact identity and embedded endpoint
+        run: |
+          set -euo pipefail
+          aab=android/app/build/outputs/bundle/release/app-release.aab
+          test -f "$aab"
+          curl -fsSL https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar -o "$RUNNER_TEMP/bundletool.jar"
+          manifest=$(java -jar "$RUNNER_TEMP/bundletool.jar" dump manifest --bundle "$aab" --module base)
+          printf '%s\n' "$manifest" | grep -q 'package="com.urtruck.app"'
+          printf '%s\n' "$manifest" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
+          config=$(unzip -p "$aab" base/assets/app.config)
+          node -e 'const c=JSON.parse(process.argv[1]); if(c.extra?.urtruckBuildFlavor!=="production"||c.extra?.urtruckApiUrl!=="https://urtruck.kz") process.exit(1)' "$config"
+          ! unzip -p "$aab" base/assets/index.android.bundle | rg -a -q 'qa2\.urtruck\.kz'
+          echo "AAB_SHA256=$(shasum -a 256 "$aab" | awk '{print $1}')" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+
+      - name: Record upload certificate digest
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          certificate=$(keytool -list -v -keystore "$RUNNER_TEMP/urtruck-upload-key.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1)
+          test -n "$certificate"
+          echo "UPLOAD_CERT_SHA256=$certificate" >> "$GITHUB_ENV"
+
+      - name: Upload verified AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-production-aab-${{ env.URTRUCK_VERSION_CODE }}
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/urtruck-upload-key.jks"

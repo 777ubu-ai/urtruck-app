@@ -31,6 +31,7 @@ import {
   COUNTRIES, COUNTRY_ORDER, POINT_TYPES, POINTS,
   searchPoints, formatPoint, pointsForCountry,
 } from '../utils/geography';
+import { getCountryName } from '../utils/countries';
 
 // Stage 7 finalisation: every visible label goes through `t(key)`.
 // We keep a tiny safety helper so a regression that misspells a key
@@ -56,8 +57,11 @@ const POPULAR_POINTS = POPULAR_NAMES
 // (`country_KZ`, `country_CN`, …). Fall back to the Russian name
 // in COUNTRIES so a regression doesn't surface bare `country_KZ`
 // text on the picker.
-const localisedCountryName = (t, code, fallback) => {
-  return i18nLabel(t, `country_${code}`, fallback);
+const localisedCountryName = (t, lang, code, fallback) => {
+  const translated = t(`country_${code}`);
+  return translated && translated !== `country_${code}`
+    ? translated
+    : getCountryName({ iso: code }, lang) || fallback || code;
 };
 
 export default function RoutePointPicker({
@@ -70,7 +74,7 @@ export default function RoutePointPicker({
   allowedCountries,
 }) {
   const v1 = useV1Colors();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [query, setQuery] = useState('');
   const [step, setStep] = useState('country');     // 'country' | 'type' | 'point'
   const [country, setCountry] = useState(null);
@@ -189,7 +193,7 @@ export default function RoutePointPicker({
       {!searchHits ? (
         <View style={s.stepRow}>
           {[
-            { key: 'country', label: i18nLabel(t, 'route_step_country', 'Страна'), value: country ? localisedCountryName(t, country, COUNTRIES[country].name) : null },
+            { key: 'country', label: i18nLabel(t, 'route_step_country', 'Страна'), value: country ? localisedCountryName(t, lang, country, COUNTRIES[country].name) : null },
             { key: 'type',    label: i18nLabel(t, 'route_step_type', 'Тип'),       value: pointType ? POINT_TYPES.find((p) => p.key === pointType)?.label : null },
             { key: 'point',   label: i18nLabel(t, 'route_step_point', 'Точка'),    value: null },
           ].map((it) => (
@@ -235,7 +239,7 @@ export default function RoutePointPicker({
             ) : null}
             {visibleCountries.map((code) => {
               const country = COUNTRIES[code];
-              const localName = localisedCountryName(t, code, country.name);
+              const localName = localisedCountryName(t, lang, code, country.name);
               return (
                 <TouchableOpacity
                   key={code}
@@ -243,7 +247,7 @@ export default function RoutePointPicker({
                   style={s.row}
                   testID={`route-country-${code}`}
                 >
-                  <View style={s.icon}><CountryFlag code={code} width={28} /></View>
+                  <View style={s.icon}><CountryFlag code={code} width={22} /></View>
                   <Text style={[s.rowName, { color: v1.text, flex: 1 }]}>{localName}</Text>
                   <Text style={{ color: v1.textMuted, fontSize: 16 }}>›</Text>
                 </TouchableOpacity>
@@ -302,7 +306,7 @@ export default function RoutePointPicker({
         (() => {
           const inferred = country || inferCountryFromQuery(query.trim());
           const c = inferred ? COUNTRIES[inferred] : null;
-          const cName = inferred ? localisedCountryName(t, inferred, c?.name) : null;
+          const cName = inferred ? localisedCountryName(t, lang, inferred, c?.name) : null;
           return (
             <TouchableOpacity onPress={useFreeText} style={s.fallback} testID="route-use-free-text">
               <Feather name="edit-3" size={15} color={v1.textMuted} />
@@ -324,15 +328,15 @@ function PointRow({ p, v1, s, onPick }) {
   const { t, lang } = useI18n();
   const country = COUNTRIES[p.country] || {};
   const partnerCountry = p.partnerCountry ? COUNTRIES[p.partnerCountry] : null;
-  const cName = p.country ? localisedCountryName(t, p.country, country.name || p.country) : '';
-  const partnerName = p.partnerCountry ? localisedCountryName(t, p.partnerCountry, partnerCountry?.name || p.partnerCountry) : '';
+  const cName = p.country ? localisedCountryName(t, lang, p.country, country.name || p.country) : '';
+  const partnerName = p.partnerCountry ? localisedCountryName(t, lang, p.partnerCountry, partnerCountry?.name || p.partnerCountry) : '';
   const typeLabel = i18nLabel(t, 'point_type_border', 'Погранпереход').toLowerCase();
   const displayName = p.type === 'border'
     ? p.name.split('→').map((part) => localizePlace(part.trim(), lang)).join(' → ')
     : localizePlace(p.name, lang);
   return (
     <TouchableOpacity onPress={onPick} style={s.row} testID={`route-point-${p.name}`}>
-      <View style={s.icon}><CountryFlag code={p.country} width={28} /></View>
+      <View style={s.icon}><CountryFlag code={p.country} width={22} /></View>
       <View style={{ flex: 1 }}>
         <Text style={[s.rowName, { color: v1.text }]} numberOfLines={1}>
           {displayName}

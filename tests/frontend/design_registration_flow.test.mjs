@@ -53,15 +53,14 @@ test('CitizenshipScreen uses the brandV2 token family (no ThemeContext hardcodes
   assert.match(citizenship, /KeyboardSafeScrollView/);
 });
 
-test('CitizenshipScreen keeps registration behavior and testIDs unchanged', () => {
+test('CitizenshipScreen keeps registration behavior and uses the canonical selector', () => {
   assert.match(citizenship, /regAPI\.saveDriverDraft\(\{\s*citizenship_country:\s*selected\s*\}\)/);
   assert.match(citizenship, /navigation\.navigate\('Identity',\s*\{\s*citizenship:\s*selected\s*\}\)/);
   assert.match(citizenship, /testID="citizenship-back"/);
   assert.match(citizenship, /testID="citizenship-continue"/);
-  assert.match(citizenship, /testID=\{`citizenship-\$\{c\.code\}`\}/);
-  for (const code of ['KZ', 'RU', 'UZ', 'KG', 'TJ', 'other']) {
-    assert.match(citizenship, new RegExp(`code:\\s*'${code}'`));
-  }
+  assert.match(citizenship, /testID="citizenship-country-selector"/);
+  assert.match(citizenship, /<CountrySheet/);
+  assert.match(citizenship, /onSelect=\{setSelected\}/);
 });
 
 // List rows: 56h, radius 14, selected = accent soft bg (primarySoft) + check.

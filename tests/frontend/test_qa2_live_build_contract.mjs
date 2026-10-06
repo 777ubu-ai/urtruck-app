@@ -138,12 +138,29 @@ test('Play workflow can build a signed AAB without submitting and records releas
   assert.ok(playWorkflow.includes('Upload certificate SHA-256=${cert_sha}'));
 });
 
-test('manual Play test build defaults to QA2 and cannot silently use production API', () => {
+test('Play workflow always pairs the production package with the production API', () => {
   assert.ok(playWorkflow.includes('api_environment:'));
-  assert.ok(playWorkflow.includes('default: "qa2"'));
-  assert.ok(playWorkflow.includes('QA2_API_URL: ${{ secrets.QA2_API_URL }}'));
-  assert.ok(playWorkflow.includes('QA2 Play test build must target exactly qa2.urtruck.kz'));
+  assert.ok(playWorkflow.includes('default: "production"'));
+  assert.ok(!playWorkflow.includes('default: "qa2"'));
+  assert.ok(!playWorkflow.includes('QA2_API_URL'));
+  assert.ok(playWorkflow.includes('The production Play package cannot target QA2'));
+  assert.ok(playWorkflow.includes('Production API uploads are restricted to the production Play track'));
+  assert.ok(playWorkflow.includes('URTRUCK_BUILD_PLATFORM=android'));
+  assert.ok(playWorkflow.includes('URTRUCK_BUILD_FLAVOR=production'));
+  assert.ok(playWorkflow.includes('Verify resolved production Android config'));
   assert.ok(playWorkflow.includes('EXPO_PUBLIC_API_URL: ${{ env.EXPO_PUBLIC_API_URL }}'));
-  assert.ok(playWorkflow.includes('Production API is only allowed with the production Play track'));
+  assert.ok(playWorkflow.includes("config.extra?.urtruckApiUrl !== 'https://urtruck.kz'"));
   assert.ok(playWorkflow.includes('PLAY_API_TARGET=$target'));
+  assert.ok(playWorkflow.includes('default: "draft"'));
+  assert.ok(playWorkflow.includes("status: ${{ inputs.status || 'draft' }}"));
+  assert.ok(playWorkflow.includes('fraction="'));
+  assert.ok(playWorkflow.includes('user_fraction is required for a staged rollout action'));
+  assert.ok(playWorkflow.includes('inputs.user_fraction }}'));
+  assert.ok(playWorkflow.includes('user_fraction must be greater than 0 and less than 1'));
+  assert.ok(playWorkflow.includes('userFraction: ${{ env.PLAY_USER_FRACTION }}'));
+  assert.ok(!playWorkflow.includes("inputs.status == 'halted' && '0.01'"));
+  assert.ok(playWorkflow.includes('id: upload_to_play'));
+  assert.ok(playWorkflow.includes('PLAY_UPLOAD_REQUESTED:'));
+  assert.ok(playWorkflow.includes('PLAY_UPLOAD_STEP_OUTCOME: ${{ steps.upload_to_play.outcome }}'));
+  assert.ok(playWorkflow.includes('Play upload step outcome:'));
 });

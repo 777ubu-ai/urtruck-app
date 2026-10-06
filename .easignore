@@ -1,0 +1,70 @@
+# EAS uses this file instead of .gitignore when preparing a build archive.
+# Keep the existing repository exclusions, then exclude local audit evidence.
+
+# Environment
+.env
+.env.local
+.env.production
+.env.*.local
+backend/.env.*
+!backend/.env.example
+
+# Dependencies and local tool state
+node_modules/
+.expo/
+__pycache__/
+*.pyc
+venv/
+.venv/
+backend/.venv-trackb/
+backend/.venv-audit/
+
+# Generated builds and reports
+dist/
+build/
+web-build/
+*.egg-info/
+*.aab
+qa-artifacts/
+qa/debug/dumps/
+test-results/
+playwright-report/
+blob-report/
+tests/e2e/*.png
+coverage/
+
+# OS / IDE / logs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*.log
+npm-debug.log*
+
+# Local data and credentials
+*.sqlite
+*.sqlite3
+*.db
+*.pem
+*.key
+*.cert
+*.p12
+*.keystore
+*.jks
+backend/certs/
+deploy.sh
+upload_certificate.pem
+keystore/
+credentials.json
+google-play-service-account.json
+/google-services.json
+/android/app/google-services.json
+ключи для play console/
+Проверь пж/
+
+# Large local audit captures must never leave the workstation in a build archive.
+qa/audits/
+qa/fixes/2026-10-06-audit-remediation/device-lineage/
+qa/fixes/2026-10-06-audit-remediation/preflight.md
