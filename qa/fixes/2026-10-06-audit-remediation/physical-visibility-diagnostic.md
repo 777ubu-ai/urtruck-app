@@ -122,3 +122,37 @@ Play Console opened in the UrTruck developer account. The account reports that p
 ## Updated verdict
 
 **NO-GO / BLOCKED for physical acceptance.** The P1 source fix and focused regressions pass, but a new signed candidate has not been installed on Android or iPhone; Play rollout data is unavailable; the iPhone map failure is unresolved; and the full disposable Android ↔ iPhone bid/deal/room/chat/push/GPS run is not closed.
+
+## Unified acceptance follow-up — 2026-10-06
+
+### Android QA2 candidate forensic result
+
+- GitHub Actions run `37456452316` completed **successfully** from full source SHA `f0055af9b2ee8611f59566a4c219fa2ca3a50940`.
+- Artifact `UrTruck.apk`: SHA-256 `f373059fa9aa66501c2e9cba9875d02a655de45ac117d89b91afade3e560da73`.
+- Manifest: package `com.urtruck.app.qa2` (isolated from production data), version `1.0.9-qa2`, versionCode `211040101`, target/compile SDK 36.
+- Embedded config classifies as QA2 (`qa2.urtruck.kz`); no production endpoint was selected. The bundle has no literal `qa2.urtruck.kz`/`urtruck.kz` host string because the runtime endpoint is carried through the resolved app config. Native MapKit payload is present (`libmaps-mobile.so` for all four ABIs); the CI gate confirmed the protected MapKit variable was non-empty without exposing its value.
+- Signature: one signer, SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`, QA debug certificate. This is an internal QA-only artifact and is **not** a production/Play candidate.
+
+### Physical installation gate
+
+- Huawei `3DJ0224B04002582`: `adb install -r` reached Huawei security review, then required the Huawei ID password. No password was entered; installation was cancelled. `com.urtruck.app.qa2` is not installed.
+- OPPO `WGCA9PSGOFUOWC7D`: OEM security scan remained on the install-review screen; both the direct install and shell `pm install` did not complete. No package data was changed and `com.urtruck.app.qa2` is not installed.
+- Existing production package `com.urtruck.app` was not overwritten on either device.
+
+### iPhone candidate/provenance and map evidence
+
+- Physical iPhone remains `com.urtruck.app`, version `1.0.9`, build `85`. App Store Connect read-back shows only build 85 attached to iOS version 1.0.9; no source SHA or relation to `f0055af9` is exposed. Therefore build 85 is **NOT ACCEPTED as the fixed candidate**.
+- On build 85, opening the existing deal map visibly rendered `Карта недоступна`; the expanded surface was blank and all route/GPS metrics were `—`. Source mapping shows this copy belongs to the native provider-not-configured branch, but the old binary does not expose whether the underlying cause is missing `NativeModules.yamap` or a missing/invalid key. Exact next technical step: install the QA2/TestFlight candidate built from the approved SHA with protected MapKit variables, then capture the runtime module/key-presence booleans and provider/route state before opening the map.
+
+### Remaining physical acceptance
+
+No new marker `QA2-IOS-ANDROID-FINAL-20261006` was created because neither the isolated Android candidate nor an iPhone candidate was installable/verified, and the current iPhone account is not proven disposable QA. Bid/deal mutation, two-way chat, push/badge, map PASS and GPS remain **NOT TESTED/BLOCKED**.
+
+### Owner action required to continue without weakening gates
+
+1. On Huawei/OPPO, approve the OEM security review using the device's normal trusted installation path (Huawei requires the device owner to complete the Huawei ID prompt; OPPO requires its security-review completion). No password or OTP should be sent in chat.
+2. Promote/merge `f0055af9` into the protected `qa2/integration-candidate` ancestry, then dispatch `UrTruck QA2 TestFlight` with confirmation `BUILD_QA2_TESTFLIGHT` and the full SHA. The workflow already requires the protected QA2 API, APNs and MapKit variables and submits only to internal TestFlight; it does not release to the App Store.
+
+## Unified acceptance verdict
+
+**NO-GO / BLOCKED.** Source P1 fix and automated regressions pass; the new Android QA2 artifact is forensic-valid but not physically installed; iPhone build 85 is not proven to contain the fix and still fails the map smoke; the full Android ↔ iPhone deal, push and GPS matrix is therefore not accepted.
