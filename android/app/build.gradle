@@ -131,7 +131,12 @@ android {
             def releaseTaskRequested = gradle.startParameter.taskNames.any { taskName ->
                 taskName.toLowerCase(java.util.Locale.ROOT).contains('release')
             }
-            if (releaseTaskRequested && !project.hasProperty('URTRUCK_UPLOAD_STORE_FILE')) {
+            // EAS remote credentials patch signingConfigs.release before Gradle
+            // evaluates this build file. They deliberately do not expose the
+            // local URTRUCK_UPLOAD_* properties, so accept either trusted path.
+            def hasLocalUploadKey = project.hasProperty('URTRUCK_UPLOAD_STORE_FILE')
+            def hasEasInjectedReleaseKey = signingConfigs.release.storeFile != null
+            if (releaseTaskRequested && !(hasLocalUploadKey || hasEasInjectedReleaseKey)) {
                 def allowDebugFallback = project.hasProperty('URTRUCK_ALLOW_DEBUG_SIGNED_RELEASE') &&
                     URTRUCK_ALLOW_DEBUG_SIGNED_RELEASE.toString().toBoolean()
                 if (!allowDebugFallback) {
@@ -141,7 +146,8 @@ android {
                     )
                 }
             }
-            signingConfig project.hasProperty('URTRUCK_UPLOAD_STORE_FILE') ? signingConfigs.release : signingConfigs.debug
+            def selectedSigningConfig = (hasLocalUploadKey || hasEasInjectedReleaseKey) ? signingConfigs.release : signingConfigs.debug
+            signingConfig selectedSigningConfig
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
