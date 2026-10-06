@@ -6,7 +6,7 @@ name: PR Quality Gate
 # thin PR-triggered caller — no behavior change for pull requests.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, qa2/integration-candidate]
   workflow_dispatch:
 
 concurrency:
