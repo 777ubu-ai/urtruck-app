@@ -157,5 +157,10 @@ test('Play workflow always pairs the production package with the production API'
   assert.ok(playWorkflow.includes('user_fraction is required for a staged rollout action'));
   assert.ok(playWorkflow.includes('inputs.user_fraction }}'));
   assert.ok(playWorkflow.includes('user_fraction must be greater than 0 and less than 1'));
+  assert.ok(playWorkflow.includes('userFraction: ${{ env.PLAY_USER_FRACTION }}'));
+  assert.ok(!playWorkflow.includes("inputs.status == 'halted' && '0.01'"));
   assert.ok(playWorkflow.includes('id: upload_to_play'));
+  assert.ok(playWorkflow.includes('PLAY_UPLOAD_REQUESTED:'));
+  assert.ok(playWorkflow.includes('PLAY_UPLOAD_STEP_OUTCOME: ${{ steps.upload_to_play.outcome }}'));
+  assert.ok(playWorkflow.includes('Play upload step outcome:'));
 });

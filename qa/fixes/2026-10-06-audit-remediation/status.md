@@ -15,7 +15,7 @@
 | Embedded environment | FAIL (original artifact) | Extracted `assets/app.config`: package `com.urtruck.app`, version `1.0.9`, flavor `production`, API `https://qa2.urtruck.kz`. Native manifest has Expo Updates disabled; no downloaded OTA can explain this APK. Raw APK/splits are preserved locally under `device-lineage/installed-213298108/` and are intentionally not staged. Source SHA and actual network traffic remain UNVERIFIED/NOT TESTED. |
 | Configuration guard | PASS (source) | Every non-QA2 config now pins `https://urtruck.kz` and rejects a non-production override; explicit QA2 still requires a non-production endpoint and its isolated package. The build workflow resolves and asserts the final Expo config before Gradle. |
 | `DealWorkspaceScreenV2` crash | PASS (source robustness); BLOCKED (physical attribution) | The on-scroll handler now ignores incomplete metrics and retains last valid state. `chatScrollMetrics` regression covers null/missing, valid near-bottom values and synchronous extraction. Exact old APK stack/source map and physical retest are unavailable. |
-| Play run `37364500967` | FAIL (historical run); PARTIAL (workflow fix) | Read-only GitHub log: source `1f167f…`, AAB SHA `d0073702…`, production API, then `track=production`, `status=halted`, no `userFraction`; upload failed before edit commit. Workflow now requires explicit valid fraction for staged statuses and records upload request/outcome separately. No store job was run. Upload-existing-artifact and protected public-rollout workflows remain NOT IMPLEMENTED. |
+| Play run `37364500967` | FAIL (historical run); PARTIAL (workflow fix) | GitHub confirms source `1f167f…`, AAB SHA `d0073702…`, production API, then `track=production`, `status=halted`, no `userFraction`; upload failed before edit commit. Follow-up inspection found stale hard-coded `0.01` in the action input despite validation; it is now removed. The action receives only the validated `PLAY_USER_FRACTION`, and evidence distinguishes upload requested from the upload-step outcome. The AAB artifact `11369056164` (`UrTruck-aab`, 132,808,155 bytes) exists and is not expired, but its local download remains stalled, so artifact internals are UNVERIFIED. No store job was run after these fixes. Upload-existing-artifact and protected public-rollout workflows remain NOT IMPLEMENTED. |
 | Security | PASS (compensating control) | `source-map-js` is pinned by root override to fixed `1.2.2` (GHSA-68fv-2mgg-jv7q range is `<1.2.2`) without changing Expo/RN. `audit:node-forge-exception` now passes: the remaining five high audit records are only the reviewed node-forge chain, and the checked local patch plus exploit regression pass. This compensates the node-forge advisory; it does not remove the upstream npm record. |
 
 ## Checks
@@ -26,6 +26,7 @@
 - `git diff --check`: PASS.
 - Security gate: PASS; `source-map-js@1.2.2` override verified by `npm ls`, security gate and exploit regression.
 - `npm run build:web`: PASS after the lockfile update.
+- Play workflow contract: 11/11 PASS; YAML parse PASS; confirms `halted` has no hidden `0.01` and uses only `PLAY_USER_FRACTION`.
 
 ## Blocked prerequisites / next step
 

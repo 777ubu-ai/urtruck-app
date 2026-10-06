@@ -342,7 +342,7 @@ jobs:
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
           tracks: ${{ inputs.track || 'internal' }}
           status: ${{ inputs.status || 'draft' }}
-          userFraction: ${{ (inputs.status == 'halted' && '0.01') || (inputs.status == 'inProgress' && inputs.user_fraction) || '' }}
+          userFraction: ${{ env.PLAY_USER_FRACTION }}
           inAppUpdatePriority: 2
 
       - name: Record Google Play release evidence
@@ -352,7 +352,8 @@ jobs:
           RESULT: ${{ job.status }}
           TRACK: ${{ inputs.track || 'internal' }}
           RELEASE_STATUS: ${{ inputs.status || 'draft' }}
-          SUBMIT_TO_PLAY: ${{ github.event_name != 'workflow_dispatch' || inputs.submit_to_play }}
+          PLAY_UPLOAD_REQUESTED: ${{ github.event_name != 'workflow_dispatch' || inputs.submit_to_play }}
+          PLAY_UPLOAD_STEP_OUTCOME: ${{ steps.upload_to_play.outcome }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -367,7 +368,8 @@ jobs:
           - API environment: \`${URTRUCK_PLAY_API_ENVIRONMENT:-unknown}\`
           - track: \`${TRACK}\`
           - release status: \`${RELEASE_STATUS}\`
-          - submitted to Play: \`${SUBMIT_TO_PLAY}\`
+          - Play upload requested: \`${PLAY_UPLOAD_REQUESTED}\`
+          - Play upload step outcome: \`${PLAY_UPLOAD_STEP_OUTCOME:-not_run}\`
           - versionCode: \`${version_code}\`
           - AAB SHA-256: \`${AAB_SHA256:-unknown}\`
           - upload certificate SHA-256: \`${UPLOAD_CERT_SHA256:-unknown}\`
