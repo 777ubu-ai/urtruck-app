@@ -16,7 +16,7 @@
 | Configuration guard | PASS (source) | Every non-QA2 config now pins `https://urtruck.kz` and rejects a non-production override; explicit QA2 still requires a non-production endpoint and its isolated package. The build workflow resolves and asserts the final Expo config before Gradle. |
 | `DealWorkspaceScreenV2` crash | PASS (source robustness); BLOCKED (physical attribution) | The on-scroll handler now ignores incomplete metrics and retains last valid state. `chatScrollMetrics` regression covers null/missing, valid near-bottom values and synchronous extraction. Exact old APK stack/source map and physical retest are unavailable. |
 | Play run `37364500967` | FAIL (historical run); PARTIAL (workflow fix) | Read-only GitHub log: source `1f167f…`, AAB SHA `d0073702…`, production API, then `track=production`, `status=halted`, no `userFraction`; upload failed before edit commit. Workflow now requires explicit valid fraction for staged statuses and records upload request/outcome separately. No store job was run. Upload-existing-artifact and protected public-rollout workflows remain NOT IMPLEMENTED. |
-| Security | FAIL / release blocker | `npm audit` currently returns six high records: node-forge chain plus `source-map-js` GHSA-68fv-2mgg-jv7q. The node-forge exploit regression passes, but `audit:node-forge-exception` fails because the new source-map-js advisory is not allowlisted or remediated. No dependency update was made. |
+| Security | PASS (compensating control) | `source-map-js` is pinned by root override to fixed `1.2.2` (GHSA-68fv-2mgg-jv7q range is `<1.2.2`) without changing Expo/RN. `audit:node-forge-exception` now passes: the remaining five high audit records are only the reviewed node-forge chain, and the checked local patch plus exploit regression pass. This compensates the node-forge advisory; it does not remove the upstream npm record. |
 
 ## Checks
 
@@ -24,15 +24,15 @@
 - `npm run lint`: PASS (454 active JS files).
 - `npm run release:check-config`: PASS.
 - `git diff --check`: PASS.
-- Security gate: FAIL as documented above.
+- Security gate: PASS; `source-map-js@1.2.2` override verified by `npm ls`, security gate and exploit regression.
+- `npm run build:web`: PASS after the lockfile update.
 
 ## Blocked prerequisites / next step
 
 1. Obtain the exact 213392855 AAB workflow artifact (GitHub artifact download stalled locally), then inspect manifest/config/signature and compare its SHA to `d0073702…`.
 2. Provide exact crash stack/source map and QA accounts; perform physical Android scroll, API-host, push and full-deal acceptance. iPhone soft-wrap remains BLOCKED without a device.
-3. Remediate or owner-decide the `source-map-js` advisory, then rerun the unchanged security gate.
-4. Implement and dry-validate a separate upload-existing-artifact workflow with lineage/read-back, then a protected public-rollout action.
+3. Implement and dry-validate a separate upload-existing-artifact workflow with lineage/read-back, then a protected public-rollout action.
 
 ## Verdict
 
-**NO-GO.** Remaining P0/P1 blockers: physical environment/config acceptance, crash attribution/retest, push/full flow acceptance, and security gate failure. No build, upload, OTA or public rollout is authorized by this status.
+**NO-GO.** Remaining P0/P1 blockers: physical environment/config acceptance, crash attribution/retest, push/full flow acceptance, missing release-artifact lineage and protected rollout workflow. No build, upload, OTA or public rollout is authorized by this status.
