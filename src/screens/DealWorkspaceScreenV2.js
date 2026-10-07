@@ -60,6 +60,7 @@ import { createManualTextTranslationState } from '../utils/manualTextTranslation
 import { routeMetricValues } from '../utils/routeMetricValues';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { storage } from '../utils/storage';
+import { cacheIssuedAttachmentUrl } from '../utils/attachmentUrlCache';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
@@ -460,10 +461,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   };
   const initialMessagesLoadedRef = React.useRef(false);
   const lastCountRef = React.useRef(0);
-  // A signed attachment URL may be reissued on every 3s poll. Keep the first
-  // valid URL per immutable message/attachment id so an already-shown photo
-  // is never remounted/flashed (PR #255 review item 4: "не должно быть
-  // мигания фото при polling"; ported from the same fix in ChatScreen.js).
+  // Keep a valid source stable, but allow renewed private URLs before expiry.
   const attachmentUrlCache = React.useRef(new Map());
   const role = params.role || session?.user?.role || 'client';
   const isDriver = role === 'driver';
@@ -639,11 +637,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         const system = message.sender_id === 'system';
         const cacheKey = `${isVoice ? 'voice' : 'photo'}:${message.id}`;
         const issuedUrl = resolveAttachment(message.photo_url);
-        let mediaUrl = issuedUrl;
-        if (issuedUrl) {
-          mediaUrl = attachmentUrlCache.current.get(cacheKey) || issuedUrl;
-          attachmentUrlCache.current.set(cacheKey, mediaUrl);
-        }
+        const mediaUrl = cacheIssuedAttachmentUrl(attachmentUrlCache.current, cacheKey, issuedUrl);
         return {
           id: String(message.id),
           clientMsgId: message.client_msg_id || null,
@@ -672,11 +666,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         .map((a) => {
           const cacheKey = `doc:${a.id}`;
           const issuedUrl = resolveAttachment(a.url);
-          let docUrl = issuedUrl;
-          if (issuedUrl) {
-            docUrl = attachmentUrlCache.current.get(cacheKey) || issuedUrl;
-            attachmentUrlCache.current.set(cacheKey, docUrl);
-          }
+          const docUrl = cacheIssuedAttachmentUrl(attachmentUrlCache.current, cacheKey, issuedUrl);
           return {
             id: `doc_${a.id}`,
             clientUploadId: a.client_upload_id || null,
