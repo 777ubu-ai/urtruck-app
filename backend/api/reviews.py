@@ -56,10 +56,18 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
                 detail="Отзыв не относится к завершённой совместной сделке",
             )
 
-    if canonical_deal_id and reviews_dal.has_already_reviewed(
-        user["id"], body.target_id, canonical_deal_id
-    ):
-        raise HTTPException(status_code=409, detail="Вы уже оставили отзыв по этому рейсу")
+    if canonical_deal_id:
+        try:
+            already_reviewed = reviews_dal.has_already_reviewed(
+                user["id"], body.target_id, canonical_deal_id
+            )
+        except reviews_dal.AmbiguousLegacyReviewError:
+            raise HTTPException(
+                status_code=409,
+                detail="Старый отзыв нельзя однозначно связать со сделкой; требуется сверка",
+            )
+        if already_reviewed:
+            raise HTTPException(status_code=409, detail="Вы уже оставили отзыв по этому рейсу")
     # Дедуп по паре, когда рейс не указан (trip_id=None) — иначе спам отзывами.
     if not body.trip_id and reviews_dal.has_reviewed_target(user["id"], body.target_id):
         raise HTTPException(status_code=409, detail="Вы уже оставили отзыв этому пользователю")
@@ -81,6 +89,11 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
         raise HTTPException(
             status_code=403,
             detail="Отзыв не относится к завершённой совместной сделке",
+        )
+    except reviews_dal.AmbiguousLegacyReviewError:
+        raise HTTPException(
+            status_code=409,
+            detail="Старый отзыв нельзя однозначно связать со сделкой; требуется сверка",
         )
     # Push получателю отзыва
     emoji = '⭐' * body.rating
@@ -122,9 +135,16 @@ def review_eligibility(
         else reviews_dal.has_deal_between(user["id"], target_id)
     )
     if canonical_deal_id:
-        already = reviews_dal.has_already_reviewed(
-            user["id"], target_id, canonical_deal_id
-        )
+        try:
+            already = reviews_dal.has_already_reviewed(
+                user["id"], target_id, canonical_deal_id
+            )
+        except reviews_dal.AmbiguousLegacyReviewError:
+            return {
+                "eligible": False,
+                "already_reviewed": False,
+                "reason": "legacy_review_reference_ambiguous",
+            }
     elif trip_id:
         already = False
     else:

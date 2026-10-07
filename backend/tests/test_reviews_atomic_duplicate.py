@@ -126,3 +126,26 @@ def test_shared_legacy_listing_alias_does_not_block_distinct_deal_ids(review_cli
     assert post('deal-3').status_code == 200
     with conn() as c:
         assert c.execute('SELECT COUNT(*) FROM reviews').fetchone()[0] == 2
+
+
+def test_ambiguous_legacy_alias_fails_closed_without_deleting_history(review_client):
+    client, conn = review_client
+    with conn() as c:
+        c.execute(
+            "INSERT INTO deals VALUES('deal-3','trip-3','cargo-1','completed','author','target')"
+        )
+        c.execute(
+            "INSERT INTO reviews (id, trip_id, author_id, author_role, target_id, target_role, rating) "
+            "VALUES ('legacy-review', 'cargo-1', 'author', 'client', 'target', 'driver', 5)"
+        )
+
+    for deal_id in ('deal-1', 'deal-3'):
+        response = client.post('/reviews', json={
+            'target_id': 'target', 'target_role': 'driver', 'rating': 4, 'trip_id': deal_id,
+        })
+        assert response.status_code == 409
+        assert response.json()['detail'] == 'Старый отзыв нельзя однозначно связать со сделкой; требуется сверка'
+
+    with conn() as c:
+        rows = c.execute('SELECT id, trip_id FROM reviews ORDER BY id').fetchall()
+        assert [(row['id'], row['trip_id']) for row in rows] == [('legacy-review', 'cargo-1')]

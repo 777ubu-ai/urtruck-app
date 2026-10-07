@@ -15,6 +15,10 @@ class InvalidReviewReferenceError(ValueError):
     """Ссылка не разрешается в одну завершённую сделку с этим контрагентом."""
 
 
+class AmbiguousLegacyReviewError(ValueError):
+    """Старый alias-отзыв нельзя безопасно сопоставить одной из сделок."""
+
+
 def _completed_deal_for_reference(conn, user_a: str, user_b: str, reference_id: str):
     """Resolve a deal id directly, or a legacy listing id only when unambiguous."""
     participants = (
@@ -46,6 +50,24 @@ def _review_exists_for_deal(conn, *, author_id: str, target_id: str, deal) -> bo
             resolved = _completed_deal_for_reference(conn, author_id, target_id, alias)
             if resolved and resolved["id"] == deal["id"]:
                 references.add(alias)
+            else:
+                participants = (
+                    "((shipper_id = ? AND driver_id = ?) OR (shipper_id = ? AND driver_id = ?))"
+                )
+                matching_deals = conn.execute(
+                    f"SELECT COUNT(*) FROM deals WHERE status = 'completed' AND {participants} "
+                    "AND (trip_id = ? OR cargo_id = ?)",
+                    (author_id, target_id, target_id, author_id, alias, alias),
+                ).fetchone()[0]
+                legacy_review = conn.execute(
+                    "SELECT 1 FROM reviews WHERE author_id = ? AND target_id = ? AND trip_id = ? LIMIT 1",
+                    (author_id, target_id, alias),
+                ).fetchone()
+                if matching_deals > 1 and legacy_review:
+                    # Historical rows do not carry a canonical deal id. Do not
+                    # guess which shared listing they refer to and risk a
+                    # duplicate; leave the record intact for manual reconciliation.
+                    raise AmbiguousLegacyReviewError("legacy_review_reference_ambiguous")
     placeholders = ",".join("?" for _ in references)
     row = conn.execute(
         f"SELECT 1 FROM reviews WHERE author_id = ? AND target_id = ? "
