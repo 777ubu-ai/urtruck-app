@@ -114,6 +114,57 @@ def _price_event(conn, bid, reason: str) -> None:
         pass
 
 
+def _expiry_notification_ready(conn, bid) -> bool:
+    # Старые схемы без recipient не получают выдуманного адресата. При
+    # bootstrap полной БД ждём таблицы уведомлений, а не теряем событие.
+    if not bid.get("bidder_id"):
+        return True
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    return {"notifications", "push_outbox"}.issubset(tables)
+
+
+def _queue_expired_bid_notifications(conn, bid):
+    from services import push_gateway, push_i18n
+    bidder = bid.get("bidder_id")
+    if not bidder:
+        return
+    recipients = {bidder}
+    url = "/deals"
+    for table, listing_id, owner_column, route in (
+        ("cargos", bid.get("cargo_id"), "owner_id", "cargos"),
+        ("trips", bid.get("trip_id"), "driver_id", "trips"),
+    ):
+        if not listing_id:
+            continue
+        url = f"/{route}/{listing_id}?bid={bid['id']}"
+        columns = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if owner_column in columns:
+            row = conn.execute(f"SELECT {owner_column} FROM {table} WHERE id=?", (listing_id,)).fetchone()
+            if row and row[0]:
+                recipients.add(row[0])
+    event_key = f"bid:{bid['id']}:expired"
+    for recipient in recipients:
+        locale = None
+        try:
+            row = conn.execute("SELECT locale FROM push_devices WHERE user_id=? AND enabled=1 ORDER BY last_seen_at DESC, id DESC LIMIT 1", (recipient,)).fetchone()
+            locale = row[0] if row else None
+        except Exception:
+            # Legacy registry без locale: поддерживаем RU fallback.
+            pass
+        title, body = push_i18n.push_text("bid_expired", locale)
+        conn.execute(
+            "INSERT INTO notifications(user_id,type,title,body,icon,url,event_key) VALUES(?,?,?,?,?,?,?) "
+            "ON CONFLICT(user_id,event_key) WHERE event_key IS NOT NULL DO NOTHING",
+            (recipient, "bid_expired", title, body, "⌛", url, event_key),
+        )
+        push_gateway.enqueue_event(event_key, "bid.expired", recipient, {
+            "title": title, "body": body, "data": {
+                "url": url, "type": "bid", "bid_id": bid["id"], "event_key": event_key,
+                "event": "bid.expired", "i18n_event": "bid_expired", "i18n_params": {},
+            },
+        }, conn=conn)
+
+
 def _expire_with_conn(conn, now: datetime) -> dict:
     today = now.date()
     expired_cargos = []
@@ -154,7 +205,7 @@ def _expire_with_conn(conn, now: datetime) -> dict:
     # parent is no longer actionable. Accepted/rejected/cancelled rows are not
     # selected and therefore cannot be changed by this job.
     rows = conn.execute(
-        "SELECT b.id, b.cargo_id, b.trip_id, b.amount, b.created_at, b.updated_at, "
+        "SELECT b.*, "
         "c.status AS cargo_status, c.pickup_date, "
         "t.status AS trip_status, t.departure "
         "FROM bids b "
@@ -194,7 +245,7 @@ def _expire_with_conn(conn, now: datetime) -> dict:
 
         if reason is None and ttl_expired:
             reason = "bid_ttl_48h"
-        if reason is None:
+        if reason is None or not _expiry_notification_ready(conn, bid):
             continue
 
         cur = conn.execute(
@@ -207,6 +258,7 @@ def _expire_with_conn(conn, now: datetime) -> dict:
         expired_bids.append(bid["id"])
         reasons[bid["id"]] = reason
         _price_event(conn, bid, reason)
+        _queue_expired_bid_notifications(conn, bid)
         if bid.get("cargo_id"):
             touched_cargos.add(bid["cargo_id"])
 

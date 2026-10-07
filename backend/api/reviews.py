@@ -59,33 +59,37 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
     if not body.trip_id and reviews_dal.has_reviewed_target(user["id"], body.target_id):
         raise HTTPException(status_code=409, detail="Вы уже оставили отзыв этому пользователю")
 
-    rid = reviews_dal.add_review(
-        trip_id=body.trip_id,
-        author_id=user["id"],
-        author_role=user.get("role", "client"),
-        target_id=body.target_id,
-        target_role=body.target_role,
-        rating=body.rating,
-        text=body.text,
-        tags=body.tags,
-    )
-    # Push получателю отзыва
-    emoji = '⭐' * body.rating
-    review_title = f"Новый отзыв {emoji}"
-    review_body = body.text[:80] if body.text else f"Оценка {body.rating} из 5"
     try:
-        from api.push import send_to_user
-        send_to_user(body.target_id, review_title, review_body, url="/profile")
-    except Exception as e:
-        print(f"[push] review failed: {e}")
-    # P0-hotfix 28.08.2026: push шёл без записи в notifications — badge на
-    # иконке рос, но список внутри приложения оставался пустым (тот же
-    # разрыв, что для saved_searches ниже — единая первопричина §1).
+        rid = reviews_dal.add_review(
+            trip_id=body.trip_id,
+            author_id=user["id"],
+            author_role=user.get("role", "client"),
+            target_id=body.target_id,
+            target_role=body.target_role,
+            rating=body.rating,
+            text=body.text,
+            tags=body.tags,
+        )
+    except reviews_dal.DuplicateReviewError:
+        raise HTTPException(status_code=409, detail="Вы уже оставили отзыв")
+    from services import push_gateway, push_i18n
+    event = "review_received_comment" if body.text else "review_received"
+    params = {"comment": body.text[:80]} if body.text else {"rating": body.rating}
+    review_title, review_body = push_i18n.push_text(event, push_gateway.get_recipient_locale(body.target_id), **params)
+    event_key = f"review:{rid}:created"
+    # Bell должна существовать до вычисления badge в push sender.
     try:
         from api.notifications import create_notification
-        create_notification(body.target_id, "review", review_title, review_body, "⭐", url="/profile")
+        create_notification(body.target_id, "review", review_title, review_body, "⭐", url="/profile", event_key=event_key)
     except Exception as e:
         print(f"[notif] review failed: {e}")
+    try:
+        from api.push import send_to_user
+        send_to_user(body.target_id, review_title, review_body, url="/profile", kind="review",
+                     data={"event_key": event_key, "event": "review.created", "review_id": rid,
+                           "i18n_event": event, "i18n_params": params})
+    except Exception as e:
+        print(f"[push] review failed: {e}")
     return {"id": rid, "ok": True}
 
 
