@@ -8,6 +8,7 @@ import { clearAppIconBadge } from './appBadge';
 import { clearPushEventDedup } from './pushEventDedup';
 import { clearOutbox } from './outbox';
 import { clearQueue } from './offlineQueue';
+import { stopBackgroundTrackingForLogout } from './backgroundLocation';
 
 // Уровни доверия (lazy registration)
 // 0 = guest — только смотрит ленту
@@ -174,10 +175,14 @@ export const AuthProvider = ({ children }) => {
       setAuthExpirySuppressed(false);
       return { ok: false, reason: 'PENDING_LOGOUT_REVOKE_NOT_DURABLE' };
     }
+    const trackingStop = stopBackgroundTrackingForLogout(authToken);
     setSession(null);
     setVerificationLevel(0);
     setHasToken(false);
     await regAPI.clearToken();
+    // UI уже вышел. Native stop ограничен по времени и сериализован с новым
+    // start, чтобы старый logout не остановил GPS следующего пользователя.
+    try { await withTimeout(trackingStop); } catch {}
 
     // Badge и dedupe принадлежат текущей локальной сессии. Их нельзя
     // оставлять до следующего пуша или успешного сетевого cleanup: иначе

@@ -23,6 +23,14 @@ const locationQueue = createLocationQueue(durableStorage);
 // callback. Serialize the queue read/flush/write cycle so one sample cannot be
 // lost by two callers writing stale snapshots over each other.
 let locationPushChain = Promise.resolve();
+let trackingLifecycleChain = Promise.resolve();
+let locationSessionEpoch = 0;
+
+function runTrackingLifecycle(operation) {
+  const job = trackingLifecycleChain.then(operation);
+  trackingLifecycleChain = job.catch(() => {});
+  return job;
+}
 // Expo persists background-task registrations across process restarts and app
 // updates. Re-register once per fresh JS process so changed canonical options
 // (heartbeat/distance policy) actually replace an older installed contract.
@@ -140,19 +148,20 @@ async function refreshBackgroundActiveDealIds(token, fallbackIds = []) {
   }
 }
 
-async function pushLocationToDealsNow(coords, explicitDealIds = null) {
+async function pushLocationToDealsNow(coords, explicitDealIds = null, epoch = locationSessionEpoch) {
   try {
     // Время сохранённого измерения не заменяется временем доставки.
     const captured = Array.isArray(coords) ? coords : [coords];
-    await rememberLastKnownLocation(captured[captured.length - 1]);
     const [rawIds, token] = await Promise.all([
       storage.get(BG_DEALS_KEY), storage.get(TOKEN_KEY),
     ]);
     const storedIds = rawIds ? JSON.parse(rawIds) : [];
     let ids = Array.isArray(explicitDealIds) ? explicitDealIds : storedIds;
-    if (!token) return;
+    if (!token || epoch !== locationSessionEpoch) return;
     const ownerId = JSON.parse(await storage.get('ur_session') || 'null')?.user?.id;
     if (!ownerId) return;
+    if (epoch !== locationSessionEpoch || await storage.get(TOKEN_KEY) !== token) return;
+    await rememberLastKnownLocation(captured[captured.length - 1]);
     if (!await durableStorage.get(BG_LOCATION_QUEUE_KEY + ':migrated')) {
       await locationQueue.migrate(BG_LOCATION_QUEUE_KEY, ownerId);
     }
@@ -165,7 +174,7 @@ async function pushLocationToDealsNow(coords, explicitDealIds = null) {
       }
     };
     // Весь callback записан до первого сетевого ожидания, даже offline.
-    if (await storage.get(TOKEN_KEY) !== token) return;
+    if (epoch !== locationSessionEpoch || await storage.get(TOKEN_KEY) !== token) return;
     await persist(ids);
     if (!Array.isArray(explicitDealIds)) {
       ids = await refreshBackgroundActiveDealIds(token, ids);
@@ -191,7 +200,8 @@ async function pushLocationToDealsNow(coords, explicitDealIds = null) {
 // are persisted and retried on the next callback/foreground tick; they are
 // never silently discarded as a successful-looking delivery.
 export function pushLocationToDeals(coords, explicitDealIds = null) {
-  const job = locationPushChain.then(() => pushLocationToDealsNow(coords, explicitDealIds));
+  const epoch = locationSessionEpoch;
+  const job = locationPushChain.then(() => pushLocationToDealsNow(coords, explicitDealIds, epoch));
   locationPushChain = job.catch(() => {});
   return job;
 }
@@ -425,54 +435,77 @@ export async function getLocationHealth() {
 // trigger a permission dialog by itself. On Android it starts the visible
 // foreground service only after foreground + background permissions are granted.
 export async function startBackgroundTracking({ forceReconfigure = false } = {}) {
-  if (Platform.OS === 'web') return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
-  const locationModule = await resolveLocationModule();
-  if (!locationModule) return { ok: false, reason: 'unsupported' };
+  const epoch = locationSessionEpoch;
+  return runTrackingLifecycle(async () => {
+    if (epoch !== locationSessionEpoch || !await storage.get(TOKEN_KEY)) return { ok: false, reason: 'session_changed' };
+    if (Platform.OS === 'web') return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
+    const locationModule = await resolveLocationModule();
+    if (!locationModule) return { ok: false, reason: 'unsupported' };
 
-  const permission = await getBackgroundLocationPermissionState();
-  if (!permission.ok) {
-    return {
-      ok: false,
-      reason: 'background_unavailable',
-      permission,
-    };
-  }
-
-  try {
-    const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
-    if (started && backgroundTrackingConfiguredThisProcess && !forceReconfigure) return { ok: true, already: true };
-    // A package update can leave Expo's persisted registration alive with the
-    // OLD options. A user may also return from Android's system Location
-    // settings after the provider was disabled: force one visible stop/start
-    // so Expo re-subscribes instead of retaining a silent stale registration.
-    // Ordinary refreshes keep the same service and do not churn it.
-    if (started) {
-      await locationModule.stopLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => {});
+    const permission = await getBackgroundLocationPermissionState();
+    if (!permission.ok) {
+      return {
+        ok: false,
+        reason: 'background_unavailable',
+        permission,
+      };
     }
-    await locationModule.startLocationUpdatesAsync(BG_LOCATION_TASK, {
-      accuracy: locationModule.Accuracy.Balanced,
-      // Active-trip tracking needs a time heartbeat even while the truck is
-      // stopped at a warehouse/border. A 400 m distance gate let Android keep
-      // the FGS alive but stop callbacks for a stationary device, so the
-      // backend incorrectly aged `last_signal_at` into gps_lost. Keep the
-      // one-minute cadence authoritative; movement is not required.
-      timeInterval: 60000,
-      distanceInterval: 0,
-      pausesUpdatesAutomatically: false,
-      showsBackgroundLocationIndicator: true,
-      foregroundService: {
-        notificationTitle: t('bg_location_title'),
-        notificationBody: t('bg_location_body'),
-      },
-    });
-    backgroundTrackingConfiguredThisProcess = true;
-    return { ok: true, foregroundService: Platform.OS === 'android', reconfigured: started };
-  } catch (error) {
-    return { ok: false, reason: String(error?.message || error || 'background_start_failed') };
-  }
+
+    try {
+      const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
+      if (started && backgroundTrackingConfiguredThisProcess && !forceReconfigure) return { ok: true, already: true };
+      // A package update can leave Expo's persisted registration alive with the
+      // OLD options. A user may also return from Android's system Location
+      // settings after the provider was disabled: force one visible stop/start
+      // so Expo re-subscribes instead of retaining a silent stale registration.
+      // Ordinary refreshes keep the same service and do not churn it.
+      if (started) {
+        await locationModule.stopLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => {});
+      }
+      if (epoch !== locationSessionEpoch || !await storage.get(TOKEN_KEY)) return { ok: false, reason: 'session_changed' };
+      await locationModule.startLocationUpdatesAsync(BG_LOCATION_TASK, {
+        accuracy: locationModule.Accuracy.Balanced,
+        // Active-trip tracking needs a time heartbeat even while the truck is
+        // stopped at a warehouse/border. A 400 m distance gate let Android keep
+        // the FGS alive but stop callbacks for a stationary device, so the
+        // backend incorrectly aged `last_signal_at` into gps_lost. Keep the
+        // one-minute cadence authoritative; movement is not required.
+        timeInterval: 60000,
+        distanceInterval: 0,
+        pausesUpdatesAutomatically: false,
+        showsBackgroundLocationIndicator: true,
+        foregroundService: {
+          notificationTitle: t('bg_location_title'),
+          notificationBody: t('bg_location_body'),
+        },
+      });
+      backgroundTrackingConfiguredThisProcess = true;
+      return { ok: true, foregroundService: Platform.OS === 'android', reconfigured: started };
+    } catch (error) {
+      return { ok: false, reason: String(error?.message || error || 'background_start_failed') };
+    }
+  });
 }
 
 export async function stopBackgroundTracking() {
+  return runTrackingLifecycle(stopBackgroundTrackingNow);
+}
+
+export function stopBackgroundTrackingForLogout(expectedToken) {
+  // Сразу отсекаем старые callbacks, даже если native stop ещё ожидает ОС.
+  locationSessionEpoch += 1;
+  return runTrackingLifecycle(async () => {
+    const currentToken = await storage.get(TOKEN_KEY);
+    if (currentToken && currentToken !== expectedToken) return;
+    await stopBackgroundTrackingNow();
+    await locationPushChain;
+    const afterStopToken = await storage.get(TOKEN_KEY);
+    if (afterStopToken && afterStopToken !== expectedToken) return;
+    await storage.remove(BG_LAST_LOCATION_KEY);
+  });
+}
+
+async function stopBackgroundTrackingNow() {
   // A native task can outlive an app-process restart.  In that case the
   // module-global Location binding is still null when the dashboard first
   // learns that there are no server-approved active deals.  Resolve it here
@@ -482,5 +515,6 @@ export async function stopBackgroundTracking() {
   try {
     const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
     if (started) await locationModule.stopLocationUpdatesAsync(BG_LOCATION_TASK);
+    backgroundTrackingConfiguredThisProcess = false;
   } catch {}
 }
