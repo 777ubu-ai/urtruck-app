@@ -60,6 +60,7 @@ import { createManualTextTranslationState } from '../utils/manualTextTranslation
 import { routeMetricValues } from '../utils/routeMetricValues';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { storage } from '../utils/storage';
+import { createChatDraft } from '../utils/chatDraft';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
@@ -493,6 +494,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     mounted.current = true;
     return () => { mounted.current = false; try { voice.stop?.(); } catch {} };
   }, []);
+
+  const chatDraft = React.useMemo(() => createChatDraft(storage, session?.user?.id, roomId), [session?.user?.id, roomId]);
+  React.useEffect(() => {
+    inputValueRef.current = '';
+    setInput('');
+    setComposerHeight(COMPOSER_INPUT_MIN_HEIGHT);
+    chatDraft.connect((value) => {
+      inputValueRef.current = value;
+      setInput(value);
+    });
+    return () => chatDraft.disconnect();
+  }, [chatDraft, setComposerHeight]);
 
   // Section 2: focusing the composer must close every overlay that could
   // otherwise sit on top of it (attach menu, call menu). The map itself
@@ -1017,6 +1030,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setTextSending(true);
     setInput('');
     inputValueRef.current = '';
+    chatDraft.set('');
     setComposerHeight(COMPOSER_INPUT_MIN_HEIGHT);
     setEmojiOpen(false);
     try {
@@ -1025,7 +1039,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       textSendBusyRef.current = false;
       setTextSending(false);
     }
-  }, [input, sendRawText, setComposerHeight]);
+  }, [input, sendRawText, setComposerHeight, chatDraft]);
 
   const retryFailedText = React.useCallback((item) => {
     setMessages((items) => items.filter((m) => m.id !== item.id));
@@ -1364,9 +1378,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setInput((value) => {
       const next = `${value}${emoji}`;
       inputValueRef.current = next;
+      chatDraft.set(next);
       return next;
     });
-  }, []);
+  }, [chatDraft]);
 
   const renderMessage = React.useCallback(({ item, index }) => {
     const messageTranslation = textTranslation.view(item.id);
@@ -1898,6 +1913,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                           value={input}
                           onChangeText={(value) => {
                             inputValueRef.current = value;
+                            chatDraft.set(value);
                             setInput(value);
                             if (!value.trim()) setComposerHeight(COMPOSER_INPUT_MIN_HEIGHT);
                             if (roomId) chatAPI.typing(roomId);
