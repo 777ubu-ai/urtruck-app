@@ -363,7 +363,12 @@ export default function ProfileScreen({ navigation, route }) {
         <TouchableOpacity style={s.logoutBtn} onPress={async () => {
           const ok = await askConfirm(t('logout_title') || t('logout'), t('logout_message'), t('logout_confirm') || t('logout'));
           if (!ok) return;
-          try { await signOut(); } catch {}
+          try {
+            const result = await signOut();
+            if (result?.ok === false) Alert.alert(t('logout'), t('generic_error'));
+          } catch {
+            Alert.alert(t('logout'), t('generic_error'));
+          }
         }} testID="profile-logout">
           <Text style={s.logoutText}>{t('logout')}</Text>
         </TouchableOpacity>

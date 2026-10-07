@@ -23,6 +23,45 @@ const locationQueue = createLocationQueue(durableStorage);
 // callback. Serialize the queue read/flush/write cycle so one sample cannot be
 // lost by two callers writing stale snapshots over each other.
 let locationPushChain = Promise.resolve();
+let trackingLifecycleChain = Promise.resolve();
+let locationSessionEpoch = 0;
+
+function runTrackingLifecycle(operation) {
+  const job = trackingLifecycleChain.then(operation);
+  trackingLifecycleChain = job.catch(() => {});
+  return job;
+}
+
+function backgroundTrackingOptions(locationModule) {
+  return {
+    accuracy: locationModule.Accuracy.Balanced,
+    // Active-trip tracking needs a time heartbeat even while the truck is
+    // stopped at a warehouse/border. A 400 m distance gate let Android keep
+    // the FGS alive but stop callbacks for a stationary device, so the backend
+    // incorrectly aged `last_signal_at` into gps_lost.
+    timeInterval: 60000,
+    distanceInterval: 0,
+    pausesUpdatesAutomatically: false,
+    showsBackgroundLocationIndicator: true,
+    foregroundService: {
+      notificationTitle: t('bg_location_title'),
+      notificationBody: t('bg_location_body'),
+    },
+  };
+}
+
+async function restoreTrackingAfterCancelledLogout(locationModule, expectedToken) {
+  try {
+    if (await storage.get(TOKEN_KEY) !== expectedToken) return false;
+    const permission = await getBackgroundLocationPermissionState();
+    if (!permission.ok || await storage.get(TOKEN_KEY) !== expectedToken) return false;
+    await locationModule.startLocationUpdatesAsync(BG_LOCATION_TASK, backgroundTrackingOptions(locationModule));
+    backgroundTrackingConfiguredThisProcess = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
 // Expo persists background-task registrations across process restarts and app
 // updates. Re-register once per fresh JS process so changed canonical options
 // (heartbeat/distance policy) actually replace an older installed contract.
@@ -140,19 +179,20 @@ async function refreshBackgroundActiveDealIds(token, fallbackIds = []) {
   }
 }
 
-async function pushLocationToDealsNow(coords, explicitDealIds = null) {
+async function pushLocationToDealsNow(coords, explicitDealIds = null, epoch = locationSessionEpoch) {
   try {
     // Время сохранённого измерения не заменяется временем доставки.
     const captured = Array.isArray(coords) ? coords : [coords];
-    await rememberLastKnownLocation(captured[captured.length - 1]);
     const [rawIds, token] = await Promise.all([
       storage.get(BG_DEALS_KEY), storage.get(TOKEN_KEY),
     ]);
     const storedIds = rawIds ? JSON.parse(rawIds) : [];
     let ids = Array.isArray(explicitDealIds) ? explicitDealIds : storedIds;
-    if (!token) return;
+    if (!token || epoch !== locationSessionEpoch) return;
     const ownerId = JSON.parse(await storage.get('ur_session') || 'null')?.user?.id;
     if (!ownerId) return;
+    if (epoch !== locationSessionEpoch || await storage.get(TOKEN_KEY) !== token) return;
+    await rememberLastKnownLocation(captured[captured.length - 1]);
     if (!await durableStorage.get(BG_LOCATION_QUEUE_KEY + ':migrated')) {
       await locationQueue.migrate(BG_LOCATION_QUEUE_KEY, ownerId);
     }
@@ -165,7 +205,7 @@ async function pushLocationToDealsNow(coords, explicitDealIds = null) {
       }
     };
     // Весь callback записан до первого сетевого ожидания, даже offline.
-    if (await storage.get(TOKEN_KEY) !== token) return;
+    if (epoch !== locationSessionEpoch || await storage.get(TOKEN_KEY) !== token) return;
     await persist(ids);
     if (!Array.isArray(explicitDealIds)) {
       ids = await refreshBackgroundActiveDealIds(token, ids);
@@ -191,7 +231,8 @@ async function pushLocationToDealsNow(coords, explicitDealIds = null) {
 // are persisted and retried on the next callback/foreground tick; they are
 // never silently discarded as a successful-looking delivery.
 export function pushLocationToDeals(coords, explicitDealIds = null) {
-  const job = locationPushChain.then(() => pushLocationToDealsNow(coords, explicitDealIds));
+  const epoch = locationSessionEpoch;
+  const job = locationPushChain.then(() => pushLocationToDealsNow(coords, explicitDealIds, epoch));
   locationPushChain = job.catch(() => {});
   return job;
 }
@@ -425,62 +466,161 @@ export async function getLocationHealth() {
 // trigger a permission dialog by itself. On Android it starts the visible
 // foreground service only after foreground + background permissions are granted.
 export async function startBackgroundTracking({ forceReconfigure = false } = {}) {
-  if (Platform.OS === 'web') return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
-  const locationModule = await resolveLocationModule();
-  if (!locationModule) return { ok: false, reason: 'unsupported' };
+  const epoch = locationSessionEpoch;
+  return runTrackingLifecycle(async () => {
+    if (epoch !== locationSessionEpoch || !await storage.get(TOKEN_KEY)) return { ok: false, reason: 'session_changed' };
+    if (Platform.OS === 'web') return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
+    const locationModule = await resolveLocationModule();
+    if (!locationModule) return { ok: false, reason: 'unsupported' };
 
-  const permission = await getBackgroundLocationPermissionState();
-  if (!permission.ok) {
-    return {
-      ok: false,
-      reason: 'background_unavailable',
-      permission,
-    };
-  }
-
-  try {
-    const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
-    if (started && backgroundTrackingConfiguredThisProcess && !forceReconfigure) return { ok: true, already: true };
-    // A package update can leave Expo's persisted registration alive with the
-    // OLD options. A user may also return from Android's system Location
-    // settings after the provider was disabled: force one visible stop/start
-    // so Expo re-subscribes instead of retaining a silent stale registration.
-    // Ordinary refreshes keep the same service and do not churn it.
-    if (started) {
-      await locationModule.stopLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => {});
+    const permission = await getBackgroundLocationPermissionState();
+    if (!permission.ok) {
+      return {
+        ok: false,
+        reason: 'background_unavailable',
+        permission,
+      };
     }
-    await locationModule.startLocationUpdatesAsync(BG_LOCATION_TASK, {
-      accuracy: locationModule.Accuracy.Balanced,
-      // Active-trip tracking needs a time heartbeat even while the truck is
-      // stopped at a warehouse/border. A 400 m distance gate let Android keep
-      // the FGS alive but stop callbacks for a stationary device, so the
-      // backend incorrectly aged `last_signal_at` into gps_lost. Keep the
-      // one-minute cadence authoritative; movement is not required.
-      timeInterval: 60000,
-      distanceInterval: 0,
-      pausesUpdatesAutomatically: false,
-      showsBackgroundLocationIndicator: true,
-      foregroundService: {
-        notificationTitle: t('bg_location_title'),
-        notificationBody: t('bg_location_body'),
-      },
-    });
-    backgroundTrackingConfiguredThisProcess = true;
-    return { ok: true, foregroundService: Platform.OS === 'android', reconfigured: started };
-  } catch (error) {
-    return { ok: false, reason: String(error?.message || error || 'background_start_failed') };
-  }
+
+    try {
+      const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
+      if (started && backgroundTrackingConfiguredThisProcess && !forceReconfigure) return { ok: true, already: true };
+      // A package update can leave Expo's persisted registration alive with the
+      // OLD options. A user may also return from Android's system Location
+      // settings after the provider was disabled: force one visible stop/start
+      // so Expo re-subscribes instead of retaining a silent stale registration.
+      // Ordinary refreshes keep the same service and do not churn it.
+      if (started) {
+        await locationModule.stopLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => {});
+      }
+      if (epoch !== locationSessionEpoch || !await storage.get(TOKEN_KEY)) return { ok: false, reason: 'session_changed' };
+      await locationModule.startLocationUpdatesAsync(BG_LOCATION_TASK, backgroundTrackingOptions(locationModule));
+      backgroundTrackingConfiguredThisProcess = true;
+      return { ok: true, foregroundService: Platform.OS === 'android', reconfigured: started };
+    } catch (error) {
+      return { ok: false, reason: String(error?.message || error || 'background_start_failed') };
+    }
+  });
 }
 
 export async function stopBackgroundTracking() {
+  return runTrackingLifecycle(stopBackgroundTrackingNow);
+}
+
+export function stopBackgroundTrackingForLogout(expectedToken, { signal } = {}) {
+  // Сразу отсекаем старые callbacks, даже если native stop ещё ожидает ОС.
+  locationSessionEpoch += 1;
+  return runTrackingLifecycle(async () => {
+    const currentToken = await storage.get(TOKEN_KEY);
+    if (currentToken && currentToken !== expectedToken) {
+      return { ok: false, reason: 'session_changed' };
+    }
+    if (signal?.aborted) return { ok: false, reason: 'logout_timeout_before_stop' };
+    const stopResult = await stopBackgroundTrackingNow();
+    if (!stopResult?.ok) {
+      if (stopResult?.locationModule) {
+        let stillStarted = null;
+        try {
+          stillStarted = await stopResult.locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK);
+        } catch {}
+        if (stillStarted === false) {
+          await locationPushChain;
+          const afterFailureToken = await storage.get(TOKEN_KEY);
+          if (afterFailureToken === expectedToken) {
+            const restored = await restoreTrackingAfterCancelledLogout(stopResult.locationModule, expectedToken);
+            return {
+              ok: false,
+              reason: restored
+                ? (signal?.aborted ? 'logout_timeout_tracking_restored' : 'stop_failed_tracking_restored')
+                : 'logout_tracking_restore_failed',
+            };
+          }
+        }
+      }
+      return stopResult || { ok: false, reason: 'stop_unconfirmed' };
+    }
+    await locationPushChain;
+    const afterStopToken = await storage.get(TOKEN_KEY);
+    if (afterStopToken && afterStopToken !== expectedToken) {
+      return { ok: false, reason: 'session_changed' };
+    }
+    if (signal?.aborted) {
+      const restored = stopResult.stopped
+        ? await restoreTrackingAfterCancelledLogout(stopResult.locationModule, expectedToken)
+        : true;
+      return {
+        ok: false,
+        reason: restored ? 'logout_timeout_tracking_restored' : 'logout_timeout_tracking_restore_failed',
+      };
+    }
+    return { ok: true, stopped: stopResult.stopped };
+  });
+}
+
+export function restoreBackgroundTrackingForLogoutFailure(expectedToken, wasStopped = false) {
+  if (!wasStopped) return Promise.resolve({ ok: true, restored: false });
+  return runTrackingLifecycle(async () => {
+    if (await storage.get(TOKEN_KEY) !== expectedToken) {
+      return { ok: false, reason: 'session_changed' };
+    }
+    const locationModule = await resolveLocationModule();
+    if (!locationModule || !TaskManager) return { ok: false, reason: 'location_module_unavailable' };
+    try {
+      if (await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK)) {
+        if (await storage.get(TOKEN_KEY) !== expectedToken) {
+          return { ok: false, reason: 'session_changed' };
+        }
+        backgroundTrackingConfiguredThisProcess = true;
+        return { ok: true, restored: false, alreadyStarted: true };
+      }
+      const permission = await getBackgroundLocationPermissionState();
+      if (!permission.ok) return { ok: false, reason: 'location_permission_unavailable' };
+      if (await storage.get(TOKEN_KEY) !== expectedToken) {
+        return { ok: false, reason: 'session_changed' };
+      }
+      await locationModule.startLocationUpdatesAsync(BG_LOCATION_TASK, backgroundTrackingOptions(locationModule));
+      backgroundTrackingConfiguredThisProcess = true;
+      return { ok: true, restored: true };
+    } catch (error) {
+      return { ok: false, reason: String(error?.message || error || 'background_restore_failed') };
+    }
+  });
+}
+
+export function clearBackgroundLocationSampleForLogout(expectedToken) {
+  return runTrackingLifecycle(async () => {
+    if (await storage.get(TOKEN_KEY) !== expectedToken) {
+      return { ok: false, reason: 'session_changed' };
+    }
+    // stopBackgroundTrackingForLogout already drained the callback chain
+    // before returning. Keeping this phase short lets AuthContext commit the
+    // staged logout before removing the live token.
+    await storage.remove(BG_LAST_LOCATION_KEY);
+    return { ok: true };
+  });
+}
+
+async function stopBackgroundTrackingNow() {
   // A native task can outlive an app-process restart.  In that case the
   // module-global Location binding is still null when the dashboard first
   // learns that there are no server-approved active deals.  Resolve it here
   // so completed/cancelled trips always tear down the persisted Android FGS.
   const locationModule = await resolveLocationModule();
-  if (!TaskManager || !locationModule) return;
+  if (Platform.OS === 'web') return { ok: true, stopped: false, skipped: 'web' };
+  if (!TaskManager || !locationModule) {
+    return { ok: false, reason: 'location_module_unavailable' };
+  }
   try {
-    const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK).catch(() => false);
+    // A failed status query is not evidence that native tracking is stopped.
+    const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK);
     if (started) await locationModule.stopLocationUpdatesAsync(BG_LOCATION_TASK);
-  } catch {}
+    backgroundTrackingConfiguredThisProcess = false;
+    return { ok: true, stopped: started, locationModule };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: String(error?.message || error || 'background_stop_failed'),
+      locationModule,
+    };
+  }
 }
