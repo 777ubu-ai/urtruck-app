@@ -52,6 +52,7 @@ const COPY = {
     phoneAlreadyInUse: 'Этот номер уже используется. Введите другой номер или войдите в свой существующий аккаунт.',
     roleAlreadySet: 'Для этого аккаунта уже выбрана другая роль. Вернитесь и выберите сохранённую роль.',
     retryLater: 'Слишком много попыток. Подождите и повторите сохранение.',
+    serverUnavailable: 'Сервер временно недоступен. Данные остались в форме; попробуйте снова.',
     other: 'Другой',
     samePhone: 'Совпадает с основным телефоном',
     emailConfirmed: 'Email уже подтверждён и повторно не запрашивается',
@@ -85,6 +86,7 @@ const COPY = {
     phoneAlreadyInUse: 'This number is already in use. Enter another number or sign in to your existing account.',
     roleAlreadySet: 'This account already has a different role. Go back and select the saved role.',
     retryLater: 'Too many attempts. Wait before saving again.',
+    serverUnavailable: 'The server is temporarily unavailable. Your form is kept; please retry.',
     other: 'Other',
     samePhone: 'Same as primary phone',
     emailConfirmed: 'Email is already verified and is not requested again',
@@ -118,6 +120,7 @@ const COPY = {
     phoneAlreadyInUse: '此号码已被使用。请输入其他号码，或登录您的现有账号。',
     roleAlreadySet: '此账号已选择其他角色。请返回并选择已保存的角色。',
     retryLater: '尝试次数过多。请稍后再次保存。',
+    serverUnavailable: '服务器暂时不可用。已保留表单内容，请重试。',
     other: '其他',
     samePhone: '与主要手机号相同',
     emailConfirmed: '邮箱已验证，无需再次填写',
@@ -151,6 +154,7 @@ const COPY = {
     phoneAlreadyInUse: 'Бұл нөмір қолданылып жатыр. Басқа нөмір енгізіңіз немесе өз аккаунтыңызға кіріңіз.',
     roleAlreadySet: 'Бұл аккаунт үшін басқа рөл таңдалған. Артқа оралып, сақталған рөлді таңдаңыз.',
     retryLater: 'Әрекет саны тым көп. Біраз күтіп, қайта сақтаңыз.',
+    serverUnavailable: 'Сервер уақытша қолжетімсіз. Нысандағы деректер сақталды; қайталап көріңіз.',
     other: 'Басқа',
     samePhone: 'Негізгі телефонмен бірдей',
     emailConfirmed: 'Email расталған, оны қайта енгізудің қажеті жоқ',
@@ -353,6 +357,14 @@ export default function ProfileV2Screen({ navigation, route }) {
 
       const saved = await regAPI.updateProfile(payload);
       if (!saved?.ok) {
+        if (saved?.networkError) {
+          setServerError(t('no_connection'));
+          return;
+        }
+        if (saved?.status >= 500) {
+          setServerError(ui.serverUnavailable);
+          return;
+        }
         const detail = saved?.detail;
         const code = detail?.error || saved?.error;
         if (code === 'PHONE_REQUIRED' || code === 'INVALID_PHONE') {

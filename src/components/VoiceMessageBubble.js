@@ -153,7 +153,11 @@ export default function VoiceMessageBubble({
 
         <Pressable
           onPress={onSeek}
-          onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+          onLayout={(event) => {
+            const width = event?.nativeEvent?.layout?.width;
+            if (!Number.isFinite(width) || width <= 0) return;
+            setTrackWidth(width);
+          }}
           style={s.trackHit}
           testID="voice-progress-track"
         >

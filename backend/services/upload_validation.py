@@ -10,6 +10,7 @@ import io
 import re
 import zipfile
 from typing import Optional, Tuple
+from urllib.parse import unquote
 
 # ── Size limits ────────────────────────────────────────────────────────────
 MAX_ATTACH_BYTES = 12 * 1024 * 1024          # deal-room attachments
@@ -91,8 +92,10 @@ def sanitize_original_name(value: Optional[str], ext: str) -> str:
 
     Unicode and spaces are preserved (Safari sends them); the result must
     never be used as a storage key — storage keys are generated server-side.
+    Some native multipart clients percent-encode filename bytes (including
+    spaces) in Content-Disposition; decode once before path/control cleanup.
     """
-    raw = str(value or "").replace("\\", "/").split("/")[-1].strip()
+    raw = unquote(str(value or ""), errors="replace").replace("\\", "/").split("/")[-1].strip()
     raw = re.sub(r"[\x00-\x1f\x7f]+", "", raw)
     if not raw:
         raw = "document.{}".format(ext)

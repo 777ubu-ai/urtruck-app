@@ -1,4 +1,5 @@
 import React from 'react';
+import { dealWorkspaceIdentity } from '../../utils/dealWorkspaceIdentity';
 
 import DealLocationPermissionGate from './DealLocationPermissionGate';
 import DealWorkspaceScreenV2 from '../../screens/DealWorkspaceScreenV2';
@@ -11,7 +12,7 @@ export default function DealWorkspaceRoute(props) {
   const params = props?.route?.params || {};
 
   return (
-    <DealLocationPermissionGate role={params.role}>
+    <DealLocationPermissionGate key={dealWorkspaceIdentity(params)} role={params.role}>
       <DealWorkspaceScreenV2 {...props} />
     </DealLocationPermissionGate>
   );

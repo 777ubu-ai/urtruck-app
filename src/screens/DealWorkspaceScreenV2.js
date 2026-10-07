@@ -60,6 +60,9 @@ import { createManualTextTranslationState } from '../utils/manualTextTranslation
 import { routeMetricValues } from '../utils/routeMetricValues';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { storage } from '../utils/storage';
+import { createChatDraft } from '../utils/chatDraft';
+import { createChatHistoryPages } from '../utils/chatHistoryPages';
+import { cacheIssuedAttachmentUrl } from '../utils/attachmentUrlCache';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
@@ -417,6 +420,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [textTranslationRevision, setTextTranslationRevision] = React.useState(0);
   const [voiceRevision, setVoiceRevision] = React.useState(0);
   const voiceScope = JSON.stringify([roomId, session?.user?.id || null]);
+  const historyPages = React.useMemo(() => createChatHistoryPages(), [voiceScope]);
+  const [hasOlderMessages, setHasOlderMessages] = React.useState(false);
+  const [olderMessagesLoading, setOlderMessagesLoading] = React.useState(false);
   const historyStatus = historyState?.scope === voiceScope ? historyState.status : 'loading';
   const voiceText = React.useMemo(() => createVoiceTranscriptState(chatAPI), [voiceScope]);
   const voiceStateRef = React.useRef(voiceText);
@@ -442,6 +448,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setInputHeight(next);
   }, []);
   const mounted = React.useRef(true);
+  const chatFocusedRef = React.useRef(false);
+  const chatAppActiveRef = React.useRef(AppState.currentState === 'active');
+  const tripActionScope = React.useRef({ focused: false, generation: 0 });
+  const tripStartBusy = React.useRef(false);
+  useFocusEffect(React.useCallback(() => {
+    tripActionScope.current.focused = true;
+    return () => { tripActionScope.current.focused = false; tripActionScope.current.generation++; };
+  }, []));
   const recordStartRef = React.useRef(0);
   const recordStopRequestedRef = React.useRef(false);
   const recordAutoStoppedRef = React.useRef(false);
@@ -460,10 +474,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   };
   const initialMessagesLoadedRef = React.useRef(false);
   const lastCountRef = React.useRef(0);
-  // A signed attachment URL may be reissued on every 3s poll. Keep the first
-  // valid URL per immutable message/attachment id so an already-shown photo
-  // is never remounted/flashed (PR #255 review item 4: "не должно быть
-  // мигания фото при polling"; ported from the same fix in ChatScreen.js).
+  // Keep a valid source stable, but allow renewed private URLs before expiry.
   const attachmentUrlCache = React.useRef(new Map());
   const role = params.role || session?.user?.role || 'client';
   const isDriver = role === 'driver';
@@ -493,6 +504,18 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     mounted.current = true;
     return () => { mounted.current = false; try { voice.stop?.(); } catch {} };
   }, []);
+
+  const chatDraft = React.useMemo(() => createChatDraft(storage, session?.user?.id, roomId), [session?.user?.id, roomId]);
+  React.useEffect(() => {
+    inputValueRef.current = '';
+    setInput('');
+    setComposerHeight(COMPOSER_INPUT_MIN_HEIGHT);
+    chatDraft.connect((value) => {
+      inputValueRef.current = value;
+      setInput(value);
+    });
+    return () => chatDraft.disconnect();
+  }, [chatDraft, setComposerHeight]);
 
   // Section 2: focusing the composer must close every overlay that could
   // otherwise sit on top of it (attach menu, call menu). The map itself
@@ -618,32 +641,33 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // сообщение в ленте"). The backend keeps documents in message_attachments,
   // separate from chat_messages, so each poll merges both by created_at —
   // deliberately NOT a chat_messages schema change (see commit message).
-  const loadMessages = React.useCallback(async () => {
-    if (!roomId) return;
+  const loadMessages = React.useCallback(async (older = false) => {
+    if (!roomId || !chatFocusedRef.current || !chatAppActiveRef.current) return;
     // Один poll на комнату/сессию: медленный storage не создаёт очередь
     // параллельных запросов и ответов, перезаписывающих свежую историю.
     if (historyRequestRef.current?.owner === voiceText) return;
+    const loadingOlder = older === true;
+    if (loadingOlder && !historyPages.hasOlder()) return;
+    if (loadingOlder) setOlderMessagesLoading(true);
     const request = { owner: voiceText };
     historyRequestRef.current = request;
     try {
       const [result, attachResult] = await Promise.all([
-        chatAPI.messages(roomId),
+        chatAPI.messages(roomId, 100, loadingOlder ? historyPages.offset() : 0),
         chatAPI.listAttachments(roomId).catch(() => ({ attachments: [] })),
       ]);
       // Ответ старой комнаты/сессии не восстанавливает приватный voice cache.
-      if (!mounted.current || voiceStateRef.current !== voiceText) return;
+      if (!mounted.current || !chatFocusedRef.current || !chatAppActiveRef.current || voiceStateRef.current !== voiceText) return;
       if (!Array.isArray(result?.messages)) throw new Error('Invalid chat history response');
-      const mapped = (result?.messages || []).map((message) => {
+      const history = historyPages.merge(result.messages, loadingOlder);
+      setHasOlderMessages(historyPages.hasOlder());
+      const mapped = history.map((message) => {
         const mine = typeof message.mine === 'boolean' ? message.mine : message.sender_id === session?.user?.id;
         const isVoice = !!message.is_voice;
         const system = message.sender_id === 'system';
         const cacheKey = `${isVoice ? 'voice' : 'photo'}:${message.id}`;
         const issuedUrl = resolveAttachment(message.photo_url);
-        let mediaUrl = issuedUrl;
-        if (issuedUrl) {
-          mediaUrl = attachmentUrlCache.current.get(cacheKey) || issuedUrl;
-          attachmentUrlCache.current.set(cacheKey, mediaUrl);
-        }
+        const mediaUrl = cacheIssuedAttachmentUrl(attachmentUrlCache.current, cacheKey, issuedUrl);
         return {
           id: String(message.id),
           clientMsgId: message.client_msg_id || null,
@@ -672,11 +696,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         .map((a) => {
           const cacheKey = `doc:${a.id}`;
           const issuedUrl = resolveAttachment(a.url);
-          let docUrl = issuedUrl;
-          if (issuedUrl) {
-            docUrl = attachmentUrlCache.current.get(cacheKey) || issuedUrl;
-            attachmentUrlCache.current.set(cacheKey, docUrl);
-          }
+          const docUrl = cacheIssuedAttachmentUrl(attachmentUrlCache.current, cacheKey, issuedUrl);
           return {
             id: `doc_${a.id}`,
             clientUploadId: a.client_upload_id || null,
@@ -694,7 +714,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         });
       setMessages((previous) => {
         const next = reconcileChatMessages(previous, mapped, serverDocs);
-        if (next !== previous && next.length > previous.length
+        if (!loadingOlder && next !== previous && next.length > previous.length
           && (!userScrolledAwayRef.current || nearBottomRef.current)) pendingAutoScrollRef.current = true;
         return next;
       });
@@ -720,27 +740,31 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       }
     } finally {
       if (historyRequestRef.current === request) historyRequestRef.current = null;
+      if (mounted.current && voiceStateRef.current === voiceText) setOlderMessagesLoading(false);
     }
-  }, [roomId, session?.user?.id, lang, voiceText, voiceScope]);
+  }, [roomId, session?.user?.id, lang, voiceText, voiceScope, historyPages]);
 
-  React.useEffect(() => {
-    if (!roomId) return undefined;
-    loadMessages();
-    const timer = setInterval(loadMessages, 3000);
-    const appState = AppState.addEventListener('change', (state) => { if (state === 'active') loadMessages(); });
-    return () => { clearInterval(timer); appState?.remove?.(); };
-  }, [roomId, loadMessages]);
-
-  // A screen may stay mounted in the navigation stack after the user returns
-  // to Deals. Foreground push suppression must follow actual focus, not mount
-  // lifetime, otherwise the previous room remains "active" and notifications
-  // for it are incorrectly hidden while the user is on another screen.
+  // GET /messages marks the room read: poll only while it is visible.
   useFocusEffect(
     React.useCallback(() => {
       if (!roomId) return undefined;
-      setActiveRoom(roomId);
-      return () => setActiveRoom(null);
-    }, [roomId]),
+      chatFocusedRef.current = true;
+      chatAppActiveRef.current = AppState.currentState === 'active';
+      setActiveRoom(chatAppActiveRef.current ? roomId : null);
+      loadMessages();
+      const timer = setInterval(loadMessages, 3000);
+      const appState = AppState.addEventListener('change', (state) => {
+        chatAppActiveRef.current = state === 'active';
+        setActiveRoom(chatAppActiveRef.current ? roomId : null);
+        if (chatAppActiveRef.current) loadMessages();
+      });
+      return () => {
+        chatFocusedRef.current = false;
+        clearInterval(timer);
+        appState?.remove?.();
+        setActiveRoom(null);
+      };
+    }, [roomId, loadMessages]),
   );
 
   // P0 30.08.2026: комната сделки — единственный реальный чат обеих ролей
@@ -879,26 +903,40 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [dealId, statusLoading, refreshDeal, refreshTimeline, toast, t]);
 
   const startTrip = React.useCallback(async () => {
-    if (!dealId || trackingLoading || statusLoading) return;
+    if (!dealId || trackingLoading || statusLoading || tripStartBusy.current || !tripActionScope.current.focused) return;
+    const generation = tripActionScope.current.generation;
+    const isCurrent = () => mounted.current && tripActionScope.current.focused
+      && tripActionScope.current.generation === generation;
+    tripStartBusy.current = true;
     setTrackingLoading(true);
-    const permission = await ensureBackgroundLocationPermission();
-    setTrackingLoading(false);
-    if (!permission.ok) { toast(t('track_permission_needed'), 'error'); return; }
-    const health = await getLocationHealth();
-    if (health.state !== 'ready') {
-      const message = health.state === 'system_disabled' ? t('gps_system_disabled')
-        : health.state === 'no_fix' ? t('gps_no_fix')
-          : t('track_permission_needed');
-      toast(message, 'error');
-      return;
-    }
-    const result = await changeDealStatus('in_progress');
-    if (result?.ok) {
-      const point = await getCurrentLocationPayload();
-      if (point) {
-        await marketAPI.sendDealLocation(dealId, point);
-        if (mounted.current) setLocation(point);
+    try {
+      const permission = await ensureBackgroundLocationPermission();
+      if (!isCurrent()) return;
+      if (!permission.ok) { toast(t('track_permission_needed'), 'error'); return; }
+      const health = await getLocationHealth();
+      if (!isCurrent()) return;
+      if (health.state !== 'ready') {
+        const message = health.state === 'system_disabled' ? t('gps_system_disabled')
+          : health.state === 'no_fix' ? t('gps_no_fix')
+            : t('track_permission_needed');
+        toast(message, 'error');
+        return;
       }
+      const result = await changeDealStatus('in_progress');
+      if (!isCurrent()) return;
+      if (result?.ok) {
+        const point = await getCurrentLocationPayload();
+        if (!isCurrent()) return;
+        if (point) {
+          await marketAPI.sendDealLocation(dealId, point);
+          if (isCurrent()) setLocation(point);
+        }
+      }
+    } catch {
+      if (isCurrent()) toast(t('no_connection'), 'error');
+    } finally {
+      tripStartBusy.current = false;
+      if (mounted.current) setTrackingLoading(false);
     }
   }, [dealId, trackingLoading, statusLoading, changeDealStatus, toast, t]);
 
@@ -964,12 +1002,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // Shared by the composer, quick-reply, and call-link — every "send a fixed
   // string" action funnels through here so error handling (section 6) is
   // written once. Returns the local optimistic id so callers can retry.
-  const sendRawText = React.useCallback(async (body) => {
+  const sendRawText = React.useCallback(async (body, retryId = null) => {
     if (!body || (!roomId && !recipientId)) return;
-    const clientId = newClientId();
-    setMessages((items) => [...items, {
-      id: clientId, mine: true, text: body, time: nowTime(), optimistic: true, sendStatus: 'sending',
-    }]);
+    const clientId = retryId || newClientId();
+    setMessages((items) => retryId
+      ? items.map((item) => item.id === retryId ? { ...item, sendStatus: 'sending', sendError: null } : item)
+      : [...items, {
+        id: clientId, clientMsgId: clientId, mine: true, text: body, time: nowTime(), optimistic: true, sendStatus: 'sending',
+      }]);
     setAttachOpen(false);
     setCallMenuOpen(false);
     setEmojiOpen(false);
@@ -988,7 +1028,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       setTimeout(loadMessages, 120);
     } catch (error) {
       if (error?.isNetwork) {
-        await enqueueOutbox({ clientId, payload }, session?.user?.id);
+        try {
+          await enqueueOutbox({ clientId, payload }, session?.user?.id);
+        } catch {
+          const sendError = t('chat_send_failed');
+          setMessages((items) => items.map((m) => m.id === clientId ? { ...m, sendStatus: 'failed', sendError } : m));
+          toast(sendError, 'error');
+          return;
+        }
         toast(t('chat_queued'), 'info', 2200);
         setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'queued' } : m)));
         return;
@@ -1017,6 +1064,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setTextSending(true);
     setInput('');
     inputValueRef.current = '';
+    chatDraft.set('');
     setComposerHeight(COMPOSER_INPUT_MIN_HEIGHT);
     setEmojiOpen(false);
     try {
@@ -1025,11 +1073,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       textSendBusyRef.current = false;
       setTextSending(false);
     }
-  }, [input, sendRawText, setComposerHeight]);
+  }, [input, sendRawText, setComposerHeight, chatDraft]);
 
   const retryFailedText = React.useCallback((item) => {
-    setMessages((items) => items.filter((m) => m.id !== item.id));
-    sendRawText(item.text);
+    if (item.sendStatus !== 'failed') return;
+    return sendRawText(item.text, item.clientMsgId || item.id);
   }, [sendRawText]);
 
   const sendQuickReply = React.useCallback(() => {
@@ -1364,9 +1412,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setInput((value) => {
       const next = `${value}${emoji}`;
       inputValueRef.current = next;
+      chatDraft.set(next);
       return next;
     });
-  }, []);
+  }, [chatDraft]);
 
   const renderMessage = React.useCallback(({ item, index }) => {
     const messageTranslation = textTranslation.view(item.id);
@@ -1812,6 +1861,20 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         pendingAutoScrollRef.current = false;
                       }
                     }}
+                    maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+                    ListHeaderComponent={hasOlderMessages ? (
+                      <TouchableOpacity
+                        onPress={() => loadMessages(true)}
+                        disabled={olderMessagesLoading}
+                        style={s.historyNotice}
+                        accessibilityRole="button"
+                        testID="deal-chat-load-older"
+                      >
+                        <Text style={[s.loadingText, { color: colors.text }]}>
+                          {olderMessagesLoading ? t('chat_history_loading') : t('chat_history_load_older')}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
                     ListEmptyComponent={historyStatus === 'error' ? null : (
                       <Text style={[s.emptyText, { color: colors.textMuted }]} testID="deal-chat-history-state">
                         {historyStatus === 'ready' ? ui.noMessages : t('chat_history_loading')}
@@ -1898,6 +1961,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                           value={input}
                           onChangeText={(value) => {
                             inputValueRef.current = value;
+                            chatDraft.set(value);
                             setInput(value);
                             if (!value.trim()) setComposerHeight(COMPOSER_INPUT_MIN_HEIGHT);
                             if (roomId) chatAPI.typing(roomId);

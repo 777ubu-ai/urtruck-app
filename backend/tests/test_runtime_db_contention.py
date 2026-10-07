@@ -4,6 +4,7 @@ import os
 import sqlite3
 import sys
 import time
+from datetime import date, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
@@ -58,7 +59,8 @@ def _cargo_body():
         "from_city": "Yiwu", "to_city": "Almaty",
         "cargo_desc": "QA2 runtime contention regression",
         "cargo_type": "tent", "price": 1500, "currency": "USD",
-        "pickup_date": "2026-10-05", "weight_tons": 10, "volume_m3": 82,
+        "pickup_date": (date.today() + timedelta(days=1)).isoformat(),
+        "weight_tons": 10, "volume_m3": 82,
     }
 
 

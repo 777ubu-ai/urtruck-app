@@ -119,17 +119,43 @@ test('новые причины ошибок определены для все�
 const registration = readFileSync('src/utils/registration.js', 'utf8');
 const updateBody = registration.split('async updateProfile(payload = {}) {')[1].split('\n  },\n\n  // Безопасная смена телефона:')[0];
 
-test('updateProfile сохраняет настоящий HTTP status и не принимает подменённый ok из JSON', async () => {
+test('updateProfile сохраняет HTTP status и требует успешный HTTP даже при ok в JSON', async () => {
   for (const status of [200, 401, 429]) {
     const responseOk = status === 200;
     const run = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}) { ${updateBody} };`)(
       'https://qa.invalid/api/v1', () => ({ ok: false, authRequired: true }),
-      async () => ({ ok: responseOk, status, json: async () => ({ ok: !responseOk, status: 999, detail: 'test' }) }),
+      async () => ({ ok: responseOk, status, json: async () => ({ ok: true, status: 999, detail: 'test' }) }),
     );
     const result = await run.call({ getToken: async () => 'mock-token' }, { name: 'QA', role: 'client' });
     assert.equal(result.ok, responseOk);
     assert.equal(result.status, status);
   }
+});
+
+test('updateProfile не считает пустой/повреждённый HTTP 200 сохранённым профилем', async () => {
+  for (const payload of [{}, null, { ok: false }]) {
+    const run = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}) { ${updateBody} };`)(
+      '/api', () => ({ ok: false }),
+      async () => ({ ok: true, status: 200, json: async () => payload }),
+    );
+    assert.equal((await run.call({ getToken: async () => 'fixture-only' }, { name: 'QA' })).ok, false);
+  }
+});
+
+test('ошибки сети и сервера при Save различаются и не меняют роль/экран', async () => {
+  const failedNetwork = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}) { ${updateBody} };`)(
+    '/api', () => ({ ok: false }), async () => { throw new TypeError('offline'); },
+  );
+  const result = await failedNetwork.call({ getToken: async () => 'fixture-only' }, { name: 'QA' });
+  assert.equal(result.networkError, true);
+  const offline = harness(result); await offline.run();
+  assert.equal(offline.state.serverError, 'no_connection');
+  assert.deepEqual(offline.state.navigation, []);
+  const server = harness({ ok: false, status: 503 }); await server.run();
+  assert.equal(server.state.serverError, copy.RU.serverUnavailable);
+  assert.ok(server.state.serverError);
+  assert.deepEqual(server.state.navigation, []);
+  assert.deepEqual(server.state.roles, []);
 });
 
 test('updateProfile без token не делает сетевой запрос', async () => {

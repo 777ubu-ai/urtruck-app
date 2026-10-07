@@ -1,4 +1,5 @@
 import React from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { AppState, Platform, StyleSheet, View } from 'react-native';
 
 import BackgroundLocationDisclosureModal from './BackgroundLocationDisclosureModal';
@@ -77,12 +78,16 @@ export default function DealLocationPermissionGate({ role, children }) {
     });
   }, [isDriver, refreshPermission, successPayload, supportsTripDisclosure]);
 
-  React.useEffect(() => {
+  useFocusEffect(React.useCallback(() => {
     if (!supportsTripDisclosure) return undefined;
-    // One canonical coordinator is registered at the accepted-deal route.
-    // beginDisclosure passes shippers through without any GPS prompt.
-    return registerLocationPermissionRequestHandler(beginDisclosure);
-  }, [beginDisclosure, supportsTripDisclosure]);
+    const unregister = registerLocationPermissionRequestHandler(beginDisclosure);
+    return () => {
+      unregister();
+      resolvePending({ ok: false, reason: 'permission_host_blurred' });
+      setModalVisible(false);
+      setBusy(false);
+    };
+  }, [beginDisclosure, supportsTripDisclosure, resolvePending]));
 
   const completeIfGranted = React.useCallback(async () => {
     if (!pendingResolve.current) return false;

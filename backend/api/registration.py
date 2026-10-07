@@ -312,6 +312,11 @@ def email_send(req: EmailSendRequest, request: Request = None):
     # код фиксированный (REVIEWER_DEMO_CODE), ревьюер вводит его сразу. Это
     # гарантирует, что экран ввода кода откроется независимо от состояния SMTP.
     if REVIEWER_DEMO_EMAIL and email == REVIEWER_DEMO_EMAIL:
+        # Та же production-защита, что в verify: выключенный демо-вход
+        # не должен отвечать успешной отправкой и заводить ревьюера в тупик.
+        if IS_PRODUCTION and REVIEWER_DEMO_CODE_IS_DEFAULT:
+            return {"sent": False, "channel": "email", "mock": False, "code": None,
+                    "error": "reviewer_login_unavailable"}
         return {"sent": True, "channel": "email", "mock": False, "code": None, "error": None}
     limit_otp_send(email)
     limit_otp_send_ip(request.client.host if (request and request.client) else None)

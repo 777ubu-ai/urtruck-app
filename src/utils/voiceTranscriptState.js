@@ -133,26 +133,46 @@ export function createVoiceTranscriptState(api) {
   function revealHidden(entry, lang) {
     const target = targetFor(entry, lang);
     if (target.pending) return target.pending;
+    const requestGeneration = generation;
+    const isCurrent = () => active && generation === requestGeneration;
     target.error = null;
     target.pending = Promise.resolve().then(async () => {
+      if (!isCurrent()) return;
       const result = await api.voiceText(entry.id, lang);
+      if (!isCurrent()) return;
       entry.backgroundStatus = result?.status || 'unavailable';
       entry.transcriptReady = entry.backgroundStatus === 'ready';
-      if (entry.backgroundStatus !== 'ready') return;
-      if (!result?.transcript_text?.trim()) throw unavailable();
-      setOriginal(entry, result.transcript_text, result.source_lang, result.provider);
-      if (validTranslation({
-        translated_text: result.translated_text,
-        provider: result.translation_provider,
-        target_lang: result.target_lang,
-      }, lang)) {
-        Object.assign(target, { translatedText: result.translated_text, provider: result.translation_provider });
+      if (entry.backgroundStatus === 'unavailable') {
+        // Старые сообщения без фоновой job: STT только по явному tap.
+        const sttResult = await transcribe(entry, lang, isCurrent);
+        if (!isCurrent() || ready(entry, lang)) return;
+        if (sttResult?.targetLang === lang) throw unavailable(sttResult.translationError);
+      } else {
+        if (entry.backgroundStatus !== 'ready') return;
+        if (!result?.transcript_text?.trim()) throw unavailable();
+        setOriginal(entry, result.transcript_text, result.source_lang, result.provider);
+        if (validTranslation({
+          translated_text: result.translated_text,
+          provider: result.translation_provider,
+          target_lang: result.target_lang,
+        }, lang)) {
+          Object.assign(target, { translatedText: result.translated_text, provider: result.translation_provider });
+        }
       }
+      if (!isCurrent() || ready(entry, lang)) return;
+      // Готовый original сохраняем: отсутствующая цель требует только перевода.
+      const original = entry.transcriptText;
+      const translated = await api.translate(entry.id, lang);
+      if (!isCurrent()) return;
+      if (entry.transcriptText !== original || !validTranslation(translated, lang)) throw unavailable();
+      Object.assign(target, { translatedText: translated.translated_text, provider: translated.provider });
     }).catch((error) => {
-      target.error = { code: error?.code || null, key: 'voice_transcription_unavailable' };
+      if (isCurrent()) target.error = {
+        code: error?.code || null,
+        key: entry.transcriptText ? 'translation_unavailable' : 'voice_transcription_unavailable',
+      };
     }).finally(() => {
-      target.pending = null;
-      emit();
+      if (isCurrent()) { target.pending = null; emit(); }
     });
     emit();
     return target.pending;
