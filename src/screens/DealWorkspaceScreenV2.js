@@ -964,12 +964,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // Shared by the composer, quick-reply, and call-link — every "send a fixed
   // string" action funnels through here so error handling (section 6) is
   // written once. Returns the local optimistic id so callers can retry.
-  const sendRawText = React.useCallback(async (body) => {
+  const sendRawText = React.useCallback(async (body, retryId = null) => {
     if (!body || (!roomId && !recipientId)) return;
-    const clientId = newClientId();
-    setMessages((items) => [...items, {
-      id: clientId, mine: true, text: body, time: nowTime(), optimistic: true, sendStatus: 'sending',
-    }]);
+    const clientId = retryId || newClientId();
+    setMessages((items) => retryId
+      ? items.map((item) => item.id === retryId ? { ...item, sendStatus: 'sending', sendError: null } : item)
+      : [...items, {
+        id: clientId, clientMsgId: clientId, mine: true, text: body, time: nowTime(), optimistic: true, sendStatus: 'sending',
+      }]);
     setAttachOpen(false);
     setCallMenuOpen(false);
     setEmojiOpen(false);
@@ -1028,8 +1030,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [input, sendRawText, setComposerHeight]);
 
   const retryFailedText = React.useCallback((item) => {
-    setMessages((items) => items.filter((m) => m.id !== item.id));
-    sendRawText(item.text);
+    if (item.sendStatus !== 'failed') return;
+    return sendRawText(item.text, item.clientMsgId || item.id);
   }, [sendRawText]);
 
   const sendQuickReply = React.useCallback(() => {
