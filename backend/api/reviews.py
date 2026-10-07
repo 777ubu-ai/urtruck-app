@@ -59,16 +59,19 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
     if not body.trip_id and reviews_dal.has_reviewed_target(user["id"], body.target_id):
         raise HTTPException(status_code=409, detail="Вы уже оставили отзыв этому пользователю")
 
-    rid = reviews_dal.add_review(
-        trip_id=body.trip_id,
-        author_id=user["id"],
-        author_role=user.get("role", "client"),
-        target_id=body.target_id,
-        target_role=body.target_role,
-        rating=body.rating,
-        text=body.text,
-        tags=body.tags,
-    )
+    try:
+        rid = reviews_dal.add_review(
+            trip_id=body.trip_id,
+            author_id=user["id"],
+            author_role=user.get("role", "client"),
+            target_id=body.target_id,
+            target_role=body.target_role,
+            rating=body.rating,
+            text=body.text,
+            tags=body.tags,
+        )
+    except reviews_dal.DuplicateReviewError:
+        raise HTTPException(status_code=409, detail="Вы уже оставили отзыв")
     # Push получателю отзыва
     emoji = '⭐' * body.rating
     review_title = f"Новый отзыв {emoji}"

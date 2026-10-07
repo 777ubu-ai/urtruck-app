@@ -7,6 +7,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from database.db import get_conn, new_id
 
 
+class DuplicateReviewError(ValueError):
+    """Отзыв уже записан; история не изменяется."""
+
+
 def init_reviews_schema():
     schema = Path(__file__).resolve().parent / "reviews_schema.sql"
     with get_conn() as c:
@@ -17,6 +21,21 @@ def init_reviews_schema():
 def add_review(*, trip_id, author_id, author_role, target_id, target_role, rating, text=None, tags=None):
     rid = new_id()
     with get_conn() as c:
+        # SELECT + INSERT защищены одним writer lock. Проверка API до этой
+        # транзакции — только быстрый путь, не гарантия от параллельного POST.
+        c.execute("BEGIN IMMEDIATE")
+        if trip_id:
+            existing = c.execute(
+                "SELECT 1 FROM reviews WHERE author_id = ? AND trip_id = ? LIMIT 1",
+                (author_id, trip_id),
+            ).fetchone()
+        else:
+            existing = c.execute(
+                "SELECT 1 FROM reviews WHERE author_id = ? AND target_id = ? LIMIT 1",
+                (author_id, target_id),
+            ).fetchone()
+        if existing:
+            raise DuplicateReviewError("review_already_exists")
         c.execute(
             "INSERT INTO reviews (id, trip_id, author_id, author_role, target_id, target_role, rating, text, tags) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
