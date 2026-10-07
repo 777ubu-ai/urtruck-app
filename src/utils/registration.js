@@ -221,7 +221,16 @@ export const regAPI = {
       return { sent: false, ok: false, cooldown: true, cooldown_sec: cooldown || 60,
                detail: normalizeDetail(data.detail, 'rate_limited') };
     }
-    return data;
+    // Переход к OTP допустим только после подтверждённого успеха канала.
+    // HTTP-ошибка/пустой JSON не означают, что письмо было отправлено.
+    const sent = r.ok && data?.sent === true && !data?.error;
+    return {
+      ...data,
+      sent,
+      ok: sent,
+      status: r.status,
+      error: sent ? null : (data?.error || normalizeDetail(data?.detail, 'delivery_failed')),
+    };
   },
 
   async verifyEmailCode(email, code) {
@@ -381,17 +390,22 @@ export const regAPI = {
       if (payload[k] !== undefined) body[k] = payload[k];
     }
 
-    const r = await fetch(`${API_BASE}/users/me`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
+    let r;
+    try {
+      r = await fetch(`${API_BASE}/users/me`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      return { ok: false, status: 0, networkError: true, error: 'NETWORK_ERROR' };
+    }
     let data = {};
     try { data = await r.json(); } catch {}
-    return { ...data, ok: r.ok, status: r.status };
+    return { ...data, ok: r.ok && data?.ok === true, status: r.status };
   },
 
   // Безопасная смена телефона: generic PATCH намеренно не принимает phone.

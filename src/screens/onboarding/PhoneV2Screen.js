@@ -322,7 +322,7 @@ export default function PhoneV2Screen({ navigation, route }) {
         consent: true,
         role,
       });
-      if (result?.sent === false && result?.error && !result?.cooldown) {
+      if (result?.sent !== true || result?.error || result?.cooldown) {
         setEmailError(t('phone_v2_send_failed'));
         return;
       }

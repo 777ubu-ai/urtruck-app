@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AppState, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { push } from '../utils/push';
+import { createPushPermissionMonitor } from '../utils/pushPermissionMonitor';
 import { useI18n } from '../utils/useI18n';
 import { useV1Colors } from '../theme/designV1';
 import { useTheme } from '../utils/ThemeContext';
@@ -63,24 +64,38 @@ export default function PushPermissionBanner({ enabled }) {
   const deniedCopy = native ? c.deniedNative : c.denied.replace('urtruck.kz', getPushPermissionHost());
   const [permission, setPermission] = useState('loading');
   const [busy, setBusy] = useState(false);
+  const monitorRef = useRef(null);
 
-  const refresh = useCallback(async () => {
+  useEffect(() => {
     const supported = Platform.OS === 'web' ? push.isSupported() : native;
     if (!enabled || !supported) {
       setPermission('hidden');
-      return;
+      monitorRef.current = null;
+      return undefined;
     }
-    const p = Platform.OS === 'web' ? await push.permission() : await push.nativePermission();
-    setPermission(p);
-    if (p === 'granted') {
-      // Re-bind an existing permission to the current authenticated user.
-      // This is idempotent and repairs a rotated native token after login or
-      // an existing web subscription after account switch.
-      push.autoRegister().catch(() => {});
-    }
+    const monitor = createPushPermissionMonitor({
+      appState: AppState,
+      getPermission: async () => {
+        const current = Platform.OS === 'web' ? await push.permission() : await push.nativePermission();
+        // nativePermission() currently reports SDK/bridge failures as
+        // "unsupported"; keep that distinct from an OS-level denial.
+        return native && current === 'unsupported' ? 'unknown' : current;
+      },
+      onPermission: setPermission,
+      onGranted: () => {
+        // Registration runs on initial grant or a denied/unknown → granted
+        // transition, never on every ordinary foreground return.
+        push.autoRegister().catch(() => {});
+      },
+    });
+    monitorRef.current = monitor;
+    return () => {
+      monitor.remove();
+      if (monitorRef.current === monitor) monitorRef.current = null;
+    };
   }, [enabled, native]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  const refresh = () => monitorRef.current?.refresh(true);
 
   const enablePush = async () => {
     setBusy(true);
@@ -93,9 +108,12 @@ export default function PushPermissionBanner({ enabled }) {
         ? await push.subscribe({ requestPermission: true })
         : await push.registerNative();
       const current = Platform.OS === 'web' ? await push.permission() : await push.nativePermission();
+      // The explicit button already attempted registration; synchronize the
+      // monitor without triggering a second registration for the same grant.
+      monitorRef.current?.setPermission(current);
       setPermission(r?.ok ? 'granted' : (r?.reason === 'denied' ? 'denied' : current));
     } catch {
-      await refresh();
+      await monitorRef.current?.refresh();
     } finally {
       setBusy(false);
     }

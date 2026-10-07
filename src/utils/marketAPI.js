@@ -17,6 +17,8 @@ const DASHBOARD_CACHE_MS = 3000;
 let dashboardCache = null;
 let dashboardCacheAt = 0;
 let dashboardInFlight = null;
+let dashboardScope = null;
+let dashboardRevision = 0;
 
 async function headers() {
   const token = await storage.get(TOKEN_KEY);
@@ -484,17 +486,23 @@ export const marketAPI = {
   // ─── My Dashboard ───
   async myDashboard({ force = false } = {}) {
     const empty = { my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [] };
+    const h = await headers();
+    const scope = h.Authorization || null;
+    if (dashboardScope !== scope) {
+      dashboardScope = scope;
+      dashboardCache = null;
+      dashboardCacheAt = 0;
+      dashboardInFlight = null;
+      dashboardRevision++;
+    }
+    if (!scope) return { ...empty, authRequired: true, skipped: true };
     if (!force && dashboardCache && (Date.now() - dashboardCacheAt) < DASHBOARD_CACHE_MS) {
       return dashboardCache;
     }
     if (!force && dashboardInFlight) return dashboardInFlight;
+    const revision = ++dashboardRevision;
     const load = async () => {
       try {
-        // Skip /market/my if no token (guest) — avoids 401/500
-        const h = await headers();
-        if (!h.Authorization) {
-          return { ...empty, authRequired: true, skipped: true };
-        }
         const r = await authedFetch(`${BASE}/my`, { headers: h });
         const d = await r.json().catch(() => ({}));
         if (r.status === 401 || r.status === 403) {
@@ -504,20 +512,28 @@ export const marketAPI = {
           console.warn('[myDashboard] server error:', r.status);
           return { ...empty, serverError: true };
         }
+        if (!Array.isArray(d?.my_deals)) return { ...empty, serverError: true };
         return { ...empty, ...d };
       } catch (e) {
         console.warn('[myDashboard] fetch error:', e.message);
         return { ...empty, serverError: true };
       }
     };
-    dashboardInFlight = load();
+    const request = load();
+    dashboardInFlight = request;
     try {
-      const result = await dashboardInFlight;
-      dashboardCache = result;
-      dashboardCacheAt = Date.now();
+      const result = await request;
+      const currentHeaders = await headers();
+      if (currentHeaders.Authorization !== scope || dashboardScope !== scope) {
+        return { ...empty, authRequired: true, stale: true };
+      }
+      if (revision === dashboardRevision && !result.serverError && !result.authRequired) {
+        dashboardCache = result;
+        dashboardCacheAt = Date.now();
+      }
       return result;
     } finally {
-      dashboardInFlight = null;
+      if (dashboardInFlight === request) dashboardInFlight = null;
     }
   },
 
