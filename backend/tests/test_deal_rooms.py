@@ -170,6 +170,39 @@ def test_received_deal_keeps_room_visible_and_chat_usable_until_completion():
     assert blocked.value.status_code == 403
 
 
+def test_recent_hidden_rooms_do_not_evict_active_unread_room_from_room_list():
+    owner, driver = "own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6]
+    _mk_users(owner, driver)
+    for index in range(50):
+        cargo = "cg_" + uuid.uuid4().hex[:6]
+        room = get_or_create_deal_room(cargo, owner, driver)
+        deal_id = _mk_accepted_deal(cargo, owner, driver, room)
+        with get_conn() as c:
+            c.execute("UPDATE deals SET status='cancelled' WHERE id=?", (deal_id,))
+            c.execute(
+                "INSERT INTO chat_messages (room_id, sender_id, text, is_read) VALUES (?,?,?,0)",
+                (room, driver, "unread-cancelled-room"),
+            )
+            c.execute("UPDATE chat_rooms SET last_at=? WHERE id=?", (f"2026-10-07 12:{index:02d}:00", room))
+
+    active_cargo = "cg_" + uuid.uuid4().hex[:6]
+    active_room = get_or_create_deal_room(active_cargo, owner, driver)
+    _mk_accepted_deal(active_cargo, owner, driver, active_room)
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO chat_messages (room_id, sender_id, text, is_read) VALUES (?,?,?,0)",
+            (active_room, driver, "unread-active-room"),
+        )
+        c.execute("UPDATE chat_rooms SET last_at='2026-10-06 12:00:00' WHERE id=?", (active_room,))
+
+    rooms = my_rooms(user=_u(owner))["rooms"]
+    active = next((room for room in rooms if room["id"] == active_room), None)
+    assert active is not None, "recent cancelled rooms must not hide an older active room"
+    assert active["unread_count"] == 1
+    from api.chat import unread_count
+    assert unread_count(user=_u(owner))["unread"] == 1
+
+
 def test_third_user_cannot_read_or_send():
     o, d, t = ("own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6], "thr_" + uuid.uuid4().hex[:6])
     cargo = "cg_" + uuid.uuid4().hex[:6]

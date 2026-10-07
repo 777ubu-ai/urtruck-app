@@ -704,18 +704,45 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
 @chat_router.get("/rooms")
 def my_rooms(user=Depends(require_level(1))):
     uid = user["id"]
+    visible_statuses = ",".join("?" for _ in _DEAL_CHAT_STATUSES)
+    demo_exclusion = "" if ENABLE_DEMO_CHAT else " AND r.participant_1 != ? AND r.participant_2 != ?"
+    room_params = [uid, uid, uid, SUPPORT_ID, SUPPORT_ID, *_DEAL_CHAT_STATUSES]
+    if not ENABLE_DEMO_CHAT:
+        room_params.extend((VOLODYA_ID, VOLODYA_ID))
     with get_conn() as c:
         # Блок 5 аудита (P1-1, вариант B): per-room unread — тот же фильтр
         # sender_id != 'system', что и в /chat/unread ниже, чтобы карточка
-        # конкретной сделки и общий бейдж считали событие одинаково.
-        rows = c.execute("""
+        # конкретной сделки и общий бейдж считали событие одинаково. Apply
+        # visibility before LIMIT: otherwise 50 recent closed/demo rooms can
+        # evict an older active unread room from the user's reachable list.
+        rows = c.execute(f"""
             SELECT r.*,
                    (SELECT COUNT(*) FROM chat_messages m WHERE m.room_id = r.id AND m.is_read = 0
                     AND m.sender_id != ? AND m.sender_id != 'system') as unread
             FROM chat_rooms r
-            WHERE r.participant_1 = ? OR r.participant_2 = ?
+            WHERE (r.participant_1 = ? OR r.participant_2 = ?)
+              AND (
+                r.participant_1 = ? OR r.participant_2 = ?
+                OR EXISTS (
+                  SELECT 1 FROM deals d
+                  WHERE d.status IN ({visible_statuses})
+                    AND (
+                      d.chat_room_id = r.id
+                      OR (d.chat_room_id IS NULL
+                        AND (
+                          (r.cargo_id IS NOT NULL AND d.cargo_id = r.cargo_id)
+                          OR (r.trip_id IS NOT NULL AND d.trip_id = r.trip_id)
+                        )
+                        AND (
+                          (d.shipper_id = r.participant_1 AND d.driver_id = r.participant_2)
+                          OR (d.shipper_id = r.participant_2 AND d.driver_id = r.participant_1)
+                        )
+                      )
+                    )
+                )
+              ){demo_exclusion}
             ORDER BY r.last_at DESC LIMIT 50
-        """, (uid, uid, uid)).fetchall()
+        """, room_params).fetchall()
 
     rooms = []
     for r in rows:
