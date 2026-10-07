@@ -442,6 +442,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setInputHeight(next);
   }, []);
   const mounted = React.useRef(true);
+  const chatFocusedRef = React.useRef(false);
+  const chatAppActiveRef = React.useRef(AppState.currentState === 'active');
   const recordStartRef = React.useRef(0);
   const recordStopRequestedRef = React.useRef(false);
   const recordAutoStoppedRef = React.useRef(false);
@@ -619,7 +621,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // separate from chat_messages, so each poll merges both by created_at —
   // deliberately NOT a chat_messages schema change (see commit message).
   const loadMessages = React.useCallback(async () => {
-    if (!roomId) return;
+    if (!roomId || !chatFocusedRef.current || !chatAppActiveRef.current) return;
     // Один poll на комнату/сессию: медленный storage не создаёт очередь
     // параллельных запросов и ответов, перезаписывающих свежую историю.
     if (historyRequestRef.current?.owner === voiceText) return;
@@ -631,7 +633,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         chatAPI.listAttachments(roomId).catch(() => ({ attachments: [] })),
       ]);
       // Ответ старой комнаты/сессии не восстанавливает приватный voice cache.
-      if (!mounted.current || voiceStateRef.current !== voiceText) return;
+      if (!mounted.current || !chatFocusedRef.current || !chatAppActiveRef.current || voiceStateRef.current !== voiceText) return;
       if (!Array.isArray(result?.messages)) throw new Error('Invalid chat history response');
       const mapped = (result?.messages || []).map((message) => {
         const mine = typeof message.mine === 'boolean' ? message.mine : message.sender_id === session?.user?.id;
@@ -723,24 +725,27 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     }
   }, [roomId, session?.user?.id, lang, voiceText, voiceScope]);
 
-  React.useEffect(() => {
-    if (!roomId) return undefined;
-    loadMessages();
-    const timer = setInterval(loadMessages, 3000);
-    const appState = AppState.addEventListener('change', (state) => { if (state === 'active') loadMessages(); });
-    return () => { clearInterval(timer); appState?.remove?.(); };
-  }, [roomId, loadMessages]);
-
-  // A screen may stay mounted in the navigation stack after the user returns
-  // to Deals. Foreground push suppression must follow actual focus, not mount
-  // lifetime, otherwise the previous room remains "active" and notifications
-  // for it are incorrectly hidden while the user is on another screen.
+  // GET /messages marks the room read: poll only while it is visible.
   useFocusEffect(
     React.useCallback(() => {
       if (!roomId) return undefined;
-      setActiveRoom(roomId);
-      return () => setActiveRoom(null);
-    }, [roomId]),
+      chatFocusedRef.current = true;
+      chatAppActiveRef.current = AppState.currentState === 'active';
+      setActiveRoom(chatAppActiveRef.current ? roomId : null);
+      loadMessages();
+      const timer = setInterval(loadMessages, 3000);
+      const appState = AppState.addEventListener('change', (state) => {
+        chatAppActiveRef.current = state === 'active';
+        setActiveRoom(chatAppActiveRef.current ? roomId : null);
+        if (chatAppActiveRef.current) loadMessages();
+      });
+      return () => {
+        chatFocusedRef.current = false;
+        clearInterval(timer);
+        appState?.remove?.();
+        setActiveRoom(null);
+      };
+    }, [roomId, loadMessages]),
   );
 
   // P0 30.08.2026: комната сделки — единственный реальный чат обеих ролей
