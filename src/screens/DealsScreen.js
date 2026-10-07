@@ -306,10 +306,10 @@ export default function DealsScreen({ navigation, route }) {
   const [myBids, setMyBids] = useState([]);
   const [unreadNotifPaths, setUnreadNotifPaths] = useState([]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ force = false } = {}) => {
     setLoadError(false);
     try {
-      const dashboard = await marketAPI.myDashboard();
+      const dashboard = await marketAPI.myDashboard({ force });
       if (!dashboard) throw new Error('empty_dashboard');
       setAllDeals(dashboard.my_deals || []);
       setIncomingBids(dashboard.incoming_bids || []);
@@ -338,7 +338,7 @@ export default function DealsScreen({ navigation, route }) {
     }, [load]),
   );
 
-  const { refreshing, onRefresh } = useSafeRefresh(load);
+  const { refreshing, onRefresh } = useSafeRefresh(() => load({ force: true }));
 
   const relTime = useCallback(
     (raw) => {
