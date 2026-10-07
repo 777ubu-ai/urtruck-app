@@ -60,6 +60,7 @@ import { createManualTextTranslationState } from '../utils/manualTextTranslation
 import { routeMetricValues } from '../utils/routeMetricValues';
 import { enqueueOutbox, flushOutbox } from '../utils/outbox';
 import { storage } from '../utils/storage';
+import { createChatHistoryPages } from '../utils/chatHistoryPages';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
@@ -417,6 +418,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [textTranslationRevision, setTextTranslationRevision] = React.useState(0);
   const [voiceRevision, setVoiceRevision] = React.useState(0);
   const voiceScope = JSON.stringify([roomId, session?.user?.id || null]);
+  const historyPages = React.useMemo(() => createChatHistoryPages(), [voiceScope]);
+  const [hasOlderMessages, setHasOlderMessages] = React.useState(false);
+  const [olderMessagesLoading, setOlderMessagesLoading] = React.useState(false);
   const historyStatus = historyState?.scope === voiceScope ? historyState.status : 'loading';
   const voiceText = React.useMemo(() => createVoiceTranscriptState(chatAPI), [voiceScope]);
   const voiceStateRef = React.useRef(voiceText);
@@ -618,22 +622,27 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // сообщение в ленте"). The backend keeps documents in message_attachments,
   // separate from chat_messages, so each poll merges both by created_at —
   // deliberately NOT a chat_messages schema change (see commit message).
-  const loadMessages = React.useCallback(async () => {
+  const loadMessages = React.useCallback(async (older = false) => {
     if (!roomId) return;
     // Один poll на комнату/сессию: медленный storage не создаёт очередь
     // параллельных запросов и ответов, перезаписывающих свежую историю.
     if (historyRequestRef.current?.owner === voiceText) return;
+    const loadingOlder = older === true;
+    if (loadingOlder && !historyPages.hasOlder()) return;
+    if (loadingOlder) setOlderMessagesLoading(true);
     const request = { owner: voiceText };
     historyRequestRef.current = request;
     try {
       const [result, attachResult] = await Promise.all([
-        chatAPI.messages(roomId),
+        chatAPI.messages(roomId, 100, loadingOlder ? historyPages.offset() : 0),
         chatAPI.listAttachments(roomId).catch(() => ({ attachments: [] })),
       ]);
       // Ответ старой комнаты/сессии не восстанавливает приватный voice cache.
       if (!mounted.current || voiceStateRef.current !== voiceText) return;
       if (!Array.isArray(result?.messages)) throw new Error('Invalid chat history response');
-      const mapped = (result?.messages || []).map((message) => {
+      const history = historyPages.merge(result.messages, loadingOlder);
+      setHasOlderMessages(historyPages.hasOlder());
+      const mapped = history.map((message) => {
         const mine = typeof message.mine === 'boolean' ? message.mine : message.sender_id === session?.user?.id;
         const isVoice = !!message.is_voice;
         const system = message.sender_id === 'system';
@@ -694,7 +703,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         });
       setMessages((previous) => {
         const next = reconcileChatMessages(previous, mapped, serverDocs);
-        if (next !== previous && next.length > previous.length
+        if (!loadingOlder && next !== previous && next.length > previous.length
           && (!userScrolledAwayRef.current || nearBottomRef.current)) pendingAutoScrollRef.current = true;
         return next;
       });
@@ -720,8 +729,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       }
     } finally {
       if (historyRequestRef.current === request) historyRequestRef.current = null;
+      if (mounted.current && voiceStateRef.current === voiceText) setOlderMessagesLoading(false);
     }
-  }, [roomId, session?.user?.id, lang, voiceText, voiceScope]);
+  }, [roomId, session?.user?.id, lang, voiceText, voiceScope, historyPages]);
 
   React.useEffect(() => {
     if (!roomId) return undefined;
@@ -1812,6 +1822,20 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                         pendingAutoScrollRef.current = false;
                       }
                     }}
+                    maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+                    ListHeaderComponent={hasOlderMessages ? (
+                      <TouchableOpacity
+                        onPress={() => loadMessages(true)}
+                        disabled={olderMessagesLoading}
+                        style={s.historyNotice}
+                        accessibilityRole="button"
+                        testID="deal-chat-load-older"
+                      >
+                        <Text style={[s.loadingText, { color: colors.text }]}>
+                          {olderMessagesLoading ? t('chat_history_loading') : t('chat_history_load_older')}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
                     ListEmptyComponent={historyStatus === 'error' ? null : (
                       <Text style={[s.emptyText, { color: colors.textMuted }]} testID="deal-chat-history-state">
                         {historyStatus === 'ready' ? ui.noMessages : t('chat_history_loading')}

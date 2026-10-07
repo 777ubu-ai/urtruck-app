@@ -165,8 +165,8 @@ export const chatAPI = {
     return r.json();
   },
 
-  async messages(roomId, limit = 100) {
-    const r = await authedFetch(`${BASE}/messages/${roomId}?limit=${limit}`, { headers: await headers() });
+  async messages(roomId, limit = 100, offset = 0) {
+    const r = await authedFetch(`${BASE}/messages/${roomId}?limit=${limit}&offset=${offset}`, { headers: await headers() });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
       const error = new Error(body?.detail || `messages failed ${r.status}`);
