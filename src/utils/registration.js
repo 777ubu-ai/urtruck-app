@@ -85,7 +85,7 @@ async function appendImageFile(form, uri, name) {
 
 export const regAPI = {
   // ─── Lazy registration ───
-  async ensureGuest() {
+  async ensureGuest({ persist = true } = {}) {
     // Если уже есть токен — вернуть его
     const existing = await storage.get(TOKEN_KEY);
     if (existing) return { token: existing };
@@ -93,8 +93,10 @@ export const regAPI = {
     const r = await fetch(`${BASE}/guest`, { method: 'POST' });
     const data = await r.json();
     if (data.token) {
-      await storage.set(TOKEN_KEY, data.token);
-      await storage.set(LEVEL_KEY, String(data.verification_level || 0));
+      if (persist) {
+        await storage.set(TOKEN_KEY, data.token);
+        await storage.set(LEVEL_KEY, String(data.verification_level || 0));
+      }
     }
     return data;
   },
