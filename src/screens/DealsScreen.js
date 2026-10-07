@@ -310,7 +310,9 @@ export default function DealsScreen({ navigation, route }) {
     setLoadError(false);
     try {
       const dashboard = await marketAPI.myDashboard();
-      if (!dashboard) throw new Error('empty_dashboard');
+      if (!dashboard || dashboard.serverError || dashboard.authRequired || !Array.isArray(dashboard.my_deals)) {
+        throw new Error('invalid_dashboard');
+      }
       setAllDeals(dashboard.my_deals || []);
       setIncomingBids(dashboard.incoming_bids || []);
       setMyBids(dashboard.my_bids || []);
@@ -813,7 +815,12 @@ export default function DealsScreen({ navigation, route }) {
           data={visibleItems}
           keyExtractor={(item) => `${item.kind}-${item.data.id}`}
           renderItem={renderItem}
-          ListHeaderComponent={listHeader}
+          ListHeaderComponent={(
+            <>
+              {listHeader}
+              {loadError ? <Text testID="deals-refresh-error" style={[styles.errorText, { color: palette.textMuted }]}>{copy.loadError}</Text> : null}
+            </>
+          )}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           refreshControl={
