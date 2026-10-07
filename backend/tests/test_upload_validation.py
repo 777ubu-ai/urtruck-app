@@ -89,6 +89,8 @@ def test_sanitize_original_name_strips_traversal_and_controls():
     assert "/" not in uv.sanitize_original_name("a/b/c.pdf", "pdf")
     assert uv.sanitize_original_name("", "pdf") == "document.pdf"
     assert uv.sanitize_original_name("Платёжка (2).pdf", "pdf") == "Платёжка (2).pdf"
+    assert uv.sanitize_original_name("QA2%20acceptance%20sample.pdf", "pdf") == "QA2 acceptance sample.pdf"
+    assert uv.sanitize_original_name("%2e%2e%2fsecrets.pdf", "pdf") == "secrets.pdf"
     assert len(uv.sanitize_original_name("x" * 500, "pdf")) == 180
 
 
