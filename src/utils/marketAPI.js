@@ -504,6 +504,7 @@ export const marketAPI = {
           console.warn('[myDashboard] server error:', r.status);
           return { ...empty, serverError: true };
         }
+        if (!Array.isArray(d?.my_deals)) return { ...empty, serverError: true };
         return { ...empty, ...d };
       } catch (e) {
         console.warn('[myDashboard] fetch error:', e.message);
@@ -513,8 +514,10 @@ export const marketAPI = {
     dashboardInFlight = load();
     try {
       const result = await dashboardInFlight;
-      dashboardCache = result;
-      dashboardCacheAt = Date.now();
+      if (!result.serverError && !result.authRequired) {
+        dashboardCache = result;
+        dashboardCacheAt = Date.now();
+      }
       return result;
     } finally {
       dashboardInFlight = null;
