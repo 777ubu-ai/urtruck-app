@@ -59,14 +59,11 @@ test('foreground push suppression is source-of-truth aware for open chat rooms o
   assert.match(pushRuntime, /shouldShowAlert: true/);
 });
 
-test('deal workspace tracks active chat by navigation focus rather than mounted stack lifetime', () => {
+test('deal workspace suppresses push only for its focused foreground room', () => {
   assert.match(dealWorkspace, /useFocusEffect/);
-  assert.match(dealWorkspace, /setActiveRoom\(roomId\)/);
-  assert.match(dealWorkspace, /return \(\) => setActiveRoom\(null\)/);
-  const pollStart = dealWorkspace.indexOf('React.useEffect(() => {\n    if (!roomId) return undefined;\n    loadMessages();');
-  const focusStart = dealWorkspace.indexOf('useFocusEffect(', pollStart);
-  assert.ok(pollStart >= 0 && focusStart > pollStart);
-  assert.doesNotMatch(dealWorkspace.slice(pollStart, focusStart), /setActiveRoom/);
+  assert.match(dealWorkspace, /setActiveRoom\(chatAppActiveRef\.current \? roomId : null\)/);
+  assert.match(dealWorkspace, /chatFocusedRef\.current = false;[\s\S]*?clearInterval\(timer\);[\s\S]*?setActiveRoom\(null\)/);
+  assert.match(dealWorkspace, /if \(!roomId \|\| !chatFocusedRef\.current \|\| !chatAppActiveRef\.current\) return/);
 });
 
 test('open-chat suppression still records native receipt before presentation policy returns', () => {

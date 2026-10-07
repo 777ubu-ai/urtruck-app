@@ -1,18 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { reconcileChatMessages } from '../../src/utils/chatMessageListState.js';
 
 // Исполняем реальное тело callback экрана, а не копию алгоритма загрузки.
 const source = readFileSync(new URL('../../src/screens/DealWorkspaceScreenV2.js', import.meta.url), 'utf8');
-const body = source.split('const loadMessages = React.useCallback(async () => {')[1]
-  .split('}, [roomId, session?.user?.id, lang, voiceText, voiceScope]);')[0];
+const body = source.match(/const loadMessages = React\.useCallback\(async \([^)]*\) => \{([\s\S]*?)\n  \}, \[roomId, session\?\.user\?\.id, lang, voiceText, voiceScope[^\]]*\]\);/)[1];
+const historyModule = new URL('../../src/utils/chatHistoryPages.js', import.meta.url);
+const createPages = existsSync(historyModule) ? (await import(historyModule)).createChatHistoryPages : null;
+const mediaModule = new URL('../../src/utils/attachmentUrlCache.js', import.meta.url);
+const cacheIssuedAttachmentUrl = existsSync(mediaModule) ? (await import(mediaModule)).cacheIssuedAttachmentUrl : null;
 
 function harness(fetchMessages) {
   const state = { messages: [{ id: 'existing' }], status: null };
   const voiceText = { hydrate() {} };
   const env = {
     roomId: 'room', voiceScope: 'room/user', voiceText,
+    chatFocusedRef: { current: true }, chatAppActiveRef: { current: true },
+    historyPages: createPages?.(), setHasOlderMessages() {}, setOlderMessagesLoading() {}, cacheIssuedAttachmentUrl,
     historyRequestRef: { current: null }, mounted: { current: true },
     voiceStateRef: { current: voiceText },
     chatAPI: { messages: fetchMessages, listAttachments: async () => ({ attachments: [] }) },
@@ -28,7 +33,7 @@ function harness(fetchMessages) {
     setHistoryState: (value) => { state.status = value.status; },
     setShowJumpLatest() {}, setUnreadCount() {}, notifyChatRead() {}, refreshAppIconBadge() {},
   };
-  const load = new Function(...Object.keys(env), `return async function() { ${body} };`)(...Object.values(env));
+  const load = new Function(...Object.keys(env), `return async function(older = false) { ${body} };`)(...Object.values(env));
   return { env, state, load };
 }
 
