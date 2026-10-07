@@ -47,6 +47,32 @@ test('older normal request cannot overwrite the cache from forced refresh', asyn
   assert.equal(h.calls.length, 2);
 });
 
+test('coalesced dashboard callers reject a previous account response', async () => {
+  for (const identity of [null, 'fixture-B']) {
+    const h = harness();
+    const first = h.fetch(); await tick();
+    const second = h.fetch(); await tick();
+    assert.equal(h.calls.length, 1, 'same-account reads share one HTTP request');
+    h.identity(identity);
+    h.calls[0]('private-A');
+    for (const result of await Promise.all([first, second])) {
+      assert.equal(result.authRequired, true);
+      assert.deepEqual(result.my_deals, []);
+    }
+  }
+});
+
+test('coalesced callers still share successful same-account dashboard data', async () => {
+  const h = harness();
+  const first = h.fetch(); await tick();
+  const second = h.fetch(); await tick();
+  assert.equal(h.calls.length, 1);
+  h.calls[0]('A');
+  for (const result of await Promise.all([first, second])) {
+    assert.equal(result.my_deals[0].id, 'A');
+  }
+});
+
 test('actual Deals load ignores old dashboard and notification responses', async () => {
   const source = readFileSync('src/screens/DealsScreen.js', 'utf8');
   const body = source.split(/const load = useCallback\(async \(\{ force = false \} = \{\}\) => \{/)[1].split('}, []);')[0];

@@ -499,7 +499,14 @@ export const marketAPI = {
     if (!force && dashboardCache && (Date.now() - dashboardCacheAt) < DASHBOARD_CACHE_MS) {
       return dashboardCache;
     }
-    if (!force && dashboardInFlight) return dashboardInFlight;
+    if (!force && dashboardInFlight) {
+      const result = await dashboardInFlight;
+      const currentHeaders = await headers();
+      if (currentHeaders.Authorization !== scope || dashboardScope !== scope) {
+        return { ...empty, authRequired: true, stale: true };
+      }
+      return result;
+    }
     const revision = ++dashboardRevision;
     const load = async () => {
       try {
