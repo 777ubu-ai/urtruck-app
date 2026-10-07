@@ -1,9 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { normalizeComposerHeight, reconcileChatMessages } from '../../src/utils/chatMessageListState.js';
 
 const source = readFileSync(new URL('../../src/screens/DealWorkspaceScreenV2.js', import.meta.url), 'utf8');
+const loadMarker = source.match(/const loadMessages = React\.useCallback\(async \([^)]*\) => \{/)[0];
+function pollingBody() {
+  const target = source.indexOf('const timer = setInterval(loadMessages, 3000)');
+  const marker = source.includes('// GET /messages') ? 'React.useCallback(() => {' : 'React.useEffect(() => {';
+  return blockAfter(marker, source.lastIndexOf(marker, target));
+}
+const historyModule = new URL('../../src/utils/chatHistoryPages.js', import.meta.url);
+const createHistoryPages = existsSync(historyModule) ? (await import(historyModule)).createChatHistoryPages : null;
+const mediaModule = new URL('../../src/utils/attachmentUrlCache.js', import.meta.url);
+const cacheIssuedAttachmentUrl = existsSync(mediaModule) ? (await import(mediaModule)).cacheIssuedAttachmentUrl : null;
 const MIN = 44;
 const MAX = 104;
 const PADDING = 8;
@@ -145,8 +155,7 @@ test('FlatList content measurement consumes one pending latest-message scroll on
 });
 
 test('polling leaves the draft and measured composer state untouched; focus keeps send control wired', () => {
-  const loadStart = source.indexOf('const loadMessages = React.useCallback(async () => {');
-  const loadBody = blockAfter('const loadMessages = React.useCallback(async () => {', loadStart);
+  const loadBody = blockAfter(loadMarker);
   assert.doesNotMatch(loadBody, /setInput\(|inputValueRef\.current\s*=/,
     'polling must not rewrite the active draft');
   assert.match(source, /<TextInput[\s\S]*?value=\{input\}[\s\S]*?onFocus=\{onComposerFocus\}/);
@@ -171,33 +180,30 @@ test('real text change and 3s/foreground polling preserve the active draft and h
   const draft = { value: '', height: 88, inputInstance: 'focused-input' };
   const chatAPI = { typing: () => {} };
   const changeBody = blockAfter('onChangeText={(value) => {', source.indexOf('ref={inputRef}'));
-  const onChangeText = new Function('value', 'inputValueRef', 'setInput', 'roomId', 'chatAPI', changeBody);
-  onChangeText('draft with four lines', inputValueRef, (value) => { draft.value = value; }, 'room', chatAPI);
+  const onChangeText = new Function('value', 'inputValueRef', 'setInput', 'roomId', 'chatAPI', 'chatDraft', changeBody);
+  onChangeText('draft with four lines', inputValueRef, (value) => { draft.value = value; }, 'room', chatAPI, { set() {} });
   assert.equal(draft.value, 'draft with four lines');
   assert.equal(inputValueRef.current, draft.value);
 
-  const effectTarget = source.indexOf('const timer = setInterval(loadMessages, 3000)');
-  const effectStart = source.lastIndexOf('React.useEffect(() => {', effectTarget);
-  assert.ok(effectStart >= 0, 'message polling effect exists');
-  const effectBody = blockAfter('React.useEffect(() => {', effectStart);
+  const effectBody = pollingBody();
   let polls = 0;
   let intervalCallback;
   let intervalMs;
   let intervalCleared = false;
   let appStateCallback;
   let listenerRemoved = false;
-  const AppState = { addEventListener(name, callback) {
+  const AppState = { currentState: 'active', addEventListener(name, callback) {
     assert.equal(name, 'change');
     appStateCallback = callback;
     return { remove() { listenerRemoved = true; } };
   } };
   const cleanup = new Function(
-    'roomId', 'loadMessages', 'setInterval', 'clearInterval', 'AppState', effectBody,
+    'roomId', 'loadMessages', 'setInterval', 'clearInterval', 'AppState', 'chatFocusedRef', 'chatAppActiveRef', 'setActiveRoom', effectBody,
   )('room-1', () => { polls += 1; }, (callback, ms) => {
     intervalCallback = callback;
     intervalMs = ms;
     return 'timer-1';
-  }, (timer) => { intervalCleared = timer === 'timer-1'; }, AppState);
+  }, (timer) => { intervalCleared = timer === 'timer-1'; }, AppState, { current: false }, { current: true }, () => {});
 
   assert.equal(polls, 1, 'opening the room loads messages immediately');
   assert.equal(intervalMs, 3000);
@@ -246,15 +252,16 @@ test('real loadMessages polling reconciles an incoming message without touching 
   };
 
   const inputChange = blockAfter('onChangeText={(value) => {', source.indexOf('ref={inputRef}'));
-  new Function('value', 'inputValueRef', 'setInput', 'roomId', 'chatAPI', inputChange)(
-    'draft typed during polling', inputValueRef, (value) => { state.draft = value; }, 'room-actual', chatAPI,
+  new Function('value', 'inputValueRef', 'setInput', 'roomId', 'chatAPI', 'chatDraft', inputChange)(
+    'draft typed during polling', inputValueRef, (value) => { state.draft = value; }, 'room-actual', chatAPI, { set() {} },
   );
   assert.equal(inputValueRef.current, state.draft);
 
-  const loadMarker = 'const loadMessages = React.useCallback(async () => {';
   const loadBody = blockAfter(loadMarker);
   const context = {
     roomId: 'room-actual',
+    chatFocusedRef: { current: false }, chatAppActiveRef: { current: true },
+    historyPages: createHistoryPages?.(), setHasOlderMessages() {}, setOlderMessagesLoading() {}, cacheIssuedAttachmentUrl,
     historyRequestRef: { current: null },
     voiceText: { hydrate() {} },
     chatAPI,
@@ -285,30 +292,29 @@ test('real loadMessages polling reconciles an incoming message without touching 
   const loadMessages = new Function('ctx', `
     const {
       roomId, historyRequestRef, voiceText, chatAPI, mounted, voiceStateRef, session,
+      chatFocusedRef, chatAppActiveRef, historyPages, setHasOlderMessages, setOlderMessagesLoading, cacheIssuedAttachmentUrl,
       resolveAttachment, attachmentUrlCache, lang, localizeSystemMessage, fmtMessageTime,
       voiceScope, reconcileChatMessages, documentKindFromFile, setMessages, userScrolledAwayRef, nearBottomRef,
       pendingAutoScrollRef,
       initialMessagesLoadedRef, setShowJumpLatest, scheduleAutoScrollRef, setUnreadCount,
       notifyChatRead, refreshAppIconBadge, setHistoryState,
     } = ctx;
-    return async function loadMessages() { ${loadBody} };
+    return async function loadMessages(older = false) { ${loadBody} };
   `)(context);
 
-  const effectTarget = source.indexOf('const timer = setInterval(loadMessages, 3000)');
-  const effectStart = source.lastIndexOf('React.useEffect(() => {', effectTarget);
-  const effectBody = blockAfter('React.useEffect(() => {', effectStart);
-  const AppState = { addEventListener(name, callback) {
+  const effectBody = pollingBody();
+  const AppState = { currentState: 'active', addEventListener(name, callback) {
     assert.equal(name, 'change');
     appStateCallback = callback;
     return { remove() { appStateListenerRemoved = true; } };
   } };
   const cleanup = new Function(
-    'roomId', 'loadMessages', 'setInterval', 'clearInterval', 'AppState', effectBody,
+    'roomId', 'loadMessages', 'setInterval', 'clearInterval', 'AppState', 'chatFocusedRef', 'chatAppActiveRef', 'setActiveRoom', effectBody,
   )('room-actual', loadMessages, (callback, delay) => {
     intervalCallback = callback;
     intervalDelay = delay;
     return 'poll-timer';
-  }, (timer) => { intervalCleared = timer === 'poll-timer'; }, AppState);
+  }, (timer) => { intervalCleared = timer === 'poll-timer'; }, AppState, context.chatFocusedRef, context.chatAppActiveRef, () => {});
   const flushLoad = () => new Promise((resolve) => setImmediate(resolve));
 
   await flushLoad();
