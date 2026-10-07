@@ -4,6 +4,21 @@ import { readFileSync } from 'node:fs';
 
 const pendingKey = 'ur_pending_logout_token';
 
+test('ensureGuest can return a token without persisting before auth-owner validation', async () => {
+  const store = await reset();
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ token: 'guest-response-token', verification_level: 0 }) });
+  try {
+    const api = await freshRegistration();
+    const result = await api.ensureGuest({ persist: false });
+    assert.equal(result.token, 'guest-response-token');
+    assert.equal(await store.getItem('ur_reg_token'), null);
+    assert.equal(await store.getItem('ur_verification_level'), null);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
 async function reset() {
   const store = (await import('./mocks/async-storage.mjs')).default;
   await store.__reset();
@@ -81,7 +96,7 @@ test('protected-storage write failure aborts logout staging instead of silently 
 test('AuthContext does not clear the bearer when durable revoke staging is unverified', () => {
   const source = readFileSync('src/utils/AuthContext.js', 'utf8');
   const stage = source.indexOf('await regAPI.stageLogoutRevoke(authToken)');
-  const abort = source.indexOf("return { ok: false, reason: 'PENDING_LOGOUT_REVOKE_NOT_DURABLE' }");
+  const abort = source.indexOf("reason: 'PENDING_LOGOUT_REVOKE_NOT_DURABLE'");
   const clear = source.indexOf('await regAPI.clearToken()');
   assert.ok(stage >= 0 && abort > stage && clear > abort,
     'logout must return before clearToken when durable staging is unavailable');

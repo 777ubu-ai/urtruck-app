@@ -1986,10 +1986,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                               reportedHeight,
                               COMPOSER_INPUT_MIN_HEIGHT,
                               COMPOSER_INPUT_MAX_HEIGHT,
-                              COMPOSER_INPUT_VERTICAL_PADDING,
+                              // Fabric iOS уже включает textContainerInset в contentSize.
+                              // Повторное добавление отступа превращает измерение frame
+                              // в следующий, больший height даже без изменения текста.
+                              Platform.OS === 'ios' ? 0 : COMPOSER_INPUT_VERTICAL_PADDING,
                             );
-                            // iOS may emit a stale contentSize during polling.
-                            // Ignore it instead of resizing the focused composer.
+                            // Пропускаем повреждённое измерение; одинаковую высоту
+                            // отсекает setComposerHeight без нового render.
                             if (nextHeight != null) setComposerHeight(nextHeight);
                           }}
                           multiline
