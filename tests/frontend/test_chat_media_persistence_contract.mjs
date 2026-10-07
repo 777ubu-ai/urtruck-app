@@ -30,15 +30,11 @@ test('native photo, voice, and document uploads use Expo File/Blob multipart par
   assert.doesNotMatch(chatApi, /form\.append\('file', \{\s*uri,/);
 });
 
-test('a signed photo/document URL is cached per message id, not re-fetched fresh on every 3s poll', () => {
-  // The exact bug class this guards against: ChatScreen.js already fixed it
-  // once (attachmentUrlCache); DealWorkspaceScreenV2.js never had the fix and
-  // was flickering every poll for any deal with a photo message.
+test('photo/voice and document sources use the bounded expiry-aware cache', () => {
   assert.match(workspace, /attachmentUrlCache = React\.useRef\(new Map\(\)\)/);
-  assert.match(workspace, /attachmentUrlCache\.current\.get\(cacheKey\) \|\| issuedUrl/);
-  assert.match(workspace, /attachmentUrlCache\.current\.set\(cacheKey, mediaUrl\)/);
-  // The cache must also cover documents, not just photo/voice.
-  assert.match(workspace, /attachmentUrlCache\.current\.set\(cacheKey, docUrl\)/);
+  assert.match(workspace, /const mediaUrl = cacheIssuedAttachmentUrl\(attachmentUrlCache\.current, cacheKey, issuedUrl\)/);
+  assert.match(workspace, /const docUrl = cacheIssuedAttachmentUrl\(attachmentUrlCache\.current, cacheKey, issuedUrl\)/);
+  assert.doesNotMatch(workspace, /attachmentUrlCache\.current\.get\(cacheKey\) \|\| issuedUrl/);
 });
 
 test('tapping a photo bubble opens a full-screen viewer with an explicit close button', () => {
