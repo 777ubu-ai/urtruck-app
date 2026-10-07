@@ -622,11 +622,10 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
             if not created:
                 raise RuntimeError("voice_processing_job_not_created")
 
-    event_key = f"chat:{room_id}:msg:{message_id}"
-    # Bell is a durable inbox, independent of provider delivery. Persist the
-    # event before the asynchronous push attempt; the event key makes a
-    # retried client request idempotent along with client_msg_id above.
-    try:
+        # A delivered message and its in-app event must commit together. If
+        # Bell persistence fails, rollback also removes the message so the
+        # same client_msg_id can safely retry the entire transaction.
+        event_key = f"chat:{room_id}:msg:{message_id}"
         sender_name = user.get("full_name") or user.get("phone") or "Пользователь"
         create_notification(
             recipient_id,
@@ -636,9 +635,8 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
             "💬",
             url=f"/chats/{room_id}",
             event_key=event_key,
+            conn=c,
         )
-    except Exception as exc:
-        print(f"[chat-notification] failed room={room_id}: {type(exc).__name__}", flush=True)
 
     # Push получателю
     # PR-C2 (P0-2): kind='chat' — push_sender вычислит unread badge
