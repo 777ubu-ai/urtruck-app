@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { normalizeComposerHeight } from '../../src/utils/chatMessageListState.js';
+import { normalizeComposerHeight, reconcileChatMessages } from '../../src/utils/chatMessageListState.js';
 
 const source = readFileSync(new URL('../../src/screens/DealWorkspaceScreenV2.js', import.meta.url), 'utf8');
 const MIN = 44;
@@ -211,4 +211,157 @@ test('real text change and 3s/foreground polling preserve the active draft and h
   cleanup();
   assert.equal(intervalCleared, true);
   assert.equal(listenerRemoved, true);
+});
+
+test('real loadMessages polling reconciles an incoming message without touching the focused draft or over-scrolling', async () => {
+  const firstMessages = [{
+    id: 1, sender_id: 'other-user', text: 'existing', created_at: '2026-10-07T10:00:00Z', is_read: true,
+  }];
+  const withIncoming = [...firstMessages, {
+    id: 2, sender_id: 'other-user', text: 'incoming during draft', created_at: '2026-10-07T10:01:00Z', is_read: false,
+  }];
+  const withAnotherIncoming = [...withIncoming, {
+    id: 3, sender_id: 'other-user', text: 'incoming while reading history', created_at: '2026-10-07T10:02:00Z', is_read: false,
+  }];
+  const responses = [firstMessages, firstMessages, withIncoming, withIncoming, withAnotherIncoming];
+  let apiCalls = 0;
+  let currentMessages = [];
+  let autoscrolls = 0;
+  let intervalCallback;
+  let intervalDelay;
+  let appStateCallback;
+  let intervalCleared = false;
+  let appStateListenerRemoved = false;
+  let lastHistoryState = null;
+  const state = { draft: '', height: 88, inputInstance: { id: 'focused-input' } };
+  const inputValueRef = { current: '' };
+  const chatAPI = {
+    typing() {},
+    async messages(roomId) {
+      assert.equal(roomId, 'room-actual');
+      apiCalls += 1;
+      return { messages: responses.shift() };
+    },
+    async listAttachments() { return { attachments: [] }; },
+  };
+
+  const inputChange = blockAfter('onChangeText={(value) => {', source.indexOf('ref={inputRef}'));
+  new Function('value', 'inputValueRef', 'setInput', 'roomId', 'chatAPI', inputChange)(
+    'draft typed during polling', inputValueRef, (value) => { state.draft = value; }, 'room-actual', chatAPI,
+  );
+  assert.equal(inputValueRef.current, state.draft);
+
+  const loadMarker = 'const loadMessages = React.useCallback(async () => {';
+  const loadBody = blockAfter(loadMarker);
+  const context = {
+    roomId: 'room-actual',
+    historyRequestRef: { current: null },
+    voiceText: { hydrate() {} },
+    chatAPI,
+    mounted: { current: true },
+    voiceStateRef: { current: null },
+    session: { user: { id: 'me' } },
+    resolveAttachment: (value) => value,
+    attachmentUrlCache: { current: new Map() },
+    lang: 'ru',
+    localizeSystemMessage: (value) => value,
+    fmtMessageTime: (value) => value,
+    voiceScope: 'deal:room-actual',
+    reconcileChatMessages,
+    documentKindFromFile() { throw new Error('no documents expected in this fixture'); },
+    setMessages(updater) { currentMessages = updater(currentMessages); },
+    userScrolledAwayRef: { current: false },
+    nearBottomRef: { current: true },
+    pendingAutoScrollRef: { current: false },
+    initialMessagesLoadedRef: { current: false },
+    setShowJumpLatest() {},
+    scheduleAutoScrollRef: { current() { autoscrolls += 1; } },
+    setUnreadCount() {},
+    notifyChatRead() {},
+    refreshAppIconBadge() {},
+    setHistoryState(value) { lastHistoryState = value; },
+  };
+  context.voiceStateRef.current = context.voiceText;
+  const loadMessages = new Function('ctx', `
+    const {
+      roomId, historyRequestRef, voiceText, chatAPI, mounted, voiceStateRef, session,
+      resolveAttachment, attachmentUrlCache, lang, localizeSystemMessage, fmtMessageTime,
+      voiceScope, reconcileChatMessages, documentKindFromFile, setMessages, userScrolledAwayRef, nearBottomRef,
+      pendingAutoScrollRef,
+      initialMessagesLoadedRef, setShowJumpLatest, scheduleAutoScrollRef, setUnreadCount,
+      notifyChatRead, refreshAppIconBadge, setHistoryState,
+    } = ctx;
+    return async function loadMessages() { ${loadBody} };
+  `)(context);
+
+  const effectTarget = source.indexOf('const timer = setInterval(loadMessages, 3000)');
+  const effectStart = source.lastIndexOf('React.useEffect(() => {', effectTarget);
+  const effectBody = blockAfter('React.useEffect(() => {', effectStart);
+  const AppState = { addEventListener(name, callback) {
+    assert.equal(name, 'change');
+    appStateCallback = callback;
+    return { remove() { appStateListenerRemoved = true; } };
+  } };
+  const cleanup = new Function(
+    'roomId', 'loadMessages', 'setInterval', 'clearInterval', 'AppState', effectBody,
+  )('room-actual', loadMessages, (callback, delay) => {
+    intervalCallback = callback;
+    intervalDelay = delay;
+    return 'poll-timer';
+  }, (timer) => { intervalCleared = timer === 'poll-timer'; }, AppState);
+  const flushLoad = () => new Promise((resolve) => setImmediate(resolve));
+
+  await flushLoad();
+  assert.equal(apiCalls, 1, 'the actual effect performs the initial real loadMessages call');
+  assert.equal(lastHistoryState?.status, 'ready', 'the real loadMessages call completes successfully');
+  assert.equal(currentMessages.length, 1);
+  assert.equal(autoscrolls, 1, 'initial load performs exactly one anchoring scroll');
+  assert.equal(intervalDelay, 3000);
+
+  intervalCallback();
+  await flushLoad();
+  assert.equal(apiCalls, 2, 'first 3s timer invokes the real loadMessages function again');
+  assert.equal(autoscrolls, 1, 'unchanged polling does not schedule another scroll');
+
+  appStateCallback('background');
+  await flushLoad();
+  assert.equal(apiCalls, 2, 'background transition does not start another history request');
+  appStateCallback('active');
+  await flushLoad();
+  assert.equal(apiCalls, 3, 'foreground refresh calls real loadMessages while the draft is active');
+  assert.equal(currentMessages.length, 2, 'new server message is reconciled into the real message state');
+  assert.equal(context.pendingAutoScrollRef.current, true,
+    'new incoming message marks one pending scroll for the next list layout');
+  assert.equal(context.userScrolledAwayRef.current, false);
+  assert.equal(context.nearBottomRef.current, true);
+
+  const listStart = source.indexOf('<FlatList');
+  const listBody = blockAfter('onContentSizeChange={() => {', listStart);
+  new Function(
+    'pendingAutoScrollRef', 'userScrolledAwayRef', 'nearBottomRef', 'scheduleAutoScrollRef', listBody,
+  )(context.pendingAutoScrollRef, context.userScrolledAwayRef, context.nearBottomRef, context.scheduleAutoScrollRef);
+  assert.equal(context.pendingAutoScrollRef.current, false);
+  assert.equal(autoscrolls, 2, 'one incoming message is followed by one list-layout scroll');
+
+  context.userScrolledAwayRef.current = true;
+  context.nearBottomRef.current = false;
+  intervalCallback();
+  await flushLoad();
+  assert.equal(apiCalls, 4);
+  assert.equal(currentMessages.length, 2);
+  assert.equal(autoscrolls, 2, 'repeat poll while reading history does not yank the list');
+  intervalCallback();
+  await flushLoad();
+  assert.equal(apiCalls, 5);
+  assert.equal(currentMessages.length, 3, 'the later incoming message is still loaded');
+  assert.equal(context.pendingAutoScrollRef.current, false);
+  assert.equal(autoscrolls, 2, 'incoming message while scrolled away does not trigger extra autoscroll');
+
+  assert.equal(state.draft, 'draft typed during polling');
+  assert.equal(inputValueRef.current, state.draft);
+  assert.equal(state.height, 88);
+  assert.equal(state.inputInstance.id, 'focused-input', 'polling keeps the focused input instance stable');
+  cleanup();
+  assert.equal(intervalCleared, true);
+  assert.equal(appStateListenerRemoved, true);
 });
