@@ -62,16 +62,6 @@ const durationTextFromSeconds = (value, t) => {
   return `${minutes} ${m}`;
 };
 
-const YANDEX_PROVIDER_OVERLAY_CSS = `
-  [class*="gotoymaps"],
-  [class*="map-copyrights-promo"],
-  [class*="copyrights-pane"],
-  [class*="copyright_logo"] {
-    display: none !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-  }
-`;
 
 function StaticRouteFallback({ livePoint, plannedPoints, reason }) {
   const { t } = useI18n();
@@ -213,14 +203,11 @@ function YandexMap({ livePoint, plannedPoints, serverRoute, onRouteSummary }) {
   }, [mountAttempt]);
 
   React.useEffect(() => {
-    if (typeof document === "undefined") return undefined;
-    const id = "urtruck-yandex-open-block-polish";
-    if (document.getElementById(id)) return undefined;
-    const style = document.createElement("style");
-    style.id = id;
-    style.textContent = YANDEX_PROVIDER_OVERLAY_CSS;
-    document.head.appendChild(style);
-    return undefined;
+    // Убираем только собственный legacy style, скрывавший attribution.
+    // Логотип, copyright и provider controls оставляем провайдеру карты.
+    if (typeof document !== "undefined") {
+      document.getElementById("urtruck-yandex-open-block-polish")?.remove();
+    }
   }, []);
 
   React.useEffect(() => {
