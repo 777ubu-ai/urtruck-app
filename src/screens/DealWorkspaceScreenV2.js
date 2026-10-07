@@ -442,6 +442,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setInputHeight(next);
   }, []);
   const mounted = React.useRef(true);
+  const tripActionScope = React.useRef({ focused: false, generation: 0 });
+  const tripStartBusy = React.useRef(false);
+  useFocusEffect(React.useCallback(() => {
+    tripActionScope.current.focused = true;
+    return () => { tripActionScope.current.focused = false; tripActionScope.current.generation++; };
+  }, []));
   const recordStartRef = React.useRef(0);
   const recordStopRequestedRef = React.useRef(false);
   const recordAutoStoppedRef = React.useRef(false);
@@ -879,26 +885,40 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, [dealId, statusLoading, refreshDeal, refreshTimeline, toast, t]);
 
   const startTrip = React.useCallback(async () => {
-    if (!dealId || trackingLoading || statusLoading) return;
+    if (!dealId || trackingLoading || statusLoading || tripStartBusy.current || !tripActionScope.current.focused) return;
+    const generation = tripActionScope.current.generation;
+    const isCurrent = () => mounted.current && tripActionScope.current.focused
+      && tripActionScope.current.generation === generation;
+    tripStartBusy.current = true;
     setTrackingLoading(true);
-    const permission = await ensureBackgroundLocationPermission();
-    setTrackingLoading(false);
-    if (!permission.ok) { toast(t('track_permission_needed'), 'error'); return; }
-    const health = await getLocationHealth();
-    if (health.state !== 'ready') {
-      const message = health.state === 'system_disabled' ? t('gps_system_disabled')
-        : health.state === 'no_fix' ? t('gps_no_fix')
-          : t('track_permission_needed');
-      toast(message, 'error');
-      return;
-    }
-    const result = await changeDealStatus('in_progress');
-    if (result?.ok) {
-      const point = await getCurrentLocationPayload();
-      if (point) {
-        await marketAPI.sendDealLocation(dealId, point);
-        if (mounted.current) setLocation(point);
+    try {
+      const permission = await ensureBackgroundLocationPermission();
+      if (!isCurrent()) return;
+      if (!permission.ok) { toast(t('track_permission_needed'), 'error'); return; }
+      const health = await getLocationHealth();
+      if (!isCurrent()) return;
+      if (health.state !== 'ready') {
+        const message = health.state === 'system_disabled' ? t('gps_system_disabled')
+          : health.state === 'no_fix' ? t('gps_no_fix')
+            : t('track_permission_needed');
+        toast(message, 'error');
+        return;
       }
+      const result = await changeDealStatus('in_progress');
+      if (!isCurrent()) return;
+      if (result?.ok) {
+        const point = await getCurrentLocationPayload();
+        if (!isCurrent()) return;
+        if (point) {
+          await marketAPI.sendDealLocation(dealId, point);
+          if (isCurrent()) setLocation(point);
+        }
+      }
+    } catch {
+      if (isCurrent()) toast(t('no_connection'), 'error');
+    } finally {
+      tripStartBusy.current = false;
+      if (mounted.current) setTrackingLoading(false);
     }
   }, [dealId, trackingLoading, statusLoading, changeDealStatus, toast, t]);
 
