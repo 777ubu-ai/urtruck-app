@@ -49,6 +49,12 @@ def test_expiry_atomic_events_for_both_participants_and_retry():
     assert c.execute('SELECT COUNT(*) FROM push_outbox').fetchone()[0] == 2
 
 
+def test_expired_bid_event_is_registered_in_push_catalog():
+    # The expiry transaction enqueues this typed event; keep the catalog's
+    # declared event inventory aligned with the producer.
+    assert "bid.expired" in push_gateway.PUSH_EVENT_CATALOG
+
+
 def test_queue_failure_rolls_back_expiry_and_bell(monkeypatch):
     c = expiry_db()
     def failure(*a,**k): raise RuntimeError('outbox unavailable')

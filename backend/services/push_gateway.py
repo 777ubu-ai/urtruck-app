@@ -69,6 +69,7 @@ PUSH_EVENT_CATALOG = {
     "bid.accepted",
     "bid.rejected",
     "bid.withdrawn",
+    "bid.expired",
     "chat.message",
     "chat.voice",
     "deal.status.in_progress",
