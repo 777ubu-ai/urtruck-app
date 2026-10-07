@@ -47,14 +47,14 @@ function createHeightSetter(initial = MIN) {
   };
 }
 
-function createContentSizeHandler(inputValueRef, setComposerHeight) {
+function createContentSizeHandler(inputValueRef, setComposerHeight, os = 'android') {
   const marker = 'onContentSizeChange={(event) => {';
   const body = blockAfter(marker, source.indexOf('ref={inputRef}'));
   return new Function(
-    'inputValueRef', 'setComposerHeight', 'normalizeComposerHeight',
+    'inputValueRef', 'setComposerHeight', 'normalizeComposerHeight', 'Platform',
     'COMPOSER_INPUT_MIN_HEIGHT', 'COMPOSER_INPUT_MAX_HEIGHT', 'COMPOSER_INPUT_VERTICAL_PADDING',
     `return (event) => { ${body} };`,
-  )(inputValueRef, setComposerHeight, normalizeComposerHeight, MIN, MAX, PADDING);
+  )(inputValueRef, setComposerHeight, normalizeComposerHeight, { OS: os }, MIN, MAX, PADDING);
 }
 
 test('real TextInput content callback grows through four lines, caps long text and resets on delete', () => {
@@ -79,6 +79,46 @@ test('real TextInput content callback grows through four lines, caps long text a
 
   measure('', 260);
   assert.equal(h.state.height, MIN, 'deleting to empty returns to compact height');
+});
+
+// Fabric iOS отправляет высоту уже с textContainerInset (padding 8 + 8).
+// Выполняется настоящий callback экрана; UIKit и физический focus здесь не эмулируются.
+test('iOS padded measurements grow, shrink and cap without adding padding a second time', () => {
+  const ref = { current: 'Ти' };
+  const h = createHeightSetter();
+  const invoke = createContentSizeHandler(ref, h.set, 'ios');
+  for (const [text, nativeHeight, expected] of [
+    ['Ти', 36, 44],
+    ['Ти\nИ', 56, 56],
+    ['1\n2\n3', 76, 76],
+    ['1\n2\n3\n4', 96, 96],
+    ['1\n2\n3\n4\n5', 116, MAX],
+    ['long pasted text '.repeat(100), 600, MAX],
+    ['Ти\nИ', 56, 56],
+    ['Ти', 36, MIN],
+    ['', 600, MIN],
+  ]) {
+    ref.current = text;
+    invoke({ nativeEvent: { contentSize: { height: nativeHeight } } });
+    assert.equal(h.state.height, expected, JSON.stringify(text));
+  }
+});
+
+test('iOS layout reports cannot grow an unchanged short draft from the assigned frame height', () => {
+  const ref = { current: 'Ти' };
+  const h = createHeightSetter();
+  const invoke = createContentSizeHandler(ref, h.set, 'ios');
+  // Это проверка устойчивости к повторному измерению заданного frame,
+  // а не утверждение о полученных с телефона native событиях.
+  for (let i = 0; i < 12; i += 1) {
+    invoke({ nativeEvent: { contentSize: { height: h.state.height } } });
+    assert.equal(h.state.height, MIN);
+  }
+  assert.equal(h.state.updates, 0);
+  for (const raw of [36, 44, 36, 44]) {
+    invoke({ nativeEvent: { contentSize: { height: raw } } });
+    assert.equal(h.state.height, MIN);
+  }
 });
 
 test('invalid measurements and duplicate measurements preserve the last valid height', () => {
