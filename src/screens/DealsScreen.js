@@ -716,6 +716,7 @@ export default function DealsScreen({ navigation, route }) {
       ]}
       testID="deals-minimal-header"
     >
+      {loadError ? <Text testID="deals-refresh-error" style={[styles.errorText, { color: palette.textMuted }]}>{copy.loadError}</Text> : null}
         <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="deals-minimal-header" menuTestID="deals-menu-btn" />
 
       <View style={styles.tabsRow} testID="deals-primary-tabs">
@@ -815,12 +816,7 @@ export default function DealsScreen({ navigation, route }) {
           data={visibleItems}
           keyExtractor={(item) => `${item.kind}-${item.data.id}`}
           renderItem={renderItem}
-          ListHeaderComponent={(
-            <>
-              {listHeader}
-              {loadError ? <Text testID="deals-refresh-error" style={[styles.errorText, { color: palette.textMuted }]}>{copy.loadError}</Text> : null}
-            </>
-          )}
+          ListHeaderComponent={listHeader}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           refreshControl={
