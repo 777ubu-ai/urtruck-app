@@ -19,19 +19,30 @@ import { storage } from './storage';
 const KEY = 'ur_chat_outbox';
 const MAX = 50;
 const listeners = new Set();
+let mutationTail = Promise.resolve();
+let flushTail = Promise.resolve();
+let queueGeneration = 0;
+
+// Сериализуем только storage-операции: сеть не блокирует enqueue.
+function withQueueLock(operation) {
+  const result = mutationTail.then(operation);
+  mutationTail = result.catch(() => {});
+  return result;
+}
 
 async function _load() {
-  try {
-    const raw = await storage.get(KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
+  const raw = await storage.get(KEY);
+  if (raw == null) return [];
+  const arr = JSON.parse(raw);
+  if (!Array.isArray(arr)) throw new Error('outbox_invalid_storage');
+  return arr;
 }
 
 async function _save(arr) {
-  try { await storage.set(KEY, JSON.stringify(arr.slice(-MAX))); } catch {}
+  const serialized = JSON.stringify(arr);
+  await storage.set(KEY, serialized);
+  // storage.set подавляет ошибки адаптера: проверяем фактическую запись.
+  if (await storage.get(KEY) !== serialized) throw new Error('outbox_storage_failed');
   for (const cb of listeners) { try { cb(arr.length); } catch {} }
 }
 
@@ -48,14 +59,17 @@ export async function enqueueOutbox(item, userId) {
   // на этом же устройстве» и раньше отправлял всё подряд под ЛЮБЫМ
   // залогиненным юзером (App.js гонял flush по факту hasToken, без проверки
   // владельца).
-  const arr = await _load();
-  if (arr.some((x) => x.clientId === item.clientId)) return;  // уже в очереди
-  arr.push({ clientId: item.clientId, payload: item.payload, userId: userId || null, ts: Date.now() });
-  await _save(arr);
+  return withQueueLock(async () => {
+    const arr = await _load();
+    if (arr.some((x) => x.clientId === item.clientId)) return;
+    if (arr.length >= MAX) throw new Error('outbox_full');
+    arr.push({ clientId: item.clientId, payload: item.payload, userId: userId || null, ts: Date.now() });
+    await _save(arr);
+  });
 }
 
 export async function outboxCount() {
-  return (await _load()).length;
+  return withQueueLock(async () => (await _load()).length);
 }
 
 // P0 30.08.2026 — «отравленная очередь». Раньше flushOutbox на ЛЮБОЙ ошибке
@@ -95,56 +109,57 @@ function isPermanentError(error) {
 // бы в очереди навсегда). Запись с ЧУЖИМ userId — не трогаем и не удаляем
 // («карантин»): она уедет либо когда её реальный владелец снова
 // залогинится, либо будет явно вычищена в signOut (см. clearOutbox).
-export async function flushOutbox(sendFn, activeUserId, opts = {}) {
-  const { onDrop } = opts;
-  let arr = await _load();
-  if (!arr.length || !activeUserId) return 0;
+export function flushOutbox(sendFn, activeUserId, opts = {}) {
+  const result = flushTail.then(() => flushQueue(sendFn, activeUserId, opts));
+  flushTail = result.catch(() => {});
+  return result;
+}
+
+async function flushQueue(sendFn, activeUserId, { onDrop } = {}) {
+  if (!activeUserId) return 0;
+  const generation = queueGeneration;
+  const snapshot = await withQueueLock(_load);
   let sent = 0;
-  const drop = async (item, error) => {
-    arr = arr.filter((x) => x.clientId !== item.clientId);
-    await _save(arr);
-    if (onDrop) { try { onDrop(item, error); } catch {} }
-  };
-  for (const item of [...arr]) {
-    if (item.userId && item.userId !== activeUserId) continue;
-    try {
-      await sendFn(item.payload);          // success или deduped (backend) — оба ок
-      arr = arr.filter((x) => x.clientId !== item.clientId);
-      await _save(arr);
-      sent++;
-    } catch (error) {
-      if (isPermanentError(error)) {
-        // Этот элемент не станет отправляемым сам по себе — убираем его и
-        // продолжаем очередь, иначе он заперёт все последующие сообщения.
-        await drop(item, error);
-        continue;
-      }
-      if (error?.isNetwork) break;         // сети нет — не долбим, хвост уедет позже
-      // Временная серверная ошибка: считаем попытки, чтобы очередь не
-      // застряла навсегда, если 5xx окажется постоянным.
-      const attempts = Number(item.attempts || 0) + 1;
-      if (attempts >= MAX_ATTEMPTS) {
-        await drop(item, error);
-        continue;
-      }
-      arr = arr.map((x) => (x.clientId === item.clientId ? { ...x, attempts } : x));
-      await _save(arr);
-      break;
-    }
+  for (const queued of snapshot) {
+    if (generation !== queueGeneration) break;
+    const item = await withQueueLock(async () => (await _load()).find((x) => x.clientId === queued.clientId));
+    if (!item || (item.userId && item.userId !== activeUserId)) continue;
+    let error = null;
+    try { await sendFn(item.payload); } catch (caught) { error = caught; }
+    if (error?.isNetwork) break;
+    const permanent = error && isPermanentError(error);
+    let dropped = false;
+    await withQueueLock(async () => {
+      if (generation !== queueGeneration) return;
+      const current = await _load();
+      const existing = current.find((x) => x.clientId === item.clientId);
+      if (!existing) return;
+      const attempts = Number(existing.attempts || 0) + 1;
+      dropped = !!error && (permanent || attempts >= MAX_ATTEMPTS);
+      const next = !error || dropped
+        ? current.filter((x) => x.clientId !== item.clientId)
+        : current.map((x) => x.clientId === item.clientId ? { ...x, attempts } : x);
+      await _save(next);
+    });
+    if (dropped && onDrop) { try { onDrop(item, error); } catch {} }
+    if (!error) sent++;
+    else if (!dropped) break;
   }
   return sent;
 }
 
-/** Блок 2 (P1-5): полная очистка outbox — вызывается при logout, чтобы
- * недоотправленные сообщения вышедшего пользователя не «дожили» и не
- * ушли под следующей сессией на этом устройстве. */
-export async function clearOutbox() {
-  await _save([]);
+/** Logout не позволяет позднему flush восстановить очищенную очередь. */
+export function clearOutbox() {
+  return withQueueLock(async () => {
+    await _save([]);
+    queueGeneration += 1;
+  });
 }
 
-/** То же, но только записи конкретного владельца (используется, если
- * когда-нибудь понадобится точечная очистка без потери чужих записей). */
-export async function clearOutboxForUser(userId) {
-  const arr = await _load();
-  await _save(arr.filter((x) => x.userId !== userId));
+export function clearOutboxForUser(userId) {
+  return withQueueLock(async () => {
+    const arr = await _load();
+    await _save(arr.filter((x) => x.userId !== userId));
+    queueGeneration += 1;
+  });
 }

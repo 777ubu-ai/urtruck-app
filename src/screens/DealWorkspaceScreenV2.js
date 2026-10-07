@@ -988,7 +988,14 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       setTimeout(loadMessages, 120);
     } catch (error) {
       if (error?.isNetwork) {
-        await enqueueOutbox({ clientId, payload }, session?.user?.id);
+        try {
+          await enqueueOutbox({ clientId, payload }, session?.user?.id);
+        } catch {
+          const sendError = t('chat_send_failed');
+          setMessages((items) => items.map((m) => m.id === clientId ? { ...m, sendStatus: 'failed', sendError } : m));
+          toast(sendError, 'error');
+          return;
+        }
         toast(t('chat_queued'), 'info', 2200);
         setMessages((items) => items.map((m) => (m.id === clientId ? { ...m, sendStatus: 'queued' } : m)));
         return;
