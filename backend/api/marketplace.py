@@ -2482,17 +2482,20 @@ def _notify_rejected_siblings(rejected_siblings):
                 url = f"/trips/{sib['trip_id']}"
             else:
                 url = "/"
-            title = "❌ Ставка не выбрана"
-            text = f"По заказу выбран другой исполнитель. Предложение {_money(sib.get('amount'), _cur)} отклонено."
-            try:
-                send_to_user(sib["bidder_id"], title, text, url=url)
-            except Exception:
-                pass
+            params = {"amount": _money(sib.get("amount"), _cur)}
+            title, text = push_i18n.push_text("bid_not_selected", push_gateway.get_recipient_locale(sib["bidder_id"]), **params)
+            event_key = f"bid:{sib['id']}:rejected"
             if create_notification:
                 try:
-                    create_notification(sib["bidder_id"], "bid_rejected", title, text, "❌", url=url)
+                    create_notification(sib["bidder_id"], "bid_rejected", title, text, "❌", url=url, event_key=event_key)
                 except Exception:
                     pass
+            try:
+                send_to_user(sib["bidder_id"], title, text, url=url, kind="bid",
+                             data={"event_key": event_key, "event": "bid.rejected", "bid_id": sib["id"],
+                                   "i18n_event": "bid_not_selected", "i18n_params": params})
+            except Exception:
+                pass
             # P3-fix: след в чате проигравшего биддера — но только если комната
             # УЖЕ существует (торг/контр её создавали). Пустую не плодим.
             try:
@@ -3315,7 +3318,7 @@ def decline_counter(bid_id: str, user=Depends(require_active_level(1))):
         if cur.rowcount == 0:
             raise HTTPException(status_code=409, detail="Ставка уже обработана — обновите экран")
         # P3-fix: фиксируем отказ от контр-оффера в ценовом timeline.
-        _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "declined", None)
+        decline_event_id = _record_price_event(c, bid_id, user["id"], "bidder", bid.get("amount"), "declined", None) or new_id()
 
     try:
         owner_id = None
@@ -3330,19 +3333,21 @@ def decline_counter(bid_id: str, user=Depends(require_active_level(1))):
                 _dc_url = f"/trips/{bid['trip_id']}?bid={bid_id}"
             else:
                 _dc_url = "/"
-            # Роль-зависимо: контр отклоняет биддер. Для bid на груз биддер —
-            # водитель; для bid на рейс — грузовладелец.
-            _decliner_word = "Водитель" if bid.get("cargo_id") else "Грузовладелец"
-            try:
-                send_to_user(owner_id, "❌ Контр-оффер отклонён", f"{_decliner_word} отказался от вашего контр-оффера", url=_dc_url)
-            except Exception:
-                pass
+            params = {"amount": _money(bid["amount"], _cur)}
+            title, text = push_i18n.push_text("bid_counter_declined", push_gateway.get_recipient_locale(owner_id), **params)
+            event_key = f"bid:{bid_id}:counter-declined:{decline_event_id}"
             try:
                 from api.notifications import create_notification
-                create_notification(owner_id, "bid", "❌ Контр-оффер отклонён",
-                                    f"Ставка {_money(bid['amount'], _cur)} снова в статусе pending", "❌", url=_dc_url)
+                create_notification(owner_id, "bid", title, text, "❌", url=_dc_url, event_key=event_key)
             except Exception:
                 pass
+            try:
+                send_to_user(owner_id, title, text, url=_dc_url, kind="bid",
+                             data={"event_key": event_key, "event": "bid.counter_declined", "bid_id": bid_id,
+                                   "i18n_event": "bid_counter_declined", "i18n_params": params})
+            except Exception:
+                pass
+
     except Exception:
         pass
 
