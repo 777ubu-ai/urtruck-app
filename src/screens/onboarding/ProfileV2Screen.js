@@ -1,7 +1,7 @@
-// ProfileV2Screen — шаг 2 из 2 после выбора роли.
-// Канон onboarding: имя + основной телефон обязательны для обеих ролей;
-// для водителя дата рождения + ИИН нужны basic onboarding, а компания и
-// preferred messenger остаются необязательными контактными данными.
+// ProfileV2Screen — личные данные после выбора роли.
+// Водитель после этого шага обязательно добавляет машину на одной странице.
+// Компания, страна/город и preferred messenger — необязательные контактные данные.
+// Дата рождения и ИИН не запрашиваются в базовой регистрации.
 // Email принадлежит auth-identity и повторно у пользователя не спрашивается.
 
 import React, { useMemo, useState } from 'react';
@@ -30,25 +30,29 @@ const COPY = {
     driverSubtitle: 'Личные данные для рейсов и автомобиля',
     shipperTitle: 'Профиль грузоотправителя',
     shipperSubtitle: 'Данные компании и контактного лица',
-    nameLabel: 'Имя / контактное лицо *',
+    nameLabel: 'Фамилия и имя *',
     namePlaceholder: 'Например, Иван Петров',
     phoneLabel: 'Основной телефон *',
-    birthDateLabel: 'Дата рождения *',
-    birthDatePlaceholder: 'ДД.ММ.ГГГГ',
-    birthDateRequired: 'Укажите дату рождения',
-    iinLabel: 'ИИН *',
-    iinPlaceholder: '12 цифр',
-    iinRequired: 'ИИН должен содержать 12 цифр',
     companyLabel: 'Компания / ИП *',
     companyOptionalLabel: 'Компания / ИП',
     companyPlaceholder: 'Название компании или ИП',
     companyHint: 'Обязательно для порядка в сделках и документах',
     companyOptionalHint: 'Можно добавить позже в профиле',
+    countryLabel: 'Страна компании',
+    countryPlaceholder: 'Например, Казахстан или Китай',
+    cityLabel: 'Город / адрес компании',
+    cityPlaceholder: 'Например, Алматы или Иу, Чжэцзян',
+    locationOptionalHint: 'Можно оставить пустым и добавить позже',
     companyRequired: 'Укажите компанию или ИП',
     messengerLabel: 'Предпочтительный мессенджер',
     messengerContact: 'Контакт в мессенджере',
     messengerPlaceholder: 'ID, логин или номер',
     messengerRequired: 'Укажите контакт выбранного мессенджера',
+    phoneChangeRequired: 'Этот аккаунт уже имеет подтверждённый номер. Используйте его для регистрации; новый номер можно подтвердить кодом в профиле.',
+    phoneAlreadyInUse: 'Этот номер уже используется. Введите другой номер или войдите в свой существующий аккаунт.',
+    roleAlreadySet: 'Для этого аккаунта уже выбрана другая роль. Вернитесь и выберите сохранённую роль.',
+    retryLater: 'Слишком много попыток. Подождите и повторите сохранение.',
+    serverUnavailable: 'Сервер временно недоступен. Данные остались в форме; попробуйте снова.',
     other: 'Другой',
     samePhone: 'Совпадает с основным телефоном',
     emailConfirmed: 'Email уже подтверждён и повторно не запрашивается',
@@ -60,25 +64,29 @@ const COPY = {
     driverSubtitle: 'Personal details for trips and your vehicle',
     shipperTitle: 'Shipper profile',
     shipperSubtitle: 'Company and contact person details',
-    nameLabel: 'Name / contact person *',
+    nameLabel: 'First and last name *',
     namePlaceholder: 'For example, Alex Morgan',
     phoneLabel: 'Primary phone *',
-    birthDateLabel: 'Date of birth *',
-    birthDatePlaceholder: 'DD.MM.YYYY',
-    birthDateRequired: 'Enter your date of birth',
-    iinLabel: 'IIN *',
-    iinPlaceholder: '12 digits',
-    iinRequired: 'IIN must contain 12 digits',
     companyLabel: 'Company / business *',
     companyOptionalLabel: 'Company / business',
     companyPlaceholder: 'Company or sole trader name',
     companyHint: 'Required to keep deals and documents clean',
     companyOptionalHint: 'Can be added later in profile',
+    countryLabel: 'Company country',
+    countryPlaceholder: 'For example, Kazakhstan or China',
+    cityLabel: 'Company city / address',
+    cityPlaceholder: 'For example, Almaty or Yiwu, Zhejiang',
+    locationOptionalHint: 'Optional — you can add it later',
     companyRequired: 'Enter company or business name',
     messengerLabel: 'Preferred messenger',
     messengerContact: 'Messenger contact',
     messengerPlaceholder: 'ID, username or number',
     messengerRequired: 'Enter a contact for the selected messenger',
+    phoneChangeRequired: 'This account already has a verified phone. Use it to finish registration; verify a new number with a code in your profile.',
+    phoneAlreadyInUse: 'This number is already in use. Enter another number or sign in to your existing account.',
+    roleAlreadySet: 'This account already has a different role. Go back and select the saved role.',
+    retryLater: 'Too many attempts. Wait before saving again.',
+    serverUnavailable: 'The server is temporarily unavailable. Your form is kept; please retry.',
     other: 'Other',
     samePhone: 'Same as primary phone',
     emailConfirmed: 'Email is already verified and is not requested again',
@@ -90,25 +98,29 @@ const COPY = {
     driverSubtitle: '填写运输和车辆所需的个人信息',
     shipperTitle: '货主资料',
     shipperSubtitle: '填写公司和联系人信息',
-    nameLabel: '姓名 / 联系人 *',
+    nameLabel: '姓名 *',
     namePlaceholder: '例如：张伟',
     phoneLabel: '主要手机号 *',
-    birthDateLabel: '出生日期 *',
-    birthDatePlaceholder: '日.月.年',
-    birthDateRequired: '请输入出生日期',
-    iinLabel: '个人识别号 *',
-    iinPlaceholder: '12位数字',
-    iinRequired: '个人识别号必须为12位数字',
     companyLabel: '公司 / 个体经营 *',
     companyOptionalLabel: '公司 / 个体经营',
     companyPlaceholder: '公司或个体经营名称',
     companyHint: '交易和文件中必须填写',
     companyOptionalHint: '可稍后在个人资料中添加',
+    countryLabel: '公司所在国家',
+    countryPlaceholder: '例如：哈萨克斯坦或中国',
+    cityLabel: '公司城市 / 地址',
+    cityPlaceholder: '例如：阿拉木图或浙江义乌',
+    locationOptionalHint: '可留空，稍后补充',
     companyRequired: '请输入公司或个体经营名称',
     messengerLabel: '首选即时通讯',
     messengerContact: '即时通讯联系方式',
     messengerPlaceholder: 'ID、账号或手机号',
     messengerRequired: '请输入所选即时通讯的联系方式',
+    phoneChangeRequired: '此账号已有已验证的手机号。请使用该号码完成注册；之后可在个人资料中通过验证码更换号码。',
+    phoneAlreadyInUse: '此号码已被使用。请输入其他号码，或登录您的现有账号。',
+    roleAlreadySet: '此账号已选择其他角色。请返回并选择已保存的角色。',
+    retryLater: '尝试次数过多。请稍后再次保存。',
+    serverUnavailable: '服务器暂时不可用。已保留表单内容，请重试。',
     other: '其他',
     samePhone: '与主要手机号相同',
     emailConfirmed: '邮箱已验证，无需再次填写',
@@ -120,25 +132,29 @@ const COPY = {
     driverSubtitle: 'Рейстер мен көлікке арналған жеке деректер',
     shipperTitle: 'Жүк жөнелтуші профилі',
     shipperSubtitle: 'Компания және байланыс тұлғасының деректері',
-    nameLabel: 'Аты / байланыс тұлғасы *',
+    nameLabel: 'Тегі және аты *',
     namePlaceholder: 'Мысалы, Айдан Нұрлан',
     phoneLabel: 'Негізгі телефон *',
-    birthDateLabel: 'Туған күні *',
-    birthDatePlaceholder: 'КК.АА.ЖЖЖЖ',
-    birthDateRequired: 'Туған күнді көрсетіңіз',
-    iinLabel: 'ЖСН *',
-    iinPlaceholder: '12 сан',
-    iinRequired: 'ЖСН 12 саннан тұруы керек',
     companyLabel: 'Компания / ЖК *',
     companyOptionalLabel: 'Компания / ЖК',
     companyPlaceholder: 'Компания немесе ЖК атауы',
     companyHint: 'Мәмілелер мен құжаттар реті үшін міндетті',
     companyOptionalHint: 'Профильде кейінірек қосуға болады',
+    countryLabel: 'Компания елі',
+    countryPlaceholder: 'Мысалы, Қазақстан немесе Қытай',
+    cityLabel: 'Компания қаласы / мекенжайы',
+    cityPlaceholder: 'Мысалы, Алматы немесе Иу, Чжэцзян',
+    locationOptionalHint: 'Бос қалдырып, кейін қосуға болады',
     companyRequired: 'Компания немесе ЖК атауын көрсетіңіз',
     messengerLabel: 'Қалаулы мессенджер',
     messengerContact: 'Мессенджердегі байланыс',
     messengerPlaceholder: 'ID, логин немесе нөмір',
     messengerRequired: 'Таңдалған мессенджердегі байланысты көрсетіңіз',
+    phoneChangeRequired: 'Бұл аккаунтта расталған нөмір бар. Тіркелуді сол нөмірмен аяқтаңыз; жаңа нөмірді профильде кодпен растауға болады.',
+    phoneAlreadyInUse: 'Бұл нөмір қолданылып жатыр. Басқа нөмір енгізіңіз немесе өз аккаунтыңызға кіріңіз.',
+    roleAlreadySet: 'Бұл аккаунт үшін басқа рөл таңдалған. Артқа оралып, сақталған рөлді таңдаңыз.',
+    retryLater: 'Әрекет саны тым көп. Біраз күтіп, қайта сақтаңыз.',
+    serverUnavailable: 'Сервер уақытша қолжетімсіз. Нысандағы деректер сақталды; қайталап көріңіз.',
     other: 'Басқа',
     samePhone: 'Негізгі телефонмен бірдей',
     emailConfirmed: 'Email расталған, оны қайта енгізудің қажеті жоқ',
@@ -284,9 +300,9 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
-  const [birthDate, setBirthDate] = useState('');
-  const [iin, setIin] = useState('');
   const [company, setCompany] = useState('');
+  const [country, setCountry] = useState('');
+  const [city, setCity] = useState('');
   const [messengerType, setMessengerType] = useState('');
   const [messengerId, setMessengerId] = useState('');
   const [sameAsPhone, setSameAsPhone] = useState(true);
@@ -297,22 +313,15 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   const validName = name.trim().length >= 2;
   const validPhone = isRealPhone(phone);
-  const validBirthDate = role !== 'driver' || /^\d{2}\.\d{2}\.\d{4}$/.test(birthDate.trim());
-  const validIin = role !== 'driver' || /^\d{12}$/.test(digitsOnly(iin));
-  const validCompany = role === 'driver' || company.trim().length >= 2;
-  const validMessenger = role === 'driver' || !messengerType
+  const validMessenger = !messengerType
     || (messengerType === 'whatsapp' && sameAsPhone && validPhone)
     || messengerId.trim().length >= 2;
-  const formValid = validName && validPhone && validCompany && validMessenger;
-  const basicFormValid = formValid && validBirthDate && validIin;
+  const basicFormValid = validName && validPhone && validMessenger;
 
   const validate = () => {
     const next = {};
     if (!validName) next.name = t('profile_v2_err_name');
     if (!validPhone) next.phone = t('prem_reg_phone_invalid');
-    if (role === 'driver' && !validBirthDate) next.birthDate = ui.birthDateRequired;
-    if (role === 'driver' && !validIin) next.iin = ui.iinRequired;
-    if (!validCompany) next.company = ui.companyRequired;
     if (!validMessenger) next.messenger = ui.messengerRequired;
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -340,12 +349,22 @@ export default function ProfileV2Screen({ navigation, route }) {
         phone: phone.trim(),
         role,
         company_name: company.trim(),
+        country: country.trim(),
+        city: city.trim(),
         messenger_type: messengerType,
         messenger_id: messengerType ? effectiveMessengerId : '',
       };
 
       const saved = await regAPI.updateProfile(payload);
       if (!saved?.ok) {
+        if (saved?.networkError) {
+          setServerError(t('no_connection'));
+          return;
+        }
+        if (saved?.status >= 500) {
+          setServerError(ui.serverUnavailable);
+          return;
+        }
         const detail = saved?.detail;
         const code = detail?.error || saved?.error;
         if (code === 'PHONE_REQUIRED' || code === 'INVALID_PHONE') {
@@ -356,23 +375,46 @@ export default function ProfileV2Screen({ navigation, route }) {
           setErrors((prev) => ({ ...prev, name: t('profile_v2_err_name') }));
           return;
         }
-        throw new Error(typeof detail === 'string' ? detail : 'profile_save_failed');
+        const fieldErrors = {
+          PHONE_CHANGE_OTP_REQUIRED: ['phone', ui.phoneChangeRequired],
+          PHONE_ALREADY_IN_USE: ['phone', ui.phoneAlreadyInUse],
+          MESSENGER_CONTACT_REQUIRED: ['messenger', ui.messengerRequired],
+        };
+        if (Object.hasOwn(fieldErrors, code)) {
+          const [field, message] = fieldErrors[code];
+          setErrors((prev) => ({ ...prev, [field]: message }));
+          return;
+        }
+        if (code === 'ROLE_ALREADY_SET') {
+          setServerError(ui.roleAlreadySet);
+          return;
+        }
+        if (saved?.authRequired || saved?.status === 401 || code === 'AUTH_REQUIRED') {
+          setServerError(t('session_expired'));
+          return;
+        }
+        if (saved?.status === 429) {
+          setServerError(ui.retryLater);
+          return;
+        }
+        throw new Error('profile_save_failed');
       }
 
       if (role === 'driver') {
         const draftSaved = await regAPI.saveDriverDraft({
           full_name: name.trim(),
-          birth_date: birthDate.trim(),
-          iin: digitsOnly(iin),
         });
         if (!draftSaved?.ok) throw new Error('basic_profile_save_failed');
       }
 
-      // Водительский basic onboarding продолжается на двух обязательных
-      // шагах: личные данные → автомобиль. Роль driver и Main появляются
-      // только после complete-basic на экране успешного сохранения машины.
+      // Для водителя машина входит в обязательный базовый onboarding.
+      // Роль фиксируется в AuthContext только после сохранения машины и
+      // успешного complete-basic на финальном экране.
       if (role === 'driver') {
-        navigation.replace('VehicleSetupCountry', { role: 'driver', origin: 'basic_onboarding' });
+        navigation.replace('VehicleSetupCountry', {
+          role: 'driver',
+          origin: 'basic_onboarding',
+        });
         return;
       }
 
@@ -419,7 +461,7 @@ export default function ProfileV2Screen({ navigation, route }) {
             label={ui.nameLabel}
             value={name}
             onChange={setName}
-            placeholder={ui.namePlaceholder}
+            placeholder=""
             autoCapitalize="words"
             s={s}
             colors={colors}
@@ -434,7 +476,7 @@ export default function ProfileV2Screen({ navigation, route }) {
             label={ui.phoneLabel}
             value={phone}
             onChange={setPhone}
-            placeholder={t('prem_reg_phone_placeholder')}
+            placeholder=""
             keyboardType="phone-pad"
             inputMode="tel"
             autoCapitalize="none"
@@ -446,48 +488,12 @@ export default function ProfileV2Screen({ navigation, route }) {
             setErrors={setErrors}
           />
 
-          {role === 'driver' ? (
-            <>
-              <ProfileField
-                id="birthDate"
-                label={ui.birthDateLabel}
-                value={birthDate}
-                onChange={setBirthDate}
-                placeholder={ui.birthDatePlaceholder}
-                keyboardType="numbers-and-punctuation"
-                autoCapitalize="none"
-                s={s}
-                colors={colors}
-                focused={focused}
-                setFocused={setFocused}
-                errors={errors}
-                setErrors={setErrors}
-              />
-              <ProfileField
-                id="iin"
-                label={ui.iinLabel}
-                value={iin}
-                onChange={(value) => setIin(digitsOnly(value).slice(0, 12))}
-                placeholder={ui.iinPlaceholder}
-                keyboardType="number-pad"
-                inputMode="numeric"
-                autoCapitalize="none"
-                s={s}
-                colors={colors}
-                focused={focused}
-                setFocused={setFocused}
-                errors={errors}
-                setErrors={setErrors}
-              />
-            </>
-          ) : null}
-
           <ProfileField
             id="company"
-            label={role === 'driver' ? ui.companyOptionalLabel : ui.companyLabel}
+            label={ui.companyOptionalLabel}
             value={company}
             onChange={setCompany}
-            placeholder={ui.companyPlaceholder}
+            placeholder=""
             autoCapitalize="words"
             s={s}
             colors={colors}
@@ -496,7 +502,38 @@ export default function ProfileV2Screen({ navigation, route }) {
             errors={errors}
             setErrors={setErrors}
           />
-          <Text style={s.helperText}>{role === 'driver' ? ui.companyOptionalHint : ui.companyHint}</Text>
+          <Text style={s.helperText}>{ui.companyOptionalHint}</Text>
+
+          <ProfileField
+            id="country"
+            label={ui.countryLabel}
+            value={country}
+            onChange={setCountry}
+            placeholder=""
+            autoCapitalize="words"
+            s={s}
+            colors={colors}
+            focused={focused}
+            setFocused={setFocused}
+            errors={errors}
+            setErrors={setErrors}
+          />
+
+          <ProfileField
+            id="city"
+            label={ui.cityLabel}
+            value={city}
+            onChange={setCity}
+            placeholder=""
+            autoCapitalize="words"
+            s={s}
+            colors={colors}
+            focused={focused}
+            setFocused={setFocused}
+            errors={errors}
+            setErrors={setErrors}
+          />
+          <Text style={s.helperText}>{ui.locationOptionalHint}</Text>
 
           <View style={s.section}>
             <Text style={s.sectionLabel}>{ui.messengerLabel}</Text>
@@ -537,7 +574,7 @@ export default function ProfileV2Screen({ navigation, route }) {
               label={ui.messengerContact}
               value={messengerId}
               onChange={setMessengerId}
-              placeholder={ui.messengerPlaceholder}
+              placeholder=""
               autoCapitalize="none"
               s={s}
               colors={colors}
@@ -563,17 +600,19 @@ export default function ProfileV2Screen({ navigation, route }) {
           </View>
 
           {serverError ? <Text style={s.serverError}>{serverError}</Text> : null}
+        </KeyboardSafeScrollView>
 
+        <View style={s.ctaWrap}>
           <Pressable
             onPress={onContinue}
-            disabled={busy || !basicFormValid}
+            disabled={busy}
             accessibilityRole="button"
-            accessibilityState={{ disabled: busy || !basicFormValid }}
+            accessibilityState={{ disabled: busy }}
             testID="profile-v2-cta"
             style={({ pressed }) => [
-            s.ctaPrimary,
+              s.ctaPrimary,
               { backgroundColor: basicFormValid ? colors.primary : colors.borderStrong },
-              pressed && basicFormValid && s.pressed,
+              pressed && !busy && s.pressed,
             ]}
           >
             {busy ? (
@@ -585,7 +624,7 @@ export default function ProfileV2Screen({ navigation, route }) {
               </>
             )}
           </Pressable>
-        </KeyboardSafeScrollView>
+        </View>
       </KeyboardSafeLayout>
     </SafeAreaView>
   );
@@ -787,6 +826,12 @@ const makeStyles = (colors) => StyleSheet.create({
     color: colors.error,
     textAlign: 'center',
     marginBottom: 10,
+  },
+  ctaWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+    backgroundColor: colors.bg,
   },
   ctaPrimary: {
     minHeight: 48,

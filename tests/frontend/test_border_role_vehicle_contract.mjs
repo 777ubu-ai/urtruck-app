@@ -22,6 +22,17 @@ test('Border loads canonical private vehicle/deal context with auth', () => {
   assert.match(border, /testID="border-shipper-deals-card"/);
 });
 
+test('Border shows CGR online only after a successful live response', () => {
+  assert.match(border, /const \[liveStatus, setLiveStatus\] = useState\('unchecked'\)/);
+  assert.match(border, /const cgrLiveAvailable = liveStatus === 'ready' && !!live && !liveError/);
+  assert.match(border, /liveStatus === 'checking' \? R\.cgrChecking/);
+  assert.match(border, /liveStatus === 'unchecked' \? R\.cgrUnchecked/);
+  assert.match(border, /setLiveStatus\('ready'\)/);
+  assert.match(border, /setLiveStatus\('unavailable'\)/);
+  assert.match(border, /!cgrLiveAvailable && s\.unavailablePill/);
+  assert.match(border, /cgrUnavailable: 'CGR 暂不可用'/);
+});
+
 
 test('driver without a vehicle can add one or run a secondary public lookup', () => {
   assert.match(border, /testID="border-driver-empty-vehicle"/);

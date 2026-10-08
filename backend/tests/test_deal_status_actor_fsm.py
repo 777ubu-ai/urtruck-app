@@ -516,6 +516,13 @@ def test_completed_stops_tracking_without_erasing_last_gps_point():
     assert location is not None
     assert (location["lat"], location["lng"]) == (43.2, 76.9)
     as_user(DRIVER)
+    historical = client.get(f"/api/v1/market/deals/{d}/location")
+    assert historical.status_code == 200
+    historical_payload = historical.json()
+    assert historical_payload["has_location"] is True
+    assert historical_payload["tracking_status"] == "stopped"
+    assert historical_payload["deal_status"] == "completed"
+    assert (historical_payload["location"]["lat"], historical_payload["location"]["lng"]) == (43.2, 76.9)
     tracking_api = client.get(f"/api/v1/market/deals/{d}/tracking")
     assert tracking_api.status_code == 200
     assert tracking_api.json()["tracking"]["status"] == "stopped"

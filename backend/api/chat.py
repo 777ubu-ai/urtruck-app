@@ -2,6 +2,7 @@
 import os
 import sys
 import sqlite3
+import re
 from starlette.concurrency import run_in_threadpool
 import hashlib
 import unicodedata
@@ -163,6 +164,53 @@ def _ensure_columns(c):
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_msg_client "
         "ON chat_messages(sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL"
     )
+    # Additive compatibility for databases that received an earlier hidden
+    # STT queue revision.  SQLite cannot add every constraint/default that a
+    # fresh table has, so first add nullable-compatible columns, then repair
+    # existing values before creating the index. No historic voice message is
+    # discovered, enqueued, or rewritten by this migration.
+    job_exists = c.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='voice_processing_jobs'"
+    ).fetchone()
+    if job_exists:
+        job_cols = {r["name"] for r in c.execute("PRAGMA table_info(voice_processing_jobs)").fetchall()}
+        additive_job_columns = {
+            "source_lang": "TEXT",
+            "target_lang": "TEXT",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0",
+            "next_retry_at": "TEXT",
+            "locked_at": "TEXT",
+            "locked_by": "TEXT",
+            "force_reprocess": "INTEGER NOT NULL DEFAULT 0",
+            "expires_at": "TEXT",
+            "last_error": "TEXT",
+            "ready_at": "TEXT",
+        }
+        for name, definition in additive_job_columns.items():
+            if name not in job_cols:
+                c.execute(f"ALTER TABLE voice_processing_jobs ADD COLUMN {name} {definition}")
+        c.execute(
+            "UPDATE voice_processing_jobs SET next_retry_at=COALESCE(next_retry_at, created_at, CURRENT_TIMESTAMP), "
+            "expires_at=COALESCE(expires_at, datetime(CURRENT_TIMESTAMP, '+7 days')) "
+            "WHERE status <> 'ready'"
+        )
+        # A ready transcript is message data, not a retry-cache entry.  This
+        # additive migration preserves every historic message/audio/result.
+        # Older SQLite schemas declared expires_at NOT NULL, so a far-future
+        # compatibility sentinel is used instead of rebuilding their table;
+        # all readers/workers explicitly ignore expiry for status=ready.
+        c.execute("UPDATE voice_processing_jobs SET expires_at='9999-12-31 23:59:59' WHERE status='ready'")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_voice_processing_ready "
+            "ON voice_processing_jobs(status, next_retry_at, expires_at)"
+        )
+    metrics_exists = c.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='voice_processing_metrics'"
+    ).fetchone()
+    if metrics_exists:
+        metric_cols = {r["name"] for r in c.execute("PRAGMA table_info(voice_processing_metrics)").fetchall()}
+        if "stage" not in metric_cols:
+            c.execute("ALTER TABLE voice_processing_metrics ADD COLUMN stage TEXT NOT NULL DEFAULT 'stt'")
 
 
 def _init():
@@ -317,6 +365,53 @@ def _translation_memory_key(source_text: str, source_lang: str | None, target_la
     )
 
 
+def _translation_cache_source_lang(source_text: str, source_lang: str | None) -> str:
+    """Infer only the scripts needed to revalidate a local-AI cache row."""
+    normalized = _normalize_lang_code(source_lang)
+    if normalized:
+        return normalized
+    if re.search(r"[\u3400-\u9fff]", str(source_text or "")):
+        return "zh"
+    if re.search(r"[\u0400-\u04ff]", str(source_text or "")):
+        return "ru"
+    return "en"
+
+
+def _repair_local_ai_cached_translation(source_text: str, source_lang: str | None,
+                                         target_lang: str, provider: str,
+                                         translated_text: str) -> str | None:
+    """Revalidate cached local-AI output with the same narrow repair contract.
+
+    Shared cache rows predate the current quality-gate repair and can contain a
+    known model confusion. Reusing them verbatim makes a fresh message look
+    like a successful translation forever. Other providers retain their
+    existing cache behavior.
+    """
+    if provider not in {"local_nllb_1_3b", "local_ai"}:
+        return translated_text
+    try:
+        from qa_ai_service.quality import repair_logistics_translation, translation_quality_ok
+        cache_source = _translation_cache_source_lang(source_text, source_lang)
+        cache_target = _normalize_lang_code(target_lang) or "en"
+        repaired = repair_logistics_translation(
+            source_text,
+            translated_text,
+            cache_source,
+            cache_target,
+        )
+        if not repaired or not translation_quality_ok(
+            source_text, repaired, cache_source, cache_target
+        ):
+            return None
+        return repaired
+    except Exception:
+        # Never serve stale local-AI output when validation itself fails. The
+        # caller removes the cache row and falls through to a fresh provider
+        # request; returning the old text would turn a validator outage into
+        # a false successful translation.
+        return None
+
+
 def _translation_memory_lookup(c, source_text: str, source_lang: str | None, target_lang: str):
     key = _translation_memory_key(source_text, source_lang, target_lang)
     row = c.execute(
@@ -326,6 +421,23 @@ def _translation_memory_lookup(c, source_text: str, source_lang: str | None, tar
         key,
     ).fetchone()
     if row:
+        repaired = _repair_local_ai_cached_translation(
+            source_text, source_lang, target_lang, row["provider"], row["translated_text"]
+        )
+        if repaired is None:
+            c.execute(
+                "DELETE FROM translation_memory WHERE source_hash=? AND source_lang=? "
+                "AND target_lang=? AND provider=? AND model=? AND prompt_version=?",
+                key,
+            )
+            return None
+        if repaired != row["translated_text"]:
+            c.execute(
+                "UPDATE translation_memory SET translated_text=?, last_used_at=CURRENT_TIMESTAMP "
+                "WHERE source_hash=? AND source_lang=? AND target_lang=? AND provider=? AND model=? AND prompt_version=?",
+                (repaired, *key),
+            )
+            row = {"translated_text": repaired, "provider": row["provider"]}
         c.execute(
             "UPDATE translation_memory SET hit_count=hit_count+1, "
             "last_used_at=CURRENT_TIMESTAMP WHERE source_hash=? AND source_lang=? "
@@ -415,10 +527,6 @@ def _assert_chat_is_accepted(sender_id, recipient_id, *, room_id=None, cargo_id=
 def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     if not body.text and not body.photo_url:
         raise HTTPException(status_code=400, detail="text или photo_url обязателен")
-    if body.is_voice and body.voice_duration is not None and (
-        body.voice_duration < 0 or body.voice_duration > MAX_CHAT_VOICE_DURATION_SEC
-    ):
-        raise HTTPException(status_code=422, detail="Голосовое сообщение не может быть длиннее 60 секунд")
     # Security audit finding (STT-hardening track, P0): photo_url used to be
     # persisted verbatim with zero validation — a client could set it to an
     # arbitrary local filesystem path (later read by /chat/transcribe's STT
@@ -459,6 +567,25 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     else:
         raise HTTPException(status_code=400, detail="room_id или to_user_id обязателен")
 
+    # UI recorder timers are advisory only. The persisted duration must come
+    # from the stored audio container, otherwise a Xiaomi/iOS timer bug turns
+    # into an authoritative value for the other participant.
+    authoritative_voice_duration = None
+    sender_lang = recipient_lang = None
+    if body.is_voice:
+        from services.audio_metadata import duration_seconds_from_ref
+        authoritative_voice_duration = duration_seconds_from_ref(body.photo_url)
+        if authoritative_voice_duration is not None and authoritative_voice_duration > MAX_CHAT_VOICE_DURATION_SEC:
+            raise HTTPException(status_code=422, detail="Голосовое сообщение не может быть длиннее 60 секунд")
+        # Locale is a non-critical cache optimization. Queue durability must
+        # not depend on this lookup and is committed below with the message.
+        try:
+            from services.push_gateway import get_recipient_locale
+            sender_lang = _normalize_lang_code(get_recipient_locale(user["id"]))
+            recipient_lang = _normalize_lang_code(get_recipient_locale(recipient_id))
+        except Exception:
+            sender_lang = recipient_lang = None
+
     with get_conn() as c:
         # QA-аудит P1-3: дедуп ретраев из офлайн-очереди. Если сообщение с
         # этим client_msg_id уже записано (предыдущая попытка дошла, но ответ
@@ -473,7 +600,7 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         try:
             cursor = c.execute(
                 "INSERT INTO chat_messages (room_id, sender_id, text, photo_url, is_voice, voice_duration, client_msg_id) VALUES (?,?,?,?,?,?,?)",
-                (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, body.voice_duration, body.client_msg_id),
+                (room_id, user["id"], body.text, body.photo_url, 1 if body.is_voice else 0, authoritative_voice_duration, body.client_msg_id),
             )
         except sqlite3.IntegrityError:
             # Гонка двух одновременных ретраев с одним client_msg_id —
@@ -482,12 +609,23 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         message_id = cursor.lastrowid
         preview = (("🎤 Голосовое сообщение" if body.is_voice else (body.text or "📷 Фото")))[:50]
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
+        # The new voice and its hidden STT job commit atomically.  If SQLite
+        # cannot create the queue row, neither the message nor push side
+        # effects escape this transaction, so no voice can be stranded.
+        if body.is_voice:
+            from services.voice_processing import enqueue_new_voice_in_transaction
+            created = enqueue_new_voice_in_transaction(
+                c, message_id, body.photo_url,
+                source_lang=sender_lang,
+                target_lang=recipient_lang if recipient_lang and recipient_lang != sender_lang else None,
+            )
+            if not created:
+                raise RuntimeError("voice_processing_job_not_created")
 
-    event_key = f"chat:{room_id}:msg:{message_id}"
-    # Bell is a durable inbox, independent of provider delivery. Persist the
-    # event before the asynchronous push attempt; the event key makes a
-    # retried client request idempotent along with client_msg_id above.
-    try:
+        # A delivered message and its in-app event must commit together. If
+        # Bell persistence fails, rollback also removes the message so the
+        # same client_msg_id can safely retry the entire transaction.
+        event_key = f"chat:{room_id}:msg:{message_id}"
         sender_name = user.get("full_name") or user.get("phone") or "Пользователь"
         create_notification(
             recipient_id,
@@ -497,9 +635,8 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
             "💬",
             url=f"/chats/{room_id}",
             event_key=event_key,
+            conn=c,
         )
-    except Exception as exc:
-        print(f"[chat-notification] failed room={room_id}: {type(exc).__name__}", flush=True)
 
     # Push получателю
     # PR-C2 (P0-2): kind='chat' — push_sender вычислит unread badge
@@ -565,18 +702,45 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
 @chat_router.get("/rooms")
 def my_rooms(user=Depends(require_level(1))):
     uid = user["id"]
+    visible_statuses = ",".join("?" for _ in _DEAL_CHAT_STATUSES)
+    demo_exclusion = "" if ENABLE_DEMO_CHAT else " AND r.participant_1 != ? AND r.participant_2 != ?"
+    room_params = [uid, uid, uid, SUPPORT_ID, SUPPORT_ID, *_DEAL_CHAT_STATUSES]
+    if not ENABLE_DEMO_CHAT:
+        room_params.extend((VOLODYA_ID, VOLODYA_ID))
     with get_conn() as c:
         # Блок 5 аудита (P1-1, вариант B): per-room unread — тот же фильтр
         # sender_id != 'system', что и в /chat/unread ниже, чтобы карточка
-        # конкретной сделки и общий бейдж считали событие одинаково.
-        rows = c.execute("""
+        # конкретной сделки и общий бейдж считали событие одинаково. Apply
+        # visibility before LIMIT: otherwise 50 recent closed/demo rooms can
+        # evict an older active unread room from the user's reachable list.
+        rows = c.execute(f"""
             SELECT r.*,
                    (SELECT COUNT(*) FROM chat_messages m WHERE m.room_id = r.id AND m.is_read = 0
                     AND m.sender_id != ? AND m.sender_id != 'system') as unread
             FROM chat_rooms r
-            WHERE r.participant_1 = ? OR r.participant_2 = ?
+            WHERE (r.participant_1 = ? OR r.participant_2 = ?)
+              AND (
+                r.participant_1 = ? OR r.participant_2 = ?
+                OR EXISTS (
+                  SELECT 1 FROM deals d
+                  WHERE d.status IN ({visible_statuses})
+                    AND (
+                      d.chat_room_id = r.id
+                      OR (d.chat_room_id IS NULL
+                        AND (
+                          (r.cargo_id IS NOT NULL AND d.cargo_id = r.cargo_id)
+                          OR (r.trip_id IS NOT NULL AND d.trip_id = r.trip_id)
+                        )
+                        AND (
+                          (d.shipper_id = r.participant_1 AND d.driver_id = r.participant_2)
+                          OR (d.shipper_id = r.participant_2 AND d.driver_id = r.participant_1)
+                        )
+                      )
+                    )
+                )
+              ){demo_exclusion}
             ORDER BY r.last_at DESC LIMIT 50
-        """, (uid, uid, uid)).fetchall()
+        """, room_params).fetchall()
 
     rooms = []
     for r in rows:
@@ -860,6 +1024,26 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
                 except Exception:
                     signing_failed = True
             m["attachment_unavailable"] = not bool(m["photo_url"])
+        if m.get("is_voice"):
+            # Background inference is private derived data. History polling
+            # contains readiness metadata only; transcript/translation require
+            # an explicit authorized `/voice/{id}/text` request.
+            with get_conn() as status_conn:
+                job = status_conn.execute(
+                    """SELECT status,expires_at FROM voice_processing_jobs WHERE message_id=?
+                       ORDER BY id DESC LIMIT 1""",
+                    (m["id"],),
+                ).fetchone()
+                now = status_conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+            status = (
+                "expired" if job and job["status"] != "ready" and job["expires_at"]
+                and job["expires_at"] <= now else (job["status"] if job else None)
+            )
+            m["voice_processing_status"] = status or ("ready" if m.get("voice_transcript") else "unavailable")
+            m["voice_transcript_ready"] = m["voice_processing_status"] == "ready"
+            m.pop("voice_transcript", None)
+            m.pop("voice_transcript_lang", None)
+            m.pop("voice_transcript_provider", None)
         # Возвращаем client_msg_id, чтобы клиент сопоставлял optimistic-пузырь
         # по устойчивому id, а не по тексту (иначе два одинаковых сообщения
         # «ок»/«ок» схлопывались в одно на время между поллами).
@@ -875,6 +1059,76 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
     partner_online = bool(seen and (_time.time() - seen) < 90)
     return {"messages": messages, "room": dict(room),
             "partner_typing": partner_typing, "partner_online": partner_online}
+
+
+def _voice_message_for_participant(message_id: int, user_id: str):
+    """Return a voice row only after the same room/FSM authorization as chat."""
+    with get_conn() as c:
+        message = c.execute("SELECT * FROM chat_messages WHERE id=? AND is_voice=1", (message_id,)).fetchone()
+        if not message:
+            raise HTTPException(status_code=404, detail="Голосовое сообщение не найдено")
+        room = c.execute("SELECT * FROM chat_rooms WHERE id=?", (message["room_id"],)).fetchone()
+    if not room or user_id not in (room["participant_1"], room["participant_2"]):
+        raise HTTPException(status_code=403, detail="Вы не участник этого чата")
+    partner_id = room["participant_2"] if room["participant_1"] == user_id else room["participant_1"]
+    _assert_chat_is_accepted(user_id, partner_id, room_id=room["id"],
+                             cargo_id=room["cargo_id"], trip_id=room["trip_id"])
+    return message
+
+
+@chat_router.get("/voice/{message_id}/text")
+def voice_text(message_id: int, target_lang: Optional[str] = None, user=Depends(require_level(1))):
+    """Reveal an already-produced voice text only after an explicit request.
+
+    Polling `/messages` never returns transcript or translation content. This
+    endpoint does not run STT/translation; it serves the message's durable
+    ready result.  The seven-day TTL applies only to unfinished jobs.
+    """
+    message = _voice_message_for_participant(message_id, user["id"])
+    _ensure_translation_schema()
+    requested_lang = _normalize_lang_code(target_lang)
+    with get_conn() as c:
+        job = c.execute(
+            """SELECT * FROM voice_processing_jobs WHERE message_id=?
+               ORDER BY id DESC LIMIT 1""",
+            (message_id,),
+        ).fetchone()
+        if job and job["status"] != "ready" and job["expires_at"] and job["expires_at"] <= c.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]:
+            status = "expired"
+        else:
+            status = job["status"] if job else ("ready" if message["voice_transcript"] else None)
+        if status != "ready":
+            return {"status": status or "unavailable", "message_id": message_id}
+        translation = None
+        if requested_lang:
+            translation = c.execute(
+                "SELECT translated_text,provider FROM chat_translations WHERE message_id=? AND target_lang=?",
+                (message_id, requested_lang),
+            ).fetchone()
+    return {
+        "status": "ready",
+        "message_id": message_id,
+        "transcript_text": message["voice_transcript"],
+        "source_lang": message["voice_transcript_lang"],
+        "provider": message["voice_transcript_provider"],
+        "translated_text": translation["translated_text"] if translation else None,
+        "translation_provider": translation["provider"] if translation else None,
+        "target_lang": requested_lang,
+    }
+
+
+@chat_router.post("/voice/{message_id}/recognize")
+def recognize_voice_again(message_id: int, user=Depends(require_level(1))):
+    """Queue explicit re-recognition after expired or failed derived cache."""
+    _voice_message_for_participant(message_id, user["id"])
+    from services.voice_processing import request_recognition
+    result = request_recognition(message_id, user["id"])
+    if not result.get("found"):
+        # Old voices are deliberately not backfilled by a user action hidden
+        # behind polling; the original manual /transcribe endpoint remains
+        # the explicit compatibility path for those historic messages.
+        raise HTTPException(status_code=409, detail="Для этого голосового нет фоновой задачи")
+    return {"ok": True, "status": result["status"]}
 
 
 @chat_router.get("/contacts")
@@ -944,6 +1198,13 @@ def translate_info():
     from services.translate_service import get_info
     return get_info()
 
+
+@chat_router.get("/transcribe/info")
+def transcribe_info():
+    """Safe QA STT configuration identity; intentionally exposes no key/text."""
+    from services.speech_to_text_service import get_info
+    return get_info()
+
 @chat_router.post("/photo")
 async def upload_chat_photo(file: UploadFile = File(...), user=Depends(require_level(1))):
     """4.3: загрузка фото для сообщения чата → storage, возвращаем КЛЮЧ.
@@ -979,6 +1240,13 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
     # binary was stored and served with an audio MIME.
     sniffed = upload_validation.sniff_audio_mime(data)
     if sniffed is None:
+        # First bytes contain only the container signature, not speech/PII.
+        # Keeping it server-side makes the next browser-specific format
+        # diagnosable without accepting arbitrary renamed binary files.
+        print(
+            f"[voice-upload] unsupported bytes={len(data)} signature={data[:16].hex()}",
+            flush=True,
+        )
         raise HTTPException(status_code=415, detail="Неподдерживаемый тип аудио")
     ext, audio_mime = sniffed
     try:
@@ -1079,14 +1347,28 @@ def translate_message(body: TranslateIn, user=Depends(require_level(1))):
             (body.message_id, target_lang),
         ).fetchone()
         if cached:
-            return {
-                "translated_text": cached["translated_text"],
-                "original_text": source_text,
-                "target_lang": target_lang,
-                "provider": cached["provider"],
-                "cached": True,
-                "cache_scope": "message",
-            }
+            cached_text = _repair_local_ai_cached_translation(
+                source_text, source_lang, target_lang, cached["provider"], cached["translated_text"]
+            )
+            if cached_text is None:
+                c.execute(
+                    "DELETE FROM chat_translations WHERE message_id=? AND target_lang=?",
+                    (body.message_id, target_lang),
+                )
+            else:
+                if cached_text != cached["translated_text"]:
+                    c.execute(
+                        "UPDATE chat_translations SET translated_text=? WHERE message_id=? AND target_lang=?",
+                        (cached_text, body.message_id, target_lang),
+                    )
+                return {
+                    "translated_text": cached_text,
+                    "original_text": source_text,
+                    "target_lang": target_lang,
+                    "provider": cached["provider"],
+                    "cached": True,
+                    "cache_scope": "message",
+                }
 
         shared = _translation_memory_lookup(c, source_text, source_lang, target_lang)
         if shared:
@@ -1114,7 +1396,10 @@ def translate_message(body: TranslateIn, user=Depends(require_level(1))):
         result = translate_text(source_text, target_lang, source_lang=source_lang)
     except TranslationError as exc:
         status = 503 if exc.retryable else 422
-        raise HTTPException(status_code=status, detail={"error": exc.code, "hint": str(exc)}) from exc
+        detail = {"error": exc.code}
+        if exc.reason_codes:
+            detail["reason_codes"] = list(exc.reason_codes)
+        raise HTTPException(status_code=status, detail=detail) from exc
 
     # Сохраняем в кэш — only a genuine success reaches this point.
     with get_conn() as c:
@@ -1204,7 +1489,16 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
             })
         try:
             guessed_name = Path(str(msg["photo_url"] or "")).name or f"voice-{body.message_id}.m4a"
-            transcript = transcribe_audio_ref(msg["photo_url"], filename=guessed_name)
+            # The sender's latest app locale is the most reliable language hint
+            # available for voice messages. Passing it to Whisper prevents a
+            # noisy RU/EN/ZH recording from being decoded as another language.
+            from services.push_gateway import get_recipient_locale
+            sender_language = _normalize_lang_code(get_recipient_locale(msg["sender_id"]))
+            transcript = transcribe_audio_ref(
+                msg["photo_url"],
+                filename=guessed_name,
+                language=sender_language,
+            )
         except SpeechToTextError as exc:
             # Release the claim so a retry isn't forced to wait out the
             # stale-claim TTL after a real (non-transient) failure.
@@ -1224,7 +1518,7 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
                     "WHERE id = ? AND (voice_transcript IS NULL OR voice_transcript = '')",
                     (body.message_id,),
                 )
-            raise HTTPException(status_code=422, detail={"error": "TRANSCRIPTION_FAILED", "hint": "Не удалось распознать речь в голосовом"})
+            raise HTTPException(status_code=422, detail={"error": "TRANSCRIPTION_FAILED", "hint": "Не удалось надёжно распознать"})
         transcript_lang = _normalize_lang_code(transcript.get("source_lang")) or "auto"
         transcript_provider = transcript.get("provider") or "unknown"
         with get_conn() as c:
@@ -1234,17 +1528,50 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
                 "voice_transcribe_claimed_at = NULL WHERE id = ?",
                 (transcript_text, transcript_lang, transcript_provider, body.message_id),
             )
+            # Compatibility for an explicit legacy /transcribe request that
+            # wins a race with the new background worker.  Its already saved
+            # result is valid cache; do not leave the associated new-voice
+            # job looking queued (and never create a job for an old voice).
+            c.execute(
+                "UPDATE voice_processing_jobs SET status='ready', ready_at=CURRENT_TIMESTAMP, "
+                "locked_at=NULL, locked_by=NULL, last_error=NULL "
+                "WHERE message_id=? AND force_reprocess=0 "
+                "AND status IN ('queued','processing','failed_retryable')",
+                (body.message_id,),
+            )
 
     translated_text = None
+    translation_reason_codes = []
     translation_provider = None
     translation_cached = False
     translation_error = None
     if target_lang:
         if cached_translation:
-            translated_text = cached_translation["translated_text"]
-            translation_provider = cached_translation["provider"]
-            translation_cached = True
-        elif target_lang != transcript_lang:
+            cached_text = _repair_local_ai_cached_translation(
+                transcript_text,
+                transcript_lang,
+                target_lang,
+                cached_translation["provider"],
+                cached_translation["translated_text"],
+            )
+            if cached_text is None:
+                with get_conn() as c:
+                    c.execute(
+                        "DELETE FROM chat_translations WHERE message_id=? AND target_lang=?",
+                        (body.message_id, target_lang),
+                    )
+                cached_translation = None
+            else:
+                translated_text = cached_text
+                translation_provider = cached_translation["provider"]
+                translation_cached = True
+                if cached_text != cached_translation["translated_text"]:
+                    with get_conn() as c:
+                        c.execute(
+                            "UPDATE chat_translations SET translated_text=? WHERE message_id=? AND target_lang=?",
+                            (cached_text, body.message_id, target_lang),
+                        )
+        if not translated_text and target_lang != transcript_lang:
             with get_conn() as c:
                 shared = _translation_memory_lookup(c, transcript_text, transcript_lang, target_lang)
                 if shared:
@@ -1278,6 +1605,7 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
                         )
                 except TranslationError as exc:
                     translation_error = exc.code
+                    translation_reason_codes = list(exc.reason_codes)
 
     return {
         "message_id": body.message_id,
@@ -1290,4 +1618,5 @@ def transcribe_message(body: TranscribeIn, user=Depends(require_level(1))):
         "translation_provider": translation_provider,
         "translation_cached": translation_cached,
         "translation_error": translation_error,
+        "translation_reason_codes": translation_reason_codes,
     }

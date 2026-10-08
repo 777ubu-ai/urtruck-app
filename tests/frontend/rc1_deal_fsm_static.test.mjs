@@ -64,7 +64,7 @@ test('deal route map is visible before first GPS point', () => {
 test('web deal map uses Yandex JS API 2.1 only and resolves Bakhty-Chuguchak', () => {
   assert.match(webMapSrc, /globalThis\.ymaps/);
   assert.match(webMapSrc, /new api\.Map/);
-  assert.match(webMapSrc, /api\.multiRouter\.MultiRoute/);
+  assert.doesNotMatch(webMapSrc, /api\.multiRouter\.MultiRoute/);
   assert.match(webMapSrc, /testID="truck-map-yandex-web"/);
   assert.doesNotMatch(webMapSrc, /tile\.openstreetmap\.org|unpkg\.com\/leaflet|OpenStreetMapFallback|truck-map-osm-fallback|useFallback|LEAFLET_JS/);
   assert.match(webMapSrc, /truck-map-yandex-error/);

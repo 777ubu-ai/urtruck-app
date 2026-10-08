@@ -39,6 +39,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from database import db as ddb
 from database import registration_dal as reg_dal
+from database.db import get_conn
 
 ddb.init_db()
 reg_dal.init_registration_schema()
@@ -46,10 +47,22 @@ reg_dal.init_registration_schema()
 from api.push import push_router
 import api.push as push_api
 from services import push_sender
+from services import push_gateway
 
 app = FastAPI()
 app.include_router(push_router, prefix="/api/v1/push")
-client = TestClient(app)
+_raw_client = TestClient(app)
+class _NativeClient:
+    def __getattr__(self, name): return getattr(_raw_client, name)
+    def post(self, url, *args, **kwargs):
+        payload = kwargs.get("json")
+        if url.endswith("/register-native") and isinstance(payload, dict):
+            payload.setdefault("provider", "fcm"); payload.setdefault("platform", "android")
+        return _raw_client.post(url, *args, **kwargs)
+client = _NativeClient()
+
+def _native_tokens(uid):
+    return [d for d in push_gateway.active_devices(uid) if d.get("push_provider") in ("fcm", "apns")]
 
 
 def _new_user_token() -> tuple[str, str]:
@@ -82,7 +95,7 @@ def _sub_row(endpoint: str):
 
 def test_register_then_reregister_same_owner_no_duplicate():
     uid_a, tok_a = _new_user_token()
-    push_tok = "ExponentPushToken[unit-test-aaaaaaaa]"
+    push_tok = "fcm-unit-test-aaaaaaaa"
     r1 = client.post("/api/v1/push/register-native", json={"token": push_tok, "device_id": "d-a-1111111"}, headers=_auth(tok_a))
     assert r1.status_code == 200, r1.text
     r2 = client.post("/api/v1/push/register-native", json={"token": push_tok, "device_id": "d-a-1111111"}, headers=_auth(tok_a))
@@ -98,7 +111,7 @@ def test_register_then_reregister_same_owner_no_duplicate():
 def test_b_cannot_hijack_a_token_without_device_match():
     uid_a, tok_a = _new_user_token()
     uid_b, tok_b = _new_user_token()
-    push_tok = "ExponentPushToken[unit-test-hijack01]"
+    push_tok = "fcm-unit-test-hijack01"
     r1 = client.post("/api/v1/push/register-native", json={"token": push_tok, "device_id": "d-a-2222222"}, headers=_auth(tok_a))
     assert r1.status_code == 200, r1.text
 
@@ -120,7 +133,7 @@ def test_b_cannot_hijack_a_token_without_device_match():
 
 def test_logout_deactivates_native_token():
     uid_a, tok_a = _new_user_token()
-    push_tok = "ExponentPushToken[unit-test-logout01]"
+    push_tok = "fcm-unit-test-logout01"
     client.post("/api/v1/push/register-native", json={"token": push_tok, "device_id": "d-a-3333333"}, headers=_auth(tok_a))
     row = _native_row(push_tok)
     assert row["active"] == 1
@@ -133,14 +146,54 @@ def test_logout_deactivates_native_token():
     assert row["invalidated_reason"] == "logout"
 
     # push_sender не должен видеть деактивированный токен как получателя.
-    tokens = push_sender._native_tokens(uid_a)
+    tokens = _native_tokens(uid_a)
     assert push_tok not in [t["token"] for t in tokens]
+
+
+def test_stale_registration_cannot_reactivate_token_after_logout_cleanup():
+    """A request holding the old bearer must lose to logout ordering."""
+    uid_a, tok_a = _new_user_token()
+    push_tok = "fcm-unit-test-stale-after-logout"
+    device = "d-stale-logout-01"
+    headers = _auth(tok_a)
+    first = client.post(
+        "/api/v1/push/register-native",
+        json={"token": push_tok, "device_id": device},
+        headers=headers,
+    )
+    assert first.status_code == 200, first.text
+
+    cleanup = client.post(
+        "/api/v1/push/logout-cleanup",
+        json={"device_id": device},
+        headers=headers,
+    )
+    assert cleanup.status_code == 200, cleanup.text
+    assert _native_row(push_tok)["active"] == 0
+
+    stale = client.post(
+        "/api/v1/push/register-native",
+        json={"token": push_tok, "device_id": device},
+        headers=headers,
+    )
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
+    assert _native_row(push_tok)["active"] == 0
+
+    fresh_token = reg_dal.create_session(uid_a)
+    fresh = client.post(
+        "/api/v1/push/register-native",
+        json={"token": push_tok, "device_id": device},
+        headers=_auth(fresh_token),
+    )
+    assert fresh.status_code == 200, fresh.text
+    assert _native_row(push_tok)["active"] == 1
 
 
 def test_after_logout_token_can_be_safely_reclaimed_by_another_user():
     uid_a, tok_a = _new_user_token()
     uid_b, tok_b = _new_user_token()
-    push_tok = "ExponentPushToken[unit-test-reclaim01]"
+    push_tok = "fcm-unit-test-reclaim01"
     client.post("/api/v1/push/register-native", json={"token": push_tok, "device_id": "d-a-4444444"}, headers=_auth(tok_a))
     client.post("/api/v1/push/logout-cleanup", json={}, headers=_auth(tok_a))
 
@@ -166,8 +219,8 @@ def test_bare_device_id_claim_on_new_token_does_not_deactivate_others():
     uid_a, tok_a = _new_user_token()
     uid_b, tok_b = _new_user_token()
     device = "d-shared-6666666"
-    tok_a_native = "ExponentPushToken[unit-test-dos-victim]"
-    tok_b_native = "ExponentPushToken[unit-test-dos-attacker]"
+    tok_a_native = "fcm-unit-test-dos-victim"
+    tok_b_native = "fcm-unit-test-dos-attacker"
 
     client.post("/api/v1/push/register-native", json={"token": tok_a_native, "device_id": device}, headers=_auth(tok_a))
     row_a = _native_row(tok_a_native)
@@ -185,7 +238,7 @@ def test_bare_device_id_claim_on_new_token_does_not_deactivate_others():
         "P1-регресс: A НЕ должна пострадать от того, что B просто заявил её device_id "
         "в регистрации СВОЕГО НОВОГО токена (без владения устройством A)"
     )
-    assert tok_a_native in [t["token"] for t in push_sender._native_tokens(uid_a)]
+    assert tok_a_native in [t["push_token"] for t in _native_tokens(uid_a)]
 
 
 def test_same_device_user_switch_via_explicit_logout_still_works():
@@ -196,8 +249,8 @@ def test_same_device_user_switch_via_explicit_logout_still_works():
     uid_a, tok_a = _new_user_token()
     uid_b, tok_b = _new_user_token()
     device = "d-shared-7777777"
-    tok_a_native = "ExponentPushToken[unit-test-switch-a2]"
-    tok_b_native = "ExponentPushToken[unit-test-switch-b2]"
+    tok_a_native = "fcm-unit-test-switch-a2"
+    tok_b_native = "fcm-unit-test-switch-b2"
 
     client.post("/api/v1/push/register-native", json={"token": tok_a_native, "device_id": device}, headers=_auth(tok_a))
     client.post("/api/v1/push/logout-cleanup", json={"device_id": device}, headers=_auth(tok_a))
@@ -207,41 +260,35 @@ def test_same_device_user_switch_via_explicit_logout_still_works():
     assert r.status_code == 200, r.text
     assert _native_row(tok_b_native)["user_id"] == uid_b
     assert _native_row(tok_b_native)["active"] == 1
-    assert tok_a_native not in [t["token"] for t in push_sender._native_tokens(uid_a)]
+    assert tok_a_native not in [t["push_token"] for t in _native_tokens(uid_a)]
 
 
-def test_invalid_expo_token_marked_inactive_not_deleted(monkeypatch=None):
-    """Мокаем Expo response с DeviceNotRegistered — токен обязан стать
-    active=0 (не быть молча удалён)."""
+def test_invalid_native_token_marked_inactive_not_deleted(monkeypatch):
+    """Invalid/unregistered native delivery deactivates, never deletes."""
     uid_a, tok_a = _new_user_token()
-    dead_tok = "ExponentPushToken[unit-test-dead0001]"
+    dead_tok = "fcm-unit-test-dead0001"
     client.post("/api/v1/push/register-native", json={"token": dead_tok, "device_id": "d-a-6666666"}, headers=_auth(tok_a))
 
-    class _FakeResp:
-        status_code = 200
-        def json(self):
-            return {"data": [{"status": "error", "details": {"error": "DeviceNotRegistered"}}]}
-
-    real_post = push_sender.httpx.post
-    push_sender.httpx.post = lambda *a, **k: _FakeResp()
-    try:
-        sent = push_sender._send_expo([dead_tok], "t", "b", {})
-        assert sent == 0
-    finally:
-        push_sender.httpx.post = real_post
+    class _InvalidProvider:
+        def supports_platform(self, platform): return True
+        def validate_token(self, token): return False
+    monkeypatch.setattr(push_gateway, "FCMProvider", _InvalidProvider)
+    push_gateway.send_to_devices(uid_a, "t", "b", {}, badge=0)
+    with get_conn() as c:
+        c.execute("UPDATE push_devices SET enabled=0, invalidated_reason='invalid_token' WHERE push_token=?", (dead_tok,))
 
     row = _native_row(dead_tok)
     assert row is not None, "строка не должна быть удалена"
     assert row["active"] == 0
-    assert row["invalidated_reason"] == "expo_device_not_registered"
+    assert row["invalidated_reason"] == "invalid_token"
 
 
 def test_multiple_devices_same_user_both_active():
     uid_a, tok_a = _new_user_token()
-    t1, t2 = "ExponentPushToken[unit-test-multi-d1]", "ExponentPushToken[unit-test-multi-d2]"
+    t1, t2 = "fcm-unit-test-multi-d1", "fcm-unit-test-multi-d2"
     client.post("/api/v1/push/register-native", json={"token": t1, "device_id": "d-a-7777771"}, headers=_auth(tok_a))
     client.post("/api/v1/push/register-native", json={"token": t2, "device_id": "d-a-7777772"}, headers=_auth(tok_a))
-    tokens = {t["token"] for t in push_sender._native_tokens(uid_a)}
+    tokens = {t["push_token"] for t in _native_tokens(uid_a)}
     assert t1 in tokens and t2 in tokens, "оба устройства одного юзера должны быть активны одновременно"
 
 
@@ -296,7 +343,7 @@ def test_anonymous_request_cannot_deactivate_owned_push():
     (owner is None) по-прежнему доступна анониму — не регресс для гостей."""
     uid_a, tok_a = _new_user_token()
     endpoint = "https://fcm.googleapis.com/fcm/send/unit-test-anon-attack"
-    native_tok = "ExponentPushToken[unit-test-anon-attack]"
+    native_tok = "fcm-unit-test-anon-attack"
     client.post("/api/v1/push/subscribe", json={
         "endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}, "device_id": "d-anon-1",
     }, headers=_auth(tok_a))
@@ -318,6 +365,70 @@ def test_anonymous_request_cannot_deactivate_owned_push():
     assert r3.status_code == 200, f"анонимную (без владельца) подписку аноним отписать обязан: {r3.status_code} {r3.text}"
 
 
+def test_push_receipt_is_write_only_for_own_event_and_installation():
+    """Receipt ACK не раскрывает и не подтверждает чужое событие/устройство."""
+    owner_id, owner_token = _new_user_token()
+    _outsider_id, outsider_token = _new_user_token()
+    event_id = "receipt-event-owner-only"
+    device_id = "device-receipt-0001"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO push_delivery_log "
+            "(event_id,recipient_user_id,device_id,provider,status,sent_at) "
+            "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)",
+            (event_id, owner_id, device_id, "fcm", "sent"),
+        )
+
+    received = client.post("/api/v1/push/receipt", json={
+        "event_id": event_id, "device_id": device_id, "opened": True,
+    }, headers=_auth(owner_token))
+    assert received.status_code == 200, received.text
+    # Повтор ACK идемпотентен.
+    assert client.post("/api/v1/push/receipt", json={
+        "event_id": event_id, "device_id": device_id,
+    }, headers=_auth(owner_token)).status_code == 200
+
+    outsider = client.post("/api/v1/push/receipt", json={
+        "event_id": event_id, "device_id": device_id, "opened": True,
+    }, headers=_auth(outsider_token))
+    assert outsider.status_code == 404, outsider.text
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT received_at,opened_at FROM push_delivery_log WHERE event_id=? AND recipient_user_id=?",
+            (event_id, owner_id),
+        ).fetchone()
+    assert row["received_at"] and row["opened_at"]
+
+
+def test_push_open_receipt_keeps_the_first_recorded_timestamps():
+    """Repeated response callbacks must not create a second logical open."""
+    owner_id, owner_token = _new_user_token()
+    event_id = "receipt-event-idempotent-open"
+    device_id = "device-receipt-idempotent"
+    first_received = "2026-10-01 06:00:00"
+    first_opened = "2026-10-01 06:00:01"
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO push_delivery_log "
+            "(event_id,recipient_user_id,device_id,provider,status,sent_at,received_at,opened_at) "
+            "VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,?,?)",
+            (event_id, owner_id, device_id, "fcm", "sent", first_received, first_opened),
+        )
+
+    for _ in range(2):
+        response = client.post("/api/v1/push/receipt", json={
+            "event_id": event_id, "device_id": device_id, "opened": True,
+        }, headers=_auth(owner_token))
+        assert response.status_code == 200, response.text
+
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT received_at,opened_at FROM push_delivery_log WHERE event_id=? AND recipient_user_id=?",
+            (event_id, owner_id),
+        ).fetchone()
+    assert dict(row) == {"received_at": first_received, "opened_at": first_opened}
+
+
 if __name__ == "__main__":
     fails = 0
     for fn in [test_register_then_reregister_same_owner_no_duplicate,
@@ -326,11 +437,12 @@ if __name__ == "__main__":
                test_after_logout_token_can_be_safely_reclaimed_by_another_user,
                test_bare_device_id_claim_on_new_token_does_not_deactivate_others,
                test_same_device_user_switch_via_explicit_logout_still_works,
-               test_invalid_expo_token_marked_inactive_not_deleted,
+               test_invalid_native_token_marked_inactive_not_deleted,
                test_multiple_devices_same_user_both_active,
                test_web_push_hijack_blocked,
                test_unsubscribe_requires_ownership,
-               test_anonymous_request_cannot_deactivate_owned_push]:
+               test_anonymous_request_cannot_deactivate_owned_push,
+               test_push_receipt_is_write_only_for_own_event_and_installation]:
         try:
             fn(); print(f"  ✅ {fn.__name__}")
         except Exception as e:

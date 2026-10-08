@@ -81,12 +81,12 @@ def test_email_shipper_without_name_rejected():
     assert r.json()["detail"]["error"] == "NAME_REQUIRED"
 
 
-def test_email_shipper_without_company_rejected():
+def test_email_shipper_without_company_is_accepted():
     uid = seed("shipper-company@example.com")
     as_user(uid)
     r = patch_me({"role": "client", "name": "Boris Zhang", "phone": "+8613800000000"})
-    assert r.status_code == 400, r.text
-    assert r.json()["detail"]["error"] == "COMPANY_REQUIRED"
+    assert r.status_code == 200, r.text
+    assert r.json()["ok"] is True
 
 
 def test_email_shipper_without_country_is_accepted_with_required_contacts():
@@ -95,7 +95,7 @@ def test_email_shipper_without_country_is_accepted_with_required_contacts():
     r = patch_me({
         "role": "client",
         "name": "Boris Zhang",
-        "phone": "+8613800000000",
+        "phone": "+8613800000001",
         "company_name": "Boris Logistics",
     })
     assert r.status_code == 200, r.text
@@ -104,7 +104,7 @@ def test_email_shipper_without_country_is_accepted_with_required_contacts():
     assert d.get("country") in (None, "")
     assert d["full_name"] == "Boris Zhang"
     assert d.get("company_name") == "Boris Logistics"
-    assert "".join(ch for ch in d["phone"] if ch.isdigit()).endswith("8613800000000")
+    assert "".join(ch for ch in d["phone"] if ch.isdigit()).endswith("8613800000001")
 
 
 def test_email_shipper_with_name_country_phone_company_ok():

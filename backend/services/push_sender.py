@@ -1,661 +1,204 @@
-"""Единая точка отправки push-уведомлений.
+"""Native push sender for direct FCM/APNs delivery.
 
-Два канала:
-  1. Web Push — через pywebpush + VAPID (браузер, PWA).
-  2. Native — через Push Gateway. По умолчанию используется прямой
-     FCM/APNs; Expo сохраняется только как явно выбранный legacy-path
-     через PUSH_PROVIDER_MODE=expo|dual.
-
-ENV (.env):
-  VAPID_PUBLIC_KEY    — публичный VAPID-ключ (base64url, без паддинга)
-  VAPID_PRIVATE_KEY   — приватный VAPID-ключ (PEM либо base64url)
-  VAPID_SUBJECT       — mailto:admin@urtruck.kz (default)
-  EXPO_ACCESS_TOKEN   — опционально (если бот в private mode)
-  PUSH_PROVIDER_MODE  — expo | native | dual
-  FCM_SERVICE_ACCOUNT_JSON / GOOGLE_APPLICATION_CREDENTIALS + FCM_PROJECT_ID
-  APNS_KEY_ID / APNS_TEAM_ID / APNS_BUNDLE_ID / APNS_AUTH_KEY_P8
-
-Использование:
-  from services import push_sender
-  push_sender.send(user_id, 'Новая ставка', '3500$ за Алматы→Иу', kind='bid',
-                   data={'cargo_id': 'c42'}, url='/cargo/c42')
+Web Push remains supported for browser subscriptions. Mobile delivery is
+strictly native: device rows registered as FCM/APNs are sent through the
+gateway; legacy rows remain stored but are never selected.
 """
-import os
-import sys
+from __future__ import annotations
+
 import json
 import logging
-from pathlib import Path
-from typing import Optional
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-import httpx
+import os
+from typing import Any, Optional
 
 from database.db import get_conn
 from services import push_gateway
 
-log = logging.getLogger("push")
-
+log = logging.getLogger(__name__)
+PUSH_MOCK_WEB = (os.getenv("PUSH_MOCK_WEB") or "").lower() in {"1", "true", "yes"}
 VAPID_PUBLIC = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE = os.getenv("VAPID_PRIVATE_KEY", "")
-VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:admin@urtruck.kz")
-PUSH_MOCK_WEB = not (VAPID_PUBLIC and VAPID_PRIVATE)
-
-EXPO_ENDPOINT = "https://exp.host/--/api/v2/push/send"
-EXPO_TOKEN = os.getenv("EXPO_ACCESS_TOKEN", "")
-NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
-
-FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "")
-FCM_MOCK = not FCM_SERVER_KEY
+VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:support@urtruck.kz")
 
 
 def _mask_token(token: str) -> str:
-    if not token:
-        return ""
-    token = str(token)
-    if len(token) <= 12:
-        return token[:4] + "..."
-    return f"{token[:10]}...{token[-6:]}"
+    return push_gateway.mask_token(token)
 
 
-# ───────────────────────── Storage helpers ─────────────────────────
-def _web_subs(user_id: str) -> list[dict]:
-    # P0-1/P1-3/P1-4: только active=1 — деактивированные (logout, отписка,
-    # угон-конфликт разрешён в пользу другого владельца) сюда не попадают.
+def _event_key(event_id: Optional[str], user_id: str) -> str:
+    return f"{event_id or ''}:{user_id}"
+
+
+def _already_delivered(event_id: Optional[str], user_id: str) -> bool:
+    if not event_id:
+        return False
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT 1 FROM push_outbox WHERE event_id = ? AND recipient_user_id = ? AND status IN ('sent','sent_partial') LIMIT 1",
+            (event_id, user_id),
+        ).fetchone()
+    return bool(row)
+
+
+def _log(event_id: Optional[str], user_id: str, provider: str, status: str, error: Optional[str] = None) -> None:
+    log.debug("push event=%s user=%s provider=%s status=%s error=%s", event_id, user_id, provider, status, error)
+
+
+def _web_subscriptions(user_id: str) -> list[dict[str, Any]]:
     with get_conn() as c:
         rows = c.execute(
-            "SELECT endpoint, p256dh, auth FROM push_subscriptions "
-            "WHERE user_id = ? AND (active = 1 OR active IS NULL)",
+            "SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ? AND active = 1",
             (user_id,),
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [dict(row) for row in rows]
 
 
-def _native_tokens(user_id: str) -> list[dict]:
-    with get_conn() as c:
-        rows = c.execute(
-            "SELECT token, provider, platform FROM push_tokens_native "
-            "WHERE user_id = ? AND (active = 1 OR active IS NULL)",
-            (user_id,),
-        ).fetchall()
-    return [dict(r) for r in rows]
-
-
-# PR#187 reconciliation: идемпотентность доставок. event_key задаётся
-# сервером в момент перехода состояния (никогда не клиентом). Повтор того же
-# перехода не должен слать второй push/системное сообщение на устройства.
-def _event_key(data: Optional[dict]) -> Optional[str]:
-    value = (data or {}).get("event_key")
-    return str(value).strip()[:240] if value and str(value).strip() else None
-
-
-def _already_delivered(user_id: str, event_key: Optional[str]) -> bool:
-    """True только если раньше была УСПЕШНАЯ доставка по этому ключу.
-
-    Транзиентный сбой провайдера (web_sent=native_sent=0) остаётся
-    ретраибельным — тогда возвращаем False и повтор разрешён.
-    """
-    if not user_id or not event_key:
-        return False
-    try:
-        with get_conn() as c:
-            row = c.execute(
-                "SELECT 1 FROM push_log WHERE user_id = ? AND event_key = ? "
-                "AND (COALESCE(web_sent, 0) > 0 OR COALESCE(native_sent, 0) > 0) LIMIT 1",
-                (user_id, event_key),
-            ).fetchone()
-        return bool(row)
-    except Exception:
-        return False
-
-
-def _log(user_id: Optional[str], kind: str, title: str, body: str,
-         data: dict, web_sent: int, native_sent: int, error: str = None):
-    try:
-        event_key = _event_key(data)
-        with get_conn() as c:
-            c.execute(
-                "INSERT INTO push_log (user_id, kind, title, body, data_json, web_sent, native_sent, error, event_key) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (user_id, kind, title, body, json.dumps(data, ensure_ascii=False),
-                 web_sent, native_sent, error, event_key),
-            )
-    except Exception as e:
-        # Never raise — push logging is observability, not part of the request
-        # contract. Stay on debug to avoid flooding logs when SQLite is busy.
-        log.debug("push_log insert skipped: %s", e)
-
-
-# ───────────────────────── Web Push ─────────────────────────
-def _send_web(user_id: str, title: str, body: str, data: dict, url: str) -> int:
-    subs = _web_subs(user_id)
+def _send_web(user_id: str, title: str, body: str, data: dict, badge: Optional[int]) -> int:
+    subs = _web_subscriptions(user_id)
     if not subs:
         return 0
     if PUSH_MOCK_WEB:
-        print(f"[PUSH·WEB MOCK] {user_id}: {title} · {body}  ({len(subs)} subs)")
         return len(subs)
-
-    payload = json.dumps({"title": title, "body": body, "url": url, "data": data}, ensure_ascii=False)
-    sent = 0
     try:
-        from pywebpush import webpush, WebPushException
-    except ImportError:
-        log.error("pywebpush не установлен — pip install pywebpush")
+        from pywebpush import webpush
+    except Exception:
         return 0
-
+    payload = json.dumps({"title": title, "body": body, "data": data or {}, "badge": badge})
+    sent = 0
     for sub in subs:
         try:
             webpush(
-                subscription_info={"endpoint": sub["endpoint"],
-                                   "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
+                subscription_info={"endpoint": sub["endpoint"], "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
                 data=payload,
                 vapid_private_key=VAPID_PRIVATE,
                 vapid_claims={"sub": VAPID_SUBJECT},
             )
             sent += 1
-        except WebPushException as e:
-            # 404/410 — подписка мёртвая, чистим
-            status = getattr(e.response, "status_code", 0) if e.response else 0
-            if status in (404, 410):
-                # Блок 1 (P0-1 модель): деактивируем, а не удаляем — сохраняем
-                # аудит-след и не даём "мёртвой" строке молча ожить при
-                # переиспользовании того же endpoint другим владельцем без
-                # прохождения через _resolve_ownership.
-                with get_conn() as c:
-                    c.execute(
-                        "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                        "invalidated_reason = 'webpush_dead' WHERE endpoint = ?",
-                        (sub["endpoint"],),
-                    )
-                log.info(f"dead sub deactivated: {sub['endpoint'][:60]}")
-            else:
-                log.warning(f"webpush err {status}: {e}")
-        except Exception as e:
-            log.warning(f"webpush exception: {e}")
+        except Exception:
+            log.warning("web push failed endpoint=%s", _mask_token(sub.get("endpoint", "")))
     return sent
 
 
-# ───────────────────────── Native Push (Expo / FCM) ─────────────────────────
-def _send_expo(tokens: list[str], title: str, body: str, data: dict, badge: Optional[int] = None) -> int:
-    """Отправка через Expo Push Service — работает для Android(FCM) и iOS(APNs).
-    Токены должны начинаться с 'ExponentPushToken[...]' или 'ExpoPushToken[...]'.
-
-    PR-C2 (P0-2 app icon badge): добавлен optional `badge` параметр.
-    Когда iOS получает push payload с `badge: N`, APNs автоматически
-    устанавливает красный кружок с цифрой на иконке UrTruck на home
-    screen. Без этого поля badge не появляется даже если notification
-    permissions включены. Expo Push Service пробрасывает badge в APNs
-    aps payload как-is.
-    """
-    if not tokens:
-        return 0
-    msg_base = {
-        "title": title,
-        "body": body,
-        "data": data,
-        "sound": "default",
-        "priority": "high",
-        "channelId": NATIVE_PUSH_CHANNEL_ID,
-    }
-    if badge is not None:
-        msg_base["badge"] = int(badge)
-    messages = [{**msg_base, "to": t} for t in tokens]
-
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    if EXPO_TOKEN:
-        headers["Authorization"] = f"Bearer {EXPO_TOKEN}"
-
-    try:
-        r = httpx.post(EXPO_ENDPOINT, headers=headers, json=messages, timeout=10.0)
-        if r.status_code >= 400:
-            log.warning(f"expo push {r.status_code}: {r.text[:200]}")
-            return 0
-        resp = r.json()
-        tickets = resp.get("data", [])
-        # Удаляем токены с DeviceNotRegistered
-        dead = []
-        for i, tk in enumerate(tickets):
-            if isinstance(tk, dict) and tk.get("status") == "error":
-                err = (tk.get("details") or {}).get("error")
-                # DeviceNotRegistered is token-specific and may be safely
-                # deactivated. InvalidCredentials is an APNs/FCM/Expo app
-                # credential failure: deactivating the driver token here
-                # destroys a valid registration and prevents recovery after
-                # credentials are fixed. Keep it active and make it visible.
-                if err == "DeviceNotRegistered":
-                    dead.append(tokens[i])
-                else:
-                    log.error("expo ticket error token=%s error=%s message=%s",
-                              (tokens[i][:4] + "..." + tokens[i][-4:]) if tokens[i] else "-",
-                              err or "unknown", tk.get("message") or "")
-        if dead:
-            # Блок 1 (P0-1 модель): деактивируем, а не удаляем — см. комментарий
-            # в _send_web выше.
-            with get_conn() as c:
-                for d in dead:
-                    c.execute(
-                        "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                        "invalidated_reason = 'expo_device_not_registered' WHERE token = ?",
-                        (d,),
-                    )
-        sent = sum(1 for tk in tickets if isinstance(tk, dict) and tk.get("status") == "ok")
-        return sent
-    except Exception as e:
-        log.warning(f"expo push exception: {e}")
-        return 0
-
-
-def _send_expo_detailed(tokens: list[str], title: str, body: str, data: dict, badge: Optional[int] = None) -> dict:
-    """QA diagnostics variant of _send_expo.
-
-    Returns masked token metadata + Expo tickets so release QA can separate
-    backend/event bugs from Expo/Firebase/Android delivery bugs without
-    exposing raw push tokens.
-    """
-    if not tokens:
-        return {"sent": 0, "tickets": [], "error": None}
-    msg_base = {
-        "title": title,
-        "body": body,
-        "data": data,
-        "sound": "default",
-        "priority": "high",
-        "channelId": NATIVE_PUSH_CHANNEL_ID,
-    }
-    if badge is not None:
-        msg_base["badge"] = int(badge)
-    messages = [{**msg_base, "to": t} for t in tokens]
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    if EXPO_TOKEN:
-        headers["Authorization"] = f"Bearer {EXPO_TOKEN}"
-
-    try:
-        r = httpx.post(EXPO_ENDPOINT, headers=headers, json=messages, timeout=10.0)
-    except Exception as e:
-        return {"sent": 0, "tickets": [], "error": f"expo_push_exception: {e}"}
-
-    if r.status_code >= 400:
-        return {"sent": 0, "tickets": [], "error": f"expo_http_{r.status_code}: {r.text[:300]}"}
-
-    try:
-        payload = r.json()
-    except Exception as e:
-        return {"sent": 0, "tickets": [], "error": f"expo_bad_json: {e}"}
-
-    raw_tickets = payload.get("data", [])
-    tickets = []
-    sent = 0
-    for i, ticket in enumerate(raw_tickets):
-        token = tokens[i] if i < len(tokens) else ""
-        item = {
-            "token_masked": _mask_token(token),
-            "status": ticket.get("status") if isinstance(ticket, dict) else None,
-            "id": ticket.get("id") if isinstance(ticket, dict) else None,
-            "message": ticket.get("message") if isinstance(ticket, dict) else None,
-            "details": ticket.get("details") if isinstance(ticket, dict) else None,
-        }
-        if item["status"] == "ok":
-            sent += 1
-        tickets.append(item)
-    return {"sent": sent, "tickets": tickets, "error": None}
-
-
-def expo_receipts(ticket_ids: list[str]) -> dict:
-    """Fetch Expo delivery receipts for ticket IDs returned by diagnostics."""
-    ids = [str(x).strip() for x in (ticket_ids or []) if str(x).strip()]
-    if not ids:
-        return {"receipts": {}, "error": None}
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    if EXPO_TOKEN:
-        headers["Authorization"] = f"Bearer {EXPO_TOKEN}"
-    try:
-        r = httpx.post("https://exp.host/--/api/v2/push/getReceipts", headers=headers, json={"ids": ids}, timeout=10.0)
-    except Exception as e:
-        return {"receipts": {}, "error": f"expo_receipt_exception: {e}"}
-    if r.status_code >= 400:
-        return {"receipts": {}, "error": f"expo_receipt_http_{r.status_code}: {r.text[:300]}"}
-    try:
-        return {"receipts": r.json().get("data", {}), "error": None}
-    except Exception as e:
-        return {"receipts": {}, "error": f"expo_receipt_bad_json: {e}"}
-
-
-def _send_fcm(tokens: list[str], title: str, body: str, data: dict) -> int:
-    """Отправка через FCM HTTP v1 (прямое Firebase).
-    Сейчас stub — включается только если FCM_SERVER_KEY задан.
-    """
-    if not tokens or FCM_MOCK:
-        return 0
-    # Legacy FCM HTTP API (проще чем HTTP v1, но deprecated 2024). Для MVP — достаточно.
-    headers = {"Authorization": f"key={FCM_SERVER_KEY}", "Content-Type": "application/json"}
-    sent = 0
-    for t in tokens:
-        try:
-            r = httpx.post("https://fcm.googleapis.com/fcm/send", headers=headers,
-                           json={"to": t, "notification": {"title": title, "body": body},
-                                 "data": {k: str(v) for k, v in (data or {}).items()}},
-                           timeout=10.0)
-            if r.status_code == 200 and r.json().get("success") == 1:
-                sent += 1
-        except Exception as e:
-            log.warning(f"fcm err: {e}")
-    return sent
-
-
-def _send_native_legacy(user_id: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> tuple[int, int]:
-    """Returns (sent, total_devices_targeted) — see _send_native's docstring
-    for why the caller needs both, not just `sent`."""
-    tokens = _native_tokens(user_id)
-    if not tokens:
-        return 0, 0
-
-    expo_tokens = [t["token"] for t in tokens if t["provider"] == "expo"]
-    fcm_tokens = [t["token"] for t in tokens if t["provider"] == "fcm"]
-
-    sent = 0
-    if expo_tokens:
-        sent += _send_expo(expo_tokens, title, body, data, badge=badge)
-    if fcm_tokens:
-        sent += _send_fcm(fcm_tokens, title, body, data)
-
-    if FCM_MOCK and PUSH_MOCK_WEB and not expo_tokens and not fcm_tokens:
-        print(f"[PUSH·NATIVE MOCK] {user_id}: {title} · {body}")
-    return sent, len(tokens)
-
-
-def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> tuple[int, int]:
-    """Native delivery with gradual migration. Returns (sent, total_devices).
-
-    Push-closure track: previously returned only `sent` (an int) — the
-    caller (send()) then treated `sent > 0` as "fully delivered" for the
-    purpose of marking the durable outbox row done (mark_event_sent). That
-    is correct for a single-device user but wrong for a multi-device one:
-    Device A succeeding while Device B transiently fails must NOT close out
-    the logical delivery — B needs its own retry via the outbox worker,
-    which push_delivery_log/_already_sent_to_device already support
-    per-device (see services/push_gateway.py). Exposing `total_devices`
-    here is what lets the caller tell "fully delivered" (sent >= total)
-    apart from "partially delivered" (0 &lt; sent &lt; total) instead of
-    collapsing both into a truthy int.
-
-    push_devices is the new source for provider choice. Legacy
-    push_tokens_native remains a fallback so production users do not lose
-    notifications during rollout.
-    """
-    gateway_result = push_gateway.send_to_devices(
-        user_id,
-        title,
-        body,
-        data,
-        badge,
-        expo_send_one=_send_expo_detailed,
+def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optional[int], provider: Optional[str] = None) -> dict[str, Any]:
+    return push_gateway.send_to_devices(
+        user_id=user_id, title=title, body=body, data=data or {}, badge=badge,
+        mode="native", provider_filter=provider if provider in {"fcm", "apns"} else None,
     )
-    if gateway_result.get("devices", 0) > 0:
-        return int(gateway_result.get("sent", 0) or 0), int(gateway_result.get("devices", 0) or 0)
-    # Native is the production default. If the new registry has no target,
-    # do not silently fall back to legacy Expo/FCM tokens. Legacy delivery is
-    # retained for an explicitly selected expo/dual mode and diagnostics.
-    configured_mode = (os.getenv("PUSH_PROVIDER_MODE") or "native").strip().lower()
-    if configured_mode not in ("expo", "dual"):
-        return 0, 0
-    return _send_native_legacy(user_id, title, body, data, badge=badge)
-
-
-def native_token_diagnostics(user_id: str) -> dict:
-    """Masked active native tokens for a user. QA-only callers must guard this."""
-    tokens = _native_tokens(user_id)
-    devices = push_gateway.active_devices(user_id)
-    return {
-        "user_id": user_id,
-        "count": len(tokens),
-        "device_registry_count": len(devices),
-        "tokens": [
-            {
-                "token_masked": _mask_token(t.get("token")),
-                "provider": t.get("provider"),
-                "platform": t.get("platform"),
-            }
-            for t in tokens
-        ],
-        "devices": [
-            {
-                "id": d.get("id"),
-                "device_id": d.get("device_id"),
-                "token_masked": _mask_token(d.get("push_token")),
-                "provider": d.get("push_provider"),
-                "platform": d.get("platform"),
-                "app_id": d.get("app_id"),
-                "locale": d.get("locale"),
-                "app_version": d.get("app_version"),
-            }
-            for d in devices
-        ],
-    }
-
-
-def send_native_debug(user_id: str, title: str, body: str, data: Optional[dict] = None, url: str = "/", kind: str = "qa_push_test", provider: Optional[str] = None) -> dict:
-    """Direct provider test for one user's active native tokens.
-
-    This bypasses marketplace/chat event creation but keeps the same Expo
-    payload contract used by normal push sends. It is intentionally separate
-    from send() so existing business call-sites keep their current behavior.
-    """
-    if not user_id:
-        return {"user_id": user_id, "tokens": 0, "sent": 0, "tickets": [], "error": "missing_user_id"}
-    data = {**(data or {}), "kind": kind, "url": url}
-    badge = _compute_recipient_badge(user_id)
-    if provider and provider in ("expo", "fcm", "apns", "native", "dual"):
-        mode = "native" if provider in ("fcm", "apns", "native") else provider
-        gateway = push_gateway.send_to_devices(
-            user_id,
-            title,
-            body,
-            data,
-            badge,
-            expo_send_one=_send_expo_detailed,
-            mode=mode,
-            provider_filter=provider if provider in ("expo", "fcm", "apns") else None,
-        )
-        return {
-            "user_id": user_id,
-            "provider": provider,
-            "sent": gateway.get("sent", 0),
-            "devices": gateway.get("devices", 0),
-            "providers": gateway.get("providers", {}),
-            "mode": gateway.get("mode"),
-            "error": None if gateway.get("sent", 0) else "no_provider_delivery",
-        }
-
-    tokens = _native_tokens(user_id)
-    expo_tokens = [t["token"] for t in tokens if t["provider"] == "expo"]
-    fcm_tokens = [t["token"] for t in tokens if t["provider"] == "fcm"]
-    expo_result = _send_expo_detailed(expo_tokens, title, body, data, badge=badge)
-    return {
-        "user_id": user_id,
-        "tokens": len(tokens),
-        "expo_tokens": len(expo_tokens),
-        "fcm_tokens": len(fcm_tokens),
-        "sent": expo_result.get("sent", 0),
-        "tickets": expo_result.get("tickets", []),
-        "error": expo_result.get("error"),
-    }
 
 
 def _compute_recipient_badge(user_id: str) -> int:
-    """Бейдж на иконке (вариант 2): единый сигнал «всё новое» = непрочитанные
-    chat-сообщения + непрочитанные уведомления (колокол). iOS APNs рисует это
-    число на иконке. Чат-точка и колокол внутри приложения остаются раздельными;
-    суммарный счётчик — только на home-иконке, чтобы получатель ничего не
-    пропустил. Каждый источник считаем независимо (одна таблица может
-    отсутствовать на старой/тестовой БД — не теряем второй счётчик).
-    """
-    total = 0
-    try:
-        with get_conn() as c:
-            try:
-                # Блок 5 аудита (P1-1, вариант B): system-сообщения исключены
-                # — тот же фильтр, что в api/chat.py unread_count(), иначе
-                # APNs-бейдж на иконке расходился бы с in-app бейджем
-                # «Сделки» (двойной счёт одного события).
-                active_statuses = ("accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received")
-                placeholders = ",".join("?" for _ in active_statuses)
-                row = c.execute(
-                    "SELECT COUNT(*) FROM chat_messages m "
-                    "JOIN chat_rooms r ON r.id = m.room_id "
-                    "WHERE (r.participant_1 = ? OR r.participant_2 = ?) "
-                    "AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0 "
-                    "AND ((r.cargo_id IS NULL AND r.trip_id IS NULL "
-                    "AND NOT EXISTS (SELECT 1 FROM deals d0 WHERE d0.chat_room_id = r.id)) "
-                    "OR EXISTS (SELECT 1 FROM deals d WHERE d.status IN (" + placeholders + ") "
-                    "AND (d.chat_room_id = r.id OR (d.chat_room_id IS NULL AND "
-                    "((r.cargo_id IS NOT NULL AND d.cargo_id = r.cargo_id) "
-                    "OR (r.trip_id IS NOT NULL AND d.trip_id = r.trip_id))))))",
-                    (user_id, user_id, user_id, *active_statuses),
-                ).fetchone()
-                total += int(row[0]) if row else 0
-            except Exception:
-                pass
-            try:
-                row = c.execute(
-                    "SELECT COUNT(*) FROM notifications "
-                    "WHERE user_id = ? AND is_read = 0 "
-                    "AND type NOT IN ('chat_message', 'chat_attachment')",
-                    (user_id,),
-                ).fetchone()
-                total += int(row[0]) if row else 0
-            except Exception:
-                pass
-    except Exception:
-        return 0
-    return total
+    # Native APNs/FCM badge must equal the mobile client's combined unread
+    # formula.  In particular, completed-deal chat rows must not resurrect a
+    # stale launcher badge after the user has returned to the app.
+    from api.notifications import unread_badge_count
+    return unread_badge_count(user_id)
 
 
-# ───────────────────────── Public API ─────────────────────────
-def send(user_id: str, title: str, body: str,
-         kind: str = "info", data: Optional[dict] = None, url: str = "/") -> dict:
-    """Единый sender. Возвращает {'web': N, 'native': N, 'total': N}.
-
-    Бейдж на иконке (вариант 2): для ЛЮБОГО пуша (chat и bid/system) ставим
-    badge = чат + уведомления получателя. iOS APNs рисует это число на иконке —
-    единый сигнal «всё новое», чтобы фоновый пуш всегда приводил иконку к
-    суммарному счётчику. Внутри приложения чат-точка и колокол раздельны.
-    """
-    if not user_id:
-        return {"web": 0, "native": 0, "total": 0}
-
-    data = data or {}
-    data = {**data, "kind": kind, "url": url}
-    event_key = _event_key(data)
-
-    # PR#187: повтор того же серверного перехода не создаёт дубль-доставку.
-    # Без event_key поведение прежнее (независимые сообщения не дедупятся).
-    if _already_delivered(user_id, event_key):
-        return {"web": 0, "native": 0, "total": 0, "deduped": True}
-    if event_key:
+def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional[dict] = None,
+         url: str = "/", *, event_id: Optional[str] = None, event_type: str = "generic",
+         badge: Optional[int] = None, provider: Optional[str] = None) -> dict[str, Any]:
+    data = {**(data or {}), "kind": kind, "url": url}
+    event_id = event_id or data.get("event_id") or data.get("event_key") or data.get("event")
+    event_type = event_type if event_type != "generic" else str(data.get("type") or kind)
+    if event_id:
+        data.setdefault("event_id", event_id)
+    # Freeze TTL/collapse controls once at business-event creation so the
+    # immediate path and a later durable retry deliver the same semantics.
+    data = push_gateway.enrich_event_data(event_type, data)
+    badge = _compute_recipient_badge(user_id) if badge is None else badge
+    if event_id and _already_delivered(event_id, user_id):
+        return {"sent": 0, "duplicate": True, "event_id": event_id}
+    if event_id:
+        push_gateway.enqueue_event(
+            event_id, event_type, user_id,
+            {"title": title, "body": body, "data": data, "badge": badge},
+        )
+    web_sent = _send_web(user_id, title, body, data, badge)
+    native = _send_native(user_id, title, body, data, badge, provider)
+    sent = web_sent + int(native.get("sent") or 0)
+    native_devices = int(native.get("devices") or 0)
+    native_sent = int(native.get("sent") or 0) + int(native.get("already_delivered") or 0)
+    # A web subscription cannot stand in for a registered native device: the
+    # recipient may have both.  Only close a native outbox event after every
+    # active native target is provider-accepted; otherwise the drain worker
+    # owns the retry.  If the provider classified the remaining failure as
+    # permanent, close it truthfully now instead of scheduling futile retry.
+    fully_delivered = native_sent >= native_devices if native_devices > 0 else bool(web_sent)
+    native_retryable = bool(native.get("retryable", True))
+    native_errors = native.get("errors") or {}
+    safe_error = ",".join(sorted(str(code) for code in native_errors))[:500] or "non_retryable_provider_error"
+    if event_id and (fully_delivered or (native_devices > 0 and not native_retryable)):
         try:
-            push_gateway.enqueue_event(
-                event_key,
-                str(data.get("event") or data.get("type") or kind),
-                user_id,
-                {"title": title, "body": body, "data": data, "url": url},
-            )
+            with get_conn() as c:
+                if fully_delivered:
+                    c.execute(
+                        "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL, locked_by=NULL "
+                        "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry','processing')",
+                        (event_id, user_id),
+                    )
+                else:
+                    terminal = "sent_partial" if native_sent else "failed"
+                    c.execute(
+                        "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, last_error=?, claimed_at=NULL, locked_by=NULL "
+                        "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry','processing')",
+                        (terminal, safe_error, event_id, user_id),
+                    )
         except Exception:
             pass
-
-    badge = _compute_recipient_badge(user_id)
-
-    try:
-        web = _send_web(user_id, title, body, data, url)
-    except Exception as e:
-        log.exception("web push fatal")
-        web = 0
-    try:
-        native, native_total = _send_native(user_id, title, body, data, badge=badge)
-    except Exception as e:
-        log.exception("native push fatal")
-        native, native_total = 0, 0
-
-    # Delivery-ownership contract (push recovery track): this inline call is
-    # the FAST PATH: it already tried native delivery synchronously above.
-    #
-    # Multi-device fix (push-closure track): only mark the outbox row
-    # (if any — only event_key'd sends ever get one, see enqueue_event
-    # above) 'sent' when EVERY currently-active device was reached
-    # (native >= native_total), not merely "at least one". A user with two
-    # devices where A succeeded and B transiently failed must keep this row
-    # 'pending' so the background drain worker (push_gateway.
-    # process_pending_once, scheduler.jobs.push_outbox_drain_job) retries —
-    # push_delivery_log/_already_sent_to_device already skip re-sending to
-    # A (already logged 'sent' for this event+device), so the retry only
-    # ever re-targets B. If nothing was reached at all, the row also stays
-    # 'pending' and the worker is the sole retry owner — this is the only
-    # path allowed to leave a row 'pending'.
-    if event_key and native_total > 0 and native >= native_total:
-        try:
-            push_gateway.mark_event_sent(event_key, user_id)
-        except Exception:
-            pass
-
-    _log(user_id, kind, title, body, data, web, native)
-    return {"web": web, "native": native, "total": web + native}
-
-
-def drain_outbox_once(limit: int = 50) -> dict:
-    """Thin public entry point for the scheduler (scheduler.jobs.push_outbox_drain_job)
-    so it never has to reach into push_gateway's private `_send_expo_detailed`
-    convention directly — mirrors how `_send_native` already wires the same
-    callback for the inline fast path.
-    """
-    return push_gateway.process_pending_once(_send_expo_detailed, limit=limit)
-
-
-def poll_expo_receipts_once(limit: int = 50) -> dict:
-    """Thin public entry point for the scheduler (scheduler.jobs.push_receipts_poll_job) —
-    see push_gateway.poll_pending_receipts for the actual bounded, once-per-row
-    reconciliation logic.
-    """
-    return push_gateway.poll_pending_receipts(expo_receipts, limit=limit)
-
-
-def broadcast(user_ids: list[str], title: str, body: str,
-              kind: str = "info", data: Optional[dict] = None, url: str = "/") -> dict:
-    """Массовая рассылка — тем же сообщением нескольким юзерам."""
-    totals = {"web": 0, "native": 0, "total": 0}
-    for uid in user_ids:
-        r = send(uid, title, body, kind=kind, data=data, url=url)
-        for k in totals:
-            totals[k] += r[k]
-    return totals
-
-
-def info() -> dict:
-    # Safe production diagnostics: counts only, never raw endpoints/tokens or
-    # user ids. This lets release QA distinguish "sender is broken" from
-    # "driver never registered a token" without exposing private data.
-    counts = {"web_active": 0, "native_active": 0, "native_ios": 0, "native_android": 0}
-    try:
-        with get_conn() as c:
-            counts["web_active"] = int(c.execute(
-                "SELECT COUNT(*) FROM push_subscriptions WHERE active = 1 OR active IS NULL"
-            ).fetchone()[0])
-            counts["native_active"] = int(c.execute(
-                "SELECT COUNT(*) FROM push_tokens_native WHERE active = 1 OR active IS NULL"
-            ).fetchone()[0])
-            counts["native_ios"] = int(c.execute(
-                "SELECT COUNT(*) FROM push_tokens_native WHERE (active = 1 OR active IS NULL) AND platform = 'ios'"
-            ).fetchone()[0])
-            counts["native_android"] = int(c.execute(
-                "SELECT COUNT(*) FROM push_tokens_native WHERE (active = 1 OR active IS NULL) AND platform = 'android'"
-            ).fetchone()[0])
-    except Exception as e:
-        log.warning("push diagnostics count failed: %s", e)
+    _log(event_id, user_id, "native", "sent" if sent else "not_sent", native.get("error"))
     return {
-        "web": {"mode": "MOCK" if PUSH_MOCK_WEB else "REAL", "vapid_public": bool(VAPID_PUBLIC),
-                "subject": VAPID_SUBJECT},
-        "native": {
-            "expo": {"endpoint": EXPO_ENDPOINT, "access_token_set": bool(EXPO_TOKEN)},
-            "fcm": {"mode": "MOCK" if FCM_MOCK else "REAL"},
-            "gateway": push_gateway.info(),
-        },
-        "registrations": counts,
+        "sent": sent,
+        "web": web_sent,
+        "web_sent": web_sent,
+        "native": native_sent,
+        "native_result": native,
+        "total": sent,
+        "event_id": event_id,
     }
+
+
+def broadcast(user_ids: list[str], title: str, body: str, data: Optional[dict] = None,
+              *, event_id: Optional[str] = None, event_type: str = "generic") -> dict[str, Any]:
+    results = [send(uid, title, body, data=data, event_id=event_id, event_type=event_type) for uid in user_ids]
+    return {"sent": sum(int(r.get("sent") or 0) for r in results), "results": results}
+
+
+def send_native_debug(user_id: str, title: str, body: str, data: Optional[dict] = None,
+                      badge: Optional[int] = None, provider: Optional[str] = None) -> dict[str, Any]:
+    result = _send_native(user_id, title, body, data or {}, badge, provider)
+    result["provider"] = provider if provider in {"fcm", "apns"} else "native"
+    return result
+
+
+def drain_outbox_once(limit: int = 100) -> dict[str, Any]:
+    return push_gateway.process_pending_once(limit=limit)
+
+
+def native_token_diagnostics(user_id: str) -> dict[str, Any]:
+    devices = push_gateway.active_devices(user_id)
+    safe = [
+        {
+            "device_id": d.get("device_id"),
+            "platform": d.get("platform"),
+            "provider": d.get("push_provider"),
+            "token": _mask_token(d.get("push_token") or ""),
+            "app_id": d.get("app_id"),
+            "locale": d.get("locale"),
+        }
+        for d in devices if d.get("push_provider") in {"fcm", "apns"}
+    ]
+    return {"user_id": user_id, "native_devices": safe, "count": len(safe)}
+
+
+def info() -> dict[str, Any]:
+    with get_conn() as c:
+        web = c.execute("SELECT COUNT(*) FROM push_subscriptions WHERE active = 1").fetchone()[0]
+        native = c.execute(
+            "SELECT COUNT(*) FROM push_devices WHERE enabled = 1 AND push_provider IN ('fcm','apns')"
+        ).fetchone()[0]
+        legacy = c.execute(
+            "SELECT COUNT(*) FROM push_devices WHERE enabled = 1 AND push_provider NOT IN ('fcm','apns')"
+        ).fetchone()[0]
+    gateway = push_gateway.info()
+    return {"web": {"active": web}, "native": {"active": native, "legacy_ignored": legacy},
+            "gateway": gateway, "vapid": {"configured": bool(VAPID_PUBLIC and VAPID_PRIVATE)}}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { dealWorkspaceIdentity } from '../utils/dealWorkspaceIdentity';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DealWorkspaceRoute from '../components/deal/DealWorkspaceRoute';
@@ -11,6 +12,10 @@ import { useV1Colors } from '../theme/designV1';
 // every entry through this screen converges on DealWorkspaceRoute, and a
 // partner/profile entry must never create or expose a pre-deal chat.
 export default function ChatScreenV2(props) {
+  return <ResolvedChatScreen key={dealWorkspaceIdentity(props?.route?.params)} {...props} />;
+}
+
+function ResolvedChatScreen(props) {
   const { route, navigation } = props;
   const params = route?.params || {};
   const colors = useV1Colors();

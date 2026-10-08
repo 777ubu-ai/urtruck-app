@@ -1,20 +1,17 @@
-// Push клиент — Web Push (PWA/браузер) + Expo Notifications (native FCM/APNs).
-import { Platform } from 'react-native';
+// Push клиент — Web Push (PWA/браузер) + native FCM/APNs через expo-notifications.
+import { Linking, Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { getActiveRoom } from './activeRoom';  // QA-аудит P2-2
 import { t as tGlobal } from './i18n';
+import { claimPushEvent, clearPushEventDedup } from './pushEventDedup';
+import { decideForegroundPresentation } from './pushRuntime';
 
 const BASE = `${API_BASE}/push`;
 
 const TOKEN_KEY = 'ur_reg_token';
 const PUSH_ASKED = 'ur_push_asked';
 const NATIVE_TOKEN_KEY = 'ur_push_native_token';
-// Track: push-recovery — сырой FCM(Android)/APNs(iOS) токен, отдельно от
-// Expo-токена выше. Нужен собственный ключ, чтобы unsubscribe() мог снять
-// ОБА провайдера по значению (POST /push/unregister-native шлёт конкретный
-// token, не device_id) — см. registerNative()/unsubscribe() ниже.
-const NATIVE_RAW_TOKEN_KEY = 'ur_push_native_raw_token';
 // Push-closure track: same key src/utils/i18n.js persists the user's chosen
 // app language under (`const KEY = 'ur_lang'`). Read-only here — never
 // written — so backend system push text (services/push_i18n.py) can be
@@ -28,6 +25,23 @@ export const NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2';
 // использует его, чтобы отличить «тот же физический телефон сменил
 // пользователя» (легитимно) от «кто-то узнал чужой токен» (блокируется).
 const DEVICE_ID_KEY = 'ur_device_id';
+
+// Expo вызывает этот listener при ротации нативного FCM/APNs token. Binding
+// хранится один раз на процесс: повторный app-active/login не должен
+// множить callbacks и регистрацию одного токена.
+let nativeTokenListenerBound = false;
+// Android may deliver several token-change callbacks in the same event-loop
+// turn (notably while the notification bridge is restoring after process
+// recreation).  Registration is an idempotent *network write*, but without
+// coalescing each callback opened another OkHttp request and could starve the
+// authenticated marketplace traffic on the same device.
+let nativeRegistrationInFlight = null;
+// A provider token can rotate while the current registration request is still
+// on the wire.  Such a callback is not an identical concurrent caller: after
+// the old request settles we must read the provider token again and register
+// the latest value.  A boolean deliberately coalesces callback bursts into a
+// single trailing write.
+let nativeRegistrationQueued = false;
 
 function _uuidv4() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -81,6 +95,26 @@ export const push = {
   async permission() {
     if (!this.isSupported()) return 'unsupported';
     return Notification.permission; // 'default' | 'granted' | 'denied'
+  },
+
+  async nativePermission() {
+    if (!this.isNative()) return 'unsupported';
+    try {
+      const Notifications = require('expo-notifications');
+      return (await Notifications.getPermissionsAsync()).status || 'undetermined';
+    } catch {
+      return 'unsupported';
+    }
+  },
+
+  async openNativeNotificationSettings() {
+    if (!this.isNative() || typeof Linking?.openSettings !== 'function') return false;
+    try {
+      await Linking.openSettings();
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   async subscribe(options = {}) {
@@ -174,7 +208,7 @@ export const push = {
         await sub.unsubscribe();
       }
     }
-    // Native: убираем Expo-токен с backend
+    // Native: удаляем старую привязку устройства с backend
     try {
       const existing = await storage.get(NATIVE_TOKEN_KEY);
       if (existing) {
@@ -184,22 +218,6 @@ export const push = {
           body: JSON.stringify({ token: existing, reason: 'user_unregistered' }),
         });
         await storage.remove(NATIVE_TOKEN_KEY);
-      }
-    } catch {}
-    // Track: push-recovery — и сырой FCM/APNs-токен тоже (если был
-    // зарегистрирован, см. registerNative()). /unregister-native снимает по
-    // значению конкретного token, поэтому оба провайдера нужно отписывать
-    // отдельными вызовами — logoutCleanup() ниже, наоборот, снимает всё по
-    // device_id за один запрос и в этом отдельном вызове не нуждается.
-    try {
-      const existingNative = await storage.get(NATIVE_RAW_TOKEN_KEY);
-      if (existingNative) {
-        await fetch(`${BASE}/unregister-native`, {
-          method: 'POST',
-          headers: authHeaders,
-          body: JSON.stringify({ token: existingNative, reason: 'user_unregistered' }),
-        });
-        await storage.remove(NATIVE_RAW_TOKEN_KEY);
       }
     } catch {}
   },
@@ -225,7 +243,9 @@ export const push = {
         },
         body: JSON.stringify({ device_id: deviceId }),
       });
-      return resp.ok ? await resp.json() : { ok: false, status: resp.status };
+      const result = resp.ok ? await resp.json() : { ok: false, status: resp.status };
+      if (result.ok) await clearPushEventDedup();
+      return result;
     } catch (e) {
       return { ok: false, reason: 'network_error', error: String(e) };
     }
@@ -233,12 +253,54 @@ export const push = {
 
   getOrCreateDeviceId,
 
-  // ── Native (Expo Notifications) ──
+  // Provider success is not device receipt. This best-effort acknowledgement
+  // creates diagnostic evidence only; failures never affect chat delivery,
+  // notification presentation, or retry ownership on the server.
+  async acknowledgeReceipt(eventId, { opened = false } = {}) {
+    if (!this.isNative() || typeof eventId !== 'string' || !eventId.trim()) {
+      return { ok: false, reason: 'invalid_receipt' };
+    }
+    try {
+      const token = await storage.get(TOKEN_KEY);
+      if (!token) return { ok: false, reason: 'no_token' };
+      const deviceId = await getOrCreateDeviceId();
+      const response = await fetch(`${BASE}/receipt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ event_id: eventId.trim(), device_id: deviceId, opened: !!opened, platform: Platform.OS }),
+      });
+      return { ok: response.ok, status: response.status };
+    } catch {
+      return { ok: false, reason: 'network_error' };
+    }
+  },
+
+  // ── Native token bridge (expo-notifications permissions/listeners only) ──
   isNative() {
     return Platform.OS === 'ios' || Platform.OS === 'android';
   },
 
   async registerNative() {
+    // Keep one registration flight per JS runtime.  Callers still receive the
+    // same result, while a token-listener burst cannot turn into a request
+    // storm or monopolise the mobile HTTP dispatcher.
+    if (nativeRegistrationInFlight) return nativeRegistrationInFlight;
+    const flight = this._registerNativeOnce();
+    nativeRegistrationInFlight = flight;
+    try {
+      return await flight;
+    } finally {
+      if (nativeRegistrationInFlight === flight) {
+        nativeRegistrationInFlight = null;
+        if (nativeRegistrationQueued) {
+          nativeRegistrationQueued = false;
+          this.registerNative().catch(() => {});
+        }
+      }
+    }
+  },
+
+  async _registerNativeOnce() {
     if (!this.isNative()) return { ok: false, reason: 'web' };
     let Notifications, Device;
     try {
@@ -259,15 +321,12 @@ export const push = {
       handleNotification: async (notification) => {
         try {
           const data = notification?.request?.content?.data || {};
-          if ((data.type === 'chat_message' || data.type === 'chat_attachment') && data.room_id && data.room_id === getActiveRoom()) {
-            // SDK 52: shouldShowAlert устарел → дублируем shouldShowBanner/
-            // shouldShowList, иначе баннер не подавляется. shouldSetBadge
-            // false — сообщение читается прямо сейчас.
-            return {
-              shouldShowAlert: false, shouldShowBanner: false, shouldShowList: false,
-              shouldPlaySound: false, shouldSetBadge: false,
-            };
-          }
+          return await decideForegroundPresentation({
+            data,
+            activeRoom: getActiveRoom(),
+            acknowledge: (eventId, options) => this.acknowledgeReceipt(eventId, options),
+            claimDisplay: (eventId) => claimPushEvent(eventId, 'display'),
+          });
         } catch {}
         return {
           shouldShowAlert: true, shouldShowBanner: true, shouldShowList: true,
@@ -301,52 +360,18 @@ export const push = {
       });
     }
 
-    // Expo Push Token
-    // PR-C2 (P0-1 push permissions): на Expo SDK 49+ getExpoPushTokenAsync
-    // требует `projectId` иначе на iOS возвращает пустой токен / падает.
-    // projectId живёт в app.json:expo.extra.eas.projectId; читаем через
-    // expo-constants. Если константы нет — fallback на старый zero-arg
-    // вызов (web/legacy).
-    let projectId;
+    // Read only app version metadata; project identifiers are unrelated to
+    // native FCM/APNs delivery and are intentionally not consulted here.
     let appVersion = null;
     try {
       const Constants = require('expo-constants').default;
-      projectId =
-        Constants?.expoConfig?.extra?.eas?.projectId ||
-        Constants?.easConfig?.projectId ||
-        Constants?.manifest?.extra?.eas?.projectId ||
-        null;
       appVersion = Constants?.expoConfig?.version || Constants?.manifest?.version || null;
-    } catch { projectId = null; }
+    } catch {}
     // issue #5: dev-only debug logging для проверки регистрации токена на
     // реальном устройстве/dev-билде (в проде молчим).
     const dbg = (...a) => { if (typeof __DEV__ !== 'undefined' && __DEV__) console.log('[push]', ...a); };
-    dbg('projectId', projectId || '(none)');
-    let tokenData;
-    let token = null;
-    let expoTokenError = null;
-    try {
-      tokenData = projectId
-        ? await Notifications.getExpoPushTokenAsync({ projectId })
-        : await Notifications.getExpoPushTokenAsync();
-      token = tokenData?.data || null;
-    } catch (e) {
-      dbg('getExpoPushTokenAsync failed', String(e));
-      expoTokenError = String(e);
-    }
-    if (!token) dbg('no Expo token returned');
-    else dbg('expo token', _maskToken(token)); // P0-1: полный токен в логи не пишем даже в dev
-
-    // Отправляем на бэк. issue #5: проверяем ответ — раньше статус
-    // игнорировался и при 401/500 функция всё равно возвращала ok:true,
-    // хотя токен на сервере не сохранялся (push не доходил).
-    // Track: push-recovery (2026-09-09) — вынесено в _registerToken(), т.к.
-    // ниже регистрируем ЕЩЁ и сырой FCM/APNs-токен тем же device_id тем же
-    // эндпоинтом (см. Notifications.getDevicePushTokenAsync() ниже);
-    // исторический прецедент — commit fb5c6415 ("add native gateway and
-    // device registry", 31.08.2026), который добавил ровно эту функцию, но
-    // не попал в эту ветку (см. forensic-аудит). Логика самого Expo-пути
-    // (порядок проверок 409/2xx/not_linked) не менялась ни на строчку.
+    // The only native registration below is a platform token from the
+    // notification SDK; it is sent directly to UrTruck's native registry.
     const authToken = await storage.get(TOKEN_KEY);
     const deviceId = await getOrCreateDeviceId();
     const locale = await storage.get(LANG_KEY);
@@ -398,24 +423,20 @@ export const push = {
       return { ok: true, token: pushToken, provider, user_id: regUserId };
     };
 
-    const expoResult = token
-      ? await registerToken({ pushToken: token, provider: 'expo' })
-      : { ok: false, reason: expoTokenError ? 'token_failed' : 'no_token', error: expoTokenError };
-    if (expoResult.ok) await storage.set(NATIVE_TOKEN_KEY, token);
+    // Token may rotate without a login (restore, OS/provider maintenance).
+    // Re-enter registerNative so each callback obtains fresh auth, locale and
+    // installation metadata rather than reusing this invocation's snapshot.
+    if (!nativeTokenListenerBound && typeof Notifications.addPushTokenListener === 'function') {
+      nativeTokenListenerBound = true;
+      Notifications.addPushTokenListener(() => {
+        if (nativeRegistrationInFlight) {
+          nativeRegistrationQueued = true;
+          return;
+        }
+        this.registerNative().catch(() => {});
+      });
+    }
 
-    // Track: push-recovery — сырой нативный токен (FCM registration token на
-    // Android / APNs device token на iOS), дополнительно к Expo-токену выше.
-    // Historical: Notifications.getDevicePushTokenAsync() — тот же вызов,
-    // что был в commit fb5c6415, не требует отдельного Firebase SDK (это
-    // API самого expo-notifications). Backend-шлюз (services/push_gateway.py
-    // FCMProvider/APNsProvider) уже умеет их принимать и слать напрямую —
-    // ждёт только PUSH_PROVIDER_MODE=native|dual + креды (не меняются этим
-    // коммитом, см. PHASE 7 контракт). Регистрация ВСЕГДА идёт тем же
-    // register-native эндпоинтом и тем же device_id — backend уже умеет
-    // держать несколько активных провайдеров на одном device_id (см.
-    // _resolve_ownership / push_devices UNIQUE(push_provider, push_token)).
-    // Падение этого блока НЕ должно откатывать успешную Expo-регистрацию
-    // выше — весь блок в своём try/catch, ошибка только логируется в dev.
     let nativeResult = null;
     try {
       let nativeTokenData = null;
@@ -429,34 +450,22 @@ export const push = {
         dbg('native token', nativeTokenData?.type, _maskToken(nativeToken)); // P0-1: не логируем токен целиком
         const nativeProvider = Platform.OS === 'android' ? 'fcm' : 'apns';
         nativeResult = await registerToken({ pushToken: nativeToken, provider: nativeProvider });
-        if (nativeResult.ok) await storage.set(NATIVE_RAW_TOKEN_KEY, nativeToken);
+        if (nativeResult.ok) await storage.set(NATIVE_TOKEN_KEY, nativeToken);
       }
     } catch (e) {
-      dbg('native registration block failed (Expo unaffected)', String(e));
+      dbg('native registration block failed', String(e));
     }
 
-    // Native delivery is canonical. An Expo credential/registration failure
-    // must not prevent the FCM/APNs registration above from succeeding.
     if (nativeResult?.ok) {
       return {
         ok: true,
-        token: token || null,
-        user_id: nativeResult.user_id || expoResult?.user_id,
-        native: nativeResult,
+        token: nativeResult.token,
+        user_id: nativeResult.user_id,
         native_token: nativeResult.token,
         native_provider: nativeResult.provider,
-        expo: expoResult,
       };
     }
-    if (!expoResult.ok) return { ...expoResult, native: nativeResult };
-    return {
-      ok: true,
-      token,
-      user_id: expoResult.user_id,
-      native: nativeResult,
-      native_token: nativeResult?.ok ? nativeResult.token : null,
-      native_provider: nativeResult?.provider || null,
-    };
+    return nativeResult || { ok: false, reason: 'no_native_token' };
   },
 
   // ── Единый автозапуск: web.subscribe() если PWA, иначе registerNative() ──

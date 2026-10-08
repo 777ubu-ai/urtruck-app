@@ -14,6 +14,11 @@ test('driver Ceramic palette follows the global dark-mode selection', () => {
   assert.match(design, /return isDark \? DRIVER_CERAMIC_DARK : DRIVER_CERAMIC;/);
 });
 
+test('shipper Ceramic palette follows the global dark-mode selection', () => {
+  assert.match(palette, /export const SHIPPER_CERAMIC_DARK = \{/);
+  assert.match(design, /return isDark \? SHIPPER_CERAMIC_DARK : SHIPPER_CERAMIC;/);
+});
+
 test('completed deal exposes the two-sided review prompt with deal id', () => {
   assert.match(deal, /deal\?\.status !== 'completed'/);
   assert.match(deal, /reviewsAPI\.eligibility\(recipientId, dealId\)/);

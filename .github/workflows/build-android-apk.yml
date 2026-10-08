@@ -9,6 +9,11 @@ on:
       source_ref:
         description: Exact source commit SHA to build
         required: true
+  workflow_call:
+    inputs:
+      source_ref:
+        required: true
+        type: string
   push:
     branches: [main, "claude/**"]
 
@@ -72,8 +77,13 @@ jobs:
           }
           echo "URTRUCK_SOURCE_SHA=$RESOLVED_SOURCE_SHA" >> "$GITHUB_ENV"
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
-          echo "URTRUCK_VERSION_NAME=1.0.9" >> "$GITHUB_ENV"
-          echo "URTRUCK_VERSION_CODE=211040081" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_NAME=1.0.9-qa2" >> "$GITHUB_ENV"
+          read -r qa2_version_code qa2_previous_version_code < <(node -e "const metadata = require('./config/qa2-android-build-metadata'); process.stdout.write([metadata.QA2_ANDROID_VERSION_CODE, metadata.QA2_ANDROID_PREVIOUS_VERSION_CODE].join(' ') + '\\n')")
+          test "$qa2_version_code" -gt "$qa2_previous_version_code" || {
+            echo "::error::QA2 Android versionCode must be greater than the previous QA2 APK"
+            exit 1
+          }
+          echo "URTRUCK_VERSION_CODE=$qa2_version_code" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           printf 'EXPO_PUBLIC_API_URL=%s\n' "$QA_API_URL" >> "$GITHUB_ENV"
           echo "QA2_API_TARGET=healthy-nonproduction"
@@ -114,6 +124,12 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk || true
           df -h
+
+      # The cleanup above removes the preinstalled NDK. React Native's native
+      # modules pin this exact side-by-side version, so install it afterwards
+      # rather than relying on Gradle's implicit SDK download.
+      - name: Install required Android NDK
+        run: sdkmanager "ndk;27.1.12297006"
 
       - name: Install npm dependencies (skip postinstall scripts)
         run: |

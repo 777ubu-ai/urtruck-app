@@ -99,8 +99,14 @@ jobs:
         run: npm ci
       - name: Dependency security audit
         run: |
-          npm run audit:production
-          npm run audit:dependencies
+          npm run audit:node-forge-exception
+      - name: Preserve raw dependency audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-audit
+          path: qa-artifacts/security-audit/
+          if-no-files-found: error
       - name: Lint
         run: npm run lint
       - name: Frontend ownership and currency tests
@@ -183,7 +189,9 @@ jobs:
           npx playwright test --config playwright.config.js \
             tests/e2e/urtruck-email-login.spec.js \
             tests/e2e/urtruck-deal-mvp.spec.js \
-            tests/e2e/urtruck-full-e2e-web.spec.js
+            tests/e2e/urtruck-full-e2e-web.spec.js \
+            tests/e2e/profile-save-recovery.spec.js \
+            tests/e2e/urtruck-runtime-crash-regression.spec.js
       - name: Upload E2E diagnostics
         if: always()
         uses: actions/upload-artifact@v4

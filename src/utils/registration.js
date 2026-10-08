@@ -11,6 +11,34 @@ const DRIVER_REG_BASE = `${API_BASE}/driver/registration`;
 
 const TOKEN_KEY = 'ur_reg_token';
 const LEVEL_KEY = 'ur_verification_level';
+const PENDING_LOGOUT_KEY = 'ur_pending_logout_token';
+let pendingLogoutMutation = Promise.resolve();
+
+function parsePendingLogoutTokens(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return [...new Set(parsed.filter((value) => typeof value === 'string' && value))];
+  } catch {}
+  // Backward compatibility with the first scalar implementation.
+  return typeof raw === 'string' ? [raw] : [];
+}
+
+async function pendingLogoutTokens() {
+  return parsePendingLogoutTokens(await storage.get(PENDING_LOGOUT_KEY));
+}
+
+function mutatePendingLogoutTokens(mutate) {
+  const work = pendingLogoutMutation.then(async () => {
+    const tokens = await pendingLogoutTokens();
+    const next = [...new Set(mutate(tokens).filter(Boolean))];
+    if (next.length) await storage.set(PENDING_LOGOUT_KEY, JSON.stringify(next));
+    else await storage.remove(PENDING_LOGOUT_KEY);
+    return next;
+  });
+  pendingLogoutMutation = work.catch(() => {});
+  return work;
+}
 
 // PR-C2: см. marketAPI.normalizeDetail — те же причины. Backend
 // иногда возвращает detail как object (verification_required),
@@ -57,7 +85,7 @@ async function appendImageFile(form, uri, name) {
 
 export const regAPI = {
   // ─── Lazy registration ───
-  async ensureGuest() {
+  async ensureGuest({ persist = true } = {}) {
     // Если уже есть токен — вернуть его
     const existing = await storage.get(TOKEN_KEY);
     if (existing) return { token: existing };
@@ -65,8 +93,10 @@ export const regAPI = {
     const r = await fetch(`${BASE}/guest`, { method: 'POST' });
     const data = await r.json();
     if (data.token) {
-      await storage.set(TOKEN_KEY, data.token);
-      await storage.set(LEVEL_KEY, String(data.verification_level || 0));
+      if (persist) {
+        await storage.set(TOKEN_KEY, data.token);
+        await storage.set(LEVEL_KEY, String(data.verification_level || 0));
+      }
     }
     return data;
   },
@@ -193,7 +223,16 @@ export const regAPI = {
       return { sent: false, ok: false, cooldown: true, cooldown_sec: cooldown || 60,
                detail: normalizeDetail(data.detail, 'rate_limited') };
     }
-    return data;
+    // Переход к OTP допустим только после подтверждённого успеха канала.
+    // HTTP-ошибка/пустой JSON не означают, что письмо было отправлено.
+    const sent = r.ok && data?.sent === true && !data?.error;
+    return {
+      ...data,
+      sent,
+      ok: sent,
+      status: r.status,
+      error: sent ? null : (data?.error || normalizeDetail(data?.detail, 'delivery_failed')),
+    };
   },
 
   async verifyEmailCode(email, code) {
@@ -255,21 +294,57 @@ export const regAPI = {
     return await storage.remove(TOKEN_KEY);
   },
 
+  // Persist the server-revoke intent before AuthContext removes the only
+  // locally held bearer.  Native storage is SecureStore-backed, so this
+  // survives an app kill/offline interval and is retried at the next boot.
+  async stageLogoutRevoke(token = null) {
+    const authToken = token || await this.getToken();
+    if (!authToken) return { ok: true, pending: false };
+    await mutatePendingLogoutTokens((tokens) => [...tokens, authToken]);
+    // `storage.set` intentionally preserves its historic best-effort UI
+    // contract and can swallow a SecureStore/AsyncStorage write failure.
+    // A logout revoke is different: clearing the only live bearer after an
+    // unverified write loses any way to revoke the server session on a later
+    // launch. Re-read the durable intent without ever exposing the bearer.
+    const persisted = await pendingLogoutTokens();
+    if (!persisted.includes(authToken)) {
+      const error = new Error('PENDING_LOGOUT_REVOKE_NOT_DURABLE');
+      error.code = 'PENDING_LOGOUT_REVOKE_NOT_DURABLE';
+      throw error;
+    }
+    return { ok: true, pending: true };
+  },
+
   // QA-аудит P1-7: серверный revoke токена при logout. Best-effort —
   // вызывать ДО clearToken (нужен сам токен). Сетевые/любые ошибки
   // глушим: logout на клиенте всё равно должен пройти.
   async logout(token = null) {
+    const authToken = token || await this.getToken();
+    if (!authToken) return { ok: true, revoked: false };
+    // Persist before the request: AuthContext intentionally clears the live
+    // session immediately, while a timeout/503 must remain retryable after a
+    // process restart. This key uses SecureStore on native platforms.
+    await this.stageLogoutRevoke(authToken);
     try {
-      const authToken = token || await this.getToken();
-      if (!authToken) return { ok: true, revoked: false };
       const r = await fetch(`${BASE}/logout`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${authToken}` },
       });
-      return await r.json().catch(() => ({ ok: true }));
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return { ok: false, status: r.status, ...data };
+      await mutatePendingLogoutTokens((tokens) => tokens.filter((value) => value !== authToken));
+      return { ok: true, ...data };
     } catch {
       return { ok: false };
     }
+  },
+
+  async flushPendingLogout() {
+    const tokens = await pendingLogoutTokens();
+    if (!tokens.length) return { ok: true, pending: false };
+    const results = [];
+    for (const token of tokens) results.push(await this.logout(token));
+    return { ok: results.every((result) => result?.ok), pending: true, results };
   },
 
   // PR-C1: GET /api/v1/users/me — расширенный профиль (name + city + about
@@ -317,17 +392,22 @@ export const regAPI = {
       if (payload[k] !== undefined) body[k] = payload[k];
     }
 
-    const r = await fetch(`${API_BASE}/users/me`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
+    let r;
+    try {
+      r = await fetch(`${API_BASE}/users/me`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      return { ok: false, status: 0, networkError: true, error: 'NETWORK_ERROR' };
+    }
     let data = {};
     try { data = await r.json(); } catch {}
-    return { ok: r.ok, ...data };
+    return { ...data, ok: r.ok && data?.ok === true, status: r.status };
   },
 
   // Безопасная смена телефона: generic PATCH намеренно не принимает phone.

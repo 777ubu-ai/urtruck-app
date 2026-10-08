@@ -33,8 +33,8 @@ import { pickDealStatus, userFacingDealStatus } from '../utils/dealStatusOrder';
 import { normalizeCargo, cargoDisplay, sanitizeForDisplay, formatPrice } from '../utils/normalizers';
 import { localizePlace } from '../utils/places';
 import { formatDateForDisplay } from '../utils/dateInput';
-import { buildCargoShareText, publicListingPath } from '../utils/share';
-import { WEB_URL } from '../config/env';
+import { buildPublicCargoShare } from '../utils/share';
+import { PUBLIC_WEB_ORIGIN } from '../config/env';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
 import SectionTitle from '../components/ui/v1/SectionTitle';
@@ -167,7 +167,7 @@ export default function CargoDetail({ navigation, route }) {
   // Часть 1 (конфиденциальные ставки): число предложений (видно всем) и признак
   // владельца листинга (владелец видит все суммы; чужой — только свою + count).
   const [bidsCount, setBidsCount] = useState(0);
-  const [isListingOwner, setIsListingOwner] = useState(false);
+  const [listingOwnership, setListingOwnership] = useState(null);
   // Конфиденциальный вид включается АВТОМАТИЧЕСКИ по ответу сервера: если бэк
   // (при BIDS_CONFIDENTIAL=true) урезал список не-владельцу — видимых ставок
   // меньше, чем count. При открытом режиме сервер шлёт полный список → false.
@@ -227,7 +227,16 @@ export default function CargoDetail({ navigation, route }) {
   // back to the navigation-param value so we don't regress the path
   // where the screen was opened with explicit isMine.
   const c = (() => {
-    if (!fullCargo) return cargo;
+    // Ответ авторизованного /bids надёжнее локального ID и снимка навигации.
+    // Не переносим его на другой груз или аккаунт при переиспользовании экрана.
+    const ownerVerdict = listingOwnership?.cargoId === (cargoId || cargo.id)
+      && listingOwnership?.userId === myUserId
+      && typeof listingOwnership?.isOwner === 'boolean'
+      ? listingOwnership.isOwner : null;
+    if (!fullCargo) return {
+      ...cargo,
+      isMine: ownerVerdict ?? !!(cargo.isMine || (myUserId && paramCargo?.owner_id === myUserId)),
+    };
     const normalized = normalizeCargo(fullCargo, lang);
     const fromParam = cargo && cargo.isMine;
     const fromServer = myUserId && fullCargo.owner_id === myUserId;
@@ -235,7 +244,8 @@ export default function CargoDetail({ navigation, route }) {
     // from_country/to_country — для гейта статуса сделки (см. isDomestic/
     // hasKnownRoute ниже): без них дом. и межд. маршруты неразличимы.
     return {
-      ...normalized, owner_id: fullCargo.owner_id, isMine: fromParam || fromServer || normalized.isMine,
+      ...normalized, owner_id: fullCargo.owner_id,
+      isMine: ownerVerdict ?? !!(fromParam || fromServer || normalized.isMine),
       from_country: fullCargo.from_country, to_country: fullCargo.to_country,
     };
   })();
@@ -330,7 +340,10 @@ export default function CargoDetail({ navigation, route }) {
         // даже если чужие суммы не пришли (конфиденциальность на сервере).
         const count = typeof d.count === 'number' ? d.count : mapped.length;
         setBidsCount(count);
-        setIsListingOwner(!!d.is_owner);
+        setListingOwnership({
+          cargoId: cid, userId: myUserId,
+          isOwner: typeof d.is_owner === 'boolean' ? d.is_owner : null,
+        });
         // Явный сигнал сервера: прячет ли он чужие суммы (BIDS_CONFIDENTIAL).
         // Не полагаемся на длину списка — dirty-фильтр QA-ставок в открытом
         // режиме иначе выглядел бы как конфиденциальность.
@@ -452,7 +465,7 @@ export default function CargoDetail({ navigation, route }) {
         if (found) applyDeal(found, seq);
       }).catch(() => {});
     }
-  }, [cid, routeDealId, dealId]);
+  }, [cid, routeDealId, dealId, myUserId]);
 
   useFocusEffect(useCallback(() => {
     refreshDeal();
@@ -510,6 +523,10 @@ export default function CargoDetail({ navigation, route }) {
   };
 
   const view = cargoDisplay(c, t, lang);
+  const publicShare = React.useMemo(
+    () => buildPublicCargoShare(c, PUBLIC_WEB_ORIGIN, lang),
+    [c, lang],
+  );
   // Если по грузу есть ПРИНЯТАЯ ставка — в блоке цены показываем СУММУ СДЕЛКИ,
   // а не цену объявления. Раньше заголовок висел «$12 000» (листинг), хотя
   // сделка принята за $12 100 — на одном экране две разные цены путали.
@@ -561,7 +578,10 @@ export default function CargoDetail({ navigation, route }) {
     <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
-        onShare={() => setShareModal(true)}
+        onShare={() => {
+          if (publicShare) setShareModal(true);
+          else toast(t('shareError'), 'error');
+        }}
         accent={v1Accent.main}
         rightTestID="cargo-share-btn"
       />
@@ -1162,8 +1182,8 @@ export default function CargoDetail({ navigation, route }) {
       <ShareModal
         visible={shareModal}
         onClose={() => setShareModal(false)}
-        shareText={buildCargoShareText(c, `${WEB_URL || 'https://urtruck.kz'}${publicListingPath('cargo', c.id)}`, lang)}
-        url={`${WEB_URL || 'https://urtruck.kz'}${publicListingPath('cargo', c.id)}`}
+        shareText={publicShare?.text || ''}
+        url={publicShare?.url || ''}
       />
       <AppConfirmModal
         visible={!!confirmDialog}

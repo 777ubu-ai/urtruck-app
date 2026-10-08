@@ -26,12 +26,17 @@ export function installNativeRequireShim() {
     getDevicePushTokenThrows: null, // Error | null — e.g. no google-services.json wired
     channelCreateCalls: [],
     permissionRequestCalls: 0,
+    tokenListeners: [],
   };
 
   const AndroidImportance = { MAX: 5, HIGH: 4, DEFAULT: 3, LOW: 2, MIN: 1 };
 
   const NotificationsMock = {
     setNotificationHandler() {},
+    addPushTokenListener(listener) {
+      state.tokenListeners.push(listener);
+      return { remove() {} };
+    },
     async getPermissionsAsync() {
       return { status: state.permissionStatus };
     },
@@ -51,6 +56,12 @@ export function installNativeRequireShim() {
     async getDevicePushTokenAsync() {
       if (state.getDevicePushTokenThrows) throw state.getDevicePushTokenThrows;
       return { data: state.nativeDeviceToken, type: state.nativeDeviceTokenType };
+    },
+    async __emitTokenRotation() {
+      for (const listener of state.tokenListeners) listener({
+        data: state.nativeDeviceToken,
+        type: state.nativeDeviceTokenType,
+      });
     },
   };
 

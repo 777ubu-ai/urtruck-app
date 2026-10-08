@@ -83,6 +83,7 @@
         "backgroundColor": "#0a0f1a"
       },
       "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -96,6 +97,12 @@
       ]
     },
     "plugins": [
+      [
+        "expo-navigation-bar",
+        {
+          "enforceContrast": false
+        }
+      ],
       "./plugins/withAndroidBackCompatibility",
       "./plugins/withAndroidSingleFcmHandler",
       [

@@ -31,12 +31,10 @@ test("web deal map uses embedded Yandex Maps as the visual provider", () => {
   assert.doesNotMatch(routeMapSrc, /Linking\.openURL/);
 });
 
-test("web map explicitly suppresses provider promo overlays inside UrTruck", () => {
-  assert.match(mapSrc, /YANDEX_PROVIDER_OVERLAY_CSS/);
-  assert.match(mapSrc, /\[class\*="gotoymaps"\]/);
-  assert.match(mapSrc, /\[class\*="map-copyrights-promo"\]/);
-  assert.match(mapSrc, /\[class\*="copyrights-pane"\]/);
-  assert.match(mapSrc, /\[class\*="copyright_logo"\]/);
+test("web map preserves provider copyright and removes its legacy hiding style", () => {
+  assert.doesNotMatch(mapSrc, /YANDEX_PROVIDER_OVERLAY_CSS|copyrights-pane|copyright_logo/);
+  assert.doesNotMatch(mapSrc, /style\.textContent|document\.head\.appendChild/);
+  assert.match(mapSrc, /getElementById\("urtruck-yandex-open-block-polish"\)\?\.remove\(\)/);
 });
 
 test("production injector loads supported Yandex JS API 2.1 in Russian", () => {
@@ -88,7 +86,7 @@ test("live GPS route metrics use cached planned road geometry and current point 
 test("tracking screen renders distance and delivery time card over the map", () => {
   assert.match(trackSrc, /testID="track-route-metrics"/);
   assert.match(trackSrc, /t\('distance'\)/);
-  assert.match(trackSrc, /t\('delivery_time'\)/);
+  assert.match(trackSrc, /routeSummary\.durationLabelKey \|\| ['"]delivery_time['"]/);
   assert.match(trackSrc, /routeSummary\.distanceText/);
   assert.match(trackSrc, /routeSummary\.durationText/);
 });

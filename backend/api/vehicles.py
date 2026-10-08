@@ -68,3 +68,21 @@ def get_vehicle(vehicle_id: str, driver_id: str = Depends(get_current_driver)):
     if not vehicle:
         raise HTTPException(status_code=404, detail="Машина не найдена")
     return {"ok": True, "vehicle": vehicle}
+
+
+@router.delete("/{vehicle_id}")
+def delete_vehicle(vehicle_id: str, driver_id: str = Depends(get_current_driver)):
+    vehicle = vehicles_dal.get_vehicle(driver_id, vehicle_id)
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Машина не найдена")
+    if vehicles_dal.has_active_references(driver_id, vehicle_id):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "VEHICLE_IN_USE",
+                "message": "Нельзя удалить машину с активным рейсом, предложением или сделкой",
+            },
+        )
+    if not vehicles_dal.delete_vehicle(driver_id, vehicle_id):
+        raise HTTPException(status_code=404, detail="Машина не найдена")
+    return {"ok": True, "deleted_vehicle_id": vehicle_id}

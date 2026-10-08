@@ -91,7 +91,7 @@ class QaPushTokensIn(BaseModel):
 class QaDirectPushIn(BaseModel):
     actor: Optional[str] = None
     user_id: Optional[str] = None
-    provider: Optional[str] = None           # expo | fcm | apns | native | dual
+    provider: Optional[str] = None           # fcm | apns
     title: str = "UrTruck QA"
     body: str = "Тестовое push-уведомление"
     url: str = "/notifications"
@@ -173,13 +173,7 @@ def qa_push_native_tokens(body: QaPushTokensIn, x_qa_agent_token: Optional[str] 
 
 @qa_router.post("/push/test-direct")
 def qa_push_test_direct(body: QaDirectPushIn, x_qa_agent_token: Optional[str] = Header(None)):
-    """QA-only direct provider test for native push delivery.
-
-    It bypasses UrTruck business events and sends to the actor's registered
-    native token through the same Expo provider. If this returns an Expo
-    credential/token error, the bug is below the marketplace/chat pipeline.
-    If this succeeds but a normal event does not, the bug is in event routing.
-    """
+    """QA-only direct FCM/APNs test, bypassing business event creation."""
     _require_agent_token(x_qa_agent_token)
     from services import push_sender
     uid = _qa_push_user_id(body.actor, body.user_id)
@@ -187,16 +181,9 @@ def qa_push_test_direct(body: QaDirectPushIn, x_qa_agent_token: Optional[str] = 
         uid,
         body.title,
         body.body,
-        data={"type": "qa_push_test", "recipient_id": uid},
-        url=body.url,
-        kind=body.kind,
+        data={"type": body.kind, "recipient_id": uid, "url": body.url},
         provider=body.provider,
     )
-    wait = max(0.0, min(float(body.receipt_wait_seconds or 0), 5.0))
-    ticket_ids = [t.get("id") for t in result.get("tickets", []) if t.get("id")]
-    if wait and ticket_ids:
-        time.sleep(wait)
-        result["receipts"] = push_sender.expo_receipts(ticket_ids)
     return result
 
 

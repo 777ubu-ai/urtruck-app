@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
+const require = createRequire(import.meta.url);
+const qa2AndroidMetadata = require('../../config/qa2-android-build-metadata');
 const workflow = readFileSync('.github/workflows/build-android-apk.yml', 'utf8');
 const testflightWorkflow = readFileSync('.github/workflows/testflight-rc.yml', 'utf8');
 const playWorkflow = readFileSync('.github/workflows/deploy-play.yml', 'utf8');
@@ -20,14 +24,59 @@ test('distributed QA2 requires a healthy non-production API target', () => {
   assert.ok(!workflow.includes('EXPO_PUBLIC_API_URL=http://127.0.0.1:18001'));
 });
 
-test('QA081 checks out and records an explicitly supplied exact source SHA', () => {
+test('QA086 checks out and records an explicitly supplied exact source SHA', () => {
   const sourceInput = workflow.match(/source_ref:\n([\s\S]*?)\n\s*push:/)?.[1] || '';
   assert.ok(sourceInput.includes('required: true'));
   assert.ok(!sourceInput.includes('default:'), 'QA2 build must not silently reuse a stale source SHA');
   assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));
   assert.ok(workflow.includes('test "$RESOLVED_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"'));
-  assert.ok(workflow.includes('URTRUCK_VERSION_CODE=211040081'));
+  assert.ok(workflow.includes("require('./config/qa2-android-build-metadata')"));
+  assert.ok(workflow.includes("process.stdout.write([metadata.QA2_ANDROID_VERSION_CODE, metadata.QA2_ANDROID_PREVIOUS_VERSION_CODE].join(' ') + '\\\\n')"), 'metadata line must terminate so bash read succeeds under set -e');
+  assert.ok(workflow.includes('QA2 Android versionCode must be greater than the previous QA2 APK'));
+  assert.ok(!workflow.includes('211040090'), 'workflow must not silently rebuild the previous QA2 APK');
   assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
+  assert.ok(workflow.includes('URTRUCK_VERSION_NAME=1.0.9-qa2'), 'QA2 artifact must carry an explicit -qa2 versionName');
+});
+
+test('QA2 Android config carries explicit qa2 versionName', () => {
+  const output = execFileSync(
+    process.execPath,
+    ['-e', "const config = require('./app.config.js')({ config: { version: '1.0.9', android: {}, extra: {} } }); process.stdout.write(String(config.version));"],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        URTRUCK_BUILD_FLAVOR: 'qa2',
+        URTRUCK_VERSION_NAME: '1.0.9-qa2',
+        URTRUCK_VERSION_CODE: String(qa2AndroidMetadata.QA2_ANDROID_VERSION_CODE),
+        EXPO_PUBLIC_API_URL: 'https://qa2.example.test',
+      },
+    },
+  ).toString();
+
+  assert.equal(output, '1.0.9-qa2');
+});
+
+test('QA2 Android APK versionCode is sourced from config and is newer than the installed baseline', () => {
+  const output = execFileSync(
+    process.execPath,
+    ['-e', "const config = require('./app.config.js')({ config: { android: {}, extra: {} } }); process.stdout.write(String(config.android.versionCode));"],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        URTRUCK_BUILD_FLAVOR: 'qa2',
+        URTRUCK_VERSION_CODE: String(qa2AndroidMetadata.QA2_ANDROID_VERSION_CODE),
+        EXPO_PUBLIC_API_URL: 'https://qa2.example.test',
+      },
+    },
+  ).toString();
+
+  assert.equal(Number(output), qa2AndroidMetadata.QA2_ANDROID_VERSION_CODE);
+  assert.ok(
+    qa2AndroidMetadata.QA2_ANDROID_VERSION_CODE
+      > qa2AndroidMetadata.QA2_ANDROID_PREVIOUS_VERSION_CODE,
+  );
 });
 
 test('live QA2 keeps MapKit and Firebase secret injection and the isolated package', () => {
@@ -40,6 +89,13 @@ test('live QA2 keeps MapKit and Firebase secret injection and the isolated packa
   assert.ok(workflow.includes('URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2'));
 });
 
+test('QA2 Android build reinstalls its pinned NDK after disk cleanup', () => {
+  const cleanup = workflow.indexOf('/usr/local/lib/android/sdk/ndk');
+  const install = workflow.indexOf('sdkmanager "ndk;27.1.12297006"');
+  assert.ok(cleanup >= 0, 'workflow must declare NDK cleanup explicitly');
+  assert.ok(install > cleanup, 'required NDK must be installed after cleanup');
+});
+
 test('explicit QA release stays in the isolated QA2 package', () => {
   assert.ok(androidAppBuild.includes("project.hasProperty('URTRUCK_QA2')"));
   assert.ok(androidAppBuild.includes('applicationIdSuffix ".qa2"'));
@@ -47,10 +103,19 @@ test('explicit QA release stays in the isolated QA2 package', () => {
   assert.ok(androidAppBuild.includes("URTRUCK_ALLOW_DEBUG_SIGNED_RELEASE"));
 });
 
-test('TestFlight accepts the canonical Border QA branch and still rejects arbitrary refs', () => {
-  assert.ok(testflightWorkflow.includes('main|qa/master-hard-qa-20260916|fix/cgr-border-deal-integration-20260919'));
-  assert.ok(testflightWorkflow.includes('TestFlight RC may only be built from main or an approved canonical QA branch.'));
-  assert.ok(testflightWorkflow.includes('npx eas-cli@latest build:view "$BUILD_ID" --json'));
+test('TestFlight uses a protected exact-SHA QA2 trigger and never the production API', () => {
+  assert.ok(testflightWorkflow.includes('uses: ./.github/workflows/quality-gate-reusable.yml'));
+  assert.ok(testflightWorkflow.includes('needs: quality-gate'));
+  assert.ok(testflightWorkflow.includes("'qa2-final-testflight-*'"));
+  assert.ok(testflightWorkflow.includes('BUILD_QA2_TESTFLIGHT'));
+  assert.ok(testflightWorkflow.includes('QA_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}'));
+  assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = "qa2-final-testflight-$QA_SOURCE_SHA"'));
+  assert.ok(testflightWorkflow.includes('git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate'));
+  assert.ok(testflightWorkflow.includes('QA2_API_URL: ${{ secrets.QA2_API_URL }}'));
+  assert.ok(testflightWorkflow.includes('test "$QA_HOST" = qa2.urtruck.kz'));
+  assert.ok(!testflightWorkflow.includes('EXPO_PUBLIC_API_URL: https://urtruck.kz'));
+  assert.ok(testflightWorkflow.includes('test "$BUILD_NUMBER" -gt "$URTRUCK_MIN_IOS_BUILD"'));
+  assert.ok(testflightWorkflow.includes('bundleIdentifier=$BUNDLE_ID'));
 });
 
 test('Expo SDK 57 native iOS project uses the required deployment target and architecture', () => {

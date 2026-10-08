@@ -8,8 +8,12 @@ export function routeMetricNumbers(route, progress) {
   const drivingDurationSeconds = positive(route?.driving_duration_s);
   const live = Boolean(progress?.matched && totalMeters && progress.totalMeters > 0);
   const fraction = live ? Math.max(0, Math.min(1, progress.passedMeters / progress.totalMeters)) : null;
+  const remainingDurationSeconds = live && totalDurationSeconds != null
+    ? totalDurationSeconds * (1 - fraction)
+    : null;
   return {
     totalMeters, totalDurationSeconds, drivingDurationSeconds,
+    remainingDurationSeconds,
     passedMeters: live ? totalMeters * fraction : null,
     remainingMeters: live ? totalMeters * (1 - fraction) : null,
     progressPercent: live ? progress.progressPercent : null,

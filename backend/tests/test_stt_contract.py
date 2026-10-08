@@ -157,8 +157,8 @@ def test_02_real_voice_upload_then_send_succeeds():
     assert STATE["message_id"]
 
 
-def test_02b_voice_duration_boundary_rejects_over_60_seconds():
-    """The API must enforce the voice-duration contract server-side."""
+def test_02b_voice_duration_ui_timer_is_not_authoritative():
+    """The API keeps the audio-file duration contract, not a client timer."""
     _as(B)
     for duration in (0, 60):
         r = client.post("/api/v1/chat/send", json={
@@ -174,7 +174,11 @@ def test_02b_voice_duration_boundary_rejects_over_60_seconds():
             "photo_url": STATE["voice_key"], "voice_duration": duration,
             "client_msg_id": f"voice-boundary-{duration}-{uuid.uuid4().hex}",
         })
-        assert r.status_code == 422, f"{duration}s must be rejected: {r.status_code} {r.text}"
+        assert r.status_code == 200, f"UI duration must not reject real audio: {r.status_code} {r.text}"
+        message_id = r.json()["message_id"]
+        with get_conn() as c:
+            stored = c.execute("SELECT voice_duration FROM chat_messages WHERE id=?", (message_id,)).fetchone()[0]
+        assert stored is None, "unsupported test fixture must not preserve the UI timer as fact"
 
 
 # ───────────────────────── 2. access control ────────────────────────────
@@ -189,6 +193,14 @@ def test_04_stranger_cannot_translate():
     _as(C)
     r = client.post("/api/v1/chat/translate", json={"message_id": STATE["message_id"], "target_lang": "en"})
     assert r.status_code == 403, r.text
+
+
+def test_04b_stranger_cannot_reveal_or_requeue_hidden_voice_result():
+    _as(C)
+    shown = client.get(f"/api/v1/chat/voice/{STATE['message_id']}/text")
+    assert shown.status_code == 403, shown.text
+    requeued = client.post(f"/api/v1/chat/voice/{STATE['message_id']}/recognize")
+    assert requeued.status_code == 403, requeued.text
 
 
 # ──────────────── 3. deal-status gate (participant, but deal ineligible) ────
@@ -215,13 +227,15 @@ def test_05_participant_blocked_once_deal_leaves_chat_eligible_statuses(monkeypa
 # ───────────────────── 4. real transcription + idempotency ─────────────────
 
 def test_06_transcribe_success_and_idempotent_on_repeat(monkeypatch):
-    calls = {"n": 0}
+    calls = {"n": 0, "language": None}
 
     def fake_transcribe(audio_ref, *, filename=None, language=None):
         calls["n"] += 1
+        calls["language"] = language
         return {"transcript_text": "hello world", "provider": "openai", "source_lang": "en"}
 
-    from services import speech_to_text_service
+    from services import push_gateway, speech_to_text_service
+    monkeypatch.setattr(push_gateway, "get_recipient_locale", lambda user_id: "en-US")
     monkeypatch.setattr(speech_to_text_service, "transcribe_audio_ref", fake_transcribe)
 
     _as(A)
@@ -231,6 +245,7 @@ def test_06_transcribe_success_and_idempotent_on_repeat(monkeypatch):
     assert body["transcript_text"] == "hello world"
     assert body["cached"] is False
     assert calls["n"] == 1
+    assert calls["language"] == "en"
 
     # Idempotency: a second call (by either participant) must NOT invoke
     # the provider again — the persisted transcript is reused.
@@ -241,6 +256,52 @@ def test_06_transcribe_success_and_idempotent_on_repeat(monkeypatch):
     assert body2["transcript_text"] == "hello world"
     assert body2["cached"] is True
     assert calls["n"] == 1, "a cached transcript must never re-invoke the STT provider"
+
+
+def test_06b_history_hides_result_until_authorized_explicit_reveal():
+    _as(A)
+    history = client.get(f"/api/v1/chat/messages/{STATE['room_id']}")
+    assert history.status_code == 200, history.text
+    voice = next(m for m in history.json()["messages"] if m["id"] == STATE["message_id"])
+    assert "voice_transcript" not in voice
+    assert voice["voice_processing_status"] == "ready"
+    shown = client.get(f"/api/v1/chat/voice/{STATE['message_id']}/text?target_lang=en")
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["status"] == "ready"
+    assert shown.json()["transcript_text"] == "hello world"
+
+
+def test_06c_ready_result_survives_eight_days_without_another_openai_call(monkeypatch):
+    """Ready transcripts/translations are durable message data, not a TTL cache."""
+    calls = {"n": 0}
+
+    def must_not_run(*_args, **_kwargs):
+        calls["n"] += 1
+        raise AssertionError("reading a durable result must not call STT")
+
+    from services import speech_to_text_service
+    monkeypatch.setattr(speech_to_text_service, "transcribe_audio_ref", must_not_run)
+    with get_conn() as c:
+        c.execute(
+            "UPDATE voice_processing_jobs SET status='ready', ready_at=datetime('now','-8 days'), "
+            "expires_at=datetime('now','-1 second') WHERE message_id=?",
+            (STATE["message_id"],),
+        )
+        c.execute(
+            "INSERT OR REPLACE INTO chat_translations(message_id,target_lang,translated_text,provider) VALUES(?,?,?,?)",
+            (STATE["message_id"], "zh", "controlled translation", "local_nllb_1_3b"),
+        )
+
+    _as(B)
+    shown = client.get(f"/api/v1/chat/voice/{STATE['message_id']}/text?target_lang=zh")
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["status"] == "ready"
+    assert shown.json()["translated_text"] == "controlled translation"
+    assert calls["n"] == 0
+
+    _as(C)
+    outsider = client.get(f"/api/v1/chat/voice/{STATE['message_id']}/text")
+    assert outsider.status_code == 403, outsider.text
 
 
 # ─────────────── 5. concurrent-claim race + stale-claim self-heal ──────────

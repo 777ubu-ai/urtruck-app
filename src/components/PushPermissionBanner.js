@@ -1,8 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AppState, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { push } from '../utils/push';
+import { createPushPermissionMonitor } from '../utils/pushPermissionMonitor';
 import { useI18n } from '../utils/useI18n';
+import { useV1Colors } from '../theme/designV1';
+import { useTheme } from '../utils/ThemeContext';
 
 const COPY = {
   RU: {
@@ -10,60 +13,107 @@ const COPY = {
     body: 'Включите уведомления UrTruck — новые ставки и изменения сделки придут сразу.',
     enable: 'Включить',
     denied: 'Уведомления заблокированы в браузере. Разрешите их для urtruck.kz в настройках сайта.',
+    deniedNative: 'Уведомления отключены в настройках телефона. Разрешите их для UrTruck.',
     retry: 'Проверить снова',
+    settings: 'Открыть настройки',
   },
   EN: {
     title: 'Don’t miss new offers',
     body: 'Enable UrTruck notifications to receive bids and deal updates immediately.',
     enable: 'Enable',
     denied: 'Notifications are blocked by the browser. Allow them for urtruck.kz in site settings.',
+    deniedNative: 'Notifications are disabled in your phone settings. Allow them for UrTruck.',
     retry: 'Check again',
+    settings: 'Open settings',
   },
   ZH: {
     title: '不要错过新报价',
     body: '开启 UrTruck 通知，及时收到新报价和交易状态变化。',
     enable: '开启通知',
     denied: '浏览器已阻止通知。请在网站设置中允许 urtruck.kz 发送通知。',
+    deniedNative: '手机设置已关闭通知。请允许 UrTruck 发送通知。',
     retry: '重新检查',
+    settings: '打开设置',
   },
   KK: {
     title: 'Ұсыныстарды өткізіп алмаңыз',
     body: 'UrTruck хабарламаларын қосыңыз — жаңа ұсыныстар мен мәміле өзгерістері бірден келеді.',
     enable: 'Қосу',
     denied: 'Браузер хабарламаларды бұғаттаған. Сайт баптауларында urtruck.kz үшін рұқсат беріңіз.',
+    deniedNative: 'Телефон баптауларында хабарламалар өшірулі. UrTruck үшін рұқсат беріңіз.',
     retry: 'Қайта тексеру',
+    settings: 'Баптауларды ашу',
   },
 };
 
+export const getPushPermissionHost = () => (
+  Platform.OS === 'web'
+    && typeof window !== 'undefined'
+    && window.location?.host
+    ? window.location.host
+    : 'urtruck.kz'
+);
+
 export default function PushPermissionBanner({ enabled }) {
   const { lang } = useI18n();
+  const colors = useV1Colors();
+  const { isDark } = useTheme();
+  const accentColor = isDark ? colors.success : colors.driver;
   const c = COPY[lang] || COPY.RU;
+  const native = push.isNative();
+  const deniedCopy = native ? c.deniedNative : c.denied.replace('urtruck.kz', getPushPermissionHost());
   const [permission, setPermission] = useState('loading');
   const [busy, setBusy] = useState(false);
+  const monitorRef = useRef(null);
 
-  const refresh = useCallback(async () => {
-    if (Platform.OS !== 'web' || !enabled || !push.isSupported()) {
+  useEffect(() => {
+    const supported = Platform.OS === 'web' ? push.isSupported() : native;
+    if (!enabled || !supported) {
       setPermission('hidden');
-      return;
+      monitorRef.current = null;
+      return undefined;
     }
-    const p = await push.permission();
-    setPermission(p);
-    if (p === 'granted') {
-      // Re-bind an existing browser subscription to the current authenticated
-      // user. This is idempotent and repairs a token after login/account switch.
-      push.subscribe({ requestPermission: false }).catch(() => {});
-    }
-  }, [enabled]);
+    const monitor = createPushPermissionMonitor({
+      appState: AppState,
+      getPermission: async () => {
+        const current = Platform.OS === 'web' ? await push.permission() : await push.nativePermission();
+        // nativePermission() currently reports SDK/bridge failures as
+        // "unsupported"; keep that distinct from an OS-level denial.
+        return native && current === 'unsupported' ? 'unknown' : current;
+      },
+      onPermission: setPermission,
+      onGranted: () => {
+        // Registration runs on initial grant or a denied/unknown → granted
+        // transition, never on every ordinary foreground return.
+        push.autoRegister().catch(() => {});
+      },
+    });
+    monitorRef.current = monitor;
+    return () => {
+      monitor.remove();
+      if (monitorRef.current === monitor) monitorRef.current = null;
+    };
+  }, [enabled, native]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  const refresh = () => monitorRef.current?.refresh(true);
 
   const enablePush = async () => {
     setBusy(true);
     try {
-      const r = await push.subscribe({ requestPermission: true });
-      setPermission(r?.ok ? 'granted' : (r?.reason === 'denied' ? 'denied' : (await push.permission())));
+      if (native && permission === 'denied') {
+        await push.openNativeNotificationSettings();
+        return;
+      }
+      const r = Platform.OS === 'web'
+        ? await push.subscribe({ requestPermission: true })
+        : await push.registerNative();
+      const current = Platform.OS === 'web' ? await push.permission() : await push.nativePermission();
+      // The explicit button already attempted registration; synchronize the
+      // monitor without triggering a second registration for the same grant.
+      monitorRef.current?.setPermission(current);
+      setPermission(r?.ok ? 'granted' : (r?.reason === 'denied' ? 'denied' : current));
     } catch {
-      await refresh();
+      await monitorRef.current?.refresh();
     } finally {
       setBusy(false);
     }
@@ -73,19 +123,19 @@ export default function PushPermissionBanner({ enabled }) {
   const denied = permission === 'denied';
 
   return (
-    <View style={s.wrap} testID="push-permission-banner">
-      <View style={s.icon}><Feather name="bell" size={18} color="#34936B" /></View>
+    <View style={[s.wrap, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="push-permission-banner">
+      <View style={[s.icon, { backgroundColor: colors.driverSoft }]}><Feather name="bell" size={18} color={accentColor} /></View>
       <View style={s.copy}>
-        <Text style={s.title}>{c.title}</Text>
-        <Text style={s.body}>{denied ? c.denied : c.body}</Text>
+        <Text style={[s.title, { color: colors.text }]}>{c.title}</Text>
+        <Text style={[s.body, { color: colors.textMuted }]}>{denied ? deniedCopy : c.body}</Text>
       </View>
       <TouchableOpacity
-        style={s.action}
-        onPress={denied ? refresh : enablePush}
+        style={[s.action, { borderColor: accentColor }]}
+        onPress={denied && !native ? refresh : enablePush}
         disabled={busy}
         testID="push-permission-enable"
       >
-        <Text style={s.actionText}>{denied ? c.retry : c.enable}</Text>
+        <Text style={[s.actionText, { color: accentColor }]}>{denied ? (native ? c.settings : c.retry) : c.enable}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -99,18 +149,16 @@ const s = StyleSheet.create({
     minHeight: 64,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#DDE9E2',
-    backgroundColor: '#F6FBF8',
     paddingHorizontal: 12,
     paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  icon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#EAF5EF', alignItems: 'center', justifyContent: 'center' },
+  icon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   copy: { flex: 1, minWidth: 0 },
-  title: { color: '#17221E', fontSize: 13, lineHeight: 17, fontWeight: '700' },
-  body: { color: '#606B66', fontSize: 11.5, lineHeight: 15, marginTop: 2 },
-  action: { minHeight: 38, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#34936B', alignItems: 'center', justifyContent: 'center' },
-  actionText: { color: '#34936B', fontSize: 12, fontWeight: '700' },
+  title: { fontSize: 13, lineHeight: 17, fontWeight: '700' },
+  body: { fontSize: 11.5, lineHeight: 15, marginTop: 2 },
+  action: { minHeight: 38, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  actionText: { fontSize: 12, fontWeight: '700' },
 });

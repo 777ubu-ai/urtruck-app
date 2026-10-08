@@ -10,6 +10,7 @@ import io
 import re
 import zipfile
 from typing import Optional, Tuple
+from urllib.parse import unquote
 
 # ── Size limits ────────────────────────────────────────────────────────────
 MAX_ATTACH_BYTES = 12 * 1024 * 1024          # deal-room attachments
@@ -63,6 +64,7 @@ DECLARED_ALIASES = {
     "text/x-csv": CSV_MIME,
     "audio/mp3": "audio/mpeg",
     "audio/x-m4a": "audio/mp4",
+    "audio/quicktime": "audio/mp4",
     "audio/x-wav": "audio/wav",
     "audio/webm;codecs=opus": "audio/webm",
 }
@@ -90,8 +92,10 @@ def sanitize_original_name(value: Optional[str], ext: str) -> str:
 
     Unicode and spaces are preserved (Safari sends them); the result must
     never be used as a storage key — storage keys are generated server-side.
+    Some native multipart clients percent-encode filename bytes (including
+    spaces) in Content-Disposition; decode once before path/control cleanup.
     """
-    raw = str(value or "").replace("\\", "/").split("/")[-1].strip()
+    raw = unquote(str(value or ""), errors="replace").replace("\\", "/").split("/")[-1].strip()
     raw = re.sub(r"[\x00-\x1f\x7f]+", "", raw)
     if not raw:
         raw = "document.{}".format(ext)
@@ -134,11 +138,21 @@ def sniff_audio_mime(raw: bytes) -> Optional[Tuple[str, str]]:
     # EBML (Matroska/WebM). Voice recordings from the web arrive as webm.
     if raw[:4] == b"\x1a\x45\xdf\xa3":
         return ("webm", "audio/webm")
-    # MP4-family: box size + 'ftyp' + major brand. Only audio brands accepted.
-    if len(raw) >= 12 and raw[4:8] == b"ftyp" and raw[8:12] in (
-        b"M4A ", b"M4B ", b"mp41", b"mp42", b"isom", b"iso2",
-    ):
-        return ("m4a", "audio/mp4")
+    # ISO-BMFF / QuickTime. Safari MediaRecorder may use a QuickTime major
+    # brand (or put the audio-compatible brand in the compatibility list)
+    # even though recorder.mimeType is audio/mp4. Validate the complete ftyp
+    # header instead of trusting the client filename or declared MIME.
+    if len(raw) >= 16 and raw[4:8] == b"ftyp":
+        box_size = int.from_bytes(raw[:4], "big")
+        if 16 <= box_size <= len(raw):
+            brands = {raw[8:12]}
+            brands.update(raw[pos:pos + 4] for pos in range(16, box_size, 4))
+            audio_compatible_brands = {
+                b"M4A ", b"M4B ", b"mp41", b"mp42", b"isom", b"iso2",
+                b"qt  ", b"3gp4", b"3gp5", b"3gp6", b"3g2a",
+            }
+            if brands & audio_compatible_brands:
+                return ("m4a", "audio/mp4")
     return None
 
 

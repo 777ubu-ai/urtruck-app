@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import * as NavigationBar from 'expo-navigation-bar';
 import { Platform, AppState, Linking, BackHandler } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -16,6 +17,8 @@ import { flushOutbox } from './src/utils/outbox';
 // верхнем уровне, до маунта) — старт/стоп управляется из broadcast-хука.
 import './src/utils/backgroundLocation';
 import { captureSocialCallbackUrl } from './src/utils/socialAuth';
+import { sweepPrivatePdfCache } from './src/components/deal/privatePdfCacheStartup';
+import { sweepNativeAttachmentStaging } from './src/utils/nativeAttachmentStagingStartup';
 
 // P0 auth-fix 28.08.2026 («двойной тап Google»): возврат из OAuth ловили
 // только СМОНТИРОВАННЫЕ экраны (PhoneV2/OnboardingV2). На native есть мёртвое
@@ -32,22 +35,10 @@ if (Platform.OS !== 'web') {
 }
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
+import { claimPushEvent } from './src/utils/pushEventDedup';
+import { handlePushTap } from './src/utils/pushRuntime';
+import { clearAppIconBadge, refreshAppIconBadge } from './src/utils/appBadge';
 import * as Sentry from '@sentry/react-native';
-
-// Yandex MapKit is a native-only provider. The key is supplied by the native
-// build environment (EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY), never committed to
-// source. Web keeps its own Yandex JS key and never loads this module.
-if (Platform.OS !== 'web') {
-  const mapKitKey = String(process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY || '').trim();
-  if (mapKitKey) {
-    try {
-      const YaMap = require('react-native-yamap').default;
-      YaMap.init(mapKitKey).catch((error) => console.warn('[yamap] init skipped:', error?.message || error));
-    } catch (error) {
-      console.warn('[yamap] native module unavailable:', error?.message || error);
-    }
-  }
-}
 
 // Глобально убираем браузерную синюю обводку фокуса (outline) с полей ввода и
 // нажимаемых элементов на web/PWA. react-native-web рендерит TextInput как
@@ -221,6 +212,12 @@ function notificationResponseUrl(response) {
   return typeof data.url === 'string' ? data.url : null;
 }
 
+function notificationResponseEventId(response) {
+  const data = response?.notification?.request?.content?.data || {};
+  const eventId = data.event_id || data.event_key;
+  return typeof eventId === 'string' && eventId.trim() ? eventId.trim() : null;
+}
+
 // Android 12+ системный splash поддерживает только компактную иконку. Полный
 // UrTruck poster показывается один раз поверх первого кадра JS в
 // AndroidBrandedLaunchSplash; iOS продолжает использовать свой native splash.
@@ -258,6 +255,21 @@ function AppInner() {
   // Привязываем фон навигатора к текущей теме → полоса совпадает с фоном экрана.
   const base = isDark ? DarkTheme : DefaultTheme;
   const navTheme = { ...base, colors: { ...base.colors, background: theme.bg } };
+
+  // Keep Android system chrome in the same theme as the app. setStyle covers
+  // modern edge-to-edge Android; the async calls preserve correct behaviour
+  // on older three-button/gesture navigation implementations.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const barStyle = isDark ? 'light' : 'dark';
+    try {
+      NavigationBar.setStyle(barStyle);
+      Promise.allSettled([
+        NavigationBar.setBackgroundColorAsync(theme.bg),
+        NavigationBar.setButtonStyleAsync(barStyle),
+      ]).catch(() => {});
+    } catch {}
+  }, [isDark, theme.bg]);
 
   // Авторизован ли для закрытых «глубоких» экранов (Chat/Deals/Profile…).
   // Карточки активных грузов/рейсов — публичный marketplace: guest-стек уже
@@ -325,20 +337,37 @@ function AppInner() {
   // Native (iOS/Android) — tap по пушу в фоне/закрытом приложении + cold start.
   useEffect(() => {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+    // Cold-start responses may be delivered before AuthContext has restored
+    // the bearer token.  Waiting for the authenticated navigation gate keeps
+    // a real notification tap from being acknowledged as `no_token` and then
+    // lost for the rest of the process lifetime.
+    if (!authedForDeepLink) return;
     let Notifications;
     try { Notifications = require('expo-notifications'); } catch { return; }
     // BUG-006: getLastNotificationResponseAsync (запускающий тап) и listener
     // на части версий Expo SDK срабатывают ОБА для одного и того же тапа →
     // двойная навигация. Дедуп по identifier уведомления в общем замыкании.
     const handled = new Set();
-    const handleResponse = (response) => {
+    const handleResponse = async (response) => {
       const rid = response?.notification?.request?.identifier;
       if (rid) {
         if (handled.has(rid)) return;
         handled.add(rid);
       }
+      // A provider retry can have another notification identifier while still
+      // representing one backend event. Route that event only once per local
+      // device; foreground display uses a separate claim so the first tap is
+      // never lost.
+      const eventId = notificationResponseEventId(response);
       const url = notificationResponseUrl(response);
-      if (url) routeFromUrl(url);
+      await handlePushTap({
+        eventId,
+        acknowledge: (id, options) => push.acknowledgeReceipt?.(id, options),
+        claimNavigation: (id) => claimPushEvent(id, 'navigation'),
+        refreshBadge: refreshAppIconBadge,
+        url,
+        route: routeFromUrl,
+      });
     };
     Notifications.getLastNotificationResponseAsync?.()
       .then((resp) => { if (resp) handleResponse(resp); })
@@ -385,8 +414,22 @@ function AppInner() {
     return () => sub?.remove?.();
   }, [hasToken]);
 
+  // Reconcile the server-owned badge at login and every foreground return.
+  // This explicitly clears an old iOS/Android launcher count such as "8".
+  useEffect(() => {
+    if (!hasToken) {
+      clearAppIconBadge();
+      return undefined;
+    }
+    refreshAppIconBadge();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshAppIconBadge();
+    });
+    return () => sub?.remove?.();
+  }, [hasToken]);
+
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider style={{ flex: 1, backgroundColor: theme.bg }}>
       <ToastProvider>
         <OfflineBanner />
         <PushPermissionBanner enabled={hasToken} />
@@ -395,7 +438,7 @@ function AppInner() {
           theme={navTheme}
           onReady={() => { navReadyRef.current = true; if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current); }}
         >
-          <StatusBar style="light" />
+          <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.bg} />
           <AppNavigator />
         </NavigationContainer>
       </ToastProvider>
@@ -404,6 +447,10 @@ function AppInner() {
 }
 
 function App() {
+  useEffect(() => {
+    sweepPrivatePdfCache();
+    sweepNativeAttachmentStaging();
+  }, []);
   return (
     <AndroidBrandedLaunchSplash>
       <ErrorBoundary>

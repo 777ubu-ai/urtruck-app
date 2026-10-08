@@ -35,6 +35,7 @@ _GENERIC_DECLARED_MIME = _uv.GENERIC_DECLARED_MIME
 _DECLARED_ALIASES = _uv.DECLARED_ALIASES
 _sniff_mime = _uv.sniff_mime
 _safe_original_name = _uv.sanitize_original_name
+_UPLOAD_RESERVATION_TIMEOUT_SECONDS = 15 * 60
 
 
 def _assert_deal_room_open(conversation_id: str, user_id: str) -> None:
@@ -112,6 +113,26 @@ def _existing_attachment(conversation_id: str, uploader_id: str, client_upload_i
             (conversation_id, uploader_id, client_upload_id),
         ).fetchone()
     return dict(row) if row else None
+
+
+def _reclaim_stale_attachment_reservation(conversation_id: str, uploader_id: str, client_upload_id: Optional[str]) -> bool:
+    """Release only this caller's unfinished reservation after a safe timeout.
+
+    No remote object is deleted here: eligible rows have no URL.  Ready rows
+    and a different uploader's rows stay outside this exact conditional DELETE.
+    """
+    if not client_upload_id:
+        return False
+    with get_conn() as c:
+        deleted = c.execute(
+            """DELETE FROM message_attachments
+               WHERE conversation_id=? AND uploader_id=? AND client_upload_id=?
+                 AND upload_status='uploading' AND url IS NULL
+                 AND created_at <= datetime(CURRENT_TIMESTAMP, ?)
+            """,
+            (conversation_id, uploader_id, client_upload_id, f"-{_UPLOAD_RESERVATION_TIMEOUT_SECONDS} seconds"),
+        )
+    return deleted.rowcount == 1
 
 
 def _reserve_attachment(
@@ -192,10 +213,12 @@ def _sign_attachment(att: dict | None):
         return att
     if att.get("url"):
         url = file_signing.sign(att["url"])
-        # Имя UUID нужно хранилищу; получатель скачивает исходное имя документа.
+        # Preview URL remains inline. Download receives a separate signed URL
+        # with Content-Disposition so iOS WebView never gets an attachment.
         if (url and att.get("kind") == "document" and att.get("original_name")
                 and storage_service.is_private_remote_ref(att["url"])):
-            url += ("&" if "?" in url else "?") + urlencode({"download": att["original_name"]})
+            download_url = url + ("&" if "?" in url else "?") + urlencode({"download": att["original_name"]})
+            return {**att, "url": url, "download_url": download_url}
         return {**att, "url": url}
     return att
 
@@ -287,6 +310,9 @@ async def upload_attachment(
     _ensure_attachment_columns()
     normalized_client_id = (client_upload_id or "").strip()[:120] or None
     existing = _existing_attachment(conversation_id, user["id"], normalized_client_id)
+    if existing and not (existing.get("url") and existing.get("upload_status") == "uploaded"):
+        _reclaim_stale_attachment_reservation(conversation_id, user["id"], normalized_client_id)
+        existing = _existing_attachment(conversation_id, user["id"], normalized_client_id)
     if existing:
         if existing.get("url") and existing.get("upload_status") == "uploaded":
             return {"attachment": await run_in_threadpool(_sign_attachment, existing), "deduplicated": True}

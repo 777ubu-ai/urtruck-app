@@ -9,37 +9,50 @@ const deployment = workflow + '\n' + script;
 
 test('local AI deploy is manual and QA2-only', () => {
   assert.match(deployment, /INSTALL_QA2_LOCAL_AI/);
+  assert.match(workflow, /source_sha/);
+  assert.match(workflow, /environment:\s+name: qa2/);
+  assert.match(workflow, /3678612761b793d42c66a99214640b28e81b81bd/);
   assert.match(deployment, /https:\/\/qa2\.urtruck\.kz/);
   assert.match(deployment, /\/home\/ubuntu\/urtruck-qa2-ai/);
   assert.match(deployment, /\/home\/ubuntu\/urtruck-qa2\/backend/);
   assert.doesNotMatch(deployment, /urtruck-pro/);
+  assert.match(workflow, /inputs\.confirmation == 'SOURCE_TESTS'/);
+  assert.match(workflow, /Non-mutating local-AI source contracts/);
+  assert.match(workflow, /git rev-parse HEAD\)" = "\$QA_SOURCE_SHA/);
 });
 
 test('AI service is private and resource bounded', () => {
   assert.match(deployment, /--host 127\.0\.0\.1 --port 8003/);
-  assert.match(deployment, /MemoryMax=5G/);
+  assert.match(deployment, /MemoryMax=6G/);
   assert.match(deployment, /CPUQuota=350%/);
   assert.match(deployment, /NoNewPrivileges=true/);
   assert.match(deployment, /0\.0\.0\.0:8003/);
 });
 
-test('pinned local models and required language smoke tests are present', () => {
-  assert.match(deployment, /Systran\/faster-whisper-small/);
-  assert.match(deployment, /facebook\/m2m100_418M/);
-  assert.match(deployment, /auralmira\/m2m100-418M-ct2-int8/);
-  assert.match(deployment, /e205afefce2fd6933a1dca3b92b5063894f2f2bb/);
-  for (const pair of ["'ru', 'zh'", "'zh', 'ru'", "'kk', 'ru'", "'en', 'ru'"]) {
+test('pinned high-quality local models and 54-case language matrix are present', () => {
+  assert.match(deployment, /dropbox-dash\/faster-whisper-large-v3-turbo/);
+  assert.match(deployment, /0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf/);
+  assert.match(deployment, /facebook\/nllb-200-distilled-1\.3B/);
+  assert.match(deployment, /7be3e24664b38ce1cac29b8aeed6911aa0cf0576/);
+  assert.match(deployment, /QA2_AI_TRANSLATION_MATRIX=54\/54/);
+  assert.match(deployment, /language=en/);
+  for (const pair of ["'ru','zh'", "'zh','ru'", "'en','zh'", "'zh','en'", "'ru','en'", "'en','ru'"]) {
     assert.match(deployment, new RegExp(pair));
   }
 });
 
-test('production is fingerprinted and QA2 has rollback', () => {
+test('production is fingerprinted and AI-only rollback is prepared', () => {
   assert.match(deployment, /prod_before/);
   assert.match(deployment, /PRODUCTION=healthy-unchanged/);
   assert.match(deployment, /rollback\(\)/);
   assert.match(deployment, /QA2_AI_TRANSCRIPTION_EN=healthy/);
-  assert.match(deployment, /TRANSCRIBE_PROVIDER':'local_ai'/);
-  assert.match(deployment, /TRANSLATE_PROVIDER':'local_ai'/);
+  assert.match(deployment, /QA2_AI_BACKUP_READY=code-and-unit/);
+  assert.match(deployment, /QA2_BACKEND=unchanged/);
+  assert.doesNotMatch(script, /\/home\/ubuntu\/urtruck-qa2\/\.env/);
+  assert.doesNotMatch(script, /TRANSCRIBE_PROVIDER|TRANSLATE_PROVIDER/);
+  assert.doesNotMatch(script, /urtruck-qa2\/backend\/(services|api)\/.*\.(py|env)/);
+  assert.match(script, /QA2_AI_SOURCE_SHA=\$source_sha/);
+  assert.match(script, /'source_sha':sys\.argv\[1\]/);
 });
 
 test('registered QA2 recovery workflow exposes the isolated local AI mode', () => {

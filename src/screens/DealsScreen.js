@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -305,28 +305,35 @@ export default function DealsScreen({ navigation, route }) {
   const [incomingBids, setIncomingBids] = useState([]);
   const [myBids, setMyBids] = useState([]);
   const [unreadNotifPaths, setUnreadNotifPaths] = useState([]);
+  const loadRequestRef = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ force = false } = {}) => {
+    const request = ++loadRequestRef.current;
     setLoadError(false);
     try {
-      const dashboard = await marketAPI.myDashboard();
-      if (!dashboard) throw new Error('empty_dashboard');
+      const dashboard = await marketAPI.myDashboard({ force });
+      if (request !== loadRequestRef.current) return;
+      if (!dashboard || dashboard.serverError || dashboard.authRequired || !Array.isArray(dashboard.my_deals)) {
+        throw new Error('invalid_dashboard');
+      }
       setAllDeals(dashboard.my_deals || []);
       setIncomingBids(dashboard.incoming_bids || []);
       setMyBids(dashboard.my_bids || []);
       try {
         const notificationData = await notificationsAPI.list(50);
+        if (request !== loadRequestRef.current) return;
         setUnreadNotifPaths(unreadNotificationPaths(notificationData));
       } catch {
         // Notification badges are auxiliary; a notification API outage must
         // not turn an otherwise valid Deals dashboard into an error screen.
-        setUnreadNotifPaths([]);
+        if (request === loadRequestRef.current) setUnreadNotifPaths([]);
       }
     } catch (error) {
+      if (request !== loadRequestRef.current) return;
       setLoadError(true);
       console.warn("deals load failed", error?.message || error);
     } finally {
-      setLoading(false);
+      if (request === loadRequestRef.current) setLoading(false);
     }
   }, []);
 
@@ -334,11 +341,11 @@ export default function DealsScreen({ navigation, route }) {
     useCallback(() => {
       load();
       const interval = setInterval(load, 10000);
-      return () => clearInterval(interval);
+      return () => { loadRequestRef.current++; clearInterval(interval); };
     }, [load]),
   );
 
-  const { refreshing, onRefresh } = useSafeRefresh(load);
+  const { refreshing, onRefresh } = useSafeRefresh(() => load({ force: true }));
 
   const relTime = useCallback(
     (raw) => {
@@ -714,6 +721,7 @@ export default function DealsScreen({ navigation, route }) {
       ]}
       testID="deals-minimal-header"
     >
+      {loadError ? <Text testID="deals-refresh-error" style={[styles.errorText, { color: palette.textMuted }]}>{copy.loadError}</Text> : null}
         <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="deals-minimal-header" menuTestID="deals-menu-btn" />
 
       <View style={styles.tabsRow} testID="deals-primary-tabs">

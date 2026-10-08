@@ -11,28 +11,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { reconcileChatMessages } from '../../src/utils/chatMessageListState.js';
 
 const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
 const chatApi = fs.readFileSync('src/utils/chatAPI.js', 'utf8');
+const nativeStaging = fs.readFileSync('src/utils/nativeAttachmentStaging.js', 'utf8');
 const chatPy = fs.readFileSync('backend/api/chat.py', 'utf8');
 
 test('native photo, voice, and document uploads use Expo File/Blob multipart parts', () => {
-  assert.match(chatApi, /import \{ File as ExpoFile \} from 'expo-file-system'/);
+  assert.match(chatApi, /import \{ Directory, File as ExpoFile, Paths \} from 'expo-file-system'/);
   assert.match(chatApi, /const file = new ExpoFile\(uri\)/);
-  assert.match(chatApi, /form\.append\('file', file, name \|\| file\.name \|\| 'file\.bin'\)/);
-  assert.equal((chatApi.match(/appendNativeFile\(form, uri,/g) || []).length, 4, 'one helper plus photo, voice, and document call sites');
+  assert.match(nativeStaging, /form\.append\('file', staged, staged\.name\)/);
+  assert.match(nativeStaging, /await source\.copy\(staged\)/);
+  assert.match(nativeStaging, /safeNativeUploadName\(name\)/);
+  assert.match(nativeStaging, /normalize\('NFC'\)/);
+  assert.match(nativeStaging, /uploadDirectory\.delete\(\)/);
+  assert.equal((chatApi.match(/appendNativeFile\(form, uri,/g) || []).length, 3, 'one helper plus photo and voice call sites');
   assert.doesNotMatch(chatApi, /form\.append\('file', \{\s*uri,/);
 });
 
-test('a signed photo/document URL is cached per message id, not re-fetched fresh on every 3s poll', () => {
-  // The exact bug class this guards against: ChatScreen.js already fixed it
-  // once (attachmentUrlCache); DealWorkspaceScreenV2.js never had the fix and
-  // was flickering every poll for any deal with a photo message.
+test('photo/voice and document sources use the bounded expiry-aware cache', () => {
   assert.match(workspace, /attachmentUrlCache = React\.useRef\(new Map\(\)\)/);
-  assert.match(workspace, /attachmentUrlCache\.current\.get\(cacheKey\) \|\| issuedUrl/);
-  assert.match(workspace, /attachmentUrlCache\.current\.set\(cacheKey, mediaUrl\)/);
-  // The cache must also cover documents, not just photo/voice.
-  assert.match(workspace, /attachmentUrlCache\.current\.set\(cacheKey, docUrl\)/);
+  assert.match(workspace, /const mediaUrl = cacheIssuedAttachmentUrl\(attachmentUrlCache\.current, cacheKey, issuedUrl\)/);
+  assert.match(workspace, /const docUrl = cacheIssuedAttachmentUrl\(attachmentUrlCache\.current, cacheKey, issuedUrl\)/);
+  assert.doesNotMatch(workspace, /attachmentUrlCache\.current\.get\(cacheKey\) \|\| issuedUrl/);
 });
 
 test('tapping a photo bubble opens a full-screen viewer with an explicit close button', () => {
@@ -80,13 +82,18 @@ test('document upload retry reuses the same clientUploadId — no duplicate file
 });
 
 test('the feed merges chat_messages and message_attachments chronologically by created_at, not by insertion order', () => {
-  assert.match(workspace, /parseServerDate/);
-  assert.match(workspace, /const merged = \[\.\.\.mapped, \.\.\.serverDocs\]\.sort/);
-  assert.match(workspace, /dx - dy/);
+  const messages = [{ id: 'message-newer', kind: 'text', createdAt: '2026-09-30T12:00:00Z' }];
+  const documents = [{ id: 'document-earlier', kind: 'document', createdAt: '2026-09-30T11:00:00Z' }];
+  assert.deepEqual(
+    reconcileChatMessages([], messages, documents).map((item) => item.id),
+    ['document-earlier', 'message-newer'],
+  );
 });
 
 test('an optimistic document bubble is dropped once the server confirms it, matched by clientUploadId', () => {
-  assert.match(workspace, /serverDocs\.some\(\(d\) => d\.clientUploadId === item\.id\)/);
+  const optimistic = [{ id: 'upload-1', optimistic: true, kind: 'document', docName: 'CMR.pdf' }];
+  const confirmed = [{ id: 'attachment-1', kind: 'document', clientUploadId: 'upload-1', createdAt: '2026-09-30T12:00:00Z' }];
+  assert.deepEqual(reconcileChatMessages(optimistic, [], confirmed).map((item) => item.id), ['attachment-1']);
 });
 
 test('text send failures keep the real backend status/detail instead of one generic message', () => {
@@ -136,9 +143,12 @@ test('voice send renders an optimistic bubble immediately before upload and reus
   assert.match(body, /const clientId = newClientId\('voice'\)/);
   assert.match(body, /sendStatus: 'sending'/);
   assert.match(body, /clientMsgId: clientId/);
-  assert.match(workspace, /server\.clientMsgId === item\.id/);
+  assert.match(workspace, /reconcileChatMessages/);
   assert.match(body, /sendStatus: 'failed', sendError: message/);
   assert.match(workspace, /testID=\{item\.voice \? 'deal-chat-voice-error' : 'deal-chat-message-retry'\}/);
+  assert.match(body, /await chatAPI\.send/);
+  assert.doesNotMatch(body, /voiceText\.prewarm|chatAPI\.transcribe|chatAPI\.translate/,
+    'голос не должен запускать STT или перевод до явного нажатия получателя');
 });
 
 test('voice failures distinguish record vs upload vs send, each with its own message', () => {
@@ -213,6 +223,12 @@ test('web voice upload sends a real Blob/File in FormData, never an empty/placeh
 
 test('voiceRecorder produces a real, non-empty web Blob before upload is attempted', () => {
   const recorder = fs.readFileSync('src/utils/voiceRecorder.js', 'utf8');
+  // Android Chrome can emit a malformed first Opus/MP4 timestamp (minutes of
+  // fake duration), so WebM/Opus is preferred there; Safari keeps MP4 as the
+  // compatibility fallback.
+  assert.ok(recorder.indexOf("MediaRecorder.isTypeSupported('audio/webm;codecs=opus')")
+    < recorder.indexOf("MediaRecorder.isTypeSupported('audio/mp4')"),
+  'web voice recording must prefer WebM/Opus before MP4');
   // iOS Safari on a short recording can hand MediaRecorder zero data at
   // stop() unless timesliced + explicitly flushed — both guards must exist.
   assert.match(recorder, /this\._webRecorder\.start\(400\)/);

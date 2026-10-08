@@ -1,0 +1,254 @@
+name: QA2 Server Read-only Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact source SHA recorded with this audit
+        required: true
+        type: string
+  push:
+    branches: [fix/voice-stt-translation-20260925]
+    paths:
+      - .github/workflows/qa2-server-readonly-audit.yml
+      - scripts/sanitize_qa2_audit.py
+      - tests/frontend/test_qa2_server_readonly_audit_workflow.mjs
+
+concurrency:
+  group: urtruck-qa2-server-readonly-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Collect non-mutating QA2 capacity evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: qa2
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      AUDIT_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+    steps:
+      - name: Checkout the requested audit source
+        uses: actions/checkout@v4
+        with:
+          # The workflow and test code must come from the trusted workflow
+          # revision, never from the user-supplied audit SHA. That SHA is
+          # metadata only and is validated as an ancestor below.
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Require the exact branch and source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "fix/voice-stt-translation-20260925"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          [[ "$AUDIT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "$AUDIT_SOURCE_SHA^{commit}"
+          git merge-base --is-ancestor "$AUDIT_SOURCE_SHA" "$GITHUB_SHA"
+
+      - name: Verify the read-only workflow contract
+        run: node --test tests/frontend/test_qa2_server_readonly_audit_workflow.mjs
+
+      - name: Install SSH client helper on the ephemeral runner
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
+      - name: Collect QA2 technical evidence without server mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST"
+          test -n "$SERVER_USER"
+          test -n "$SERVER_PASS"
+          test -n "$SERVER_SSH_KNOWN_HOSTS" || { echo '::error::SERVER_SSH_KNOWN_HOSTS is required; refusing unverified SSH'; exit 1; }
+          known_hosts_file="$RUNNER_TEMP/qa2-known-hosts"
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known_hosts_file"
+          chmod 600 "$known_hosts_file"
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o UserKnownHostsFile="$known_hosts_file" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" 'bash -s' > "$RUNNER_TEMP/qa2-server-readonly-audit.txt" <<'REMOTE'
+          set -euo pipefail
+          export LC_ALL=C
+
+          echo 'AUDIT_MODE=read-only'
+          echo "AUDIT_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo 'SECTION=disk'
+          df -hT
+          echo 'SECTION=inodes'
+          df -iP
+
+          echo 'SECTION=memory'
+          free -h
+          swapon --show --bytes || true
+          awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ {print}' /proc/meminfo
+          echo 'SECTION=vmstat'
+          vmstat 1 3
+          echo 'SECTION=psi-memory'
+          cat /proc/pressure/memory
+          echo 'SECTION=psi-io'
+          cat /proc/pressure/io
+          echo 'SECTION=psi-cpu'
+          cat /proc/pressure/cpu
+
+          echo 'SECTION=top-cpu'
+          ps -eo pid,ppid,user,comm,%cpu,%mem,rss,lstart --sort=-%cpu | head -n 21
+          echo 'SECTION=top-rss'
+          ps -eo pid,ppid,user,comm,%cpu,%mem,rss,lstart --sort=-rss | head -n 21
+
+          echo 'SECTION=listeners'
+          for port in 8001 8002 8003 3101; do
+            echo "PORT=$port"
+            sudo -n ss -ltnpH "sport = :$port" 2>/dev/null || true
+          done
+
+          listener_8002="$(sudo -n ss -ltnpH 'sport = :8002' 2>/dev/null || true)"
+          pid_8002="$(printf '%s\n' "$listener_8002" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+          echo "PORT_8002_PID=${pid_8002:-unavailable}"
+          if test -n "$pid_8002" && test -r "/proc/$pid_8002/status"; then
+            echo 'SECTION=port-8002-process'
+            ppid_8002="$(ps -p "$pid_8002" -o ppid= | tr -d ' ')"
+            echo "PROCESS_8002_PID=$pid_8002"
+            echo "PROCESS_8002_PPID=$ppid_8002"
+            echo "PROCESS_8002_USER=$(ps -p "$pid_8002" -o user= | tr -d ' ')"
+            echo "PROCESS_8002_COMM=$(ps -p "$pid_8002" -o comm= | tr -d ' ')"
+            echo "PROCESS_8002_ELAPSED=$(ps -p "$pid_8002" -o etime= | tr -d ' ')"
+            echo "PROCESS_8002_CPU_PCT=$(ps -p "$pid_8002" -o %cpu= | tr -d ' ')"
+            echo "PROCESS_8002_MEM_PCT=$(ps -p "$pid_8002" -o %mem= | tr -d ' ')"
+            echo "PROCESS_8002_RSS_KB=$(ps -p "$pid_8002" -o rss= | tr -d ' ')"
+            echo "PROCESS_8002_EXEC=$(readlink -f "/proc/$pid_8002/exe" 2>/dev/null || true)"
+            echo "PROCESS_8002_CWD=$(readlink -f "/proc/$pid_8002/cwd" 2>/dev/null || true)"
+            cgroup_8002="$(cat "/proc/$pid_8002/cgroup" 2>/dev/null | head -n 1 | sed 's/.*://')"
+            echo "PROCESS_8002_CGROUP=systemd:${cgroup_8002:-unknown}"
+            if grep -Fq 'urtruck-qa2.service' "/proc/$pid_8002/cgroup" 2>/dev/null; then
+              echo 'PROCESS_8002_SUPERVISION=systemd-unit-cgroup'
+            elif test "$ppid_8002" = '1'; then
+              echo 'PROCESS_8002_SUPERVISION=ppid-1-needs-systemd-correlation'
+            else
+              echo "PROCESS_8002_SUPERVISION=parent-${ppid_8002}"
+            fi
+          else
+            echo 'PROCESS_8002_SUPERVISION=listener-unavailable'
+          fi
+
+          echo 'SECTION=systemd'
+          for unit in urtruck-qa2.service urtruck-qa2-ai.service nginx.service docker.service; do
+            echo "UNIT=$unit"
+            sudo -n systemctl show "$unit" -p Id -p ActiveState -p SubState -p MainPID -p FragmentPath -p ExecMainStartTimestamp --no-pager 2>/dev/null || true
+          done
+
+          echo 'SECTION=nginx-routing'
+          sudo -n nginx -T 2>/dev/null | awk '
+            /^[[:space:]]*server_name[[:space:]]/ {server=$0; gsub(/^[[:space:]]+/, "", server); gsub(/;$/, "", server)}
+            /^[[:space:]]*proxy_pass[[:space:]]/ && server ~ /(qa2\.urtruck\.kz|pro-test\.urtruck\.kz)/ {line=$0; gsub(/^[[:space:]]+/, "", line); gsub(/;$/, "", line); print server " -> " line}
+          ' || true
+
+          echo 'SECTION=docker-images'
+          sudo -n docker image ls --format 'DOCKER_IMAGE={{.Repository}}:{{.Tag}}|{{.ID}}|{{.Size}}' 2>/dev/null || true
+          echo 'SECTION=docker-volumes'
+          sudo -n docker volume ls --format 'DOCKER_VOLUME={{.Driver}}|{{.Name}}' 2>/dev/null || true
+          echo 'SECTION=docker-containers'
+          sudo -n docker ps -a --format 'DOCKER_CONTAINER={{.ID}}|{{.Image}}|{{.Names}}|{{.Status}}' 2>/dev/null || true
+          echo 'SECTION=docker-build-cache'
+          sudo -n docker builder du --format '{{.ID}}|{{.Size}}' 2>/dev/null | sed 's/^/DOCKER_BUILD_CACHE=/' || true
+          echo 'SECTION=docker-mount-links'
+          sudo -n docker ps -aq | xargs -r sudo -n docker inspect --format '{{.Name}}|{{range .Mounts}}{{.Type}}->{{.Destination}} {{end}}' 2>/dev/null | sed -E 's#^/([^|]+)\|([^ ]+).*$#DOCKER_MOUNT=\1|\2#' || true
+
+          echo 'SECTION=technical-directory-sizes'
+          sudo -n du -sh /home/ubuntu/urtruck /home/ubuntu/urtruck-rollback /home/ubuntu/urtruck-releases /home/ubuntu/urtruck-backups /home/ubuntu/urtruck-qa2 /home/ubuntu/urtruck-qa2-ai /var/lib/docker /var/log /tmp 2>/dev/null || true
+
+          health_summary() {
+            local label="$1"
+            local url="$2"
+            local body
+            body="$(curl -fsS --max-time 5 "$url" 2>/dev/null || true)"
+            python3 - "$label" "$body" <<'PY'
+          import json
+          import sys
+          label, raw = sys.argv[1:]
+          try:
+              body = json.loads(raw)
+          except Exception:
+              print(f'HEALTH_{label}=unavailable')
+              raise SystemExit(0)
+          allowed = ('status', 'source_sha', 'version', 'private', 'translation_model', 'speech_model', 'languages')
+          compact = {key: body[key] for key in allowed if key in body}
+          print(f'HEALTH_{label}=' + json.dumps(compact, sort_keys=True, ensure_ascii=True))
+          PY
+          }
+          echo 'SECTION=health'
+          health_summary qa2-8002 http://127.0.0.1:8002/health
+          health_summary ai-8003 http://127.0.0.1:8003/health
+
+          ai_pid="$(sudo -n systemctl show urtruck-qa2-ai.service -p MainPID --value 2>/dev/null || true)"
+          if ! test -n "$ai_pid" || test "$ai_pid" = '0'; then
+            ai_pid="$(sudo -n ss -ltnpH 'sport = :8003' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+          fi
+          echo "AI_PROCESS_PID=${ai_pid:-unavailable}"
+
+          psi_snapshot() {
+            local label="$1"
+            echo "PSI_${label}_MEMORY=$(tr '\n' ';' < /proc/pressure/memory)"
+            echo "PSI_${label}_IO=$(tr '\n' ';' < /proc/pressure/io)"
+          }
+          swap_snapshot() {
+            local label="$1"
+            echo "SWAP_${label}=$(awk '/^(pswpin|pswpout) / {printf "%s=%s;", $1, $2}' /proc/vmstat)"
+          }
+          ai_snapshot() {
+            local label="$1"
+            if test -n "$ai_pid" && test "$ai_pid" != '0' && test -r "/proc/$ai_pid/stat"; then
+              read -r ai_pid_value ai_ppid_value ai_comm_value ai_cpu_value ai_mem_value ai_rss_value < <(ps -p "$ai_pid" -o pid=,ppid=,comm=,%cpu=,%mem=,rss=)
+              echo "AI_${label}_PROCESS=pid=${ai_pid_value} ppid=${ai_ppid_value} comm=${ai_comm_value} pcpu=${ai_cpu_value} pmem=${ai_mem_value} rss=${ai_rss_value}"
+            else
+              echo "AI_${label}_PROCESS=unavailable"
+            fi
+          }
+          synthetic_translation() {
+            local label="$1"
+            local source="$2"
+            local target="$3"
+            local text="$4"
+            local payload response
+            payload="$(python3 - "$text" "$source" "$target" <<'PY'
+          import json
+          import sys
+          print(json.dumps({'text': sys.argv[1], 'source_lang': sys.argv[2], 'target_lang': sys.argv[3]}, ensure_ascii=False))
+          PY
+            )"
+            echo "SYNTHETIC_CASE=$label"
+            swap_snapshot "${label}_BEFORE"
+            psi_snapshot "${label}_BEFORE"
+            ai_snapshot "${label}_BEFORE"
+            response="$(curl --silent --output /dev/null --write-out '%{http_code} %{time_total}' --max-time 90 --header 'content-type: application/json' --data "$payload" http://127.0.0.1:8003/translate 2>/dev/null || true)"
+            echo "SYNTHETIC_${label}_RESULT=$response"
+            ai_snapshot "${label}_AFTER"
+            psi_snapshot "${label}_AFTER"
+            swap_snapshot "${label}_AFTER"
+          }
+
+          echo 'SECTION=synthetic-translation-observation'
+          synthetic_translation RU_TO_ZH ru zh 'Груз готов. Алматы — Астана, 10 тонн, тент.'
+          synthetic_translation ZH_TO_RU zh ru '货物已准备好。阿拉木图到阿斯塔纳，10吨，篷布车。'
+          synthetic_translation EN_TO_ZH en zh 'Cargo is ready. Almaty to Astana, 10 tonnes, tent truck.'
+          echo 'SYNTHETIC_INTERPRETATION=swap alone is not causal; use pswpin/pswpout deltas together with PSI memory and IO.'
+          REMOTE
+
+      - name: Render sanitized JSON and Markdown summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/sanitize_qa2_audit.py "$RUNNER_TEMP/qa2-server-readonly-audit.txt" "$RUNNER_TEMP/qa2-server-readonly-audit/audit.json" "$RUNNER_TEMP/qa2-server-readonly-audit/summary.md"
+
+      - name: Upload non-sensitive technical artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa2-server-readonly-audit-${{ env.AUDIT_SOURCE_SHA }}
+          path: ${{ runner.temp }}/qa2-server-readonly-audit
+          if-no-files-found: error
+          retention-days: 7

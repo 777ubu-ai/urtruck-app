@@ -120,14 +120,15 @@ def logout(authorization: str = Header(None)):
             # ДО revoke сессии, пока ещё можем безопасно определить владельца.
             driver_id = reg_dal.get_driver_by_token(raw_token)
             if driver_id:
-                try:
-                    from api.push import deactivate_user_push
-                    deactivate_user_push(driver_id, reason="logout")
-                except Exception:
-                    pass
-            revoked = reg_dal.delete_session(raw_token)
+                from api.push import logout_session_and_deactivate_push
+                result = logout_session_and_deactivate_push(driver_id, raw_token)
+                revoked = result["revoked"]
+            else:
+                revoked = reg_dal.delete_session(raw_token)
         except Exception:
-            revoked = False
+            # Never claim a successful logout after revoking auth without the
+            # matching push fence: that recreates the stale-registration leak.
+            raise HTTPException(status_code=503, detail="LOGOUT_RETRY_REQUIRED")
     return {"ok": True, "revoked": revoked}
 
 
@@ -311,6 +312,11 @@ def email_send(req: EmailSendRequest, request: Request = None):
     # код фиксированный (REVIEWER_DEMO_CODE), ревьюер вводит его сразу. Это
     # гарантирует, что экран ввода кода откроется независимо от состояния SMTP.
     if REVIEWER_DEMO_EMAIL and email == REVIEWER_DEMO_EMAIL:
+        # Та же production-защита, что в verify: выключенный демо-вход
+        # не должен отвечать успешной отправкой и заводить ревьюера в тупик.
+        if IS_PRODUCTION and REVIEWER_DEMO_CODE_IS_DEFAULT:
+            return {"sent": False, "channel": "email", "mock": False, "code": None,
+                    "error": "reviewer_login_unavailable"}
         return {"sent": True, "channel": "email", "mock": False, "code": None, "error": None}
     limit_otp_send(email)
     limit_otp_send_ip(request.client.host if (request and request.client) else None)

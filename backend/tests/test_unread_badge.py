@@ -29,6 +29,7 @@ from api.chat import (
     unread_count, SendMessageIn,
 )
 from services import push_sender
+from api.notifications import create_notification, unread_badge_count
 
 
 @pytest.fixture(autouse=True)
@@ -109,6 +110,58 @@ def test_inv2_badge_matches_unread():
     assert push_sender._compute_recipient_badge(o) == unread_count(user=_u(o))["unread"]
 
 
+def test_canonical_badge_counts_disjoint_non_chat_events_and_active_chat_once():
+    """Tab, provider payload and launcher share this exact inclusion set."""
+    o, d = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
+    send_message(SendMessageIn(room_id=room, text="one chat event"), user=_u(d))
+    create_notification(o, "bid_created", "One actionable bid", event_key="badge-bid-" + uuid.uuid4().hex)
+    # The durable Bell mirror of the same chat message is deliberately
+    # excluded, otherwise one message would increment the canonical badge twice.
+    create_notification(o, "chat_message", "Mirrored chat", event_key="badge-chat-" + uuid.uuid4().hex)
+    assert unread_badge_count(o) == 2
+    assert push_sender._compute_recipient_badge(o) == 2
+
+
+def test_canonical_badge_sequence_bid_message_mirrors_then_reads_to_zero():
+    """0 → bid 1 → duplicate mirror 1 → message 2 → mirror 2 → reads 0."""
+    o, d = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
+    assert unread_badge_count(o) == 0
+
+    bid_event_key = "bid-created-" + uuid.uuid4().hex
+    create_notification(o, "bid_created", "New bid", event_key=bid_event_key)
+    assert unread_badge_count(o) == 1
+    # Retry/mirror of the same business event is idempotent.
+    create_notification(o, "bid_created", "New bid", event_key=bid_event_key)
+    assert unread_badge_count(o) == 1
+
+    sent = send_message(SendMessageIn(room_id=room, text="one message"), user=_u(d))
+    assert sent["ok"] is True
+    assert unread_badge_count(o) == 2
+    create_notification(
+        o, "chat_message", "Message mirror",
+        event_key="chat-message-" + uuid.uuid4().hex,
+    )
+    assert unread_badge_count(o) == 2
+    assert push_sender._compute_recipient_badge(o) == 2
+
+    with get_conn() as c:
+        c.execute(
+            "UPDATE notifications SET is_read=1 "
+            "WHERE user_id=? AND event_key=?",
+            (o, bid_event_key),
+        )
+    assert unread_badge_count(o) == 1
+    get_messages(room, user=_u(o))
+    assert unread_badge_count(o) == 0
+    assert push_sender._compute_recipient_badge(o) == 0
+
+
 def test_inv3_read_marks_only_opened_room():
     """INV-3: get_messages помечает прочитанной ТОЛЬКО открытую комнату (H5)."""
     o, d = _ids()
@@ -174,9 +227,9 @@ def test_inv6_only_chat_kind_sets_badge():
     def fake_web(uid, title, body, data, url):
         return 0
 
-    def fake_native(uid, title, body, data, badge=None):
+    def fake_native(uid, title, body, data, badge=None, provider=None):
         captured["badge"] = badge
-        return 0, 0  # (sent, total_devices) — push-closure track signature
+        return {"sent": 0, "devices": 0, "already_delivered": 0}
 
     orig_web, orig_native = push_sender._send_web, push_sender._send_native
     push_sender._send_web, push_sender._send_native = fake_web, fake_native
@@ -221,6 +274,47 @@ def test_closed_deal_room_cannot_create_phantom_badge(status):
         c.execute("INSERT INTO chat_messages (room_id, sender_id, text, is_read) VALUES (?,?,?,0)", (room, d, "stale"))
     assert unread_count(user=_u(o))["unread"] == 0
     assert push_sender._compute_recipient_badge(o) == 0
+
+
+def test_completed_deal_chat_notification_cannot_leave_native_badge_stuck():
+    """The APNs/FCM payload must use the same total as the mobile client.
+
+    A real incoming message creates both a raw chat row and a durable Bell
+    row.  Once its deal is completed, both client unread endpoints exclude the
+    event; counting raw notifications in the native push sender used to leave
+    this one historical event on the launcher badge indefinitely.
+    """
+    o, d = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, o, d)
+    deal_id = _mk_accepted_deal(cargo, o, d, room)
+    send_message(SendMessageIn(room_id=room, text="historical"), user=_u(d))
+    assert unread_count(user=_u(o))["unread"] == 1
+    assert push_sender._compute_recipient_badge(o) == 1
+
+    with get_conn() as c:
+        c.execute("UPDATE deals SET status = 'completed' WHERE id = ?", (deal_id,))
+
+    assert unread_count(user=_u(o))["unread"] == 0
+    assert push_sender._compute_recipient_badge(o) == 0
+
+
+def test_database_busy_never_becomes_authoritative_zero_badge(monkeypatch):
+    """Contention must trigger retry, not erase a previously visible badge."""
+    from contextlib import contextmanager
+    from api import notifications
+    from database.db import DatabaseBusyError
+
+    @contextmanager
+    def busy_connection():
+        raise DatabaseBusyError("SQLite temporarily busy")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(notifications, "get_conn", busy_connection)
+    with pytest.raises(DatabaseBusyError):
+        notifications.unread_badge_count("badge-owner")
+    with pytest.raises(DatabaseBusyError):
+        push_sender._compute_recipient_badge("badge-owner")
 
 
 def test_mine_flag_regression():

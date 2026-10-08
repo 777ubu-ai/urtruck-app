@@ -1,0 +1,106 @@
+name: Verify QA2 CGR Live Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type VERIFY_QA2_CGR_LIVE
+        required: true
+        type: string
+      source_sha:
+        description: Exact SHA already merged into qa2/integration-candidate
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      confirmation:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+  push:
+    tags:
+      - 'qa2-final-verify-cgr-*'
+    branches:
+      - 'qa2-final-verify-cgr-*'
+
+concurrency:
+  group: urtruck-qa2-cgr-live
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: qa2
+    env:
+      QA_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+      QA2_API_URL: ${{ secrets.QA2_API_URL }}
+    steps:
+      - name: Require QA2-only verification intent
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test -n "$QA_SOURCE_SHA"
+          if test -n "$CONFIRMATION"; then
+            test "$CONFIRMATION" = VERIFY_QA2_CGR_LIVE
+            test "$GITHUB_REF_NAME" = qa2/integration-candidate
+          else
+            test "$GITHUB_REF_TYPE" = tag -o "$GITHUB_REF_TYPE" = branch
+            test "$GITHUB_REF_NAME" = "qa2-final-verify-cgr-$QA_SOURCE_SHA"
+            test "$QA_SOURCE_SHA" = "$GITHUB_SHA"
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          fetch-depth: 1
+      - name: Verify exact merged source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          git fetch --no-tags origin qa2/integration-candidate:refs/remotes/origin/qa2/integration-candidate
+          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
+      - name: Record real CGR endpoint evidence without mock substitution
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${QA2_API_URL%/}"
+          mkdir -p cgr-evidence
+          status=0
+          for checkpoint in nur_zholy_horgos dostyk_alashankou bahty_pokitu; do
+            code="$(curl --silent --show-error --output "cgr-evidence/$checkpoint.json" --write-out '%{http_code}' --max-time 25 "$base/api/v1/borders/live/$checkpoint" || true)"
+            printf '%s\n' "$code" > "cgr-evidence/$checkpoint.http-status"
+            case "$code" in
+              200) echo "CGR_$checkpoint=live" ;;
+              502)
+                if python3 - "cgr-evidence/$checkpoint.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          if data.get("detail") != "CGR временно недоступен":
+              raise SystemExit(1)
+          PY
+                then
+                  echo "CGR_$checkpoint=degraded-official-upstream"
+                else
+                  echo "CGR_$checkpoint=failed-unexpected-502"
+                  status=1
+                fi
+                ;;
+              404|503) echo "CGR_$checkpoint=blocked-http-$code"; status=1 ;;
+              *) echo "CGR_$checkpoint=failed-http-$code"; status=1 ;;
+            esac
+          done
+          test "$status" = 0
+      - name: Upload CGR evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa2-cgr-live-evidence
+          path: cgr-evidence/
+          if-no-files-found: error

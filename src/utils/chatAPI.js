@@ -1,10 +1,11 @@
 import { Platform } from 'react-native';
-import { File as ExpoFile } from 'expo-file-system';
+import { Directory, File as ExpoFile, Paths } from 'expo-file-system';
 import { fetch as expoFetch } from 'expo/fetch';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';
 import translations, { getLanguage } from './i18n';
+import { withNativeUploadFile } from './nativeAttachmentStaging';
 
 const BASE = `${API_BASE}/chat`;
 const TOKEN_KEY = 'ur_reg_token';
@@ -50,12 +51,16 @@ function chatApiError(detail, fallbackKey) {
     // known localized error code may override the generic localized fallback.
     const error = new Error(localized || fallback);
     error.code = detail.error || null;
+    error.reasonCodes = Array.isArray(detail.reason_codes)
+      ? detail.reason_codes.filter((value) => typeof value === 'string')
+      : [];
     return error;
   }
   // String `detail` is intentionally not shown to users either. The backend
   // may return a provider body or a Russian-only implementation message.
   const error = new Error(fallback);
   error.code = null;
+  error.reasonCodes = [];
   return error;
 }
 
@@ -160,8 +165,8 @@ export const chatAPI = {
     return r.json();
   },
 
-  async messages(roomId, limit = 100) {
-    const r = await authedFetch(`${BASE}/messages/${roomId}?limit=${limit}`, { headers: await headers() });
+  async messages(roomId, limit = 100, offset = 0) {
+    const r = await authedFetch(`${BASE}/messages/${roomId}?limit=${limit}&offset=${offset}`, { headers: await headers() });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
       const error = new Error(body?.detail || `messages failed ${r.status}`);
@@ -197,6 +202,28 @@ export const chatAPI = {
       headers: await headers(),
       body: JSON.stringify({ message_id: messageId, target_lang: targetLang }),
     }, 240000);
+    const data = await r.json().catch(() => null);
+    if (!r.ok) throw chatApiError(data?.detail, 'voice_transcription_unavailable');
+    return data;
+  },
+
+  // Hidden background STT cache: this read never starts inference. The chat
+  // poll exposes only its status; a user must tap "Show text" to retrieve
+  // an already-ready transcript/translation.
+  async voiceText(messageId, targetLang = null) {
+    const suffix = targetLang ? `?target_lang=${encodeURIComponent(targetLang)}` : '';
+    const r = await authedFetchWithTimeout(`${BASE}/voice/${messageId}/text${suffix}`, {
+      headers: await headers(),
+    }, 30000);
+    const data = await r.json().catch(() => null);
+    if (!r.ok) throw chatApiError(data?.detail, 'voice_transcription_unavailable');
+    return data;
+  },
+
+  async recognizeVoiceAgain(messageId) {
+    const r = await authedFetchWithTimeout(`${BASE}/voice/${messageId}/recognize`, {
+      method: 'POST', headers: await headers(),
+    }, 30000);
     const data = await r.json().catch(() => null);
     if (!r.ok) throw chatApiError(data?.detail, 'voice_transcription_unavailable');
     return data;
@@ -354,19 +381,25 @@ export const chatAPI = {
         ? new File([blob], name, { type: finalType || 'application/octet-stream' })
         : new Blob([blob], { type: finalType || 'application/octet-stream' });
       form.append('file', part, name);
-    } else {
-      appendNativeFile(form, uri, name);
     }
     form.append('kind', kind);
     if (clientUploadId) form.append('client_upload_id', String(clientUploadId));
 
+    const send = () => authedFetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    }, expoFetch);
+
     let response;
     try {
-      response = await authedFetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, expoFetch);
+      response = Platform.OS === 'web'
+        ? await send()
+        : await withNativeUploadFile(form, uri, name, send, {
+          Directory,
+          File: ExpoFile,
+          cacheRoot: Paths.cache,
+        });
     } catch (error) {
       throw attachmentError('network', { isNetwork: true, detail: error?.message || 'network' });
     }

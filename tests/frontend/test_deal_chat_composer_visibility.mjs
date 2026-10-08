@@ -42,7 +42,7 @@ test('Android chat dock uses the shared measured IME overlap only when resize is
   const bubble = readFileSync('src/components/VoiceMessageBubble.js', 'utf8');
   assert.match(bubble, /testID="voice-transcription-loading"/);
   assert.match(bubble, /testID="voice-transcription-error"/);
-  assert.match(bubble, /t\('voice_to_text'\)/);
+  assert.match(bubble, /t\('voice_translate'\)/);
   assert.match(bubble, /testID="voice-original-btn"/);
   assert.match(bubble, /const primaryTranscript = hasTranslation/);
   assert.doesNotMatch(bubble, /voice-translation-btn/);
@@ -69,14 +69,16 @@ test('composer switches controls by input state and protects rapid send', () => 
   assert.match(src, /textSendBusyRef\.current/);
   assert.match(src, /blurOnSubmit=\{false\}/);
   assert.match(src, /returnKeyType="default"/);
-  assert.match(src, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
+  assert.match(src, /COMPOSER_INPUT_MAX_HEIGHT = 104/);
 });
 
 test('emoji control is a visible sibling of the multiline native input', () => {
   assert.match(src, /inputShell: \{[^\n]*flexDirection: 'row', alignItems: 'flex-end'/,
     'the input and emoji must use a shared row, never overlapping native layers');
-  assert.match(src, /input: \{[^\n]*flex: 1[^\n]*paddingRight: 8/,
-    'the native input must occupy only its own flex slot');
+  assert.match(src, /input: \{[^\n]*flexGrow: 1[^\n]*flexShrink: 1[^\n]*flexBasis: 0[^\n]*paddingRight: 8/,
+    'the native input must occupy only its own horizontal flex slot');
+  assert.doesNotMatch(src, /input: \{[^\n]*flex: 1[^\n]*height/,
+    'the native input must not combine shorthand flex with dynamic height');
   assert.match(src, /inputEmojiButton: \{[^\n]*flexShrink: 0[^\n]*width: 40, height: 40/,
     'the emoji must retain an independent, visible 40dp control at multiline height');
   assert.doesNotMatch(src, /inputEmojiButton: \{[^\n]*position: 'absolute'/,
@@ -86,24 +88,21 @@ test('emoji control is a visible sibling of the multiline native input', () => {
 test('изменение viewport прокручивает к последнему, но не отрывает чтение истории', () => {
   const body = src.split('scheduleAutoScrollRef.current = () => {')[1].split('\n  };')[0];
   let calls = 0;
-  const timers = [];
   const mounted = { current: true };
   const userScrolledAwayRef = { current: false };
   const nearBottomRef = { current: true };
-  const run = new Function('mounted', 'userScrolledAwayRef', 'nearBottomRef', 'listRef', 'setTimeout', body)
+  const run = new Function('mounted', 'userScrolledAwayRef', 'nearBottomRef', 'listRef', body)
     .bind(null, mounted, userScrolledAwayRef, nearBottomRef,
-      { current: { scrollToEnd: () => calls++ } }, (fn) => timers.push(fn));
+      { current: { scrollToEnd: () => calls++ } });
   run();
   assert.equal(calls, 1);
   userScrolledAwayRef.current = true;
   nearBottomRef.current = false;
-  for (const timer of timers.splice(0)) timer();
-  assert.equal(calls, 1, 'поздние layout callbacks не сдвигают открытую историю');
   run();
-  assert.equal(calls, 1);
+  assert.equal(calls, 1, 'чтение истории не сдвигается');
   userScrolledAwayRef.current = false;
   nearBottomRef.current = true;
   mounted.current = false;
-  for (const timer of timers) timer();
-  assert.equal(calls, 1, 'после ухода с экрана callbacks не прокручивают список');
+  run();
+  assert.equal(calls, 1, 'после ухода с экрана callback не прокручивает список');
 });

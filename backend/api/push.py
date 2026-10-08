@@ -1,7 +1,7 @@
-"""Push API — Web Push (VAPID) + Native (Expo/FCM).
+"""Push API — Web Push (VAPID) + direct native FCM/APNs.
 
 - POST /subscribe        — web push (endpoint + p256dh + auth)
-- POST /register-native  — native (Expo push token / FCM token)
+- POST /register-native  — native FCM/APNs token
 - POST /unsubscribe      — снять подписку web
 - POST /unregister-native— удалить native-токен
 - POST /test             — тест себе
@@ -22,6 +22,7 @@ import os
 import sys
 import re
 import threading
+import hashlib
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -86,6 +87,21 @@ def _init_schema():
             # after FastAPI startup. Fresh databases still run the complete
             # schema synchronously below.
             defer_receipt_index = receipt_index is None
+
+        # The schema below creates an index involving expires_at.  Add these
+        # columns before executescript for a legacy outbox, otherwise SQLite
+        # aborts at CREATE INDEX before the later additive migration can run.
+        outbox_exists = c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='push_outbox'"
+        ).fetchone()
+        if outbox_exists:
+            outbox_cols = {row["name"] for row in c.execute("PRAGMA table_info(push_outbox)").fetchall()}
+            if "expires_at" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN expires_at TEXT")
+            if "collapse_key" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN collapse_key TEXT")
+            if "locked_by" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN locked_by TEXT")
 
         schema_sql = schema.read_text(encoding="utf-8")
         if defer_receipt_index:
@@ -194,6 +210,19 @@ def _migrate_ownership_columns():
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_device ON push_devices(device_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_provider ON push_devices(push_provider, platform)")
         c.execute("""
+            CREATE TABLE IF NOT EXISTS push_logout_sessions (
+                user_id TEXT NOT NULL,
+                device_id TEXT NOT NULL,
+                session_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(user_id, device_id, session_hash)
+            )
+        """)
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_push_logout_sessions_created "
+            "ON push_logout_sessions(created_at)"
+        )
+        c.execute("""
             CREATE TABLE IF NOT EXISTS push_outbox (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_id TEXT NOT NULL,
@@ -218,10 +247,28 @@ def _migrate_ownership_columns():
             outbox_cols = {r["name"] for r in c.execute("PRAGMA table_info(push_outbox)").fetchall()}
             if "claimed_at" not in outbox_cols:
                 c.execute("ALTER TABLE push_outbox ADD COLUMN claimed_at TEXT")
+            # Additive migration for the reliability policy. Existing rows
+            # deliberately keep NULL expiry/collapse values: inventing a TTL
+            # retroactively could silently discard historical evidence.
+            if "expires_at" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN expires_at TEXT")
+            if "collapse_key" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN collapse_key TEXT")
+            if "locked_by" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN locked_by TEXT")
         except Exception:
             pass
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_status_next ON push_outbox(status, next_attempt_at)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_event_type ON push_outbox(event_type)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_pending_expiry ON push_outbox(status, expires_at)")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS push_worker_heartbeat (
+                worker_name TEXT PRIMARY KEY,
+                last_heartbeat_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_batch_picked INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT
+            )
+        """)
         c.execute("""
             CREATE TABLE IF NOT EXISTS push_delivery_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -246,6 +293,10 @@ def _migrate_ownership_columns():
             delivery_cols = {r["name"] for r in c.execute("PRAGMA table_info(push_delivery_log)").fetchall()}
             if "receipt_checked_at" not in delivery_cols:
                 c.execute("ALTER TABLE push_delivery_log ADD COLUMN receipt_checked_at TEXT")
+            if "received_at" not in delivery_cols:
+                c.execute("ALTER TABLE push_delivery_log ADD COLUMN received_at TEXT")
+            if "opened_at" not in delivery_cols:
+                c.execute("ALTER TABLE push_delivery_log ADD COLUMN opened_at TEXT")
         except Exception:
             pass
         c.execute("""
@@ -357,6 +408,78 @@ def _clean_device_id(device_id: Optional[str]) -> Optional[str]:
     return device_id
 
 
+def _session_hash(authorization: Optional[str]) -> Optional[str]:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        return None
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _reject_logged_out_session(c, user_id: Optional[str], device_id: Optional[str], authorization: Optional[str]):
+    """Reject an in-flight registration from the session that logged out.
+
+    The bearer itself is never stored. A fresh login receives a different
+    session token and therefore may register the same physical device.
+    """
+    session_hash = _session_hash(authorization)
+    if not session_hash:
+        return
+    if device_id:
+        row = c.execute(
+            "SELECT 1 FROM push_logout_sessions "
+            "WHERE device_id IN (?, '*') AND session_hash=?",
+            (device_id, session_hash),
+        ).fetchone()
+    else:
+        # The canonical /register/logout fallback deliberately writes a
+        # wildcard tombstone because the client-side cleanup may never have
+        # delivered a device id. The old bearer may already be revoked here,
+        # so user_id is not a reliable lookup key; the one-way session hash is.
+        row = c.execute(
+            "SELECT 1 FROM push_logout_sessions "
+            "WHERE device_id='*' AND session_hash=?",
+            (session_hash,),
+        ).fetchone()
+    if row:
+        raise HTTPException(status_code=409, detail="PUSH_SESSION_LOGGED_OUT")
+
+
+def _begin_push_registration(c):
+    """Serialize logout fences with ownership checks and the final UPSERT.
+
+    Python sqlite SELECT does not start a transaction. Without an explicit
+    writer transaction, logout can commit after the tombstone SELECT but
+    before the stale request's UPSERT, reactivating private push afterwards.
+    """
+    c.execute("BEGIN IMMEDIATE")
+
+
+def _insert_logout_tombstone(c, user_id: str, authorization: str, device_id: Optional[str] = None) -> bool:
+    """Invalidate future push writes from one authenticated session.
+
+    ``device_id='*'`` is deliberately used by the canonical /register/logout
+    fallback: that route may run when the best-effort mobile
+    /push/logout-cleanup request never reached the server, so it cannot trust
+    that a device id is still available. Fresh login sessions have a new
+    bearer hash and are unaffected.
+    """
+    session_hash = _session_hash(authorization)
+    if not user_id or not session_hash:
+        return False
+    c.execute(
+        "INSERT OR IGNORE INTO push_logout_sessions "
+        "(user_id, device_id, session_hash) VALUES (?,?,?)",
+        (user_id, device_id or "*", session_hash),
+    )
+    c.execute(
+        "DELETE FROM push_logout_sessions "
+        "WHERE created_at < datetime('now', '-30 days')"
+    )
+    return True
+
+
 def _resolve_ownership(c, table: str, id_col: str, id_val: str,
                         requester_user_id: Optional[str], device_id: Optional[str]):
     """Решает, можно ли писать в существующую строку `table` по `id_col=id_val`.
@@ -441,9 +564,12 @@ _CONFLICT_DETAIL = {
 
 
 def _provider_name(data) -> str:
-    provider = (data.provider or "expo").strip().lower()
-    if provider not in ("expo", "fcm", "apns"):
-        raise HTTPException(status_code=400, detail="provider must be expo, fcm or apns")
+    provider = (data.provider or "").strip().lower()
+    if provider not in ("fcm", "apns"):
+        raise HTTPException(status_code=400, detail="provider must be fcm or apns")
+    expected = "fcm" if (data.platform or "").lower() == "android" else "apns"
+    if provider != expected:
+        raise HTTPException(status_code=400, detail="provider does not match platform")
     return provider
 
 
@@ -515,8 +641,8 @@ class SubscribeIn(BaseModel):
 
 
 class NativeTokenIn(BaseModel):
-    token: str                              # Expo push token или FCM token
-    provider: Optional[str] = "expo"        # 'expo' | 'fcm' | 'apns'
+    token: str                              # native FCM/APNs token
+    provider: Optional[str] = None          # 'fcm' | 'apns'
     platform: Optional[str] = None          # 'ios' | 'android'
     device_name: Optional[str] = None
     device_id: Optional[str] = None         # UUID, генерируется клиентом один раз (P0-1)
@@ -524,6 +650,14 @@ class NativeTokenIn(BaseModel):
     app_id: Optional[str] = None
     locale: Optional[str] = None
     os_version: Optional[str] = None
+
+
+class PushReceiptIn(BaseModel):
+    event_id: str
+    device_id: str
+    opened: bool = False
+    platform: Optional[str] = None
+    app_version: Optional[str] = None
 
 
 @push_router.get("/public-key")
@@ -552,6 +686,8 @@ def subscribe(sub: SubscribeIn, authorization: Optional[str] = Header(None)):
     device_id = _clean_device_id(sub.device_id)
 
     with get_conn() as c:
+        _begin_push_registration(c)
+        _reject_logged_out_session(c, user_id, device_id, authorization)
         decision, row = _resolve_ownership(c, "push_subscriptions", "endpoint", sub.endpoint, user_id, device_id)
         if decision == "conflict":
             _audit(c, "push_subscriptions", sub.endpoint, device_id, row["user_id"], user_id, "conflict_rejected")
@@ -597,7 +733,7 @@ def subscribe(sub: SubscribeIn, authorization: Optional[str] = Header(None)):
         # голое заявление в новом запросе. Узкий побочный эффект: если
         # пользователь НЕ разлогинился явно (POST /push/logout-cleanup) и
         # новый пользователь на том же устройстве регистрирует НОВЫЙ токен
-        # (обычный случай при первом входе Expo выдаёт новый токен) — старая
+        # (обычный случай при первом входе native SDK выдаёт новый токен) — старая
         # активная запись сама по себе не деактивируется этим путём; она
         # гасится штатно через logout-cleanup (основной сценарий) или когда
         # реальный владелец сам явно выйдет.
@@ -648,7 +784,7 @@ def unsubscribe(sub: dict, authorization: Optional[str] = Header(None)):
 
 @push_router.post("/register-native")
 def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(None)):
-    """Регистрация Expo/FCM push токена (native apps).
+    """Регистрация прямого FCM/APNs push-токена (native apps).
 
     P0-1 fix: см. subscribe() — тот же принцип, реализован для
     push_tokens_native.
@@ -664,6 +800,8 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
     device_id = _clean_device_id(data.device_id)
 
     with get_conn() as c:
+        _begin_push_registration(c)
+        _reject_logged_out_session(c, user_id, device_id, authorization)
         decision, row = _resolve_ownership(c, "push_tokens_native", "token", tok, user_id, device_id)
         if decision == "conflict":
             _audit(c, "push_tokens_native", tok, device_id, row["user_id"], user_id, "conflict_rejected")
@@ -679,7 +817,7 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
                 "  device_name = COALESCE(excluded.device_name, device_name), device_id = excluded.device_id, "
                 "  app_version = COALESCE(excluded.app_version, app_version), "
                 "  active = 1, invalidated_at = NULL, invalidated_reason = NULL, last_seen = CURRENT_TIMESTAMP",
-                (user_id, data.token, data.provider or "expo", data.platform, data.device_name, device_id, data.app_version),
+                (user_id, data.token, data.provider, data.platform, data.device_name, device_id, data.app_version),
             )
         else:
             if decision == "new" and user_id is not None:
@@ -694,7 +832,7 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
                 "  device_id = COALESCE(excluded.device_id, device_id), "
                 "  app_version = COALESCE(excluded.app_version, app_version), "
                 "  active = 1, last_seen = CURRENT_TIMESTAMP",
-                (user_id, data.token, data.provider or "expo", data.platform, data.device_name, device_id, data.app_version),
+                (user_id, data.token, data.provider, data.platform, data.device_name, device_id, data.app_version),
             )
         # См. комментарий в subscribe() выше — device-wide зачистка только
         # после подтверждённого reassign, не на голое заявление device_id
@@ -749,61 +887,141 @@ def unregister_native(body: dict, authorization: Optional[str] = Header(None)):
     return {"ok": True}
 
 
-def deactivate_user_push(user_id: str, device_id: Optional[str] = None, reason: str = "logout") -> dict:
+@push_router.post("/receipt")
+def receipt(body: PushReceiptIn, user=Depends(get_user)):
+    """Idempotently record client receipt/opening of its own native push.
+
+    FCM/APNs success means provider acceptance only.  This endpoint therefore
+    does not trigger retries or expose payloads; it adds diagnostic evidence
+    solely when the authenticated recipient's *same installation* has a
+    matching provider-accepted delivery-log row.
+    """
+    event_id = (body.event_id or "").strip()
+    device_id = _clean_device_id(body.device_id)
+    if not event_id or len(event_id) > 256 or not device_id:
+        raise HTTPException(status_code=400, detail="Некорректный push receipt")
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT id FROM push_delivery_log WHERE event_id=? AND recipient_user_id=? "
+            "AND device_id=? AND status='sent' ORDER BY id DESC LIMIT 1",
+            (event_id, user["id"], device_id),
+        ).fetchone()
+        if row is None:
+            # Do not reveal whether this event exists for another account or
+            # installation. A 404 is safe and keeps the endpoint write-only.
+            raise HTTPException(status_code=404, detail="Push delivery не найдена")
+        if body.opened:
+            c.execute(
+                "UPDATE push_delivery_log SET received_at=COALESCE(received_at, CURRENT_TIMESTAMP), "
+                "opened_at=COALESCE(opened_at, CURRENT_TIMESTAMP) WHERE id=?",
+                (row["id"],),
+            )
+        else:
+            c.execute(
+                "UPDATE push_delivery_log SET received_at=COALESCE(received_at, CURRENT_TIMESTAMP) WHERE id=?",
+                (row["id"],),
+            )
+        c.commit()
+    return {"ok": True}
+
+
+def deactivate_user_push(
+    user_id: str,
+    device_id: Optional[str] = None,
+    reason: str = "logout",
+    *,
+    connection=None,
+) -> dict:
     """P1-3/P1-4: используется при logout/удалении аккаунта (api/registration.py).
     Деактивирует ВСЕ push_subscriptions/push_tokens_native текущего user_id
     (опционально — только конкретного device_id, если известен). Мягко
     (active=0), не удаляет исторические записи (аудит/дебаг)."""
     if not user_id:
         return {"web": 0, "native": 0}
-    with get_conn() as c:
-        if device_id:
-            web = c.execute(
-                "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ? WHERE user_id = ? AND device_id = ? AND (active = 1 OR active IS NULL)",
-                (reason, user_id, device_id),
-            ).rowcount
-            native = c.execute(
-                "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ? WHERE user_id = ? AND device_id = ? AND (active = 1 OR active IS NULL)",
-                (reason, user_id, device_id),
-            ).rowcount
-            devices = c.execute(
-                "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ?, updated_at = CURRENT_TIMESTAMP "
-                "WHERE user_id = ? AND device_id = ? AND enabled = 1",
-                (reason, user_id, device_id),
-            ).rowcount
-        else:
-            web = c.execute(
-                "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ? WHERE user_id = ? AND (active = 1 OR active IS NULL)",
-                (reason, user_id),
-            ).rowcount
-            native = c.execute(
-                "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ? WHERE user_id = ? AND (active = 1 OR active IS NULL)",
-                (reason, user_id),
-            ).rowcount
-            devices = c.execute(
-                "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                "invalidated_reason = ?, updated_at = CURRENT_TIMESTAMP "
-                "WHERE user_id = ? AND enabled = 1",
-                (reason, user_id),
-            ).rowcount
-        if web or native or devices:
-            _audit(c, "push_subscriptions+native", f"user:{user_id}", device_id, user_id, None, "deactivated")
-        c.commit()
+    if connection is None:
+        with get_conn() as c:
+            result = deactivate_user_push(
+                user_id,
+                device_id=device_id,
+                reason=reason,
+                connection=c,
+            )
+            c.commit()
+            return result
+    c = connection
+    if device_id:
+        web = c.execute(
+            "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ? WHERE user_id = ? AND device_id = ? AND (active = 1 OR active IS NULL)",
+            (reason, user_id, device_id),
+        ).rowcount
+        native = c.execute(
+            "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ? WHERE user_id = ? AND device_id = ? AND (active = 1 OR active IS NULL)",
+            (reason, user_id, device_id),
+        ).rowcount
+        devices = c.execute(
+            "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE user_id = ? AND device_id = ? AND enabled = 1",
+            (reason, user_id, device_id),
+        ).rowcount
+    else:
+        web = c.execute(
+            "UPDATE push_subscriptions SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ? WHERE user_id = ? AND (active = 1 OR active IS NULL)",
+            (reason, user_id),
+        ).rowcount
+        native = c.execute(
+            "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ? WHERE user_id = ? AND (active = 1 OR active IS NULL)",
+            (reason, user_id),
+        ).rowcount
+        devices = c.execute(
+            "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
+            "invalidated_reason = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE user_id = ? AND enabled = 1",
+            (reason, user_id),
+        ).rowcount
+    if web or native or devices:
+        _audit(c, "push_subscriptions+native", f"user:{user_id}", device_id, user_id, None, "deactivated")
     return {"web": web, "native": native, "devices": devices}
 
 
+def logout_session_and_deactivate_push(user_id: str, raw_token: str) -> dict:
+    """Atomically fence the old session, deactivate push and revoke auth.
+
+    Sharing one SQLite transaction with push registration gives deterministic
+    ordering: a registration that commits first is deactivated by logout; a
+    registration that tries to write afterwards observes the wildcard
+    tombstone (or loses its stale read transaction with retryable DB busy).
+    """
+    authorization = f"Bearer {raw_token}"
+    with get_conn() as c:
+        _insert_logout_tombstone(c, user_id, authorization)
+        result = deactivate_user_push(user_id, reason="logout", connection=c)
+        revoked = c.execute(
+            "DELETE FROM reg_sessions WHERE token=? AND driver_id=?",
+            (raw_token, user_id),
+        ).rowcount > 0
+        c.commit()
+    return {**result, "revoked": revoked}
+
+
 @push_router.post("/logout-cleanup")
-def logout_cleanup(body: dict, user=Depends(get_user)):
+def logout_cleanup(
+    body: dict,
+    user=Depends(get_user),
+    authorization: Optional[str] = Header(None),
+):
     """P1-3/P1-4: явный endpoint для фронта — вызывается при logout ДО
     удаления локального токена авторизации. Деактивирует push для текущего
     пользователя (+ конкретного device_id, если передан — иначе все
     устройства этого пользователя)."""
     device_id = _clean_device_id(body.get("device_id"))
+    if device_id:
+        with get_conn() as c:
+            _insert_logout_tombstone(c, user["id"], authorization, device_id)
     result = deactivate_user_push(user["id"], device_id=device_id, reason="logout")
     return {"ok": True, **result}
 
@@ -820,9 +1038,8 @@ def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str 
     появляется на iPhone home screen даже при включённых notifications.
 
     QA-аудит P1 (blocking push): push_sender.send делает синхронный
-    httpx.post к Expo с timeout=10s. Все callsites (accept_bid, chat send,
-    admin approve) вызывали его ВНУТРИ обработчика запроса → при тормозах
-    Expo каждый accept/сообщение висели до 10 секунд и выедали threadpool.
+    Отправка через прямой native gateway выполняется в фоне, чтобы сетевые
+    задержки FCM/APNs не блокировали обработчик запроса.
     Теперь отправка уходит в daemon-поток; возвращаемое значение нигде не
     использовалось (проверено по всем callsites), /push/test зовёт
     push_sender.send напрямую и сохраняет диагностику.

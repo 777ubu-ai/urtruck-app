@@ -124,10 +124,11 @@ def test_push_api_wraps_background_sender_without_removing_kind_or_data():
     assert 'push_sender.send(user_id, title, body, url=url, kind=kind, data=data)' in PUSH
 
 
-def test_bid_expiry_has_no_notification_sender_yet_so_live_matrix_must_not_claim_pass():
-    assert "create_notification(" not in EXPIRY
-    assert "send_to_user(" not in EXPIRY
-    assert "expired_bids" in EXPIRY
+def test_bid_expiry_queues_bell_and_push_in_the_expiry_transaction():
+    assert "_queue_expired_bid_notifications(conn, bid)" in EXPIRY
+    assert 'push_gateway.enqueue_event(event_key, "bid.expired", recipient' in EXPIRY
+    assert "}, conn=conn)" in EXPIRY
+    assert "INSERT INTO notifications" in EXPIRY
 
 
 def test_critical_bid_and_deal_status_events_now_carry_typed_payload_and_event_key():

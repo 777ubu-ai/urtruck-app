@@ -129,9 +129,10 @@ test('distance and ETA remain real Yandex route properties and fail closed', () 
   assert.match(workspace, /routeMetricValues\(routeSummary,/);
   assert.match(workspace, /value: metrics\.remaining/);
   assert.match(workspace, /value: metrics\.estimatedTime/);
-  assert.match(webMap, /multiRoute\.getActiveRoute/);
-  assert.match(webMap, /get\?\.\(["']distance["']\)/);
-  assert.match(webMap, /get\?\.\(["']duration["']\)/);
+  assert.doesNotMatch(webMap, /multiRoute\.getActiveRoute/);
+  assert.doesNotMatch(webMap, /get\?\.\(["']distance["']\)/);
+  assert.doesNotMatch(webMap, /get\?\.\(["']duration["']\)/);
+  assert.match(webMap, /durationLabelKey: numbers\.isRemaining/);
   assert.match(webMap, /const routingPoints = plannedPoints/);
   assert.doesNotMatch(webMap, /\[livePoint, destination\]/);
   assert.match(webMap, /emitSummary\(null\)/);
@@ -170,9 +171,9 @@ test('chat has no permanent second tab — status/history lives behind one icon-
 test('composer uses the approved WeChat-like bottom bar and attachment menu', () => {
   assert.match(workspace, /multiline/);
   assert.match(workspace, /onContentSizeChange/);
-  assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 32/);
-  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
-  assert.match(workspace, /Math\.min\(COMPOSER_INPUT_MAX_HEIGHT/);
+  assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 44/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 104/);
+  assert.match(workspace, /normalizeComposerHeight/);
   assert.match(workspace, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
@@ -191,7 +192,7 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.doesNotMatch(workspace, /testID:\s*'deal-chat-attach-call'/);
   assert.match(workspace, /testID="deal-chat-attach-menu"/);
   assert.match(workspace, /PLUS_MENU\.map/, 'attach menu must render all tiles from one data-driven list, not hand-written copies');
-  assert.match(workspace, /key: 'translate'/, 'deal chat must keep the translation shortcut from the legacy chat');
+  assert.doesNotMatch(workspace, /key: 'translate'/, 'перевод запускается кнопкой у конкретного входящего сообщения, не через общий плюс-меню');
   assert.match(workspace, /const sendDealShare = React\.useCallback/);
   assert.match(workspace, /const sendContactCard = React\.useCallback/);
   assert.match(workspace, /attachIcon: \{ width: 64, height: 64/);
@@ -212,7 +213,7 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /composer: \{ minHeight: 52, flexDirection: 'row', alignItems: 'flex-end'/);
   assert.match(workspace, /borderRadius: 30/);
   assert.match(workspace, /shadowOpacity: 0\.1/);
-  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 32, maxHeight: 88, borderRadius: 999/);
+  assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 44, maxHeight: 104, borderRadius: 999/);
   // The approved composer is visually empty in its idle state; the localized
   // copy remains available to screen readers through accessibilityLabel.
   assert.doesNotMatch(workspace, /placeholder=\{isDriver \? ui\.writeShipper : ui\.write\}/);
@@ -220,18 +221,27 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.doesNotMatch(workspace, /style=\{s\.inputMic\}/);
 });
 
-test('receiver auto-scroll retries after native FlatList layout settles', () => {
-  // Android can report the new content size before the appended message cell
-  // is measured. The deferred retries keep a realtime text/voice message
-  // visible without requiring a manual swipe, while preserving the explicit
-  // user-scrolled-away guard.
+test('receiver auto-scroll is coalesced to one content-size update', () => {
+  // Repeated delayed scrolls made iOS visibly flicker on every poll.  A new
+  // row raises one pending flag, consumed by the next FlatList measurement;
+  // reading history must remain stationary.
   assert.match(workspace, /const scheduleAutoScrollRef = React\.useRef\(null\)/);
   assert.match(workspace, /scheduleAutoScrollRef\.current = \(\) =>/);
-  assert.match(workspace, /setTimeout\(scroll, 80\)/);
-  assert.match(workspace, /setTimeout\(scroll, 220\)/);
+  assert.doesNotMatch(workspace, /setTimeout\(scroll, 80\)/);
+  assert.doesNotMatch(workspace, /setTimeout\(scroll, 220\)/);
   assert.match(workspace, /userScrolledAwayRef\.current && !nearBottomRef\.current/);
   assert.match(workspace, /onContentSizeChange=\{\(\) => \{/);
-  assert.match(workspace, /scheduleAutoScrollRef\.current\?\.\(\)/);
+  assert.match(workspace, /pendingAutoScrollRef\.current && \(!userScrolledAwayRef\.current \|\| nearBottomRef\.current\)/);
+  assert.match(workspace, /scheduleAutoScrollRef\.current\?\.\(\);\s+pendingAutoScrollRef\.current = false/);
+});
+
+test('empty web composer cannot expand from an initial multiline content measurement', () => {
+  assert.match(workspace, /onContentSizeChange=\{\(event\) => \{/);
+  assert.match(
+    workspace,
+    /if \(!currentText\.trim\(\)\) \{\s*setComposerHeight\(COMPOSER_INPUT_MIN_HEIGHT\);\s*return;/,
+    'empty multiline input must stay at the compact height',
+  );
 });
 
 test('composer stays visible while scrolling and avoids duplicate emoji while typing', () => {
@@ -258,7 +268,7 @@ test('emoji button opens a real bottom emoji picker instead of a coming-soon toa
   assert.match(workspace, /const insertEmoji = React\.useCallback/);
   assert.match(workspace, /testID="deal-chat-emoji-menu"/);
   assert.match(workspace, /testID=\{`deal-chat-emoji-option-\$\{index\}`\}/);
-  assert.match(workspace, /setInput\(\(value\) => `\$\{value\}\$\{emoji\}`\)/);
+  assert.match(workspace, /setInput\(\(value\) => \{[\s\S]*const next = `\$\{value\}\$\{emoji\}`;[\s\S]*inputValueRef\.current = next/);
   assert.match(workspace, /onPress=\{toggleEmojiMenu\}/);
   assert.doesNotMatch(workspace, /showEmojiComingSoon/);
   assert.doesNotMatch(workspace, /toast\(ui\.comingSoon/);
@@ -283,7 +293,7 @@ test('toggleAttachMenu dismisses the keyboard and blurs input before opening the
   assert.doesNotMatch(workspace, /setComposerFocused/);
   // Multiline/emoji contract must survive: multiline input with emoji gutter.
   assert.match(workspace, /multiline/);
-  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 88/);
+  assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 104/);
   assert.match(workspace, /testID="deal-chat-emoji"/);
   assert.match(workspace, /testID="deal-chat-composer"/);
 });
@@ -295,7 +305,7 @@ test('every plus-menu tile has a real handler — no decorative buttons', () => 
   // Each tile object must carry an onPress that resolves to a real,
   // in-file function reference, not a no-op.
   const onPressMatches = [...items.matchAll(/onPress:\s*([^,}]+)/g)].map((m) => m[1].trim());
-  assert.equal(onPressMatches.length, 8, `expected 8 plus-menu tiles with onPress, found ${onPressMatches.length}`);
+  assert.equal(onPressMatches.length, 7, `expected 7 plus-menu tiles with onPress, found ${onPressMatches.length}`);
   for (const handler of onPressMatches) {
     assert.notEqual(handler, '() => {}', `plus-menu tile has a no-op handler: ${handler}`);
     assert.notEqual(handler, 'null', `plus-menu tile has a null handler: ${handler}`);
@@ -323,7 +333,7 @@ test('chat distinguishes a user scroll from programmatic receiver updates', () =
   assert.match(workspace, /userScrolledAwayRef\.current = true;\s+pendingAutoScrollRef\.current = false/);
   assert.match(workspace, /!userScrolledAwayRef\.current \|\| nearBottomRef\.current/);
   assert.match(workspace, /if \(nearBottom\) userScrolledAwayRef\.current = false/);
-  assert.match(workspace, /!userScrolledAwayRef\.current \|\| pendingAutoScrollRef\.current \|\| nearBottomRef\.current/);
+  assert.match(workspace, /pendingAutoScrollRef\.current && \(!userScrolledAwayRef\.current \|\| nearBottomRef\.current\)/);
 });
 
 test('statuses render a detailed vertical timeline instead of compact system chips', () => {
@@ -348,20 +358,19 @@ test('deal status actions use the shared canonical role FSM and GPS starts with 
   assert.match(workspace, /marketAPI\.sendDealLocation/);
 });
 
-test('short onboarding requires name and phone; company remains editable but optional for drivers', () => {
+test('short onboarding requires only name and phone; company and location stay optional', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /const validCompany = role === 'driver' \|\| company\.trim\(\)\.length >= 2/);
-  assert.match(profile, /const formValid = validName && validPhone && validCompany && validMessenger/);
+  assert.match(profile, /id="country"/);
+  assert.match(profile, /id="city"/);
+  assert.match(profile, /const basicFormValid = validName && validPhone && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
-  assert.match(profile, /if \(!validCompany\) next\.company/);
+  assert.doesNotMatch(profile, /validCompany/);
   assert.match(profile, /setRole\(role\)/);
-  assert.doesNotMatch(profile, /id="country"/);
-  assert.doesNotMatch(profile, /id="city"/);
   assert.match(profileApi, /PHONE_REQUIRED/);
   assert.match(profileApi, /NAME_REQUIRED/);
-  assert.match(profileApi, /COMPANY_REQUIRED/);
+  assert.doesNotMatch(profileApi, /COMPANY_REQUIRED/);
   assert.doesNotMatch(profileApi, /COUNTRY_REQUIRED/);
 });

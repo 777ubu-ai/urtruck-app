@@ -10,36 +10,76 @@
 // конфликтует (оба сходятся к одному числу).
 
 import { Platform } from 'react-native';
-import { chatAPI } from './chatAPI';
 import { notificationsAPI } from './notificationsAPI';
 
-const pick = (r) => (r && (r.unread ?? r.count ?? r.total)) || 0;
 let refreshVersion = 0;
+let latestSuccessfulVersion = 0;
+let applyQueue = Promise.resolve();
 
-export function setAppIconBadge(total) {
-  if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+function normalizedBadge(total) {
+  const value = Number(total);
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+function badgeFailureReason(error) {
+  const detail = `${error?.name || ''} ${error?.message || ''}`.toLowerCase();
+  if (detail.includes('shortcutbadgeexception') || detail.includes('unable to execute badge')) {
+    return 'launcher_badge_unsupported';
+  }
+  return 'native_badge_failed';
+}
+
+export async function setAppIconBadge(total) {
+  const badge = normalizedBadge(total);
+  if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+    return { badge, applied: false, reason: 'platform_unsupported' };
+  }
   let Notifications;
-  try { Notifications = require('expo-notifications'); } catch { return; }
-  Notifications.setBadgeCountAsync?.(Number(total) || 0).catch(() => {});
+  try { Notifications = require('expo-notifications'); } catch {
+    return { badge, applied: false, reason: 'notifications_unavailable' };
+  }
+  try {
+    const applied = await Notifications.setBadgeCountAsync?.(badge);
+    return {
+      badge,
+      applied: applied !== false,
+      reason: applied === false ? 'launcher_badge_unsupported' : null,
+    };
+  } catch (error) {
+    // Xiaomi launchers can reject Android's legacy BADGE_COUNT_UPDATE
+    // intent.  Keep the canonical server value intact for the in-app tab;
+    // never pretend that a failed launcher write successfully reset to zero.
+    const reason = badgeFailureReason(error);
+    if (typeof __DEV__ !== 'undefined' && __DEV__) console.warn('[badge]', reason);
+    return { badge, applied: false, reason };
+  }
 }
 
 export function clearAppIconBadge() {
-  refreshVersion += 1;
-  setAppIconBadge(0);
+  const version = ++refreshVersion;
+  latestSuccessfulVersion = version;
+  applyQueue = applyQueue.then(() => setAppIconBadge(0));
+  return applyQueue;
 }
 
 export async function refreshAppIconBadge() {
-  if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
   const version = ++refreshVersion;
-  let Notifications;
-  try { Notifications = require('expo-notifications'); } catch { return; }
   try {
-    const [c, n] = await Promise.all([
-      chatAPI.unread().catch(() => null),
-      notificationsAPI.unread().catch(() => null),
-    ]);
-    if (version !== refreshVersion) return;
-    const total = (Number(pick(c)) || 0) + (Number(pick(n)) || 0);
-    Notifications.setBadgeCountAsync?.(total).catch(() => {});
-  } catch {}
+    const canonical = await notificationsAPI.badge();
+    const badge = normalizedBadge(canonical?.badge);
+    if (version < latestSuccessfulVersion) {
+      return { badge, applied: false, reason: 'superseded' };
+    }
+    latestSuccessfulVersion = version;
+    const apply = applyQueue.then(async () => {
+      if (version < latestSuccessfulVersion) {
+        return { badge, applied: false, reason: 'superseded' };
+      }
+      return setAppIconBadge(badge);
+    });
+    applyQueue = apply.catch(() => {});
+    return apply;
+  } catch {
+    return { badge: null, applied: false, reason: 'canonical_unavailable' };
+  }
 }

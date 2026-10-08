@@ -116,7 +116,7 @@ export default function WalletScreen({ route }) {
                   : rate.toFixed(2);
                 return (
                   <View key={code} style={[s.fxCard, { borderColor: theme.border }]}>
-                    <CountryFlag code={FX_FLAGS[code]} width={28} />
+                    <CountryFlag code={FX_FLAGS[code]} width={22} />
                     <Text style={[s.fxPair, { color: theme.textMuted }]}>USD / {code}</Text>
                     <Text style={[s.fxRate, { color: theme.text }]}>{formatted}</Text>
                   </View>

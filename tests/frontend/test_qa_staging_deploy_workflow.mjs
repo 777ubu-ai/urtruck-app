@@ -15,6 +15,10 @@ const recoveryWorkflow = fs.readFileSync(
   path.join(process.cwd(), '.github/workflows/qa-staging-recovery.yml'),
   'utf8',
 );
+const webWorkflow = fs.readFileSync(
+  path.join(process.cwd(), '.github/workflows/qa2-web-deploy.yml'),
+  'utf8',
+);
 const androidWorkflow = fs.readFileSync(
   path.join(process.cwd(), '.github/workflows/build-android-apk.yml'),
   'utf8',
@@ -24,7 +28,7 @@ test('ordinary QA2 workflows never reference the separate UrTruck Pro Test conto
   for (const source of [workflow, qaCenter, recoveryWorkflow, androidWorkflow]) {
     assert.doesNotMatch(source, /PRO_TEST_|pro-test|urtruck-pro-test|com\.urtruck\.protest/i);
   }
-  assert.match(workflow, /QA2_OPENAI_API_KEY/);
+  assert.doesNotMatch(workflow, /QA2_OPENAI_API_KEY/);
   assert.match(recoveryWorkflow, /SERVER_HOST:\n\s+required: true/);
   assert.match(androidWorkflow, /QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64/);
 });
@@ -62,7 +66,7 @@ test('QA2 backend deploy protects database, storage and production', () => {
 });
 
 test('QA2 backend deploy has rollback and self-contained runtime QA2P isolation proof', () => {
-  assert.match(workflow, /Roll back QA2 code if deploy validation fails/);
+  assert.match(workflow, /Roll back QA2 code and settings if deploy validation fails/);
   assert.match(workflow, /if: failure\(\)/);
   assert.match(workflow, /QA_ROLLBACK=restored-/);
   assert.match(workflow, /QA2P_RUNTIME_FIXTURE=seeded/);
@@ -105,14 +109,35 @@ test('QA2 deploy waits for local health and emits only sanitized startup diagnos
   assert.doesNotMatch(workflow, /cat "\\$qa_root\/\.env"/);
 });
 
-test('QA2 AI uses its own required secret and verifies both providers', () => {
-  assert.match(workflow, /QA2_OPENAI_API_KEY:\n\s+required: true/);
-  assert.match(workflow, /QA2_OPENAI_API_KEY: \$\{\{ secrets\.QA2_OPENAI_API_KEY \}\}/);
+test('QA2 deploy keeps NLLB local and configures only the approved OpenAI STT route', () => {
+  assert.match(workflow, /Verify existing QA2 secret and local NLLB policy before mutation/);
+  assert.match(workflow, /QA2_OPENAI_STT_SECRET_MISSING/);
+  assert.match(workflow, /QA2_LOCAL_NLLB_POLICY_BLOCKED_BEFORE_MUTATION/);
+  assert.match(workflow, /QA2_LOCAL_AI_URL_POLICY_BLOCKED_BEFORE_MUTATION/);
   assert.match(workflow, /qa_env=\/home\/ubuntu\/urtruck-qa2\/\.env/);
-  assert.match(workflow, /TRANSCRIBE_PROVIDER=openai/);
-  assert.match(workflow, /TRANSLATE_PROVIDER=openai/);
-  assert.match(workflow, /QA_AI_PROVIDER_NOT_READY/);
-  assert.match(workflow, /QA_STT_PROVIDER_NOT_READY/);
+  assert.match(workflow, /Configure the bounded QA2-only OpenAI STT route/);
+  assert.match(workflow, /TRANSCRIBE_PROVIDER': 'openai'/);
+  assert.match(workflow, /TRANSCRIBE_MODEL': 'gpt-4o-mini-transcribe'/);
+  assert.match(workflow, /TRANSCRIBE_FALLBACK_PROVIDER': 'local_ai'/);
+  assert.match(workflow, /QA2_OPENAI_STT_TIMEOUT_SECONDS': '8'/);
+  assert.match(workflow, /TRANSLATE_PROVIDER.*local_ai/);
+  assert.match(workflow, /QA2_OPENAI_STT_CONFIGURATION_NOT_READY/);
+  assert.match(workflow, /QA2_OPENAI_STT_SETTINGS_NOT_READY/);
+  assert.match(workflow, /QA_STT_PROVIDER=openai-ready/);
+  assert.match(workflow, /QA_TRANSLATE_PROVIDER=local-nllb-ready/);
+  assert.match(workflow, /ENV_BACKUP=.*qa2\.env/);
+  assert.match(workflow, /QA_ROLLBACK_LOCAL_AI_SETTINGS_NOT_RESTORED/);
+  assert.doesNotMatch(workflow, /OPENAI_API_KEY.*print\(/);
+  assert.doesNotMatch(workflow, /OPENAI_API_KEY.*echo/);
   assert.doesNotMatch(workflow, /urtruck-security.*\.env/);
-  assert.doesNotMatch(workflow, /echo[^\n]*\$\{?QA2_OPENAI_API_KEY/);
+});
+
+test('QA2 web and recovery route private signed audio to FastAPI, never index.html', () => {
+  assert.match(webWorkflow, /Range request returns HTML/);
+  for (const source of [webWorkflow, recoveryWorkflow]) {
+    assert.match(source, /location \^~ \/qa2\/storage\//);
+    assert.match(source, /location \^~ \/storage\//);
+    assert.match(source, /location \^~ \/security\/storage\//);
+    assert.match(source, /proxy_pass http:\/\/127\.0\.0\.1:8002\/storage\//);
+  }
 });

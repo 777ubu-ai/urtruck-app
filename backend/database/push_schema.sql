@@ -70,6 +70,13 @@ CREATE TABLE IF NOT EXISTS push_outbox (
   status TEXT NOT NULL DEFAULT 'pending',
   attempt_count INTEGER NOT NULL DEFAULT 0,
   next_attempt_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  -- Per-event expiry prevents a delayed ephemeral push (chat, bid, GPS) from
+  -- resurfacing after it is no longer actionable. NULL remains supported for
+  -- legacy rows created before this policy existed.
+  expires_at TEXT,
+  -- A safe provider-facing key used to collapse only noisy, non-critical
+  -- notifications such as multiple messages in the same chat room.
+  collapse_key TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   sent_at TEXT,
   failed_at TEXT,
@@ -79,11 +86,25 @@ CREATE TABLE IF NOT EXISTS push_outbox (
   -- mid-flight (see push_gateway.process_pending_once) instead of leaving
   -- them stuck in 'processing' forever.
   claimed_at TEXT,
+  -- Process identity is diagnostic-only and lets a lease watchdog explain
+  -- which worker abandoned a claim without exposing delivery payloads.
+  locked_by TEXT,
   UNIQUE(event_id, recipient_user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_push_outbox_status_next ON push_outbox(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_push_outbox_event_type ON push_outbox(event_type);
+CREATE INDEX IF NOT EXISTS idx_push_outbox_pending_expiry ON push_outbox(status, expires_at);
+
+-- One row per running drain worker. It contains no user or token data and is
+-- deliberately overwritten on every tick, so /push/info can reveal a stalled
+-- worker without exposing delivery payloads.
+CREATE TABLE IF NOT EXISTS push_worker_heartbeat (
+  worker_name TEXT PRIMARY KEY,
+  last_heartbeat_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_batch_picked INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT
+);
 
 CREATE TABLE IF NOT EXISTS push_delivery_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,7 +126,9 @@ CREATE TABLE IF NOT EXISTS push_delivery_log (
   -- for this row (see services/push_gateway.poll_pending_receipts) so a
   -- bounded poller queries each row at most once instead of re-checking it
   -- on every tick for as long as it stays in the lookback window.
-  receipt_checked_at TEXT
+  receipt_checked_at TEXT,
+  received_at TEXT,
+  opened_at TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_push_delivery_dedupe
@@ -132,6 +155,19 @@ CREATE TABLE IF NOT EXISTS push_log (
 
 CREATE INDEX IF NOT EXISTS idx_push_log_user ON push_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_log_kind ON push_log(kind);
+
+-- A logout tombstone prevents an already-started register-native/subscribe
+-- request from reactivating this installation with the just-logged-out auth
+-- session. Only a SHA-256 session fingerprint is stored; never the bearer.
+CREATE TABLE IF NOT EXISTS push_logout_sessions (
+  user_id TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  session_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, device_id, session_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_push_logout_sessions_created
+  ON push_logout_sessions(created_at);
 -- PR#187: уникальный индекс дедупа НЕ создаём здесь — на legacy-БД (push_log
 -- без event_key) он падал бы «no such column». Индекс создаётся в
 -- api/push._migrate_ownership_columns СТРОГО после ADD COLUMN event_key

@@ -45,7 +45,8 @@ def push_outbox_drain_job():
         if stats.get("picked"):
             print(
                 f"[push-outbox] picked={stats['picked']} sent={stats['sent']} "
-                f"failed={stats['failed']} dead={stats['dead']}",
+                f"retry={stats.get('retry', 0)} failed={stats['failed']} "
+                f"expired={stats.get('expired', 0)} dead={stats['dead']}",
                 flush=True,
             )
     except Exception as e:
@@ -54,23 +55,26 @@ def push_outbox_drain_job():
         print(f"[push-outbox] drain job failed (continuing): {e}", flush=True)
 
 
-def push_receipts_poll_job():
-    """Push-recovery track, Phase 5: bounded, once-per-row Expo delivery-
-    receipt reconciliation (see services/push_gateway.py
-    poll_pending_receipts for the actual query/backoff-free, no-retry-loop
-    logic). Complements the immediate-ticket DeviceNotRegistered handling —
-    some invalid-token errors only surface in the delayed receipt."""
+def voice_processing_drain_job():
+    """Run one hidden voice STT job at a time.
+
+    Speech inference is intentionally bounded independently of the push
+    worker: a slow model must never delay chat delivery or push outbox drain.
+    The job table itself still atomically claims rows for safety across
+    processes.
+    """
     try:
-        from services.push_sender import poll_expo_receipts_once
-        stats = poll_expo_receipts_once(limit=50)
-        if stats.get("checked"):
+        from services.voice_processing import process_pending_once
+        stats = process_pending_once(limit=1)
+        if stats.get("picked"):
             print(
-                f"[push-receipts] checked={stats['checked']} delivered={stats['delivered']} "
-                f"invalid_token={stats['invalid_token']} errors={stats['errors']}",
+                "[voice-stt] "
+                f"picked={stats['picked']} ready={stats['ready']} "
+                f"retry={stats['failed_retryable']} failed={stats['failed_permanent']}",
                 flush=True,
             )
     except Exception as e:
-        print(f"[push-receipts] poll failed (continuing): {e}", flush=True)
+        print(f"[voice-stt] worker failed (continuing): {type(e).__name__}", flush=True)
 
 
 def gps_heartbeat_check_job():
@@ -434,18 +438,17 @@ def start_scheduler():
     # пользователя без уведомления полчаса неприемлемо. max_instances=1 +
     # атомарный claim в process_pending_once защищают от наложения.
     sched.add_job(push_outbox_drain_job, IntervalTrigger(seconds=30), id="push_outbox_drain")
+    # Hidden voice transcription: sequential by design (CPU/QA2 model limit),
+    # with its own lease/retry state instead of delaying chat or push work.
+    sched.add_job(voice_processing_drain_job, IntervalTrigger(seconds=10), id="voice_processing_drain")
     # GPS heartbeat staleness check — каждые 5 минут (порог staleness сам —
     # 20 минут, см. GPS_LOST_THRESHOLD_MINUTES), достаточно редко, чтобы не
     # быть busy-loop, достаточно часто, чтобы задержка обнаружения была мала
     # относительно самого порога.
     sched.add_job(gps_heartbeat_check_job, IntervalTrigger(minutes=5), id="gps_heartbeat_check")
-    # Expo receipt reconciliation — не агрессивный опрос: каждые 20 минут,
-    # каждая строка push_delivery_log проверяется РОВНО один раз (см.
-    # receipt_checked_at в poll_pending_receipts), окно 15 минут..1 сутки.
-    sched.add_job(push_receipts_poll_job, IntervalTrigger(minutes=20), id="push_receipts_poll")
     sched.start()
     _scheduler = sched
-    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s, gps-heartbeat 5m, push-receipts-poll 20m")
+    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s, gps-heartbeat 5m")
     return sched
 
 

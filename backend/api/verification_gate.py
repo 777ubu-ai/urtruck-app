@@ -129,7 +129,7 @@ def require_driver_trip_publication(authorization: str = Header(None)) -> dict:
             status_code=403,
             detail={
                 "error": "basic_onboarding_required",
-                "message": "Сначала заполните базовый профиль водителя и данные автомобиля",
+                "message": "Сначала завершите базовую регистрацию водителя",
             },
         )
     return driver

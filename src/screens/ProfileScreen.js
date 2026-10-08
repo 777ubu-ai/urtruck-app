@@ -41,6 +41,11 @@ const QA_HOOK_ALLOWED = (() => {
   }
 })();
 
+// Product decision 2026-09-25: the completed basic registration is the only
+// mandatory driver onboarding. The separate 4-step PRO verification remains
+// implemented for future use, but is hidden from the normal profile journey.
+const ADVANCED_VERIFICATION_VISIBLE = false;
+
 const APP_VERSION_LABEL = (() => {
   try {
     const Constants = require('expo-constants').default;
@@ -133,7 +138,9 @@ export default function ProfileScreen({ navigation, route }) {
   const menuItems = [
     ...(isDriver ? [
       { icon: 'truck', label: getVehicleCopy(uiLang).myVehicles, screen: 'VehicleChooser', params: { origin: 'Profile' }, testID: 'profile-my-vehicles' },
-      { icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' },
+      ...(ADVANCED_VERIFICATION_VISIBLE ? [
+        { icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' },
+      ] : []),
     ] : []),
     { icon: 'star', label: t('myReviews'), screen: 'Reviews', testID: 'profile-my-reviews' },
     { icon: 'help-circle', label: t('howit_header'), screen: 'HowItWorks', testID: 'profile-how-it-works' },
@@ -235,7 +242,7 @@ export default function ProfileScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {isDriver ? (
+        {ADVANCED_VERIFICATION_VISIBLE && isDriver ? (
           <View style={[s.proCard, { backgroundColor: theme.card, borderColor: proActive ? accent : theme.border }]}>
             <View style={s.proHeader}>
               <View style={{ flex: 1 }}>
@@ -312,7 +319,7 @@ export default function ProfileScreen({ navigation, route }) {
             <View style={s.langGrid}>
               {LANGS.map(l => (
                 <TouchableOpacity key={l.code} testID={`profile-lang-${l.code.toLowerCase()}`} accessibilityRole="button" accessibilityLabel={l.code} style={[s.langCard, { backgroundColor: theme.bg, borderColor: theme.border }, lang === l.code && { backgroundColor: accent, borderColor: accent }]} onPress={() => { setLang(l.code); setLanguage(l.code); }}>
-                  <CountryFlag code={l.country} width={28} />
+                  <CountryFlag code={l.country} width={22} />
                   <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: onAccent }]} numberOfLines={1}>{l.code}</Text>
                 </TouchableOpacity>
               ))}
@@ -356,7 +363,12 @@ export default function ProfileScreen({ navigation, route }) {
         <TouchableOpacity style={s.logoutBtn} onPress={async () => {
           const ok = await askConfirm(t('logout_title') || t('logout'), t('logout_message'), t('logout_confirm') || t('logout'));
           if (!ok) return;
-          try { await signOut(); } catch {}
+          try {
+            const result = await signOut();
+            if (result?.ok === false) Alert.alert(t('logout'), t('generic_error'));
+          } catch {
+            Alert.alert(t('logout'), t('generic_error'));
+          }
         }} testID="profile-logout">
           <Text style={s.logoutText}>{t('logout')}</Text>
         </TouchableOpacity>

@@ -64,3 +64,14 @@ test('Expo prebuild cannot silently replace the approved native splash', () => {
   assert.doesNotMatch(androidDevClientWorkflow, /expo prebuild[^\n]*--clean/);
   assert.match(androidBuildWorkflow, /Verify canonical Android splash survived prebuild/);
 });
+
+test('Android system bars follow the selected app theme after launch', () => {
+  const navigationBarPlugin = app.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-navigation-bar');
+  assert.deepEqual(navigationBarPlugin, ['expo-navigation-bar', { enforceContrast: false }]);
+  assert.match(root, /import \* as NavigationBar from 'expo-navigation-bar'/);
+  assert.match(root, /NavigationBar\.setStyle\(barStyle\)/);
+  assert.match(root, /NavigationBar\.setBackgroundColorAsync\(theme\.bg\)/);
+  assert.match(root, /NavigationBar\.setButtonStyleAsync\(barStyle\)/);
+  assert.match(root, /<SafeAreaProvider style=\{\{ flex: 1, backgroundColor: theme\.bg \}\}>/);
+  assert.match(root, /<StatusBar style=\{isDark \? 'light' : 'dark'\} backgroundColor=\{theme\.bg\} \/>/);
+});

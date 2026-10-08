@@ -497,9 +497,8 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         if not effective_name:
             raise HTTPException(status_code=400, detail={"error": "NAME_REQUIRED", "message": "Для завершения регистрации укажите имя"})
 
-        effective_company = updates.get("company_name") or (current.get("company_name") or "").strip() or None
-        if role_norm == "client" and (not effective_company or len(effective_company) < 2):
-            raise HTTPException(status_code=400, detail={"error": "COMPANY_REQUIRED", "message": "Для завершения регистрации укажите компанию или ИП"})
+        # Company, country and city are optional during basic onboarding.
+        # They remain editable later in the profile for both roles.
 
         # Messenger is optional for the basic driver path. For clients, once a
         # channel is selected its address is required at the authoritative API

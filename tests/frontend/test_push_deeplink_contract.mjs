@@ -6,9 +6,11 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 
 const app = read('App.js');
 const push = read('src/utils/push.js');
+const pushRuntime = read('src/utils/pushRuntime.js');
 const notifications = read('src/screens/NotificationsScreen.js');
 const notificationsAPI = read('src/utils/notificationsAPI.js');
 const dealsScreen = read('src/screens/DealsScreen.js');
+const dealWorkspace = read('src/screens/DealWorkspaceScreenV2.js');
 const appJson = JSON.parse(read('app.json'));
 const aasa = JSON.parse(read('web/apple-app-site-association'));
 const wellKnownAasa = JSON.parse(read('web/.well-known/apple-app-site-association'));
@@ -51,10 +53,24 @@ test('notifications screen uses the same deep-link families as native push tap r
 });
 
 test('foreground push suppression is source-of-truth aware for open chat rooms only', () => {
-  assert.match(push, /data\.type === 'chat_message' \|\| data\.type === 'chat_attachment'/);
-  assert.match(push, /data\.room_id === getActiveRoom\(\)/);
-  assert.match(push, /shouldShowAlert: false, shouldShowBanner: false, shouldShowList: false/);
-  assert.match(push, /shouldShowAlert: true, shouldShowBanner: true, shouldShowList: true/);
+  assert.match(pushRuntime, /data\.type === 'chat_message' \|\| data\.type === 'chat_attachment'/);
+  assert.match(pushRuntime, /data\.room_id === activeRoom/);
+  assert.match(pushRuntime, /shouldShowAlert: false/);
+  assert.match(pushRuntime, /shouldShowAlert: true/);
+});
+
+test('deal workspace suppresses push only for its focused foreground room', () => {
+  assert.match(dealWorkspace, /useFocusEffect/);
+  assert.match(dealWorkspace, /setActiveRoom\(chatAppActiveRef\.current \? roomId : null\)/);
+  assert.match(dealWorkspace, /chatFocusedRef\.current = false;[\s\S]*?clearInterval\(timer\);[\s\S]*?setActiveRoom\(null\)/);
+  assert.match(dealWorkspace, /if \(!roomId \|\| !chatFocusedRef\.current \|\| !chatAppActiveRef\.current\) return/);
+});
+
+test('open-chat suppression still records native receipt before presentation policy returns', () => {
+  assert.match(push, /decideForegroundPresentation/);
+  assert.match(pushRuntime, /scheduleTelemetry\(acknowledge, eventId, \{ opened: false \}\)/);
+  assert.match(pushRuntime, /data\.room_id === activeRoom/);
+  assert.doesNotMatch(pushRuntime, /await acknowledge/);
 });
 
 test('notification reads update both in-app source-of-truth and the app icon badge', () => {
@@ -83,6 +99,7 @@ test('auth and notification cold-start deeplinks are queued until nav and auth a
   assert.match(app, /if \(pendingUrlRef\.current && navReadyRef\.current && authedForDeepLink\)/);
   assert.match(app, /Notifications\.getLastNotificationResponseAsync/);
   assert.match(app, /Notifications\.addNotificationResponseReceivedListener/);
+  assert.match(app, /if \(!authedForDeepLink\) return/);
 });
 
 test('chat notification tap prefers its structured room_id over an aggregated display URL', () => {
@@ -90,6 +107,16 @@ test('chat notification tap prefers its structured room_id over an aggregated di
   assert.match(app, /data\.type === 'chat_message' \|\| data\.type === 'chat_attachment'/);
   assert.match(app, /return `\/chats\/\$\{encodeURIComponent\(roomId\)\}`/);
   assert.match(app, /const url = notificationResponseUrl\(response\);/);
+});
+
+test('native push deduplicates provider retries by backend event id without losing the first deeplink tap', () => {
+  assert.match(push, /claimPushEvent\(eventId, 'display'\)/);
+  assert.match(app, /function notificationResponseEventId\(response\)/);
+  assert.match(app, /claimPushEvent\(id, 'navigation'\)/);
+  assert.match(app, /handlePushTap/);
+  assert.match(pushRuntime, /scheduleTelemetry\(acknowledge, eventId, \{ opened: true \}\)/);
+  assert.doesNotMatch(app, /claimPushEvent\(eventId, 'opened'\)/);
+  assert.match(app, /const eventId = data\.event_id \|\| data\.event_key/);
 });
 
 test('custom-scheme and universal-link notification entrypoints are parsed as Notifications', () => {

@@ -1,20 +1,17 @@
-"""Native push gateway: FCM/APNs primary, Expo legacy path.
+"""Native push gateway: direct FCM/APNs delivery.
 
 This module is deliberately additive. Existing business call-sites still call
 services.push_sender.send(), while the sender delegates native delivery here
-according to PUSH_PROVIDER_MODE:
-
-  expo   -> legacy Expo Push only
-  native -> direct FCM/APNs only
-  dual   -> direct FCM/APNs first, Expo only for devices without native token
-
-The canonical default is ``native``. Expo is only selected when the operator
-explicitly sets ``PUSH_PROVIDER_MODE=expo`` (or ``dual``).
+The only supported mode is ``native``. Device rows with legacy providers are
+kept for audit/migration but are never selected for delivery.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
+import random
+import re
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -25,11 +22,15 @@ import httpx
 from database.db import get_conn
 
 PUSH_PROVIDER_MODE = (os.getenv("PUSH_PROVIDER_MODE") or "native").strip().lower()
-SUPPORTED_PUSH_PROVIDER_MODES = {"expo", "native", "dual"}
+SUPPORTED_PUSH_PROVIDER_MODES = {"native"}
 NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
 
 FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "")
 FCM_SERVICE_ACCOUNT_JSON = os.getenv("FCM_SERVICE_ACCOUNT_JSON", "")
+# systemd EnvironmentFile treats backslashes as escapes.  A service-account
+# JSON contains ``\\n`` inside its PEM, so storing raw JSON there silently
+# corrupts the private key.  QA2 writes this transport-safe representation.
+FCM_SERVICE_ACCOUNT_JSON_BASE64 = os.getenv("FCM_SERVICE_ACCOUNT_JSON_BASE64", "")
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 
 APNS_KEY_ID = os.getenv("APNS_KEY_ID", "")
@@ -68,6 +69,7 @@ PUSH_EVENT_CATALOG = {
     "bid.accepted",
     "bid.rejected",
     "bid.withdrawn",
+    "bid.expired",
     "chat.message",
     "chat.voice",
     "deal.status.in_progress",
@@ -103,7 +105,102 @@ def _json_dumps(value: Any) -> str:
     return json.dumps(value or {}, ensure_ascii=False, separators=(",", ":"))[:4000]
 
 
+def _safe_collapse_key(value: Any) -> Optional[str]:
+    """Return a provider-safe collapse key or None.
+
+    APNs limits ``apns-collapse-id`` to 64 bytes.  Keep only a conservative
+    identifier alphabet; this also prevents a user supplied message body from
+    becoming an OS grouping key.
+    """
+    if not isinstance(value, str):
+        return None
+    key = re.sub(r"[^A-Za-z0-9:_.-]", "", value.strip())[:64]
+    return key or None
+
+
+def _event_ttl_seconds(event_type: str, payload: Optional[dict[str, Any]] = None) -> int:
+    """Classify delivery freshness, not business-record retention.
+
+    Push is only a signal: the in-app notification and backend state stay
+    durable.  A delayed ephemeral signal is worse than no push because it
+    opens stale work.  This policy intentionally accepts no caller-provided
+    TTL, so untrusted payload data cannot extend a notification indefinitely.
+    """
+    data = (payload or {}).get("data") if isinstance(payload, dict) else {}
+    data = data if isinstance(data, dict) else {}
+    kind = f"{event_type or ''} {data.get('type') or ''}".lower()
+    if "deal.status.delivered" in kind or "deal.status.completed" in kind:
+        return 48 * 60 * 60
+    if "gps" in kind:
+        return 5 * 60
+    if "chat" in kind:
+        return 24 * 60 * 60
+    if "bid" in kind:
+        return 30 * 60
+    if "deal.status" in kind:
+        return 24 * 60 * 60
+    return 60 * 60
+
+
+def _collapse_key(event_type: str, payload: Optional[dict[str, Any]] = None) -> Optional[str]:
+    """Collapse only high-volume chat notifications within one room.
+
+    Critical deal/GPS lifecycle updates must always remain individually visible
+    and are consequently never collapsed.
+    """
+    if event_type in CRITICAL_EVENTS:
+        return None
+    payload = payload if isinstance(payload, dict) else {}
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    explicit = _safe_collapse_key(data.get("collapse_key"))
+    if explicit:
+        return explicit
+    kind = f"{event_type or ''} {data.get('type') or ''}".lower()
+    room_id = data.get("room_id")
+    if "chat" in kind and isinstance(room_id, str):
+        return _safe_collapse_key(f"chat:{room_id}")
+    return None
+
+
+def enrich_event_data(event_type: str, data: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Attach only non-sensitive transport controls to a provider payload.
+
+    The timestamp is fixed at event creation, so a retry never gets a fresh
+    TTL window.  Provider-only keys are stripped before the data reaches the
+    client application.
+    """
+    safe = dict(data or {})
+    ttl_seconds = _event_ttl_seconds(event_type, {"data": safe})
+    key = _collapse_key(event_type, {"data": safe})
+    safe["_push_expires_at"] = int(time.time()) + ttl_seconds
+    if key:
+        safe["collapse_key"] = key
+    return safe
+
+
+def _provider_data(data: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Do not expose backend-only transport metadata to the mobile client."""
+    return {
+        str(k): v for k, v in (data or {}).items()
+        if k not in {"apns_topic", "_push_expires_at", "collapse_key"}
+    }
+
+
+def _remaining_ttl_seconds(data: Optional[dict[str, Any]]) -> Optional[int]:
+    try:
+        epoch = int((data or {}).get("_push_expires_at"))
+    except (TypeError, ValueError):
+        return None
+    return max(0, epoch - int(time.time()))
+
+
 def _service_account_info() -> Optional[dict[str, Any]]:
+    encoded = FCM_SERVICE_ACCOUNT_JSON_BASE64.strip()
+    if encoded:
+        try:
+            return json.loads(base64.b64decode(encoded, validate=True).decode("utf-8"))
+        except Exception:
+            return None
     raw = FCM_SERVICE_ACCOUNT_JSON.strip()
     if raw:
         try:
@@ -118,6 +215,19 @@ def _service_account_info() -> Optional[dict[str, Any]]:
         except Exception:
             return None
     return None
+
+
+def _service_account_private_key_valid(info: Optional[dict[str, Any]]) -> bool:
+    """Validate the PEM locally without logging or exporting key material."""
+    if not info or not info.get("private_key"):
+        return False
+    try:
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
+        load_pem_private_key(str(info["private_key"]).encode("utf-8"), password=None)
+        return True
+    except Exception:
+        return False
 
 
 class PushProvider:
@@ -141,6 +251,9 @@ class PushProvider:
 class FCMProvider(PushProvider):
     name = "fcm"
 
+    def __init__(self):
+        self._credential_error: Optional[str] = None
+
     def supports_platform(self, platform: Optional[str]) -> bool:
         return (platform or "").lower() == "android"
 
@@ -160,7 +273,11 @@ class FCMProvider(PushProvider):
             "iat": now,
             "exp": now + 3600,
         }
-        assertion = jwt.encode(claim, info.get("private_key"), algorithm="RS256")
+        try:
+            assertion = jwt.encode(claim, info.get("private_key"), algorithm="RS256")
+        except Exception:
+            self._credential_error = "invalid_credentials"
+            return None
         resp = httpx.post(
             "https://oauth2.googleapis.com/token",
             data={
@@ -177,20 +294,33 @@ class FCMProvider(PushProvider):
         project_id = FCM_PROJECT_ID or (_service_account_info() or {}).get("project_id")
         access_token = self._access_token()
         if not project_id or not access_token:
-            return ProviderResult("fcm", "failed", error_code="provider_not_configured", retryable=False)
+            return ProviderResult(
+                "fcm",
+                "failed",
+                error_code=self._credential_error or "provider_not_configured",
+                retryable=False,
+            )
+        collapse_key = _safe_collapse_key((data or {}).get("collapse_key"))
+        ttl_seconds = _remaining_ttl_seconds(data)
+        android = {
+            "priority": "HIGH",
+            "notification": {
+                "channel_id": NATIVE_PUSH_CHANNEL_ID,
+                "sound": "default",
+                "notification_count": int(badge or 0),
+            },
+        }
+        if collapse_key:
+            android["collapse_key"] = collapse_key
+            android["notification"]["tag"] = collapse_key
+        if ttl_seconds is not None:
+            android["ttl"] = f"{ttl_seconds}s"
         payload = {
             "message": {
                 "token": token,
                 "notification": {"title": title, "body": body},
-                "data": {str(k): "" if v is None else str(v) for k, v in (data or {}).items()},
-                "android": {
-                    "priority": "HIGH",
-                    "notification": {
-                        "channel_id": NATIVE_PUSH_CHANNEL_ID,
-                        "sound": "default",
-                        "notification_count": int(badge or 0),
-                    },
-                },
+                "data": {str(k): "" if v is None else str(v) for k, v in _provider_data(data).items()},
+                "android": android,
             }
         }
         try:
@@ -243,20 +373,35 @@ class APNsProvider(PushProvider):
         if not auth or not topic:
             return ProviderResult("apns", "failed", error_code="provider_not_configured", retryable=False)
         host = "api.sandbox.push.apple.com" if APNS_USE_SANDBOX else "api.push.apple.com"
+        collapse_key = _safe_collapse_key((data or {}).get("collapse_key"))
+        expires_at = (data or {}).get("_push_expires_at")
+        aps = {"alert": {"title": title, "body": body}, "sound": "default", "badge": int(badge or 0)}
+        if collapse_key:
+            # thread-id groups the retained records in Notification Center;
+            # apns-collapse-id replaces an older undismissed alert for the
+            # same chat without coalescing critical business transitions.
+            aps["thread-id"] = collapse_key
         payload = {
-            "aps": {"alert": {"title": title, "body": body}, "sound": "default", "badge": int(badge or 0)},
-            **{str(k): v for k, v in (data or {}).items() if k != "apns_topic"},
+            "aps": aps,
+            **_provider_data(data),
         }
+        headers = {
+            "authorization": f"bearer {auth}",
+            "apns-topic": topic,
+            "apns-push-type": "alert",
+            "apns-priority": "10",
+        }
+        if collapse_key:
+            headers["apns-collapse-id"] = collapse_key
+        try:
+            headers["apns-expiration"] = str(max(0, int(expires_at)))
+        except (TypeError, ValueError):
+            pass
         try:
             with httpx.Client(http2=True, timeout=10.0) as client:
                 resp = client.post(
                     f"https://{host}/3/device/{token}",
-                    headers={
-                        "authorization": f"bearer {auth}",
-                        "apns-topic": topic,
-                        "apns-push-type": "alert",
-                        "apns-priority": "10",
-                    },
+                    headers=headers,
                     json=payload,
                 )
         except Exception as exc:
@@ -274,23 +419,6 @@ class APNsProvider(PushProvider):
         if reason in ("InvalidProviderToken", "ExpiredProviderToken", "Forbidden"):
             code, retryable = "invalid_credentials", False
         return ProviderResult("apns", "failed", response=body_json, error_code=code, retryable=retryable)
-
-
-class ExpoProvider(PushProvider):
-    name = "expo"
-
-    def __init__(self, send_one):
-        self._send_one = send_one
-
-    def send(self, token: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> ProviderResult:
-        result = self._send_one([token], title, body, data, badge=badge)
-        if result.get("sent", 0) > 0:
-            ticket = (result.get("tickets") or [{}])[0]
-            return ProviderResult("expo", "sent", message_id=ticket.get("id"), response=ticket)
-        ticket = (result.get("tickets") or [{}])[0]
-        details = ticket.get("details") or {}
-        error_code = result.get("error") or details.get("error") or ticket.get("message") or "send_failed"
-        return ProviderResult("expo", "failed", response=ticket, error_code=str(error_code), retryable=False)
 
 
 def active_devices(user_id: str) -> list[dict[str, Any]]:
@@ -326,14 +454,25 @@ def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payloa
     if not (event_id and event_type and recipient_user_id):
         return False
     prio = priority or ("critical" if event_type in CRITICAL_EVENTS else "normal")
+    safe_payload = dict(payload or {})
+    data = safe_payload.get("data")
+    if not isinstance(data, dict):
+        data = {}
+    else:
+        data = dict(data)
+    data = enrich_event_data(event_type, data)
+    collapse_key = _safe_collapse_key(data.get("collapse_key"))
+    safe_payload["data"] = data
+    ttl_seconds = _event_ttl_seconds(event_type, safe_payload)
+    expires_epoch = data.get("_push_expires_at")
     with (nullcontext(conn) if conn is not None else get_conn()) as c:
         cursor = c.execute(
             """
-            INSERT INTO push_outbox(event_id, event_type, recipient_user_id, payload, priority)
-            VALUES(?,?,?,?,?)
+            INSERT INTO push_outbox(event_id, event_type, recipient_user_id, payload, priority, expires_at, collapse_key)
+            VALUES(?,?,?,?,?,datetime(?, 'unixepoch'),?)
             ON CONFLICT(event_id, recipient_user_id) DO NOTHING
             """,
-            (event_id, event_type, recipient_user_id, _json_dumps(payload), prio),
+            (event_id, event_type, recipient_user_id, _json_dumps(safe_payload), prio, int(expires_epoch), collapse_key),
         )
         return cursor.rowcount > 0
 
@@ -383,22 +522,12 @@ def log_delivery(event_id: Optional[str], user_id: str, device: dict, result: Pr
                         "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, invalidated_reason = 'invalid_token' WHERE id = ?",
                         (device.get("id"),),
                     )
+                    c.execute(
+                        "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, invalidated_reason = 'invalid_token' WHERE token = ?",
+                        (device.get("push_token"),),
+                    )
     except Exception:
         return
-
-
-def _dedupe_for_dual(devices: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    native_keys = {
-        d.get("device_id")
-        for d in devices
-        if d.get("device_id") and d.get("push_provider") in ("fcm", "apns")
-    }
-    selected = []
-    for d in devices:
-        if d.get("push_provider") == "expo" and d.get("device_id") in native_keys:
-            continue
-        selected.append(d)
-    return selected
 
 
 def _already_sent_to_device(event_id: Optional[str], device_registry_id: Optional[int]) -> bool:
@@ -421,37 +550,31 @@ def send_to_devices(
     body: str,
     data: dict,
     badge: Optional[int],
-    expo_send_one,
     mode: Optional[str] = None,
     provider_filter: Optional[str] = None,
 ) -> dict[str, Any]:
     mode = (mode or PUSH_PROVIDER_MODE or "native").lower()
     if mode not in SUPPORTED_PUSH_PROVIDER_MODES:
-        # Never turn a typo/misconfiguration into an implicit Expo delivery.
+        # Never turn a typo/misconfiguration into an implicit provider fallback.
         return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "error": "invalid_provider_mode"}
 
     devices = active_devices(user_id)
     if not devices:
         return {"sent": 0, "providers": {}, "devices": 0, "mode": mode}
 
-    if mode == "expo":
-        devices = [d for d in devices if d.get("push_provider") == "expo"]
-    elif mode == "native":
-        devices = [d for d in devices if d.get("push_provider") in ("fcm", "apns")]
-    else:
-        devices = _dedupe_for_dual(devices)
-    if provider_filter in ("expo", "fcm", "apns"):
+    devices = [d for d in devices if d.get("push_provider") in ("fcm", "apns")]
+    if provider_filter in ("fcm", "apns"):
         devices = [d for d in devices if d.get("push_provider") == provider_filter]
 
     providers = {
         "fcm": FCMProvider(),
         "apns": APNsProvider(),
-        "expo": ExpoProvider(expo_send_one),
     }
     sent = 0
     already_delivered = 0
     by_provider: dict[str, int] = {}
     errors: dict[str, int] = {}
+    retryable = True
     event_id = (data or {}).get("event_id") or (data or {}).get("event_key")
     for device in devices:
         if _already_sent_to_device(event_id, device.get("id")):
@@ -487,6 +610,8 @@ def send_to_devices(
         else:
             error_code = result.error_code or "provider_send_failed"
             errors[error_code] = errors.get(error_code, 0) + 1
+            if not result.retryable:
+                retryable = False
     return {
         "sent": sent,
         "already_delivered": already_delivered,
@@ -494,11 +619,30 @@ def send_to_devices(
         "devices": len(devices),
         "mode": mode,
         "errors": errors,
+        # All failures must be transient before the outbox is allowed to
+        # retry. A mixed multi-device send remains retryable only when the
+        # outstanding devices have transient errors; invalid tokens are
+        # deactivated by log_delivery and never reselected.
+        "retryable": retryable,
     }
 
 
 MAX_OUTBOX_ATTEMPTS = 5
 STALE_PROCESSING_MINUTES = 5
+WORKER_HEARTBEAT_STALE_SECONDS = 120
+WORKER_NAME = "outbox_drain"
+WORKER_ID = f"{WORKER_NAME}:{os.getpid()}"
+
+
+def configured_outbox_cutoff_id() -> int:
+    """Return a read-only cutoff that keeps legacy pending rows on hold."""
+    raw = os.getenv("PUSH_OUTBOX_CUTOFF_ID", "").strip()
+    if not raw:
+        return 0
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 0
 
 
 def _reclaim_stale_processing(c) -> int:
@@ -508,13 +652,63 @@ def _reclaim_stale_processing(c) -> int:
     Reclaim anything that has been 'processing' longer than a worker could
     plausibly still be legitimately running (a single send_to_devices call is
     a handful of HTTP requests with a 10s timeout each, never minutes)."""
+    # A cutoff is a strict safety boundary: historical QA rows stay held even
+    # if a long-dead worker had claimed them before the cutoff was introduced.
     cur = c.execute(
-        "UPDATE push_outbox SET status='pending', claimed_at=NULL "
-        "WHERE status='processing' AND claimed_at IS NOT NULL "
-        "AND claimed_at <= datetime(CURRENT_TIMESTAMP, ?)",
-        (f"-{STALE_PROCESSING_MINUTES} minutes",),
+        "UPDATE push_outbox SET status='retry', attempt_count=attempt_count+1, "
+        "next_attempt_at=datetime(CURRENT_TIMESTAMP, '+10 seconds'), "
+        "last_error='worker_lease_expired', claimed_at=NULL, locked_by=NULL "
+        "WHERE status='processing' AND id > ? AND claimed_at IS NOT NULL "
+        "AND claimed_at <= datetime(CURRENT_TIMESTAMP, ?) "
+        "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)",
+        (configured_outbox_cutoff_id(), f"-{STALE_PROCESSING_MINUTES} minutes"),
     )
     return cur.rowcount
+
+
+def _expire_due_events(c) -> int:
+    """Terminally expire stale pending notifications without touching data.
+
+    Expiry is intentionally a distinct terminal status rather than ``dead``:
+    it records that delivery was correctly suppressed by freshness policy, not
+    that FCM/APNs failed.  A previously-claimed event is reclaimed first by
+    the caller, so a crashed worker cannot bypass expiration.
+    """
+    cur = c.execute(
+        "UPDATE push_outbox SET status='expired', failed_at=CURRENT_TIMESTAMP, "
+        "last_error='notification_expired', claimed_at=NULL, locked_by=NULL "
+        "WHERE status IN ('pending','retry') AND expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP"
+    )
+    return cur.rowcount
+
+
+def _record_worker_heartbeat(c, *, picked: int = 0, error: Optional[str] = None) -> None:
+    """Record only worker liveness; never payloads, user ids or tokens."""
+    try:
+        c.execute(
+            """
+            INSERT INTO push_worker_heartbeat(worker_name, last_heartbeat_at, last_batch_picked, last_error)
+            VALUES(?, CURRENT_TIMESTAMP, ?, ?)
+            ON CONFLICT(worker_name) DO UPDATE SET
+              last_heartbeat_at=CURRENT_TIMESTAMP,
+              last_batch_picked=excluded.last_batch_picked,
+              last_error=excluded.last_error
+            """,
+            (WORKER_NAME, max(0, int(picked or 0)), (error or "")[:500] or None),
+        )
+    except Exception:
+        # Legacy DB initialization must not fail merely because observability
+        # is unavailable; the schema migration will make this succeed later.
+        return
+
+
+def _retry_delay_seconds(attempt: int, rng=None) -> int:
+    """Exponential retry with bounded jitter, never below FCM's 10 seconds."""
+    base = min(300, (2 ** max(1, int(attempt))) * 5)
+    spread = min(60, max(1, base // 5))
+    lower = max(10, base - spread)
+    upper = min(300, base + spread)
+    return (rng or random.SystemRandom()).randint(lower, upper)
 
 
 def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
@@ -526,9 +720,9 @@ def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
     same row."""
     with get_conn() as c:
         cur = c.execute(
-            "UPDATE push_outbox SET status='processing', claimed_at=CURRENT_TIMESTAMP "
-            "WHERE id=? AND status='pending'",
-            (row_id,),
+            "UPDATE push_outbox SET status='processing', claimed_at=CURRENT_TIMESTAMP, locked_by=? "
+            "WHERE id=? AND status IN ('pending','retry')",
+            (WORKER_ID, row_id),
         )
         if cur.rowcount != 1:
             return None
@@ -537,7 +731,8 @@ def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
 
 
 def _finish_row(
-    row_id: int, attempt: int, sent: bool, error: Optional[str], *, partially_sent: bool = False
+    row_id: int, attempt: int, sent: bool, error: Optional[str], *, partially_sent: bool = False,
+    retryable: bool = True,
 ) -> str:
     """Apply the terminal/retry decision for one claimed row. Shared by both
     the normal (no delivery) and exception (poison event) paths so a handler
@@ -546,23 +741,30 @@ def _finish_row(
     with get_conn() as c:
         if sent:
             c.execute(
-                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=?, claimed_at=NULL WHERE id=?",
+                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
                 (attempt, row_id),
             )
             return "sent"
+        if not retryable:
+            terminal_status = "sent_partial" if partially_sent else "failed"
+            c.execute(
+                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
+                (terminal_status, attempt, (error or "non_retryable_provider_error")[:500], row_id),
+            )
+            return "partial" if partially_sent else "failed"
         if attempt >= MAX_OUTBOX_ATTEMPTS:
             terminal_status = "sent_partial" if partially_sent else "dead"
             c.execute(
-                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL WHERE id=?",
+                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
                 (terminal_status, attempt, (error or "delivery_not_confirmed")[:500], row_id),
             )
             return "partial" if partially_sent else "dead"
-        delay = min(300, 2 ** attempt * 5)
+        delay = _retry_delay_seconds(attempt)
         c.execute(
-            "UPDATE push_outbox SET status='pending', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, claimed_at=NULL WHERE id=?",
+            "UPDATE push_outbox SET status='retry', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
             (attempt, f"+{delay} seconds", (error or "delivery_not_confirmed")[:500], row_id),
         )
-        return "failed"
+        return "retry"
 
 
 def _skip_row_without_devices(row_id: int, attempt: int) -> str:
@@ -576,13 +778,13 @@ def _skip_row_without_devices(row_id: int, attempt: int) -> str:
     with get_conn() as c:
         c.execute(
             "UPDATE push_outbox SET status='skipped_no_devices', failed_at=CURRENT_TIMESTAMP, "
-            "attempt_count=?, last_error='no_active_devices', claimed_at=NULL WHERE id=?",
+            "attempt_count=?, last_error='no_active_devices', claimed_at=NULL, locked_by=NULL WHERE id=?",
             (attempt, row_id),
         )
     return "skipped"
 
 
-def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
+def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, int]:
     """Process one small outbox batch. Safe to call repeatedly/concurrently
     (idempotent — a row already 'sent'/'dead', or already claimed by a
     concurrent caller, is simply skipped) and safe after a crash (stale
@@ -599,20 +801,24 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
     bounded_limit = max(1, min(int(limit or 100), 500))
     with get_conn() as c:
         _reclaim_stale_processing(c)
+        expired = _expire_due_events(c)
         candidate_ids = [
             r["id"]
             for r in c.execute(
                 """
                 SELECT id FROM push_outbox
-                WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
+                WHERE status IN ('pending','retry') AND id > ?
+                  AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
+                  AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
                 ORDER BY CASE priority WHEN 'critical' THEN 0 ELSE 1 END, created_at
                 LIMIT ?
                 """,
-                (bounded_limit,),
+                (configured_outbox_cutoff_id(), bounded_limit),
             ).fetchall()
         ]
+        _record_worker_heartbeat(c, picked=len(candidate_ids))
 
-    stats = {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0}
+    stats = {"picked": 0, "sent": 0, "retry": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0, "expired": expired}
     for row_id in candidate_ids:
         row = _claim_row(row_id)
         if row is None:
@@ -624,8 +830,7 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
             # Retry-payload-integrity fix (push-closure track): the enqueued
             # payload (services/push_sender.py send() -> enqueue_event) never
             # included `badge` at all — every retried delivery silently sent
-            # badge=None (Expo: the "badge" field is omitted entirely when
-            # None, so the OS keeps showing whatever stale number it already
+            # badge=None would omit the badge and leave stale OS state, so
             # had). Recompute fresh here rather than trying to persist a
             # static number: unread counts can legitimately change between
             # the original attempt and a retry minutes later, so a stored
@@ -637,14 +842,36 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
                     badge = _compute_recipient_badge(row["recipient_user_id"])
                 except Exception:
                     badge = None
-            result = send_to_devices(
-                row["recipient_user_id"],
-                payload.get("title") or "UrTruck",
-                payload.get("body") or "",
-                payload.get("data") or payload,
-                badge,
-                expo_send_one=expo_send_one,
-            )
+            title = payload.get("title") or "UrTruck"
+            body = payload.get("body") or ""
+            data = payload.get("data") or payload
+            if provider_send_one is not None:
+                # Compatibility seam for deterministic unit tests only. The
+                # runtime path always uses direct FCM/APNs below.
+                devices = [
+                    d for d in active_devices(row["recipient_user_id"])
+                    if d.get("push_provider") in ("fcm", "apns")
+                    and not _already_sent_to_device(row.get("event_id"), d.get("id"))
+                ]
+                tokens = [d.get("push_token") for d in devices if d.get("push_token")]
+                callback_result = provider_send_one(tokens, title, body, data, badge=badge) if tokens else {"sent": 0}
+                sent_count = int(callback_result.get("sent", 0) if isinstance(callback_result, dict) else callback_result)
+                # The deterministic test seam represents an aggregate native
+                # provider response. Persist the confirmed prefix in the same
+                # delivery log used by direct FCM/APNs so a retry selects only
+                # devices that were not confirmed by the prior attempt.
+                for device in devices[:max(0, min(sent_count, len(devices)))]:
+                    log_delivery(row.get("event_id"), row["recipient_user_id"], device, ProviderResult(device.get("push_provider") or "native", "sent"))
+                result = {
+                    "devices": len(tokens),
+                    "sent": sent_count,
+                    "already_delivered": 0,
+                    "errors": (callback_result.get("errors") or {}) if isinstance(callback_result, dict) else {},
+                    "error": callback_result.get("error") if isinstance(callback_result, dict) else None,
+                    "retryable": bool(callback_result.get("retryable", True)) if isinstance(callback_result, dict) else True,
+                }
+            else:
+                result = send_to_devices(row["recipient_user_id"], title, body, data, badge)
             # Multi-device fix (push-closure track): "sent" here must mean
             # EVERY currently-active device was reached, not merely at
             # least one — `result["sent"]` alone conflates "fully
@@ -671,14 +898,17 @@ def process_pending_once(expo_send_one, limit: int = 100) -> dict[str, int]:
                     sent=fully_delivered,
                     error=failure_reason,
                     partially_sent=confirmed > 0,
+                    retryable=bool(result.get("retryable", True)),
                 )
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside
             # its own try/except, etc.) — must not crash the worker or loop
             # forever without backoff; goes through the exact same
             # attempt/backoff/dead ladder as an ordinary delivery failure.
-            outcome = _finish_row(row["id"], attempt, sent=False, error=str(exc))
+            outcome = _finish_row(row["id"], attempt, sent=False, error=str(exc), retryable=True)
         stats[outcome] += 1
+    with get_conn() as c:
+        _record_worker_heartbeat(c, picked=stats["picked"])
     return stats
 
 
@@ -697,8 +927,8 @@ def mark_event_sent(event_id: Optional[str], recipient_user_id: str) -> bool:
     try:
         with get_conn() as c:
             cur = c.execute(
-                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL "
-                "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','processing')",
+                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL, locked_by=NULL "
+                "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry','processing')",
                 (event_id, recipient_user_id),
             )
             return cur.rowcount > 0
@@ -706,109 +936,139 @@ def mark_event_sent(event_id: Optional[str], recipient_user_id: str) -> bool:
         return False
 
 
-RECEIPT_MIN_AGE_MINUTES = 15  # Expo's own guidance: receipts are not reliably available before this
-RECEIPT_MAX_AGE_DAYS = 1      # Expo retains receipts ~1 day; querying older rows would waste a call for nothing
-
-
-def poll_pending_receipts(expo_receipts_fn, limit: int = 50) -> dict[str, int]:
-    """Bounded, once-per-row Expo delivery-receipt reconciliation (push-
-    recovery track, Phase 5).
-
-    Complements the immediate ticket-level DeviceNotRegistered handling
-    services.push_sender._send_expo already does (that only sees errors Expo
-    already knows about at send time) — some invalid-token errors only
-    surface in the DELAYED receipt, not the immediate ticket. Each
-    push_delivery_log row is queried at MOST ONCE (receipt_checked_at guard
-    below, set unconditionally whether or not Expo had an answer yet), in a
-    bounded age window (RECEIPT_MIN_AGE_MINUTES..RECEIPT_MAX_AGE_DAYS) — this
-    can never grow into an unbounded query or re-poll the same row forever.
-    A row whose receipt never resolves in that window simply stays
-    delivered_at=NULL — no retry loop, no aggressive polling.
-    """
-    bounded_limit = max(1, min(int(limit or 50), 200))
-    with get_conn() as c:
-        rows = [
-            dict(r)
-            for r in c.execute(
-                """
-                SELECT id, device_registry_id, provider_message_id FROM push_delivery_log
-                WHERE provider = 'expo' AND status = 'sent' AND delivered_at IS NULL
-                  AND receipt_checked_at IS NULL AND provider_message_id IS NOT NULL
-                  AND sent_at IS NOT NULL
-                  AND sent_at <= datetime(CURRENT_TIMESTAMP, ?)
-                  AND sent_at >= datetime(CURRENT_TIMESTAMP, ?)
-                LIMIT ?
-                """,
-                (f"-{RECEIPT_MIN_AGE_MINUTES} minutes", f"-{RECEIPT_MAX_AGE_DAYS} days", bounded_limit),
-            ).fetchall()
-        ]
-
-    stats = {"checked": 0, "delivered": 0, "invalid_token": 0, "errors": 0}
-    if not rows:
-        return stats
-
-    # Same ticket could theoretically repeat across rows; a dict is fine —
-    # we only need the row to update per ticket, not a list of duplicates.
-    by_ticket = {r["provider_message_id"]: r for r in rows}
-    try:
-        result = expo_receipts_fn(list(by_ticket.keys())) or {}
-    except Exception:
-        return stats  # transient provider failure — rows stay unchecked, next tick retries them
-    receipts = result.get("receipts") or {}
-
-    with get_conn() as c:
-        for ticket_id, row in by_ticket.items():
-            stats["checked"] += 1
-            c.execute(
-                "UPDATE push_delivery_log SET receipt_checked_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (row["id"],),
-            )
-            receipt = receipts.get(ticket_id)
-            if not receipt:
-                continue  # not resolved yet / Expo has no record for it — leave delivered_at NULL
-            if receipt.get("status") == "ok":
-                c.execute(
-                    "UPDATE push_delivery_log SET delivered_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (row["id"],),
-                )
-                stats["delivered"] += 1
-                continue
-            details = receipt.get("details") or {}
-            if details.get("error") == "DeviceNotRegistered" and row.get("device_registry_id"):
-                c.execute(
-                    "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, "
-                    "invalidated_reason = 'expo_receipt_device_not_registered' WHERE id = ?",
-                    (row["device_registry_id"],),
-                )
-                stats["invalid_token"] += 1
-            else:
-                stats["errors"] += 1
-        c.commit()
-    return stats
-
-
 def info() -> dict[str, Any]:
-    counts = {"devices_active": 0, "expo": 0, "fcm": 0, "apns": 0, "outbox_pending": 0, "outbox_dead": 0, "outbox_sent_partial": 0, "outbox_skipped_no_devices": 0}
+    counts = {
+        "devices_active": 0,
+        "fcm": 0,
+        "apns": 0,
+        "outbox_pending": 0,
+        "outbox_retry": 0,
+        "outbox_pending_eligible": 0,
+        "outbox_held_by_cutoff": 0,
+        "outbox_processing": 0,
+        "outbox_stale_processing": 0,
+        "outbox_expired": 0,
+        "outbox_dead": 0,
+        "outbox_sent_partial": 0,
+        "outbox_skipped_no_devices": 0,
+        "oldest_eligible_pending_seconds": None,
+    }
+    observability: dict[str, Any] = {
+        "cutoff_id": configured_outbox_cutoff_id(),
+        "worker": {"last_heartbeat_at": None, "age_seconds": None, "stale": True},
+        "delivery_errors_24h": {},
+        "last_success_at": {"fcm": None, "apns": None},
+        "delivery_24h": {
+            "provider_accepted": 0,
+            "client_received": 0,
+            "notification_opened": 0,
+            "provider_acceptance_rate": None,
+            "avg_created_to_provider_accepted_seconds": None,
+            "avg_provider_accepted_to_client_received_seconds": None,
+        },
+    }
     try:
         with get_conn() as c:
             counts["devices_active"] = int(c.execute("SELECT COUNT(*) FROM push_devices WHERE enabled = 1").fetchone()[0])
-            for provider in ("expo", "fcm", "apns"):
+            for provider in ("fcm", "apns"):
                 counts[provider] = int(c.execute(
                     "SELECT COUNT(*) FROM push_devices WHERE enabled = 1 AND push_provider = ?",
                     (provider,),
                 ).fetchone()[0])
             counts["outbox_pending"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'pending'").fetchone()[0])
+            counts["outbox_retry"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'retry'").fetchone()[0])
+            cutoff = configured_outbox_cutoff_id()
+            counts["outbox_pending_eligible"] = int(c.execute(
+                "SELECT COUNT(*) FROM push_outbox WHERE status IN ('pending','retry') AND id > ? "
+                "AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP) "
+                "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)", (cutoff,)
+            ).fetchone()[0])
+            counts["outbox_held_by_cutoff"] = int(c.execute(
+                "SELECT COUNT(*) FROM push_outbox WHERE status IN ('pending','retry') AND id <= ?", (cutoff,)
+            ).fetchone()[0])
+            counts["outbox_processing"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status='processing'").fetchone()[0])
+            counts["outbox_stale_processing"] = int(c.execute(
+                "SELECT COUNT(*) FROM push_outbox WHERE status='processing' AND claimed_at IS NOT NULL "
+                "AND claimed_at <= datetime(CURRENT_TIMESTAMP, ?)", (f"-{STALE_PROCESSING_MINUTES} minutes",)
+            ).fetchone()[0])
+            counts["outbox_expired"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status='expired'").fetchone()[0])
             counts["outbox_dead"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'dead'").fetchone()[0])
             counts["outbox_sent_partial"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'sent_partial'").fetchone()[0])
             counts["outbox_skipped_no_devices"] = int(c.execute("SELECT COUNT(*) FROM push_outbox WHERE status = 'skipped_no_devices'").fetchone()[0])
+            oldest = c.execute(
+                "SELECT CAST((julianday(CURRENT_TIMESTAMP) - julianday(MIN(created_at))) * 86400 AS INTEGER) "
+                "FROM push_outbox WHERE status IN ('pending','retry') AND id > ? "
+                "AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP) "
+                "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)", (cutoff,)
+            ).fetchone()[0]
+            counts["oldest_eligible_pending_seconds"] = max(0, int(oldest)) if oldest is not None else None
+            heartbeat = c.execute(
+                "SELECT last_heartbeat_at, CAST((julianday(CURRENT_TIMESTAMP) - julianday(last_heartbeat_at)) * 86400 AS INTEGER) AS age "
+                "FROM push_worker_heartbeat WHERE worker_name='outbox_drain'"
+            ).fetchone()
+            if heartbeat:
+                age = max(0, int(heartbeat["age"] or 0))
+                observability["worker"] = {
+                    "last_heartbeat_at": heartbeat["last_heartbeat_at"],
+                    "age_seconds": age,
+                    "stale": age > WORKER_HEARTBEAT_STALE_SECONDS,
+                }
+            error_rows = c.execute(
+                "SELECT provider, COALESCE(error_code, 'unknown') AS error_code, COUNT(*) AS count "
+                "FROM push_delivery_log WHERE status != 'sent' "
+                "AND created_at >= datetime(CURRENT_TIMESTAMP, '-24 hours') "
+                "GROUP BY provider, COALESCE(error_code, 'unknown')"
+            ).fetchall()
+            observability["delivery_errors_24h"] = {
+                f"{row['provider']}:{row['error_code']}": int(row["count"]) for row in error_rows
+            }
+            for provider in ("fcm", "apns"):
+                row = c.execute(
+                    "SELECT MAX(last_success_at) FROM push_devices WHERE push_provider=?", (provider,)
+                ).fetchone()
+                observability["last_success_at"][provider] = row[0] if row else None
+            delivery = c.execute(
+                "SELECT COUNT(*) AS attempted, "
+                "SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS accepted, "
+                "SUM(CASE WHEN received_at IS NOT NULL THEN 1 ELSE 0 END) AS received, "
+                "SUM(CASE WHEN opened_at IS NOT NULL THEN 1 ELSE 0 END) AS opened "
+                "FROM push_delivery_log WHERE created_at >= datetime(CURRENT_TIMESTAMP, '-24 hours')"
+            ).fetchone()
+            attempted = int(delivery["attempted"] or 0)
+            accepted = int(delivery["accepted"] or 0)
+            observability["delivery_24h"].update({
+                "provider_accepted": accepted,
+                "client_received": int(delivery["received"] or 0),
+                "notification_opened": int(delivery["opened"] or 0),
+                "provider_acceptance_rate": (accepted / attempted) if attempted else None,
+            })
+            latency = c.execute(
+                "SELECT "
+                "AVG((julianday(l.sent_at)-julianday(o.created_at))*86400.0) AS provider_seconds, "
+                "AVG((julianday(l.received_at)-julianday(l.sent_at))*86400.0) AS receipt_seconds "
+                "FROM push_delivery_log l LEFT JOIN push_outbox o "
+                "ON o.event_id=l.event_id AND o.recipient_user_id=l.recipient_user_id "
+                "WHERE l.created_at >= datetime(CURRENT_TIMESTAMP, '-24 hours') AND l.status='sent'"
+            ).fetchone()
+            if latency:
+                provider_seconds = latency["provider_seconds"]
+                receipt_seconds = latency["receipt_seconds"]
+                observability["delivery_24h"]["avg_created_to_provider_accepted_seconds"] = (
+                    round(float(provider_seconds), 3) if provider_seconds is not None else None
+                )
+                observability["delivery_24h"]["avg_provider_accepted_to_client_received_seconds"] = (
+                    round(float(receipt_seconds), 3) if receipt_seconds is not None else None
+                )
     except Exception:
         pass
     service_account = _service_account_info()
+    fcm_private_key_valid = _service_account_private_key_valid(service_account)
     fcm_configured = bool(
         (FCM_PROJECT_ID or (service_account or {}).get("project_id"))
         and service_account
         and service_account.get("client_email")
         and service_account.get("private_key")
+        and fcm_private_key_valid
     )
     fcm_errors = []
     if not (FCM_PROJECT_ID or (service_account or {}).get("project_id")):
@@ -820,6 +1080,8 @@ def info() -> dict[str, Any]:
             fcm_errors.append("service_account_client_email_missing")
         if not service_account.get("private_key"):
             fcm_errors.append("service_account_private_key_missing")
+        elif not fcm_private_key_valid:
+            fcm_errors.append("service_account_private_key_invalid")
     try:
         import jwt  # noqa: F401
     except Exception:
@@ -830,7 +1092,7 @@ def info() -> dict[str, Any]:
     config_errors = []
     if PUSH_PROVIDER_MODE not in SUPPORTED_PUSH_PROVIDER_MODES:
         config_errors.append("invalid_provider_mode")
-    elif PUSH_PROVIDER_MODE in ("native", "dual"):
+    elif PUSH_PROVIDER_MODE == "native":
         if not fcm_configured:
             config_errors.append("fcm_not_configured")
         if not apns_configured:
@@ -843,4 +1105,5 @@ def info() -> dict[str, Any]:
         "fcm": {"configured": fcm_configured, "errors": fcm_errors},
         "apns": {"configured": apns_configured, "errors": apns_errors, "sandbox": APNS_USE_SANDBOX},
         "registry": counts,
+        "observability": observability,
     }

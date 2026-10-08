@@ -15,6 +15,8 @@ assert.ok(pushCleanup > -1, 'signOut должен очищать push по со�
 assert.ok(stateReset < pushCleanup, 'auth-state должен сбрасываться до сетевой очистки');
 const tokenClear = authContext.indexOf('await regAPI.clearToken();', signOut);
 assert.ok(tokenClear > stateReset && tokenClear < pushCleanup, 'локальный токен должен удаляться до сетевой очистки');
+const revokeStage = authContext.indexOf('await regAPI.stageLogoutRevoke(authToken);', signOut);
+assert.ok(revokeStage > signOut && revokeStage < stateReset, 'revoke должен стать durable до очистки сессии и токена');
 assert.match(authContext, /withTimeout\(push\.logoutCleanup\(authToken\)\)/);
 assert.match(authContext, /withTimeout\(regAPI\.logout\(authToken\)\)/);
 assert.match(pushApi, /async logoutCleanup\(token = null\)/);

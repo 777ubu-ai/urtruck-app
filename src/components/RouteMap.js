@@ -133,7 +133,7 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
             </View>
             <View style={[s.metricDivider, { backgroundColor: theme.border }]} />
             <View style={s.metric}>
-              <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t('delivery_time')}</Text>
+              <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t(routeSummary.durationLabelKey || 'delivery_time')}</Text>
               <Text style={[s.metricValue, { color: theme.text }]}>{routeSummary.durationText}</Text>
             </View>
           </View>
