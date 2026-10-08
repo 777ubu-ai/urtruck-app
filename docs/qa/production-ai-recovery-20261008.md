@@ -73,3 +73,6 @@ The previous Mac audio output was restored. No full physical voice PASS. Control
 Huawei visible push delivery and numerical unread from earlier runs remain unresolved/unverified; iPhone is not tested here. Release acceptance remains NO-GO.
 
 Evidence on the connected Mac: qa-evidence/play-internal-213622903-20261008/ai-recovery (screenshots/XML, results.jsonl, voice-results.jsonl and controlled-server-audio-results.json). Credentials and unrelated ambient transcripts are excluded from this public report.
+
+## Owner confirmation and preservation
+On 2026-10-08 the owner confirmed voice works on the phones. This is owner-reported physical confirmation, separately recorded from the incomplete automated acoustic matrix. Applied source SHA256 rechecked against production: matches. Private rollback backup verified present. Existing working credential values remain private. No additional build or merge performed to preserve this result.
