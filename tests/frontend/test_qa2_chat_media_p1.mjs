@@ -42,7 +42,10 @@ test('composer keeps a stable native input across all text/layout regressions', 
   assert.match(workspace, /inputShell: \{ flex: 1, minHeight: 44, maxHeight: 104/);
   assert.match(workspace, /input: \{ flexGrow: 1, flexShrink: 1, flexBasis: 0, minHeight: 44, maxHeight: 104/);
   assert.doesNotMatch(composer, /<TextInput[\s\S]*?key=/);
-  assert.doesNotMatch(composer, /onLayout=/);
+  const widthCallback = workspace.match(/onLayout=\{Platform.OS === 'ios' \? \(event\) => \{([\s\S]*?)\} : undefined\}/)?.[1];
+  assert.ok(widthCallback, 'iOS mirror measures only the input width');
+  assert.doesNotMatch(widthCallback, /height|setInputHeight|setComposerHeight|scheduleAutoScroll/,
+    'native frame layout must not feed its height back into the composer');
   assert.match(composer, /setComposerHeight\(\(?(?:nextHeight|COMPOSER_INPUT_MIN_HEIGHT)/);
   assert.match(workspace, /inputHeightRef\.current === next/);
 });

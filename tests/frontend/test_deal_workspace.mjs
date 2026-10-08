@@ -174,7 +174,7 @@ test('composer uses the approved WeChat-like bottom bar and attachment menu', ()
   assert.match(workspace, /COMPOSER_INPUT_MIN_HEIGHT = 44/);
   assert.match(workspace, /COMPOSER_INPUT_MAX_HEIGHT = 104/);
   assert.match(workspace, /normalizeComposerHeight/);
-  assert.match(workspace, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
+  assert.match(workspace, /scrollEnabled=\{Platform.OS === 'ios' \? input.length > 0 && iosComposerLayout.scroll : inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
   assert.match(workspace, /testID="deal-chat-send"/);
   assert.match(workspace, /testID="deal-chat-voice"/);
   assert.match(workspace, /testID="deal-chat-emoji"/);
