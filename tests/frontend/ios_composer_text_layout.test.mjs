@@ -58,3 +58,10 @@ test('mirror measures the native input width, trailing Enter and stays outside a
   assert.match(mirror, /input \+ '\\u200b'/);
   assert.match(source, /scrollEnabled=\{Platform.OS === 'ios' \? input.length > 0 && iosComposerLayout.scroll : inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
 });
+
+test('glyph metrics retain leading from rendered line origins', () => {
+  const rows = Array.from({ length: 5 }, (_, i) => ({ y: i * 20, height: 18 }));
+  assert.deepEqual(measureComposerLines('wrapped text', rows), { height: 96, scroll: true });
+  const large = Array.from({ length: 4 }, (_, i) => ({ y: i * 30, height: 26 }));
+  assert.deepEqual(measureComposerLines('large font', large), { height: 136, scroll: false });
+});
