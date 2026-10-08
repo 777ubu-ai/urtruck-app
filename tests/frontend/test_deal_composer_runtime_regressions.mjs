@@ -74,51 +74,24 @@ test('real TextInput content callback grows through four lines, caps long text a
   assert.equal(h.state.height, 88);
   measure('long pasted text '.repeat(100), 260);
   assert.equal(h.state.height, MAX);
-  assert.match(source, /scrollEnabled=\{inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
+  assert.match(source, /scrollEnabled=\{Platform.OS === 'ios' \? input.length > 0 && iosComposerLayout.scroll : inputHeight >= COMPOSER_INPUT_MAX_HEIGHT\}/);
   assert.equal(h.state.height >= MAX, true, 'long text enables the native input’s internal scroll');
 
   measure('', 260);
   assert.equal(h.state.height, MIN, 'deleting to empty returns to compact height');
 });
 
-// Fabric iOS отправляет высоту уже с textContainerInset (padding 8 + 8).
-// Выполняется настоящий callback экрана; UIKit и физический focus здесь не эмулируются.
-test('iOS padded measurements grow, shrink and cap without adding padding a second time', () => {
-  const ref = { current: 'Ти' };
+// iOS использует независимый Text.onTextLayout, проверенный отдельной suite.
+// Запоздавшие frame/contentSize события не должны перебивать его четыре строки.
+test('iOS native frame measurements never drive the assigned composer height', () => {
+  const ref = { current: '1\n2\n3\n4' };
   const h = createHeightSetter();
   const invoke = createContentSizeHandler(ref, h.set, 'ios');
-  for (const [text, nativeHeight, expected] of [
-    ['Ти', 36, 44],
-    ['Ти\nИ', 56, 56],
-    ['1\n2\n3', 76, 76],
-    ['1\n2\n3\n4', 96, 96],
-    ['1\n2\n3\n4\n5', 116, MAX],
-    ['long pasted text '.repeat(100), 600, MAX],
-    ['Ти\nИ', 56, 56],
-    ['Ти', 36, MIN],
-    ['', 600, MIN],
-  ]) {
-    ref.current = text;
-    invoke({ nativeEvent: { contentSize: { height: nativeHeight } } });
-    assert.equal(h.state.height, expected, JSON.stringify(text));
-  }
-});
-
-test('iOS layout reports cannot grow an unchanged short draft from the assigned frame height', () => {
-  const ref = { current: 'Ти' };
-  const h = createHeightSetter();
-  const invoke = createContentSizeHandler(ref, h.set, 'ios');
-  // Это проверка устойчивости к повторному измерению заданного frame,
-  // а не утверждение о полученных с телефона native событиях.
-  for (let i = 0; i < 12; i += 1) {
-    invoke({ nativeEvent: { contentSize: { height: h.state.height } } });
-    assert.equal(h.state.height, MIN);
-  }
-  assert.equal(h.state.updates, 0);
-  for (const raw of [36, 44, 36, 44]) {
+  for (const raw of [36, 44, 56, 76, 96, 104, 116, 600]) {
     invoke({ nativeEvent: { contentSize: { height: raw } } });
     assert.equal(h.state.height, MIN);
   }
+  assert.equal(h.state.updates, 0);
 });
 
 test('invalid measurements and duplicate measurements preserve the last valid height', () => {

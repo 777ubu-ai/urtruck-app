@@ -70,6 +70,7 @@ import { dismissReadChatNotifications } from '../utils/readChatNotifications';
 import { SERVER_URL } from '../config/env';
 import { reviewsAPI } from '../utils/reviews';
 import { normalizeComposerHeight, reconcileChatMessages, selectVoiceDurationSeconds } from '../utils/chatMessageListState';
+import { measureComposerLines } from '../utils/composerTextLayout';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
 const LOCATION_HISTORY_STATUSES = [...LIVE_TRACKING_STATUSES, 'delivered', 'received', 'completed'];
@@ -385,6 +386,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [input, setInput] = React.useState('');
   const [inputHeight, setInputHeight] = React.useState(COMPOSER_INPUT_MIN_HEIGHT);
+  const [iosComposerLayout, setIosComposerLayout] = React.useState({ height: COMPOSER_INPUT_MIN_HEIGHT, scroll: false });
+  const [composerInputWidth, setComposerInputWidth] = React.useState(0);
+  const composerWidthRef = React.useRef(0);
+  const composerMeasureScopeRef = React.useRef(null);
   const [keyboardVisible, setKeyboardVisible] = React.useState(false);
   const [textSending, setTextSending] = React.useState(false);
   const [timeline, setTimeline] = React.useState([]);
@@ -507,6 +512,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   }, []);
 
   const chatDraft = React.useMemo(() => createChatDraft(storage, session?.user?.id, roomId), [session?.user?.id, roomId]);
+  composerMeasureScopeRef.current = chatDraft;
+  const iosComposerHeight = input.length ? iosComposerLayout.height : COMPOSER_INPUT_MIN_HEIGHT;
   React.useEffect(() => {
     inputValueRef.current = '';
     setInput('');
@@ -1961,7 +1968,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                       >
                         <Feather name="plus" size={27} color={colors.text} />
                       </TouchableOpacity>
-                      <View style={[s.inputShell, { backgroundColor: colors.surface }]}>
+                      <View style={[s.inputShell, { backgroundColor: colors.surface, ...(Platform.OS === 'ios' ? { maxHeight: undefined } : {}) }]}>
                         <TextInput
                           ref={inputRef}
                           value={input}
@@ -1973,7 +1980,16 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                             if (roomId) chatAPI.typing(roomId);
                           }}
                           onFocus={onComposerFocus}
+                          onLayout={Platform.OS === 'ios' ? (event) => {
+                            const width = event?.nativeEvent?.layout?.width;
+                            if (!Number.isFinite(width) || width <= 20 || width === composerWidthRef.current) return;
+                            composerWidthRef.current = width;
+                            setComposerInputWidth(width);
+                          } : undefined}
                           onContentSizeChange={(event) => {
+                            // iOS измеряется независимым Text ниже: contentSize
+                            // рамки UITextView не управляет собственной высотой.
+                            if (Platform.OS === 'ios') return;
                             // Web can report the textarea's max content box
                             // for the initial empty multiline control. Do not
                             // let that transient measurement turn the idle
@@ -2002,14 +2018,33 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                             if (nextHeight != null) setComposerHeight(nextHeight);
                           }}
                           multiline
-                          scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
-                          style={[s.input, { height: inputHeight, color: colors.text }]}
+                          scrollEnabled={Platform.OS === 'ios' ? input.length > 0 && iosComposerLayout.scroll : inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
+                          style={[s.input, { height: Platform.OS === 'ios' ? iosComposerHeight : inputHeight, color: colors.text }, Platform.OS === 'ios' && { maxHeight: undefined }]}
                           returnKeyType="default"
                           blurOnSubmit={false}
                           accessibilityLabel={isDriver ? ui.writeShipper : ui.write}
                           accessibilityHint={t('chat_message_input_hint')}
                           testID="deal-chat-input"
                         />
+                        {Platform.OS === 'ios' && composerInputWidth > 20 ? (
+                          <Text
+                            accessible={false}
+                            accessibilityElementsHidden
+                            pointerEvents="none"
+                            style={[s.composerMeasure, { width: composerInputWidth - 20 }]}
+                            onTextLayout={(event) => {
+                              // Запоздавшие замеры другой комнаты, текста или ширины
+                              // не должны менять текущий composer.
+                              if (composerMeasureScopeRef.current !== chatDraft
+                                || inputValueRef.current !== input
+                                || composerWidthRef.current !== composerInputWidth) return;
+                              const layout = measureComposerLines(input, event?.nativeEvent?.lines);
+                              if (!layout) return;
+                              setIosComposerLayout((previous) => previous.height === layout.height && previous.scroll === layout.scroll ? previous : layout);
+                            }}
+                            testID="deal-chat-input-measure"
+                          >{input + '\u200b'}</Text>
+                        ) : null}
                         {!hasComposerText ? (
                           <TouchableOpacity
                             style={s.inputEmojiButton}
@@ -2383,6 +2418,7 @@ const s = StyleSheet.create({
   // flexGrow/flexShrink are horizontal width constraints in this row.  The
   // vertical axis is intentionally controlled only by the explicit height
   // supplied from native contentSize, so iOS cannot run a flex/height loop.
+  composerMeasure: { position: 'absolute', left: 12, top: 8, opacity: 0, fontSize: 15, lineHeight: 20 },
   input: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minHeight: 44, maxHeight: 104, paddingLeft: 12, paddingRight: 8, paddingTop: 8, paddingBottom: 8, fontSize: 15, lineHeight: 20, textAlignVertical: 'top' },
   inputEmojiButton: { flexShrink: 0, marginRight: 4, marginBottom: 3, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },

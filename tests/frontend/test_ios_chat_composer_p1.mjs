@@ -38,7 +38,10 @@ test('composer ignores invalid native measurements and preserves a stable focusa
   assert.match(workspace, /inputValueRef\.current = next/);
   assert.match(workspace, /if \(inputHeightRef\.current === next\) return/);
   assert.doesNotMatch(workspace, /<TextInput[\s\S]{0,600}key=/);
-  assert.doesNotMatch(workspace, /testID="deal-chat-composer-dock"[\s\S]{0,2600}onLayout=/);
+  const widthCallback = workspace.match(/onLayout=\{Platform.OS === 'ios' \? \(event\) => \{([\s\S]*?)\} : undefined\}/)?.[1];
+  assert.ok(widthCallback, 'iOS mirror measures only the input width');
+  assert.doesNotMatch(widthCallback, /height|setInputHeight|setComposerHeight|scheduleAutoScroll/,
+    'native frame layout must not feed its height back into the composer');
 });
 
 test('keyboard/background/foreground/rotation use one KAV and no parent height feedback loop', () => {

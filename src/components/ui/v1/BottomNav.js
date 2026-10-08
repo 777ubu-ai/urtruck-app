@@ -64,10 +64,14 @@ export default function BottomNav({ state, navigation }) {
       return undefined;
     }
 
+    let active = true;
+    setDealsUnread(0);
     const fetchUnread = async () => {
       try {
         const result = await refreshAppIconBadge();
-        if (Number.isFinite(result?.badge)) setDealsUnread(result.badge);
+        if (active && result?.reason !== 'superseded' && Number.isFinite(result?.badge)) {
+          setDealsUnread(result.badge);
+        }
       } catch {
         // Keep the previous value on temporary network errors.
       }
@@ -81,18 +85,23 @@ export default function BottomNav({ state, navigation }) {
     const readSub = subscribeChatRead(fetchUnread);
 
     return () => {
+      active = false;
       clearInterval(pollTimer.current);
       appStateSub?.remove?.();
       readSub?.();
     };
-  }, [hasToken]);
+  }, [hasToken, session?.user?.id]);
 
   useEffect(() => {
-    if (!hasToken) return;
+    if (!hasToken) return undefined;
+    let active = true;
     refreshAppIconBadge().then((result) => {
-      if (Number.isFinite(result?.badge)) setDealsUnread(result.badge);
+      if (active && result?.reason !== 'superseded' && Number.isFinite(result?.badge)) {
+        setDealsUnread(result.badge);
+      }
     });
-  }, [notifUnread]);
+    return () => { active = false; };
+  }, [notifUnread, hasToken, session?.user?.id]);
 
   const labelOf = (name) => {
     if (name === 'Feed') return isDriver ? t('tab_feed') : t('tab_feed_client');
