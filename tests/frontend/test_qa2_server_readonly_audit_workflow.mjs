@@ -12,7 +12,16 @@ test('QA2 server audit is manual, exact-source and protected', () => {
   assert.match(workflow, /push:\n\s+branches: \[fix\/voice-stt-translation-20260925\]/);
   assert.match(workflow, /AUDIT_SOURCE_SHA/);
   assert.match(workflow, /GITHUB_REF_NAME" = "fix\/voice-stt-translation-20260925/);
-  assert.match(workflow, /git rev-parse HEAD\)" = "\$AUDIT_SOURCE_SHA/);
+  assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
+  assert.doesNotMatch(workflow, /ref: \$\{\{ env\.AUDIT_SOURCE_SHA \}\}/);
+  assert.match(workflow, /git rev-parse HEAD\)" = "\$GITHUB_SHA/);
+  assert.match(workflow, /\[\[ "\$AUDIT_SOURCE_SHA" =~ \^\[0-9a-f\]\{40\}\$ \]\]/);
+  assert.match(workflow, /git merge-base --is-ancestor "\$AUDIT_SOURCE_SHA" "\$GITHUB_SHA"/);
+  const sourceGate = workflow.indexOf('- name: Require the exact branch and source');
+  const workflowTest = workflow.indexOf('- name: Verify the read-only workflow contract');
+  const sshAudit = workflow.indexOf('- name: Collect QA2 technical evidence without server mutation');
+  assert.ok(sourceGate >= 0 && workflowTest > sourceGate && sshAudit > workflowTest,
+    'trusted SHA gate must run before workflow test and any QA2 SSH step');
   assert.ok(workflow.includes('environment:\n      name: qa2'));
   assert.match(workflow, /actions\/upload-artifact@v4/);
   assert.match(workflow, /retention-days: 7/);
