@@ -465,7 +465,7 @@ export default function CargoDetail({ navigation, route }) {
         if (found) applyDeal(found, seq);
       }).catch(() => {});
     }
-  }, [cid, routeDealId, dealId]);
+  }, [cid, routeDealId, dealId, myUserId]);
 
   useFocusEffect(useCallback(() => {
     refreshDeal();

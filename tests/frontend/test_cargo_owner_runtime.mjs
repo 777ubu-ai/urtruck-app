@@ -43,3 +43,26 @@ test('matching authenticated ID still detects ownership without a bids response'
 test('unknown ownership keeps a foreign listing non-owner', () => {
   assert.equal(!!resolve({ cargo, fullCargo: cargo }).isMine, false);
 });
+
+test('real refresh callback captures the updated account at the same cargo', () => {
+  const start = detail.indexOf('  const refreshDeal = useCallback(() => {');
+  const end = detail.indexOf('\n  useFocusEffect', start);
+  assert.ok(start >= 0 && end > start);
+  let cached;
+  const seen = [];
+  const useCallback = (fn, deps) => {
+    if (!cached || deps.some((value, index) => value !== cached.deps[index])) cached = { fn, deps };
+    return cached.fn;
+  };
+  const render = new Function('useCallback', 'cid', 'routeDealId', 'dealId', 'myUserId',
+    'marketAPI', 'setFullCargo', 'setCargoNotFound', 'setListingUnavailable', 'cargo',
+    'loadBids', 'dealFetchSeq', 'applyDeal', detail.slice(start, end) + '\nreturn refreshDeal;');
+  const noop = () => {};
+  const api = { getCargo: async () => cargo, myDashboard: async () => ({ my_deals: [] }) };
+  for (const userId of ['local-user', 'backend-user']) {
+    const callback = render(useCallback, cargo.id, null, null, userId, api,
+      noop, noop, noop, cargo, () => seen.push(userId), { current: 0 }, noop);
+    callback();
+  }
+  assert.deepEqual(seen, ['local-user', 'backend-user']);
+});

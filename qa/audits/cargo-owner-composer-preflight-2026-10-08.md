@@ -39,3 +39,11 @@ Owner photos IMG_1924.jpeg / IMG_1925.jpeg show `Cannot read property 'contentSi
 The release-base implementation already snapshots `event?.nativeEvent?.contentSize?.height` synchronously, normalizes it and passes a number to setComposerHeight. No further production source patch was needed. Added a regression executing the current real callback, releasing nativeEvent before deferred state work and verifying the measured height survives. Targeted new regression: 1 PASS; existing successful scenarios not repeated. Installed devices have not been updated by this follow-up; native crash resolution is not yet physically accepted.
 
 Additionally, an isolated reproduction executed the actual aaef50ff callback extracted with git show, queued its state updater, set nativeEvent to null and reproduced the contentSize exception. This establishes the source defect; it does not replace symbolication or native acceptance.
+
+## Independent review follow-up (2026-10-08)
+
+Security fix #502 was independently reviewed on 77da57c752c2276bd3594a21512c37b8464bab16; no findings in the two-file diff. Quality gate 37743221566 completed successfully (frontend, backend, mandatory Web E2E). #502 merged into #501 as fab911c9f38bfae79069ab7cf0a218d1aeee1f94; its tree stayed bdfe93e944d881501d9153348ed89c42bd61e356. Release/main not merged by that step.
+
+The separate reviewer found an ownership callback dependency omission: refreshDeal retained loadBids from a previous myUserId when the account ID changed at the same cargo. The new runtime regression failed before the fix (captured local-user twice) and passed after adding myUserId to refreshDeal dependencies. Full affected ownership suite: 8/8 PASS; lint-source 475 files PASS; diff-check PASS. API/loadBids are mocked for this callback regression; the actual refreshDeal source and memoization dependencies execute. Incremental one-line fix and regression independently reviewed without findings. Composer production source remains unchanged.
+
+Graphify AST was refreshed before this edit (10,326 nodes / 22,762 edges). New source changes invalidate reliance on prior CI as proof of the new HEAD; dispatch another exact-head gate before integration/build. Both Android production-named packages were again confirmed at versionCode 213298108; no corrected artifact was installed or push physically tested in this follow-up.
