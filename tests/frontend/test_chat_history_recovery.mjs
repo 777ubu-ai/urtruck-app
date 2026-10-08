@@ -32,6 +32,11 @@ function harness(fetchMessages) {
     reconcileChatMessages,
     setHistoryState: (value) => { state.status = value.status; },
     setShowJumpLatest() {}, setUnreadCount() {}, notifyChatRead() {}, refreshAppIconBadge() {},
+    dismissReadChatNotifications(roomId, options) {
+      assert.equal(roomId, 'room');
+      assert.ok(Number.isFinite(options.readBefore));
+      assert.equal(options.isCurrent(), true);
+    },
   };
   const load = new Function(...Object.keys(env), `return async function(older = false) { ${body} };`)(...Object.values(env));
   return { env, state, load };
