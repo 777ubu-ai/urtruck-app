@@ -267,10 +267,12 @@ jobs:
           badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk")"
           printf '%s\n' "$badging" | grep -F "package: name='com.urtruck.app' versionCode='${URTRUCK_VERSION_CODE}' versionName='1.0.9'"
           unzip -p "$apk" assets/index.android.bundle | grep -aq 'https://urtruck.kz'
-          if unzip -p "$apk" assets/index.android.bundle | grep -aq 'qa2.urtruck.kz'; then
-            echo "::error::Production APK contains the QA2 API host"
-            exit 1
-          fi
+          # The JS bundle legitimately contains the QA2 host allowlist for public share links.
+          # Verify the actual Expo config embedded in this APK instead of treating any
+          # occurrence of that domain in unrelated code as the configured API endpoint.
+          embedded_config="$RUNNER_TEMP/urtruck-embedded-app-config.json"
+          unzip -p "$apk" assets/app.config > "$embedded_config"
+          node scripts/verify-production-apk-config.mjs "$embedded_config"
           apk_cert="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr '[:lower:]' '[:upper:]')"
           key_cert="$(keytool -list -v -keystore "$RUNNER_TEMP/urtruck-upload-key.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           test -n "$apk_cert" && test "$apk_cert" = "$key_cert"
