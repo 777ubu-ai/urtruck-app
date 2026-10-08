@@ -142,6 +142,19 @@ test('invalid measurements and duplicate measurements preserve the last valid he
   assert.equal(h.state.updates, updates, 'same effective height does not rerender the composer');
 });
 
+test('content measurement survives nativeEvent release before deferred state work', () => {
+  const pending = [];
+  const h = createHeightSetter();
+  const invoke = createContentSizeHandler({ current: 'draft' }, (value) => pending.push(value));
+  const event = { nativeEvent: { contentSize: { height: 60 } } };
+  invoke(event);
+  event.nativeEvent = null;
+  assert.equal(pending.length, 1);
+  assert.equal(typeof pending[0], 'number', 'deferred work receives a height snapshot, not a native event closure');
+  assert.doesNotThrow(() => pending.forEach(h.set));
+  assert.equal(h.state.height, 68);
+});
+
 test('keyboard show/hide callbacks update dock state and remove listeners on unmount', () => {
   const effectStart = source.lastIndexOf('React.useEffect(() => {', source.indexOf('const showEvent = Platform.OS'));
   assert.ok(effectStart >= 0);

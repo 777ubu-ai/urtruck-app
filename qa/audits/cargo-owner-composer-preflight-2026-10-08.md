@@ -31,3 +31,11 @@ Publish this as a separate PR on the release branch; review and integrate before
 Native acceptance: own cargo hides bid CTA; foreign cargo retains allowed bidding; switching cargo/account cannot reuse ownership. Composer: 1–4 lines, long insertion, deletion, incoming message while typing, keyboard hide/show, background/foreground, cursor/focus and send availability on both platforms.
 
 Rollback: revert the ownership fix commit. No schema, data or server configuration change is involved. Public release readiness and native acceptance remain separate.
+
+## Android crash follow-up (11:59 Almaty)
+
+Owner photos IMG_1924.jpeg / IMG_1925.jpeg show `Cannot read property 'contentSize' of null` with DealWorkspaceScreenV2 and basicStateReducer in the stack. Read-only ADB confirmed both connected OPPO and Huawei have `com.urtruck.app` versionCode 213298108 / versionName 1.0.9. The previously identified source for that artifact, aaef50ff, reads `event.nativeEvent.contentSize.height` inside a deferred functional `setInputHeight` updater (lines 1887–1891). Releasing the event before the updater executes can produce exactly this failure. Artifact sourcemap symbolication has not been performed.
+
+The release-base implementation already snapshots `event?.nativeEvent?.contentSize?.height` synchronously, normalizes it and passes a number to setComposerHeight. No further production source patch was needed. Added a regression executing the current real callback, releasing nativeEvent before deferred state work and verifying the measured height survives. Targeted new regression: 1 PASS; existing successful scenarios not repeated. Installed devices have not been updated by this follow-up; native crash resolution is not yet physically accepted.
+
+Additionally, an isolated reproduction executed the actual aaef50ff callback extracted with git show, queued its state updater, set nativeEvent to null and reproduced the contentSize exception. This establishes the source defect; it does not replace symbolication or native acceptance.
