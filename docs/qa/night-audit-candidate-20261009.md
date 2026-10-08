@@ -78,3 +78,7 @@
 - iOS branch build/ios-production-0449116f-20261009, workflow 5433e7e7227adade694ef00ccca1aa7ef08485fa, Actions 37851771645, guard build >93, ожидается 94. Новый guard aps-environment=production / application-identifier проверяется перед TestFlight submit.
 - Android branch build/android-production-0449116f-20261009, workflow cbce14aeed2b31d703a31bcfc10bb6cc0474df0e, Actions 37851776201, min version >213658419. Только internal/completed, один AAB, download job skipped в build-режиме; issue-comment заменён summary, issues:write убрано.
 - Промежуточные source f241f855 builds SUCCESS: iOS 93, Android 213658419; не устанавливать их как финальный coverage N-19. Все native runs остаются internal, production API не менялся.
+
+
+### PRE-FLIGHT: валюта ТТН
+Фактические CreateTrip/marketplace и DB поддерживают USD/KZT/RUB/CNY; _ttn_html всегда ставит $. Scope: currency из проверенной строки рейса и безопасное отображение цены, meaningful tests с реальной изолированной БД по четырём валютам. Не менять путь API, доступы, схему, дизайн, SDK/lockfiles; native source 0449116f не меняется. До patch Graphify AST и воспроизведение; после target TTN, canonical backend и CI. Production read-only, review-кандидат ТТН обновить и compile-only; адресный revert отдельного backend commit.

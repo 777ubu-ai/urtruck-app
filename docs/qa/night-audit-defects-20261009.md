@@ -25,6 +25,8 @@
 
 | N-19 | P1 | Вкладка Сделки принимает устаревший badge, отклонённый native handler | Оба callbacks BottomNav принимали любой finite badge, включая reason=superseded; не отсеивали late response после cleanup | Настоящие effect callbacks: до patch 4 FAIL / 2 PASS; после 14/14 с appBadge runtime, scope account и cleanup guards; следующий native candidate необходим | FIXED_CODE, следующий native pending |
 
+| N-20 | P1 | ТТН превращает тенге/рубли/юани в доллары | HTML всегда использовал $, хотя trips.currency и CreateTrip поддерживают USD/KZT/RUB/CNY | Цена форматируется с валютой проверенного рейса; real-DB cases: до 3 FAIL / 8 PASS, после 11/11 PASS; native source не меняется | FIXED_CODE, production pending |
+
 ## Правила закрытия
 - Для каждого физического дефекта указать SHA приложения, build/versionCode, устройство/OS, аккаунты и комнату, шаги, ожидаемое/фактическое поведение, timestamp и доказательство.
 - FIXED_CODE не превращать в VERIFIED только по компиляции или unit-тестам.

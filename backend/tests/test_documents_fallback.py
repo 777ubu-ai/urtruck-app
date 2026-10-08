@@ -1,4 +1,5 @@
 import builtins
+import pytest
 
 from fastapi.responses import HTMLResponse
 
@@ -140,3 +141,19 @@ def test_ttn_participant_gate_on_real_isolated_database():
     with pytest.raises(HTTPException) as exc:
         documents._require_ttn_participant("missing-trip", {"id": "ttn-carrier"})
     assert exc.value.status_code == 404
+
+
+@pytest.mark.parametrize('currency,expected', [
+    ('USD', '$8888'), ('KZT', '8888 KZT'), ('RUB', '8888 RUB'), ('CNY', '8888 CNY'),
+])
+def test_ttn_preserves_trip_currency_on_real_isolated_database(currency, expected):
+    from database.db import get_conn
+    from uuid import uuid4
+    trip_id = str(uuid4())
+    with get_conn() as conn:
+        conn.execute('INSERT INTO trips(id,driver_id,from_city,to_city,price,currency) VALUES(?,?,?,?,?,?)',
+                     (trip_id, 'currency-carrier', 'Хоргос', 'Москва', 8888, currency))
+    html = documents.generate_ttn(trip_id, user={'id': 'currency-carrier'}).body.decode()
+    assert f'<tr><th>Цена</th><td>{expected}</td></tr>' in html
+    if currency != 'USD':
+        assert '$8888' not in html, 'Цена рейса в другой валюте не должна превращаться в доллары'

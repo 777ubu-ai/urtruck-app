@@ -40,6 +40,9 @@ def _ttn_html(trip: dict, driver: dict, client_name: str = "—") -> str:
     trip = {key: escape(str(value) if value is not None else "—") for key, value in trip.items()}
     driver = {key: escape(str(value) if value is not None else "—") for key, value in driver.items()}
     client_name = escape(str(client_name) if client_name is not None else "—")
+    currency = trip.get("currency", "USD") or "USD"
+    price = trip.get("price", "—")
+    price_label = f"${price}" if currency == "USD" else f"{price} {currency}"
     now = datetime.utcnow().strftime("%d.%m.%Y %H:%M")
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"/><style>
@@ -63,7 +66,7 @@ def _ttn_html(trip: dict, driver: dict, client_name: str = "—") -> str:
   <tr><th>Груз</th><td>{trip.get('cargo', '—')}</td></tr>
   <tr><th>Вес / Объём</th><td>{trip.get('tons', '—')} т / {trip.get('m3', '—')} м³</td></tr>
   <tr><th>Тип кузова</th><td>{trip.get('type', '—')}</td></tr>
-  <tr><th>Цена</th><td>${trip.get('price', '—')}</td></tr>
+  <tr><th>Цена</th><td>{price_label}</td></tr>
 </table>
 
 <h3>Перевозчик</h3>
@@ -108,6 +111,7 @@ def _ttn_context(trip_row: dict, user: dict):
         "m3": trip_row.get("available_m3", trip_row.get("volume_m3", "—")),
         "type": trip_row.get("truck_type", driver.get("vehicle_type", "—")),
         "price": trip_row.get("price", "—"),
+        "currency": str(trip_row.get("currency") or "USD").upper(),
     }
     # Запрашивающий водитель не является грузоотправителем. При отсутствии
     # данных отправителя показываем прочерк, не выдуманное имя/стоимость.
