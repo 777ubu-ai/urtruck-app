@@ -169,9 +169,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate exact working branch and confirmation
+        env:
+          QA2_STT_CONFIRMATION: ${{ inputs.qa2_stt_confirmation }}
         run: |
           set -euo pipefail
-          test "${{ inputs.qa2_stt_confirmation }}" = PILOT_QA2_STT
+          test "$QA2_STT_CONFIRMATION" = PILOT_QA2_STT
           test "$GITHUB_REF_NAME" = fix/voice-stt-translation-20260925
           echo "PILOT_SOURCE_SHA=$(git rev-parse HEAD)"
       - name: Install synthetic audio generator

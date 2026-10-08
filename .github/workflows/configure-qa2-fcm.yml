@@ -49,10 +49,12 @@ jobs:
     steps:
       - name: Require explicit QA2-only confirmation
         shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          if test -n "${{ inputs.confirmation }}"; then
-            test "${{ inputs.confirmation }}" = "CONFIGURE_QA2_FCM"
+          if test -n "$CONFIRMATION"; then
+            test "$CONFIRMATION" = "CONFIGURE_QA2_FCM"
             test "$GITHUB_REF_NAME" = qa2/integration-candidate
           else
             test "$GITHUB_REF_TYPE" = tag -o "$GITHUB_REF_TYPE" = branch

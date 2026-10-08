@@ -63,9 +63,11 @@ jobs:
     steps:
       - name: Require explicit QA-only confirmation
         shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          test "${{ inputs.confirmation }}" = "DEPLOY_QA2" || {
+          test "$CONFIRMATION" = "DEPLOY_QA2" || {
             echo "::error::QA-only deploy confirmation mismatch"
             exit 1
           }

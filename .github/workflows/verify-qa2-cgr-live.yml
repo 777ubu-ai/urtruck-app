@@ -43,11 +43,13 @@ jobs:
       QA2_API_URL: ${{ secrets.QA2_API_URL }}
     steps:
       - name: Require QA2-only verification intent
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
           test -n "$QA_SOURCE_SHA"
-          if test -n "${{ inputs.confirmation }}"; then
-            test "${{ inputs.confirmation }}" = VERIFY_QA2_CGR_LIVE
+          if test -n "$CONFIRMATION"; then
+            test "$CONFIRMATION" = VERIFY_QA2_CGR_LIVE
             test "$GITHUB_REF_NAME" = qa2/integration-candidate
           else
             test "$GITHUB_REF_TYPE" = tag -o "$GITHUB_REF_TYPE" = branch

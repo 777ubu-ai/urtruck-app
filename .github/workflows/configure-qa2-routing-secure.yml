@@ -49,11 +49,13 @@ jobs:
       QA_ROOT: /home/ubuntu/urtruck-qa2
     steps:
       - name: Require isolated QA2 routing intent
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
           test -n "$QA_SOURCE_SHA" && test -n "$OPENROUTESERVICE_API_KEY"
-          if test -n "${{ inputs.confirmation }}"; then
-            test "${{ inputs.confirmation }}" = CONFIGURE_QA2_ROUTING_SECURE
+          if test -n "$CONFIRMATION"; then
+            test "$CONFIRMATION" = CONFIGURE_QA2_ROUTING_SECURE
             test "$GITHUB_REF_NAME" = qa2/integration-candidate
           else
             test "$GITHUB_REF_TYPE" = tag -o "$GITHUB_REF_TYPE" = branch

@@ -28,7 +28,9 @@ jobs:
       QA_WEB_ROOT: /home/ubuntu/urtruck-qa2-web
     steps:
       - name: Require isolated QA confirmation
-        run: test "${{ inputs.confirmation }}" = "DEPLOY_QA2_WEB"
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$CONFIRMATION" = "DEPLOY_QA2_WEB"
 
       - uses: actions/checkout@v4
 

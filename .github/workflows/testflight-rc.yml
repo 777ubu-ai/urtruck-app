@@ -61,12 +61,14 @@ jobs:
 
       - name: Verify protected QA2 TestFlight intent
         shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
           test -n "$QA_SOURCE_SHA"
           test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
-          if test -n "${{ inputs.confirmation }}"; then
-            test "${{ inputs.confirmation }}" = BUILD_QA2_TESTFLIGHT
+          if test -n "$CONFIRMATION"; then
+            test "$CONFIRMATION" = BUILD_QA2_TESTFLIGHT
             test "$GITHUB_REF_NAME" = qa2/integration-candidate
           else
             test "$GITHUB_REF_TYPE" = branch

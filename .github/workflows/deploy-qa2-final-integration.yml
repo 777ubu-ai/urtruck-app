@@ -53,11 +53,13 @@ jobs:
     steps:
       - name: Require final QA2 intent and branch
         shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
           test "$QA_SOURCE_SHA" != ""
-          if test -n "${{ inputs.confirmation }}"; then
-            test "${{ inputs.confirmation }}" = DEPLOY_QA2_FINAL
+          if test -n "$CONFIRMATION"; then
+            test "$CONFIRMATION" = DEPLOY_QA2_FINAL
             test "$GITHUB_REF_NAME" = qa2/integration-candidate
           else
             test "$GITHUB_REF_TYPE" = tag -o "$GITHUB_REF_TYPE" = branch
