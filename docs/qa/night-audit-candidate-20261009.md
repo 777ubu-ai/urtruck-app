@@ -58,7 +58,7 @@
 - Мобильный код не меняется; текущие iOS/Android f241f855 builds не пересобирать из-за отдельного backend исправления.
 - Проверки: реальные SQLite гонки, страница истории, notification URL/user isolation, canonical backend suite. Откат: revert отдельного race commit.
 
-## Итоговые frozen мобильные кандидаты
+## Промежуточные frozen кандидаты f241f855
 - Общий app source: f241f8557c6e695208758d809718f949b163be65 (включает #506/#507/#508, composer, STT/document readiness, настоящий полный 249-каталог).
 - iOS build-ветка build/ios-production-f241f855-20261009; workflow SHA 5cc2f36eb35a5b6b279388d36dc873f8308da419; Actions 37847554527, guard >92, ожидается 93.
 - Android build-ветка build/android-production-f241f855-20261009; workflow SHA 7ada9d933d61cfb933b348741d8509a6d860711e; Actions 37847561121, только internal, один AAB.
@@ -70,3 +70,11 @@
 
 ### Preflight: stale badge результата BottomNav
 Подтверждённый кодовый путь: appBadge возвращает {badge: OLD, reason: superseded}, а оба callback BottomNav проверяют только Number.isFinite и принимают OLD. Scope: только effects счётчика BottomNav и meaningful tests настоящих callback bodies. Защищены appBadge canonical/OEM contract, Android native handler, дизайн/tab labels, страны, composer, SDK/lockfiles и production. До patch: Graphify AST и воспроизведение stale response; после: runtime cases для poll/read, native rejection, notification callback и cleanup, frontend/lint/QA gates и final CI. Rollback — адресный revert нового коммита; промежуточные f241 native кандидаты не считаются покрытием этого fix. Публичный выпуск запрещён.
+
+
+## Frozen 0449116f после BottomNav race
+- Source 0449116f88f59538310db46829957f96bd26e09d: ancestry #506/#507/84eb4eba PASS, frontend 1114/1114, lint/QA Center/web build/i18n/APNs safety PASS, 23/23 local E2E (69.61 с), locale 8/8, static release gate PASS. Full QA 37851244139 SUCCESS, пять jobs.
+- До fix 4/6 callback regressions FAIL; после — 14/14 с appBadge runtime. Дизайн и canonical/OEM contract не менялись. Причина следующего build — воспроизведённый N-19, который не входит в промежуточные 93/213658419.
+- iOS branch build/ios-production-0449116f-20261009, workflow 5433e7e7227adade694ef00ccca1aa7ef08485fa, Actions 37851771645, guard build >93, ожидается 94. Новый guard aps-environment=production / application-identifier проверяется перед TestFlight submit.
+- Android branch build/android-production-0449116f-20261009, workflow cbce14aeed2b31d703a31bcfc10bb6cc0474df0e, Actions 37851776201, min version >213658419. Только internal/completed, один AAB, download job skipped в build-режиме; issue-comment заменён summary, issues:write убрано.
+- Промежуточные source f241f855 builds SUCCESS: iOS 93, Android 213658419; не устанавливать их как финальный coverage N-19. Все native runs остаются internal, production API не менялся.

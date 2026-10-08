@@ -5,7 +5,7 @@
 ## Baseline и защищённый объём
 - Репозиторий: 777ubu-ai/urtruck-app, ветка fix/route-country-list-20261008.
 - Начало: a686d5b308c727411e099133347f159086200293.
-- Итоговый frozen app source: f241f8557c6e695208758d809718f949b163be65. Последующий отдельный backend read-boundaries patch: 08f1d467923b1e701dbc06803e6a6f6d9c79dfaf; read-only production plan: 08c9dbb30566332a5a626c23c24e439d0162ddcd.
+- Итоговый frozen app source после BottomNav race: 0449116f88f59538310db46829957f96bd26e09d. Промежуточный f241f855 включает AX/composer/readiness, но ещё не BottomNav race. Последующий отдельный backend read-boundaries patch: 08f1d467923b1e701dbc06803e6a6f6d9c79dfaf; read-only production plan: 08c9dbb30566332a5a626c23c24e439d0162ddcd.
 - Последовательные PR #506, #507, #508 не слиты; предыдущие исправления входят в кандидата.
 - Прочитаны комплексное ТЗ 10/10, «Эконом Токенов», AGENTS.md и действующие каноны репозитория. Ночное задание: night-audit-assignment-20261009.md.
 - Работа выполнялась в существующей папке /private/tmp/urtruck-ai-recovery-20261008; проект заново не создавался.
@@ -25,22 +25,24 @@
 6. **AX и строгие 249.** Проверка обнаружила, что прежний общий справочник содержал 248 кодов, вопреки прошлым отчётам. Добавлены Аландские острова (AX) и RU/ZH/EN/KK names. Новый test проверяет ровно 249, все 996 name/search комбинаций и 249 ISO searches с отключённым Intl.DisplayNames. Флаг AX уже был bundled; renderer не изменён.
 7. **Гонка чтения.** Новое сообщение между SELECT/UPDATE, поздний Bell event и запрос старой страницы теряли unread. Три новых теста воспроизвели ошибку; теперь read-marking ограничен возвращённым message ID и снимком notification IDs. Chat event keys ограничены также по message ID. Старые events без ключа ограничены снимком notification IDs. API-пути, участники и схема сохранены.
 
-Коммиты исправлений: 4cccfcf7, ef433d1e, a6a93e93, bfada6c9, 4d939621, a4e05b20, f241f855, 08f1d467.
+8. **Счётчик вкладки Сделки.** Оба callback раньше принимали badge из superseded-ответа, уже отклонённого native механизмом. Теперь stale response не возвращает старое число в UI; cleanup отсекает поздний ответ прежнего экрана/аккаунта, эффекты учитывают user ID. Canonical значение при неподдерживаемом launcher по-прежнему видно внутри приложения. Настоящие callbacks: до patch 4 FAIL / 2 PASS, после 14/14 вместе с appBadge runtime.
+
+Коммиты исправлений: 4cccfcf7, ef433d1e, a6a93e93, bfada6c9, 4d939621, a4e05b20, f241f855, 08f1d467, 0449116f.
 
 ## Фактически выполненные проверки
 
 | Проверка | Результат | Граница доказательства |
 |---|---|---|
-| Frontend unit, финальный f241f855 | 1108/1108 PASS | JS-тесты, включая реальные callbacks и новые regressions |
-| ESLint, финальный f241f855 | PASS | Статический анализ |
-| qa:center:quick, финальный f241f855 | PASS | Все входящие gates, включая production web build |
+| Frontend unit, финальный 0449116f | 1114/1114 PASS | JS-тесты, включая реальные callbacks и новые regressions |
+| ESLint, финальный 0449116f | PASS | Статический анализ |
+| qa:center:quick, финальный 0449116f | PASS | Все входящие gates, включая production web build |
 | qa:i18n-duplicates | PASS | Проверка словарей |
 | Канонический backend/API runner | PASS, все 130 модулей | Изолированная SQLite, тестовое окружение; не production DB |
-| Обязательные web E2E | 23/23 PASS | Повторно после backend read patch на d1d693f7, 68.8 с; изолированный локальный API и финальный bundle; часть recovery/crash тестов использует предусмотренные mocks |
+| Обязательные web E2E | 23/23 PASS | Повторно после BottomNav/read patch на 0449116f, 69.61 с; изолированный локальный API и финальный bundle; часть recovery/crash тестов использует предусмотренные mocks |
 | runtimeLocaleLeakProbe | 8/8 PASS | RU/ZH/EN/KK × два маршрута; анонимный app chrome, не все авторизованные экраны |
 | APNs operations tests | 6/6 PASS | Изолированные операции настройки/отката, не доставка APNs на телефон |
 | Kotlin badge policy | 5/5 PASS | Реальные исходники policy и JUnit; не новая APK и не значок launcher |
-| Статический release gate | PASS | Повторно на чистом d1d693f7: финальный клиент, backend read patch и ops plan |
+| Статический release gate | PASS | Повторно на чистом 0449116f: финальный клиент, backend read patch и ops plan |
 | node-forge exception gate | PASS | Существующее проверенное исключение с компенсирующим patch; не «npm audit: ноль уязвимостей» |
 | Graphify AST | PASS | 10541 узел, 23369 связей; SQL parser недоступен для 19 файлов, два Gradle предупреждения |
 
@@ -57,6 +59,8 @@ Backend runner стартовал на bfada6c9, завершился после
 | Read race / pagination / notification paths | 28/28 PASS | До patch 3 FAIL / 25 PASS; реальные отдельные SQLite connections и позднее событие |
 | Canonical backend после read patch | PASS, 130 модулей | Точный 08f1d467, 135.19 с |
 | Read-only production plan safety | 4/4 PASS | Source guards, отсутствие runtime writes, private output, запрет symlink escape |
+| BottomNav + appBadge runtime | 14/14 PASS | Выполняются реальные effect callbacks; superseded poll/native/notification, cleanup, сохранение canonical при OEM отказе |
+| Full QA после всех code fixes, 37851244139 | SUCCESS, 5/5 jobs | Точный 0449116f, включает BottomNav/read/ТТН/AX/composer; 29 desktop PASS / 2 production smoke SKIP, 38 mobile viewport PASS |
 | Production interpreter compile-only | 2 файла PASS, Python 3.12.3 | Не импортировал/не исполнял API, не писал runtime, не перезапускал API |
 
 Native-кандидаты отслеживаются отдельно в night-audit-candidate-20261009.md. Факт запуска или подготовки не равен PASS.
@@ -119,7 +123,7 @@ Read-only AST проверка фактического runtime подтверд
 Логи, result JSON, исходные XML/PNG устройств и affected graph находятся у владельца:
  /Users/bahitzanbahitzanovic/Desktop/URTRUCK_MAIN_PROJECT/qa-evidence/night-audit-20261009
 
-Финальный frontend: final-AX; повторные E2E после read patch: final-read-E2E. Backend после ТТН: final-documents; после read patch: final-read-race/backend-isolated.log. Kotlin: kotlin-policy.log. Исторические проверки 4d939621 сохранены отдельно. Первые кандидаты 37845195639/37846232177 отменены до submit из-за найденного отсутствующего AX; новые native runs 37847554527/37847561121 используют f241f855.
+Финальный frontend: final-bottom-nav; повторные E2E: final-bottom-nav-E2E. Исторические AX/read прогоны сохранены отдельно. Backend после ТТН: final-documents; после read patch: final-read-race/backend-isolated.log. Kotlin: kotlin-policy.log. Исторические проверки 4d939621 сохранены отдельно. Первые кандидаты 37845195639/37846232177 отменены до submit из-за найденного отсутствующего AX; новые native runs 37847554527/37847561121 используют f241f855.
 Индекс SHA-256 сохраняется как evidence-sha256.txt в той же папке. Приватная тестовая DB, ключи и сырые пользовательские файлы в публичный GitHub не публикуются.
 
 ## Продолжение физического обмена
@@ -141,3 +145,9 @@ Timestamp 2026-10-08 21:19:41 UTC; при read-only проверке is_read=0. 
 | Авторизация / аккаунт | Canonical backend, social-auth/retry/pending и logout GPS regressions | Повторный вход и account switch на native с исходными аккаунтами |
 
 Этот отчёт перечисляет выполненную часть большого ТЗ. Он не означает завершение всех 16 разделов, универсальный PASS перевода, ноль всех уязвимостей или готовность публичного выпуска.
+
+
+## Мобильные кандидаты после последней находки
+- Промежуточный iPhone build 93 (Actions 37847554527), source f241f855, успешно загружен в TestFlight. Локально проверены IPA SHA-256 7f7eda62c739dc1ae91da5cfcdacbc811987a7c373d7093ca9cb2e9b5ac6f72e, codesign strict, com.urtruck.app, production host и aps-environment=production. На телефон не установлен.
+- Промежуточный Android 213658419 (Actions 37847561121), source f241f855, успешно загружен только в internal; AAB SHA-256 fef0007fb786272b605659fd323dcb23b4f2f6317fae66c15c679a3fc02b2532, manifest/package/version и один FCM handler проверены runner. Локальный AAB transfer остановлен как ненужный после N-19; повторное скачивание не запускается.
+- Итоговые source 0449116f: iOS Actions 37851771645 (workflow 5433e7e7227adade694ef00ccca1aa7ef08485fa), Android Actions 37851776201 (workflow cbce14aeed2b31d703a31bcfc10bb6cc0474df0e). Запущены только после CI 37851244139 SUCCESS и локальных gates. Выполняются; ожидаемый следующий iOS номер 94, фактический номер ещё не объявлен. iOS проверяет production APNs entitlement до submit, Android min version >213658419. Никакого public rollout.
