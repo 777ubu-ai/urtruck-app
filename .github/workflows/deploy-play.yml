@@ -37,6 +37,16 @@ on:
       - ".github/workflows/deploy-play.yml"
   workflow_dispatch:
     inputs:
+      download_generated_version_code:
+        description: "Read-only download of existing Google-signed APK; skips build/upload"
+        required: false
+        default: ""
+        type: string
+      download_generated_source_sha:
+        description: "Source SHA from the existing successful AAB build"
+        required: false
+        default: ""
+        type: string
       track:
         description: "Google Play track"
         required: true
@@ -85,6 +95,7 @@ permissions:
 
 jobs:
   build-and-submit:
+    if: ${{ inputs.download_generated_version_code == '' }}
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -396,3 +407,30 @@ jobs:
       - name: Remove temporary APK envelope
         if: always()
         run: rm -rf "$RUNNER_TEMP/urtruck-apk-device-qa"
+
+  download-google-signed-apk:
+    name: Download existing Google-signed APK without rebuilding
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.download_generated_version_code != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install official API authentication dependencies
+        run: python -m pip install google-auth requests cryptography
+      - name: Download and encrypt existing Play APK
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          APK_VERSION: ${{ inputs.download_generated_version_code }}
+          APK_SOURCE_SHA: ${{ inputs.download_generated_source_sha }}
+        run: |
+          python scripts/ops/download_google_signed_apk.py --version "$APK_VERSION" --source-sha "$APK_SOURCE_SHA" --out "$RUNNER_TEMP/google-signed-apk"
+      - name: Upload encrypted Google-signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-google-signed-apk-encrypted
+          path: ${{ runner.temp }}/google-signed-apk/*
+          retention-days: 2
+          if-no-files-found: error
