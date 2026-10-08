@@ -62,3 +62,11 @@ Production chat.py SHA256 80619b090b46559587ceb6d3722c1cd308cbd44345d24e4748f7e1
 /home/ubuntu/urtruck-releases/20260917-be134e0b/venv/bin/python /home/ubuntu/urtruck-apns-recovery-backups/20261008T203025Z/configure_production_apns.py --rollback /home/ubuntu/urtruck-apns-recovery-backups/20261008T203025Z
 ```
 Остаётся OPEN: owner-confirmed banner/lockscreen/icon badge, правильная комната и очистка после чтения iPhone; iPhone composer 1–5 строк; финальная Android push/badge matrix. Полный release gate BLOCKED.
+
+
+## Подтверждение владельца — 09.10.2026, около 01:37 Алматы
+- Владелец подтвердил получение push. На IMG_1964.jpeg виден native badge 3 на иконке UrTruck; на IMG_1965.jpeg в чате видны сообщения Huawei, в том числе 1442 после подключения APNs. Это закрывает первое физическое наблюдение получения и наличия badge на iPhone, а не всю push-матрицу.
+- Верхний баннер владелец не наблюдал. Проверка lockscreen/баннера при разрешённых настройках, последовательного роста и сброса badge, правильного deeplink, других комнат и дублей остаётся OPEN.
+- Новый screenshot composer показывает двухстрочный активный черновик. Владелец требует рост до четырёх строк и внутреннюю прокрутку далее, как на Android; сообщает ограничение двумя строками. Это приоритетный открытый дефект iPhone. Причину и поведение третьей/четвёртой строки нужно воспроизвести; источник ещё не исправлялся.
+- В показанном EN→RU переводе Freight 8888 USD передано как «Груз 8888 USD»: проверить смысл стоимости перевозки/фрахта. Числа 10:00 и 8888 сохранены в этом примере; общий semantic PASS не заявляется.
+- Подготовлено отдельное подробное задание: docs/qa/night-audit-assignment-20261009.md. Оно задаёт будущий аудит и не является отчётом о выполненном прогоне. Полный release gate по-прежнему BLOCKED.
