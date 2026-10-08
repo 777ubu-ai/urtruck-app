@@ -7,6 +7,7 @@ import sys
 import os
 from pathlib import Path
 from datetime import datetime
+from html import escape
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -35,6 +36,10 @@ def _require_ttn_participant(trip_id: str, user: dict) -> dict:
 
 
 def _ttn_html(trip: dict, driver: dict, client_name: str = "—") -> str:
+    # Поля рейса/профиля — текст, а не HTML или URL ресурсов PDF.
+    trip = {key: escape(str(value) if value is not None else "—") for key, value in trip.items()}
+    driver = {key: escape(str(value) if value is not None else "—") for key, value in driver.items()}
+    client_name = escape(str(client_name) if client_name is not None else "—")
     now = datetime.utcnow().strftime("%d.%m.%Y %H:%M")
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"/><style>
@@ -88,33 +93,42 @@ def _ttn_html(trip: dict, driver: dict, client_name: str = "—") -> str:
 </body></html>"""
 
 
+def _ttn_context(trip_row: dict, user: dict):
+    """Обе версии документа используют проверенный рейс и его перевозчика."""
+    from database import registration_dal as reg_dal
+    driver = reg_dal.get_driver(trip_row["driver_id"]) or {
+        "full_name": trip_row.get("driver_name", "—"),
+        "phone": trip_row.get("driver_phone", "—"),
+    }
+    trip = {
+        "id": trip_row["id"],
+        "from": trip_row.get("from_city", "—"), "to": trip_row.get("to_city", "—"),
+        "transit": trip_row.get("transit", "—"), "cargo": trip_row.get("cargo", "—"),
+        "tons": trip_row.get("capacity_tons", "—"),
+        "m3": trip_row.get("available_m3", trip_row.get("volume_m3", "—")),
+        "type": trip_row.get("truck_type", driver.get("vehicle_type", "—")),
+        "price": trip_row.get("price", "—"),
+    }
+    # Запрашивающий водитель не является грузоотправителем. При отсутствии
+    # данных отправителя показываем прочерк, не выдуманное имя/стоимость.
+    client_name = user.get("full_name", "—") if user["id"] != trip_row["driver_id"] else "—"
+    return trip, driver, client_name
+
+
 @docs_router.post("/ttn/{trip_id}")
 def generate_ttn(trip_id: str, user=Depends(require_level(1))):
     """Генерация ТТН по рейсу. Возвращает HTML (для печати через browser print)."""
     trip_row = _require_ttn_participant(trip_id, user)
-    from database import registration_dal as reg_dal
-    driver = reg_dal.get_driver(user["id"]) or {}
-
-    trip = {
-        "id": trip_id,
-        "from": trip_row.get("from_city", "—"), "to": trip_row.get("to_city", "—"),
-        "cargo": trip_row.get("cargo", "—"),
-        "tons": trip_row.get("capacity_tons", "—"), "m3": trip_row.get("volume_m3", "—"),
-        "type": driver.get("vehicle_type", "tent"),
-        "price": 1500,
-    }
-
-    html = _ttn_html(trip, driver, client_name=user.get("full_name", "—"))
-    return HTMLResponse(content=html)
+    trip, driver, client_name = _ttn_context(trip_row, user)
+    return HTMLResponse(content=_ttn_html(trip, driver, client_name))
 
 
 @docs_router.get("/ttn/{trip_id}/pdf")
 def download_ttn_pdf(trip_id: str, user=Depends(require_level(1))):
     """PDF версия ТТН; без WeasyPrint возвращает печатный HTML."""
     trip_row = _require_ttn_participant(trip_id, user)
-    trip = {"id": trip_id, "from": trip_row.get("from_city", "—"), "to": trip_row.get("to_city", "—"), "cargo": trip_row.get("cargo", "—"), "tons": trip_row.get("capacity_tons", "—"), "m3": trip_row.get("volume_m3", "—"), "type": trip_row.get("truck_type", "tent"), "price": trip_row.get("price", 0)}
-    driver = {"full_name": "—", "phone": "—", "iin": "—"}
-    html = _ttn_html(trip, driver)
+    trip, driver, client_name = _ttn_context(trip_row, user)
+    html = _ttn_html(trip, driver, client_name)
     safe_id = "".join(ch for ch in trip_id[:8] if ch.isalnum() or ch in "-_") or "document"
 
     try:
