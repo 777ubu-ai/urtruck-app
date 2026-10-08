@@ -27,7 +27,9 @@
 
 8. **Счётчик вкладки Сделки.** Оба callback раньше принимали badge из superseded-ответа, уже отклонённого native механизмом. Теперь stale response не возвращает старое число в UI; cleanup отсекает поздний ответ прежнего экрана/аккаунта, эффекты учитывают user ID. Canonical значение при неподдерживаемом launcher по-прежнему видно внутри приложения. Настоящие callbacks: до patch 4 FAIL / 2 PASS, после 14/14 вместе с appBadge runtime.
 
-Коммиты исправлений: 4cccfcf7, ef433d1e, a6a93e93, bfada6c9, 4d939621, a4e05b20, f241f855, 08f1d467, 0449116f.
+9. **Валюта ТТН.** Документ больше не превращает KZT/RUB/CNY в USD: currency берётся из проверенного рейса. Четыре real-DB currency cases воспроизвели 3 FAIL при 8 PASS, затем весь target прошёл 11/11. Это отдельный backend patch 0cc7213a, мобильные файлы 0449116f не менялись.
+
+Коммиты исправлений: 4cccfcf7, ef433d1e, a6a93e93, bfada6c9, 4d939621, a4e05b20, f241f855, 08f1d467, 0449116f, 0cc7213a.
 
 ## Фактически выполненные проверки
 
@@ -60,7 +62,10 @@ Backend runner стартовал на bfada6c9, завершился после
 | Canonical backend после read patch | PASS, 130 модулей | Точный 08f1d467, 135.19 с |
 | Read-only production plan safety | 4/4 PASS | Source guards, отсутствие runtime writes, private output, запрет symlink escape |
 | BottomNav + appBadge runtime | 14/14 PASS | Выполняются реальные effect callbacks; superseded poll/native/notification, cleanup, сохранение canonical при OEM отказе |
-| Full QA после всех code fixes, 37851244139 | SUCCESS, 5/5 jobs | Точный 0449116f, включает BottomNav/read/ТТН/AX/composer; 29 desktop PASS / 2 production smoke SKIP, 38 mobile viewport PASS |
+| Full QA перед отдельным FX patch, 37851244139 | SUCCESS, 5/5 jobs | Точный 0449116f, включает BottomNav/read/ТТН/AX/composer; 29 desktop PASS / 2 production smoke SKIP, 38 mobile viewport PASS |
+| ТТН с валютами | 11/11 PASS | USD/KZT/RUB/CNY, изолированная реальная SQLite; до FX patch 3 FAIL / 8 PASS |
+| Финальный canonical backend | PASS, 130 модулей | Точный 0cc7213a, 135.63 с, включает валюты ТТН |
+| Финальный Full QA 37853322784 | SUCCESS, 5/5 jobs | Точный 0cc7213a; текущий клиент совпадает с frozen 0449116f; desktop 29 PASS / 2 production smoke SKIP, mobile browser 38 PASS |
 | Production interpreter compile-only | 2 + 1 файла PASS, Python 3.12.3 | Не импортировал/не исполнял API, не писал runtime, не перезапускал API |
 
 Native-кандидаты отслеживаются отдельно в night-audit-candidate-20261009.md. Факт запуска или подготовки не равен PASS.
@@ -150,8 +155,16 @@ Timestamp 2026-10-08 21:19:41 UTC; при read-only проверке is_read=0. 
 ## Мобильные кандидаты после последней находки
 - Промежуточный iPhone build 93 (Actions 37847554527), source f241f855, успешно загружен в TestFlight. Локально проверены IPA SHA-256 7f7eda62c739dc1ae91da5cfcdacbc811987a7c373d7093ca9cb2e9b5ac6f72e, codesign strict, com.urtruck.app, production host и aps-environment=production. На телефон не установлен.
 - Промежуточный Android 213658419 (Actions 37847561121), source f241f855, успешно загружен только в internal; AAB SHA-256 fef0007fb786272b605659fd323dcb23b4f2f6317fae66c15c679a3fc02b2532, manifest/package/version и один FCM handler проверены runner. Локальный AAB transfer остановлен как ненужный после N-19; повторное скачивание не запускается.
-- Итоговые source 0449116f: iOS Actions 37851771645 (workflow 5433e7e7227adade694ef00ccca1aa7ef08485fa), Android Actions 37851776201 (workflow cbce14aeed2b31d703a31bcfc10bb6cc0474df0e). Запущены только после CI 37851244139 SUCCESS и локальных gates. Выполняются; ожидаемый следующий iOS номер 94, фактический номер ещё не объявлен. iOS проверяет production APNs entitlement до submit, Android min version >213658419. Никакого public rollout.
+- Итоговые source 0449116f: iOS Actions 37851771645 (workflow 5433e7e7227adade694ef00ccca1aa7ef08485fa), Android Actions 37851776201 (workflow cbce14aeed2b31d703a31bcfc10bb6cc0474df0e). Запущены только после CI 37851244139 SUCCESS и локальных gates. Оба SUCCESS: iOS 1.0.9 (94) отправлен в TestFlight, Android 1.0.9 (213660672) загружен в internal/completed. На телефоны пока не установлены. iOS проверяет production APNs entitlement до submit, Android min version >213658419. Никакого public rollout.
 
 
 ### Дополнительная проверка фактической ТТН production
-Read-only 2026-10-08T22:13:34 UTC: endpoint PDF без авторизации отвечает 401, participant gate присутствует; HTML escaping отсутствует, price=1500 присутствует. Runtime documents.py SHA-256 2df663fd956cf9a7856e6b849f31ffc16e0753328b550ce5bdae4238872bb799 точно совпадает с тестированным baseline перед a4e05b20. Подготовлен третий файл review-кандидата, SHA-256 679607ab1aa011592819c3edee85a429065e3d088d3414c5645de3922fbbc112; diff/guard manifest сохранены рядом с read-boundaries review. Compile-only этого файла на production Python 3.12.3 PASS; imports/код не исполнялись, runtime не записан. Применение всех трёх файлов требует отдельного разрешения.
+Read-only 2026-10-08T22:13:34 UTC: endpoint PDF без авторизации отвечает 401, participant gate присутствует; HTML escaping отсутствует, price=1500 присутствует. Runtime documents.py SHA-256 2df663fd956cf9a7856e6b849f31ffc16e0753328b550ce5bdae4238872bb799 точно совпадает с тестированным baseline перед a4e05b20. Подготовлен третий файл review-кандидата, SHA-256 860642a8832fd24ed43100bf25bc9db13d6af1013d1193631158096c06208d88; diff/guard manifest сохранены рядом с read-boundaries review. Compile-only этого файла на production Python 3.12.3 PASS; imports/код не исполнялись, runtime не записан. Применение всех трёх файлов требует отдельного разрешения.
+
+
+### Финальные артефакты и границы проверки
+- iOS 94: IPA SHA-256 ec6a8cb6ee25ecf33e5c871cd3130a5612e5d7cdc8aa06366a5dd5936787a26a. Runner до submit проверил codesign strict, package/version, host urtruck.kz, flavor production, aps-environment=production. Manifest и CRC отдельно проверены через 587 байт range-чтения authenticated artifact; полный IPA повторно не скачивался. Это проверка сборки/отправки, не утверждение о появлении 94 в списке TestFlight владельца или установке.
+- Android 213660672: AAB SHA-256 47b1427729271f6f762b55ccea0dfd1cc78c94fe595800dc89a106e100cf15bd. Release unit tests, Firebase resources, один нужный FCM handler и package/version внутри AAB PASS на runner; Play upload SUCCESS, только internal/completed. Google-signed APK пока не скачивался, отдельная APK/HMAC/signing-certificate проверка и физическая установка не заявляются.
+- Повторное состояние устройств 22:17:50 UTC: Huawei com.urtruck.app 213640023 открыт, OPPO 213645294 showing=true (lockscreen). Данные/аккаунты не очищались, Huawei ID и блокировка не обходились. iPhone USB недоступен; последняя подтверждённая версия 91.
+- Read-only cache для ZH1444 в 22:16:11 UTC пуст; дополнительных provider requests не запускалось. Русский перевод/прочтение на iPhone остаются OPEN.
+- Review-кандидат трёх production файлов сохранён приватно; participant gate ТТН имеет идентичный AST исходному runtime. Финальный documents.py с валютами повторно compile-only PASS на production Python 3.12.3; ничего не применялось.

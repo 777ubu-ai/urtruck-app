@@ -82,3 +82,10 @@
 
 ### PRE-FLIGHT: валюта ТТН
 Фактические CreateTrip/marketplace и DB поддерживают USD/KZT/RUB/CNY; _ttn_html всегда ставит $. Scope: currency из проверенной строки рейса и безопасное отображение цены, meaningful tests с реальной изолированной БД по четырём валютам. Не менять путь API, доступы, схему, дизайн, SDK/lockfiles; native source 0449116f не меняется. До patch Graphify AST и воспроизведение; после target TTN, canonical backend и CI. Production read-only, review-кандидат ТТН обновить и compile-only; адресный revert отдельного backend commit.
+
+
+## Фактическое завершение кандидатов 0449116f
+- iOS Actions 37851771645 SUCCESS: 1.0.9 (94), TestFlight submit SUCCESS. Manifest source 0449116f, com.urtruck.app, host urtruck.kz, flavor production, apsEnvironment production. IPA SHA-256 ec6a8cb6ee25ecf33e5c871cd3130a5612e5d7cdc8aa06366a5dd5936787a26a. Code signing/entitlements проверены на runner, manifest CRC независимо прочитан range (587 байт); полная локальная IPA загрузка не повторялась. Установка не подтверждена.
+- Android Actions 37851776201 SUCCESS: 1.0.9 (213660672), только internal/completed. AAB SHA-256 47b1427729271f6f762b55ccea0dfd1cc78c94fe595800dc89a106e100cf15bd; release unit tests, Firebase, package/version и ровно один FCM handler PASS. APK отдельно не собирался/не скачивался/не устанавливался; физическая матрица остаётся OPEN.
+- Последующий backend-only currency patch 0cc7213a: target TTN 11/11, canonical 130 modules (135.63 с), Full QA 37853322784 SUCCESS (5 jobs). Mobile files совпадают с frozen 0449116f; ещё одна native-сборка из-за FX не нужна.
+- Production review три файла: chat SHA 26d2cea4fb9ed1b23084a661e15f72f3d8a94a7e2efc6acca183c834d476a370; notifications SHA 962d7c99409fe4ebfe95622e1c11636ef6ac915fe643a51b5e297d9cefbd87dc; documents SHA 860642a8832fd24ed43100bf25bc9db13d6af1013d1193631158096c06208d88. Source guards/приватные diff/compile-only готовы, runtime не изменён. Требуется отдельное разрешение по §2/14 ночного ТЗ.
