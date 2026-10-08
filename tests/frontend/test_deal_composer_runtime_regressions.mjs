@@ -339,6 +339,11 @@ test('real loadMessages polling reconciles an incoming message without touching 
     setUnreadCount() {},
     notifyChatRead() {},
     refreshAppIconBadge() {},
+    dismissReadChatNotifications(roomId, options) {
+      assert.equal(roomId, 'room-actual');
+      assert.equal(options.isCurrent(), true);
+      assert.ok(Number.isFinite(options.readBefore));
+    },
     setHistoryState(value) { lastHistoryState = value; },
   };
   context.voiceStateRef.current = context.voiceText;
@@ -350,7 +355,7 @@ test('real loadMessages polling reconciles an incoming message without touching 
       voiceScope, reconcileChatMessages, documentKindFromFile, setMessages, userScrolledAwayRef, nearBottomRef,
       pendingAutoScrollRef,
       initialMessagesLoadedRef, setShowJumpLatest, scheduleAutoScrollRef, setUnreadCount,
-      notifyChatRead, refreshAppIconBadge, setHistoryState,
+      notifyChatRead, refreshAppIconBadge, dismissReadChatNotifications, setHistoryState,
     } = ctx;
     return async function loadMessages(older = false) { ${loadBody} };
   `)(context);
