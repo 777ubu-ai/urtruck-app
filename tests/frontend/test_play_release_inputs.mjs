@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { validatePlayReleaseInputs } from '../../scripts/validate-play-release-inputs.mjs';
 
 for (const status of ['halted', 'inProgress']) {
@@ -31,7 +31,7 @@ test('Play workflow uses validated fraction and records actual upload outcome', 
   assert.match(source, /upload outcome/);
 });
 
-test('manual production device-QA APK is opt-in, release-signed, and never submits by itself', () => {
+test('manual production device-QA APK is opt-in, encrypted, release-signed, and never submits by itself', () => {
   const source = readFileSync('.github/workflows/deploy-play.yml', 'utf8');
   assert.match(source, /build_installable_apk:[\s\S]*?default: false[\s\S]*?type: boolean/);
   assert.match(source, /installed_version_code=213298108/);
@@ -41,7 +41,10 @@ test('manual production device-QA APK is opt-in, release-signed, and never submi
   assert.match(source, /app-release\.apk[\s\S]*?aapt[\s\S]*?com\.urtruck\.app/);
   assert.match(source, /qa2\.urtruck\.kz/);
   assert.match(source, /apksigner" verify --print-certs/);
-  assert.match(source, /Upload signed production APK for device QA[\s\S]*?actions\/upload-artifact@v4/);
+  assert.match(source, /Encrypt production APK for private device transfer[\s\S]*?openssl enc -aes-256-cbc[\s\S]*?openssl dgst -sha256 -mac HMAC[\s\S]*?openssl pkeyutl -encrypt/);
+  assert.ok(existsSync('.github/keys/device-qa-apk-encryption.pub'));
+  assert.match(source, /Upload encrypted production APK for local device QA[\s\S]*?UrTruck-production-apk-device-qa-encrypted/);
+  assert.doesNotMatch(source, /path: android\/app\/build\/outputs\/apk\/release\/app-release\.apk/);
   assert.match(source, /apk_sha=.*shasum -a 256/);
   assert.match(source, /artifact kind: \\`\$\{artifact_kind\}\\`/);
   assert.match(source, /github\.event_name != 'workflow_dispatch' \|\| inputs\.submit_to_play/);

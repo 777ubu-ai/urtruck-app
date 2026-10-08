@@ -68,7 +68,7 @@ on:
         default: true
         type: boolean
       build_installable_apk:
-        description: "Also produce a signed production APK artifact for device QA"
+        description: "Produce a signed production APK encrypted for this local device-QA session"
         required: true
         default: false
         type: boolean
@@ -279,6 +279,43 @@ jobs:
           echo "Verified signed production APK: com.urtruck.app ${URTRUCK_VERSION_CODE}; host=urtruck.kz"
           echo "APK SHA-256=${apk_sha}"
 
+      - name: Encrypt production APK for private device transfer
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_installable_apk }}
+        run: |
+          set -euo pipefail
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          envelope="$RUNNER_TEMP/urtruck-apk-device-qa"
+          mkdir -m 700 -p "$envelope"
+          aes_key="$(openssl rand -hex 32)"
+          mac_key="$(openssl rand -hex 32)"
+          iv="$(openssl rand -hex 16)"
+          printf '%s%s' "$aes_key" "$mac_key" | xxd -r -p > "$envelope/key-material.bin"
+          openssl enc -aes-256-cbc -K "$aes_key" -iv "$iv" -in "$apk" -out "$envelope/UrTruck.apk.enc"
+          printf '%s' "$iv" | xxd -r -p > "$envelope/iv.bin"
+          cat "$envelope/iv.bin" "$envelope/UrTruck.apk.enc" > "$envelope/authenticated-payload.bin"
+          openssl dgst -sha256 -mac HMAC -macopt "hexkey:${mac_key}" -binary \
+            "$envelope/authenticated-payload.bin" > "$envelope/auth-tag.bin"
+          openssl pkeyutl -encrypt -pubin \
+            -inkey .github/keys/device-qa-apk-encryption.pub \
+            -in "$envelope/key-material.bin" -out "$envelope/UrTruck.apk.key.enc" \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          auth_tag="$(od -An -vtx1 "$envelope/auth-tag.bin" | tr -d ' \n')"
+          cipher_sha="$(shasum -a 256 "$envelope/UrTruck.apk.enc" | awk '{print $1}')"
+          jq -n \
+            --arg source_sha "$GITHUB_SHA" \
+            --arg apk_sha "$APK_SHA256" \
+            --arg ciphertext_sha "$cipher_sha" \
+            --arg iv "$iv" \
+            --arg hmac_sha256 "$auth_tag" \
+            --arg package "com.urtruck.app" \
+            --arg version_name "1.0.9" \
+            --arg api_host "urtruck.kz" \
+            --argjson version_code "$URTRUCK_VERSION_CODE" \
+            '{source_sha:$source_sha, apk_sha256:$apk_sha, ciphertext_sha256:$ciphertext_sha, iv_hex:$iv, hmac_sha256:$hmac_sha256, package:$package, version_name:$version_name, version_code:$version_code, api_host:$api_host}' \
+            > "$envelope/manifest.json"
+          rm -f "$envelope/key-material.bin" "$envelope/iv.bin" "$envelope/auth-tag.bin" "$envelope/authenticated-payload.bin"
+          echo "Encrypted signed APK envelope created; plaintext APK is not uploaded"
+
       - name: Remove keystore from runner
         if: always()
         run: rm -f "$RUNNER_TEMP/urtruck-upload-key.jks"
@@ -292,12 +329,12 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Upload signed production APK for device QA
+      - name: Upload encrypted production APK for local device QA
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_installable_apk }}
         uses: actions/upload-artifact@v4
         with:
-          name: UrTruck-production-apk-device-qa
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: UrTruck-production-apk-device-qa-encrypted
+          path: ${{ runner.temp }}/urtruck-apk-device-qa/*
           retention-days: 7
           if-no-files-found: error
 
@@ -348,7 +385,12 @@ jobs:
           - versionCode: \`${version_code}\`
           - AAB SHA-256: \`${AAB_SHA256:-unknown}\`
           - APK SHA-256: \`${APK_SHA256:-not built}\`
+          - APK public artifact: encrypted; local private key only
           - upload certificate SHA-256: \`${UPLOAD_CERT_SHA256:-unknown}\`
           EOF
           )
           gh api "repos/${GITHUB_REPOSITORY}/issues/247/comments" -f body="$body"
+
+      - name: Remove temporary APK envelope
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/urtruck-apk-device-qa"
