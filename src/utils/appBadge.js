@@ -9,7 +9,7 @@
 // то же, что посчитает BottomNav на своём поле, поэтому двойной сеттер не
 // конфликтует (оба сходятся к одному числу).
 
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
 import { notificationsAPI } from './notificationsAPI';
 
 let refreshVersion = 0;
@@ -29,10 +29,28 @@ function badgeFailureReason(error) {
   return 'native_badge_failed';
 }
 
-export async function setAppIconBadge(total) {
+export async function setAppIconBadge(total, { observedBefore = Date.now() } = {}) {
   const badge = normalizedBadge(total);
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
     return { badge, applied: false, reason: 'platform_unsupported' };
+  }
+  if (Platform.OS === 'android') {
+    const nativeBadge = NativeModules?.UrTruckNotificationBadge;
+    if (nativeBadge?.setCanonicalCount) {
+      try {
+        const result = await nativeBadge.setCanonicalCount(badge, observedBefore);
+        return {
+          badge,
+          applied: result?.applied === true,
+          reason: result?.applied === true ? null : (result?.reason || 'native_badge_failed'),
+        };
+      } catch (error) {
+        return { badge, applied: false, reason: badgeFailureReason(error) };
+      }
+    }
+    // Expo Android's zero path cancels every OS notification. Never use it
+    // as a fallback: scoped read dismissal owns notification removal.
+    if (badge === 0) return { badge, applied: false, reason: 'scoped_badge_reset_unavailable' };
   }
   let Notifications;
   try { Notifications = require('expo-notifications'); } catch {
@@ -57,13 +75,15 @@ export async function setAppIconBadge(total) {
 
 export function clearAppIconBadge() {
   const version = ++refreshVersion;
+  const observedBefore = Date.now();
   latestSuccessfulVersion = version;
-  applyQueue = applyQueue.then(() => setAppIconBadge(0));
+  applyQueue = applyQueue.then(() => setAppIconBadge(0, { observedBefore }));
   return applyQueue;
 }
 
 export async function refreshAppIconBadge() {
   const version = ++refreshVersion;
+  const observedBefore = Date.now();
   try {
     const canonical = await notificationsAPI.badge();
     const badge = normalizedBadge(canonical?.badge);
@@ -75,7 +95,7 @@ export async function refreshAppIconBadge() {
       if (version < latestSuccessfulVersion) {
         return { badge, applied: false, reason: 'superseded' };
       }
-      return setAppIconBadge(badge);
+      return setAppIconBadge(badge, { observedBefore });
     });
     applyQueue = apply.catch(() => {});
     return apply;

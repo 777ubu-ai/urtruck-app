@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -119,4 +119,48 @@ test('network failure preserves the prior badge instead of applying zero', async
     restore();
     globalThis.fetch = previousFetch;
   }
+});
+
+test('Android zero never calls Expo cancelAll fallback when the scoped bridge is unavailable', async () => {
+  const calls = [];
+  const { module, restore } = await loadBadgeWith(async (value) => { calls.push(value); return true; });
+  try {
+    assert.deepEqual(await module.setAppIconBadge(0), {
+      badge: 0, applied: false, reason: 'scoped_badge_reset_unavailable',
+    });
+    assert.deepEqual(calls, []);
+  } finally { restore(); }
+});
+
+test('native zero changes only the badge and preserves presented notifications', async () => {
+  const previous = NativeModules.UrTruckNotificationBadge;
+  const notifications = [{ room: 'other' }, { room: 'newer' }];
+  const writes = [];
+  NativeModules.UrTruckNotificationBadge = {
+    setCanonicalCount: async (count, observedBefore) => {
+      writes.push({ count, observedBefore });
+      return { applied: true, reason: null };
+    },
+  };
+  const { module, restore } = await loadBadgeWith(async () => { notifications.length = 0; return true; });
+  try {
+    assert.deepEqual(await module.setAppIconBadge(0, { observedBefore: 1234 }), {
+      badge: 0, applied: true, reason: null,
+    });
+    assert.deepEqual(writes, [{ count: 0, observedBefore: 1234 }]);
+    assert.equal(notifications.length, 2);
+  } finally { restore(); NativeModules.UrTruckNotificationBadge = previous; }
+});
+
+test('native rejection of a stale canonical snapshot is not called launcher failure', async () => {
+  const previous = NativeModules.UrTruckNotificationBadge;
+  NativeModules.UrTruckNotificationBadge = {
+    setCanonicalCount: async () => ({ applied: false, reason: 'superseded' }),
+  };
+  const { module, restore } = await loadBadgeWith(async () => { throw new Error('must not fall back'); });
+  try {
+    assert.deepEqual(await module.setAppIconBadge(12), {
+      badge: 12, applied: false, reason: 'superseded',
+    });
+  } finally { restore(); NativeModules.UrTruckNotificationBadge = previous; }
 });

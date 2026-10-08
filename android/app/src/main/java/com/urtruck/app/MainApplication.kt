@@ -1,6 +1,9 @@
 package com.urtruck.app
 
 import android.app.Application
+import android.os.Build
+import android.util.Log
+import com.google.firebase.messaging.FirebaseMessaging
 import android.content.res.Configuration
 
 import com.facebook.react.PackageList
@@ -23,6 +26,7 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           // Native system-bars bridge used by the fullscreen driving UI.
           add(UrTruckSystemBarsPackage())
+          add(UrTruckNotificationBadgePackage())
         }
     )
   }
@@ -33,6 +37,14 @@ class MainApplication : Application(), ReactApplication {
       ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
     } catch (e: IllegalArgumentException) {
       ReleaseLevel.STABLE
+    }
+    // Existing installs can retain the SDK proxy preference. Explicitly keep
+    // FCM in our single Expo-derived handler for background badge reconciliation.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      try {
+        FirebaseMessaging.getInstance().setNotificationDelegationEnabled(false)
+          .addOnFailureListener { Log.d("UrTruckBadge", "FCM delegation update failed") }
+      } catch (_: Exception) { Log.d("UrTruckBadge", "FCM delegation update unavailable") }
     }
     loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
