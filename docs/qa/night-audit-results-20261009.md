@@ -61,7 +61,7 @@ Backend runner стартовал на bfada6c9, завершился после
 | Read-only production plan safety | 4/4 PASS | Source guards, отсутствие runtime writes, private output, запрет symlink escape |
 | BottomNav + appBadge runtime | 14/14 PASS | Выполняются реальные effect callbacks; superseded poll/native/notification, cleanup, сохранение canonical при OEM отказе |
 | Full QA после всех code fixes, 37851244139 | SUCCESS, 5/5 jobs | Точный 0449116f, включает BottomNav/read/ТТН/AX/composer; 29 desktop PASS / 2 production smoke SKIP, 38 mobile viewport PASS |
-| Production interpreter compile-only | 2 файла PASS, Python 3.12.3 | Не импортировал/не исполнял API, не писал runtime, не перезапускал API |
+| Production interpreter compile-only | 2 + 1 файла PASS, Python 3.12.3 | Не импортировал/не исполнял API, не писал runtime, не перезапускал API |
 
 Native-кандидаты отслеживаются отдельно в night-audit-candidate-20261009.md. Факт запуска или подготовки не равен PASS.
 
@@ -107,7 +107,7 @@ Read-only AST проверка фактического runtime подтверд
 - Предлагаемый api/notifications.py: 962d7c99409fe4ebfe95622e1c11636ef6ac915fe643a51b5e297d9cefbd87dc.
 - Скрипт scripts/ops/production_chat_read_boundaries.py только готовит план/приватный кандидат; он не имеет apply/restart операции.
 - Ночное ТЗ, разделы 2 и 14, требует отдельного разрешения для нового production deploy; разрешение APNs его не заменяет. Этот patch и ТТН остаются FIXED_CODE, не DEPLOYED.
-- Перед разрешённым применением: перепроверить все три защищённых fingerprints, private backup двух API-файлов и режимов, сохранить diff/manifest/rollback, применить только согласованный patch, перезапустить только API, проверить health/access/AI/push, затем наблюдение 15/60/180 минут. Не объявлять это наблюдение выполненным заранее.
+- Перед разрешённым применением: перепроверить защищённые fingerprints и отдельный documents fingerprint, private backup согласованных трёх API-файлов и режимов, сохранить diff/manifest/rollback, применить только согласованный patch, перезапустить только API, проверить health/access/AI/push, затем наблюдение 15/60/180 минут. Не объявлять это наблюдение выполненным заранее.
 
 ## Что нужно для честных 10/10
 - Установить следующий внутренний iPhone build с проверенным SHA; 91 не перезаписывать.
@@ -151,3 +151,7 @@ Timestamp 2026-10-08 21:19:41 UTC; при read-only проверке is_read=0. 
 - Промежуточный iPhone build 93 (Actions 37847554527), source f241f855, успешно загружен в TestFlight. Локально проверены IPA SHA-256 7f7eda62c739dc1ae91da5cfcdacbc811987a7c373d7093ca9cb2e9b5ac6f72e, codesign strict, com.urtruck.app, production host и aps-environment=production. На телефон не установлен.
 - Промежуточный Android 213658419 (Actions 37847561121), source f241f855, успешно загружен только в internal; AAB SHA-256 fef0007fb786272b605659fd323dcb23b4f2f6317fae66c15c679a3fc02b2532, manifest/package/version и один FCM handler проверены runner. Локальный AAB transfer остановлен как ненужный после N-19; повторное скачивание не запускается.
 - Итоговые source 0449116f: iOS Actions 37851771645 (workflow 5433e7e7227adade694ef00ccca1aa7ef08485fa), Android Actions 37851776201 (workflow cbce14aeed2b31d703a31bcfc10bb6cc0474df0e). Запущены только после CI 37851244139 SUCCESS и локальных gates. Выполняются; ожидаемый следующий iOS номер 94, фактический номер ещё не объявлен. iOS проверяет production APNs entitlement до submit, Android min version >213658419. Никакого public rollout.
+
+
+### Дополнительная проверка фактической ТТН production
+Read-only 2026-10-08T22:13:34 UTC: endpoint PDF без авторизации отвечает 401, participant gate присутствует; HTML escaping отсутствует, price=1500 присутствует. Runtime documents.py SHA-256 2df663fd956cf9a7856e6b849f31ffc16e0753328b550ce5bdae4238872bb799 точно совпадает с тестированным baseline перед a4e05b20. Подготовлен третий файл review-кандидата, SHA-256 679607ab1aa011592819c3edee85a429065e3d088d3414c5645de3922fbbc112; diff/guard manifest сохранены рядом с read-boundaries review. Compile-only этого файла на production Python 3.12.3 PASS; imports/код не исполнялись, runtime не записан. Применение всех трёх файлов требует отдельного разрешения.
