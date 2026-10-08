@@ -39,3 +39,14 @@ Native timestamp policy uses provider sent_time and the device request-start sna
 Primary API references: https://github.com/firebase/firebase-android-sdk/blob/main/firebase-messaging/src/main/java/com/google/firebase/messaging/FirebaseMessagingService.java ; https://firebase.google.com/docs/reference/android/com/google/firebase/messaging/FirebaseMessaging .
 
 Follow-up local gates: 31 JS/push/read/plugin tests PASS; 4 merged-manifest guard tests PASS; lint477 PASS; Graphify AST-only10470 nodes/23211 edges, generated graph removed. SDK notificationCount fallback verified against actual deployed gateway (custom data.badge is absent); covered by native policy test. Native release gate runs5 policy tests and checks exactly one private handler in the actual merged release manifest. Physical final acceptance remains pending.
+
+## Native candidate 213645294: verified installation checkpoint
+Actions37820097262 SUCCESS, source84eb4ebaae04dc9e6e6dc7d0173bce454be1553c. Release Kotlin unit task and actual merged-manifest single-handler gate PASS; internal upload SUCCESS. Download-only run37822984656 SUCCESS.
+Encrypted artifact11569608582 SHA2569d30345f549fc754a5221383ba2bc575d82a86474b4b0f7dd62b1d837cc46174; archive digest/CRC, envelope HMAC, ciphertext/plaintext hashes PASS. APK SHA256306f445526839c1cc95a3eeb6e36519cceb7b3aeb2c403334d3fa67fef5a6668. Google app-signing certificate4424ed7c..., package com.urtruck.app, embedded production host/flavor/package PASS. Actual APK manifest has one private UrTruckFirebaseMessagingService and notification delegation disabled.
+OPPO install-r SUCCESS:213640023→213645294, firstInstallTime2026-10-06 00:46:51 and dataDir unchanged. Huawei installation awaits an on-device Huawei ID password; no password retrieved or requested in chat, no security bypass or data deletion. Do not claim native final physical push acceptance before Huawei update and final matrix.
+Private evidence: qa-evidence/push-213645294-20261008.
+
+## Added country flags / iPhone investigation
+12 targeted flag coverage/visual-contract tests PASS using the existing frontend loader and Node22. Initial plain Node invocation lacked that loader and failed to load React Native Flow; this was a test invocation error, not a flag failure.
+All41 ISO codes offered by src/utils/countries.js resolve to bundled SVG. CountryFlag, countryFlags, countries and RouteLine are byte-identical between current candidate and source6bba4163 of verified iOS build91. TestFlight run37789276686 manifest confirms version1.0.9/build91/source6bba4163/production; workflow head eb2a895a is not the app source.
+OPPO physical screenshots show country flags in route cards (CN/RU/BE/DE) and country picker (CN/KZ/UZ/KG/RU/BY/TJ/TM). Actual iPhone installed version and rendering NOT CHECKED: devicectl lists iPhone15ProMax unavailable. Missing flags on the owner's iPhone remain unconfirmed; do not assume old version or create a redundant build.
