@@ -99,10 +99,24 @@ jobs:
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      URTRUCK_SOURCE_SHA: f241f8557c6e695208758d809718f949b163be65
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: f241f8557c6e695208758d809718f949b163be65
+
+      - name: Guard exact internal candidate
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = build/android-production-f241f855-20261009
+          test "$(git rev-parse HEAD)" = "$URTRUCK_SOURCE_SHA"
+          test "${{ inputs.track }}" = internal
+          test "${{ inputs.status }}" = completed
+          test "${{ inputs.submit_to_play }}" = true
+          test "${{ inputs.build_installable_apk }}" = false
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -182,7 +196,7 @@ jobs:
           base_epoch=1577836800
           now_epoch=$(date -u +%s)
           version_code=$((now_epoch - base_epoch))
-          installed_version_code=213298108
+          installed_version_code=213645294
           if [ "$version_code" -le "$installed_version_code" ] || [ "$version_code" -ge 2100000000 ]; then
             echo "::error::Computed Android versionCode ${version_code} must exceed installed code ${installed_version_code} and stay within Google Play range"
             exit 1
@@ -263,7 +277,7 @@ jobs:
           test -n "$cert_sha"
           echo "AAB_SHA256=${aab_sha}" >> "$GITHUB_ENV"
           echo "UPLOAD_CERT_SHA256=${cert_sha}" >> "$GITHUB_ENV"
-          echo "Source SHA=${GITHUB_SHA}"
+          echo "Source SHA=${URTRUCK_SOURCE_SHA}"
           echo "AAB SHA-256=${aab_sha}"
           echo "Upload certificate SHA-256=${cert_sha}"
 
@@ -316,7 +330,7 @@ jobs:
           auth_tag="$(od -An -vtx1 "$envelope/auth-tag.bin" | tr -d ' \n')"
           cipher_sha="$(shasum -a 256 "$envelope/UrTruck.apk.enc" | awk '{print $1}')"
           jq -n \
-            --arg source_sha "$GITHUB_SHA" \
+            --arg source_sha "$URTRUCK_SOURCE_SHA" \
             --arg apk_sha "$APK_SHA256" \
             --arg ciphertext_sha "$cipher_sha" \
             --arg iv "$iv" \
@@ -386,7 +400,7 @@ jobs:
           fi
           body=$(cat <<EOF
           ### Android release artifact — ${RESULT^^}
-          - sha: \`${GITHUB_SHA}\`
+          - sha: \`${URTRUCK_SOURCE_SHA}\`
           - workflow: \`Deploy Android to Google Play\`
           - run: ${RUN_URL}
           - result: \`${RESULT}\`
@@ -403,7 +417,7 @@ jobs:
           - upload certificate SHA-256: \`${UPLOAD_CERT_SHA256:-unknown}\`
           EOF
           )
-          gh api "repos/${GITHUB_REPOSITORY}/issues/247/comments" -f body="$body"
+          printf '%s\n' "$body" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary APK envelope
         if: always()
