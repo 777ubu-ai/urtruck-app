@@ -38,15 +38,21 @@ jobs:
       - name: Checkout the requested audit source
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.AUDIT_SOURCE_SHA }}
-          fetch-depth: 1
+          # The workflow and test code must come from the trusted workflow
+          # revision, never from the user-supplied audit SHA. That SHA is
+          # metadata only and is validated as an ancestor below.
+          ref: ${{ github.sha }}
+          fetch-depth: 0
 
       - name: Require the exact branch and source
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF_NAME" = "fix/voice-stt-translation-20260925"
-          test "$(git rev-parse HEAD)" = "$AUDIT_SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          [[ "$AUDIT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "$AUDIT_SOURCE_SHA^{commit}"
+          git merge-base --is-ancestor "$AUDIT_SOURCE_SHA" "$GITHUB_SHA"
 
       - name: Verify the read-only workflow contract
         run: node --test tests/frontend/test_qa2_server_readonly_audit_workflow.mjs
