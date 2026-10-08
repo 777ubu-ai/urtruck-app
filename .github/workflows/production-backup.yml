@@ -29,7 +29,27 @@ jobs:
       - name: Install SSH client
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
 
+      - uses: actions/checkout@v4
+
+      - name: Export Supabase Storage objects
+        id: supabase_export
+        env:
+          SUPABASE_URL: https://pymddxenwtjcbmrafvnc.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OUTPUT_DIR: ${{ runner.temp }}/urtruck-supabase-storage-export
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/export_supabase_storage.py
+          summary="$OUTPUT_DIR/summary.json"
+          echo "archive_path=$(jq -r .archive_path "$summary")" >> "$GITHUB_OUTPUT"
+          echo "archive_bytes=$(jq -r .archive_bytes "$summary")" >> "$GITHUB_OUTPUT"
+          echo "archive_sha256=$(jq -r .archive_sha256 "$summary")" >> "$GITHUB_OUTPUT"
+          echo "bucket_count=$(jq -r .bucket_count "$summary")" >> "$GITHUB_OUTPUT"
+          echo "object_count=$(jq -r .object_count "$summary")" >> "$GITHUB_OUTPUT"
+          echo "total_bytes=$(jq -r .total_bytes "$summary")" >> "$GITHUB_OUTPUT"
+
       - name: Create and verify production backup
+        id: create_backup
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -38,8 +58,15 @@ jobs:
           BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
           BACKUP_NOTE: ${{ inputs.note }}
           PRESERVE_EXISTING: ${{ inputs.preserve_existing }}
+          SUPABASE_BUNDLE_BYTES: ${{ steps.supabase_export.outputs.archive_bytes }}
+          SUPABASE_BUCKET_COUNT: ${{ steps.supabase_export.outputs.bucket_count }}
+          SUPABASE_OBJECT_COUNT: ${{ steps.supabase_export.outputs.object_count }}
+          SUPABASE_TOTAL_BYTES: ${{ steps.supabase_export.outputs.total_bytes }}
+          SUPABASE_BUNDLE_SHA256: ${{ steps.supabase_export.outputs.archive_sha256 }}
         run: |
           set -euo pipefail
+          BACKUP_STAMP="$(date -u +%Y%m%d-%H%M%S)"
+          echo "stamp=$BACKUP_STAMP" >> "$GITHUB_OUTPUT"
           test -n "$SERVER_HOST"
           test -n "$SERVER_USER"
           test -n "$SERVER_PASS"
@@ -58,11 +85,15 @@ jobs:
             -o StrictHostKeyChecking=no \
             -o ServerAliveInterval=20 \
             "$SERVER_USER@$SERVER_HOST" \
-            "REMOTE_DIR='$REMOTE_DIR' BACKEND_DIR='$BACKEND_DIR' BACKUP_NOTE='$BACKUP_NOTE' PRESERVE_EXISTING='$PRESERVE_EXISTING' bash -s" <<'REMOTE'
+            "REMOTE_DIR='$REMOTE_DIR' BACKEND_DIR='$BACKEND_DIR' BACKUP_NOTE='$BACKUP_NOTE' PRESERVE_EXISTING='$PRESERVE_EXISTING' BACKUP_STAMP='$BACKUP_STAMP' SUPABASE_BUNDLE_BYTES='$SUPABASE_BUNDLE_BYTES' SUPABASE_BUCKET_COUNT='$SUPABASE_BUCKET_COUNT' SUPABASE_OBJECT_COUNT='$SUPABASE_OBJECT_COUNT' SUPABASE_TOTAL_BYTES='$SUPABASE_TOTAL_BYTES' SUPABASE_BUNDLE_SHA256='$SUPABASE_BUNDLE_SHA256' bash -s" <<'REMOTE'
           set -euo pipefail
           umask 077
 
-          STAMP="$(date -u +%Y%m%d-%H%M%S)"
+          [[ "$SUPABASE_BUNDLE_BYTES" =~ ^[0-9]+$ ]]
+          [[ "$SUPABASE_BUCKET_COUNT" =~ ^[0-9]+$ && "$SUPABASE_OBJECT_COUNT" =~ ^[0-9]+$ && "$SUPABASE_TOTAL_BYTES" =~ ^[0-9]+$ ]]
+          [[ "$SUPABASE_BUNDLE_SHA256" =~ ^[a-f0-9]{64}$ ]]
+
+          STAMP="$BACKUP_STAMP"
           ROOT="$HOME/urtruck-backups"
           DEST="$ROOT/$STAMP"
           mkdir -p "$ROOT"
@@ -106,6 +137,7 @@ jobs:
           add_size "$BACKEND_DIR"
           add_size "$BACKEND_DIR/.env"
           add_size "$REMOTE_DIR/.env"
+          ESTIMATED_BYTES=$((ESTIMATED_BYTES + SUPABASE_BUNDLE_BYTES))
           STORAGE_SOURCE=""
           for storage_dir in \
             "$BACKEND_DIR/storage" \
@@ -130,6 +162,11 @@ jobs:
           echo "note: ${BACKUP_NOTE:-manual}" >> "$DEST/manifest.txt"
           echo "remote_dir: $REMOTE_DIR" >> "$DEST/manifest.txt"
           echo "backend_dir: $BACKEND_DIR" >> "$DEST/manifest.txt"
+          echo "supabase_storage_project: pymddxenwtjcbmrafvnc" >> "$DEST/manifest.txt"
+          echo "supabase_bucket_count: $SUPABASE_BUCKET_COUNT" >> "$DEST/manifest.txt"
+          echo "supabase_object_count: $SUPABASE_OBJECT_COUNT" >> "$DEST/manifest.txt"
+          echo "supabase_object_bytes: $SUPABASE_TOTAL_BYTES" >> "$DEST/manifest.txt"
+          echo "supabase_archive_sha256: $SUPABASE_BUNDLE_SHA256" >> "$DEST/manifest.txt"
 
           mkdir -p "$DEST/database"
           python3 - "$DB_PATH" "$DEST/database/production.db" <<'PY'
@@ -164,8 +201,8 @@ jobs:
             exit 1
           fi
 
-          # Record whether storage is local or an external provider; this backup
-          # only contains local storage bytes and never claims to copy cloud buckets.
+          # Archive any server-local storage directory. The separate verified
+          # Supabase export step adds external bucket bytes and object metadata.
           mkdir -p "$DEST/storage"
           storage_found=0
           if [ -n "$STORAGE_SOURCE" ]; then
@@ -225,3 +262,66 @@ jobs:
           echo "BACKUP_OK=$STAMP"
           echo "Backup verified: $DEST"
           REMOTE
+
+      - name: Attach and verify Supabase Storage backup
+        id: attach_storage
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASS: ${{ secrets.SERVER_PASS }}
+          BACKUP_STAMP: ${{ steps.create_backup.outputs.stamp }}
+          BUNDLE_PATH: ${{ steps.supabase_export.outputs.archive_path }}
+          BUNDLE_SHA256: ${{ steps.supabase_export.outputs.archive_sha256 }}
+          BUNDLE_BYTES: ${{ steps.supabase_export.outputs.archive_bytes }}
+          BUCKET_COUNT: ${{ steps.supabase_export.outputs.bucket_count }}
+          OBJECT_COUNT: ${{ steps.supabase_export.outputs.object_count }}
+          TOTAL_BYTES: ${{ steps.supabase_export.outputs.total_bytes }}
+        run: |
+          set -euo pipefail
+          [[ "$BACKUP_STAMP" =~ ^[0-9]{8}-[0-9]{6}$ ]]
+          [[ "$BUNDLE_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$BUNDLE_BYTES" =~ ^[0-9]+$ && "$OBJECT_COUNT" =~ ^[0-9]+$ && "$TOTAL_BYTES" =~ ^[0-9]+$ ]]
+          export SSHPASS="$SERVER_PASS"
+          unset SERVER_PASS
+          REMOTE_HOME=$(sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'printf %s "$HOME"')
+          [[ "$REMOTE_HOME" =~ ^/[A-Za-z0-9._/-]+$ ]]
+          DEST="$REMOTE_HOME/urtruck-backups/$BACKUP_STAMP"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "DEST='$DEST' BUNDLE_BYTES='$BUNDLE_BYTES' bash -s" <<'REMOTE_PREFLIGHT'
+          set -euo pipefail
+          test -d "$DEST"
+          test -s "$DEST/SHA256SUMS"
+          sha256sum -c "$DEST/SHA256SUMS" >/dev/null
+          test ! -e "$DEST/storage/supabase-storage-backup.tar.gz"
+          AVAILABLE_BYTES=$(df -PB1 "$DEST" | awk 'NR==2 {print $4}')
+          REQUIRED_BYTES=$((BUNDLE_BYTES + BUNDLE_BYTES / 5 + 10485760))
+          printf 'Supabase backup preflight: bundle_bytes=%s required_with_margin=%s available_bytes=%s\n' \
+            "$BUNDLE_BYTES" "$REQUIRED_BYTES" "$AVAILABLE_BYTES"
+          if [ "$AVAILABLE_BYTES" -lt "$REQUIRED_BYTES" ]; then
+            echo "ERROR: insufficient free space for Supabase Storage snapshot" >&2
+            exit 1
+          fi
+          REMOTE_PREFLIGHT
+          scp -o StrictHostKeyChecking=no "$BUNDLE_PATH" \
+            "$SERVER_USER@$SERVER_HOST:$DEST/storage/supabase-storage-backup.tar.gz"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+            "DEST='$DEST' BUNDLE_SHA256='$BUNDLE_SHA256' BUCKET_COUNT='$BUCKET_COUNT' OBJECT_COUNT='$OBJECT_COUNT' TOTAL_BYTES='$TOTAL_BYTES' bash -s" <<'REMOTE_VERIFY'
+          set -euo pipefail
+          ARCHIVE="$DEST/storage/supabase-storage-backup.tar.gz"
+          test -s "$ARCHIVE"
+          chmod 600 "$ARCHIVE"
+          test "$(stat -c '%a' "$DEST")" = 700
+          test "$(stat -c '%a' "$ARCHIVE")" = 600
+          tar -tzf "$ARCHIVE" >/dev/null
+          ACTUAL_SHA256=$(sha256sum "$ARCHIVE" | awk '{print $1}')
+          test "$ACTUAL_SHA256" = "$BUNDLE_SHA256"
+          echo "supabase_storage_archive: storage/supabase-storage-backup.tar.gz" >> "$DEST/manifest.txt"
+          echo "supabase_bucket_count: $BUCKET_COUNT" >> "$DEST/manifest.txt"
+          echo "supabase_object_count: $OBJECT_COUNT" >> "$DEST/manifest.txt"
+          echo "supabase_object_bytes: $TOTAL_BYTES" >> "$DEST/manifest.txt"
+          du -sh "$DEST" > "$DEST/size.txt"
+          find "$DEST" -type f ! -name SHA256SUMS ! -name SHA256SUMS.new -print0 | sort -z | xargs -0 sha256sum > "$DEST/SHA256SUMS.new"
+          mv "$DEST/SHA256SUMS.new" "$DEST/SHA256SUMS"
+          sha256sum -c "$DEST/SHA256SUMS"
+          echo "Supabase Storage backup verified: buckets=$BUCKET_COUNT objects=$OBJECT_COUNT bytes=$TOTAL_BYTES sha256=$ACTUAL_SHA256"
+          REMOTE_VERIFY
