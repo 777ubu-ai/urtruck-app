@@ -49,3 +49,20 @@
 - Прежние iOS 37845195639 / Android 37846232177 остановлены до завершения, поскольку frozen source содержит только 248 кодов. Проверить окончательный cancelled и skipped submit перед следующими запусками.
 - EAS remote buildNumber теперь 92 (зарезервирован отменяемой сборкой). Следующий свободный номер ожидается 93; guard должен быть >92. Не переиспользовать 91/92.
 - Rollback: revert отдельного AX commit. Backend и production runtime в этой правке не меняются.
+
+## PRE-FLIGHT: чтение и новое сообщение
+- Baseline: 159cae9a, мобильный frozen source f241f855. Graphify AST-only обновлён перед изменением chat/notifications.
+- Изолированная БД воспроизвела 3 FAIL при 25 PASS: сообщение между SELECT/UPDATE потеряло unread; поздний Bell event прочитан до показа; пагинация старой страницы читала более новые строки.
+- Scope: ограничить read-marking границей возвращённых message IDs и снимком notification IDs, сохранив room/user guards и прежний API-путь. Современные chat event keys также ограничить по message ID; legacy events ограничить снимком notification IDs.
+- Никаких миграций, новых credentials или production writes. Обновление API в этой операции не выполняется.
+- Мобильный код не меняется; текущие iOS/Android f241f855 builds не пересобирать из-за отдельного backend исправления.
+- Проверки: реальные SQLite гонки, страница истории, notification URL/user isolation, canonical backend suite. Откат: revert отдельного race commit.
+
+## Итоговые frozen мобильные кандидаты
+- Общий app source: f241f8557c6e695208758d809718f949b163be65 (включает #506/#507/#508, composer, STT/document readiness, настоящий полный 249-каталог).
+- iOS build-ветка build/ios-production-f241f855-20261009; workflow SHA 5cc2f36eb35a5b6b279388d36dc873f8308da419; Actions 37847554527, guard >92, ожидается 93.
+- Android build-ветка build/android-production-f241f855-20261009; workflow SHA 7ada9d933d61cfb933b348741d8509a6d860711e; Actions 37847561121, только internal, один AAB.
+- Первые 37845195639 / 37846232177 — окончательно cancelled; Submit IPA / Upload to Google Play — skipped. Ничего из неполного каталога не загружено в магазины.
+- Повторные frontend 1108/1108, target страны 11/11, QA Center/lint/i18n PASS; E2E 23/23 и locale 8/8 после AX; Full QA 37847548191 SUCCESS.
+- Backend 08f1d467 не меняет mobile файлы f241f855. Повторный canonical backend 130 модулей PASS. Read-only production patch plan 08c9dbb3: 4/4 safety; две кандидатные API-копии compile-only проверены production Python 3.12.3, runtime не изменялся.
+- Следующее изменение production возможно только с отдельным разрешением по разделам 2/14 ночного ТЗ. Старые AI/APNs backups/source/env не тронуты.

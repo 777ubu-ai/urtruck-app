@@ -5,7 +5,7 @@
 ## Baseline и защищённый объём
 - Репозиторий: 777ubu-ai/urtruck-app, ветка fix/route-country-list-20261008.
 - Начало: a686d5b308c727411e099133347f159086200293.
-- Проверенный клиентский код: 4d93962171c9ff2caff5e9f4327ea68595625530. Итоговый код с отдельным backend ТТН исправлением: a4e05b2060812271b0110933e1b34eecacf338e4.
+- Итоговый frozen app source: f241f8557c6e695208758d809718f949b163be65. Последующий отдельный backend read-boundaries patch: 08f1d467923b1e701dbc06803e6a6f6d9c79dfaf; read-only production plan: 08c9dbb30566332a5a626c23c24e439d0162ddcd.
 - Последовательные PR #506, #507, #508 не слиты; предыдущие исправления входят в кандидата.
 - Прочитаны комплексное ТЗ 10/10, «Эконом Токенов», AGENTS.md и действующие каноны репозитория. Ночное задание: night-audit-assignment-20261009.md.
 - Работа выполнялась в существующей папке /private/tmp/urtruck-ai-recovery-20261008; проект заново не создавался.
@@ -22,18 +22,21 @@
 
 5. **Зарегистрированный API ТТН.** Убраны фиксированная цена 1500 и подмена перевозчика профилем запрашивающего; HTML/PDF используют один проверенный набор полей рейса, включая доступный объём и транзит. Динамический текст экранирован для HTML и PDF renderer. Доступ участника проверяется до чтения профиля. Текущих вызовов этого endpoint в src не найдено; production patch не применён. Это исправление API, не заявление о живом chat-attachment дефекте.
 
-Коммиты исправлений: 4cccfcf7, ef433d1e, a6a93e93, bfada6c9, 4d939621, a4e05b20.
+6. **AX и строгие 249.** Проверка обнаружила, что прежний общий справочник содержал 248 кодов, вопреки прошлым отчётам. Добавлены Аландские острова (AX) и RU/ZH/EN/KK names. Новый test проверяет ровно 249, все 996 name/search комбинаций и 249 ISO searches с отключённым Intl.DisplayNames. Флаг AX уже был bundled; renderer не изменён.
+7. **Гонка чтения.** Новое сообщение между SELECT/UPDATE, поздний Bell event и запрос старой страницы теряли unread. Три новых теста воспроизвели ошибку; теперь read-marking ограничен возвращённым message ID и снимком notification IDs. Chat event keys ограничены также по message ID. Старые events без ключа ограничены снимком notification IDs. API-пути, участники и схема сохранены.
+
+Коммиты исправлений: 4cccfcf7, ef433d1e, a6a93e93, bfada6c9, 4d939621, a4e05b20, f241f855, 08f1d467.
 
 ## Фактически выполненные проверки
 
 | Проверка | Результат | Граница доказательства |
 |---|---|---|
-| Frontend unit, финальный 4d939621 | 1107/1107 PASS | JS-тесты, включая реальные callbacks и новые regressions |
-| ESLint, финальный 4d939621 | PASS | Статический анализ |
-| qa:center:quick, финальный 4d939621 | PASS | Все входящие gates, включая production web build |
+| Frontend unit, финальный f241f855 | 1108/1108 PASS | JS-тесты, включая реальные callbacks и новые regressions |
+| ESLint, финальный f241f855 | PASS | Статический анализ |
+| qa:center:quick, финальный f241f855 | PASS | Все входящие gates, включая production web build |
 | qa:i18n-duplicates | PASS | Проверка словарей |
 | Канонический backend/API runner | PASS, все 130 модулей | Изолированная SQLite, тестовое окружение; не production DB |
-| Обязательные web E2E | 23/23 PASS | Изолированный локальный API и финальный web bundle; часть recovery/crash тестов использует предусмотренные mocks |
+| Обязательные web E2E | 23/23 PASS | Повторно после AX на 159cae9a (код f241f855), до отдельного backend read patch; изолированный локальный API и финальный bundle; часть recovery/crash тестов использует предусмотренные mocks |
 | runtimeLocaleLeakProbe | 8/8 PASS | RU/ZH/EN/KK × два маршрута; анонимный app chrome, не все авторизованные экраны |
 | APNs operations tests | 6/6 PASS | Изолированные операции настройки/отката, не доставка APNs на телефон |
 | Kotlin badge policy | 5/5 PASS | Реальные исходники policy и JUnit; не новая APK и не значок launcher |
@@ -50,6 +53,11 @@ Backend runner стартовал на bfada6c9, завершился после
 | Облачный Full QA Actions 37845188843 | SUCCESS, 5/5 jobs | b9e301bc: клиент 4d939621, до отдельного backend ТТН patch |
 | Desktop Playwright облачного аудита | 29 PASS, 2 SKIP | Пропущены только два production-smoke API сценария, локальный прогон не вызывал production |
 | Mobile Playwright облачного аудита | 38 PASS | Mobile browser viewport; не реальные iOS/Huawei/OPPO |
+| Full QA после AX, Actions 37847548191 | SUCCESS, 5/5 jobs | 159cae9a, клиентский source f241f855; до read-boundaries patch |
+| Read race / pagination / notification paths | 28/28 PASS | До patch 3 FAIL / 25 PASS; реальные отдельные SQLite connections и позднее событие |
+| Canonical backend после read patch | PASS, 130 модулей | Точный 08f1d467, 135.19 с |
+| Read-only production plan safety | 4/4 PASS | Source guards, отсутствие runtime writes, private output, запрет symlink escape |
+| Production interpreter compile-only | 2 файла PASS, Python 3.12.3 | Не импортировал/не исполнял API, не писал runtime, не перезапускал API |
 
 Native-кандидаты отслеживаются отдельно в night-audit-candidate-20261009.md. Факт запуска или подготовки не равен PASS.
 
@@ -87,6 +95,16 @@ Huawei и iPhone видят обмен в новой комнате: ранее 
 
 iPhone по USB недоступен, booted simulator отсутствует. Авторизация Huawei ID не обходилась, OPPO не разблокировался обходным способом, приложения не удалялись. Реальный RU↔ZH голосовой прогон ещё не проведён. Озвученный синтезатором Mac текст не засчитывается как достаточная проверка настоящей речи.
 
+## Production read-boundaries: подготовлено, не применено
+Read-only AST проверка фактического runtime подтвердила тот же неограниченный UPDATE chat_messages и отсутствие notification snapshot. Полный SHA сервера по-прежнему UNKNOWN: отдельные файлы не равны HEAD репозитория.
+
+Подготовлен точечный review-кандидат на копии фактических API-файлов. Source guards требуют исходные SHA-256 выше; все функции, кроме get_messages и mark_notifications_read_by_urls, сохранены с идентичным AST, включая голосовые, доступы и badge. Приватный diff/manifest находятся в qa-evidence/night-audit-20261009/production-read-review.
+- Предлагаемый api/chat.py: 26d2cea4fb9ed1b23084a661e15f72f3d8a94a7e2efc6acca183c834d476a370.
+- Предлагаемый api/notifications.py: 962d7c99409fe4ebfe95622e1c11636ef6ac915fe643a51b5e297d9cefbd87dc.
+- Скрипт scripts/ops/production_chat_read_boundaries.py только готовит план/приватный кандидат; он не имеет apply/restart операции.
+- Ночное ТЗ, разделы 2 и 14, требует отдельного разрешения для нового production deploy; разрешение APNs его не заменяет. Этот patch и ТТН остаются FIXED_CODE, не DEPLOYED.
+- Перед разрешённым применением: перепроверить все три защищённых fingerprints, private backup двух API-файлов и режимов, сохранить diff/manifest/rollback, применить только согласованный patch, перезапустить только API, проверить health/access/AI/push, затем наблюдение 15/60/180 минут. Не объявлять это наблюдение выполненным заранее.
+
 ## Что нужно для честных 10/10
 - Установить следующий внутренний iPhone build с проверенным SHA; 91 не перезаписывать.
 - На iPhone проверить последовательность 1 → 2 → 3 → 4 → 5 строк, авто-переносы без Enter, большую вставку, удаление до одной строки, смену комнаты, клавиатуру и черновики. После четвёртой высота постоянна, курсор виден, поле прокручивается.
@@ -101,7 +119,7 @@ iPhone по USB недоступен, booted simulator отсутствует. �
 Логи, result JSON, исходные XML/PNG устройств и affected graph находятся у владельца:
  /Users/bahitzanbahitzanovic/Desktop/URTRUCK_MAIN_PROJECT/qa-evidence/night-audit-20261009
 
-Финальные frontend/E2E: final-4d939621. Backend: final-bfada6c9/backend-isolated.log. Kotlin: kotlin-policy.log.
+Финальные frontend/E2E: final-AX. Backend после ТТН: final-documents; после read patch: final-read-race/backend-isolated.log. Kotlin: kotlin-policy.log. Исторические проверки 4d939621 сохранены отдельно. Первые кандидаты 37845195639/37846232177 отменены до submit из-за найденного отсутствующего AX; новые native runs 37847554527/37847561121 используют f241f855.
 Индекс SHA-256 сохраняется как evidence-sha256.txt в той же папке. Приватная тестовая DB, ключи и сырые пользовательские файлы в публичный GitHub не публикуются.
 
 ## Продолжение физического обмена
