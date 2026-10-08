@@ -20,7 +20,9 @@
 //     point object is also returned via the second arg to `onChange`
 //     for screens that want it.
 
-export const COUNTRIES = {
+import { ALL_COUNTRIES } from './countries';
+
+const CORRIDOR_COUNTRIES = {
   CN: { name: 'Китай' }, KZ: { name: 'Казахстан' }, UZ: { name: 'Узбекистан' },
   KG: { name: 'Кыргызстан' }, RU: { name: 'Россия' }, BY: { name: 'Беларусь' },
   TJ: { name: 'Таджикистан' }, TM: { name: 'Туркменистан' }, AM: { name: 'Армения' },
@@ -32,10 +34,21 @@ export const COUNTRIES = {
 
 // Stable order in pickers — corridor matters: CN/KZ on top, then CIS,
 // then EU.
-export const COUNTRY_ORDER = [
+const CORRIDOR_ORDER = [
   'CN', 'KZ', 'UZ', 'KG', 'RU', 'BY', 'TJ', 'TM',
   'AM', 'GE', 'AZ', 'TR',
   'PL', 'LT', 'LV', 'EE', 'HU', 'RO', 'SK', 'BG', 'GR',
+];
+
+// Общий ISO-справочник уже используется регистрацией. Маршрут не должен
+// скрывать страны, для которых в приложении уже есть названия и SVG-флаги.
+export const COUNTRIES = {
+  ...Object.fromEntries(ALL_COUNTRIES.map((country) => [country.iso, { name: country.name }])),
+  ...CORRIDOR_COUNTRIES,
+};
+export const COUNTRY_ORDER = [
+  ...CORRIDOR_ORDER,
+  ...ALL_COUNTRIES.map((country) => country.iso).filter((code) => !CORRIDOR_ORDER.includes(code)),
 ];
 
 // Point taxonomy. `key` is what we store internally; `label` /

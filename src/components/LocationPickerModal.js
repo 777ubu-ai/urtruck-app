@@ -20,6 +20,7 @@ import { storage } from '../utils/storage';
 import { localizePlace } from '../utils/places';
 import { COUNTRIES, COUNTRY_ORDER, POINTS, searchPoints, formatPoint, pointsForCountry } from '../utils/geography';
 import CountryFlag from './ui/v1/CountryFlag';
+import { getCountryName } from '../utils/countries';
 
 const RECENT_KEY = 'ur_recent_places';
 const FAV_KEY = 'ur_fav_places';
@@ -56,7 +57,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     const translated = t(`country_${code}`);
     return translated && translated !== `country_${code}`
       ? translated
-      : (COUNTRIES[code]?.name || code || '');
+      : getCountryName(code, lang);
   };
 
   useEffect(() => {
