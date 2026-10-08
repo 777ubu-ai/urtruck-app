@@ -5,7 +5,7 @@
 ## Baseline и защищённый объём
 - Репозиторий: 777ubu-ai/urtruck-app, ветка fix/route-country-list-20261008.
 - Начало: a686d5b308c727411e099133347f159086200293.
-- Проверенный код кандидата: 4d93962171c9ff2caff5e9f4327ea68595625530.
+- Проверенный клиентский код: 4d93962171c9ff2caff5e9f4327ea68595625530. Итоговый код с отдельным backend ТТН исправлением: a4e05b2060812271b0110933e1b34eecacf338e4.
 - Последовательные PR #506, #507, #508 не слиты; предыдущие исправления входят в кандидата.
 - Прочитаны комплексное ТЗ 10/10, «Эконом Токенов», AGENTS.md и действующие каноны репозитория. Ночное задание: night-audit-assignment-20261009.md.
 - Работа выполнялась в существующей папке /private/tmp/urtruck-ai-recovery-20261008; проект заново не создавался.
@@ -20,7 +20,9 @@
 3. **Справочник стран.** Исправлен прямой Node-импорт countries.js, из-за которого падал qa:zh. Список 249 кодов, локализация и прежний приоритет стран сохранены.
 4. **Тест истории чата.** В harness добавлен callback scoped-очистки прочитанных уведомлений с проверкой комнаты, границы прочитанного и актуальности запроса. Два исходных падения были неполнотой тестового окружения; они не объявлены доказанной production-поломкой истории.
 
-Коммиты исправлений: 4cccfcf7, ef433d1e, a6a93e93, bfada6c9, 4d939621.
+5. **Зарегистрированный API ТТН.** Убраны фиксированная цена 1500 и подмена перевозчика профилем запрашивающего; HTML/PDF используют один проверенный набор полей рейса, включая доступный объём и транзит. Динамический текст экранирован для HTML и PDF renderer. Доступ участника проверяется до чтения профиля. Текущих вызовов этого endpoint в src не найдено; production patch не применён. Это исправление API, не заявление о живом chat-attachment дефекте.
+
+Коммиты исправлений: 4cccfcf7, ef433d1e, a6a93e93, bfada6c9, 4d939621, a4e05b20.
 
 ## Фактически выполненные проверки
 
@@ -35,13 +37,21 @@
 | runtimeLocaleLeakProbe | 8/8 PASS | RU/ZH/EN/KK × два маршрута; анонимный app chrome, не все авторизованные экраны |
 | APNs operations tests | 6/6 PASS | Изолированные операции настройки/отката, не доставка APNs на телефон |
 | Kotlin badge policy | 5/5 PASS | Реальные исходники policy и JUnit; не новая APK и не значок launcher |
-| Статический release gate | PASS | Снимок bfada6c9; последующий 4d939621 менял только iOS helper/test |
+| Статический release gate | PASS | Повторно на b9e301bc: проверенные клиентские файлы 4d939621 + отчёты |
 | node-forge exception gate | PASS | Существующее проверенное исключение с компенсирующим patch; не «npm audit: ноль уязвимостей» |
 | Graphify AST | PASS | 10541 узел, 23369 связей; SQL parser недоступен для 19 файлов, два Gradle предупреждения |
 
 Backend runner стартовал на bfada6c9, завершился после frontend-only коммита 4d939621. Backend-исходники в этом промежутке не менялись. Результат не приписывается непроверенному изменению backend.
 
-Новая полная облачная QA и новый native-кандидат отслеживаются отдельно в night-audit-candidate-20261009.md. Факт запуска или подготовки не равен PASS.
+| Дополнительная проверка | Результат | Граница доказательства |
+|---|---|---|
+| ТТН regressions | 7/7 PASS | Исходные ошибки воспроизведены: 4 FAIL / 2 PASS до patch; итоговая проверка содержит реальную изолированную БД |
+| Повторный canonical backend после ТТН | PASS, 130 модулей | Точный a4e05b20, 137.44 с |
+| Облачный Full QA Actions 37845188843 | SUCCESS, 5/5 jobs | b9e301bc: клиент 4d939621, до отдельного backend ТТН patch |
+| Desktop Playwright облачного аудита | 29 PASS, 2 SKIP | Пропущены только два production-smoke API сценария, локальный прогон не вызывал production |
+| Mobile Playwright облачного аудита | 38 PASS | Mobile browser viewport; не реальные iOS/Huawei/OPPO |
+
+Native-кандидаты отслеживаются отдельно в night-audit-candidate-20261009.md. Факт запуска или подготовки не равен PASS.
 
 ## Связность аккаунтов и новой сделки
 Владелец создал груз с iPhone serik. Read-only серверная проверка подтверждает:
@@ -93,5 +103,23 @@ iPhone по USB недоступен, booted simulator отсутствует. �
 
 Финальные frontend/E2E: final-4d939621. Backend: final-bfada6c9/backend-isolated.log. Kotlin: kotlin-policy.log.
 Индекс SHA-256 сохраняется как evidence-sha256.txt в той же папке. Приватная тестовая DB, ключи и сырые пользовательские файлы в публичный GitHub не публикуются.
+
+## Продолжение физического обмена
+С Huawei 213640023 через реальный UI отправлено китайское сообщение 1444 в подтверждённую комнату serik:
+«Huawei 测试：明天10:00在霍尔果斯装货，运费8888美元，重量15吨，体积120立方米。不要在09:00出发。目的地是莫斯科。»
+
+Timestamp 2026-10-08 21:19:41 UTC; при read-only проверке is_read=0. Outbox 308 и APNs delivery 1900: sent, ошибок нет, 21:19:42 UTC. Это физическая отправка текста и принятие APNs; просмотр, русский перевод, баннер, звук и сброс на iPhone не подтверждены. Не считать это настоящей речью или полным двусторонним RU↔ZH PASS.
+
+## Карта покрытия аудита
+| Область | Проверенный код/регрессии | Что остаётся физически |
+|---|---|---|
+| Сделка и обе стороны | test_deal_status_actor_fsm.py, test_p0_deal_bid_race.py, test_deal_rooms.py; новая production-комната serik ↔ водитель подтверждена read-only | Полный жизненный цикл на обоих телефонах, статусы после повторного входа |
+| Push / unread / badge | test_unread_badge.py, test_read_chat_notifications.mjs, test_app_badge_runtime.mjs, Kotlin policy; scoped очистка, dedupe, stale callbacks | Каждый launcher и iOS баннер/звук/reset в разных состояниях |
+| Перевод | test_translation_fail_closed.py, test_translation_memory.py, test_auto_translation_singleflight.mjs; структурированные provider failures, cache/retry | Реальные смысловые RU↔ZH фразы, отрицания и терминология |
+| Голос | test_voice_background_processing.py, voice migrations, readiness reconcile; leases, recover/retry, stale worker, STT/translation separation | Запись настоящей речи обеими сторонами и сохранение результата после перезапуска |
+| Доступы / документы | Проверки участника chat/voice/doc API; test_deal_attachment_upload.py, test_documents_fallback.py | Реальные вложения и печатный документ; ТТН использует данные рейса, отдельно проверить согласованную цену сделки/полноту реквизитов |
+| GPS / карта | test_deal_location_coords_validation.py, test_gps_sample_journal.py, lost/restored, background timestamp/headless contract tests, map locale tests | Реальные координаты, разрешения, фон/блокировка, offline/reconnect |
+| Страны / локализация | Общий справочник 249 кодов, Node-импорт, QA Center, i18n duplicates, 8 locale probes | Все страны, поиск, сохранение и повторное открытие на native RU/ZH/EN/KK |
+| Авторизация / аккаунт | Canonical backend, social-auth/retry/pending и logout GPS regressions | Повторный вход и account switch на native с исходными аккаунтами |
 
 Этот отчёт перечисляет выполненную часть большого ТЗ. Он не означает завершение всех 16 разделов, универсальный PASS перевода, ноль всех уязвимостей или готовность публичного выпуска.

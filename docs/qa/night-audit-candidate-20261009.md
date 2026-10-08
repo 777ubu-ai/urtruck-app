@@ -38,3 +38,6 @@
 - Перед upload: release Kotlin tests, проверка единственного FCM handler, Firebase resources, com.urtruck.app, versionCode, checksum и upload certificate. На телефоны пока не установлено.
 - Старые APK не скачиваются повторно; новый Google-signed APK скачивать однократно только при необходимости физической установки.
 - Резервный путь: предыдущий внутренний кандидат 213645294; Android данные/аккаунты не удалять. API deployment не выполняется.
+
+- Android workflow Actions 37846232177, workflow head e922dee4a73e1ae341d97575152d414292c1dd4f; exact source a4e05b20. Выполняется, номер и upload пока не объявлены.
+- iOS workflow head c41dd52456ed8af911195ed6a499be999576d971; Actions 37845195639. Выполняется, source 4d939621. Никакой повторный запуск этих двух builds не выполнен.
