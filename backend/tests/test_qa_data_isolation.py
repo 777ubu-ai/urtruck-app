@@ -1,5 +1,7 @@
 """Regression tests for server-side QA fixture isolation."""
 
+from datetime import date
+
 from api import marketplace
 
 
@@ -55,6 +57,8 @@ def test_physical_qa_push_cargo_is_visible_only_in_non_production(monkeypatch):
         "created_at": "2026-09-30 22:06:53",
     }
     monkeypatch.setattr(marketplace, "IS_PRODUCTION", False)
-    assert marketplace._public_cargo_ok(row) is True
+    assert marketplace._public_cargo_ok(row, today=date(2026, 10, 5)) is True
+    # Expired QA cargo must remain hidden; isolation must not bypass freshness.
+    assert marketplace._public_cargo_ok(row, today=date(2026, 10, 8)) is False
     monkeypatch.setattr(marketplace, "IS_PRODUCTION", True)
-    assert marketplace._public_cargo_ok(row) is False
+    assert marketplace._public_cargo_ok(row, today=date(2026, 10, 5)) is False
