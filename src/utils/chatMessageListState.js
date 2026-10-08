@@ -3,9 +3,9 @@
 // outside the list stable on iOS.
 const fields = [
   'id', 'clientMsgId', 'mine', 'system', 'text', 'photo', 'attachmentUnavailable',
-  'voice', 'voiceScope', 'mediaUrl', 'voiceDuration', 'transcript', 'transcriptLang',
+  'voice', 'voiceScope', 'mediaUrl', 'voiceDuration', 'voiceProcessingStatus', 'voiceTranscriptReady', 'transcript', 'transcriptLang',
   'transcriptProvider', 'time', 'createdAt', 'read', 'kind', 'docName', 'docSize',
-  'docUrl', 'docStatus', 'optimistic', 'sendStatus', 'sendError', 'clientUploadId',
+  'docUrl', 'docDownloadUrl', 'docStatus', 'optimistic', 'sendStatus', 'sendError', 'clientUploadId',
 ];
 
 export function sameChatMessage(a, b) {
