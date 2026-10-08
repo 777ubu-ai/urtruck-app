@@ -302,7 +302,7 @@ jobs:
             exit 1
           fi
           REMOTE_PREFLIGHT
-          scp -o StrictHostKeyChecking=no "$BUNDLE_PATH" \
+          sshpass -e scp -o StrictHostKeyChecking=no "$BUNDLE_PATH" \
             "$SERVER_USER@$SERVER_HOST:$DEST/storage/supabase-storage-backup.tar.gz"
           sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
             "DEST='$DEST' BUNDLE_SHA256='$BUNDLE_SHA256' BUCKET_COUNT='$BUCKET_COUNT' OBJECT_COUNT='$OBJECT_COUNT' TOTAL_BYTES='$TOTAL_BYTES' bash -s" <<'REMOTE_VERIFY'
