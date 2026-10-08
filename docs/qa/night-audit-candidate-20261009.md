@@ -41,3 +41,11 @@
 
 - Android workflow Actions 37846232177, workflow head e922dee4a73e1ae341d97575152d414292c1dd4f; exact source a4e05b20. Выполняется, номер и upload пока не объявлены.
 - iOS workflow head c41dd52456ed8af911195ed6a499be999576d971; Actions 37845195639. Выполняется, source 4d939621. Никакой повторный запуск этих двух builds не выполнен.
+
+## PRE-FLIGHT: найден отсутствующий AX
+- На 12b2d4bc exhaustive проверка без Intl.DisplayNames дала 248 вместо 249. Ранее tests принимали >=248 или сравнивали два одинаково неполных набора; прежние отчёты с числом 249 были неточны.
+- Отсутствует AX (Åland Islands), код подтверждён ISO: https://www.iso.org/iso/newsletter_v-9_aland_islands.pdf. SVG AX уже входит в country-flag-icons.
+- Graphify AST-only обновлён до изменения countries.js. Scope: один ISO-код, четыре bundled names, строгий count и all-language search/fallback regressions. Дизайн и размеры CountryFlag не меняются.
+- Прежние iOS 37845195639 / Android 37846232177 остановлены до завершения, поскольку frozen source содержит только 248 кодов. Проверить окончательный cancelled и skipped submit перед следующими запусками.
+- EAS remote buildNumber теперь 92 (зарезервирован отменяемой сборкой). Следующий свободный номер ожидается 93; guard должен быть >92. Не переиспользовать 91/92.
+- Rollback: revert отдельного AX commit. Backend и production runtime в этой правке не меняются.
