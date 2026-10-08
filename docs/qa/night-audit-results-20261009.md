@@ -36,11 +36,11 @@
 | qa:center:quick, финальный f241f855 | PASS | Все входящие gates, включая production web build |
 | qa:i18n-duplicates | PASS | Проверка словарей |
 | Канонический backend/API runner | PASS, все 130 модулей | Изолированная SQLite, тестовое окружение; не production DB |
-| Обязательные web E2E | 23/23 PASS | Повторно после AX на 159cae9a (код f241f855), до отдельного backend read patch; изолированный локальный API и финальный bundle; часть recovery/crash тестов использует предусмотренные mocks |
+| Обязательные web E2E | 23/23 PASS | Повторно после backend read patch на d1d693f7, 68.8 с; изолированный локальный API и финальный bundle; часть recovery/crash тестов использует предусмотренные mocks |
 | runtimeLocaleLeakProbe | 8/8 PASS | RU/ZH/EN/KK × два маршрута; анонимный app chrome, не все авторизованные экраны |
 | APNs operations tests | 6/6 PASS | Изолированные операции настройки/отката, не доставка APNs на телефон |
 | Kotlin badge policy | 5/5 PASS | Реальные исходники policy и JUnit; не новая APK и не значок launcher |
-| Статический release gate | PASS | Повторно на b9e301bc: проверенные клиентские файлы 4d939621 + отчёты |
+| Статический release gate | PASS | Повторно на чистом d1d693f7: финальный клиент, backend read patch и ops plan |
 | node-forge exception gate | PASS | Существующее проверенное исключение с компенсирующим patch; не «npm audit: ноль уязвимостей» |
 | Graphify AST | PASS | 10541 узел, 23369 связей; SQL parser недоступен для 19 файлов, два Gradle предупреждения |
 
@@ -119,7 +119,7 @@ Read-only AST проверка фактического runtime подтверд
 Логи, result JSON, исходные XML/PNG устройств и affected graph находятся у владельца:
  /Users/bahitzanbahitzanovic/Desktop/URTRUCK_MAIN_PROJECT/qa-evidence/night-audit-20261009
 
-Финальные frontend/E2E: final-AX. Backend после ТТН: final-documents; после read patch: final-read-race/backend-isolated.log. Kotlin: kotlin-policy.log. Исторические проверки 4d939621 сохранены отдельно. Первые кандидаты 37845195639/37846232177 отменены до submit из-за найденного отсутствующего AX; новые native runs 37847554527/37847561121 используют f241f855.
+Финальный frontend: final-AX; повторные E2E после read patch: final-read-E2E. Backend после ТТН: final-documents; после read patch: final-read-race/backend-isolated.log. Kotlin: kotlin-policy.log. Исторические проверки 4d939621 сохранены отдельно. Первые кандидаты 37845195639/37846232177 отменены до submit из-за найденного отсутствующего AX; новые native runs 37847554527/37847561121 используют f241f855.
 Индекс SHA-256 сохраняется как evidence-sha256.txt в той же папке. Приватная тестовая DB, ключи и сырые пользовательские файлы в публичный GitHub не публикуются.
 
 ## Продолжение физического обмена

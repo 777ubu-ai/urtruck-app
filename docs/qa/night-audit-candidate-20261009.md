@@ -66,3 +66,7 @@
 - Повторные frontend 1108/1108, target страны 11/11, QA Center/lint/i18n PASS; E2E 23/23 и locale 8/8 после AX; Full QA 37847548191 SUCCESS.
 - Backend 08f1d467 не меняет mobile файлы f241f855. Повторный canonical backend 130 модулей PASS. Read-only production patch plan 08c9dbb3: 4/4 safety; две кандидатные API-копии compile-only проверены production Python 3.12.3, runtime не изменялся.
 - Следующее изменение production возможно только с отдельным разрешением по разделам 2/14 ночного ТЗ. Старые AI/APNs backups/source/env не тронуты.
+
+
+### Preflight: stale badge результата BottomNav
+Подтверждённый кодовый путь: appBadge возвращает {badge: OLD, reason: superseded}, а оба callback BottomNav проверяют только Number.isFinite и принимают OLD. Scope: только effects счётчика BottomNav и meaningful tests настоящих callback bodies. Защищены appBadge canonical/OEM contract, Android native handler, дизайн/tab labels, страны, composer, SDK/lockfiles и production. До patch: Graphify AST и воспроизведение stale response; после: runtime cases для poll/read, native rejection, notification callback и cleanup, frontend/lint/QA gates и final CI. Rollback — адресный revert нового коммита; промежуточные f241 native кандидаты не считаются покрытием этого fix. Публичный выпуск запрещён.

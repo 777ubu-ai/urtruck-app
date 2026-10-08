@@ -23,6 +23,8 @@
 | N-17 | P1 | Чтение теряло unread нового сообщения и более новой страницы | Неограниченный UPDATE после SELECT; подтверждён тот же runtime SQL | 08f1d467: message-ID boundary, 3 новых race/page regressions; 28/28 target + canonical 130 modules PASS | FIXED_CODE, production pending отдельное разрешение |
 | N-18 | P1 | Поздний Bell event очищался до показа | Общая URL-очистка после истории без snapshot ceiling / message ID | Snapshot notification IDs и chat event-key message boundary; prepared guarded runtime diff, 4/4 ops safety, compile-only на Python 3.12.3 | FIXED_CODE, production pending |
 
+| N-19 | P1 | Вкладка Сделки принимает устаревший badge, отклонённый native handler | Оба callbacks BottomNav принимали любой finite badge, включая reason=superseded; не отсеивали late response после cleanup | Настоящие effect callbacks: до patch 4 FAIL / 2 PASS; после 14/14 с appBadge runtime, scope account и cleanup guards; следующий native candidate необходим | FIXED_CODE, следующий native pending |
+
 ## Правила закрытия
 - Для каждого физического дефекта указать SHA приложения, build/versionCode, устройство/OS, аккаунты и комнату, шаги, ожидаемое/фактическое поведение, timestamp и доказательство.
 - FIXED_CODE не превращать в VERIFIED только по компиляции или unit-тестам.
