@@ -66,6 +66,7 @@ import { cacheIssuedAttachmentUrl } from '../utils/attachmentUrlCache';
 import { setActiveRoom } from '../utils/activeRoom';
 import { notifyChatRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
+import { dismissReadChatNotifications } from '../utils/readChatNotifications';
 import { SERVER_URL } from '../config/env';
 import { reviewsAPI } from '../utils/reviews';
 import { normalizeComposerHeight, reconcileChatMessages, selectVoiceDurationSeconds } from '../utils/chatMessageListState';
@@ -649,7 +650,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     const loadingOlder = older === true;
     if (loadingOlder && !historyPages.hasOlder()) return;
     if (loadingOlder) setOlderMessagesLoading(true);
-    const request = { owner: voiceText };
+    const request = { owner: voiceText, readBefore: Date.now() };
     historyRequestRef.current = request;
     try {
       const [result, attachResult] = await Promise.all([
@@ -729,6 +730,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         setShowJumpLatest(false);
         scheduleAutoScrollRef.current?.();
       }
+      dismissReadChatNotifications(roomId, {
+        readBefore: request.readBefore,
+        isCurrent: () => mounted.current && chatFocusedRef.current
+          && chatAppActiveRef.current && voiceStateRef.current === voiceText,
+      });
       setUnreadCount(0);
       notifyChatRead();
       refreshAppIconBadge();
