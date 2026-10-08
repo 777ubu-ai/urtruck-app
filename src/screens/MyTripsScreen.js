@@ -362,7 +362,7 @@ export default function MyTripsScreen({ navigation, route }) {
         style={s.cardSpacing}
         onPress={() => {
           if (isCargo) {
-            navigation.navigate('CargoDetail', { cargo: { ...item, from, to, cargo: desc, _server: true }, cargoId: item.id, role });
+            navigation.navigate('CargoDetail', { cargo: { ...item, from, to, cargo: desc, isMine: true, _server: true }, cargoId: item.id, role });
           } else {
             // Tap on own trip card → open canonical TripDetail
             navigation.navigate('TripDetail', { trip: normalizeTrip({ ...item, isMine: true, _server: true }), tripId: item.id, role });
