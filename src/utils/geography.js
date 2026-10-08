@@ -20,7 +20,7 @@
 //     point object is also returned via the second arg to `onChange`
 //     for screens that want it.
 
-import { ALL_COUNTRIES } from './countries';
+import { ALL_COUNTRIES } from './countries.js';
 
 const CORRIDOR_COUNTRIES = {
   CN: { name: 'Китай' }, KZ: { name: 'Казахстан' }, UZ: { name: 'Узбекистан' },
