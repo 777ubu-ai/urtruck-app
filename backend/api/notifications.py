@@ -143,7 +143,10 @@ def _notification_path(value: str) -> str:
     return path.rstrip("/") or "/"
 
 
-def mark_notifications_read_by_urls(user_id: str, urls) -> int:
+def mark_notifications_read_by_urls(
+    user_id: str, urls, *, read_through_id: int | None = None,
+    chat_message_read_through: int | None = None,
+) -> int:
     """Mark unread notifications whose canonical path was actually opened.
 
     Matching is performed in Python after selecting only this user's unread
@@ -158,11 +161,26 @@ def mark_notifications_read_by_urls(user_id: str, urls) -> int:
 
     try:
         with get_conn() as c:
-            rows = c.execute(
-                "SELECT id, url FROM notifications WHERE user_id = ? AND is_read = 0",
-                (user_id,),
-            ).fetchall()
-            ids = [row["id"] for row in rows if _notification_path(row["url"]) in target_paths]
+            query = "SELECT id, url, type, event_key FROM notifications WHERE user_id = ? AND is_read = 0"
+            params = [user_id]
+            if read_through_id is not None:
+                query += " AND id <= ?"
+                params.append(read_through_id)
+            rows = c.execute(query, params).fetchall()
+            ids = []
+            for row in rows:
+                if _notification_path(row["url"]) not in target_paths:
+                    continue
+                # Chat event_key содержит исходный message id. Пагинация
+                # старой истории не читает более новые события той же комнаты.
+                # Старые записи без ключа ограничены снимком notification id.
+                if chat_message_read_through is not None and row["type"] in _CHAT_NOTIFICATION_TYPES:
+                    event_key = str(row["event_key"] or "")
+                    message_id = event_key.rsplit(":msg:", 1)[-1]
+                    if event_key.startswith("chat:") and ":msg:" in event_key and message_id.isdigit():
+                        if int(message_id) > chat_message_read_through:
+                            continue
+                ids.append(row["id"])
             if not ids:
                 return 0
             placeholders = ",".join("?" for _ in ids)

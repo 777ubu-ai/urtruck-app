@@ -978,6 +978,12 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
     _assert_chat_is_accepted(uid, partner_id, room_id=room_id,
                              cargo_id=room["cargo_id"], trip_id=room["trip_id"])
     with get_conn() as c:
+        # Снимок до чтения истории: поздний Bell event нельзя погасить
+        # ответом, который пользователь ещё не мог увидеть.
+        notification_read_through = c.execute(
+            "SELECT COALESCE(MAX(id), 0) AS id FROM notifications WHERE user_id = ?",
+            (uid,),
+        ).fetchone()["id"]
         # P3: tiebreak по id. created_at имеет посекундную точность (TEXT
         # CURRENT_TIMESTAMP) — два сообщения в одну секунду могли переставиться
         # местами. Автоинкрементный id даёт детерминированный порядок.
@@ -987,17 +993,26 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
             (room_id, limit, offset),
         ).fetchall()
 
-        # Отмечаем как прочитанные
-        c.execute(
-            "UPDATE chat_messages SET is_read = 1 WHERE room_id = ? AND sender_id != ? AND is_read = 0",
-            (room_id, uid),
-        )
+        # Читаем только до снимка возвращённой страницы. Новый message id,
+        # пришедший между SELECT и UPDATE, остаётся непрочитанным.
+        message_read_through = max((int(row["id"]) for row in rows), default=0)
+        if message_read_through:
+            c.execute(
+                "UPDATE chat_messages SET is_read = 1 WHERE room_id = ? AND sender_id != ? "
+                "AND is_read = 0 AND id <= ?",
+                (room_id, uid, message_read_through),
+            )
 
     # Opening a room consumes its durable Bell records as well as the raw
     # chat rows. Without this, a user who reads a chat directly keeps a stale
     # Bell badge until they separately open the notification center.
     try:
-        mark_notifications_read_by_urls(uid, [f"/chats/{room_id}"])
+        if message_read_through:
+            mark_notifications_read_by_urls(
+                uid, [f"/chats/{room_id}"],
+                read_through_id=notification_read_through,
+                chat_message_read_through=message_read_through,
+            )
     except Exception:
         pass
 

@@ -337,3 +337,86 @@ def test_mine_flag_regression():
             assert m["mine"] is True
         if m["text"] == "from-driver":
             assert m["mine"] is False
+
+
+# Ночной аудит: новые сообщения после снимка истории нельзя отмечать прочитанными.
+def _late_room_message(room, owner, driver, text):
+    with get_conn() as conn:
+        cursor = conn.execute(
+            "INSERT INTO chat_messages(room_id,sender_id,text) VALUES(?,?,?)", (room, driver, text),
+        )
+        message_id = cursor.lastrowid
+        create_notification(owner, "chat_message", text, url=f"/chats/{room}",
+                            event_key=f"chat:{room}:msg:{message_id}", conn=conn)
+    return message_id
+
+
+def _read_race_room():
+    owner, driver = _ids()
+    cargo = "cg_read_race_" + uuid.uuid4().hex[:8]
+    room = get_or_create_deal_room(cargo, owner, driver)
+    _mk_accepted_deal(cargo, owner, driver, room)
+    send_message(SendMessageIn(room_id=room, text="visible-before-read"), user=_u(driver))
+    return room, owner, driver
+
+
+def test_new_message_between_history_select_and_update_stays_unread(monkeypatch):
+    from contextlib import contextmanager
+    monkeypatch.setattr(dbm, "_maybe_expire_marketplace", lambda _conn: None)
+    room, owner, driver = _read_race_room()
+    real_connection = chat_module.get_conn
+    late = []
+    @contextmanager
+    def injected_connection():
+        with real_connection() as conn:
+            class Proxy:
+                def execute(self, sql, args=()):
+                    if sql.lstrip().startswith("UPDATE chat_messages SET is_read") and not late:
+                        late.append(_late_room_message(room, owner, driver, "arrived-after-snapshot"))
+                    return conn.execute(sql, args)
+                def __getattr__(self, key):
+                    return getattr(conn, key)
+            yield Proxy()
+    monkeypatch.setattr(chat_module, "get_conn", injected_connection)
+    response = get_messages(room, user=_u(owner))
+    assert late, "Гонка должна быть воспроизведена перед UPDATE"
+    assert all(m["id"] != late[0] for m in response["messages"])
+    with get_conn() as conn:
+        raw = conn.execute("SELECT is_read FROM chat_messages WHERE id=?", (late[0],)).fetchone()[0]
+        bell = conn.execute("SELECT is_read FROM notifications WHERE event_key=?",
+                            (f"chat:{room}:msg:{late[0]}",)).fetchone()[0]
+    assert raw == 0, "Не попавшее в ответ новое сообщение должно оставаться unread"
+    assert bell == 0, "Его новый Bell event тоже должен остаться unread"
+    assert unread_count(user=_u(owner))["unread"] == 1
+
+
+def test_new_notification_after_history_commit_is_not_consumed(monkeypatch):
+    room, owner, driver = _read_race_room()
+    real_mark = chat_module.mark_notifications_read_by_urls
+    late = []
+    def late_mark(*args, **kwargs):
+        late.append(_late_room_message(room, owner, driver, "arrived-before-bell-cleanup"))
+        return real_mark(*args, **kwargs)
+    monkeypatch.setattr(chat_module, "mark_notifications_read_by_urls", late_mark)
+    response = get_messages(room, user=_u(owner))
+    assert late and all(m["id"] != late[0] for m in response["messages"])
+    with get_conn() as conn:
+        old = conn.execute("SELECT is_read FROM notifications WHERE user_id=? AND body=?",
+                           (owner, "visible-before-read")).fetchone()[0]
+        new = conn.execute("SELECT is_read FROM notifications WHERE event_key=?",
+                           (f"chat:{room}:msg:{late[0]}",)).fetchone()[0]
+    assert old == 1
+    assert new == 0, "Поздний event текущей комнаты нельзя погасить старым чтением"
+    assert unread_count(user=_u(owner))["unread"] == 1
+
+
+def test_history_page_does_not_read_newer_unseen_page():
+    room, owner, driver = _read_race_room()
+    send_message(SendMessageIn(room_id=room, text="newer-not-returned"), user=_u(driver))
+    response = get_messages(room, limit=1, offset=1, user=_u(owner))
+    assert [m["text"] for m in response["messages"]] == ["visible-before-read"]
+    assert unread_count(user=_u(owner))["unread"] == 1
+    with get_conn() as conn:
+        latest = conn.execute("SELECT is_read FROM notifications WHERE user_id=? AND body=?",
+                              (owner, "newer-not-returned")).fetchone()[0]
+    assert latest == 0
