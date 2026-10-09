@@ -1,0 +1,10 @@
+{
+  "device": "Huawei GRL_AL10",
+  "package": "com.urtruck.app",
+  "productionVersionCode": 213702394,
+  "activeAppNotifications": 13,
+  "diagnosticNotificationRecords": 1,
+  "qaNotificationPresent": true,
+  "bannerSoundBadgeReadAck": "NOT_TESTED",
+  "appInteractionBlocked": "Huawei ID prompt"
+}
