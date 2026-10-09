@@ -344,3 +344,33 @@ installed QA2 code already equals metadata candidate 106. Scope: raise only
 QA2 metadata baseline 106 -> candidate 107; production version unchanged.
 Checks: QA2 build contract, diff check. Rollback: revert version-only commit;
 no device downgrade/uninstall/data clearing. Replacement build exact new SHA.
+
+
+## PRE-FLIGHT OneSignal presented-notification payload compatibility
+
+Base f8687e3, same pilot branch. Full npm test:unit at f8687e3 PASS
+1155/1155. Scope readChatNotifications payload extraction and regression tests.
+Source finding: official OneSignal iOS OSNotification.m parseOneSignalPayload
+reads rawPayload.custom.a, whereas parseOSDataPayload uses top-level data.
+Current UrTruck dismissal only sees top-level room/type, so legacy wrapped
+OneSignal room notifications would not match. This is not a proven explanation
+of prior production badge complaints: production did not use OneSignal.
+AST Graphify before change exit 0, 10.22s. Keep readBefore/focus/session/
+room-only boundaries, direct FCM/APNs data and unrelated alerts protected.
+Checks nested object/string, malformed/unmarked payload, other rooms/business
+alerts, newer-than-read push and full frontend tests. Rollback versioned
+revert. Run 37978618705 remains delivery-only candidate at f8687e3; subsequent
+source fix is not in that artifact and requires its own build for acceptance.
+
+
+## Wrapped OneSignal room cleanup source fix
+
+Legacy custom.a object/string data is unwrapped only with a provider notification
+UUID; direct native room/type takes priority. Read timestamp, current-session
+callback, other-room and business notification protections are unchanged.
+New regression tests verify same-room old payload cleanup, preservation of
+other rooms/deal/new pushes, malformed/unmarked custom data and direct priority.
+Full npm test:unit PASS 1158/1158; lint PASS 491 active JS files, diff PASS.
+These checks do not prove OS enumeration/dismissal on a physical iPhone.
+This fix is source-only and is not in currently running candidate 211040107
+at f8687e3. Business registry/outbox/identity and APNs rotation remain pending.

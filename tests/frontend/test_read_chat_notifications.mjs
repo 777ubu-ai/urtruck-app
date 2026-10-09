@@ -72,3 +72,28 @@ test('malformed foreign tags never match a room', async () => {
   }}]);
   assert.deepEqual(out.calls, []);
 });
+
+const wrapped = (id, room, type = 'chat_message', encode = false, date = 900) => {
+  const custom = { i: '2baf4778-511e-4a9d-a791-8b278c196e55', a: { room_id: room, type } };
+  return { date, request: { identifier: id, content: { data: { custom: encode ? JSON.stringify(custom) : custom } } } };
+};
+test('OneSignal object and encoded payloads clear only older same-room chat', async () => {
+  const out = await run([
+    wrapped('ios-chat', 'room-a'), wrapped('android-doc', 'room-a', 'chat_attachment', true),
+    wrapped('other-room', 'room-b'), wrapped('business', 'room-a', 'deal_accepted'),
+    wrapped('new-push', 'room-a', 'chat_message', false, 1001),
+  ]);
+  assert.deepEqual(out.calls, ['ios-chat', 'android-doc']);
+});
+test('malformed or unmarked custom data cannot erase a presented notification', async () => {
+  const list = ['{bad', { a: { room_id: 'room-a', type: 'chat_message' } },
+    { i: 'not-a-uuid', a: { room_id: 'room-a', type: 'chat_message' } },
+    { i: '2baf4778-511e-4a9d-a791-8b278c196e55', a: [] }].map((custom, index) =>
+    ({ date: 900, request: { identifier: String(index), content: { data: { custom } } } }));
+  assert.deepEqual((await run(list)).calls, []);
+});
+test('direct native room data has priority over a nested provider wrapper', async () => {
+  const x = wrapped('conflicting', 'room-a');
+  Object.assign(x.request.content.data, { room_id: 'room-b', type: 'chat_message' });
+  assert.deepEqual((await run([x])).calls, []);
+});
