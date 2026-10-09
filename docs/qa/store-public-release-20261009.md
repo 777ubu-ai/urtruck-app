@@ -13,3 +13,10 @@
 Публичный App Store KZ показывает 1.0.7; готовая новая версия 1.0.9 build 94 загружена отдельно в TestFlight. Google Play production пока проверяется авторизованным API.
 
 Локальная загрузка Android APK остановлена после уточнения владельца: требуются магазины, а не USB-установка. Частичные файлы сохранены, приложения и данные не удалялись.
+
+## Проверенные состояния перед подготовкой
+- Google Play production: 1.0.9 / 212912064 completed. Internal: 1.0.9 / 213660672 completed. Новый артефакт уже в Google Play; повторная сборка/загрузка не нужна.
+- Apple public: 1.0.7 build 7. Версия 1.0.9 REJECTED, выбрана старая сборка 85. Новая 94 VALID, не expired. Review submission UNRESOLVED_ISSUES; причины нужно прочитать перед повторной отправкой.
+- Store patch scope: выбрать Apple build 94; подготовить Google production draft 213660672, сохранив текущий completed 212912064. Не объявлять draft опубликованным или отправленным на review.
+- Перед публичным Google rollout требуется сверка фактических Play Console background/FGS location declarations и актуального видео по AGENTS.md и канону. API списка tracks не доказывает заполнение этих форм.
+- Rollback подготовки: вернуть Apple build 85 до новой отправки; убрать только собственный production draft, сохранив исходный completed release и остальные tracks. Фактический старый public release не изменяется на этапе подготовки.

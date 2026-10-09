@@ -1,6 +1,13 @@
-name: Existing Play release inspection
+name: Existing Play release preparation
 on:
   workflow_dispatch:
+    inputs:
+      store_action:
+        description: Existing candidate action
+        type: choice
+        required: true
+        default: inspect
+        options: [inspect, prepare_draft]
 permissions:
   contents: read
 concurrency:
@@ -19,6 +26,7 @@ jobs:
         run: python -m pip install google-auth requests
       - name: Inspect existing tracks without publication
         env:
+          STORE_ACTION: ${{ inputs.store_action }}
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: python scripts/ops/inspect_play_store.py
       - uses: actions/upload-artifact@v4
