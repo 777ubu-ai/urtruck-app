@@ -44,11 +44,17 @@ export const notificationsAPI = {
 
   async readAll() {
     const r = await fetch(`${BASE}/read-all`, { method: 'POST', headers: await headers() });
-    return r.json();
+    if (!r.ok) throw new Error(`notification read failed ${r.status}`);
+    const result = await r.json();
+    if (result?.ok !== true) throw new Error('notification read not confirmed');
+    return result;
   },
 
   async read(id) {
     const r = await fetch(`${BASE}/read/${id}`, { method: 'POST', headers: await headers() });
-    return r.json();
+    if (!r.ok) throw new Error(`notification read failed ${r.status}`);
+    const result = await r.json();
+    if (result?.ok !== true) throw new Error('notification read not confirmed');
+    return result;
   },
 };
