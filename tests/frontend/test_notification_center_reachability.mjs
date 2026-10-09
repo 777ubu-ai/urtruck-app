@@ -5,16 +5,18 @@ import { readFileSync } from 'node:fs';
 const profile = readFileSync('src/screens/ProfileScreen.js', 'utf8');
 const notifScreen = readFileSync('src/screens/NotificationsScreen.js', 'utf8');
 
-test('Profile does not duplicate deal notifications entry or unread badge', () => {
-  assert.doesNotMatch(profile, /screen: 'Notifications'/, 'Profile must not expose Notifications as a second deal hub');
-  assert.doesNotMatch(profile, /testID: 'profile-notifications'/);
+// Запрос владельца 09.10: полученный push должен находиться внутри приложения.
+test('signed-in Profile menu exposes inbox without duplicating deal unread or clearing it', () => {
+  assert.match(profile, /session\?\.user\?\.id \? \[/);
+  assert.match(profile, /label: t\('menu_notifications'\), screen: 'Notifications', testID: 'profile-notifications'/);
+  assert.doesNotMatch(profile, /notificationsAPI\.(?:read|readAll)\(/);
   assert.doesNotMatch(profile, /useUnreadNotifications/, 'Profile must not subscribe to deal unread counter');
   assert.doesNotMatch(profile, /profile-notifications-badge/);
   assert.doesNotMatch(profile, /profile-push-filter/);
   assert.doesNotMatch(profile, /navigation\.navigate\(['"]PushFilter/);
 });
 
-test('root screens keep the notification center reachable only through supported deep links', () => {
+test('root screens retain approved headers and tabs; inbox is accessed through menu', () => {
   for (const file of [
     'src/screens/FeedScreen.js',
     'src/screens/CargoFeedScreen.js',

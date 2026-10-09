@@ -132,10 +132,13 @@ export default function ProfileScreen({ navigation, route }) {
   useFocusEffect(useCallback(() => {
     fetchProfile();
   }, [fetchProfile]));
-  // Notifications are not a second navigation hub anymore. Deal events and
-  // their unread state live in the dedicated Deals area, so Profile must not
-  // duplicate the same feed or badge.
+  // Владелец 09.10.2026: push приходит, но событие невозможно найти внутри.
+  // Доступ к существующей ленте через меню; открытие Profile не читает
+  // уведомления и не добавляет второй счётчик чатов.
   const menuItems = [
+    ...(session?.user?.id ? [
+      { icon: 'inbox', label: t('menu_notifications'), screen: 'Notifications', testID: 'profile-notifications' },
+    ] : []),
     ...(isDriver ? [
       { icon: 'truck', label: getVehicleCopy(uiLang).myVehicles, screen: 'VehicleChooser', params: { origin: 'Profile' }, testID: 'profile-my-vehicles' },
       ...(ADVANCED_VERIFICATION_VISIBLE ? [
