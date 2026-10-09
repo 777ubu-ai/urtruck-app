@@ -461,3 +461,13 @@ class package and FCM delegation policy; no production native edits. Validate
 all guards before writes, idempotence, production rejection, generated project
 manifest/class correspondence, then compile frozen source. Rollback revert
 restoration script/workflow insertion; no device or API changes yet.
+
+Native restoration verification: 7/7 Python tests PASS (exact Git bytes,
+idempotence, production guard, SHA guard, package guard, manifest guard,
+duplicate registration and suffix guard). Actual Expo-generated QA2 tree
+restoration and second-run equality PASS. Full JS unit suite 1162/1162 PASS;
+lint 491 active JS files PASS; git diff checks PASS. Python system environment
+lacks PyYAML; workflow YAML validation uses installed Node YAML parser.
+Cancelled run 37981488823 produced no distributed candidate. Source restoration
+also preserves SystemBarsPackage; flags, translation/voice, GPS and production
+files are not edited. Native compile and physical acceptance remain pending.

@@ -193,7 +193,9 @@ jobs:
           CI: 1
 
       - name: Restore canonical UrTruck QA2 native bridges
-        run: python3 scripts/restore-qa2-native-push.py --source-sha "$(git rev-parse HEAD)"
+        run: |
+          python3 -m unittest discover -s tests -p test_restore_qa2_native_push.py -v
+          python3 scripts/restore-qa2-native-push.py --source-sha "$(git rev-parse HEAD)"
 
       - name: Verify Google Services Gradle plugin wired after prebuild
         run: python3 scripts/verify_android_firebase_config.py --check-plugin android
