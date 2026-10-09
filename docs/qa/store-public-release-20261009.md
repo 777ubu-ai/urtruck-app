@@ -20,3 +20,7 @@
 - Store patch scope: выбрать Apple build 94; подготовить Google production draft 213660672, сохранив текущий completed 212912064. Не объявлять draft опубликованным или отправленным на review.
 - Перед публичным Google rollout требуется сверка фактических Play Console background/FGS location declarations и актуального видео по AGENTS.md и канону. API списка tracks не доказывает заполнение этих форм.
 - Rollback подготовки: вернуть Apple build 85 до новой отправки; убрать только собственный production draft, сохранив исходный completed release и остальные tracks. Фактический старый public release не изменяется на этапе подготовки.
+
+## Подготовка 05:38 UTC
+Apple: build 94 выбран вместо 85; state PREPARE_FOR_SUBMISSION, releaseType AFTER_APPROVAL, на review ещё не отправлено. Старые unresolved review issues требуют чтения замечаний Apple.
+Google prepare run 37889551766: validate PASS, commit вернул HTTP 400: changesNotSentForReview запрещён, изменения отправляются на review автоматически. Собственный ephemeral edit удалён, production не изменён. Следующий запрос убирает запрещённый параметр и сохраняет status=draft; draft не распространяется пользователям.

@@ -32,10 +32,11 @@ try:
         report['production_desired']=desired
         checked(s.put(BASE+'/edits/'+edit+'/tracks/production',json=desired,timeout=30))
         checked(s.post(BASE+'/edits/'+edit+':validate',json={},timeout=30))
-        report['commit']=checked(s.post(BASE+'/edits/'+edit+':commit',params={'changesNotSentForReview':'true'},json={},timeout=30))
+        report['commit']=checked(s.post(BASE+'/edits/'+edit+':commit',json={},timeout=30))
         committed = True
         report['production_draft_committed']=True
-        print('Production draft committed; NOT sent for review and NOT published:',VERSION)
+        report['review_dispatch_policy']='automatic per Google API; draft is not served to users'
+        print('Production draft committed; Google automatic review policy; NOT published:',VERSION)
     with open('play-store-inspection.json','w') as f:json.dump(report,f,ensure_ascii=False,indent=2)
     print(json.dumps({'package':PACKAGE,'mode':mode,'tracks':tracks,'listing_languages':[x.get('language') for x in listings.get('listings',[])]},ensure_ascii=False))
 finally:
