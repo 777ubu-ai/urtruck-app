@@ -263,3 +263,30 @@ APNs rotation BLOCKED: Apple browser всё ещё показывает login п
 production API + OneSignal, подтвердить delivery и только затем отозвать
 старый 2Y43J6CR86. Старый APNs key пока действующий; инцидент ещё не закрыт.
 Новые SDK сборки и бизнес-маршрутизация не выполнены.
+
+
+## PRE-FLIGHT foreground bridge
+
+Base cc80ee2; scope src/utils/oneSignalForeground.js, oneSignalPilot.js,
+tests/frontend/test_onesignal_foreground.mjs и этот журнал.
+Known-good: существующий decideForegroundPresentation/pushRuntime;
+физического PASS OneSignal нет. Protected: production provider, auth,
+registry, outbox, translation/voice, GPS и страны.
+AST Graphify update выполнен до правки, exit 0. Checks: реальные решения
+foreground runtime через mock SDK event, isolation, существующий push runtime,
+lint, diff check. Rollback: revert отдельного bridge-коммита.
+
+
+## QA2 foreground policy bridge
+
+SDK foregroundWillDisplay теперь синхронно вызывает preventDefault до
+асинхронного решения существующего decideForegroundPresentation.
+Открытая комната и повтор event_id подавляют баннер; другая комната и
+события сделки показываются через SDK display. ACK остаётся диагностическим
+и не блокирует presentation. Ошибки callback не выводят payload/token.
+Bridge lazy-loaded только после QA2 guard, production bootstrap unchanged.
+SDK event/property signatures проверены в установленном react-native-onesignal
+5.5.14, включая требование synchronous preventDefault.
+13/13 tests PASS (5 новых bridge, 5 isolation, 3 existing runtime).
+Lint PASS 489 files; diff check PASS. Native/physical checks PENDING.
+Click/cold-start, ownership/registry/outbox и APNs rotation ещё не закрыты.

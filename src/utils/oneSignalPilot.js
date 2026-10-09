@@ -14,6 +14,18 @@ export function initializeOneSignalPilot() {
   }
   const { OneSignal, LogLevel } = require('react-native-onesignal');
   OneSignal.Debug.setLogLevel(LogLevel.None);
+  const { createOneSignalForegroundHandler } = require('./oneSignalForeground');
+  const { decideForegroundPresentation } = require('./pushRuntime');
+  const { getActiveRoom } = require('./activeRoom');
+  const { claimPushEvent } = require('./pushEventDedup');
+  const { push } = require('./push');
+  OneSignal.Notifications.addEventListener('foregroundWillDisplay',
+    createOneSignalForegroundHandler({
+      decide: decideForegroundPresentation,
+      readActiveRoom: getActiveRoom,
+      acknowledge: (id, options) => push.acknowledgeReceipt(id, options),
+      claimDisplay: (id) => claimPushEvent(id, 'display'),
+    }));
   OneSignal.initialize(pilot.appId);
   initialized = true;
   return true;
