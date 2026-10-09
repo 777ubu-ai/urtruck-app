@@ -27,7 +27,8 @@
 
 ## Блокеры до первого кандидата
 
-1. Владелец вошёл в OneSignal на локальном Mac. У ассистента нет этого browser session.
+1. Вход ассистента в OneSignal подтверждён через защищённое Google 2FA.
+   Free app e6f77ac9-aac9-4e7d-be68-a5d805e95fbf существует; APNs/FCM/HMS INACTIVE.
 2. Проверить Android FCM credentials именно для com.urtruck.app.qa2.
 3. Настроить отдельный QA2 iOS App ID, push capability/provisioning и APNs в OneSignal.
 4. Проверить конфликт OneSignal с собственным UrTruckFirebaseMessagingService и Expo
@@ -57,8 +58,8 @@ Production остаётся на прежнем провайдере до отд
 - Секреты в код не добавлялись; production и QA2 серверы не изменены.
 
 - Полный frontend/unit прогон на исходниках e0d4251: 1145/1145 PASS, 0 skipped.
-- Browser sign-in: пароль принят; Google запрашивает passkey/двухэтапное подтверждение.
-  Успешный вход в кабинет ассистентом ещё не подтверждён.
+- Browser sign-in: PASS; защищённое Google 2FA завершено, кабинет доступен.
+  Секреты аутентификации не выводились и не сохранялись в репозитории.
 
 ## Серверный транспорт — следующий изолированный этап
 
@@ -76,3 +77,38 @@ HTTP 200 без notification ID не считается успехом; accepted
 подписки и account-switch протокол до подключения к бизнес-событиям.
 
 Транспорт: 7/7 unit tests PASS (mock HTTP; реальная отправка не выполнялась).
+
+
+## Проверка кабинета и полномочий после успешного входа
+
+- OneSignal Free: созданное владельцем приложение найдено; подписок пока 0.
+- Формы FCM и APNs открыты и прочитаны. Ключи не передавались, Save не нажимался.
+- FCM требует Service Account JSON; APNs — .p8, Key ID, Team ID, Bundle ID.
+- QA2 использует Firebase project urtruck-e722b. Проект общий; разделение пакетов
+  com.urtruck.app / com.urtruck.app.qa2 само по себе НЕ ограничивает права FCM ключа.
+- Существующий QA2 credential относится к firebase-adminsdk-fbsvc. IAM read-only:
+  firebase.sdkAdminServiceAgent, firebasecloudmessaging.admin, iam.serviceAccountTokenCreator.
+  Этот ключ не передаётся OneSignal: права шире необходимого.
+- Существующий urtruck-push-sender имеет firebasecloudmessaging.admin. Его рабочие
+  credentials и права не менялись.
+
+### Конкретный следующий шаг, ожидающий подтверждения владельца
+
+Создать отдельный account onesignal-qa2 в urtruck-e722b и custom role
+urtruckOneSignalPushSender с ровно двумя permissions:
+cloudmessaging.messages.create, firebase.projects.get.
+Создать отдельный JSON key и передать его только в FCM форму созданного приложения
+OneSignal e6f77ac9-aac9-4e7d-be68-a5d805e95fbf. Это постоянный доступ до отзыва ключа;
+он разрешает FCM отправку в общем Firebase проекте, а не только QA2 package.
+Пилотная маршрутизация UrTruck остаётся ограничена QA2; production не переключается.
+Для полной изоляции полномочий потребуется отдельный Firebase project.
+
+Создание аккаунта, role binding, ключа и передача OneSignal ещё НЕ выполнены.
+APNs key upload / QA2 provisioning ещё НЕ выполнены; production APNs key не копировался.
+После разрешения: выполнить отдельный ключ, подтвердить FCM статус в кабинете;
+затем завершить APNs и нативную интеграцию/identity/outbox, собрать QA2 и проверить
+физические устройства. Доставка в кабинет не равна готовой приёмке приложения.
+
+Источники требований: официальные OneSignal Android Firebase credentials
+https://documentation.onesignal.com/docs/en/android-firebase-credentials
+и формы конфигурации live dashboard (проверены 09.10.2026).
