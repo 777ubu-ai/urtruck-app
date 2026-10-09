@@ -112,3 +112,25 @@ APNs key upload / QA2 provisioning ещё НЕ выполнены; production AP
 Источники требований: официальные OneSignal Android Firebase credentials
 https://documentation.onesignal.com/docs/en/android-firebase-credentials
 и формы конфигурации live dashboard (проверены 09.10.2026).
+
+
+## FCM подключён после разрешения владельца
+
+Владелец явно разрешил создать и передать отдельный FCM credential OneSignal.
+Созданы service account onesignal-qa2 и custom role urtruckOneSignalPushSender
+в Firebase project urtruck-e722b. IAM binding проверен: только эта custom role.
+Permissions роли проверены на точное равенство:
+cloudmessaging.messages.create, firebase.projects.get.
+JSON key хранится на Mac вне git с mode 0600; содержимое не выводилось в чат.
+Временная копия для загрузки удалена после завершения передачи файла.
+
+Ключ загружен в OneSignal app e6f77ac9-aac9-4e7d-be68-a5d805e95fbf.
+OneSignal вернул Settings saved и перешёл к выбору SDK; выбран Expo,
+подтверждено SDK selection successfully saved; мастер завершён кнопкой Done.
+Это PASS сохранения FCM credentials; НЕ доказательство доставки на устройство.
+Реальная отправка через OneSignal, подписка телефона и native build ещё PENDING.
+APNs/HMS и backend business routing пока не подключены.
+
+Rollback FCM: отключить платформу OneSignal и отозвать созданный ключ отдельного
+account onesignal-qa2. Рабочие Firebase accounts/credentials не менялись.
+Production провайдер UrTruck и серверные runtime не переключались.
