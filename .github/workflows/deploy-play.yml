@@ -91,7 +91,6 @@ concurrency:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   build-and-submit:
@@ -212,6 +211,7 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:testReleaseUnitTest bundleRelease --no-daemon --stacktrace --warning-mode=summary
           python3 ../scripts/verify_android_fcm_handler.py app/build/intermediates
+          python3 ../scripts/verify_android_16kb.py app/build/outputs/bundle/release/app-release.aab
 
       - name: Build signed production APK for device QA
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_installable_apk }}
@@ -241,6 +241,11 @@ jobs:
           test -f "$aab"
           bundletool_jar="$RUNNER_TEMP/bundletool.jar"
           curl -fsSL "https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar" -o "$bundletool_jar"
+          bundle_config=$(java -jar "$bundletool_jar" dump config --bundle "$aab")
+          if ! printf "%s" "$bundle_config" | grep -q "PAGE_ALIGNMENT_16K"; then
+            echo "::error::AAB does not request 16 KB ZIP alignment"
+            exit 1
+          fi
           manifest_xml=$(java -jar "$bundletool_jar" dump manifest --bundle "$aab" --module base)
           printf '%s\n' "$manifest_xml" | grep -q 'package="com.urtruck.app"'
           printf '%s\n' "$manifest_xml" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
@@ -403,7 +408,7 @@ jobs:
           - upload certificate SHA-256: \`${UPLOAD_CERT_SHA256:-unknown}\`
           EOF
           )
-          gh api "repos/${GITHUB_REPOSITORY}/issues/247/comments" -f body="$body"
+          printf "%s\n" "$body" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary APK envelope
         if: always()
