@@ -328,3 +328,19 @@ PENDING, so candidate is a targeted delivery pilot, not business acceptance.
 Android build will use exact candidate SHA and explicit onesignal_pilot=true;
 no Play submission or production rollout. iOS separate QA2 signing/provisioning
 and APNs key rotation still require resolution of Apple session access.
+
+
+## PRE-FLIGHT physical inventory / candidate version correction
+
+Branch feat/qa2-onesignal-pilot-20261009 base 2973c81. Huawei
+3DJ0224B04002582 connected, Google Play services package present, installed
+QA2 versionCode 211040106, versionName 1.0.9-qa2 (read-only dumpsys).
+iPhone 15 Pro Max CoreDevice reports unavailable; no current iOS test possible.
+74/74 additional frontend regression tests PASS at 2973c81: room-only
+notification cleanup, read confirmation, dedup, badge races, deeplink,
+country registry and composer layout/runtime. This is source PASS, not physical.
+Run 37978398152 cancellation requested before native compilation because the
+installed QA2 code already equals metadata candidate 106. Scope: raise only
+QA2 metadata baseline 106 -> candidate 107; production version unchanged.
+Checks: QA2 build contract, diff check. Rollback: revert version-only commit;
+no device downgrade/uninstall/data clearing. Replacement build exact new SHA.
