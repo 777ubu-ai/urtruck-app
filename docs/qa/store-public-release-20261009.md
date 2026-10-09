@@ -24,3 +24,11 @@
 ## Подготовка 05:38 UTC
 Apple: build 94 выбран вместо 85; state PREPARE_FOR_SUBMISSION, releaseType AFTER_APPROVAL, на review ещё не отправлено. Старые unresolved review issues требуют чтения замечаний Apple.
 Google prepare run 37889551766: validate PASS, commit вернул HTTP 400: changesNotSentForReview запрещён, изменения отправляются на review автоматически. Собственный ephemeral edit удалён, production не изменён. Следующий запрос убирает запрещённый параметр и сохраняет status=draft; draft не распространяется пользователям.
+
+## Итоговая фактическая проверка 2026-10-09T06:59:40.369061+00:00
+
+- Apple 1.0.9 build 94: PREPARE_FOR_SUBMISSION, AFTER_APPROVAL. На App Review не отправлено. API подтверждает старый submission UNRESOLVED_ISSUES; текст замечаний через выполненные официальные API не получен. Нужен вход в App Store Connect для чтения и устранения замечаний; безопасный запрос входа завершился тайм-аутом, свежая cloud browser форма снова требует Apple Account. Нельзя считать вход успешным.
+- Google Play: production содержит прежний 212912064 completed и новый 213660672 draft. Подготовка SUCCESS Actions 37889767275; свежая повторная API-проверка SUCCESS Actions 37896359597. Draft не распространяется пользователям; API commit учитывает автоматическую review policy, но фактический статус ожидания review по Publishing overview не подтверждён.
+- Перед финальной отправкой/rollout Google требуется проверить фактические background location и FGS location declarations, действующее demo-video и Publishing overview в авторизованном Play Console. Это требование AGENTS.md и docs/release/google-play-background-location.md; API tracks не заменяет проверку форм.
+- Разрешение владельца на публичное обновление уже получено; повторное разрешение не требуется. Блокеры — доступ к замечаниям Apple и проверка Google declarations, а не отсутствие разрешения. Новый серверный patch отдельно не разрешён и не применялся.
+- Ключи/токены не публиковались; новые сборки не запускались; приложения/данные не удалялись. Raw metadata и SHA индекс сохранены приватно у владельца в qa-evidence/store-public-20261009.
