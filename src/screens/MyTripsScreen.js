@@ -166,12 +166,29 @@ export default function MyTripsScreen({ navigation, route }) {
   // (ChatsListScreen в dealsMode). Здесь ничего не гасим — иначе бейдж
   // пропадал бы от простого захода в «Мои рейсы»/«Мои грузы».
 
+  const publishingRouteRef = useRef(false);
   const onPublishRoute = async () => {
-    const result = await vehicleAPI.list();
-    const vehicles = result.ok ? (result.vehicles || []) : [];
-    if (vehicles.length === 0) navigation.navigate('VehicleSetupCountry', { origin: 'CreateTrip', role });
-    else if (vehicles.length === 1) navigation.navigate('CreateTrip', { role, vehicle: vehicles[0], vehicleId: vehicles[0].id });
-    else navigation.navigate('VehicleChooser', { role });
+    if (publishingRouteRef.current) return;
+    publishingRouteRef.current = true;
+    try {
+      const result = await vehicleAPI.list();
+      if (!mounted.current) return;
+      // Failed authentication/network requests are not an empty garage.
+      if (!result?.ok || !Array.isArray(result.vehicles)) {
+        toast(result?.detail || t('network_error'), 'error');
+        return;
+      }
+      const vehicles = result.vehicles;
+      // Listing a route must not force a second vehicle registration.
+      // The create-trip API still enforces identity/publication eligibility.
+      if (vehicles.length === 0) navigation.navigate('CreateTrip', { role });
+      else if (vehicles.length === 1) navigation.navigate('CreateTrip', { role, vehicle: vehicles[0], vehicleId: vehicles[0].id });
+      else navigation.navigate('VehicleChooser', { role, origin: 'CreateTrip' });
+    } catch {
+      if (mounted.current) toast(t('network_error'), 'error');
+    } finally {
+      publishingRouteRef.current = false;
+    }
   };
 
   const confirmAction = async (msg, confirmLabel = t('confirm'), destructive = false) => (

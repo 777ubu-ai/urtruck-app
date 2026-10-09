@@ -35,7 +35,8 @@ test('register/me exposes basic completion and the basic app has no document-rev
   assert.doesNotMatch(trips, /trips-publish-gate/);
   assert.doesNotMatch(trips, /pubGateVisible|canPublish|verState/);
   assert.doesNotMatch(trips, /regAPI\.me\(\)/);
-  assert.match(trips, /const onPublishRoute = async \(\) => \{\s*const result = await vehicleAPI\.list\(\)/);
+  assert.match(trips, /await vehicleAPI\.list\(\)/);
+  assert.doesNotMatch(trips, /navigation\.navigate\('VehicleSetupCountry'/); // Owner decision 2026-10-09: no repeat registration during route publication.
 });
 
 test('VehicleSetupSuccess completes basic onboarding before opening trip creation', () => {
