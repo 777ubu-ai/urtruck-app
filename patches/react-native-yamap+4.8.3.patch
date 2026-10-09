@@ -18,7 +18,8 @@ index d9de295..d4fbc97 100644
 -    implementation 'com.google.android.gms:play-services-location:+'
 +    implementation 'com.google.android.gms:play-services-location:21.3.0'
      implementation 'com.facebook.react:react-native:+'
-     implementation 'com.yandex.android:maps.mobile:4.8.0-full'
+-    implementation 'com.yandex.android:maps.mobile:4.8.0-full'
++    implementation 'com.yandex.android:maps.mobile:4.19.0-full'
      implementation 'androidx.core:core-ktx:1.13.1'
 diff --git a/node_modules/react-native-yamap/android/build/generated/source/buildConfig/debug/ru/vvdev/yamap/BuildConfig.java b/node_modules/react-native-yamap/android/build/generated/source/buildConfig/debug/ru/vvdev/yamap/BuildConfig.java
 new file mode 100644
