@@ -9,11 +9,20 @@ on:
       source_ref:
         description: Exact source commit SHA to build
         required: true
+      onesignal_pilot:
+        description: Build isolated OneSignal QA2 pilot (no production rollout)
+        required: false
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       source_ref:
         required: true
         type: string
+      onesignal_pilot:
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [main, "claude/**"]
 
@@ -90,6 +99,14 @@ jobs:
 
       - name: Verify QA2 build regression contract
         run: node --test tests/frontend/test_qa2_live_build_contract.mjs
+
+      - name: Enable explicitly requested QA2 OneSignal pilot
+        if: ${{ inputs.onesignal_pilot == true }}
+        run: |
+          test "$URTRUCK_BUILD_FLAVOR" = qa2
+          test "${EXPO_PUBLIC_API_URL%/}" = https://qa2.urtruck.kz
+          echo "URTRUCK_PUSH_PROVIDER=onesignal" >> "$GITHUB_ENV"
+          echo "URTRUCK_ONESIGNAL_PLATFORMS_READY=1" >> "$GITHUB_ENV"
 
       - name: Materialize QA2 native MapKit build contract
         # Keep the native key out of source and separate from the web JS key.

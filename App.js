@@ -37,6 +37,7 @@ import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
 import { claimPushEvent } from './src/utils/pushEventDedup';
 import { handlePushTap } from './src/utils/pushRuntime';
+import { oneSignalClickBridge } from './src/utils/oneSignalClicks';
 import { clearAppIconBadge, refreshAppIconBadge } from './src/utils/appBadge';
 import * as Sentry from '@sentry/react-native';
 
@@ -373,8 +374,9 @@ function AppInner() {
       .then((resp) => { if (resp) handleResponse(resp); })
       .catch(() => {});
     const sub = Notifications.addNotificationResponseReceivedListener?.(handleResponse);
-    return () => { sub?.remove?.(); };
-  }, [authedForDeepLink]);
+    const stopOneSignalClicks = oneSignalClickBridge.subscribe(handleResponse);
+    return () => { sub?.remove?.(); stopOneSignalClicks(); };
+  }, [authedForDeepLink, session?.user?.id]);
 
   // P2: глобальный прогон офлайн-очереди чата — на старте и при возврате
   // приложения в active (сеть могла восстановиться). Раньше flush был привязан

@@ -25,7 +25,7 @@ test('distributed QA2 requires a healthy non-production API target', () => {
 });
 
 test('QA086 checks out and records an explicitly supplied exact source SHA', () => {
-  const sourceInput = workflow.match(/source_ref:\n([\s\S]*?)\n\s*push:/)?.[1] || '';
+  const sourceInput = workflow.match(/source_ref:\n((?: {8}[^\n]*\n)+)/)?.[1] || '';
   assert.ok(sourceInput.includes('required: true'));
   assert.ok(!sourceInput.includes('default:'), 'QA2 build must not silently reuse a stale source SHA');
   assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));

@@ -26,6 +26,8 @@ export function initializeOneSignalPilot() {
       acknowledge: (id, options) => push.acknowledgeReceipt(id, options),
       claimDisplay: (id) => claimPushEvent(id, 'display'),
     }));
+  const { oneSignalClickBridge } = require('./oneSignalClicks');
+  OneSignal.Notifications.addEventListener('click', (event) => oneSignalClickBridge.receive(event));
   OneSignal.initialize(pilot.appId);
   initialized = true;
   return true;

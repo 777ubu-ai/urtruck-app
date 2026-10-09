@@ -290,3 +290,41 @@ SDK event/property signatures проверены в установленном r
 13/13 tests PASS (5 новых bridge, 5 isolation, 3 existing runtime).
 Lint PASS 489 files; diff check PASS. Native/physical checks PENDING.
 Click/cold-start, ownership/registry/outbox и APNs rotation ещё не закрыты.
+
+
+## PRE-FLIGHT QA2 click bridge и Android candidate
+
+Branch feat/qa2-onesignal-pilot-20261009, base 8570536.
+Known-good: existing pushRuntime tap policy; OneSignal physical PASS absent.
+Scope: bounded in-memory click bridge, bootstrap, App native tap adapter,
+optional QA2 Android workflow input and associated tests. Production, auth
+credentials, GPS, voice/translation/countries remain protected.
+AST Graphify before edit exit 0 (9.86s). Checks: cold-start buffer, session
+cleanup, canonical room target, event dedup and current native tap policy,
+config isolation, lint, workflow contract. Rollback: revert candidate commit;
+QA2 APK installation is separate from production. No production deployment.
+Identity Verification requires native JWT bridge: current React Native SDK
+does not expose login(externalId, token), per official docs checked 2026-10-09.
+Do not enable app-wide identity toggle or trust client-supplied external_id.
+
+First related test run found a source-contract parser defect: the regex
+consumed every workflow input and mistook a boolean pilot default for a SHA
+default. Narrowed it to the source_ref mapping; source SHA remains required.
+Pilot flag step runs after baseline config tests so their intentionally
+nonpilot endpoints do not inherit the pilot's strict QA2 host guard.
+
+
+## QA2 click adapter and build readiness
+
+OneSignal click listener installed before SDK initialize. Latest cold-start
+tap is buffered in memory for at most 60 seconds. Native App adapter uses
+existing authoritative room_id resolution, handlePushTap, receipt telemetry,
+server badge refresh and navigation dedup. Session subscriber cleanup cancels
+queued callbacks. Tap does not mark a chat read or delete other notifications.
+34/34 related frontend tests PASS, lint PASS 491 active JS files, YAML parse
+and mandatory SHA/optional disabled-by-default pilot input PASS, diff PASS.
+Production does not initialize SDK. Business identity/registry/outbox remain
+PENDING, so candidate is a targeted delivery pilot, not business acceptance.
+Android build will use exact candidate SHA and explicit onesignal_pilot=true;
+no Play submission or production rollout. iOS separate QA2 signing/provisioning
+and APNs key rotation still require resolution of Apple session access.
