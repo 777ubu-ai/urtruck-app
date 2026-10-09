@@ -159,3 +159,30 @@ FCMBroadcastReceiver с com.google.android.c2dm.intent.RECEIVE и priority 999,
 Таким образом, конфликт двух FCM services пока НЕ доказан; требуется реальная
 проверка merged manifest и обработки OneSignal payload через существующий Expo
 service, включая отсутствие дублирования. Native build/physical PASS отсутствуют.
+
+
+## Серверный API key создан и проверен
+
+Продолжение подтверждено владельцем после конкретного запроса создания ключа.
+Создан app-scoped API key UrTruck QA2 backend с IP allowlist 185.22.65.11/32.
+Секрет сохранён только в /home/ubuntu/urtruck-qa2/backend/.env, mode 0600.
+Backup: /home/ubuntu/urtruck-qa2/runtime/onesignal-backups/20261009T175105Z.
+Временная копия секрета удалена; ключ в git/клиент/чат не выводился.
+Provider остался direct default, runtime не перезапускался и не переключался.
+
+Read-only GET /notifications: обычный dual-stack путь HTTP 401;
+принудительный IPv4 curl -4 с тем же ключом HTTP 200, total_count=0.
+Причина, соответствующая наблюдению: API IP allowlist содержит IPv4 сервера,
+а DNS OneSignal также отдаёт IPv6. HTTP 200 подтверждает валидность ключа
+при использовании разрешённого адреса. Точную внешнюю IPv6 идентичность не снимали.
+
+В QA2 standalone transport добавлен HTTPTransport(local_address='0.0.0.0')
+с TLS verification по умолчанию и trust_env=False. IP allowlist не расширялся.
+8/8 transport unit tests PASS; новый тест проверяет default HTTP client path.
+AST Graphify rerun выполнен до правки, без кластеризации.
+Фактическая отправка push НЕ выполнялась. Backend outbox ещё не подключён.
+APNs/HMS и защищённая привязка пользователя всё ещё PENDING.
+
+OneSignal plugin теперь доступен: health ok, list_apps подтверждает два приложения
+UrTruck (e71047aa-061b-4e38-8da5-6bf069f95b07) и существующий QA2 pilot app
+(e6f77ac9-aac9-4e7d-be68-a5d805e95fbf). Пилот не переносился в другое приложение.

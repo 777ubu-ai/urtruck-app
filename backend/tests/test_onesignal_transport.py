@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 import httpx
 from services.onesignal_transport import APP_ID, OneSignalTransport
 
@@ -56,3 +57,16 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(self.request(transport, badge=-1).error_code, "invalid_badge")
         result = transport.send(subscription_id="other-user", event_id="e", title="T", body="B", data={})
         self.assertEqual(result.error_code, "invalid_subscription")
+
+    def test_default_client_uses_allowlisted_address_family(self):
+        calls = []
+        def transport_factory(**kwargs):
+            calls.append(kwargs)
+            def provider(request):
+                self.assertEqual(request.url.host, "api.onesignal.com")
+                self.assertEqual(request.headers["authorization"], "Key unit-test-only")
+                return httpx.Response(200, json={"id": SUB})
+            return httpx.MockTransport(provider)
+        with patch("services.onesignal_transport.httpx.HTTPTransport", side_effect=transport_factory):
+            self.assertEqual(self.request(OneSignalTransport(env=ENV)).status, "accepted")
+        self.assertEqual(calls, [{"local_address": "0.0.0.0"}])

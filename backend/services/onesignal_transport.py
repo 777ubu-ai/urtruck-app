@@ -31,7 +31,16 @@ class OneSignalTransport:
             and settings.get("ONESIGNAL_QA2_APP_ID") == APP_ID
         )
         self._api_key = settings.get("ONESIGNAL_QA2_API_KEY", "")
-        self._post = post or httpx.post
+        self._post = post or self._post_ipv4
+
+    @staticmethod
+    def _post_ipv4(url, **kwargs):
+        # QA2 API key permits the server IPv4 /32. Dual-stack DNS can otherwise
+        # select IPv6 and fail authorization despite a valid credential.
+        # Keep TLS verification and the IP allowlist; do not widen credentials.
+        transport = httpx.HTTPTransport(local_address="0.0.0.0")
+        with httpx.Client(transport=transport, trust_env=False) as client:
+            return client.post(url, **kwargs)
 
     @property
     def ready(self):
