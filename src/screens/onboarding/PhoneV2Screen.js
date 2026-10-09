@@ -322,7 +322,16 @@ export default function PhoneV2Screen({ navigation, route }) {
         consent: true,
         role,
       });
-      if (result?.sent !== true || result?.error || result?.cooldown) {
+      if (result?.cooldown) {
+        const retrySeconds = Number(result.cooldown_sec);
+        const seconds = Number.isFinite(retrySeconds) && retrySeconds > 0
+          ? Math.ceil(retrySeconds)
+          : 60;
+        const wait = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+        setEmailError(t('prem_reg_cooldown_body').replace('{time}', wait));
+        return;
+      }
+      if (result?.sent !== true || result?.error) {
         setEmailError(t('phone_v2_send_failed'));
         return;
       }
