@@ -17,3 +17,6 @@ Android MapKit 4.8.0-full → 4.19.0-full; bridge, iOS Pod dependency, UI и GPS
 
 Sources: https://developer.android.com/guide/practices/page-sizes ; https://yandex.ru/maps-api/docs/mapkit/versions.html (4.19.0).
 Status: FIXED IN SOURCE; BUILD/PHYSICAL/PLAY VALIDATION PENDING.
+
+## Первый native build и адаптация моста
+Actions 37910166357, source d38a3bb: FAIL compileReleaseKotlin react-native-yamap. Пять compiler diagnostics: FitnessOptions теперь принимает два Boolean, RequestPoint — дополнительный nullable argument, isHeadingEnabled заменён isHeadingModeActive. AAB не создан, upload skipped. В существующем Android patch сохранены прежние RN fixes и адаптированы только эти вызовы. Новый diff проверен git apply --check на восстановленном pristine YamapView. iOS source не изменён. Случайный повтор старого source 37910995051 отменён; его результат не считается исправленной сборкой. Runtime карта/GPS всё ещё pending.
