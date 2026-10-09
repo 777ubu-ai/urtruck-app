@@ -374,3 +374,41 @@ Full npm test:unit PASS 1158/1158; lint PASS 491 active JS files, diff PASS.
 These checks do not prove OS enumeration/dismissal on a physical iPhone.
 This fix is source-only and is not in currently running candidate 211040107
 at f8687e3. Business registry/outbox/identity and APNs rotation remain pending.
+
+
+## PRE-FLIGHT Android OneSignal targeted dismissal
+
+Base 82833da, pilot branch. Pinned Android SDK 5.10.2 source confirms
+NotificationsManager.removeNotification marks record dismissed, while
+NotificationRestoreProcessor restores outstanding records not currently visible.
+Expo OS cancellation alone may leave a restorable SDK record. This is a
+migration risk, not a demonstrated cause of old production/iOS badge defects.
+Scope: guarded SDK dismissal for recognized wrapped OneSignal notifications
+with exact signed 32-bit Android foreign-notification id; no guessed ids or
+group/all clearing. Protected: production/web/iOS SDK paths, direct FCM/APNs,
+other rooms/events, readBefore/session boundaries. Graphify exit 0, 9.91s.
+Checks targeted id and guards, SDK failure fallback, complete unit suite/lint.
+Rollback: revert source-only commit. Running 211040107 does not include this.
+
+
+## Targeted Android SDK bookkeeping source fix
+
+Recognized wrapped OneSignal notifications in QA2 now request
+OneSignal.Notifications.removeNotification using only the exact signed
+32-bit native id in Expo's foreign-notification identifier, after all
+room/readBefore/current-session checks. Production/incorrect host/nonpilot
+config never loads OneSignal for cleanup; direct native data keeps Expo path.
+Unknown/duplicate/out-of-range ids are not guessed. SDK failure still allows
+OS room-only dismissal. No group or all-notification removal is called.
+Native API is asynchronous: unit invocation is not proof the device database
+updated; restore-after-read needs physical verification.
+Complete npm test:unit PASS 1162/1162, lint PASS 491 files, diff PASS.
+Pinned Android SDK 5.10.2 BadgeCountUpdater: API26+ relies on OS channels;
+SDK SQLite fallback applies only to older API, so the badge risk must be
+diagnosed by device/version rather than universal SQLite claims.
+Source references:
+https://github.com/OneSignal/OneSignal-Android-SDK/blob/5.10.2/OneSignalSDK/onesignal/notifications/src/main/java/com/onesignal/notifications/internal/NotificationsManager.kt
+https://github.com/OneSignal/OneSignal-Android-SDK/blob/5.10.2/OneSignalSDK/onesignal/notifications/src/main/java/com/onesignal/notifications/internal/restoration/impl/NotificationRestoreProcessor.kt
+https://github.com/OneSignal/OneSignal-Android-SDK/blob/5.10.2/OneSignalSDK/onesignal/notifications/src/main/java/com/onesignal/notifications/internal/badges/impl/BadgeCountUpdater.kt
+Running 211040107 delivery pilot at f8687e3 excludes both subsequent cleanup
+fixes; no false attribution of its physical outcome to the latest source.

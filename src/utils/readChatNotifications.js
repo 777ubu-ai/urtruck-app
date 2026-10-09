@@ -11,24 +11,48 @@ function foreignChatRoom(identifier) {
   } catch { return null; }
 }
 
-function notificationData(data) {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
-  // Native APNs/FCM and OneSignal's newer os_data format keep app data at
-  // the top level. Never override an explicit top-level chat with a wrapper.
-  if (typeof data.room_id === 'string'
-    && ['chat_message', 'chat_attachment'].includes(data.type)) return data;
+function oneSignalCustom(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   let custom = data.custom;
   if (typeof custom === 'string') {
-    if (custom.length > 16384) return data;
-    try { custom = JSON.parse(custom); } catch { return data; }
+    if (custom.length > 16384) return null;
+    try { custom = JSON.parse(custom); } catch { return null; }
   }
-  // Older OneSignal payloads use custom.a (object on iOS, encoded string
-  // on Android). Require its provider notification UUID before unwrapping.
   if (custom && typeof custom === 'object' && !Array.isArray(custom)
     && typeof custom.i === 'string'
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(custom.i)
-    && custom.a && typeof custom.a === 'object' && !Array.isArray(custom.a)) return custom.a;
-  return data;
+    && custom.a && typeof custom.a === 'object' && !Array.isArray(custom.a)) return custom;
+  return null;
+}
+
+function notificationData(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+  if (typeof data.room_id === 'string'
+    && ['chat_message', 'chat_attachment'].includes(data.type)) return data;
+  return oneSignalCustom(data)?.a || data;
+}
+
+function markOneSignalDismissed(request) {
+  if (Platform.OS !== 'android') return;
+  const raw = request?.content?.data || request?.trigger?.remoteMessage?.data;
+  if (!oneSignalCustom(raw)) return;
+  const identifier = request?.identifier;
+  if (typeof identifier !== 'string'
+    || !identifier.startsWith('expo-notifications://foreign_notifications?')) return;
+  const ids = identifier.split('?')[1].split('&').filter(part => part.startsWith('id='));
+  if (ids.length !== 1 || !/^id=-?\d+$/.test(ids[0])) return;
+  const id = Number(ids[0].slice(3));
+  if (!Number.isInteger(id) || id < -2147483648 || id > 2147483647) return;
+  try {
+    const extra = require('expo-constants').default?.expoConfig?.extra;
+    if (extra?.oneSignalPilot?.enabled !== true || extra.urtruckBuildFlavor !== 'qa2'
+      || extra.urtruckApiUrl?.replace(/\/+$/, '') !== 'https://qa2.urtruck.kz') return;
+    // Update the SDK record as well as the OS; otherwise restoration can
+    // re-present an already read room notification. Never clear a group/all.
+    require('react-native-onesignal').OneSignal.Notifications.removeNotification(id);
+  } catch {
+    // SDK bookkeeping failure must not prevent room-only OS dismissal.
+  }
 }
 
 // Dismiss only notifications which were already delivered when a successful
@@ -62,6 +86,7 @@ export async function dismissReadChatNotifications(roomId, {
     if (!request?.identifier || !matchesChat
       || !Number.isFinite(deliveredAt) || deliveredAt <= 0 || deliveredAt > readBefore) continue;
     try {
+      markOneSignalDismissed(request);
       await Notifications.dismissNotificationAsync(request.identifier);
       dismissed += 1;
     } catch {
