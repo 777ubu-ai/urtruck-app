@@ -93,7 +93,12 @@ permissions:
   contents: read
 
 jobs:
+  quality-gate:
+    if: ${{ inputs.download_generated_version_code == '' }}
+    uses: ./.github/workflows/quality-gate-reusable.yml
+
   build-and-submit:
+    needs: quality-gate
     if: ${{ inputs.download_generated_version_code == '' }}
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
