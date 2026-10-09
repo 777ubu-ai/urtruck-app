@@ -134,3 +134,28 @@ APNs/HMS и backend business routing пока не подключены.
 Rollback FCM: отключить платформу OneSignal и отозвать созданный ключ отдельного
 account onesignal-qa2. Рабочие Firebase accounts/credentials не менялись.
 Production провайдер UrTruck и серверные runtime не переключались.
+
+
+## Следующий этап — серверный API доступ и APNs
+
+FCM Active подтверждён по списку платформ OneSignal. APNs/HMS остаются Inactive.
+Keys & IDs: API keys отсутствуют. Открыта форма создания ключа без финального
+Create; подготовлено имя UrTruck QA2 backend и IP allowlist 185.22.65.11/32.
+Исходящий source IP проверен ip route get на сервере: 185.22.65.11.
+Создание ключа ожидает отдельного подтверждения: это новый постоянный API доступ
+к OneSignal app, включая отправку push; ключ будет храниться только в QA2 env.
+Форма не предлагает отдельного ограничения API key только на отправку.
+IP ограничивает источник, но не делит production/QA2 процессы на общем сервере.
+
+Production APNs key присутствует, текущий bundle com.urtruck.app.
+Права ключа на отдельный bundle com.urtruck.app.qa2 не подтверждены: p8 не содержит
+такой информации. Production key не копировался и не передавался OneSignal.
+QA2 Apple App ID/provisioning ещё не подтверждены.
+
+Дополнительная native source проверка: react-native-onesignal 5.5.14 использует
+Android notifications artifact 5.10.2. В опубликованном AAR найден
+FCMBroadcastReceiver с com.google.android.c2dm.intent.RECEIVE и priority 999,
+а не второй MESSAGING_EVENT service. Найден отдельный HMS message service.
+Таким образом, конфликт двух FCM services пока НЕ доказан; требуется реальная
+проверка merged manifest и обработки OneSignal payload через существующий Expo
+service, включая отсутствие дублирования. Native build/physical PASS отсутствуют.
