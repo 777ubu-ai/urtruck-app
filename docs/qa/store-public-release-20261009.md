@@ -1,5 +1,11 @@
 # UrTruck — подготовка публичного обновления 9 октября 2026
 
+## Текущий статус после устранения отказа Apple
+
+- **Apple 1.0.9 (94): WAITING_FOR_REVIEW**, повторная отправка подтверждена API. Автоматический выпуск AFTER_APPROVAL. Публичная доступность новой версии ещё не подтверждена.
+- **Google Play 213660672: production draft** по последней проверке; публичный rollout не запускался. Блокеры Play Console/declarations остаются.
+- Следующие разделы до записи об исправлении демонстрационного входа — история подготовки, а не текущий статус Apple.
+
 ## Разрешение и pre-flight
 Владелец явно запросил обновление публичных App Store и Google Play 2026-10-09 около 10:27 Asia/Almaty. Это отдельное разрешение на работу с магазинами; новый серверный patch не входит в него.
 
@@ -39,3 +45,17 @@ Google prepare run 37889551766: validate PASS, commit вернул HTTP 400: cha
 - Безопасная форма Apple: username и password submitted; это не доказательство входа. Apple показала «Check the account information you entered and try again». Успешный вход не подтверждён; требуется исправленный вход или ручная передача того же окна.
 - Открытие https://play.google.com/console/ дважды отклонено автоматической проверкой браузера. Причина: Google перенаправляет на google.play, который reviewer классифицирует как недоверенный lookalike. Официальный переход подтверждён чтением https://play.google.com/console/about/ и ссылки Play Console на полученной странице; повторное открытие после проверки тоже отклонено. Дальнейшие обходы/альтернативные поверхности для заблокированного перехода не выполнялись. Для продолжения этого browser action требуется отдельное подтверждение адреса/разблокировка review.
 - Состояния релизов не объявляются опубликованными: Apple 94 Prepare for Submission, Play 213660672 production draft по последней проверке.
+
+## Исправление сведений для App Review — 2026-10-09T07:33:52.129820+00:00
+
+PRE-FLIGHT: release/store-public-20261009, исходный SHA cb27cf71648dc52353445395a49ff643fb062df1. Сборка 94/app source 0449116f не изменены; полная физическая приёмка не закрыта. Scope: production API login smoke для существующего демонстрационного аккаунта, исправление App Store review details и повторная отправка. Production код, конфигурация, сервисы, QA2 и устройства защищены. Backup старых review details приватный, mode 600. Откат отправки: отменить собственную отправку по фактическому текущему состоянию Apple; публичная 1.0.7 не менялась. Не возвращать заведомо нерабочий код без отдельной причины.
+
+Причина отказа подтверждена текстом Apple, предоставленным владельцем: Guideline 2.1, проверка сборки 85 от 6 октября, невозможность войти в demo account. Старые сведения из App Store Connect воспроизводят HTTP 400 «Неверный или истёкший код» на production.
+
+Фактический production runtime /home/ubuntu/urtruck/backend уже содержит отдельно настроенные REVIEWER_DEMO_EMAIL и непубличный REVIEWER_DEMO_CODE. Прежний путь /home/ubuntu/urtruck-security не является текущим production runtime. С действующими сведениями вход HTTP 200, сессия выдана, verification_level=2. Профиль: driver, approved, App Review Demo. GET register/me, market/my, chat/rooms, notifications/badge — HTTP 200; email/send — HTTP 200, sent=true, error=null. Это API-smoke доступа, не полная проверка всех функций на iPhone/iPad.
+
+PATCH appStoreReviewDetails обновил сведения входа и пошаговую инструкцию email → экран кода → код из поля Demo Account Password. Свежий GET подтвердил совпадение с действующей production конфигурацией. Код/пароль/токен не включены в отчёт, git или evidence. Backend не изменялся и не перезапускался.
+
+Единственный rejected item существующей submission bea2c456-d49f-4894-ab2b-afb5a316e64e соответствует версии f449ae1b-74a0-4c56-9ee4-6c45e1c890ca. После подтверждения устранения demo-login проблемы выполнены resolved=true и submitted=true. Свежие GET подтвердили submission WAITING_FOR_REVIEW и version WAITING_FOR_REVIEW, build 94, releaseType AFTER_APPROVAL. Apple approval/публичная публикация ещё не получены.
+
+Ключи, пароль демонстрационного аккаунта и сессии остались только в приватных локальных файлах mode 600. Сборки/скачивания не повторялись, рабочая ветка с PR #506–508 не изменена. Google Play остаётся отдельным незавершённым этапом.
