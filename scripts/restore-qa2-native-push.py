@@ -63,7 +63,20 @@ def plan(repo, root, sha, env):
         main = main.replace('    loadReactNative(this)', POLICY + '    loadReactNative(this)', 1)
     elif main.count(POLICY) != 1:
         raise ValueError('Unexpected restored delegation policy')
-    changes = {main_path: main.encode()}
+    canonical_gradle = git(repo, 'show', sha + ':android/app/build.gradle')
+    for coordinate in ('com.google.firebase:firebase-messaging:25.0.1', 'me.leolin:ShortcutBadger:1.1.22@aar'):
+        dependency = 'implementation("' + coordinate + '")'
+        if canonical_gradle.count(dependency) != 1:
+            raise ValueError('Canonical bridge dependency contract changed')
+        artifact = coordinate.rsplit(':', 1)[0] + ':'
+        matches = re.findall(r'["\'](' + re.escape(artifact) + r'[^"\']+)["\']', gradle)
+        if matches and (matches != [coordinate] or gradle.count(dependency) != 1):
+            raise ValueError('Unexpected or duplicate bridge dependency')
+        if not matches:
+            if gradle.count('dependencies {') != 1:
+                raise ValueError('Unexpected generated dependency block')
+            gradle = gradle.replace('dependencies {', 'dependencies {\n    ' + dependency, 1)
+    changes = {main_path: main.encode(), root / 'android/app/build.gradle': gradle.encode()}
     for name in NAMES:
         content = subprocess.check_output(['git', '-C', str(repo), 'show', sha + ':' + BASE + '/' + name])
         if not content.startswith(b'package com.urtruck.app\n') or re.search(rb'\b(?:BuildConfig|R)\.', content):

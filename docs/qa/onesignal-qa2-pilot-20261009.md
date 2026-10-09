@@ -471,3 +471,22 @@ lacks PyYAML; workflow YAML validation uses installed Node YAML parser.
 Cancelled run 37981488823 produced no distributed candidate. Source restoration
 also preserves SystemBarsPackage; flags, translation/voice, GPS and production
 files are not edited. Native compile and physical acceptance remain pending.
+
+## PRE-FLIGHT restore canonical bridge dependencies
+
+Base 4e00fca. Run 37982967065 failed compileReleaseKotlin: unresolved
+ShortcutBadger and ShortcutBadgeException in canonical badge store. Expo reset
+also removes explicit app Gradle bridge dependencies. No APK distributed.
+Graphify update exit 0. Scope QA2-only restoration includes canonical explicit
+Firebase Messaging 25.0.1 and ShortcutBadger 1.1.22@aar dependencies from exact
+Git SHA. Validate before writes; reject conflicting or duplicated coordinates;
+check actual generated Gradle and add regression coverage before retry.
+Rollback revert QA2 restoration change. Production native files untouched.
+Prior exact 4e00fca PR backend, frontend and mandatory web E2E all passed.
+iOS pod install completed; OneSignalXCFramework 5.8.0 resolved. Unsigned
+simulator compilation is diagnostic only, not physical APNs acceptance.
+
+Bridge-dependency repair: 8/8 restoration regression tests PASS; actual
+generated project dependencies/restoration/idempotence PASS; full JS suite
+1162/1162 PASS. Source fixed only after diagnosed Kotlin compilation failure.
+Version remains 211040107 because no failed candidate was distributed.

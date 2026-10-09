@@ -18,7 +18,7 @@ class NativeRestoreTests(unittest.TestCase):
         self.env = {'URTRUCK_BUILD_FLAVOR': 'qa2', 'EXPO_PUBLIC_API_URL': 'https://qa2.urtruck.kz'}
         self.gradle = self.root / 'android/app/build.gradle'
         self.gradle.parent.mkdir(parents=True)
-        self.gradle.write_text('namespace "com.urtruck.app.qa2"\napplicationId "com.urtruck.app.qa2"\nversionName "1.0.9-qa2"\n')
+        self.gradle.write_text('namespace "com.urtruck.app.qa2"\napplicationId "com.urtruck.app.qa2"\nversionName "1.0.9-qa2"\ndependencies {\n}\n')
         self.manifest = self.root / 'android/app/src/main/AndroidManifest.xml'
         self.manifest.parent.mkdir(parents=True)
         self.manifest.write_text('<service android:name="com.urtruck.app.UrTruckFirebaseMessagingService"/>')
@@ -42,6 +42,15 @@ class NativeRestoreTests(unittest.TestCase):
         for name in restore.PACKAGES:
             self.assertEqual(text.count('add(com.urtruck.app.' + name + '())'), 1)
         self.assertEqual(text.count('setNotificationDelegationEnabled(false)'), 1)
+        gradle = self.gradle.read_text()
+        self.assertEqual(gradle.count('implementation("me.leolin:ShortcutBadger:1.1.22@aar")'), 1)
+        self.assertEqual(gradle.count('implementation("com.google.firebase:firebase-messaging:25.0.1")'), 1)
+
+    def test_reject_conflicting_dependency_before_writes(self):
+        self.gradle.write_text(self.gradle.read_text().replace('dependencies {', 'dependencies {\n implementation("me.leolin:ShortcutBadger:1.1.21@aar")'))
+        before = self.main.read_bytes()
+        with self.assertRaises(ValueError): self.plan()
+        self.assertEqual(self.main.read_bytes(), before)
 
     def test_reject_production_without_writes(self):
         before = self.main.read_bytes()
