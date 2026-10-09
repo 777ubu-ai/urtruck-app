@@ -244,3 +244,22 @@ FCM replacement выполняется через dashboard; write-once provisio
 
 Business identity/registry/outbox и read/click lifecycle всё ещё pending.
 До физической приёмки не включать production OneSignal и не объявлять PASS.
+
+
+## FCM credential заменён после инцидента
+
+Создан новый JSON key 986121bd906e933b617ea4df4eb040fb87841713 для того же
+onesignal-qa2 account; IAM permissions не расширялись. Новый файл сохранён
+на Mac вне git с mode 0600. Через dashboard Google Android (FCM) старый
+credential заменён новым; мастер Expo завершён.
+Read-only GET /api/v1/apps/{pilot_id} через разрешённый IPv4: HTTP 200.
+Внутренняя проверка private_key_id подтвердила новый key, секретные поля
+в вывод не передавались. Старый key 71c1f6fd86cf385f4aaa54b5f3010d160dbfae97
+отключён командой keys disable (обратимо), не удалён.
+Временная upload-копия удалена; постоянная копия остаётся на Mac.
+
+APNs rotation BLOCKED: Apple browser всё ещё показывает login после
+повторяющегося session timeout. Нужен новый APNs .p8, после чего обновить
+production API + OneSignal, подтвердить delivery и только затем отозвать
+старый 2Y43J6CR86. Старый APNs key пока действующий; инцидент ещё не закрыт.
+Новые SDK сборки и бизнес-маршрутизация не выполнены.
