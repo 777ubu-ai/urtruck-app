@@ -412,3 +412,20 @@ https://github.com/OneSignal/OneSignal-Android-SDK/blob/5.10.2/OneSignalSDK/ones
 https://github.com/OneSignal/OneSignal-Android-SDK/blob/5.10.2/OneSignalSDK/onesignal/notifications/src/main/java/com/onesignal/notifications/internal/badges/impl/BadgeCountUpdater.kt
 Running 211040107 delivery pilot at f8687e3 excludes both subsequent cleanup
 fixes; no false attribution of its physical outcome to the latest source.
+
+
+## PRE-FLIGHT QA2 packaging OOM repair
+
+Base 02c035e. Run 37978618705 FAILED at :app:packageRelease after 19m17s
+Gradle, 1024 executed tasks. Exact cause java.lang.OutOfMemoryError: Java heap
+space; no APK uploaded/installed. Source sets Gradle heap 2048m and four ABIs.
+Huawei read-only inventory confirms arm64-v8a,armeabi-v7a,armeabi.
+Scope: only explicitly enabled OneSignal QA2 workflow Gradle args: 4096m heap,
+768m metaspace, max-workers=2 and arm64-v8a physical-pilot target. No global
+Gradle/dependency/production setting changed; nonpilot workflow keeps old args.
+Checks YAML parse, QA2 source/isolation contract, actual replacement build
+packaging and manifest/DEX audit. Rollback: revert workflow-only repair commit.
+Retry is required due diagnosed packaging OOM, not a duplicate speculative build.
+Candidate remains 211040107 because failed predecessor was never distributed;
+it is greater than currently installed Huawei 211040106. New exact SHA
+includes both room cleanup fixes. x86/32-bit devices are out of this APK scope.
