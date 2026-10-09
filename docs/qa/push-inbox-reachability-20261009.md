@@ -21,3 +21,12 @@ Graphify AST-only выполнен перед изменением: 10646 узл
 
 ## Проверки кандидата
 37/37 targeted frontend cases PASS: menu reachability, push/deep-link contracts, GPS action propagation, room-scoped read cleanup, retries/cold-start и сохранение чужих уведомлений. Это source/static/callback проверки, не физическая приёмка. git diff --check PASS. Lint PASS: 483 active JavaScript files; локальный лог сохранён. Изменён один menu item; новый native build с этим source ещё не запущен.
+
+
+## Production provider telemetry — 2026-10-09, 14:35 Almaty
+
+Read-only inspection found 579 APNs failed attempts with `provider_not_configured` in the preceding 24 hours; these are attempts, not a count of unique lost messages. The last failure was 2026-10-09 04:00:05 UTC (09:00 Almaty). Later APNs `chat.message` sends were accepted at 05:23:13–16 UTC. No device delivery receipt was present for these APNs rows. Pending/processing/retry outbox rows were absent at inspection.
+
+The running production API has all four required APNs environment values present; only booleans were inspected. Its process started on October 8 at 20:30:27 UTC. The QA2 process uses a separate database, so it has not been established as the cause. The historical failure source remains unresolved. No production configuration was changed or restarted during this inspection; no secrets or OTP values were copied into this report.
+
+Android validation run 37911102249 and iOS candidate run 37910804163 were still building at the latest check. The Android validation source contains the MapKit compatibility changes; the combined final branch additionally includes OTP cooldown and notification-menu fixes and has not yet completed a native Android build. Public publication is not complete.
