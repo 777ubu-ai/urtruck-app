@@ -490,3 +490,63 @@ Bridge-dependency repair: 8/8 restoration regression tests PASS; actual
 generated project dependencies/restoration/idempotence PASS; full JS suite
 1162/1162 PASS. Source fixed only after diagnosed Kotlin compilation failure.
 Version remains 211040107 because no failed candidate was distributed.
+
+## PRE-FLIGHT verified QA2 candidate installation and physical pilot
+
+Frozen build source c2e61b45a3b55b13cdf1d72d9c92f12fa372f46c; Actions
+37984303476 SUCCESS. Artifact download remains a single active process.
+Graphify update exit 0. Source repaired Expo-deleted bridge dependencies; the
+initial restoration missed ShortcutBadger and caused a diagnosed Kotlin retry.
+Installed Huawei QA2 baseline 211040106, POST_NOTIFICATIONS granted, device
+unlocked and USB authorized. Scope only com.urtruck.app.qa2 APK update via -r,
+conditional on artifact package/version/host/provider/signature/DEX/FCM audit.
+Protect production package, accounts, data and all other notifications. Stop
+on Huawei ID/installer authorization wall; no uninstall, clearing or downgrade.
+Rollback retain data, stop pilot and prepare a later higher-code correction if
+needed; do not silently replace production or erase QA2 accounts.
+OneSignal API via server IPv4 allowlist returned HTTP 200, zero subscriptions
+before installation. QA2 database is /home/ubuntu/urtruck-qa2/runtime/security.db
+(read-only verified against running service); 30 rooms, production test room
+absent. Chat/tap testing must use an authorized QA2 room from current account.
+iOS unsigned simulator build SUCCEEDED; built main and extension IDs, QA2
+host/flavor and OneSignal-enabled runtime config verified. Diagnostic worktree
+base f660635 has unchanged iOS/JS source relative to c2e61b4. Device IPA and
+physical APNs remain blocked by absent QA2 signing profiles/unavailable iPhone.
+
+## Candidate result and physical authorization blocker (2026-10-10 Almaty)
+
+Android Actions 37984303476 SUCCESS. Frozen APK source
+c2e61b45a3b55b13cdf1d72d9c92f12fa372f46c. Single artifact download completed.
+Artifact audit PASS: com.urtruck.app.qa2, 1.0.9-qa2, 211040107, arm64-v8a,
+QA2 HTTPS runtime host/flavor, OneSignal enabled with designated pilot App ID,
+canonical FCM service is the only MESSAGING_EVENT handler, OneSignal FCM
+receiver exists, canonical bridge classes and OneSignal class exist in DEX.
+APK SHA256: 6a79df5bc189b7ed344ad776d68085d1cfcc3fae2d6ea241b650b221e5478839
+Certificate SHA256: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c
+Local audit used aapt xmltree after apkanalyzer could not locate build tools;
+this was a local verifier issue, not an APK defect.
+Evidence: /Users/bahitzanbahitzanovic/Desktop/URTRUCK_MAIN_PROJECT/qa-evidence/onesignal-211040107-20261010
+(verified-manifest.json and manifest-xmltree.txt). APK remains in
+/private/tmp/urtruck-onesignal-37984303476-artifact/UrTruck.apk and Actions.
+
+Huawei -r update reached the standard installer, safety scan and explicit
+install confirmation. System now requests Huawei ID password. No password
+entered, authorization not bypassed. Installation process waits for owner;
+last confirmed installed QA2 remains 211040106, not 211040107. Production app
+and data untouched. Do not claim new native code or OneSignal installed.
+Before installation OneSignal API reported zero subscriptions; no test push
+sent because there is no verified target subscription. After owner completes
+installer: re-read installed version, launch QA2, confirm subscription, then
+perform delivery/banner/tap/unread/badge/read cleanup/restart checks.
+
+iOS simulator build SUCCEEDED with OneSignalXCFramework 5.8.0. Main bundle
+com.urtruck.app.qa2 and extension com.urtruck.app.qa2.OneSignalNotificationServiceExtension
+verified in built app. Built EXConstants runtime host/flavor/OneSignal-enabled
+config verified. Not a signed device IPA, TestFlight upload or physical APNs
+PASS. iPhone remains unavailable; QA2 main/extension signing profiles absent.
+
+Current candidate PR backend/frontend/web E2E gates all PASS. Restoration
+regression tests 8/8 and JS tests 1162/1162 PASS. Durable business routing and
+verified user/subscription registry still not connected by this pilot. FCM
+credential replacement done; coordinated shared APNs key rotation remains
+open after earlier disclosure. No public rollout or production provider switch.
