@@ -59,3 +59,20 @@ Production остаётся на прежнем провайдере до отд
 - Полный frontend/unit прогон на исходниках e0d4251: 1145/1145 PASS, 0 skipped.
 - Browser sign-in: пароль принят; Google запрашивает passkey/двухэтапное подтверждение.
   Успешный вход в кабинет ассистентом ещё не подтверждён.
+
+## Серверный транспорт — следующий изолированный этап
+
+PRE-FLIGHT: база 55685ed; production SHA UNKNOWN; новые файлы
+backend/services/onesignal_transport.py и backend/tests/test_onesignal_transport.py.
+Registry, auth, database, outbox и действующий gateway не изменяются.
+Rollback — revert этого отдельного коммита; runtime не переключается.
+
+Транспорт требует URTRUCK_ENV=qa2, отдельный App ID, provider и серверный API key.
+Отправка адресная, без broadcast; повтор одного event/subscription имеет постоянный
+idempotency key. Badge задаётся абсолютным серверным числом, включая 0.
+HTTP 200 без notification ID не считается успехом; accepted не равно delivered.
+Секреты/полные ответы/exception не записываются в результат.
+Существующий outbox ещё НЕ вызывает этот транспорт: нужна защищённая привязка
+подписки и account-switch протокол до подключения к бизнес-событиям.
+
+Транспорт: 7/7 unit tests PASS (mock HTTP; реальная отправка не выполнялась).
