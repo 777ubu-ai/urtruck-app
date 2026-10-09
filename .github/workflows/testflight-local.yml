@@ -1,4 +1,4 @@
-name: UrTruck TestFlight Local Fallback
+name: UrTruck Production TestFlight Candidate
 
 on:
   workflow_dispatch:
@@ -7,8 +7,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: urtruck-testflight-local
-  cancel-in-progress: true
+  group: urtruck-ios-production-push-inbox
+  cancel-in-progress: false
 
 jobs:
   build-and-upload:
@@ -17,6 +17,8 @@ jobs:
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EXPO_PUBLIC_API_URL: https://urtruck.kz
+      URTRUCK_BUILD_FLAVOR: production
+      URTRUCK_SOURCE_SHA: c5be008b2221cf966d715c731b70790238518219
       EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
       EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
       YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
@@ -26,6 +28,7 @@ jobs:
       - name: Checkout exact release candidate
         uses: actions/checkout@v4
         with:
+          ref: c5be008b2221cf966d715c731b70790238518219
           fetch-depth: 0
 
       - name: Setup Node
@@ -41,13 +44,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          case "${GITHUB_REF_NAME}" in
-            main|qa/master-hard-qa-20260916|fix/cgr-border-deal-integration-20260919) ;;
-            *)
-              echo "::error::TestFlight RC may only be built from main or an approved canonical QA branch."
-              exit 1
-              ;;
-          esac
+          test "$GITHUB_REF_NAME" = build/ios-production-push-inbox-20261009
+          test "$(git rev-parse HEAD)" = "$URTRUCK_SOURCE_SHA"
           test -n "${EXPO_TOKEN:-}"
           test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
           test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
@@ -93,6 +91,35 @@ jobs:
           test -s "$RUNNER_TEMP/UrTruck.ipa"
           shasum -a 256 "$RUNNER_TEMP/UrTruck.ipa" | tee "$RUNNER_TEMP/UrTruck.ipa.sha256"
 
+      - name: Verify signed production IPA before submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios-verified"
+          unzip -q "$RUNNER_TEMP/UrTruck.ipa" -d "$RUNNER_TEMP/ios-verified"
+          APP_DIR="$(find "$RUNNER_TEMP/ios-verified/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$APP_DIR"
+          codesign --verify --deep --strict "$APP_DIR"
+          python3 - "$APP_DIR" "$RUNNER_TEMP/UrTruck-manifest.json" <<'PYVERIFY'
+          import json, pathlib, plistlib, sys, os, subprocess
+          app = pathlib.Path(sys.argv[1])
+          info = plistlib.loads((app / 'Info.plist').read_bytes())
+          config = json.loads((app / 'EXConstants.bundle/app.config').read_text())
+          assert info['CFBundleIdentifier'] == 'com.urtruck.app'
+          assert info['CFBundleShortVersionString'] == '1.0.9'
+          number = str(info['CFBundleVersion'])
+          assert number.isdigit() and int(number) > 94
+          assert config['extra']['urtruckApiUrl'].rstrip('/') == 'https://urtruck.kz'
+          assert config['extra']['urtruckBuildFlavor'] == 'production'
+          signed = subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(app)], stderr=subprocess.DEVNULL)
+          entitlements = plistlib.loads(signed)
+          assert entitlements['aps-environment'] == 'production'
+          assert entitlements['application-identifier'].endswith('.com.urtruck.app')
+          manifest = dict(sourceSHA=os.environ['URTRUCK_SOURCE_SHA'], bundleIdentifier=info['CFBundleIdentifier'], versionName='1.0.9', buildNumber=number, apiHost='urtruck.kz', flavor='production', apsEnvironment='production')
+          pathlib.Path(sys.argv[2]).write_text(json.dumps(manifest, indent=2) + '\n')
+          print(json.dumps(manifest))
+          PYVERIFY
+
       - name: Upload private IPA artifact
         uses: actions/upload-artifact@v4
         with:
@@ -100,6 +127,7 @@ jobs:
           path: |
             ${{ runner.temp }}/UrTruck.ipa
             ${{ runner.temp }}/UrTruck.ipa.sha256
+            ${{ runner.temp }}/UrTruck-manifest.json
           retention-days: 14
 
       - name: Submit IPA to TestFlight
