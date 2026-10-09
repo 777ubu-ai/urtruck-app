@@ -55,3 +55,7 @@ Production остаётся на прежнем провайдере до отд
 - Pilot bundle/plugin order/location exclusion PASS на уровне JS config.
 - Native build/manifest, APNs/FCM console, backend integration и телефоны: PENDING.
 - Секреты в код не добавлялись; production и QA2 серверы не изменены.
+
+- Полный frontend/unit прогон на исходниках e0d4251: 1145/1145 PASS, 0 skipped.
+- Browser sign-in: пароль принят; Google запрашивает passkey/двухэтапное подтверждение.
+  Успешный вход в кабинет ассистентом ещё не подтверждён.
