@@ -395,10 +395,18 @@ index 8b05905..cea9bfb 100644
              }
 
 diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt
-index 48c1cdf..d419037 100644
 --- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt
 +++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt
-@@ -225,7 +225,7 @@ open class YamapView(context: Context?) : MapView(context), UserLocationObjectLi
+@@ -84,7 +84,7 @@
+     private var userLocationIconScale = 1f
+     private var userLocationBitmap: Bitmap? = null
+     private val routeMng = RouteManager()
+-    private var routeOptions: RouteOptions = RouteOptions(FitnessOptions(false))
++    private var routeOptions: RouteOptions = RouteOptions(FitnessOptions(false, false))
+     private val masstransitRouter = TransportFactory.getInstance().createMasstransitRouter()
+     private val drivingRouter: DrivingRouter
+     private val pedestrianRouter = TransportFactory.getInstance().createPedestrianRouter()
+@@ -225,7 +225,7 @@
          val screenPoints = Arguments.createArray()
 
          for (i in 0 until worldPoints.size()) {
@@ -407,7 +415,7 @@ index 48c1cdf..d419037 100644
              val worldPoint = Point(p.getDouble("lat"), p.getDouble("lon"))
              val screenPoint = mapWindow.worldToScreen(worldPoint)
              screenPoints.pushMap(screenPointToJSON(screenPoint))
-@@ -244,7 +244,7 @@ open class YamapView(context: Context?) : MapView(context), UserLocationObjectLi
+@@ -244,7 +244,7 @@
          val worldPoints = Arguments.createArray()
 
          for (i in 0 until screenPoints.size()) {
@@ -416,7 +424,38 @@ index 48c1cdf..d419037 100644
              val screenPoint = ScreenPoint(p.getDouble("x").toFloat(), p.getDouble("y").toFloat())
              val worldPoint = mapWindow.screenToWorld(screenPoint)
              worldPoints.pushMap(worldPointToJSON(worldPoint))
-@@ -626,7 +626,7 @@ open class YamapView(context: Context?) : MapView(context), UserLocationObjectLi
+@@ -295,7 +295,7 @@
+             val _points = ArrayList<RequestPoint>()
+             for (i in points.indices) {
+                 val point = points[i]
+-                val _p = RequestPoint(point!!, RequestPointType.WAYPOINT, null, null)
++                val _p = RequestPoint(point!!, RequestPointType.WAYPOINT, null, null, null)
+                 _points.add(_p)
+             }
+
+@@ -310,7 +310,7 @@
+         val _points = ArrayList<RequestPoint>()
+         for (i in points.indices) {
+             val point = points[i]
+-            _points.add(RequestPoint(point!!, RequestPointType.WAYPOINT, null, null))
++            _points.add(RequestPoint(point!!, RequestPointType.WAYPOINT, null, null, null))
+         }
+         val listener: Session.RouteListener = object : Session.RouteListener {
+             override fun onMasstransitRoutes(routes: List<Route>) {
+@@ -590,10 +590,10 @@
+         if (show) {
+             userLocationLayer!!.setObjectListener(this)
+             userLocationLayer!!.isVisible = true
+-            userLocationLayer!!.isHeadingEnabled = true
++            userLocationLayer!!.isHeadingModeActive = true
+         } else {
+             userLocationLayer!!.isVisible = false
+-            userLocationLayer!!.isHeadingEnabled = false
++            userLocationLayer!!.isHeadingModeActive = false
+             userLocationLayer!!.setObjectListener(null)
+         }
+     }
+@@ -626,7 +626,7 @@
          val routeMetadata = Arguments.createMap()
          val routeWeightData = Arguments.createMap()
          val sectionWeightData = Arguments.createMap()
@@ -425,7 +464,7 @@ index 48c1cdf..d419037 100644
          routeWeightData.putString("time", routeWeight.time.text)
          routeWeightData.putInt("transferCount", routeWeight.transfersCount)
          routeWeightData.putDouble("walkingDistance", routeWeight.walkingDistance.value)
-@@ -654,12 +654,12 @@ open class YamapView(context: Context?) : MapView(context), UserLocationObjectLi
+@@ -654,12 +654,12 @@
                      if (transports[type] != null) {
                          val list = transports[type]
                          if (list != null) {
