@@ -20,4 +20,4 @@ Graphify AST-only выполнен перед изменением: 10646 узл
 Сначала закрыть доступность/маршрутизацию/counters и provider receipts. APNs/FCM остаются транспортом; новый сервер или внешний broker не исправляет скрытую ленту. Решение о новом сервисе принимается по замерам потерь/latency/errors/retries, а не по величине badge. Полная physical acceptance остаётся OPEN.
 
 ## Проверки кандидата
-37/37 targeted frontend cases PASS: menu reachability, push/deep-link contracts, GPS action propagation, room-scoped read cleanup, retries/cold-start и сохранение чужих уведомлений. Это source/static/callback проверки, не физическая приёмка. git diff --check PASS. Lint результат записан в локальный лог. Изменён один menu item; новый native build с этим source ещё не запущен.
+37/37 targeted frontend cases PASS: menu reachability, push/deep-link contracts, GPS action propagation, room-scoped read cleanup, retries/cold-start и сохранение чужих уведомлений. Это source/static/callback проверки, не физическая приёмка. git diff --check PASS. Lint PASS: 483 active JavaScript files; локальный лог сохранён. Изменён один menu item; новый native build с этим source ещё не запущен.
