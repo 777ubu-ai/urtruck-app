@@ -218,3 +218,29 @@ register-native, gateway, main env loader; rollback: revert коммита от�
 подключить проверенную ownership-привязку подписки, gateway/outbox и client
 read/click/logout lifecycle; native manifest audit; затем QA2 builds и телефоны.
 Production runtime/provider остаются без изменений.
+
+
+## APNs подключён через OneSignal plugin после точного разрешения
+
+Владелец разрешил передать существующий team-scoped APNs key 2Y43J6CR86
+в OneSignal для QA2. Team ID ABR4N7KYY5, Bundle ID com.urtruck.app.qa2.
+Key разрешает все topics команды, включая production; ограничение пилота
+обеспечивается app configuration, а не полномочиями этого Apple key.
+
+Плагин list_apps подтвердил target e6f77ac9-aac9-4e7d-be68-a5d805e95fbf.
+provision_app_credentials вернул конфигурацию APNs production с указанными
+Key ID / Team ID / Bundle ID и непустым APNs credential. FCM также настроен.
+Subscriptions=0: это успех настройки credentials, НЕ физическая доставка.
+Private key хранится вне git на Mac, mode 0600; формат проверен openssl pkey.
+Production сервер, key и маршрутизация не изменялись.
+
+Инцидент обработки ответа: ответ provisioning содержал APNs private key и
+FCM service-account JSON; недостаточная редакция вывела секретные поля
+в результат инструмента. Содержимое НЕ копируется в этот отчёт.
+Нужна согласованная замена обоих credentials. Старый APNs key нельзя отзывать
+до обновления production и подтверждения доставки: это отключит рабочий push.
+FCM replacement выполняется через dashboard; write-once provisioning
+не заменяет существующие credentials.
+
+Business identity/registry/outbox и read/click lifecycle всё ещё pending.
+До физической приёмки не включать production OneSignal и не объявлять PASS.
