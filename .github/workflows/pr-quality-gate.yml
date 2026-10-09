@@ -5,8 +5,8 @@ name: PR Quality Gate
 # exact same checks (see that file's header comment). This file is now a
 # thin PR-triggered caller — no behavior change for pull requests.
 on:
+  # Stacked fixes targeting working branches must receive the same gate.
   pull_request:
-    branches: [main, qa2/integration-candidate]
   workflow_dispatch:
 
 concurrency:
