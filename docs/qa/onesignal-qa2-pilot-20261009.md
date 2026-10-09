@@ -429,3 +429,35 @@ Retry is required due diagnosed packaging OOM, not a duplicate speculative build
 Candidate remains 211040107 because failed predecessor was never distributed;
 it is greater than currently installed Huawei 211040106. New exact SHA
 includes both room cleanup fixes. x86/32-bit devices are out of this APK scope.
+
+
+## PRE-FLIGHT generated QA2 native identity before retry
+
+Base f660635. Static Expo Package.setPackageInBuildGradle probe yields base
+com.urtruck.app.qa2 with two remaining applicationIdSuffix .qa2 definitions;
+Version setter likewise preserves -qa2 suffix definitions. Native package
+refactor rewrites Kotlin package contents but the FCM plugin hardcodes
+com.urtruck.app.UrTruckFirebaseMessagingService. Potential invalid artifact/
+service target requires generated-project proof before further CI expense.
+Cancellation requested for 37981488823; no artifact installed. Read-only/source
+prebuild runs in detached temporary worktree
+/private/tmp/urtruck-qa2-native-config-check-20261009 at exact f660635 with shared
+node_modules, no native compile or production API. Scope: generated Gradle
+identity and manifest-class correspondence; protect primary worktree/native
+production signing/GPS flags. Checks actual Expo prebuild, package/version/
+service/class/autolink; rollback discard only generated changes in temporary
+worktree after retaining audit evidence. No phone changes.
+
+## PRE-FLIGHT restore canonical native bridges after QA2 prebuild
+
+Base f660635, Graphify update exit 0. Actual detached Expo prebuild clears
+android automatically even without --clean. Generated applicationId/namespace
+are correctly com.urtruck.app.qa2 and versionName 1.0.9-qa2: duplicate suffix
+hypothesis was NOT reproduced. Real defect: seven canonical UrTruck Kotlin
+classes and both MainApplication package registrations are deleted, while
+manifest references the missing base-package FCM handler. Scope QA2-only CI
+post-prebuild restoration from exact checked-out Git SHA, preserving canonical
+class package and FCM delegation policy; no production native edits. Validate
+all guards before writes, idempotence, production rejection, generated project
+manifest/class correspondence, then compile frozen source. Rollback revert
+restoration script/workflow insertion; no device or API changes yet.

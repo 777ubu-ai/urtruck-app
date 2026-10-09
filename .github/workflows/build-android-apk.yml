@@ -185,13 +185,15 @@ jobs:
             python3 scripts/verify_android_firebase_config.py --check-source google-services.json
 
       - name: Expo prebuild (Android, non-interactive)
-        # The tracked Android tree contains the approved full-screen splash and
-        # its native launch wiring. --clean deletes those native files before
-        # the build and silently restores Expo's tiny centered icon splash.
+        # Expo can reset native files when the QA2 package changes, even without
+        # --clean. Restore canonical bridges below and verify splash afterward.
         run: npx expo prebuild --platform android --no-install --non-interactive
         env:
           EXPO_NO_TELEMETRY: 1
           CI: 1
+
+      - name: Restore canonical UrTruck QA2 native bridges
+        run: python3 scripts/restore-qa2-native-push.py --source-sha "$(git rev-parse HEAD)"
 
       - name: Verify Google Services Gradle plugin wired after prebuild
         run: python3 scripts/verify_android_firebase_config.py --check-plugin android
