@@ -186,3 +186,35 @@ APNs/HMS и защищённая привязка пользователя вс�
 OneSignal plugin теперь доступен: health ok, list_apps подтверждает два приложения
 UrTruck (e71047aa-061b-4e38-8da5-6bf069f95b07) и существующий QA2 pilot app
 (e6f77ac9-aac9-4e7d-be68-a5d805e95fbf). Пилот не переносился в другое приложение.
+
+
+## Продолжение после разрешения владельца — Apple login blocker
+
+PRE-FLIGHT: branch feat/qa2-onesignal-pilot-20261009, SHA 283f082;
+изменение только этого отчёта. Known-good: transport mock tests 8/8 на 283f082;
+физическая приёмка OneSignal отсутствует. Checks: исходники bootstrap,
+register-native, gateway, main env loader; rollback: revert коммита отчёта.
+
+- Apple Developer показал список ключей после безопасного 2FA.
+  Team ID ABR4N7KYY5; существующий APNs key 2Y43J6CR86 имеет
+  Team Scoped (All topics), Sandbox & Production. Production key не передавался.
+- При открытии Add new key Apple сообщил Your session has expired и вернул login.
+  Повторный безопасный вход после нового запроса владельца остановлен Apple:
+  Check the account information you entered and try again.
+  Новый APNs key не создан, credentials iOS в OneSignal не подключены.
+- Подтверждено чтение backend/.env до import providers через setdefault;
+  сохранённый QA2 API key находится в читаемом пути. Это не runtime activation.
+- Backend /register-native принимает только fcm/apns; gateway допускает только
+  native mode и фильтрует registry на fcm/apns. OneSignal transport standalone.
+- Client bootstrap выполняет только SDK initialize; business identity,
+  subscription registration, click/foreground/read lifecycle не подключены.
+- Ни новые QA2 сборки, ни реальная отправка OneSignal не запускались.
+  Не заявлять, что переход выполнен или проблемы badge уже решены.
+- Владелец выбрал local-only onboarding telemetry. Выбор сохранён в локальном
+  .onesignal/telemetry=0; run state исключён через git info/exclude, не коммитится.
+
+Следующий порядок: восстановить доступ Apple; подтвердить QA2 App ID/provisioning;
+подготовить отдельный scoped APNs key и разрешение передачи OneSignal;
+подключить проверенную ownership-привязку подписки, gateway/outbox и client
+read/click/logout lifecycle; native manifest audit; затем QA2 builds и телефоны.
+Production runtime/provider остаются без изменений.
