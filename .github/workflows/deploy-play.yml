@@ -186,7 +186,7 @@ jobs:
           base_epoch=1577836800
           now_epoch=$(date -u +%s)
           version_code=$((now_epoch - base_epoch))
-          installed_version_code=213298108
+          installed_version_code=213720253
           if [ "$version_code" -le "$installed_version_code" ] || [ "$version_code" -ge 2100000000 ]; then
             echo "::error::Computed Android versionCode ${version_code} must exceed installed code ${installed_version_code} and stay within Google Play range"
             exit 1
