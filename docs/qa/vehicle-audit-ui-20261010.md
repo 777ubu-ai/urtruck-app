@@ -10,3 +10,5 @@ Rollback: revert the corresponding fix commit in this unprotected branch; no dep
 Evidence directory Mac /tmp/urtruck-production-audit-evidence-20261010/screenshots. Physical candidate installation and iPhone acceptance pending.
 
 Footer patch: before fix 3 rendered inset cases FAIL, web zero-inset PASS. After fix all 18 related tests PASS (4 rendered footer + vehicle flow/theme/country search). Physical new APK acceptance pending.
+
+Unit patch: rendered vehicle card tests before fix FAIL for ZH/EN, PASS for RU/KK. After localized labels all 22 related tests PASS, including 8 rendered regressions. Backend requests/data/routes unchanged.
