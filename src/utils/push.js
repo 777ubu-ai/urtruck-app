@@ -6,6 +6,7 @@ import { getActiveRoom } from './activeRoom';  // QA-аудит P2-2
 import { t as tGlobal } from './i18n';
 import { claimPushEvent, clearPushEventDedup } from './pushEventDedup';
 import { decideForegroundPresentation } from './pushRuntime';
+import { oneSignalPilotEnabled, readOneSignalRegistration } from './oneSignalRegistration';
 
 const BASE = `${API_BASE}/push`;
 
@@ -311,7 +312,7 @@ export const push = {
     }
 
     // Emulator/simulator — чаще всего не даёт токен
-    if (!Device.isDevice) return { ok: false, reason: 'emulator' };
+    if (!Device.isDevice && !oneSignalPilotEnabled()) return { ok: false, reason: 'emulator' };
 
     // Handler: показываем notification в foreground, КРОМЕ chat-push о той
     // комнате, которую пользователь сейчас читает (QA-аудит P2-2: иначе
@@ -375,6 +376,12 @@ export const push = {
     const authToken = await storage.get(TOKEN_KEY);
     const deviceId = await getOrCreateDeviceId();
     const locale = await storage.get(LANG_KEY);
+    let pilotRegistration = null;
+    if (oneSignalPilotEnabled()) {
+      if (!authToken) return { ok: false, reason: 'authentication_required' };
+      try { pilotRegistration = await readOneSignalRegistration(); } catch {}
+      if (!pilotRegistration) return { ok: false, reason: 'onesignal_subscription_pending' };
+    }
 
     const registerToken = async ({ pushToken, provider }) => {
       let regStatus = 0;
@@ -387,6 +394,7 @@ export const push = {
             'Authorization': authToken ? `Bearer ${authToken}` : '',
           },
           body: JSON.stringify({
+            ...(pilotRegistration || {}),
             token: pushToken,
             provider,
             platform: Platform.OS,
@@ -435,6 +443,13 @@ export const push = {
         }
         this.registerNative().catch(() => {});
       });
+    }
+
+    if (pilotRegistration) {
+      const result = await registerToken({ pushToken: pilotRegistration.token,
+        provider: Platform.OS === 'android' ? 'fcm' : 'apns' });
+      if (result.ok) await storage.set(NATIVE_TOKEN_KEY, pilotRegistration.token);
+      return result;
     }
 
     let nativeResult = null;

@@ -70,3 +70,33 @@ class TransportTests(unittest.TestCase):
         with patch("services.onesignal_transport.httpx.HTTPTransport", side_effect=transport_factory):
             self.assertEqual(self.request(OneSignalTransport(env=ENV)).status, "accepted")
         self.assertEqual(calls, [{"local_address": "0.0.0.0"}])
+
+
+class SubscriptionTests(unittest.TestCase):
+    def test_provider_identity_app_token_platform_and_permission_all_required(self):
+        row = {"id": SUB, "app_id": APP_ID, "type": "AndroidPush", "token": "fcm-test", "enabled": True, "notification_types": 1}
+        def check(record):
+            provider = OneSignalTransport(env=ENV, get=lambda *a, **k: httpx.Response(200, json={"subscriptions": [record]}))
+            return provider.verify_subscription(subscription_id=SUB, onesignal_user_id=SUB, native_token="fcm-test", platform="android")
+        self.assertIsNone(check(row))
+        for changes in ({"id": "other"}, {"app_id": "other"}, {"type": "iOSPush"}, {"token": "other"}, {"enabled": False}, {"notification_types": 0}):
+            self.assertEqual(check({**row, **changes}), "subscription_mismatch")
+
+    def test_invalid_identity_and_provider_failure_fail_closed(self):
+        provider = OneSignalTransport(env=ENV, get=lambda *a, **k: httpx.Response(503))
+        self.assertEqual(provider.verify_subscription(subscription_id=SUB, onesignal_user_id=SUB, native_token="fcm-test", platform="android"), "subscription_verification_unavailable")
+        self.assertEqual(provider.verify_subscription(subscription_id="not-uuid", onesignal_user_id=SUB, native_token="fcm-test", platform="android"), "invalid_subscription")
+
+    def test_android_receives_canonical_badge_without_mutating_caller(self):
+        calls = []
+        data = {"type": "reminder", "badge": 99}
+        provider = OneSignalTransport(env=ENV, post=lambda *a, **k: calls.append(k["json"]) or httpx.Response(200, json={"id": SUB}))
+        provider.send(subscription_id=SUB, event_id="e", title="T", body="B", data=data, badge=0)
+        self.assertEqual(calls[0]["data"]["badge"], 0)
+        self.assertEqual(data["badge"], 99)
+
+    def test_remaining_ttl_is_forwarded(self):
+        calls = []
+        provider = OneSignalTransport(env=ENV, post=lambda *a, **k: calls.append(k["json"]) or httpx.Response(200, json={"id": SUB}))
+        provider.send(subscription_id=SUB, event_id="ttl", title="T", body="B", data={}, ttl=12)
+        self.assertEqual(calls[0]["ttl"], 12)

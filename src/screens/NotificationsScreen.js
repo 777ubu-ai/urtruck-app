@@ -5,6 +5,7 @@ import { useToast } from '../components/Toast';
 import { notificationsAPI } from '../utils/notificationsAPI';
 import { notifyNotifRead } from '../utils/unreadEvents';
 import { refreshAppIconBadge } from '../utils/appBadge';
+import { dismissConfirmedNotifications } from '../utils/readNotifications';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import BrandBarWithShare from '../components/ui/v1/BrandBarWithShare';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
@@ -141,12 +142,17 @@ export default function NotificationsScreen({ navigation }) {
   const markAllRead = async () => {
     const readOwner = ownerRef.current;
     if (!readOwner) return;
+    const readBefore = Date.now();
+    let confirmation;
     try {
-      await notificationsAPI.readAll();
+      confirmation = await notificationsAPI.readAll();
     } catch {
       if (mountedRef.current && ownerRef.current === readOwner) toast(t('network_error'), 'error');
       return;
     }
+    if (!mountedRef.current || ownerRef.current !== readOwner) return;
+    await dismissConfirmedNotifications(confirmation, { readBefore,
+      isCurrent: () => mountedRef.current && ownerRef.current === readOwner });
     if (!mountedRef.current || ownerRef.current !== readOwner) return;
     notifyNotifRead();
     await refreshAppIconBadge();
@@ -160,12 +166,17 @@ export default function NotificationsScreen({ navigation }) {
     if (!readOwner) return;
     const isUnread = !item.is_read;
     if (isUnread) {
+      const readBefore = Date.now();
+      let confirmation;
       try {
-        await notificationsAPI.read(item.id);
+        confirmation = await notificationsAPI.read(item.id);
       } catch {
         if (mountedRef.current && ownerRef.current === readOwner) toast(t('network_error'), 'error');
         return;
       }
+      if (!mountedRef.current || ownerRef.current !== readOwner) return;
+      await dismissConfirmedNotifications(confirmation, { readBefore,
+        isCurrent: () => mountedRef.current && ownerRef.current === readOwner });
       if (!mountedRef.current || ownerRef.current !== readOwner) return;
       setItems((prev) => prev.map((i) => i.id === item.id ? { ...i, is_read: 1 } : i));
       notifyNotifRead();

@@ -1,4 +1,4 @@
-// Начальный тест доставки из кабинета; привязка бизнес-аккаунтов ещё не включена.
+// QA2 pilot: сервер проверяет подписку перед привязкой бизнес-аккаунта.
 // Запускается только в отдельном QA2 native binary с проверенными credentials.
 import { Platform } from 'react-native';
 let initialized = false;
@@ -28,6 +28,9 @@ export function initializeOneSignalPilot() {
     }));
   const { oneSignalClickBridge } = require('./oneSignalClicks');
   OneSignal.Notifications.addEventListener('click', (event) => oneSignalClickBridge.receive(event));
+  const registerChangedSubscription = () => { push.registerNative().catch(() => {}); };
+  OneSignal.User.pushSubscription.addEventListener('change', registerChangedSubscription);
+  OneSignal.User.addEventListener('change', registerChangedSubscription);
   OneSignal.initialize(pilot.appId);
   initialized = true;
   return true;

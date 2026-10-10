@@ -34,11 +34,11 @@ test('NotificationsScreen still clears unread state correctly when reached by su
   assert.match(notifScreen, /import \{ notifyNotifRead \} from '..\/utils\/unreadEvents'/);
   assert.match(notifScreen, /import \{ refreshAppIconBadge \} from '..\/utils\/appBadge'/);
 
-  const markAll = notifScreen.slice(notifScreen.indexOf('const markAllRead'), notifScreen.indexOf('const markAllRead') + 600);
+  const markAll = notifScreen.slice(notifScreen.indexOf('const markAllRead'), notifScreen.indexOf('const handlePress'));
   assert.match(markAll, /notifyNotifRead\(\)/);
   assert.match(markAll, /refreshAppIconBadge\(\)/);
 
-  const handlePress = notifScreen.slice(notifScreen.indexOf('const handlePress'), notifScreen.indexOf('const handlePress') + 700);
+  const handlePress = notifScreen.slice(notifScreen.indexOf('const handlePress'), notifScreen.indexOf('const cleanNotifText'));
   assert.match(handlePress, /notifyNotifRead\(\)/);
   assert.match(handlePress, /refreshAppIconBadge\(\)/);
 });

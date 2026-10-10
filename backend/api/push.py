@@ -22,6 +22,7 @@ import os
 import sys
 import re
 import threading
+import uuid
 import hashlib
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -206,6 +207,10 @@ def _migrate_ownership_columns():
                 UNIQUE(push_provider, push_token)
             )
         """)
+        device_columns = {r["name"] for r in c.execute("PRAGMA table_info(push_devices)").fetchall()}
+        for name in ("onesignal_subscription_id", "onesignal_user_id"):
+            if name not in device_columns:
+                c.execute(f"ALTER TABLE push_devices ADD COLUMN {name} TEXT")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_user ON push_devices(user_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_device ON push_devices(device_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_provider ON push_devices(push_provider, platform)")
@@ -598,8 +603,8 @@ def _upsert_push_device(c, data, user_id: Optional[str], device_id: Optional[str
         """
         INSERT INTO push_devices(
           user_id, device_id, platform, app_id, push_provider, push_token,
-          locale, app_version, os_version, device_model
-        ) VALUES(?,?,?,?,?,?,?,?,?,?)
+          locale, app_version, os_version, device_model, onesignal_subscription_id, onesignal_user_id
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(push_provider, push_token) DO UPDATE SET
           user_id = COALESCE(excluded.user_id, user_id),
           device_id = COALESCE(excluded.device_id, device_id),
@@ -609,6 +614,8 @@ def _upsert_push_device(c, data, user_id: Optional[str], device_id: Optional[str
           app_version = COALESCE(excluded.app_version, app_version),
           os_version = COALESCE(excluded.os_version, os_version),
           device_model = COALESCE(excluded.device_model, device_model),
+          onesignal_subscription_id = excluded.onesignal_subscription_id,
+          onesignal_user_id = excluded.onesignal_user_id,
           enabled = 1,
           invalidated_at = NULL,
           invalidated_reason = NULL,
@@ -627,6 +634,8 @@ def _upsert_push_device(c, data, user_id: Optional[str], device_id: Optional[str
             data.app_version,
             data.os_version,
             data.device_name,
+            data.onesignal_subscription_id,
+            data.onesignal_user_id,
         ),
     )
 
@@ -650,6 +659,8 @@ class NativeTokenIn(BaseModel):
     app_id: Optional[str] = None
     locale: Optional[str] = None
     os_version: Optional[str] = None
+    onesignal_subscription_id: Optional[str] = None
+    onesignal_user_id: Optional[str] = None
 
 
 class PushReceiptIn(BaseModel):
@@ -799,6 +810,20 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
     user_id = _optional_user_id(authorization)
     device_id = _clean_device_id(data.device_id)
 
+    if data.onesignal_subscription_id or data.onesignal_user_id:
+        from services.onesignal_transport import OneSignalTransport
+        if not user_id or not device_id:
+            raise HTTPException(status_code=401, detail="Authenticated installation required")
+        if data.app_id != "com.urtruck.app.qa2":
+            raise HTTPException(status_code=400, detail="OneSignal requires QA2 app")
+        verification = OneSignalTransport().verify_subscription(
+            subscription_id=data.onesignal_subscription_id,
+            onesignal_user_id=data.onesignal_user_id, native_token=tok, platform=data.platform,
+        )
+        if verification:
+            raise HTTPException(status_code=503 if verification.endswith("unavailable") else 400,
+                                detail=verification)
+
     with get_conn() as c:
         _begin_push_registration(c)
         _reject_logged_out_session(c, user_id, device_id, authorization)
@@ -840,6 +865,16 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
         if decision == "reassign":
             _reassign_device_if_needed(c, device_id, user_id)
         _upsert_push_device(c, data, user_id, device_id, tok)
+        if data.onesignal_subscription_id:
+            # A provider-verified replacement belongs to this authenticated
+            # installation; retire only this owner's prior pilot tokens.
+            c.execute(
+                "UPDATE push_devices SET enabled=0, invalidated_reason='token_rotated', "
+                "invalidated_at=CURRENT_TIMESTAMP WHERE user_id=? AND device_id=? "
+                "AND app_id='com.urtruck.app.qa2' AND push_provider=? AND push_token!=? "
+                "AND onesignal_subscription_id IS NOT NULL AND enabled=1",
+                (user_id, device_id, data.provider, tok),
+            )
         c.commit()
     return {"ok": True, "user_id": user_id}
 
@@ -1044,11 +1079,23 @@ def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str 
     использовалось (проверено по всем callsites), /push/test зовёт
     push_sender.send напрямую и сохраняет диагностику.
     """
+    payload_data = dict(data or {})
+    event_id = payload_data.get("event_id") or payload_data.get("event_key") or str(uuid.uuid4())
+    payload_data.update(event_id=event_id, kind=kind, url=url)
+    try:
+        payload_data.update(push_sender.notification_reference(user_id, title, body, url, (data or {}).get("event_id") or (data or {}).get("event_key")))
+        from services import push_gateway
+        push_gateway.enqueue_event(event_id, str(payload_data.get("type") or kind), user_id,
+                                   {"title": title, "body": body, "data": payload_data})
+    except Exception:
+        # Preserve the committed business response; the sender retries the
+        # enqueue before attempting delivery. Never log payloads/credentials.
+        print("[push] durable enqueue failed; sender retry scheduled", flush=True)
     def _bg():
         try:
-            push_sender.send(user_id, title, body, url=url, kind=kind, data=data)
-        except Exception as e:
-            print(f"[push] background send failed for {user_id}: {e}", flush=True)
+            push_sender.send(user_id, title, body, url=url, kind=kind, data=payload_data, event_id=event_id)
+        except Exception:
+            print("[push] background send failed; inspect delivery log", flush=True)
     threading.Thread(target=_bg, daemon=True).start()
     return 0
 

@@ -25,14 +25,14 @@ function oneSignalCustom(data) {
   return null;
 }
 
-function notificationData(data) {
+export function notificationData(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
   if (typeof data.room_id === 'string'
     && ['chat_message', 'chat_attachment'].includes(data.type)) return data;
   return oneSignalCustom(data)?.a || data;
 }
 
-function markOneSignalDismissed(request) {
+export function markOneSignalDismissed(request) {
   if (Platform.OS !== 'android') return;
   const raw = request?.content?.data || request?.trigger?.remoteMessage?.data;
   if (!oneSignalCustom(raw)) return;

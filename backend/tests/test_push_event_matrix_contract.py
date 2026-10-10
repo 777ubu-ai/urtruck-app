@@ -121,7 +121,9 @@ def test_tracking_notifications_use_deal_tracking_action_link_for_push_and_in_ap
 
 def test_push_api_wraps_background_sender_without_removing_kind_or_data():
     assert 'def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str = "info", data: dict = None)' in PUSH
-    assert 'push_sender.send(user_id, title, body, url=url, kind=kind, data=data)' in PUSH
+    assert 'push_sender.send(user_id, title, body, url=url, kind=kind, data=payload_data, event_id=event_id)' in PUSH
+    assert 'payload_data = dict(data or {})' in PUSH
+    assert PUSH.index('push_gateway.enqueue_event(event_id', PUSH.index('def send_to_user')) < PUSH.index('threading.Thread(target=_bg', PUSH.index('def send_to_user'))
 
 
 def test_bid_expiry_queues_bell_and_push_in_the_expiry_transaction():

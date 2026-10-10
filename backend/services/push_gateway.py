@@ -426,7 +426,7 @@ def active_devices(user_id: str) -> list[dict[str, Any]]:
         rows = c.execute(
             """
             SELECT id, user_id, device_id, platform, app_id, push_provider, push_token,
-                   locale, app_version, os_version, device_model
+                   locale, app_version, os_version, device_model, onesignal_subscription_id, onesignal_user_id
             FROM push_devices
             WHERE user_id = ? AND enabled = 1
             ORDER BY last_seen_at DESC, id DESC
@@ -544,6 +544,16 @@ def _already_sent_to_device(event_id: Optional[str], device_registry_id: Optiona
         return False
 
 
+def notification_already_read(user_id: str, data: dict) -> bool:
+    identifier = (data or {}).get("notification_id")
+    if not str(identifier or "").isdigit():
+        return False
+    with get_conn() as c:
+        row = c.execute("SELECT is_read FROM notifications WHERE id=? AND user_id=?",
+                        (int(identifier), user_id)).fetchone()
+    return bool(row and row["is_read"])
+
+
 def send_to_devices(
     user_id: str,
     title: str,
@@ -557,6 +567,9 @@ def send_to_devices(
     if mode not in SUPPORTED_PUSH_PROVIDER_MODES:
         # Never turn a typo/misconfiguration into an implicit provider fallback.
         return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "error": "invalid_provider_mode"}
+
+    if notification_already_read(user_id, data):
+        return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "suppressed_read": True}
 
     devices = active_devices(user_id)
     if not devices:
@@ -602,7 +615,23 @@ def send_to_devices(
         if not provider.supports_platform(platform) or not provider.validate_token(token):
             result = ProviderResult(provider_name, "failed", error_code="invalid_token", retryable=False)
         else:
-            result = provider.send(token, device_title, device_body, data, badge=badge)
+            from services.onesignal_transport import OneSignalTransport
+            pilot = OneSignalTransport()
+            if (device.get("app_id") == "com.urtruck.app.qa2"
+                    and device.get("onesignal_subscription_id") and device.get("onesignal_user_id")):
+                # Exactly one transport per registry row. A OneSignal failure
+                # is retried by the outbox, never also sent directly via FCM/APNs.
+                transport_result = pilot.send(
+                    subscription_id=device["onesignal_subscription_id"],
+                    event_id=event_id, title=device_title, body=device_body,
+                    data=_provider_data(data), badge=badge, ttl=_remaining_ttl_seconds(data),
+                )
+                provider_name = "onesignal"
+                result = ProviderResult("onesignal", "sent" if transport_result.status == "accepted" else "failed",
+                                        message_id=transport_result.message_id,
+                                        error_code=transport_result.error_code, retryable=transport_result.retryable)
+            else:
+                result = provider.send(token, device_title, device_body, data, badge=badge)
         log_delivery(event_id, user_id, device, result)
         if result.status == "sent":
             sent += 1
@@ -827,6 +856,14 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
         attempt = int(row["attempt_count"] or 0) + 1
         try:
             payload = json.loads(row["payload"] or "{}")
+            if notification_already_read(row["recipient_user_id"], payload.get("data") or {}):
+                with get_conn() as c:
+                    c.execute("UPDATE push_outbox SET status='skipped_read', last_error='read_before_delivery', "
+                              "attempt_count=?, claimed_at=NULL, locked_by=NULL WHERE id=? AND locked_by=?",
+                              (attempt, row["id"], WORKER_ID))
+                stats["skipped"] += 1
+                continue
+
             # Retry-payload-integrity fix (push-closure track): the enqueued
             # payload (services/push_sender.py send() -> enqueue_event) never
             # included `badge` at all — every retried delivery silently sent
@@ -836,18 +873,15 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
             # the original attempt and a retry minutes later, so a stored
             # value would risk being WRONG, not just missing.
             badge = payload.get("badge")
-            if badge is None:
-                try:
-                    from services.push_sender import _compute_recipient_badge
-                    badge = _compute_recipient_badge(row["recipient_user_id"])
-                except Exception:
-                    badge = None
+            if provider_send_one is None:
+                from services.push_sender import _compute_recipient_badge
+                badge = _compute_recipient_badge(row["recipient_user_id"])
             title = payload.get("title") or "UrTruck"
             body = payload.get("body") or ""
             data = payload.get("data") or payload
             if provider_send_one is not None:
                 # Compatibility seam for deterministic unit tests only. The
-                # runtime path always uses direct FCM/APNs below.
+                # runtime path uses the verified device transport below.
                 devices = [
                     d for d in active_devices(row["recipient_user_id"])
                     if d.get("push_provider") in ("fcm", "apns")
@@ -871,6 +905,7 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
                     "retryable": bool(callback_result.get("retryable", True)) if isinstance(callback_result, dict) else True,
                 }
             else:
+                data = {**data, "event_id": row["event_id"]}
                 result = send_to_devices(row["recipient_user_id"], title, body, data, badge)
             # Multi-device fix (push-closure track): "sent" here must mean
             # EVERY currently-active device was reached, not merely at

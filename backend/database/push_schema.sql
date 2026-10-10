@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS push_devices (
   app_version TEXT,
   os_version TEXT,
   device_model TEXT,
+  onesignal_subscription_id TEXT,
+  onesignal_user_id TEXT,
   enabled INTEGER NOT NULL DEFAULT 1,
   last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
   token_updated_at TEXT DEFAULT CURRENT_TIMESTAMP,

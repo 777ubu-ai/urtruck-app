@@ -2,6 +2,8 @@
 
 PRE-FLIGHT: branch feat/qa2-onesignal-pilot-20261009; tested source f3ac7bdacd4ba841baec71e3d9f053cbc376daab. Known-good: prior targeted production Huawei tests apply only to that installed binary. Scope: source inspection, isolated automated tests, read-only Android AVD and candidate replace-install; production runtime and data protected. Checks: frontend push/read/badge/OneSignal cases; backend source-of-truth, ownership, outbox and transport cases. Rollback: revert this report; terminate this audit's emulator/install processes; no account deletion, app uninstall or data clear.
 
+This is the historical pre-implementation audit. For the subsequent source fixes and current acceptance limits, see [push-integration-20261010.md](push-integration-20261010.md).
+
 ## Results
 
 | Check | Result | Evidence |

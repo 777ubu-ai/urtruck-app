@@ -26,7 +26,7 @@ function handler(name, notificationsAPI) {
   const end = screen.indexOf(name === 'handlePress' ? '\n  const cleanNotifText' : '\n  const handlePress', start);
   let items = [{ id: 5, is_read: 0 }, { id: 6, is_read: 0 }];
   const calls = [];
-  const ctx = { notificationsAPI, ownerRef: { current: 'owner-A' }, mountedRef: { current: true },
+  const ctx = { Date, dismissConfirmedNotifications: async () => {}, notificationsAPI, ownerRef: { current: 'owner-A' }, mountedRef: { current: true },
     toast: () => calls.push('toast'), t: k => k, notifyNotifRead: () => calls.push('read-event'),
     refreshAppIconBadge: async () => calls.push('badge'), load: () => calls.push('load'),
     setItems: fn => { items = fn(items); calls.push('items'); }, parseNotifUrl: () => null };
