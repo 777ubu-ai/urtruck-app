@@ -40,6 +40,21 @@ Reproduce frontend: node --experimental-loader ./tests/frontend/loader.mjs --tes
 
 ## Remaining acceptance
 
-This change is saved source, not a claim of deployed backend or installed phone versions. A compiled signed QA2 candidate, QA2 backend deployment and per-device delivery/banner/tap/unread/badge/read-cleanup runs remain required. Huawei normal replacement previously waits for Huawei ID; OPPO is USB-visible but not ADB-visible. iPhone production build 96 is not a verified signed QA2 OneSignal build. Do not substitute code tests or provider acceptance for physical delivery. Never promise guaranteed delivery after force-stop or offline operation.
+The source implementation is saved as 29df526298ac3caffe9fee2f536c499cd0ef1ee8. Six selected push backend files from this SHA were deployed to QA2; this is not a full-product deployment SHA or a phone installation claim. A compiled signed QA2 candidate and per-device delivery/banner/tap/unread/badge/read-cleanup runs remain required. Huawei normal replacement previously waits for Huawei ID; OPPO is USB-visible but not ADB-visible. iPhone production build 96 is not a verified signed QA2 OneSignal build. Do not substitute code tests or provider acceptance for physical delivery. Never promise guaranteed delivery after force-stop or offline operation.
 
 Historical audit gaps 1 and 2 in push-code-audit-20261010.md are addressed by this source implementation. Historical phone/install limitations remain open. Universal 10/10 is not established.
+
+
+## QA2 runtime connection
+
+Preflight compared the six affected runtime files to base 8f65c6b. Four existing files matched exactly. OneSignal transport was absent. The only notifications.py difference was its older URL-read helper without read-through parameters; the current source restores those compatible optional safeguards. No unrelated runtime edits were overwritten.
+
+The systemd API reads /home/ubuntu/urtruck-qa2/.env; the previously saved OneSignal key was only in backend/.env. The existing QA2 credential was copied internally into the actual service environment; provider/app gating was enabled there. No secret was printed. ENV=qa, DB/storage paths and unrelated settings were preserved. URTRUCK_ENV=qa2 selects the explicit pilot guard.
+
+Backup: /home/ubuntu/urtruck-qa2/backups/push-29df526-20261010T014243Z. Protected copies include affected old source, both env files and a consistent SQLite backup. Only urtruck-qa2.service was restarted. New registry columns verified; QA2 and production health both HTTP 200. Existing outbox scheduler has a fresh heartbeat. Unauthenticated pilot registration HTTP 401. Authenticated OneSignal app read returned HTTP 200 and the expected app; messageable_players=0, verified pilot registry rows=0. These establish server readiness, not a delivered phone push.
+
+Runtime evidence: /private/tmp/urtruck-push-qa2-deploy-20261010.log and /private/tmp/urtruck-push-qa2-runtime-smoke-20261010.log.
+
+Android QA2 build started once: https://github.com/777ubu-ai/urtruck-app/actions/runs/38013992483; exact native source 29df526, version 211040108. This workflow has no Play submission/public rollout. Compile result/artifact identity will be recorded separately.
+
+Server-only channel follow-up: select existing_android_channel_id=urtruck_messages_v2, the channel already created by the native registration flow, so OneSignal uses the same approved high-importance channel. This does not alter or bypass user notification preferences. Reference: https://documentation.onesignal.com/reference/push-notification. This backend-only addition does not require a duplicate Android build; candidate 29df526 already creates that channel. Targeted provider/registry tests: 19 passed, 0 failed; /private/tmp/urtruck-push-channel-regression-20261010.log.

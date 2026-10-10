@@ -110,6 +110,7 @@ class OneSignalTransport:
             "contents": {"en": body},
             "data": {**data, "event_id": event_id},
             "priority": 10,
+            "existing_android_channel_id": "urtruck_messages_v2",
             "ttl": 3600 if ttl is None else max(0, min(2592000, int(ttl))),
             "ios_sound": "default",
             "idempotency_key": delivery_key,

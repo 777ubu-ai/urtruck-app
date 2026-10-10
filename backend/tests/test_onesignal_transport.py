@@ -100,3 +100,10 @@ class SubscriptionTests(unittest.TestCase):
         provider = OneSignalTransport(env=ENV, post=lambda *a, **k: calls.append(k["json"]) or httpx.Response(200, json={"id": SUB}))
         provider.send(subscription_id=SUB, event_id="ttl", title="T", body="B", data={}, ttl=12)
         self.assertEqual(calls[0]["ttl"], 12)
+
+    def test_existing_high_importance_android_channel_is_selected(self):
+        calls = []
+        provider = OneSignalTransport(env=ENV, post=lambda *a, **k: calls.append(k["json"]) or httpx.Response(200, json={"id": SUB}))
+        provider.send(subscription_id=SUB, event_id="channel", title="T", body="B", data={})
+        self.assertEqual(calls[0]["existing_android_channel_id"], "urtruck_messages_v2")
+        self.assertNotIn("android_channel_id", calls[0])
