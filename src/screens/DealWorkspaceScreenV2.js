@@ -69,7 +69,7 @@ import { refreshAppIconBadge } from '../utils/appBadge';
 import { dismissReadChatNotifications } from '../utils/readChatNotifications';
 import { SERVER_URL } from '../config/env';
 import { reviewsAPI } from '../utils/reviews';
-import { normalizeComposerHeight, reconcileChatMessages, selectVoiceDurationSeconds } from '../utils/chatMessageListState';
+import { isOwnDocument, normalizeComposerHeight, reconcileChatMessages, selectVoiceDurationSeconds } from '../utils/chatMessageListState';
 import { measureComposerLines } from '../utils/composerTextLayout';
 
 const LIVE_TRACKING_STATUSES = ['in_progress', 'at_border'];
@@ -708,7 +708,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           return {
             id: `doc_${a.id}`,
             clientUploadId: a.client_upload_id || null,
-            mine: a.uploader_id === session?.user?.id,
+            mine: isOwnDocument(a, session?.user?.id),
             kind: 'document',
             docName: a.original_name || a.id,
             docSize: a.size_bytes,
