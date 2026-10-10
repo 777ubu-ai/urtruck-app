@@ -20,3 +20,8 @@
 - Scoped проверки на 7901dc9: 43 PASS, 0 FAIL — ownership, URL expiry, readiness/history/composer и rendered vehicle regressions.
 - Новый iOS guard >96; оба канала собирают final workflow SHA с текущими runtime production settings. Android minimum code >213720253, AAB выбран для production draft, финальную публикацию выполняет менеджер.
 - Свежая ASC API проверка: 1.0.9 REJECTED, submission UNRESOLVED_ISSUES; ранее отправленная 94 не находится в WAITING_FOR_REVIEW. Текст нового отказа пока неизвестен, browser требует Apple Account. Не помечать причины resolved без чтения.
+
+## Исправление release-контракта
+- Первые runs 38051291956/38051294466 остановлены gate до native build: backend/E2E PASS; frontend 1151 PASS, 1 FAIL. Причина — существующий test_play_release_inputs жёстко ожидает прежний minimum code 213298108. Новый workflow minimum 213720253 с ним не синхронизирован.
+- Scope: только baseline assertion этого существующего release-contract теста; значение обновлено до подтверждённого последнего загруженного Android номера. Guards подписей/host/16KB/шифрования APK не ослабляются.
+- Автоматическая проверка отклонила browser-auth password step Apple, трактуя предыдущую authResult=FAILED как неудачный вход и требуя нового разрешения пользователя. Обходов не выполнять; текст нового rejection остаётся UNKNOWN.
