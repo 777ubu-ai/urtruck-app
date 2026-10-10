@@ -58,3 +58,10 @@ Runtime evidence: /private/tmp/urtruck-push-qa2-deploy-20261010.log and /private
 Android QA2 build started once: https://github.com/777ubu-ai/urtruck-app/actions/runs/38013992483; exact native source 29df526, version 211040108. This workflow has no Play submission/public rollout. Compile result/artifact identity will be recorded separately.
 
 Server-only channel follow-up: select existing_android_channel_id=urtruck_messages_v2, the channel already created by the native registration flow, so OneSignal uses the same approved high-importance channel. This does not alter or bypass user notification preferences. Reference: https://documentation.onesignal.com/reference/push-notification. This backend-only addition does not require a duplicate Android build; candidate 29df526 already creates that channel. Targeted provider/registry tests: 19 passed, 0 failed; /private/tmp/urtruck-push-channel-regression-20261010.log.
+
+
+## Wider CI durable-event contract
+
+GitHub CI frontend/lint/build passed on 0d809bf. Backend CI exposed one existing durable-chat test that explicitly expected a retry to send after the driver had opened/read the room. That expectation would re-create the cleared notification and is incompatible with the requested read-cleanup behavior. The test now asserts terminal skipped_read, zero provider calls on subsequent drain, and successful delivery of a genuinely new message. Full durable-event file: 12 passed, 0 failed in isolated SQLite; /private/tmp/urtruck-push-durable-regression-20261010.log. The CI push selector also explicitly includes onesignal so the new provider/registry tests become blocking future regressions. No application logic was relaxed to satisfy the old expectation.
+
+Server-only channel follow-up 0d809bf was deployed after the guarded initial patch: existing provider file matched SHA 29df526 before replacement, its previous contents are preserved in the same protected backup directory, only QA2 API restarted and health HTTP 200. Evidence: /private/tmp/urtruck-push-channel-deploy-20261010.log.

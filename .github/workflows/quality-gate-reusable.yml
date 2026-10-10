@@ -82,7 +82,7 @@ jobs:
           set -euo pipefail
           DB_PATH="${{ runner.temp }}/urtruck-ci-push-bell.db" \
             python -m pytest tests -q --disable-warnings \
-            -k "push or bell or badge or notification or outbox or durable_event \
+            -k "push or onesignal or bell or badge or notification or outbox or durable_event \
                 or attachment_push or logout_push"
 
   frontend-quality:

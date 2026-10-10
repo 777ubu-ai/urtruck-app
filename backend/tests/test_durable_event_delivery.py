@@ -346,8 +346,21 @@ def test_chat_message_durable_event_excludes_sender_and_retry_does_not_duplicate
 
     _force_due(driver)
     stats = push_gateway.process_pending_once(flaky, limit=10)
-    assert stats["sent"] == 1
-    assert len(flaky.successful_payloads) == 1
+    # The room was read before retry: resurrecting its push would restore
+    # the stale icon/OS notification. This queued event is terminal.
+    assert stats["sent"] == 0 and stats["skipped"] == 1
+    assert flaky.calls == 1 and flaky.successful_payloads == []
+    assert outbox_rows(driver)[0]["status"] == "skipped_read"
+    assert push_gateway.process_pending_once(flaky, limit=10)["picked"] == 0
+
+    # Suppression is event-specific: a genuinely new unread message must
+    # still be delivered normally after the earlier message was read.
+    as_user(owner)
+    fresh = client.post("/api/v1/chat/send", json={
+        "room_id": room_id, "text": "new message after read", "client_msg_id": "durable-chat-msg-2",
+    })
+    assert fresh.status_code == 200, fresh.text
+    assert flaky.calls == 2 and len(flaky.successful_payloads) == 1
 
 
 # ───────────────────────── deal status: durable event for delivered/received/completed ─────────────────────────
