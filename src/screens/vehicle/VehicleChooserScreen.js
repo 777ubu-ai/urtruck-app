@@ -12,7 +12,9 @@ import AppConfirmModal from '../../components/ui/AppConfirmModal';
 const DRAFT_KEY = 'ur_vehicle_setup_draft';
 
 export default function VehicleChooserScreen({ navigation, route }) {
-  const { c } = useVehicleCopy();
+  const { lang, c } = useVehicleCopy();
+  const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
+  const cubicMeterUnit = lang === 'ZH' ? '立方米' : lang === 'EN' ? 'm³' : 'м³';
   const styles = useVehicleSetupStyles();
   const ceramic = useDriverCeramicColors();
   const [vehicles, setVehicles] = useState(null);
@@ -84,7 +86,7 @@ export default function VehicleChooserScreen({ navigation, route }) {
             <Feather name="trash-2" size={19} color={ceramic.error} />
           </Pressable> : null}
         </View>
-        <Text style={styles.subtitle}>{bodyLabel(item)} · {item.payload_tons} т · {item.cargo_volume_m3} м³</Text>
+        <Text style={styles.subtitle}>{bodyLabel(item)} · {item.payload_tons} {tonUnit} · {item.cargo_volume_m3} {cubicMeterUnit}</Text>
         <Text style={styles.reviewValue}>{item.license_plate}</Text>
       </Pressable>}
       ListEmptyComponent={<Text style={styles.subtitle}>{c.noVehicles}</Text>}
