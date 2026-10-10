@@ -65,3 +65,15 @@ Server-only channel follow-up: select existing_android_channel_id=urtruck_messag
 GitHub CI frontend/lint/build passed on 0d809bf. Backend CI exposed one existing durable-chat test that explicitly expected a retry to send after the driver had opened/read the room. That expectation would re-create the cleared notification and is incompatible with the requested read-cleanup behavior. The test now asserts terminal skipped_read, zero provider calls on subsequent drain, and successful delivery of a genuinely new message. Full durable-event file: 12 passed, 0 failed in isolated SQLite; /private/tmp/urtruck-push-durable-regression-20261010.log. The CI push selector also explicitly includes onesignal so the new provider/registry tests become blocking future regressions. No application logic was relaxed to satisfy the old expectation.
 
 Server-only channel follow-up 0d809bf was deployed after the guarded initial patch: existing provider file matched SHA 29df526 before replacement, its previous contents are preserved in the same protected backup directory, only QA2 API restarted and health HTTP 200. Evidence: /private/tmp/urtruck-push-channel-deploy-20261010.log.
+
+## Final build and CI evidence
+
+Full GitHub PR quality gate on 719439e4f62a2be375fe06da762b211bd6dfa5a7 succeeded: backend tests, frontend tests/lint/build and mandatory web E2E subset. Run: https://github.com/777ubu-ai/urtruck-app/actions/runs/38014832872.
+
+Android workflow 38013992483 succeeded. APK downloaded once and verified: package com.urtruck.app.qa2, version 1.0.9-qa2 / 211040108, QA2 API host, exact OneSignal app ID in assets/app.config, native SDK and React Native bridge in DEX, one FCM intent action and the custom messaging service. Certificate SHA-256: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c. APK SHA-256: 17e8666f0c13fd8eb09d84aa38d7fea6311318a1c6153eb1aa64ed8e8f198c71. Native source is 29df526; later commits contain server-only and test/CI/documentation changes. This is not an installed phone version or a Play/App Store publication.
+
+The standalone OneSignal transport test file now has a unittest entry point; its independent invocation executed 13 tests successfully. This prevents an isolated runner from silently invoking the file without executing its unittest cases.
+
+An extra canonical backend attempt from a git archive was blocked by tests requiring .git metadata (break-glass workflow guard). It does not establish a full server canonical PASS; the real-checkout GitHub backend quality gate above passed.
+
+Physical acceptance remains open: Huawei last verified installed QA2 211040106 with replacement awaiting Huawei ID; OPPO USB-visible but absent from ADB; iPhone production 96 is not a verified signed QA2 OneSignal candidate. QA2 has zero verified pilot device bindings and zero messageable OneSignal recipients at the latest runtime check. No new OneSignal physical delivery, banner, tap, badge reset or read-cleanup PASS is claimed. Overall 10/10 remains unconfirmed.

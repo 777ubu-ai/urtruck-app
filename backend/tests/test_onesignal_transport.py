@@ -107,3 +107,7 @@ class SubscriptionTests(unittest.TestCase):
         provider.send(subscription_id=SUB, event_id="channel", title="T", body="B", data={})
         self.assertEqual(calls[0]["existing_android_channel_id"], "urtruck_messages_v2")
         self.assertNotIn("android_channel_id", calls[0])
+
+
+if __name__ == "__main__":
+    unittest.main()
