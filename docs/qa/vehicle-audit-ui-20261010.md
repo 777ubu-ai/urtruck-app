@@ -12,3 +12,5 @@ Evidence directory Mac /tmp/urtruck-production-audit-evidence-20261010/screensho
 Footer patch: before fix 3 rendered inset cases FAIL, web zero-inset PASS. After fix all 18 related tests PASS (4 rendered footer + vehicle flow/theme/country search). Physical new APK acceptance pending.
 
 Unit patch: rendered vehicle card tests before fix FAIL for ZH/EN, PASS for RU/KK. After localized labels all 22 related tests PASS, including 8 rendered regressions. Backend requests/data/routes unchanged.
+
+Final local validation at code SHA 3def0ac: lint PASS (476 JS files), build:web PASS (export and mandatory static assets). No APK/IPA installation performed. New code remains a review candidate.
