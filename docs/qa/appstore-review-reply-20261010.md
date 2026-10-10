@@ -1,8 +1,8 @@
-# UrTruck — черновик ответа App Review, 10.10.2026
+# UrTruck — отправленный ответ App Review, 10.10.2026
 
-Статус: сохранён в App Store Connect через Save Draft, НЕ отправлен. Требуется согласие владельца на отправку Apple и обязательство устранить 4.8 в следующем обновлении. Это не исправление 4.8 и не гарантия одобрения. Apple reviewed build 94; сейчас selected build 97. Приложение и production auth settings не менялись.
+Статус: отправлен Apple 10.10.2026 после явного согласия владельца на запрос одобрения сборки 97 и обязательство устранить 4.8 в следующем обновлении. Отправка подтверждена: Messages (3), сообщение отображается без Continue Draft / Delete Draft. Это не исправление 4.8 и не гарантия одобрения. На момент отправки submission остаётся Unresolved Issues, item Rejected. Apple reviewed build 94; сейчас selected build 97. Приложение и production auth settings не менялись.
 
-## Текст для отправки
+## Отправленный текст
 
 Hello App Review Team,
 
