@@ -25,3 +25,25 @@
 - Первые runs 38051291956/38051294466 остановлены gate до native build: backend/E2E PASS; frontend 1151 PASS, 1 FAIL. Причина — существующий test_play_release_inputs жёстко ожидает прежний minimum code 213298108. Новый workflow minimum 213720253 с ним не синхронизирован.
 - Scope: только baseline assertion этого существующего release-contract теста; значение обновлено до подтверждённого последнего загруженного Android номера. Guards подписей/host/16KB/шифрования APK не ослабляются.
 - Автоматическая проверка отклонила browser-auth password step Apple, трактуя предыдущую authResult=FAILED как неудачный вход и требуя нового разрешения пользователя. Обходов не выполнять; текст нового rejection остаётся UNKNOWN.
+
+## Проверки замороженного SHA
+- Binary source SHA: 7ee5e9087a6e4afda648c93123a33c8d5403a498. Повторные iOS 38051831925 и Android 38051833715: backend, frontend/lint/build, mandatory web E2E — SUCCESS перед native build. Release-contract subset: 10 PASS.
+- Production reviewer login 10.10: штатный email/verify с ранее настроенными приватными review credentials HTTP 200, session issued, verification_level 2; /register/me, /market/my, /chat/rooms, /notifications/badge HTTP 200. Секреты и session token не выводились. Это API smoke, не физическая проверка новой сборки и не объяснение нового Apple отказа.
+
+## Подписанная iOS сборка
+- Run 38051831925 SUCCESS. Manifest: sourceSHA 7ee5e9087a6e4afda648c93123a33c8d5403a498, com.urtruck.app, 1.0.9 (97), urtruck.kz, flavor production, apsEnvironment production.
+- IPA SHA-256 ee5cb86d25a79f4668cb507f7ae69c56714c6ceabcaafcd9e1a4372524f37336. Artifact 11670671029.
+- 12:45:25 UTC EAS Submit: binary successfully uploaded to App Store Connect. Это TestFlight upload; App Review submission и public release этим не выполнены. Первые ASC polls ещё не возвращают build 97, ожидается processing.
+
+## Android production draft
+- Run 38051833715 SUCCESS: signed AAB com.urtruck.app 1.0.9 (213798673), source SHA 7ee5e9087a6e4afda648c93123a33c8d5403a498. 48 ELF 16KB /0 failures; AAB ZIP alignment, Firebase runtime resources, package/code guards PASS. Native Gradle build + release unit tests SUCCESS.
+- AAB SHA-256 db4473b090ac1696433c0f11d83b57d8c327e45bfad4eb289d3901a23bcfb740; artifact 11669832493. Google API upload/commit SUCCESS 12:47:51 UTC.
+- API inspection run 38052147274 SUCCESS: production draft 213798673; public completed baseline 213702394 (1.0.9), beta 209578495 (1.0.7), internal 213720253. Поэтому owner-reported 1.0.7 в Play не совпадает с production track API.
+- Дополнительный scope preflight: metadata-only ops/store-notes-20261010 c104161, existing inspect workflow, только RU notes существующего 213798673 draft. Exact draft+baseline guards, validate/commit, fresh read. Public status/other tracks не менялись. Run 38053507984 SUCCESS, notes_committed true, publication_performed false.
+- CI нового binary: frontend main suite 1152 PASS/0 FAIL; mandatory web E2E 23 PASS; backend canonical и P0/P1 subsets SUCCESS; deprecation warnings не исправлялись этим релизом.
+
+## Финальная точка продолжения
+- ASC 97 VALID, id 726f808c-f6ca-41a9-bc68-5d086fae3353. Перед заменой selected build сохранён приватный snapshot, guard исключает downgrade и отмену review. Новый build 97 привязан к 1.0.9, releaseType AFTER_APPROVAL; fresh API подтверждает PREPARE_FOR_SUBMISSION и selectedBuild 97.
+- Предыдущая submission bea2c456-d49f-4894-ab2b-afb5a316e64e всё ещё UNRESOLVED_ISSUES. Issues не помечались resolved, reviewSubmitted false, publicationPerformed false. App Store public 1.0.7 READY_FOR_SALE. Нужно прочитать фактический rejection и устранить/ответить, затем отправить новую review. Повтор защищённого password-entry Apple остановлен automatic approval review; требуется новая явная авторизация этого retry.
+- Android 213798673 production draft + RU notes подготовлены. Менеджер проверяет фактические Console declarations / Publishing overview и отправляет на review/rollout. Console формы не проверены, гарантия одной кнопки отсутствует.
+- Подписанные binary остаются на frozen SHA 7ee5e9087a6e4afda648c93123a33c8d5403a498. Последующие commits содержат только инструкции/ASC helper и не означают пересборку. Production backend/БД/реальные сделки не изменялись. Full audit NO-GO не превращается в 10/10 на основании store upload.
