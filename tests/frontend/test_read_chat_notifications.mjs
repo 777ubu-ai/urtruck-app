@@ -72,3 +72,64 @@ test('malformed foreign tags never match a room', async () => {
   }}]);
   assert.deepEqual(out.calls, []);
 });
+
+const wrapped = (id, room, type = 'chat_message', encode = false, date = 900) => {
+  const custom = { i: '2baf4778-511e-4a9d-a791-8b278c196e55', a: { room_id: room, type } };
+  return { date, request: { identifier: id, content: { data: { custom: encode ? JSON.stringify(custom) : custom } } } };
+};
+test('OneSignal object and encoded payloads clear only older same-room chat', async () => {
+  const out = await run([
+    wrapped('ios-chat', 'room-a'), wrapped('android-doc', 'room-a', 'chat_attachment', true),
+    wrapped('other-room', 'room-b'), wrapped('business', 'room-a', 'deal_accepted'),
+    wrapped('new-push', 'room-a', 'chat_message', false, 1001),
+  ]);
+  assert.deepEqual(out.calls, ['ios-chat', 'android-doc']);
+});
+test('malformed or unmarked custom data cannot erase a presented notification', async () => {
+  const list = ['{bad', { a: { room_id: 'room-a', type: 'chat_message' } },
+    { i: 'not-a-uuid', a: { room_id: 'room-a', type: 'chat_message' } },
+    { i: '2baf4778-511e-4a9d-a791-8b278c196e55', a: [] }].map((custom, index) =>
+    ({ date: 900, request: { identifier: String(index), content: { data: { custom } } } }));
+  assert.deepEqual((await run(list)).calls, []);
+});
+test('direct native room data has priority over a nested provider wrapper', async () => {
+  const x = wrapped('conflicting', 'room-a');
+  Object.assign(x.request.content.data, { room_id: 'room-b', type: 'chat_message' });
+  assert.deepEqual((await run([x])).calls, []);
+});
+
+async function runSdk(presented, extra, fail = false) {
+  const old = globalThis.require; const marked = []; const dismissed = [];
+  globalThis.require = name => {
+    if (name === 'expo-constants') return { default: { expoConfig: { extra } } };
+    if (name === 'react-native-onesignal') return { OneSignal: { Notifications: {
+      removeNotification: id => { marked.push(id); if (fail) throw new Error('native'); },
+    } } };
+    return { getPresentedNotificationsAsync: async () => presented, dismissNotificationAsync: async id => dismissed.push(id) };
+  };
+  try { await dismissReadChatNotifications('room-a', { readBefore: 1000 }); return { marked, dismissed }; }
+  finally { globalThis.require = old; }
+}
+const pilotExtra = { oneSignalPilot: { enabled: true }, urtruckBuildFlavor: 'qa2', urtruckApiUrl: 'https://qa2.urtruck.kz' };
+const foreignId = id => 'expo-notifications://foreign_notifications?tag=&id=' + id;
+test('QA2 marks only exact read-room OneSignal Android id dismissed in SDK', async () => {
+  const out = await runSdk([wrapped(foreignId(-42), 'room-a'), wrapped(foreignId(7), 'room-b'),
+    wrapped(foreignId(8), 'room-a', 'deal_accepted'), wrapped(foreignId(9), 'room-a', 'chat_message', false, 1001)], pilotExtra);
+  assert.deepEqual(out.marked, [-42]); assert.deepEqual(out.dismissed, [foreignId(-42)]);
+});
+test('production and missing pilot config never invoke OneSignal dismissal', async () => {
+  for (const extra of [{}, { ...pilotExtra, urtruckBuildFlavor: 'production' },
+    { ...pilotExtra, urtruckApiUrl: 'https://urtruck.kz' }]) {
+    const out = await runSdk([wrapped(foreignId(42), 'room-a')], extra);
+    assert.deepEqual(out.marked, []); assert.equal(out.dismissed.length, 1);
+  }
+});
+test('unknown, duplicate or out-of-range native ids are never guessed for SDK', async () => {
+  const ids = ['uuid-id', foreignId('oops'), foreignId(2147483648), foreignId('1&id=2')];
+  const out = await runSdk(ids.map(id => wrapped(id, 'room-a')), pilotExtra);
+  assert.deepEqual(out.marked, []); assert.equal(out.dismissed.length, 4);
+});
+test('SDK failure still allows OS room-only cleanup and direct FCM avoids SDK', async () => {
+  const out = await runSdk([wrapped(foreignId(42), 'room-a'), note('direct', 'room-a')], pilotExtra, true);
+  assert.deepEqual(out.marked, [42]); assert.deepEqual(out.dismissed, [foreignId(42), 'direct']);
+});

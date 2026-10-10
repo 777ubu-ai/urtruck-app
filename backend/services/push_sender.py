@@ -1,4 +1,4 @@
-"""Native push sender for direct FCM/APNs delivery.
+"""Native push sender with verified QA2 OneSignal routing.
 
 Web Push remains supported for browser subscriptions. Mobile delivery is
 strictly native: device rows registered as FCM/APNs are sent through the
@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import uuid
 from typing import Any, Optional
 
 from database.db import get_conn
@@ -94,11 +95,31 @@ def _compute_recipient_badge(user_id: str) -> int:
     return unread_badge_count(user_id)
 
 
+def notification_reference(user_id, title, body, url, event_id=None):
+    """Correlate exactly one durable inbox record; ambiguous legacy alerts stay intact."""
+    with get_conn() as c:
+        if event_id:
+            rows = c.execute("SELECT id,event_key FROM notifications WHERE user_id=? AND event_key=? LIMIT 2",
+                             (user_id, event_id)).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT id,event_key FROM notifications WHERE user_id=? AND title=? AND body=? AND url=? "
+                "AND is_read=0 AND created_at>=datetime('now','-5 minutes') LIMIT 2",
+                (user_id, title, body, url),
+            ).fetchall()
+    if len(rows) != 1:
+        return {}
+    row = rows[0]
+    return {"notification_id": row["id"], **({"notification_event_key": row["event_key"]} if row["event_key"] else {})}
+
+
 def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional[dict] = None,
          url: str = "/", *, event_id: Optional[str] = None, event_type: str = "generic",
          badge: Optional[int] = None, provider: Optional[str] = None) -> dict[str, Any]:
     data = {**(data or {}), "kind": kind, "url": url}
     event_id = event_id or data.get("event_id") or data.get("event_key") or data.get("event")
+    data.update(notification_reference(user_id, title, body, url, event_id))
+    event_id = event_id or str(uuid.uuid4())
     event_type = event_type if event_type != "generic" else str(data.get("type") or kind)
     if event_id:
         data.setdefault("event_id", event_id)
@@ -165,7 +186,9 @@ def broadcast(user_ids: list[str], title: str, body: str, data: Optional[dict] =
 
 def send_native_debug(user_id: str, title: str, body: str, data: Optional[dict] = None,
                       badge: Optional[int] = None, provider: Optional[str] = None) -> dict[str, Any]:
-    result = _send_native(user_id, title, body, data or {}, badge, provider)
+    data = {**(data or {})}
+    data.setdefault("event_id", str(uuid.uuid4()))
+    result = _send_native(user_id, title, body, data, badge, provider)
     result["provider"] = provider if provider in {"fcm", "apns"} else "native"
     return result
 

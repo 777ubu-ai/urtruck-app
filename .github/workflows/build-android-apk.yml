@@ -9,11 +9,20 @@ on:
       source_ref:
         description: Exact source commit SHA to build
         required: true
+      onesignal_pilot:
+        description: Build isolated OneSignal QA2 pilot (no production rollout)
+        required: false
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       source_ref:
         required: true
         type: string
+      onesignal_pilot:
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [main, "claude/**"]
 
@@ -90,6 +99,14 @@ jobs:
 
       - name: Verify QA2 build regression contract
         run: node --test tests/frontend/test_qa2_live_build_contract.mjs
+
+      - name: Enable explicitly requested QA2 OneSignal pilot
+        if: ${{ inputs.onesignal_pilot == true }}
+        run: |
+          test "$URTRUCK_BUILD_FLAVOR" = qa2
+          test "${EXPO_PUBLIC_API_URL%/}" = https://qa2.urtruck.kz
+          echo "URTRUCK_PUSH_PROVIDER=onesignal" >> "$GITHUB_ENV"
+          echo "URTRUCK_ONESIGNAL_PLATFORMS_READY=1" >> "$GITHUB_ENV"
 
       - name: Materialize QA2 native MapKit build contract
         # Keep the native key out of source and separate from the web JS key.
@@ -168,13 +185,17 @@ jobs:
             python3 scripts/verify_android_firebase_config.py --check-source google-services.json
 
       - name: Expo prebuild (Android, non-interactive)
-        # The tracked Android tree contains the approved full-screen splash and
-        # its native launch wiring. --clean deletes those native files before
-        # the build and silently restores Expo's tiny centered icon splash.
+        # Expo can reset native files when the QA2 package changes, even without
+        # --clean. Restore canonical bridges below and verify splash afterward.
         run: npx expo prebuild --platform android --no-install --non-interactive
         env:
           EXPO_NO_TELEMETRY: 1
           CI: 1
+
+      - name: Restore canonical UrTruck QA2 native bridges
+        run: |
+          python3 -m unittest discover -s tests -p test_restore_qa2_native_push.py -v
+          python3 scripts/restore-qa2-native-push.py --source-sha "$(git rev-parse HEAD)"
 
       - name: Verify Google Services Gradle plugin wired after prebuild
         run: python3 scripts/verify_android_firebase_config.py --check-plugin android
@@ -227,10 +248,20 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
+          qa2_pilot_args=()
+          if [ "${URTRUCK_PUSH_PROVIDER:-}" = onesignal ]; then
+            # Physical QA2 pilot: packaging exceeded the default 2 GiB heap.
+            # Huawei's observed ABI is arm64-v8a; do not build emulator ABIs.
+            qa2_pilot_args+=(
+              "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8"
+              "--max-workers=2"
+              "-PreactNativeArchitectures=arm64-v8a"
+            )
+          fi
           ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary \
             -PURTRUCK_VERSION_CODE="$URTRUCK_VERSION_CODE" \
             -PURTRUCK_QA2=true \
-            -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true
+            -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true "${qa2_pilot_args[@]}"
 
       - name: Verify Firebase runtime resources in build output
         run: python3 scripts/verify_android_firebase_config.py --check-resources android/app/build

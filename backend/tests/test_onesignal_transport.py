@@ -1,0 +1,113 @@
+import unittest
+from unittest.mock import patch
+import httpx
+from services.onesignal_transport import APP_ID, OneSignalTransport
+
+SUB = "2baf4778-511e-4a9d-a791-8b278c196e55"
+ENV = {"URTRUCK_ENV": "qa2", "URTRUCK_PUSH_PROVIDER": "onesignal",
+       "ONESIGNAL_QA2_APP_ID": APP_ID, "ONESIGNAL_QA2_API_KEY": "unit-test-only"}
+
+class TransportTests(unittest.TestCase):
+    def request(self, transport, **extra):
+        return transport.send(subscription_id=SUB, event_id="event-1", title="Test",
+                              body="QA test", data={"type": "chat_message", "room_id": "room-1"}, **extra)
+
+    def test_production_and_missing_config_cannot_send(self):
+        for env in ({}, {**ENV, "URTRUCK_ENV": "production"}, {**ENV, "ONESIGNAL_QA2_API_KEY": ""}):
+            def forbidden(*args, **kwargs): self.fail("unexpected network request")
+            self.assertEqual(self.request(OneSignalTransport(env=env, post=forbidden)).error_code,
+                             "onesignal_not_configured")
+
+    def test_idempotency_and_absolute_server_badge(self):
+        requests = []
+        def post(url, **kw):
+            requests.append(kw["json"])
+            return httpx.Response(200, json={"id": SUB})
+        transport = OneSignalTransport(env=ENV, post=post)
+        self.assertEqual(self.request(transport, badge=3).status, "accepted")
+        self.request(transport, badge=0)
+        self.assertEqual(requests[0]["idempotency_key"], requests[1]["idempotency_key"])
+        self.assertEqual(requests[1]["ios_badgeCount"], 0)
+        self.assertEqual(requests[0]["include_subscription_ids"], [SUB])
+        self.assertNotIn("included_segments", requests[0])
+        self.assertEqual(requests[0]["thread_id"], "chat:room-1")
+
+    def test_http_200_without_message_id_is_not_success(self):
+        transport = OneSignalTransport(env=ENV, post=lambda *a, **k: httpx.Response(200, json={"id": ""}))
+        self.assertEqual(self.request(transport).error_code, "no_recipients")
+
+    def test_partial_error_is_not_claimed_as_delivery(self):
+        transport = OneSignalTransport(env=ENV, post=lambda *a, **k: httpx.Response(200, json={"id": SUB, "errors": ["invalid recipient"]}))
+        self.assertEqual(self.request(transport).error_code, "recipient_error")
+
+    def test_retry_classification(self):
+        for status, retry in ((401, False), (400, False), (429, True), (503, True)):
+            transport = OneSignalTransport(env=ENV, post=lambda *a, **k: httpx.Response(status))
+            self.assertEqual(self.request(transport).retryable, retry)
+
+    def test_network_and_invalid_response(self):
+        def fail(*a, **k): raise httpx.ConnectError("unit-test")
+        self.assertTrue(self.request(OneSignalTransport(env=ENV, post=fail)).retryable)
+        transport = OneSignalTransport(env=ENV, post=lambda *a, **k: httpx.Response(200, text="invalid"))
+        self.assertEqual(self.request(transport).error_code, "invalid_provider_response")
+
+    def test_invalid_subscription_and_badge_never_send(self):
+        def forbidden(*a, **k): self.fail("unexpected network request")
+        transport = OneSignalTransport(env=ENV, post=forbidden)
+        self.assertEqual(self.request(transport, badge=-1).error_code, "invalid_badge")
+        result = transport.send(subscription_id="other-user", event_id="e", title="T", body="B", data={})
+        self.assertEqual(result.error_code, "invalid_subscription")
+
+    def test_default_client_uses_allowlisted_address_family(self):
+        calls = []
+        def transport_factory(**kwargs):
+            calls.append(kwargs)
+            def provider(request):
+                self.assertEqual(request.url.host, "api.onesignal.com")
+                self.assertEqual(request.headers["authorization"], "Key unit-test-only")
+                return httpx.Response(200, json={"id": SUB})
+            return httpx.MockTransport(provider)
+        with patch("services.onesignal_transport.httpx.HTTPTransport", side_effect=transport_factory):
+            self.assertEqual(self.request(OneSignalTransport(env=ENV)).status, "accepted")
+        self.assertEqual(calls, [{"local_address": "0.0.0.0"}])
+
+
+class SubscriptionTests(unittest.TestCase):
+    def test_provider_identity_app_token_platform_and_permission_all_required(self):
+        row = {"id": SUB, "app_id": APP_ID, "type": "AndroidPush", "token": "fcm-test", "enabled": True, "notification_types": 1}
+        def check(record):
+            provider = OneSignalTransport(env=ENV, get=lambda *a, **k: httpx.Response(200, json={"subscriptions": [record]}))
+            return provider.verify_subscription(subscription_id=SUB, onesignal_user_id=SUB, native_token="fcm-test", platform="android")
+        self.assertIsNone(check(row))
+        for changes in ({"id": "other"}, {"app_id": "other"}, {"type": "iOSPush"}, {"token": "other"}, {"enabled": False}, {"notification_types": 0}):
+            self.assertEqual(check({**row, **changes}), "subscription_mismatch")
+
+    def test_invalid_identity_and_provider_failure_fail_closed(self):
+        provider = OneSignalTransport(env=ENV, get=lambda *a, **k: httpx.Response(503))
+        self.assertEqual(provider.verify_subscription(subscription_id=SUB, onesignal_user_id=SUB, native_token="fcm-test", platform="android"), "subscription_verification_unavailable")
+        self.assertEqual(provider.verify_subscription(subscription_id="not-uuid", onesignal_user_id=SUB, native_token="fcm-test", platform="android"), "invalid_subscription")
+
+    def test_android_receives_canonical_badge_without_mutating_caller(self):
+        calls = []
+        data = {"type": "reminder", "badge": 99}
+        provider = OneSignalTransport(env=ENV, post=lambda *a, **k: calls.append(k["json"]) or httpx.Response(200, json={"id": SUB}))
+        provider.send(subscription_id=SUB, event_id="e", title="T", body="B", data=data, badge=0)
+        self.assertEqual(calls[0]["data"]["badge"], 0)
+        self.assertEqual(data["badge"], 99)
+
+    def test_remaining_ttl_is_forwarded(self):
+        calls = []
+        provider = OneSignalTransport(env=ENV, post=lambda *a, **k: calls.append(k["json"]) or httpx.Response(200, json={"id": SUB}))
+        provider.send(subscription_id=SUB, event_id="ttl", title="T", body="B", data={}, ttl=12)
+        self.assertEqual(calls[0]["ttl"], 12)
+
+    def test_existing_high_importance_android_channel_is_selected(self):
+        calls = []
+        provider = OneSignalTransport(env=ENV, post=lambda *a, **k: calls.append(k["json"]) or httpx.Response(200, json={"id": SUB}))
+        provider.send(subscription_id=SUB, event_id="channel", title="T", body="B", data={})
+        self.assertEqual(calls[0]["existing_android_channel_id"], "urtruck_messages_v2")
+        self.assertNotIn("android_channel_id", calls[0])
+
+
+if __name__ == "__main__":
+    unittest.main()

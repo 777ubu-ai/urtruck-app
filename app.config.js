@@ -1,6 +1,9 @@
 const { existsSync } = require('node:fs');
 const { QA2_ANDROID_VERSION_CODE } = require('./config/qa2-android-build-metadata');
 
+const { resolveOneSignalPilot } = require('./config/onesignal-pilot');
+const oneSignalPilot = resolveOneSignalPilot();
+
 const isQa2 = process.env.URTRUCK_BUILD_FLAVOR === 'qa2';
 const qa2VersionCode = Number(process.env.URTRUCK_VERSION_CODE || QA2_ANDROID_VERSION_CODE);
 const apiOverride = process.env.EXPO_PUBLIC_API_URL || '';
@@ -48,7 +51,13 @@ module.exports = ({ config }) => {
     ...(config.extra || {}),
     ...(resolvedApiUrl ? { urtruckApiUrl: resolvedApiUrl } : {}),
     urtruckBuildFlavor: isQa2 ? 'qa2' : 'production',
+    ...(oneSignalPilot.enabled ? { oneSignalPilot } : {}),
   },
+  ...(oneSignalPilot.enabled ? {
+    name: 'UrTruck QA2',
+    scheme: 'urtruckqa2',
+    ios: { ...config.ios, bundleIdentifier: oneSignalPilot.bundleIdentifier },
+  } : {}),
   android: {
     ...androidConfig,
     ...(isQa2
@@ -59,6 +68,9 @@ module.exports = ({ config }) => {
       : {}),
   },
   plugins: [
+    ...(oneSignalPilot.enabled ? [['onesignal-expo-plugin', {
+      mode: 'production', disableLocation: true,
+    }]] : []),
     ...(config.plugins || []),
     './plugins/withAndroidFullscreenSplash',
     ...(isQa2 ? ['./plugins/withQaLocalCleartext'] : []),

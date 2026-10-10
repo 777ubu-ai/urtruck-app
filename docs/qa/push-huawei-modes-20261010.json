@@ -1,0 +1,30 @@
+[
+  {
+    "mode": "foreground-other",
+    "sent_at_utc": "2026-10-09T22:37:59.066174+00:00",
+    "marker": "QA-PUSH-HUAWEI-20261010-foreground-other",
+    "provider": {
+      "sent": 1,
+      "devices": 1,
+      "error": null
+    },
+    "system_record_present": true,
+    "observation_elapsed_s": 3.36,
+    "sound_banner": "NOT_TESTED",
+    "businessUnreadReadCleanup": "NOT_TESTED"
+  },
+  {
+    "mode": "background-home",
+    "sent_at_utc": "2026-10-09T22:38:02.493629+00:00",
+    "marker": "QA-PUSH-HUAWEI-20261010-background-home",
+    "provider": {
+      "sent": 1,
+      "devices": 1,
+      "error": null
+    },
+    "system_record_present": true,
+    "observation_elapsed_s": 2.94,
+    "sound_banner": "NOT_TESTED",
+    "businessUnreadReadCleanup": "NOT_TESTED"
+  }
+]
