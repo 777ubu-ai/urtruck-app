@@ -30,4 +30,5 @@
 ## iOS
 - Сборка: https://github.com/777ubu-ai/urtruck-app/actions/runs/38051831925 ; подтверждён 1.0.9 (97), bundle com.urtruck.app, production APNs/host; upload SUCCESS 12:45:25 UTC. ASC build 97 VALID, выбран для версии 1.0.9; releaseType AFTER_APPROVAL.
 - Текущая версия 1.0.9 PREPARE_FOR_SUBMISSION; выбран build 97 (726f808c-f6ca-41a9-bc68-5d086fae3353). Предыдущая review submission bea2c456-d49f-4894-ab2b-afb5a316e64e имеет UNRESOLVED_ISSUES. Публичная версия 1.0.7 READY_FOR_SALE. Повторная App Review submission пока не выполнена.
-- Нужен текст нового rejection Apple. Вход через cloud browser остановлен automatic approval review; API key позволяет проверить версии/загрузку, но в выполненных запросах текст отказа не получен.
+- Защищённый вход повторён с явным разрешением владельца. Фактический отказ от 10 октября: 4.8 Login Services; reviewer reviewed build 94, текущий selected build 97. Live auth settings: Google enabled, Apple disabled; кнопка Apple поэтому скрыта, build 97 это не исправляет.
+- Apple предложил Bug Fix Submissions с устранением 4.8 в следующем обновлении. Ответ с запросом одобрить именно 1.0.9 (97) сохранён как draft, не отправлен: docs/qa/appstore-review-reply-20261010.md. Требуется согласие на это обращение и обязательство следующего обновления. До ответа/решения Apple новая версия не опубликована.
