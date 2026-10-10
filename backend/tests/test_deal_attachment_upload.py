@@ -197,3 +197,35 @@ def test_storage_preserves_pdf_content_type(monkeypatch):
     ref = storage_service._save_supabase(b"%PDF-1.7\n", "chat_attachments/test.pdf", "application/pdf")
     assert seen["headers"]["Content-Type"] == "application/pdf"
     assert ref == "supabase://private/chat_attachments/test.pdf"
+
+
+def test_attachment_ownership_is_per_authenticated_participant(monkeypatch):
+    attachment = {"id": "pdf-1", "kind": "document", "uploader_id": "canonical-owner", "url": "/private/pdf"}
+    monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room: True)
+    monkeypatch.setattr(deal_room.dr, "is_participant", lambda _room, uid: uid in ("canonical-owner", "counterparty"))
+    monkeypatch.setattr(deal_room, "_assert_deal_room_open", lambda *_args: None)
+    monkeypatch.setattr(deal_room, "_ensure_attachment_columns", lambda: None)
+    monkeypatch.setattr(deal_room.dr, "list_attachments", lambda _room: [attachment])
+    monkeypatch.setattr(deal_room, "_sign_attachment", lambda a: {**a, "url": "/signed/pdf"})
+
+    own = deal_room.list_conversation_attachments("room", {"id": "canonical-owner"})["attachments"][0]
+    foreign = deal_room.list_conversation_attachments("room", {"id": "counterparty"})["attachments"][0]
+    assert own["mine"] is True
+    assert foreign["mine"] is False
+    assert own["uploader_id"] == foreign["uploader_id"] == attachment["uploader_id"]
+    assert "mine" not in attachment
+    assert own["url"] == foreign["url"] == "/signed/pdf"
+
+
+def test_attachment_ownership_does_not_bypass_participant_check(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+    monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room: True)
+    monkeypatch.setattr(deal_room.dr, "is_participant", lambda *_args: False)
+    def unexpected_read(*_args):
+        raise AssertionError("Посторонний не должен получить вложения")
+    monkeypatch.setattr(deal_room.dr, "list_attachments", unexpected_read)
+    monkeypatch.setattr(deal_room, "_sign_attachment", unexpected_read)
+    with pytest.raises(HTTPException) as exc:
+        deal_room.list_conversation_attachments("room", {"id": "outsider"})
+    assert exc.value.status_code == 403
