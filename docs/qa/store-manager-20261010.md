@@ -32,3 +32,7 @@
 - Текущая версия 1.0.9 PREPARE_FOR_SUBMISSION; выбран build 97 (726f808c-f6ca-41a9-bc68-5d086fae3353). Предыдущая review submission bea2c456-d49f-4894-ab2b-afb5a316e64e имеет UNRESOLVED_ISSUES. Публичная версия 1.0.7 READY_FOR_SALE. Повторная App Review submission пока не выполнена.
 - Защищённый вход повторён с явным разрешением владельца. Фактический отказ от 10 октября: 4.8 Login Services; reviewer reviewed build 94, текущий selected build 97. Live auth settings: Google enabled, Apple disabled; кнопка Apple поэтому скрыта, build 97 это не исправляет.
 - Apple предложил Bug Fix Submissions с устранением 4.8 в следующем обновлении. После явного согласия владельца ответ с запросом одобрить именно 1.0.9 (97) отправлен: docs/qa/appstore-review-reply-20261010.md. UI подтверждает Messages (3), статус всё ещё Unresolved Issues; одобрения/публичного выпуска пока нет. Ожидается решение Apple.
+
+
+## Update 11.10.2026 — live Console
+Сверка Console и изменения: docs/qa/play-store-audit-20261011.md. Правильный production 1.0.9 показан на проверке. Managed publishing включён; live publish не выполнен. Четыре исправления метаданных сохранены, но ещё не досланы. Критический блокер: старый reviewer access содержит шаблонный телефон; новые приватные email/reusable OTP подготовлены, их сохранение остановлено auto-review до явного разрешения владельца передать их Google Play Review. Не публиковать до исправления reviewer access и итоговой сверки.
