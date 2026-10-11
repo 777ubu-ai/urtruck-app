@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { storage } from './storage';
 import { regAPI } from './registration';
 import { clearSocialAuthSession } from './socialAuth';
-import { subscribeAuthExpired, setAuthExpirySuppressed } from './authEvents';
+import { subscribeAuthExpired, setAuthExpirySuppressed, configureAuthExpiryValidation } from './authEvents';
 import { push } from './push';
 import { clearAppIconBadge } from './appBadge';
 import { clearPushEventDedup } from './pushEventDedup';
@@ -225,7 +225,11 @@ export const AuthProvider = ({ children }) => {
     await storage.set(KEY, JSON.stringify(s));
   });
 
-  const signOut = () => runAuthMutation(async () => {
+  const signOut = ({ expectedToken = null, expectedGeneration = null } = {}) => runAuthMutation(async () => {
+    // A queued response from the previous account must never log out a newer one.
+    if (expectedToken && !await authOwnerIsCurrent(
+      expectedToken, expectedGeneration, () => authGenerationRef.current, () => regAPI.getToken(),
+    )) return { ok: false, reason: 'SESSION_CHANGED' };
     authGenerationRef.current += 1;
     setAuthExpirySuppressed(true);
 
@@ -343,16 +347,21 @@ export const AuthProvider = ({ children }) => {
     return { ok: true };
   });
 
+  useEffect(() => configureAuthExpiryValidation({
+    getToken: () => regAPI.getToken(),
+    validateToken: (token, options) => regAPI.validateToken(token, options),
+  }), []);
+
   const hasTokenRef = useRef(false);
   useEffect(() => { hasTokenRef.current = hasToken; }, [hasToken]);
   useEffect(() => {
-    const unsub = subscribeAuthExpired(() => {
-      if (!hasTokenRef.current) return;
+    const unsub = subscribeAuthExpired((rejectedToken) => {
+      if (!hasTokenRef.current || !rejectedToken) return;
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         // eslint-disable-next-line no-console
-        console.warn('[Auth] session expired (401) → auto signOut');
+        console.warn('[Auth] current session rejection confirmed → signOut');
       }
-      signOut();
+      signOut({ expectedToken: rejectedToken, expectedGeneration: authGenerationRef.current });
     });
     return unsub;
   }, []);

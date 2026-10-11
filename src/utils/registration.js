@@ -119,6 +119,14 @@ export const regAPI = {
     return data;
   },
 
+  // Raw status keeps transient server/network errors distinct from rejection.
+  async validateToken(token, { signal } = {}) {
+    const r = await fetch(`${BASE}/me`, {
+      headers: { Authorization: `Bearer ${token}` }, signal,
+    });
+    return r.status;
+  },
+
   async getLevel() {
     const v = await storage.get(LEVEL_KEY);
     return v ? parseInt(v, 10) : 0;
