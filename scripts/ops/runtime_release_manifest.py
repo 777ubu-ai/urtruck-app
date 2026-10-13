@@ -62,6 +62,22 @@ def verify(root: Path, manifest: dict, environment: str, expected_sha: str | Non
     return {"status": "verified", "source_sha": manifest["source_sha"], "environment": environment, "files": len(files)}
 
 
+def verify_transition(current: dict, candidate: dict, environment: str) -> None:
+    # Overlay deploy не умеет безопасно удалять файлы. Остановить ДО writes,
+    # вместо rm в live backend или частично установленной версии.
+    files = candidate.get("files")
+    if (candidate.get("schema") != 1 or candidate.get("environment") != environment
+            or not re.fullmatch(r"[0-9a-f]{40}", str(candidate.get("source_sha", "")))
+            or not isinstance(files, dict) or not REQUIRED.issubset(files)):
+        raise ValueError("Invalid candidate transition manifest")
+    for name, wanted in files.items():
+        if (not isinstance(name, str) or not runtime_path(name) or str(PurePosixPath(name)) != name
+                or not isinstance(wanted, str) or not re.fullmatch(r"[0-9a-f]{64}", wanted)):
+            raise ValueError("Invalid candidate runtime entry")
+    if set(current["files"]) - set(files):
+        raise ValueError("Runtime file removals require a staged migration before production writes")
+
+
 def pm2_pid(name: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
         raise ValueError("Invalid PM2 process name")
@@ -105,6 +121,7 @@ def main() -> None:
     parser.add_argument("--source-sha")
     parser.add_argument("--listener-port", type=int)
     parser.add_argument("--pm2-process")
+    parser.add_argument("--candidate-manifest", type=Path)
     args = parser.parse_args()
     if args.action == "create":
         repo = args.root.parent
@@ -120,7 +137,10 @@ def main() -> None:
             raise ValueError("Refusing to overwrite a manifest")
         args.manifest.write_text(json.dumps(manifest, indent=2) + "\n")
     else:
-        proof = verify(args.root, json.loads(args.manifest.read_text()), args.environment, args.source_sha)
+        current = json.loads(args.manifest.read_text())
+        proof = verify(args.root, current, args.environment, args.source_sha)
+        if args.candidate_manifest is not None:
+            verify_transition(current, json.loads(args.candidate_manifest.read_text()), args.environment)
         if args.listener_port is not None:
             verify_listener(args.root, args.listener_port, args.pm2_process)
     print(json.dumps(proof))

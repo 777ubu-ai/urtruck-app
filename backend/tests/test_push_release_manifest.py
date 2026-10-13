@@ -160,6 +160,30 @@ class TestPushReleaseIdentity(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "identity missing or ambiguous"):
                     gate.pm2_pid("urtruck-security-api")
 
+    def test_removed_runtime_file_blocks_before_overlay(self):
+        candidate = copy.deepcopy(self.manifest)
+        del candidate["files"]["services/push_gateway.py"]
+        with self.assertRaisesRegex(ValueError, "staged migration before production writes"):
+            gate.verify_transition(self.manifest, candidate, "production")
+        gate.verify(self.root, self.manifest, "production", SHA)
+
+    def test_renamed_runtime_file_blocks_before_overlay(self):
+        candidate = copy.deepcopy(self.manifest)
+        candidate["files"]["services/new_gateway.py"] = candidate["files"].pop("services/push_gateway.py")
+        with self.assertRaisesRegex(ValueError, "staged migration"):
+            gate.verify_transition(self.manifest, candidate, "production")
+
+    def test_overlay_addition_without_removal_is_supported(self):
+        candidate = copy.deepcopy(self.manifest)
+        candidate["files"]["services/new_gateway.py"] = "b" * 64
+        gate.verify_transition(self.manifest, candidate, "production")
+
+    def test_transition_cannot_use_other_environment(self):
+        candidate = copy.deepcopy(self.manifest)
+        candidate["environment"] = "qa2"
+        with self.assertRaisesRegex(ValueError, "candidate transition"):
+            gate.verify_transition(self.manifest, candidate, "production")
+
     def cli_repo(self):
         repo = self.root.parent
         subprocess.run(["git", "init", "-q", str(repo)], check=True)
@@ -198,6 +222,9 @@ class TestPushReleaseIdentity(unittest.TestCase):
             self.assertLess(guard, workflow.index(step))
         self.assertIn("--listener-port 8001", workflow)
         self.assertEqual(workflow.count("--pm2-process '$PM2_PROC'"), 3)
+        preflight = workflow[guard:workflow.index("Backup current production")]
+        self.assertIn("--candidate-manifest", preflight)
+        self.assertIn("production-runtime-manifest.json", preflight)
         self.assertNotIn("continue-on-error: true", workflow)
 
     def test_source_verification_precedes_backend_restart(self):

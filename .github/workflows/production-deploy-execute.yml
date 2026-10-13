@@ -187,11 +187,13 @@ jobs:
             --source-sha "$DEPLOY_SHA" --environment production
           bash scripts/deploy-ssh.sh scp scripts/ops/runtime_release_manifest.py \
             "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py"
+          bash scripts/deploy-ssh.sh scp "$RUNNER_TEMP/production-runtime-manifest.json" \
+            "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json"
           # Для legacy/смешанной установки нет доверенной базы. Остановиться ДО
           # изменения source/frontend/env; нужна проверенная миграция базы,
           # а не объявление произвольного health200 доказательством версии.
           bash scripts/deploy-ssh.sh ssh \
-            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '$BACKEND_DIR/.urtruck-runtime-manifest.json' --environment production --listener-port 8001 --pm2-process '$PM2_PROC'"
+            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '$BACKEND_DIR/.urtruck-runtime-manifest.json' --candidate-manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --environment production --listener-port 8001 --pm2-process '$PM2_PROC'"
 
       - name: Backup current production
         run: |
