@@ -488,6 +488,17 @@ def test_russian_passive_cannot_unload_is_preserved_without_appended_opposite_cl
     assert translation_quality_ok(source, repaired, "zh", "ru") is True
 
 
+def test_chinese_can_unload_without_confirmation_is_rejected_without_false_repair():
+    source = "Не разгружать без подтверждения."
+    candidate = "没有确认，可以卸载。"
+    repaired = repair_logistics_translation(source, candidate, "ru", "zh")
+    assert repaired == candidate
+    assert "unloading_condition_flipped" in translation_quality_failures(
+        source, repaired, "ru", "zh"
+    )
+    assert translation_quality_ok(source, repaired, "ru", "zh") is False
+
+
 @pytest.mark.parametrize(
     ("source", "candidate", "source_lang", "target_lang"),
     [
