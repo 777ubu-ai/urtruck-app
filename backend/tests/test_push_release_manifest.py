@@ -184,6 +184,29 @@ class TestPushReleaseIdentity(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "candidate transition"):
             gate.verify_transition(self.manifest, candidate, "production")
 
+    def test_explicit_recovery_accepts_stopped_named_process_in_same_root(self):
+        state = [{"name":"urtruck-security-api", "pid":0, "pm2_env":{"status":"errored", "pm_cwd":str(self.root)}}]
+        with patch.object(gate.subprocess, "check_output", return_value=""), patch.object(gate, "pm2_output", return_value=__import__("json").dumps(state)):
+            gate.verify_listener(self.root, 8001, "urtruck-security-api", True)
+
+    def test_normal_deploy_never_accepts_missing_listener(self):
+        with patch.object(gate.subprocess, "check_output", return_value=""):
+            with self.assertRaisesRegex(ValueError, "missing or ambiguous"):
+                gate.verify_listener(self.root, 8001, "urtruck-security-api")
+
+    def test_recovery_rejects_unknown_running_foreign_or_duplicate_pm2(self):
+        valid = {"name":"urtruck-security-api", "pid":0, "pm2_env":{"status":"stopped", "pm_cwd":str(self.root)}}
+        states = [[], [valid,valid], [{**valid,"pid":123}], [{**valid,"pm2_env":{"status":"online", "pm_cwd":str(self.root)}}], [{**valid,"pm2_env":{"status":"stopped", "pm_cwd":str(self.root.parent)}}]]
+        for state in states:
+            with patch.object(gate.subprocess, "check_output", return_value=""), patch.object(gate, "pm2_output", return_value=__import__("json").dumps(state)):
+                with self.assertRaises(ValueError):
+                    gate.verify_listener(self.root, 8001, "urtruck-security-api", True)
+
+    def test_recovery_does_not_bypass_an_existing_foreign_listener(self):
+        with patch.object(gate.subprocess, "check_output", return_value="pid=123"), patch.object(gate, "pm2_pid", return_value="456"):
+            with self.assertRaisesRegex(ValueError, "not the named PM2"):
+                gate.verify_listener(self.root, 8001, "urtruck-security-api", True)
+
     def cli_repo(self):
         repo = self.root.parent
         subprocess.run(["git", "init", "-q", str(repo)], check=True)
@@ -232,6 +255,9 @@ class TestPushReleaseIdentity(unittest.TestCase):
         section = workflow.split("- name: Deploy backend and verify PM2 health", 1)[1].split("- name:", 1)[0]
         self.assertLess(section.index("--source-sha '$DEPLOY_SHA'"), section.index("bash /tmp/urtruck_health.sh"))
         self.assertEqual(section.count("--source-sha '$DEPLOY_SHA'"), 2)
+        final = section.split("bash /tmp/urtruck_health.sh", 1)[1]
+        self.assertNotIn("$RECOVERY_ARG", final)
+        self.assertIn("RECOVER_STOPPED: ${{ inputs.break_glass }}", section)
 
     def test_shared_ci_preserves_both_push_and_translation_contracts(self):
         workflow = (ROOT / ".github/workflows/quality-gate-reusable.yml").read_text()

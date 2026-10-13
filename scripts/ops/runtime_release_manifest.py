@@ -78,9 +78,7 @@ def verify_transition(current: dict, candidate: dict, environment: str) -> None:
         raise ValueError("Runtime file removals require a staged migration before production writes")
 
 
-def pm2_pid(name: str) -> str:
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
-        raise ValueError("Invalid PM2 process name")
+def pm2_output(arguments: list[str]) -> str:
     executable = shutil.which("pm2")
     if executable is None:
         candidates = sorted((Path.home() / ".nvm/versions/node").glob("*/bin/pm2"))
@@ -90,17 +88,42 @@ def pm2_pid(name: str) -> str:
         raise ValueError("PM2 executable missing")
     env = os.environ.copy()
     env["PATH"] = str(Path(executable).parent) + os.pathsep + env.get("PATH", "")
-    output = subprocess.check_output([executable, "pid", name], text=True, env=env)
-    lines = output.splitlines()
+    return subprocess.check_output([executable, *arguments], text=True, env=env)
+
+
+def pm2_pid(name: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+        raise ValueError("Invalid PM2 process name")
+    lines = pm2_output(["pid", name]).splitlines()
     if len(lines) != 1 or not re.fullmatch(r"[1-9][0-9]*", lines[0]):
         raise ValueError("PM2 process identity missing or ambiguous")
     return lines[0]
 
 
-def verify_listener(root: Path, port: int, pm2_process: str | None = None) -> None:
+def verify_stopped_pm2(root: Path, name: str) -> None:
+    # Не печатать jlist: он содержит environment. Только проверки в памяти.
+    processes = json.loads(pm2_output(["jlist"]))
+    matches = [p for p in processes if p.get("name") == name]
+    if len(matches) != 1:
+        raise ValueError("Stopped PM2 identity missing or ambiguous")
+    process = matches[0]
+    env = process.get("pm2_env", {})
+    if process.get("pid") != 0 or env.get("status") not in {"stopped", "errored"}:
+        raise ValueError("Recovery requires a stopped PM2 process")
+    cwd = env.get("pm_cwd")
+    if not isinstance(cwd, str) or Path(cwd).resolve() != root.resolve():
+        raise ValueError("Stopped PM2 uses a different backend root")
+
+
+def verify_listener(root: Path, port: int, pm2_process: str | None = None, recover_stopped: bool = False) -> None:
     if not 1 <= port <= 65535:
         raise ValueError("Invalid listener port")
     output = subprocess.check_output(["ss", "-ltnpH", f"sport = :{port}"], text=True)
+    if not output.strip() and recover_stopped:
+        if not pm2_process:
+            raise ValueError("Recovery requires a named PM2 process")
+        verify_stopped_pm2(root, pm2_process)
+        return
     pids = set(re.findall(r"pid=(\d+)", output))
     if len(pids) != 1:
         raise ValueError("Listener identity missing or ambiguous")
@@ -122,7 +145,10 @@ def main() -> None:
     parser.add_argument("--listener-port", type=int)
     parser.add_argument("--pm2-process")
     parser.add_argument("--candidate-manifest", type=Path)
+    parser.add_argument("--recover-stopped", action="store_true")
     args = parser.parse_args()
+    if args.recover_stopped and (args.action != "verify" or args.listener_port is None or args.candidate_manifest is None):
+        raise ValueError("Recovery is allowed only for candidate preflight with listener identity")
     if args.action == "create":
         repo = args.root.parent
         sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
@@ -142,7 +168,7 @@ def main() -> None:
         if args.candidate_manifest is not None:
             verify_transition(current, json.loads(args.candidate_manifest.read_text()), args.environment)
         if args.listener_port is not None:
-            verify_listener(args.root, args.listener_port, args.pm2_process)
+            verify_listener(args.root, args.listener_port, args.pm2_process, args.recover_stopped)
     print(json.dumps(proof))
 
 

@@ -180,8 +180,15 @@ jobs:
           bash scripts/deploy-ssh.sh ssh "echo SSH_TRANSPORT=ok"
 
       - name: Require verified current backend before production writes
+        env:
+          RECOVER_STOPPED: ${{ inputs.break_glass }}
         run: |
           set -euo pipefail
+          RECOVERY_ARG=''
+          if [ "$RECOVER_STOPPED" = "true" ]; then
+            RECOVERY_ARG='--recover-stopped'
+            echo 'RECOVERY_MODE=audited-break-glass-stopped-pm2'
+          fi
           python3 scripts/ops/runtime_release_manifest.py create \
             --root backend --manifest "$RUNNER_TEMP/production-runtime-manifest.json" \
             --source-sha "$DEPLOY_SHA" --environment production
@@ -193,7 +200,7 @@ jobs:
           # изменения source/frontend/env; нужна проверенная миграция базы,
           # а не объявление произвольного health200 доказательством версии.
           bash scripts/deploy-ssh.sh ssh \
-            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '$BACKEND_DIR/.urtruck-runtime-manifest.json' --candidate-manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --environment production --listener-port 8001 --pm2-process '$PM2_PROC'"
+            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '$BACKEND_DIR/.urtruck-runtime-manifest.json' --candidate-manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --environment production --listener-port 8001 --pm2-process '$PM2_PROC' $RECOVERY_ARG"
 
       - name: Backup current production
         run: |
@@ -242,13 +249,19 @@ jobs:
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_bootstrap_env.sh; bash /tmp/urtruck_bootstrap_env.sh '$BACKEND_DIR' '$REMOTE_BOOTSTRAP'; rc=\$?; rm -f /tmp/urtruck_bootstrap_env.sh '$REMOTE_BOOTSTRAP'; exit \$rc"
 
       - name: Deploy backend and verify PM2 health
+        env:
+          RECOVER_STOPPED: ${{ inputs.break_glass }}
         run: |
           set -euo pipefail
+          RECOVERY_ARG=''
+          if [ "$RECOVER_STOPPED" = "true" ]; then
+            RECOVERY_ARG='--recover-stopped'
+          fi
           bash scripts/deploy-ssh.sh scp -C -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
           bash scripts/deploy-ssh.sh scp "$RUNNER_TEMP/production-runtime-manifest.json" \
             "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json"
           bash scripts/deploy-ssh.sh ssh \
-            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --source-sha '$DEPLOY_SHA' --environment production --listener-port 8001 --pm2-process '$PM2_PROC'"
+            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --source-sha '$DEPLOY_SHA' --environment production --listener-port 8001 --pm2-process '$PM2_PROC' --candidate-manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' $RECOVERY_ARG"
           bash scripts/deploy-ssh.sh scp scripts/remote_health_check.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_health.sh"
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_health.sh; bash /tmp/urtruck_health.sh '$PM2_PROC'; rc=\$?; rm -f /tmp/urtruck_health.sh; exit \$rc"
           bash scripts/deploy-ssh.sh ssh \
