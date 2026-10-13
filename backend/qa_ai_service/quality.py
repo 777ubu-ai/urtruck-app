@@ -382,11 +382,21 @@ def _currency_facts(text: str) -> list[str]:
     return facts
 
 
+_CURRENCY_NUMBER = r"\d{1,3}(?:[ \u00a0,]\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?"
 _CURRENCY_AMOUNT_PATTERNS = (
-    re.compile(r"(?P<number>(?<!\d)\d+(?:[.,]\d+)?)(?=\s*(?:USD|EUR|US\s+dollars?|dollars?|euros?|доллар\w*|долл\.?|евро|美元|欧元)(?![A-Za-z]))", re.IGNORECASE),
-    re.compile(r"(?:USD|EUR|US\s+dollars?|dollars?|euros?|доллар\w*|долл\.?|евро|美元|欧元)\s*(?P<number>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE),
-    re.compile(r"(?<=[\$€])\s*(?P<number>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)"),
+    re.compile(rf"(?P<number>(?<!\d){_CURRENCY_NUMBER})(?=\s*(?:USD|EUR|US\s+dollars?|dollars?|euros?|доллар\w*|долл\.?|евро|美元|欧元)(?![A-Za-z]))", re.IGNORECASE),
+    re.compile(rf"(?:USD|EUR|US\s+dollars?|dollars?|euros?|доллар\w*|долл\.?|евро|美元|欧元)\s*(?P<number>(?<!\d){_CURRENCY_NUMBER})(?!\d)", re.IGNORECASE),
+    re.compile(rf"(?<=[\$€])\s*(?P<number>(?<!\d){_CURRENCY_NUMBER})(?!\d)"),
 )
+
+
+def _parse_currency_number(raw: str) -> Decimal:
+    compact = raw.replace(" ", "").replace("\u00a0", "")
+    if re.fullmatch(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?", compact):
+        compact = compact.replace(",", "")
+    else:
+        compact = compact.replace(",", ".")
+    return Decimal(compact)
 
 
 def _currency_amounts(text: str) -> list[tuple[Decimal, int, int]]:
@@ -399,19 +409,19 @@ def _currency_amounts(text: str) -> list[tuple[Decimal, int, int]]:
             if span in occupied:
                 continue
             raw = match.group("number")
-            value = Decimal(raw.replace(",", "."))
+            value = _parse_currency_number(raw)
             matches.append((value, *span))
             occupied.add(span)
     return sorted(matches, key=lambda item: item[1])
 
 
 _CURRENCY_AMOUNT_FACT_PATTERNS = (
-    ("USD", re.compile(r"(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?=\s*(?:USD|US\s+dollars?|dollars?|доллар\w*|долл\.?|美元)(?![A-Za-z]))", re.IGNORECASE)),
-    ("USD", re.compile(r"(?:USD|US\s+dollars?|dollars?|доллар\w*|долл\.?|美元)\s*(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE)),
-    ("USD", re.compile(r"\$\s*(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE)),
-    ("EUR", re.compile(r"(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?=\s*(?:EUR|euros?|евро|欧元)(?![A-Za-z]))", re.IGNORECASE)),
-    ("EUR", re.compile(r"(?:EUR|euros?|евро|欧元)\s*(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE)),
-    ("EUR", re.compile(r"€\s*(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE)),
+    ("USD", re.compile(rf"(?P<amount>(?<!\d){_CURRENCY_NUMBER})(?=\s*(?:USD|US\s+dollars?|dollars?|доллар\w*|долл\.?|美元)(?![A-Za-z]))", re.IGNORECASE)),
+    ("USD", re.compile(rf"(?:USD|US\s+dollars?|dollars?|доллар\w*|долл\.?|美元)\s*(?P<amount>(?<!\d){_CURRENCY_NUMBER})(?!\d)", re.IGNORECASE)),
+    ("USD", re.compile(rf"\$\s*(?P<amount>(?<!\d){_CURRENCY_NUMBER})(?!\d)", re.IGNORECASE)),
+    ("EUR", re.compile(rf"(?P<amount>(?<!\d){_CURRENCY_NUMBER})(?=\s*(?:EUR|euros?|евро|欧元)(?![A-Za-z]))", re.IGNORECASE)),
+    ("EUR", re.compile(rf"(?:EUR|euros?|евро|欧元)\s*(?P<amount>(?<!\d){_CURRENCY_NUMBER})(?!\d)", re.IGNORECASE)),
+    ("EUR", re.compile(rf"€\s*(?P<amount>(?<!\d){_CURRENCY_NUMBER})(?!\d)", re.IGNORECASE)),
 )
 
 
@@ -419,14 +429,14 @@ def _currency_amount_facts(text: str) -> list[tuple[str, Decimal]]:
     matches: list[tuple[int, str, Decimal]] = []
     for currency, pattern in _CURRENCY_AMOUNT_FACT_PATTERNS:
         for match in pattern.finditer(text):
-            matches.append((match.start("amount"), currency, Decimal(match.group("amount").replace(",", "."))))
+            matches.append((match.start("amount"), currency, _parse_currency_number(match.group("amount"))))
     return [(currency, amount) for _position, currency, amount in sorted(matches)]
 
 
 UNLOADING_CONDITION_PATTERNS = {
-    "en": (r"\b(?:do not|don't|must not|mustn't)\s+unload\w*\b.{0,40}\bwithout\s+confirmation\b",),
-    "ru": (r"\bне\s+разгруж\w*\b.{0,40}\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*.{0,40}\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения"),
-    "zh": (r"未经.{0,4}确认.{0,8}(?:不得|不能|不可以|不准).{0,4}卸货", r"未得到确认.{0,8}(?:不得|不能|不可以).{0,4}卸货"),
+    "en": (r"\b(?:do not|don't|must not|mustn't)\s+unload\w*\b[^.!?;。！？；]{0,40}\bwithout\s+confirmation\b",),
+    "ru": (r"\bне\s+разгруж\w*\b[^.!?;。！？；]{0,40}\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*[^.!?;。！？；]{0,40}\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения"),
+    "zh": (r"未经[^.!?;。！？；]{0,4}确认[^.!?;。！？；]{0,8}(?:不得|不能|不可以|不准)[^.!?;。！？；]{0,4}卸货", r"未得到确认[^.!?;。！？；]{0,8}(?:不得|不能|不可以)[^.!?;。！？；]{0,4}卸货"),
     "kk": (r"растау алынбайынша.{0,12}түсірмеңіз",),
 }
 
@@ -438,8 +448,8 @@ UNLOADING_CONDITION_TRANSLATIONS = {
 }
 
 UNLOADING_CONDITION_CONTRADICTIONS = {
-    "en": (r"\bunload\w*\b.{0,40}\bwithout\s+confirmation\b",),
-    "ru": (r"\bразгруж\w*\b.{0,40}\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*.{0,40}\bразгруж\w*", r"\bразрешен\w*\s+разгруз\w*.{0,30}\bбез\s+подтвержден\w*", r"\bразгруз\w*.{0,20}\bразрешен\w*.{0,30}\bбез\s+подтвержден\w*"),
+    "en": (r"\bunload\w*\b[^.!?;。！？；]{0,40}\bwithout\s+confirmation\b",),
+    "ru": (r"\bразгруж\w*\b[^.!?;。！？；]{0,40}\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*[^.!?;。！？；]{0,40}\bразгруж\w*", r"\bразрешен\w*\s+разгруз\w*[^.!?;。！？；]{0,30}\bбез\s+подтвержден\w*", r"\bразгруз\w*[^.!?;。！？；]{0,20}\bразрешен\w*[^.!?;。！？；]{0,30}\bбез\s+подтвержден\w*"),
     "zh": (r"未经.{0,4}确认(?!不得|不能|不可以|不准).{0,4}卸货",),
     "kk": (r"\b(?:жүкті\s+)?түсір\w*.{0,30}растау\s+алмай-ақ",),
 }
@@ -464,7 +474,7 @@ def _has_unloading_condition_contradiction(text: str, language: str) -> bool:
         for match in re.finditer(pattern, text, re.IGNORECASE):
             if negative_prefix and re.search(negative_prefix, text[max(0, match.start() - 24):match.start()], re.IGNORECASE):
                 continue
-            if any(start < match.end() and match.start() < end for start, end in negative_spans):
+            if any(start <= match.start() and match.end() <= end for start, end in negative_spans):
                 continue
             return True
     return False
@@ -852,7 +862,11 @@ def translation_quality_failures(source_text: str, translated_text: str, source:
     if _currency_facts(source_text) != _currency_facts(translated_text):
         failures.append("currency_facts_changed")
     source_currency_amounts = _currency_amount_facts(source_text)
-    if source_currency_amounts and source_currency_amounts != _currency_amount_facts(translated_text):
+    if (
+        _currency_facts(source_text) == _currency_facts(translated_text)
+        and source_currency_amounts
+        and source_currency_amounts != _currency_amount_facts(translated_text)
+    ):
         failures.append("currency_amount_binding_changed")
     if _has_unloading_condition(source_text, source):
         if _has_unloading_condition_contradiction(translated_text, target):

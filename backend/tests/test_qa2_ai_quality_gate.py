@@ -383,6 +383,24 @@ def test_reordered_russian_unloading_prohibition_is_not_rejected():
     assert translation_quality_ok(source, translated, "ru", "ru") is True
 
 
+@pytest.mark.parametrize(
+    ("source", "candidate", "source_lang", "target_lang"),
+    [
+        ("Не разгружать без подтверждения.", "Do not unload. Unload without confirmation.", "ru", "en"),
+        ("Не разгружать без подтверждения.", "Не разгружать. Разрешена разгрузка без подтверждения.", "ru", "ru"),
+    ],
+)
+def test_separate_opposite_unloading_clause_cannot_be_hidden_by_negation(
+    source, candidate, source_lang, target_lang
+):
+    repaired = repair_logistics_translation(source, candidate, source_lang, target_lang)
+    assert "unloading_condition_flipped" in translation_quality_failures(source, repaired, source_lang, target_lang)
+
+
+def test_currency_amount_binding_accepts_grouped_thousands():
+    assert _currency_amount_facts("Цена 12 500 USD.") == _currency_amount_facts("价格 12500 USD.")
+
+
 def test_kazakh_unloading_repair_is_detected_and_not_duplicated():
     source = "Не разгружать без подтверждения."
     candidate = "Жүкті жеткізіңіз."
