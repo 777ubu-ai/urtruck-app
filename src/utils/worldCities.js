@@ -26,3 +26,7 @@ export function searchWorldCities(query, country) {
 export function customCityForCountry(name, country) {
   return { name: String(name || '').trim(), country: country || 'XX', type: 'city', custom: true };
 }
+
+export function locationScopeAllowsPoint(scope, country, point) {
+  return scope === 'all' || (scope === 'country' && Boolean(country)) || point.type === scope;
+}

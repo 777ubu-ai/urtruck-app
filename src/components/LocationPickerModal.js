@@ -21,7 +21,7 @@ import { localizePlace } from '../utils/places';
 import { COUNTRIES, COUNTRY_ORDER, POINTS, searchPoints, formatPoint, pointsForCountry } from '../utils/geography';
 import CountryFlag from './ui/v1/CountryFlag';
 import { getCountryName } from '../utils/countries';
-import { customCityForCountry } from '../utils/worldCities';
+import { customCityForCountry, locationScopeAllowsPoint } from '../utils/worldCities';
 
 const RECENT_KEY = 'ur_recent_places';
 const FAV_KEY = 'ur_fav_places';
@@ -127,7 +127,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     const unique = new Map();
     [...primary, ...localized].forEach((p) => unique.set(pointKey(p), p));
     const pointHits = [...unique.values()]
-      .filter((p) => scope === 'all' || p.type === scope)
+      .filter((p) => locationScopeAllowsPoint(scope, country, p))
       .slice(0, 60);
     const countryHits = !country && (scope === 'all' || scope === 'country')
       ? COUNTRY_ORDER.filter((code) => {
@@ -313,7 +313,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
                   <View style={s.divider} />
                 </>
               ) : null}
-              {pointsForCountry(country).filter((p) => scope === 'all' || scope === 'country' || p.type === scope).slice(0, 80).map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
+              {pointsForCountry(country).filter((p) => locationScopeAllowsPoint(scope, country, p)).slice(0, 80).map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
               <Text style={s.empty}>{t('loc_search_ph')} · {t('loc_custom_hint')}</Text>
               <Text style={[s.sub, { paddingHorizontal: 16 }]}>GeoNames · CC BY 4.0</Text>
             </>

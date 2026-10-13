@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { COUNTRY_ORDER, POINTS, pointsForCountry, searchPoints } from '../../src/utils/geography.js';
-import { customCityForCountry } from '../../src/utils/worldCities.js';
+import { customCityForCountry, locationScopeAllowsPoint } from '../../src/utils/worldCities.js';
 
 test('every selectable country has a directory or an explicit country-bound manual path', () => {
   let covered = 0;
@@ -38,4 +38,11 @@ test('search preserves the approved city without an alias duplicate',()=>{
   const hits=searchPoints('Алматы',{country:'KZ',type:'city'});
   assert.equal(hits.filter(p=>p.name==='Алматы'||p.name==='Almaty').length,1);
   assert.equal(hits[0].name,'Алматы');
+});
+
+test('country-tab search reveals cities after selecting a country',()=>{
+  const hits=searchPoints('Berlin',{country:'DE'}).filter(p=>locationScopeAllowsPoint('country','DE',p));
+  assert.ok(hits.length);
+  assert.equal(locationScopeAllowsPoint('country',null,{type:'city'}),false);
+  assert.equal(locationScopeAllowsPoint('border','DE',{type:'city'}),false);
 });
