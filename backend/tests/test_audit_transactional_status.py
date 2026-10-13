@@ -44,3 +44,22 @@ def test_queue_failure_rolls_back_status_tracking_and_event_intent(monkeypatch):
     assert counts(d)==(0,0,0)
     with get_conn() as c:
         assert c.execute('SELECT count(*) FROM deal_tracking WHERE deal_id=?',(d,)).fetchone()[0]==0
+
+
+def test_read_status_notification_suppresses_durable_retry(monkeypatch):
+    from api import notifications
+    d = seed_deal('accepted', from_country='KZ', to_country='KZ')
+    monkeypatch.setattr(marketplace, 'send_to_user', lambda *a, **kw: None)
+    assert marketplace.update_deal_status(d, 'in_progress', {'id': DRIVER})['ok']
+    event = f'deal:{d}:status:in_progress'
+    with get_conn() as c:
+        row = c.execute('SELECT payload FROM push_outbox WHERE event_id=?', (event,)).fetchone()
+        nid = c.execute('SELECT id FROM notifications WHERE user_id=? AND event_key=?', (SHIPPER, event)).fetchone()[0]
+    data = json.loads(row['payload'])['data']
+    assert data['notification_id'] == nid
+    assert data['notification_event_key'] == event
+    assert not push_gateway.notification_already_read(DRIVER, data)
+    notifications.mark_read(nid, user={'id': SHIPPER})
+    monkeypatch.setattr(push_gateway, 'active_devices', lambda *_: pytest.fail('Прочитанный статус не должен обращаться к провайдеру'))
+    result = push_gateway.send_to_devices(user_id=SHIPPER, title='T', body='B', data=data, badge=0, mode='native')
+    assert result['suppressed_read'] is True

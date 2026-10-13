@@ -3560,9 +3560,14 @@ def _record_deal_transition_effects(c, deal, new_status, actor_uid, event_payloa
     data = {"event_key": event_key, "event_id": event_key, "event": f"deal.status.{new_status}",
             "deal_id": deal["id"], "kind": "deal_status", "url": deal_url,
             "i18n_event": i18n_event, "i18n_params": {"route": route}}
+    create_notification(other_id, "deal_status", title, body_txt, "🚛", url=deal_url, event_key=event_key, conn=c)
+    notification = c.execute(
+        "SELECT id FROM notifications WHERE user_id=? AND event_key=?",
+        (other_id, event_key),
+    ).fetchone()
+    data.update(notification_id=notification["id"], notification_event_key=event_key)
     push_gateway.enqueue_event(event_key, "deal_status", other_id,
                                {"title": title, "body": body_txt, "data": data}, conn=c)
-    create_notification(other_id, "deal_status", title, body_txt, "🚛", url=deal_url, event_key=event_key, conn=c)
     event_id = deal_room_dal.create_deal_event(
         "deal.status_changed", actor_id=actor_uid,
         actor_role="client" if actor_uid == deal["shipper_id"] else "driver",
