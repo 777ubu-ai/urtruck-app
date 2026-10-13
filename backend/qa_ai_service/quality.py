@@ -380,7 +380,14 @@ def _numeric_facts(text: str) -> tuple[list[tuple[int, int]], list[tuple[int, in
         lambda match: re.sub(r"[\s,\u00a0]", "", match.group(1)),
         remaining,
     )
-    numbers = [Decimal(value.replace(",", ".")) for value in re.findall(r"\d+(?:[.,]\d+)?", remaining)]
+    # Digits embedded in Latin alphanumeric tags (for example ``r2`` in a
+    # QA round label) are identifiers, not independent price/date/weight
+    # facts. Keep adjacent logistics-unit digits (including Cyrillic and Han
+    # units) visible to this comparison; those are validated separately too.
+    numbers = [
+        Decimal(value.replace(",", "."))
+        for value in re.findall(r"(?<![A-Za-z0-9])\d+(?:[.,]\d+)?(?![A-Za-z0-9])", remaining)
+    ]
     return times, dates, numbers
 
 
@@ -464,7 +471,7 @@ UNLOADING_CONDITION_TRANSLATIONS = {
 
 UNLOADING_CONDITION_CONTRADICTIONS = {
     "en": (rf"\bunload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b",),
-    "ru": (rf"\bразгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bразгруж\w*", rf"\bразрешен\w*\s+разгруз\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bразгруз\w*{_RU_UNLOADING_GAP}\bразрешен\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*"),
+    "ru": (rf"\bразгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bразгруж\w*", rf"\bразрешен\w*\s+разгруз\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bразгруз\w*{_RU_UNLOADING_GAP}\bразрешен\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bможно\s+разгруж\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*"),
     "zh": (r"未经.{0,4}确认(?!不得|不能|不可以|不准).{0,4}卸货",),
     "kk": (r"\b(?:жүкті\s+)?түсір\w*.{0,30}растау\s+алмай-ақ",),
 }
@@ -493,6 +500,29 @@ def _has_unloading_condition_contradiction(text: str, language: str) -> bool:
                 continue
             return True
     return False
+
+
+def _replace_positive_unloading_condition(text: str, language: str) -> str:
+    """Replace a positively translated unloading clause with its source-safe form.
+
+    This is limited to a source clause that was already recognized as a
+    prohibition. It never guesses from arbitrary text and never overwrites an
+    already-negative target clause.
+    """
+    negative_spans = [
+        match.span()
+        for pattern in UNLOADING_CONDITION_PATTERNS.get(language, ())
+        for match in re.finditer(pattern, text, re.IGNORECASE)
+    ]
+    replacements = []
+    for pattern in UNLOADING_CONDITION_CONTRADICTIONS.get(language, ()):
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            if any(start <= match.start() and match.end() <= end for start, end in negative_spans):
+                continue
+            replacements.append(match.span())
+    for start, end in sorted(set(replacements), reverse=True):
+        text = text[:start] + UNLOADING_CONDITION_TRANSLATIONS[language] + text[end:]
+    return text
 
 
 def _ordered_source_cities(text: str) -> list[str]:
@@ -650,6 +680,8 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
     # clause. This is a controlled translation of a recognized prohibition,
     # not a fallback of the surrounding message.
     if _has_unloading_condition(source_text, source):
+        if _has_unloading_condition_contradiction(repaired, target):
+            repaired = _replace_positive_unloading_condition(repaired, target)
         has_target_condition = _has_unloading_condition(repaired, target)
         has_target_loading_term = _contains_any(repaired, LOGISTICS_TERMS["loading"][target])
         if not _has_unloading_condition_contradiction(repaired, target) and (

@@ -326,6 +326,17 @@ def test_chinese_unload_prohibition_is_preserved_in_russian_translation():
     assert translation_quality_ok(source, repaired, "zh", "ru") is True
 
 
+@pytest.mark.parametrize("candidate", [
+    "Можно разгружать без подтверждения.",
+    "Разгружать без подтверждения.",
+])
+def test_chinese_unload_prohibition_repairs_only_recognized_polarity_flip(candidate):
+    source = "未经确认不得卸货。"
+    repaired = repair_logistics_translation(source, candidate, "zh", "ru")
+    assert "Разгрузка запрещена без подтверждения" in repaired
+    assert translation_quality_ok(source, repaired, "zh", "ru") is True
+
+
 def test_multiple_currency_amounts_are_not_repaired_by_position():
     source = "Price 100 USD, deposit 20 USD."
     candidate = "Депозит 20 USD, цена 100 USD."
@@ -357,6 +368,12 @@ def test_multiple_weights_are_not_remapped_when_clause_order_changes():
     repaired = repair_logistics_translation(source, candidate, "en", "ru")
     assert repaired == candidate
     assert "numeric_facts_changed" in translation_quality_failures(source, repaired, "en", "ru")
+
+
+def test_qa_round_tag_digits_are_not_mistaken_for_numeric_facts():
+    source = "TEST r2: Freight 1200 USD, 15 October 2026, 18 tonnes."
+    translated = "Фрахт 1200 USD, 15 октября 2026, 18 тонн."
+    assert "numeric_facts_changed" not in translation_quality_failures(source, translated, "en", "ru")
 
 
 def test_correct_english_unloading_negation_is_not_flagged_as_contradiction():
