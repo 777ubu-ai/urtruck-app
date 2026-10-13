@@ -315,6 +315,54 @@ def test_chinese_unload_prohibition_is_preserved_in_russian_translation():
     assert translation_quality_ok(source, repaired, "zh", "ru") is True
 
 
+def test_multiple_currency_amounts_are_not_repaired_by_position():
+    source = "Price 100 USD, deposit 20 USD."
+    candidate = "Депозит 20 USD, цена 100 USD."
+    repaired = repair_logistics_translation(source, candidate, "en", "ru")
+    assert repaired == candidate
+    assert "numeric_facts_changed" in translation_quality_failures(source, repaired, "en", "ru")
+
+
+def test_multiple_currency_amounts_with_swapped_currency_binding_fail_closed():
+    source = "100 USD and 200 EUR."
+    candidate = "200 EUR и 100 USD."
+    repaired = repair_logistics_translation(source, candidate, "en", "ru")
+    assert repaired == candidate
+    assert "numeric_facts_changed" in translation_quality_failures(source, repaired, "en", "ru")
+
+
+def test_currency_amounts_cannot_be_swapped_while_numbers_keep_the_same_order():
+    source = "100 USD and 200 EUR."
+    candidate = "100 EUR и 200 USD."
+    repaired = repair_logistics_translation(source, candidate, "en", "ru")
+    failures = translation_quality_failures(source, repaired, "en", "ru")
+    assert repaired == candidate
+    assert "currency_amount_binding_changed" in failures
+
+
+def test_multiple_weights_are_not_remapped_when_clause_order_changes():
+    source = "Ship 18 tonnes of grain and 20 tonnes of steel."
+    candidate = "Отправьте 20 тонн стали и 18 тонн зерна."
+    repaired = repair_logistics_translation(source, candidate, "en", "ru")
+    assert repaired == candidate
+    assert "numeric_facts_changed" in translation_quality_failures(source, repaired, "en", "ru")
+
+
+def test_correct_english_unloading_negation_is_not_flagged_as_contradiction():
+    source = "Не разгружать без подтверждения."
+    translated = "Do not unload without confirmation."
+    assert "unloading_condition_flipped" not in translation_quality_failures(source, translated, "ru", "en")
+    assert translation_quality_ok(source, translated, "ru", "en") is True
+
+
+def test_kazakh_unloading_repair_is_detected_and_not_duplicated():
+    source = "Не разгружать без подтверждения."
+    candidate = "Жүкті жеткізіңіз."
+    repaired = repair_logistics_translation(source, candidate, "ru", "kk")
+    assert repaired.count("Растау алынбайынша жүкті түсірмеңіз") == 1
+    assert translation_quality_ok(source, repaired, "ru", "kk") is True
+
+
 def test_message_81_phrase_repair_is_bound_to_the_only_weight_number_zh_ru():
     source = "阿拉木图,阿斯塔纳,货物,10 吨,篷布车。"
     raw = "Алматы, Астана, груз, 10,."

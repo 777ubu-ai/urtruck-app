@@ -405,11 +405,27 @@ def _currency_amounts(text: str) -> list[tuple[Decimal, int, int]]:
     return sorted(matches, key=lambda item: item[1])
 
 
+_CURRENCY_AMOUNT_FACT_PATTERNS = (
+    ("USD", re.compile(r"(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?=\s*(?:USD|US\s+dollars?|dollars?|доллар\w*|долл\.?|美元)(?![A-Za-z]))", re.IGNORECASE)),
+    ("USD", re.compile(r"(?:USD|US\s+dollars?|dollars?|доллар\w*|долл\.?|美元)\s*(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE)),
+    ("EUR", re.compile(r"(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?=\s*(?:EUR|euros?|евро|欧元)(?![A-Za-z]))", re.IGNORECASE)),
+    ("EUR", re.compile(r"(?:EUR|euros?|евро|欧元)\s*(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE)),
+)
+
+
+def _currency_amount_facts(text: str) -> list[tuple[str, Decimal]]:
+    matches: list[tuple[int, str, Decimal]] = []
+    for currency, pattern in _CURRENCY_AMOUNT_FACT_PATTERNS:
+        for match in pattern.finditer(text):
+            matches.append((match.start("amount"), currency, Decimal(match.group("amount").replace(",", "."))))
+    return [(currency, amount) for _position, currency, amount in sorted(matches)]
+
+
 UNLOADING_CONDITION_PATTERNS = {
     "en": (r"\b(?:do not|don't|must not|mustn't)\s+unload\w*\b.{0,40}\bwithout\s+confirmation\b",),
     "ru": (r"\bне\s+разгруж\w*\b.{0,40}\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*.{0,40}\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения"),
     "zh": (r"未经.{0,4}确认.{0,8}(?:不得|不能|不可以|不准).{0,4}卸货", r"未得到确认.{0,8}(?:不得|不能|不可以).{0,4}卸货"),
-    "kk": (),
+    "kk": (r"растау алынбайынша.{0,12}түсірмеңіз",),
 }
 
 UNLOADING_CONDITION_TRANSLATIONS = {
@@ -420,10 +436,10 @@ UNLOADING_CONDITION_TRANSLATIONS = {
 }
 
 UNLOADING_CONDITION_CONTRADICTIONS = {
-    "en": (r"\bunload\w*\b.{0,40}\bwithout\s+confirmation\b",),
-    "ru": (r"\bразгруж\w*\b.{0,40}\bбез\s+подтвержден\w*", r"\bразрешена\s+разгрузка\b.{0,40}\bбез\s+подтвержден\w*"),
+    "en": (r"\b(?:may|can|is allowed to)\s+unload\w*\b.{0,40}\bwithout\s+confirmation\b",),
+    "ru": (r"\b(?:можно|разрешено|разрешается)\s+разгруж\w*\b.{0,40}\bбез\s+подтвержден\w*",),
     "zh": (r"未经.{0,4}确认(?!不得|不能|不可以|不准).{0,4}卸货",),
-    "kk": (),
+    "kk": (r"\b(?:жүкті\s+)?түсір\w*.{0,30}растау\s+алмай-ақ",),
 }
 
 
@@ -603,7 +619,7 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
     # must remain a FAIL rather than attaching the unit to the first number.
     source_weights, source_unbound_units = _weight_profile(source_text, source)
     target_weights, target_unbound_units = _weight_profile(repaired, target)
-    if source_weights and len(source_weights) == len(target_weights):
+    if len(source_weights) == len(target_weights) == 1:
         replacements = []
         for source_weight, target_weight in zip(source_weights, target_weights):
             if source_weight[0] != target_weight[0] and not _protected_numeric_span(
@@ -617,7 +633,7 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
 
     source_amounts = _currency_amounts(source_text)
     target_amounts = _currency_amounts(repaired)
-    if source_amounts and len(source_amounts) == len(target_amounts):
+    if len(source_amounts) == len(target_amounts) == 1:
         replacements = []
         for source_amount, target_amount in zip(source_amounts, target_amounts):
             if source_amount[0] != target_amount[0]:
@@ -816,6 +832,9 @@ def translation_quality_failures(source_text: str, translated_text: str, source:
         failures.append("numeric_facts_changed")
     if _currency_facts(source_text) != _currency_facts(translated_text):
         failures.append("currency_facts_changed")
+    source_currency_amounts = _currency_amount_facts(source_text)
+    if source_currency_amounts and source_currency_amounts != _currency_amount_facts(translated_text):
+        failures.append("currency_amount_binding_changed")
     if _has_unloading_condition(source_text, source):
         if _has_unloading_condition_contradiction(translated_text, target):
             failures.append("unloading_condition_flipped")
