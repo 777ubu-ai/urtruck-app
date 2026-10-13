@@ -1,0 +1,12 @@
+{
+  "source_sha": "a1fa2822276cbef602e490aaaaf54abb040e958a",
+  "nodes": 11004,
+  "edges": 25051,
+  "scope_nodes": 90,
+  "affected_edges": 631,
+  "limitations": [
+    "SQL parser отсутствует; SQL/profile queries проверены непосредственно",
+    "Два Gradle syntax extraction warnings; native diff пуст"
+  ],
+  "evidence": "qa-evidence/release-consolidation-20261014/graphify-base-scope.json"
+}
