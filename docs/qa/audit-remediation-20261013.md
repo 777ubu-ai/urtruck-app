@@ -24,7 +24,7 @@ Graphify: AST-only, 10815 nodes / 23766 edges; SQL parser отсутствует
 
 - Backend canonical `run_backend_tests.sh --isolated --disable-warnings`: exit 0, 132 test modules; 131 pytest summaries, суммарно 1132 passed, failure markers 0. Один модуль запускался standalone. Не прибавлять standalone assertions к числу pytest tests.
 - Целевой backend: 64 passed. Новые failure-injection: provider failure сохраняет queue/timeline; queue-storage failure откатывает status/tracking; повтор не дублирует события. Contact email не меняет login identity.
-- Полный frontend: 1174 passed / 0 failed до последней точечной дедупликации geo search. После неё связанный geo/regression набор: 9 passed / 0 failed (включает новый тест alias duplicate).
+- Полный frontend: 1174 passed / 0 failed до последней точечной дедупликации geo search. После финальных geo-only guards связанный geo/regression набор: 11 passed / 0 failed (alias duplicate, country-tab search, approved-country filtering).
 - Первоначальный целевой frontend: 51 passed. Два первоначальных failure были устаревшими shape expectations safe-area/phone handler; harness обновлён, поведенческие проверки сохранены.
 - Локальный Playwright profile-save-recovery: 8 passed, desktop 1440px/mobile 393px. API mocked; не считать physical native или real email acceptance. Регрессия EditProfile дополнительно выполняется фактическим extracted finishSave, failure matrix 401/422/500/network.
 - lint: 495 active JS parsed PASS. i18n: 2025 keys ×4, missing 0. ZH existing corpus PASS. Maestro contract 70 flows PASS (не physical execution).
@@ -34,3 +34,5 @@ Graphify: AST-only, 10815 nodes / 23766 edges; SQL parser отсутствует
 ## Не закрыто
 
 Независимый усиленный review Auth/DB/FSM, exact-head CI, physical iPhone/Android на новых сборках, полный real push/GPS/deal flow. iOS keyboard correction — SOURCE/UNIT verified; physical fix ещё не подтверждён. QA2 APNs app identity у зарегистрированных iOS устройств отсутствует (app_id NULL), поэтому topic/credentials не подставлялись наугад. QA2 AI timeouts требуют отдельного runtime анализа/приёмки; production OpenAI не менялся. Старый App Store build97/review не изменён. Никакого GO/10 из 10 или production rollout этим отчётом не выдано.
+
+Финальная географическая проверка добавила два соседних guard: country-tab search показывает города выбранной страны; глобальный поиск исключает неутверждённые ISO-коды из внешнего источника. Code snapshot: 6e9a267. Draft PR #520. Итоговые CI/gates проверяются на текущем HEAD PR; результаты старого SHA не переносятся.
