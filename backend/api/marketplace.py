@@ -2370,7 +2370,8 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_activ
         if new_status in _TRIP_TO_DEAL:
             deal_row = c.execute(
                 "SELECT * FROM deals WHERE trip_id = ? "
-                "AND (status NOT IN ('delivered','cancelled') OR status = ?)",
+                "AND (status NOT IN ('delivered','cancelled') "
+                "OR (status = 'delivered' AND status = ?))",
                 (trip_id, _TRIP_TO_DEAL[new_status]),
             ).fetchone()
             if deal_row:

@@ -107,3 +107,15 @@ def test_queue_failure_rolls_back_linked_trip_and_deal(monkeypatch):
     assert event_counts(d, trip, "in_progress") == (0, 0, 0)
     with get_conn() as c:
         assert c.execute("SELECT status FROM trips WHERE id=?", (trip,)).fetchone()[0] == "booked"
+
+
+def test_cancelled_history_does_not_hide_the_current_deal(monkeypatch):
+    old = seed_deal("cancelled", from_country="KZ", to_country="KZ")
+    trip = seed_trip(old)
+    current = seed_deal("accepted", from_country="KZ", to_country="KZ")
+    with get_conn() as c:
+        c.execute("UPDATE deals SET trip_id=? WHERE id=?", (trip, current))
+    monkeypatch.setattr(marketplace, "send_to_user", lambda *a, **kw: pytest.fail("Legacy cancel push не предусмотрен"))
+    assert marketplace.update_trip_status(trip, "cancelled", {"id": DRIVER})["ok"]
+    assert deal_status(current) == "cancelled", "Историческая отмена не должна погасить событие текущей сделки"
+    assert event_counts(current, trip, "cancelled") == (1, 1, 1)
