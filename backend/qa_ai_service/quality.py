@@ -13,6 +13,7 @@ except ImportError:  # uvicorn imports this file as top-level `quality`
             r"|[A-Z]{1,3}\s+\d{1,4}\s+[A-Z]{1,4}(?:\s+\d{1,2})?"
             r"|[A-Z]\d{3}[A-Z]{2}\d{2}"
             r"|(?:20|40)(?:GP|HC)"
+            r"|R\d{1,3}"
             r"|[A-Z]{2,8}-\d{2,8}(?:-\d{1,8})*"
             r")(?![A-Za-z0-9])",
             re.IGNORECASE,
@@ -384,15 +385,8 @@ def _numeric_facts(text: str) -> tuple[list[tuple[int, int]], list[tuple[int, in
     # QA round label) are identifiers, not independent price/date/weight
     # facts. Keep adjacent logistics-unit digits (including Cyrillic and Han
     # units) visible to this comparison; those are validated separately too.
-    quantity_suffix = r"(?:kg|g|km|cm|mm|m|t|tons?|tonnes?|h|hrs?|hours?|minutes?|mins?|usd|eur|c|f|°[cf])"
-    numbers = [
-        Decimal(value.replace(",", "."))
-        for value in re.findall(
-            rf"(?<![A-Za-z0-9])\d+(?:[.,]\d+)?(?=(?:{quantity_suffix})\b|(?![A-Za-z0-9]))",
-            remaining,
-            flags=re.IGNORECASE,
-        )
-    ]
+    numeric_text = _IDENTIFIER.sub(" ", remaining)
+    numbers = [Decimal(value.replace(",", ".")) for value in re.findall(r"\d+(?:[.,]\d+)?", numeric_text)]
     return times, dates, numbers
 
 
@@ -939,6 +933,10 @@ def transcription_quality_ok(
 
 def translation_quality_failures(source_text: str, translated_text: str, source: str, target: str) -> list[str]:
     failures: list[str] = []
+    source_identifiers = [match.group(0).casefold() for match in _IDENTIFIER.finditer(source_text)]
+    translated_identifiers = [match.group(0).casefold() for match in _IDENTIFIER.finditer(translated_text)]
+    if source_identifiers != translated_identifiers:
+        failures.append("identifier_changed")
     if _numeric_facts(source_text) != _numeric_facts(translated_text):
         failures.append("numeric_facts_changed")
     if _currency_facts(source_text) != _currency_facts(translated_text):

@@ -11,6 +11,7 @@ from qa_ai_service.quality import (
     translation_quality_ok,
     select_quality_translation,
 )
+from qa_ai_service.structured_tokens import translate_preserving_identifiers
 
 
 def test_quality_422_exposes_reason_codes_without_candidate_text():
@@ -386,16 +387,23 @@ def test_multiple_weights_are_not_remapped_when_clause_order_changes():
     assert "numeric_facts_changed" in translation_quality_failures(source, repaired, "en", "ru")
 
 
-def test_qa_round_tag_digits_are_not_mistaken_for_numeric_facts():
+def test_short_round_code_is_preserved_without_weakening_numeric_facts():
     source = "TEST r2: Freight 1200 USD, 15 October 2026, 18 tonnes."
-    translated = "Фрахт 1200 USD, 15 октября 2026, 18 тонн."
+    translated = translate_preserving_identifiers(
+        source,
+        lambda prose: "ТЕСТ: Груз 1200 USD, 15 октября 2026, 18 тонн.",
+    )
+    assert translated.endswith("r2")
     assert "numeric_facts_changed" not in translation_quality_failures(source, translated, "en", "ru")
+    assert "identifier_changed" in translation_quality_failures(source, translated.removesuffix(" r2"), "en", "ru")
 
 
 @pytest.mark.parametrize(
     ("source", "translated"),
     [
         ("Cargo weighs 20kg.", "Груз весит 30kg."),
+        ("Cargo weighs 20lbs.", "Груз весит 30lbs."),
+        ("Volume is 20L.", "Объём 30L."),
         ("Route is 100km.", "Маршрут 900km."),
         ("Keep at 2C.", "Хранить при 8C."),
         ("Weight 20t.", "Вес 30t."),
