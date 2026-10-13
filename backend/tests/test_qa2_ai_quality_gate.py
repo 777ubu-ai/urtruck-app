@@ -546,6 +546,14 @@ def test_russian_unloading_repair_handles_positive_clause_after_translated_facts
     assert translation_quality_ok(source, repaired, "ru", "en") is True
 
 
+def test_russian_unloading_repair_handles_colon_labeled_facts_before_condition():
+    source = "Стоимость перевозки 1270 USD, 18 октября 2026, вес 21 тонна; без подтверждения не разгружать."
+    candidate = "Freight cost: 1270 USD, Date: 18 October 2026, Weight: 21 tons, without confirmation unload."
+    repaired = repair_logistics_translation(source, candidate, "ru", "en")
+    assert repaired == "Freight cost: 1270 USD, Date: 18 October 2026, Weight: 21 tons, Do not unload without confirmation."
+    assert translation_quality_ok(source, repaired, "ru", "en") is True
+
+
 def test_russian_unloading_repair_replaces_a_complete_permission_clause_with_subject():
     source = "Без подтверждения не разгружать."
     candidate = "The driver can unload without confirmation."

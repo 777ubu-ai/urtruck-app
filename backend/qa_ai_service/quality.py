@@ -596,9 +596,9 @@ def _replace_positive_unloading_condition(
         # punctuation-light line), but only when the immediate prefix is a
         # recognizable numeric logistics fact. Unknown subjects and clauses
         # fail closed instead of yielding malformed English.
-        prefix_tail = re.split(r"[.!?;:]", prefix)[-1]
+        prefix_tail = re.split(r"[.!?;]", prefix)[-1]
         fact_prefix = re.search(
-            r"\b(?:freight|transport|cost|price|date|route|weight)\b[^.!?;:]{0,100}\d[^.!?;:]*,\s*$",
+            r"\b(?:freight|transport|cost|price|date|route|weight)\b[^.!?;]{0,100}\d[^.!?;]*,\s*$",
             prefix_tail,
             re.IGNORECASE,
         )
