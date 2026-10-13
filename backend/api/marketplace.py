@@ -2338,6 +2338,7 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_activ
     VALID = ["active", "booked", "in_transit", "delivered", "cancelled"]
     if new_status not in VALID:
         raise HTTPException(status_code=400, detail=f"Допустимые статусы: {', '.join(VALID)}")
+    deal_event_handled = False
     with get_conn() as c:
         trip = c.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone()
         if not trip:
@@ -2368,8 +2369,9 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_activ
         _TRIP_TO_DEAL = {"in_transit": "in_progress", "delivered": "delivered", "cancelled": "cancelled"}
         if new_status in _TRIP_TO_DEAL:
             deal_row = c.execute(
-                "SELECT * FROM deals WHERE trip_id = ? AND status NOT IN ('delivered','cancelled')",
-                (trip_id,),
+                "SELECT * FROM deals WHERE trip_id = ? "
+                "AND (status NOT IN ('delivered','cancelled') OR status = ?)",
+                (trip_id, _TRIP_TO_DEAL[new_status]),
             ).fetchone()
             if deal_row:
                 import uuid as _uuid2
@@ -2377,6 +2379,8 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_activ
                 request_id = _uuid2.uuid4().hex[:12]
                 try:
                     _transition_deal(c, deal, _TRIP_TO_DEAL[new_status], user["id"], request_id)
+                    # Canonical outbox владеет событием, включая идемпотентный повтор.
+                    deal_event_handled = True
                 except DealTransitionError as e:
                     print(
                         f"[deal-fsm] update_trip_status: sync SKIPPED (legacy-путь не может обойти FSM) "
@@ -2389,7 +2393,7 @@ def update_trip_status(trip_id: str, new_status: str, user=Depends(require_activ
     try:
         from api.notifications import create_notification
         labels = {"booked": "📦 Груз принят", "in_transit": "🚛 В пути", "delivered": "✅ Доставлен"}
-        if new_status in labels and trip["booked_by"]:
+        if not deal_event_handled and new_status in labels and trip["booked_by"]:
             _turl = f"/trips/{trip_id}"
             send_to_user(trip["booked_by"], labels[new_status], f"{trip['from_city']}→{trip['to_city']}", url=_turl)
             create_notification(trip["booked_by"], "trip_status", labels[new_status],
