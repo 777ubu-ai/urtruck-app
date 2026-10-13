@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Alert, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useI18n } from '../utils/useI18n';
@@ -127,7 +127,11 @@ export default function EditProfileScreen({ navigation, route }) {
   const [firstName, setFirstName] = useState(profile.first_name || (profile.display_name || '').split(' ')[0] || '');
   const [lastName, setLastName] = useState(profile.last_name || (profile.display_name || '').split(' ').slice(1).join(' ') || '');
   const [phone, setPhone] = useState(session?.user?.phone || '+7 (***) ***-**-**');
-  const [city, setCity] = useState(profile.city || '');
+  const [city, setCity] = useState(profile.city || session?.user?.city || '');
+  const [country, setCountry] = useState(profile.country || '');
+  const editedFields = useRef(new Set());
+  const editRevision = useRef(0);
+  const editField = (key, setter) => (value) => { editedFields.current.add(key); editRevision.current += 1; setter(value); };
   const [email, setEmail] = useState(profile.email || '');
   const [company, setCompany] = useState(profile.company || profile.company_name || '');
   // Предпочтительный мессенджер грузоотправителя + ID (WeChat важен для Китая).
@@ -163,17 +167,26 @@ export default function EditProfileScreen({ navigation, route }) {
     (async () => {
       const data = await regAPI.profile();
       if (cancelled || !data) return;
-      if (data.legal_form) setLegalForm(data.legal_form);
-      if (data.phone) {
+      const restore = (key, setter, value) => {
+        if (value != null && !editedFields.current.has(key)) setter(value);
+      };
+      const parts = String(data.name || '').trim().split(/\s+/);
+      restore('firstName', setFirstName, parts[0] || '');
+      restore('lastName', setLastName, parts.slice(1).join(' '));
+      restore('city', setCity, data.city);
+      restore('country', setCountry, data.country);
+      restore('email', setEmail, data.contact_email);
+      if (data.legal_form) restore('legalForm', setLegalForm, data.legal_form);
+      if (data.phone && !editedFields.current.has('phone')) {
         setPhone(data.phone);
         setSavedPhone(data.phone);
       }
-      if (data.china_experience_years != null) setChinaExp(String(data.china_experience_years));
-      if (data.company_name) setCompany(data.company_name);
-      if (data.messenger_type) setMessengerType(data.messenger_type);
-      if (data.messenger_id) setMessengerId(data.messenger_id);
+      if (data.china_experience_years != null) restore('chinaExp', setChinaExp, String(data.china_experience_years));
+      restore('company', setCompany, data.company_name);
+      restore('messengerType', setMessengerType, data.messenger_type);
+      restore('messengerId', setMessengerId, data.messenger_id);
       if (Array.isArray(data.favorite_borders) && data.favorite_borders.length) setFavBorders(data.favorite_borders);
-      if (data.emergency_contact) setEmergency(data.emergency_contact);
+      restore('emergency', setEmergency, data.emergency_contact);
       if (data.passport_intl_url) setPassportIntlUrl(data.passport_intl_url);
       if (data.tir_book_url) setTirUrl(data.tir_book_url);
       if (data.cmr_insurance_url) setCmrUrl(data.cmr_insurance_url);
@@ -187,8 +200,9 @@ export default function EditProfileScreen({ navigation, route }) {
   const draftKey = `edit_profile_${userId || 'guest'}_${role || 'na'}`;
   useDraft(
     draftKey,
-    { firstName, lastName, city, email, company, messengerType, messengerId, legalForm, chinaExp, favBorders, emergency },
-    { setFirstName, setLastName, setCity, setEmail, setCompany, setMessengerType, setMessengerId, setLegalForm, setChinaExp, setFavBorders, setEmergency },
+    { firstName, lastName, city, country, email, company, messengerType, messengerId, legalForm, chinaExp, favBorders, emergency },
+    { setFirstName: editField('firstName', setFirstName), setLastName: editField('lastName', setLastName), setCity: editField('city', setCity), setCountry: editField('country', setCountry), setEmail: editField('email', setEmail), setCompany: editField('company', setCompany), setMessengerType: editField('messengerType', setMessengerType), setMessengerId: editField('messengerId', setMessengerId), setLegalForm: editField('legalForm', setLegalForm), setChinaExp: editField('chinaExp', setChinaExp), setFavBorders: editField('favBorders', setFavBorders), setEmergency: editField('emergency', setEmergency) },
+    { enabled: !saving },
   );
 
   const toggleBorder = (b) => {
@@ -262,15 +276,17 @@ export default function EditProfileScreen({ navigation, route }) {
   const normalizePhone = (value) => String(value || '').replace(/[^\d+]/g, '');
 
   const persistProfile = async () => {
+    const revision = editRevision.current;
     const fullName = [firstName, lastName].map((value) => (value || '').trim()).filter(Boolean).join(' ');
     const chinaExpNum = parseInt(chinaExp, 10);
-    saveProfile(userId, {
+    const localProfile = {
       avatar_url: avatar,
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       display_name: fullName,
       full_name: fullName,
       city,
+      country,
       email: email.trim(),
       company: company.trim(),
       ...(!isDriver ? {
@@ -284,8 +300,8 @@ export default function EditProfileScreen({ navigation, route }) {
         favorite_borders: favBorders,
         emergency_contact: emergency.trim(),
       } : {}),
-    });
-    const payload = { name: fullName, city, about: profile.bio || '' };
+    };
+    const payload = { name: fullName, city, country, contact_email: email.trim(), about: profile.bio || '' };
     if (isDriver) {
       payload.legal_form = legalForm;
       payload.china_experience_years = Number.isFinite(chinaExpNum) ? chinaExpNum : null;
@@ -299,7 +315,10 @@ export default function EditProfileScreen({ navigation, route }) {
       payload.messenger_type = messengerType;
       payload.messenger_id = messengerId.trim();
     }
-    return regAPI.updateProfile(payload);
+    const result = await regAPI.updateProfile(payload);
+    if (result?.ok && revision !== editRevision.current) return { ok: false, changedDuringSave: true };
+    if (result?.ok) saveProfile(userId, localProfile);
+    return result;
   };
 
   const requestPhoneChange = async () => {
@@ -341,16 +360,22 @@ export default function EditProfileScreen({ navigation, route }) {
   };
 
   const finishSave = async (phoneConfirmed = false) => {
-    let serverOk = false;
     try {
       const result = await persistProfile();
-      serverOk = !!result?.ok;
-    } catch {}
-    setSaving(false);
-    await clearDraft(draftKey);
-    toast(serverOk ? '✓ ' + t('saveSettings') : '✓ ' + t('saved_locally'), serverOk ? 'success' : 'warn');
-    navigation.goBack();
-    return phoneConfirmed;
+      if (!result?.ok) {
+        toast(result?.status === 401 ? t('session_expired') : result?.networkError ? t('no_connection') : t('save_error'), 'error');
+        return false;
+      }
+      await clearDraft(draftKey);
+      toast('✓ ' + t('saveSettings'), 'success');
+      navigation.goBack();
+      return phoneConfirmed;
+    } catch {
+      toast(t('no_connection'), 'error');
+      return false;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const save = async () => {
@@ -415,36 +440,30 @@ export default function EditProfileScreen({ navigation, route }) {
         <Text style={[s.avatarHint, { color: accent.main }]}>{t('profile_setup_add_photo')}</Text>
       </View>
 
-      <Field ceramic={!isDriver} featherIcon="user" label={t('signup_field_first_name')} value={firstName} onChangeText={setFirstName} placeholder={t('signup_field_first_name')} />
-      <Field ceramic={!isDriver} featherIcon="user" label={t('signup_field_last_name')} value={lastName} onChangeText={setLastName} placeholder={t('signup_field_last_name')} />
+      <Field ceramic={!isDriver} featherIcon="user" label={t('signup_field_first_name')} value={firstName} onChangeText={editField('firstName', setFirstName)} placeholder={t('signup_field_first_name')} />
+      <Field ceramic={!isDriver} featherIcon="user" label={t('signup_field_last_name')} value={lastName} onChangeText={editField('lastName', setLastName)} placeholder={t('signup_field_last_name')} />
       <Field
         ceramic={!isDriver}
         featherIcon="phone"
         label={t('signup_field_phone')}
         value={phone}
-        onChangeText={setPhone}
+        onChangeText={editField('phone', setPhone)}
         keyboardType="phone-pad"
         helper={t('phone_v2_send_hint') || t('reg_phone_hint')}
+        error={phoneChangeError || undefined}
       />
-      {/* Stage 21: previously these were `Field variant="dropdown"`
-          with `onPress={() => {}}` — taps did nothing, so users
-          reported "страна не выбирается" and "город не выбирается".
-          For the pilot we only ship in KZ, so country is read-only
-          (with the right flag/copy), and city becomes a free-text
-          field — same shape as RegScreen for the client flow.
-          Picker UI for multi-country onboarding is tracked
-          separately. */}
       <Field ceramic={!isDriver}
         featherIcon="globe"
         label={t('signup_field_country')}
-        value={t('country_kazakhstan')}
-        editable={false}
+        variant="dropdown"
+        value={country}
+        onPress={() => navigation.navigate('CountryPicker', { onSelect: (selected) => editField('country', setCountry)(selected.name) })}
       />
       <Field ceramic={!isDriver}
         featherIcon="map-pin"
         label={t('signup_field_city')}
         value={city}
-        onChangeText={setCity}
+        onChangeText={editField('city', setCity)}
         placeholder={t('signup_city_pick')}
       />
       {!isDriver ? (
@@ -454,7 +473,7 @@ export default function EditProfileScreen({ navigation, route }) {
             label={t('signup_field_company')}
             placeholder={t('signup_field_company_optional')}
             value={company}
-            onChangeText={setCompany}
+            onChangeText={editField('company', setCompany)}
           />
         </>
       ) : null}
@@ -462,7 +481,7 @@ export default function EditProfileScreen({ navigation, route }) {
         featherIcon="mail"
         label={t('signup_field_email_optional')}
         value={email}
-        onChangeText={setEmail}
+        onChangeText={editField('email', setEmail)}
         placeholder="email@example.com"
         keyboardType="email-address"
         autoCapitalize="none"
@@ -492,7 +511,7 @@ export default function EditProfileScreen({ navigation, route }) {
               <TouchableOpacity
                 key={messenger.k}
                 style={[s.messengerOption, { borderColor: v1.border, backgroundColor: messengerType === messenger.k ? v1.surfaceMuted : v1.surface }]}
-                onPress={() => { setMessengerType(messenger.k); setMessengerOpen(false); }}
+                onPress={() => { editField('messengerType', setMessengerType)(messenger.k); setMessengerOpen(false); }}
               >
                 <Feather name={messenger.icon} size={18} color={v1.textMuted} />
                 <Text style={[s.messengerOptionText, { color: v1.text }]}>{messenger.label}</Text>
@@ -507,7 +526,7 @@ export default function EditProfileScreen({ navigation, route }) {
                 label={t('messenger_id_label')}
                 placeholder={t('messenger_id_ph')}
                 value={messengerId}
-                onChangeText={setMessengerId}
+                onChangeText={editField('messengerId', setMessengerId)}
                 autoCapitalize="none"
               />
             </View>
@@ -531,7 +550,7 @@ export default function EditProfileScreen({ navigation, route }) {
           ].map((opt) => {
             const checked = legalForm === opt.k;
             return (
-              <TouchableOpacity key={opt.k} style={s.radioRow} onPress={() => setLegalForm(opt.k)} activeOpacity={0.7}>
+              <TouchableOpacity key={opt.k} style={s.radioRow} onPress={() => editField('legalForm', setLegalForm)(opt.k)} activeOpacity={0.7}>
                 <View style={[s.radioDot, { borderColor: checked ? accent.main : v1.border }]}>
                   {checked ? <View style={[s.radioInner, { backgroundColor: accent.main }]} /> : null}
                 </View>
@@ -545,7 +564,7 @@ export default function EditProfileScreen({ navigation, route }) {
             featherIcon="map"
             label={t('pro_field_china_experience')}
             value={chinaExp}
-            onChangeText={(v) => setChinaExp(v.replace(/\D/g, '').slice(0, 2))}
+            onChangeText={(v) => editField('chinaExp', setChinaExp)(v.replace(/\D/g, '').slice(0, 2))}
             placeholder="5"
             keyboardType="number-pad"
           />
@@ -578,7 +597,7 @@ export default function EditProfileScreen({ navigation, route }) {
             featherIcon="alert-triangle"
             label={t('pro_field_emergency_contact')}
             value={emergency}
-            onChangeText={setEmergency}
+            onChangeText={editField('emergency', setEmergency)}
             placeholder="+7 777 ___ __ __"
             keyboardType="phone-pad"
             helper={t('pro_field_emergency_hint')}

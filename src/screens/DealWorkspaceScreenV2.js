@@ -1,4 +1,5 @@
 import React from 'react';
+import { keyboardHostOffset } from '../utils/keyboardHostOffset';
 import {
   ActivityIndicator,
   AppState,
@@ -18,7 +19,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -331,6 +332,7 @@ const ChatWallpaperPattern = React.memo(function ChatWallpaperPattern({ color, v
 });
 
 export default function DealWorkspaceScreenV2({ navigation, route }) {
+  const isFocused = useIsFocused();
   const { t, lang, sp } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const colors = useV1Colors();
@@ -353,6 +355,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // hook, while this screen starts below the top safe area. The second offset
   // creates the blank band seen between the composer and the keyboard.
   const keyboardDockInset = useKeyboardDockInset(window.height);
+  const keyboardHostRef = React.useRef(null);
+  const [keyboardHostTop, setKeyboardHostTop] = React.useState(0);
+  const measureKeyboardHost = React.useCallback(() => {
+    if (Platform.OS !== 'ios') return;
+    keyboardHostRef.current?.measureInWindow?.((_x, y) => {
+      const top = keyboardHostOffset(y);
+      setKeyboardHostTop((previous) => previous === top ? previous : top);
+    });
+  }, []);
   const params = route?.params || {};
 
   const [dealId, setDealId] = React.useState(params.dealId || null);
@@ -409,6 +420,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [callMenuOpen, setCallMenuOpen] = React.useState(false);
   const [statusModalOpen, setStatusModalOpen] = React.useState(false);
   const [ratingModalOpen, setRatingModalOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!isFocused) setRatingModalOpen(false);
+  }, [isFocused]);
   const [reviewEligibility, setReviewEligibility] = React.useState('idle');
   const promptedReviewRef = React.useRef(null);
   const [recording, setRecording] = React.useState(false);
@@ -995,7 +1009,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         if (cancelled) return;
         const next = result?.eligible ? 'eligible' : result?.already_reviewed ? 'submitted' : 'unavailable';
         setReviewEligibility(next);
-        if (next === 'eligible' && promptedReviewRef.current !== dealId) {
+        if (next === 'eligible' && isFocused && promptedReviewRef.current !== dealId) {
           promptedReviewRef.current = dealId;
           setRatingModalOpen(true);
         }
@@ -1004,13 +1018,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         if (cancelled) return;
         const fallback = error?.status === 404 ? 'eligible' : 'error';
         setReviewEligibility(fallback);
-        if (fallback === 'eligible' && promptedReviewRef.current !== dealId) {
+        if (fallback === 'eligible' && isFocused && promptedReviewRef.current !== dealId) {
           promptedReviewRef.current = dealId;
           setRatingModalOpen(true);
         }
       });
     return () => { cancelled = true; };
-  }, [deal?.status, recipientId, dealId]);
+  }, [deal?.status, recipientId, dealId, isFocused]);
 
   // Shared by the composer, quick-reply, and call-link — every "send a fixed
   // string" action funnels through here so error handling (section 6) is
@@ -1788,7 +1802,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-workspace-screen">
-      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+      <View ref={keyboardHostRef} style={s.safe} onLayout={measureKeyboardHost} collapsable={false}>
+      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={keyboardHostTop}>
         {viewMode === VIEW_CHAT ? (
           <View style={[s.chatFullscreen, { paddingBottom: keyboardDockInset }]} testID="deal-chat-fullscreen">
             {/* Navigation chrome is fixed OUTSIDE the scrolling message list.
@@ -2289,7 +2304,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           testID="deal-workspace-confirm"
         />
         <RatingModal
-          visible={ratingModalOpen}
+          visible={ratingModalOpen && isFocused}
           onClose={() => setRatingModalOpen(false)}
           onSubmitted={() => {
             setReviewEligibility('submitted');
@@ -2301,6 +2316,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           tripId={dealId}
         />
       </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
