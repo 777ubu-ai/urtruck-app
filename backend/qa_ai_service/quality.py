@@ -456,8 +456,12 @@ _RU_UNLOADING_GAP = r"(?:(?!\b(?:и|но|а|однако)\b)(?!\b(?:разгру
 
 UNLOADING_CONDITION_PATTERNS = {
     "en": (rf"\b(?:do not|don't|must not|mustn't)\s+unload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b",),
-    "ru": (rf"\bне\s+разгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения", rf"\b(?:нельзя|запрещено)\s+(?:разгруж|выгруж)\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*"),
-    "zh": (r"未经[^,.!?;:，、。！？；]{0,4}确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以|不准)[^,.!?;:，、。！？；]{0,4}卸货", r"未得到确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以)[^,.!?;:，、。！？；]{0,4}卸货"),
+    "ru": (rf"\bне\s+разгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bне\s+может\s+быть\s+(?:разгруж|выгруж)\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения", rf"\b(?:нельзя|запрещено)\s+(?:разгруж|выгруж)\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*"),
+    "zh": (
+        r"未经[^,.!?;:，、。！？；]{0,4}确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以|不准)[^,.!?;:，、。！？；]{0,4}卸货",
+        r"未得到确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以)[^,.!?;:，、。！？；]{0,4}卸货",
+        r"(?:没有|未(?!经))[^,.!?;:，、。！？；]{0,4}确认[,，、]?\s*(?:不得|不能|不可以|不准)[^,.!?;:，、。！？；]{0,4}(?:卸货|卸载)",
+    ),
     "kk": (r"растау алынбайынша.{0,12}түсірмеңіз",),
 }
 
@@ -471,7 +475,7 @@ UNLOADING_CONDITION_TRANSLATIONS = {
 UNLOADING_CONDITION_CONTRADICTIONS = {
     "en": (rf"\bunload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b",),
     "ru": (rf"\bразгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bразгруж\w*", rf"\bразрешен\w*\s+разгруз\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bразгруз\w*{_RU_UNLOADING_GAP}\bразрешен\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bможно\s+разгруж\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*"),
-    "zh": (r"未经.{0,4}确认(?!不得|不能|不可以|不准).{0,4}卸货",),
+    "zh": (r"未经.{0,4}确认(?!不得|不能|不可以|不准).{0,4}(?:卸货|卸载)",),
     "kk": (r"\b(?:жүкті\s+)?түсір\w*.{0,30}растау\s+алмай-ақ",),
 }
 
@@ -483,7 +487,7 @@ def _has_unloading_condition(text: str, language: str) -> bool:
 def _has_unloading_condition_contradiction(text: str, language: str) -> bool:
     negative_prefixes = {
         "en": r"(?:do\s+not|don't|must\s+not|mustn't)\s+$",
-        "ru": r"(?:не|нельзя|запрещено)\s+$",
+        "ru": r"(?:не\s+может\s+быть|не|нельзя|запрещено)\s+$",
     }
     negative_prefix = negative_prefixes.get(language)
     negative_spans = [
@@ -543,7 +547,7 @@ def _replace_positive_unloading_condition(
         for match in re.finditer(pattern, translated_text, re.IGNORECASE):
             if any(start <= match.start() and match.end() <= end for start, end in negative_spans):
                 continue
-            if re.search(r"(?:не|нельзя|запрещено)\s+$", translated_text[max(0, match.start() - 20):match.start()], re.IGNORECASE):
+            if re.search(r"(?:не\s+может\s+быть|не|нельзя|запрещено)\s+$", translated_text[max(0, match.start() - 32):match.start()], re.IGNORECASE):
                 continue
             matches.append(match.span())
     if not matches:

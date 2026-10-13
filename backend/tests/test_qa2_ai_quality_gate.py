@@ -465,6 +465,30 @@ def test_correct_english_unloading_negation_is_not_flagged_as_contradiction():
 
 
 @pytest.mark.parametrize(
+    ("source", "source_lang"),
+    [
+        ("Не разгружать без подтверждения.", "ru"),
+        ("Do not unload without confirmation.", "en"),
+    ],
+)
+def test_chinese_cannot_unload_variant_is_not_duplicated_by_condition_repair(source, source_lang):
+    translated = "没有确认，不能卸载。"
+    repaired = repair_logistics_translation(source, translated, source_lang, "zh")
+    assert repaired == translated
+    assert "unloading_condition_missing" not in translation_quality_failures(
+        source, repaired, source_lang, "zh"
+    )
+
+
+def test_russian_passive_cannot_unload_is_preserved_without_appended_opposite_clause():
+    source = "未经确认不得卸货。"
+    translated = "Не может быть разгружено без подтверждения."
+    repaired = repair_logistics_translation(source, translated, "zh", "ru")
+    assert repaired == translated
+    assert translation_quality_ok(source, repaired, "zh", "ru") is True
+
+
+@pytest.mark.parametrize(
     ("source", "candidate", "source_lang", "target_lang"),
     [
         ("Не разгружать без подтверждения.", "Unload without confirmation.", "ru", "en"),
