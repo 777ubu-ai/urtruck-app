@@ -364,7 +364,7 @@ test('short onboarding requires only name and phone; company and location stay o
   assert.match(profile, /id="company"/);
   assert.match(profile, /id="country"/);
   assert.match(profile, /id="city"/);
-  assert.match(profile, /const basicFormValid = validName && validPhone && validMessenger/);
+  assert.match(profile, /const basicFormValid = validName && validPhone/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
   assert.doesNotMatch(profile, /validCompany/);
