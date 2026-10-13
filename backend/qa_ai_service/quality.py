@@ -10,7 +10,7 @@ except ImportError:  # uvicorn imports this file as top-level `quality`
         _IDENTIFIER = re.compile(
             r"(?<![A-Za-z0-9])(?:"
             r"[A-Z]{4}\d{7}"
-            r"|(?-i:(?:KZ|RU|UZ|KG|BY|TJ|TM)\s+\d{1,4}\s+[A-Z]{1,4}(?:\s+\d{1,2})?)"
+            r"|(?-i:(?:KZ|RU|UZ|KG|BY|TJ|TM)\s+\d{1,4}\s+(?!(?:KG|LB|LBS|TONS?|T|KM|L|C|F|USD|EUR|GBP|KZT|RUB)\b)[A-Z]{1,4}(?:\s+\d{1,2})?)"
             r"|[A-Z]\d{3}[A-Z]{2}\d{2}"
             r"|(?:20|40)(?:GP|HC)"
             r"|R\d{1,3}"

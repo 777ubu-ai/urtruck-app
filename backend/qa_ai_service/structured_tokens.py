@@ -17,7 +17,7 @@ from typing import Callable
 _IDENTIFIER = re.compile(
     r"(?<![A-Za-z0-9])(?:"
     r"[A-Z]{4}\d{7}"                          # ISO 6346 container: MSCU1234567
-    r"|(?-i:(?:KZ|RU|UZ|KG|BY|TJ|TM)\s+\d{1,4}\s+[A-Z]{1,4}(?:\s+\d{1,2})?)"  # KZ 777 ABC 02
+    r"|(?-i:(?:KZ|RU|UZ|KG|BY|TJ|TM)\s+\d{1,4}\s+(?!(?:KG|LB|LBS|TONS?|T|KM|L|C|F|USD|EUR|GBP|KZT|RUB)\b)[A-Z]{1,4}(?:\s+\d{1,2})?)"  # KZ 777 ABC 02
     r"|[A-Z]\d{3}[A-Z]{2}\d{2}"              # A123AA01
     r"|(?:20|40)(?:GP|HC)"                     # container type
     r"|R\d{1,3}"                                # short round/route code (e.g. R2)

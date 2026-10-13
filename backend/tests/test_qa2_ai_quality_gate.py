@@ -415,6 +415,7 @@ def test_common_english_copula_and_quantity_are_not_misread_as_plate_ids(source,
         ("IS 1200 USD.", "Есть 1200 USD."),
         ("AS 20 KG.", "Как 20 кг."),
         ("TRUCK HAS 20 KG.", "Грузовик имеет 20 кг."),
+        ("REDUCE BY 20 KG.", "Уменьшить на 20 кг."),
     ],
 )
 def test_uppercase_english_words_are_not_misread_as_plate_ids(source, translated):
