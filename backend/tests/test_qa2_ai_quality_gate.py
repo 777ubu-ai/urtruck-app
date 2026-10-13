@@ -387,7 +387,9 @@ def test_reordered_russian_unloading_prohibition_is_not_rejected():
     ("source", "candidate", "source_lang", "target_lang"),
     [
         ("Не разгружать без подтверждения.", "Do not unload. Unload without confirmation.", "ru", "en"),
+        ("Не разгружать без подтверждения.", "Do not unload, unload without confirmation.", "ru", "en"),
         ("Не разгружать без подтверждения.", "Не разгружать. Разрешена разгрузка без подтверждения.", "ru", "ru"),
+        ("Не разгружать без подтверждения.", "Не разгружать, разгружать без подтверждения.", "ru", "ru"),
     ],
 )
 def test_separate_opposite_unloading_clause_cannot_be_hidden_by_negation(
