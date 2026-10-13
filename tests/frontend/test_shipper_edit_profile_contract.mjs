@@ -8,7 +8,7 @@ test('shipper EditProfile has no BIN/IIN UI or payload field', () => {
   const source = read('src/screens/EditProfileScreen.js');
   assert.doesNotMatch(source, /binInn|setBinInn|bin_inn/);
   assert.match(source, /const \[phone, setPhone\] = useState/);
-  assert.match(source, /onChangeText=\{setPhone\}/);
+  assert.match(source, /onChangeText=\{editField\('phone', setPhone\)\}/);
   assert.match(source, /helper=\{t\('phone_v2_send_hint'\) \|\| t\('reg_phone_hint'\)\}/);
   // The screen may mention phone-change request/confirm after this call;
   // assert the actual PATCH payload, rather than using a distance-based

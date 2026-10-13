@@ -59,6 +59,7 @@ def _is_real_phone(v):
 class UpdateProfileIn(BaseModel):
     name: Optional[str] = None
     city: Optional[str] = None
+    contact_email: Optional[str] = None
     about: Optional[str] = None
     phone: Optional[str] = None
     role: Optional[str] = None
@@ -88,7 +89,7 @@ class PhoneChangeConfirmIn(BaseModel):
     code: str
 
 PRO_COLUMNS = [
-    "city", "about",
+    "city", "about", "contact_email",
     "legal_form", "china_experience_years",
     "favorite_borders", "emergency_contact",
     "passport_intl_url", "tir_book_url", "cmr_insurance_url",
@@ -181,6 +182,7 @@ def get_profile(user=Depends(require_level(1))):
         "phone": stored_phone if _is_real_phone(stored_phone) else None,
         "name": d.get("full_name") or "",
         "city": d.get("city") or "",
+        "contact_email": d.get("contact_email") or "",
         "about": d.get("about") or "",
         "role": d.get("role", "guest"),
         "verification_level": d.get("verification_level", 0),
@@ -441,6 +443,11 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         updates["full_name"] = body.name.strip()
     if body.city is not None:
         updates["city"] = body.city.strip()
+    if body.contact_email is not None:
+        contact = body.contact_email.strip().lower()
+        if contact and (len(contact) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", contact)):
+            raise HTTPException(status_code=422, detail={"error": "INVALID_CONTACT_EMAIL"})
+        updates["contact_email"] = contact
     if body.about is not None:
         updates["about"] = body.about.strip()
     if body.legal_form is not None:

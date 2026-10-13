@@ -74,7 +74,7 @@ const Tab = createBottomTabNavigator();
 function MainTabs({ route }) {
   const { session } = useAuth();
   const { theme } = useTheme();
-  const role = session?.user?.role || route?.params?.role || 'client';
+  const role = ['driver', 'client'].includes(session?.user?.role) ? session.user.role : (route?.params?.role || 'client');
   const isDriver = role === 'driver';
   const [, setTick] = useState(0);
 
@@ -291,6 +291,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="Stats" component={StatsScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+          <Stack.Screen name="CountryPicker" component={CountryPickerSheet} options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="CargoRuqsatInfo" component={CargoRuqsatInfoScreen} />
           <Stack.Screen name="Security" component={SecurityScreen} />
           <Stack.Screen name="TripDetail" component={TripDetailV2} />

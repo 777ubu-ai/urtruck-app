@@ -388,7 +388,7 @@ export const regAPI = {
     if (!token) return authRequiredResult();
 
     const allowed = [
-      'name', 'city', 'about', 'phone', 'role',
+      'name', 'city', 'about', 'phone', 'role', 'contact_email',
       'legal_form', 'china_experience_years', 'favorite_borders',
       'emergency_contact',
       'passport_intl_url', 'tir_book_url', 'cmr_insurance_url',
