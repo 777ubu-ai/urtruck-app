@@ -322,6 +322,7 @@ export const AuthProvider = ({ children }) => {
         storage.remove('ur_bg_last_location_v1'),
         storage.remove('ur_queue_plate'),
         storage.removeByPrefix('ur_draft_'),
+        storage.removeByPrefix('ur_chat_translation_v1:'),
         clearOutbox(),
         clearQueue(),
       ]);

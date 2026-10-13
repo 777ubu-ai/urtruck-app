@@ -1,4 +1,5 @@
 import React from 'react';
+import { keyboardHostOffset } from '../utils/keyboardHostOffset';
 import {
   ActivityIndicator,
   AppState,
@@ -353,6 +354,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   // hook, while this screen starts below the top safe area. The second offset
   // creates the blank band seen between the composer and the keyboard.
   const keyboardDockInset = useKeyboardDockInset(window.height);
+  const keyboardHostRef = React.useRef(null);
+  const [keyboardHostTop, setKeyboardHostTop] = React.useState(0);
+  const measureKeyboardHost = React.useCallback(() => {
+    if (Platform.OS !== 'ios') return;
+    keyboardHostRef.current?.measureInWindow?.((_x, y) => {
+      const top = keyboardHostOffset(y);
+      setKeyboardHostTop((previous) => previous === top ? previous : top);
+    });
+  }, []);
   const params = route?.params || {};
 
   const [dealId, setDealId] = React.useState(params.dealId || null);
@@ -1788,7 +1798,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']} testID="deal-workspace-screen">
-      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+      <View ref={keyboardHostRef} style={s.safe} onLayout={measureKeyboardHost} collapsable={false}>
+      <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={keyboardHostTop}>
         {viewMode === VIEW_CHAT ? (
           <View style={[s.chatFullscreen, { paddingBottom: keyboardDockInset }]} testID="deal-chat-fullscreen">
             {/* Navigation chrome is fixed OUTSIDE the scrolling message list.
@@ -2301,6 +2312,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           tripId={dealId}
         />
       </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

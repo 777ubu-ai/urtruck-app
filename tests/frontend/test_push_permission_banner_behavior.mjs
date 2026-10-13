@@ -18,6 +18,7 @@ test('real denied web banner renders and its retry button refreshes permission',
     'react-native': { AppState: {}, Platform: { OS: 'web' }, StyleSheet: { create: (s) => s },
       Text: 'Text', TouchableOpacity: 'TouchableOpacity', View: 'View' },
     '@expo/vector-icons/Feather': 'Feather',
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../utils/push': { push: { isNative: () => false } },
     '../utils/pushPermissionMonitor': { createPushPermissionMonitor },
     '../utils/useI18n': { useI18n: () => ({ lang: 'RU' }) },
@@ -31,7 +32,9 @@ test('real denied web banner renders and its retry button refreshes permission',
     return imports[name];
   }, exports);
   const tree = exports.default({ enabled: true });
-  const action = tree.children.find((child) => child?.props?.testID === 'push-permission-enable');
+  assert.equal(tree.type, 'SafeAreaView');
+  assert.deepEqual(tree.props.edges, ['top']);
+  const action = tree.children[0].children.find((child) => child?.props?.testID === 'push-permission-enable');
   assert.ok(action);
   await action.props.onPress();
   assert.equal(checks, 1);
