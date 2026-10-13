@@ -518,10 +518,25 @@ def test_unloading_condition_with_exception_is_not_rewritten_as_global_prohibiti
     )
 
 
+def test_unambiguous_russian_unloading_prohibition_is_repaired_in_english():
+    source = "Без подтверждения не разгружать."
+    candidate = "Unload without confirmation."
+    repaired = repair_logistics_translation(source, candidate, "ru", "en")
+    assert repaired == "Do not unload without confirmation."
+    assert translation_quality_ok(source, repaired, "ru", "en") is True
+
+
+def test_russian_unloading_exception_is_not_repaired_into_english_global_prohibition():
+    source = "Не разгружать без подтверждения, кроме Астаны."
+    candidate = "Unload without confirmation in Astana."
+    repaired = repair_logistics_translation(source, candidate, "ru", "en")
+    assert repaired == candidate
+    assert "unloading_condition_flipped" in translation_quality_failures(source, repaired, "ru", "en")
+
+
 @pytest.mark.parametrize(
     ("source", "candidate", "source_lang", "target_lang"),
     [
-        ("Не разгружать без подтверждения.", "Unload without confirmation.", "ru", "en"),
         ("Do not unload without confirmation.", "Разгрузка разрешена без подтверждения.", "en", "ru"),
     ],
 )

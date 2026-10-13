@@ -545,6 +545,32 @@ def _replace_positive_unloading_condition(
         match = positive_matches[0]
         return translated_text[:match.start()] + UNLOADING_CONDITION_TRANSLATIONS["zh"] + translated_text[match.end():]
 
+    if source == "ru" and target == "en":
+        if re.search(r"\b(?:кроме|исключая|исключением)\b", source_text, re.IGNORECASE):
+            return translated_text
+        source_conditions = [
+            match
+            for pattern in UNLOADING_CONDITION_PATTERNS["ru"]
+            for match in re.finditer(pattern, source_text, re.IGNORECASE)
+        ]
+        source_mentions = len(re.findall(r"\b(?:разгруз|разгруж|выгруз|выгруж)\w*", source_text, re.IGNORECASE))
+        target_mentions = len(re.findall(r"\bunload\w*\b", translated_text, re.IGNORECASE))
+        positive_matches = [
+            match
+            for pattern in UNLOADING_CONDITION_CONTRADICTIONS["en"]
+            for match in re.finditer(pattern, translated_text, re.IGNORECASE)
+        ]
+        if (
+            len(source_conditions) != 1
+            or source_mentions != 1
+            or target_mentions != 1
+            or len(positive_matches) != 1
+            or _has_unloading_condition(translated_text, "en")
+        ):
+            return translated_text
+        match = positive_matches[0]
+        return translated_text[:match.start()] + UNLOADING_CONDITION_TRANSLATIONS["en"] + translated_text[match.end():]
+
     if source != "zh" or target != "ru":
         return translated_text
     source_conditions = [
