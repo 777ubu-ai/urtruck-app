@@ -337,6 +337,22 @@ def test_chinese_unload_prohibition_repairs_only_recognized_polarity_flip(candid
     assert translation_quality_ok(source, repaired, "zh", "ru") is True
 
 
+def test_chinese_unload_repair_leaves_multiple_conditions_and_valid_negative_russian_alone():
+    mixed_source = "未经确认不得卸货。在阿斯塔纳可以卸货。"
+    mixed_candidate = "В Алматы нельзя разгружать без подтверждения. В Астане можно разгружать без подтверждения."
+    repaired = repair_logistics_translation(mixed_source, mixed_candidate, "zh", "ru")
+    assert repaired == mixed_candidate
+    assert "unloading_condition_flipped" in translation_quality_failures(
+        mixed_source, repaired, "zh", "ru"
+    )
+
+    negative_source = "未经确认不得卸货。"
+    negative_candidate = "Нельзя разгружать без подтверждения."
+    repaired = repair_logistics_translation(negative_source, negative_candidate, "zh", "ru")
+    assert repaired == negative_candidate
+    assert translation_quality_ok(negative_source, repaired, "zh", "ru") is True
+
+
 def test_multiple_currency_amounts_are_not_repaired_by_position():
     source = "Price 100 USD, deposit 20 USD."
     candidate = "Депозит 20 USD, цена 100 USD."
@@ -374,6 +390,19 @@ def test_qa_round_tag_digits_are_not_mistaken_for_numeric_facts():
     source = "TEST r2: Freight 1200 USD, 15 October 2026, 18 tonnes."
     translated = "Фрахт 1200 USD, 15 октября 2026, 18 тонн."
     assert "numeric_facts_changed" not in translation_quality_failures(source, translated, "en", "ru")
+
+
+@pytest.mark.parametrize(
+    ("source", "translated"),
+    [
+        ("Cargo weighs 20kg.", "Груз весит 30kg."),
+        ("Route is 100km.", "Маршрут 900km."),
+        ("Keep at 2C.", "Хранить при 8C."),
+        ("Weight 20t.", "Вес 30t."),
+    ],
+)
+def test_numeric_facts_still_detect_changes_with_latin_unit_suffixes(source, translated):
+    assert "numeric_facts_changed" in translation_quality_failures(source, translated, "en", "ru")
 
 
 def test_correct_english_unloading_negation_is_not_flagged_as_contradiction():

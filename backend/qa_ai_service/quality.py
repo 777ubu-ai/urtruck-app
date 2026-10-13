@@ -38,7 +38,7 @@ LOGISTICS_TERMS = {
     "customs": {"en": ("customs",), "ru": ("тамож",), "zh": ("海关",), "kk": ("кеден",)},
     "border": {"en": ("border", "checkpoint"), "ru": ("границ", "погранич"), "zh": ("边境", "口岸", "边界"), "kk": ("шекара",)},
     "loading": {
-        "en": ("loading", "load", "loaded", "unload", "unloading"), "ru": ("загруз", "погруз", "разгруз", "выгруз"),
+        "en": ("loading", "load", "loaded", "unload", "unloading"), "ru": ("загруз", "погруз", "разгруз", "выгруз", "разгруж", "выгруж"),
         "zh": ("装货", "装载", "装卸", "上货", "卸货", "卸载", "卸到", "装车"), "kk": ("тиеу", "тиел", "түсір"),
     },
     "delivery": {
@@ -384,9 +384,14 @@ def _numeric_facts(text: str) -> tuple[list[tuple[int, int]], list[tuple[int, in
     # QA round label) are identifiers, not independent price/date/weight
     # facts. Keep adjacent logistics-unit digits (including Cyrillic and Han
     # units) visible to this comparison; those are validated separately too.
+    quantity_suffix = r"(?:kg|g|km|cm|mm|m|t|tons?|tonnes?|h|hrs?|hours?|minutes?|mins?|usd|eur|c|f|°[cf])"
     numbers = [
         Decimal(value.replace(",", "."))
-        for value in re.findall(r"(?<![A-Za-z0-9])\d+(?:[.,]\d+)?(?![A-Za-z0-9])", remaining)
+        for value in re.findall(
+            rf"(?<![A-Za-z0-9])\d+(?:[.,]\d+)?(?=(?:{quantity_suffix})\b|(?![A-Za-z0-9]))",
+            remaining,
+            flags=re.IGNORECASE,
+        )
     ]
     return times, dates, numbers
 
@@ -457,7 +462,7 @@ _RU_UNLOADING_GAP = r"(?:(?!\b(?:и|но|а|однако)\b)(?!\b(?:разгру
 
 UNLOADING_CONDITION_PATTERNS = {
     "en": (rf"\b(?:do not|don't|must not|mustn't)\s+unload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b",),
-    "ru": (rf"\bне\s+разгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения"),
+    "ru": (rf"\bне\s+разгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения", rf"\b(?:нельзя|запрещено)\s+(?:разгруж|выгруж)\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*"),
     "zh": (r"未经[^,.!?;:，、。！？；]{0,4}确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以|不准)[^,.!?;:，、。！？；]{0,4}卸货", r"未得到确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以)[^,.!?;:，、。！？；]{0,4}卸货"),
     "kk": (r"растау алынбайынша.{0,12}түсірмеңіз",),
 }
@@ -484,7 +489,7 @@ def _has_unloading_condition(text: str, language: str) -> bool:
 def _has_unloading_condition_contradiction(text: str, language: str) -> bool:
     negative_prefixes = {
         "en": r"(?:do\s+not|don't|must\s+not|mustn't)\s+$",
-        "ru": r"не\s+$",
+        "ru": r"(?:не|нельзя|запрещено)\s+$",
     }
     negative_prefix = negative_prefixes.get(language)
     negative_spans = [
@@ -502,27 +507,57 @@ def _has_unloading_condition_contradiction(text: str, language: str) -> bool:
     return False
 
 
-def _replace_positive_unloading_condition(text: str, language: str) -> str:
-    """Replace a positively translated unloading clause with its source-safe form.
+def _replace_positive_unloading_condition(
+    source_text: str, translated_text: str, source: str, target: str
+) -> str:
+    """Repair one unambiguous ZH prohibition mistranslated as positive RU.
 
-    This is limited to a source clause that was already recognized as a
-    prohibition. It never guesses from arbitrary text and never overwrites an
-    already-negative target clause.
+    Messages with more than one loading/unloading mention are left untouched;
+    a city-specific exception or a second condition must remain a quality
+    failure instead of being rewritten globally.
     """
+    if source != "zh" or target != "ru":
+        return translated_text
+    source_conditions = [
+        match
+        for pattern in UNLOADING_CONDITION_PATTERNS["zh"]
+        for match in re.finditer(pattern, source_text, re.IGNORECASE)
+    ]
+    source_mentions = sum(
+        len(re.findall(re.escape(term), source_text, re.IGNORECASE))
+        for term in LOGISTICS_TERMS["loading"]["zh"]
+    )
+    if len(source_conditions) != 1 or source_mentions != 1:
+        return translated_text
+
+    target_mentions = len(re.findall(r"\b(?:разгруз|разгруж|выгруз|выгруж)\w*", translated_text, re.IGNORECASE))
+    if target_mentions != 1 or _has_unloading_condition(translated_text, "ru"):
+        return translated_text
+
+    positive_patterns = (
+        rf"\b(?:(?:можно|разрешено|разрешается)\s+)?(?:разгруж|выгруж)\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*",
+        rf"\bразрешен\w*\s+разгруз\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*",
+        rf"\bразгруз\w*{_RU_UNLOADING_GAP}\bразрешен\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*",
+    )
     negative_spans = [
         match.span()
-        for pattern in UNLOADING_CONDITION_PATTERNS.get(language, ())
-        for match in re.finditer(pattern, text, re.IGNORECASE)
+        for pattern in UNLOADING_CONDITION_PATTERNS["ru"]
+        for match in re.finditer(pattern, translated_text, re.IGNORECASE)
     ]
-    replacements = []
-    for pattern in UNLOADING_CONDITION_CONTRADICTIONS.get(language, ()):
-        for match in re.finditer(pattern, text, re.IGNORECASE):
+    matches = []
+    for pattern in positive_patterns:
+        for match in re.finditer(pattern, translated_text, re.IGNORECASE):
             if any(start <= match.start() and match.end() <= end for start, end in negative_spans):
                 continue
-            replacements.append(match.span())
-    for start, end in sorted(set(replacements), reverse=True):
-        text = text[:start] + UNLOADING_CONDITION_TRANSLATIONS[language] + text[end:]
-    return text
+            if re.search(r"(?:не|нельзя|запрещено)\s+$", translated_text[max(0, match.start() - 20):match.start()], re.IGNORECASE):
+                continue
+            matches.append(match.span())
+    if not matches:
+        return translated_text
+
+    start = min(match[0] for match in matches)
+    end = max(match[1] for match in matches)
+    return translated_text[:start] + UNLOADING_CONDITION_TRANSLATIONS["ru"] + translated_text[end:]
 
 
 def _ordered_source_cities(text: str) -> list[str]:
@@ -681,7 +716,7 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
     # not a fallback of the surrounding message.
     if _has_unloading_condition(source_text, source):
         if _has_unloading_condition_contradiction(repaired, target):
-            repaired = _replace_positive_unloading_condition(repaired, target)
+            repaired = _replace_positive_unloading_condition(source_text, repaired, source, target)
         has_target_condition = _has_unloading_condition(repaired, target)
         has_target_loading_term = _contains_any(repaired, LOGISTICS_TERMS["loading"][target])
         if not _has_unloading_condition_contradiction(repaired, target) and (
