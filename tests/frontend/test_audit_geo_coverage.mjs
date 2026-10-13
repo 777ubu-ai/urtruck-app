@@ -46,3 +46,9 @@ test('country-tab search reveals cities after selecting a country',()=>{
   assert.equal(locationScopeAllowsPoint('country',null,{type:'city'}),false);
   assert.equal(locationScopeAllowsPoint('border','DE',{type:'city'}),false);
 });
+
+test('global results never introduce country codes outside the approved directory',()=>{
+  for(const query of ['Pristina','Berlin','Paris','New York','a']) {
+    assert.ok(searchPoints(query).every(p=>COUNTRY_ORDER.includes(p.country)));
+  }
+});

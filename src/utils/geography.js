@@ -237,7 +237,7 @@ export const POINTS = [
 // name). Empty query returns top 12 entries to keep the UI fast.
 export const searchPoints = (query, { country, type } = {}) => {
   const curatedNames = new Set(POINTS.filter((p) => p.type === 'city').flatMap((p) => [p.name, ...(p.aliases || [])].map((name) => `${p.country}:${name.toLocaleLowerCase()}`)));
-  const worldHits = searchWorldCities(query, country).filter((p) => ![p.name, ...p.aliases].some((name) => curatedNames.has(`${p.country}:${name.toLocaleLowerCase()}`)));
+  const worldHits = searchWorldCities(query, country).filter((p) => COUNTRIES[p.country] && ![p.name, ...p.aliases].some((name) => curatedNames.has(`${p.country}:${name.toLocaleLowerCase()}`)));
   let pool = [...POINTS, ...worldHits];
   if (country) pool = pool.filter((p) => p.country === country || p.partnerCountry === country);
   if (type) pool = pool.filter((p) => p.type === type);
