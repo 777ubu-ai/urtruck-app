@@ -445,9 +445,12 @@ def _currency_amount_facts(text: str) -> list[tuple[str, Decimal]]:
     return [(currency, amount) for _position, currency, amount in sorted(matches)]
 
 
+_EN_UNLOADING_GAP = r"(?:(?!\b(?:and|but|or|however)\b)(?!\bunload\w*\b)[^,.!?;:，、。！？；]){0,40}?"
+_RU_UNLOADING_GAP = r"(?:(?!\b(?:и|но|а|однако)\b)(?!\b(?:разгруж|разгруз)\w*\b)[^,.!?;:，、。！？；]){0,40}?"
+
 UNLOADING_CONDITION_PATTERNS = {
-    "en": (r"\b(?:do not|don't|must not|mustn't)\s+unload\w*\b(?:(?!\b(?:and|but|or|however)\b)[^,.!?;:，、。！？；]){0,40}?\bwithout\s+confirmation\b",),
-    "ru": (r"\bне\s+разгруж\w*\b(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,40}?\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,40}?\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения"),
+    "en": (rf"\b(?:do not|don't|must not|mustn't)\s+unload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b",),
+    "ru": (rf"\bне\s+разгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения"),
     "zh": (r"未经[^,.!?;:，、。！？；]{0,4}确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以|不准)[^,.!?;:，、。！？；]{0,4}卸货", r"未得到确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以)[^,.!?;:，、。！？；]{0,4}卸货"),
     "kk": (r"растау алынбайынша.{0,12}түсірмеңіз",),
 }
@@ -460,8 +463,8 @@ UNLOADING_CONDITION_TRANSLATIONS = {
 }
 
 UNLOADING_CONDITION_CONTRADICTIONS = {
-    "en": (r"\bunload\w*\b(?:(?!\b(?:and|but|or|however)\b)[^,.!?;:，、。！？；]){0,40}?\bwithout\s+confirmation\b",),
-    "ru": (r"\bразгруж\w*\b(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,40}?\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,40}?\bразгруж\w*", r"\bразрешен\w*\s+разгруз\w*(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,30}?\bбез\s+подтвержден\w*", r"\bразгруз\w*(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,20}?\bразрешен\w*(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,30}?\bбез\s+подтвержден\w*"),
+    "en": (rf"\bunload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b",),
+    "ru": (rf"\bразгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bразгруж\w*", rf"\bразрешен\w*\s+разгруз\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bразгруз\w*{_RU_UNLOADING_GAP}\bразрешен\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*"),
     "zh": (r"未经.{0,4}确认(?!不得|不能|不可以|不准).{0,4}卸货",),
     "kk": (r"\b(?:жүкті\s+)?түсір\w*.{0,30}растау\s+алмай-ақ",),
 }
