@@ -511,12 +511,34 @@ def _has_unloading_condition_contradiction(text: str, language: str) -> bool:
 def _replace_positive_unloading_condition(
     source_text: str, translated_text: str, source: str, target: str
 ) -> str:
-    """Repair one unambiguous ZH prohibition mistranslated as positive RU.
+    """Repair one unambiguous unloading prohibition mistranslated as positive.
 
     Messages with more than one loading/unloading mention are left untouched;
     a city-specific exception or a second condition must remain a quality
     failure instead of being rewritten globally.
     """
+    if target == "zh" and source in {"en", "ru"}:
+        source_conditions = [
+            match
+            for pattern in UNLOADING_CONDITION_PATTERNS[source]
+            for match in re.finditer(pattern, source_text, re.IGNORECASE)
+        ]
+        unload_pattern = {
+            "en": r"\bunload\w*\b",
+            "ru": r"\b(?:разгруз|разгруж|выгруз|выгруж)\w*",
+        }[source]
+        source_mentions = len(re.findall(unload_pattern, source_text, re.IGNORECASE))
+        target_mentions = len(re.findall(r"(?:卸货|卸载)", translated_text))
+        positive_matches = [
+            match
+            for pattern in UNLOADING_CONDITION_CONTRADICTIONS["zh"]
+            for match in re.finditer(pattern, translated_text, re.IGNORECASE)
+        ]
+        if len(source_conditions) != 1 or source_mentions != 1 or target_mentions != 1 or len(positive_matches) != 1:
+            return translated_text
+        match = positive_matches[0]
+        return translated_text[:match.start()] + UNLOADING_CONDITION_TRANSLATIONS["zh"] + translated_text[match.end():]
+
     if source != "zh" or target != "ru":
         return translated_text
     source_conditions = [
