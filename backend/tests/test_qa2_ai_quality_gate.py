@@ -1,7 +1,9 @@
 """Quality gates for the isolated QA2 speech and translation service."""
 from pathlib import Path
+import pytest
 
 from qa_ai_service.quality import (
+    _currency_amount_facts,
     repair_logistics_translation,
     stt_prompt,
     transcription_quality_ok,
@@ -353,6 +355,26 @@ def test_correct_english_unloading_negation_is_not_flagged_as_contradiction():
     translated = "Do not unload without confirmation."
     assert "unloading_condition_flipped" not in translation_quality_failures(source, translated, "ru", "en")
     assert translation_quality_ok(source, translated, "ru", "en") is True
+
+
+@pytest.mark.parametrize(
+    ("source", "candidate", "source_lang", "target_lang"),
+    [
+        ("Не разгружать без подтверждения.", "Unload without confirmation.", "ru", "en"),
+        ("Do not unload without confirmation.", "Разгрузка разрешена без подтверждения.", "en", "ru"),
+    ],
+)
+def test_opposite_unloading_condition_is_not_repaired_into_a_false_pass(
+    source, candidate, source_lang, target_lang
+):
+    repaired = repair_logistics_translation(source, candidate, source_lang, target_lang)
+    failures = translation_quality_failures(source, repaired, source_lang, target_lang)
+    assert "unloading_condition_flipped" in failures
+    assert translation_quality_ok(source, repaired, source_lang, target_lang) is False
+
+
+def test_currency_binding_check_accepts_dollar_symbol_for_usd():
+    assert _currency_amount_facts("Price 100 USD.") == _currency_amount_facts("Цена $100.")
 
 
 def test_kazakh_unloading_repair_is_detected_and_not_duplicated():

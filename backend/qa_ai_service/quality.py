@@ -408,8 +408,10 @@ def _currency_amounts(text: str) -> list[tuple[Decimal, int, int]]:
 _CURRENCY_AMOUNT_FACT_PATTERNS = (
     ("USD", re.compile(r"(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?=\s*(?:USD|US\s+dollars?|dollars?|доллар\w*|долл\.?|美元)(?![A-Za-z]))", re.IGNORECASE)),
     ("USD", re.compile(r"(?:USD|US\s+dollars?|dollars?|доллар\w*|долл\.?|美元)\s*(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE)),
+    ("USD", re.compile(r"\$\s*(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE)),
     ("EUR", re.compile(r"(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?=\s*(?:EUR|euros?|евро|欧元)(?![A-Za-z]))", re.IGNORECASE)),
     ("EUR", re.compile(r"(?:EUR|euros?|евро|欧元)\s*(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE)),
+    ("EUR", re.compile(r"€\s*(?P<amount>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE)),
 )
 
 
@@ -436,8 +438,8 @@ UNLOADING_CONDITION_TRANSLATIONS = {
 }
 
 UNLOADING_CONDITION_CONTRADICTIONS = {
-    "en": (r"\b(?:may|can|is allowed to)\s+unload\w*\b.{0,40}\bwithout\s+confirmation\b",),
-    "ru": (r"\b(?:можно|разрешено|разрешается)\s+разгруж\w*\b.{0,40}\bбез\s+подтвержден\w*",),
+    "en": (r"\bunload\w*\b.{0,40}\bwithout\s+confirmation\b",),
+    "ru": (r"\bразгруж\w*\b.{0,40}\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*.{0,40}\bразгруж\w*", r"\bразрешен\w*\s+разгруз\w*.{0,30}\bбез\s+подтвержден\w*", r"\bразгруз\w*.{0,20}\bразрешен\w*.{0,30}\bбез\s+подтвержден\w*"),
     "zh": (r"未经.{0,4}确认(?!不得|不能|不可以|不准).{0,4}卸货",),
     "kk": (r"\b(?:жүкті\s+)?түсір\w*.{0,30}растау\s+алмай-ақ",),
 }
@@ -448,7 +450,17 @@ def _has_unloading_condition(text: str, language: str) -> bool:
 
 
 def _has_unloading_condition_contradiction(text: str, language: str) -> bool:
-    return any(re.search(pattern, text, re.IGNORECASE) for pattern in UNLOADING_CONDITION_CONTRADICTIONS.get(language, ()))
+    negative_prefixes = {
+        "en": r"(?:do\s+not|don't|must\s+not|mustn't)\s+$",
+        "ru": r"не\s+$",
+    }
+    negative_prefix = negative_prefixes.get(language)
+    for pattern in UNLOADING_CONDITION_CONTRADICTIONS.get(language, ()):
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            if negative_prefix and re.search(negative_prefix, text[max(0, match.start() - 24):match.start()], re.IGNORECASE):
+                continue
+            return True
+    return False
 
 
 def _ordered_source_cities(text: str) -> list[str]:
