@@ -550,6 +550,8 @@ def _replace_positive_unloading_condition(
     if source == "ru" and target == "en":
         if re.search(r"\b(?:кроме|исключая|исключением)\b", source_text, re.IGNORECASE):
             return translated_text
+        if re.search(r"\b(?:except|unless|excluding|other than)\b", translated_text, re.IGNORECASE):
+            return translated_text
         source_conditions = [
             match
             for pattern in UNLOADING_CONDITION_PATTERNS["ru"]
@@ -564,6 +566,7 @@ def _replace_positive_unloading_condition(
         if len(source_conditions) == 1 and source_mentions == 1 and target_mentions == 0:
             return _append_before_punctuation(translated_text, UNLOADING_CONDITION_TRANSLATIONS["en"])
         modal_patterns = (
+            r"\b(?:the\s+)?(?:driver|carrier|cargo|goods)\s+(?:can|may|could|might|is\s+allowed\s+to|is\s+permitted\s+to)\s+unload\w*\b[^.!?;:]{0,24}\bwithout\s+confirmation\b",
             r"\b(?:you\s+)?(?:can|may|could|might|are\s+allowed\s+to|are\s+permitted\s+to)\s+unload\w*\b[^.!?;:]{0,24}\bwithout\s+confirmation\b",
         )
         modal_matches = [
@@ -571,7 +574,10 @@ def _replace_positive_unloading_condition(
             for pattern in modal_patterns
             for match in re.finditer(pattern, translated_text, re.IGNORECASE)
         ]
-        positive_matches = modal_matches or [
+        # Several modal patterns can match nested spans of the same single
+        # clause (for example ``The driver can unload`` also matches the
+        # shorter ``can unload`` form). Replace the complete clause once.
+        positive_matches = [max(modal_matches, key=lambda match: match.end() - match.start())] if modal_matches else [
             match
             for pattern in UNLOADING_CONDITION_CONTRADICTIONS["en"]
             for match in re.finditer(pattern, translated_text, re.IGNORECASE)
@@ -586,7 +592,11 @@ def _replace_positive_unloading_condition(
             return translated_text
         match = positive_matches[0]
         prefix = translated_text[:match.start()]
-        if re.split(r"[.!?;:]", prefix)[-1].strip():
+        # Allow preceding translated facts (NLLB often emits a single
+        # punctuation-light line), but never rewrite a phrase whose subject
+        # or permission modal sits immediately before the matched condition.
+        prefix_tail = re.split(r"[.!?;:]", prefix)[-1]
+        if re.search(r"\b(?:can|may|could|might|must|should|allowed(?:\s+to)?|permitted(?:\s+to)?|possible\s+to|able\s+to)\s+$", prefix_tail, re.IGNORECASE):
             return translated_text
         if re.search(r"\b(?:never|not|cannot|can't|mustn't|may\s+not)\s+$", prefix, re.IGNORECASE):
             return translated_text

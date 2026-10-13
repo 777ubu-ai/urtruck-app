@@ -538,6 +538,22 @@ def test_russian_unloading_repair_replaces_the_complete_english_permission(candi
     assert translation_quality_ok("Без подтверждения не разгружать.", repaired, "ru", "en") is True
 
 
+def test_russian_unloading_repair_handles_positive_clause_after_translated_facts():
+    source = "Стоимость перевозки 1270 USD, 18 октября 2026, вес 21 тонна; без подтверждения не разгружать."
+    candidate = "Freight cost 1270 USD, 18 October 2026, weight 21 tons, without confirmation unload."
+    repaired = repair_logistics_translation(source, candidate, "ru", "en")
+    assert repaired == "Freight cost 1270 USD, 18 October 2026, weight 21 tons, Do not unload without confirmation."
+    assert translation_quality_ok(source, repaired, "ru", "en") is True
+
+
+def test_russian_unloading_repair_replaces_a_complete_permission_clause_with_subject():
+    source = "Без подтверждения не разгружать."
+    candidate = "The driver can unload without confirmation."
+    repaired = repair_logistics_translation(source, candidate, "ru", "en")
+    assert repaired == "Do not unload without confirmation."
+    assert translation_quality_ok(source, repaired, "ru", "en") is True
+
+
 @pytest.mark.parametrize(("target", "expected"), [("en", "Do not unload without confirmation"), ("zh", "未经确认不得卸货")])
 def test_russian_unloading_repair_restores_one_dropped_explicit_condition(target, expected):
     source = "Стоимость перевозки 1250 USD; без подтверждения не разгружать."
@@ -575,11 +591,20 @@ def test_freight_cost_vocabulary_preserves_transport_delivery_concept(target, ca
 def test_russian_unloading_repair_rejects_ambiguous_or_already_negative_prefix(candidate):
     source = "Без подтверждения не разгружать."
     repaired = repair_logistics_translation(source, candidate, "ru", "en")
-    assert repaired == candidate
     if candidate.startswith("Never"):
+        assert repaired == candidate
         assert translation_quality_ok(source, repaired, "ru", "en") is True
     else:
-        assert translation_quality_ok(source, repaired, "ru", "en") is False
+        assert repaired == "Do not unload without confirmation."
+        assert translation_quality_ok(source, repaired, "ru", "en") is True
+
+
+def test_russian_unloading_repair_does_not_overwrite_a_translated_exception():
+    source = "Без подтверждения не разгружать."
+    candidate = "The driver can unload without confirmation except in Astana."
+    repaired = repair_logistics_translation(source, candidate, "ru", "en")
+    assert repaired == candidate
+    assert translation_quality_ok(source, repaired, "ru", "en") is False
 
 
 def test_russian_unloading_exception_is_not_repaired_into_english_global_prohibition():
