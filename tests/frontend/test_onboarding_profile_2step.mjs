@@ -39,7 +39,7 @@ test('profile step keeps company, country and city optional', () => {
   assert.match(profile, /id="company"/);
   assert.match(profile, /id="country"/);
   assert.match(profile, /id="city"/);
-  assert.match(profile, /const basicFormValid = validName && validPhone && validMessenger/);
+  assert.match(profile, /const basicFormValid = validName && validPhone/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
   assert.doesNotMatch(profile, /validCompany/);
@@ -71,8 +71,8 @@ test('preferred messenger supports WhatsApp, WeChat, Telegram and Other', () => 
   assert.match(profile, /messenger_type:\s*messengerType/);
   assert.match(profile, /messenger_id:\s*messengerType \? effectiveMessengerId : ''/);
   assert.match(profile, /messengerType === 'whatsapp' && sameAsPhone/);
-  assert.match(profile, /const validMessenger = !messengerType/);
-  assert.match(profile, /if \(!validMessenger\) next\.messenger/);
+  assert.doesNotMatch(profile, /validMessenger/);
+  assert.match(profile, /Мессенджер \(необязательно\)/);
 });
 
 

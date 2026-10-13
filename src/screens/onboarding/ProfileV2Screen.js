@@ -44,7 +44,7 @@ const COPY = {
     cityPlaceholder: 'Например, Алматы или Иу, Чжэцзян',
     locationOptionalHint: 'Можно оставить пустым и добавить позже',
     companyRequired: 'Укажите компанию или ИП',
-    messengerLabel: 'Предпочтительный мессенджер',
+    messengerLabel: 'Мессенджер (необязательно)',
     messengerContact: 'Контакт в мессенджере',
     messengerPlaceholder: 'ID, логин или номер',
     messengerRequired: 'Укажите контакт выбранного мессенджера',
@@ -52,6 +52,7 @@ const COPY = {
     phoneAlreadyInUse: 'Этот номер уже используется. Введите другой номер или войдите в свой существующий аккаунт.',
     roleAlreadySet: 'Для этого аккаунта уже выбрана другая роль. Вернитесь и выберите сохранённую роль.',
     retryLater: 'Слишком много попыток. Подождите и повторите сохранение.',
+    verificationRequired: 'Сначала подтвердите вход по email или телефону. Данные остались в форме.',
     serverUnavailable: 'Сервер временно недоступен. Данные остались в форме; попробуйте снова.',
     other: 'Другой',
     samePhone: 'Совпадает с основным телефоном',
@@ -78,7 +79,7 @@ const COPY = {
     cityPlaceholder: 'For example, Almaty or Yiwu, Zhejiang',
     locationOptionalHint: 'Optional — you can add it later',
     companyRequired: 'Enter company or business name',
-    messengerLabel: 'Preferred messenger',
+    messengerLabel: 'Messenger (optional)',
     messengerContact: 'Messenger contact',
     messengerPlaceholder: 'ID, username or number',
     messengerRequired: 'Enter a contact for the selected messenger',
@@ -86,6 +87,7 @@ const COPY = {
     phoneAlreadyInUse: 'This number is already in use. Enter another number or sign in to your existing account.',
     roleAlreadySet: 'This account already has a different role. Go back and select the saved role.',
     retryLater: 'Too many attempts. Wait before saving again.',
+    verificationRequired: 'First verify your email or phone sign-in. Your form is kept.',
     serverUnavailable: 'The server is temporarily unavailable. Your form is kept; please retry.',
     other: 'Other',
     samePhone: 'Same as primary phone',
@@ -112,7 +114,7 @@ const COPY = {
     cityPlaceholder: '例如：阿拉木图或浙江义乌',
     locationOptionalHint: '可留空，稍后补充',
     companyRequired: '请输入公司或个体经营名称',
-    messengerLabel: '首选即时通讯',
+    messengerLabel: '即时通讯（选填）',
     messengerContact: '即时通讯联系方式',
     messengerPlaceholder: 'ID、账号或手机号',
     messengerRequired: '请输入所选即时通讯的联系方式',
@@ -120,6 +122,7 @@ const COPY = {
     phoneAlreadyInUse: '此号码已被使用。请输入其他号码，或登录您的现有账号。',
     roleAlreadySet: '此账号已选择其他角色。请返回并选择已保存的角色。',
     retryLater: '尝试次数过多。请稍后再次保存。',
+    verificationRequired: '请先通过邮箱或手机号验证登录。已保留表单内容。',
     serverUnavailable: '服务器暂时不可用。已保留表单内容，请重试。',
     other: '其他',
     samePhone: '与主要手机号相同',
@@ -146,7 +149,7 @@ const COPY = {
     cityPlaceholder: 'Мысалы, Алматы немесе Иу, Чжэцзян',
     locationOptionalHint: 'Бос қалдырып, кейін қосуға болады',
     companyRequired: 'Компания немесе ЖК атауын көрсетіңіз',
-    messengerLabel: 'Қалаулы мессенджер',
+    messengerLabel: 'Мессенджер (міндетті емес)',
     messengerContact: 'Мессенджердегі байланыс',
     messengerPlaceholder: 'ID, логин немесе нөмір',
     messengerRequired: 'Таңдалған мессенджердегі байланысты көрсетіңіз',
@@ -154,6 +157,7 @@ const COPY = {
     phoneAlreadyInUse: 'Бұл нөмір қолданылып жатыр. Басқа нөмір енгізіңіз немесе өз аккаунтыңызға кіріңіз.',
     roleAlreadySet: 'Бұл аккаунт үшін басқа рөл таңдалған. Артқа оралып, сақталған рөлді таңдаңыз.',
     retryLater: 'Әрекет саны тым көп. Біраз күтіп, қайта сақтаңыз.',
+    verificationRequired: 'Алдымен email немесе телефон арқылы кіруді растаңыз. Нысандағы деректер сақталды.',
     serverUnavailable: 'Сервер уақытша қолжетімсіз. Нысандағы деректер сақталды; қайталап көріңіз.',
     other: 'Басқа',
     samePhone: 'Негізгі телефонмен бірдей',
@@ -313,16 +317,13 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   const validName = name.trim().length >= 2;
   const validPhone = isRealPhone(phone);
-  const validMessenger = !messengerType
-    || (messengerType === 'whatsapp' && sameAsPhone && validPhone)
-    || messengerId.trim().length >= 2;
-  const basicFormValid = validName && validPhone && validMessenger;
+  // Дополнительная связь не блокирует завершение регистрации.
+  const basicFormValid = validName && validPhone;
 
   const validate = () => {
     const next = {};
     if (!validName) next.name = t('profile_v2_err_name');
     if (!validPhone) next.phone = t('prem_reg_phone_invalid');
-    if (!validMessenger) next.messenger = ui.messengerRequired;
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -383,6 +384,10 @@ export default function ProfileV2Screen({ navigation, route }) {
         if (Object.hasOwn(fieldErrors, code)) {
           const [field, message] = fieldErrors[code];
           setErrors((prev) => ({ ...prev, [field]: message }));
+          return;
+        }
+        if (code === 'verification_required') {
+          setServerError(ui.verificationRequired);
           return;
         }
         if (code === 'ROLE_ALREADY_SET') {
