@@ -933,8 +933,8 @@ def transcription_quality_ok(
 
 def translation_quality_failures(source_text: str, translated_text: str, source: str, target: str) -> list[str]:
     failures: list[str] = []
-    source_identifiers = [match.group(0).casefold() for match in _IDENTIFIER.finditer(source_text)]
-    translated_identifiers = [match.group(0).casefold() for match in _IDENTIFIER.finditer(translated_text)]
+    source_identifiers = [match.group(0) for match in _IDENTIFIER.finditer(source_text)]
+    translated_identifiers = [match.group(0) for match in _IDENTIFIER.finditer(translated_text)]
     if source_identifiers != translated_identifiers:
         failures.append("identifier_changed")
     if _numeric_facts(source_text) != _numeric_facts(translated_text):

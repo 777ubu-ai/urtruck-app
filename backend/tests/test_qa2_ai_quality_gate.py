@@ -401,6 +401,31 @@ def test_short_round_code_is_preserved_without_weakening_numeric_facts():
 @pytest.mark.parametrize(
     ("source", "translated"),
     [
+        ("Cargo is 20 kg.", "Груз весит 20 кг."),
+        ("Freight is 1200 USD.", "Груз стоит 1200 USD."),
+    ],
+)
+def test_common_english_copula_and_quantity_are_not_misread_as_plate_ids(source, translated):
+    assert translation_quality_ok(source, translated, "en", "ru") is True
+
+
+def test_license_plate_identifier_is_preserved_byte_for_byte():
+    source = "Truck KZ 777 ABC 02 is ready."
+    translated = translate_preserving_identifiers(
+        source,
+        lambda prose: "Грузовик готов.",
+    )
+    assert "KZ 777 ABC 02" in translated
+    assert "identifier_changed" not in translation_quality_failures(source, translated, "en", "ru")
+
+
+def test_identifier_case_change_fails_closed():
+    assert "identifier_changed" in translation_quality_failures("Truck KZ 777 ABC.", "Грузовик KZ 777 abc.", "en", "ru")
+
+
+@pytest.mark.parametrize(
+    ("source", "translated"),
+    [
         ("Cargo weighs 20kg.", "Груз весит 30kg."),
         ("Cargo weighs 20lbs.", "Груз весит 30lbs."),
         ("Volume is 20L.", "Объём 30L."),
