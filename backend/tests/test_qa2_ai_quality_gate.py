@@ -377,6 +377,12 @@ def test_currency_binding_check_accepts_dollar_symbol_for_usd():
     assert _currency_amount_facts("Price 100 USD.") == _currency_amount_facts("Цена $100.")
 
 
+def test_reordered_russian_unloading_prohibition_is_not_rejected():
+    source = "Не разгружать без подтверждения."
+    translated = "Без подтверждения не разгружать."
+    assert translation_quality_ok(source, translated, "ru", "ru") is True
+
+
 def test_kazakh_unloading_repair_is_detected_and_not_duplicated():
     source = "Не разгружать без подтверждения."
     candidate = "Жүкті жеткізіңіз."

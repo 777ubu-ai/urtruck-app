@@ -455,9 +455,16 @@ def _has_unloading_condition_contradiction(text: str, language: str) -> bool:
         "ru": r"не\s+$",
     }
     negative_prefix = negative_prefixes.get(language)
+    negative_spans = [
+        match.span()
+        for pattern in UNLOADING_CONDITION_PATTERNS.get(language, ())
+        for match in re.finditer(pattern, text, re.IGNORECASE)
+    ]
     for pattern in UNLOADING_CONDITION_CONTRADICTIONS.get(language, ()):
         for match in re.finditer(pattern, text, re.IGNORECASE):
             if negative_prefix and re.search(negative_prefix, text[max(0, match.start() - 24):match.start()], re.IGNORECASE):
+                continue
+            if any(start < match.end() and match.start() < end for start, end in negative_spans):
                 continue
             return True
     return False
