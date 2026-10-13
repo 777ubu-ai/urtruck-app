@@ -3537,6 +3537,46 @@ class DealTransitionError(Exception):
         self.detail = detail
 
 
+def _record_deal_transition_effects(c, deal, new_status, actor_uid, event_payload):
+    """Status, timeline, chat and notification intent share one transaction."""
+    from api.notifications import create_notification
+    from database import deal_room_dal
+    other_id = deal["driver_id"] if actor_uid == deal["shipper_id"] else deal["shipper_id"]
+    source = ("cargos", deal["cargo_id"]) if deal.get("cargo_id") else (("trips", deal["trip_id"]) if deal.get("trip_id") else None)
+    currency = "USD"
+    if source:
+        row = c.execute(f"SELECT currency FROM {source[0]} WHERE id = ?", (source[1],)).fetchone()
+        currency = (row["currency"] if row else None) or "USD"
+    route = f"{deal['from_city']}→{deal['to_city']} · {_money(deal['amount'], currency)}"
+    locale_row = c.execute(
+        "SELECT locale FROM push_devices WHERE user_id=? AND enabled=1 AND locale IS NOT NULL "
+        "ORDER BY last_seen_at DESC, id DESC LIMIT 1", (other_id,),
+    ).fetchone()
+    locale = push_i18n.normalize_locale(locale_row["locale"] if locale_row else None)
+    i18n_event = f"deal_status_{new_status}"
+    title, body_txt = push_i18n.push_text(i18n_event, locale, route=route)
+    deal_url = f"/cargos/{deal['cargo_id']}" if deal.get("cargo_id") else (f"/trips/{deal['trip_id']}" if deal.get("trip_id") else f"/deals/{deal['id']}")
+    event_key = f"deal:{deal['id']}:status:{new_status}"
+    data = {"event_key": event_key, "event_id": event_key, "event": f"deal.status.{new_status}",
+            "deal_id": deal["id"], "kind": "deal_status", "url": deal_url,
+            "i18n_event": i18n_event, "i18n_params": {"route": route}}
+    push_gateway.enqueue_event(event_key, "deal_status", other_id,
+                               {"title": title, "body": body_txt, "data": data}, conn=c)
+    create_notification(other_id, "deal_status", title, body_txt, "🚛", url=deal_url, event_key=event_key, conn=c)
+    event_id = deal_room_dal.create_deal_event(
+        "deal.status_changed", actor_id=actor_uid,
+        actor_role="client" if actor_uid == deal["shipper_id"] else "driver",
+        conversation_id=deal.get("chat_room_id"), deal_id=deal["id"],
+        load_id=deal.get("cargo_id"), trip_id=deal.get("trip_id"), payload=event_payload, conn=c,
+    )
+    if deal.get("chat_room_id"):
+        text = _DEAL_STATUS_LABELS[new_status]
+        c.execute("INSERT INTO chat_messages (room_id,sender_id,text,event_id) VALUES (?,'system',?,?)",
+                  (deal["chat_room_id"], text, event_id))
+        c.execute("UPDATE chat_rooms SET last_message=?,last_at=CURRENT_TIMESTAMP WHERE id=?",
+                  (text[:50], deal["chat_room_id"]))
+
+
 def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id: str) -> dict | None:
     """Единая точка входа для смены deals.status — валидирует и атомарно
     применяет переход. Вызывается ИЗ УЖЕ ОТКРЫТОЙ транзакции (`c` — тот же
@@ -3680,6 +3720,7 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
     event_payload = {"status": new_status, "old_status": cur_status, "request_id": request_id}
     if new_status == "cancelled" and cur_status in ("in_progress", "at_border"):
         event_payload["mid_transit_cancel"] = True
+    _record_deal_transition_effects(c, deal, new_status, actor_uid, event_payload)
     return event_payload
 
 
@@ -3712,99 +3753,18 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_activ
         if event_payload is None:
             return {"ok": True, "status": new_status}  # идемпотентно
         cur_status = cur_status_before
-    # 🔴 fix: раньше смена статуса сделки (Начать перевозку / Я доехал / отмена)
-    # слала ТОЛЬКО push и не создавала in-app уведомление → ведение сделки не
-    # оставляло следа в колокольчике. Теперь и push, и колокольчик другой стороне,
-    # сумма в валюте груза/рейса, deep-link на /deals/{id}.
+    # Durable effects already committed. Immediate delivery is optional;
+    # the existing outbox worker retries after network/provider failures.
     try:
         other_id = deal["driver_id"] if uid == deal["shipper_id"] else deal["shipper_id"]
-        # Push-closure track: labels keys map 1:1 onto push_i18n event names
-        # ("in_progress" -> "deal_status_in_progress" etc).
-        push_events = {
-            "in_progress": "deal_status_in_progress",
-            "at_border": "deal_status_at_border",
-            "delivered": "deal_status_delivered",
-            "received": "deal_status_received",
-            "completed": "deal_status_completed",
-            "cancelled": "deal_status_cancelled",
-        }
-        if new_status in push_events:
-            cur = "USD"
-            with get_conn() as c2:
-                src = ("cargos", deal["cargo_id"]) if deal.get("cargo_id") else (("trips", deal["trip_id"]) if deal.get("trip_id") else None)
-                if src:
-                    r = c2.execute(f"SELECT currency FROM {src[0]} WHERE id = ?", (src[1],)).fetchone()
-                    cur = ((dict(r).get("currency") if r else None) or "USD")
-            route = f"{deal['from_city']}→{deal['to_city']} · {_money(deal['amount'], cur)}"
-            # «Дом заказа»: смена статуса ведёт в карточку заказа с прогресс-
-            # баром отслеживания. Раньше — в Deal Room (чат), но статус ≠
-            # переписка.
-            if deal.get("cargo_id"):
-                deal_url = f"/cargos/{deal['cargo_id']}"
-            elif deal.get("trip_id"):
-                deal_url = f"/trips/{deal['trip_id']}"
-            else:
-                deal_url = f"/deals/{deal_id}"
-            # Each status is reached at most once per deal (linear FSM,
-            # DealTransitionError guards non-forward moves) — deal_id+status
-            # is inherently a stable, unique-per-occurrence event key.
-            loc = push_gateway.get_recipient_locale(other_id)
-            title, body_txt = push_i18n.push_text(push_events[new_status], loc, route=route)
-            event_key = f"deal:{deal_id}:status:{new_status}"
-            try:
-                send_to_user(other_id, title, body_txt, url=deal_url, kind="deal_status",
-                             data={"event_key": event_key, "event": f"deal.status.{new_status}", "deal_id": deal_id,
-                                   "i18n_event": push_events[new_status], "i18n_params": {"route": route}})
-            except Exception:
-                pass
-            try:
-                from api.notifications import create_notification
-                create_notification(other_id, "deal_status", title, body_txt, "🚛", url=deal_url, event_key=event_key)
-            except Exception:
-                pass
-    except Exception:
-        pass
-    # События сделки в immutable-timeline (не только push): смена статуса
-    # пишется в ленту, чтобы Deal Room показывал живую хронологию сделки,
-    # а не только принятие ставки.
-    try:
-        from database import deal_room_dal
-        actor_role = "client" if uid == deal["shipper_id"] else "driver"
-        # event_payload (old_status/request_id/mid_transit_cancel) уже
-        # посчитан в _transition_deal() выше — единая точка правды.
-        deal_room_dal.create_deal_event(
-            "deal.status_changed",
-            actor_id=uid,
-            actor_role=actor_role,
-            deal_id=deal_id,
-            load_id=deal.get("cargo_id"),
-            trip_id=deal.get("trip_id"),
-            payload=event_payload,
-        )
-    except Exception:
-        pass
-    # Системное сообщение в чат — чтобы оба участника видели смену статуса inline
-    try:
-        chat_labels = {
-            "in_progress": "🚛 Рейс начался",
-            "at_border": "🛂 Груз на границе",
-            "delivered": "✅ Груз доставлен — ожидается подтверждение получения",
-            "received": "✅ Получение груза подтверждено",
-            "completed": "🤝 Сделка завершена",
-            "cancelled": "❌ Сделка отменена",
-        }
-        if new_status in chat_labels and deal.get("chat_room_id"):
-            with get_conn() as c3:
-                c3.execute(
-                    "INSERT INTO chat_messages (room_id, sender_id, text) VALUES (?,?,?)",
-                    (deal["chat_room_id"], "system", chat_labels[new_status]),
-                )
-                c3.execute(
-                    "UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (chat_labels[new_status][:50], deal["chat_room_id"]),
-                )
-    except Exception:
-        pass
+        event_key = f"deal:{deal_id}:status:{new_status}"
+        with get_conn() as c2:
+            pending = c2.execute("SELECT payload FROM push_outbox WHERE event_id=? AND recipient_user_id=?", (event_key, other_id)).fetchone()
+        if pending:
+            payload = json.loads(pending["payload"])
+            send_to_user(other_id, payload["title"], payload["body"], url=payload["data"]["url"], kind="deal_status", data=payload["data"])
+    except Exception as exc:
+        print(f"[deal-fsm] status delivery queued for retry ({type(exc).__name__})", flush=True)
     return {"ok": True, "status": new_status}
 
 
