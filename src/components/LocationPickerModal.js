@@ -21,6 +21,7 @@ import { localizePlace } from '../utils/places';
 import { COUNTRIES, COUNTRY_ORDER, POINTS, searchPoints, formatPoint, pointsForCountry } from '../utils/geography';
 import CountryFlag from './ui/v1/CountryFlag';
 import { getCountryName } from '../utils/countries';
+import { customCityForCountry } from '../utils/worldCities';
 
 const RECENT_KEY = 'ur_recent_places';
 const FAV_KEY = 'ur_fav_places';
@@ -116,8 +117,9 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   const hits = useMemo(() => {
     const q = query.trim().toLocaleLowerCase();
     if (!q) return null;
-    const primary = searchPoints(query, {});
+    const primary = searchPoints(query, { country: country || undefined });
     const localized = POINTS.filter((p) => {
+      if (country && p.country !== country && p.partnerCountry !== country) return false;
       const zh = String(localizePlace(p.name, 'ZH') || '').toLocaleLowerCase();
       const en = String(localizePlace(p.name, 'EN') || '').toLocaleLowerCase();
       return zh.includes(q) || en.includes(q);
@@ -127,7 +129,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     const pointHits = [...unique.values()]
       .filter((p) => scope === 'all' || p.type === scope)
       .slice(0, 60);
-    const countryHits = (scope === 'all' || scope === 'country')
+    const countryHits = !country && (scope === 'all' || scope === 'country')
       ? COUNTRY_ORDER.filter((code) => {
         const label = countryLabel(code).toLocaleLowerCase();
         const fallback = String(COUNTRIES[code]?.name || '').toLocaleLowerCase();
@@ -135,7 +137,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
       })
       : [];
     return { countryHits, pointHits };
-  }, [query, scope, lang]);
+  }, [query, scope, lang, country]);
 
   const s = useMemo(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: v1.bg },
@@ -282,7 +284,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
               {query.trim().length >= 2 && hits.countryHits.length === 0 && hits.pointHits.length === 0 ? (
                 <>
                   <View style={s.divider} />
-                  <Row p={{ name: query.trim(), country: 'XX', type: 'city', custom: true }} showHeart={false} />
+                  <Row p={customCityForCountry(query, country)} showHeart={false} />
                 </>
               ) : null}
             </>
@@ -311,7 +313,9 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
                   <View style={s.divider} />
                 </>
               ) : null}
-              {pointsForCountry(country).filter((p) => scope === 'all' || scope === 'country' || p.type === scope).map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
+              {pointsForCountry(country).filter((p) => scope === 'all' || scope === 'country' || p.type === scope).slice(0, 80).map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
+              <Text style={s.empty}>{t('loc_search_ph')} · {t('loc_custom_hint')}</Text>
+              <Text style={[s.sub, { paddingHorizontal: 16 }]}>GeoNames · CC BY 4.0</Text>
             </>
           ) : (
             <>
