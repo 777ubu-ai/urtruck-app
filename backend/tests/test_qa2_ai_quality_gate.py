@@ -4,6 +4,8 @@ import pytest
 
 from qa_ai_service.quality import (
     _currency_amount_facts,
+    _has_unloading_condition,
+    _has_unloading_condition_contradiction,
     repair_logistics_translation,
     stt_prompt,
     transcription_quality_ok,
@@ -536,6 +538,34 @@ def test_russian_unloading_repair_replaces_the_complete_english_permission(candi
     assert translation_quality_ok("Без подтверждения не разгружать.", repaired, "ru", "en") is True
 
 
+@pytest.mark.parametrize(("target", "expected"), [("en", "Do not unload without confirmation"), ("zh", "未经确认不得卸货")])
+def test_russian_unloading_repair_restores_one_dropped_explicit_condition(target, expected):
+    source = "Стоимость перевозки 1250 USD; без подтверждения не разгружать."
+    candidate = "Freight cost 1250 USD." if target == "en" else "运费1250美元。"
+    repaired = repair_logistics_translation(source, candidate, "ru", target)
+    assert expected in repaired
+    assert translation_quality_ok(source, repaired, "ru", target) is True
+
+
+@pytest.mark.parametrize(("candidate", "expected"), [
+    ("Do not unload without confirmation.", True),
+    ("Cannot unload without confirmation.", True),
+    ("Without confirmation not to be unloaded.", True),
+    ("The driver can unload without confirmation.", False),
+])
+def test_english_passive_or_modal_prohibition_is_recognized(candidate, expected):
+    source = "Не разгружать без подтверждения."
+    assert _has_unloading_condition(candidate, "en") is expected
+    assert _has_unloading_condition_contradiction(candidate, "en") is (not expected)
+    assert translation_quality_ok(source, candidate, "ru", "en") is expected
+
+
+@pytest.mark.parametrize(("target", "candidate"), [("en", "Freight 1250 USD."), ("zh", "运费1250美元。")])
+def test_freight_cost_vocabulary_preserves_transport_delivery_concept(target, candidate):
+    source = "Стоимость перевозки 1250 USD."
+    assert "logistics_term_missing:delivery" not in translation_quality_failures(source, candidate, "ru", target)
+
+
 @pytest.mark.parametrize(
     "candidate",
     ["Never unload without confirmation.", "The driver can unload without confirmation."],
@@ -544,7 +574,10 @@ def test_russian_unloading_repair_rejects_ambiguous_or_already_negative_prefix(c
     source = "Без подтверждения не разгружать."
     repaired = repair_logistics_translation(source, candidate, "ru", "en")
     assert repaired == candidate
-    assert translation_quality_ok(source, repaired, "ru", "en") is False
+    if candidate.startswith("Never"):
+        assert translation_quality_ok(source, repaired, "ru", "en") is True
+    else:
+        assert translation_quality_ok(source, repaired, "ru", "en") is False
 
 
 def test_russian_unloading_exception_is_not_repaired_into_english_global_prohibition():

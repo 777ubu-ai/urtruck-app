@@ -39,12 +39,12 @@ LOGISTICS_TERMS = {
     "customs": {"en": ("customs",), "ru": ("тамож",), "zh": ("海关",), "kk": ("кеден",)},
     "border": {"en": ("border", "checkpoint"), "ru": ("границ", "погранич"), "zh": ("边境", "口岸", "边界"), "kk": ("шекара",)},
     "loading": {
-        "en": ("loading", "load", "loaded", "unload", "unloading"), "ru": ("загруз", "погруз", "разгруз", "выгруз", "разгруж", "выгруж"),
+        "en": ("loading", "load", "loaded", "unload", "unloaded", "unloading"), "ru": ("загруз", "погруз", "разгруз", "выгруз", "разгруж", "выгруж"),
         "zh": ("装货", "装载", "装卸", "上货", "卸货", "卸载", "卸到", "装车"), "kk": ("тиеу", "тиел", "түсір"),
     },
     "delivery": {
-        "en": ("delivery", "deliver", "shipment"), "ru": ("достав", "перевоз"),
-        "zh": ("交付", "送达", "配送", "交货", "运送", "递送"), "kk": ("жеткіз",),
+        "en": ("delivery", "deliver", "shipment", "transportation", "transport", "freight"), "ru": ("достав", "перевоз", "фрахт"),
+        "zh": ("交付", "送达", "配送", "交货", "运送", "递送", "运费", "运输费", "运输费用"), "kk": ("жеткіз",),
     },
 }
 
@@ -455,7 +455,7 @@ _EN_UNLOADING_GAP = r"(?:(?!\b(?:and|but|or|however)\b)(?!\bunload\w*\b)[^,.!?;:
 _RU_UNLOADING_GAP = r"(?:(?!\b(?:и|но|а|однако)\b)(?!\b(?:разгруж|разгруз)\w*\b)[^,.!?;:，、。！？；]){0,40}?"
 
 UNLOADING_CONDITION_PATTERNS = {
-    "en": (rf"\b(?:do not|don't|must not|mustn't)\s+unload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b",),
+    "en": (rf"\b(?:do not|don't|must not|mustn't|cannot|can't|may not|never)\s+unload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b", r"\bwithout confirmation not to be unloaded\b", rf"\bwithout\s+confirmation\b[^.!?;:]{0,24}\bnot\s+(?:to\s+be\s+)?unload\w*\b", rf"\bnot\s+to\s+be\s+unload\w*\b[^.!?;:]{0,24}\bwithout\s+confirmation\b"),
     "ru": (rf"\bне\s+разгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bне\s+может\s+быть\s+(?:разгруж|выгруж)\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения", rf"\b(?:нельзя|запрещено)\s+(?:разгруж|выгруж)\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*"),
     "zh": (
         r"未经[^,.!?;:，、。！？；]{0,4}确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以|不准)[^,.!?;:，、。！？；]{0,4}卸货",
@@ -489,7 +489,7 @@ def _has_unloading_condition(text: str, language: str) -> bool:
 
 def _has_unloading_condition_contradiction(text: str, language: str) -> bool:
     negative_prefixes = {
-        "en": r"(?:do\s+not|don't|must\s+not|mustn't)\s+$",
+        "en": r"(?:do\s+not|don't|must\s+not|mustn't|cannot|can't|may\s+not|never)\s+$",
         "ru": r"(?:не\s+может\s+быть|не|нельзя|запрещено)\s+$",
     }
     negative_prefix = negative_prefixes.get(language)
@@ -535,6 +535,8 @@ def _replace_positive_unloading_condition(
         }[source]
         source_mentions = len(re.findall(unload_pattern, source_text, re.IGNORECASE))
         target_mentions = len(re.findall(r"(?:卸货|卸载)", translated_text))
+        if source == "ru" and len(source_conditions) == 1 and source_mentions == 1 and target_mentions == 0:
+            return _append_before_punctuation(translated_text, UNLOADING_CONDITION_TRANSLATIONS["zh"])
         positive_matches = [
             match
             for pattern in UNLOADING_CONDITION_CONTRADICTIONS["zh"]
@@ -555,6 +557,12 @@ def _replace_positive_unloading_condition(
         ]
         source_mentions = len(re.findall(r"\b(?:разгруз|разгруж|выгруз|выгруж)\w*", source_text, re.IGNORECASE))
         target_mentions = len(re.findall(r"\bunload\w*\b", translated_text, re.IGNORECASE))
+        # If NLLB drops the single, explicit prohibition altogether, preserve
+        # that source fact with a direct canonical translation.  Ambiguous
+        # messages, exceptions, and any target-side unloading statement are
+        # left for the quality gate to reject.
+        if len(source_conditions) == 1 and source_mentions == 1 and target_mentions == 0:
+            return _append_before_punctuation(translated_text, UNLOADING_CONDITION_TRANSLATIONS["en"])
         modal_patterns = (
             r"\b(?:you\s+)?(?:can|may|could|might|are\s+allowed\s+to|are\s+permitted\s+to)\s+unload\w*\b[^.!?;:]{0,24}\bwithout\s+confirmation\b",
         )
@@ -1057,6 +1065,11 @@ def translation_quality_failures(source_text: str, translated_text: str, source:
         # In a readiness statement, English ``shipment`` denotes cargo; it
         # is not an additional delivery-event fact that must survive twice.
         if name == "delivery" and source == "en" and _polarity(source_text, source, "cargo_readiness"):
+            continue
+        # A price sentence such as "Freight is 1200 USD" is rendered as a
+        # cargo-price statement in Russian; do not demand a second delivery
+        # word for the same freight concept.
+        if name == "delivery" and source == "en" and target == "ru" and re.search(r"\bfreight\s+(?:is|costs?)\s+(?:\$|\d)", source_text, re.IGNORECASE):
             continue
         if _contains_any(source_text, variants[source]) and not _contains_any(translated_text, variants[target]):
             failures.append(f"logistics_term_missing:{name}")
