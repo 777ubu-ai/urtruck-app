@@ -7,6 +7,7 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
 import { getChats, subscribe, getUnreadNotifications } from '../utils/store';
+import { dealWorkspaceIdentity } from '../utils/dealWorkspaceIdentity';
 import { marketAPI } from '../utils/marketAPI';
 import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import BottomNav from '../components/ui/v1/BottomNav';
@@ -67,6 +68,13 @@ import ProfileV2Screen from '../screens/onboarding/ProfileV2Screen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+
+function chatRouteId({ params } = {}) {
+  const p = params || {};
+  return p.dealId || p.roomId || p.tripId || p.cargoId || p.partner?.id
+    ? dealWorkspaceIdentity(p)
+    : undefined;
+}
 
 // (Стаб центральной «+»-вкладки удалён 26.07.2026: у клиента размещение груза
 // переехало кнопкой внутрь «Мои грузы», вкладки Publish больше нет.)
@@ -191,7 +199,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Favorites" component={FavoritesScreen} />
         <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
-        <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+        <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
         <Stack.Screen name="ChatsList" component={ChatsListScreen} />
         <Stack.Screen name="MyTripsList" component={MyTripsScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
@@ -260,7 +268,7 @@ export default function AppNavigator() {
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
           <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
@@ -277,7 +285,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
           <Stack.Screen name="Favorites" component={FavoritesScreen} />
           <Stack.Screen name="ChatsList" component={ChatsListScreen} />

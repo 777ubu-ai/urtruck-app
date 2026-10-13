@@ -7,12 +7,13 @@ from qa_ai_service.quality import (
     transcription_quality_ok,
     translation_quality_failures,
     translation_quality_ok,
+    select_quality_translation,
 )
 
 
 def test_quality_422_exposes_reason_codes_without_candidate_text():
     service = (Path(__file__).parents[1] / "qa_ai_service" / "main.py").read_text()
-    assert '"reason_codes": gate_failures' in service
+    assert '"reason_codes": best_failures' in service
     assert '"candidate": translated' not in service
 
 
@@ -34,6 +35,20 @@ def test_logistics_translation_accepts_correct_meaning():
     source = "Cargo is ready. Please arrive at the warehouse tomorrow morning."
     good = "货物已准备好。请明天早上到仓库。"
     assert translation_quality_ok(source, good, "en", "zh") is True
+
+
+def test_quality_gate_selects_valid_nbest_candidate_without_source_fallback():
+    source = "TEST: 1500 USD, 20 tonnes. Do not unload without confirmation."
+    rejected = "测试：1500美元，20吨。"
+    accepted = "测试：1500 USD，20吨。未经确认不得卸货。"
+    selected, failures = select_quality_translation(source, [rejected, accepted], "en", "zh")
+    assert selected == accepted
+    assert failures == []
+
+    selected, failures = select_quality_translation(source, [rejected], "en", "zh")
+    assert selected == rejected
+    assert failures
+    assert selected != source
 
 
 def test_route_clear_is_traffic_status_not_route_cleaning_en_zh():

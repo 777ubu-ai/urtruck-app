@@ -696,3 +696,21 @@ def translation_quality_failures(source_text: str, translated_text: str, source:
 
 def translation_quality_ok(source_text: str, translated_text: str, source: str, target: str) -> bool:
     return not translation_quality_failures(source_text, translated_text, source, target)
+
+
+def select_quality_translation(
+    source_text: str, candidates: list[str], source: str, target: str
+) -> tuple[str | None, list[str]]:
+    """Return the first fully valid model candidate or the least-failing one."""
+    best_text: str | None = None
+    best_failures: list[str] | None = None
+    for candidate in candidates:
+        text = str(candidate or "").strip()
+        if not text:
+            continue
+        failures = translation_quality_failures(source_text, text, source, target)
+        if not failures:
+            return text, []
+        if best_failures is None or len(failures) < len(best_failures):
+            best_text, best_failures = text, failures
+    return best_text, best_failures or []

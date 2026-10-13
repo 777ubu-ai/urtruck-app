@@ -19,7 +19,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -332,6 +332,7 @@ const ChatWallpaperPattern = React.memo(function ChatWallpaperPattern({ color, v
 });
 
 export default function DealWorkspaceScreenV2({ navigation, route }) {
+  const isFocused = useIsFocused();
   const { t, lang, sp } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const colors = useV1Colors();
@@ -1005,7 +1006,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         if (cancelled) return;
         const next = result?.eligible ? 'eligible' : result?.already_reviewed ? 'submitted' : 'unavailable';
         setReviewEligibility(next);
-        if (next === 'eligible' && promptedReviewRef.current !== dealId) {
+        if (next === 'eligible' && isFocused && promptedReviewRef.current !== dealId) {
           promptedReviewRef.current = dealId;
           setRatingModalOpen(true);
         }
@@ -1014,13 +1015,13 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         if (cancelled) return;
         const fallback = error?.status === 404 ? 'eligible' : 'error';
         setReviewEligibility(fallback);
-        if (fallback === 'eligible' && promptedReviewRef.current !== dealId) {
+        if (fallback === 'eligible' && isFocused && promptedReviewRef.current !== dealId) {
           promptedReviewRef.current = dealId;
           setRatingModalOpen(true);
         }
       });
     return () => { cancelled = true; };
-  }, [deal?.status, recipientId, dealId]);
+  }, [deal?.status, recipientId, dealId, isFocused]);
 
   // Shared by the composer, quick-reply, and call-link — every "send a fixed
   // string" action funnels through here so error handling (section 6) is

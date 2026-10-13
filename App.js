@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
 import { Platform, AppState, Linking, BackHandler } from 'react-native';
@@ -146,12 +146,9 @@ function navigateFromUrl(navRef, url, role) {
       // leaving the user on whatever root screen happened to be active.
       navRef.current.navigate('Main', { screen: 'Deals', params: { role } });
     } else if (kind === 'deals' && id) {
-      // A push target is a nested screen. First make Deals the meaningful
-      // parent tab, then push the exact deal. Hardware Back must never return
-      // to an unrelated root (for example Cargo Feed) just because that was
-      // foreground before the notification arrived.
-      navRef.current.navigate('Main', { screen: 'Deals', params: { role } });
-      setTimeout(() => navRef.current?.navigate('Chat', { dealId: id, role, action: params.action || null }), 0);
+      // Chat is a root-stack route above Main. Reusing its stable getId keeps
+      // a repeated push/deep-link from replacing the active deal workspace.
+      navRef.current.navigate('Chat', { dealId: id, role, action: params.action || null });
       return;
       // BUG-002: deals → Deal Room (ChatScreen с dealId), как в
       // NotificationsScreen. Раньше кидало в общий список чатов без контекста.
@@ -165,8 +162,7 @@ function navigateFromUrl(navRef, url, role) {
       // object (spread, not a named allow-list), so this alone is enough
       // for DealWorkspaceScreenV2 to see it on mount.
     } else if (kind === 'chats' && id) {
-      navRef.current.navigate('Main', { screen: 'Deals', params: { role } });
-      setTimeout(() => navRef.current?.navigate('Chat', { roomId: id, role }), 0);
+      navRef.current.navigate('Chat', { roomId: id, role });
       return;
     } else if (kind === 'driver' && id) {
       // Deep-link audit P1 (2026-09-14): ShareModal builds
@@ -230,6 +226,7 @@ function AppInner() {
   const navRef = useRef();
   const navReadyRef = useRef(false);
   const pendingUrlRef = useRef(null);
+  const routeFromUrlRef = useRef(null);
   const { session, hasToken } = useAuth();
   const { theme, isDark } = useTheme();
 
@@ -280,7 +277,17 @@ function AppInner() {
   // P5: единая точка навигации по url из пуша. Если навигатор не готов или
   // пользователь ещё не в авторизованном стеке — откладываем url и повторим,
   // когда всё будет готово (см. useEffect ниже и onReady у контейнера).
-  const routeFromUrl = (url) => {
+  const dispatchPendingUrl = useCallback(() => {
+    if (!pendingUrlRef.current || !navReadyRef.current || !navRef.current) return;
+    const url = pendingUrlRef.current;
+    const parsed = parseNotifUrl(url);
+    const needsAuth = parsed && ['chats', 'chat', 'deals', 'driver', 'profile', 'notifications'].includes(parsed.kind);
+    if (needsAuth && !authedForDeepLink) return;
+    pendingUrlRef.current = null;
+    navigateFromUrl(navRef, url, session?.user?.role);
+  }, [authedForDeepLink, session?.user?.role]);
+
+  const routeFromUrl = useCallback((url) => {
     if (!url) return;
     const parsed = parseNotifUrl(url);
     const needsAuth = parsed && ['chats', 'chat', 'deals', 'driver', 'profile', 'notifications'].includes(parsed.kind);
@@ -288,30 +295,24 @@ function AppInner() {
       pendingUrlRef.current = url;  // отложить
       return;
     }
+    pendingUrlRef.current = null;
     navigateFromUrl(navRef, url, session?.user?.role);
-  };
+  }, [authedForDeepLink, session?.user?.role]);
+  routeFromUrlRef.current = routeFromUrl;
 
   // Повторяем отложенный deep-link, когда появилась авторизация (или навигатор
   // стал готов через onReady, который тоже дергает routeFromUrl).
-  useEffect(() => {
-    if (pendingUrlRef.current && navReadyRef.current && authedForDeepLink) {
-      const u = pendingUrlRef.current;
-      pendingUrlRef.current = null;
-      // P3-fix: передаём role — иначе отложенный deeplink доигрывался без
-      // роли и CargoDetail/TripDetail открывались в неправильном виде.
-      setTimeout(() => navigateFromUrl(navRef, u, session?.user?.role), 250);
-    }
-  }, [authedForDeepLink]);
+  useEffect(() => { dispatchPendingUrl(); }, [dispatchPendingUrl]);
 
   // Web (PWA) — Service Worker присылает postMessage при tap по уведомлению.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof navigator === 'undefined') return;
     const handler = (event) => {
-      if (event.data?.type === 'notification' && event.data.url) routeFromUrl(event.data.url);
+      if (event.data?.type === 'notification' && event.data.url) routeFromUrlRef.current?.(event.data.url);
     };
     navigator.serviceWorker?.addEventListener('message', handler);
     return () => navigator.serviceWorker?.removeEventListener('message', handler);
-  }, [authedForDeepLink]);
+  }, []);
 
   // App/universal links outside push taps: urtruck://notifications,
   // https://urtruck.kz/cargos/{id}, /trips/{id} и другие поддержанные url
@@ -322,17 +323,15 @@ function AppInner() {
     let active = true;
     Linking.getInitialURL()
       .then((url) => {
-        if (active && url) routeFromUrl(url);
+        if (active && url) routeFromUrlRef.current?.(url);
       })
       .catch(() => {});
-    const sub = Linking.addEventListener('url', ({ url }) => {
-      if (url) routeFromUrl(url);
-    });
+    const sub = Linking.addEventListener('url', ({ url }) => routeFromUrlRef.current?.(url));
     return () => {
       active = false;
       sub?.remove?.();
     };
-  }, [authedForDeepLink]);
+  }, []);
 
   // Native (iOS/Android) — tap по пушу в фоне/закрытом приложении + cold start.
   useEffect(() => {
@@ -436,7 +435,7 @@ function AppInner() {
         <NavigationContainer
           ref={navRef}
           theme={navTheme}
-          onReady={() => { navReadyRef.current = true; if (pendingUrlRef.current) routeFromUrl(pendingUrlRef.current); }}
+          onReady={() => { navReadyRef.current = true; dispatchPendingUrl(); }}
         >
           <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.bg} />
           <AppNavigator />
