@@ -574,6 +574,19 @@ def _replace_positive_unloading_condition(
             for pattern in modal_patterns
             for match in re.finditer(pattern, translated_text, re.IGNORECASE)
         ]
+        negative_matches = [
+            match
+            for pattern in UNLOADING_CONDITION_PATTERNS["en"]
+            for match in re.finditer(pattern, translated_text, re.IGNORECASE)
+        ]
+        # A model can emit both a positive permission and its correct
+        # prohibition for the same single source condition. In that narrow
+        # two-mention case, replace only the positive clause and preserve all
+        # surrounding translated facts and the valid negative clause.
+        modal_matches = [
+            match for match in modal_matches
+            if not any(match.start() < negative.end() and negative.start() < match.end() for negative in negative_matches)
+        ]
         # Several modal patterns can match nested spans of the same single
         # clause (for example ``The driver can unload`` also matches the
         # shorter ``can unload`` form). Replace the complete clause once.
@@ -581,13 +594,15 @@ def _replace_positive_unloading_condition(
             match
             for pattern in UNLOADING_CONDITION_CONTRADICTIONS["en"]
             for match in re.finditer(pattern, translated_text, re.IGNORECASE)
+            if not any(match.start() < negative.end() and negative.start() < match.end() for negative in negative_matches)
         ]
+        duplicate_condition = target_mentions == 2 and len(negative_matches) == 1 and len(positive_matches) == 1
         if (
             len(source_conditions) != 1
             or source_mentions != 1
-            or target_mentions != 1
+            or target_mentions != 1 and not duplicate_condition
             or len(positive_matches) != 1
-            or _has_unloading_condition(translated_text, "en")
+            or _has_unloading_condition(translated_text, "en") and not duplicate_condition
         ):
             return translated_text
         match = positive_matches[0]
