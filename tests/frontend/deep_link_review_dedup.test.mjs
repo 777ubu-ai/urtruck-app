@@ -19,28 +19,36 @@ test('cold-start URL is read once and a pending URL is consumed exactly once', (
 
 test('all entry points reuse the single Chat route despite different deal and room params', () => {
   assert.equal((navigator.match(/<Stack\.Screen name="Chat"/g) || []).length, 3);
-  assert.doesNotMatch(navigator, /getId=/);
+  assert.match(navigator, /function chatRouteId\(\) \{\s*return 'chat-workspace';/);
+  assert.equal((navigator.match(/getId=\{chatRouteId\}/g) || []).length, 3);
   assert.match(app, /navRef\.current\.navigate\('Chat', \{ dealId: id, role, action:/);
   assert.match(app, /navRef\.current\.navigate\('Chat', \{ roomId: id, role \}\)/);
   assert.doesNotMatch(app, /navigate\('Main',[\s\S]{0,120}navigate\('Chat'/);
 
   const router = StackRouter({ initialRouteName: 'Main' });
   const config = {
-    routeNames: ['Main', 'Chat'],
-    routeParamList: { Main: undefined, Chat: undefined },
-    routeGetIdList: {},
+    routeNames: ['Main', 'Chat', 'Profile'],
+    routeParamList: { Main: undefined, Chat: undefined, Profile: undefined },
+    routeGetIdList: { Chat: () => 'chat-workspace' },
   };
   const cases = [
-    [{ dealId: 'deal-1', roomId: 'room-1', partner: { id: 'partner-1' } }, { dealId: 'deal-1' }],
-    [{ dealId: 'deal-1', roomId: 'room-1', partner: { id: 'partner-1' } }, { roomId: 'room-1' }],
+    [
+      { type: 'NAVIGATE', payload: { name: 'Chat', params: { dealId: 'deal-1', roomId: 'room-1', partner: { id: 'partner-1' } } } },
+      { type: 'NAVIGATE', payload: { name: 'Profile' } },
+      { type: 'NAVIGATE', payload: { name: 'Chat', params: { dealId: 'deal-1' } } },
+    ],
+    [
+      { type: 'NAVIGATE', payload: { name: 'Chat', params: { dealId: 'deal-1', roomId: 'room-1', partner: { id: 'partner-1' } } } },
+      { type: 'NAVIGATE', payload: { name: 'Profile' } },
+      { type: 'NAVIGATE', payload: { name: 'Chat', params: { roomId: 'room-1' } } },
+    ],
   ];
-  for (const params of cases) {
+  for (const actions of cases) {
     let state = router.getInitialState(config);
-    for (const nextParams of params) {
-      state = router.getStateForAction(state, { type: 'NAVIGATE', payload: { name: 'Chat', params: nextParams } }, config);
-    }
+    for (const action of actions) state = router.getStateForAction(state, action, config);
     assert.equal(state.routes.filter((route) => route.name === 'Chat').length, 1);
-    assert.deepEqual(state.routes.at(-1).params, params.at(-1));
+    assert.equal(state.routes.at(-1).name, 'Chat');
+    assert.deepEqual(state.routes.at(-1).params, actions.at(-1).payload.params);
   }
 });
 

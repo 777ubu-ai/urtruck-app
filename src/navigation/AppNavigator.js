@@ -68,6 +68,14 @@ import ProfileV2Screen from '../screens/onboarding/ProfileV2Screen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Chat is a single workspace window. Entry points may identify the same
+// conversation by deal, room, or partner, and may arrive while another root
+// screen is focused. A stable route key makes every Chat navigation return to
+// this one stack entry; ChatScreenV2 resolves the latest params on reuse.
+function chatRouteId() {
+  return 'chat-workspace';
+}
+
 // (Стаб центральной «+»-вкладки удалён 26.07.2026: у клиента размещение груза
 // переехало кнопкой внутрь «Мои грузы», вкладки Publish больше нет.)
 
@@ -191,7 +199,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Favorites" component={FavoritesScreen} />
         <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
-        <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+        <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
         <Stack.Screen name="ChatsList" component={ChatsListScreen} />
         <Stack.Screen name="MyTripsList" component={MyTripsScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
@@ -260,7 +268,7 @@ export default function AppNavigator() {
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
           <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
@@ -277,7 +285,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
           <Stack.Screen name="Favorites" component={FavoritesScreen} />
           <Stack.Screen name="ChatsList" component={ChatsListScreen} />
