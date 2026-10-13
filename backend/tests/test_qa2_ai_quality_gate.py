@@ -240,36 +240,79 @@ def test_all_observed_almaty_variants_are_repaired_in_mixed_candidate():
     assert translation_quality_ok(source, repaired, "ru", "zh") is True
 
 
-def test_message_248_missing_city_still_fails_quality_gate():
-    source = (
-        "Привет! Где находится машина? Документы готовы. Мы едем в Алматы. "
-        "Сообщите время прибытия на границу."
-    )
-    candidate = "你好!车在哪里?文件准备好了.我们正在路上.请告诉我们抵达边境的时间."
-    assert "city_missing:almaty" in translation_quality_failures(source, candidate, "ru", "zh")
+def test_missing_known_route_city_is_preserved_with_direction():
+    source = "Маршрут: Астана → Алматы."
+    candidate = "路线：阿斯塔纳 → ."
+    repaired = repair_logistics_translation(source, candidate, "ru", "zh")
+    assert "Астана" not in repaired
+    assert "阿斯塔纳 → 阿拉木图" in repaired
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
 
 
-def test_message_248_unknown_almaty_spelling_is_not_guessed_or_allowlisted():
+def test_unknown_almaty_spelling_is_replaced_by_the_known_source_city():
     source = "Мы едем в Алматы."
     unknown = "我们要去阿尔玛蒂."
-    assert repair_logistics_translation(source, unknown, "ru", "zh") == unknown
-    assert "city_missing:almaty" in translation_quality_failures(source, unknown, "ru", "zh")
+    repaired = repair_logistics_translation(source, unknown, "ru", "zh")
+    assert "阿拉木图" in repaired
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
 
 
 def test_other_city_cannot_be_repaired_as_almaty():
     source = "Мы едем в Астану."
     wrong_city = "我们要去阿尔马图."
-    assert repair_logistics_translation(source, wrong_city, "ru", "zh") == wrong_city
-    assert "city_missing:astana" in translation_quality_failures(source, wrong_city, "ru", "zh")
+    repaired = repair_logistics_translation(source, wrong_city, "ru", "zh")
+    assert "阿拉木图" not in repaired
+    assert "阿斯塔纳" in repaired
+    assert "unexpected_city:almaty" in translation_quality_failures(source, repaired, "ru", "zh")
 
 
-def test_message_248_repair_does_not_hide_changed_price_or_number():
+def test_message_248_repair_preserves_the_currency_bound_price():
     source = "Мы едем в Алматы. Цена 1450 USD, груз 10 тонн."
     changed = "我们要去阿尔马图.价格 1500 USD,货物 10 吨."
     repaired = repair_logistics_translation(source, changed, "ru", "zh")
     failures = translation_quality_failures(source, repaired, "ru", "zh")
     assert "阿拉木图" in repaired
-    assert "numeric_facts_changed" in failures
+    assert "1450 USD" in repaired
+    assert "numeric_facts_changed" not in failures
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
+def test_controlled_factual_repairs_fix_changed_price_weight_and_unloading_condition():
+    source = (
+        "TEST r2: Freight is 1200 USD, 15 October 2026, Almaty to Astana, "
+        "18 tonnes. Do not unload without confirmation."
+    )
+    candidate = "ТЕСТ r2: Фрахт 1300 USD, 15 октября 2026, Алматы → Астана, груз 20 тонн."
+    repaired = repair_logistics_translation(source, candidate, "en", "ru")
+    assert "1200 USD" in repaired
+    assert "18 тонн" in repaired
+    assert "Разгрузка запрещена без подтверждения." in repaired
+    assert translation_quality_ok(source, repaired, "en", "ru") is True
+
+
+def test_physical_ru_zh_control_preserves_price_date_route_weight_and_negation():
+    source = (
+        "ТЕСТ r1: 1500 USD, 14.10.2026, Астана → Алматы, 20 тонн. "
+        "Не разгружать без подтверждения."
+    )
+    candidate = "测试 r1：1600 USD，2026年10月14日，阿斯塔纳 → ，20 吨。"
+    repaired = repair_logistics_translation(source, candidate, "ru", "zh")
+    assert "1500 USD" in repaired
+    assert "2026年10月14日" in repaired
+    assert "阿斯塔纳 → 阿拉木图" in repaired
+    assert "20 吨" in repaired
+    assert "未经确认不得卸货" in repaired
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
+def test_chinese_unload_prohibition_is_preserved_in_russian_translation():
+    source = "运费1200美元，2026年10月15日从阿拉木图到阿斯塔纳，货重18吨。未经确认不得卸货。"
+    candidate = "Фрахт 1300 USD, 15 октября 2026, Алматы → Астана, груз 20 тонн."
+    repaired = repair_logistics_translation(source, candidate, "zh", "ru")
+    assert "1200" in repaired
+    assert "18 тонн" in repaired
+    assert "Разгрузка запрещена без подтверждения." in repaired
+    assert translation_quality_ok(source, repaired, "zh", "ru") is True
 
 
 def test_message_81_phrase_repair_is_bound_to_the_only_weight_number_zh_ru():

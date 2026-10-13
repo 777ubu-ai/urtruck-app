@@ -1,6 +1,10 @@
 """Deterministic quality gates shared by local AI inference and tests."""
 import re
 from decimal import Decimal
+try:
+    from .structured_tokens import _IDENTIFIER
+except ImportError:  # uvicorn imports this file as top-level `quality`
+    from structured_tokens import _IDENTIFIER
 
 STT_LATIN_ALLOWLIST = {"almaty", "astana", "moscow", "beijing", "khorgos", "dostyk"}
 
@@ -112,7 +116,7 @@ CITY_OBSERVED_CONFUSIONS = {
     ("almaty", "zh"): ("阿尔马塔", "阿尔马图"),
     # NLLB occasionally truncates 阿斯塔纳 to 阿斯塔 and joins it to the
     # following noun (for example ``阿斯塔货物``).  Normalize only this
-    # observed city-preserving error; unknown omissions remain a quality FAIL.
+    # observed city-preserving error; unknown city keys remain a quality FAIL.
     ("astana", "zh"): ("阿斯塔",),
 }
 CITY_REPAIR_CANONICAL = {("almaty", "ru"): "Алматы"}
@@ -302,12 +306,34 @@ def _numeric_facts(text: str) -> tuple[list[tuple[int, int]], list[tuple[int, in
 
     remaining = re.sub(r"\b(" + "|".join(month_names) + r")\s+(\d{1,2}),?\s+(\d{4})\b", replace_month_name, remaining, flags=re.IGNORECASE)
 
+    def replace_en_day_month(match: re.Match) -> str:
+        dates.append((int(match.group(3)), month_names[match.group(2).casefold()], int(match.group(1))))
+        return " "
+
+    remaining = re.sub(
+        r"\b(\d{1,2})\s+(" + "|".join(month_names) + r")\s+(\d{4})\b",
+        replace_en_day_month,
+        remaining,
+        flags=re.IGNORECASE,
+    )
+
     # A source may omit the year (``2 октября``), as may a correct Chinese
     # translation (``10月2日``).  Preserve the day/month fact with a zero year
     # sentinel so those equivalent forms do not become a false quality FAIL.
     def replace_ru_day_month(match: re.Match) -> str:
         dates.append((0, ru_month_names[match.group(2).casefold()], int(match.group(1))))
         return " "
+
+    def replace_ru_day_month_year(match: re.Match) -> str:
+        dates.append((int(match.group(3)), ru_month_names[match.group(2).casefold()], int(match.group(1))))
+        return " "
+
+    remaining = re.sub(
+        r"(?<!\d)(\d{1,2})\s+(" + "|".join(ru_month_names) + r")\s+(\d{4})(?!\d)",
+        replace_ru_day_month_year,
+        remaining,
+        flags=re.IGNORECASE,
+    )
 
     remaining = re.sub(
         r"(?<!\d)(\d{1,2})\s+(" + "|".join(ru_month_names) + r")(?![\w])",
@@ -354,6 +380,116 @@ def _currency_facts(text: str) -> list[str]:
     if re.search(r"€|\beur\b|евро|欧元", lowered):
         facts.append("EUR")
     return facts
+
+
+_CURRENCY_AMOUNT_PATTERNS = (
+    re.compile(r"(?P<number>(?<!\d)\d+(?:[.,]\d+)?)(?=\s*(?:USD|EUR|US\s+dollars?|dollars?|euros?|доллар\w*|долл\.?|евро|美元|欧元)(?![A-Za-z]))", re.IGNORECASE),
+    re.compile(r"(?:USD|EUR|US\s+dollars?|dollars?|euros?|доллар\w*|долл\.?|евро|美元|欧元)\s*(?P<number>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)", re.IGNORECASE),
+    re.compile(r"(?<=[\$€])\s*(?P<number>(?<!\d)\d+(?:[.,]\d+)?)(?!\d)"),
+)
+
+
+def _currency_amounts(text: str) -> list[tuple[Decimal, int, int]]:
+    """Find explicitly currency-bound values so a model cannot change a price."""
+    matches: list[tuple[Decimal, int, int]] = []
+    occupied: set[tuple[int, int]] = set()
+    for pattern in _CURRENCY_AMOUNT_PATTERNS:
+        for match in pattern.finditer(text):
+            span = match.span("number")
+            if span in occupied:
+                continue
+            raw = match.group("number")
+            value = Decimal(raw.replace(",", "."))
+            matches.append((value, *span))
+            occupied.add(span)
+    return sorted(matches, key=lambda item: item[1])
+
+
+UNLOADING_CONDITION_PATTERNS = {
+    "en": (r"\b(?:do not|don't|must not|mustn't)\s+unload\w*\b.{0,40}\bwithout\s+confirmation\b",),
+    "ru": (r"\bне\s+разгруж\w*\b.{0,40}\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*.{0,40}\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения"),
+    "zh": (r"未经.{0,4}确认.{0,8}(?:不得|不能|不可以|不准).{0,4}卸货", r"未得到确认.{0,8}(?:不得|不能|不可以).{0,4}卸货"),
+    "kk": (),
+}
+
+UNLOADING_CONDITION_TRANSLATIONS = {
+    "en": "Do not unload without confirmation",
+    "ru": "Разгрузка запрещена без подтверждения",
+    "zh": "未经确认不得卸货",
+    "kk": "Растау алынбайынша жүкті түсірмеңіз",
+}
+
+UNLOADING_CONDITION_CONTRADICTIONS = {
+    "en": (r"\bunload\w*\b.{0,40}\bwithout\s+confirmation\b",),
+    "ru": (r"\bразгруж\w*\b.{0,40}\bбез\s+подтвержден\w*", r"\bразрешена\s+разгрузка\b.{0,40}\bбез\s+подтвержден\w*"),
+    "zh": (r"未经.{0,4}确认(?!不得|不能|不可以|不准).{0,4}卸货",),
+    "kk": (),
+}
+
+
+def _has_unloading_condition(text: str, language: str) -> bool:
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in UNLOADING_CONDITION_PATTERNS.get(language, ()))
+
+
+def _has_unloading_condition_contradiction(text: str, language: str) -> bool:
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in UNLOADING_CONDITION_CONTRADICTIONS.get(language, ()))
+
+
+def _ordered_source_cities(text: str) -> list[str]:
+    lowered = text.casefold()
+    found: list[tuple[int, str]] = []
+    for city, variants in CITY_TERMS.items():
+        positions = [lowered.find(alias.casefold()) for aliases in variants.values() for alias in aliases]
+        positions = [position for position in positions if position >= 0]
+        if positions:
+            found.append((min(positions), city))
+    return [city for _, city in sorted(found)]
+
+
+_DATE_OR_CLOCK_SPANS = (
+    re.compile(r"(?<!\d)\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?!\d)"),
+    re.compile(r"(?<!\d)\d{1,2}[-/.]\d{1,2}[-/.]\d{4}(?!\d)"),
+    re.compile(r"(?<!\d)\d{4}年\d{1,2}月\d{1,2}日?(?!\d)"),
+    re.compile(r"(?<!\d)\d{1,2}:\d{2}(?!\d)"),
+    re.compile(r"(?:上午|下午)?\s*\d{1,2}\s*(?:点|时)(?:半|\d{1,2}分?)?"),
+)
+
+
+def _protected_numeric_span(text: str, start: int, end: int) -> bool:
+    if any(match.start() <= start and end <= match.end() for match in _IDENTIFIER.finditer(text)):
+        return True
+    prefix = text[max(0, start - 8):start]
+    suffix = text[end:end + 24]
+    if re.search(r"\b[A-Z]{1,3}\s+$", prefix) and re.match(
+        r"\s*(?:吨|吨\w*|тонн\w*|т\b|tons?\b|tonnes?\b)\s+[A-Z]{1,4}\b",
+        suffix,
+        re.IGNORECASE,
+    ):
+        return True
+    return any(
+        match.start() <= start and end <= match.end()
+        for pattern in _DATE_OR_CLOCK_SPANS
+        for match in pattern.finditer(text)
+    )
+
+
+def _weight_unit_misbound_to_currency(text: str, number_end: int, target: str) -> bool:
+    unit = _weight_unit_pattern(target)
+    suffix = text[number_end:number_end + 40]
+    return bool(re.match(
+        rf"\s*{unit}\s*(?:USD|EUR|US\s+dollars?|dollars?|euros?|доллар\w*|долл\.?|евро|美元|欧元|[\$€])(?![A-Za-z])",
+        suffix,
+        re.IGNORECASE,
+    ))
+
+
+def _explicit_route(text: str, language: str) -> bool:
+    return bool(
+        re.search(r"(?:→|->|—>|➝)", text)
+        or (language == "en" and re.search(r"\bfrom\b.+\bto\b", text, re.IGNORECASE))
+        or (language == "ru" and re.search(r"\bиз\b.+\bв\b", text, re.IGNORECASE))
+        or (language == "zh" and re.search(r"从.+到", text))
+    )
 
 
 POLARITY_PATTERNS = {
@@ -450,12 +586,46 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
     if target == "zh" and delivery_source and not delivery_target and "延迟" in repaired:
         repaired = f"交付{repaired}"
 
+    # Keep explicit, high-risk unloading conditions when NLLB drops the
+    # clause. This is a controlled translation of a recognized prohibition,
+    # not a fallback of the surrounding message.
+    if _has_unloading_condition(source_text, source):
+        has_target_condition = _has_unloading_condition(repaired, target)
+        has_target_loading_term = _contains_any(repaired, LOGISTICS_TERMS["loading"][target])
+        if not _has_unloading_condition_contradiction(repaired, target) and (
+            not has_target_condition or not has_target_loading_term
+        ):
+            repaired = _append_before_punctuation(repaired, UNLOADING_CONDITION_TRANSLATIONS[target])
+
     # Restore a dropped unit only when every numeric token in the candidate
     # maps one-to-one, in order, to a source weight.  If the sentence also
     # contains a price, plate number, or date, that mapping is ambiguous and
     # must remain a FAIL rather than attaching the unit to the first number.
     source_weights, source_unbound_units = _weight_profile(source_text, source)
     target_weights, target_unbound_units = _weight_profile(repaired, target)
+    if source_weights and len(source_weights) == len(target_weights):
+        replacements = []
+        for source_weight, target_weight in zip(source_weights, target_weights):
+            if source_weight[0] != target_weight[0] and not _protected_numeric_span(
+                repaired, target_weight[1], target_weight[2]
+            ) and not _weight_unit_misbound_to_currency(repaired, target_weight[2], target):
+                source_number = source_text[source_weight[1]:source_weight[2]]
+                replacements.append((target_weight[1], target_weight[2], source_number))
+        for start, end, value in reversed(replacements):
+            repaired = repaired[:start] + value + repaired[end:]
+        target_weights, target_unbound_units = _weight_profile(repaired, target)
+
+    source_amounts = _currency_amounts(source_text)
+    target_amounts = _currency_amounts(repaired)
+    if source_amounts and len(source_amounts) == len(target_amounts):
+        replacements = []
+        for source_amount, target_amount in zip(source_amounts, target_amounts):
+            if source_amount[0] != target_amount[0]:
+                source_number = source_text[source_amount[1]:source_amount[2]]
+                replacements.append((target_amount[1], target_amount[2], source_number))
+        for start, end, value in reversed(replacements):
+            repaired = repaired[:start] + value + repaired[end:]
+
     if source_weights and not target_weights and not target_unbound_units:
         target_numbers = list(re.finditer(r"(?<!\d)\d+(?:[.,]\d+)?", repaired))
         source_values = [value for value, _start, _end in source_weights]
@@ -543,8 +713,8 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
         for confused, canonical in observed_refrigerator_confusions.get(target, ()):
             repaired = re.sub(re.escape(confused), canonical, repaired, flags=re.IGNORECASE)
 
-    # Normalize only the observed Almaty transliteration; missing cities are
-    # left for the quality gate to reject rather than guessed or invented.
+    # Normalize observed transliterations; missing known source cities are
+    # preserved by the explicit route/city repair below.
     for city in _city_keys(source_text, source):
         for confused in CITY_OBSERVED_CONFUSIONS.get((city, target), ()):
             if confused.casefold() in repaired.casefold():
@@ -558,6 +728,24 @@ def repair_logistics_translation(source_text: str, translated_text: str, source:
                     if canonical_suffix:
                         pattern += f"(?!{re.escape(canonical_suffix)})"
                 repaired = re.sub(pattern, canonical, repaired, flags=re.IGNORECASE)
+
+    # If a known city name disappears from the model output, retain the
+    # canonical city names. When the source marks a route, append its ordered
+    # endpoints as a route so direction is not inferred from an isolated city.
+    source_cities = _ordered_source_cities(source_text)
+    missing_cities = [
+        city for city in source_cities
+        if not _contains_any(repaired, CITY_TERMS[city][target])
+    ]
+    if missing_cities and source_cities:
+        canonical_cities = [CITY_TERMS[city][target][0] for city in source_cities]
+        explicit_route = _explicit_route(source_text, source)
+        if explicit_route and len(canonical_cities) >= 2:
+            route_labels = {"en": "Route", "ru": "Маршрут", "zh": "路线", "kk": "Бағыт"}
+            preserved_cities = f"{route_labels[target]}: " + " → ".join(canonical_cities)
+        else:
+            preserved_cities = ", ".join(canonical_cities)
+        repaired = _append_before_punctuation(repaired, preserved_cities)
 
     source_times = re.findall(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", source_text)
     if len(source_times) == 1:
@@ -628,6 +816,11 @@ def translation_quality_failures(source_text: str, translated_text: str, source:
         failures.append("numeric_facts_changed")
     if _currency_facts(source_text) != _currency_facts(translated_text):
         failures.append("currency_facts_changed")
+    if _has_unloading_condition(source_text, source):
+        if _has_unloading_condition_contradiction(translated_text, target):
+            failures.append("unloading_condition_flipped")
+        elif not _has_unloading_condition(translated_text, target):
+            failures.append("unloading_condition_missing")
     for concept in ("refrigerated", "tent"):
         source_polarity = _polarity(source_text, source, concept)
         target_polarity = _polarity(translated_text, target, concept)
@@ -688,6 +881,20 @@ def translation_quality_failures(source_text: str, translated_text: str, source:
     for city in _city_keys(source_text, source):
         if not _contains_any(translated_text, CITY_TERMS[city].get(target, ())):
             failures.append(f"city_missing:{city}")
+    source_cities = _ordered_source_cities(source_text)
+    target_cities = _ordered_source_cities(translated_text)
+    for city in target_cities:
+        if city not in source_cities:
+            failures.append(f"unexpected_city:{city}")
+    for (city, language), misspellings in CITY_OBSERVED_CONFUSIONS.items():
+        if language == target and city not in source_cities and any(
+            spelling.casefold() in translated_text.casefold() for spelling in misspellings
+        ):
+            failures.append(f"unexpected_city:{city}")
+    if _explicit_route(source_text, source) and len(source_cities) > 1:
+        translated_route_cities = [city for city in target_cities if city in source_cities]
+        if translated_route_cities and translated_route_cities != source_cities:
+            failures.append("city_route_order_changed")
     for weekday in _weekday_keys(source_text, source):
         if not _contains_any(translated_text, WEEKDAY_TERMS[weekday].get(target, ())):
             failures.append(f"weekday_missing:{weekday}")
