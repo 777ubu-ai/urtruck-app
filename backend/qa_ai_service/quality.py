@@ -454,8 +454,12 @@ def _currency_amount_facts(text: str) -> list[tuple[str, Decimal]]:
 _EN_UNLOADING_GAP = r"(?:(?!\b(?:and|but|or|however)\b)(?!\bunload\w*\b)[^,.!?;:，、。！？；]){0,40}?"
 _RU_UNLOADING_GAP = r"(?:(?!\b(?:и|но|а|однако)\b)(?!\b(?:разгруж|разгруз)\w*\b)[^,.!?;:，、。！？；]){0,40}?"
 
+# Пассивный запрет использует тот же ограниченный промежуток внутри фразы.
+# {0,24} внутри f-string превращался в tuple "(0, 24)", поэтому корректное
+# "Not to be unloaded without confirmation" ошибочно считалось разрешением.
+# Проверка промежутка не позволяет скрыть разрешение в соседней фразе.
 UNLOADING_CONDITION_PATTERNS = {
-    "en": (rf"\b(?:do not|don't|must not|mustn't|cannot|can't|may not|never)\s+unload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b", r"\bwithout confirmation not to be unloaded\b", rf"\bwithout\s+confirmation\b[^.!?;:]{0,24}\bnot\s+(?:to\s+be\s+)?unload\w*\b", rf"\bnot\s+to\s+be\s+unload\w*\b[^.!?;:]{0,24}\bwithout\s+confirmation\b"),
+    "en": (rf"\b(?:do not|don't|must not|mustn't|cannot|can't|may not|never)\s+unload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b", r"\bwithout confirmation not to be unloaded\b", rf"\bwithout\s+confirmation\b{_EN_UNLOADING_GAP}\bnot\s+(?:to\s+be\s+)?unload\w*\b", rf"\bnot\s+to\s+be\s+unload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b"),
     "ru": (rf"\bне\s+разгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bне\s+может\s+быть\s+(?:разгруж|выгруж)\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения", rf"\b(?:нельзя|запрещено)\s+(?:разгруж|выгруж)\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*"),
     "zh": (
         r"未经[^,.!?;:，、。！？；]{0,4}确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以|不准)[^,.!?;:，、。！？；]{0,4}卸货",

@@ -30,6 +30,7 @@ DEAL_NOTIFICATION_TYPES = {
 }
 
 _CHAT_NOTIFICATION_TYPES = ("chat_message", "chat_attachment")
+_DEAL_BADGE_NOTIFICATION_TYPES = tuple(sorted(DEAL_NOTIFICATION_TYPES))
 _ACTIVE_CHAT_BADGE_DEAL_STATUSES = (
     "accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received",
 )
@@ -38,12 +39,11 @@ _ACTIVE_CHAT_BADGE_DEAL_STATUSES = (
 def unread_badge_count(user_id: str) -> int:
     """Return the one authoritative native-app badge total for ``user_id``.
 
-    The mobile client intentionally combines two disjoint counters: durable
-    non-chat notifications and unread participant messages in live deal rooms.
-    Counting every unread notification here looks similar, but retains old
-    ``chat_message`` rows after a completed/cancelled deal and leaves a stale
-    APNs/FCM badge on the launcher.  Keep this query in lockstep with
-    ``/notifications/unread`` and ``/chat/unread``.
+    Bottom navigation, launcher and push payloads share a Deals attention
+    counter: durable deal/bid/tracking events plus unread messages in live
+    participant rooms. General reminders and profile reviews remain in the
+    notification history, but must not make a fully read Deals tab show 9+.
+    Chat notification mirrors are excluded to avoid counting a message twice.
     """
     if not user_id:
         return 0
@@ -70,10 +70,11 @@ def unread_badge_count(user_id: str) -> int:
           )
     """
     with get_conn() as c:
+        event_placeholders = ",".join("?" for _ in _DEAL_BADGE_NOTIFICATION_TYPES)
         notification_row = c.execute(
             "SELECT COUNT(*) AS cnt FROM notifications "
-            "WHERE user_id = ? AND is_read = 0 AND type NOT IN (?, ?)",
-            (user_id, *_CHAT_NOTIFICATION_TYPES),
+            f"WHERE user_id = ? AND is_read = 0 AND type IN ({event_placeholders})",
+            (user_id, *_DEAL_BADGE_NOTIFICATION_TYPES),
         ).fetchone()
         chat_row = c.execute(
             chat_query,

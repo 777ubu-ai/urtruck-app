@@ -776,3 +776,28 @@ def test_transcription_allows_known_latin_city_in_russian():
     assert transcription_quality_ok(
         "Груз готов на складе Almaty.", "ru", 0.91
     ) is True
+
+
+@pytest.mark.parametrize("candidate", [
+    "QA4FC RU test: Cost of transportation 1270 USD. Date 18 October 2026. Route Almaty  Astana. Weight 21 tons. Not to be unloaded without confirmation.",
+    "QA4FC RU test: Transportation cost 1270 USD. Date 18 October 2026. Route Almaty  Astana. Weight 21 tons. Not to be unloaded without confirmation.",
+    "QA4FC RU test: Transportation cost 1270 USD. Date 18 October 2026. Route Almaty  Astana. Weighs 21 tons. Not to be unloaded without confirmation.",
+])
+def test_actual_nllb_passive_unloading_prohibition_preserves_all_control_facts(candidate):
+    source = "QA4FC RU test: Стоимость перевозки 1270 USD. Дата 18 октября 2026. Маршрут Алматы—Астана. Вес 21 тонна. Без подтверждения не разгружать."
+    assert _has_unloading_condition(candidate, "en") is True
+    assert _has_unloading_condition_contradiction(candidate, "en") is False
+    assert translation_quality_failures(source, candidate, "ru", "en") == []
+    assert repair_logistics_translation(source, candidate, "ru", "en") == candidate
+
+
+@pytest.mark.parametrize("candidate", [
+    "Not to be unloaded without confirmation. You can unload without confirmation.",
+    "Without confirmation unload but not to be unloaded.",
+    "Without confirmation unload; not to be unloaded.",
+    "Not to be unloaded, but unload without confirmation.",
+])
+def test_passive_unloading_prohibition_does_not_hide_positive_or_split_clauses(candidate):
+    assert "unloading_condition_flipped" in translation_quality_failures(
+        "Без подтверждения не разгружать.", candidate, "ru", "en"
+    )
