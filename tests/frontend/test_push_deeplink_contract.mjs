@@ -163,5 +163,5 @@ test('push chat/deal targets reuse the canonical Chat route on repeat taps', () 
   assert.match(chatBranch, /navigate\('Chat', \{ roomId: id, role \}\)/);
   assert.doesNotMatch(dealBranch, /navigate\('Main'/);
   assert.doesNotMatch(chatBranch, /navigate\('Main'/);
-  assert.match((fs.readFileSync('src/navigation/AppNavigator.js', 'utf8')), /getId=\{chatRouteId\}/);
+  assert.doesNotMatch((fs.readFileSync('src/navigation/AppNavigator.js', 'utf8')), /getId=/);
 });

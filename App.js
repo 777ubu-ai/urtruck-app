@@ -146,8 +146,8 @@ function navigateFromUrl(navRef, url, role) {
       // leaving the user on whatever root screen happened to be active.
       navRef.current.navigate('Main', { screen: 'Deals', params: { role } });
     } else if (kind === 'deals' && id) {
-      // Chat is a root-stack route above Main. Reusing its stable getId keeps
-      // a repeated push/deep-link from replacing the active deal workspace.
+      // Every deal and chat link reuses the one root-stack Chat workspace;
+      // the screen resolves whichever identifiers the entry point provides.
       navRef.current.navigate('Chat', { dealId: id, role, action: params.action || null });
       return;
       // BUG-002: deals → Deal Room (ChatScreen с dealId), как в

@@ -68,20 +68,6 @@ import ProfileV2Screen from '../screens/onboarding/ProfileV2Screen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-function chatRouteId({ params } = {}) {
-  const p = params || {};
-  // A workspace may be opened from Deals with dealId, roomId and partner,
-  // then reopened from /chats/{roomId} with only roomId. Prefer the stable
-  // room key so adding/removing display parameters cannot create another
-  // route for the same conversation.
-  if (p.roomId) return `room:${String(p.roomId)}`;
-  if (p.dealId) return `deal:${String(p.dealId)}`;
-  if (p.tripId) return `trip:${String(p.tripId)}`;
-  if (p.cargoId) return `cargo:${String(p.cargoId)}`;
-  if (p.partner?.id) return `partner:${String(p.partner.id)}`;
-  return undefined;
-}
-
 // (Стаб центральной «+»-вкладки удалён 26.07.2026: у клиента размещение груза
 // переехало кнопкой внутрь «Мои грузы», вкладки Publish больше нет.)
 
@@ -205,7 +191,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Favorites" component={FavoritesScreen} />
         <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
-        <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
+        <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
         <Stack.Screen name="ChatsList" component={ChatsListScreen} />
         <Stack.Screen name="MyTripsList" component={MyTripsScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
@@ -274,7 +260,7 @@ export default function AppNavigator() {
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
           <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
@@ -291,7 +277,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
           <Stack.Screen name="Favorites" component={FavoritesScreen} />
           <Stack.Screen name="ChatsList" component={ChatsListScreen} />
