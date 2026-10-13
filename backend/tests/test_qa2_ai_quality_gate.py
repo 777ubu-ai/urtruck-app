@@ -242,6 +242,15 @@ def test_all_observed_almaty_variants_are_repaired_in_mixed_candidate():
     assert translation_quality_ok(source, repaired, "ru", "zh") is True
 
 
+def test_physical_qa2_almaty_variant_is_normalized_to_the_canonical_city():
+    source = "Астана → Алматы."
+    candidate = "阿斯塔纳 → 阿尔马提."
+    repaired = repair_logistics_translation(source, candidate, "ru", "zh")
+    assert "阿斯塔纳 → 阿拉木图" in repaired
+    assert "阿尔马提" not in repaired
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
 def test_missing_known_route_city_is_preserved_with_direction():
     source = "Маршрут: Астана → Алматы."
     candidate = "路线：阿斯塔纳 → ."
