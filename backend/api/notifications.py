@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from database.db import get_conn
 from api.verification_gate import require_level
 
@@ -226,12 +226,24 @@ def badge_count(user=Depends(require_level(1))):
 @notif_router.post("/read-all")
 def mark_all_read(user=Depends(require_level(1))):
     with get_conn() as c:
-        c.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0", (user["id"],))
-    return {"ok": True}
+        if not c.in_transaction:
+            c.execute("BEGIN IMMEDIATE")
+        rows = c.execute("SELECT id,event_key FROM notifications WHERE user_id=? AND is_read=0", (user["id"],)).fetchall()
+        if rows:
+            boundary = max(row["id"] for row in rows)
+            c.execute("UPDATE notifications SET is_read=1 WHERE user_id=? AND is_read=0 AND id<=?", (user["id"], boundary))
+    return {"ok": True, "read_ids": [row["id"] for row in rows],
+            "read_event_keys": [row["event_key"] for row in rows if row["event_key"]]}
 
 
 @notif_router.post("/read/{notif_id}")
 def mark_read(notif_id: int, user=Depends(require_level(1))):
     with get_conn() as c:
-        c.execute("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?", (notif_id, user["id"]))
-    return {"ok": True}
+        if not c.in_transaction:
+            c.execute("BEGIN IMMEDIATE")
+        row = c.execute("SELECT id,event_key FROM notifications WHERE id=? AND user_id=?", (notif_id, user["id"])).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Notification not found")
+        c.execute("UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?", (notif_id, user["id"]))
+    return {"ok": True, "read_ids": [row["id"]],
+            "read_event_keys": [row["event_key"]] if row["event_key"] else []}

@@ -36,3 +36,13 @@ Graphify: AST-only, 10815 nodes / 23766 edges; SQL parser отсутствует
 Независимый усиленный review Auth/DB/FSM, exact-head CI, physical iPhone/Android на новых сборках, полный real push/GPS/deal flow. iOS keyboard correction — SOURCE/UNIT verified; physical fix ещё не подтверждён. QA2 APNs app identity у зарегистрированных iOS устройств отсутствует (app_id NULL), поэтому topic/credentials не подставлялись наугад. QA2 AI timeouts требуют отдельного runtime анализа/приёмки; production OpenAI не менялся. Старый App Store build97/review не изменён. Никакого GO/10 из 10 или production rollout этим отчётом не выдано.
 
 Финальная географическая проверка добавила два соседних guard: country-tab search показывает города выбранной страны; глобальный поиск исключает неутверждённые ISO-коды из внешнего источника. Code snapshot: 6e9a267. Draft PR #520. Итоговые CI/gates проверяются на текущем HEAD PR; результаты старого SHA не переносятся.
+
+## Сохранение совместимости QA2 перед физическим web-прогоном
+
+Независимый Bugbot исходного SHA 89dd791: блокирующих находок нет; целевые frontend 22/22 и backend 46/46 PASS. Security Review Auth/DB/FSM исходного diff: блокирующих находок нет, Auth 9/9 PASS.
+
+Дополнительная сверка фактического QA2 обнаружила P1 интеграционную регрессию: полная замена backend убрала бы существующий OneSignal transport, связывание зарегистрированных устройств и подавление повторной доставки прочитанных уведомлений. Перенесены серверные файлы и поведенческие тесты из 89ee961; пять runtime файлов побайтово совпадают с работающим QA2. Нативные проекты, SDK и versionCode не менялись. Новый transactional FSM и профиль из #520 сохранены.
+
+Целевой совместный набор: 20 pytest PASS (OneSignal registry/authorization/read ownership/retry, atomic FSM, contact email, event contracts). Standalone transport проверяется отдельно. Требуются независимые review нового SHA и exact-head CI до QA2 deploy.
+
+Production не менялась. Перед QA2 deploy: кодовая резервная копия, SQLite online backup, сохранение предыдущего web symlink; nullable contact_email добавляется только после PRAGMA existence check. Физический прогон и получение push не подтверждены этой записью.
