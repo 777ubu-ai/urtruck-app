@@ -526,6 +526,27 @@ def test_unambiguous_russian_unloading_prohibition_is_repaired_in_english():
     assert translation_quality_ok(source, repaired, "ru", "en") is True
 
 
+@pytest.mark.parametrize(
+    "candidate",
+    ["You can unload without confirmation.", "You may unload without confirmation."],
+)
+def test_russian_unloading_repair_replaces_the_complete_english_permission(candidate):
+    repaired = repair_logistics_translation("Без подтверждения не разгружать.", candidate, "ru", "en")
+    assert repaired == "Do not unload without confirmation."
+    assert translation_quality_ok("Без подтверждения не разгружать.", repaired, "ru", "en") is True
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    ["Never unload without confirmation.", "The driver can unload without confirmation."],
+)
+def test_russian_unloading_repair_rejects_ambiguous_or_already_negative_prefix(candidate):
+    source = "Без подтверждения не разгружать."
+    repaired = repair_logistics_translation(source, candidate, "ru", "en")
+    assert repaired == candidate
+    assert translation_quality_ok(source, repaired, "ru", "en") is False
+
+
 def test_russian_unloading_exception_is_not_repaired_into_english_global_prohibition():
     source = "Не разгружать без подтверждения, кроме Астаны."
     candidate = "Unload without confirmation in Astana."

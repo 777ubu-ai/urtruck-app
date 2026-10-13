@@ -555,7 +555,15 @@ def _replace_positive_unloading_condition(
         ]
         source_mentions = len(re.findall(r"\b(?:разгруз|разгруж|выгруз|выгруж)\w*", source_text, re.IGNORECASE))
         target_mentions = len(re.findall(r"\bunload\w*\b", translated_text, re.IGNORECASE))
-        positive_matches = [
+        modal_patterns = (
+            r"\b(?:you\s+)?(?:can|may|could|might|are\s+allowed\s+to|are\s+permitted\s+to)\s+unload\w*\b[^.!?;:]{0,24}\bwithout\s+confirmation\b",
+        )
+        modal_matches = [
+            match
+            for pattern in modal_patterns
+            for match in re.finditer(pattern, translated_text, re.IGNORECASE)
+        ]
+        positive_matches = modal_matches or [
             match
             for pattern in UNLOADING_CONDITION_CONTRADICTIONS["en"]
             for match in re.finditer(pattern, translated_text, re.IGNORECASE)
@@ -569,7 +577,12 @@ def _replace_positive_unloading_condition(
         ):
             return translated_text
         match = positive_matches[0]
-        return translated_text[:match.start()] + UNLOADING_CONDITION_TRANSLATIONS["en"] + translated_text[match.end():]
+        prefix = translated_text[:match.start()]
+        if re.split(r"[.!?;:]", prefix)[-1].strip():
+            return translated_text
+        if re.search(r"\b(?:never|not|cannot|can't|mustn't|may\s+not)\s+$", prefix, re.IGNORECASE):
+            return translated_text
+        return prefix + UNLOADING_CONDITION_TRANSLATIONS["en"] + translated_text[match.end():]
 
     if source != "zh" or target != "ru":
         return translated_text
