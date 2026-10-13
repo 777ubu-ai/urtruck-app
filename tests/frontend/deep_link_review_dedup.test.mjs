@@ -17,7 +17,7 @@ test('cold-start URL is read once and a pending URL is consumed exactly once', (
 });
 
 test('same deal or room uses one stack route and direct links do not pop it first', () => {
-  assert.match(navigator, /function chatRouteId\([\s\S]*dealWorkspaceIdentity\(p\)/);
+  assert.match(navigator, /function chatRouteId\([\s\S]*if \(p\.roomId\) return `room:\$\{String\(p\.roomId\)\}`/);
   assert.equal((navigator.match(/getId=\{chatRouteId\}/g) || []).length, 3);
   assert.match(app, /navRef\.current\.navigate\('Chat', \{ dealId: id, role, action:/);
   assert.match(app, /navRef\.current\.navigate\('Chat', \{ roomId: id, role \}\)/);
@@ -28,4 +28,6 @@ test('only the focused completed-deal workspace opens its review prompt', () => 
   assert.match(workspace, /const isFocused = useIsFocused\(\)/);
   assert.match(workspace, /next === 'eligible' && isFocused/);
   assert.match(workspace, /fallback === 'eligible' && isFocused/);
+  assert.match(workspace, /if \(!isFocused\) setRatingModalOpen\(false\)/);
+  assert.match(workspace, /visible=\{ratingModalOpen && isFocused\}/);
 });

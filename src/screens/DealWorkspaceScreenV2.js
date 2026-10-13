@@ -420,6 +420,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [callMenuOpen, setCallMenuOpen] = React.useState(false);
   const [statusModalOpen, setStatusModalOpen] = React.useState(false);
   const [ratingModalOpen, setRatingModalOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!isFocused) setRatingModalOpen(false);
+  }, [isFocused]);
   const [reviewEligibility, setReviewEligibility] = React.useState('idle');
   const promptedReviewRef = React.useRef(null);
   const [recording, setRecording] = React.useState(false);
@@ -2301,7 +2304,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           testID="deal-workspace-confirm"
         />
         <RatingModal
-          visible={ratingModalOpen}
+          visible={ratingModalOpen && isFocused}
           onClose={() => setRatingModalOpen(false)}
           onSubmitted={() => {
             setReviewEligibility('submitted');

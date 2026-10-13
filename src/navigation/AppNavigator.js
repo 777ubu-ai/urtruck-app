@@ -7,7 +7,6 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
 import { getChats, subscribe, getUnreadNotifications } from '../utils/store';
-import { dealWorkspaceIdentity } from '../utils/dealWorkspaceIdentity';
 import { marketAPI } from '../utils/marketAPI';
 import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import BottomNav from '../components/ui/v1/BottomNav';
@@ -71,9 +70,16 @@ const Tab = createBottomTabNavigator();
 
 function chatRouteId({ params } = {}) {
   const p = params || {};
-  return p.dealId || p.roomId || p.tripId || p.cargoId || p.partner?.id
-    ? dealWorkspaceIdentity(p)
-    : undefined;
+  // A workspace may be opened from Deals with dealId, roomId and partner,
+  // then reopened from /chats/{roomId} with only roomId. Prefer the stable
+  // room key so adding/removing display parameters cannot create another
+  // route for the same conversation.
+  if (p.roomId) return `room:${String(p.roomId)}`;
+  if (p.dealId) return `deal:${String(p.dealId)}`;
+  if (p.tripId) return `trip:${String(p.tripId)}`;
+  if (p.cargoId) return `cargo:${String(p.cargoId)}`;
+  if (p.partner?.id) return `partner:${String(p.partner.id)}`;
+  return undefined;
 }
 
 // (Стаб центральной «+»-вкладки удалён 26.07.2026: у клиента размещение груза
