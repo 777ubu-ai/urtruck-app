@@ -552,6 +552,8 @@ def test_russian_unloading_repair_restores_one_dropped_explicit_condition(target
     ("Cannot unload without confirmation.", True),
     ("Without confirmation not to be unloaded.", True),
     ("The driver can unload without confirmation.", False),
+    ("Without confirmation, unload; not to be unloaded.", False),
+    ("Without confirmation unload but not to be unloaded.", False),
 ])
 def test_english_passive_or_modal_prohibition_is_recognized(candidate, expected):
     source = "Не разгружать без подтверждения."

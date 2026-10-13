@@ -473,7 +473,7 @@ UNLOADING_CONDITION_TRANSLATIONS = {
 }
 
 UNLOADING_CONDITION_CONTRADICTIONS = {
-    "en": (rf"\bunload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b",),
+    "en": (rf"\bunload\w*\b{_EN_UNLOADING_GAP}\bwithout\s+confirmation\b", r"\bwithout\s+confirmation\b[^.!?;:]{0,20}\bunload\w*\b"),
     "ru": (rf"\bразгруж\w*\b{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bбез\s+подтвержден\w*{_RU_UNLOADING_GAP}\bразгруж\w*", rf"\bразрешен\w*\s+разгруз\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bразгруз\w*{_RU_UNLOADING_GAP}\bразрешен\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*", rf"\bможно\s+разгруж\w*{_RU_UNLOADING_GAP}\bбез\s+подтвержден\w*"),
     "zh": (
         r"未经.{0,4}确认(?!不得|不能|不可以|不准).{0,4}(?:卸货|卸载)",
