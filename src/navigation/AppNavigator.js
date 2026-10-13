@@ -1,3 +1,4 @@
+import { onboardingNavKey } from '../utils/onboardingNavKey';
 import React from 'react';
 import { View, Text, Animated } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -149,7 +150,7 @@ function MainTabs({ route }) {
 
 // Реактивная навигация на основе auth state
 export default function AppNavigator() {
-  const { session, hasToken, loading } = useAuth();
+  const { session, hasToken, loading, verificationLevel } = useAuth();
   const { theme } = useTheme();
 
   if (loading) {
@@ -221,8 +222,8 @@ export default function AppNavigator() {
   // корректно false (см. [NAV DIAG] лог). Main и onboarding имеют разные
   // key, поэтому logout сбрасывает стек. Guest → verified без роли сохраняет
   // тот же onboarding navigator: иначе reset из завершившегося OTP попадает
-  // в уже размонтированный стек. Cold start без роли открывает RoleV2.
-  const navKey = (!hasToken || !session) ? 'guest' : (!hasRole ? 'norole' : 'main');
+  // в уже размонтированный стек. Cold start подтверждённого аккаунта без роли открывает RoleV2.
+  const navKey = onboardingNavKey({ hasToken, session, hasRole, verificationLevel });
 
   return (
     <Stack.Navigator

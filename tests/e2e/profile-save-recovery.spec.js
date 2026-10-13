@@ -7,7 +7,7 @@ if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(base)) {
 }
 
 async function openProfile(page, role, response = { ok: true }) {
-  const state = { role: 'guest', patches: [], response, pageErrors: [] };
+  const state = { role: 'guest', level: 1, patches: [], response, pageErrors: [] };
   page.on('pageerror', (error) => state.pageErrors.push(error.message));
   await page.route('**/*', async (route) => {
     const request = route.request();
@@ -19,7 +19,7 @@ async function openProfile(page, role, response = { ok: true }) {
       } else if (url.pathname.endsWith('/register/email/verify')) {
         body = { token: 'mock-profile-token', verification_level: 1, role: null, is_new: true };
       } else if (url.pathname.endsWith('/register/me')) {
-        body = { id: 'mock-profile-user', role: state.role, verification_level: 1, phone: null, full_name: '' };
+        body = { id: 'mock-profile-user', role: state.role, verification_level: state.level, phone: null, full_name: '' };
       } else if (url.pathname.endsWith('/users/me')) {
         if (request.method() === 'PATCH') {
           state.patches.push(request.postDataJSON());
@@ -69,6 +69,15 @@ test('client сохраняет профиль с пустыми optional fields
   expect(state.patches[0]).toMatchObject({ role: 'client', company_name: '', country: '', city: '' });
 });
 
+test('выбранный мессенджер без контакта не блокирует вход', async ({ page }) => {
+  const state = await openProfile(page, 'client');
+  await page.getByTestId('profile-v2-messenger-wechat').click();
+  await expect(page.getByTestId('profile-v2-cta')).toBeEnabled();
+  await page.getByTestId('profile-v2-cta').click();
+  await expect(page.getByTestId('profile-v2-screen')).toHaveCount(0);
+  expect(state.patches[0]).toMatchObject({ messenger_type: 'wechat', messenger_id: '' });
+});
+
 test('ошибка смены телефона видна, данные сохранены, повторный Save возможен', async ({ page }) => {
   const state = await openProfile(page, 'client', { status: 400, body: { detail: { error: 'PHONE_CHANGE_OTP_REQUIRED' } } });
   await page.getByTestId('profile-v2-cta').click();
@@ -91,6 +100,17 @@ test('driver после сохранения переходит к обязат�
   expect(state.patches).toHaveLength(1);
 });
 
+
+test('гостевая сессия после reload не пропускает подтверждение входа', async ({ page }) => {
+  const state = await openProfile(page, 'client');
+  state.level = 0;
+  await page.evaluate(() => localStorage.setItem('ur_verification_level', '0'));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('onb-v2-cta-phone')).toBeVisible();
+  await expect(page.getByTestId('profile-v2-screen')).toHaveCount(0);
+  await expect(page.getByTestId('role-v2-screen')).toHaveCount(0);
+  expect(state.patches).toHaveLength(0);
+});
 
 test('подтверждённый аккаунт без роли восстанавливает выбор роли после reload', async ({ page }) => {
   const state = await openProfile(page, 'client');
