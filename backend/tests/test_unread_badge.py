@@ -420,3 +420,37 @@ def test_history_page_does_not_read_newer_unseen_page():
         latest = conn.execute("SELECT is_read FROM notifications WHERE user_id=? AND body=?",
                               (owner, "newer-not-returned")).fetchone()[0]
     assert latest == 0
+
+
+def test_global_reminders_and_reviews_do_not_pollute_deals_badge():
+    """QA2: 24 reminders + 3 reviews must not leave 9+ on read Deals."""
+    from api.notifications import mark_notifications_read_by_urls
+
+    o, d = _ids()
+    cargo = "badge_scope_" + uuid.uuid4().hex[:8]
+    room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
+    for i in range(24):
+        create_notification(o, "reminder", "Reminder", url="/", event_key=f"{o}:reminder:{i}")
+    for i in range(3):
+        create_notification(o, "review", "Review", url="/profile", event_key=f"{o}:review:{i}")
+    assert unread_badge_count(o) == 0
+    assert push_sender._compute_recipient_badge(o) == 0
+
+    create_notification(o, "bid_created", "New offer", url=f"/cargos/{cargo}", event_key=f"{o}:bid")
+    send_message(SendMessageIn(room_id=room, text="New message"), user=_u(d))
+    assert unread_badge_count(o) == 2
+    assert push_sender._compute_recipient_badge(o) == 2
+    assert unread_badge_count(d) == 0
+    get_messages(room, user=_u(o))
+    assert unread_badge_count(o) == 1
+    assert mark_notifications_read_by_urls(o, [f"/cargos/{cargo}"]) == 1
+    assert unread_badge_count(o) == 0
+    assert push_sender._compute_recipient_badge(o) == 0
+    with get_conn() as c:
+        rows = c.execute("SELECT type,is_read FROM notifications WHERE user_id=? AND type IN ('reminder','review')", (o,)).fetchall()
+    assert len(rows) == 27
+    assert all(not row["is_read"] for row in rows)
+    create_notification(d, "bid_accepted", "Accepted", event_key=f"{d}:accepted")
+    assert unread_badge_count(d) == 1
+    assert unread_badge_count(o) == 0

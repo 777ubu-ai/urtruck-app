@@ -1,3 +1,10 @@
+// Серверный признак имеет приоритет над локальным ID после входа.
+// Fallback нужен для совместимости со старым API; пустые ID не означают «моё».
+export function isOwnDocument(attachment, currentUserId) {
+  if (typeof attachment.mine === 'boolean') return attachment.mine;
+  return Boolean(currentUserId && attachment.uploader_id && attachment.uploader_id === currentUserId);
+}
+
 // Polling must preserve object identity for an unchanged chat history.  Apart
 // from avoiding needless FlatList work this keeps a focused native TextInput
 // outside the list stable on iOS.

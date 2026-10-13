@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import BackButton from '../../components/ui/v1/BackButton';
 import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
 import { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
@@ -67,6 +67,7 @@ const decimal = (value) => String(value || '')
 export default function VehicleSetupCountryScreen({ navigation, route }) {
   const { lang, c } = useVehicleCopy();
   const styles = useVehicleSetupStyles();
+  const insets = useSafeAreaInsets();
   const ceramic = useDriverCeramicColors();
   const { t } = useI18n();
   const { signOut } = useAuth();
@@ -254,7 +255,7 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
       </View>
       {error ? <Text selectable style={styles.error}>{error}</Text> : null}
     </KeyboardSafeScrollView>
-    <View style={styles.footer}>
+    <View style={[styles.footer, { bottom: insets.bottom }]}>
       <Pressable disabled={incomplete || saving} onPress={save} style={[styles.cta, (incomplete || saving) && styles.ctaDisabled]} testID="vehicle-save">
         {saving ? <ActivityIndicator color={ceramic.activeText} /> : <Text style={[styles.ctaText, incomplete && styles.disabledText]}>{c.saveVehicle || c.saveOnly}</Text>}
       </Pressable>

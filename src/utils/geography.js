@@ -21,6 +21,7 @@
 //     for screens that want it.
 
 import { ALL_COUNTRIES } from './countries.js';
+import { worldCitiesForCountry, searchWorldCities } from './worldCities.js';
 
 const CORRIDOR_COUNTRIES = {
   CN: { name: 'Китай' }, KZ: { name: 'Казахстан' }, UZ: { name: 'Узбекистан' },
@@ -235,7 +236,9 @@ export const POINTS = [
 // Search across all visible label surfaces (name + aliases + country
 // name). Empty query returns top 12 entries to keep the UI fast.
 export const searchPoints = (query, { country, type } = {}) => {
-  let pool = POINTS;
+  const curatedNames = new Set(POINTS.filter((p) => p.type === 'city').flatMap((p) => [p.name, ...(p.aliases || [])].map((name) => `${p.country}:${name.toLocaleLowerCase()}`)));
+  const worldHits = searchWorldCities(query, country).filter((p) => COUNTRIES[p.country] && ![p.name, ...p.aliases].some((name) => curatedNames.has(`${p.country}:${name.toLocaleLowerCase()}`)));
+  let pool = [...POINTS, ...worldHits];
   if (country) pool = pool.filter((p) => p.country === country || p.partnerCountry === country);
   if (type) pool = pool.filter((p) => p.type === type);
   if (!query || !query.trim()) return pool.slice(0, 12);
@@ -269,7 +272,10 @@ export const formatPoint = (point) => {
 // Convenience: return only the points belonging to one country, useful
 // for the picker's stage-2 list.
 export const pointsForCountry = (countryCode, type = null) => {
-  let pool = POINTS.filter((p) => p.country === countryCode || p.partnerCountry === countryCode);
+  const curated = POINTS.filter((p) => p.country === countryCode || p.partnerCountry === countryCode);
+  const knownNames = new Set(curated.flatMap((p) => [p.name, ...(p.aliases || [])]).map((name) => name.toLocaleLowerCase()));
+  const cities = worldCitiesForCountry(countryCode).filter((p) => ![p.name, ...p.aliases].some((name) => knownNames.has(name.toLocaleLowerCase())));
+  let pool = [...curated, ...cities];
   if (type) pool = pool.filter((p) => p.type === type);
   return pool;
 };

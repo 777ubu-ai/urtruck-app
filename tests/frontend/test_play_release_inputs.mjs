@@ -35,7 +35,7 @@ test('Play workflow uses validated fraction and records actual upload outcome', 
 test('manual production device-QA APK is opt-in, encrypted, release-signed, and never submits by itself', () => {
   const source = readFileSync('.github/workflows/deploy-play.yml', 'utf8');
   assert.match(source, /build_installable_apk:[\s\S]*?default: false[\s\S]*?type: boolean/);
-  assert.match(source, /installed_version_code=213298108/);
+  assert.match(source, /installed_version_code=213720253/);
   assert.match(source, /Build signed production APK for device QA[\s\S]*?inputs\.build_installable_apk/);
   assert.match(source, /name: Build release AAB\n        if: \$\{\{ github\.event_name != 'workflow_dispatch' \|\| !inputs\.build_installable_apk \|\| inputs\.submit_to_play \}\}/);
   assert.match(source, /EXPO_PUBLIC_API_URL: https:\/\/urtruck\.kz/);

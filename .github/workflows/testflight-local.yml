@@ -22,7 +22,7 @@ jobs:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EXPO_PUBLIC_API_URL: https://urtruck.kz
       URTRUCK_BUILD_FLAVOR: production
-      URTRUCK_SOURCE_SHA: d41c51c39583641e95df9bc914663ca090c1ea48
+      URTRUCK_SOURCE_SHA: ${{ github.sha }}
       EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
       EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
       YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
@@ -32,7 +32,7 @@ jobs:
       - name: Checkout exact release candidate
         uses: actions/checkout@v4
         with:
-          ref: d41c51c39583641e95df9bc914663ca090c1ea48
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Setup Node
@@ -48,7 +48,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = fix/route-publication-no-repeat-vehicle-20261009
+          test "$GITHUB_REF_NAME" = release/store-public-20261010
           test "$(git rev-parse HEAD)" = "$URTRUCK_SOURCE_SHA"
           test -n "${EXPO_TOKEN:-}"
           test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
@@ -112,7 +112,7 @@ jobs:
           assert info['CFBundleIdentifier'] == 'com.urtruck.app'
           assert info['CFBundleShortVersionString'] == '1.0.9'
           number = str(info['CFBundleVersion'])
-          assert number.isdigit() and int(number) > 95
+          assert number.isdigit() and int(number) > 96
           assert config['extra']['urtruckApiUrl'].rstrip('/') == 'https://urtruck.kz'
           assert config['extra']['urtruckBuildFlavor'] == 'production'
           signed = subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(app)], stderr=subprocess.DEVNULL)

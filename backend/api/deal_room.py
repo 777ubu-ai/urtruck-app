@@ -463,4 +463,9 @@ def list_conversation_attachments(conversation_id: str, user=Depends(require_lev
     _assert_deal_room_open(conversation_id, user["id"])
     _ensure_attachment_columns()
     atts = dr.list_attachments(conversation_id)
-    return {"attachments": [_sign_attachment(a) for a in atts]}
+    # Авторство вычисляется по серверной сессии, как у текста и фото.
+    # Локальный ID клиента может отличаться до синхронизации с бэкендом.
+    return {"attachments": [
+        {**_sign_attachment(a), "mine": a.get("uploader_id") == user["id"]}
+        for a in atts
+    ]}

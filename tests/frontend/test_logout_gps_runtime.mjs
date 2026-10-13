@@ -221,7 +221,7 @@ test('late profile refresh cannot commit after logout and another account signs 
   assert.deepEqual(session,{user:{id:'B'}});
 });
 test('signOut checks bounded native stop before clearing session or bearer',()=>{
-  const start=auth.indexOf('const signOut = () => runAuthMutation(async () => {');
+  const start=auth.indexOf('const signOut = (');
   const end=auth.indexOf('const hasTokenRef',start);
   const handler=auth.slice(start,end);
   const check=handler.indexOf('if (!trackingResult?.ok)');
@@ -233,7 +233,7 @@ test('signOut checks bounded native stop before clearing session or bearer',()=>
   assert.match(handler.slice(check,handler.indexOf('try {',check)),/return \{[\s\S]*ok: false/);
   assert.ok(handler.indexOf('restoreBackgroundTrackingForLogoutFailure(authToken, trackingResult.stopped)')<handler.indexOf("reason: 'PENDING_LOGOUT_REVOKE_NOT_DURABLE'"));
   assert.ok(handler.indexOf('await clearBackgroundLocationSampleForLogout(authToken)')<handler.indexOf('setSession(null)'));
-  assert.match(handler,/const signOut = \(\) => runAuthMutation\(async \(\) => \{/);
+  assert.match(handler,/const signOut = \([^\n]*\) => runAuthMutation\(async \(\) => \{/);
   const signIn=auth.slice(auth.indexOf('const signIn ='),auth.indexOf('const setRole'));
   assert.match(signIn,/const signIn = \(phone, level = 1, token = null\) => runAuthMutation\(async \(\) => \{/);
   assert.ok(handler.indexOf("lastSampleCleanup?.reason === 'session_changed'")<handler.indexOf('setSession(null)'));
@@ -254,3 +254,34 @@ for(const mode of ['failed-result','exception','success','cancel']) {
     assert.equal(calls,mode==='cancel'?0:1);
   });
 }
+
+test('queued expiry logout cannot stop tracking or clear a newer login',async()=>{
+  const start=auth.indexOf('const signOut = (');
+  const end=auth.indexOf('  useEffect(() => configureAuthExpiryValidation',start);
+  assert.ok(start>=0 && end>start);
+  let token='A';
+  const ref={current:1};
+  const calls=[];
+  const scope={
+    authGenerationRef:ref, regAPI:{getToken:async()=>token},
+    setAuthExpirySuppressed:()=>calls.push('suppress'),
+    stopBackgroundTrackingForLogout:()=>{calls.push('stop'); return {ok:false};},
+    withTimeout:async value=>value, LOGOUT_NETWORK_TIMEOUT_MS:3000, AbortController,
+  };
+  const api=vm.runInNewContext(authMutationSource+'\n'+auth.slice(start,end)+'\n({runAuthMutation,signOut})',scope);
+  let release;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const signIn=api.runAuthMutation(async()=>{await gate; token='B'; ref.current=2;});
+  const logout=api.signOut({expectedToken:'A',expectedGeneration:1});
+  release();
+  await signIn;
+  assert.equal((await logout).reason,'SESSION_CHANGED');
+  assert.equal(token,'B');
+  assert.equal(ref.current,2);
+  assert.deepEqual(calls,[]);
+  assert.equal((await api.signOut({expectedToken:'B',expectedGeneration:1})).reason,'SESSION_CHANGED');
+  assert.deepEqual(calls,[]);
+  const current=await api.signOut({expectedToken:'B',expectedGeneration:2});
+  assert.equal(current.reason,'BACKGROUND_TRACKING_STOP_FAILED');
+  assert.deepEqual(calls,['suppress','stop','suppress']);
+});

@@ -1,6 +1,7 @@
-"""CPU-safe decoding limits for the private QA2 NLLB service."""
+"""Bounded NLLB decoding limits and candidate count for the private QA2 service."""
 
-TRANSLATE_BEAM_SIZE = 2
+TRANSLATE_BEAM_SIZE = 4
+TRANSLATE_NUM_HYPOTHESES = 3
 TRANSLATE_MIN_DECODING_LENGTH = 64
 TRANSLATE_MAX_DECODING_LENGTH = 512
 

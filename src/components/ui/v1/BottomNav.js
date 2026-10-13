@@ -40,7 +40,7 @@ export default function BottomNav({ state, navigation }) {
   const insets = useSafeAreaInsets();
   const { session, hasToken } = useAuth();
   const { t, sp } = useI18n();
-  const role = session?.user?.role || state.routes[0]?.params?.role || 'client';
+  const role = ['driver', 'client'].includes(session?.user?.role) ? session.user.role : (state.routes[0]?.params?.role || 'client');
   const isDriver = role === 'driver';
   // Owner-approved active state: one UrTruck green for both roles, with no
   // background pill. The filled icon, label and slim underline are the only

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { push } from '../utils/push';
 import { createPushPermissionMonitor } from '../utils/pushPermissionMonitor';
 import { useI18n } from '../utils/useI18n';
@@ -123,6 +124,7 @@ export default function PushPermissionBanner({ enabled }) {
   const denied = permission === 'denied';
 
   return (
+    <SafeAreaView edges={['top']}>
     <View style={[s.wrap, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="push-permission-banner">
       <View style={[s.icon, { backgroundColor: colors.driverSoft }]}><Feather name="bell" size={18} color={accentColor} /></View>
       <View style={s.copy}>
@@ -138,6 +140,7 @@ export default function PushPermissionBanner({ enabled }) {
         <Text style={[s.actionText, { color: accentColor }]}>{denied ? (native ? c.settings : c.retry) : c.enable}</Text>
       </TouchableOpacity>
     </View>
+    </SafeAreaView>
   );
 }
 

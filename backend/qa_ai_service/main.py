@@ -14,13 +14,13 @@ from pydantic import BaseModel, Field
 from transformers import AutoTokenizer
 
 try:
-    from .quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
+    from .quality import repair_logistics_translation, select_quality_translation, stt_prompt, transcription_quality_ok
     from .structured_tokens import translate_preserving_identifiers
-    from .translation_decoding import TRANSLATE_BEAM_SIZE, translation_max_decoding_length
+    from .translation_decoding import TRANSLATE_BEAM_SIZE, TRANSLATE_NUM_HYPOTHESES, translation_max_decoding_length
 except ImportError:  # uvicorn runs this file as top-level main.py in QA2
-    from quality import repair_logistics_translation, stt_prompt, transcription_quality_ok, translation_quality_failures, translation_quality_ok
+    from quality import repair_logistics_translation, select_quality_translation, stt_prompt, transcription_quality_ok
     from structured_tokens import translate_preserving_identifiers
-    from translation_decoding import TRANSLATE_BEAM_SIZE, translation_max_decoding_length
+    from translation_decoding import TRANSLATE_BEAM_SIZE, TRANSLATE_NUM_HYPOTHESES, translation_max_decoding_length
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _translate_slot = threading.BoundedSemaphore(1)
@@ -39,11 +39,9 @@ NLLB_LANGS = {"ru": "rus_Cyrl", "zh": "zho_Hans", "kk": "kaz_Cyrl", "en": "eng_L
 KAZAKH_MARKERS = set("әғқңөұүһіӘҒҚҢӨҰҮҺІ")
 STT_MIN_WORD_CONFIDENCE = float(os.getenv("QA2_STT_MIN_WORD_CONFIDENCE", "0.50"))
 SOURCE_SHA = os.getenv("QA2_AI_SOURCE_SHA", "UNKNOWN").strip() or "UNKNOWN"
-# NLLB on the four-CPU QA2 host was configured with an unnecessarily costly
-# five-way beam and a fixed 512-token output ceiling.  Short chat messages then
-# spent tens of seconds decoding even when their valid translation is only a
-# few tokens.  Keep a conservative two-way beam and size the ceiling from the
-# source length; the semantic quality gate below remains mandatory.
+# Decode a bounded beam and expose three candidates to the unchanged semantic
+# gate. This lets the gate choose a fact-preserving alternative when the top
+# hypothesis drops information, while keeping long-message decoding bounded.
 class TranslateRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     source_lang: str | None = None
@@ -86,10 +84,10 @@ def _load_whisper():
     return _whisper
 
 
-def _translate_prose_piece(text: str, *, source: str, target: str, translator, tokenizer) -> str:
-    """Translate one non-identifier prose piece with the loaded NLLB model."""
+def _translate_prose_candidates(text: str, *, source: str, target: str, translator, tokenizer) -> list[str]:
+    """Return bounded NLLB candidates for one non-identifier prose piece."""
     if not text.strip():
-        return text
+        return [text]
     source_ids = tokenizer.encode(text.strip())
     source_tokens = tokenizer.convert_ids_to_tokens(source_ids)
     target_token = NLLB_LANGS[target]
@@ -97,13 +95,17 @@ def _translate_prose_piece(text: str, *, source: str, target: str, translator, t
         [source_tokens],
         target_prefix=[[target_token]],
         beam_size=TRANSLATE_BEAM_SIZE,
+        num_hypotheses=TRANSLATE_NUM_HYPOTHESES,
         max_decoding_length=translation_max_decoding_length(len(source_tokens)),
     )[0]
-    target_tokens = result.hypotheses[0][1:]
-    return tokenizer.decode(
-        tokenizer.convert_tokens_to_ids(target_tokens),
-        skip_special_tokens=True,
-    ).strip()
+    candidates = []
+    for hypothesis in result.hypotheses[:TRANSLATE_NUM_HYPOTHESES]:
+        target_tokens = hypothesis[1:]
+        candidates.append(tokenizer.decode(
+            tokenizer.convert_tokens_to_ids(target_tokens),
+            skip_special_tokens=True,
+        ).strip())
+    return candidates or [""]
 
 
 @app.on_event("startup")
@@ -140,30 +142,44 @@ def translate(body: TranslateRequest):
         # Opaque values are never given to NLLB.  This avoids both the old
         # plate-corruption bug and the newly observed marker-drop failure;
         # identifiers are copied only by this deterministic local operation.
-        def translate_contextual_prose(value: str) -> str:
-            raw = _translate_prose_piece(
-                value, source=source, target=target, translator=translator, tokenizer=tokenizer
-            )
-            # Repair only the prose sent to NLLB.  Structured identifiers are
-            # appended afterwards by translate_preserving_identifiers(), so a
-            # narrow repair can never rewrite or remove a plate/document ID.
+        candidate_cache: dict[str, list[str]] = {}
+
+        def translate_contextual_prose(value: str, candidate_index: int) -> str:
+            if value not in candidate_cache:
+                candidate_cache[value] = _translate_prose_candidates(
+                    value, source=source, target=target, translator=translator, tokenizer=tokenizer
+                )
+            candidates = candidate_cache[value]
+            raw = candidates[min(candidate_index, len(candidates) - 1)]
+            # Repair only the prose sent to NLLB. Structured identifiers are
+            # appended afterwards, so a repair cannot rewrite an ID.
             return repair_logistics_translation(value, raw, source, target)
 
-        translated = translate_preserving_identifiers(body.text, translate_contextual_prose).strip()
-        translated = repair_logistics_translation(body.text, translated, source, target)
-        if not translated:
+        translations = []
+        for candidate_index in range(TRANSLATE_NUM_HYPOTHESES):
+            translated = translate_preserving_identifiers(
+                body.text,
+                lambda value, index=candidate_index: translate_contextual_prose(value, index),
+            ).strip()
+            translated = repair_logistics_translation(body.text, translated, source, target)
+            translations.append(translated)
+
+        best_translation, best_failures = select_quality_translation(
+            body.text, translations, source, target
+        )
+
+        if not best_translation:
             raise RuntimeError("empty translation")
-        gate_failures = translation_quality_failures(body.text, translated, source, target)
-        if gate_failures:
+        if best_failures:
             raise HTTPException(
                 status_code=422,
                 # The candidate may contain private chat/voice text. Return
                 # only stable machine-readable quality reasons across the
                 # loopback boundary; callers can safely expose these codes.
-                detail={"message": "translation confidence too low", "reason_codes": gate_failures},
+                detail={"message": "translation confidence too low", "reason_codes": best_failures},
             )
         return {
-            "translated_text": translated,
+            "translated_text": best_translation,
             "source_lang": source,
             "target_lang": target,
             "provider": "local_nllb_1_3b",
