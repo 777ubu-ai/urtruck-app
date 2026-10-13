@@ -414,6 +414,7 @@ def test_common_english_copula_and_quantity_are_not_misread_as_plate_ids(source,
     [
         ("IS 1200 USD.", "Есть 1200 USD."),
         ("AS 20 KG.", "Как 20 кг."),
+        ("TRUCK HAS 20 KG.", "Грузовик имеет 20 кг."),
     ],
 )
 def test_uppercase_english_words_are_not_misread_as_plate_ids(source, translated):
@@ -428,6 +429,12 @@ def test_license_plate_identifier_is_preserved_byte_for_byte():
     )
     assert "KZ 777 ABC 02" in translated
     assert "identifier_changed" not in translation_quality_failures(source, translated, "en", "ru")
+
+
+def test_non_cis_plate_like_text_is_not_protected_as_a_plate():
+    source = "TRUCK HAS 20 KG."
+    translated = "Грузовик имеет 20 кг."
+    assert translation_quality_ok(source, translated, "en", "ru") is True
 
 
 def test_identifier_case_change_fails_closed():
