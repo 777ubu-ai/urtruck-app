@@ -197,6 +197,15 @@
       "dependencies": "Единственный writer и auto triggers",
       "checks": "Triggers inspected; main не изменялся",
       "rollback": "Нет нового изменения"
+    },
+    {
+      "source": "independent review d6d2485a",
+      "decision": "INCLUDE",
+      "scenario": "Новый runtime destination либо его parent symlink проверялся только после production writes",
+      "reason": "Подтверждённый P1 исправлен read-only проверкой live destinations/parents до overlay; current inventory не пропускает dangling runtime files и symlink dirs",
+      "dependencies": "existing runtime_release_manifest.py и тесты, writer unchanged",
+      "checks": "44 stdlib guard regressions PASS; final exact-head CI/review PENDING",
+      "rollback": "Отдельный revert собственного P1-fix commit; symlinks/production data не менялись"
     }
   ]
 }

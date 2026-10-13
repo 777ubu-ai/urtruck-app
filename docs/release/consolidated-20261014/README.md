@@ -41,6 +41,10 @@ Push этой интеграционной ветки сам по себе не 
 
 До доказанного noP0/P1, exact SHA CI/review, freeze, data compatibility/rollback, physical core matrix и store readback отправка блокирована требованиями владельца. AFTER_APPROVAL, upload, submitted, approval и publication фиксируются отдельными фактами. Проверки monitoring15/60/180 минут возможны только после реального production изменения и не считаются заранее выполненными.
 
+## Исправление независимого review
+
+Review d6d2485a выявил P1: unsafe destination нового runtime файла мог быть обнаружен лишь после writes. Guard теперь read-only проверяет каждый candidate destination и все parents до первого write; baseline inventory отклоняет dangling runtime file symlinks и symlink directories. Добавлены семь регрессий, всего44 stdlib tests PASS. Existing writer/recovery order, protected storage/venv/env и source contracts сохранены. Финальный новый SHA требует свежего review и полного CI.
+
 ## Продолжение
 
 Получить оригинальный актуальный `UrTruck-pre-review-checkpoint-2026-10-13.md` (поиск local/Desktop/Documents/~/.codex и /private/tmp не нашёл), завершить exact-head gates и восстановить физический доступ iPhone. Новые сборки только после source freeze и подтверждения необходимости. Общий10/10 и фактический выпуск не объявлены.

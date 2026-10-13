@@ -24,13 +24,49 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def safe_file(root: Path, name: str) -> Path:
+def safe_destination(root: Path, name: str) -> Path:
     if not name or not runtime_path(name) or str(PurePosixPath(name)) != name:
         raise ValueError("Invalid runtime path: " + name)
-    target = root / name
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError("Missing or unsafe backend root")
+    # Проверить даже отсутствующий файл кандидата: dangling symlink и любой
+    # symlink-родитель нельзя принимать перед scp overlay.
+    current = root
+    parts = PurePosixPath(name).parts
+    for index, part in enumerate(parts):
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("Missing or unsafe runtime file (symlink): " + name)
+        if current.exists():
+            expected_kind = current.is_file() if index == len(parts) - 1 else current.is_dir()
+            if not expected_kind:
+                raise ValueError("Unsafe runtime destination: " + name)
+    return root / name
+
+
+def safe_file(root: Path, name: str) -> Path:
+    target = safe_destination(root, name)
     if not target.resolve().is_relative_to(root.resolve()) or target.is_symlink() or not target.is_file():
         raise ValueError("Missing or unsafe runtime file: " + name)
     return target
+
+
+def runtime_inventory(root: Path) -> set[str]:
+    actual = set()
+    def fail_scan(error):
+        raise error
+    for directory, dirs, files in os.walk(root, followlinks=False, onerror=fail_scan):
+        parent = Path(directory)
+        dirs[:] = [name for name in dirs if name not in EXCLUDED]
+        for name in dirs:
+            if (parent / name).is_symlink():
+                raise ValueError("Unsafe runtime directory symlink: " + (parent / name).relative_to(root).as_posix())
+        for name in files:
+            path = (parent / name).relative_to(root).as_posix()
+            if runtime_path(path):
+                safe_file(root, path)
+                actual.add(path)
+    return actual
 
 
 def make_manifest(root: Path, names: list[str], source_sha: str, environment: str) -> dict:
@@ -56,13 +92,13 @@ def verify(root: Path, manifest: dict, environment: str, expected_sha: str | Non
             raise ValueError("Invalid runtime hash")
         if digest(safe_file(root, name)) != wanted:
             raise ValueError("Runtime source drift: " + name)
-    actual = {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file() and runtime_path(p.relative_to(root).as_posix())}
+    actual = runtime_inventory(root)
     if actual != set(files):
         raise ValueError("Unexpected or untracked runtime files")
     return {"status": "verified", "source_sha": manifest["source_sha"], "environment": environment, "files": len(files)}
 
 
-def verify_transition(current: dict, candidate: dict, environment: str) -> None:
+def verify_transition(current: dict, candidate: dict, environment: str, root: Path) -> None:
     # Overlay deploy не умеет безопасно удалять файлы. Остановить ДО writes,
     # вместо rm в live backend или частично установленной версии.
     files = candidate.get("files")
@@ -74,6 +110,7 @@ def verify_transition(current: dict, candidate: dict, environment: str) -> None:
         if (not isinstance(name, str) or not runtime_path(name) or str(PurePosixPath(name)) != name
                 or not isinstance(wanted, str) or not re.fullmatch(r"[0-9a-f]{64}", wanted)):
             raise ValueError("Invalid candidate runtime entry")
+        safe_destination(root, name)
     if set(current["files"]) - set(files):
         raise ValueError("Runtime file removals require a staged migration before production writes")
 
@@ -166,7 +203,7 @@ def main() -> None:
         current = json.loads(args.manifest.read_text())
         proof = verify(args.root, current, args.environment, args.source_sha)
         if args.candidate_manifest is not None:
-            verify_transition(current, json.loads(args.candidate_manifest.read_text()), args.environment)
+            verify_transition(current, json.loads(args.candidate_manifest.read_text()), args.environment, args.root)
         if args.listener_port is not None:
             verify_listener(args.root, args.listener_port, args.pm2_process, args.recover_stopped)
     print(json.dumps(proof))

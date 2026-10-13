@@ -59,6 +59,73 @@ class TestPushReleaseIdentity(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "untracked runtime"):
             gate.verify(self.root, self.manifest, "production", SHA)
 
+    def test_dangling_runtime_symlink_blocks_current_baseline(self):
+        path = self.root / "services/new_gateway.py"
+        path.symlink_to(self.root.parent / "absent.py")
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            gate.verify(self.root, self.manifest, "production", SHA)
+        self.assertTrue(path.is_symlink())
+
+    def test_runtime_directory_symlink_blocks_current_baseline(self):
+        outside = self.root.parent / "outside"
+        outside.mkdir()
+        path = self.root / "new_runtime"
+        path.symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            gate.verify(self.root, self.manifest, "production", SHA)
+        self.assertTrue(path.is_symlink())
+
+    def test_candidate_dangling_file_symlink_blocks_transition(self):
+        path = self.root / "services/new_gateway.py"
+        path.symlink_to(self.root.parent / "absent.py")
+        candidate = copy.deepcopy(self.manifest)
+        candidate["files"]["services/new_gateway.py"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            gate.verify_transition(self.manifest, candidate, "production", self.root)
+        self.assertTrue(path.is_symlink())
+        self.assertFalse((self.root.parent / "absent.py").exists())
+
+    def test_candidate_parent_symlinks_block_transition(self):
+        for target in (self.root / "services", self.root.parent / "absent_directory"):
+            with self.subTest(target=target):
+                parent = self.root / "new_runtime"
+                parent.symlink_to(target, target_is_directory=True)
+                try:
+                    candidate = copy.deepcopy(self.manifest)
+                    candidate["files"]["new_runtime/nested/gateway.py"] = "0" * 64
+                    with self.assertRaisesRegex(ValueError, "symlink"):
+                        gate.verify_transition(self.manifest, candidate, "production", self.root)
+                    self.assertTrue(parent.is_symlink())
+                finally:
+                    parent.unlink()
+
+    def test_candidate_file_parent_and_directory_leaf_block_transition(self):
+        for name, collision in (("new_runtime/gateway.py", "new_runtime"), ("services/gateway.py", "services/gateway.py")):
+            with self.subTest(name=name):
+                path = self.root / collision
+                if collision == "new_runtime":
+                    path.write_text("protected pre-existing file")
+                else:
+                    path.mkdir()
+                candidate = copy.deepcopy(self.manifest)
+                candidate["files"][name] = "0" * 64
+                with self.assertRaisesRegex(ValueError, "destination"):
+                    gate.verify_transition(self.manifest, candidate, "production", self.root)
+                self.assertTrue(path.exists())
+
+    def test_candidate_missing_parent_addition_is_read_only_and_allowed(self):
+        candidate = copy.deepcopy(self.manifest)
+        candidate["files"]["new_runtime/nested/gateway.py"] = "0" * 64
+        gate.verify_transition(self.manifest, candidate, "production", self.root)
+        self.assertFalse((self.root / "new_runtime").exists())
+
+    def test_excluded_storage_and_venv_symlinks_remain_protected(self):
+        for name in ("storage", "venv"):
+            (self.root / name).symlink_to(self.root.parent / ("private_" + name), target_is_directory=True)
+        gate.verify(self.root, self.manifest, "production", SHA)
+        self.assertTrue((self.root / "storage").is_symlink())
+        self.assertTrue((self.root / "venv").is_symlink())
+
     def test_env_database_and_storage_are_not_inventoried_or_changed(self):
         extras = {".env": "private configuration", "database/live.db": "business data", "storage/upload.py": "uploaded file", "venv/lib/vendor.py": "installed dependency"}
         for name, content in extras.items():
@@ -164,25 +231,25 @@ class TestPushReleaseIdentity(unittest.TestCase):
         candidate = copy.deepcopy(self.manifest)
         del candidate["files"]["services/push_gateway.py"]
         with self.assertRaisesRegex(ValueError, "staged migration before production writes"):
-            gate.verify_transition(self.manifest, candidate, "production")
+            gate.verify_transition(self.manifest, candidate, "production", self.root)
         gate.verify(self.root, self.manifest, "production", SHA)
 
     def test_renamed_runtime_file_blocks_before_overlay(self):
         candidate = copy.deepcopy(self.manifest)
         candidate["files"]["services/new_gateway.py"] = candidate["files"].pop("services/push_gateway.py")
         with self.assertRaisesRegex(ValueError, "staged migration"):
-            gate.verify_transition(self.manifest, candidate, "production")
+            gate.verify_transition(self.manifest, candidate, "production", self.root)
 
     def test_overlay_addition_without_removal_is_supported(self):
         candidate = copy.deepcopy(self.manifest)
         candidate["files"]["services/new_gateway.py"] = "b" * 64
-        gate.verify_transition(self.manifest, candidate, "production")
+        gate.verify_transition(self.manifest, candidate, "production", self.root)
 
     def test_transition_cannot_use_other_environment(self):
         candidate = copy.deepcopy(self.manifest)
         candidate["environment"] = "qa2"
         with self.assertRaisesRegex(ValueError, "candidate transition"):
-            gate.verify_transition(self.manifest, candidate, "production")
+            gate.verify_transition(self.manifest, candidate, "production", self.root)
 
     def test_explicit_recovery_accepts_stopped_named_process_in_same_root(self):
         state = [{"name":"urtruck-security-api", "pid":0, "pm2_env":{"status":"errored", "pm_cwd":str(self.root)}}]
