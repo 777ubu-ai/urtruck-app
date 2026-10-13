@@ -599,6 +599,17 @@ def _upsert_push_device(c, data, user_id: Optional[str], device_id: Optional[str
     elif user_id is not None:
         _audit(c, "push_devices", token, device_id, None, user_id, "claimed")
 
+    subscription_id, onesignal_user_id = data.onesignal_subscription_id, data.onesignal_user_id
+    supplied_fields = data.model_fields_set
+    if (
+        row is not None and user_id and row["user_id"] == user_id
+        and device_id and row["device_id"] == device_id
+        and (data.app_id is None or data.app_id == row["app_id"])
+        and not supplied_fields.intersection({"onesignal_subscription_id", "onesignal_user_id"})
+    ):
+        # Startup без этих полей сохраняет целую verified пару только той же installation.
+        subscription_id, onesignal_user_id = row["onesignal_subscription_id"], row["onesignal_user_id"]
+
     c.execute(
         """
         INSERT INTO push_devices(
@@ -634,8 +645,8 @@ def _upsert_push_device(c, data, user_id: Optional[str], device_id: Optional[str
             data.app_version,
             data.os_version,
             data.device_name,
-            data.onesignal_subscription_id,
-            data.onesignal_user_id,
+            subscription_id,
+            onesignal_user_id,
         ),
     )
 

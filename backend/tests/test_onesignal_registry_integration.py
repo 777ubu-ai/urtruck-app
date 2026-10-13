@@ -118,3 +118,111 @@ def test_legacy_api_commits_event_before_starting_daemon(monkeypatch):
                 assert row is not None
     monkeypatch.setattr(push_api.threading,"Thread",Thread)
     assert push_api.send_to_user(uid,"T","B",data={"event_id":event,"type":"reminder"}) == 0
+
+
+def legacy_registration(token, device):
+    # Тот же payload native startup: OneSignal и app_id отсутствуют.
+    return {"token": token, "provider": "fcm", "platform": "android",
+            "device_id": device, "app_version": "QA-regression", "locale": "en"}
+
+
+def device_row(token):
+    with get_conn() as c:
+        return dict(c.execute("SELECT * FROM push_devices WHERE push_token=?", (token,)).fetchone())
+
+
+@pytest.mark.parametrize("deactivate_first", [False, True])
+def test_plain_reregistration_preserves_verified_binding_and_transport(pilot, monkeypatch, deactivate_first):
+    uid, auth = identity()
+    token, device = "fcm-" + uuid.uuid4().hex, uuid.uuid4().hex
+    mock_verification(monkeypatch, provider_record(token))
+    assert pilot.post("/push/register-native", json=registration(token, device), headers=auth).status_code == 200
+    if deactivate_first:
+        assert pilot.post("/push/unregister-native", json={"token": token}, headers=auth).status_code == 200
+    # Повторный login того же владельца имеет новую сессию, не чужую привязку.
+    auth = {"Authorization": "Bearer " + reg.create_session(uid)}
+    monkeypatch.setattr(OneSignalTransport, "_get_ipv4",
+                        staticmethod(lambda *a, **k: pytest.fail("Omitted IDs не требуют новой provider lookup")))
+    for _ in range(2):
+        response = pilot.post("/push/register-native", json=legacy_registration(token, device), headers=auth)
+        assert response.status_code == 200, response.text
+        row = device_row(token)
+        assert (row["onesignal_subscription_id"], row["onesignal_user_id"]) == (SUB, SUB)
+        assert row["locale"] == "en" and row["app_id"] == "com.urtruck.app.qa2"
+    calls = []
+    monkeypatch.setattr(OneSignalTransport, "_post_ipv4",
+                        staticmethod(lambda *a, **k: calls.append(k["json"]) or httpx.Response(503)))
+    monkeypatch.setattr(gateway.FCMProvider, "send", lambda *a, **k: pytest.fail("Verified binding потерян: FCM fallback"))
+    result = gateway.send_to_devices(user_id=uid, title="QA", body="QA",
+                                    data={"event_id": "preserve-" + device}, badge=1, mode="native")
+    assert result["retryable"] is True and len(calls) == 1
+
+
+@pytest.mark.parametrize("clear", [
+    {"onesignal_subscription_id": None, "onesignal_user_id": None},
+    {"onesignal_user_id": None},
+])
+def test_explicit_owned_clear_does_not_inherit_a_partial_pair(pilot, monkeypatch, clear):
+    uid, auth = identity()
+    token, device = "fcm-" + uuid.uuid4().hex, uuid.uuid4().hex
+    mock_verification(monkeypatch, provider_record(token))
+    assert pilot.post("/push/register-native", json=registration(token, device), headers=auth).status_code == 200
+    assert pilot.post("/push/register-native", json={**legacy_registration(token, device), **clear},
+                      headers=auth).status_code == 200
+    row = device_row(token)
+    assert row["onesignal_subscription_id"] is None and row["onesignal_user_id"] is None
+
+
+@pytest.mark.parametrize("boundary", ["owner", "device", "app", "missing_device"])
+def test_identity_boundary_never_inherits_old_verified_pair(pilot, monkeypatch, boundary):
+    uid, auth = identity()
+    token, device = "fcm-" + uuid.uuid4().hex, uuid.uuid4().hex
+    mock_verification(monkeypatch, provider_record(token))
+    assert pilot.post("/push/register-native", json=registration(token, device), headers=auth).status_code == 200
+    payload = legacy_registration(token, device)
+    if boundary == "owner":
+        uid, auth = identity()  # разрешённый reassign того же physical device
+    elif boundary == "device":
+        payload["device_id"] = uuid.uuid4().hex
+    elif boundary == "app":
+        payload["app_id"] = "com.urtruck.app"
+    else:
+        payload.pop("device_id")
+    assert pilot.post("/push/register-native", json=payload, headers=auth).status_code == 200
+    row = device_row(token)
+    assert row["user_id"] == uid
+    assert row["onesignal_subscription_id"] is None and row["onesignal_user_id"] is None
+
+
+def test_rotated_native_token_does_not_copy_a_binding_without_verification(pilot, monkeypatch):
+    uid, auth = identity()
+    token, device = "fcm-" + uuid.uuid4().hex, uuid.uuid4().hex
+    mock_verification(monkeypatch, provider_record(token))
+    assert pilot.post("/push/register-native", json=registration(token, device), headers=auth).status_code == 200
+    replacement = "fcm-" + uuid.uuid4().hex
+    assert pilot.post("/push/register-native", json=legacy_registration(replacement, device), headers=auth).status_code == 200
+    row = device_row(replacement)
+    assert row["onesignal_subscription_id"] is None and row["onesignal_user_id"] is None
+    assert device_row(token)["onesignal_subscription_id"] == SUB
+
+
+def test_anonymous_clear_cannot_mutate_a_verified_owned_binding(pilot, monkeypatch):
+    uid, auth = identity()
+    token, device = "fcm-" + uuid.uuid4().hex, uuid.uuid4().hex
+    mock_verification(monkeypatch, provider_record(token))
+    assert pilot.post("/push/register-native", json=registration(token, device), headers=auth).status_code == 200
+    response = pilot.post("/push/register-native",
+                          json={**legacy_registration(token, device), "onesignal_user_id": None})
+    assert response.status_code == 409
+    assert device_row(token)["onesignal_subscription_id"] == SUB
+
+
+def test_invalid_provider_replacement_cannot_change_existing_binding(pilot, monkeypatch):
+    uid, auth = identity()
+    token, device = "fcm-" + uuid.uuid4().hex, uuid.uuid4().hex
+    mock_verification(monkeypatch, provider_record(token))
+    assert pilot.post("/push/register-native", json=registration(token, device), headers=auth).status_code == 200
+    mock_verification(monkeypatch, {**provider_record(token), "token": "not-this-native-token"})
+    response = pilot.post("/push/register-native", json=registration(token, device), headers=auth)
+    assert response.status_code == 400
+    assert device_row(token)["onesignal_subscription_id"] == SUB
