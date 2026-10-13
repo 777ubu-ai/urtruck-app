@@ -26,13 +26,10 @@ test('native push tap routing keeps canonical deep-links for cargo, trip, deal, 
   assert.match(app, /if \(kind === 'deals' && !id\)/);
   assert.match(app, /navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
   assert.match(app, /if \(kind === 'deals' && id\)/);
-  // action is threaded through (Track: Claude harness fix, P1) — backend's
-  // tracking-request/approved/declined/stopped pushes set
-  // url=/deals/{id}?action=tracking and it must not be dropped here.
-  assert.match(app, /navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
-  assert.match(app, /setTimeout\(\(\) => navRef\.current\?\.navigate\('Chat', \{ dealId: id, role, action: params\.action \|\| null \}\), 0\)/);
+  // Action survives, while the stable Chat route handles repeated taps.
+  assert.match(app, /navigate\('Chat', \{ dealId: id, role, action: params\.action \|\| null \}\)/);
   assert.match(app, /if \(kind === 'chats' && id\)/);
-  assert.match(app, /setTimeout\(\(\) => navRef\.current\?\.navigate\('Chat', \{ roomId: id, role \}\), 0\)/);
+  assert.match(app, /navigate\('Chat', \{ roomId: id, role \}\)/);
   assert.match(app, /else if \(kind === 'profile'\)/);
   assert.match(app, /navigate\('Profile'\)/);
   assert.match(app, /else if \(kind === 'notifications'\)/);
@@ -96,7 +93,10 @@ test('Deals has no Bell or notification-inbox entry point; notification routing 
 
 test('auth and notification cold-start deeplinks are queued until nav and auth are ready', () => {
   assert.match(app, /pendingUrlRef\.current = url/);
-  assert.match(app, /if \(pendingUrlRef\.current && navReadyRef\.current && authedForDeepLink\)/);
+  assert.match(app, /const dispatchPendingUrl = useCallback\(\(\) => \{/);
+  assert.match(app, /pendingUrlRef\.current = null;[\s\S]{0,100}navigateFromUrl/);
+  assert.match(app, /routeFromUrlRef\.current = routeFromUrl/);
+  assert.match(app, /Linking\.getInitialURL\(\)[\s\S]*?\}, \[\]\);/);
   assert.match(app, /Notifications\.getLastNotificationResponseAsync/);
   assert.match(app, /Notifications\.addNotificationResponseReceivedListener/);
   assert.match(app, /if \(!authedForDeepLink\) return/);
@@ -129,8 +129,7 @@ test('custom-scheme and universal-link notification entrypoints are parsed as No
 
 test('native app listens to general url entrypoints in addition to push taps', () => {
   assert.match(app, /Linking\.getInitialURL\(\)/);
-  assert.match(app, /Linking\.addEventListener\('url', \(\{ url \}\) =>/);
-  assert.match(app, /if \(url\) routeFromUrl\(url\);/);
+  assert.match(app, /Linking\.addEventListener\('url', \(\{ url \}\) => routeFromUrlRef\.current\?\.\(url\)\)/);
 });
 
 test('ios and android release configs declare urtruck notifications app-link entrypoints', () => {
@@ -157,11 +156,12 @@ test('deploy paths keep .well-known release files instead of dropping hidden ent
 });
 
 
-test('push chat/deal targets establish Deals as their Back parent', () => {
+test('push chat/deal targets reuse the canonical Chat route on repeat taps', () => {
   const dealBranch = app.slice(app.indexOf("kind === 'deals' && id"), app.indexOf("kind === 'chats' && id"));
   const chatBranch = app.slice(app.indexOf("kind === 'chats' && id"), app.indexOf("kind === 'driver' && id"));
-  for (const block of [dealBranch, chatBranch]) {
-    assert.match(block, /navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
-    assert.match(block, /setTimeout\(/);
-  }
+  assert.match(dealBranch, /navigate\('Chat', \{ dealId: id, role, action:/);
+  assert.match(chatBranch, /navigate\('Chat', \{ roomId: id, role \}\)/);
+  assert.doesNotMatch(dealBranch, /navigate\('Main'/);
+  assert.doesNotMatch(chatBranch, /navigate\('Main'/);
+  assert.match((fs.readFileSync('src/navigation/AppNavigator.js', 'utf8')), /getId=\{chatRouteId\}/);
 });
