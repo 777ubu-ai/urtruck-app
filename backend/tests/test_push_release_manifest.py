@@ -129,17 +129,17 @@ class TestPushReleaseIdentity(unittest.TestCase):
                 gate.verify_listener(self.root, 8001)
 
     def test_translation_memory_content_drift_blocks_release(self):
-        path = self.root / "translation_memory/data/terminology.jsonl"
+        path = self.root / "qa_ai_service/translation_memory/data/terminology.jsonl"
         path.parent.mkdir(parents=True)
         path.write_text('{"approved":true}\n')
-        names = self.names + ["translation_memory/data/terminology.jsonl"]
+        names = self.names + ["qa_ai_service/translation_memory/data/terminology.jsonl"]
         manifest = gate.make_manifest(self.root, names, SHA, "production")
         path.write_text('{"stale":true}\n')
         with self.assertRaisesRegex(ValueError, "source drift"):
             gate.verify(self.root, manifest, "production", SHA)
 
     def test_extra_translation_memory_asset_blocks_release(self):
-        path = self.root / "translation_memory/data/unreviewed.jsonl"
+        path = self.root / "qa_ai_service/translation_memory/data/unreviewed.jsonl"
         path.parent.mkdir(parents=True)
         path.write_text('{}\n')
         with self.assertRaisesRegex(ValueError, "untracked runtime"):

@@ -17,7 +17,7 @@ REQUIRED = {"api/notifications.py", "services/push_sender.py", "api/chat.py", "s
 def runtime_path(name: str) -> bool:
     p = PurePosixPath(name)
     return (not p.is_absolute() and ".." not in p.parts and not (set(p.parts) & EXCLUDED)
-            and (p.suffix in {".py", ".sql"} or (p.parent == PurePosixPath("translation_memory/data") and p.suffix == ".jsonl") or p.name in {"requirements.txt", "requirements-test.txt"}))
+            and (p.suffix in {".py", ".sql"} or (p.parent == PurePosixPath("qa_ai_service/translation_memory/data") and p.suffix == ".jsonl") or p.name in {"requirements.txt", "requirements-test.txt"}))
 
 
 def digest(path: Path) -> str:

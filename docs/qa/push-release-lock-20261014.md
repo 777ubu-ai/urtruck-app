@@ -6,7 +6,7 @@
 
 Файлы: scripts/ops/runtime_release_manifest.py, backend/tests/test_push_release_manifest.py, quality-gate-reusable.yml, production-deploy-execute.yml и этот журнал. Auth/FSM/chat/translation/push businesscode, DB/env/dependencies/native/ASC/review защищены и не изменялись.
 
-Новая защита: чистый exact Git checkout создаёт SHA256 manifest tracked backend Python/SQL/requirements и translation_memory/data/*.jsonl. Проверка read-only, без импорта app/startup. Неверный sourceSHA/environment, отсутствующие/лишние/изменённые runtimefiles, unsafepaths и чужой cwd/PID live listener блокируют результат. QA2 не принимается как доказательство production.
+Новая защита: чистый exact Git checkout создаёт SHA256 manifest tracked backend Python/SQL/requirements и qa_ai_service/translation_memory/data/*.jsonl. Проверка read-only, без импорта app/startup. Неверный sourceSHA/environment, отсутствующие/лишние/изменённые runtimefiles, unsafepaths и чужой cwd/PID live listener блокируют результат. QA2 не принимается как доказательство production.
 
 Общий PR/release CI содержит блокирующую сверку manifest и отдельные push delivery/unread/read-to-zero и translation/STT subsets. Полный canonical backend/frontend/security/E2E сохранён. Provider/device delivery не выводится из CI PASS.
 
