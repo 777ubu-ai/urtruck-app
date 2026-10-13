@@ -4,7 +4,19 @@ from decimal import Decimal
 try:
     from .structured_tokens import _IDENTIFIER
 except ImportError:  # uvicorn imports this file as top-level `quality`
-    from structured_tokens import _IDENTIFIER
+    try:
+        from structured_tokens import _IDENTIFIER
+    except ImportError:  # standalone diagnostics load this file from a temp path
+        _IDENTIFIER = re.compile(
+            r"(?<![A-Za-z0-9])(?:"
+            r"[A-Z]{4}\d{7}"
+            r"|[A-Z]{1,3}\s+\d{1,4}\s+[A-Z]{1,4}(?:\s+\d{1,2})?"
+            r"|[A-Z]\d{3}[A-Z]{2}\d{2}"
+            r"|(?:20|40)(?:GP|HC)"
+            r"|[A-Z]{2,8}-\d{2,8}(?:-\d{1,8})*"
+            r")(?![A-Za-z0-9])",
+            re.IGNORECASE,
+        )
 
 STT_LATIN_ALLOWLIST = {"almaty", "astana", "moscow", "beijing", "khorgos", "dostyk"}
 
@@ -434,8 +446,8 @@ def _currency_amount_facts(text: str) -> list[tuple[str, Decimal]]:
 
 
 UNLOADING_CONDITION_PATTERNS = {
-    "en": (r"\b(?:do not|don't|must not|mustn't)\s+unload\w*\b[^,.!?;:，、。！？；]{0,40}?\bwithout\s+confirmation\b",),
-    "ru": (r"\bне\s+разгруж\w*\b[^,.!?;:，、。！？；]{0,40}?\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*[^,.!?;:，、。！？；]{0,40}?\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения"),
+    "en": (r"\b(?:do not|don't|must not|mustn't)\s+unload\w*\b(?:(?!\b(?:and|but|or|however)\b)[^,.!?;:，、。！？；]){0,40}?\bwithout\s+confirmation\b",),
+    "ru": (r"\bне\s+разгруж\w*\b(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,40}?\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,40}?\bне\s+разгруж\w*", r"разгрузка\s+запрещена\s+без\s+подтверждения", r"запрещена\s+разгрузка\s+без\s+подтверждения"),
     "zh": (r"未经[^,.!?;:，、。！？；]{0,4}确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以|不准)[^,.!?;:，、。！？；]{0,4}卸货", r"未得到确认[^,.!?;:，、。！？；]{0,8}(?:不得|不能|不可以)[^,.!?;:，、。！？；]{0,4}卸货"),
     "kk": (r"растау алынбайынша.{0,12}түсірмеңіз",),
 }
@@ -448,8 +460,8 @@ UNLOADING_CONDITION_TRANSLATIONS = {
 }
 
 UNLOADING_CONDITION_CONTRADICTIONS = {
-    "en": (r"\bunload\w*\b[^,.!?;:，、。！？；]{0,40}?\bwithout\s+confirmation\b",),
-    "ru": (r"\bразгруж\w*\b[^,.!?;:，、。！？；]{0,40}?\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*[^,.!?;:，、。！？；]{0,40}?\bразгруж\w*", r"\bразрешен\w*\s+разгруз\w*[^,.!?;:，、。！？；]{0,30}?\bбез\s+подтвержден\w*", r"\bразгруз\w*[^,.!?;:，、。！？；]{0,20}?\bразрешен\w*[^,.!?;:，、。！？；]{0,30}?\bбез\s+подтвержден\w*"),
+    "en": (r"\bunload\w*\b(?:(?!\b(?:and|but|or|however)\b)[^,.!?;:，、。！？；]){0,40}?\bwithout\s+confirmation\b",),
+    "ru": (r"\bразгруж\w*\b(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,40}?\bбез\s+подтвержден\w*", r"\bбез\s+подтвержден\w*(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,40}?\bразгруж\w*", r"\bразрешен\w*\s+разгруз\w*(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,30}?\bбез\s+подтвержден\w*", r"\bразгруз\w*(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,20}?\bразрешен\w*(?:(?!\b(?:и|но|а|однако)\b)[^,.!?;:，、。！？；]){0,30}?\bбез\s+подтвержден\w*"),
     "zh": (r"未经.{0,4}确认(?!不得|不能|不可以|不准).{0,4}卸货",),
     "kk": (r"\b(?:жүкті\s+)?түсір\w*.{0,30}растау\s+алмай-ақ",),
 }
