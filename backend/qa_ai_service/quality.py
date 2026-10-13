@@ -593,10 +593,16 @@ def _replace_positive_unloading_condition(
         match = positive_matches[0]
         prefix = translated_text[:match.start()]
         # Allow preceding translated facts (NLLB often emits a single
-        # punctuation-light line), but never rewrite a phrase whose subject
-        # or permission modal sits immediately before the matched condition.
+        # punctuation-light line), but only when the immediate prefix is a
+        # recognizable numeric logistics fact. Unknown subjects and clauses
+        # fail closed instead of yielding malformed English.
         prefix_tail = re.split(r"[.!?;:]", prefix)[-1]
-        if re.search(r"\b(?:can|may|could|might|must|should|allowed(?:\s+to)?|permitted(?:\s+to)?|possible\s+to|able\s+to)\s+$", prefix_tail, re.IGNORECASE):
+        fact_prefix = re.search(
+            r"\b(?:freight|transport|cost|price|date|route|weight)\b[^.!?;:]{0,100}\d[^.!?;:]*,\s*$",
+            prefix_tail,
+            re.IGNORECASE,
+        )
+        if prefix_tail.strip() and not fact_prefix:
             return translated_text
         if re.search(r"\b(?:never|not|cannot|can't|mustn't|may\s+not)\s+$", prefix, re.IGNORECASE):
             return translated_text

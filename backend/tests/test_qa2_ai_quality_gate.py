@@ -607,6 +607,19 @@ def test_russian_unloading_repair_does_not_overwrite_a_translated_exception():
     assert translation_quality_ok(source, repaired, "ru", "en") is False
 
 
+@pytest.mark.parametrize("candidate", [
+    "The shipper can unload without confirmation.",
+    "He can unload without confirmation.",
+    "You shouldn't unload without confirmation.",
+    "The driver wants to unload without confirmation.",
+])
+def test_russian_unloading_repair_rejects_unrecognized_or_negative_prefixes(candidate):
+    source = "Без подтверждения не разгружать."
+    repaired = repair_logistics_translation(source, candidate, "ru", "en")
+    assert repaired == candidate
+    assert translation_quality_ok(source, repaired, "ru", "en") is False
+
+
 def test_russian_unloading_exception_is_not_repaired_into_english_global_prohibition():
     source = "Не разгружать без подтверждения, кроме Астаны."
     candidate = "Unload without confirmation in Astana."
