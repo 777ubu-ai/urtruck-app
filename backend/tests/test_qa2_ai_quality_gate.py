@@ -503,6 +503,22 @@ def test_unambiguous_positive_chinese_unloading_is_repaired_for_explicit_prohibi
 
 
 @pytest.mark.parametrize(
+    ("source", "source_lang"),
+    [
+        ("Do not unload without confirmation except in Astana.", "en"),
+        ("Не разгружать без подтверждения, кроме Астаны.", "ru"),
+    ],
+)
+def test_unloading_condition_with_exception_is_not_rewritten_as_global_prohibition(source, source_lang):
+    candidate = "没有确认，可以卸载，在阿斯塔纳。"
+    repaired = repair_logistics_translation(source, candidate, source_lang, "zh")
+    assert repaired == candidate
+    assert "unloading_condition_flipped" in translation_quality_failures(
+        source, repaired, source_lang, "zh"
+    )
+
+
+@pytest.mark.parametrize(
     ("source", "candidate", "source_lang", "target_lang"),
     [
         ("Не разгружать без подтверждения.", "Unload without confirmation.", "ru", "en"),

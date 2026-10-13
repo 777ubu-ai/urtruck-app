@@ -518,6 +518,12 @@ def _replace_positive_unloading_condition(
     failure instead of being rewritten globally.
     """
     if target == "zh" and source in {"en", "ru"}:
+        source_exception = {
+            "en": r"\b(?:except|unless|excluding|other than)\b",
+            "ru": r"\b(?:кроме|исключая|исключением)\b",
+        }[source]
+        if re.search(source_exception, source_text, re.IGNORECASE):
+            return translated_text
         source_conditions = [
             match
             for pattern in UNLOADING_CONDITION_PATTERNS[source]
