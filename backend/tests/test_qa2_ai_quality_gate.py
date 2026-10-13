@@ -409,6 +409,17 @@ def test_common_english_copula_and_quantity_are_not_misread_as_plate_ids(source,
     assert translation_quality_ok(source, translated, "en", "ru") is True
 
 
+@pytest.mark.parametrize(
+    ("source", "translated"),
+    [
+        ("IS 1200 USD.", "Есть 1200 USD."),
+        ("AS 20 KG.", "Как 20 кг."),
+    ],
+)
+def test_uppercase_english_words_are_not_misread_as_plate_ids(source, translated):
+    assert translation_quality_ok(source, translated, "en", "ru") is True
+
+
 def test_license_plate_identifier_is_preserved_byte_for_byte():
     source = "Truck KZ 777 ABC 02 is ready."
     translated = translate_preserving_identifiers(
