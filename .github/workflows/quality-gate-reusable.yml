@@ -81,7 +81,7 @@ jobs:
                 or account_deletion or storage_path or token_security or race \
                 or toctou or p0_ or deal_bid or env_contract or raw_secrets"
 
-      - name: Push delivery, unread and read-to-zero contract
+      - name: Push/Bell critical subset
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
           APP_ENV: test

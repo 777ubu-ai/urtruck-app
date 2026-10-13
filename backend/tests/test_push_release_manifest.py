@@ -128,6 +128,38 @@ class TestPushReleaseIdentity(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "missing or ambiguous"):
                 gate.verify_listener(self.root, 8001)
 
+    def test_translation_memory_content_drift_blocks_release(self):
+        path = self.root / "translation_memory/data/terminology.jsonl"
+        path.parent.mkdir(parents=True)
+        path.write_text('{"approved":true}\n')
+        names = self.names + ["translation_memory/data/terminology.jsonl"]
+        manifest = gate.make_manifest(self.root, names, SHA, "production")
+        path.write_text('{"stale":true}\n')
+        with self.assertRaisesRegex(ValueError, "source drift"):
+            gate.verify(self.root, manifest, "production", SHA)
+
+    def test_extra_translation_memory_asset_blocks_release(self):
+        path = self.root / "translation_memory/data/unreviewed.jsonl"
+        path.parent.mkdir(parents=True)
+        path.write_text('{}\n')
+        with self.assertRaisesRegex(ValueError, "untracked runtime"):
+            gate.verify(self.root, self.manifest, "production", SHA)
+
+    def test_same_directory_old_listener_is_not_restarted_pm2_process(self):
+        with patch.object(gate.subprocess, "check_output", return_value='pid=123'), patch.object(gate, "pm2_pid", return_value="456"), patch.object(gate.os, "readlink", return_value=str(self.root)):
+            with self.assertRaisesRegex(ValueError, "not the named PM2"):
+                gate.verify_listener(self.root, 8001, "urtruck-security-api")
+
+    def test_named_pm2_process_owns_listener(self):
+        with patch.object(gate.subprocess, "check_output", return_value='pid=123'), patch.object(gate, "pm2_pid", return_value="123"), patch.object(gate.os, "readlink", return_value=str(self.root)):
+            gate.verify_listener(self.root, 8001, "urtruck-security-api")
+
+    def test_missing_or_duplicate_pm2_pid_blocks_release(self):
+        for output in ["0\n", "123\n456\n", "", "[PM2] starting daemon\n123\n"]:
+            with patch.object(gate.shutil, "which", return_value="/usr/bin/pm2"), patch.object(gate.subprocess, "check_output", return_value=output):
+                with self.assertRaisesRegex(ValueError, "identity missing or ambiguous"):
+                    gate.pm2_pid("urtruck-security-api")
+
     def cli_repo(self):
         repo = self.root.parent
         subprocess.run(["git", "init", "-q", str(repo)], check=True)
@@ -165,6 +197,7 @@ class TestPushReleaseIdentity(unittest.TestCase):
         for step in ["Backup current production", "Deploy frontend", "Bootstrap secure server-only environment", "Deploy backend and verify PM2 health"]:
             self.assertLess(guard, workflow.index(step))
         self.assertIn("--listener-port 8001", workflow)
+        self.assertEqual(workflow.count("--pm2-process '$PM2_PROC'"), 3)
         self.assertNotIn("continue-on-error: true", workflow)
 
     def test_source_verification_precedes_backend_restart(self):
@@ -175,7 +208,7 @@ class TestPushReleaseIdentity(unittest.TestCase):
 
     def test_shared_ci_preserves_both_push_and_translation_contracts(self):
         workflow = (ROOT / ".github/workflows/quality-gate-reusable.yml").read_text()
-        for token in ["Runtime identity and mixed-deployment regression lock", "Push delivery, unread and read-to-zero contract", "Translation and STT regression boundary", "onesignal", "badge", "translation", "--source-sha"]:
+        for token in ["Runtime identity and mixed-deployment regression lock", "Push/Bell critical subset", "Translation and STT regression boundary", "onesignal", "badge", "translation", "--source-sha"]:
             self.assertIn(token, workflow)
         self.assertNotIn("continue-on-error: true", workflow)
 

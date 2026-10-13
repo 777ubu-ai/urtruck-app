@@ -191,7 +191,7 @@ jobs:
           # изменения source/frontend/env; нужна проверенная миграция базы,
           # а не объявление произвольного health200 доказательством версии.
           bash scripts/deploy-ssh.sh ssh \
-            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '$BACKEND_DIR/.urtruck-runtime-manifest.json' --environment production --listener-port 8001"
+            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '$BACKEND_DIR/.urtruck-runtime-manifest.json' --environment production --listener-port 8001 --pm2-process '$PM2_PROC'"
 
       - name: Backup current production
         run: |
@@ -246,11 +246,11 @@ jobs:
           bash scripts/deploy-ssh.sh scp "$RUNNER_TEMP/production-runtime-manifest.json" \
             "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json"
           bash scripts/deploy-ssh.sh ssh \
-            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --source-sha '$DEPLOY_SHA' --environment production --listener-port 8001"
+            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --source-sha '$DEPLOY_SHA' --environment production --listener-port 8001 --pm2-process '$PM2_PROC'"
           bash scripts/deploy-ssh.sh scp scripts/remote_health_check.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_health.sh"
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_health.sh; bash /tmp/urtruck_health.sh '$PM2_PROC'; rc=\$?; rm -f /tmp/urtruck_health.sh; exit \$rc"
           bash scripts/deploy-ssh.sh ssh \
-            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --source-sha '$DEPLOY_SHA' --environment production --listener-port 8001 && install -m 0644 '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' '$BACKEND_DIR/.urtruck-runtime-manifest.json' && rm -f '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json'"
+            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --source-sha '$DEPLOY_SHA' --environment production --listener-port 8001 --pm2-process '$PM2_PROC' && install -m 0644 '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' '$BACKEND_DIR/.urtruck-runtime-manifest.json' && rm -f '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json'"
 
       - name: Verify optional Yandex Router from production server
         run: |

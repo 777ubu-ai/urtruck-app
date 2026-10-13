@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import shutil
 from pathlib import Path, PurePosixPath
 
 EXCLUDED = {"tests", "test", "venv", ".venv", "__pycache__", "backups", "storage", "models", ".pytest_cache"}
@@ -16,7 +17,7 @@ REQUIRED = {"api/notifications.py", "services/push_sender.py", "api/chat.py", "s
 def runtime_path(name: str) -> bool:
     p = PurePosixPath(name)
     return (not p.is_absolute() and ".." not in p.parts and not (set(p.parts) & EXCLUDED)
-            and (p.suffix in {".py", ".sql"} or p.name in {"requirements.txt", "requirements-test.txt"}))
+            and (p.suffix in {".py", ".sql"} or (p.parent == PurePosixPath("translation_memory/data") and p.suffix == ".jsonl") or p.name in {"requirements.txt", "requirements-test.txt"}))
 
 
 def digest(path: Path) -> str:
@@ -61,14 +62,36 @@ def verify(root: Path, manifest: dict, environment: str, expected_sha: str | Non
     return {"status": "verified", "source_sha": manifest["source_sha"], "environment": environment, "files": len(files)}
 
 
-def verify_listener(root: Path, port: int) -> None:
+def pm2_pid(name: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+        raise ValueError("Invalid PM2 process name")
+    executable = shutil.which("pm2")
+    if executable is None:
+        candidates = sorted((Path.home() / ".nvm/versions/node").glob("*/bin/pm2"))
+        candidates += [Path.home() / ".local/bin/pm2", Path.home() / ".local/share/pnpm/pm2", Path("/usr/local/bin/pm2"), Path("/usr/bin/pm2")]
+        executable = next((str(p) for p in candidates if p.is_file() and os.access(p, os.X_OK)), None)
+    if executable is None:
+        raise ValueError("PM2 executable missing")
+    env = os.environ.copy()
+    env["PATH"] = str(Path(executable).parent) + os.pathsep + env.get("PATH", "")
+    output = subprocess.check_output([executable, "pid", name], text=True, env=env)
+    lines = output.splitlines()
+    if len(lines) != 1 or not re.fullmatch(r"[1-9][0-9]*", lines[0]):
+        raise ValueError("PM2 process identity missing or ambiguous")
+    return lines[0]
+
+
+def verify_listener(root: Path, port: int, pm2_process: str | None = None) -> None:
     if not 1 <= port <= 65535:
         raise ValueError("Invalid listener port")
     output = subprocess.check_output(["ss", "-ltnpH", f"sport = :{port}"], text=True)
     pids = set(re.findall(r"pid=(\d+)", output))
     if len(pids) != 1:
         raise ValueError("Listener identity missing or ambiguous")
-    cwd = Path(os.readlink(f"/proc/{next(iter(pids))}/cwd")).resolve()
+    pid = next(iter(pids))
+    if pm2_process is not None and pid != pm2_pid(pm2_process):
+        raise ValueError("Listener is not the named PM2 process")
+    cwd = Path(os.readlink(f"/proc/{pid}/cwd")).resolve()
     if cwd != root.resolve():
         raise ValueError("Live listener uses a different backend root")
 
@@ -81,6 +104,7 @@ def main() -> None:
     parser.add_argument("--environment", choices=["production", "qa2", "ci"], required=True)
     parser.add_argument("--source-sha")
     parser.add_argument("--listener-port", type=int)
+    parser.add_argument("--pm2-process")
     args = parser.parse_args()
     if args.action == "create":
         repo = args.root.parent
@@ -98,7 +122,7 @@ def main() -> None:
     else:
         proof = verify(args.root, json.loads(args.manifest.read_text()), args.environment, args.source_sha)
         if args.listener_port is not None:
-            verify_listener(args.root, args.listener_port)
+            verify_listener(args.root, args.listener_port, args.pm2_process)
     print(json.dumps(proof))
 
 
