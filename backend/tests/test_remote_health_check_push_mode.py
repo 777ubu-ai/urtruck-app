@@ -11,7 +11,7 @@ PROCESS_NAMES = ("urtruck-security-api", "urtruck-security-scheduler")
 
 def _run_health_helper(
     tmp_path: Path, *, fail_scheduler_restart: bool = False,
-    fail_stable_health: bool = False,
+    fail_stable_health: bool = False, fail_api_rollback: bool = False,
 ):
     backend = tmp_path / "backend"
     bin_dir = tmp_path / "bin"
@@ -28,6 +28,9 @@ def _run_health_helper(
     fail_once = tmp_path / "fail-scheduler-once"
     if fail_scheduler_restart:
         fail_once.write_text("fail", encoding="utf-8")
+    fail_api_once = tmp_path / "fail-api-rollback-once"
+    if fail_api_rollback:
+        fail_api_once.write_text("fail", encoding="utf-8")
     fail_health_once = tmp_path / "fail-health-once"
     if fail_stable_health:
         fail_health_once.write_text("fail", encoding="utf-8")
@@ -53,6 +56,10 @@ elif sys.argv[1] == "restart":
     if name.endswith("scheduler") and os.environ["PUSH_PROVIDER_MODE"] == "dual" and fail_once.exists():
         fail_once.unlink()
         raise SystemExit(17)
+    fail_api_once = pathlib.Path(os.environ["PM2_TEST_FAIL_API_ONCE"])
+    if name.endswith("api") and os.environ["PUSH_PROVIDER_MODE"] == "native" and fail_api_once.exists():
+        fail_api_once.unlink()
+        raise SystemExit(18)
     state[name]["mode"] = os.environ["PUSH_PROVIDER_MODE"]
     state[name]["status"] = "online"
     state_path.write_text(json.dumps(state))
@@ -84,6 +91,7 @@ raise SystemExit(0)
         "PM2_TEST_STATE": str(state),
         "PM2_TEST_CWD": str(backend),
         "PM2_TEST_FAIL_ONCE": str(fail_once),
+        "PM2_TEST_FAIL_API_ONCE": str(fail_api_once),
         "CURL_TEST_COUNT": str(tmp_path / "curl-count"),
         "CURL_TEST_FAIL_ONCE": str(fail_health_once),
     })
@@ -118,3 +126,17 @@ def test_remote_health_helper_restores_modes_after_stable_health_probe_failure(t
     assert result.returncode != 0
     assert all(row == {"mode": "native", "status": "online"} for row in state.values())
     assert "PUSH_MODE_ROLLBACK=verified" in result.stdout
+
+
+def test_remote_health_helper_keeps_scheduler_stopped_when_api_rollback_fails(tmp_path):
+    result, state = _run_health_helper(
+        tmp_path, fail_scheduler_restart=True, fail_api_rollback=True,
+    )
+
+    assert result.returncode != 0
+    assert state[PROCESS_NAMES[0]] == {"mode": "dual", "status": "online"}
+    assert state[PROCESS_NAMES[1]] == {"mode": "native", "status": "stopped"}
+    assert "PUSH_MODE_ROLLBACK_API_FAILED" in result.stderr
+    assert "scheduler remains stopped" in result.stderr
+    assert "PUSH_MODE_ROLLBACK=verified" not in result.stdout
+    assert "must-not-be-printed" not in result.stdout + result.stderr

@@ -108,8 +108,24 @@ if len(matches) != 1 or matches[0].get("pm2_env", {}).get("status") != "stopped"
   unset current_json
 }
 
+verify_api_mode() {
+  local current_json
+  current_json="$("$PM2_BIN" jlist)"
+  python3 -c '
+import json, sys
+items = json.load(sys.stdin)
+matches = [p for p in items if p.get("name") == sys.argv[1]]
+if len(matches) != 1:
+    raise SystemExit("Named production API process missing or ambiguous")
+env = matches[0].get("pm2_env", {})
+if env.get("status") != "online" or env.get("PUSH_PROVIDER_MODE") != sys.argv[2]:
+    raise SystemExit("Named API is not online in the requested rollback mode")
+' "$PROC" "$ORIGINAL_API_MODE" <<<"$current_json"
+  unset current_json
+}
+
 restore_original_modes() {
-  local restored=0 healthy=0 attempt
+  local healthy=0 attempt
   if ! "$PM2_BIN" stop "$SCHEDULER_PROC"; then
     echo "::error::Could not pause outbox scheduler for rollback" >&2
     return 1
@@ -118,26 +134,34 @@ restore_original_modes() {
     echo "::error::Could not pause outbox scheduler for rollback" >&2
     return 1
   fi
-  PUSH_PROVIDER_MODE="$ORIGINAL_API_MODE" "$PM2_BIN" restart "$PROC" --update-env || restored=1
-  PUSH_PROVIDER_MODE="$ORIGINAL_SCHEDULER_MODE" "$PM2_BIN" restart "$SCHEDULER_PROC" --update-env || restored=1
-  if [ "$restored" -eq 0 ] && verify_modes "$ORIGINAL_API_MODE" "$ORIGINAL_SCHEDULER_MODE" online online; then
-    for attempt in $(seq 1 24); do
-      if curl --fail --silent --show-error --connect-timeout 3 --max-time 10 -o /dev/null "$URL"; then
-        healthy=1
-        break
-      fi
-      sleep 5
-    done
-    if [ "$healthy" -eq 1 ]; then
-      echo "PUSH_MODE_ROLLBACK=verified"
-    else
-      echo "::error::Original PM2 modes returned but API health did not recover" >&2
-      return 1
-    fi
-  else
-    echo "::error::Push mode rollback could not be verified; keep the production writer blocked" >&2
+  if ! PUSH_PROVIDER_MODE="$ORIGINAL_API_MODE" "$PM2_BIN" restart "$PROC" --update-env; then
+    echo "::error::PUSH_MODE_ROLLBACK_API_FAILED; scheduler remains stopped" >&2
     return 1
   fi
+  if ! verify_api_mode; then
+    echo "::error::PUSH_MODE_ROLLBACK_API_READBACK_FAILED; scheduler remains stopped" >&2
+    return 1
+  fi
+  for attempt in $(seq 1 24); do
+    if curl --fail --silent --show-error --connect-timeout 3 --max-time 10 -o /dev/null "$URL"; then
+      healthy=1
+      break
+    fi
+    sleep 5
+  done
+  if [ "$healthy" -ne 1 ]; then
+    echo "::error::PUSH_MODE_ROLLBACK_API_HEALTH_FAILED; scheduler remains stopped" >&2
+    return 1
+  fi
+  if ! PUSH_PROVIDER_MODE="$ORIGINAL_SCHEDULER_MODE" "$PM2_BIN" restart "$SCHEDULER_PROC" --update-env; then
+    echo "::error::PUSH_MODE_ROLLBACK_SCHEDULER_FAILED; scheduler remains stopped" >&2
+    return 1
+  fi
+  if ! verify_modes "$ORIGINAL_API_MODE" "$ORIGINAL_SCHEDULER_MODE" online online; then
+    echo "::error::Push mode rollback could not be verified" >&2
+    return 1
+  fi
+  echo "PUSH_MODE_ROLLBACK=verified"
 }
 
 if [ "$ORIGINAL_API_MODE" = "$PUSH_MODE" ] && [ "$ORIGINAL_SCHEDULER_MODE" = "$PUSH_MODE" ]; then
