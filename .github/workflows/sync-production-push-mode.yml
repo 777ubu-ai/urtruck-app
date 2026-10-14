@@ -11,7 +11,7 @@ jobs:
     # Never load the production writer from the UI-selected caller ref. The
     # workflow definition must come from protected main before it can receive
     # production secrets; the writer still verifies the requested exact SHA.
-    uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main
+    uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@main
     with:
       deploy_sha: ${{ github.sha }}
       operation: sync_push_mode

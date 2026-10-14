@@ -283,7 +283,7 @@ def test_only_the_normal_caller_uses_local_executor_and_sync_is_pinned_to_main()
     sync = _load("sync-production-push-mode.yml")
     sync_uses = sync["jobs"]["sync"].get("uses", "")
     assert sync_uses == (
-        "777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main"
+        "777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@main"
     )
 
     mode_caller = _load("sync-production-push-mode.yml")

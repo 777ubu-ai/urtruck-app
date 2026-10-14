@@ -152,7 +152,7 @@ class PushModePreflightTests(unittest.TestCase):
     def test_sync_caller_uses_protected_writer_and_explicit_minimal_secrets(self):
         caller = (ROOT / ".github/workflows/sync-production-push-mode.yml").read_text(encoding="utf-8")
         self.assertIn(
-            "777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main",
+            "777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@main",
             caller,
         )
         self.assertNotIn("uses: ./.github/workflows/production-deploy-execute.yml", caller)
