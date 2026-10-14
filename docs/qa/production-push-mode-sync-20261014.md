@@ -6,11 +6,12 @@
 - Named PM2 API и scheduler: `online`, оба с `PUSH_PROVIDER_MODE=native`, cwd `/home/ubuntu/urtruck/backend`.
 - Listener `:8001` принадлежал named API PID на read-only проверке.
 - На установленном production push-коде были подтверждены SHA256 `services/push_gateway.py` `cbda81eb8a8e5b9c62a617fb5010c9af5577643da1b8543da498d4ce846afe56` и `services/push_sender.py` `9ed81b63c1b288f439c716ec6519eb2899dc653b9178ffff0eae1c3175bc5030`.
+- Read-only source inventory содержит 141 файл; общий fingerprint `e2c9ef0562e19509016bce855f3ee1366f1d0caab4ffb1238b3a2e8c03889cf4`.
 - Общий backend остаётся смешанным, full source SHA неизвестен, trusted runtime manifest отсутствует. Данный режимный переход не создаёт такой manifest и не объявляет backend known-source.
 
 ## Операция
 
-Новая ручная workflow-вызовка вызывает режим `sync_push_mode` в существующем reusable production writer. До рестарта она сверяет точный ref/SHA caller workflow, production SSH key и pinned host key, заданный backend path, два live push-файла, named PM2 процессы, их cwd/online/native state и владельца listener. `.env` должен уже содержать ровно одно значение `dual`.
+Новая ручная workflow-вызовка вызывает режим `sync_push_mode` в существующем reusable production writer. До рестарта она сверяет точный ref/SHA caller workflow, production SSH key и pinned host key, заданный backend path, общий fingerprint всех 141 Python/SQL/requirements файлов, два live push-файла, named PM2 процессы, их cwd/online/native state и владельца listener. `.env` должен уже содержать ровно одно значение `dual`. Общий fingerprint используется только как условие этого no-source-change рестарта: он не создаёт trusted runtime manifest и не объявляет mixed backend known-source.
 
 После preflight существующий `remote_health_check.sh` останавливает только named scheduler, переводит API и scheduler на `dual` через `pm2 restart --update-env`, затем проверяет readback обоих процессов и API health. При ошибке helper возвращает оба процесса к прежнему режиму и проверяет восстановление health. Эта операция не копирует runtime code, не редактирует `.env`, БД, storage, registry, outbox, frontend или магазинные артефакты. В очереди остаются те же события; scheduler приостановлен только на время переключения.
 

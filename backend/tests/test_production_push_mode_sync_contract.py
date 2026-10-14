@@ -33,12 +33,19 @@ def _fixture(tmp_path):
     return root, expected, json.dumps(rows), listener
 
 
+def _inventory_hash(hashes):
+    canonical = "\n".join(f"{name} {digest}" for name, digest in sorted(hashes.items()))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 class PushModePreflightTests(unittest.TestCase):
     def test_accepts_exact_dual_env_and_native_named_processes(self):
         with __import__("tempfile").TemporaryDirectory() as directory:
             root, expected, processes, listener = _fixture(Path(directory))
 
-            result = validate_preflight(root, processes, listener, expected)
+            result = validate_preflight(
+                root, processes, listener, expected, len(expected), _inventory_hash(expected)
+            )
 
             self.assertEqual(result["configured_mode"], "dual")
             self.assertEqual(result["current_process_mode"], "native")
@@ -53,6 +60,7 @@ class PushModePreflightTests(unittest.TestCase):
             ("scheduler_offline", "expected source mode"),
             ("wrong_listener", "not owned by the named API"),
             ("source_drift", "compatibility baseline"),
+            ("unrelated_source_drift", "runtime source inventory"),
             ("duplicate_api", "missing or ambiguous"),
         ]
         for mutation, message in mutations:
@@ -72,11 +80,17 @@ class PushModePreflightTests(unittest.TestCase):
                     listener = listener.replace("pid=1101", "pid=9999")
                 elif mutation == "source_drift":
                     (root / "services/push_gateway.py").write_text("unreviewed source", encoding="utf-8")
+                elif mutation == "unrelated_source_drift":
+                    (root / "api").mkdir()
+                    (root / "api/unreviewed.py").write_text("unexpected source", encoding="utf-8")
                 elif mutation == "duplicate_api":
                     processes = json.dumps(rows + [rows[0]])
 
                 with self.assertRaisesRegex(ValueError, message):
-                    validate_preflight(root, processes, listener, expected)
+                    expected_count = len(expected) + 1 if mutation == "unrelated_source_drift" else len(expected)
+                    validate_preflight(
+                        root, processes, listener, expected, expected_count, _inventory_hash(expected)
+                    )
 
 
     def test_refuses_symlinked_backend_root(self):
@@ -87,7 +101,9 @@ class PushModePreflightTests(unittest.TestCase):
             alias.symlink_to(root, target_is_directory=True)
 
             with self.assertRaisesRegex(ValueError, "backend root"):
-                validate_preflight(alias, processes, listener, expected)
+                validate_preflight(
+                    alias, processes, listener, expected, len(expected), _inventory_hash(expected)
+                )
 
 
     def test_sync_workflow_is_an_operation_of_the_single_guarded_writer(self):
@@ -113,7 +129,9 @@ class PushModePreflightTests(unittest.TestCase):
         self.assertIn("remote_health_check.sh", sync_job)
         self.assertNotIn("SERVER_SSH_KEY:", sync_job.split("steps:", 1)[0])
         self.assertNotIn("SERVER_SSH_KNOWN_HOSTS:", sync_job.split("steps:", 1)[0])
-        self.assertIn("PUSH_PROVIDER_MODE", (ROOT / "scripts/ops/production_push_mode_sync_preflight.py").read_text())
+        preflight = (ROOT / "scripts/ops/production_push_mode_sync_preflight.py").read_text()
+        self.assertIn("PUSH_PROVIDER_MODE", preflight)
+        self.assertIn("EXPECTED_RUNTIME_INVENTORY_SHA256", preflight)
 
 
 if __name__ == "__main__":

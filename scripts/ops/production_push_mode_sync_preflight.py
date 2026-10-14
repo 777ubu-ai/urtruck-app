@@ -17,6 +17,12 @@ API_PROCESS = "urtruck-security-api"
 SCHEDULER_PROCESS = "urtruck-security-scheduler"
 EXPECTED_ENV_MODE = "dual"
 EXPECTED_PROCESS_MODE = "native"
+EXPECTED_RUNTIME_FILE_COUNT = 141
+EXPECTED_RUNTIME_INVENTORY_SHA256 = "e2c9ef0562e19509016bce855f3ee1366f1d0caab4ffb1238b3a2e8c03889cf4"
+EXCLUDED_DIRECTORIES = {
+    "tests", "test", "venv", ".venv", "__pycache__", "backups", "storage",
+    "models", ".pytest_cache", ".git", "node_modules",
+}
 EXPECTED_SOURCE_SHA256 = {
     # These are the live push files measured during the read-only production
     # inventory. Any code drift stops the operational restart.
@@ -78,6 +84,30 @@ def _source_hashes(root: Path, expected_hashes: dict[str, str]) -> dict[str, str
     return result
 
 
+def _runtime_inventory(root: Path) -> tuple[int, str]:
+    files: dict[str, str] = {}
+
+    def fail_scan(error: OSError) -> None:
+        raise error
+
+    for directory, dirs, names in os.walk(root, followlinks=False, onerror=fail_scan):
+        parent = Path(directory)
+        dirs[:] = sorted(name for name in dirs if name not in EXCLUDED_DIRECTORIES)
+        for name in dirs:
+            if (parent / name).is_symlink():
+                raise ValueError("production runtime contains a source directory symlink")
+        for name in names:
+            path = parent / name
+            if not (name.endswith((".py", ".sql")) or name in {"requirements.txt", "requirements-test.txt"}):
+                continue
+            if path.is_symlink() or not path.is_file():
+                raise ValueError("production runtime contains an unsafe source file")
+            relative = path.relative_to(root).as_posix()
+            files[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    canonical = "\n".join(f"{name} {digest}" for name, digest in sorted(files.items()))
+    return len(files), hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _listener_pids(ss_output: str) -> list[int]:
     lines = [line for line in ss_output.splitlines() if line.strip()]
     if len(lines) != 1 or not re.search(r"(?:127\.0\.0\.1|0\.0\.0\.0|\*):8001\s", lines[0]):
@@ -93,6 +123,8 @@ def validate_preflight(
     pm2_json: str,
     ss_output: str,
     expected_source_hashes: dict[str, str] | None = None,
+    expected_runtime_file_count: int | None = None,
+    expected_runtime_inventory_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Validate only the scoped no-source/no-data mode transition."""
     if root.is_symlink() or not root.is_dir():
@@ -101,6 +133,21 @@ def validate_preflight(
     _read_configured_mode(root)
     processes = _processes(pm2_json, root)
     hashes = _source_hashes(root, expected_source_hashes or EXPECTED_SOURCE_SHA256)
+    runtime_count, runtime_hash = _runtime_inventory(root)
+    target_file_count = (
+        EXPECTED_RUNTIME_FILE_COUNT
+        if expected_runtime_file_count is None
+        else expected_runtime_file_count
+    )
+    target_inventory_hash = (
+        EXPECTED_RUNTIME_INVENTORY_SHA256
+        if expected_runtime_inventory_sha256 is None
+        else expected_runtime_inventory_sha256
+    )
+    if runtime_count != target_file_count:
+        raise ValueError("production runtime source inventory file count changed")
+    if runtime_hash != target_inventory_hash:
+        raise ValueError("production runtime source inventory differs from the reviewed read-only snapshot")
     listener_pids = _listener_pids(ss_output)
     if listener_pids != [processes[API_PROCESS]["pid"]]:
         raise ValueError("port 8001 is not owned by the named API process")
@@ -109,6 +156,8 @@ def validate_preflight(
         "current_process_mode": EXPECTED_PROCESS_MODE,
         "processes": processes,
         "source_sha256": hashes,
+        "runtime_inventory_sha256": runtime_hash,
+        "runtime_file_count": runtime_count,
         "listener_pid": listener_pids[0],
     }
 
@@ -153,6 +202,8 @@ def main() -> int:
     print("PUSH_MODE_PREFLIGHT=pass")
     print(f"PUSH_MODE_SOURCE=backend_env_dual")
     print(f"PUSH_MODE_RUNTIME_FILES={len(result['source_sha256'])}")
+    print(f"PUSH_MODE_INVENTORY_FILES={result['runtime_file_count']}")
+    print(f"PUSH_MODE_INVENTORY_SHA256={result['runtime_inventory_sha256']}")
     print(f"PUSH_MODE_LISTENER_PID={result['listener_pid']}")
     return 0
 
