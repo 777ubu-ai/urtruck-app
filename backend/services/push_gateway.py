@@ -602,15 +602,11 @@ def _expo_fallbacks_for_mode(devices: list[dict[str, Any]], mode: str,
                      and str(expo.get("device_id")) == identity[2]
                      and str(expo.get("push_token") or "").startswith(
                          ("ExpoPushToken[", "ExponentPushToken["))]
-        # Prefer a proven same-app association. An Expo registration with a
-        # missing app_id is only a fallback candidate after the provider has
-        # rejected this native token; it never runs alongside a successful
-        # native send. Explicitly different app IDs remain separate installs.
+        # A fallback must prove the same application as well as installation.
+        # A missing app_id remains eligible for ordinary Expo-only delivery,
+        # but cannot safely identify the app for a native-token fallback.
         fallback = next((expo for expo in expo_rows
                          if str(expo.get("app_id") or "") == identity[0]), None)
-        if fallback is None:
-            fallback = next((expo for expo in expo_rows
-                             if not str(expo.get("app_id") or "")), None)
         if fallback:
             fallbacks[int(native["id"])] = fallback
     return fallbacks
