@@ -109,19 +109,19 @@ def _accept_one(shipper_id: str, driver_id: str, tag: str) -> str:
     return r.json()["deal_id"]
 
 
-# ------------------------------------------------- списание у принимающей
-def test_accept_bid_spends_shipper_limit_not_driver():
-    """accept_bid: лимит тратит ПРИНИМАЮЩАЯ сторона (shipper), не bidder."""
+# ------------------------------------------------- списание обеим сторонам
+# Владелец продукта (2026-09-30): лимит тратят обе стороны сделки, см. 52e3e59a.
+def test_accept_bid_spends_both_limits():
+    """accept_bid: лимит тратят и shipper (принял), и driver (контрагент)."""
     with limits_on():
         shipper, driver = "da-shipper-a", "da-driver-a"
         _accept_one(shipper, driver, "accept_bid")
         assert sub_dal.count_deal_accepts_this_period(shipper) == 1
-        assert sub_dal.count_deal_accepts_this_period(driver) == 0
+        assert sub_dal.count_deal_accepts_this_period(driver) == 1
 
 
-def test_accept_counter_spends_driver_limit_not_shipper():
-    """accept_counter: лимит тратит bidder (driver), принимающий контр-оффер,
-    а не владелец груза, от имени которого идёт авторизация."""
+def test_accept_counter_spends_both_limits():
+    """accept_counter: лимит тратят и driver (принял контр-оффер), и shipper."""
     with limits_on():
         shipper, driver = "da-shipper-b", "da-driver-b"
         cargo_id = _seed_cargo(shipper)
@@ -137,8 +137,8 @@ def test_accept_counter_spends_driver_limit_not_shipper():
 
         assert sub_dal.count_deal_accepts_this_period(driver) == 1, \
             "контр-оффер принял driver — лимит должен списаться у него"
-        assert sub_dal.count_deal_accepts_this_period(shipper) == 0, \
-            "shipper только предложил контр-оффер — его лимит не тратится"
+        assert sub_dal.count_deal_accepts_this_period(shipper) == 1, \
+            "shipper — контрагент сделки, его лимит тоже списывается"
 
 
 # ------------------------------------------------------- 402 на 6-й accept
