@@ -118,6 +118,10 @@ def test_dual_fallback_requires_exact_installation_identity():
     other_app = {**_device(3, "expo", "install-1", "ExpoPushToken[qa]"),
                  "app_id": "com.urtruck.app.qa2"}
     assert push_gateway._expo_fallbacks_for_mode([native, fallback, other_app], "dual") == {}
+    native_unknown = {**native, "app_id": None}
+    assert push_gateway._expo_fallbacks_for_mode(
+        [native_unknown, fallback], "dual"
+    ) == {}
 
 
 def test_dual_fallback_uses_proven_same_app_before_ambiguous_expo_row():

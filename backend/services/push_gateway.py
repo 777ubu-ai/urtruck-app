@@ -592,6 +592,9 @@ def _expo_fallbacks_for_mode(devices: list[dict[str, Any]], mode: str,
             str(native.get("platform") or ""),
             str(native.get("device_id")),
         )
+        # A missing native app ID cannot prove which app owns an Expo row.
+        if not identity[0]:
+            continue
         if identity in seen:
             continue
         seen.add(identity)
@@ -606,7 +609,8 @@ def _expo_fallbacks_for_mode(devices: list[dict[str, Any]], mode: str,
         # A missing app_id remains eligible for ordinary Expo-only delivery,
         # but cannot safely identify the app for a native-token fallback.
         fallback = next((expo for expo in expo_rows
-                         if str(expo.get("app_id") or "") == identity[0]), None)
+                         if str(expo.get("app_id") or "")
+                         and str(expo.get("app_id") or "") == identity[0]), None)
         if fallback:
             fallbacks[int(native["id"])] = fallback
     return fallbacks
