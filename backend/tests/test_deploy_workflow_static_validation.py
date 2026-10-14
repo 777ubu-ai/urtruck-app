@@ -268,7 +268,7 @@ def test_production_deploy_execute_is_reusable_and_parameterized():
     assert "break_glass" in inputs
 
 
-def test_only_reviewed_callers_locally_call_production_deploy_execute():
+def test_only_the_normal_caller_uses_local_executor_and_sync_is_pinned_to_main():
     callers = []
     for f in WORKFLOWS.glob("*.yml"):
         if f.name == "production-deploy-execute.yml":
@@ -277,10 +277,14 @@ def test_only_reviewed_callers_locally_call_production_deploy_execute():
         for job in doc.get("jobs", {}).values():
             if job.get("uses") == "./.github/workflows/production-deploy-execute.yml":
                 callers.append(f.name)
-    assert sorted(callers) == [
-        "secure-production-deploy.yml",
-        "sync-production-push-mode.yml",
-    ], f"only the normal and narrowly-scoped mode caller may resolve the executor, got: {callers}"
+    assert callers == ["secure-production-deploy.yml"], (
+        "only the normal deploy caller may resolve the executor locally; the mode-sync caller must use protected main"
+    )
+    sync = _load("sync-production-push-mode.yml")
+    sync_uses = sync["jobs"]["sync"].get("uses", "")
+    assert sync_uses == (
+        "777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main"
+    )
 
     mode_caller = _load("sync-production-push-mode.yml")
     assert mode_caller["jobs"]["sync"]["with"]["operation"] == "sync_push_mode"
