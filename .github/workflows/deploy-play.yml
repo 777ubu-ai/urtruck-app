@@ -560,7 +560,7 @@ jobs:
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.urtruck.app
-          releaseFiles: ${{ runner.temp }}/urtruck-existing-aab/app-release.aab
+          releaseFiles: ${{ runner.temp }}/urtruck-existing-aab/UrTruck-aab/app-release.aab
           tracks: ${{ inputs.track || 'internal' }}
           status: ${{ inputs.status || 'draft' }}
           userFraction: ${{ inputs.user_fraction || '' }}
