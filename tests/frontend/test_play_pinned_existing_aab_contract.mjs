@@ -9,6 +9,7 @@ const apkRequirements = readFileSync('scripts/ops/google-play-apk-requirements.t
 test('pinned existing-AAB mode is opt-in and bound to the reviewed executable tooling SHA', () => {
   assert.match(workflow, /upload_existing_pinned_aab:[\s\S]*?default: false[\s\S]*?type: boolean/);
   assert.match(workflow, /APPROVED_TOOLING_SHA: \$\{\{ vars\.PLAY_RELEASE_TOOLING_SHA \}\}/);
+  assert.match(workflow, /name: Checkout release tooling\s+uses: actions\/checkout@v4\s+with:\s+fetch-depth: 0/);
   assert.match(workflow, /test "\$GITHUB_REF" = "refs\/heads\/release\/consolidated-20261014"/);
   assert.match(workflow, /test "\$GITHUB_SHA" = "\$APPROVED_TOOLING_SHA"/);
   assert.match(workflow, /test "\$\(git rev-parse HEAD\)" = "\$APPROVED_TOOLING_SHA"/);

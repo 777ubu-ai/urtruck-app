@@ -464,6 +464,8 @@ jobs:
     steps:
       - name: Checkout release tooling
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Verify pinned source run and artifact provenance
         env:
