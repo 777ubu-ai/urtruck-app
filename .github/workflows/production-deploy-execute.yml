@@ -32,6 +32,43 @@ on:
         required: false
         type: string
         default: "deploy"
+    secrets:
+      SERVER_HOST:
+        required: false
+      SERVER_USER:
+        required: false
+      SERVER_SSH_KEY:
+        required: false
+      SERVER_SSH_KNOWN_HOSTS:
+        required: false
+      BACKEND_DIR:
+        required: false
+      REMOTE_DIR:
+        required: false
+      PUBLIC_BASE_URL:
+        required: false
+      SUPABASE_SERVICE_KEY:
+        required: false
+      EXPO_ACCESS_TOKEN:
+        required: false
+      EXPO_TOKEN:
+        required: false
+      YANDEX_MAPS_JS_API_KEY:
+        required: false
+      YANDEX_ROUTER_API_KEY:
+        required: false
+      OPENROUTESERVICE_API_KEY:
+        required: false
+      OPENAI_API_KEY:
+        required: false
+      TRANSCRIBE_PROVIDER:
+        required: false
+      TRANSCRIBE_MODEL:
+        required: false
+      TRANSLATE_PROVIDER:
+        required: false
+      TRANSLATE_MODEL:
+        required: false
 
 permissions:
   contents: read

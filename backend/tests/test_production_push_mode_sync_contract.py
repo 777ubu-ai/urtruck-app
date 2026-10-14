@@ -149,18 +149,20 @@ class PushModePreflightTests(unittest.TestCase):
         self.assertIn('chmod(0o600)', backup)
         self.assertIn('saved PM2 application configuration changed outside the reviewed mode', backup)
 
-    def test_sync_caller_inherits_only_the_existing_writer_secrets_contract(self):
+    def test_sync_caller_uses_protected_writer_and_explicit_minimal_secrets(self):
         caller = (ROOT / ".github/workflows/sync-production-push-mode.yml").read_text(encoding="utf-8")
         self.assertIn(
             "777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main",
             caller,
         )
         self.assertNotIn("uses: ./.github/workflows/production-deploy-execute.yml", caller)
-        self.assertIn("secrets: inherit", caller)
+        self.assertNotIn("secrets: inherit", caller)
+        for name in ("SERVER_HOST", "SERVER_USER", "SERVER_SSH_KEY", "SERVER_SSH_KNOWN_HOSTS", "BACKEND_DIR"):
+            self.assertIn(f"{name}: ${{{{ secrets.{name} }}}}", caller)
         self.assertIn("secrets: inherit", (ROOT / ".github/workflows/secure-production-deploy.yml").read_text(encoding="utf-8"))
         execute = (ROOT / ".github/workflows/production-deploy-execute.yml").read_text(encoding="utf-8")
-        self.assertIn("SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}", execute)
-        self.assertIn("SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}", execute)
+        for name in ("SERVER_HOST", "SERVER_USER", "SERVER_SSH_KEY", "SERVER_SSH_KNOWN_HOSTS", "BACKEND_DIR"):
+            self.assertIn(f"      {name}:\n        required: false", execute)
 
 
 if __name__ == "__main__":
