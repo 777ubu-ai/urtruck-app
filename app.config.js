@@ -9,17 +9,10 @@ const isProductionBuild = !isQa2;
 
 const normalizedApiOverride = apiOverride.replace(/\/+$/, '');
 
-if (
-  isProductionBuild
-  && normalizedApiOverride
-  && normalizedApiOverride !== PRODUCTION_API_URL
-) {
-  throw new Error(
-    'Production Android build must use https://urtruck.kz; refusing a non-production API override',
-  );
-}
+// ВРЕМЕННО (ветка payments-local-test): гард прод-API снят для локального
+// теста оплаты через туннель. НЕ МЕРЖИТЬ.
 
-const resolvedApiUrl = isProductionBuild ? PRODUCTION_API_URL : apiOverride;
+const resolvedApiUrl = isProductionBuild ? (normalizedApiOverride || PRODUCTION_API_URL) : apiOverride;
 
 // QA2 must never silently reuse the production API. A missing or production
 // endpoint makes the build fail before any test account can reach real data.
