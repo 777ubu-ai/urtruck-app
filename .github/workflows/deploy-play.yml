@@ -657,6 +657,14 @@ jobs:
               production = next((track for track in tracks if track.get('track') == 'production'), None)
               if internal is None or production is None:
                   raise SystemExit('PLAY_PROMOTION_BLOCKED: expected internal/production tracks are unavailable')
+              availability_response = session.get(f'{root}/{edit_id}/countryAvailability/production', timeout=45)
+              if not availability_response.ok:
+                  raise SystemExit(f'PLAY_PROMOTION_BLOCKED: production country availability read HTTP {availability_response.status_code}')
+              availability = availability_response.json()
+              country_codes = sorted(country.get('countryCode', '') for country in availability.get('countries', []) if country.get('countryCode'))
+              rest_of_world = bool(availability.get('restOfWorld', False))
+              if not country_codes and not rest_of_world:
+                  raise SystemExit('PLAY_PROMOTION_BLOCKED: production country availability is empty; refusing to broaden release')
               internal_completed = any(
                   release.get('status') == 'completed' and expected in [int(code) for code in release.get('versionCodes', [])]
                   for release in internal.get('releases', []))
@@ -677,14 +685,8 @@ jobs:
                       {'language': 'en-US', 'text': 'You can now save your profile without an optional messenger contact. Sign-in and profile saving have been improved.'},
                   ],
               }
-              completed_releases = [item for item in current_production if item.get('status') == 'completed']
-              if completed_releases:
-                  latest_completed = max(
-                      completed_releases,
-                      key=lambda item: max([int(code) for code in item.get('versionCodes', [])] or [0]))
-                  targeting = latest_completed.get('countryTargeting')
-                  if targeting:
-                      release['countryTargeting'] = targeting
+              # Keep the existing production track country availability untouched.
+              # Google permits release-level countryTargeting only for inProgress releases.
               updated = dict(production)
               updated['releases'] = current_production + [release]
               result = session.put(f'{root}/{edit_id}/tracks/production', json=updated, timeout=45)
@@ -694,6 +696,31 @@ jobs:
               if not commit.ok:
                   raise SystemExit(f'PLAY_PROMOTION_BLOCKED: edit commit HTTP {commit.status_code}; in-review changes were not cancelled')
               committed = True
+
+              # Read back the production country scope from a fresh edit. This edit
+              # is read-only and is deleted below; no country availability is changed.
+              verify_created = session.post(root, json={}, timeout=45)
+              if not verify_created.ok:
+                  raise SystemExit(f'POST_COMMIT_READBACK_FAILED: verification edit HTTP {verify_created.status_code}; production release commit was accepted')
+              verify_edit_id = verify_created.json().get('id')
+              if not verify_edit_id:
+                  raise SystemExit('POST_COMMIT_READBACK_FAILED: verification edit id missing; production release commit was accepted')
+              try:
+                  verify_response = session.get(f'{root}/{verify_edit_id}/countryAvailability/production', timeout=45)
+                  if not verify_response.ok:
+                      raise SystemExit(f'POST_COMMIT_READBACK_FAILED: country availability HTTP {verify_response.status_code}; production release commit was accepted')
+                  verify_availability = verify_response.json()
+                  normalize = lambda value: (
+                      bool(value.get('syncWithProduction', False)),
+                      sorted(country.get('countryCode', '') for country in value.get('countries', []) if country.get('countryCode')),
+                      bool(value.get('restOfWorld', False)),
+                  )
+                  if normalize(verify_availability) != normalize(availability):
+                      raise SystemExit('POST_COMMIT_READBACK_FAILED: production country availability changed during submission; release commit was accepted')
+              finally:
+                  deleted_verify = session.delete(f'{root}/{verify_edit_id}', timeout=45)
+                  if not deleted_verify.ok:
+                      raise SystemExit(f'POST_COMMIT_READBACK_FAILED: verification edit cleanup HTTP {deleted_verify.status_code}; production release commit was accepted')
               print(json.dumps({
                   'package': package,
                   'track': 'production',
@@ -701,7 +728,9 @@ jobs:
                   'status': 'completed',
                   'rolloutPercent': 100,
                   'source': 'existing completed internal release; no bundle upload or rebuild',
-                  'countryTargetingPreserved': bool(release.get('countryTargeting')),
+                  'productionCountryAvailabilityUnchanged': True,
+                  'productionCountryCodes': country_codes,
+                  'productionRestOfWorld': rest_of_world,
                   'commitAccepted': True,
               }, sort_keys=True))
           finally:

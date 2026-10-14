@@ -47,4 +47,8 @@ test('production reuses the completed internal version without uploading the sam
   assert.match(workflow, /changesInReviewBehavior=ERROR_IF_IN_REVIEW/);
   assert.match(workflow, /in-review changes were not cancelled/);
   assert.match(workflow, /production promotion must be a completed 100% release after review/);
+  assert.match(workflow, /countryAvailability\/production/);
+  assert.match(workflow, /production country availability is empty; refusing to broaden release/);
+  assert.match(workflow, /productionCountryAvailabilityUnchanged': True/);
+  assert.doesNotMatch(workflow, /release\['countryTargeting'\]/);
 });
