@@ -25,7 +25,7 @@ test('pinned existing-AAB mode is opt-in and bound to the reviewed executable to
 
 test('Play credentials never reach dependency installation and tooling dependencies are fully version-pinned', () => {
   const credentialSteps = workflow.split(/(?=^      - name: )/m).filter((step) => step.includes('secrets.PLAY_SERVICE_ACCOUNT_JSON'));
-  assert.equal(credentialSteps.length, 5, 'only existing Play upload, APK retrieval, two track API calls and upload action need Play credentials');
+  assert.equal(credentialSteps.length, 6, 'only existing Play upload, APK retrieval, track readback, two track API calls and upload action need Play credentials');
   for (const step of credentialSteps) {
     assert.doesNotMatch(step, /pip install|npm install/);
   }
@@ -62,6 +62,14 @@ test('pinned existing-AAB upload skips rebuild and keeps the shared Play concurr
   assert.match(workflow, /uses: r0adkll\/upload-google-play@v1/);
   assert.match(workflow, /internal uploads the existing AAB; production promotes its completed internal version code without re-uploading or rebuilding/);
   assert.doesNotMatch(workflow, /upload-existing-pinned-aab:[\s\S]{0,14000}gradlew|upload-existing-pinned-aab:[\s\S]{0,14000}Build release AAB/);
+});
+
+test('internal-track readback is opt-in, pinned to reviewed tooling, and never rebuilds or uploads', () => {
+  assert.match(workflow, /verify_existing_internal_release:[\s\S]*?default: false[\s\S]*?type: boolean/);
+  assert.match(workflow, /verify-existing-internal-release:[\s\S]*?inputs\.verify_existing_internal_release[\s\S]*?Verify pinned source and reviewed tooling identity[\s\S]*?APPROVED_TOOLING_SHA: \$\{\{ vars\.PLAY_RELEASE_TOOLING_SHA \}\}[\s\S]*?test "\$GITHUB_SHA" = "\$APPROVED_TOOLING_SHA"[\s\S]*?Read back internal release using a temporary edit without changing track state[\s\S]*?google-play-pinned-track\.mjs verify-internal/);
+  assert.match(workflow, /quality-gate:[\s\S]*?!inputs\.verify_existing_internal_release/);
+  assert.match(workflow, /build-and-submit:[\s\S]*?!inputs\.verify_existing_internal_release/);
+  assert.match(workflow, /printf '%s\\n'[\s\S]*?Pinned Android AAB upload/);
 });
 
 test('production reuses the completed internal version without uploading the same bundle twice', () => {

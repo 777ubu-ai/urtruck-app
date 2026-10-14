@@ -52,6 +52,11 @@ on:
         required: true
         default: false
         type: boolean
+      verify_existing_internal_release:
+        description: "Read back the already uploaded pinned versionCode from the completed internal track without rebuilding or uploading"
+        required: true
+        default: false
+        type: boolean
       track:
         description: "Google Play track"
         required: true
@@ -99,12 +104,12 @@ permissions:
 
 jobs:
   quality-gate:
-    if: ${{ inputs.download_generated_version_code == '' && !inputs.upload_existing_pinned_aab }}
+    if: ${{ inputs.download_generated_version_code == '' && !inputs.upload_existing_pinned_aab && !inputs.verify_existing_internal_release }}
     uses: ./.github/workflows/quality-gate-reusable.yml
 
   build-and-submit:
     needs: quality-gate
-    if: ${{ inputs.download_generated_version_code == '' && !inputs.upload_existing_pinned_aab }}
+    if: ${{ inputs.download_generated_version_code == '' && !inputs.upload_existing_pinned_aab && !inputs.verify_existing_internal_release }}
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -455,7 +460,7 @@ jobs:
 
   upload-existing-pinned-aab:
     name: Upload exact verified UrTruck 1.0.9 AAB without rebuilding
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_existing_pinned_aab }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_existing_pinned_aab && !inputs.verify_existing_internal_release }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -585,15 +590,64 @@ jobs:
           PROMOTION_OUTCOME: ${{ steps.promote_existing_to_production.outcome }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-          ### Pinned Android AAB upload — ${JOB_RESULT^^}
-          - source SHA: `9ac0b6200e1e91aa40b99cd1f4943062e2acc048`
-          - original build run: [38512422153](https://github.com/777ubu-ai/urtruck-app/actions/runs/38512422153)
-          - current upload run: ${RUN_URL}
-          - artifact SHA-256: `03500f2861ed6d07f20dc9d71f388d42438a589b046396bd393861718fe138da`
-          - package/versionCode: `com.urtruck.app / 214116271`
-          - requested track/status: `${TRACK} / ${RELEASE_STATUS}`
-          - upload action outcome: `${UPLOAD_OUTCOME:-not_run}`
-          - same-AAB promotion outcome: `${PROMOTION_OUTCOME:-not_run}`
-          - internal uploads the existing AAB; production promotes its completed internal version code without re-uploading or rebuilding.
-          EOF
+          printf '%s\n' \
+            "### Pinned Android AAB upload — ${JOB_RESULT^^}" \
+            '- source SHA: `9ac0b6200e1e91aa40b99cd1f4943062e2acc048`' \
+            '- original build run: [38512422153](https://github.com/777ubu-ai/urtruck-app/actions/runs/38512422153)' \
+            "- current upload run: ${RUN_URL}" \
+            '- artifact SHA-256: `03500f2861ed6d07f20dc9d71f388d42438a589b046396bd393861718fe138da`' \
+            '- package/versionCode: `com.urtruck.app / 214116271`' \
+            "- requested track/status: `${TRACK} / ${RELEASE_STATUS}`" \
+            "- upload action outcome: `${UPLOAD_OUTCOME:-not_run}`" \
+            "- same-AAB promotion outcome: `${PROMOTION_OUTCOME:-not_run}`" \
+            '- internal uploads the existing AAB; production promotes its completed internal version code without re-uploading or rebuilding.' \
+            >> "$GITHUB_STEP_SUMMARY"
+
+  verify-existing-internal-release:
+    name: Read back pinned version from the completed internal track
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_existing_internal_release && !inputs.upload_existing_pinned_aab }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify pinned source and reviewed tooling identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_API_URL: ${{ github.api_url }}
+          GH_REPOSITORY: ${{ github.repository }}
+          EXPECTED_RUN_ID: "38512422153"
+          EXPECTED_ARTIFACT_ID: "11870969860"
+          EXPECTED_SOURCE_SHA: "9ac0b6200e1e91aa40b99cd1f4943062e2acc048"
+          APPROVED_TOOLING_SHA: ${{ vars.PLAY_RELEASE_TOOLING_SHA }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/release/consolidated-20261014"
+          test -n "$APPROVED_TOOLING_SHA"
+          test "$GITHUB_SHA" = "$APPROVED_TOOLING_SHA"
+          test "$(git rev-parse HEAD)" = "$APPROVED_TOOLING_SHA"
+          git merge-base --is-ancestor "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA"
+          while IFS= read -r path; do
+            case "$path" in
+              .github/workflows/deploy-play.yml|tests/frontend/test_play_pinned_existing_aab_contract.mjs|tests/ops/test_google_play_pinned_track.mjs|scripts/ops/google-play-pinned-track.mjs|scripts/ops/google-play-apk-requirements.txt) ;;
+              *) echo "::error::Unexpected non-Play-tooling path after frozen app source: $path"; exit 1 ;;
+            esac
+          done < <(git diff --name-only "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA")
+          run_json=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$GH_API_URL/repos/$GH_REPOSITORY/actions/runs/$EXPECTED_RUN_ID")
+          printf '%s' "$run_json" | jq -e --arg sha "$EXPECTED_SOURCE_SHA" '.head_sha == $sha and .head_branch == "release/consolidated-20261014" and .conclusion == "success" and .path == ".github/workflows/deploy-play.yml"' >/dev/null
+          artifacts_json=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$GH_API_URL/repos/$GH_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/artifacts?per_page=100")
+          printf '%s' "$artifacts_json" | jq -e --argjson id "$EXPECTED_ARTIFACT_ID" 'any(.artifacts[]; .id == $id and .name == "UrTruck-aab" and .expired == false)' >/dev/null
+          echo "Pinned app source and successful AAB artifact identity confirmed."
+
+      - name: Read back internal release using a temporary edit without changing track state
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          node scripts/ops/google-play-pinned-track.mjs verify-internal
