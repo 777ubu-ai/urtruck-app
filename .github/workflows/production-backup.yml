@@ -147,7 +147,9 @@ jobs:
           [ -d "$REMOTE_DIR" ] && tar --exclude='.git' -C "$(dirname "$REMOTE_DIR")" -czf "$DEST/code/frontend.tar.gz" "$(basename "$REMOTE_DIR")"
           [ -d "$BACKEND_DIR" ] && tar --exclude='.git' --exclude='storage' -C "$(dirname "$BACKEND_DIR")" -czf "$DEST/code/backend.tar.gz" "$(basename "$BACKEND_DIR")"
 
-          find "$DEST" -type f -print0 | sort -z | xargs -0 sha256sum > "$DEST/SHA256SUMS"
+          # A checksum file must not contain its own digest: hashing the file
+          # while it is being generated makes the subsequent verification fail.
+          find "$DEST" -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > "$DEST/SHA256SUMS"
           test -s "$DEST/SHA256SUMS"
           sha256sum -c "$DEST/SHA256SUMS"
 
