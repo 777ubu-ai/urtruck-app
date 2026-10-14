@@ -532,7 +532,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/validate-play-release-inputs.mjs
-          aab="$RUNNER_TEMP/urtruck-existing-aab/app-release.aab"
+          aab="$RUNNER_TEMP/urtruck-existing-aab/UrTruck-aab/app-release.aab"
           test -s "$aab"
           actual_sha=$(sha256sum "$aab" | awk '{print $1}')
           test "$actual_sha" = "03500f2861ed6d07f20dc9d71f388d42438a589b046396bd393861718fe138da"
@@ -560,7 +560,7 @@ jobs:
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.urtruck.app
-          releaseFiles: ${{ runner.temp }}/urtruck-existing-aab/app-release.aab
+          releaseFiles: ${{ runner.temp }}/urtruck-existing-aab/UrTruck-aab/app-release.aab
           tracks: ${{ inputs.track || 'internal' }}
           status: ${{ inputs.status || 'draft' }}
           userFraction: ${{ inputs.user_fraction || '' }}
