@@ -3,15 +3,37 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const workflow = readFileSync('.github/workflows/deploy-play.yml', 'utf8');
+const trackHelper = readFileSync('scripts/ops/google-play-pinned-track.mjs', 'utf8');
+const apkRequirements = readFileSync('scripts/ops/google-play-apk-requirements.txt', 'utf8');
 
-test('pinned existing-AAB mode is opt-in and limited to the dedicated release-tooling branch', () => {
+test('pinned existing-AAB mode is opt-in and bound to the reviewed executable tooling SHA', () => {
   assert.match(workflow, /upload_existing_pinned_aab:[\s\S]*?default: false[\s\S]*?type: boolean/);
-  assert.match(workflow, /upload-existing-pinned-aab:[\s\S]*?test "\$GITHUB_REF_NAME" = "fix\/play-upload-existing-20261014"/);
+  assert.match(workflow, /APPROVED_TOOLING_SHA: \$\{\{ vars\.PLAY_RELEASE_TOOLING_SHA \}\}/);
+  assert.match(workflow, /test "\$GITHUB_REF" = "refs\/heads\/release\/consolidated-20261014"/);
+  assert.match(workflow, /test "\$GITHUB_SHA" = "\$APPROVED_TOOLING_SHA"/);
+  assert.match(workflow, /test "\$\(git rev-parse HEAD\)" = "\$APPROVED_TOOLING_SHA"/);
   assert.match(workflow, /git merge-base --is-ancestor "\$EXPECTED_SOURCE_SHA" "\$GITHUB_SHA"/);
   assert.match(workflow, /Unexpected non-release-tooling path after frozen app source/);
   assert.match(workflow, /EXPECTED_RUN_ID: "38512422153"/);
   assert.match(workflow, /EXPECTED_ARTIFACT_ID: "11870969860"/);
   assert.match(workflow, /EXPECTED_SOURCE_SHA: "9ac0b6200e1e91aa40b99cd1f4943062e2acc048"/);
+  assert.match(workflow, /scripts\/ops\/google-play-pinned-track\.mjs/);
+});
+
+test('Play credentials never reach dependency installation and tooling dependencies are fully version-pinned', () => {
+  const credentialSteps = workflow.split(/(?=^      - name: )/m).filter((step) => step.includes('secrets.PLAY_SERVICE_ACCOUNT_JSON'));
+  assert.equal(credentialSteps.length, 5, 'only existing Play upload, APK retrieval, two track API calls and upload action need Play credentials');
+  for (const step of credentialSteps) {
+    assert.doesNotMatch(step, /pip install|npm install/);
+  }
+  assert.doesNotMatch(workflow, /python3? -m pip install[^\n]*google-auth|python3? -m pip install[^\n]*requests/);
+  for (const name of ['google-auth', 'requests', 'cryptography', 'cffi', 'pycparser', 'urllib3', 'certifi']) {
+    assert.match(apkRequirements, new RegExp(`^${name}==[0-9][^\\n]*$`, 'm'));
+  }
+  assert.match(workflow, /pip install[^\n]*--no-deps --requirement scripts\/ops\/google-play-apk-requirements\.txt/);
+  assert.match(workflow, /python -m pip check/);
+  assert.doesNotMatch(trackHelper, /child_process|execSync|spawnSync|npm install|pip install/);
+  assert.match(trackHelper, /PLAY_SERVICE_ACCOUNT_JSON/);
 });
 
 test('existing AAB upload validates origin CI, artifact identity and exact bytes before upload', () => {
@@ -31,9 +53,9 @@ test('pinned existing-AAB upload skips rebuild and keeps the shared Play concurr
   assert.match(workflow, /group: google-play-\$\{\{ github\.repository \}\}[\s\S]*?cancel-in-progress: false/);
   assert.match(workflow, /quality-gate:[\s\S]*?!inputs\.upload_existing_pinned_aab/);
   assert.match(workflow, /build-and-submit:[\s\S]*?!inputs\.upload_existing_pinned_aab/);
-  assert.match(workflow, /Read current Play track version codes before upload/);
-  assert.match(workflow, /PLAY_PREFLIGHT_BLOCKED: versionCode \{expected\} must first be completed on internal track/);
-  assert.match(workflow, /temporary edit cleanup HTTP/);
+  assert.match(workflow, /Read current Play track version codes before upload[\s\S]*?node scripts\/ops\/google-play-pinned-track\.mjs preflight/);
+  assert.match(trackHelper, /PLAY_PREFLIGHT_BLOCKED.*versionCode \$\{VERSION_CODE\} must first be completed on internal track/);
+  assert.match(trackHelper, /temporary edit cleanup HTTP/);
   assert.match(workflow, /uses: r0adkll\/upload-google-play@v1/);
   assert.match(workflow, /internal uploads the existing AAB; production promotes its completed internal version code without re-uploading or rebuilding/);
   assert.doesNotMatch(workflow, /upload-existing-pinned-aab:[\s\S]{0,14000}gradlew|upload-existing-pinned-aab:[\s\S]{0,14000}Build release AAB/);
@@ -42,13 +64,13 @@ test('pinned existing-AAB upload skips rebuild and keeps the shared Play concurr
 test('production reuses the completed internal version without uploading the same bundle twice', () => {
   assert.match(workflow, /Upload verified AAB to the selected Play track[\s\S]*?if: \$\{\{ inputs\.track != 'production' \}\}/);
   assert.match(workflow, /Promote the already uploaded internal version to production without re-upload/);
-  assert.match(workflow, /PLAY_PROMOTION_BLOCKED: pinned versionCode is not completed on internal/);
-  assert.match(workflow, /'versionCodes': \[expected\],[\s\S]*?'status': 'completed'/);
-  assert.match(workflow, /changesInReviewBehavior=ERROR_IF_IN_REVIEW/);
-  assert.match(workflow, /in-review changes were not cancelled/);
-  assert.match(workflow, /production promotion must be a completed 100% release after review/);
-  assert.match(workflow, /countryAvailability\/production/);
-  assert.match(workflow, /production country availability is empty; refusing to broaden release/);
-  assert.match(workflow, /productionCountryAvailabilityUnchanged': True/);
-  assert.doesNotMatch(workflow, /release\['countryTargeting'\]/);
+  assert.match(trackHelper, /pinned versionCode is not completed on internal/);
+  assert.match(trackHelper, /versionCodes: \[VERSION_CODE\],[\s\S]*?status: 'completed'/);
+  assert.match(trackHelper, /changesInReviewBehavior=ERROR_IF_IN_REVIEW/);
+  assert.match(trackHelper, /changesInReviewBehavior=ERROR_IF_IN_REVIEW/);
+  assert.match(trackHelper, /production promotion must be a completed 100% release after review/);
+  assert.match(trackHelper, /countryAvailability\/production/);
+  assert.match(trackHelper, /production country availability is empty; refusing to broaden release/);
+  assert.match(trackHelper, /productionCountryAvailabilityUnchanged: true/);
+  assert.doesNotMatch(trackHelper, /countryTargeting/);
 });

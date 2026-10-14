@@ -435,7 +435,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install official API authentication dependencies
-        run: python -m pip install google-auth requests cryptography
+        run: |
+          python -m pip install --disable-pip-version-check --no-deps --requirement scripts/ops/google-play-apk-requirements.txt
+          python -m pip check
       - name: Download and encrypt existing Play APK
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -471,16 +473,20 @@ jobs:
           EXPECTED_RUN_ID: "38512422153"
           EXPECTED_ARTIFACT_ID: "11870969860"
           EXPECTED_SOURCE_SHA: "9ac0b6200e1e91aa40b99cd1f4943062e2acc048"
+          APPROVED_TOOLING_SHA: ${{ vars.PLAY_RELEASE_TOOLING_SHA }}
         run: |
           set -euo pipefail
-          # This workflow revision lives on the dedicated reviewed tooling PR branch;
-          # the app source itself remains pinned and proven by EXPECTED_SOURCE_SHA below.
-          test "$GITHUB_REF_NAME" = "fix/play-upload-existing-20261014"
+          # This exact SHA is pinned in a repository variable only after review and merge.
+          # A branch name by itself never authorizes Play writes.
+          test "$GITHUB_REF" = "refs/heads/release/consolidated-20261014"
+          test -n "$APPROVED_TOOLING_SHA"
+          test "$GITHUB_SHA" = "$APPROVED_TOOLING_SHA"
+          test "$(git rev-parse HEAD)" = "$APPROVED_TOOLING_SHA"
           test -n "$GH_TOKEN"
           git merge-base --is-ancestor "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA"
           while IFS= read -r path; do
             case "$path" in
-              .github/workflows/testflight-local.yml|tests/frontend/test_ios_release_workflow_contract.mjs|.github/workflows/deploy-play.yml|tests/frontend/test_play_pinned_existing_aab_contract.mjs) ;;
+              .github/workflows/testflight-local.yml|tests/frontend/test_ios_release_workflow_contract.mjs|.github/workflows/deploy-play.yml|tests/frontend/test_play_pinned_existing_aab_contract.mjs|tests/ops/test_google_play_pinned_track.mjs|scripts/ops/google-play-pinned-track.mjs|scripts/ops/google-play-apk-requirements.txt) ;;
               *) echo "::error::Unexpected non-release-tooling path after frozen app source: $path"; exit 1 ;;
             esac
           done < <(git diff --name-only "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA")
@@ -515,68 +521,7 @@ jobs:
           USER_FRACTION: ${{ inputs.user_fraction || '' }}
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check --quiet google-auth requests
-          python3 - <<'PY'
-          import json, os, sys
-          from google.auth.transport.requests import AuthorizedSession
-          from google.oauth2 import service_account
-
-          package = 'com.urtruck.app'
-          expected = 214116271
-          target_track = os.environ['TARGET_TRACK']
-          release_status = os.environ['RELEASE_STATUS']
-          user_fraction = os.environ.get('USER_FRACTION', '').strip()
-          if target_track == 'production' and release_status != 'completed':
-              raise SystemExit('PLAY_PREFLIGHT_BLOCKED: production promotion must be a completed 100% release after review')
-          if target_track == 'production' and user_fraction:
-              raise SystemExit('PLAY_PREFLIGHT_BLOCKED: user_fraction is not valid for the pinned completed production release')
-          raw = os.environ.get('PLAY_SERVICE_ACCOUNT_JSON', '')
-          if not raw:
-              raise SystemExit('PLAY_PREFLIGHT_BLOCKED: Play service-account credential is unavailable')
-          credentials = service_account.Credentials.from_service_account_info(
-              json.loads(raw), scopes=['https://www.googleapis.com/auth/androidpublisher'])
-          session = AuthorizedSession(credentials)
-          root = f'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{package}/edits'
-          created = session.post(root, json={}, timeout=45)
-          if not created.ok:
-              raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: edits.insert HTTP {created.status_code}')
-          edit_id = created.json().get('id')
-          if not edit_id:
-              raise SystemExit('PLAY_PREFLIGHT_BLOCKED: temporary edit id missing')
-          try:
-              response = session.get(f'{root}/{edit_id}/tracks', timeout=45)
-              if not response.ok:
-                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: tracks read HTTP {response.status_code}')
-              tracks = response.json().get('tracks', [])
-              snapshot = {}
-              all_codes = {}
-              for track in tracks:
-                  name = str(track.get('track', ''))
-                  releases = []
-                  for release in track.get('releases', []):
-                      codes = [int(code) for code in release.get('versionCodes', [])]
-                      releases.append({'status': release.get('status'), 'versionCodes': codes})
-                      for code in codes:
-                          all_codes.setdefault(code, []).append({'track': name, 'status': release.get('status')})
-                  snapshot[name] = releases
-              if expected in all_codes and target_track in all_codes[expected]:
-                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: versionCode {expected} already exists on requested track {target_track}')
-              locations = all_codes.get(expected, [])
-              if target_track == 'production' and not any(row['track'] == 'internal' and row['status'] == 'completed' for row in locations):
-                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: versionCode {expected} must first be completed on internal track')
-              unexpected = [row['track'] for row in locations if not (target_track == 'production' and row['track'] == 'internal' and row['status'] == 'completed')]
-              if unexpected:
-                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: versionCode {expected} is present on incompatible track(s): {sorted(set(unexpected))}')
-              higher = sorted(code for code in all_codes if code > expected)
-              if higher:
-                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: newer Play versionCode(s) exist: {higher}')
-              print('PLAY_TRACK_SNAPSHOT=' + json.dumps(snapshot, sort_keys=True, separators=(',', ':')))
-              print(f'PLAY_TARGET_TRACK={target_track}; target_versionCode={expected}; already_present_in_internal={target_track == "production" and any(row["track"] == "internal" and row["status"] == "completed" for row in locations)}')
-          finally:
-              deleted = session.delete(f'{root}/{edit_id}', timeout=45)
-              if not deleted.ok:
-                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: temporary edit cleanup HTTP {deleted.status_code}')
-          PY
+          node scripts/ops/google-play-pinned-track.mjs preflight
 
       - name: Verify artifact bytes, package, version, host, alignment and upload certificate
         env:
@@ -626,122 +571,7 @@ jobs:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check --quiet google-auth requests
-          python3 - <<'PY'
-          import json, os, sys
-          from google.auth.transport.requests import AuthorizedSession
-          from google.oauth2 import service_account
-
-          package = 'com.urtruck.app'
-          expected = 214116271
-          raw = os.environ.get('PLAY_SERVICE_ACCOUNT_JSON', '')
-          if not raw:
-              raise SystemExit('PLAY_PROMOTION_BLOCKED: Play service-account credential is unavailable')
-          credentials = service_account.Credentials.from_service_account_info(
-              json.loads(raw), scopes=['https://www.googleapis.com/auth/androidpublisher'])
-          session = AuthorizedSession(credentials)
-          root = f'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{package}/edits'
-          created = session.post(root, json={}, timeout=45)
-          if not created.ok:
-              raise SystemExit(f'PLAY_PROMOTION_BLOCKED: edits.insert HTTP {created.status_code}')
-          edit_id = created.json().get('id')
-          if not edit_id:
-              raise SystemExit('PLAY_PROMOTION_BLOCKED: temporary edit id missing')
-          committed = False
-          try:
-              response = session.get(f'{root}/{edit_id}/tracks', timeout=45)
-              if not response.ok:
-                  raise SystemExit(f'PLAY_PROMOTION_BLOCKED: tracks read HTTP {response.status_code}')
-              tracks = response.json().get('tracks', [])
-              internal = next((track for track in tracks if track.get('track') == 'internal'), None)
-              production = next((track for track in tracks if track.get('track') == 'production'), None)
-              if internal is None or production is None:
-                  raise SystemExit('PLAY_PROMOTION_BLOCKED: expected internal/production tracks are unavailable')
-              availability_response = session.get(f'{root}/{edit_id}/countryAvailability/production', timeout=45)
-              if not availability_response.ok:
-                  raise SystemExit(f'PLAY_PROMOTION_BLOCKED: production country availability read HTTP {availability_response.status_code}')
-              availability = availability_response.json()
-              country_codes = sorted(country.get('countryCode', '') for country in availability.get('countries', []) if country.get('countryCode'))
-              rest_of_world = bool(availability.get('restOfWorld', False))
-              if not country_codes and not rest_of_world:
-                  raise SystemExit('PLAY_PROMOTION_BLOCKED: production country availability is empty; refusing to broaden release')
-              internal_completed = any(
-                  release.get('status') == 'completed' and expected in [int(code) for code in release.get('versionCodes', [])]
-                  for release in internal.get('releases', []))
-              if not internal_completed:
-                  raise SystemExit('PLAY_PROMOTION_BLOCKED: pinned versionCode is not completed on internal')
-              current_production = production.get('releases', [])
-              if any(expected in [int(code) for code in release.get('versionCodes', [])] for release in current_production):
-                  raise SystemExit('PLAY_PROMOTION_BLOCKED: pinned versionCode is already listed on production; inspect current release before retry')
-              if any(release.get('status') in ('draft', 'inProgress') for release in current_production):
-                  raise SystemExit('PLAY_PROMOTION_BLOCKED: production already has a draft or staged rollout; preserve it and resolve before promoting')
-              release = {
-                  'name': 'UrTruck 1.0.9 (214116271)',
-                  'versionCodes': [expected],
-                  'status': 'completed',
-                  'inAppUpdatePriority': 2,
-                  'releaseNotes': [
-                      {'language': 'ru-RU', 'text': 'Теперь профиль можно сохранить без необязательного контакта в мессенджере. Улучшена обработка входа и сохранения профиля.'},
-                      {'language': 'en-US', 'text': 'You can now save your profile without an optional messenger contact. Sign-in and profile saving have been improved.'},
-                  ],
-              }
-              # Keep the existing production track country availability untouched.
-              # Google permits release-level countryTargeting only for inProgress releases.
-              updated = dict(production)
-              updated['releases'] = current_production + [release]
-              result = session.put(f'{root}/{edit_id}/tracks/production', json=updated, timeout=45)
-              if not result.ok:
-                  raise SystemExit(f'PLAY_PROMOTION_BLOCKED: production track update HTTP {result.status_code}')
-              commit = session.post(f'{root}/{edit_id}:commit?changesInReviewBehavior=ERROR_IF_IN_REVIEW', json={}, timeout=45)
-              if not commit.ok:
-                  raise SystemExit(f'PLAY_PROMOTION_BLOCKED: edit commit HTTP {commit.status_code}; in-review changes were not cancelled')
-              committed = True
-
-              # Read back the production country scope from a fresh edit. This edit
-              # is read-only and is deleted below; no country availability is changed.
-              verify_created = session.post(root, json={}, timeout=45)
-              if not verify_created.ok:
-                  raise SystemExit(f'POST_COMMIT_READBACK_FAILED: verification edit HTTP {verify_created.status_code}; production release commit was accepted')
-              verify_edit_id = verify_created.json().get('id')
-              if not verify_edit_id:
-                  raise SystemExit('POST_COMMIT_READBACK_FAILED: verification edit id missing; production release commit was accepted')
-              try:
-                  verify_response = session.get(f'{root}/{verify_edit_id}/countryAvailability/production', timeout=45)
-                  if not verify_response.ok:
-                      raise SystemExit(f'POST_COMMIT_READBACK_FAILED: country availability HTTP {verify_response.status_code}; production release commit was accepted')
-                  verify_availability = verify_response.json()
-                  normalize = lambda value: (
-                      bool(value.get('syncWithProduction', False)),
-                      sorted(country.get('countryCode', '') for country in value.get('countries', []) if country.get('countryCode')),
-                      bool(value.get('restOfWorld', False)),
-                  )
-                  if normalize(verify_availability) != normalize(availability):
-                      raise SystemExit('POST_COMMIT_READBACK_FAILED: production country availability changed during submission; release commit was accepted')
-              finally:
-                  deleted_verify = session.delete(f'{root}/{verify_edit_id}', timeout=45)
-                  if not deleted_verify.ok:
-                      raise SystemExit(f'POST_COMMIT_READBACK_FAILED: verification edit cleanup HTTP {deleted_verify.status_code}; production release commit was accepted')
-              print(json.dumps({
-                  'package': package,
-                  'track': 'production',
-                  'versionCode': expected,
-                  'status': 'completed',
-                  'rolloutPercent': 100,
-                  'source': 'existing completed internal release; no bundle upload or rebuild',
-                  'productionCountryAvailabilityUnchanged': True,
-                  'productionCountryCodes': country_codes,
-                  'productionRestOfWorld': rest_of_world,
-                  'commitAccepted': True,
-              }, sort_keys=True))
-          finally:
-              # A committed edit is already closed. On a pre-commit failure,
-              # delete only this workflow's temporary, uncommitted edit.
-              if not committed:
-                  try:
-                      session.delete(f'{root}/{edit_id}', timeout=45)
-                  except Exception:
-                      pass
-          PY
+          node scripts/ops/google-play-pinned-track.mjs promote
 
       - name: Record existing-AAB upload evidence
         if: always()
