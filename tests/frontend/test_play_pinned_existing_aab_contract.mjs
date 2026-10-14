@@ -31,6 +31,9 @@ test('pinned existing-AAB upload skips rebuild and keeps the shared Play concurr
   assert.match(workflow, /group: google-play-\$\{\{ github\.repository \}\}[\s\S]*?cancel-in-progress: false/);
   assert.match(workflow, /quality-gate:[\s\S]*?!inputs\.upload_existing_pinned_aab/);
   assert.match(workflow, /build-and-submit:[\s\S]*?!inputs\.upload_existing_pinned_aab/);
+  assert.match(workflow, /Read current Play track version codes before upload/);
+  assert.match(workflow, /PLAY_PREFLIGHT_BLOCKED: versionCode \{expected\} must first be completed on internal track/);
+  assert.match(workflow, /temporary edit cleanup HTTP/);
   assert.match(workflow, /uses: r0adkll\/upload-google-play@v1/);
   assert.match(workflow, /this step uploads the existing AAB and never runs Gradle\/build/);
   assert.doesNotMatch(workflow, /upload-existing-pinned-aab:[\s\S]{0,14000}gradlew|upload-existing-pinned-aab:[\s\S]{0,14000}Build release AAB/);

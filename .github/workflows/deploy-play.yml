@@ -505,6 +505,69 @@ jobs:
           artifact-ids: 11870969860
           path: ${{ runner.temp }}/urtruck-existing-aab
 
+      - name: Read current Play track version codes before upload
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          TARGET_TRACK: ${{ inputs.track || 'internal' }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet google-auth requests
+          python3 - <<'PY'
+          import json, os, sys
+          from google.auth.transport.requests import AuthorizedSession
+          from google.oauth2 import service_account
+
+          package = 'com.urtruck.app'
+          expected = 214116271
+          target_track = os.environ['TARGET_TRACK']
+          raw = os.environ.get('PLAY_SERVICE_ACCOUNT_JSON', '')
+          if not raw:
+              raise SystemExit('PLAY_PREFLIGHT_BLOCKED: Play service-account credential is unavailable')
+          credentials = service_account.Credentials.from_service_account_info(
+              json.loads(raw), scopes=['https://www.googleapis.com/auth/androidpublisher'])
+          session = AuthorizedSession(credentials)
+          root = f'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{package}/edits'
+          created = session.post(root, json={}, timeout=45)
+          if not created.ok:
+              raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: edits.insert HTTP {created.status_code}')
+          edit_id = created.json().get('id')
+          if not edit_id:
+              raise SystemExit('PLAY_PREFLIGHT_BLOCKED: temporary edit id missing')
+          try:
+              response = session.get(f'{root}/{edit_id}/tracks', timeout=45)
+              if not response.ok:
+                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: tracks read HTTP {response.status_code}')
+              tracks = response.json().get('tracks', [])
+              snapshot = {}
+              all_codes = {}
+              for track in tracks:
+                  name = str(track.get('track', ''))
+                  releases = []
+                  for release in track.get('releases', []):
+                      codes = [int(code) for code in release.get('versionCodes', [])]
+                      releases.append({'status': release.get('status'), 'versionCodes': codes})
+                      for code in codes:
+                          all_codes.setdefault(code, []).append({'track': name, 'status': release.get('status')})
+                  snapshot[name] = releases
+              if expected in all_codes and target_track in all_codes[expected]:
+                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: versionCode {expected} already exists on requested track {target_track}')
+              locations = all_codes.get(expected, [])
+              if target_track == 'production' and not any(row['track'] == 'internal' and row['status'] == 'completed' for row in locations):
+                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: versionCode {expected} must first be completed on internal track')
+              unexpected = [row['track'] for row in locations if not (target_track == 'production' and row['track'] == 'internal' and row['status'] == 'completed')]
+              if unexpected:
+                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: versionCode {expected} is present on incompatible track(s): {sorted(set(unexpected))}')
+              higher = sorted(code for code in all_codes if code > expected)
+              if higher:
+                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: newer Play versionCode(s) exist: {higher}')
+              print('PLAY_TRACK_SNAPSHOT=' + json.dumps(snapshot, sort_keys=True, separators=(',', ':')))
+              print(f'PLAY_TARGET_TRACK={target_track}; target_versionCode={expected}; already_present_in_internal={target_track == "production" and any(row["track"] == "internal" and row["status"] == "completed" for row in locations)}')
+          finally:
+              deleted = session.delete(f'{root}/{edit_id}', timeout=45)
+              if not deleted.ok:
+                  raise SystemExit(f'PLAY_PREFLIGHT_BLOCKED: temporary edit cleanup HTTP {deleted.status_code}')
+          PY
+
       - name: Verify artifact bytes, package, version, host, alignment and upload certificate
         env:
           RELEASE_STATUS: ${{ inputs.status || 'draft' }}
