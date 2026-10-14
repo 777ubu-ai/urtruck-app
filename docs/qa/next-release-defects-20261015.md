@@ -9,7 +9,7 @@
 - Защищаемые модули/контракты: Auth/profile, Chat/read cursor/attachments, push/outbox/unread, translations/voice, GPS/location permissions, участник/ownership checks, серверная FSM и SQLite business data. FSM: водитель `accepted→in_progress→at_border (международный)→delivered`; отправитель отдельно `delivered→received→completed`; отмена разрешена участнику только по серверному контракту.
 - Dependency analysis: свежий Graphify AST-only на base SHA: 11,113 узлов / 25,282 связей, 1,223 исходных code files; SQL parser отсутствовал для 20 SQL files. Связанный hot path включает `DealWorkspaceScreenV2.js`, `TruckMap.native.js`, `TruckMap.web.js`, `routingAPI.js`, `geo.js`, `dealActionResolver.js`, `DealStatusTimeline.js`, `marketAPI.js`, `deal_room.py`, `deal_room_dal.py`, `marketplace.py`, unread/chat/push/GPS/i18n consumers. Граф создан до изменений; generated `graphify-out/` исключён из исходников.
 - Baseline перед изменениями: 53 связанных frontend/unit checks PASS (deal workspace, routing lifecycle, timeline localization, unread/push contract, route metrics, workspace lifecycle, FSM status order); exact command и stdout сохранены в сессии. Это source-level baseline, не device acceptance.
-- Источники визуального воспроизведения: фото `IMG_2254–IMG_2267` не присутствуют среди доступных файлов/вложений текущего checkout; поэтому их содержимое ещё не проверено. Сделка Ош→Поти кодом проверена: Ош имеет координату в `geo.js`, Поти есть в авторитетном `worldCities.js`/`geography.js`, но отсутствует в карте координат `geo.js`.
+- Источники визуального воспроизведения: все 14 оригинальных `IMG_2254–IMG_2267` найдены в сохранённых материалах и просмотрены при проверке кандидата; `IMG_2256` содержит только верхнюю полосу экрана. Фото подтверждают внешний вид, а не причины отсутствия реакции. На карте видны сделки `f439d235-1dc8-4d43-ac26-5a96e02d600a` и `a1373ddc-343a-4f12-80d9-684652ade45c`. Сделка Ош→Поти кодом проверена: Ош имеет координату в `geo.js`, Поти есть в авторитетном `worldCities.js`/`geography.js`, но отсутствует в карте координат `geo.js`.
 - План проверок: точечные geo/routing/UI regressions, связанные tests Chat/Push/i18n/GPS/FSM/attachments, затем применимые required CI и независимый review exact final SHA. Физические Android/iPhone проверки будут отмечены только при наличии устройства, установленного точного build и фактического evidence.
 - Откат: отменить только собственные изменения этой ветки отдельным revert; не трогать frozen release/store artifacts, production, сделки/переписку/вложения и чужие worktrees.
 
@@ -23,10 +23,10 @@
 
 ## Изменения-кандидат
 
-- `src/utils/geo.js`: добавлены координаты Поти из уже включённого набора GeoNames и английский alias. Ошибка маршрута Ош→Поти локализована до клиентского словаря координат; дорожная линия по-прежнему строится только из подтверждённой геометрии routing API.
+- `src/utils/geo.js`: добавлены координаты центра города Поти по [GeoNames612366](https://www.geonames.org/612366/poti.html) и английский alias. Ошибка маршрута Ош→Поти локализована до клиентского словаря координат; дорожная линия по-прежнему строится только из подтверждённой геометрии routing API.
 - `src/screens/DealWorkspaceScreenV2.js`: любой явный `{ok:false}` от API перехода статуса теперь показывает причину/общую ошибку даже без HTTP `status`; состояние и события по-прежнему перечитываются с сервера. FSM, роль и подтверждение отправителя не изменены. Это исправляет тихий класс отказов, но ещё не доказывает первопричину неотзывчивого нажатия на телефоне.
 - `src/components/deal/DealStatusTimeline.js`: для отмены при отсутствии display name показывается локализованная сторона по сохранённому `actor_role`; дата и время берутся из сохранённого `created_at`. Идентификатор аккаунта в UI не раскрывается.
-- `src/utils/attachmentFilename.js`, `src/components/deal/DealAttachments.js`: percent-encoded UTF-8 декодируется один раз для display label/PDF suffix; некорректная последовательность или control chars оставляют безопасный исходный label. Подписанная ссылка и правила доступа не менялись.
+- `src/utils/attachmentFilename.js`, `src/components/deal/DealAttachments.js`, document hydration в `src/screens/DealWorkspaceScreenV2.js`: percent-encoded UTF-8 декодируется один раз для display label/PDF suffix; некорректная последовательность или control chars оставляют безопасный исходный label. Подписанная ссылка и правила доступа не менялись.
 - Tests: `tests/frontend/test_yandex_road_route.mjs`, `test_deal_workspace.mjs`, `test_deal_timeline_localization.mjs`, новый `test_attachment_filename_display.mjs`.
 
 ## Проверки после изменений
@@ -40,9 +40,20 @@
 
 ## Оставшиеся доказательства / блокеры
 
-- Не получены изображения `IMG_2254–IMG_2267`; повторно приложить оригиналы в доступный проектный checkout, чтобы сверить фактические экраны и указанные ID.
+- Оригиналы изображений получены; причины no-op и freeze требуют device acceptance. `IMG_2267` показывает отклонение контр-оффера, а не отмену принятой сделки.
 - Не выполнено native воспроизведение freeze карты, кнопки «Доставлен», перехода/отмены offline/reconnect, длинного ожидания и возврата; нужны точные app build/source, роль и deal IDs с телефонов. Ош→Поти имеет исправленный недостающий пункт источника, но нет фактического ответа routing provider на этот рейс.
 - Отмена обеими ролями не проигрывалась на выделенных тестовых сделках; patch показывает уже сохранённые event fields, а не доказывает наличие event у каждой старой сделки.
 - Дубли `report-5068.pdf` невозможно классифицировать без attachment/message IDs; вес `10000 т` нельзя исправлять до проверки фактического ввода/значения API; пустые GPS/ETA требуют сопоставить состояние рейса и tracking API. Никакие данные не менялись.
 - Разметка карточек/подписанный вход в статусы не менялись до доступного визуального evidence и проверки размера шрифта.
 - Производство, deploy, IPA/AAB, Apple submission и Play tracks этим кандидатом не менялись.
+
+## Дополнительная проверка chat filename
+
+- BEFORE `4e6245f…`: новый поведенческий тест исполнил точный AST callback `serverDocs` и воспроизвёл percent-encoded label в чатовой ленте при рабочем helper списка вложений. Тест FAILED на ожидаемом `Заказ.pdf`.
+- AFTER: декодирование применяется при hydration document-bubble и PDF display metadata. Подписанный URL, attachment/message ID, owner и MIME берутся прежним способом. Изменений бизнес-данных/API нет.
+- Перед изменением: Graphify11123 nodes/24636 edges, scope39 nodes/273 edges; 20 SQL без parser и2Gradle warnings. Изменены только workspace, filename regression test и этот dossier.
+- `runNextAction` вызывает native `AppConfirmModal` при открытом native Modal статусов. iOS-причина no-op не воспроизведена; этот риск не объявляется устранённым. Карта/кнопки/GPS/ETA, small card typography и UUID остаются отдельными открытыми пунктами.
+- Draft [PR536](https://github.com/777ubu-ai/urtruck-app/pull/536) направлен в release-ветку только для review/CI; merge/store submissions/deploy не выполнять. Точный новый SHA и результаты сохраняются во внешнем checkpoint.
+
+- Дополнительные local checks после chat-filename patch:35/35 filename/workspace/lifecycle +4/4 document ownership PASS; lint parsed500JS PASS; diff-check PASS. Graphify после patch: 11125 nodes/24644 edges. Граф исключён из Git.
+- Исходный PR536 head4e6245f получил CI38630501580 SUCCESS (3/3 jobs); этот PASS не переносится на последующий коммит.
