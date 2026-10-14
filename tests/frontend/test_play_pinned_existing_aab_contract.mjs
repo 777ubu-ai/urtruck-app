@@ -67,6 +67,8 @@ test('pinned existing-AAB upload skips rebuild and keeps the shared Play concurr
 test('internal-track readback is opt-in, pinned to reviewed tooling, and never rebuilds or uploads', () => {
   assert.match(workflow, /verify_existing_internal_release:[\s\S]*?default: false[\s\S]*?type: boolean/);
   assert.match(workflow, /verify-existing-internal-release:[\s\S]*?inputs\.verify_existing_internal_release[\s\S]*?Verify pinned source and reviewed tooling identity[\s\S]*?APPROVED_TOOLING_SHA: \$\{\{ vars\.PLAY_RELEASE_TOOLING_SHA \}\}[\s\S]*?test "\$GITHUB_SHA" = "\$APPROVED_TOOLING_SHA"[\s\S]*?Read back internal release using a temporary edit without changing track state[\s\S]*?google-play-pinned-track\.mjs verify-internal/);
+  const readbackJob = workflow.split('  verify-existing-internal-release:')[1];
+  assert.ok(readbackJob.includes('.github/workflows/testflight-local.yml|tests/frontend/test_ios_release_workflow_contract.mjs'));
   assert.match(workflow, /quality-gate:[\s\S]*?!inputs\.verify_existing_internal_release/);
   assert.match(workflow, /build-and-submit:[\s\S]*?!inputs\.verify_existing_internal_release/);
   assert.match(workflow, /printf '%s\\n'[\s\S]*?Pinned Android AAB upload/);

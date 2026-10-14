@@ -635,7 +635,7 @@ jobs:
           git merge-base --is-ancestor "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA"
           while IFS= read -r path; do
             case "$path" in
-              .github/workflows/deploy-play.yml|tests/frontend/test_play_pinned_existing_aab_contract.mjs|tests/ops/test_google_play_pinned_track.mjs|scripts/ops/google-play-pinned-track.mjs|scripts/ops/google-play-apk-requirements.txt) ;;
+              .github/workflows/deploy-play.yml|tests/frontend/test_play_pinned_existing_aab_contract.mjs|tests/ops/test_google_play_pinned_track.mjs|scripts/ops/google-play-pinned-track.mjs|scripts/ops/google-play-apk-requirements.txt|.github/workflows/testflight-local.yml|tests/frontend/test_ios_release_workflow_contract.mjs) ;;
               *) echo "::error::Unexpected non-Play-tooling path after frozen app source: $path"; exit 1 ;;
             esac
           done < <(git diff --name-only "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA")
