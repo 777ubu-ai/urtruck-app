@@ -134,13 +134,38 @@ jobs:
           fi
           if command -v pm2 >/dev/null 2>&1; then
             pm2 jlist > "$DEST/config/pm2-jlist.json" 2>/dev/null || true
-            pm2 save --force >/dev/null 2>&1 || true
             [ -f "$HOME/.pm2/dump.pm2" ] && cp -a "$HOME/.pm2/dump.pm2" "$DEST/config/" || true
           fi
           if command -v systemctl >/dev/null 2>&1; then
             systemctl list-unit-files --type=service > "$DEST/config/systemd-services.txt" 2>/dev/null || true
           fi
           [ -d /etc/nginx ] && (sudo -n tar -czf "$DEST/config/nginx.tar.gz" /etc/nginx 2>/dev/null || true)
+
+          # Private, exact before-inventory for staged transition review. This
+          # records hashes/links only; it does not execute application code or
+          # follow directory symlinks. Storage is archived separately above.
+          write_source_inventory() {
+            local source_root="$1"
+            local label="$2"
+            test -d "$source_root"
+            (
+              cd "$source_root"
+              find . \
+                \( -type d \( -name .git -o -name node_modules -o -name storage -o -name .venv -o -name venv -o -name __pycache__ -o -name .pytest_cache \) -prune \) -o \
+                -type f -print0 \
+                | sort -z \
+                | xargs -0 -r sha256sum
+            ) > "$DEST/code/${label}-before.sha256"
+            (
+              cd "$source_root"
+              find . -type l -print0 | sort -z | while IFS= read -r -d '' path; do
+                printf '%s -> %s\n' "$path" "$(readlink "$path")"
+              done
+            ) > "$DEST/code/${label}-before-symlinks.txt"
+          }
+          mkdir -p "$DEST/code"
+          write_source_inventory "$REMOTE_DIR" frontend
+          write_source_inventory "$BACKEND_DIR" backend
 
           # Lightweight code snapshots for immediate rollback.
           mkdir -p "$DEST/code"
