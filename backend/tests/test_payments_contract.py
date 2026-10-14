@@ -391,6 +391,26 @@ def test_subscription_status_active_subscription_is_unlimited():
     assert body["deal_accept"]["can_accept"] is True
 
 
+def test_subscription_status_monetization_enabled_follows_deal_accept_flag():
+    """Контакты бесплатны, но лимит сделок платный → клиент обязан видеть
+    monetization_enabled=True, иначе экран тарифов прячет покупку Pro."""
+    old = (config.CONTACTS_MONETIZATION_ENABLED, config.DEAL_ACCEPT_MONETIZATION_ENABLED)
+    try:
+        as_user("pay-user-status-flags")
+        for contacts, deals, expected in (
+            (False, False, False),
+            (False, True, True),
+            (True, False, True),
+        ):
+            config.CONTACTS_MONETIZATION_ENABLED = contacts
+            config.DEAL_ACCEPT_MONETIZATION_ENABLED = deals
+            r = client.get("/api/v1/payments/subscription/status")
+            assert r.status_code == 200
+            assert r.json()["monetization_enabled"] is expected, (contacts, deals)
+    finally:
+        config.CONTACTS_MONETIZATION_ENABLED, config.DEAL_ACCEPT_MONETIZATION_ENABLED = old
+
+
 if __name__ == "__main__":
     import traceback
     tests = [v for k, v in list(globals().items()) if k.startswith("test_") and callable(v)]
