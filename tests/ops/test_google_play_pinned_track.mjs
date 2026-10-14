@@ -24,7 +24,7 @@ function runMocked(mode, scenario = mode) {
       const calls = [];
       let editCount = 0;
       let productionTrack = { track: 'production', releases: [] };
-      const internalTrack = { track: 'internal', releases: scenario === 'promote'
+      const internalTrack = { track: 'internal', releases: scenario === 'promote' || scenario === 'verify-internal'
         ? [{ status: 'completed', versionCodes: [214116271] }]
         : [{ status: 'completed', versionCodes: [213700001] }] };
       const tracks = () => [internalTrack, productionTrack];
@@ -69,6 +69,10 @@ function runMocked(mode, scenario = mode) {
             assert.equal(productionTrack.releases.at(-1).versionCodes[0], 214116271);
             assert.equal(productionTrack.releases.at(-1).status, 'completed');
           }
+          if (scenario === 'verify-internal') {
+            assert(calls.some((call) => call.includes('/tracks')));
+            assert.equal(calls.some((call) => call.startsWith('PUT ') || call.includes(':commit')), false, 'internal readback must not mutate a Play track');
+          }
         }
       });
     `;
@@ -110,5 +114,15 @@ test('production promotion reuses the completed internal version and reads back 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /"versionCode":214116271/);
   assert.match(result.stdout, /"productionCountryCodes":\["KZ","US"\]/);
+  assert.doesNotMatch(result.stdout + result.stderr, /mock-access-token|private_key|unit-test@example/);
+});
+
+test('internal readback confirms the exact completed version and cleans up its temporary edit', () => {
+  const result = runMocked('verify-internal', 'verify-internal');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"track":"internal"/);
+  assert.match(result.stdout, /"versionCode":214116271/);
+  assert.match(result.stdout, /"status":"completed"/);
+  assert.ok(result.stdout.includes('https://play.google.com/apps/testing/com.urtruck.app'));
   assert.doesNotMatch(result.stdout + result.stderr, /mock-access-token|private_key|unit-test@example/);
 });

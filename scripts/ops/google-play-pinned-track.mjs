@@ -233,10 +233,33 @@ async function promote() {
   });
 }
 
+async function verifyInternal() {
+  const token = await accessToken();
+  await withEdit(token, 'PLAY_READBACK_BLOCKED', async (editId) => {
+    const response = await api(token, `/${editId}/tracks`, {}, 'PLAY_READBACK_BLOCKED');
+    const internal = (response.tracks || []).find((track) => track.track === 'internal');
+    if (!internal) fail('PLAY_READBACK_BLOCKED', 'internal track is unavailable');
+    const matches = (internal.releases || []).filter((release) => (release.versionCodes || []).map(Number).includes(VERSION_CODE));
+    if (matches.length !== 1 || matches[0].status !== 'completed') {
+      fail('PLAY_READBACK_BLOCKED', `expected exactly one completed internal release for versionCode ${VERSION_CODE}`);
+    }
+    console.log(JSON.stringify({
+      package: PACKAGE,
+      track: 'internal',
+      versionCode: VERSION_CODE,
+      status: matches[0].status,
+      releaseName: matches[0].name || null,
+      testerLink: 'https://play.google.com/apps/testing/com.urtruck.app',
+      readback: 'Google Play Android Publisher API tracks GET',
+    }));
+  });
+}
+
 const [mode] = process.argv.slice(2);
 try {
   if (mode === 'preflight') await preflight();
   else if (mode === 'promote') await promote();
+  else if (mode === 'verify-internal') await verifyInternal();
   else fail('PLAY_TOOL_BLOCKED', 'expected mode preflight or promote');
 } catch (error) {
   console.error(error.message || 'PLAY_TOOL_BLOCKED: operation failed');
