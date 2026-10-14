@@ -32,7 +32,12 @@ def subscription_status(user=Depends(require_level(1))):
         limit = config.PREMIUM_CONTACT_LIMIT if sub else config.FREE_CONTACT_LIMIT
     deal_accept = sub_dal.get_deal_accept_limit(uid)
     return {
-        "monetization_enabled": config.CONTACTS_MONETIZATION_ENABLED,
+        # Клиент по этому флагу решает, показывать ли покупку Pro. Платная
+        # часть теперь — лимит принятия сделок (контакты бесплатны, 70a6b8fe),
+        # поэтому учитываем оба флага, а не только контактный.
+        "monetization_enabled": bool(
+            config.CONTACTS_MONETIZATION_ENABLED or config.DEAL_ACCEPT_MONETIZATION_ENABLED
+        ),
         "active": bool(sub),
         "plan": sub.get("product_id") if sub else None,
         "period_end": sub.get("period_end") if sub else None,
