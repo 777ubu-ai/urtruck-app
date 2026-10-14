@@ -1,0 +1,23 @@
+name: Синхронизация production push mode
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    # Never load the production writer from the UI-selected caller ref. The
+    # workflow definition must come from protected main before it can receive
+    # production secrets; the writer still verifies the requested exact SHA.
+    uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main
+    with:
+      deploy_sha: ${{ github.sha }}
+      operation: sync_push_mode
+    secrets:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      BACKEND_DIR: ${{ secrets.BACKEND_DIR }}

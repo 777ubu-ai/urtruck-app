@@ -99,6 +99,81 @@ def test_deploy_release_gate_requires_the_quality_gate_first():
     )
 
 
+def test_deploy_push_ignores_only_the_reviewed_push_mode_operations_files():
+    doc = _load("deploy.yml")
+    push = doc[True]["push"] if True in doc else doc["on"]["push"]
+    ignored = set(push.get("paths-ignore", []))
+    expected = {
+        ".github/workflows/deploy.yml",
+        ".github/workflows/production-deploy-execute.yml",
+        ".github/workflows/sync-production-push-mode.yml",
+        "backend/tests/test_deploy_workflow_static_validation.py",
+        "backend/tests/test_production_push_mode_sync_contract.py",
+        "backend/tests/test_remote_health_check_push_mode.py",
+        "docs/qa/production-push-mode-sync-20261014.md",
+        "scripts/ops/production_push_mode_sync_preflight.py",
+        "scripts/remote_health_check.sh",
+        ".github/workflows/quality-gate-reusable.yml",
+        ".gitattributes",
+        "package.json",
+        "package-lock.json",
+        "docs/npm-audit-triage.md",
+        "docs/qa/dependency-audit-remediation-20261014.md",
+        "patches/node-forge+1.4.0.patch",
+        "scripts/security-*.mjs",
+        "security/sbom/braces-3.0.4-28d440b.spdx.json",
+        "tests/security/*.mjs",
+        "vendor/braces-3.0.4-28d440b/**",
+        "backend/tests/test_production_push_mode_backup.py",
+        "scripts/ops/production_push_mode_backup.py",
+    }
+    assert ignored == expected
+    # Model every path currently changed by PR #533. GitHub's paths-ignore
+    # suppresses the production push workflow only if every changed path
+    # matches; product/backend files therefore still enter the release gate.
+    pr533_paths = {
+        ".gitattributes", ".github/workflows/deploy.yml",
+        ".github/workflows/production-deploy-execute.yml",
+        ".github/workflows/quality-gate-reusable.yml",
+        ".github/workflows/sync-production-push-mode.yml",
+        "backend/tests/test_deploy_workflow_static_validation.py",
+        "backend/tests/test_production_push_mode_sync_contract.py",
+        "backend/tests/test_remote_health_check_push_mode.py",
+        "backend/tests/test_production_push_mode_backup.py",
+        "docs/npm-audit-triage.md",
+        "docs/qa/dependency-audit-remediation-20261014.md",
+        "docs/qa/production-push-mode-sync-20261014.md",
+        "package-lock.json", "package.json",
+        "patches/node-forge+1.4.0.patch",
+        "scripts/ops/production_push_mode_sync_preflight.py",
+        "scripts/ops/production_push_mode_backup.py",
+        "scripts/remote_health_check.sh",
+        "scripts/security-check-braces-upstream.mjs",
+        "scripts/security-node-forge-audit-gate.mjs",
+        "security/sbom/braces-3.0.4-28d440b.spdx.json",
+        "tests/security/braces_cve_2026_93687.test.mjs",
+        "tests/security/braces_upstream_monitor.test.mjs",
+        "tests/security/braces_vendor_provenance.test.mjs",
+        "tests/security/node_forge_cve_2026_85393.test.mjs",
+        "tests/security/security_node_forge_audit_gate.test.mjs",
+        "tests/security/shell_quote_advisory.test.mjs",
+        "vendor/braces-3.0.4-28d440b/LICENSE",
+        "vendor/braces-3.0.4-28d440b/PROVENANCE.md",
+        "vendor/braces-3.0.4-28d440b/UPSTREAM-SOURCE-SHA256SUMS",
+        "vendor/braces-3.0.4-28d440b/index.js",
+        "vendor/braces-3.0.4-28d440b/lib/compile.js",
+        "vendor/braces-3.0.4-28d440b/lib/constants.js",
+        "vendor/braces-3.0.4-28d440b/lib/expand.js",
+        "vendor/braces-3.0.4-28d440b/lib/parse.js",
+        "vendor/braces-3.0.4-28d440b/lib/stringify.js",
+        "vendor/braces-3.0.4-28d440b/lib/utils.js",
+        "vendor/braces-3.0.4-28d440b/package.json",
+    }
+    import fnmatch
+    assert all(any(fnmatch.fnmatchcase(path, pattern) for pattern in ignored) for path in pr533_paths)
+    assert not any(fnmatch.fnmatchcase("backend/api/push.py", pattern) for pattern in ignored)
+
+
 # ── secure-production-deploy.yml: no more bare workflow_dispatch bypass ──
 
 def test_secure_production_deploy_has_no_bare_workflow_dispatch():
@@ -193,7 +268,7 @@ def test_production_deploy_execute_is_reusable_and_parameterized():
     assert "break_glass" in inputs
 
 
-def test_only_normal_path_locally_calls_production_deploy_execute():
+def test_only_the_normal_caller_uses_local_executor_and_sync_is_pinned_to_main():
     callers = []
     for f in WORKFLOWS.glob("*.yml"):
         if f.name == "production-deploy-execute.yml":
@@ -202,10 +277,21 @@ def test_only_normal_path_locally_calls_production_deploy_execute():
         for job in doc.get("jobs", {}).values():
             if job.get("uses") == "./.github/workflows/production-deploy-execute.yml":
                 callers.append(f.name)
-    assert sorted(callers) == ["secure-production-deploy.yml"], (
-        f"only the normal local caller may resolve the executor in-repository; "
-        f"break-glass is anchored to protected main, got: {callers}"
+    assert callers == ["secure-production-deploy.yml"], (
+        "only the normal deploy caller may resolve the executor locally; the mode-sync caller must use protected main"
     )
+    sync = _load("sync-production-push-mode.yml")
+    sync_uses = sync["jobs"]["sync"].get("uses", "")
+    assert sync_uses == (
+        "777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main"
+    )
+
+    mode_caller = _load("sync-production-push-mode.yml")
+    assert mode_caller["jobs"]["sync"]["with"]["operation"] == "sync_push_mode"
+    assert mode_caller["jobs"]["sync"]["with"]["deploy_sha"] == "${{ github.sha }}"
+    executor = _load("production-deploy-execute.yml")
+    assert executor["jobs"]["sync_push_mode"]["if"] == "${{ inputs.operation == 'sync_push_mode' }}"
+    assert executor["jobs"]["deploy"]["if"] == "${{ inputs.operation == 'deploy' }}"
 
 
 def test_production_executor_is_key_only_and_pins_the_host_key():
