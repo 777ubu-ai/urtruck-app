@@ -130,6 +130,20 @@ jobs:
           echo "TOOLING_SHA=$URTRUCK_TOOLING_SHA"
           echo "APP_SOURCE_SHA=$URTRUCK_SOURCE_SHA"
           echo "UPLOAD_MODE=$URTRUCK_UPLOAD_MODE"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify EAS account and build counter
+        shell: bash
+        run: |
+          set -euo pipefail
           npx eas-cli@latest whoami
           case "$ASC_MAX_IOS_BUILD" in (*[!0-9]*|'') echo "::error::asc_max_ios_build must be a freshly read numeric ASC build number"; exit 1;; esac
           EAS_VERSION_JSON="$RUNNER_TEMP/eas-ios-build-version.json"
@@ -149,15 +163,6 @@ jobs:
           printf 'EAS_CURRENT_IOS_BUILD=%s\n' "$EAS_CURRENT_IOS_BUILD" >> "$GITHUB_ENV"
           printf 'URTRUCK_NEXT_IOS_BUILD=%s\n' "$((EAS_CURRENT_IOS_BUILD + 1))" >> "$GITHUB_ENV"
           echo "IOS_BUILD_PREFLIGHT_PASS asc_max=$ASC_MAX_IOS_BUILD eas_current=$EAS_CURRENT_IOS_BUILD expected_next=$((EAS_CURRENT_IOS_BUILD + 1))"
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Inject production runtime configuration
         shell: bash
