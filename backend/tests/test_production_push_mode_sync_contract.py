@@ -129,7 +129,7 @@ class PushModePreflightTests(unittest.TestCase):
         self.assertIn("production_push_mode_backup.py", sync_job)
         self.assertIn("remote_health_check.sh", sync_job)
         self.assertIn("--run-id", sync_job)
-        self.assertLess(sync_job.index("production_push_mode_preflight.py"), sync_job.index("production_push_mode_backup.py"))
+        self.assertLess(sync_job.index("production_push_mode_sync_preflight.py"), sync_job.index("production_push_mode_backup.py"))
         self.assertNotIn("SERVER_SSH_KEY:", sync_job.split("steps:", 1)[0])
         self.assertNotIn("SERVER_SSH_KNOWN_HOSTS:", sync_job.split("steps:", 1)[0])
         preflight = (ROOT / "scripts/ops/production_push_mode_sync_preflight.py").read_text()
@@ -145,7 +145,7 @@ class PushModePreflightTests(unittest.TestCase):
         self.assertIn('verify --backup-dir "$BACKUP_DIR"', health)
         self.assertIn('src.backup(dst', backup)
         self.assertIn('PRAGMA query_only=ON', backup)
-        self.assertIn('chmod(0o700)', backup)
+        self.assertIn('os.chmod(target, 0o700)', backup)
         self.assertIn('chmod(0o600)', backup)
         self.assertIn('saved PM2 application configuration changed outside the reviewed mode', backup)
 
