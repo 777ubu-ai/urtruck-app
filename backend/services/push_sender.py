@@ -23,7 +23,6 @@ VAPID_PUBLIC = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:support@urtruck.kz")
 EXPO_ENDPOINT = "https://exp.host/--/api/v2/push/send"
-EXPO_ACCESS_TOKEN = os.getenv("EXPO_ACCESS_TOKEN", "")
 
 
 def _mask_token(token: str) -> str:
@@ -151,8 +150,6 @@ def _send_expo_detailed(tokens: list[str], title: str, body: str, data: dict,
     if not tokens:
         return {"sent": 0, "tickets": [], "error": None}
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    if EXPO_ACCESS_TOKEN:
-        headers["Authorization"] = f"Bearer {EXPO_ACCESS_TOKEN}"
     messages = []
     for token in tokens:
         message = {

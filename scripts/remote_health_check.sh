@@ -63,13 +63,100 @@ for raw in env_file.read_text(encoding="utf-8").splitlines():
         values.append(line.split("=", 1)[1].strip())
 if len(values) != 1 or values[0] not in {"native", "dual"}:
     raise SystemExit("PUSH_PROVIDER_MODE must occur once and be native or dual")
-print(values[0])
+original_modes = [selected[name].get("PUSH_PROVIDER_MODE") for name in names]
+if any(mode not in {"native", "dual"} for mode in original_modes):
+    raise SystemExit("Current PM2 push mode is missing or unsupported")
+if any(selected[name].get("status") != "online" for name in names):
+    raise SystemExit("Both named PM2 processes must be online before mode transition")
+print(values[0], original_modes[0], original_modes[1])
 ' "$PROC" "$SCHEDULER_PROC" <<<"$runtime_json")"
 unset runtime_json
+read -r PUSH_MODE ORIGINAL_API_MODE ORIGINAL_SCHEDULER_MODE <<<"$PUSH_MODE"
 echo "PUSH_MODE_SOURCE=backend_env_file"
-for process in "$PROC" "$SCHEDULER_PROC"; do
-  PUSH_PROVIDER_MODE="$PUSH_MODE" "$PM2_BIN" restart "$process" --update-env
-done
+
+verify_modes() {
+  local expected_api="$1" expected_scheduler="$2" expected_api_status="$3" expected_scheduler_status="$4"
+  local current_json
+  current_json="$("$PM2_BIN" jlist)"
+  python3 -c '
+import json, sys
+items = json.load(sys.stdin)
+for name, mode, expected_status in (
+    (sys.argv[1], sys.argv[3], sys.argv[5]),
+    (sys.argv[2], sys.argv[4], sys.argv[6]),
+):
+    matches = [p for p in items if p.get("name") == name]
+    if len(matches) != 1:
+        raise SystemExit("Named production PM2 process missing or ambiguous")
+    env = matches[0].get("pm2_env", {})
+    if env.get("status") != expected_status or env.get("PUSH_PROVIDER_MODE") != mode:
+        raise SystemExit("Named PM2 process status/mode verification failed")
+' "$PROC" "$SCHEDULER_PROC" "$expected_api" "$expected_scheduler" "$expected_api_status" "$expected_scheduler_status" <<<"$current_json"
+  unset current_json
+}
+
+restore_original_modes() {
+  local restored=0 healthy=0 attempt
+  PUSH_PROVIDER_MODE="$ORIGINAL_API_MODE" "$PM2_BIN" restart "$PROC" --update-env || restored=1
+  PUSH_PROVIDER_MODE="$ORIGINAL_SCHEDULER_MODE" "$PM2_BIN" restart "$SCHEDULER_PROC" --update-env || restored=1
+  if [ "$restored" -eq 0 ] && verify_modes "$ORIGINAL_API_MODE" "$ORIGINAL_SCHEDULER_MODE" online online; then
+    for attempt in $(seq 1 24); do
+      if curl --fail --silent --show-error --connect-timeout 3 --max-time 10 -o /dev/null "$URL"; then
+        healthy=1
+        break
+      fi
+      sleep 5
+    done
+    if [ "$healthy" -eq 1 ]; then
+      echo "PUSH_MODE_ROLLBACK=verified"
+    else
+      echo "::error::Original PM2 modes returned but API health did not recover" >&2
+      return 1
+    fi
+  else
+    echo "::error::Push mode rollback could not be verified; keep the production writer blocked" >&2
+    return 1
+  fi
+}
+
+if [ "$ORIGINAL_API_MODE" = "$PUSH_MODE" ] && [ "$ORIGINAL_SCHEDULER_MODE" = "$PUSH_MODE" ]; then
+  # Ordinary code deploy with an already-synchronized mode needs only the
+  # existing API restart; do not interrupt the outbox worker unnecessarily.
+  if ! PUSH_PROVIDER_MODE="$PUSH_MODE" "$PM2_BIN" restart "$PROC" --update-env; then
+    echo "::error::API restart failed; configured push mode was already synchronized" >&2
+    exit 1
+  fi
+else
+  # Pause the sole outbox worker before changing API configuration. Otherwise
+  # a native-mode scheduler could terminally skip an Expo-only row between the
+  # two PM2 restarts. Resume it only after API adopts the target mode.
+  if ! "$PM2_BIN" stop "$SCHEDULER_PROC"; then
+    echo "::error::Could not pause named push scheduler; restoring it before failure" >&2
+    restore_original_modes || true
+    exit 1
+  fi
+  if ! verify_modes "$ORIGINAL_API_MODE" "$ORIGINAL_SCHEDULER_MODE" online stopped; then
+    echo "::error::Scheduler stop state was ambiguous; restoring original modes" >&2
+    restore_original_modes || true
+    exit 1
+  fi
+
+  if ! PUSH_PROVIDER_MODE="$PUSH_MODE" "$PM2_BIN" restart "$PROC" --update-env; then
+    echo "::error::API restart failed while push scheduler was paused; restoring original modes" >&2
+    restore_original_modes || true
+    exit 1
+  fi
+  if ! PUSH_PROVIDER_MODE="$PUSH_MODE" "$PM2_BIN" restart "$SCHEDULER_PROC" --update-env; then
+    echo "::error::Scheduler restart failed; restoring original modes" >&2
+    restore_original_modes || true
+    exit 1
+  fi
+fi
+if ! verify_modes "$PUSH_MODE" "$PUSH_MODE" online online; then
+  echo "::error::Target push mode readback failed; restoring original modes" >&2
+  restore_original_modes || true
+  exit 1
+fi
 
 # Backend imports (face_recognition/dlib/opencv and DB init) can take well over
 # 4 seconds on the current production host. PM2 may already report "online"

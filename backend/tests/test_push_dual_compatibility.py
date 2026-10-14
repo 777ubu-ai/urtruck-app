@@ -2,6 +2,7 @@ import os
 import sys
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -9,7 +10,7 @@ os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_push_dual_compatibility.db")
 
 from database import db as ddb
 from database.db import get_conn
-from services import push_gateway
+from services import push_gateway, push_sender
 
 ddb.init_db()
 
@@ -62,6 +63,15 @@ def test_dual_keeps_only_latest_native_token_per_installation():
     assert [row["id"] for row in selected] == [10]
     # Existing native-only rollout keeps its previous registry semantics.
     assert [row["id"] for row in push_gateway._select_devices_for_mode([newest, older], "native")] == [10, 9]
+
+
+def test_dual_native_rotation_fails_closed_when_app_id_is_missing():
+    newest = {**_device(10, "fcm", "install-rotated", "fcm-new"), "app_id": None}
+    older = _device(9, "fcm", "install-rotated", "fcm-old")
+    qa_app = {**_device(8, "fcm", "install-rotated", "fcm-qa"),
+              "app_id": "com.urtruck.app.qa2"}
+    selected = push_gateway._select_devices_for_mode([newest, older, qa_app], "dual")
+    assert [row["id"] for row in selected] == [10]
 
 
 def test_dual_matches_native_only_within_same_app_and_platform():
@@ -187,6 +197,23 @@ def test_expo_provider_records_ticket_id_for_delivery_evidence():
     result = provider.send("ExpoPushToken[token]", "title", "body", {}, badge=0)
     assert result.status == "sent"
     assert result.message_id == "ticket-1"
+
+
+def test_legacy_expo_send_does_not_inject_an_unconfigured_bearer_secret(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return SimpleNamespace(status_code=200, json=lambda: {"data": [{"status": "ok", "id": "ticket"}]})
+
+    monkeypatch.setattr(push_sender.httpx, "post", fake_post)
+    result = push_sender._send_expo_detailed(
+        ["ExpoPushToken[legacy]"], "title", "body", {"event_id": "evt"}, badge=1
+    )
+
+    assert result["sent"] == 1
+    assert captured["url"] == push_sender.EXPO_ENDPOINT
+    assert "Authorization" not in captured["headers"]
 
 
 def test_dual_gateway_sends_once_per_installation(monkeypatch):

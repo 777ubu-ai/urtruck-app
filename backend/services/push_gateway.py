@@ -497,14 +497,13 @@ def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[d
     # only through its latest registered native row in dual mode so a legacy
     # fallback cannot race a second stale native token.
     native: list[dict[str, Any]] = []
-    seen_native_installations: set[tuple[str, str, str]] = set()
+    seen_native_installations: list[dict[str, Any]] = []
     for device in native_rows:
         device_id = installation_device_id(device)
         if device_id:
-            identity = (*app_platform(device), str(device_id))
-            if identity in seen_native_installations:
+            if any(same_installation(device, previous) for previous in seen_native_installations):
                 continue
-            seen_native_installations.add(identity)
+            seen_native_installations.append(device)
         native.append(device)
 
     # Installation identity includes the app and platform: the same physical
