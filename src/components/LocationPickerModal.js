@@ -20,6 +20,8 @@ import { storage } from '../utils/storage';
 import { localizePlace } from '../utils/places';
 import { COUNTRIES, COUNTRY_ORDER, POINTS, searchPoints, formatPoint, pointsForCountry } from '../utils/geography';
 import CountryFlag from './ui/v1/CountryFlag';
+import { getCountryName } from '../utils/countries';
+import { customCityForCountry, locationScopeAllowsPoint } from '../utils/worldCities';
 
 const RECENT_KEY = 'ur_recent_places';
 const FAV_KEY = 'ur_fav_places';
@@ -56,7 +58,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     const translated = t(`country_${code}`);
     return translated && translated !== `country_${code}`
       ? translated
-      : (COUNTRIES[code]?.name || code || '');
+      : getCountryName(code, lang);
   };
 
   useEffect(() => {
@@ -115,8 +117,9 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   const hits = useMemo(() => {
     const q = query.trim().toLocaleLowerCase();
     if (!q) return null;
-    const primary = searchPoints(query, {});
+    const primary = searchPoints(query, { country: country || undefined });
     const localized = POINTS.filter((p) => {
+      if (country && p.country !== country && p.partnerCountry !== country) return false;
       const zh = String(localizePlace(p.name, 'ZH') || '').toLocaleLowerCase();
       const en = String(localizePlace(p.name, 'EN') || '').toLocaleLowerCase();
       return zh.includes(q) || en.includes(q);
@@ -124,9 +127,9 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     const unique = new Map();
     [...primary, ...localized].forEach((p) => unique.set(pointKey(p), p));
     const pointHits = [...unique.values()]
-      .filter((p) => scope === 'all' || p.type === scope)
+      .filter((p) => locationScopeAllowsPoint(scope, country, p))
       .slice(0, 60);
-    const countryHits = (scope === 'all' || scope === 'country')
+    const countryHits = !country && (scope === 'all' || scope === 'country')
       ? COUNTRY_ORDER.filter((code) => {
         const label = countryLabel(code).toLocaleLowerCase();
         const fallback = String(COUNTRIES[code]?.name || '').toLocaleLowerCase();
@@ -134,7 +137,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
       })
       : [];
     return { countryHits, pointHits };
-  }, [query, scope, lang]);
+  }, [query, scope, lang, country]);
 
   const s = useMemo(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: v1.bg },
@@ -153,10 +156,12 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     sectRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
     sectLabelInline: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', color: v1.textMuted },
     row: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingHorizontal: 16, paddingVertical: 12 },
-    // CountryFlag owns its complete circular treatment (white inner rim,
-    // subtle gray outer ring and shadow). Keep this layout slot transparent
-    // so a flag never becomes a button/card inside an already tappable row.
+    // CountryFlag owns its complete enamel treatment. Keep the layout slots
+    // transparent so a flag never becomes a button/card inside an already
+    // tappable row.
     lead: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
+    countryRow: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, paddingVertical: 12 },
+    countryLead: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
     leadText: { fontSize: 19 },
     name: { fontSize: 15, fontWeight: '700', color: v1.text },
     sub: { fontSize: 12, color: v1.textMuted, marginTop: 2 },
@@ -206,7 +211,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
 
   const CountryRow = ({ code, fromSearch = false }) => (
     <TouchableOpacity
-      style={s.row}
+      style={s.countryRow}
       onPress={() => {
         if (fromSearch && allowCountryOnly) pickCountry(code);
         else { setCountry(code); setQuery(''); }
@@ -214,7 +219,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
       activeOpacity={0.7}
       testID={`loc-country-${code}`}
     >
-      <View style={s.lead}><CountryFlag code={code} width={25} /></View>
+      <View style={s.countryLead}><CountryFlag code={code} width={26} /></View>
       <View style={{ flex: 1 }}><Text style={s.name} numberOfLines={1}>{countryLabel(code)}</Text></View>
       <Text style={s.chev}>›</Text>
     </TouchableOpacity>
@@ -279,7 +284,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
               {query.trim().length >= 2 && hits.countryHits.length === 0 && hits.pointHits.length === 0 ? (
                 <>
                   <View style={s.divider} />
-                  <Row p={{ name: query.trim(), country: 'XX', type: 'city', custom: true }} showHeart={false} />
+                  <Row p={customCityForCountry(query, country)} showHeart={false} />
                 </>
               ) : null}
             </>
@@ -308,7 +313,9 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
                   <View style={s.divider} />
                 </>
               ) : null}
-              {pointsForCountry(country).filter((p) => scope === 'all' || scope === 'country' || p.type === scope).map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
+              {pointsForCountry(country).filter((p) => locationScopeAllowsPoint(scope, country, p)).slice(0, 80).map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
+              <Text style={s.empty}>{t('loc_search_ph')} · {t('loc_custom_hint')}</Text>
+              <Text style={[s.sub, { paddingHorizontal: 16 }]}>GeoNames · CC BY 4.0</Text>
             </>
           ) : (
             <>

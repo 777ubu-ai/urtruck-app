@@ -18,7 +18,7 @@ const isNative = Platform.OS === 'ios' || Platform.OS === 'android';
 // Ключи, которые считаем чувствительными и держим в SecureStore на mobile.
 // Значения — короткие строки (токен ~43 символа), в лимит SecureStore (2 КБ)
 // укладываются с запасом.
-const SECURE_KEYS = new Set(['ur_reg_token']);
+const SECURE_KEYS = new Set(['ur_reg_token', 'ur_pending_logout_token']);
 
 // expo-secure-store входит в Expo Go и линкуется EAS из package.json. На web /
 // в окружении без модуля require бросит — тогда nativeSecure остаётся null и

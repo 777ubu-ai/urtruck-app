@@ -5,8 +5,8 @@
 // пользователь застревал с «серверной ошибкой» вместо выхода на login.
 //
 // Дизайн (безопасный, без цикла разлогина):
-//   - authedFetch оборачивает обычный fetch и ТОЛЬКО при status===401
-//     дёргает notifyAuthExpired() — поведение запроса не меняется.
+//   - authedFetch проверяет 401 через текущий bearer и /register/me.
+//     Гостевой/устаревший запрос и временный сбой не запускают выход.
 //   - AuthContext подписывается и делает signOut ОДИН раз.
 //   - Защита от цикла: (1) cooldown между срабатываниями; (2) suppression
 //     на время самого signOut и короткий хвост после (guest re-init,
@@ -18,25 +18,81 @@
 const listeners = new Set();
 let suppressed = false;
 let lastFireAt = 0;
+let expiryValidation = null;
+const pendingValidations = new Map();
 const COOLDOWN_MS = 4000;
+const VALIDATION_TIMEOUT_MS = 5000;
+
+// A feature endpoint is not authoritative about the entire login session.
+// Validate the same current bearer through /register/me before logging out.
+export function configureAuthExpiryValidation(validation) {
+  expiryValidation = validation;
+  return () => {
+    if (expiryValidation === validation) expiryValidation = null;
+  };
+}
 
 export function subscribeAuthExpired(cb) {
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
 
-// Заглушить уведомления (вызывается на время signOut + короткий хвост).
 export function setAuthExpirySuppressed(value) {
   suppressed = !!value;
 }
 
-export function notifyAuthExpired() {
-  if (suppressed) return;
+export function notifyAuthExpired(token) {
+  if (suppressed || !token) return;
   const now = Date.now();
   if (now - lastFireAt < COOLDOWN_MS) return;
   lastFireAt = now;
   for (const cb of listeners) {
-    try { cb(); } catch {}
+    try { cb(token); } catch {}
+  }
+}
+
+function requestBearer(input, init) {
+  const headers = init?.headers ?? input?.headers;
+  let authorization;
+  if (typeof headers?.get === 'function') authorization = headers.get('Authorization');
+  else if (Array.isArray(headers)) {
+    authorization = headers.find(([key]) => String(key).toLowerCase() === 'authorization')?.[1];
+  } else if (headers) {
+    const key = Object.keys(headers).find((name) => name.toLowerCase() === 'authorization');
+    authorization = key ? headers[key] : null;
+  }
+  return typeof authorization === 'string' && authorization.startsWith('Bearer ')
+    ? authorization.slice(7).trim() : null;
+}
+
+async function confirmAuthExpired(token) {
+  const validation = expiryValidation;
+  if (!token || !validation || suppressed) return;
+  if (pendingValidations.has(token)) return pendingValidations.get(token);
+  const work = (async () => {
+    let timer;
+    const controller = new AbortController();
+    try {
+      if (await validation.getToken() !== token || suppressed) return;
+      // Promise.race also bounds transports which ignore AbortSignal.
+      const timeout = new Promise((resolve) => {
+        timer = setTimeout(() => { controller.abort(); resolve(null); }, VALIDATION_TIMEOUT_MS);
+      });
+      const status = await Promise.race([
+        validation.validateToken(token, { signal: controller.signal }), timeout,
+      ]);
+      if (status !== 401 || expiryValidation !== validation || suppressed) return;
+      if (await validation.getToken() !== token) return;
+      notifyAuthExpired(token);
+    } catch {
+      // Offline, timeout and server failure never erase a valid local session.
+    } finally {
+      clearTimeout(timer);
+    }
+  })();
+  pendingValidations.set(token, work);
+  try { await work; } finally {
+    if (pendingValidations.get(token) === work) pendingValidations.delete(token);
   }
 }
 
@@ -56,7 +112,7 @@ export async function authedFetch(input, init, fetchImpl = fetch) {
   // Если вызывающий уже передал свой signal — не перетираем его.
   if (init && init.signal) {
     const r = await fetchImpl(input, init);
-    if (r && r.status === 401) notifyAuthExpired();
+    if (r && r.status === 401) await confirmAuthExpired(requestBearer(input, init));
     return r;
   }
   let controller;
@@ -67,7 +123,7 @@ export async function authedFetch(input, init, fetchImpl = fetch) {
   }
   try {
     const r = await fetchImpl(input, controller ? { ...(init || {}), signal: controller.signal } : init);
-    if (r && r.status === 401) notifyAuthExpired();
+    if (r && r.status === 401) await confirmAuthExpired(requestBearer(input, init));
     return r;
   } finally {
     if (timer) clearTimeout(timer);

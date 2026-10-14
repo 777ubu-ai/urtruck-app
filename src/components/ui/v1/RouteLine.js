@@ -41,14 +41,14 @@ export default function RouteLine({ from, to, fromFlag, toFlag, numberOfLines = 
         <View style={s.crossingRow}>
           <View style={s.crossingOrigin}>
             <View style={s.pointRow}>
-              {fromFlag ? <CountryFlag code={fromFlag} width={26} style={s.flag} /> : null}
+              {fromFlag ? <CountryFlag code={fromFlag} width={22} style={s.flag} /> : null}
               <Text style={[s.city, { color: palette.text }]} numberOfLines={1} ellipsizeMode="tail">{origin}</Text>
             </View>
             <Text style={[s.crossingCheckpoint, fromFlag && s.crossingCheckpointWithFlag, { color: palette.textMuted }]} numberOfLines={1}>{checkpoint}</Text>
           </View>
           <View style={s.crossingDestination}>
             <Feather name="arrow-right" size={15} color={palette.textMuted} style={s.crossingArrow} />
-            {toFlag ? <CountryFlag code={toFlag} width={26} style={s.flag} /> : null}
+            {toFlag ? <CountryFlag code={toFlag} width={22} style={s.flag} /> : null}
             <Text style={[s.city, { color: palette.text }]} numberOfLines={1} ellipsizeMode="tail">{to || '—'}</Text>
           </View>
         </View>
@@ -58,10 +58,10 @@ export default function RouteLine({ from, to, fromFlag, toFlag, numberOfLines = 
 
   return (
     <View style={s.row} testID={testID}>
-      {fromFlag ? <CountryFlag code={fromFlag} width={26} style={s.flag} /> : null}
+      {fromFlag ? <CountryFlag code={fromFlag} width={22} style={s.flag} /> : null}
       <Text style={[s.city, s.fromCity, { color: palette.text }]} numberOfLines={numberOfLines} adjustsFontSizeToFit minimumFontScale={0.8} ellipsizeMode="tail">{from || '—'}</Text>
       <Feather name="arrow-right" size={16} color={palette.textMuted} style={s.arrow} />
-      {toFlag ? <CountryFlag code={toFlag} width={26} style={s.flag} /> : null}
+      {toFlag ? <CountryFlag code={toFlag} width={22} style={s.flag} /> : null}
       <Text style={[s.city, s.toCity, { color: palette.text }]} numberOfLines={numberOfLines} adjustsFontSizeToFit minimumFontScale={0.8} ellipsizeMode="tail">{to || '—'}</Text>
     </View>
   );
@@ -79,7 +79,7 @@ const s = StyleSheet.create({
   crossingRow: { minWidth: 0, flexDirection: 'row', alignItems: 'flex-start' },
   crossingOrigin: { flexBasis: 88, maxWidth: 92, minWidth: 0, flexShrink: 1 },
   crossingCheckpoint: { marginTop: 1, fontSize: 12, lineHeight: 15, fontWeight: '700' },
-  crossingCheckpointWithFlag: { marginLeft: 29 },
+  crossingCheckpointWithFlag: { marginLeft: 31 },
   crossingDestination: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', paddingTop: 1 },
   crossingArrow: { width: 20, marginHorizontal: 3, textAlign: 'center', flexShrink: 0 },
 });

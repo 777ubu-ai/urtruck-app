@@ -22,11 +22,8 @@ and a real (temp) SQLite push_outbox/push_devices — not source-regex — that:
       own outbox row 'sent' on success is what stops the worker from ever
       re-sending it — the actual delivery-ownership contract, end to end.
 
-Provider responses are simulated via a fake `expo_send_one` callback — the
-exact seam services.push_sender._send_native already hands push_gateway in
-production for the explicitly selected Expo legacy path (see
-push_gateway.ExpoProvider.send()) — so no real network call is made and no
-Expo/FCM/APNs behavior is invented.
+Provider responses are simulated via the deterministic `provider_send_one`
+seam; no provider network call is made.
 """
 import os
 import sys
@@ -54,18 +51,18 @@ import api.push as push_api  # noqa: F401  — import runs _init_schema() (push_
 # ───────────────────────── fixtures / helpers ─────────────────────────
 def setup_function(_function):
     """Isolate durable outbox rows from earlier tests in the shared DB."""
-    # This suite is specifically the retained Expo legacy-path contract. The
-    # production default is native, so the test intent must be explicit.
-    push_gateway.PUSH_PROVIDER_MODE = "expo"
+    push_gateway.PUSH_PROVIDER_MODE = "native"
     with get_conn() as c:
         c.execute("DELETE FROM push_outbox")
         c.execute("DELETE FROM push_devices")
+        c.execute("DELETE FROM push_delivery_log")
+        c.execute("DELETE FROM push_worker_heartbeat")
 
 
-def _make_user_with_device(provider="expo"):
+def _make_user_with_device(provider="fcm"):
     guest = reg_dal.create_guest()
     uid = guest["id"] if isinstance(guest, dict) else guest
-    token = f"ExponentPushToken[{uuid.uuid4().hex}]"
+    token = f"fcm-test-{uuid.uuid4().hex}"
     device_id = uuid.uuid4().hex
     with get_conn() as c:
         c.execute(
@@ -90,11 +87,11 @@ def _row(event_key, uid):
 
 
 def _always_ok(tokens, title, body, data, badge=None):
-    return {"sent": len(tokens), "tickets": [{"status": "ok", "id": f"ticket-{i}"} for i in range(len(tokens))]}
+    return {"sent": len(tokens), "devices": len(tokens), "errors": {}}
 
 
 def _always_fail_transient(tokens, title, body, data, badge=None):
-    return {"sent": 0, "tickets": [{"status": "error", "details": {"error": "RATE_LIMIT_EXCEEDED"}}], "error": "rate_limited"}
+    return {"sent": 0, "devices": len(tokens), "errors": {"rate_limited": 1}, "error": "rate_limited"}
 
 
 class _FlakyThenOk:
@@ -107,8 +104,8 @@ class _FlakyThenOk:
     def __call__(self, tokens, title, body, data, badge=None):
         self.calls += 1
         if self.calls <= self.fail_times:
-            return {"sent": 0, "tickets": [{"status": "error", "details": {"error": "transient"}}], "error": "transient"}
-        return {"sent": len(tokens), "tickets": [{"status": "ok"}] * len(tokens)}
+            return {"sent": 0, "devices": len(tokens), "errors": {"transient": 1}, "error": "transient"}
+        return {"sent": len(tokens), "devices": len(tokens), "errors": {}}
 
 
 def _poison(tokens, title, body, data, badge=None):
@@ -137,15 +134,49 @@ def test_2_transient_provider_failure_retries():
     uid, _ = _make_user_with_device()
     ek = _enqueue(uid, "evt-retry-1")
     stats = push_gateway.process_pending_once(_always_fail_transient, limit=10)
-    assert stats["failed"] == 1
+    assert stats["retry"] == 1
     row = _row(ek, uid)
-    assert row["status"] == "pending"
+    assert row["status"] == "retry"
     assert row["attempt_count"] == 1
     assert row["next_attempt_at"] is not None
     assert row["last_error"] == "rate_limited:1"
     # An immediate second tick must NOT re-pick it — backoff must actually delay.
     stats2 = push_gateway.process_pending_once(_always_fail_transient, limit=10)
     assert stats2["picked"] == 0, "bounded exponential backoff must delay the retry"
+
+
+def test_permanent_provider_error_is_failed_without_retry():
+    uid, _ = _make_user_with_device()
+    ek = _enqueue(uid, "evt-invalid-token-1")
+
+    def invalid_token(tokens, title, body, data, badge=None):
+        return {
+            "sent": 0, "devices": len(tokens), "errors": {"invalid_token": len(tokens)},
+            "error": "invalid_token", "retryable": False,
+        }
+
+    stats = push_gateway.process_pending_once(invalid_token, limit=10)
+    row = _row(ek, uid)
+    assert stats["failed"] == 1
+    assert row["status"] == "failed"
+    assert row["next_attempt_at"] is not None
+
+
+def test_retry_backoff_has_bounded_jitter_without_early_retry():
+    class _Low:
+        def randint(self, lower, upper):
+            assert lower >= 10
+            return lower
+
+    class _High:
+        def randint(self, lower, upper):
+            assert upper <= 300
+            return upper
+
+    low = push_gateway._retry_delay_seconds(1, _Low())
+    high = push_gateway._retry_delay_seconds(1, _High())
+    assert 10 <= low <= high <= 300
+    assert low != high, "first retry needs a real jitter range, not a fixed herd retry"
 
 
 def test_3_retry_eventually_succeeds():
@@ -244,9 +275,9 @@ def test_6_poison_event_does_not_block_following_event():
     ek2 = _enqueue(uid2, "evt-poison-2")
     stats = push_gateway.process_pending_once(_poison, limit=10)
     assert stats["picked"] == 2
-    assert stats["failed"] == 2, "both must hit the same attempt/backoff ladder, not crash the batch"
+    assert stats["retry"] == 2, "both must hit the same attempt/backoff ladder, not crash the batch"
     row1, row2 = _row(ek1, uid1), _row(ek2, uid2)
-    assert row1["status"] == "pending" and row2["status"] == "pending"
+    assert row1["status"] == "retry" and row2["status"] == "retry"
     assert row1["last_error"] and "poison" in row1["last_error"]
 
 
@@ -263,8 +294,73 @@ def test_7_worker_restart_resumes_pending_event():
             (ek,),
         )
     stats = push_gateway.process_pending_once(_always_ok, limit=10)
+    reclaimed = _row(ek, uid)
+    assert reclaimed["status"] == "retry"
+    assert reclaimed["attempt_count"] == 1
+    assert reclaimed["last_error"] == "worker_lease_expired"
+    _force_due(ek)
+    stats = push_gateway.process_pending_once(_always_ok, limit=10)
     assert stats["sent"] == 1, "a stale 'processing' row from a crashed worker must be reclaimed and delivered"
     assert _row(ek, uid)["status"] == "sent"
+
+
+def test_chat_push_is_collapsed_and_expired_before_provider_call():
+    uid, _ = _make_user_with_device()
+    ek = _enqueue(uid, "evt-chat-expire-1", "chat.message")
+    with get_conn() as c:
+        row = c.execute("SELECT collapse_key, payload FROM push_outbox WHERE event_id=?", (ek,)).fetchone()
+        assert row["collapse_key"] is None, "room-less chat must never be collapsed globally"
+        c.execute(
+            "UPDATE push_outbox SET expires_at=datetime(CURRENT_TIMESTAMP, '-1 second') WHERE event_id=?",
+            (ek,),
+        )
+    calls = {"count": 0}
+
+    def no_provider(*_args, **_kwargs):
+        calls["count"] += 1
+        return _always_ok(*_args, **_kwargs)
+
+    stats = push_gateway.process_pending_once(no_provider, limit=10)
+    row = _row(ek, uid)
+    assert stats["expired"] == 1
+    assert row["status"] == "expired"
+    assert row["last_error"] == "notification_expired"
+    assert calls["count"] == 0
+
+
+def test_chat_room_uses_collapse_key_but_critical_status_does_not():
+    uid, _ = _make_user_with_device()
+    chat = "evt-chat-collapse-1"
+    critical = "evt-critical-collapse-1"
+    push_gateway.enqueue_event(chat, "chat.message", uid, {
+        "title": "T", "body": "B", "data": {"type": "chat_message", "room_id": "room-123"},
+    })
+    push_gateway.enqueue_event(critical, "deal.status.delivered", uid, {
+        "title": "T", "body": "B", "data": {"deal_id": "deal-123"},
+    })
+    with get_conn() as c:
+        chat_row = c.execute("SELECT * FROM push_outbox WHERE event_id=?", (chat,)).fetchone()
+        critical_row = c.execute("SELECT * FROM push_outbox WHERE event_id=?", (critical,)).fetchone()
+    assert chat_row["collapse_key"] == "chat:room-123"
+    assert "collapse_key" in chat_row["payload"]
+    assert chat_row["expires_at"] is not None
+    assert critical_row["collapse_key"] is None
+    assert critical_row["expires_at"] is not None
+
+
+def test_info_exposes_safe_worker_and_queue_observability():
+    uid, _ = _make_user_with_device()
+    _enqueue(uid, "evt-observability-1")
+    push_gateway.process_pending_once(_always_fail_transient, limit=10)
+    result = push_gateway.info()
+    registry = result["registry"]
+    observability = result["observability"]
+    assert registry["outbox_retry"] == 1
+    assert registry["outbox_pending_eligible"] == 0, "backoff-delayed row is pending but not due"
+    assert registry["oldest_eligible_pending_seconds"] is None
+    assert observability["worker"]["last_heartbeat_at"] is not None
+    assert observability["worker"]["stale"] is False
+    assert observability["delivery_errors_24h"] == {}, "test seam does not claim provider errors it did not send"
 
 
 def test_8_repeated_worker_execution_is_idempotent():
@@ -274,8 +370,8 @@ def test_8_repeated_worker_execution_is_idempotent():
     r2 = push_gateway.process_pending_once(_always_ok, limit=10)
     r3 = push_gateway.process_pending_once(_always_ok, limit=10)
     assert r1["sent"] == 1
-    assert r2 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0}
-    assert r3 == {"picked": 0, "sent": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0}
+    assert r2 == {"picked": 0, "sent": 0, "retry": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0, "expired": 0}
+    assert r3 == {"picked": 0, "sent": 0, "retry": 0, "failed": 0, "dead": 0, "partial": 0, "skipped": 0, "expired": 0}
 
 
 def test_no_registered_device_is_skipped_not_dead():
@@ -325,9 +421,9 @@ def test_11_immediate_success_prevents_worker_duplicate(monkeypatch):
     uid, _ = _make_user_with_device()
     calls = {"native": 0}
 
-    def fake_send_native(user_id, title, body, data, badge=None):
+    def fake_send_native(user_id, title, body, data, badge=None, provider=None):
         calls["native"] += 1
-        return 1, 1  # (sent, total_devices) — push-closure track signature
+        return {"sent": 1, "devices": 1, "already_delivered": 0, "errors": {}}
 
     monkeypatch.setattr(push_sender, "_send_web", lambda *a, **k: 0)
     monkeypatch.setattr(push_sender, "_send_native", fake_send_native)
@@ -348,6 +444,31 @@ def test_11_immediate_success_prevents_worker_duplicate(monkeypatch):
     stats = push_gateway.process_pending_once(_always_ok, limit=10)
     assert stats["picked"] == 0
     assert calls["native"] == 1, "worker must not have re-invoked native delivery for an already-sent event"
+
+
+def test_12_immediate_permanent_native_error_never_enters_retry(monkeypatch):
+    """Прямой FCM/APNs путь обязан закрыть permanent failure без drain retry."""
+    from services import push_sender
+
+    uid, _ = _make_user_with_device()
+    monkeypatch.setattr(push_sender, "_send_web", lambda *a, **k: 0)
+    monkeypatch.setattr(
+        push_sender,
+        "_send_native",
+        lambda *a, **k: {
+            "sent": 0, "devices": 1, "already_delivered": 0,
+            "errors": {"invalid_token": 1}, "retryable": False,
+        },
+    )
+    push_sender.send(
+        uid, "Message", "Safe body", kind="chat",
+        data={"event_key": "chat:permanent-token-error", "room_id": "room-1"},
+        url="/chats/room-1",
+    )
+    row = _row("chat:permanent-token-error", uid)
+    assert row["status"] == "failed"
+    assert row["last_error"] == "invalid_token"
+    assert push_gateway.process_pending_once(_always_ok, limit=10)["picked"] == 0
 
 
 if __name__ == "__main__":

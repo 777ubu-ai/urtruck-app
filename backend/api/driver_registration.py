@@ -7,7 +7,6 @@
 
 Аутентификация — общий Bearer-токен регистрации (как в api/registration.py).
 """
-import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -139,31 +138,14 @@ def save_draft(body: DraftBody, driver_id: str = Depends(get_current_driver)):
     return {"ok": True, "saved": sorted(updates.keys())}
 
 
-_BASIC_REQUIRED_FIELDS = (
-    "citizenship_country", "full_name", "birth_date", "vehicle_registration_country",
-    "truck_kind", "body_type", "vehicle_brand", "vehicle_plate", "capacity_tons", "volume_m3",
-)
+_BASIC_REQUIRED_FIELDS = ("full_name",)
 
 
 def _basic_onboarding_missing(driver: dict) -> list[str]:
-    missing = [
+    return [
         field for field in _BASIC_REQUIRED_FIELDS
-        if field != "truck_kind" and not str(driver.get(field) or "").strip()
+        if not str(driver.get(field) or "").strip()
     ]
-    # Старые черновики могли сохранить тип транспорта под vehicle_type.
-    if not str(driver.get("truck_kind") or driver.get("vehicle_type") or "").strip():
-        missing.append("truck_kind")
-    iin = re.sub(r"\s+", "", str(driver.get("iin") or ""))
-    if not re.fullmatch(r"\d{12}", iin):
-        missing.append("iin")
-    for field in ("capacity_tons", "volume_m3"):
-        try:
-            if float(driver.get(field)) <= 0:
-                missing.append(field)
-        except (TypeError, ValueError):
-            if field not in missing:
-                missing.append(field)
-    return sorted(set(missing))
 
 
 def can_publish_driver_trip(driver: dict) -> bool:

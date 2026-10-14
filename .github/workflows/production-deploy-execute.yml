@@ -56,7 +56,6 @@ jobs:
       BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
       PUBLIC_BASE_URL: ${{ secrets.PUBLIC_BASE_URL || 'https://urtruck.kz' }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-      EXPO_ACCESS_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN || secrets.EXPO_TOKEN }}
       YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
       YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
       OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
@@ -180,6 +179,29 @@ jobs:
           echo 'SSH_MODE=key+pinned-known-hosts'
           bash scripts/deploy-ssh.sh ssh "echo SSH_TRANSPORT=ok"
 
+      - name: Require verified current backend before production writes
+        env:
+          RECOVER_STOPPED: ${{ inputs.break_glass }}
+        run: |
+          set -euo pipefail
+          RECOVERY_ARG=''
+          if [ "$RECOVER_STOPPED" = "true" ]; then
+            RECOVERY_ARG='--recover-stopped'
+            echo 'RECOVERY_MODE=audited-break-glass-stopped-pm2'
+          fi
+          python3 scripts/ops/runtime_release_manifest.py create \
+            --root backend --manifest "$RUNNER_TEMP/production-runtime-manifest.json" \
+            --source-sha "$DEPLOY_SHA" --environment production
+          bash scripts/deploy-ssh.sh scp scripts/ops/runtime_release_manifest.py \
+            "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py"
+          bash scripts/deploy-ssh.sh scp "$RUNNER_TEMP/production-runtime-manifest.json" \
+            "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json"
+          # Для legacy/смешанной установки нет доверенной базы. Остановиться ДО
+          # изменения source/frontend/env; нужна проверенная миграция базы,
+          # а не объявление произвольного health200 доказательством версии.
+          bash scripts/deploy-ssh.sh ssh \
+            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '$BACKEND_DIR/.urtruck-runtime-manifest.json' --candidate-manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --environment production --listener-port 8001 --pm2-process '$PM2_PROC' $RECOVERY_ARG"
+
       - name: Backup current production
         run: |
           set -euo pipefail
@@ -200,9 +222,6 @@ jobs:
           BOOTSTRAP_FILE=$(mktemp)
           trap 'rm -f "$BOOTSTRAP_FILE"' EXIT
           printf 'SUPABASE_SERVICE_KEY=%s\n' "$SUPABASE_SERVICE_KEY" > "$BOOTSTRAP_FILE"
-          if [ -n "${EXPO_ACCESS_TOKEN:-}" ]; then
-            printf 'EXPO_ACCESS_TOKEN=%s\n' "$EXPO_ACCESS_TOKEN" >> "$BOOTSTRAP_FILE"
-          fi
           if [ -n "${SELECTED_YANDEX_ROUTER_API_KEY:-}" ]; then
             printf 'YANDEX_ROUTER_API_KEY=%s\n' "$SELECTED_YANDEX_ROUTER_API_KEY" >> "$BOOTSTRAP_FILE"
           fi
@@ -230,11 +249,23 @@ jobs:
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_bootstrap_env.sh; bash /tmp/urtruck_bootstrap_env.sh '$BACKEND_DIR' '$REMOTE_BOOTSTRAP'; rc=\$?; rm -f /tmp/urtruck_bootstrap_env.sh '$REMOTE_BOOTSTRAP'; exit \$rc"
 
       - name: Deploy backend and verify PM2 health
+        env:
+          RECOVER_STOPPED: ${{ inputs.break_glass }}
         run: |
           set -euo pipefail
+          RECOVERY_ARG=''
+          if [ "$RECOVER_STOPPED" = "true" ]; then
+            RECOVERY_ARG='--recover-stopped'
+          fi
           bash scripts/deploy-ssh.sh scp -C -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
+          bash scripts/deploy-ssh.sh scp "$RUNNER_TEMP/production-runtime-manifest.json" \
+            "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json"
+          bash scripts/deploy-ssh.sh ssh \
+            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --source-sha '$DEPLOY_SHA' --environment production --listener-port 8001 --pm2-process '$PM2_PROC' --candidate-manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' $RECOVERY_ARG"
           bash scripts/deploy-ssh.sh scp scripts/remote_health_check.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_health.sh"
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_health.sh; bash /tmp/urtruck_health.sh '$PM2_PROC'; rc=\$?; rm -f /tmp/urtruck_health.sh; exit \$rc"
+          bash scripts/deploy-ssh.sh ssh \
+            "python3 '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' verify --root '$BACKEND_DIR' --manifest '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' --source-sha '$DEPLOY_SHA' --environment production --listener-port 8001 --pm2-process '$PM2_PROC' && install -m 0644 '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json' '$BACKEND_DIR/.urtruck-runtime-manifest.json' && rm -f '/tmp/urtruck-runtime-verify-${GITHUB_RUN_ID}.py' '/tmp/urtruck-runtime-manifest-${GITHUB_RUN_ID}.json'"
 
       - name: Verify optional Yandex Router from production server
         run: |

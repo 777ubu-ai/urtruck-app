@@ -16,7 +16,9 @@ test('cargo feed keeps the first screen dense enough for narrow mobile browsers'
   const bookmark = fs.readFileSync('src/components/ui/v1/BookmarkButton.js', 'utf8');
   assert.match(bookmark, /width:\s*34,\s*height:\s*34/);
   const routeLine = fs.readFileSync('src/components/ui/v1/RouteLine.js', 'utf8');
-  assert.match(routeLine, /CountryFlag code=\{fromFlag\} width=\{26\}/);
+  // Owner-approved 20 percent reduction: 28 dp becomes 22 dp after rounding.
+  assert.match(routeLine, /CountryFlag code=\{fromFlag\} width=\{22\}/);
+  assert.match(routeLine, /crossingCheckpointWithFlag:\s*\{ marginLeft:\s*31 \}/);
   assert.match(routeLine, /fontSize:\s*15,\s*lineHeight:\s*19/);
   assert.doesNotMatch(card, /shadowOpacity/);
   // Price canon comes from v1Typography.price (17/22/800 tabular-nums).
@@ -31,6 +33,6 @@ test('bottom navigation is compact but still keeps the four approved pages', () 
   // Design v1 Commit 2: tab label 10.5 → 11 (weight 700 kept, LABEL_H 13
   // unchanged — same line box, denser glyph).
   assert.match(bottomNav, /fontSize:\s*11/);
-  assert.match(bottomNav, /Queue:\s*\{\s*driver:\s*'map-pin',\s*client:\s*'map-pin'\s*\}/);
+  assert.match(bottomNav, /Queue:[\s\S]*active: 'map-marker-radius'[\s\S]*inactive: 'map-marker-radius-outline'/);
   assert.doesNotMatch(bottomNav, /Profile:\s*\{/);
 });

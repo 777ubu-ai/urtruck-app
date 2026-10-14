@@ -28,6 +28,7 @@ from api.marketplace import (
     _public_cargo_ok,
     _norm_route_triple,
     PUBLIC_CUTOFF_DATE,
+    IS_PRODUCTION,
 )
 
 _failures = []
@@ -81,6 +82,9 @@ def is_dirty_text_blocks_known_tokens_but_lets_qa_through():
            "[ar-...] override beats 'test' substring")
     _check(_is_dirty_text("[ar-rm]", "Тестер", "Москва", "tent") is False,
            "[ar-...] override beats dirty city")
+    _check(_is_dirty_text("QA2-E2E-20260927-10-ton-tent", "Алматы", "Астана", "tent")
+           is IS_PRODUCTION,
+           "QA2-E2E marker is visible only outside production")
 
 
 def public_cargo_ok_uses_correct_pickup_date():

@@ -170,7 +170,7 @@ export default function DriverDetail({ navigation, route }) {
         {/* Identity card — branded with the role accent */}
         <GlassCard accent={v1Accent.main} style={{ alignItems: 'center', paddingVertical: 22 }}>
           <View style={[s.avatar, { backgroundColor: (TCOLORS[tt] || '#666') + '22', borderColor: v1Accent.main }]}>
-            <CountryFlag code={driver.country} width={42} />
+            <CountryFlag code={driver.country} width={34} />
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
             <Text style={[s.name, { color: v1.text }]}>{driverName}</Text>

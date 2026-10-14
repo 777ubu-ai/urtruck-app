@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
@@ -133,6 +133,8 @@ export default function CreateCargoScreen({ navigation, route }) {
   // Тип оплаты (нал/безнал) — важен водителю. '' = не указан.
   const [paymentType, setPaymentType] = useState('');
   const [photos, setPhotos] = useState([]);
+  const uploadedPhotos = useRef(new Map());
+  const submissionInFlight = useRef(false);
   // PR-C1: comment state удалён вместе с Textarea ниже — поле молча
   // терялось, backend не имеет колонки.
   const [submitting, setSubmitting] = useState(false);
@@ -148,7 +150,7 @@ export default function CreateCargoScreen({ navigation, route }) {
   const [showPhotos, setShowPhotos] = useState(false);
 
   const submit = async () => {
-    if (submitting) return;
+    if (submitting || submissionInFlight.current) return;
     const errs = {};
     // Обязательны только маршрут, описание и хотя бы вес/объём. Тип кузова
     // предзаполнен (не барьер), дата и цена — необязательны: клиент часто
@@ -172,6 +174,7 @@ export default function CreateCargoScreen({ navigation, route }) {
       return;
     }
     setErrors({});
+    submissionInFlight.current = true;
     setSubmitting(true);
     // Stage 42: если пользователь ввёл custom описание (не из base
     // списка) — сохраняем его в локальный custom-список, чтобы в
@@ -204,15 +207,25 @@ export default function CreateCargoScreen({ navigation, route }) {
     try {
       // 27.07: фото сперва грузим в storage → ключи, и только их шлём в
       // payload. Раньше сохранялся локальный uri устройства (blob:/file:) —
-      // у другого пользователя фото не открывалось. Битую загрузку пропускаем,
-      // публикацию груза из-за фото не срываем.
+      // у другого пользователя фото не открывалось. Выбранное фото нельзя
+      // молча потерять: сохраняем успешные keys для повторной попытки.
       if (photos && photos.length) {
         const keys = [];
         for (const uri of photos) {
-          try {
-            const up = await marketAPI.uploadCargoPhoto(uri);
-            if (up?.photo_key) keys.push(up.photo_key);
-          } catch (e) { console.warn('[cargo] photo upload skipped:', e?.message); }
+          let key = uploadedPhotos.current.get(uri);
+          if (!key) {
+            try {
+              const up = await marketAPI.uploadCargoPhoto(uri);
+              if (!up?.photo_key) throw new Error('missing_photo_key');
+              key = up.photo_key;
+              uploadedPhotos.current.set(uri, key);
+            } catch {
+              const failure = new Error('cargo_photo_upload_failed');
+              failure.code = 'CARGO_PHOTO_UPLOAD_FAILED';
+              throw failure;
+            }
+          }
+          keys.push(key);
         }
         payload.photos = keys;
       }
@@ -227,7 +240,17 @@ export default function CreateCargoScreen({ navigation, route }) {
           status: 'active',
           created_at: new Date().toISOString(),
         };
-        navigation.replace('MyTripsList', { role, initialTab: 'searching', justCreatedCargo: justCreated });
+        navigation.reset({
+          index: 0,
+          routes: [{
+            name: 'Main',
+            params: {
+              role,
+              screen: 'MyWork',
+              params: { role, initialTab: 'searching', justCreatedCargo: justCreated },
+            },
+          }],
+        });
       } else {
         toast(r.detail || t('send_error'), 'error');
       }
@@ -235,8 +258,9 @@ export default function CreateCargoScreen({ navigation, route }) {
       // P1 UI-аудит 2026-09-13: не показывать сырой e.message (часто
       // непереведённая браузерная строка вроде "Failed to fetch") — только
       // локализованный текст, как во всех остальных catch-блоках рядом.
-      toast(t('network_error'), 'error');
+      toast(t(e?.code === 'CARGO_PHOTO_UPLOAD_FAILED' ? 'photo_failed' : 'network_error'), 'error');
     } finally {
+      submissionInFlight.current = false;
       setSubmitting(false);
     }
   };

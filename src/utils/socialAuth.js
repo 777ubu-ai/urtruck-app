@@ -168,8 +168,13 @@ export function isPendingProviderStale(state, now = Date.now()) {
   return now - state.startedAt > PENDING_PROVIDER_MAX_AGE_MS;
 }
 
-export function shouldRestorePendingProvider(state, { hasCallback = false, now = Date.now() } = {}) {
-  return Boolean(state?.provider) && (hasCallback || !isPendingProviderStale(state, now));
+export function shouldRestorePendingProvider(state, { hasCallback = false } = {}) {
+  // A pending provider only describes which OAuth button started the flow.
+  // Without a callback there is no work left to finish: the user may have
+  // cancelled Google or returned with the browser Back button. Restoring the
+  // spinner from storage in that state strands the auth screen for up to ten
+  // minutes. A real callback sets the busy state again in finishSocialUrl().
+  return Boolean(state?.provider) && hasCallback;
 }
 
 export async function setPendingProvider(provider) {

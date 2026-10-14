@@ -1,0 +1,60 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import test from 'node:test';
+
+const workflow = fs.readFileSync('.github/workflows/configure-qa2-fcm.yml', 'utf8');
+
+test('QA2 FCM workflow uses pinned SSH and native systemd supervision', () => {
+  assert.match(workflow, /SERVER_SSH_KNOWN_HOSTS/);
+  assert.match(workflow, /StrictHostKeyChecking=yes/);
+  assert.match(workflow, /UserKnownHostsFile=/);
+  assert.doesNotMatch(workflow, /StrictHostKeyChecking=no/);
+  assert.doesNotMatch(workflow, /ssh-keyscan/);
+  assert.match(workflow, /systemctl show -p MainPID/);
+  assert.ok(workflow.includes('systemctl is-active urtruck-qa2.service'));
+  assert.ok(workflow.includes('sudo -n systemctl restart urtruck-qa2.service'));
+  assert.match(workflow, /sport = :8002/);
+  assert.equal(workflow.match(/sudo -n ss -ltnpH 'sport = :8002'/g)?.length, 2);
+  assert.equal(workflow.match(/systemctl show -p ControlGroup/g)?.length, 2);
+  assert.equal(workflow.includes('listener_pid" = "$main_pid'), false);
+});
+
+test('QA2 FCM workflow has no manual process replacement', () => {
+  for (const forbidden of ['nohup', 'kill -TERM', 'kill -KILL', 'uvicorn', '/proc/$pid/cmdline']) {
+    assert.equal(workflow.includes(forbidden), false, 'forbidden: ' + forbidden);
+  }
+});
+
+test('QA2 FCM workflow validates secrets and only writes native QA2 env', () => {
+  for (const name of [
+    'QA2_FCM_PROJECT_ID',
+    'QA2_FCM_SERVICE_ACCOUNT_JSON',
+    'QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64',
+    'PUSH_PROVIDER_MODE',
+    'FCM_PROJECT_ID',
+    'FCM_SERVICE_ACCOUNT_JSON',
+    'PUSH_OUTBOX_CUTOFF_ID',
+    'SELECT COALESCE(MAX(id), 0) FROM push_outbox',
+    'QA2_RUNTIME_DB_PATH_MISSING',
+    'QA2_RUNTIME_DB_PATH_INVALID',
+    'mode=ro',
+    'com.urtruck.app.qa2',
+    'PROD_VERSION_HASH_BEFORE',
+    'apns_not_configured',
+    'ANDROID_FCM=READY',
+    'IPHONE_APNS=BLOCKED',
+    'NATIVE_GATEWAY=PARTIAL',
+    '.env.fcm-backup.',
+    'Always remove temporary QA2 credentials and backup',
+  ]) assert.ok(workflow.includes(name), 'missing ' + name);
+  assert.equal(/echo\\s+.*QA2_FCM_(?:PROJECT_ID|SERVICE_ACCOUNT_JSON)/.test(workflow), false);
+  assert.equal(/production.*\\.env/i.test(workflow), false);
+  assert.match(workflow, /\^\[a-z0-9\]\[a-z0-9-\]\{4,29\}\$/);
+  assert.match(workflow, /bash -s -- "\$QA2_FCM_PROJECT_ID"/);
+  assert.match(workflow, /if expected_package not in packages:/);
+  assert.doesNotMatch(workflow, /if packages != \{expected_package\}:/);
+  assert.ok(workflow.includes('QA2_FCM_ROLLBACK=not_required_before_remote_change'));
+  assert.ok(workflow.includes('qa_env=/home/ubuntu/urtruck-qa2/.env'));
+  assert.equal(workflow.includes('qa_env=/home/ubuntu/urtruck-qa2/backend/.env'), false);
+  assert.equal(workflow.includes('from database.db import get_conn'), false);
+});

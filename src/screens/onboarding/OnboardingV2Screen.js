@@ -259,7 +259,7 @@ export default function OnboardingV2Screen({ navigation }) {
     }
     navigation.reset({
       index: 0,
-      routes: [{ name: 'Main', params: { role: 'client', guest: true } }],
+      routes: [{ name: 'Main', params: { role: 'driver', guest: true } }],
     });
   };
 

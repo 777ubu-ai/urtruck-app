@@ -21,6 +21,7 @@ import { readFileSync } from 'node:fs';
 import {
   enqueueOutbox, flushOutbox, outboxCount, clearOutbox,
 } from '../../src/utils/outbox.js';
+import { reconcileChatMessages } from '../../src/utils/chatMessageListState.js';
 
 const err = (status) => Object.assign(new Error(`http ${status}`), { status });
 const netErr = () => Object.assign(new Error('network'), { isNetwork: true });
@@ -113,8 +114,15 @@ test('App.js: глобальный flush передаёт activeUserId', () => {
 });
 
 test('сверка optimistic↔server: по client_msg_id, текст — только фолбэк', () => {
-  assert.match(dealSrc, /server\.clientMsgId\s*\n?\s*\?\s*server\.clientMsgId === item\.id/,
-    'основной критерий — устойчивый client_msg_id');
-  assert.doesNotMatch(dealSrc, /server\.clientMsgId === item\.id \|\| \(server\.mine/,
-    'старое «или по тексту» роняло второе одинаковое сообщение — не должно вернуться');
+  const optimistic = [
+    { id: 'client-1', optimistic: true, kind: 'text', text: 'Повтор', mine: true },
+    { id: 'client-2', optimistic: true, kind: 'text', text: 'Повтор', mine: true },
+  ];
+  const committed = [{
+    id: 'server-1', clientMsgId: 'client-1', kind: 'text', text: 'Повтор', mine: true,
+    createdAt: '2026-09-30T12:00:00Z',
+  }];
+  const result = reconcileChatMessages(optimistic, committed, []);
+  assert.deepEqual(result.map((item) => item.id), ['server-1', 'client-2'],
+    'client_msg_id подтверждает только свой optimistic-пузырь; одинаковый второй текст остаётся');
 });

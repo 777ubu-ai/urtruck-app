@@ -1,5 +1,6 @@
 // Запись и воспроизведение голосовых сообщений через expo-audio
-// Web: MediaRecorder API с audio/mp4 fallback
+// Web: MediaRecorder API с audio/webm fallback для браузеров, где mp4/Opus
+// выдаёт повреждённые временные метки; Safari сохраняет mp4 fallback.
 // Native: expo-audio через локальный compatibility layer
 //
 // Плеер (28.08.2026, WhatsApp/WeChat-паритет по заявке владельца): один
@@ -17,6 +18,12 @@ let _playingUri = null;
 let _playPromise = null;
 let _webTick = null;
 let _nativePoll = null;
+// Пока нативный Sound останавливается/выгружается, новый Sound создавать
+// нельзя. На Xiaomi `unloadAsync()` иногда завершается заметно позже, чем
+// следующий tap; без этой общей promise-цепочки два createAsync могли дойти
+// до playAsync параллельно.
+let _nativeRetirement = null;
+let _retiringNativeSound = null;
 // Sound objects that have physically reported `isPlaying: true`.  This lets
 // us distinguish the harmless initial paused status (listener is attached
 // before playAsync) from Xiaomi/Expo AV's terminal idle status, which can be
@@ -50,6 +57,47 @@ const _resetState = () => _setState({ uri: null, isPlaying: false, positionMilli
 const _stopNativePoll = () => {
   if (_nativePoll) clearInterval(_nativePoll);
   _nativePoll = null;
+};
+
+// Возвращает false только когда мы не смогли физически остановить старый
+// звук. В таком случае безопаснее не запускать новый, чем допустить два
+// одновременно слышимых трека. Ошибка unload после успешного stop/pause
+// безопасна: устройство уже подтвердило остановку, а объект будет
+// освобождён нативным рантаймом позднее.
+const _retireNativeSound = async (sound) => {
+  try {
+    await sound.stopAsync();
+  } catch {
+    try {
+      await sound.pauseAsync();
+    } catch {
+      return false;
+    }
+  }
+  try { await sound.unloadAsync(); } catch { /* уже выгружен нативно */ }
+  return true;
+};
+
+const _ensureNativeSilence = () => {
+  if (_nativeRetirement) return _nativeRetirement;
+  const sound = _sound || _retiringNativeSound;
+  if (!sound) return Promise.resolve(true);
+
+  _stopNativePoll();
+  // Сбрасываем active-ссылку до await: status callback старого Sound больше
+  // не может перерисовать новый bubble. Сам объект остаётся в
+  // _retiringNativeSound до доказанной физической остановки.
+  _sound = null;
+  _retiringNativeSound = sound;
+  const retirement = _retireNativeSound(sound).then((safe) => {
+    if (safe && _retiringNativeSound === sound) _retiringNativeSound = null;
+    return safe;
+  });
+  _nativeRetirement = retirement;
+  retirement.finally(() => {
+    if (_nativeRetirement === retirement) _nativeRetirement = null;
+  });
+  return retirement;
 };
 
 const _applyNativePlaybackStatus = (sound, uri, status) => {
@@ -188,6 +236,10 @@ export const voice = {
   },
 
   async pause() {
+    // Отменяет play(), который ещё ждёт createAsync: иначе быстрый pause
+    // выглядел бы успешным, но опоздавший createAsync всё равно запустил бы
+    // звук после него.
+    _playSeq += 1;
     try {
       if (Platform.OS === 'web') {
         if (_webAudio) _webAudio.pause();
@@ -284,23 +336,15 @@ export const voice = {
     const seq = ++_playSeq;
     const run = (async () => {
       if (Platform.OS === 'web') {
-        return this._playWeb(uri);
+        return this._playWeb(uri, seq);
       }
 
     let sound = null;
     try {
-      if (_sound) {
-        const prev = _sound;
-        _stopNativePoll();
-        // Ссылку обязаны скинуть ДО await: пока идёт unload, completion-
-        // колбэк prev проверяет `_sound !== sound` и молчит корректно, а
-        // error-путь catch ниже никогда не видит stale _sound.
-        _sound = null;
-        // unloadAsync может кинуть, если натив уже выгрузил звук — это НЕ
-        // повод бросать весь play() (старое поведение ловило здесь
-        // ReferenceError/stale _sound и уводило плеер в вечный fail).
-        try { await prev.unloadAsync(); } catch { /* уже выгружен нативно */ }
-      }
+      // Нельзя переходить к createAsync, пока предыдущий Sound не подтвердил
+      // stop/pause. Все быстрые taps ждут одну и ту же retirement promise,
+      // затем только самый свежий seq получает право на playAsync.
+      if (!(await _ensureNativeSilence()) || seq !== _playSeq) return false;
       const { Audio } = require('./expoAudioCompat');
       // C1 (device-баг): голосовое не проигрывалось у получателя на iOS.
       // Первопричина — после записи audio-сессия остаётся в режиме записи
@@ -377,11 +421,7 @@ export const voice = {
       try { _webAudio.load?.(); } catch {}
       _webAudio = null;
     }
-    if (_sound) {
-      await _sound.stopAsync().catch(() => {});
-      await _sound.unloadAsync().catch(() => {});
-      _sound = null;
-    }
+    if (Platform.OS !== 'web') await _ensureNativeSilence();
     _playingUri = null;
     _resetState();
   },
@@ -393,10 +433,10 @@ export const voice = {
   async _startWeb() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported('audio/mp4')
-        ? 'audio/mp4'
-        : MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+          ? 'audio/mp4'
           : 'audio/webm';
       this._webRecorder = new MediaRecorder(stream, { mimeType });
       this._webChunks = [];
@@ -439,64 +479,74 @@ export const voice = {
     });
   },
 
-  _playWeb(uri, rate = 1) {
-    return new Promise((resolve) => {
-      if (_webAudio && _playingUri === uri && !_webAudio.paused && !_webAudio.ended) {
-        resolve(true);
-        return;
-      }
-      if (_webAudio) {
-        _webAudio.pause();
+  async _playWeb(uri, seq) {
+    if (_webAudio && _playingUri === uri && !_webAudio.paused && !_webAudio.ended) return true;
+    if (_webAudio) {
+      _webAudio.pause();
+      if (_webTick) { clearInterval(_webTick); _webTick = null; }
+      _webAudio.src = '';
+      try { _webAudio.load?.(); } catch {}
+      _webAudio = null;
+    }
+    const audio = new Audio(uri);
+    _webAudio = audio;
+    _playingUri = uri;
+    _setState({ uri, isPlaying: false, positionMillis: 0, durationMillis: 0 });
+    audio.playbackRate = _state.rate || 1;
+
+    // Живой прогресс: timeupdate у HTMLAudioElement стреляет ~4 раза/сек —
+    // для плавной полосы (как в WhatsApp) добавлен интервал 80мс.
+    const tick = () => {
+      if (_webAudio !== audio) return;
+      _setState({
+        positionMillis: Math.round((audio.currentTime || 0) * 1000),
+        durationMillis: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : (_state.durationMillis || 0),
+        isPlaying: !audio.paused && !audio.ended,
+      });
+    };
+    if (_webTick) clearInterval(_webTick);
+    _webTick = setInterval(tick, 80);
+
+    audio.onloadedmetadata = tick;
+    audio.ontimeupdate = tick;
+    audio.onpause = () => { if (_webAudio === audio) _setState({ isPlaying: false }); };
+    audio.onplay = () => { if (_webAudio === audio) _setState({ isPlaying: true }); };
+    // По окончании: сброс в начало + кнопка снова «play». Элемент НЕ
+    // уничтожаем — повторный тап играет мгновенно, без пере-загрузки.
+    audio.onended = () => {
+      if (_webAudio === audio) {
+        try { audio.currentTime = 0; } catch {}
         if (_webTick) { clearInterval(_webTick); _webTick = null; }
-        _webAudio.src = '';
-        try { _webAudio.load?.(); } catch {}
-        _webAudio = null;
+        _setState({ isPlaying: false, positionMillis: 0 });
       }
-      const audio = new Audio(uri);
-      audio.playbackRate = _state.rate || 1;
-      _webAudio = audio;
-      _playingUri = uri;
-      _setState({ uri, isPlaying: true, positionMillis: 0, durationMillis: 0 });
-
-      // Живой прогресс: timeupdate у HTMLAudioElement стреляет ~4 раза/сек —
-      // для плавной полосы (как в WhatsApp) добавлен интервал 80мс.
-      const tick = () => {
-        if (_webAudio !== audio) return;
-        _setState({
-          positionMillis: Math.round((audio.currentTime || 0) * 1000),
-          durationMillis: Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : (_state.durationMillis || 0),
-          isPlaying: !audio.paused && !audio.ended,
-        });
-      };
-      if (_webTick) clearInterval(_webTick);
-      _webTick = setInterval(tick, 80);
-
-      audio.onloadedmetadata = tick;
-      audio.ontimeupdate = tick;
-      audio.onpause = () => { if (_webAudio === audio) _setState({ isPlaying: false }); };
-      audio.onplay = () => { if (_webAudio === audio) _setState({ isPlaying: true }); };
-
-      const cleanup = (ok) => {
-        if (_webAudio === audio) {
-          if (_webTick) { clearInterval(_webTick); _webTick = null; }
-          _webAudio = null;
-          _playingUri = null;
-          _resetState();
-        }
-        resolve(ok);
-      };
-      // По окончании: сброс в начало + кнопка снова «play». Элемент НЕ
-      // уничтожаем — повторный тап играет мгновенно, без пере-загрузки.
-      audio.onended = () => {
-        if (_webAudio === audio) {
-          try { audio.currentTime = 0; } catch {}
-          if (_webTick) { clearInterval(_webTick); _webTick = null; }
-          _setState({ isPlaying: false, positionMillis: 0 });
-        }
-        resolve(true);
-      };
-      audio.onerror = (e) => { console.warn('[voice] web play error:', e); cleanup(false); };
-      audio.play().catch(() => cleanup(false));
-    });
+    };
+    audio.onerror = (e) => {
+      console.warn('[voice] web play error:', e);
+      if (_webAudio === audio) {
+        if (_webTick) { clearInterval(_webTick); _webTick = null; }
+        _webAudio = null;
+        _playingUri = null;
+        _resetState();
+      }
+    };
+    try {
+      await audio.play();
+      if (seq !== _playSeq || _webAudio !== audio) {
+        audio.pause();
+        audio.src = '';
+        try { audio.load?.(); } catch {}
+        return false;
+      }
+      _setState({ isPlaying: true });
+      return true;
+    } catch {
+      if (_webAudio === audio) {
+        if (_webTick) { clearInterval(_webTick); _webTick = null; }
+        _webAudio = null;
+        _playingUri = null;
+        _resetState();
+      }
+      return false;
+    }
   },
 };

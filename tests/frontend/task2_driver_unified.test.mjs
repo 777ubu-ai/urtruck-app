@@ -21,7 +21,7 @@ test('main tabs are four canonical tabs with Border and no Profile duplication',
   assert.equal((tabs.match(/Tab\.Screen name="Queue"/g) || []).length, 2);
   assert.equal((tabs.match(/Tab\.Screen name="Deals"/g) || []).length, 2);
   assert.equal((tabs.match(/Tab\.Screen name="Profile"/g) || []).length, 0);
-  assert.match(bottom, /Queue:\s*\{ driver: 'map-pin', client: 'map-pin' \}/);
+  assert.match(bottom, /Queue:\s*\{[\s\S]*driver:\s*\{ active: 'map-marker-radius', inactive: 'map-marker-radius-outline' \},[\s\S]*client:\s*\{ active: 'map-marker-radius', inactive: 'map-marker-radius-outline' \}/);
   assert.doesNotMatch(bottom, /Profile:\s*\{/);
   assert.match(bottom, /name === 'Queue'\)\s+return t\('tab_border'\)/);
   assert.doesNotMatch(bottom, /route\.name === 'Publish'/);

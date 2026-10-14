@@ -46,3 +46,12 @@ test('China-to-Kazakhstan border crossings are displayed in logistics direction'
   assert.match(picker, /'Хоргос → Нур Жолы'/);
   assert.doesNotMatch(picker, /'Нур Жолы ↔ Хоргос'/);
 });
+
+test('successful cargo and trip publishing return to the canonical MyWork tab', () => {
+  for (const source of [createCargo, createTrip]) {
+    assert.match(source, /navigation\.reset\(\{[\s\S]*name: 'Main'[\s\S]*screen: 'MyWork'/);
+    assert.doesNotMatch(source, /navigation\.replace\('MyTripsList'/);
+  }
+  assert.match(createCargo, /params: \{ role, initialTab: 'searching', justCreatedCargo: justCreated \}/);
+  assert.match(createTrip, /params: \{ role, initialTab: 'routes', justCreatedTrip: justCreated \}/);
+});

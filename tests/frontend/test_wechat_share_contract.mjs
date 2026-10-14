@@ -25,6 +25,10 @@ test('WeChat fallback copies the complete text and URL only when system sharing 
 });
 
 test('Web share body does not duplicate the canonical URL', () => {
-  assert.match(shareModal, /const shareBody = fullShareText\.replace\(new RegExp/);
+  // Cargo copy ends with a localized "View cargo: URL" line.  Strip that
+  // whole line before platforms that receive URL separately, otherwise the
+  // text body would retain a dangling label or duplicate the URL.
+  assert.match(shareModal, /const shareBody = finalUrl/);
+  assert.match(shareModal, /new RegExp\(`\(\?:\^\|\\\\n\)\[\^\\\\n\]\*\$\{escapedFinalUrl\}/);
   assert.match(shareModal, /text: shareBody, url: finalUrl/);
 });

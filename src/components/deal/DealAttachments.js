@@ -10,6 +10,7 @@ import { useTheme } from '../../utils/ThemeContext';
 import { chatAPI, documentKindFromFile } from '../../utils/chatAPI';
 import { compressImage } from '../../utils/imageCompress';
 import { accentFor } from './DealRoom';
+import PdfPreviewModal from './PdfPreviewModal';
 
 const STATUS_META = {
   queued:    { icon: 'clock',        color: '#7C8B82', key: 'chat_attach_status_queued' },
@@ -39,6 +40,12 @@ function isOfficeDocument(name, mime) {
     || lowerMime.includes('spreadsheet')
     || lowerMime.includes('excel')
     || lowerMime.includes('csv');
+}
+
+function isPdfAttachment(item) {
+  const name = item?.original_name || item?.filename || item?.file_name || item?.name;
+  return String(name || '').toLowerCase().endsWith('.pdf')
+    || String(item?.mime_type || item?.mime || '').toLowerCase().includes('pdf');
 }
 
 function formatBytes(value) {
@@ -89,6 +96,7 @@ export default function DealAttachments({
   const [server, setServer] = useState([]);
   const [local, setLocal] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState(null);
 
   const load = useCallback(async () => {
     if (!conversationId) return;
@@ -209,8 +217,12 @@ export default function DealAttachments({
   const openAttachment = useCallback(async (item) => {
     const url = item?.url || item?.signed_url || item?.download_url;
     if (!url) return;
+    if (isPdfAttachment(item)) {
+      setPdfPreview({ url, title: attachmentLabel(t, item) });
+      return;
+    }
     try { await Linking.openURL(url); } catch { /* next load refreshes signed URL */ }
-  }, []);
+  }, [t]);
 
   const prevTrigger = React.useRef(attachTrigger);
   useEffect(() => {
@@ -256,64 +268,72 @@ export default function DealAttachments({
   };
 
   return (
-    <View
-      style={inline ? s.inlineBox : [s.box, { borderColor: theme.border }]}
-      testID={inline ? 'deal-inline-attachments' : 'deal-attachments'}
-    >
-      {!inline ? (
-        <View style={s.head}>
-          <Feather name="paperclip" size={14} color={theme.textMuted} />
-          <Text style={[s.title, { color: theme.text }]}>{t('chat_documents_title')}</Text>
-          {!compact ? (
-            <TouchableOpacity
-              onPress={onAttach}
-              disabled={busy}
-              style={[s.attachBtn, { borderColor: accent, opacity: busy ? 0.5 : 1 }]}
-              testID="attach-add"
-            >
-              {busy ? <ActivityIndicator size="small" color={accent} /> : <Feather name="plus" size={14} color={accent} />}
-              <Text style={[s.attachTxt, { color: accent }]}>{t('chat_attach_add')}</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      ) : null}
+    <>
+      <View
+        style={inline ? s.inlineBox : [s.box, { borderColor: theme.border }]}
+        testID={inline ? 'deal-inline-attachments' : 'deal-attachments'}
+      >
+        {!inline ? (
+          <View style={s.head}>
+            <Feather name="paperclip" size={14} color={theme.textMuted} />
+            <Text style={[s.title, { color: theme.text }]}>{t('chat_documents_title')}</Text>
+            {!compact ? (
+              <TouchableOpacity
+                onPress={onAttach}
+                disabled={busy}
+                style={[s.attachBtn, { borderColor: accent, opacity: busy ? 0.5 : 1 }]}
+                testID="attach-add"
+              >
+                {busy ? <ActivityIndicator size="small" color={accent} /> : <Feather name="plus" size={14} color={accent} />}
+                <Text style={[s.attachTxt, { color: accent }]}>{t('chat_attach_add')}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
 
-      {isEmpty ? (
-        <Text style={[s.empty, { color: theme.textMuted }]}>{t('chat_attach_empty')}</Text>
-      ) : (
-        <View style={{ gap: 6 }}>
-          {server.map((a) => {
-            const meta = STATUS_META[a.upload_status] || STATUS_META.uploaded;
-            return (
-              <Row
-                key={a.id}
-                icon={isImageAttachment(a) ? 'image' : 'file-text'}
-                label={attachmentLabel(t, a)}
-                sublabel={formatBytes(a.size_bytes)}
-                statusKey={meta.key}
-                statusColor={meta.color}
-                onOpen={a.url ? () => openAttachment(a) : null}
-              />
-            );
-          })}
-          {local.map((item) => {
-            const meta = STATUS_META[item.status] || STATUS_META.queued;
-            return (
-              <Row
-                key={item.localId}
-                icon={item.isImage ? 'image' : 'file-text'}
-                label={item.name || attachmentLabel(t, item)}
-                sublabel={formatBytes(item.size)}
-                statusKey={meta.key}
-                statusColor={meta.color}
-                spinning={item.status === 'uploading' || item.status === 'retrying'}
-                onRetryPress={item.status === 'failed' ? () => onRetry(item) : null}
-              />
-            );
-          })}
-        </View>
-      )}
-    </View>
+        {isEmpty ? (
+          <Text style={[s.empty, { color: theme.textMuted }]}>{t('chat_attach_empty')}</Text>
+        ) : (
+          <View style={{ gap: 6 }}>
+            {server.map((a) => {
+              const meta = STATUS_META[a.upload_status] || STATUS_META.uploaded;
+              return (
+                <Row
+                  key={a.id}
+                  icon={isImageAttachment(a) ? 'image' : 'file-text'}
+                  label={attachmentLabel(t, a)}
+                  sublabel={formatBytes(a.size_bytes)}
+                  statusKey={meta.key}
+                  statusColor={meta.color}
+                  onOpen={a.url ? () => openAttachment(a) : null}
+                />
+              );
+            })}
+            {local.map((item) => {
+              const meta = STATUS_META[item.status] || STATUS_META.queued;
+              return (
+                <Row
+                  key={item.localId}
+                  icon={item.isImage ? 'image' : 'file-text'}
+                  label={item.name || attachmentLabel(t, item)}
+                  sublabel={formatBytes(item.size)}
+                  statusKey={meta.key}
+                  statusColor={meta.color}
+                  spinning={item.status === 'uploading' || item.status === 'retrying'}
+                  onRetryPress={item.status === 'failed' ? () => onRetry(item) : null}
+                />
+              );
+            })}
+          </View>
+        )}
+      </View>
+      <PdfPreviewModal
+        visible={Boolean(pdfPreview)}
+        url={pdfPreview?.url}
+        title={pdfPreview?.title || t('attachment_document')}
+        onClose={() => setPdfPreview(null)}
+      />
+    </>
   );
 }
 

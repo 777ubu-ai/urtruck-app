@@ -7,24 +7,29 @@ import CountryFlag from '../ui/v1/CountryFlag';
 import { useI18n } from '../../utils/useI18n';
 import { getCountryName, searchAllCountries } from '../../utils/countries';
 import { typography } from '../../theme/brandV2';
-import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
+import { useDriverCeramicColors } from '../../theme/designV1';
 import { getVehicleCopy } from '../../utils/vehicleSetupCopy';
 
-const brand = {
-  bg: DRIVER_CERAMIC.bg,
-  surface: DRIVER_CERAMIC.surface,
-  surfaceMuted: DRIVER_CERAMIC.surfaceMuted,
-  surfaceSoft: DRIVER_CERAMIC.surface,
-  textPrimary: DRIVER_CERAMIC.text,
-  textSecondary: DRIVER_CERAMIC.textMuted,
-  textTertiary: DRIVER_CERAMIC.textDim,
-  textOnPrimary: DRIVER_CERAMIC.activeText,
-  primary: DRIVER_CERAMIC.active,
-  primarySoft: DRIVER_CERAMIC.activeSoft,
-  borderStrong: DRIVER_CERAMIC.border,
-  border: DRIVER_CERAMIC.border,
-  divider: DRIVER_CERAMIC.border,
-  errorText: DRIVER_CERAMIC.error,
+const vehicleBrand = (colors) => ({
+  bg: colors.bg,
+  surface: colors.surface,
+  surfaceMuted: colors.surfaceMuted,
+  surfaceSoft: colors.surface,
+  textPrimary: colors.text,
+  textSecondary: colors.textMuted,
+  textTertiary: colors.textDim,
+  textOnPrimary: colors.activeText,
+  primary: colors.active,
+  primarySoft: colors.activeSoft,
+  borderStrong: colors.border,
+  border: colors.border,
+  divider: colors.border,
+  errorText: colors.error,
+});
+
+export const useVehicleSetupStyles = () => {
+  const colors = useDriverCeramicColors();
+  return useMemo(() => StyleSheet.create(createStyles(vehicleBrand(colors))), [colors]);
 };
 
 export const STEPS = 4;
@@ -34,6 +39,7 @@ export const useVehicleCopy = () => {
 };
 
 export function ProgressHeader({ navigation, step, c }) {
+  const styles = useVehicleSetupStyles();
   return <View style={styles.header}>
     <BackButton onPress={() => navigation.goBack()} label={c.back} />
     <View style={styles.progress}>{Array.from({ length: STEPS }).map((_, i) => <View key={i} style={[styles.segment, i < step && styles.segmentActive]} />)}</View>
@@ -42,19 +48,24 @@ export function ProgressHeader({ navigation, step, c }) {
 }
 
 export function SelectRow({ icon, value, placeholder, onPress, testID, countryCode }) {
+  const styles = useVehicleSetupStyles();
+  const brand = vehicleBrand(useDriverCeramicColors());
   return <Pressable testID={testID} onPress={onPress} style={({ pressed }) => [styles.select, pressed && { opacity: 0.75 }]} accessibilityRole="button">
-    <View style={styles.iconBox}>{countryCode ? <CountryFlag code={countryCode} width={28} /> : <Feather name={icon} size={22} color={brand.textSecondary} />}</View>
+    <View style={styles.iconBox}>{countryCode ? <CountryFlag code={countryCode} width={22} /> : <Feather name={icon} size={22} color={brand.textSecondary} />}</View>
     <Text style={[styles.selectText, !value && styles.empty]} numberOfLines={1}>{value || placeholder || ''}</Text>
     <Feather name="chevron-down" size={22} color={brand.textSecondary} />
   </Pressable>;
 }
 
 export function Label({ children, optional }) {
+  const styles = useVehicleSetupStyles();
   return <View style={styles.labelRow}><Text style={styles.label}>{children}</Text>{optional ? <Text style={styles.optional}> ({optional})</Text> : null}</View>;
 }
 
 export function CountrySheet({ visible, onClose, onSelect, title }) {
   const { lang } = useI18n();
+  const styles = useVehicleSetupStyles();
+  const brand = vehicleBrand(useDriverCeramicColors());
   const [query, setQuery] = useState('');
   const list = useMemo(() => searchAllCountries(query, lang), [query, lang]);
   return <BottomSheet visible={visible} onClose={() => { setQuery(''); onClose(); }} title={title} scroll={false}>
@@ -69,7 +80,7 @@ export function CountrySheet({ visible, onClose, onSelect, title }) {
       windowSize={7}
       renderItem={({ item: country }) => (
         <Pressable style={styles.option} onPress={() => { onSelect(country.iso); setQuery(''); onClose(); }}>
-          <CountryFlag code={country.iso} width={26} />
+          <CountryFlag code={country.iso} width={21} />
           <Text style={styles.optionText}>{getCountryName(country, lang)}</Text>
           <Text style={styles.iso}>{country.iso}</Text>
         </Pressable>
@@ -80,6 +91,8 @@ export function CountrySheet({ visible, onClose, onSelect, title }) {
 }
 
 export function OptionSheet({ visible, onClose, title, options, value, onSelect, search = false, searchPlaceholder, hideIcons = false, fallbackOption = null }) {
+  const styles = useVehicleSetupStyles();
+  const brand = vehicleBrand(useDriverCeramicColors());
   const [query, setQuery] = useState('');
   const filtered = options.filter((item) => !query || item.label.toLowerCase().includes(query.toLowerCase()));
   const visibleOptions = filtered.length || !query || !fallbackOption ? filtered : [fallbackOption];
@@ -91,10 +104,10 @@ export function OptionSheet({ visible, onClose, title, options, value, onSelect,
 
 export const countryLabel = (iso, lang) => iso ? `${getCountryName({ iso }, lang)}` : '';
 
-export const styles = StyleSheet.create({
+const createStyles = (brand) => ({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },
   progress: { flex: 1, flexDirection: 'row', gap: 7 },
-  segment: { flex: 1, height: 6, borderRadius: 4, backgroundColor: '#E3EAF0' },
+  segment: { flex: 1, height: 6, borderRadius: 4, backgroundColor: brand.border },
   segmentActive: { backgroundColor: brand.primary },
   step: { ...typography.bodySmall, color: brand.textSecondary, minWidth: 64, textAlign: 'right' },
   safe: { flex: 1, backgroundColor: brand.bg },
@@ -107,7 +120,7 @@ export const styles = StyleSheet.create({
   select: { minHeight: 52, borderWidth: 1, borderColor: brand.borderStrong, borderRadius: 10, flexDirection: 'row', alignItems: 'center', paddingRight: 12, backgroundColor: brand.surface },
   iconBox: { width: 48, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: brand.divider },
   selectText: { flex: 1, paddingHorizontal: 12, ...typography.bodyLarge, color: brand.textPrimary, fontWeight: '600' },
-  empty: { color: 'transparent' },
+  empty: { color: brand.textTertiary },
   input: { minHeight: 52, borderWidth: 1, borderColor: brand.borderStrong, borderRadius: 10, paddingHorizontal: 14, ...typography.bodyLarge, color: brand.textPrimary, backgroundColor: brand.surface },
   row: { flexDirection: 'row', gap: 10 },
   fieldCell: { flex: 1, minWidth: 0 },
@@ -115,7 +128,7 @@ export const styles = StyleSheet.create({
   dimensionCell: { width: '48%', minWidth: 0 },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: brand.bg, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 16, borderTopWidth: 1, borderTopColor: brand.divider },
   cta: { minHeight: 46, borderRadius: 10, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center' },
-  ctaDisabled: { backgroundColor: '#D8DEE5' },
+  ctaDisabled: { backgroundColor: brand.border },
   ctaText: { ...typography.button, color: brand.textOnPrimary },
   disabledText: { color: brand.textTertiary },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: brand.surfaceMuted, borderRadius: 10, paddingHorizontal: 12, marginBottom: 8 },
@@ -128,14 +141,14 @@ export const styles = StyleSheet.create({
   emptyState: { ...typography.body, color: brand.textSecondary, padding: 20, textAlign: 'center' },
   error: { color: brand.errorText, ...typography.bodySmall, marginTop: 8 },
   reviewCard: { backgroundColor: brand.surfaceSoft, borderRadius: 14, padding: 14, marginBottom: 12 },
-  reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   reviewTitle: { flex: 1, ...typography.h2, fontSize: 18, color: brand.textPrimary },
   edit: { color: brand.primary, fontWeight: '700' },
   reviewRow: { flexDirection: 'row', marginTop: 8 },
   reviewKey: { width: '48%', ...typography.bodySmall, color: brand.textSecondary },
   reviewValue: { flex: 1, ...typography.body, color: brand.textPrimary, fontWeight: '600' },
   successCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: brand.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 8, borderColor: brand.primarySoft },
-  errorCircle: { width: 76, height: 76, borderRadius: 38, backgroundColor: '#FCEBEC', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F3C6C8' },
+  errorCircle: { width: 76, height: 76, borderRadius: 38, backgroundColor: brand.surfaceMuted, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: brand.border },
   errorActions: { flexDirection: 'row', gap: 10, width: '100%' },
   errorAction: { flex: 1, marginTop: 0 },
   benefit: { flex: 1, minHeight: 80, backgroundColor: brand.surfaceSoft, borderRadius: 10, alignItems: 'center', justifyContent: 'center', padding: 8 },

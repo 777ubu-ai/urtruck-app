@@ -66,17 +66,20 @@ test('pending-url gate is a single generic funnel, not push-only: push taps, Lin
   // than reimplementing its own auth/ready check — otherwise a source that
   // bypasses it (e.g. a bare `navigateFromUrl(...)` call) would skip the
   // logged-out → login → return-to-target flow entirely.
-  assert.match(appJs, /const routeFromUrl = \(url\) => \{/);
+  assert.match(appJs, /const routeFromUrl = useCallback\(\(url\) => \{/);
   assert.match(appJs, /pendingUrlRef\.current = url;/);
-  // Native push tap (cold start + warm listener).
-  assert.match(appJs, /const url = notificationResponseUrl\(response\);\s*\n\s*if \(url\) routeFromUrl\(url\);/);
+  assert.match(appJs, /routeFromUrlRef\.current = routeFromUrl/);
+  // Native push tap (cold start + warm listener). The telemetry wrapper must
+  // receive the shared route function instead of reimplementing auth/ready
+  // routing after waiting for a receipt/open ACK.
+  assert.match(appJs, /const url = notificationResponseUrl\(response\);[\s\S]*?handlePushTap\(\{[\s\S]*?url,[\s\S]*?route: routeFromUrl,[\s\S]*?\}\);/);
   // Non-push app/universal links: Linking.getInitialURL + 'url' event.
-  assert.match(appJs, /Linking\.getInitialURL\(\)\s*\n\s*\.then\(\(url\) => \{\s*\n\s*if \(active && url\) routeFromUrl\(url\);/);
-  assert.match(appJs, /Linking\.addEventListener\('url', \(\{ url \}\) => \{\s*\n\s*if \(url\) routeFromUrl\(url\);/);
+  assert.match(appJs, /Linking\.getInitialURL\(\)[\s\S]*?if \(active && url\) routeFromUrlRef\.current\?\.\(url\);/);
+  assert.match(appJs, /Linking\.addEventListener\('url', \(\{ url \}\) => routeFromUrlRef\.current\?\.\(url\)\)/);
   // Web PWA service-worker notification postMessage.
-  assert.match(appJs, /if \(event\.data\?\.type === 'notification' && event\.data\.url\) routeFromUrl\(event\.data\.url\);/);
+  assert.match(appJs, /if \(event\.data\?\.type === 'notification' && event\.data\.url\) routeFromUrlRef\.current\?\.\(event\.data\.url\);/);
   // The onReady flush (cold-start case where the container wasn't ready yet).
-  assert.match(appJs, /onReady=\{\(\) => \{ navReadyRef\.current = true; if \(pendingUrlRef\.current\) routeFromUrl\(pendingUrlRef\.current\); \}\}/);
+  assert.match(appJs, /onReady=\{\(\) => \{ navReadyRef\.current = true; dispatchPendingUrl\(\); \}\}/);
 });
 
 test('app.json: Android intentFilter carries a /driver universal-link entry alongside notifications/cargos/trips', () => {

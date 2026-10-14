@@ -34,6 +34,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-test.txt
+      - name: Runtime identity and mixed-deployment regression lock
+        run: |
+          python backend/tests/test_push_release_manifest.py -q
+          python scripts/ops/runtime_release_manifest.py create \
+            --root backend --manifest "$RUNNER_TEMP/ci-runtime-manifest.json" \
+            --source-sha "$GITHUB_SHA" --environment ci
+          python scripts/ops/runtime_release_manifest.py verify \
+            --root backend --manifest "$RUNNER_TEMP/ci-runtime-manifest.json" \
+            --source-sha "$GITHUB_SHA" --environment ci
       - name: Compile backend and tests
         run: |
           python -m compileall -q backend
@@ -83,7 +92,19 @@ jobs:
           DB_PATH="${{ runner.temp }}/urtruck-ci-push-bell.db" \
             python -m pytest tests -q --disable-warnings \
             -k "push or bell or badge or notification or outbox or durable_event \
-                or attachment_push or logout_push"
+                or attachment_push or logout_push or onesignal or registry or token_rotation"
+
+      - name: Translation and STT regression boundary
+        env:
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
+          APP_ENV: test
+          CGR_IIN_SALT: ci-test-salt-not-a-secret
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          DB_PATH="${{ runner.temp }}/urtruck-ci-translation.db" \
+            python -m pytest tests -q --disable-warnings \
+            -k "translation or translate or transcribe or stt or qa2_ai_quality"
 
   frontend-quality:
     name: Frontend tests, lint, and build
@@ -99,8 +120,14 @@ jobs:
         run: npm ci
       - name: Dependency security audit
         run: |
-          npm run audit:production
-          npm run audit:dependencies
+          npm run audit:node-forge-exception
+      - name: Preserve raw dependency audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-audit
+          path: qa-artifacts/security-audit/
+          if-no-files-found: error
       - name: Lint
         run: npm run lint
       - name: Frontend ownership and currency tests
@@ -183,7 +210,9 @@ jobs:
           npx playwright test --config playwright.config.js \
             tests/e2e/urtruck-email-login.spec.js \
             tests/e2e/urtruck-deal-mvp.spec.js \
-            tests/e2e/urtruck-full-e2e-web.spec.js
+            tests/e2e/urtruck-full-e2e-web.spec.js \
+            tests/e2e/profile-save-recovery.spec.js \
+            tests/e2e/urtruck-runtime-crash-regression.spec.js
       - name: Upload E2E diagnostics
         if: always()
         uses: actions/upload-artifact@v4

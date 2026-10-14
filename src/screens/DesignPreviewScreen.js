@@ -263,7 +263,7 @@ function DesignV1Gallery() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }} testID="qa-country-flag-fixture">
             {COUNTRY_FLAG_CODES.map((code) => (
               <View key={code} style={{ alignItems: 'center', gap: 3 }}>
-                <CountryFlag code={code} width={36} testID={`qa-country-flag-${code.toLowerCase()}`} />
+                <CountryFlag code={code} width={29} testID={`qa-country-flag-${code.toLowerCase()}`} />
                 <Text style={{ fontSize: 10, fontWeight: '700' }}>{code}</Text>
               </View>
             ))}

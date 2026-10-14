@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useToast } from '../components/Toast';
@@ -80,6 +80,14 @@ function parseNotifUrl(url) {
 export default function NotificationsScreen({ navigation }) {
   const { session } = useAuth();
   const role = session?.user?.role || 'client';
+  const ownerId = session?.user?.id || null;
+  const ownerRef = useRef(ownerId);
+  const mountedRef = useRef(true);
+  ownerRef.current = ownerId;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const { t, lang } = useI18n();
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
@@ -105,9 +113,12 @@ export default function NotificationsScreen({ navigation }) {
   const accent = v1AccentFor(role);
 
   const load = useCallback(async ({ showLoading = true } = {}) => {
+    const loadOwner = ownerRef.current;
+    if (!loadOwner) return;
     if (showLoading) setLoading(true);
     try {
       const d = await notificationsAPI.list(50);
+      if (!mountedRef.current || ownerRef.current !== loadOwner) return;
       const all = Array.isArray(d?.notifications) ? d.notifications : [];
       // Bell is the canonical cross-product inbox. Bid, deal, tracking and
       // chat records are durable server notifications with their own deep
@@ -115,7 +126,7 @@ export default function NotificationsScreen({ navigation }) {
       // impossible to find or mark read in-app.
       setItems(all);
     } catch {}
-    if (showLoading) setLoading(false);
+    if (showLoading && mountedRef.current && ownerRef.current === loadOwner) setLoading(false);
   }, []);
 
   const { refreshing, onRefresh } = useSafeRefresh(
@@ -123,29 +134,44 @@ export default function NotificationsScreen({ navigation }) {
   );
 
   useEffect(() => {
+    setItems([]);
     load();
-  }, []);
+  }, [ownerId, load]);
 
   const markAllRead = async () => {
-    await notificationsAPI.readAll();
+    const readOwner = ownerRef.current;
+    if (!readOwner) return;
+    try {
+      await notificationsAPI.readAll();
+    } catch {
+      if (mountedRef.current && ownerRef.current === readOwner) toast(t('network_error'), 'error');
+      return;
+    }
+    if (!mountedRef.current || ownerRef.current !== readOwner) return;
     notifyNotifRead();
-    refreshAppIconBadge();
+    await refreshAppIconBadge();
+    if (!mountedRef.current || ownerRef.current !== readOwner) return;
     toast(`✓ ${t("notif_all_read")}`, "success");
     load();
-    notifyNotifRead();
-    refreshAppIconBadge();
   };
 
   const handlePress = async (item) => {
+    const readOwner = ownerRef.current;
+    if (!readOwner) return;
     const isUnread = !item.is_read;
     if (isUnread) {
-      try { await notificationsAPI.read(item.id); } catch {}
+      try {
+        await notificationsAPI.read(item.id);
+      } catch {
+        if (mountedRef.current && ownerRef.current === readOwner) toast(t('network_error'), 'error');
+        return;
+      }
+      if (!mountedRef.current || ownerRef.current !== readOwner) return;
+      setItems((prev) => prev.map((i) => i.id === item.id ? { ...i, is_read: 1 } : i));
       notifyNotifRead();
-      refreshAppIconBadge();
+      await refreshAppIconBadge();
     }
-    setItems((prev) =>
-      prev.map((i) => (i.id === item.id ? { ...i, is_read: 1 } : i)),
-    );
+    if (!mountedRef.current || ownerRef.current !== readOwner) return;
     const parsed = parseNotifUrl(item.url);
     if (!parsed) return;
     const { kind, id, params } = parsed;

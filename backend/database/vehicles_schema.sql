@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
   cargo_height_m REAL,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(owner_user_id, license_plate)
+  UNIQUE(owner_user_id, vehicle_registration_country_code, license_plate)
 );
 
 CREATE INDEX IF NOT EXISTS idx_vehicles_owner ON vehicles(owner_user_id);

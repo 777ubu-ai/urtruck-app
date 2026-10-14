@@ -1,0 +1,112 @@
+name: Configure QA2 Routing Provider
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type CONFIGURE_QA2_ROUTING
+        required: true
+        type: string
+
+concurrency:
+  group: urtruck-qa2-routing-config
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    if: inputs.confirmation == 'CONFIGURE_QA2_ROUTING'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: qa2
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      QA_API_URL: ${{ secrets.QA2_API_URL }}
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate isolated QA2 routing procedure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
+          test -n "$OPENROUTESERVICE_API_KEY"
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+          bash -n scripts/configure_qa2_routing.sh
+          node --test tests/frontend/test_qa2_routing_workflow.mjs
+      - name: Prepare pinned SSH transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/qa2-routing-key"
+          known="$RUNNER_TEMP/qa2-routing-known-hosts"
+          umask 077
+          printf '%s\n' "$SERVER_SSH_KEY" > "$key"
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known"
+          chmod 600 "$key" "$known"
+          test -s "$known"
+          {
+            echo "QA2_SSH_KEY=$key"
+            echo "QA2_SSH_KNOWN_HOSTS=$known"
+          } >> "$GITHUB_ENV"
+      - name: Configure ORS on QA2 only
+        shell: bash
+        run: bash scripts/configure_qa2_routing.sh
+      - name: Verify QA2 route provider after restart
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 "$QA_API_URL/health" >/dev/null
+          info="$(curl -fsS --max-time 20 "$QA_API_URL/api/v1/system/info")"
+          printf '%s' "$info" | python3 -c 'import json,sys; assert json.load(sys.stdin)["routing"]["provider"] == "openrouteservice"'
+          echo 'QA2_ROUTING_POSTCHECK=pass'
+      - name: Roll back QA2 routing settings on failure
+        if: failure() && env.QA2_SSH_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          state=/tmp/urtruck-qa2-routing.state
+          if test ! -f "$state"; then echo 'QA2_ROUTING_ROLLBACK=state-missing'; exit 0; fi
+          . "$state"
+          case "$BACKUP" in
+            /home/ubuntu/urtruck-qa2/backend/.env.routing-backup.*) ;;
+            *) echo QA2_ROUTING_BACKUP_PATH_INVALID >&2; exit 1 ;;
+          esac
+          qa_env=/home/ubuntu/urtruck-qa2/backend/.env
+          cp -- "$BACKUP" "$qa_env"
+          chmod 600 "$qa_env"
+          rm -f -- "$BACKUP" "$state" /tmp/urtruck-qa2-ors-*
+          sudo -n systemctl restart urtruck-qa2.service
+          test "$(systemctl is-active urtruck-qa2.service)" = active
+          curl -fsS http://127.0.0.1:8002/health >/dev/null
+          echo 'QA2_ROUTING_ROLLBACK=restored'
+          REMOTE
+      - name: Always remove temporary QA2 routing credentials and backup
+        if: always() && env.QA2_SSH_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$QA2_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS" \
+            "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          state=/tmp/urtruck-qa2-routing.state
+          if test -f "$state"; then
+            backup="$(sed -n 's/^BACKUP=//p' "$state")"
+            case "$backup" in
+              /home/ubuntu/urtruck-qa2/backend/.env.routing-backup.*) rm -f -- "$backup" ;;
+              *) echo QA2_ROUTING_BACKUP_PATH_INVALID >&2; exit 1 ;;
+            esac
+            rm -f -- "$state"
+          fi
+          rm -f -- /tmp/urtruck-qa2-ors-*
+          REMOTE

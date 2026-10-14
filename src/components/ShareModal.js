@@ -5,7 +5,7 @@ import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from './Toast';
-import { WEB_URL } from '../config/env';
+import { PUBLIC_WEB_ORIGIN } from '../config/env';
 
 // ShareModal — UrTruck brand v3.
 //
@@ -28,13 +28,21 @@ export default function ShareModal({
   const { theme } = useTheme();
   const { toast } = useToast();
 
-  const baseUrl = WEB_URL || 'https://urtruck.kz';
-  const finalUrl = url || (driverId ? `${baseUrl}/driver/${driverId}` : baseUrl);
-  const fullShareText = shareText.includes(finalUrl) ? shareText : `${shareText}\n${finalUrl}`;
+  const baseUrl = PUBLIC_WEB_ORIGIN;
+  const finalUrl = url || (driverId && baseUrl ? `${baseUrl}/driver/${driverId}` : '');
+  const fullShareText = finalUrl && shareText.includes(finalUrl) ? shareText : [shareText, finalUrl].filter(Boolean).join('\n');
   const escapedFinalUrl = finalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const shareBody = fullShareText.replace(new RegExp(`\\n?${escapedFinalUrl}\\s*$`), '').trim();
+  const shareBody = finalUrl
+    ? fullShareText.replace(new RegExp(`(?:^|\\n)[^\\n]*${escapedFinalUrl}\\s*$`), '').trim()
+    : fullShareText;
+  const requirePublicUrl = () => {
+    if (finalUrl) return true;
+    toast(t('shareError'), 'error');
+    return false;
+  };
 
   const handleWhatsApp = () => {
+    if (!requirePublicUrl()) return;
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
     const msg = encodeURIComponent(fullShareText);
     const link = cleanPhone ? `https://wa.me/${cleanPhone}?text=${msg}` : `https://wa.me/?text=${msg}`;
@@ -43,6 +51,7 @@ export default function ShareModal({
   };
 
   const handleTelegram = () => {
+    if (!requirePublicUrl()) return;
     // Telegram's share/url endpoint takes URL + text separately. Including
     // the URL inside `text` too would duplicate it in the preview, so strip
     // the trailing URL line from the body if present.
@@ -72,6 +81,7 @@ export default function ShareModal({
   };
 
   const handleWeChat = async () => {
+    if (!requirePublicUrl()) return;
     // Web Share passes text and URL as separate fields so the system share
     // sheet (including WeChat) receives a real payload without a duplicate
     // URL in the body.
@@ -109,6 +119,7 @@ export default function ShareModal({
   };
 
   const copyLink = async () => {
+    if (!requirePublicUrl()) return;
     const ok = await copyToClipboard(finalUrl);
     if (ok) toast('✅ ' + t('share_link_copied'), 'success');
     else toast(finalUrl, 'info', 5000);

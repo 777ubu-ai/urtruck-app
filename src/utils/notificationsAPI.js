@@ -30,13 +30,31 @@ export const notificationsAPI = {
     return r.json();
   },
 
+  async badge() {
+    const h = await headers();
+    if (!h.Authorization) return { badge: 0 };
+    const r = await fetch(`${BASE}/badge`, { headers: h });
+    if (!r.ok) {
+      const error = new Error(`badge request failed ${r.status}`);
+      error.status = r.status;
+      throw error;
+    }
+    return r.json();
+  },
+
   async readAll() {
     const r = await fetch(`${BASE}/read-all`, { method: 'POST', headers: await headers() });
-    return r.json();
+    if (!r.ok) throw new Error(`notification read failed ${r.status}`);
+    const result = await r.json();
+    if (result?.ok !== true) throw new Error('notification read not confirmed');
+    return result;
   },
 
   async read(id) {
     const r = await fetch(`${BASE}/read/${id}`, { method: 'POST', headers: await headers() });
-    return r.json();
+    if (!r.ok) throw new Error(`notification read failed ${r.status}`);
+    const result = await r.json();
+    if (result?.ok !== true) throw new Error('notification read not confirmed');
+    return result;
   },
 };

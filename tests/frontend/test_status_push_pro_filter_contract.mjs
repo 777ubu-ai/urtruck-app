@@ -12,8 +12,9 @@ const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 const push = fs.readFileSync('src/utils/push.js', 'utf8');
 
 test('foreground deal activity uses the Deals badge without a duplicate top banner', () => {
-  assert.match(bottomNav, /computeDealsUnread/);
-  assert.match(bottomNav, /setDealsUnread\(next\)/);
+  assert.match(bottomNav, /const result = await refreshAppIconBadge\(\)/);
+  assert.match(bottomNav, /setDealsUnread\(result\.badge\)/);
+  assert.doesNotMatch(bottomNav, /computeDealsUnread|marketAPI\.myDashboard/);
   assert.match(bottomNav, /bottom-nav-deals-badge/);
   assert.match(bottomNav, /route\.name === 'Deals' \? dealsUnread : 0/);
   assert.doesNotMatch(bottomNav, /Math\.max\(chatUnread, dealsUnread\)/);
@@ -73,7 +74,10 @@ test('status history refreshes before opening from the status card and keeps the
   assert.match(timeline, /currentCard/);
 });
 
-test('profile separates verification, trust tier and PRO completion truthfully', () => {
+test('profile hides the optional PRO journey after basic registration', () => {
+  assert.match(profile, /const ADVANCED_VERIFICATION_VISIBLE = false/);
+  assert.match(profile, /ADVANCED_VERIFICATION_VISIBLE && isDriver/);
+  assert.match(profile, /\.\.\.\(ADVANCED_VERIFICATION_VISIBLE \? \[/);
   assert.match(profile, /proStatusTitle = proActive \? t\('pro_active_badge'\) : t\('pro_inactive_badge'\)/);
   assert.match(profile, /verificationStatusText = profile\.is_verified \? t\('verification_passed_short'\) : ''/);
   assert.doesNotMatch(profile, /t\('verification_failed_short'\)/);

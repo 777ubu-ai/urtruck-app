@@ -3,6 +3,7 @@ import sqlite3
 import json
 import uuid
 import time
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -22,6 +23,18 @@ def init_db():
 _WAL_INITIALIZED = False
 _MARKET_EXPIRY_LAST_RUN = 0.0
 _MARKET_EXPIRY_INTERVAL_SECONDS = 60.0
+_MARKET_EXPIRY_LAST_PROBE = 0.0
+_MARKET_EXPIRY_PROBE_INTERVAL_SECONDS = 1.0
+_MARKET_EXPIRY_LOCK = threading.Lock()
+
+
+class DatabaseBusyError(RuntimeError):
+    """Transient SQLite writer contention safe to surface as HTTP 503."""
+
+
+def _is_sqlite_busy(exc: sqlite3.OperationalError) -> bool:
+    message = str(exc).lower()
+    return "database is locked" in message or "database is busy" in message
 
 
 def _apply_pragmas(conn: sqlite3.Connection) -> None:
@@ -118,9 +131,30 @@ def _maybe_expire_marketplace(conn: sqlite3.Connection) -> None:
     cheap due probe bypasses the throttle the moment a 48h/ISO-date deadline
     has passed, so a stale offer cannot be accepted in the timing gap.
     """
-    global _MARKET_EXPIRY_LAST_RUN
+    global _MARKET_EXPIRY_LAST_RUN, _MARKET_EXPIRY_LAST_PROBE
     now_monotonic = time.monotonic()
+    # This function runs from every request opening a DB connection.  A burst
+    # of push-token writes used to let many worker threads observe the same
+    # stale timestamp and run the full expiry scan concurrently.  SQLite has
+    # one writer, so that stampede both burns CPU and turns a transient lock
+    # into user-visible request timeouts.  One process-local probe per second
+    # preserves the deadline guarantee without multiplying the work.
+    if (
+        now_monotonic - _MARKET_EXPIRY_LAST_RUN < _MARKET_EXPIRY_INTERVAL_SECONDS
+        and now_monotonic - _MARKET_EXPIRY_LAST_PROBE < _MARKET_EXPIRY_PROBE_INTERVAL_SECONDS
+    ):
+        return
+    if not _MARKET_EXPIRY_LOCK.acquire(blocking=False):
+        return
     try:
+        # Another request may have completed the probe while this caller was
+        # waiting to enter the critical section.
+        now_monotonic = time.monotonic()
+        if (
+            now_monotonic - _MARKET_EXPIRY_LAST_RUN < _MARKET_EXPIRY_INTERVAL_SECONDS
+            and now_monotonic - _MARKET_EXPIRY_LAST_PROBE < _MARKET_EXPIRY_PROBE_INTERVAL_SECONDS
+        ):
+            return
         required = ("bids", "cargos", "trips", "deals")
         for table in required:
             exists = conn.execute(
@@ -134,6 +168,7 @@ def _maybe_expire_marketplace(conn: sqlite3.Connection) -> None:
             now_monotonic - _MARKET_EXPIRY_LAST_RUN >= _MARKET_EXPIRY_INTERVAL_SECONDS
         )
         if not interval_elapsed and not _market_expiry_due(conn):
+            _MARKET_EXPIRY_LAST_PROBE = now_monotonic
             return
 
         # Lazy import avoids a module cycle: bid_expiry imports get_conn only
@@ -147,10 +182,13 @@ def _maybe_expire_marketplace(conn: sqlite3.Connection) -> None:
         # advancing the throttle clock.
         conn.commit()
         _MARKET_EXPIRY_LAST_RUN = now_monotonic
+        _MARKET_EXPIRY_LAST_PROBE = now_monotonic
     except Exception as exc:
         # Housekeeping may retry on the next connection; it must never take a
         # login/security/API request down.
         print(f"[market-expiry] opportunistic cleanup failed: {exc}", flush=True)
+    finally:
+        _MARKET_EXPIRY_LOCK.release()
 
 
 @contextmanager
@@ -158,15 +196,21 @@ def get_conn():
     # timeout=10s gives SQLite room to wait on a writer instead of immediately
     # raising OperationalError; combined with WAL+busy_timeout this kills the
     # "database is locked" path for normal API traffic.
-    conn = sqlite3.connect(config.DB_PATH, timeout=10.0)
-    conn.row_factory = sqlite3.Row
-    _apply_pragmas(conn)
-    _maybe_expire_marketplace(conn)
+    conn = None
     try:
+        conn = sqlite3.connect(config.DB_PATH, timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        _apply_pragmas(conn)
+        _maybe_expire_marketplace(conn)
         yield conn
         conn.commit()
+    except sqlite3.OperationalError as exc:
+        if _is_sqlite_busy(exc):
+            raise DatabaseBusyError("SQLite временно занята") from exc
+        raise
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def new_id() -> str:
