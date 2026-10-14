@@ -59,6 +59,7 @@ def _is_real_phone(v):
 class UpdateProfileIn(BaseModel):
     name: Optional[str] = None
     city: Optional[str] = None
+    contact_email: Optional[str] = None
     about: Optional[str] = None
     phone: Optional[str] = None
     role: Optional[str] = None
@@ -88,7 +89,7 @@ class PhoneChangeConfirmIn(BaseModel):
     code: str
 
 PRO_COLUMNS = [
-    "city", "about",
+    "city", "about", "contact_email",
     "legal_form", "china_experience_years",
     "favorite_borders", "emergency_contact",
     "passport_intl_url", "tir_book_url", "cmr_insurance_url",
@@ -181,6 +182,7 @@ def get_profile(user=Depends(require_level(1))):
         "phone": stored_phone if _is_real_phone(stored_phone) else None,
         "name": d.get("full_name") or "",
         "city": d.get("city") or "",
+        "contact_email": d.get("contact_email") or "",
         "about": d.get("about") or "",
         "role": d.get("role", "guest"),
         "verification_level": d.get("verification_level", 0),
@@ -441,6 +443,11 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         updates["full_name"] = body.name.strip()
     if body.city is not None:
         updates["city"] = body.city.strip()
+    if body.contact_email is not None:
+        contact = body.contact_email.strip().lower()
+        if contact and (len(contact) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", contact)):
+            raise HTTPException(status_code=422, detail={"error": "INVALID_CONTACT_EMAIL"})
+        updates["contact_email"] = contact
     if body.about is not None:
         updates["about"] = body.about.strip()
     if body.legal_form is not None:
@@ -497,24 +504,11 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         if not effective_name:
             raise HTTPException(status_code=400, detail={"error": "NAME_REQUIRED", "message": "Для завершения регистрации укажите имя"})
 
-        effective_company = updates.get("company_name") or (current.get("company_name") or "").strip() or None
-        if role_norm == "client" and (not effective_company or len(effective_company) < 2):
-            raise HTTPException(status_code=400, detail={"error": "COMPANY_REQUIRED", "message": "Для завершения регистрации укажите компанию или ИП"})
+        # Company, country and city are optional during basic onboarding.
+        # They remain editable later in the profile for both roles.
 
-        # Messenger is optional for the basic driver path. For clients, once a
-        # channel is selected its address is required at the authoritative API
-        # boundary, preventing old clients from storing e.g. `wechat` empty.
-        selected_messenger = updates.get("messenger_type")
-        if selected_messenger and role_norm != "driver":
-            effective_messenger_id = updates.get("messenger_id") or (current.get("messenger_id") or "").strip()
-            if len(effective_messenger_id) < 2:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": "MESSENGER_CONTACT_REQUIRED",
-                        "message": "Для выбранного мессенджера укажите контакт",
-                    },
-                )
+        # Мессенджер и его контакт необязательны для обеих ролей.
+        # Выбранный канал можно дополнить контактом позже в профиле.
 
         updates["role"] = role_norm
         # A real existing phone is immutable through this generic endpoint.

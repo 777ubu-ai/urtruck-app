@@ -24,6 +24,6 @@ test('backend accepts counter using counter_amount as the single deal amount', (
   const end = backend.indexOf('def cancel_counter_as_owner(', start);
   const block = backend.slice(start, end);
   assert.match(block, /counter = bid\.get\("counter_amount"\)/);
-  assert.match(block, /_finalize_accept_inline\(c, owner_user, bid, counter, expected_status="countered"\)/);
+  assert.match(block, /_finalize_accept_inline\(c, owner_user, bid, counter,\s*acceptor_id=user\["id"\], expected_status="countered"\)/);
   assert.match(block, /"amount": counter/);
 });

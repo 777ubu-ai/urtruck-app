@@ -1,0 +1,60 @@
+AUDIT_MODE=read-only
+SECTION=disk
+Filesystem Type Size Used Avail Use% Mounted on
+/dev/sda1 ext4 20G 5.6G 14G 29% /home/ubuntu
+SECTION=inodes
+Filesystem Inodes IUsed IFree IUse% Mounted on
+/dev/sda1 1.3M 400K 900K 31% /home/ubuntu
+SECTION=memory
+MemTotal: 8192000 kB
+MemAvailable: 4100000 kB
+SwapTotal: 2.0Gi
+SwapFree: 1.56G
+SECTION=vmstat
+procs -----------memory---------- ---swap-- -----io---- -system-- -------cpu-------
+r b swpd free buff cache si so bi bo in cs us sy id wa st
+1 0 450000 4100000 120000 2200000 0 0 1 2 100 200 4 2 93 1 0
+SECTION=psi-memory
+some avg10=0.01 avg60=0.02 avg300=0.03 total=1234
+SECTION=psi-io
+some avg10=0.00 avg60=0.01 avg300=0.02 total=234
+SECTION=psi-cpu
+some avg10=0.00 avg60=0.00 avg300=0.00 total=345
+SECTION=listeners
+PORT=8002
+PORT_8002_PID=12345
+SECTION=port-8002-process
+PROCESS_8002_PID=12345
+PROCESS_8002_PPID=1
+PROCESS_8002_USER=ubuntu
+PROCESS_8002_COMM=uvicorn
+PROCESS_8002_ELAPSED=01:02:03
+PROCESS_8002_CPU_PCT=2.1
+PROCESS_8002_MEM_PCT=1.2
+PROCESS_8002_RSS_KB=123456
+PROCESS_8002_EXEC=/usr/bin/python3
+PROCESS_8002_CWD=/home/ubuntu/urtruck-qa2/backend
+PROCESS_8002_CGROUP=systemd:/system.slice/urtruck-qa2.service
+PROCESS_8002_SUPERVISION=systemd-unit-cgroup
+SECTION=systemd
+UNIT=urtruck-qa2.service
+ActiveState=active
+SubState=running
+MainPID=12345
+FragmentPath=/etc/systemd/system/urtruck-qa2.service
+SECTION=nginx-routing
+server_name qa2.urtruck.kz -> proxy_pass http://127.0.0.1:8002
+server_name pro-test.urtruck.kz -> proxy_pass http://127.0.0.1:8001
+SECTION=technical-directory-sizes
+5.6G /home/ubuntu/urtruck-qa2
+1.56G /var/lib/docker
+SECTION=health
+HEALTH_qa2-8002={"status":"ok","source_sha":"abc123"}
+SECTION=synthetic-translation-observation
+SYNTHETIC_CASE=RU_TO_ZH
+SYNTHETIC_RU_TO_ZH_RESULT=200 8.420123
+SWAP_RU_TO_ZH_BEFORE=pswpin=10;pswpout=20;
+SWAP_RU_TO_ZH_AFTER=pswpin=10;pswpout=20;
+PSI_RU_TO_ZH_BEFORE_MEMORY=some avg10=0.01 avg60=0.02 avg300=0.03 total=1234;
+PSI_RU_TO_ZH_BEFORE_IO=some avg10=0.00 avg60=0.01 avg300=0.02 total=234;
+AI_RU_TO_ZH_BEFORE_PROCESS=pid=1234 ppid=1 comm=python3 pcpu=2.1 pmem=1.2 rss=123456

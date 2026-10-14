@@ -25,7 +25,10 @@ export function createVoiceTranscriptState(api) {
   const emit = () => { if (active) listeners.forEach((listener) => listener()); };
   const entryFor = (id) => {
     const key = String(id);
-    if (!entries.has(key)) entries.set(key, { id: key, targets: new Map(), visible: false });
+    if (!entries.has(key)) entries.set(key, {
+      id: key, targets: new Map(), visible: false,
+      backgroundStatus: null, transcriptReady: false,
+    });
     return entries.get(key);
   };
   const targetFor = (entry, lang) => {
@@ -39,19 +42,37 @@ export function createVoiceTranscriptState(api) {
     if (typeof text !== 'string' || !text.trim()) return false;
     const source = normalizeVoiceLanguage(sourceLang);
     const originalProvider = provider || null;
-    if (entry.transcriptText === text && entry.sourceLang === source && entry.provider === originalProvider) return false;
+    if (entry.transcriptText === text && entry.sourceLang === source && entry.provider === originalProvider) {
+      return { changed: false, resume: false };
+    }
     // Новый original не должен наследовать перевод старой версии текста.
-    if (entry.transcriptText && entry.transcriptText !== text) entry.targets.clear();
+    const previousText = entry.transcriptText;
+    const changed = previousText !== text;
+    // Не очищаем target, который держит текущий успешный STT: load() уже
+    // ожидает его Promise. Сброс требуется лишь когда original действительно
+    // меняется после уже сохранённого текста.
+    if (previousText && changed) entry.targets.clear();
     Object.assign(entry, { transcriptText: text, sourceLang: source, provider: originalProvider });
-    return true;
+    return { changed };
   }
 
   function hydrate(messages) {
     if (!active) return;
     let changed = false;
     for (const item of messages) {
-      if (!item?.voice || !item.id || !item.transcript) continue;
-      changed = setOriginal(entryFor(item.id), item.transcript, item.transcriptLang, item.transcriptProvider) || changed;
+      if (!item?.voice || !item.id) continue;
+      const entry = entryFor(item.id);
+      if (item.voiceProcessingStatus && entry.backgroundStatus !== item.voiceProcessingStatus) {
+        entry.backgroundStatus = item.voiceProcessingStatus;
+        entry.transcriptReady = item.voiceTranscriptReady === true || item.voiceProcessingStatus === 'ready';
+        changed = true;
+      }
+      // Compatibility for a manually opened legacy response only. Normal chat
+      // polling no longer supplies transcript fields.
+      if (item.transcript) {
+        const original = setOriginal(entry, item.transcript, item.transcriptLang, item.transcriptProvider);
+        changed = original.changed || changed;
+      }
     }
     if (changed) emit();
   }
@@ -109,6 +130,54 @@ export function createVoiceTranscriptState(api) {
     return target.pending;
   }
 
+  function revealHidden(entry, lang) {
+    const target = targetFor(entry, lang);
+    if (target.pending) return target.pending;
+    const requestGeneration = generation;
+    const isCurrent = () => active && generation === requestGeneration;
+    target.error = null;
+    target.pending = Promise.resolve().then(async () => {
+      if (!isCurrent()) return;
+      const result = await api.voiceText(entry.id, lang);
+      if (!isCurrent()) return;
+      entry.backgroundStatus = result?.status || 'unavailable';
+      entry.transcriptReady = entry.backgroundStatus === 'ready';
+      if (entry.backgroundStatus === 'unavailable') {
+        // Старые сообщения без фоновой job: STT только по явному tap.
+        const sttResult = await transcribe(entry, lang, isCurrent);
+        if (!isCurrent() || ready(entry, lang)) return;
+        if (sttResult?.targetLang === lang) throw unavailable(sttResult.translationError);
+      } else {
+        if (entry.backgroundStatus !== 'ready') return;
+        if (!result?.transcript_text?.trim()) throw unavailable();
+        setOriginal(entry, result.transcript_text, result.source_lang, result.provider);
+        if (validTranslation({
+          translated_text: result.translated_text,
+          provider: result.translation_provider,
+          target_lang: result.target_lang,
+        }, lang)) {
+          Object.assign(target, { translatedText: result.translated_text, provider: result.translation_provider });
+        }
+      }
+      if (!isCurrent() || ready(entry, lang)) return;
+      // Готовый original сохраняем: отсутствующая цель требует только перевода.
+      const original = entry.transcriptText;
+      const translated = await api.translate(entry.id, lang);
+      if (!isCurrent()) return;
+      if (entry.transcriptText !== original || !validTranslation(translated, lang)) throw unavailable();
+      Object.assign(target, { translatedText: translated.translated_text, provider: translated.provider });
+    }).catch((error) => {
+      if (isCurrent()) target.error = {
+        code: error?.code || null,
+        key: entry.transcriptText ? 'translation_unavailable' : 'voice_transcription_unavailable',
+      };
+    }).finally(() => {
+      if (isCurrent()) { target.pending = null; emit(); }
+    });
+    emit();
+    return target.pending;
+  }
+
   function view(id, language, t = (key) => key) {
     const entry = entries.get(String(id));
     if (!entry) return undefined;
@@ -128,6 +197,8 @@ export function createVoiceTranscriptState(api) {
       transcribing: !!entry.sttPending || !!target.pending,
       translationError: !!target.error && !!entry.transcriptText,
       errorText: target.error ? (localized && localized !== errorKey ? localized : t(target.error.key)) : null,
+      backgroundStatus: entry.backgroundStatus,
+      transcriptReady: entry.transcriptReady,
     };
   }
 
@@ -156,14 +227,26 @@ export function createVoiceTranscriptState(api) {
       if (entry.visible && ready(entry, lang)) { entry.visible = false; emit(); return Promise.resolve(); }
       entry.visible = true;
       emit();
+      if (!entry.transcriptText && typeof api.voiceText === 'function') return revealHidden(entry, lang);
       return load(entry, lang);
     },
     retry(item, language) {
       if (!active || !item?.id) return Promise.resolve();
       hydrate([item]);
       const entry = entryFor(item.id);
+      const lang = normalizeVoiceLanguage(language);
+      if (!entry.transcriptText && typeof api.recognizeVoiceAgain === 'function'
+        && ['expired', 'failed_retryable', 'failed_permanent'].includes(entry.backgroundStatus)) {
+        return Promise.resolve(api.recognizeVoiceAgain(entry.id)).then((result) => {
+          entry.backgroundStatus = result?.status || 'queued';
+          entry.transcriptReady = false;
+          entry.visible = false;
+          emit();
+        });
+      }
       entry.visible = true;
-      return load(entry, normalizeVoiceLanguage(language));
+      if (!entry.transcriptText && typeof api.voiceText === 'function') return revealHidden(entry, lang);
+      return load(entry, lang);
     },
     toggleOriginal(id, language) {
       if (!active) return;
@@ -172,10 +255,6 @@ export function createVoiceTranscriptState(api) {
       if (!target?.translatedText) return;
       target.showOriginal = !target.showOriginal;
       emit();
-    },
-    ensureVisible(language) {
-      return Promise.all([...entries.values()].filter((entry) => entry.visible)
-        .map((entry) => load(entry, normalizeVoiceLanguage(language))));
     },
   };
 }

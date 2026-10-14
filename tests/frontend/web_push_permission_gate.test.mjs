@@ -18,6 +18,13 @@ test('authenticated web UI has explicit push permission CTA', () => {
   assert.match(app, /<PushPermissionBanner enabled=\{hasToken\} \/>/);
 });
 
+test('web push denial copy uses the current site host, including QA2', () => {
+  assert.match(banner, /getPushPermissionHost/);
+  assert.match(banner, /window\.location\?\.host/);
+  assert.match(banner, /c\.denied\.replace\('urtruck\.kz', getPushPermissionHost\(\)\)/);
+  assert.doesNotMatch(banner, /denied:\s*['"`][^\n]*qa2\.urtruck\.kz/);
+});
+
 test('native Android notifications use a dedicated system-sound channel', () => {
   assert.match(push, /NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2'/);
   assert.match(push, /setNotificationChannelAsync\(NATIVE_PUSH_CHANNEL_ID/);

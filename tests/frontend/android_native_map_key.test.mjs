@@ -16,9 +16,16 @@ test('native map uses Yandex MapKit with a separate native key', () => {
   assert.match(map, /<Polyline/);
   assert.match(map, /<Marker/);
   assert.doesNotMatch(map, /react-native-webview|WebView|api-maps\.yandex\.ru/);
-  assert.match(app, /EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY/);
-  assert.match(app, /YaMap\.init\(mapKitKey\)/);
+  assert.doesNotMatch(app, /YaMap\.init/);
+  assert.doesNotMatch(app, /require\('react-native-yamap'\)/);
   assert.doesNotMatch(app, /YANDEX_MAPS_JS_API_KEY/);
+});
+
+test('MapKit has exactly one initialization owner in TruckMap.native', () => {
+  const map = read('src/components/TruckMap.native.js');
+  const app = read('App.js');
+  assert.equal((map.match(/YaMap\.init\(/g) || []).length, 1);
+  assert.equal((app.match(/YaMap\.init\(/g) || []).length, 0);
 });
 
 test('native map keeps the MapKit instance stable and updates route data independently', () => {

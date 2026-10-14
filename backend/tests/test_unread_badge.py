@@ -29,6 +29,7 @@ from api.chat import (
     unread_count, SendMessageIn,
 )
 from services import push_sender
+from api.notifications import create_notification, unread_badge_count
 
 
 @pytest.fixture(autouse=True)
@@ -109,6 +110,58 @@ def test_inv2_badge_matches_unread():
     assert push_sender._compute_recipient_badge(o) == unread_count(user=_u(o))["unread"]
 
 
+def test_canonical_badge_counts_disjoint_non_chat_events_and_active_chat_once():
+    """Tab, provider payload and launcher share this exact inclusion set."""
+    o, d = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
+    send_message(SendMessageIn(room_id=room, text="one chat event"), user=_u(d))
+    create_notification(o, "bid_created", "One actionable bid", event_key="badge-bid-" + uuid.uuid4().hex)
+    # The durable Bell mirror of the same chat message is deliberately
+    # excluded, otherwise one message would increment the canonical badge twice.
+    create_notification(o, "chat_message", "Mirrored chat", event_key="badge-chat-" + uuid.uuid4().hex)
+    assert unread_badge_count(o) == 2
+    assert push_sender._compute_recipient_badge(o) == 2
+
+
+def test_canonical_badge_sequence_bid_message_mirrors_then_reads_to_zero():
+    """0 → bid 1 → duplicate mirror 1 → message 2 → mirror 2 → reads 0."""
+    o, d = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
+    assert unread_badge_count(o) == 0
+
+    bid_event_key = "bid-created-" + uuid.uuid4().hex
+    create_notification(o, "bid_created", "New bid", event_key=bid_event_key)
+    assert unread_badge_count(o) == 1
+    # Retry/mirror of the same business event is idempotent.
+    create_notification(o, "bid_created", "New bid", event_key=bid_event_key)
+    assert unread_badge_count(o) == 1
+
+    sent = send_message(SendMessageIn(room_id=room, text="one message"), user=_u(d))
+    assert sent["ok"] is True
+    assert unread_badge_count(o) == 2
+    create_notification(
+        o, "chat_message", "Message mirror",
+        event_key="chat-message-" + uuid.uuid4().hex,
+    )
+    assert unread_badge_count(o) == 2
+    assert push_sender._compute_recipient_badge(o) == 2
+
+    with get_conn() as c:
+        c.execute(
+            "UPDATE notifications SET is_read=1 "
+            "WHERE user_id=? AND event_key=?",
+            (o, bid_event_key),
+        )
+    assert unread_badge_count(o) == 1
+    get_messages(room, user=_u(o))
+    assert unread_badge_count(o) == 0
+    assert push_sender._compute_recipient_badge(o) == 0
+
+
 def test_inv3_read_marks_only_opened_room():
     """INV-3: get_messages помечает прочитанной ТОЛЬКО открытую комнату (H5)."""
     o, d = _ids()
@@ -174,9 +227,9 @@ def test_inv6_only_chat_kind_sets_badge():
     def fake_web(uid, title, body, data, url):
         return 0
 
-    def fake_native(uid, title, body, data, badge=None):
+    def fake_native(uid, title, body, data, badge=None, provider=None):
         captured["badge"] = badge
-        return 0, 0  # (sent, total_devices) — push-closure track signature
+        return {"sent": 0, "devices": 0, "already_delivered": 0}
 
     orig_web, orig_native = push_sender._send_web, push_sender._send_native
     push_sender._send_web, push_sender._send_native = fake_web, fake_native
@@ -223,6 +276,47 @@ def test_closed_deal_room_cannot_create_phantom_badge(status):
     assert push_sender._compute_recipient_badge(o) == 0
 
 
+def test_completed_deal_chat_notification_cannot_leave_native_badge_stuck():
+    """The APNs/FCM payload must use the same total as the mobile client.
+
+    A real incoming message creates both a raw chat row and a durable Bell
+    row.  Once its deal is completed, both client unread endpoints exclude the
+    event; counting raw notifications in the native push sender used to leave
+    this one historical event on the launcher badge indefinitely.
+    """
+    o, d = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, o, d)
+    deal_id = _mk_accepted_deal(cargo, o, d, room)
+    send_message(SendMessageIn(room_id=room, text="historical"), user=_u(d))
+    assert unread_count(user=_u(o))["unread"] == 1
+    assert push_sender._compute_recipient_badge(o) == 1
+
+    with get_conn() as c:
+        c.execute("UPDATE deals SET status = 'completed' WHERE id = ?", (deal_id,))
+
+    assert unread_count(user=_u(o))["unread"] == 0
+    assert push_sender._compute_recipient_badge(o) == 0
+
+
+def test_database_busy_never_becomes_authoritative_zero_badge(monkeypatch):
+    """Contention must trigger retry, not erase a previously visible badge."""
+    from contextlib import contextmanager
+    from api import notifications
+    from database.db import DatabaseBusyError
+
+    @contextmanager
+    def busy_connection():
+        raise DatabaseBusyError("SQLite temporarily busy")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(notifications, "get_conn", busy_connection)
+    with pytest.raises(DatabaseBusyError):
+        notifications.unread_badge_count("badge-owner")
+    with pytest.raises(DatabaseBusyError):
+        push_sender._compute_recipient_badge("badge-owner")
+
+
 def test_mine_flag_regression():
     """Регресс фикса чат-эхо (85cb3c8): get_messages помечает mine по uid."""
     o, d = _ids()
@@ -243,3 +337,120 @@ def test_mine_flag_regression():
             assert m["mine"] is True
         if m["text"] == "from-driver":
             assert m["mine"] is False
+
+
+# Ночной аудит: новые сообщения после снимка истории нельзя отмечать прочитанными.
+def _late_room_message(room, owner, driver, text):
+    with get_conn() as conn:
+        cursor = conn.execute(
+            "INSERT INTO chat_messages(room_id,sender_id,text) VALUES(?,?,?)", (room, driver, text),
+        )
+        message_id = cursor.lastrowid
+        create_notification(owner, "chat_message", text, url=f"/chats/{room}",
+                            event_key=f"chat:{room}:msg:{message_id}", conn=conn)
+    return message_id
+
+
+def _read_race_room():
+    owner, driver = _ids()
+    cargo = "cg_read_race_" + uuid.uuid4().hex[:8]
+    room = get_or_create_deal_room(cargo, owner, driver)
+    _mk_accepted_deal(cargo, owner, driver, room)
+    send_message(SendMessageIn(room_id=room, text="visible-before-read"), user=_u(driver))
+    return room, owner, driver
+
+
+def test_new_message_between_history_select_and_update_stays_unread(monkeypatch):
+    from contextlib import contextmanager
+    monkeypatch.setattr(dbm, "_maybe_expire_marketplace", lambda _conn: None)
+    room, owner, driver = _read_race_room()
+    real_connection = chat_module.get_conn
+    late = []
+    @contextmanager
+    def injected_connection():
+        with real_connection() as conn:
+            class Proxy:
+                def execute(self, sql, args=()):
+                    if sql.lstrip().startswith("UPDATE chat_messages SET is_read") and not late:
+                        late.append(_late_room_message(room, owner, driver, "arrived-after-snapshot"))
+                    return conn.execute(sql, args)
+                def __getattr__(self, key):
+                    return getattr(conn, key)
+            yield Proxy()
+    monkeypatch.setattr(chat_module, "get_conn", injected_connection)
+    response = get_messages(room, user=_u(owner))
+    assert late, "Гонка должна быть воспроизведена перед UPDATE"
+    assert all(m["id"] != late[0] for m in response["messages"])
+    with get_conn() as conn:
+        raw = conn.execute("SELECT is_read FROM chat_messages WHERE id=?", (late[0],)).fetchone()[0]
+        bell = conn.execute("SELECT is_read FROM notifications WHERE event_key=?",
+                            (f"chat:{room}:msg:{late[0]}",)).fetchone()[0]
+    assert raw == 0, "Не попавшее в ответ новое сообщение должно оставаться unread"
+    assert bell == 0, "Его новый Bell event тоже должен остаться unread"
+    assert unread_count(user=_u(owner))["unread"] == 1
+
+
+def test_new_notification_after_history_commit_is_not_consumed(monkeypatch):
+    room, owner, driver = _read_race_room()
+    real_mark = chat_module.mark_notifications_read_by_urls
+    late = []
+    def late_mark(*args, **kwargs):
+        late.append(_late_room_message(room, owner, driver, "arrived-before-bell-cleanup"))
+        return real_mark(*args, **kwargs)
+    monkeypatch.setattr(chat_module, "mark_notifications_read_by_urls", late_mark)
+    response = get_messages(room, user=_u(owner))
+    assert late and all(m["id"] != late[0] for m in response["messages"])
+    with get_conn() as conn:
+        old = conn.execute("SELECT is_read FROM notifications WHERE user_id=? AND body=?",
+                           (owner, "visible-before-read")).fetchone()[0]
+        new = conn.execute("SELECT is_read FROM notifications WHERE event_key=?",
+                           (f"chat:{room}:msg:{late[0]}",)).fetchone()[0]
+    assert old == 1
+    assert new == 0, "Поздний event текущей комнаты нельзя погасить старым чтением"
+    assert unread_count(user=_u(owner))["unread"] == 1
+
+
+def test_history_page_does_not_read_newer_unseen_page():
+    room, owner, driver = _read_race_room()
+    send_message(SendMessageIn(room_id=room, text="newer-not-returned"), user=_u(driver))
+    response = get_messages(room, limit=1, offset=1, user=_u(owner))
+    assert [m["text"] for m in response["messages"]] == ["visible-before-read"]
+    assert unread_count(user=_u(owner))["unread"] == 1
+    with get_conn() as conn:
+        latest = conn.execute("SELECT is_read FROM notifications WHERE user_id=? AND body=?",
+                              (owner, "newer-not-returned")).fetchone()[0]
+    assert latest == 0
+
+
+def test_global_reminders_and_reviews_do_not_pollute_deals_badge():
+    """QA2: 24 reminders + 3 reviews must not leave 9+ on read Deals."""
+    from api.notifications import mark_notifications_read_by_urls
+
+    o, d = _ids()
+    cargo = "badge_scope_" + uuid.uuid4().hex[:8]
+    room = get_or_create_deal_room(cargo, o, d)
+    _mk_accepted_deal(cargo, o, d, room)
+    for i in range(24):
+        create_notification(o, "reminder", "Reminder", url="/", event_key=f"{o}:reminder:{i}")
+    for i in range(3):
+        create_notification(o, "review", "Review", url="/profile", event_key=f"{o}:review:{i}")
+    assert unread_badge_count(o) == 0
+    assert push_sender._compute_recipient_badge(o) == 0
+
+    create_notification(o, "bid_created", "New offer", url=f"/cargos/{cargo}", event_key=f"{o}:bid")
+    send_message(SendMessageIn(room_id=room, text="New message"), user=_u(d))
+    assert unread_badge_count(o) == 2
+    assert push_sender._compute_recipient_badge(o) == 2
+    assert unread_badge_count(d) == 0
+    get_messages(room, user=_u(o))
+    assert unread_badge_count(o) == 1
+    assert mark_notifications_read_by_urls(o, [f"/cargos/{cargo}"]) == 1
+    assert unread_badge_count(o) == 0
+    assert push_sender._compute_recipient_badge(o) == 0
+    with get_conn() as c:
+        rows = c.execute("SELECT type,is_read FROM notifications WHERE user_id=? AND type IN ('reminder','review')", (o,)).fetchall()
+    assert len(rows) == 27
+    assert all(not row["is_read"] for row in rows)
+    create_notification(d, "bid_accepted", "Accepted", event_key=f"{d}:accepted")
+    assert unread_badge_count(d) == 1
+    assert unread_badge_count(o) == 0

@@ -11,7 +11,7 @@
 //   * tapping the Date chip surfaces a real `<input type="date">`
 //     element so mobile users get the native calendar.
 
-const { test } = require('@playwright/test');
+const { test, expect } = require('@playwright/test');
 const { log } = require('../utils/qaReport');
 const { gotoLanding, pickRole, isLaidOut, isInViewport } = require('./_helpers');
 
@@ -49,6 +49,23 @@ test('Mobile · bottom-nav + plus button reachable for guest', async ({ page }) 
   } else {
     log.p2(ACTOR, 'cells-aligned-on-mobile', 'cells not in viewport');
   }
+});
+
+test('Mobile · stale Google OAuth state never leaves auth button spinning', async ({ page }) => {
+  await gotoLanding(page);
+  await page.evaluate(() => {
+    localStorage.setItem('ur_social_pending_provider', JSON.stringify({
+      provider: 'google',
+      startedAt: Date.now(),
+    }));
+  });
+  await page.reload();
+  await page.getByTestId('onb-v2-cta-phone').click();
+
+  const google = page.getByTestId('auth-google');
+  await expect(google).toBeVisible();
+  await expect(google.locator('[role="progressbar"]')).toHaveCount(0);
+  await expect(page.getByTestId('email-v2-input')).toBeEnabled();
 });
 
 test('Mobile · all four filter chips fit on the feed strip', async ({ page }) => {

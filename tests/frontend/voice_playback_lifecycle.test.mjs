@@ -26,6 +26,11 @@ const lastSound = () => shim.state.sounds[shim.state.sounds.length - 1];
 const liveSounds = () => shim.state.sounds.filter((s) => s.loaded && !s.unloaded);
 // Естественное завершение: то, что нативно шлёт expo-av через onPlaybackStatusUpdate.
 const finishNaturally = (sound) => sound._emit({ didJustFinish: true });
+const deferred = () => {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+};
 
 test.beforeEach(async () => {
   await voice.stop();
@@ -33,6 +38,11 @@ test.beforeEach(async () => {
   shim.state.audioModeCalls.length = 0;
   shim.state.createAsyncThrows = null;
   shim.state.playAsyncThrows = null;
+  shim.state.stopAsyncThrows = null;
+  shim.state.pauseAsyncThrows = null;
+  shim.state.unloadAsyncThrows = null;
+  shim.state.deferCreate = null;
+  shim.state.deferUnload = null;
   shim.state.events.length = 0;
 });
 
@@ -77,6 +87,63 @@ test('A → B → C chain: each switch stops and cleans the previous sound', asy
   assert.equal(soundC.playing, true);
   assert.equal(liveSounds().length, 1, 'exactly one live sound: C only');
   assert.equal(voice.getState().uri, URI_C);
+});
+
+test('slow createAsync cannot revive an older tap after a newer voice was requested', async () => {
+  const slowCreate = deferred();
+  shim.state.deferCreate = slowCreate.promise;
+  const startA = voice.play(URI_A);
+  const startB = voice.play(URI_B);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(shim.state.sounds.length, 0, 'neither delayed create has completed yet');
+
+  slowCreate.resolve();
+  assert.equal(await startA, false, 'stale A is unloaded without playAsync');
+  assert.equal(await startB, true, 'latest B owns the one playback slot');
+  assert.equal(lastSound().uri, URI_B);
+  assert.equal(liveSounds().filter((sound) => sound.playing).length, 1);
+});
+
+test('slow unload serializes rapid A → B → C taps: only newest sound reaches playAsync', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+  const slowUnload = deferred();
+  shim.state.deferUnload = slowUnload.promise;
+
+  const switchToB = voice.play(URI_B);
+  const switchToC = voice.play(URI_C);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(soundA.playing, false, 'A is physically stopped before unload waits');
+  assert.equal(shim.state.sounds.length, 1, 'B/C are not created while old native unload is pending');
+  slowUnload.resolve();
+  assert.equal(await switchToB, false, 'superseded B never starts');
+  assert.equal(await switchToC, true, 'latest C starts after A retirement');
+  assert.equal(lastSound().uri, URI_C);
+  assert.equal(liveSounds().filter((sound) => sound.playing).length, 1);
+});
+
+test('unload error after a successful stop cannot leave the previous voice audible', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+  shim.state.unloadAsyncThrows = new Error('Xiaomi unload failed after stop');
+
+  assert.equal(await voice.play(URI_B), true);
+  const soundB = lastSound();
+  assert.equal(soundA.playing, false, 'stopAsync, not unloadAsync, is the audible-stop barrier');
+  assert.equal(soundB.playing, true);
+  assert.equal(liveSounds().filter((sound) => sound.playing).length, 1);
+});
+
+test('when neither stop nor pause confirms silence, a replacement track is not started', async () => {
+  await voice.play(URI_A);
+  const soundA = lastSound();
+  shim.state.stopAsyncThrows = new Error('stop unavailable');
+  shim.state.pauseAsyncThrows = new Error('pause unavailable');
+
+  assert.equal(await voice.play(URI_B), false);
+  assert.equal(shim.state.sounds.length, 1, 'unsafe replacement must not be created');
+  assert.equal(soundA.playing, true, 'test fixture preserves the unconfirmed old sound');
 });
 
 test('pause / resume of the same track', async () => {

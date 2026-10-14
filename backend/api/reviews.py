@@ -45,47 +45,74 @@ def create_review(body: ReviewIn, user=Depends(require_level(1))):
             detail="Оставить отзыв можно только после совместной сделки",
         )
 
-    if body.trip_id and not reviews_dal.has_completed_deal_reference(
-        user["id"], body.target_id, body.trip_id
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Отзыв не относится к завершённой совместной сделке",
+    canonical_deal_id = None
+    if body.trip_id:
+        canonical_deal_id = reviews_dal.resolve_completed_deal_reference(
+            user["id"], body.target_id, body.trip_id
         )
+        if not canonical_deal_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Отзыв не относится к завершённой совместной сделке",
+            )
 
-    if body.trip_id and reviews_dal.has_already_reviewed(user["id"], body.trip_id):
-        raise HTTPException(status_code=409, detail="Вы уже оставили отзыв по этому рейсу")
+    if canonical_deal_id:
+        try:
+            already_reviewed = reviews_dal.has_already_reviewed(
+                user["id"], body.target_id, canonical_deal_id
+            )
+        except reviews_dal.AmbiguousLegacyReviewError:
+            raise HTTPException(
+                status_code=409,
+                detail="Старый отзыв нельзя однозначно связать со сделкой; требуется сверка",
+            )
+        if already_reviewed:
+            raise HTTPException(status_code=409, detail="Вы уже оставили отзыв по этому рейсу")
     # Дедуп по паре, когда рейс не указан (trip_id=None) — иначе спам отзывами.
     if not body.trip_id and reviews_dal.has_reviewed_target(user["id"], body.target_id):
         raise HTTPException(status_code=409, detail="Вы уже оставили отзыв этому пользователю")
 
-    rid = reviews_dal.add_review(
-        trip_id=body.trip_id,
-        author_id=user["id"],
-        author_role=user.get("role", "client"),
-        target_id=body.target_id,
-        target_role=body.target_role,
-        rating=body.rating,
-        text=body.text,
-        tags=body.tags,
-    )
-    # Push получателю отзыва
-    emoji = '⭐' * body.rating
-    review_title = f"Новый отзыв {emoji}"
-    review_body = body.text[:80] if body.text else f"Оценка {body.rating} из 5"
     try:
-        from api.push import send_to_user
-        send_to_user(body.target_id, review_title, review_body, url="/profile")
-    except Exception as e:
-        print(f"[push] review failed: {e}")
-    # P0-hotfix 28.08.2026: push шёл без записи в notifications — badge на
-    # иконке рос, но список внутри приложения оставался пустым (тот же
-    # разрыв, что для saved_searches ниже — единая первопричина §1).
+        rid = reviews_dal.add_review(
+            trip_id=canonical_deal_id,
+            author_id=user["id"],
+            author_role=user.get("role", "client"),
+            target_id=body.target_id,
+            target_role=body.target_role,
+            rating=body.rating,
+            text=body.text,
+            tags=body.tags,
+        )
+    except reviews_dal.DuplicateReviewError:
+        raise HTTPException(status_code=409, detail="Вы уже оставили отзыв")
+    except reviews_dal.InvalidReviewReferenceError:
+        raise HTTPException(
+            status_code=403,
+            detail="Отзыв не относится к завершённой совместной сделке",
+        )
+    except reviews_dal.AmbiguousLegacyReviewError:
+        raise HTTPException(
+            status_code=409,
+            detail="Старый отзыв нельзя однозначно связать со сделкой; требуется сверка",
+        )
+    from services import push_gateway, push_i18n
+    event = "review_received_comment" if body.text else "review_received"
+    params = {"comment": body.text[:80]} if body.text else {"rating": body.rating}
+    review_title, review_body = push_i18n.push_text(event, push_gateway.get_recipient_locale(body.target_id), **params)
+    event_key = f"review:{rid}:created"
+    # Bell должна существовать до вычисления badge в push sender.
     try:
         from api.notifications import create_notification
-        create_notification(body.target_id, "review", review_title, review_body, "⭐", url="/profile")
+        create_notification(body.target_id, "review", review_title, review_body, "⭐", url="/profile", event_key=event_key)
     except Exception as e:
         print(f"[notif] review failed: {e}")
+    try:
+        from api.push import send_to_user
+        send_to_user(body.target_id, review_title, review_body, url="/profile", kind="review",
+                     data={"event_key": event_key, "event": "review.created", "review_id": rid,
+                           "i18n_event": event, "i18n_params": params})
+    except Exception as e:
+        print(f"[push] review failed: {e}")
     return {"id": rid, "ok": True}
 
 
@@ -98,16 +125,31 @@ def review_eligibility(
     """Can the current participant leave a review for this completed deal?"""
     if user["id"] == target_id:
         return {"eligible": False, "already_reviewed": False, "reason": "self"}
+    canonical_deal_id = (
+        reviews_dal.resolve_completed_deal_reference(user["id"], target_id, trip_id)
+        if trip_id
+        else None
+    )
     completed = (
-        reviews_dal.has_completed_deal_reference(user["id"], target_id, trip_id)
+        bool(canonical_deal_id)
         if trip_id
         else reviews_dal.has_deal_between(user["id"], target_id)
     )
-    already = (
-        reviews_dal.has_already_reviewed(user["id"], trip_id)
-        if trip_id
-        else reviews_dal.has_reviewed_target(user["id"], target_id)
-    )
+    if canonical_deal_id:
+        try:
+            already = reviews_dal.has_already_reviewed(
+                user["id"], target_id, canonical_deal_id
+            )
+        except reviews_dal.AmbiguousLegacyReviewError:
+            return {
+                "eligible": False,
+                "already_reviewed": False,
+                "reason": "legacy_review_reference_ambiguous",
+            }
+    elif trip_id:
+        already = False
+    else:
+        already = reviews_dal.has_reviewed_target(user["id"], target_id)
     return {
         "eligible": bool(completed and not already),
         "already_reviewed": bool(already),

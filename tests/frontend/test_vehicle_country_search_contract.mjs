@@ -19,6 +19,7 @@ test('vehicle country search is multilingual and keeps ISO lookup', () => {
 
 test('vehicle country picker remains full local ISO catalogue', () => {
   const all = searchAllCountries('', 'RU');
-  assert.ok(all.length >= 248, `expected >=248 countries, got ${all.length}`);
+  assert.equal(all.length, 249);
+  assert.ok(all.some(c => c.iso === 'AX'));
   assert.equal(new Set(all.map((c) => c.iso)).size, all.length);
 });

@@ -1,0 +1,30 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "urtruck-vetted-braces-3.0.4-d0d575e",
+  "documentNamespace": "https://github.com/777ubu-ai/urtruck-app/security/sbom/braces-3.0.4-d0d575e",
+  "creationInfo": {
+    "created": "2026-10-03T00:00:00Z",
+    "creators": ["Tool: UrTruck security remediation"]
+  },
+  "packages": [
+    {
+      "name": "braces",
+      "SPDXID": "SPDXRef-Package-braces-vetted",
+      "versionInfo": "3.0.4",
+      "downloadLocation": "git+https://github.com/micromatch/braces.git@d0d575e55e74a4e0218e5248fafb79efc3e54ebb",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) 2014-present, Jon Schlinkert.",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "2c341159f8f3cdab843945e2e831ce6590f2a09f0910c324d30e36903cd6957d"
+        }
+      ],
+      "comment": "Temporary vetted distribution. Source is exact upstream commit d0d575e55e74a4e0218e5248fafb79efc3e54ebb; only the local distribution version differs."
+    }
+  ]
+}

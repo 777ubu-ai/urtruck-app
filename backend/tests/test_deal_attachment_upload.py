@@ -1,8 +1,11 @@
+import asyncio
 import os
 import sys
 import io
 import zipfile
 from pathlib import Path
+
+from fastapi import UploadFile
 
 DB_PATH = "/tmp/urtruck_test_deal_attachment_upload.db"
 os.environ["ENV"] = "test"
@@ -64,14 +67,16 @@ def test_unicode_filename_is_preserved_without_paths_or_controls():
     assert "\x00" not in result
 
 
-def test_private_document_download_preserves_name_and_signature(monkeypatch):
+def test_private_document_preview_stays_inline_and_download_preserves_name(monkeypatch):
     from urllib.parse import urlsplit, parse_qs
     monkeypatch.setattr(storage_service, "SUPABASE_BUCKET", "private")
     monkeypatch.setattr(deal_room.file_signing, "sign", lambda ref: "https://storage.example/file.pdf?token=existing-signature")
     original = {"url": "supabase://private/uuid.pdf", "kind": "document", "original_name": "Накладная №17 & invoice.pdf"}
     signed = deal_room._sign_attachment(original)
     params = parse_qs(urlsplit(signed["url"]).query)
-    assert params == {"token": ["existing-signature"], "download": [original["original_name"]]}
+    download_params = parse_qs(urlsplit(signed["download_url"]).query)
+    assert params == {"token": ["existing-signature"]}
+    assert download_params == {"token": ["existing-signature"], "download": [original["original_name"]]}
     assert original["url"] == "supabase://private/uuid.pdf"
 
 
@@ -122,6 +127,55 @@ def test_retry_reservation_is_atomic_and_deduplicated():
     assert count == 1
 
 
+def test_stale_uploading_retry_reclaims_only_own_unfinished_reservation(monkeypatch):
+    """A crash after reservation must not leave the same PDF at permanent 409."""
+    stale, created = deal_room._reserve_attachment(
+        conversation_id="room-crash-retry", uploader_id="owner-1", client_upload_id="pdf-retry-1",
+        message_id=None, kind="document", mime_type="application/pdf", size_bytes=12,
+        original_name="Повтор.pdf",
+    )
+    assert created is True
+    ready, _ = deal_room._reserve_attachment(
+        conversation_id="room-crash-retry", uploader_id="owner-1", client_upload_id="ready-document",
+        message_id=None, kind="document", mime_type="application/pdf", size_bytes=12,
+        original_name="Готовый.pdf",
+    )
+    deal_room._complete_attachment_reservation(ready["id"], "/storage/chat_attachments/ready.pdf")
+    foreign, _ = deal_room._reserve_attachment(
+        conversation_id="room-crash-retry", uploader_id="other-user", client_upload_id="pdf-retry-1",
+        message_id=None, kind="document", mime_type="application/pdf", size_bytes=12,
+        original_name="Чужой.pdf",
+    )
+    with db.get_conn() as c:
+        c.execute("UPDATE message_attachments SET created_at=datetime('now','-20 minutes') WHERE id IN (?,?)", (stale["id"], foreign["id"]))
+
+    monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room: True)
+    monkeypatch.setattr(deal_room.dr, "is_participant", lambda _room, user_id: user_id == "owner-1")
+    monkeypatch.setattr(deal_room, "_assert_deal_room_open", lambda *_args: None)
+    monkeypatch.setattr(deal_room.storage_service, "save_file", lambda *_args, **_kwargs: "/storage/chat_attachments/retried.pdf")
+    monkeypatch.setattr(deal_room.file_signing, "sign", lambda value: value)
+
+    upload = UploadFile(filename="Повтор.pdf", file=io.BytesIO(b"%PDF-1.7\n"))
+    upload.headers = {"content-type": "application/pdf"}
+    result = asyncio.run(deal_room.upload_attachment(
+        conversation_id="room-crash-retry", file=upload, kind="document",
+        message_id=None, client_upload_id="pdf-retry-1", user={"id": "owner-1"},
+    ))
+
+    assert result["deduplicated"] is False
+    with db.get_conn() as c:
+        own = c.execute(
+            "SELECT upload_status,url FROM message_attachments WHERE conversation_id=? AND uploader_id=? AND client_upload_id=?",
+            ("room-crash-retry", "owner-1", "pdf-retry-1"),
+        ).fetchall()
+        preserved_ready = c.execute("SELECT upload_status,url FROM message_attachments WHERE id=?", (ready["id"],)).fetchone()
+        preserved_foreign = c.execute("SELECT upload_status,url FROM message_attachments WHERE id=?", (foreign["id"],)).fetchone()
+    assert len(own) == 1
+    assert own[0]["upload_status"] == "uploaded" and own[0]["url"] == "/storage/chat_attachments/retried.pdf"
+    assert preserved_ready["upload_status"] == "uploaded" and preserved_ready["url"] == "/storage/chat_attachments/ready.pdf"
+    assert preserved_foreign["upload_status"] == "uploading" and preserved_foreign["url"] is None
+
+
 def test_storage_preserves_pdf_content_type(monkeypatch):
     seen = {}
 
@@ -143,3 +197,35 @@ def test_storage_preserves_pdf_content_type(monkeypatch):
     ref = storage_service._save_supabase(b"%PDF-1.7\n", "chat_attachments/test.pdf", "application/pdf")
     assert seen["headers"]["Content-Type"] == "application/pdf"
     assert ref == "supabase://private/chat_attachments/test.pdf"
+
+
+def test_attachment_ownership_is_per_authenticated_participant(monkeypatch):
+    attachment = {"id": "pdf-1", "kind": "document", "uploader_id": "canonical-owner", "url": "/private/pdf"}
+    monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room: True)
+    monkeypatch.setattr(deal_room.dr, "is_participant", lambda _room, uid: uid in ("canonical-owner", "counterparty"))
+    monkeypatch.setattr(deal_room, "_assert_deal_room_open", lambda *_args: None)
+    monkeypatch.setattr(deal_room, "_ensure_attachment_columns", lambda: None)
+    monkeypatch.setattr(deal_room.dr, "list_attachments", lambda _room: [attachment])
+    monkeypatch.setattr(deal_room, "_sign_attachment", lambda a: {**a, "url": "/signed/pdf"})
+
+    own = deal_room.list_conversation_attachments("room", {"id": "canonical-owner"})["attachments"][0]
+    foreign = deal_room.list_conversation_attachments("room", {"id": "counterparty"})["attachments"][0]
+    assert own["mine"] is True
+    assert foreign["mine"] is False
+    assert own["uploader_id"] == foreign["uploader_id"] == attachment["uploader_id"]
+    assert "mine" not in attachment
+    assert own["url"] == foreign["url"] == "/signed/pdf"
+
+
+def test_attachment_ownership_does_not_bypass_participant_check(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+    monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room: True)
+    monkeypatch.setattr(deal_room.dr, "is_participant", lambda *_args: False)
+    def unexpected_read(*_args):
+        raise AssertionError("Посторонний не должен получить вложения")
+    monkeypatch.setattr(deal_room.dr, "list_attachments", unexpected_read)
+    monkeypatch.setattr(deal_room, "_sign_attachment", unexpected_read)
+    with pytest.raises(HTTPException) as exc:
+        deal_room.list_conversation_attachments("room", {"id": "outsider"})
+    assert exc.value.status_code == 403

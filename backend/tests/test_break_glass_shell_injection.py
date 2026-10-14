@@ -262,6 +262,94 @@ def test_resolve_sha_step_writes_the_reason_verbatim_as_inert_data():
         marker_dir.rmdir()
 
 
+# ── 3. QA2/TestFlight manual confirmations are data, never shell source ──
+
+@pytest.mark.parametrize("workflow_file,job_name,step_name,input_name,env_name", [
+    (
+        "configure-qa2-fcm.yml", "configure", "Require explicit QA2-only confirmation",
+        "confirmation", "CONFIRMATION",
+    ),
+    (
+        "configure-qa2-routing-secure.yml", "configure", "Require isolated QA2 routing intent",
+        "confirmation", "CONFIRMATION",
+    ),
+    (
+        "deploy-qa2-final-integration.yml", "deploy", "Require final QA2 intent and branch",
+        "confirmation", "CONFIRMATION",
+    ),
+    (
+        "qa-center.yml", "qa2-openai-stt-pilot", "Validate exact working branch and confirmation",
+        "qa2_stt_confirmation", "QA2_STT_CONFIRMATION",
+    ),
+    (
+        "testflight-rc.yml", "build-and-upload", "Verify protected QA2 TestFlight intent",
+        "confirmation", "CONFIRMATION",
+    ),
+    (
+        "verify-qa2-cgr-live.yml", "verify", "Require QA2-only verification intent",
+        "confirmation", "CONFIRMATION",
+    ),
+    (
+        "qa-staging-deploy.yml", "deploy", "Require explicit QA-only confirmation",
+        "confirmation", "CONFIRMATION",
+    ),
+    (
+        "qa2-web-deploy.yml", "deploy", "Require isolated QA confirmation",
+        "confirmation", "CONFIRMATION",
+    ),
+])
+def test_dispatch_confirmation_is_env_data_not_shell_source(
+    workflow_file, job_name, step_name, input_name, env_name,
+):
+    doc = _load(workflow_file)
+    step = _find_step(doc, job_name, step_name)
+    script = step.get("run", "")
+    assert f"${{{{ inputs.{input_name} }}}}" not in script
+    assert step.get("env", {}).get(env_name) == f"${{{{ inputs.{input_name} }}}}"
+
+
+@pytest.mark.parametrize("workflow_file,job_name,step_name,env_name", [
+    ("configure-qa2-fcm.yml", "configure", "Require explicit QA2-only confirmation", "CONFIRMATION"),
+    ("configure-qa2-routing-secure.yml", "configure", "Require isolated QA2 routing intent", "CONFIRMATION"),
+    ("deploy-qa2-final-integration.yml", "deploy", "Require final QA2 intent and branch", "CONFIRMATION"),
+    ("qa-center.yml", "qa2-openai-stt-pilot", "Validate exact working branch and confirmation", "QA2_STT_CONFIRMATION"),
+    ("testflight-rc.yml", "build-and-upload", "Verify protected QA2 TestFlight intent", "CONFIRMATION"),
+    ("verify-qa2-cgr-live.yml", "verify", "Require QA2-only verification intent", "CONFIRMATION"),
+    ("qa-staging-deploy.yml", "deploy", "Require explicit QA-only confirmation", "CONFIRMATION"),
+    ("qa2-web-deploy.yml", "deploy", "Require isolated QA confirmation", "CONFIRMATION"),
+])
+@pytest.mark.parametrize("payload_name", ["double_quote_breakout", "single_quote_breakout", "command_substitution_dollar"])
+def test_dispatch_confirmation_payload_cannot_execute(
+    workflow_file, job_name, step_name, env_name, payload_name,
+):
+    doc = _load(workflow_file)
+    script = _find_step(doc, job_name, step_name)["run"]
+
+    marker_dir = Path(tempfile.mkdtemp(prefix="urtruck-confirmation-injection-"))
+    try:
+        marker = marker_dir / "executed"
+        payloads = _hostile_payloads(marker_dir)
+        payload = payloads[payload_name]
+        env = {
+            env_name: payload,
+            "QA_SOURCE_SHA": subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
+                text=True, check=True,
+            ).stdout.strip(),
+            "GITHUB_SHA": "0" * 40,
+            "GITHUB_REF_NAME": "feature/untrusted-confirmation",
+            "GITHUB_REF_TYPE": "branch",
+            "OPENROUTESERVICE_API_KEY": "test-key-not-used",
+        }
+        result, _ = _run_script(script, env, cwd=ROOT)
+        assert result.returncode != 0, "hostile confirmation must be rejected"
+        assert not marker.exists(), f"hostile confirmation executed a command: {payload_name}"
+    finally:
+        for file in marker_dir.iterdir():
+            file.unlink()
+        marker_dir.rmdir()
+
+
 def test_newline_in_reason_is_collapsed_not_left_as_a_literal_break():
     """Defense-in-depth check (not code-execution, log/annotation spoofing):
     a reason containing an embedded newline must not produce a literal line

@@ -1,0 +1,30 @@
+{
+  "time": "2026-10-13T21:46:29.124736+00:00",
+  "branch": "release/consolidated-20261014",
+  "sha": "a1fa2822276cbef602e490aaaaf54abb040e958a",
+  "known_good": "iOS 98 source a1fa282 и QA2 на a1fa282; новый physical PASS отсутствует",
+  "production_sha": "UNKNOWN/mixed по предоставленному ТЗ, live не проверен",
+  "scope": [
+    "PR521: profile API, AppNavigator, ProfileV2Screen, onboardingNavKey и тесты",
+    "PR522: offline recipe/fixtures/test/docs",
+    "PR523: runtime manifest, production writer guard и CI"
+  ],
+  "protected": [
+    "Auth/ownership",
+    "FSM",
+    "GPS",
+    "Documents",
+    "unread",
+    "translation quality",
+    "DB/storage/env/signing"
+  ],
+  "checks": [
+    "Graphify AST-only fresh",
+    "семантический diff и совместимость",
+    "shared CI",
+    "независимый review exact SHA",
+    "schema/rollback",
+    "physical Android/iPhone"
+  ],
+  "rollback": "Собственные merge-коммиты откатывать отдельными revert -m 1; чужие worktree не трогать. Production writes отсутствуют. DB snapshot поверх новых данных не восстанавливать."
+}

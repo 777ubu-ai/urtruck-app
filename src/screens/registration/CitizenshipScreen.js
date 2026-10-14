@@ -79,7 +79,7 @@ export default function CitizenshipScreen({ navigation }) {
                   onPress={() => setSelected(c.code)}
                   style={[s.option, active && s.optionActive]}
                 >
-                  <View style={s.optionLeft}>{c.code === 'other' ? <Feather name="globe" size={22} color={brand.textSecondary} /> : <CountryFlag code={c.code} width={28} />}<Text style={[s.optionText, { color: brand.textPrimary }]}>{t(c.key)}</Text>{c.code !== 'other' ? <Text style={s.iso}>{c.code}</Text> : null}</View>
+                  <View style={s.optionLeft}>{c.code === 'other' ? <Feather name="globe" size={22} color={brand.textSecondary} /> : <CountryFlag code={c.code} width={22} />}<Text style={[s.optionText, { color: brand.textPrimary }]}>{t(c.key)}</Text>{c.code !== 'other' ? <Text style={s.iso}>{c.code}</Text> : null}</View>
                   {active ? <Feather name="check-circle" size={20} color={accent} /> : null}
                 </Pressable>
               );

@@ -8,12 +8,13 @@ const injectSrc = fs.readFileSync('scripts/injectYandexMaps.mjs', 'utf8');
 const routerSrc = fs.readFileSync('backend/api/routing.py', 'utf8');
 const routingClient = fs.readFileSync('src/utils/routingAPI.js', 'utf8');
 
-test('Yandex web map renders trusted server road geometry and keeps JS MultiRoute as compatibility fallback', () => {
+test('Yandex web map renders trusted server road geometry and fails closed without it', () => {
   assert.match(mapSrc, /routingAPI\.roadRoute\(effectivePoints, vehicle\)/);
   assert.match(mapSrc, /new api\.Polyline\(geometry/);
   assert.match(mapSrc, /strokeStyle: 'solid'/);
-  assert.match(mapSrc, /api\.multiRouter\.MultiRoute/);
-  assert.match(mapSrc, /routeActiveStrokeColor: '#168759'/);
+  assert.doesNotMatch(mapSrc, /api\.multiRouter\.MultiRoute/);
+  assert.match(mapSrc, /Do not use Yandex JS `routingMode: auto` as a truck route/);
+  assert.match(mapSrc, /strokeStyle: 'dash'/);
 });
 
 test('server Yandex Router API builds truck routes for KZ-RU and real driving fallback when city centre is truck-restricted', () => {

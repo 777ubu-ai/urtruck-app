@@ -6,9 +6,11 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 
 const app = read('App.js');
 const push = read('src/utils/push.js');
+const pushRuntime = read('src/utils/pushRuntime.js');
 const notifications = read('src/screens/NotificationsScreen.js');
 const notificationsAPI = read('src/utils/notificationsAPI.js');
 const dealsScreen = read('src/screens/DealsScreen.js');
+const dealWorkspace = read('src/screens/DealWorkspaceScreenV2.js');
 const appJson = JSON.parse(read('app.json'));
 const aasa = JSON.parse(read('web/apple-app-site-association'));
 const wellKnownAasa = JSON.parse(read('web/.well-known/apple-app-site-association'));
@@ -24,13 +26,10 @@ test('native push tap routing keeps canonical deep-links for cargo, trip, deal, 
   assert.match(app, /if \(kind === 'deals' && !id\)/);
   assert.match(app, /navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
   assert.match(app, /if \(kind === 'deals' && id\)/);
-  // action is threaded through (Track: Claude harness fix, P1) — backend's
-  // tracking-request/approved/declined/stopped pushes set
-  // url=/deals/{id}?action=tracking and it must not be dropped here.
-  assert.match(app, /navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
-  assert.match(app, /setTimeout\(\(\) => navRef\.current\?\.navigate\('Chat', \{ dealId: id, role, action: params\.action \|\| null \}\), 0\)/);
+  // Action survives, while the stable Chat route handles repeated taps.
+  assert.match(app, /navigate\('Chat', \{ dealId: id, role, action: params\.action \|\| null \}\)/);
   assert.match(app, /if \(kind === 'chats' && id\)/);
-  assert.match(app, /setTimeout\(\(\) => navRef\.current\?\.navigate\('Chat', \{ roomId: id, role \}\), 0\)/);
+  assert.match(app, /navigate\('Chat', \{ roomId: id, role \}\)/);
   assert.match(app, /else if \(kind === 'profile'\)/);
   assert.match(app, /navigate\('Profile'\)/);
   assert.match(app, /else if \(kind === 'notifications'\)/);
@@ -51,10 +50,24 @@ test('notifications screen uses the same deep-link families as native push tap r
 });
 
 test('foreground push suppression is source-of-truth aware for open chat rooms only', () => {
-  assert.match(push, /data\.type === 'chat_message' \|\| data\.type === 'chat_attachment'/);
-  assert.match(push, /data\.room_id === getActiveRoom\(\)/);
-  assert.match(push, /shouldShowAlert: false, shouldShowBanner: false, shouldShowList: false/);
-  assert.match(push, /shouldShowAlert: true, shouldShowBanner: true, shouldShowList: true/);
+  assert.match(pushRuntime, /data\.type === 'chat_message' \|\| data\.type === 'chat_attachment'/);
+  assert.match(pushRuntime, /data\.room_id === activeRoom/);
+  assert.match(pushRuntime, /shouldShowAlert: false/);
+  assert.match(pushRuntime, /shouldShowAlert: true/);
+});
+
+test('deal workspace suppresses push only for its focused foreground room', () => {
+  assert.match(dealWorkspace, /useFocusEffect/);
+  assert.match(dealWorkspace, /setActiveRoom\(chatAppActiveRef\.current \? roomId : null\)/);
+  assert.match(dealWorkspace, /chatFocusedRef\.current = false;[\s\S]*?clearInterval\(timer\);[\s\S]*?setActiveRoom\(null\)/);
+  assert.match(dealWorkspace, /if \(!roomId \|\| !chatFocusedRef\.current \|\| !chatAppActiveRef\.current\) return/);
+});
+
+test('open-chat suppression still records native receipt before presentation policy returns', () => {
+  assert.match(push, /decideForegroundPresentation/);
+  assert.match(pushRuntime, /scheduleTelemetry\(acknowledge, eventId, \{ opened: false \}\)/);
+  assert.match(pushRuntime, /data\.room_id === activeRoom/);
+  assert.doesNotMatch(pushRuntime, /await acknowledge/);
 });
 
 test('notification reads update both in-app source-of-truth and the app icon badge', () => {
@@ -80,9 +93,13 @@ test('Deals has no Bell or notification-inbox entry point; notification routing 
 
 test('auth and notification cold-start deeplinks are queued until nav and auth are ready', () => {
   assert.match(app, /pendingUrlRef\.current = url/);
-  assert.match(app, /if \(pendingUrlRef\.current && navReadyRef\.current && authedForDeepLink\)/);
+  assert.match(app, /const dispatchPendingUrl = useCallback\(\(\) => \{/);
+  assert.match(app, /pendingUrlRef\.current = null;[\s\S]{0,100}navigateFromUrl/);
+  assert.match(app, /routeFromUrlRef\.current = routeFromUrl/);
+  assert.match(app, /Linking\.getInitialURL\(\)[\s\S]*?\}, \[\]\);/);
   assert.match(app, /Notifications\.getLastNotificationResponseAsync/);
   assert.match(app, /Notifications\.addNotificationResponseReceivedListener/);
+  assert.match(app, /if \(!authedForDeepLink\) return/);
 });
 
 test('chat notification tap prefers its structured room_id over an aggregated display URL', () => {
@@ -90,6 +107,16 @@ test('chat notification tap prefers its structured room_id over an aggregated di
   assert.match(app, /data\.type === 'chat_message' \|\| data\.type === 'chat_attachment'/);
   assert.match(app, /return `\/chats\/\$\{encodeURIComponent\(roomId\)\}`/);
   assert.match(app, /const url = notificationResponseUrl\(response\);/);
+});
+
+test('native push deduplicates provider retries by backend event id without losing the first deeplink tap', () => {
+  assert.match(push, /claimPushEvent\(eventId, 'display'\)/);
+  assert.match(app, /function notificationResponseEventId\(response\)/);
+  assert.match(app, /claimPushEvent\(id, 'navigation'\)/);
+  assert.match(app, /handlePushTap/);
+  assert.match(pushRuntime, /scheduleTelemetry\(acknowledge, eventId, \{ opened: true \}\)/);
+  assert.doesNotMatch(app, /claimPushEvent\(eventId, 'opened'\)/);
+  assert.match(app, /const eventId = data\.event_id \|\| data\.event_key/);
 });
 
 test('custom-scheme and universal-link notification entrypoints are parsed as Notifications', () => {
@@ -102,8 +129,7 @@ test('custom-scheme and universal-link notification entrypoints are parsed as No
 
 test('native app listens to general url entrypoints in addition to push taps', () => {
   assert.match(app, /Linking\.getInitialURL\(\)/);
-  assert.match(app, /Linking\.addEventListener\('url', \(\{ url \}\) =>/);
-  assert.match(app, /if \(url\) routeFromUrl\(url\);/);
+  assert.match(app, /Linking\.addEventListener\('url', \(\{ url \}\) => routeFromUrlRef\.current\?\.\(url\)\)/);
 });
 
 test('ios and android release configs declare urtruck notifications app-link entrypoints', () => {
@@ -130,11 +156,12 @@ test('deploy paths keep .well-known release files instead of dropping hidden ent
 });
 
 
-test('push chat/deal targets establish Deals as their Back parent', () => {
+test('push chat/deal targets reuse the canonical Chat route on repeat taps', () => {
   const dealBranch = app.slice(app.indexOf("kind === 'deals' && id"), app.indexOf("kind === 'chats' && id"));
   const chatBranch = app.slice(app.indexOf("kind === 'chats' && id"), app.indexOf("kind === 'driver' && id"));
-  for (const block of [dealBranch, chatBranch]) {
-    assert.match(block, /navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
-    assert.match(block, /setTimeout\(/);
-  }
+  assert.match(dealBranch, /navigate\('Chat', \{ dealId: id, role, action:/);
+  assert.match(chatBranch, /navigate\('Chat', \{ roomId: id, role \}\)/);
+  assert.doesNotMatch(dealBranch, /navigate\('Main'/);
+  assert.doesNotMatch(chatBranch, /navigate\('Main'/);
+  assert.match((fs.readFileSync('src/navigation/AppNavigator.js', 'utf8')), /getId=\{chatRouteId\}/);
 });

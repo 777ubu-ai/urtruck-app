@@ -20,11 +20,13 @@ let mapKitInitPromise = null;
 const initializeMapKit = () => {
   if (!MAPKIT_CONFIGURED) return Promise.resolve(false);
   if (!mapKitInitPromise) {
-    try {
-      mapKitInitPromise = Promise.resolve(YaMap.init(YANDEX_MAPKIT_API_KEY));
-    } catch (error) {
-      mapKitInitPromise = Promise.reject(error);
-    }
+    // Ошибка SDK не должна навсегда блокировать восстановление карты.
+    mapKitInitPromise = Promise.resolve()
+      .then(() => YaMap.init(YANDEX_MAPKIT_API_KEY))
+      .catch((error) => {
+        mapKitInitPromise = null;
+        throw error;
+      });
   }
   return mapKitInitPromise;
 };
@@ -110,20 +112,31 @@ export default function TruckMap({
   const [mapKitInitState, setMapKitInitState] = React.useState(
     MAPKIT_CONFIGURED ? 'loading' : 'unavailable',
   );
+  const [mapKitInitAttempt, setMapKitInitAttempt] = React.useState(0);
 
   React.useEffect(() => {
     let active = true;
     if (!MAPKIT_CONFIGURED) {
+      console.warn('[UrTruck MapKit]', {
+        stage: 'configuration',
+        nativeModulePresent: MAPKIT_AVAILABLE,
+        keyPresent: Boolean(YANDEX_MAPKIT_API_KEY),
+      });
       setMapKitInitState('unavailable');
       return () => { active = false; };
     }
     setMapKitInitState('loading');
     initializeMapKit().then(
       () => { if (active) setMapKitInitState('ready'); },
-      () => { if (active) setMapKitInitState('error'); },
+      () => {
+        if (active) {
+          console.warn('[UrTruck MapKit]', { stage: 'initialization_failed', nativeModulePresent: MAPKIT_AVAILABLE, keyPresent: Boolean(YANDEX_MAPKIT_API_KEY) });
+          setMapKitInitState('error');
+        }
+      },
     );
     return () => { active = false; };
-  }, []);
+  }, [mapKitInitAttempt]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -170,13 +183,16 @@ export default function TruckMap({
     const passedDistanceText = distanceTextFromMeters(numbers.passedMeters, t);
     const totalDurationText = durationTextFromSeconds(numbers.totalDurationSeconds, t);
     const drivingDurationText = durationTextFromSeconds(numbers.drivingDurationSeconds, t);
+    const remainingDurationText = durationTextFromSeconds(numbers.remainingDurationSeconds, t);
     if (roadGeometry.length >= 2 && totalDistanceText) {
       onRouteSummary?.({
         distanceText: numbers.isRemaining ? remainingText : totalDistanceText,
-        durationText: totalDurationText,
+        durationText: numbers.isRemaining ? remainingDurationText : totalDurationText,
         totalDistanceText,
         passedDistanceText,
         totalDurationText,
+        remainingDurationText,
+        durationLabelKey: numbers.isRemaining ? 'route_eta' : 'delivery_time',
         drivingDurationText,
         progressPercent: numbers.progressPercent,
         progressReason: progress.reason,
@@ -220,6 +236,11 @@ export default function TruckMap({
         <View style={s.mapFallback} testID="truck-map-native-unavailable-provider_not_configured">
           <Text style={s.mapFallbackText}>{t('map_unavailable')}</Text>
           {__DEV__ ? <Text style={s.mapDebugError}>{debugError}</Text> : null}
+          {mapKitInitState === 'error' ? (
+            <TouchableOpacity style={s.retryButton} accessibilityRole="button" testID="truck-map-native-init-retry" onPress={() => setMapKitInitAttempt((value) => value + 1)}>
+              <Text style={s.retryText}>{t('chat_attach_retry')}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     );

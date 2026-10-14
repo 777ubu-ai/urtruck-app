@@ -1,0 +1,141 @@
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+
+const runner = 'scripts/qa2_ai_readonly_diagnostic.py';
+
+test('QA2 AI diagnostic is safe without an opt-in flag', () => {
+  const temporaryAiRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'urtruck-safe-ai-'));
+  const result = spawnSync('python3', [runner], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    timeout: 15_000,
+    env: {
+      ...process.env,
+      QA2_AI_ROOT: temporaryAiRoot,
+      QA2_AI_URL: 'http://127.0.0.1:9',
+    },
+  });
+  fs.rmSync(temporaryAiRoot, { recursive: true, force: true });
+
+  assert.equal(result.status, 1, result.stderr);
+  const rows = result.stdout.trim().split('\n').map((line) => JSON.parse(line));
+  assert.deepEqual(rows[0], {
+    kind: 'diagnostic_policy',
+    mode: 'safe_default',
+    application_data: 'not_read',
+    mutation: 'none',
+  });
+  const translations = rows.filter((row) => row.kind === 'safe_translation');
+  assert.equal(translations.length, 60);
+  assert.ok(translations.every((row) => row.cache_hit === false));
+  assert.ok(translations.every((row) => row.input_text));
+  const summary = rows.find((row) => row.kind === 'matrix_summary');
+  assert.equal(summary.total, 60);
+  assert.equal(summary.http_fail, 60);
+});
+
+test('structured checker accepts equivalents and rejects opposite cargo facts', () => {
+  const code = String.raw`
+import importlib.util
+spec = importlib.util.spec_from_file_location('diagnostic', 'scripts/qa2_ai_readonly_diagnostic.py')
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+assert module.semantic_check('zh', 'cargo', '阿拉木图到阿斯塔纳：货物1500美元，10吨，篷布车。')[0]
+assert module.semantic_check('en', 'negation', 'Not a refrigerated truck; a tent truck is required, 20 tonnes.')[0]
+assert module.semantic_check('ru', 'schedule', 'Урумчи, склад, 09:30, дата 2026-10-01.')[0]
+assert not module.semantic_check('ru', 'cargo', 'Алматы — Астана: 1500 USD, 10 тонн, водопад.')[0]
+assert not module.semantic_check('zh', 'negation', '不是篷布车，需要冷藏车，20吨。')[0]
+assert not module.semantic_check('en', 'price', 'Price 12,000, weight 15 tonnes.')[0]
+assert not module.semantic_check('ru', 'negation', 'Не рефрижератор, но нужен рефрижератор, тент, 20 тонн.')[0]
+assert not module.semantic_check('en', 'negation', 'Not a refrigerated truck, but a refrigerated truck is required; tent truck, 20 tonnes.')[0]
+assert not module.semantic_check('zh', 'negation', '不是冷藏车，但需要冷藏车和篷布车，20吨。')[0]
+assert not module.semantic_check('ru', 'short', 'Груз не готов.')[0]
+assert not module.semantic_check('en', 'short', 'The cargo is not ready.')[0]
+assert not module.semantic_check('zh', 'short', '货物还没有准备好。')[0]
+# Tent is required positively, not merely mentioned.
+assert module.semantic_check('ru', 'cargo', 'Алматы — Астана: груз 1500 USD, 10 тонн, тент.')[0]
+assert module.semantic_check('en', 'cargo', 'Almaty to Astana: cargo 1500 USD, 10 tonnes, tent truck.')[0]
+assert module.semantic_check('zh', 'cargo', '阿拉木图到阿斯塔纳：货物1500美元，10吨，篷布车。')[0]
+assert not module.semantic_check('ru', 'cargo', 'Алматы — Астана: груз 1500 USD, 10 тонн, не тент.')[0]
+assert not module.semantic_check('en', 'cargo', 'Almaty to Astana: cargo 1500 USD, 10 tonnes, not a tent truck.')[0]
+assert not module.semantic_check('zh', 'cargo', '阿拉木图到阿斯塔纳：货物1500美元，10吨，不是篷布车。')[0]
+assert not module.semantic_check('ru', 'negation', 'Не рефрижератор, тент тоже не нужен, 20 тонн.')[0]
+assert not module.semantic_check('en', 'negation', 'Not a refrigerated truck; a tent truck is also not needed, 20 tonnes.')[0]
+assert not module.semantic_check('zh', 'negation', '不是冷藏车，篷布车也不需要，20吨。')[0]
+# A question followed by no is a negative answer, not cargo readiness.
+assert module.semantic_check('ru', 'short', 'Да, груз готов.')[0]
+assert module.semantic_check('en', 'short', 'Yes, the cargo is ready.')[0]
+assert module.semantic_check('en', 'short', 'Good, the goods are ready.')[0]
+assert module.semantic_check('en', 'short', 'Yes, the shipment is ready.')[0]
+assert not module.semantic_check('en', 'short', 'The goods are not ready.')[0]
+assert not module.semantic_check('en', 'short', 'Shipment is not ready.')[0]
+assert not module.semantic_check('en', 'short', 'Shipment ready? No.')[0]
+assert not module.semantic_check('en', 'short', 'Goods are ready? No.')[0]
+assert not module.semantic_check('en', 'short', 'The goods are ready? No.')[0]
+assert module.semantic_check('zh', 'short', '是的，货物已准备好。')[0]
+assert not module.semantic_check('ru', 'short', 'Груз готов? Нет.')[0]
+assert not module.semantic_check('en', 'short', 'Cargo ready? No.')[0]
+assert not module.semantic_check('zh', 'short', '货物准备好了吗？不。')[0]
+# Warehouse is as mandatory as city, time and date in the schedule scenario.
+assert module.semantic_check('ru', 'schedule', 'Урумчи, склад, 09:30, дата 2026-10-01.')[0]
+assert module.semantic_check('en', 'schedule', 'Urumqi, warehouse, 09:30, date 2026-10-01.')[0]
+assert module.semantic_check('zh', 'schedule', '乌鲁木齐，仓库，09:30，日期2026年10月1日。')[0]
+assert not module.semantic_check('ru', 'schedule', 'Урумчи, 09:30, дата 2026-10-01.')[0]
+assert not module.semantic_check('en', 'schedule', 'Urumqi, 09:30, date 2026-10-01.')[0]
+assert not module.semantic_check('zh', 'schedule', '乌鲁木齐，09:30，日期2026年10月1日。')[0]
+# A preserved date does not excuse invented travel history.
+assert not module.semantic_check('en', 'schedule', "This is the first time I've been to Urumqi, warehouse, 09:30, date 10-01-2026.")[0]
+`;
+  const result = spawnSync('python3', ['-c', code], { cwd: process.cwd(), encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('HTTP 422 keeps the candidate and derives reason codes from the supplied source copy', () => {
+  const sourceQuality = path.join(process.cwd(), 'backend/qa_ai_service/quality.py');
+  const temporaryQuality = path.join(os.tmpdir(), `urtruck-quality-${process.pid}.py`);
+  fs.copyFileSync(sourceQuality, temporaryQuality);
+  const code = String.raw`
+import contextlib
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+os.environ['QA2_DIAGNOSTIC_QUALITY_PATH'] = ${JSON.stringify(temporaryQuality)}
+os.environ['QA2_DIAGNOSTIC_SOURCE_SHA'] = 'test-source-sha'
+spec = importlib.util.spec_from_file_location('diagnostic', 'scripts/qa2_ai_readonly_diagnostic.py')
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.post_translate = lambda text, source, target: (422, {'detail': {'message': 'translation confidence too low', 'candidate': 'waterfall'}}, 1.0)
+buffer = io.StringIO()
+with contextlib.redirect_stdout(buffer):
+    assert module.run_corpus() is False
+rows = [json.loads(line) for line in buffer.getvalue().splitlines() if line]
+translations = [row for row in rows if row['kind'] == 'safe_translation']
+assert len(translations) == 60
+assert all(row['http'] == 422 for row in translations)
+assert all(row['rejected_candidate'] == 'waterfall' for row in translations)
+assert all(row['gate_reason_provenance'] == 'diagnostic_source' for row in translations)
+assert all(row['diagnostic_source_sha'] == 'test-source-sha' for row in translations)
+assert all(row['runtime_reason_codes_available'] is False for row in translations)
+assert all(isinstance(row['gate_failure_reasons'], list) for row in translations)
+assert all(row['semantic_pass'] is False for row in translations)
+`;
+  try {
+    const result = spawnSync('python3', ['-c', code], { cwd: process.cwd(), encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    fs.rmSync(temporaryQuality, { force: true });
+  }
+});
+
+test('QA2 AI diagnostic source has no legacy application-data paths', () => {
+  const source = fs.readFileSync(path.join(process.cwd(), runner), 'utf8');
+  for (const forbidden of ['sqlite3', 'chat_messages', '/transcribe', 'transcript_text', 'voice_duration']) {
+    assert.equal(source.includes(forbidden), false, forbidden);
+  }
+});

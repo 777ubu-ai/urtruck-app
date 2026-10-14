@@ -1,0 +1,62 @@
+name: QA2 Final Release Orchestrator
+
+on:
+  push:
+    branches:
+      - qa2/integration-candidate
+    paths:
+      - .qa2-release/run-final
+
+concurrency:
+  group: urtruck-qa2-final-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-qa2-final-integration.yml
+    with:
+      confirmation: DEPLOY_QA2_FINAL
+      source_sha: ${{ github.sha }}
+    secrets: inherit
+
+  configure-fcm:
+    needs: deploy
+    uses: ./.github/workflows/configure-qa2-fcm.yml
+    with:
+      confirmation: CONFIGURE_QA2_FCM
+      source_sha: ${{ github.sha }}
+    secrets: inherit
+
+  configure-routing:
+    needs: configure-fcm
+    uses: ./.github/workflows/configure-qa2-routing-secure.yml
+    with:
+      confirmation: CONFIGURE_QA2_ROUTING_SECURE
+      source_sha: ${{ github.sha }}
+    secrets: inherit
+
+  configure-cgr:
+    needs: configure-routing
+    uses: ./.github/workflows/configure-qa2-cgr.yml
+    with:
+      confirmation: CONFIGURE_QA2_CGR
+      source_sha: ${{ github.sha }}
+    secrets: inherit
+
+  verify-cgr:
+    needs: configure-cgr
+    uses: ./.github/workflows/verify-qa2-cgr-live.yml
+    with:
+      confirmation: VERIFY_QA2_CGR_LIVE
+      source_sha: ${{ github.sha }}
+    secrets: inherit
+
+  build-apk:
+    needs: verify-cgr
+    uses: ./.github/workflows/build-android-apk.yml
+    with:
+      source_ref: ${{ github.sha }}
+    secrets: inherit

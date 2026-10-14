@@ -109,6 +109,36 @@ def test_media_push_localizes_only_system_text(monkeypatch, text, is_voice, even
         assert sent[0][0][2] == text
 
 
+def test_voice_commit_rolls_back_when_durable_stt_enqueue_cannot_be_written(monkeypatch):
+    """A crash/error between voice INSERT and enqueue must leave no orphan voice."""
+    from api import chat
+    from services import voice_processing
+
+    owner, driver, cargo = (uuid.uuid4().hex for _ in range(3))
+    _mk_users(owner, driver)
+    room = get_or_create_deal_room(cargo, owner, driver)
+    _mk_accepted_deal(cargo, owner, driver, room)
+    client_msg_id = f"voice-atomic-{uuid.uuid4().hex}"
+    ref = chat.storage.LOCAL_PUBLIC_BASE + "/chat_photos/voice-atomic.m4a"
+
+    def enqueue_failed(*_args, **_kwargs):
+        raise RuntimeError("queue write interrupted")
+
+    monkeypatch.setattr(voice_processing, "enqueue_new_voice_in_transaction", enqueue_failed)
+    with pytest.raises(RuntimeError, match="queue write interrupted"):
+        send_message(
+            SendMessageIn(room_id=room, photo_url=ref, is_voice=True, client_msg_id=client_msg_id),
+            user=_u(owner),
+        )
+
+    with get_conn() as c:
+        assert c.execute(
+            "SELECT 1 FROM chat_messages WHERE sender_id=? AND client_msg_id=?",
+            (owner, client_msg_id),
+        ).fetchone() is None
+        assert c.execute("SELECT 1 FROM voice_processing_jobs WHERE message_id IN (SELECT id FROM chat_messages WHERE client_msg_id=?)", (client_msg_id,)).fetchone() is None
+
+
 def test_received_deal_keeps_room_visible_and_chat_usable_until_completion():
     o, d = "own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6]
     cargo = "cg_" + uuid.uuid4().hex[:6]
@@ -138,6 +168,39 @@ def test_received_deal_keeps_room_visible_and_chat_usable_until_completion():
     with pytest.raises(HTTPException) as blocked:
         send_message(SendMessageIn(room_id=room, text="must-not-send"), user=_u(o))
     assert blocked.value.status_code == 403
+
+
+def test_recent_hidden_rooms_do_not_evict_active_unread_room_from_room_list():
+    owner, driver = "own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6]
+    _mk_users(owner, driver)
+    for index in range(50):
+        cargo = "cg_" + uuid.uuid4().hex[:6]
+        room = get_or_create_deal_room(cargo, owner, driver)
+        deal_id = _mk_accepted_deal(cargo, owner, driver, room)
+        with get_conn() as c:
+            c.execute("UPDATE deals SET status='cancelled' WHERE id=?", (deal_id,))
+            c.execute(
+                "INSERT INTO chat_messages (room_id, sender_id, text, is_read) VALUES (?,?,?,0)",
+                (room, driver, "unread-cancelled-room"),
+            )
+            c.execute("UPDATE chat_rooms SET last_at=? WHERE id=?", (f"2026-10-07 12:{index:02d}:00", room))
+
+    active_cargo = "cg_" + uuid.uuid4().hex[:6]
+    active_room = get_or_create_deal_room(active_cargo, owner, driver)
+    _mk_accepted_deal(active_cargo, owner, driver, active_room)
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO chat_messages (room_id, sender_id, text, is_read) VALUES (?,?,?,0)",
+            (active_room, driver, "unread-active-room"),
+        )
+        c.execute("UPDATE chat_rooms SET last_at='2026-10-06 12:00:00' WHERE id=?", (active_room,))
+
+    rooms = my_rooms(user=_u(owner))["rooms"]
+    active = next((room for room in rooms if room["id"] == active_room), None)
+    assert active is not None, "recent cancelled rooms must not hide an older active room"
+    assert active["unread_count"] == 1
+    from api.chat import unread_count
+    assert unread_count(user=_u(owner))["unread"] == 1
 
 
 def test_third_user_cannot_read_or_send():

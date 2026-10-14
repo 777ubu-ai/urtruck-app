@@ -243,7 +243,7 @@ export default function RoutePointPicker({
                   style={s.row}
                   testID={`route-country-${code}`}
                 >
-                  <View style={s.icon}><CountryFlag code={code} width={28} /></View>
+                  <View style={s.icon}><CountryFlag code={code} width={22} /></View>
                   <Text style={[s.rowName, { color: v1.text, flex: 1 }]}>{localName}</Text>
                   <Text style={{ color: v1.textMuted, fontSize: 16 }}>›</Text>
                 </TouchableOpacity>
@@ -332,7 +332,7 @@ function PointRow({ p, v1, s, onPick }) {
     : localizePlace(p.name, lang);
   return (
     <TouchableOpacity onPress={onPick} style={s.row} testID={`route-point-${p.name}`}>
-      <View style={s.icon}><CountryFlag code={p.country} width={28} /></View>
+      <View style={s.icon}><CountryFlag code={p.country} width={22} /></View>
       <View style={{ flex: 1 }}>
         <Text style={[s.rowName, { color: v1.text }]} numberOfLines={1}>
           {displayName}

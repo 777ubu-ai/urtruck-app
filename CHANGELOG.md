@@ -6,6 +6,65 @@
 Нативные билды (App Store / Google Play) версионируются отдельно в `app.json`
 (`version` / `buildNumber` / `versionCode`) и в этот файл не попадают.
 
+## [2.2.0] - 2026-09-17
+### Added
+- **Подписка UrTruck Pro через Google Play Billing.** Полный цикл:
+  покупка в приложении → серверная верификация → активация статуса.
+  - Клиент: `react-native-iap@13.0.4` (Play Billing 8), экраны
+    `SubscriptionScreen` («Подписка») и `SubscriptionPlansScreen`
+    («Тарифы и лимиты») в Профиле, restore purchase, управление
+    подпиской (deep link в Google Play), показ автопродления и даты
+    окончания периода. На web покупка не показывается (Billing —
+    Android-only), нативный модуль на вебе не импортируется вовсе.
+  - Backend: роутер `/api/v1/payments/` — `subscription/status`,
+    `google/verify`, `google/rtdn` (Real-time Developer Notifications
+    от Pub/Sub, чтобы продления/отмены доезжали без участия клиента).
+  - Верификация покупок — через Android Publisher API сервис-аккаунтом.
+    Пока `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` пуст, работает MOCK-режим
+    (только для dev, см. «Режимы MOCK vs REAL» в CLAUDE.md).
+  - Схема: `subscriptions`, `contact_reveals`, `deal_accepts`
+    (`database/schemas/payments_schema.sql`), DAL `subscription_dal.py`
+    с единой точкой правды `can_reveal_contact()` / `can_accept_deal()`.
+  - i18n: ключи `subscription_*` и `plans_*` во всех 4 языках (RU/KK/ZH/EN).
+- **Лимиты монетизации — ВЫКЛЮЧЕНЫ по умолчанию.**
+  - Раскрытие контактов: `FREE_CONTACT_LIMIT=3`,
+    `PREMIUM_CONTACT_LIMIT=0` (0 = безлимит для подписчика). Гейт стоит
+    в `get_deal()` ПОСЛЕ существующей fail-closed проверки 403 —
+    авторизация не затронута, урезается только то, что уже разрешено
+    показать. Повторный просмотр уже раскрытого контакта лимит не тратит.
+  - Принятие сделок: `FREE_DEAL_ACCEPT_LIMIT=5`,
+    `PRO_DEAL_ACCEPT_LIMIT=30` в месяц. Лимит тратит сторона, которая
+    ПРИНИМАЕТ сделку (и водитель, и грузоотправитель); отмена сделки
+    лимит не возвращает. При исчерпании — `402 deal_limit_exceeded`,
+    клиент показывает тост и ведёт на экран тарифов (`BargainCard`,
+    `CargoDetail`, `TripDetail`).
+
+### Changed
+- `env_check` блокирует production-старт, если монетизация включена без
+  `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`: в MOCK-режиме верификация приняла
+  бы ЛЮБОЙ purchase token как оплаченный, т.е. платный доступ
+  открывался бы по подделке.
+- CI: `android-actions/setup-android` теперь ставит только
+  `platform-tools`. Раннеры GitHub обновили cmdline-tools до 16.0, где
+  пакета `tools` больше нет, и дефолт экшена ронял `sdkmanager` на шаге
+  Setup Android SDK — падали ВСЕ Android-сборки (правка во всех пяти
+  Android-воркфлоу).
+
+### Ops note
+- Флаги `CONTACTS_MONETIZATION_ENABLED` и
+  `DEAL_ACCEPT_MONETIZATION_ENABLED` по умолчанию `false` — выкатка
+  **не меняет поведение** для пользователей. Включение — отдельное
+  решение владельца через серверный `.env`.
+- Проверено на реальном устройстве: тестовая покупка через Google Play
+  (License tester) прошла end-to-end — Google Play → `google/verify` на
+  бэкенде → запись в БД → в приложении Pro активен, лимит сделок
+  переключился с «0 из 5» на «0 из 30».
+- Ветка `payments` пока **не влита в `main`**: прод-бэкенд сейчас
+  обслуживается дивергентной веткой `qa/master-hard-qa-20260916`
+  (158 коммитов от `main`), которой управляет отдельный контролируемый
+  деплой. Устойчивая интеграция платёжки требует вливания в ту ветку,
+  что реально едет на прод.
+
 ## [2.1.2] - 2026-08-19
 ### Ops note
 - Retrigger деплоя после мержа PR #234 (реальный маршрут по дорогам

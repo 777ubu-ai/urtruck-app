@@ -1,9 +1,12 @@
 import asyncio
 import io
 
-from fastapi import UploadFile
+from fastapi import FastAPI, UploadFile
+from fastapi.testclient import TestClient
+import pytest
 
 from api import deal_room
+from tests.auth_harness import override_require_level
 
 
 class _Row(dict):
@@ -93,6 +96,71 @@ def test_attachment_notifies_the_other_participant(monkeypatch):
         "i18n_event": "chat_attachment",
         "i18n_params": {"filename": "invoice.pdf"},
     }
+
+
+@pytest.mark.parametrize(("client_name", "stored_name"), [
+    ("QA2%20acceptance%20sample.pdf", "QA2 acceptance sample.pdf"),
+    ("Счёт №7.pdf", "Счёт №7.pdf"),
+    ("测试 文件.pdf", "测试 文件.pdf"),
+    ("100% готово.pdf", "100% готово.pdf"),
+    ("Already decoded.pdf", "Already decoded.pdf"),
+    ("%2e%2e%2fsecrets.pdf", "secrets.pdf"),
+])
+def test_upload_attachment_api_normalizes_multipart_filename(client_name, stored_name, monkeypatch):
+    """Exercise the real upload route through persistence and its response."""
+    persisted = {}
+
+    class _AttachmentConnection(_Connection):
+        def execute(self, sql, params=None):
+            super().execute(sql, params)
+            if "UPDATE message_attachments SET original_name" in sql and params:
+                persisted["original_name"] = params[0]
+            return self
+
+        def fetchone(self):
+            sql = getattr(self, "_last_sql", "")
+            if "chat_rooms" in sql:
+                return _Row(participant_1="driver-1", participant_2="shipper-1")
+            if "message_attachments" in sql:
+                return _Row(**persisted)
+            return None
+
+    monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room_id: True)
+    monkeypatch.setattr(deal_room.dr, "is_participant", lambda _room_id, _user_id: True)
+    monkeypatch.setattr(deal_room, "_assert_deal_room_open", lambda _room_id, _user_id: None)
+    monkeypatch.setattr(deal_room, "get_conn", lambda: _AttachmentConnection())
+    monkeypatch.setattr(deal_room.storage_service, "save_file", lambda *_args, **_kwargs: "/storage/attachment.pdf")
+    monkeypatch.setattr(deal_room.file_signing, "sign", lambda url: url)
+    monkeypatch.setattr(deal_room, "create_notification", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(deal_room, "send_to_user", lambda *_args, **_kwargs: None)
+
+    def create_attachment(**kwargs):
+        persisted.update({
+            "id": "attachment-api-1",
+            "url": "/storage/attachment.pdf",
+            "conversation_id": kwargs["conversation_id"],
+            "uploader_id": kwargs["uploader_id"],
+            "kind": kwargs["kind"],
+            "mime_type": kwargs["mime_type"],
+            "size_bytes": kwargs["size_bytes"],
+            "upload_status": kwargs["upload_status"],
+            "message_id": kwargs["message_id"],
+        })
+        return dict(persisted)
+
+    monkeypatch.setattr(deal_room.dr, "create_attachment", create_attachment)
+    app = FastAPI()
+    app.include_router(deal_room.deal_room_router, prefix="/api/v1")
+    override_require_level(app, lambda: {"id": "driver-1"})
+    response = TestClient(app).post(
+        "/api/v1/chat/conversations/room-1/attachments",
+        data={"kind": "document"},
+        files={"file": (client_name, b"%PDF-1.7\n", "application/pdf")},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["attachment"]["original_name"] == stored_name
+    assert persisted["original_name"] == stored_name
 
 
 def test_attachment_push_uses_recipient_language_without_translating_filename():

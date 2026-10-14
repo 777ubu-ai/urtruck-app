@@ -18,8 +18,9 @@ test('voice one-tap STT attaches the current-language translation and remains re
   assert.match(voiceTextState, /api\.transcribe\(entry\.id, lang\)/);
   assert.match(voiceTextState, /translation_provider/);
   assert.match(voiceTextState, /translation_error/);
+  assert.match(chatApi, /"translation_reason_codes": translation_reason_codes/);
   assert.match(workspace, /const toggleVoiceOriginal = React\.useCallback/);
-  assert.match(workspace, /onRetryTranslation=\{\(\) => translateVoiceTranscript\(item\)\}/);
+  assert.match(workspace, /onRetryTranslation: \(\) => translateVoiceTranscript\(item\)/);
   assert.match(bubble, /const primaryTranscript = hasTranslation/);
   assert.match(bubble, /testID="voice-original-btn"/);
   assert.match(bubble, /testID="voice-transcription-retry"/);
@@ -32,22 +33,37 @@ test('queued translation and long transcription override the shared 20 second ti
   assert.match(frontendChatApi, /signal: controller\.signal/);
 });
 
-test('QA2 CPU speech inference uses bounded concurrent low-latency decoding', () => {
+test('QA2 CPU speech inference uses a bounded single-worker decoding contract', () => {
   assert.match(qa2Ai, /_translate_slot = threading\.BoundedSemaphore\(1\)/);
-  assert.match(qa2Ai, /_speech_slots = threading\.BoundedSemaphore\(2\)/);
-  assert.match(qa2Ai, /num_workers=2/);
+  // `bf3d9a5c` deliberately serialised large-v3-turbo inference on the
+  // four-core QA2 host.  Two concurrent CPU workers caused contention and
+  // made both phone requests less predictable; the bounded queue is the
+  // current contract, not a regression to paper over with a stale assertion.
+  assert.match(qa2Ai, /_speech_slots = threading\.BoundedSemaphore\(1\)/);
+  assert.match(qa2Ai, /num_workers=1/);
   assert.match(qa2Ai, /def transcribe\(file:/);
   assert.match(qa2Ai, /beam_size=1/);
   assert.match(qa2Ai, /best_of=1/);
   assert.match(qa2Ai, /condition_on_previous_text=False/);
-  assert.match(qa2Ai, /without_timestamps=True/);
+  assert.match(qa2Ai, /word_timestamps=False/);
 });
 
-test('persisted transcript reaches the second participant through the message API', () => {
-  assert.match(workspace, /transcript: message\.voice_transcript \|\| null/);
-  assert.match(workspace, /transcriptLang: message\.voice_transcript_lang \|\| null/);
-  assert.match(workspace, /transcriptProvider: message\.voice_transcript_provider \|\| null/);
+test('persisted transcript stays hidden from polling until an explicit voice-text request', () => {
+  assert.match(workspace, /voiceProcessingStatus: message\.voice_processing_status \|\| null/);
+  assert.match(workspace, /voiceTranscriptReady: !!message\.voice_transcript_ready/);
+  assert.match(frontendChatApi, /async voiceText\(messageId, targetLang = null\)/);
+  assert.match(chatApi, /@chat_router\.get\("\/voice\/\{message_id\}\/text"\)/);
+  assert.match(chatApi, /m\.pop\("voice_transcript", None\)/);
   assert.match(chatApi, /UPDATE chat_messages SET voice_transcript =/);
+});
+
+test('sender has no transcript controls, while recipient can reveal their own cached result', () => {
+  assert.match(workspace, /const voiceTranscriptHandlers = item\.voice && !item\.mine \?/);
+  assert.match(workspace, /transcript=\{item\.mine \? undefined : voiceTranscripts\[item\.id\]\}/);
+  assert.match(workspace, /onToggleTranscript: \(\) => toggleVoiceTranscript\(item\)/);
+  assert.match(workspace, /\{\.\.\.voiceTranscriptHandlers\}/);
+  assert.match(chatApi, /m\.pop\("voice_transcript", None\)/);
+  assert.match(chatApi, /@chat_router\.get\("\/voice\/\{message_id\}\/text"\)/);
 });
 
 test('voice push has its own event and is localized per device', () => {

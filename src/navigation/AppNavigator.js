@@ -1,3 +1,4 @@
+import { onboardingNavKey } from '../utils/onboardingNavKey';
 import React from 'react';
 import { View, Text, Animated } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -33,6 +34,7 @@ import CargoDetailV2 from '../screens/CargoDetailV2';
 import DriverDetail from '../screens/DriverDetail';
 import ChatScreenV2 from '../screens/ChatScreenV2';
 import WalletScreen from '../screens/WalletScreen';
+import SubscriptionPlansScreen from '../screens/SubscriptionPlansScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ReviewsScreen from '../screens/ReviewsScreen';
 import FavoritesScreen from '../screens/FavoritesScreen';
@@ -68,13 +70,21 @@ import ProfileV2Screen from '../screens/onboarding/ProfileV2Screen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Chat is a single workspace window. Entry points may identify the same
+// conversation by deal, room, or partner, and may arrive while another root
+// screen is focused. A stable route key makes every Chat navigation return to
+// this one stack entry; ChatScreenV2 resolves the latest params on reuse.
+function chatRouteId() {
+  return 'chat-workspace';
+}
+
 // (Стаб центральной «+»-вкладки удалён 26.07.2026: у клиента размещение груза
 // переехало кнопкой внутрь «Мои грузы», вкладки Publish больше нет.)
 
 function MainTabs({ route }) {
   const { session } = useAuth();
   const { theme } = useTheme();
-  const role = session?.user?.role || route?.params?.role || 'client';
+  const role = ['driver', 'client'].includes(session?.user?.role) ? session.user.role : (route?.params?.role || 'client');
   const isDriver = role === 'driver';
   const [, setTick] = useState(0);
 
@@ -149,7 +159,7 @@ function MainTabs({ route }) {
 
 // Реактивная навигация на основе auth state
 export default function AppNavigator() {
-  const { session, hasToken, loading } = useAuth();
+  const { session, hasToken, loading, verificationLevel } = useAuth();
   const { theme } = useTheme();
 
   if (loading) {
@@ -191,7 +201,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Favorites" component={FavoritesScreen} />
         <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
-        <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+        <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
         <Stack.Screen name="ChatsList" component={ChatsListScreen} />
         <Stack.Screen name="MyTripsList" component={MyTripsScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
@@ -218,14 +228,18 @@ export default function AppNavigator() {
   // авторизованном наборе), после logout Navigator пытался остаться на
   // маршруте "Profile", которого в новом (неавторизованном) наборе экранов
   // нет — итог: завис на старом кадре, hasToken/session при этом уже
-  // корректно false (см. [NAV DIAG] лог). key меняет "категорию" стека
-  // (guest/norole/main) → React полностью размонтирует и заново монтирует
-  // Stack.Navigator при переходе между категориями, что сбрасывает его
-  // internal state и всегда стартует с initialRouteName нового набора.
-  const navKey = (!hasToken || !session) ? 'guest' : (!hasRole ? 'norole' : 'main');
+  // корректно false (см. [NAV DIAG] лог). Main и onboarding имеют разные
+  // key, поэтому logout сбрасывает стек. Guest → verified без роли сохраняет
+  // тот же onboarding navigator: иначе reset из завершившегося OTP попадает
+  // в уже размонтированный стек. Cold start подтверждённого аккаунта без роли открывает RoleV2.
+  const navKey = onboardingNavKey({ hasToken, session, hasRole, verificationLevel });
 
   return (
-    <Stack.Navigator key={navKey} screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      key={navKey === 'norole' ? 'guest' : navKey}
+      initialRouteName={navKey === 'norole' ? 'RoleV2' : (navKey === 'main' ? 'Main' : 'OnboardingV2')}
+      screenOptions={{ headerShown: false }}
+    >
       {!hasToken || !session || !hasRole ? (
         // Нет токена / нет сессии / нет роли → inDrive-style onboarding.
         // RC2 batch 1: первый экран = OnboardingV2 (3-слайдовая карусель +
@@ -256,7 +270,7 @@ export default function AppNavigator() {
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
           <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
@@ -273,7 +287,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
           <Stack.Screen name="Favorites" component={FavoritesScreen} />
           <Stack.Screen name="ChatsList" component={ChatsListScreen} />
@@ -287,6 +301,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="Stats" component={StatsScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+          <Stack.Screen name="CountryPicker" component={CountryPickerSheet} options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="CargoRuqsatInfo" component={CargoRuqsatInfoScreen} />
           <Stack.Screen name="Security" component={SecurityScreen} />
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
@@ -323,6 +338,11 @@ export default function AppNavigator() {
               by navigation.navigate('Wallet') so any in-app deep link or
               future monetization feature can still open it. */}
           <Stack.Screen name="Wallet" component={WalletScreen} />
+          {/* Тарифы и лимит принятия сделок — единственная монетизационная
+              подписка в проекте; отдельный экран лимита раскрытия контактов
+              убран (продукт не ограничивает показ телефона контрагента),
+              открывается из ☰ → Профиль → «Тарифы и лимиты». */}
+          <Stack.Screen name="SubscriptionPlans" component={SubscriptionPlansScreen} options={{ headerShown: false }} />
           <Stack.Screen name="HowItWorks" component={HowItWorksScreen} />
           <Stack.Screen name="About" component={AboutScreen} />
         </>

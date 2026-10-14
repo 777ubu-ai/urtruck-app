@@ -96,9 +96,10 @@ def test_deal_status_notifications_cover_release_status_flow():
         assert f'"{status}":' in MARKET
     # Push-closure track: title/body_txt now come from push_i18n (localized)
     # instead of the old hardcoded-RU `labels` dict; event_key added.
-    assert 'title, body_txt = push_i18n.push_text(push_events[new_status], loc, route=route)' in MARKET
-    assert 'create_notification(other_id, "deal_status", title, body_txt, "🚛", url=deal_url, event_key=event_key)' in MARKET
-    assert 'send_to_user(other_id, title, body_txt, url=deal_url, kind="deal_status",' in MARKET
+    assert 'title, body_txt = push_i18n.push_text(i18n_event, locale, route=route)' in MARKET
+    assert 'create_notification(other_id, "deal_status", title, body_txt, "🚛", url=deal_url, event_key=event_key, conn=c)' in MARKET
+    assert '_record_deal_transition_effects(c, deal, new_status, actor_uid, event_payload)' in MARKET
+    assert 'kind="deal_status", data=payload["data"]' in MARKET
     assert 'event_key = f"deal:{deal_id}:status:{new_status}"' in MARKET
 
 
@@ -121,13 +122,16 @@ def test_tracking_notifications_use_deal_tracking_action_link_for_push_and_in_ap
 
 def test_push_api_wraps_background_sender_without_removing_kind_or_data():
     assert 'def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str = "info", data: dict = None)' in PUSH
-    assert 'push_sender.send(user_id, title, body, url=url, kind=kind, data=data)' in PUSH
+    assert 'push_sender.send(user_id, title, body, url=url, kind=kind, data=payload_data, event_id=event_id)' in PUSH
+    assert 'payload_data = dict(data or {})' in PUSH
+    assert PUSH.index('push_gateway.enqueue_event(event_id', PUSH.index('def send_to_user')) < PUSH.index('threading.Thread(target=_bg', PUSH.index('def send_to_user'))
 
 
-def test_bid_expiry_has_no_notification_sender_yet_so_live_matrix_must_not_claim_pass():
-    assert "create_notification(" not in EXPIRY
-    assert "send_to_user(" not in EXPIRY
-    assert "expired_bids" in EXPIRY
+def test_bid_expiry_queues_bell_and_push_in_the_expiry_transaction():
+    assert "_queue_expired_bid_notifications(conn, bid)" in EXPIRY
+    assert 'push_gateway.enqueue_event(event_key, "bid.expired", recipient' in EXPIRY
+    assert "}, conn=conn)" in EXPIRY
+    assert "INSERT INTO notifications" in EXPIRY
 
 
 def test_critical_bid_and_deal_status_events_now_carry_typed_payload_and_event_key():

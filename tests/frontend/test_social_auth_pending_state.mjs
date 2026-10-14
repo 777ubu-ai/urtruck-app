@@ -15,8 +15,9 @@ test('legacy provider values are explicitly treated as stale', () => {
   assert.match(source, /state\.legacy \|\| state\.startedAt == null/);
 });
 
-test('callback can override stale metadata while completing the flow', () => {
-  assert.match(source, /hasCallback \|\| !isPendingProviderStale\(state, now\)/);
+test('pending OAuth UI is restored only for a real callback', () => {
+  assert.match(source, /Boolean\(state\?\.provider\) && hasCallback/);
+  assert.doesNotMatch(source, /hasCallback \|\| !isPendingProviderStale/);
 });
 
 test('provider state is parsed instead of restored as a raw string', () => {

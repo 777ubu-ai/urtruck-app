@@ -10,6 +10,9 @@ Exit != 0 на любой ошибке. Совместим с pytest.
 """
 import os
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 TEST_DB = os.environ.setdefault("DB_PATH", "/tmp/urtruck_test_logout_push.db")
@@ -22,6 +25,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from database import db as ddb
 from database import registration_dal as reg_dal
+from database.db import get_conn
 
 ddb.init_db()
 reg_dal.init_registration_schema()
@@ -29,11 +33,27 @@ reg_dal.init_registration_schema()
 from api.registration import reg_router
 from api.push import push_router
 from services import push_sender
+from services import push_gateway
 
 app = FastAPI()
 app.include_router(reg_router, prefix="/api/v1/register")
 app.include_router(push_router, prefix="/api/v1/push")
-client = TestClient(app)
+_raw_client = TestClient(app)
+class _NativeClient:
+    def __getattr__(self, name): return getattr(_raw_client, name)
+    def post(self, url, *args, **kwargs):
+        payload = kwargs.get("json")
+        if url.endswith("/register-native") and isinstance(payload, dict):
+            payload.setdefault("provider", "fcm"); payload.setdefault("platform", "android")
+        return _raw_client.post(url, *args, **kwargs)
+client = _NativeClient()
+
+def _native_tokens(uid):
+    return [d for d in push_gateway.active_devices(uid) if d.get("push_provider") in ("fcm", "apns")]
+
+def _web_subs(uid):
+    with get_conn() as c:
+        return c.execute("SELECT * FROM push_subscriptions WHERE user_id=? AND active=1", (uid,)).fetchall()
 
 
 def _new_user_token():
@@ -49,7 +69,7 @@ def _auth(token):
 
 def test_logout_cleanup_deactivates_both_web_and_native():
     uid, tok = _new_user_token()
-    native_tok = "ExponentPushToken[unit-test-logout-both]"
+    native_tok = "fcm-unit-test-logout-both"
     endpoint = "https://fcm.googleapis.com/fcm/send/unit-test-logout-both"
 
     client.post("/api/v1/push/register-native", json={"token": native_tok, "device_id": "d-lc-1"}, headers=_auth(tok))
@@ -57,16 +77,16 @@ def test_logout_cleanup_deactivates_both_web_and_native():
         "endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}, "device_id": "d-lc-1",
     }, headers=_auth(tok))
 
-    assert len(push_sender._native_tokens(uid)) == 1
-    assert len(push_sender._web_subs(uid)) == 1
+    assert len(_native_tokens(uid)) == 1
+    assert len(_web_subs(uid)) == 1
 
     r = client.post("/api/v1/push/logout-cleanup", json={"device_id": "d-lc-1"}, headers=_auth(tok))
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["web"] == 1 and body["native"] == 1
 
-    assert push_sender._native_tokens(uid) == []
-    assert push_sender._web_subs(uid) == []
+    assert _native_tokens(uid) == []
+    assert _web_subs(uid) == []
 
 
 def test_logout_cleanup_requires_auth():
@@ -79,28 +99,28 @@ def test_logout_cleanup_without_device_id_deactivates_all_devices():
     обязан деактивировать ВСЕ устройства текущего пользователя, не только
     одно."""
     uid, tok = _new_user_token()
-    t1, t2 = "ExponentPushToken[unit-test-lc-multi-1]", "ExponentPushToken[unit-test-lc-multi-2]"
+    t1, t2 = "fcm-unit-test-lc-multi-1", "fcm-unit-test-lc-multi-2"
     client.post("/api/v1/push/register-native", json={"token": t1, "device_id": "d-lc-2a"}, headers=_auth(tok))
     client.post("/api/v1/push/register-native", json={"token": t2, "device_id": "d-lc-2b"}, headers=_auth(tok))
-    assert len(push_sender._native_tokens(uid)) == 2
+    assert len(_native_tokens(uid)) == 2
 
     r = client.post("/api/v1/push/logout-cleanup", json={}, headers=_auth(tok))
     assert r.status_code == 200, r.text
-    assert push_sender._native_tokens(uid) == []
+    assert _native_tokens(uid) == []
 
 
 def test_logout_cleanup_does_not_affect_other_users():
     uid_a, tok_a = _new_user_token()
     uid_b, tok_b = _new_user_token()
-    tok_native_a = "ExponentPushToken[unit-test-lc-iso-a]"
-    tok_native_b = "ExponentPushToken[unit-test-lc-iso-b]"
+    tok_native_a = "fcm-unit-test-lc-iso-a"
+    tok_native_b = "fcm-unit-test-lc-iso-b"
     client.post("/api/v1/push/register-native", json={"token": tok_native_a, "device_id": "d-lc-3a"}, headers=_auth(tok_a))
     client.post("/api/v1/push/register-native", json={"token": tok_native_b, "device_id": "d-lc-3b"}, headers=_auth(tok_b))
 
     client.post("/api/v1/push/logout-cleanup", json={}, headers=_auth(tok_a))
 
-    assert push_sender._native_tokens(uid_a) == [], "A должен быть деактивирован"
-    assert len(push_sender._native_tokens(uid_b)) == 1, "B не должен пострадать от logout A"
+    assert _native_tokens(uid_a) == [], "A должен быть деактивирован"
+    assert len(_native_tokens(uid_b)) == 1, "B не должен пострадать от logout A"
 
 
 def test_deactivate_user_push_helper_used_by_delete_account_path():
@@ -109,19 +129,19 @@ def test_deactivate_user_push_helper_used_by_delete_account_path():
     delete_account-путём в registration.py."""
     import api.push as push_api
     uid, tok = _new_user_token()
-    native_tok = "ExponentPushToken[unit-test-helper-direct]"
+    native_tok = "fcm-unit-test-helper-direct"
     client.post("/api/v1/push/register-native", json={"token": native_tok, "device_id": "d-h-1"}, headers=_auth(tok))
     result = push_api.deactivate_user_push(uid, reason="account_deleted")
     assert result["native"] == 1
-    assert push_sender._native_tokens(uid) == []
+    assert _native_tokens(uid) == []
 
 
 def test_register_logout_server_side_deactivates_push_and_frees_same_device_for_next_user():
     uid_a, tok_a = _new_user_token()
     uid_b, tok_b = _new_user_token()
     device = "d-register-logout-switch-1"
-    tok_native_a = "ExponentPushToken[unit-test-register-logout-a]"
-    tok_native_b = "ExponentPushToken[unit-test-register-logout-b]"
+    tok_native_a = "fcm-unit-test-register-logout-a"
+    tok_native_b = "fcm-unit-test-register-logout-b"
     endpoint_a = "https://fcm.googleapis.com/fcm/send/unit-test-register-logout-a"
 
     r1 = client.post("/api/v1/push/register-native", json={"token": tok_native_a, "device_id": device}, headers=_auth(tok_a))
@@ -130,20 +150,20 @@ def test_register_logout_server_side_deactivates_push_and_frees_same_device_for_
         "endpoint": endpoint_a, "keys": {"p256dh": "p", "auth": "a"}, "device_id": device,
     }, headers=_auth(tok_a))
     assert r2.status_code == 200, r2.text
-    assert len(push_sender._native_tokens(uid_a)) == 1
-    assert len(push_sender._web_subs(uid_a)) == 1
+    assert len(_native_tokens(uid_a)) == 1
+    assert len(_web_subs(uid_a)) == 1
 
     logout = client.post("/api/v1/register/logout", headers=_auth(tok_a))
     assert logout.status_code == 200, logout.text
     assert logout.json()["ok"] is True
     assert logout.json()["revoked"] is True
-    assert push_sender._native_tokens(uid_a) == []
-    assert push_sender._web_subs(uid_a) == []
+    assert _native_tokens(uid_a) == []
+    assert _web_subs(uid_a) == []
 
     r3 = client.post("/api/v1/push/register-native", json={"token": tok_native_b, "device_id": device}, headers=_auth(tok_b))
     assert r3.status_code == 200, r3.text
-    assert push_sender._native_tokens(uid_a) == []
-    assert [t["token"] for t in push_sender._native_tokens(uid_b)] == [tok_native_b]
+    assert _native_tokens(uid_a) == []
+    assert [t["push_token"] for t in _native_tokens(uid_b)] == [tok_native_b]
 
     from database.db import get_conn
     with get_conn() as c:
@@ -153,6 +173,123 @@ def test_register_logout_server_side_deactivates_push_and_frees_same_device_for_
     assert old_row["active"] == 0 and old_row["invalidated_reason"] == "logout"
     assert old_web["active"] == 0 and old_web["invalidated_reason"] == "logout"
     assert new_row["user_id"] == uid_b and new_row["active"] == 1
+
+
+def test_register_logout_wildcard_fence_rejects_already_authenticated_stale_writes(monkeypatch):
+    """The canonical logout must be sufficient when logout-cleanup is lost.
+
+    Monkeypatching the auth lookup models requests which captured ``user_id``
+    before logout but only reached their SQLite write afterwards.
+    """
+    import api.push as push_api
+
+    uid, tok = _new_user_token()
+    device = "d-register-logout-race-1"
+    native_token = "fcm-unit-test-register-logout-race"
+    endpoint = "https://fcm.googleapis.com/fcm/send/register-logout-race"
+
+    native = client.post(
+        "/api/v1/push/register-native",
+        json={"token": native_token, "device_id": device},
+        headers=_auth(tok),
+    )
+    web = client.post(
+        "/api/v1/push/subscribe",
+        json={"endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}, "device_id": device},
+        headers=_auth(tok),
+    )
+    assert native.status_code == 200 and web.status_code == 200
+
+    logout = client.post("/api/v1/register/logout", headers=_auth(tok))
+    assert logout.status_code == 200, logout.text
+    assert _native_tokens(uid) == [] and _web_subs(uid) == []
+
+    monkeypatch.setattr(push_api, "_optional_user_id", lambda _authorization: uid)
+    stale_native = client.post(
+        "/api/v1/push/register-native",
+        json={"token": native_token, "device_id": device},
+        headers=_auth(tok),
+    )
+    stale_web = client.post(
+        "/api/v1/push/subscribe",
+        json={"endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}, "device_id": device},
+        headers=_auth(tok),
+    )
+    assert stale_native.status_code == 409, stale_native.text
+    assert stale_web.status_code == 409, stale_web.text
+    assert stale_native.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
+    assert stale_web.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
+    assert _native_tokens(uid) == [] and _web_subs(uid) == []
+
+
+def test_register_logout_wildcard_fence_rejects_missing_or_invalid_device_id():
+    """A revoked bearer cannot return as an anonymous registration."""
+    uid, tok = _new_user_token()
+    native_token = "fcm-unit-test-register-logout-no-device"
+    created = client.post(
+        "/api/v1/push/register-native",
+        json={"token": native_token, "device_id": "d-register-logout-no-device"},
+        headers=_auth(tok),
+    )
+    assert created.status_code == 200, created.text
+
+    logout = client.post("/api/v1/register/logout", headers=_auth(tok))
+    assert logout.status_code == 200, logout.text
+    assert _native_tokens(uid) == []
+
+    for payload in ({"token": native_token}, {"token": native_token, "device_id": "invalid"}):
+        stale = client.post(
+            "/api/v1/push/register-native",
+            json=payload,
+            headers=_auth(tok),
+        )
+        assert stale.status_code == 409, stale.text
+        assert stale.json()["detail"] == "PUSH_SESSION_LOGGED_OUT"
+        assert _native_tokens(uid) == []
+
+
+def test_logout_cannot_commit_between_tombstone_check_and_native_upsert(monkeypatch):
+    """The whole registration write is serialized against canonical logout."""
+    import api.push as push_api
+
+    uid, tok = _new_user_token()
+    token = "fcm-unit-test-interleaved-logout"
+    device = "d-register-logout-interleaved"
+    initial = client.post(
+        "/api/v1/push/register-native",
+        json={"token": token, "device_id": device},
+        headers=_auth(tok),
+    )
+    assert initial.status_code == 200, initial.text
+
+    checked = threading.Event()
+    release = threading.Event()
+    original = push_api._resolve_ownership
+
+    def pause_after_checks(*args, **kwargs):
+        result = original(*args, **kwargs)
+        checked.set()
+        assert release.wait(3), "registration pause timed out"
+        return result
+
+    monkeypatch.setattr(push_api, "_resolve_ownership", pause_after_checks)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        registration = pool.submit(
+            client.post,
+            "/api/v1/push/register-native",
+            json={"token": token, "device_id": device},
+            headers=_auth(tok),
+        )
+        assert checked.wait(2), "registration did not reach ownership check"
+        logout = pool.submit(client.post, "/api/v1/register/logout", headers=_auth(tok))
+        time.sleep(0.1)
+        assert not logout.done(), "logout must wait for the registration writer transaction"
+        release.set()
+        assert registration.result(timeout=3).status_code == 200
+        logout_response = logout.result(timeout=3)
+
+    assert logout_response.status_code == 200, logout_response.text
+    assert _native_tokens(uid) == []
 
 
 if __name__ == "__main__":
