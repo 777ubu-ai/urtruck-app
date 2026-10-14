@@ -113,7 +113,8 @@ def test_dual_keeps_expo_installation_when_both_known_app_ids_differ():
 
 def test_dual_fallback_requires_exact_installation_identity():
     native = _device(1, "fcm", "install-1")
-    fallback = _device(2, "expo", "install-1", "ExpoPushToken[legacy]")
+    fallback = {**_device(2, "expo", "install-1", "ExpoPushToken[legacy]"),
+                "app_id": None}
     other_app = {**_device(3, "expo", "install-1", "ExpoPushToken[qa]"),
                  "app_id": "com.urtruck.app.qa2"}
     assert push_gateway._expo_fallbacks_for_mode([native, fallback, other_app], "dual") == {1: fallback}
@@ -121,7 +122,7 @@ def test_dual_fallback_requires_exact_installation_identity():
 
 def test_dual_sends_expo_only_after_provider_confirms_native_token_invalid(monkeypatch):
     rows = [_device(1, "fcm", "install-1"),
-            _device(2, "expo", "install-1", "ExpoPushToken[legacy]")]
+            {**_device(2, "expo", "install-1", "ExpoPushToken[legacy]"), "app_id": None}]
 
     class InvalidNative:
         def supports_platform(self, platform):

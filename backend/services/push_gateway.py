@@ -579,7 +579,7 @@ def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[d
 
 def _expo_fallbacks_for_mode(devices: list[dict[str, Any]], mode: str,
                             provider_filter: Optional[str] = None) -> dict[int, dict[str, Any]]:
-    """Return one exact-install Expo fallback for native tokens rejected by provider."""
+    """Return one same-install Expo fallback after native invalid-token confirmation."""
     if mode != "dual" or provider_filter is not None:
         return {}
     fallbacks: dict[int, dict[str, Any]] = {}
@@ -595,14 +595,22 @@ def _expo_fallbacks_for_mode(devices: list[dict[str, Any]], mode: str,
         if identity in seen:
             continue
         seen.add(identity)
-        fallback = next((expo for expo in devices
-                         if expo.get("push_provider") == "expo"
-                         and expo.get("device_id")
-                         and (str(expo.get("app_id") or ""),
-                              str(expo.get("platform") or ""),
-                              str(expo.get("device_id"))) == identity
-                         and str(expo.get("push_token") or "").startswith(
-                             ("ExpoPushToken[", "ExponentPushToken["))), None)
+        expo_rows = [expo for expo in devices
+                     if expo.get("push_provider") == "expo"
+                     and expo.get("device_id")
+                     and str(expo.get("platform") or "") == identity[1]
+                     and str(expo.get("device_id")) == identity[2]
+                     and str(expo.get("push_token") or "").startswith(
+                         ("ExpoPushToken[", "ExponentPushToken["))]
+        # Prefer a proven same-app association. An Expo registration with a
+        # missing app_id is only a fallback candidate after the provider has
+        # rejected this native token; it never runs alongside a successful
+        # native send. Explicitly different app IDs remain separate installs.
+        fallback = next((expo for expo in expo_rows
+                         if str(expo.get("app_id") or "") == identity[0]), None)
+        if fallback is None:
+            fallback = next((expo for expo in expo_rows
+                             if not str(expo.get("app_id") or "")), None)
         if fallback:
             fallbacks[int(native["id"])] = fallback
     return fallbacks
