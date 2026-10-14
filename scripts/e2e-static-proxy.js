@@ -63,7 +63,7 @@ function serveStatic(req, res) {
 }
 
 http.createServer((req, res) => {
-  if (req.url.startsWith('/api/') || req.url.startsWith('/security/')) return proxy(req, res);
+  if (req.url.startsWith('/api/') || req.url.startsWith('/security/') || req.url.startsWith('/storage/')) return proxy(req, res);
   return serveStatic(req, res);
 }).listen(PORT, '127.0.0.1', () => {
   console.log(`[e2e-static-proxy] http://127.0.0.1:${PORT}  → backend ${BACKEND}`);

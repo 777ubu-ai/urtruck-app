@@ -101,3 +101,6 @@ google-play-service-account.json
 # Рабочие папки с сертификатами Play Console — не должны попасть в git
 ключи для play console/
 Проверь пж/
+
+# Логи локального стенда payments (scripts/local-payments-stack.ps1)
+.local-stack/
