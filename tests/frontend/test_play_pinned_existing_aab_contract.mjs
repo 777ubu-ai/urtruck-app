@@ -17,6 +17,7 @@ test('pinned existing-AAB mode is opt-in and bound to the reviewed executable to
   assert.match(workflow, /Unexpected non-release-tooling path after frozen app source/);
   assert.match(workflow, /EXPECTED_RUN_ID: "38512422153"/);
   assert.match(workflow, /EXPECTED_ARTIFACT_ID: "11870969860"/);
+  assert.match(workflow, /urtruck-existing-aab\/UrTruck-aab\/app-release\.aab/);
   assert.match(workflow, /EXPECTED_SOURCE_SHA: "9ac0b6200e1e91aa40b99cd1f4943062e2acc048"/);
   assert.match(workflow, /scripts\/ops\/google-play-pinned-track\.mjs/);
 });
