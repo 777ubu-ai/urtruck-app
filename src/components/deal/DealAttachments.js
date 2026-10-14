@@ -9,6 +9,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
 import { chatAPI, documentKindFromFile } from '../../utils/chatAPI';
 import { compressImage } from '../../utils/imageCompress';
+import { displayAttachmentFilename } from '../../utils/attachmentFilename';
 import { accentFor } from './DealRoom';
 import PdfPreviewModal from './PdfPreviewModal';
 
@@ -23,7 +24,7 @@ const STATUS_META = {
 let _localSeq = 0;
 
 function attachmentLabel(t, a) {
-  const readable = a?.original_name || a?.filename || a?.file_name || a?.name;
+  const readable = displayAttachmentFilename(a?.original_name || a?.filename || a?.file_name || a?.name);
   if (readable && !/^[a-f0-9]{24,}$/i.test(String(readable))) return String(readable);
   const isDoc = a?.kind === 'document' || !String(a?.mime_type || '').startsWith('image/');
   return isDoc ? t('attachment_document') : t('attachment_photo');
@@ -43,7 +44,7 @@ function isOfficeDocument(name, mime) {
 }
 
 function isPdfAttachment(item) {
-  const name = item?.original_name || item?.filename || item?.file_name || item?.name;
+  const name = displayAttachmentFilename(item?.original_name || item?.filename || item?.file_name || item?.name);
   return String(name || '').toLowerCase().endsWith('.pdf')
     || String(item?.mime_type || item?.mime || '').toLowerCase().includes('pdf');
 }

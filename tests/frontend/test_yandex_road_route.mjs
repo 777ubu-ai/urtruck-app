@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { parseRouteCities } from '../../src/utils/geo.js';
 
 const mapSrc = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
 const geoSrc = fs.readFileSync('src/utils/geo.js', 'utf8');
@@ -30,6 +31,17 @@ test('Bakhty-Tacheng checkpoint remains normalized as one border corridor', () =
   assert.match(geoSrc, /'Чугучак': \[46\.739131, 82\.983797\]/);
   assert.match(geoSrc, /isBakhtyTachengBorderPair/);
   assert.match(geoSrc, /return \[CITIES\['Бахты'\]\]/);
+});
+
+test('Ош → Поти resolves both city centres before authenticated road routing', () => {
+  assert.deepEqual(parseRouteCities('Ош'), [[40.5283, 72.7985]]);
+  assert.deepEqual(parseRouteCities('Поти'), [[42.14272, 41.67384]]);
+  assert.deepEqual(parseRouteCities('Poti'), [[42.14272, 41.67384]]);
+  assert.match(geoSrc, /'Ош': \[40\.5283, 72\.7985\]/);
+  assert.match(geoSrc, /'Поти': \[42\.14272, 41\.67384\]/);
+  assert.match(geoSrc, /'Poti': \[42\.14272, 41\.67384\]/);
+  assert.match(geoSrc, /export const parseRouteCities/);
+  assert.match(mapSrc, /routingAPI\.roadRoute\(effectivePoints, vehicle\)/);
 });
 
 test('map JS key and Router API key are separated; Router key stays server-side', () => {

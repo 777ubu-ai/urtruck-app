@@ -8,10 +8,10 @@ import { useV1Colors, getStatusColor } from '../../theme/designV1';
 import { systemEventText } from './DealRoom';
 
 const COPY = {
-  RU: { empty: 'История рейса пока пуста', location: 'Место', actor: 'Кто обновил' },
-  EN: { empty: 'Trip history is empty', location: 'Location', actor: 'Updated by' },
-  ZH: { empty: '暂无运输记录', location: '地点', actor: '更新者' },
-  KK: { empty: 'Рейс тарихы әзірге бос', location: 'Орын', actor: 'Жаңартқан' },
+  RU: { empty: 'История рейса пока пуста', location: 'Место', actor: 'Кто обновил', driver: 'Водитель', shipper: 'Грузоотправитель' },
+  EN: { empty: 'Trip history is empty', location: 'Location', actor: 'Updated by', driver: 'Driver', shipper: 'Shipper' },
+  ZH: { empty: '暂无运输记录', location: '地点', actor: '更新者', driver: '司机', shipper: '货主' },
+  KK: { empty: 'Рейс тарихы әзірге бос', location: 'Орын', actor: 'Жаңартқан', driver: 'Жүргізуші', shipper: 'Жүк жөнелтуші' },
 };
 
 const ICON_BY_EVENT = {
@@ -110,14 +110,19 @@ function eventTime(ev) {
   return Number.isNaN(time) ? 0 : time;
 }
 
-function detailsFor(ev) {
+function detailsFor(ev, key, ui) {
   const p = ev?.payload || {};
+  const role = firstText(ev?.actor_role, p.actor_role);
   return {
     place: firstText(
       ev?.location_name, ev?.location, ev?.place, ev?.city,
       p.location_name, p.location, p.place, p.city, p.border_name,
     ),
-    actor: firstText(ev?.actor_name, ev?.actor, ev?.updated_by, p.actor_name, p.actor, p.updated_by),
+    actor: firstText(
+      ev?.actor_name, ev?.actor, ev?.updated_by, p.actor_name, p.actor, p.updated_by,
+      key === 'cancelled' && role === 'driver' ? ui.driver : null,
+      key === 'cancelled' && ['client', 'shipper'].includes(role) ? ui.shipper : null,
+    ),
     detail: firstText(ev?.comment, ev?.reason, ev?.description, ev?.details, p.comment, p.reason, p.description, p.details),
   };
 }
@@ -145,7 +150,7 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
     <View style={s.list} testID="deal-status-timeline">
       {sortedEvents.map((ev, index) => {
         const key = eventKey(ev);
-        const meta = detailsFor(ev);
+        const meta = detailsFor(ev, key, ui);
         const title = systemEventText(t, ev);
         const moment = formatMoment(ev, lang);
         const localizedPlace = meta.place ? (localizePlace(meta.place, lang) || meta.place) : '';

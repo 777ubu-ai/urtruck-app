@@ -921,7 +921,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setStatusLoading(true);
     try {
       const result = await marketAPI.updateDealStatus(dealId, nextStatus);
-      if (!result?.ok && result?.status) toast(result.detail || t('update_failed'), 'error');
+      if (result?.ok === false) toast(result.detail || t('update_failed'), 'error');
       await refreshDeal();
       await refreshTimeline();
       return result;
