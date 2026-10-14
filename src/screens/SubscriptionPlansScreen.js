@@ -7,7 +7,7 @@
 // Веб не продаёт подписку (Google Play Billing — Android-only) — на web
 // вместо CTA показываем пояснение и не трогаем нативный IAP-модуль вовсе.
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useV1Colors } from '../theme/designV1';
@@ -30,6 +30,7 @@ if (Platform.OS !== 'web') {
 }
 
 const FREE_DEAL_LIMIT = 5;
+const PLAY_SUBSCRIPTIONS_URL = 'https://play.google.com/store/account/subscriptions';
 
 export default function SubscriptionPlansScreen({ navigation, route }) {
   const v1 = useV1Colors();
@@ -130,6 +131,30 @@ export default function SubscriptionPlansScreen({ navigation, route }) {
     } catch {
       setPurchasing(false);
       toast(t('subscription_purchase_error'));
+    }
+  }, [status?.google_product_id, toast, t]);
+
+  // Отмена Google Play-подписки возможна только в интерфейсе Google Play
+  // (политика магазина) — открываем нативный экран управления подпиской,
+  // актуальный статус вернётся на сервер через RTDN-webhook.
+  const manageSubscription = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      await Linking.openURL(PLAY_SUBSCRIPTIONS_URL);
+      return;
+    }
+    try {
+      // v16 (Nitro): параметры skuAndroid/packageNameAndroid,
+      // packageNameAndroid обязателен на Android.
+      await RNIap.deepLinkToSubscriptions({
+        skuAndroid: status?.google_product_id,
+        packageNameAndroid: 'com.urtruck.app',
+      });
+    } catch {
+      try {
+        await Linking.openURL(PLAY_SUBSCRIPTIONS_URL);
+      } catch {
+        toast(t('subscription_manage_error'));
+      }
     }
   }, [status?.google_product_id, toast, t]);
 
@@ -240,6 +265,19 @@ export default function SubscriptionPlansScreen({ navigation, route }) {
               </View>
             )}
 
+            {isActive && !isPilotFree && (
+              <View style={s.manageBlock}>
+                <TouchableOpacity
+                  style={[s.manageBtn, { borderColor: accent }]}
+                  onPress={manageSubscription}
+                  testID="subscription-manage-button"
+                >
+                  <Text style={[s.manageBtnText, { color: accent }]}>{t('subscription_manage_cta')}</Text>
+                </TouchableOpacity>
+                <Text style={[s.manageHint, { color: v1.textMuted }]}>{t('subscription_cancel_hint')}</Text>
+              </View>
+            )}
+
             {isPilotFree ? (
               <View style={[s.activeNote, { borderColor: v1.border, backgroundColor: v1.surface }]}>
                 <Feather name="gift" size={18} color={accent} />
@@ -295,4 +333,8 @@ const s = StyleSheet.create({
   activeNote: { borderRadius: 14, borderWidth: 1, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
   activeNoteText: { fontSize: 14, fontWeight: '600', flex: 1 },
   webNote: { fontSize: 14, textAlign: 'center', paddingTop: 8 },
+  manageBlock: { gap: 6, marginTop: 8 },
+  manageBtn: { borderRadius: 14, borderWidth: 1, paddingVertical: 12, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center' },
+  manageBtnText: { fontSize: 15, fontWeight: '600' },
+  manageHint: { fontSize: 12, textAlign: 'center' },
 });
