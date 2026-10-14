@@ -95,8 +95,29 @@ for name, mode, expected_status in (
   unset current_json
 }
 
+verify_scheduler_stopped() {
+  local current_json
+  current_json="$("$PM2_BIN" jlist)"
+  python3 -c '
+import json, sys
+items = json.load(sys.stdin)
+matches = [p for p in items if p.get("name") == sys.argv[1]]
+if len(matches) != 1 or matches[0].get("pm2_env", {}).get("status") != "stopped":
+    raise SystemExit("Named push scheduler is not confirmed stopped")
+' "$SCHEDULER_PROC" <<<"$current_json"
+  unset current_json
+}
+
 restore_original_modes() {
   local restored=0 healthy=0 attempt
+  if ! "$PM2_BIN" stop "$SCHEDULER_PROC"; then
+    echo "::error::Could not pause outbox scheduler for rollback" >&2
+    return 1
+  fi
+  if ! verify_scheduler_stopped; then
+    echo "::error::Could not pause outbox scheduler for rollback" >&2
+    return 1
+  fi
   PUSH_PROVIDER_MODE="$ORIGINAL_API_MODE" "$PM2_BIN" restart "$PROC" --update-env || restored=1
   PUSH_PROVIDER_MODE="$ORIGINAL_SCHEDULER_MODE" "$PM2_BIN" restart "$SCHEDULER_PROC" --update-env || restored=1
   if [ "$restored" -eq 0 ] && verify_modes "$ORIGINAL_API_MODE" "$ORIGINAL_SCHEDULER_MODE" online online; then
@@ -177,43 +198,37 @@ wait_for_health() {
   return 1
 }
 
-wait_for_health
+if ! wait_for_health; then
+  echo "::error::Target-mode health failed; restoring original push modes" >&2
+  restore_original_modes || true
+  exit 1
+fi
 
 # PM2 online proof after the server is actually listening — fail-closed.
-runtime_json="$("$PM2_BIN" jlist)"
-python3 -c '
-import json, sys
-items = json.load(sys.stdin)
-expected_mode = sys.argv[1]
-for name in sys.argv[2:4]:
-    matches = [p for p in items if p.get("name") == name]
-    assert len(matches) == 1, "named PM2 process missing or ambiguous"
-    env = matches[0].get("pm2_env", {})
-    assert env.get("status") == "online", "named PM2 process is not online"
-    assert env.get("PUSH_PROVIDER_MODE") == expected_mode, "PM2 push mode readback mismatch"
-print("PM2_PROCESSES=online")
-print("PUSH_MODE_READBACK=" + expected_mode)
-' "$PUSH_MODE" "$PROC" "$SCHEDULER_PROC" <<<"$runtime_json"
-unset runtime_json
+if ! verify_modes "$PUSH_MODE" "$PUSH_MODE" online online; then
+  echo "::error::PM2 online proof failed; restoring original push modes" >&2
+  restore_original_modes || true
+  exit 1
+fi
+echo "PM2_PROCESSES=online"
+echo "PUSH_MODE_READBACK=$PUSH_MODE"
 
 # A second probe after a delay catches an immediate crash-loop after the first
 # successful bind/import cycle.
 sleep 6
-curl --fail --silent --show-error --connect-timeout 3 --max-time 10 -o /dev/null "$URL"
+if ! curl --fail --silent --show-error --connect-timeout 3 --max-time 10 -o /dev/null "$URL"; then
+  echo "::error::Stable health probe failed; restoring original push modes" >&2
+  restore_original_modes || true
+  exit 1
+fi
 echo "HEALTH_HTTP=stable"
 
 # Final PM2 state must still be online after the second HTTP proof.
-runtime_json="$("$PM2_BIN" jlist)"
-python3 -c '
-import json, sys
-items = json.load(sys.stdin)
-for name in sys.argv[1:3]:
-    matches = [p for p in items if p.get("name") == name]
-    assert len(matches) == 1, "named PM2 process missing or ambiguous"
-    assert matches[0].get("pm2_env", {}).get("status") == "online", "PM2 process not stable"
-    assert matches[0].get("pm2_env", {}).get("PUSH_PROVIDER_MODE") == sys.argv[3], "push mode changed"
-print("PM2_STATUS=stable")
-' "$PROC" "$SCHEDULER_PROC" "$PUSH_MODE" <<<"$runtime_json"
-unset runtime_json
+if ! verify_modes "$PUSH_MODE" "$PUSH_MODE" online online; then
+  echo "::error::Final PM2 state was unstable; restoring original push modes" >&2
+  restore_original_modes || true
+  exit 1
+fi
+echo "PM2_STATUS=stable"
 
 echo "HEALTH=pass"

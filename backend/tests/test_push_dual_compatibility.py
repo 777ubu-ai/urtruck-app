@@ -67,11 +67,19 @@ def test_dual_keeps_only_latest_native_token_per_installation():
 
 def test_dual_native_rotation_fails_closed_when_app_id_is_missing():
     newest = {**_device(10, "fcm", "install-rotated", "fcm-new"), "app_id": None}
-    older = _device(9, "fcm", "install-rotated", "fcm-old")
     qa_app = {**_device(8, "fcm", "install-rotated", "fcm-qa"),
               "app_id": "com.urtruck.app.qa2"}
-    selected = push_gateway._select_devices_for_mode([newest, older, qa_app], "dual")
-    assert [row["id"] for row in selected] == [10]
+    selected = push_gateway._select_devices_for_mode([newest, qa_app], "dual")
+    # Unknown and known app identities cannot prove an installation duplicate.
+    assert [row["id"] for row in selected] == [10, 8]
+
+
+def test_dual_keeps_both_known_native_apps_on_same_device_id():
+    production = _device(1, "fcm", "shared-device-id")
+    qa = {**_device(2, "fcm", "shared-device-id"), "app_id": "com.urtruck.app.qa2"}
+    assert [row["id"] for row in push_gateway._select_devices_for_mode(
+        [production, qa], "dual"
+    )] == [1, 2]
 
 
 def test_dual_matches_native_only_within_same_app_and_platform():

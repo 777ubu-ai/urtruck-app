@@ -470,8 +470,13 @@ def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[d
     def installation_device_id(device: dict[str, Any]) -> str:
         return str(device.get("device_id") or "").strip()
 
+    def app_identity_matches(left: dict[str, Any], right: dict[str, Any]) -> bool:
+        left_app = app_platform(left)[0]
+        right_app = app_platform(right)[0]
+        return left_app == right_app
+
     def app_identity_is_compatible(left: dict[str, Any], right: dict[str, Any]) -> bool:
-        """Treat a missing app ID as ambiguous, never as proof of another app."""
+        """Treat a missing app ID as ambiguous for native-versus-Expo suppression."""
         left_app = app_platform(left)[0]
         right_app = app_platform(right)[0]
         return not left_app or not right_app or left_app == right_app
@@ -483,7 +488,7 @@ def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[d
             left_id and right_id
             and str(left_id) == str(right_id)
             and app_platform(left)[1] == app_platform(right)[1]
-            and app_identity_is_compatible(left, right)
+            and app_identity_matches(left, right)
         )
 
     native_rows = [d for d in devices if d.get("push_provider") in ("fcm", "apns")]
@@ -497,13 +502,33 @@ def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[d
     # only through its latest registered native row in dual mode so a legacy
     # fallback cannot race a second stale native token.
     native: list[dict[str, Any]] = []
-    seen_native_installations: list[dict[str, Any]] = []
+    seen_native_apps: dict[tuple[str, str], set[str]] = {}
+    unknown_native_rows: dict[tuple[str, str], dict[str, Any]] = {}
+    seen_native_tokens: set[str] = set()
     for device in native_rows:
         device_id = installation_device_id(device)
         if device_id:
-            if any(same_installation(device, previous) for previous in seen_native_installations):
-                continue
-            seen_native_installations.append(device)
+            platform = app_platform(device)[1]
+            installation = (platform, device_id)
+            app_id = app_platform(device)[0]
+            if app_id:
+                if app_id in seen_native_apps.get(installation, set()):
+                    continue
+                # An unknown app ID cannot prove that this row duplicates a
+                # known production or QA app registration. Keep both; token
+                # identity de-duplication below still removes exact repeats.
+            else:
+                if installation in unknown_native_rows:
+                    continue
+        token = str(device.get("push_token") or "")
+        if not token or token in seen_native_tokens:
+            continue
+        seen_native_tokens.add(token)
+        if device_id:
+            if app_id:
+                seen_native_apps.setdefault(installation, set()).add(app_id)
+            else:
+                unknown_native_rows[installation] = device
         native.append(device)
 
     # Installation identity includes the app and platform: the same physical
@@ -518,7 +543,12 @@ def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[d
         if device.get("push_provider") != "expo":
             continue
         device_id = device.get("device_id")
-        if device_id and any(same_installation(device, row) for row in native):
+        if device_id and any(
+            installation_device_id(row) == str(device_id)
+            and app_platform(device)[1] == app_platform(row)[1]
+            and app_identity_is_compatible(device, row)
+            for row in native
+        ):
             continue
         platform = app_platform(device)[1]
         ambiguous_native_match = any(

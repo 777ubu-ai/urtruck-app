@@ -9,7 +9,10 @@ HEALTH_CHECK = REPO_ROOT / "scripts" / "remote_health_check.sh"
 PROCESS_NAMES = ("urtruck-security-api", "urtruck-security-scheduler")
 
 
-def _run_health_helper(tmp_path: Path, *, fail_scheduler_restart: bool = False):
+def _run_health_helper(
+    tmp_path: Path, *, fail_scheduler_restart: bool = False,
+    fail_stable_health: bool = False,
+):
     backend = tmp_path / "backend"
     bin_dir = tmp_path / "bin"
     backend.mkdir()
@@ -25,6 +28,9 @@ def _run_health_helper(tmp_path: Path, *, fail_scheduler_restart: bool = False):
     fail_once = tmp_path / "fail-scheduler-once"
     if fail_scheduler_restart:
         fail_once.write_text("fail", encoding="utf-8")
+    fail_health_once = tmp_path / "fail-health-once"
+    if fail_stable_health:
+        fail_health_once.write_text("fail", encoding="utf-8")
 
     pm2 = bin_dir / "pm2"
     pm2.write_text('''#!/usr/bin/env python3
@@ -53,7 +59,20 @@ elif sys.argv[1] == "restart":
 else:
     raise SystemExit(2)
 ''', encoding="utf-8")
-    for executable in ("curl", "sleep"):
+    curl = bin_dir / "curl"
+    curl.write_text('''#!/usr/bin/env python3
+import os, pathlib, sys
+counter = pathlib.Path(os.environ["CURL_TEST_COUNT"])
+count = int(counter.read_text()) + 1 if counter.exists() else 1
+counter.write_text(str(count))
+fail_once = pathlib.Path(os.environ["CURL_TEST_FAIL_ONCE"])
+if count == 2 and fail_once.exists():
+    fail_once.unlink()
+    raise SystemExit(22)
+raise SystemExit(0)
+''', encoding="utf-8")
+    curl.chmod(0o755)
+    for executable in ("sleep",):
         path = bin_dir / executable
         path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         path.chmod(0o755)
@@ -65,6 +84,8 @@ else:
         "PM2_TEST_STATE": str(state),
         "PM2_TEST_CWD": str(backend),
         "PM2_TEST_FAIL_ONCE": str(fail_once),
+        "CURL_TEST_COUNT": str(tmp_path / "curl-count"),
+        "CURL_TEST_FAIL_ONCE": str(fail_health_once),
     })
     result = subprocess.run(
         ["bash", str(HEALTH_CHECK)], cwd=REPO_ROOT, env=env,
@@ -89,3 +110,11 @@ def test_remote_health_helper_restores_both_modes_after_scheduler_restart_failur
     assert all(row == {"mode": "native", "status": "online"} for row in state.values())
     assert "PUSH_MODE_ROLLBACK=verified" in result.stdout
     assert "must-not-be-printed" not in result.stdout + result.stderr
+
+
+def test_remote_health_helper_restores_modes_after_stable_health_probe_failure(tmp_path):
+    result, state = _run_health_helper(tmp_path, fail_stable_health=True)
+
+    assert result.returncode != 0
+    assert all(row == {"mode": "native", "status": "online"} for row in state.values())
+    assert "PUSH_MODE_ROLLBACK=verified" in result.stdout
