@@ -56,3 +56,16 @@ test('DealStatusTimeline.js and DealRoom.js resolve deal_event_status_${payload.
   assert.match(dealRoom, /t\(`deal_event_status_\$\{p\.status\}`\)/);
   assert.match(timeline, /import \{ systemEventText \} from '.\/DealRoom'/);
 });
+
+test('cancellation history identifies driver or shipper from the immutable event role', () => {
+  const timeline = readFileSync('src/components/deal/DealStatusTimeline.js', 'utf8');
+  for (const label of [
+    "driver: 'Водитель'", "shipper: 'Грузоотправитель'",
+    "driver: 'Driver'", "shipper: 'Shipper'",
+    "driver: '司机'", "shipper: '货主'",
+    "driver: 'Жүргізуші'", "shipper: 'Жүк жөнелтуші'",
+  ]) assert.ok(timeline.includes(label), `missing localized cancellation actor: ${label}`);
+  assert.match(timeline, /key === 'cancelled' && role === 'driver'/);
+  assert.match(timeline, /key === 'cancelled' && \['client', 'shipper'\]\.includes\(role\)/);
+  assert.match(timeline, /formatMoment\(ev, lang\)/);
+});

@@ -358,6 +358,13 @@ test('deal status actions use the shared canonical role FSM and GPS starts with 
   assert.match(workspace, /marketAPI\.sendDealLocation/);
 });
 
+test('failed status writes always explain the error and preserve the server FSM', () => {
+  assert.match(workspace, /if \(result\?\.ok === false\) toast\(result\.detail \|\| t\('update_failed'\), 'error'\)/);
+  assert.match(workspace, /await refreshDeal\(\);\s*await refreshTimeline\(\);/);
+  assert.match(actionResolver, /current === 'at_border'[\s\S]*key: 'delivered'/);
+  assert.match(actionResolver, /current === 'delivered'[\s\S]*key: 'received'/);
+});
+
 test('short onboarding requires only name and phone; company and location stay optional', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);

@@ -35,6 +35,7 @@ import RatingModal from '../components/RatingModal';
 import Button from '../components/ui/v1/Button';
 import { useKeyboardDockInset } from '../components/ui/v1/KeyboardSafeLayout';
 import { chatAPI, documentKindFromFile } from '../utils/chatAPI';
+import { displayAttachmentFilename } from '../utils/attachmentFilename';
 import { marketAPI } from '../utils/marketAPI';
 import { parseRouteCities } from '../utils/geo';
 import { localizeCargoName, localizePlace, localizeSystemMessage } from '../utils/places';
@@ -719,14 +720,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           const cacheKey = `doc:${a.id}`;
           const issuedUrl = resolveAttachment(a.url);
           const docUrl = cacheIssuedAttachmentUrl(attachmentUrlCache.current, cacheKey, issuedUrl);
+          const docName = displayAttachmentFilename(a.original_name) || a.id;
           return {
             id: `doc_${a.id}`,
             clientUploadId: a.client_upload_id || null,
             mine: isOwnDocument(a, session?.user?.id),
             kind: 'document',
-            docName: a.original_name || a.id,
+            docName,
             docSize: a.size_bytes,
-            docKind: documentKindFromFile(a.mime_type, a.original_name),
+            docKind: documentKindFromFile(a.mime_type, docName),
             docUrl,
             docDownloadUrl: a.download_url || docUrl,
             docStatus: 'uploaded',
@@ -921,7 +923,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     setStatusLoading(true);
     try {
       const result = await marketAPI.updateDealStatus(dealId, nextStatus);
-      if (!result?.ok && result?.status) toast(result.detail || t('update_failed'), 'error');
+      if (result?.ok === false) toast(result.detail || t('update_failed'), 'error');
       await refreshDeal();
       await refreshTimeline();
       return result;
