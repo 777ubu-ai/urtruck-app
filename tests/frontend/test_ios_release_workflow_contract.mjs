@@ -33,6 +33,15 @@ assert.ok(workflow.includes("config['extra']['urtruckApiUrl'].rstrip('/') == 'ht
 assert.ok(workflow.includes("info['CFBundleIdentifier'] == 'com.urtruck.app'"));
 assert.ok(workflow.includes("info['CFBundleShortVersionString'] == '1.0.9'"));
 assert.ok(workflow.includes('npx eas-cli@latest build:version:get --platform ios --profile production --json'));
+assert.ok(workflow.indexOf('name: Verify exact branch and credentials')
+  < workflow.indexOf('name: Install dependencies'),
+  'pin and validate the checked-out source before running npm lifecycle scripts');
+assert.ok(workflow.indexOf('name: Install dependencies')
+  < workflow.indexOf('name: Verify EAS account and build counter'),
+  'install Expo plugins before asking EAS CLI to resolve app config/build counter');
+assert.ok(workflow.indexOf('name: Verify EAS account and build counter')
+  < workflow.indexOf('name: Build signed IPA locally'),
+  'verify the live EAS counter before allocating a build');
 assert.ok(workflow.includes('EAS_CURRENT_IOS_BUILD'));
 assert.ok(workflow.includes('int(number) > int(os.environ[\'ASC_MAX_IOS_BUILD\'])'));
 assert.ok(workflow.includes('int(number) > int(os.environ[\'EAS_CURRENT_IOS_BUILD\'])'));
