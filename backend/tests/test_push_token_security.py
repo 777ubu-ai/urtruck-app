@@ -108,6 +108,25 @@ def test_register_then_reregister_same_owner_no_duplicate():
     assert cnt == 1, "повторная регистрация не должна плодить строки"
 
 
+def test_frozen_native_registration_uses_runtime_app_identity(monkeypatch):
+    monkeypatch.setenv("URTRUCK_ENV", "production")
+    monkeypatch.delenv("PUSH_DEFAULT_APP_ID", raising=False)
+    uid, auth_token = _new_user_token()
+    token = "fcm-unit-test-runtime-app-id"
+    response = client.post(
+        "/api/v1/push/register-native",
+        json={"token": token, "device_id": "d-runtime-app-0001"},
+        headers=_auth(auth_token),
+    )
+    assert response.status_code == 200, response.text
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT app_id FROM push_devices WHERE user_id=? AND push_token=?",
+            (uid, token),
+        ).fetchone()
+    assert row is not None and row["app_id"] == "com.urtruck.app"
+
+
 def test_b_cannot_hijack_a_token_without_device_match():
     uid_a, tok_a = _new_user_token()
     uid_b, tok_b = _new_user_token()

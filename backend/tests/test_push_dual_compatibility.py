@@ -111,7 +111,8 @@ def test_dual_keeps_expo_installation_when_both_known_app_ids_differ():
     )] == [1, 2]
 
 
-def test_dual_fallback_requires_exact_installation_identity():
+def test_dual_fallback_requires_exact_installation_identity(monkeypatch):
+    monkeypatch.setenv("URTRUCK_ENV", "development")
     native = _device(1, "fcm", "install-1")
     fallback = {**_device(2, "expo", "install-1", "ExpoPushToken[legacy]"),
                 "app_id": None}
@@ -134,6 +135,29 @@ def test_dual_fallback_uses_proven_same_app_before_ambiguous_expo_row():
     assert push_gateway._expo_fallbacks_for_mode(
         [native, ambiguous, other_app, exact], "dual"
     ) == {1: exact}
+
+
+def test_runtime_app_id_distinguishes_production_and_qa2_for_frozen_clients(monkeypatch):
+    monkeypatch.delenv("PUSH_DEFAULT_APP_ID", raising=False)
+    monkeypatch.setenv("URTRUCK_ENV", "production")
+    assert push_gateway._default_app_id_for_runtime() == "com.urtruck.app"
+    monkeypatch.setenv("URTRUCK_ENV", "qa2")
+    assert push_gateway._default_app_id_for_runtime() == "com.urtruck.app.qa2"
+    monkeypatch.setenv("URTRUCK_ENV", "development")
+    assert push_gateway._default_app_id_for_runtime() == ""
+
+
+def test_dual_resolves_frozen_client_app_id_from_server_environment(monkeypatch):
+    monkeypatch.setenv("URTRUCK_ENV", "production")
+    native = {**_device(1, "fcm", "install-1"), "app_id": None}
+    legacy = {**_device(2, "expo", "install-1", "ExpoPushToken[legacy]"), "app_id": None}
+    qa = {**_device(3, "expo", "install-1", "ExpoPushToken[qa]"),
+          "app_id": "com.urtruck.app.qa2"}
+
+    assert [row["id"] for row in push_gateway._select_devices_for_mode(
+        [native, legacy, qa], "dual"
+    )] == [1, 3]
+    assert push_gateway._expo_fallbacks_for_mode([native, legacy, qa], "dual") == {1: legacy}
 
 
 def test_dual_sends_expo_only_after_provider_confirms_native_token_invalid(monkeypatch):

@@ -835,6 +835,12 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
             raise HTTPException(status_code=503 if verification.endswith("unavailable") else 400,
                                 detail=verification)
 
+    # Frozen mobile clients do not include app_id in register-native. Resolve
+    # it only from this isolated server's canonical environment so legacy
+    # registrations remain distinguishable from a different QA/public app.
+    if not data.app_id:
+        data.app_id = push_sender.push_gateway._default_app_id_for_runtime() or None
+
     with get_conn() as c:
         _begin_push_registration(c)
         _reject_logged_out_session(c, user_id, device_id, authorization)

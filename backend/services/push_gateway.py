@@ -26,6 +26,18 @@ PUSH_PROVIDER_MODE = (os.getenv("PUSH_PROVIDER_MODE") or "native").strip().lower
 SUPPORTED_PUSH_PROVIDER_MODES = {"native", "dual"}
 NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
 
+
+def _default_app_id_for_runtime() -> str:
+    """Resolve only the canonical app served by this isolated backend runtime."""
+    configured = (os.getenv("PUSH_DEFAULT_APP_ID") or "").strip()
+    if configured:
+        return configured
+    environment = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower()
+    return {
+        "production": "com.urtruck.app",
+        "qa2": "com.urtruck.app.qa2",
+    }.get(environment, "")
+
 FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "")
 FCM_SERVICE_ACCOUNT_JSON = os.getenv("FCM_SERVICE_ACCOUNT_JSON", "")
 # systemd EnvironmentFile treats backslashes as escapes.  A service-account
@@ -464,7 +476,7 @@ def active_devices(user_id: str) -> list[dict[str, Any]]:
 
 def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[dict[str, Any]]:
     def app_platform(device: dict[str, Any]) -> tuple[str, str]:
-        return (str(device.get("app_id") or "").strip(),
+        return (str(device.get("app_id") or _default_app_id_for_runtime()).strip(),
                 str(device.get("platform") or "").strip())
 
     def installation_device_id(device: dict[str, Any]) -> str:
@@ -588,7 +600,7 @@ def _expo_fallbacks_for_mode(devices: list[dict[str, Any]], mode: str,
         if native.get("push_provider") not in {"fcm", "apns"} or not native.get("device_id"):
             continue
         identity = (
-            str(native.get("app_id") or ""),
+            str(native.get("app_id") or _default_app_id_for_runtime()),
             str(native.get("platform") or ""),
             str(native.get("device_id")),
         )
@@ -609,8 +621,8 @@ def _expo_fallbacks_for_mode(devices: list[dict[str, Any]], mode: str,
         # A missing app_id remains eligible for ordinary Expo-only delivery,
         # but cannot safely identify the app for a native-token fallback.
         fallback = next((expo for expo in expo_rows
-                         if str(expo.get("app_id") or "")
-                         and str(expo.get("app_id") or "") == identity[0]), None)
+                         if str(expo.get("app_id") or _default_app_id_for_runtime())
+                         and str(expo.get("app_id") or _default_app_id_for_runtime()) == identity[0]), None)
         if fallback:
             fallbacks[int(native["id"])] = fallback
     return fallbacks
