@@ -36,6 +36,26 @@ resolve_pm2() {
 PM2_BIN="$(resolve_pm2)"
 echo "PM2_RUNTIME=resolved"
 
+MODE_SYNC_BACKUP=0
+BACKUP_RUN_ID="${3:-}"
+BACKUP_HELPER="${4:-}"
+BACKUP_DIR=""
+PM2_DUMP="$HOME/.pm2/dump.pm2"
+if [ "$#" -eq 4 ]; then
+  if [[ ! "$BACKUP_RUN_ID" =~ ^[0-9]{1,20}$ ]] || [ -z "$BACKUP_HELPER" ] || [ ! -f "$BACKUP_HELPER" ] || [ -L "$BACKUP_HELPER" ]; then
+    echo "::error::Fresh reviewed push-mode backup is required before changing PM2" >&2
+    exit 1
+  fi
+  MODE_SYNC_BACKUP=1
+  BACKUP_DIR="$HOME/urtruck/backups/push-mode-sync-$BACKUP_RUN_ID"
+  python3 "$BACKUP_HELPER" verify --backup-dir "$BACKUP_DIR" --run-id "$BACKUP_RUN_ID" \
+    --current-dump "$PM2_DUMP" --mode native
+  echo "PUSH_MODE_BACKUP=verified"
+elif [ "$#" -gt 2 ]; then
+  echo "::error::Incomplete push-mode backup arguments" >&2
+  exit 1
+fi
+
 # Resolve the one non-secret push mode from the backend .env in the exact
 # shared cwd used by both named production PM2 processes. main.py intentionally
 # uses setdefault, so an old PM2 environment would otherwise override .env.
@@ -78,7 +98,7 @@ verify_modes() {
   local expected_api="$1" expected_scheduler="$2" expected_api_status="$3" expected_scheduler_status="$4"
   local current_json
   current_json="$("$PM2_BIN" jlist)"
-  python3 -c '
+  if ! python3 -c '
 import json, sys
 items = json.load(sys.stdin)
 for name, mode, expected_status in (
@@ -91,27 +111,61 @@ for name, mode, expected_status in (
     env = matches[0].get("pm2_env", {})
     if env.get("status") != expected_status or env.get("PUSH_PROVIDER_MODE") != mode:
         raise SystemExit("Named PM2 process status/mode verification failed")
-' "$PROC" "$SCHEDULER_PROC" "$expected_api" "$expected_scheduler" "$expected_api_status" "$expected_scheduler_status" <<<"$current_json"
+' "$PROC" "$SCHEDULER_PROC" "$expected_api" "$expected_scheduler" "$expected_api_status" "$expected_scheduler_status" <<<"$current_json"; then
+    unset current_json
+    return 1
+  fi
   unset current_json
+}
+
+verify_listener() {
+  local current_json listener_output
+  current_json="$($PM2_BIN jlist)"
+  listener_output="$(ss -H -ltnp sport = :8001)"
+  if ! python3 -c '
+import json, re, sys
+items = json.loads(sys.argv[1])
+matches = [p for p in items if p.get("name") == sys.argv[2]]
+if len(matches) != 1:
+    raise SystemExit("Named production API missing during listener check")
+try:
+    api_pid = int(matches[0].get("pid") or 0)
+except (TypeError, ValueError):
+    raise SystemExit("Named production API PID is invalid during listener check")
+lines = [line for line in sys.argv[3].splitlines() if line.strip()]
+if len(lines) != 1 or not re.search(r"(?:127\.0\.0\.1|0\.0\.0\.0|\*):8001\s", lines[0]):
+    raise SystemExit("Production API listener on port 8001 is missing or ambiguous")
+pids = [int(value) for value in re.findall(r"pid=(\d+)", lines[0])]
+if pids != [api_pid]:
+    raise SystemExit("Production API listener is not owned by the named API process")
+' "$current_json" "$PROC" "$listener_output"; then
+    unset current_json listener_output
+    return 1
+  fi
+  unset current_json listener_output
+  echo "API_LISTENER=owned_by_named_pm2"
 }
 
 verify_scheduler_stopped() {
   local current_json
   current_json="$("$PM2_BIN" jlist)"
-  python3 -c '
+  if ! python3 -c '
 import json, sys
 items = json.load(sys.stdin)
 matches = [p for p in items if p.get("name") == sys.argv[1]]
 if len(matches) != 1 or matches[0].get("pm2_env", {}).get("status") != "stopped":
     raise SystemExit("Named push scheduler is not confirmed stopped")
-' "$SCHEDULER_PROC" <<<"$current_json"
+' "$SCHEDULER_PROC" <<<"$current_json"; then
+    unset current_json
+    return 1
+  fi
   unset current_json
 }
 
 verify_api_mode() {
   local current_json
   current_json="$("$PM2_BIN" jlist)"
-  python3 -c '
+  if ! python3 -c '
 import json, sys
 items = json.load(sys.stdin)
 matches = [p for p in items if p.get("name") == sys.argv[1]]
@@ -120,7 +174,10 @@ if len(matches) != 1:
 env = matches[0].get("pm2_env", {})
 if env.get("status") != "online" or env.get("PUSH_PROVIDER_MODE") != sys.argv[2]:
     raise SystemExit("Named API is not online in the requested rollback mode")
-' "$PROC" "$ORIGINAL_API_MODE" <<<"$current_json"
+' "$PROC" "$ORIGINAL_API_MODE" <<<"$current_json"; then
+    unset current_json
+    return 1
+  fi
   unset current_json
 }
 
@@ -133,6 +190,12 @@ restore_original_modes() {
   if ! verify_scheduler_stopped; then
     echo "::error::Could not pause outbox scheduler for rollback" >&2
     return 1
+  fi
+  if [ "$MODE_SYNC_BACKUP" -eq 1 ]; then
+    if ! python3 "$BACKUP_HELPER" restore --backup-dir "$BACKUP_DIR" --run-id "$BACKUP_RUN_ID"; then
+      echo "::error::PUSH_MODE_ROLLBACK_SAVED_STATE_FAILED; scheduler remains stopped" >&2
+      return 1
+    fi
   fi
   if ! PUSH_PROVIDER_MODE="$ORIGINAL_API_MODE" "$PM2_BIN" restart "$PROC" --update-env; then
     echo "::error::PUSH_MODE_ROLLBACK_API_FAILED; scheduler remains stopped" >&2
@@ -151,6 +214,10 @@ restore_original_modes() {
   done
   if [ "$healthy" -ne 1 ]; then
     echo "::error::PUSH_MODE_ROLLBACK_API_HEALTH_FAILED; scheduler remains stopped" >&2
+    return 1
+  fi
+  if [ "$MODE_SYNC_BACKUP" -eq 1 ] && ! verify_listener; then
+    echo "::error::PUSH_MODE_ROLLBACK_API_LISTENER_FAILED; scheduler remains stopped" >&2
     return 1
   fi
   if ! PUSH_PROVIDER_MODE="$ORIGINAL_SCHEDULER_MODE" "$PM2_BIN" restart "$SCHEDULER_PROC" --update-env; then
@@ -254,5 +321,26 @@ if ! verify_modes "$PUSH_MODE" "$PUSH_MODE" online online; then
   exit 1
 fi
 echo "PM2_STATUS=stable"
+if [ "$MODE_SYNC_BACKUP" -eq 1 ] && ! verify_listener; then
+  echo "::error::Target API listener identity failed; restoring original push modes" >&2
+  restore_original_modes || true
+  exit 1
+fi
+
+# Persist the exact verified target state for PM2 resurrect after a host restart.
+if [ "$MODE_SYNC_BACKUP" -eq 1 ]; then
+  if ! "$PM2_BIN" save; then
+    echo "::error::Could not persist the reviewed PM2 mode; restoring original state" >&2
+    restore_original_modes || true
+    exit 1
+  fi
+  if ! python3 "$BACKUP_HELPER" verify --backup-dir "$BACKUP_DIR" --run-id "$BACKUP_RUN_ID" \
+    --current-dump "$PM2_DUMP" --mode "$PUSH_MODE"; then
+    echo "::error::Saved PM2 state verification failed; restoring original state" >&2
+    restore_original_modes || true
+    exit 1
+  fi
+  echo "PUSH_MODE_PERSISTED=$PUSH_MODE"
+fi
 
 echo "HEALTH=pass"

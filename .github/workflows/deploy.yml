@@ -16,6 +16,19 @@ on:
       - "docs/qa/production-push-mode-sync-20261014.md"
       - "scripts/ops/production_push_mode_sync_preflight.py"
       - "scripts/remote_health_check.sh"
+      - ".github/workflows/quality-gate-reusable.yml"
+      - ".gitattributes"
+      - "package.json"
+      - "package-lock.json"
+      - "docs/npm-audit-triage.md"
+      - "docs/qa/dependency-audit-remediation-20261014.md"
+      - "patches/node-forge+1.4.0.patch"
+      - "scripts/security-*.mjs"
+      - "security/sbom/braces-3.0.4-28d440b.spdx.json"
+      - "tests/security/*.mjs"
+      - "vendor/braces-3.0.4-28d440b/**"
+      - "backend/tests/test_production_push_mode_backup.py"
+      - "scripts/ops/production_push_mode_backup.py"
   workflow_dispatch:
 
 # IMPORTANT: this workflow is now the production RELEASE GATE only.

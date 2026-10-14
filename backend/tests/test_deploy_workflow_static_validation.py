@@ -113,10 +113,65 @@ def test_deploy_push_ignores_only_the_reviewed_push_mode_operations_files():
         "docs/qa/production-push-mode-sync-20261014.md",
         "scripts/ops/production_push_mode_sync_preflight.py",
         "scripts/remote_health_check.sh",
+        ".github/workflows/quality-gate-reusable.yml",
+        ".gitattributes",
+        "package.json",
+        "package-lock.json",
+        "docs/npm-audit-triage.md",
+        "docs/qa/dependency-audit-remediation-20261014.md",
+        "patches/node-forge+1.4.0.patch",
+        "scripts/security-*.mjs",
+        "security/sbom/braces-3.0.4-28d440b.spdx.json",
+        "tests/security/*.mjs",
+        "vendor/braces-3.0.4-28d440b/**",
+        "backend/tests/test_production_push_mode_backup.py",
+        "scripts/ops/production_push_mode_backup.py",
     }
     assert ignored == expected
-    # GitHub paths-ignore starts the gate when any changed path is outside
-    # this set; product-source paths therefore remain covered by the release gate.
+    # Model every path currently changed by PR #533. GitHub's paths-ignore
+    # suppresses the production push workflow only if every changed path
+    # matches; product/backend files therefore still enter the release gate.
+    pr533_paths = {
+        ".gitattributes", ".github/workflows/deploy.yml",
+        ".github/workflows/production-deploy-execute.yml",
+        ".github/workflows/quality-gate-reusable.yml",
+        ".github/workflows/sync-production-push-mode.yml",
+        "backend/tests/test_deploy_workflow_static_validation.py",
+        "backend/tests/test_production_push_mode_sync_contract.py",
+        "backend/tests/test_remote_health_check_push_mode.py",
+        "backend/tests/test_production_push_mode_backup.py",
+        "docs/npm-audit-triage.md",
+        "docs/qa/dependency-audit-remediation-20261014.md",
+        "docs/qa/production-push-mode-sync-20261014.md",
+        "package-lock.json", "package.json",
+        "patches/node-forge+1.4.0.patch",
+        "scripts/ops/production_push_mode_sync_preflight.py",
+        "scripts/ops/production_push_mode_backup.py",
+        "scripts/remote_health_check.sh",
+        "scripts/security-check-braces-upstream.mjs",
+        "scripts/security-node-forge-audit-gate.mjs",
+        "security/sbom/braces-3.0.4-28d440b.spdx.json",
+        "tests/security/braces_cve_2026_93687.test.mjs",
+        "tests/security/braces_upstream_monitor.test.mjs",
+        "tests/security/braces_vendor_provenance.test.mjs",
+        "tests/security/node_forge_cve_2026_85393.test.mjs",
+        "tests/security/security_node_forge_audit_gate.test.mjs",
+        "tests/security/shell_quote_advisory.test.mjs",
+        "vendor/braces-3.0.4-28d440b/LICENSE",
+        "vendor/braces-3.0.4-28d440b/PROVENANCE.md",
+        "vendor/braces-3.0.4-28d440b/UPSTREAM-SOURCE-SHA256SUMS",
+        "vendor/braces-3.0.4-28d440b/index.js",
+        "vendor/braces-3.0.4-28d440b/lib/compile.js",
+        "vendor/braces-3.0.4-28d440b/lib/constants.js",
+        "vendor/braces-3.0.4-28d440b/lib/expand.js",
+        "vendor/braces-3.0.4-28d440b/lib/parse.js",
+        "vendor/braces-3.0.4-28d440b/lib/stringify.js",
+        "vendor/braces-3.0.4-28d440b/lib/utils.js",
+        "vendor/braces-3.0.4-28d440b/package.json",
+    }
+    import fnmatch
+    assert all(any(fnmatch.fnmatchcase(path, pattern) for pattern in ignored) for path in pr533_paths)
+    assert not any(fnmatch.fnmatchcase("backend/api/push.py", pattern) for pattern in ignored)
 
 
 # ── secure-production-deploy.yml: no more bare workflow_dispatch bypass ──

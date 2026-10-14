@@ -358,7 +358,9 @@ jobs:
           }
           bash scripts/deploy-ssh.sh scp scripts/ops/production_push_mode_sync_preflight.py \
             "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py"
+          bash scripts/deploy-ssh.sh scp scripts/ops/production_push_mode_backup.py \
+            "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-push-mode-backup-${GITHUB_RUN_ID}.py"
           bash scripts/deploy-ssh.sh scp scripts/remote_health_check.sh \
             "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh"
           bash scripts/deploy-ssh.sh ssh \
-            "set -euo pipefail; trap 'rm -f /tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py /tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh' EXIT; python3 '/tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py' --root '/home/ubuntu/urtruck/backend' --api '$PM2_PROC' --scheduler '$PM2_SCHEDULER_PROC'; chmod 700 '/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh'; bash '/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh' '$PM2_PROC' '$PM2_SCHEDULER_PROC'"
+            "set -euo pipefail; trap 'rm -f /tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py /tmp/urtruck-push-mode-backup-${GITHUB_RUN_ID}.py /tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh' EXIT; python3 '/tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py' --root '/home/ubuntu/urtruck/backend' --api '$PM2_PROC' --scheduler '$PM2_SCHEDULER_PROC'; python3 '/tmp/urtruck-push-mode-backup-${GITHUB_RUN_ID}.py' create --root '/home/ubuntu/urtruck/backend' --run-id '$GITHUB_RUN_ID'; chmod 700 '/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh'; bash '/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh' '$PM2_PROC' '$PM2_SCHEDULER_PROC' '$GITHUB_RUN_ID' '/tmp/urtruck-push-mode-backup-${GITHUB_RUN_ID}.py'"

@@ -126,12 +126,28 @@ class PushModePreflightTests(unittest.TestCase):
         self.assertNotIn("remote_bootstrap_secure_env.sh", sync_job)
         self.assertNotIn("scp -C -r backend/*", sync_job)
         self.assertIn("production_push_mode_sync_preflight.py", sync_job)
+        self.assertIn("production_push_mode_backup.py", sync_job)
         self.assertIn("remote_health_check.sh", sync_job)
+        self.assertIn("--run-id", sync_job)
+        self.assertLess(sync_job.index("production_push_mode_preflight.py"), sync_job.index("production_push_mode_backup.py"))
         self.assertNotIn("SERVER_SSH_KEY:", sync_job.split("steps:", 1)[0])
         self.assertNotIn("SERVER_SSH_KNOWN_HOSTS:", sync_job.split("steps:", 1)[0])
         preflight = (ROOT / "scripts/ops/production_push_mode_sync_preflight.py").read_text()
         self.assertIn("PUSH_PROVIDER_MODE", preflight)
         self.assertIn("EXPECTED_RUNTIME_INVENTORY_SHA256", preflight)
+
+    def test_mode_transition_backups_and_persists_pm2_state_with_exact_rollback(self):
+        health = (ROOT / "scripts/remote_health_check.sh").read_text(encoding="utf-8")
+        backup = (ROOT / "scripts/ops/production_push_mode_backup.py").read_text(encoding="utf-8")
+        self.assertIn('"$PM2_BIN" save', health)
+        self.assertIn('PUSH_MODE_PERSISTED=$PUSH_MODE', health)
+        self.assertIn('restore --backup-dir "$BACKUP_DIR"', health)
+        self.assertIn('verify --backup-dir "$BACKUP_DIR"', health)
+        self.assertIn('src.backup(dst', backup)
+        self.assertIn('PRAGMA query_only=ON', backup)
+        self.assertIn('chmod(0o700)', backup)
+        self.assertIn('chmod(0o600)', backup)
+        self.assertIn('saved PM2 application configuration changed outside the reviewed mode', backup)
 
 
 if __name__ == "__main__":

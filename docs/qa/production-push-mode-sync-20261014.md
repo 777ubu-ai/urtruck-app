@@ -1,24 +1,30 @@
-# Синхронизация production push mode — 14.10.2026
+# Синхронизация production push mode — checkpoint 15.10.2026
 
-## Наблюдаемое состояние до операции
+## Read-only состояние перед операцией
 
-- Production `.env`: `PUSH_PROVIDER_MODE=dual`.
-- Named PM2 API и scheduler: `online`, оба с `PUSH_PROVIDER_MODE=native`, cwd `/home/ubuntu/urtruck/backend`.
-- Listener `:8001` принадлежал named API PID на read-only проверке.
-- На установленном production push-коде были подтверждены SHA256 `services/push_gateway.py` `cbda81eb8a8e5b9c62a617fb5010c9af5577643da1b8543da498d4ce846afe56` и `services/push_sender.py` `9ed81b63c1b288f439c716ec6519eb2899dc653b9178ffff0eae1c3175bc5030`.
-- Read-only source inventory содержит 141 файл; общий fingerprint `e2c9ef0562e19509016bce855f3ee1366f1d0caab4ffb1238b3a2e8c03889cf4`.
-- Общий backend остаётся смешанным, full source SHA неизвестен, trusted runtime manifest отсутствует. Данный режимный переход не создаёт такой manifest и не объявляет backend known-source.
+- Штатный SSH key+pinned-host доступ работает. Backend root `/home/ubuntu/urtruck/backend`; API listener `:8001` принадлежит `urtruck-security-api` PID 2862573.
+- `.env` задаёт `PUSH_PROVIDER_MODE=dual`; API и scheduler online, cwd `/home/ubuntu/urtruck/backend`, оба effective mode `native` (PID 2862573 и 2862710). API health `ok`, DB `ok`; `PRAGMA quick_check=ok` на фактической БД.
+- Runtime-selected `DB_PATH=/home/ubuntu/urtruck/runtime/security.db`. Файл `/home/ubuntu/urtruck/backend/database/security.db` не используется процессами и является пустой decoy для этого deploy; backup обязан брать путь из `.env`.
+- `/api/v1/push/info`: gateway mode `native`, ready; FCM и APNs configured, APNs sandbox=false. Это конфигурация/provider readiness, не доказательство доставки на телефон. В 24-часовом delivery log есть provider accepts и отдельные `provider_not_configured`/`invalid_token` failures; недавние успешные APNs/FCM записи также есть.
+- Registry: 59 active Expo, 70 FCM, 3 APNs. Из Expo 7 и из FCM 3 active rows ownerless; их не назначать владельцам. Ещё 17 Expo disabled/logout; все disabled/invalid/account-deleted rows сохраняются без ручного включения. Двадцать active Expo rows у 17 владельцев не имеют enabled native-пары по `user_id + device_id`: last_seen 1 row ≤7d, 9 rows 8–30d, 10 rows >30d. Нулевой count active Expo rows с null `device_id`. Это точная текущая группировка; старый показатель «17» означал owner count, не row count.
+- В выбранном DB на момент readback pending/processing outbox `0`; dead `6`, sent `211`, sent_partial `85`, skipped_no_devices `55`, затем `59` при следующем read. Scheduler менял terminal counters между снимками; значения являются наблюдениями на время, а не гарантиями.
+- PM2 saved `/home/ubuntu/.pm2/dump.pm2` хранит оба UrTruck процесса в `native`. Изменение только live PM2 environment не переживёт `pm2 resurrect`/host reboot.
+- Текущие SHA live `services/push_gateway.py` `cbda81eb8a8e5b9c62a617fb5010c9af5577643da1b8543da498d4ce846afe56`, `services/push_sender.py` `9ed81b63c1b288f439c716ec6519eb2899dc653b9178ffff0eae1c3175bc5030`. Runtime inventory: 141 Python/SQL/requirements files, fingerprint `e2c9ef0562e19509016bce855f3ee1366f1d0caab4ffb1238b3a2e8c03889cf4`. Full backend SHA `UNKNOWN_MIXED`, trusted manifest отсутствует.
 
-## Операция
+## Reviewed writer
 
-Новая ручная workflow-вызовка вызывает режим `sync_push_mode` в существующем reusable production writer. До рестарта она сверяет точный ref/SHA caller workflow, production SSH key и pinned host key, заданный backend path, общий fingerprint всех 141 Python/SQL/requirements файлов, два live push-файла, named PM2 процессы, их cwd/online/native state и владельца listener. `.env` должен уже содержать ровно одно значение `dual`. Общий fingerprint используется только как условие этого no-source-change рестарта: он не создаёт trusted runtime manifest и не объявляет mixed backend known-source.
+PR #533 caller использует единственный `production-deploy-execute.yml`, ключ SSH и pinned host. До write проверяются exact `main` ref/SHA, path, runtime file count/fingerprint, source hashes, `.env=dual`, API/scheduler/native state и listener PID.
 
-После preflight существующий `remote_health_check.sh` останавливает только named scheduler, переводит API и scheduler на `dual` через `pm2 restart --update-env`, затем проверяет readback обоих процессов и API health. При ошибке helper возвращает оба процесса к прежнему режиму и проверяет восстановление health. Эта операция не копирует runtime code, не редактирует `.env`, БД, storage, registry, outbox, frontend или магазинные артефакты. В очереди остаются те же события; scheduler приостановлен только на время переключения.
+Исправленная версия writer должна до переключения создать на сервере защищённый backup `~/urtruck/backups/push-mode-sync-<run-id>`: каталог 0700, файлы 0600; точная копия PM2 dump и consistent SQLite backup через read-only/query-only SQLite backup API по фактическому DB_PATH. В record остаются только non-secret режимы/PID/CWD, hashes и integrity result. Действующая `.env`, БД, storage, registry, outbox и source не перезаписываются.
 
-Обычный `operation=deploy` остаётся отдельной веткой того же writer. Новая ручная workflow не содержит SSH/deploy-кода и вызывает только reusable writer. GitHub concurrency у writer сериализует её с обычным production deploy.
+Существующий `remote_health_check.sh` останавливает только named scheduler, меняет API затем scheduler на `dual`, проверяет process readback и health, затем `pm2 save`. Helper проверяет, что сохранённый список процессов тот же, а различается только `PUSH_PROVIDER_MODE` этих двух процессов. При ошибке восстанавливается исходный PM2 dump и native modes; при недоказанном API rollback scheduler остаётся остановленным. С SQLite snapshot не выполняется автоматическое восстановление: mode-only operation не меняет бизнес-данные, а старая копия поверх свежего трафика опасна.
 
-## Границы доказательства
+## Push compatibility и границы доказательства
 
-Режим `dual` возвращает Expo-only записи в выборку старого production gateway; его прежняя реализация исключает Expo-строку при совпавшем `device_id` с native строкой. Поэтому известные 17 Expo-записей без native-пары снова становятся кандидатами на доставку, но реальное получение push телефоном этой процедурой не доказывается. Новый проверенный same-install/app-aware fallback из release PR #532 ещё не развёрнут на production; доставка при одновременно существующей, но невалидной native-паре требует production code transition и отдельного provider/device подтверждения.
+В `dual` текущий gateway отправляет native FCM/APNs и Expo fallback для активных записей без совпавшего native `device_id` внутри recipient. Совпавшая Expo запись исключается, чтобы не отправить два канала на одну известную установку. Ownerless/disabled/invalid/logout rows не включаются вручную и не изменяются. 20 Expo rows у 17 владельцев становятся допустимыми fallback-кандидатами, но их возраст/registry state не доказывают получение push. Provider `sent` означает принятие соответствующим provider, не показ на устройстве. Без physical delivery/read-race проверки ставить `DEVICE_TESTS_PENDING`.
 
-Эта узкая операция разрешена только при совпадении live source hashes и указанных PM2/listener условий. Любой source drift или изменение режима останавливает её до restart. Она не заменяет план первого known-source перехода.
+Никаких deploy/production writes на момент checkpoint не выполнено. Перед вызовом writer нужны exact-head CI + Security Review для последнего изменения, свежий read-only preflight и успешно созданный backup. После применения проверить process+persisted PM2 modes, push/info, health, scheduler, registry/outbox invariants и ошибки. Новый source/runtime или trusted manifest этим mode-only изменением не объявляются.
+
+## Review-найденные release safeguards
+
+Security Review точного cumulative diff `1bc6d87b… → cf558793…` нашёл P1: изменившиеся dependency/audit tooling paths не входили в `deploy.yml paths-ignore`, что могло запустить обычный full deploy при merge. Он также отметил P2: mode не сохранялся в PM2 dump. В последующем candidate исправлены оба риска: paths-ignore включает только конкретные operations/tooling paths с регрессией полного PR path list (product/backend paths остаются в deploy gate); writer сохраняет и валидирует backup/persisted process state. Эти новые правки ждут собственных exact-head CI и review.
