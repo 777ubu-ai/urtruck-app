@@ -14,7 +14,7 @@ test('active ProfileV2 keeps company and location optional for both roles', () =
   assert.match(profile, /id="company"/);
   assert.match(profile, /id="country"/);
   assert.match(profile, /id="city"/);
-  assert.match(profile, /const basicFormValid = validName && validPhone && validMessenger/);
+  assert.match(profile, /const basicFormValid = validName && validPhone/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
   assert.doesNotMatch(profile, /validCompany/);

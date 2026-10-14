@@ -1,8 +1,8 @@
-"""Native push sender with verified QA2 OneSignal routing.
+"""Push sender with verified OneSignal and legacy Expo compatibility.
 
-Web Push remains supported for browser subscriptions. Mobile delivery is
-strictly native: device rows registered as FCM/APNs are sent through the
-gateway; legacy rows remain stored but are never selected.
+Web Push remains supported for browser subscriptions. FCM/APNs are preferred;
+Expo rows are eligible only while the explicitly configured mode is ``dual``
+and the gateway can distinguish them from native installations.
 """
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ import os
 import uuid
 from typing import Any, Optional
 
+import httpx
+
 from database.db import get_conn
 from services import push_gateway
 
@@ -20,6 +22,7 @@ PUSH_MOCK_WEB = (os.getenv("PUSH_MOCK_WEB") or "").lower() in {"1", "true", "yes
 VAPID_PUBLIC = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:support@urtruck.kz")
+EXPO_ENDPOINT = "https://exp.host/--/api/v2/push/send"
 
 
 def _mask_token(token: str) -> str:
@@ -54,36 +57,139 @@ def _web_subscriptions(user_id: str) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-def _send_web(user_id: str, title: str, body: str, data: dict, badge: Optional[int]) -> int:
+def _claim_web_delivery(event_id: str, user_id: str, subscription_id: int) -> Optional[tuple[int, str]]:
+    # Negative registry IDs occupy the existing delivery-log uniqueness key
+    # without colliding with positive push_devices IDs. BEGIN IMMEDIATE makes
+    # the read/claim atomic across API processes.
+    registry_id = -abs(int(subscription_id))
+    lease_token = uuid.uuid4().hex
+    with get_conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        row = c.execute(
+            "SELECT id,status,created_at FROM push_delivery_log "
+            "WHERE event_id=? AND device_registry_id=? AND provider='web' ORDER BY id DESC LIMIT 1",
+            (event_id, registry_id),
+        ).fetchone()
+        if row and row["status"] == "sent":
+            return None
+        if row and row["status"] == "processing" and row["created_at"]:
+            active = c.execute(
+                "SELECT 1 WHERE ? > datetime(CURRENT_TIMESTAMP, '-5 minutes')",
+                (row["created_at"],),
+            ).fetchone()
+            if active:
+                return None
+        if row:
+            c.execute(
+                "UPDATE push_delivery_log SET status='processing', attempt=attempt+1, "
+                "created_at=CURRENT_TIMESTAMP, error_code=NULL, provider_message_id=? WHERE id=?",
+                (lease_token, row["id"]),
+            )
+            return int(row["id"]), lease_token
+        cur = c.execute(
+            "INSERT INTO push_delivery_log(event_id,recipient_user_id,device_registry_id,device_id,provider,"
+            "status,token_masked,provider_message_id) VALUES(?,?,?,?,?,'processing',?,?)",
+            (event_id, user_id, registry_id, f"web-sub:{int(subscription_id)}", "web", "subscription", lease_token),
+        )
+        return int(cur.lastrowid), lease_token
+
+
+def _finish_web_delivery(delivery_id: int, lease_token: str, *, sent: bool,
+                         error_code: Optional[str] = None) -> None:
+    with get_conn() as c:
+        c.execute(
+            "UPDATE push_delivery_log SET status=?, sent_at=CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END, "
+            "error_code=? WHERE id=? AND provider='web' AND status='processing' AND provider_message_id=?",
+            ("sent" if sent else "failed", 1 if sent else 0, (error_code or "")[:160] or None,
+             delivery_id, lease_token),
+        )
+
+
+def _send_web(user_id: str, title: str, body: str, data: dict, badge: Optional[int],
+              event_id: Optional[str] = None) -> int:
     subs = _web_subscriptions(user_id)
     if not subs:
         return 0
-    if PUSH_MOCK_WEB:
-        return len(subs)
-    try:
-        from pywebpush import webpush
-    except Exception:
-        return 0
+    webpush = None
+    if not PUSH_MOCK_WEB:
+        try:
+            from pywebpush import webpush as _webpush
+            webpush = _webpush
+        except Exception:
+            return 0
     payload = json.dumps({"title": title, "body": body, "data": data or {}, "badge": badge})
     sent = 0
     for sub in subs:
+        delivery_claim = _claim_web_delivery(event_id, user_id, sub["id"]) if event_id else None
+        if event_id and delivery_claim is None:
+            continue
+        delivery_id, lease_token = delivery_claim if delivery_claim else (None, None)
         try:
-            webpush(
-                subscription_info={"endpoint": sub["endpoint"], "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
-                data=payload,
-                vapid_private_key=VAPID_PRIVATE,
-                vapid_claims={"sub": VAPID_SUBJECT},
-            )
+            if webpush:
+                webpush(
+                    subscription_info={"endpoint": sub["endpoint"], "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
+                    data=payload,
+                    vapid_private_key=VAPID_PRIVATE,
+                    vapid_claims={"sub": VAPID_SUBJECT},
+                    timeout=30,
+                )
+            if delivery_id:
+                _finish_web_delivery(delivery_id, lease_token, sent=True)
             sent += 1
-        except Exception:
+        except Exception as exc:
+            if delivery_id:
+                _finish_web_delivery(delivery_id, lease_token, sent=False,
+                                     error_code=f"web_{type(exc).__name__}")
             log.warning("web push failed endpoint=%s", _mask_token(sub.get("endpoint", "")))
     return sent
 
 
-def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optional[int], provider: Optional[str] = None) -> dict[str, Any]:
+def _send_expo_detailed(tokens: list[str], title: str, body: str, data: dict,
+                        badge: Optional[int] = None) -> dict[str, Any]:
+    """Send Expo tickets without logging raw tokens or provider credentials."""
+    if not tokens:
+        return {"sent": 0, "tickets": [], "error": None}
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    messages = []
+    for token in tokens:
+        message = {
+            "to": token, "title": title, "body": body, "data": data or {},
+            "sound": "default", "priority": "high", "channelId": "urtruck_messages_v2",
+        }
+        if badge is not None:
+            message["badge"] = int(badge)
+        messages.append(message)
+    try:
+        response = httpx.post(EXPO_ENDPOINT, headers=headers, json=messages, timeout=10.0)
+        if response.status_code >= 400:
+            return {"sent": 0, "tickets": [], "error": f"expo_http_{response.status_code}"}
+        payload = response.json()
+        raw_tickets = payload.get("data", []) if isinstance(payload, dict) else []
+        tickets = []
+        for ticket in raw_tickets:
+            if not isinstance(ticket, dict):
+                tickets.append({"status": "error", "message": "invalid_ticket"})
+                continue
+            tickets.append({
+                "status": ticket.get("status"), "id": ticket.get("id"),
+                "message": str(ticket.get("message") or "")[:200],
+                "details": ticket.get("details") if isinstance(ticket.get("details"), dict) else {},
+            })
+        return {"sent": sum(ticket.get("status") == "ok" for ticket in tickets),
+                "tickets": tickets, "error": None}
+    except Exception as exc:
+        # Exception text may contain request details; keep only its type.
+        return {"sent": 0, "tickets": [], "error": f"expo_{type(exc).__name__}"}
+
+
+def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optional[int],
+                 provider: Optional[str] = None, *, mode: str = "native",
+                 delivery_lock: Optional[str] = None) -> dict[str, Any]:
     return push_gateway.send_to_devices(
         user_id=user_id, title=title, body=body, data=data or {}, badge=badge,
-        mode="native", provider_filter=provider if provider in {"fcm", "apns"} else None,
+        mode=mode, provider_filter=provider if provider in {"expo", "fcm", "apns"} else None,
+        expo_send_one=_send_expo_detailed if mode == "dual" else None,
+        delivery_lock=delivery_lock,
     )
 
 
@@ -134,8 +240,29 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
             event_id, event_type, user_id,
             {"title": title, "body": body, "data": data, "badge": badge},
         )
-    web_sent = _send_web(user_id, title, body, data, badge)
-    native = _send_native(user_id, title, body, data, badge, provider)
+    inline_lock = None
+    if push_gateway.PUSH_PROVIDER_MODE == "dual":
+        inline_lock = push_gateway.claim_inline_event(event_id, user_id)
+        if inline_lock is None:
+            # Another inline sender or the outbox worker owns this durable
+            # mobile event. Never race that owner to FCM/APNs/Expo. Web Push
+            # is not handled by the mobile outbox worker, so retain that path.
+            web_sent = _send_web(user_id, title, body, data, badge, event_id=event_id)
+            return {"sent": web_sent, "web": web_sent, "web_sent": web_sent,
+                    "native": 0, "duplicate": True, "event_id": event_id}
+    if push_gateway.PUSH_PROVIDER_MODE == "dual":
+        # Drain native targets while this sender owns the outbox lease. Web
+        # subscriptions are sequential and can outlive the five-minute worker
+        # lease; sending them first could let a worker race an unlogged native
+        # delivery. Native delivery_log entries make later worker pickup safe.
+        native = _send_native(user_id, title, body, data, badge, provider,
+                              mode="dual", delivery_lock=inline_lock)
+        web_sent = _send_web(user_id, title, body, data, badge, event_id=event_id)
+    else:
+        # Keep the long-standing callable signature stable for existing
+        # integrations and deterministic test seams in native mode.
+        native = _send_native(user_id, title, body, data, badge, provider)
+        web_sent = _send_web(user_id, title, body, data, badge, event_id=event_id)
     sent = web_sent + int(native.get("sent") or 0)
     native_devices = int(native.get("devices") or 0)
     native_sent = int(native.get("sent") or 0) + int(native.get("already_delivered") or 0)
@@ -148,20 +275,30 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
     native_retryable = bool(native.get("retryable", True))
     native_errors = native.get("errors") or {}
     safe_error = ",".join(sorted(str(code) for code in native_errors))[:500] or "non_retryable_provider_error"
-    if event_id and (fully_delivered or (native_devices > 0 and not native_retryable)):
+    inline_claimed = bool(inline_lock)
+    if inline_lock:
+        if fully_delivered:
+            push_gateway.finish_inline_event(event_id, user_id, inline_lock, "sent")
+        elif native_devices > 0 and not native_retryable:
+            terminal = "sent_partial" if native_sent else "failed"
+            push_gateway.finish_inline_event(event_id, user_id, inline_lock, terminal, safe_error)
+        else:
+            push_gateway.finish_inline_event(event_id, user_id, inline_lock, "pending", safe_error)
+        inline_lock = None
+    if event_id and not inline_claimed and (fully_delivered or (native_devices > 0 and not native_retryable)):
         try:
             with get_conn() as c:
                 if fully_delivered:
                     c.execute(
                         "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL, locked_by=NULL "
-                        "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry','processing')",
+                        "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry')",
                         (event_id, user_id),
                     )
                 else:
                     terminal = "sent_partial" if native_sent else "failed"
                     c.execute(
                         "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, last_error=?, claimed_at=NULL, locked_by=NULL "
-                        "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry','processing')",
+                        "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry')",
                         (terminal, safe_error, event_id, user_id),
                     )
         except Exception:

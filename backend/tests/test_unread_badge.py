@@ -224,7 +224,7 @@ def test_inv6_only_chat_kind_sets_badge():
 
     captured = {}
 
-    def fake_web(uid, title, body, data, url):
+    def fake_web(uid, title, body, data, url=None, **kwargs):
         return 0
 
     def fake_native(uid, title, body, data, badge=None, provider=None):

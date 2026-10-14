@@ -47,6 +47,16 @@ on:
         required: false
         default: ""
         type: string
+      upload_existing_pinned_aab:
+        description: "Upload the hash-pinned final candidate AAB from its successful build run without rebuilding"
+        required: true
+        default: false
+        type: boolean
+      verify_existing_internal_release:
+        description: "Read back the already uploaded pinned versionCode from the completed internal track without rebuilding or uploading"
+        required: true
+        default: false
+        type: boolean
       track:
         description: "Google Play track"
         required: true
@@ -94,12 +104,12 @@ permissions:
 
 jobs:
   quality-gate:
-    if: ${{ inputs.download_generated_version_code == '' }}
+    if: ${{ inputs.download_generated_version_code == '' && !inputs.upload_existing_pinned_aab && !inputs.verify_existing_internal_release }}
     uses: ./.github/workflows/quality-gate-reusable.yml
 
   build-and-submit:
     needs: quality-gate
-    if: ${{ inputs.download_generated_version_code == '' }}
+    if: ${{ inputs.download_generated_version_code == '' && !inputs.upload_existing_pinned_aab && !inputs.verify_existing_internal_release }}
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -421,7 +431,7 @@ jobs:
 
   download-google-signed-apk:
     name: Download existing Google-signed APK without rebuilding
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.download_generated_version_code != '' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.download_generated_version_code != '' && !inputs.upload_existing_pinned_aab }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -430,7 +440,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install official API authentication dependencies
-        run: python -m pip install google-auth requests cryptography
+        run: |
+          python -m pip install --disable-pip-version-check --no-deps --requirement scripts/ops/google-play-apk-requirements.txt
+          python -m pip check
       - name: Download and encrypt existing Play APK
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -445,3 +457,197 @@ jobs:
           path: ${{ runner.temp }}/google-signed-apk/*
           retention-days: 2
           if-no-files-found: error
+
+  upload-existing-pinned-aab:
+    name: Upload exact verified UrTruck 1.0.9 AAB without rebuilding
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_existing_pinned_aab && !inputs.verify_existing_internal_release }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify pinned source run and artifact provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_API_URL: ${{ github.api_url }}
+          GH_REPOSITORY: ${{ github.repository }}
+          EXPECTED_RUN_ID: "38512422153"
+          EXPECTED_ARTIFACT_ID: "11870969860"
+          EXPECTED_SOURCE_SHA: "9ac0b6200e1e91aa40b99cd1f4943062e2acc048"
+          APPROVED_TOOLING_SHA: ${{ vars.PLAY_RELEASE_TOOLING_SHA }}
+        run: |
+          set -euo pipefail
+          # This exact SHA is pinned in a repository variable only after review and merge.
+          # A branch name by itself never authorizes Play writes.
+          test "$GITHUB_REF" = "refs/heads/release/consolidated-20261014"
+          test -n "$APPROVED_TOOLING_SHA"
+          test "$GITHUB_SHA" = "$APPROVED_TOOLING_SHA"
+          test "$(git rev-parse HEAD)" = "$APPROVED_TOOLING_SHA"
+          test -n "$GH_TOKEN"
+          git merge-base --is-ancestor "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA"
+          while IFS= read -r path; do
+            case "$path" in
+              .github/workflows/testflight-local.yml|tests/frontend/test_ios_release_workflow_contract.mjs|.github/workflows/deploy-play.yml|tests/frontend/test_play_pinned_existing_aab_contract.mjs|tests/ops/test_google_play_pinned_track.mjs|scripts/ops/google-play-pinned-track.mjs|scripts/ops/google-play-apk-requirements.txt) ;;
+              *) echo "::error::Unexpected non-release-tooling path after frozen app source: $path"; exit 1 ;;
+            esac
+          done < <(git diff --name-only "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA")
+          run_json=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$GH_API_URL/repos/$GH_REPOSITORY/actions/runs/$EXPECTED_RUN_ID")
+          printf '%s' "$run_json" | jq -e --arg sha "$EXPECTED_SOURCE_SHA" '
+            .head_sha == $sha and
+            .head_branch == "release/consolidated-20261014" and
+            .conclusion == "success" and
+            .path == ".github/workflows/deploy-play.yml"' >/dev/null
+          jobs_json=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$GH_API_URL/repos/$GH_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/jobs?per_page=100")
+          printf '%s' "$jobs_json" | jq -e '
+            ([.jobs[] | select(.name | startswith("quality-gate /"))] | length == 3 and all(.[]; .conclusion == "success")) and
+            any(.jobs[]; .name == "Build AAB and upload to Play" and .conclusion == "success")' >/dev/null
+          artifacts_json=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$GH_API_URL/repos/$GH_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/artifacts?per_page=100")
+          printf '%s' "$artifacts_json" | jq -e --argjson id "$EXPECTED_ARTIFACT_ID" 'any(.artifacts[]; .id == $id and .name == "UrTruck-aab" and .expired == false)' >/dev/null
+          echo "Pinned successful source run, required CI jobs and artifact identity confirmed."
+
+      - name: Download only the pinned AAB artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 38512422153
+          artifact-ids: 11870969860
+          path: ${{ runner.temp }}/urtruck-existing-aab
+
+      - name: Read current Play track version codes before upload
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          TARGET_TRACK: ${{ inputs.track || 'internal' }}
+          RELEASE_STATUS: ${{ inputs.status || 'draft' }}
+          USER_FRACTION: ${{ inputs.user_fraction || '' }}
+        run: |
+          set -euo pipefail
+          node scripts/ops/google-play-pinned-track.mjs preflight
+
+      - name: Verify artifact bytes, package, version, host, alignment and upload certificate
+        env:
+          RELEASE_STATUS: ${{ inputs.status || 'draft' }}
+          USER_FRACTION: ${{ inputs.user_fraction || '' }}
+        run: |
+          set -euo pipefail
+          node scripts/validate-play-release-inputs.mjs
+          aab="$RUNNER_TEMP/urtruck-existing-aab/UrTruck-aab/app-release.aab"
+          test -s "$aab"
+          actual_sha=$(sha256sum "$aab" | awk '{print $1}')
+          test "$actual_sha" = "03500f2861ed6d07f20dc9d71f388d42438a589b046396bd393861718fe138da"
+          bundletool="$RUNNER_TEMP/bundletool.jar"
+          curl -fsSL "https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar" -o "$bundletool"
+          manifest=$(java -jar "$bundletool" dump manifest --bundle "$aab" --module base)
+          printf '%s\n' "$manifest" | grep -q 'package="com.urtruck.app"'
+          printf '%s\n' "$manifest" | grep -q 'android:versionCode="214116271"'
+          printf '%s\n' "$manifest" | grep -q 'android:versionName="1.0.9"'
+          config="$RUNNER_TEMP/embedded-app-config.json"
+          unzip -p "$aab" base/assets/app.config > "$config"
+          node scripts/verify-production-apk-config.mjs "$config"
+          bundle_config=$(java -jar "$bundletool" dump config --bundle "$aab")
+          printf '%s' "$bundle_config" | grep -q 'PAGE_ALIGNMENT_16K'
+          jarsigner -verify "$aab" >/dev/null
+          cert_sha=$(keytool -printcert -jarfile "$aab" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')
+          expected_cert="BB2474C2ED08076F7141FE1E4D3F6C604FC3E860FE5811E3C2FCD129E7CB88B4"
+          test "$cert_sha" = "$expected_cert"
+          echo "Verified pinned AAB sha256=$actual_sha package=com.urtruck.app version=1.0.9 versionCode=214116271 api=urtruck.kz upload_cert_sha256=$cert_sha"
+
+      - name: Upload verified AAB to the selected Play track
+        id: upload_existing_to_play
+        if: ${{ inputs.track != 'production' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.urtruck.app
+          releaseFiles: ${{ runner.temp }}/urtruck-existing-aab/UrTruck-aab/app-release.aab
+          tracks: ${{ inputs.track || 'internal' }}
+          status: ${{ inputs.status || 'draft' }}
+          userFraction: ${{ inputs.user_fraction || '' }}
+          inAppUpdatePriority: 2
+
+      - name: Promote the already uploaded internal version to production without re-upload
+        id: promote_existing_to_production
+        if: ${{ inputs.track == 'production' }}
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          node scripts/ops/google-play-pinned-track.mjs promote
+
+      - name: Record existing-AAB upload evidence
+        if: always()
+        env:
+          JOB_RESULT: ${{ job.status }}
+          TRACK: ${{ inputs.track || 'internal' }}
+          RELEASE_STATUS: ${{ inputs.status || 'draft' }}
+          UPLOAD_OUTCOME: ${{ steps.upload_existing_to_play.outcome }}
+          PROMOTION_OUTCOME: ${{ steps.promote_existing_to_production.outcome }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s\n' \
+            "### Pinned Android AAB upload — ${JOB_RESULT^^}" \
+            '- source SHA: `9ac0b6200e1e91aa40b99cd1f4943062e2acc048`' \
+            '- original build run: [38512422153](https://github.com/777ubu-ai/urtruck-app/actions/runs/38512422153)' \
+            "- current upload run: ${RUN_URL}" \
+            '- artifact SHA-256: `03500f2861ed6d07f20dc9d71f388d42438a589b046396bd393861718fe138da`' \
+            '- package/versionCode: `com.urtruck.app / 214116271`' \
+            "- requested track/status: `${TRACK} / ${RELEASE_STATUS}`" \
+            "- upload action outcome: `${UPLOAD_OUTCOME:-not_run}`" \
+            "- same-AAB promotion outcome: `${PROMOTION_OUTCOME:-not_run}`" \
+            '- internal uploads the existing AAB; production promotes its completed internal version code without re-uploading or rebuilding.' \
+            >> "$GITHUB_STEP_SUMMARY"
+
+  verify-existing-internal-release:
+    name: Read back pinned version from the completed internal track
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_existing_internal_release && !inputs.upload_existing_pinned_aab }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify pinned source and reviewed tooling identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_API_URL: ${{ github.api_url }}
+          GH_REPOSITORY: ${{ github.repository }}
+          EXPECTED_RUN_ID: "38512422153"
+          EXPECTED_ARTIFACT_ID: "11870969860"
+          EXPECTED_SOURCE_SHA: "9ac0b6200e1e91aa40b99cd1f4943062e2acc048"
+          APPROVED_TOOLING_SHA: ${{ vars.PLAY_RELEASE_TOOLING_SHA }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/release/consolidated-20261014"
+          test -n "$APPROVED_TOOLING_SHA"
+          test "$GITHUB_SHA" = "$APPROVED_TOOLING_SHA"
+          test "$(git rev-parse HEAD)" = "$APPROVED_TOOLING_SHA"
+          git merge-base --is-ancestor "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA"
+          while IFS= read -r path; do
+            case "$path" in
+              .github/workflows/deploy-play.yml|tests/frontend/test_play_pinned_existing_aab_contract.mjs|tests/ops/test_google_play_pinned_track.mjs|scripts/ops/google-play-pinned-track.mjs|scripts/ops/google-play-apk-requirements.txt|.github/workflows/testflight-local.yml|tests/frontend/test_ios_release_workflow_contract.mjs) ;;
+              *) echo "::error::Unexpected non-Play-tooling path after frozen app source: $path"; exit 1 ;;
+            esac
+          done < <(git diff --name-only "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA")
+          run_json=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$GH_API_URL/repos/$GH_REPOSITORY/actions/runs/$EXPECTED_RUN_ID")
+          printf '%s' "$run_json" | jq -e --arg sha "$EXPECTED_SOURCE_SHA" '.head_sha == $sha and .head_branch == "release/consolidated-20261014" and .conclusion == "success" and .path == ".github/workflows/deploy-play.yml"' >/dev/null
+          artifacts_json=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$GH_API_URL/repos/$GH_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/artifacts?per_page=100")
+          printf '%s' "$artifacts_json" | jq -e --argjson id "$EXPECTED_ARTIFACT_ID" 'any(.artifacts[]; .id == $id and .name == "UrTruck-aab" and .expired == false)' >/dev/null
+          echo "Pinned app source and successful AAB artifact identity confirmed."
+
+      - name: Read back internal release using a temporary edit without changing track state
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          node scripts/ops/google-play-pinned-track.mjs verify-internal

@@ -835,6 +835,15 @@ def register_native(data: NativeTokenIn, authorization: Optional[str] = Header(N
             raise HTTPException(status_code=503 if verification.endswith("unavailable") else 400,
                                 detail=verification)
 
+    # Frozen mobile clients do not include app_id in register-native. Resolve
+    # it only from this isolated server's canonical environment so legacy
+    # registrations remain distinguishable from a different QA/public app.
+    canonical_app_id = push_sender.push_gateway._default_app_id_for_runtime()
+    if canonical_app_id and data.app_id and data.app_id != canonical_app_id:
+        raise HTTPException(status_code=400, detail="App does not match this API environment")
+    if not data.app_id:
+        data.app_id = canonical_app_id or None
+
     with get_conn() as c:
         _begin_push_registration(c)
         _reject_logged_out_session(c, user_id, device_id, authorization)

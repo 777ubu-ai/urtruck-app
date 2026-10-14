@@ -188,7 +188,18 @@ def test_identity_boundary_never_inherits_old_verified_pair(pilot, monkeypatch, 
         payload["app_id"] = "com.urtruck.app"
     else:
         payload.pop("device_id")
-    assert pilot.post("/push/register-native", json=payload, headers=auth).status_code == 200
+    response = pilot.post("/push/register-native", json=payload, headers=auth)
+    if boundary == "app":
+        # The request crosses the runtime's QA2/production app boundary. The
+        # server must reject it before it can replace the verified QA2 record.
+        assert response.status_code == 400, response.text
+        row = device_row(token)
+        assert row["user_id"] == uid
+        assert row["app_id"] == "com.urtruck.app.qa2"
+        assert row["onesignal_subscription_id"] == SUB
+        assert row["onesignal_user_id"] == SUB
+        return
+    assert response.status_code == 200, response.text
     row = device_row(token)
     assert row["user_id"] == uid
     assert row["onesignal_subscription_id"] is None and row["onesignal_user_id"] is None

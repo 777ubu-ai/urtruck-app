@@ -113,7 +113,7 @@ test('phone remains required while company and location stay optional after emai
   assert.match(profileV2, /id="country"/);
   assert.match(profileV2, /id="city"/);
   assert.match(profileV2, /const validPhone = isRealPhone\(phone\)/);
-  assert.match(profileV2, /const basicFormValid = validName && validPhone && validMessenger/);
+  assert.match(profileV2, /const basicFormValid = validName && validPhone/);
   assert.match(profileV2, /if \(!validPhone\) next\.phone/);
   assert.doesNotMatch(profileV2, /validCompany/);
   // The canonical flow requires a real phone for every role, not only

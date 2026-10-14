@@ -1,9 +1,10 @@
-"""Native push gateway: direct FCM/APNs delivery.
+"""Push gateway: direct FCM/APNs with bounded legacy Expo compatibility.
 
 This module is deliberately additive. Existing business call-sites still call
 services.push_sender.send(), while the sender delegates native delivery here
-The only supported mode is ``native``. Device rows with legacy providers are
-kept for audit/migration but are never selected for delivery.
+``native`` sends only through FCM/APNs. ``dual`` keeps those transports as the
+preferred path and sends Expo only to an active Expo installation that can be
+distinguished from every native installation for the same owner.
 """
 from __future__ import annotations
 
@@ -22,8 +23,20 @@ import httpx
 from database.db import get_conn
 
 PUSH_PROVIDER_MODE = (os.getenv("PUSH_PROVIDER_MODE") or "native").strip().lower()
-SUPPORTED_PUSH_PROVIDER_MODES = {"native"}
+SUPPORTED_PUSH_PROVIDER_MODES = {"native", "dual"}
 NATIVE_PUSH_CHANNEL_ID = "urtruck_messages_v2"
+
+
+def _default_app_id_for_runtime() -> str:
+    """Resolve only the canonical app served by this isolated backend runtime."""
+    configured = (os.getenv("PUSH_DEFAULT_APP_ID") or "").strip()
+    if configured:
+        return configured
+    environment = (os.getenv("URTRUCK_ENV") or os.getenv("ENV") or "production").strip().lower()
+    return {
+        "production": "com.urtruck.app",
+        "qa2": "com.urtruck.app.qa2",
+    }.get(environment, "")
 
 FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "")
 FCM_SERVICE_ACCOUNT_JSON = os.getenv("FCM_SERVICE_ACCOUNT_JSON", "")
@@ -421,6 +434,31 @@ class APNsProvider(PushProvider):
         return ProviderResult("apns", "failed", response=body_json, error_code=code, retryable=retryable)
 
 
+class ExpoProvider(PushProvider):
+    """Compatibility adapter for active Expo rows during native migration."""
+    name = "expo"
+
+    def __init__(self, send_one):
+        self._send_one = send_one
+
+    def supports_platform(self, platform: Optional[str]) -> bool:
+        return platform in ("ios", "android")
+
+    def validate_token(self, token: str) -> bool:
+        return isinstance(token, str) and token.startswith(("ExpoPushToken[", "ExponentPushToken["))
+
+    def send(self, token: str, title: str, body: str, data: dict, badge: Optional[int] = None) -> ProviderResult:
+        response = self._send_one([token], title, body, data, badge=badge) or {}
+        ticket = (response.get("tickets") or [{}])[0]
+        if ticket.get("status") == "ok":
+            return ProviderResult("expo", "sent", message_id=ticket.get("id"), response=ticket)
+        details = ticket.get("details") or {}
+        code = details.get("error") or response.get("error") or ticket.get("message") or "send_failed"
+        normalized = "invalid_token" if code == "DeviceNotRegistered" else str(code)[:160]
+        return ProviderResult("expo", "failed", response=ticket, error_code=normalized,
+                              retryable=normalized not in {"invalid_token", "InvalidCredentials"})
+
+
 def active_devices(user_id: str) -> list[dict[str, Any]]:
     with get_conn() as c:
         rows = c.execute(
@@ -434,6 +472,160 @@ def active_devices(user_id: str) -> list[dict[str, Any]]:
             (user_id,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[dict[str, Any]]:
+    def app_platform(device: dict[str, Any]) -> tuple[str, str]:
+        return (str(device.get("app_id") or _default_app_id_for_runtime()).strip(),
+                str(device.get("platform") or "").strip())
+
+    def installation_device_id(device: dict[str, Any]) -> str:
+        return str(device.get("device_id") or "").strip()
+
+    def app_identity_matches(left: dict[str, Any], right: dict[str, Any]) -> bool:
+        left_app = app_platform(left)[0]
+        right_app = app_platform(right)[0]
+        return left_app == right_app
+
+    def app_identity_is_compatible(left: dict[str, Any], right: dict[str, Any]) -> bool:
+        """Treat a missing app ID as ambiguous for native-versus-Expo suppression."""
+        left_app = app_platform(left)[0]
+        right_app = app_platform(right)[0]
+        return not left_app or not right_app or left_app == right_app
+
+    def same_installation(left: dict[str, Any], right: dict[str, Any]) -> bool:
+        left_id = installation_device_id(left)
+        right_id = installation_device_id(right)
+        return bool(
+            left_id and right_id
+            and str(left_id) == str(right_id)
+            and app_platform(left)[1] == app_platform(right)[1]
+            and app_identity_matches(left, right)
+        )
+
+    native_rows = [d for d in devices if d.get("push_provider") in ("fcm", "apns")]
+    if mode == "native":
+        return native_rows
+    if mode != "dual":
+        return []
+
+    # Active registry rows are newest-first. During token rotation, old and
+    # new native tokens can both remain enabled for one installation; send
+    # only through its latest registered native row in dual mode so a legacy
+    # fallback cannot race a second stale native token.
+    native: list[dict[str, Any]] = []
+    seen_native_apps: dict[tuple[str, str], set[str]] = {}
+    unknown_native_rows: dict[tuple[str, str], dict[str, Any]] = {}
+    seen_native_tokens: set[str] = set()
+    for device in native_rows:
+        device_id = installation_device_id(device)
+        if device_id:
+            platform = app_platform(device)[1]
+            installation = (platform, device_id)
+            app_id = app_platform(device)[0]
+            if app_id:
+                if app_id in seen_native_apps.get(installation, set()):
+                    continue
+                # An unknown app ID cannot prove that this row duplicates a
+                # known production or QA app registration. Keep both; token
+                # identity de-duplication below still removes exact repeats.
+            else:
+                if installation in unknown_native_rows:
+                    continue
+        token = str(device.get("push_token") or "")
+        if not token or token in seen_native_tokens:
+            continue
+        seen_native_tokens.add(token)
+        if device_id:
+            if app_id:
+                seen_native_apps.setdefault(installation, set()).add(app_id)
+            else:
+                unknown_native_rows[installation] = device
+        native.append(device)
+
+    # Installation identity includes the app and platform: the same physical
+    # phone can legitimately hold separate QA/production or iOS/Android apps.
+    # If a native row in the same app/platform bucket has no device ID,
+    # distinctness cannot be established safely, so fail closed for that
+    # bucket while retaining its native delivery.
+    selected = list(native)
+    seen_expo_tokens: set[str] = set()
+    seen_expo_installations: list[dict[str, Any]] = []
+    for device in devices:
+        if device.get("push_provider") != "expo":
+            continue
+        device_id = device.get("device_id")
+        if device_id and any(
+            installation_device_id(row) == str(device_id)
+            and app_platform(device)[1] == app_platform(row)[1]
+            and app_identity_is_compatible(device, row)
+            for row in native
+        ):
+            continue
+        platform = app_platform(device)[1]
+        ambiguous_native_match = any(
+            app_platform(row)[1] == platform
+            and app_identity_is_compatible(device, row)
+            and not installation_device_id(row)
+            for row in native
+        )
+        if ambiguous_native_match or (not device_id and any(
+            app_identity_is_compatible(device, row) and app_platform(row)[1] == platform
+            for row in native
+        )):
+            continue
+        token = device.get("push_token") or ""
+        if not token or token in seen_expo_tokens:
+            continue
+        # active_devices() is newest-first. Keep only the current token row
+        # for a stable installation after token rotation, avoiding duplicate
+        # sends while not reviving or changing either registry record.
+        if device_id:
+            if any(same_installation(device, previous) for previous in seen_expo_installations):
+                continue
+            seen_expo_installations.append(device)
+        seen_expo_tokens.add(token)
+        selected.append(device)
+    return selected
+
+
+def _expo_fallbacks_for_mode(devices: list[dict[str, Any]], mode: str,
+                            provider_filter: Optional[str] = None) -> dict[int, dict[str, Any]]:
+    """Return one same-install Expo fallback after native invalid-token confirmation."""
+    if mode != "dual" or provider_filter is not None:
+        return {}
+    fallbacks: dict[int, dict[str, Any]] = {}
+    seen: set[tuple[str, str, str]] = set()
+    for native in devices:
+        if native.get("push_provider") not in {"fcm", "apns"} or not native.get("device_id"):
+            continue
+        identity = (
+            str(native.get("app_id") or _default_app_id_for_runtime()),
+            str(native.get("platform") or ""),
+            str(native.get("device_id")),
+        )
+        # A missing native app ID cannot prove which app owns an Expo row.
+        if not identity[0]:
+            continue
+        if identity in seen:
+            continue
+        seen.add(identity)
+        expo_rows = [expo for expo in devices
+                     if expo.get("push_provider") == "expo"
+                     and expo.get("device_id")
+                     and str(expo.get("platform") or "") == identity[1]
+                     and str(expo.get("device_id")) == identity[2]
+                     and str(expo.get("push_token") or "").startswith(
+                         ("ExpoPushToken[", "ExponentPushToken["))]
+        # A fallback must prove the same application as well as installation.
+        # A missing app_id remains eligible for ordinary Expo-only delivery,
+        # but cannot safely identify the app for a native-token fallback.
+        fallback = next((expo for expo in expo_rows
+                         if str(expo.get("app_id") or _default_app_id_for_runtime())
+                         and str(expo.get("app_id") or _default_app_id_for_runtime()) == identity[0]), None)
+        if fallback:
+            fallbacks[int(native["id"])] = fallback
+    return fallbacks
 
 
 def get_recipient_locale(user_id: str) -> str:
@@ -475,6 +667,55 @@ def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payloa
             (event_id, event_type, recipient_user_id, _json_dumps(safe_payload), prio, int(expires_epoch), collapse_key),
         )
         return cursor.rowcount > 0
+
+
+def claim_inline_event(event_id: str, recipient_user_id: str) -> Optional[str]:
+    """Give the immediate sender the same exclusive outbox lease as a worker."""
+    lock_id = f"inline:{os.getpid()}:{random.getrandbits(64):016x}"
+    with get_conn() as c:
+        cur = c.execute(
+            "UPDATE push_outbox SET status='processing', claimed_at=CURRENT_TIMESTAMP, locked_by=? "
+            "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry') "
+            "AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP) "
+            "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) AND id > ?",
+            (lock_id, event_id, recipient_user_id, configured_outbox_cutoff_id()),
+        )
+        return lock_id if cur.rowcount == 1 else None
+
+
+def renew_inline_event(event_id: str, recipient_user_id: str, lock_id: str) -> None:
+    """Keep a slow multi-device inline send from being reclaimed as stale."""
+    with get_conn() as c:
+        c.execute(
+            "UPDATE push_outbox SET claimed_at=CURRENT_TIMESTAMP "
+            "WHERE event_id=? AND recipient_user_id=? AND status='processing' AND locked_by=?",
+            (event_id, recipient_user_id, lock_id),
+        )
+
+
+def finish_inline_event(event_id: str, recipient_user_id: str, lock_id: str,
+                        status: str, error: Optional[str] = None) -> None:
+    if status not in {"sent", "failed", "sent_partial", "pending"}:
+        raise ValueError("invalid_inline_outbox_status")
+    with get_conn() as c:
+        if status == "sent":
+            c.execute(
+                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL, locked_by=NULL "
+                "WHERE event_id=? AND recipient_user_id=? AND status='processing' AND locked_by=?",
+                (event_id, recipient_user_id, lock_id),
+            )
+        elif status in {"failed", "sent_partial"}:
+            c.execute(
+                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, last_error=?, claimed_at=NULL, locked_by=NULL "
+                "WHERE event_id=? AND recipient_user_id=? AND status='processing' AND locked_by=?",
+                (status, (error or "provider_send_failed")[:500], event_id, recipient_user_id, lock_id),
+            )
+        else:
+            c.execute(
+                "UPDATE push_outbox SET status='pending', last_error=?, claimed_at=NULL, locked_by=NULL "
+                "WHERE event_id=? AND recipient_user_id=? AND status='processing' AND locked_by=?",
+                ((error or "")[:500] or None, event_id, recipient_user_id, lock_id),
+            )
 
 
 def log_delivery(event_id: Optional[str], user_id: str, device: dict, result: ProviderResult, attempt: int = 1) -> None:
@@ -562,6 +803,8 @@ def send_to_devices(
     badge: Optional[int],
     mode: Optional[str] = None,
     provider_filter: Optional[str] = None,
+    expo_send_one=None,
+    delivery_lock: Optional[str] = None,
 ) -> dict[str, Any]:
     mode = (mode or PUSH_PROVIDER_MODE or "native").lower()
     if mode not in SUPPORTED_PUSH_PROVIDER_MODES:
@@ -571,25 +814,29 @@ def send_to_devices(
     if notification_already_read(user_id, data):
         return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "suppressed_read": True}
 
-    devices = active_devices(user_id)
-    if not devices:
+    active = active_devices(user_id)
+    if not active:
         return {"sent": 0, "providers": {}, "devices": 0, "mode": mode}
 
-    devices = [d for d in devices if d.get("push_provider") in ("fcm", "apns")]
-    if provider_filter in ("fcm", "apns"):
+    fallback_by_native = _expo_fallbacks_for_mode(active, mode, provider_filter)
+    devices = _select_devices_for_mode(active, mode)
+    if provider_filter in ("expo", "fcm", "apns"):
         devices = [d for d in devices if d.get("push_provider") == provider_filter]
 
     providers = {
         "fcm": FCMProvider(),
         "apns": APNsProvider(),
+        "expo": ExpoProvider(expo_send_one) if expo_send_one else None,
     }
     sent = 0
     already_delivered = 0
     by_provider: dict[str, int] = {}
     errors: dict[str, int] = {}
-    retryable = True
+    retryable = False
     event_id = (data or {}).get("event_id") or (data or {}).get("event_key")
     for device in devices:
+        if delivery_lock and event_id:
+            renew_inline_event(event_id, user_id, delivery_lock)
         if _already_sent_to_device(event_id, device.get("id")):
             already_delivered += 1
             continue
@@ -638,9 +885,27 @@ def send_to_devices(
             by_provider[provider_name] = by_provider.get(provider_name, 0) + 1
         else:
             error_code = result.error_code or "provider_send_failed"
+            fallback = fallback_by_native.get(int(device.get("id") or 0))
+            if (provider_name in {"fcm", "apns"} and result.error_code == "invalid_token"
+                    and result.response is not None and fallback is not None and providers.get("expo")):
+                # Only a provider-confirmed invalid native token unlocks the
+                # legacy same-install fallback. A local format/config error
+                # or transient failure must not fan out a second transport.
+                expo_result = providers["expo"].send(
+                    fallback.get("push_token") or "", device_title, device_body, data, badge=badge,
+                )
+                log_delivery(event_id, user_id, fallback, expo_result)
+                if expo_result.status == "sent":
+                    sent += 1
+                    by_provider["expo"] = by_provider.get("expo", 0) + 1
+                else:
+                    expo_error = expo_result.error_code or "provider_send_failed"
+                    errors[expo_error] = errors.get(expo_error, 0) + 1
+                    retryable = retryable or expo_result.retryable
             errors[error_code] = errors.get(error_code, 0) + 1
-            if not result.retryable:
-                retryable = False
+            # One permanent token failure must not suppress retries for a
+            # different device whose transport failed transiently.
+            retryable = retryable or result.retryable
     return {
         "sent": sent,
         "already_delivered": already_delivered,
@@ -648,10 +913,9 @@ def send_to_devices(
         "devices": len(devices),
         "mode": mode,
         "errors": errors,
-        # All failures must be transient before the outbox is allowed to
-        # retry. A mixed multi-device send remains retryable only when the
-        # outstanding devices have transient errors; invalid tokens are
-        # deactivated by log_delivery and never reselected.
+        # Retry when at least one active target has a transient failure.
+        # Provider-confirmed invalid tokens are deactivated by log_delivery
+        # and won't be reselected on the next attempt.
         "retryable": retryable,
     }
 
@@ -680,7 +944,8 @@ def _reclaim_stale_processing(c) -> int:
     stuck forever — process_pending_once only ever SELECTs status='pending'.
     Reclaim anything that has been 'processing' longer than a worker could
     plausibly still be legitimately running (a single send_to_devices call is
-    a handful of HTTP requests with a 10s timeout each, never minutes)."""
+    a bounded sequence of provider HTTP requests; inline senders renew their
+    lease before each device)."""
     # A cutoff is a strict safety boundary: historical QA rows stay held even
     # if a long-dead worker had claimed them before the cutoff was introduced.
     cur = c.execute(
@@ -819,11 +1084,10 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
     concurrent caller, is simply skipped) and safe after a crash (stale
     'processing' rows are reclaimed first).
 
-    Delivery ownership contract: the immediate/inline fast path
-    (services.push_sender.send -> _send_native) marks its own outbox row
-    'sent' via mark_event_sent() as soon as it succeeds, so a row only ever
-    reaches this function's SELECT if the fast path never ran for it, or ran
-    and failed. This function is therefore the sole retry owner for
+    Delivery ownership contract: both immediate/inline and worker sends take
+    an atomic processing lease before contacting a provider. A row only ever
+    reaches this function's SELECT if the inline path did not claim it, or
+    released it after a retryable failure. This function is therefore the sole retry owner for
     everything that is not already known-delivered — it never re-sends
     something the fast path already delivered.
     """
@@ -906,7 +1170,11 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
                 }
             else:
                 data = {**data, "event_id": row["event_id"]}
-                result = send_to_devices(row["recipient_user_id"], title, body, data, badge)
+                from services.push_sender import _send_expo_detailed
+                result = send_to_devices(
+                    row["recipient_user_id"], title, body, data, badge,
+                    expo_send_one=_send_expo_detailed if PUSH_PROVIDER_MODE == "dual" else None,
+                )
             # Multi-device fix (push-closure track): "sent" here must mean
             # EVERY currently-active device was reached, not merely at
             # least one — `result["sent"]` alone conflates "fully
@@ -1127,7 +1395,7 @@ def info() -> dict[str, Any]:
     config_errors = []
     if PUSH_PROVIDER_MODE not in SUPPORTED_PUSH_PROVIDER_MODES:
         config_errors.append("invalid_provider_mode")
-    elif PUSH_PROVIDER_MODE == "native":
+    elif PUSH_PROVIDER_MODE in {"native", "dual"}:
         if not fcm_configured:
             config_errors.append("fcm_not_configured")
         if not apns_configured:

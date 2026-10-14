@@ -507,20 +507,8 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         # Company, country and city are optional during basic onboarding.
         # They remain editable later in the profile for both roles.
 
-        # Messenger is optional for the basic driver path. For clients, once a
-        # channel is selected its address is required at the authoritative API
-        # boundary, preventing old clients from storing e.g. `wechat` empty.
-        selected_messenger = updates.get("messenger_type")
-        if selected_messenger and role_norm != "driver":
-            effective_messenger_id = updates.get("messenger_id") or (current.get("messenger_id") or "").strip()
-            if len(effective_messenger_id) < 2:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": "MESSENGER_CONTACT_REQUIRED",
-                        "message": "Для выбранного мессенджера укажите контакт",
-                    },
-                )
+        # Мессенджер и его контакт необязательны для обеих ролей.
+        # Выбранный канал можно дополнить контактом позже в профиле.
 
         updates["role"] = role_norm
         # A real existing phone is immutable through this generic endpoint.

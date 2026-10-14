@@ -74,7 +74,7 @@ test('single-page vehicle save continues through compact completion and errors h
 
 test('basic profile leaves company and messenger optional', () => {
   assert.doesNotMatch(profile, /validCompany/);
-  assert.match(profile, /const validMessenger = !messengerType/);
+  assert.doesNotMatch(profile, /validMessenger/);
 });
 
 test('Pro documents remain separate stack routes', () => {
