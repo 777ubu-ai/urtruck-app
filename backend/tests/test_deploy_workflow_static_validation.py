@@ -99,6 +99,26 @@ def test_deploy_release_gate_requires_the_quality_gate_first():
     )
 
 
+def test_deploy_push_ignores_only_the_reviewed_push_mode_operations_files():
+    doc = _load("deploy.yml")
+    push = doc[True]["push"] if True in doc else doc["on"]["push"]
+    ignored = set(push.get("paths-ignore", []))
+    expected = {
+        ".github/workflows/deploy.yml",
+        ".github/workflows/production-deploy-execute.yml",
+        ".github/workflows/sync-production-push-mode.yml",
+        "backend/tests/test_deploy_workflow_static_validation.py",
+        "backend/tests/test_production_push_mode_sync_contract.py",
+        "backend/tests/test_remote_health_check_push_mode.py",
+        "docs/qa/production-push-mode-sync-20261014.md",
+        "scripts/ops/production_push_mode_sync_preflight.py",
+        "scripts/remote_health_check.sh",
+    }
+    assert ignored == expected
+    # GitHub paths-ignore starts the gate when any changed path is outside
+    # this set; product-source paths therefore remain covered by the release gate.
+
+
 # ── secure-production-deploy.yml: no more bare workflow_dispatch bypass ──
 
 def test_secure_production_deploy_has_no_bare_workflow_dispatch():

@@ -3,6 +3,19 @@ name: UrTruck Deploy
 on:
   push:
     branches: [main]
+    # Operational writer/test/doc-only commits must not turn a narrowly
+    # reviewed PM2 settings sync into the normal mixed-backend deployment.
+    # Any changed path outside this explicit list still runs the full gate.
+    paths-ignore:
+      - ".github/workflows/deploy.yml"
+      - ".github/workflows/production-deploy-execute.yml"
+      - ".github/workflows/sync-production-push-mode.yml"
+      - "backend/tests/test_deploy_workflow_static_validation.py"
+      - "backend/tests/test_production_push_mode_sync_contract.py"
+      - "backend/tests/test_remote_health_check_push_mode.py"
+      - "docs/qa/production-push-mode-sync-20261014.md"
+      - "scripts/ops/production_push_mode_sync_preflight.py"
+      - "scripts/remote_health_check.sh"
   workflow_dispatch:
 
 # IMPORTANT: this workflow is now the production RELEASE GATE only.
