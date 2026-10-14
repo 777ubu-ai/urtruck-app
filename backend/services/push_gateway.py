@@ -464,7 +464,27 @@ def active_devices(user_id: str) -> list[dict[str, Any]]:
 
 def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[dict[str, Any]]:
     def app_platform(device: dict[str, Any]) -> tuple[str, str]:
-        return str(device.get("app_id") or ""), str(device.get("platform") or "")
+        return (str(device.get("app_id") or "").strip(),
+                str(device.get("platform") or "").strip())
+
+    def installation_device_id(device: dict[str, Any]) -> str:
+        return str(device.get("device_id") or "").strip()
+
+    def app_identity_is_compatible(left: dict[str, Any], right: dict[str, Any]) -> bool:
+        """Treat a missing app ID as ambiguous, never as proof of another app."""
+        left_app = app_platform(left)[0]
+        right_app = app_platform(right)[0]
+        return not left_app or not right_app or left_app == right_app
+
+    def same_installation(left: dict[str, Any], right: dict[str, Any]) -> bool:
+        left_id = installation_device_id(left)
+        right_id = installation_device_id(right)
+        return bool(
+            left_id and right_id
+            and str(left_id) == str(right_id)
+            and app_platform(left)[1] == app_platform(right)[1]
+            and app_identity_is_compatible(left, right)
+        )
 
     native_rows = [d for d in devices if d.get("push_provider") in ("fcm", "apns")]
     if mode == "native":
@@ -479,7 +499,7 @@ def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[d
     native: list[dict[str, Any]] = []
     seen_native_installations: set[tuple[str, str, str]] = set()
     for device in native_rows:
-        device_id = device.get("device_id")
+        device_id = installation_device_id(device)
         if device_id:
             identity = (*app_platform(device), str(device_id))
             if identity in seen_native_installations:
@@ -492,23 +512,26 @@ def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[d
     # If a native row in the same app/platform bucket has no device ID,
     # distinctness cannot be established safely, so fail closed for that
     # bucket while retaining its native delivery.
-    native_ids = {
-        (app_platform(d), str(d.get("device_id")))
-        for d in native if d.get("device_id")
-    }
-    native_buckets = {app_platform(d) for d in native}
-    ambiguous_native_buckets = {app_platform(d) for d in native if not d.get("device_id")}
     selected = list(native)
     seen_expo_tokens: set[str] = set()
-    seen_expo_installations: set[tuple[str, str, str]] = set()
+    seen_expo_installations: list[dict[str, Any]] = []
     for device in devices:
         if device.get("push_provider") != "expo":
             continue
-        bucket = app_platform(device)
         device_id = device.get("device_id")
-        if device_id and (bucket, str(device_id)) in native_ids:
+        if device_id and any(same_installation(device, row) for row in native):
             continue
-        if bucket in native_buckets and (bucket in ambiguous_native_buckets or not device_id):
+        platform = app_platform(device)[1]
+        ambiguous_native_match = any(
+            app_platform(row)[1] == platform
+            and app_identity_is_compatible(device, row)
+            and not installation_device_id(row)
+            for row in native
+        )
+        if ambiguous_native_match or (not device_id and any(
+            app_identity_is_compatible(device, row) and app_platform(row)[1] == platform
+            for row in native
+        )):
             continue
         token = device.get("push_token") or ""
         if not token or token in seen_expo_tokens:
@@ -517,10 +540,9 @@ def _select_devices_for_mode(devices: list[dict[str, Any]], mode: str) -> list[d
         # for a stable installation after token rotation, avoiding duplicate
         # sends while not reviving or changing either registry record.
         if device_id:
-            installation = (bucket[0], bucket[1], str(device_id))
-            if installation in seen_expo_installations:
+            if any(same_installation(device, previous) for previous in seen_expo_installations):
                 continue
-            seen_expo_installations.add(installation)
+            seen_expo_installations.append(device)
         seen_expo_tokens.add(token)
         selected.append(device)
     return selected

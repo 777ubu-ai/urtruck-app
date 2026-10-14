@@ -73,6 +73,26 @@ def test_dual_matches_native_only_within_same_app_and_platform():
     assert [row["id"] for row in selected] == [1, 3, 4]
 
 
+def test_dual_treats_missing_app_id_as_ambiguous_same_installation():
+    native = _device(1, "fcm", "install-1")
+    legacy_missing_app = {**_device(2, "expo", "install-1"), "app_id": None}
+    qa_native = {**_device(3, "fcm", "install-2"), "app_id": None}
+    qa_expo = {**_device(4, "expo", "install-2"), "app_id": "com.urtruck.app.qa2"}
+
+    # A missing app ID cannot prove that the Expo row belongs to another app.
+    assert [row["id"] for row in push_gateway._select_devices_for_mode(
+        [native, legacy_missing_app, qa_native, qa_expo], "dual"
+    )] == [1, 3]
+
+
+def test_dual_keeps_expo_installation_when_both_known_app_ids_differ():
+    native = _device(1, "fcm", "install-1")
+    qa_expo = {**_device(2, "expo", "install-1"), "app_id": "com.urtruck.app.qa2"}
+    assert [row["id"] for row in push_gateway._select_devices_for_mode(
+        [native, qa_expo], "dual"
+    )] == [1, 2]
+
+
 def test_dual_fallback_requires_exact_installation_identity():
     native = _device(1, "fcm", "install-1")
     fallback = _device(2, "expo", "install-1", "ExpoPushToken[legacy]")
