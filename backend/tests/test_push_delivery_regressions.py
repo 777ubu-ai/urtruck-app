@@ -60,7 +60,8 @@ def test_native_gateway_contract_is_present():
     assert 'class PushProvider' in gateway
     assert 'class FCMProvider' in gateway
     assert 'class APNsProvider' in gateway
-    assert 'class ExpoProvider' not in gateway
+    assert 'class ExpoProvider' in gateway
+    assert 'SUPPORTED_PUSH_PROVIDER_MODES = {"native", "dual"}' in gateway
     assert 'def enqueue_event(' in gateway
     assert 'def send_to_devices(' in gateway
     assert 'CREATE TABLE IF NOT EXISTS push_devices' in schema

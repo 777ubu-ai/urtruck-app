@@ -108,6 +108,53 @@ def test_register_then_reregister_same_owner_no_duplicate():
     assert cnt == 1, "повторная регистрация не должна плодить строки"
 
 
+def test_frozen_native_registration_uses_runtime_app_identity(monkeypatch):
+    monkeypatch.setenv("URTRUCK_ENV", "production")
+    monkeypatch.delenv("PUSH_DEFAULT_APP_ID", raising=False)
+    uid, auth_token = _new_user_token()
+    token = "fcm-unit-test-runtime-app-id"
+    response = client.post(
+        "/api/v1/push/register-native",
+        json={"token": token, "device_id": "d-runtime-app-0001"},
+        headers=_auth(auth_token),
+    )
+    assert response.status_code == 200, response.text
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT app_id FROM push_devices WHERE user_id=? AND push_token=?",
+            (uid, token),
+        ).fetchone()
+    assert row is not None and row["app_id"] == "com.urtruck.app"
+
+
+def test_native_registration_rejects_explicit_app_identity_from_other_runtime(monkeypatch):
+    monkeypatch.setenv("URTRUCK_ENV", "production")
+    monkeypatch.delenv("PUSH_DEFAULT_APP_ID", raising=False)
+    uid, auth_token = _new_user_token()
+    token = "fcm-unit-test-cross-environment-app-id"
+    response = client.post(
+        "/api/v1/push/register-native",
+        json={
+            "token": token,
+            "device_id": "d-cross-environment-0001",
+            "app_id": "com.urtruck.app.qa2",
+        },
+        headers=_auth(auth_token),
+    )
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == "App does not match this API environment"
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT app_id FROM push_devices WHERE user_id=? AND push_token=?",
+            (uid, token),
+        ).fetchone()
+        legacy_row = conn.execute(
+            "SELECT token FROM push_tokens_native WHERE user_id=? AND token=?",
+            (uid, token),
+        ).fetchone()
+    assert row is None and legacy_row is None, "mismatched app identity must be rejected before registry writes"
+
+
 def test_b_cannot_hijack_a_token_without_device_match():
     uid_a, tok_a = _new_user_token()
     uid_b, tok_b = _new_user_token()
