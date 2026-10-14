@@ -473,7 +473,9 @@ jobs:
           EXPECTED_SOURCE_SHA: "9ac0b6200e1e91aa40b99cd1f4943062e2acc048"
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = "release/consolidated-20261014"
+          # This workflow revision lives on the dedicated reviewed tooling PR branch;
+          # the app source itself remains pinned and proven by EXPECTED_SOURCE_SHA below.
+          test "$GITHUB_REF_NAME" = "fix/play-upload-existing-20261014"
           test -n "$GH_TOKEN"
           git merge-base --is-ancestor "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA"
           while IFS= read -r path; do

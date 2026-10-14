@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs';
 
 const workflow = readFileSync('.github/workflows/deploy-play.yml', 'utf8');
 
-test('pinned existing-AAB mode is opt-in and limited to the consolidated release branch', () => {
+test('pinned existing-AAB mode is opt-in and limited to the dedicated release-tooling branch', () => {
   assert.match(workflow, /upload_existing_pinned_aab:[\s\S]*?default: false[\s\S]*?type: boolean/);
-  assert.match(workflow, /upload-existing-pinned-aab:[\s\S]*?test "\$GITHUB_REF_NAME" = "release\/consolidated-20261014"/);
+  assert.match(workflow, /upload-existing-pinned-aab:[\s\S]*?test "\$GITHUB_REF_NAME" = "fix\/play-upload-existing-20261014"/);
   assert.match(workflow, /git merge-base --is-ancestor "\$EXPECTED_SOURCE_SHA" "\$GITHUB_SHA"/);
   assert.match(workflow, /Unexpected non-release-tooling path after frozen app source/);
   assert.match(workflow, /EXPECTED_RUN_ID: "38512422153"/);
