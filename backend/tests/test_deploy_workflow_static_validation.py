@@ -193,7 +193,7 @@ def test_production_deploy_execute_is_reusable_and_parameterized():
     assert "break_glass" in inputs
 
 
-def test_only_normal_path_locally_calls_production_deploy_execute():
+def test_only_reviewed_callers_locally_call_production_deploy_execute():
     callers = []
     for f in WORKFLOWS.glob("*.yml"):
         if f.name == "production-deploy-execute.yml":
@@ -202,10 +202,17 @@ def test_only_normal_path_locally_calls_production_deploy_execute():
         for job in doc.get("jobs", {}).values():
             if job.get("uses") == "./.github/workflows/production-deploy-execute.yml":
                 callers.append(f.name)
-    assert sorted(callers) == ["secure-production-deploy.yml"], (
-        f"only the normal local caller may resolve the executor in-repository; "
-        f"break-glass is anchored to protected main, got: {callers}"
-    )
+    assert sorted(callers) == [
+        "secure-production-deploy.yml",
+        "sync-production-push-mode.yml",
+    ], f"only the normal and narrowly-scoped mode caller may resolve the executor, got: {callers}"
+
+    mode_caller = _load("sync-production-push-mode.yml")
+    assert mode_caller["jobs"]["sync"]["with"]["operation"] == "sync_push_mode"
+    assert mode_caller["jobs"]["sync"]["with"]["deploy_sha"] == "${{ github.sha }}"
+    executor = _load("production-deploy-execute.yml")
+    assert executor["jobs"]["sync_push_mode"]["if"] == "${{ inputs.operation == 'sync_push_mode' }}"
+    assert executor["jobs"]["deploy"]["if"] == "${{ inputs.operation == 'deploy' }}"
 
 
 def test_production_executor_is_key_only_and_pins_the_host_key():

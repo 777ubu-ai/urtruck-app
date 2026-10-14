@@ -1,0 +1,120 @@
+import hashlib
+import json
+import unittest
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from scripts.ops.production_push_mode_sync_preflight import validate_preflight
+
+
+def _fixture(tmp_path):
+    root = tmp_path / "backend"
+    (root / "services").mkdir(parents=True)
+    (root / ".env").write_text("APP_ENV=production\nPUSH_PROVIDER_MODE=dual\n", encoding="utf-8")
+    expected = {}
+    for name, payload in (
+        ("services/push_gateway.py", b"known production gateway"),
+        ("services/push_sender.py", b"known production sender"),
+    ):
+        (root / name).write_bytes(payload)
+        expected[name] = hashlib.sha256(payload).hexdigest()
+    rows = [
+        {"name": "urtruck-security-api", "pid": 1101, "pm2_env": {
+            "status": "online", "PUSH_PROVIDER_MODE": "native", "pm_cwd": str(root),
+        }},
+        {"name": "urtruck-security-scheduler", "pid": 1102, "pm2_env": {
+            "status": "online", "PUSH_PROVIDER_MODE": "native", "pm_cwd": str(root),
+        }},
+    ]
+    listener = 'LISTEN 0 2048 0.0.0.0:8001 0.0.0.0:* users:(("python",pid=1101,fd=14))\n'
+    return root, expected, json.dumps(rows), listener
+
+
+class PushModePreflightTests(unittest.TestCase):
+    def test_accepts_exact_dual_env_and_native_named_processes(self):
+        with __import__("tempfile").TemporaryDirectory() as directory:
+            root, expected, processes, listener = _fixture(Path(directory))
+
+            result = validate_preflight(root, processes, listener, expected)
+
+            self.assertEqual(result["configured_mode"], "dual")
+            self.assertEqual(result["current_process_mode"], "native")
+            self.assertEqual(result["listener_pid"], 1101)
+            self.assertEqual(len(result["source_sha256"]), 2)
+
+
+    def test_fails_closed_on_mode_identity_or_source_drift(self):
+        mutations = [
+            ("env_native", "configured push mode"),
+            ("api_mode_dual", "expected source mode"),
+            ("scheduler_offline", "expected source mode"),
+            ("wrong_listener", "not owned by the named API"),
+            ("source_drift", "compatibility baseline"),
+            ("duplicate_api", "missing or ambiguous"),
+        ]
+        for mutation, message in mutations:
+            with self.subTest(mutation=mutation), __import__("tempfile").TemporaryDirectory() as directory:
+                root, expected, processes, listener = _fixture(Path(directory))
+                rows = json.loads(processes)
+
+                if mutation == "env_native":
+                    (root / ".env").write_text("PUSH_PROVIDER_MODE=native\n", encoding="utf-8")
+                elif mutation == "api_mode_dual":
+                    rows[0]["pm2_env"]["PUSH_PROVIDER_MODE"] = "dual"
+                    processes = json.dumps(rows)
+                elif mutation == "scheduler_offline":
+                    rows[1]["pm2_env"]["status"] = "stopped"
+                    processes = json.dumps(rows)
+                elif mutation == "wrong_listener":
+                    listener = listener.replace("pid=1101", "pid=9999")
+                elif mutation == "source_drift":
+                    (root / "services/push_gateway.py").write_text("unreviewed source", encoding="utf-8")
+                elif mutation == "duplicate_api":
+                    processes = json.dumps(rows + [rows[0]])
+
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_preflight(root, processes, listener, expected)
+
+
+    def test_refuses_symlinked_backend_root(self):
+        with __import__("tempfile").TemporaryDirectory() as directory:
+            base = Path(directory)
+            root, expected, processes, listener = _fixture(base)
+            alias = base / "backend-link"
+            alias.symlink_to(root, target_is_directory=True)
+
+            with self.assertRaisesRegex(ValueError, "backend root"):
+                validate_preflight(alias, processes, listener, expected)
+
+
+    def test_sync_workflow_is_an_operation_of_the_single_guarded_writer(self):
+        writer = (ROOT / ".github/workflows/production-deploy-execute.yml").read_text(encoding="utf-8")
+        caller = (ROOT / ".github/workflows/sync-production-push-mode.yml").read_text(encoding="utf-8")
+
+        self.assertIn('default: "deploy"', writer)
+        self.assertIn("if: ${{ inputs.operation == 'deploy' }}", writer)
+        self.assertIn("if: ${{ inputs.operation == 'sync_push_mode' }}", writer)
+        self.assertIn("refs/heads/main", writer)
+        self.assertIn("REQUESTED_SHA", writer)
+        self.assertIn("CALLER_SHA", writer)
+        self.assertIn("SERVER_SSH_KNOWN_HOSTS", writer)
+        self.assertIn('URTRUCK_REQUIRE_KEY: "1"', writer)
+        self.assertIn("production-deploy-execute.yml", caller)
+        self.assertIn("deploy_sha: ${{ github.sha }}", caller)
+        self.assertIn("operation: sync_push_mode", caller)
+        sync_job = writer.split("  sync_push_mode:\n", 1)[1]
+        self.assertNotIn("runtime_release_manifest.py", sync_job)
+        self.assertNotIn("remote_bootstrap_secure_env.sh", sync_job)
+        self.assertNotIn("scp -C -r backend/*", sync_job)
+        self.assertIn("production_push_mode_sync_preflight.py", sync_job)
+        self.assertIn("remote_health_check.sh", sync_job)
+        self.assertNotIn("SERVER_SSH_KEY:", sync_job.split("steps:", 1)[0])
+        self.assertNotIn("SERVER_SSH_KNOWN_HOSTS:", sync_job.split("steps:", 1)[0])
+        self.assertIn("PUSH_PROVIDER_MODE", (ROOT / "scripts/ops/production_push_mode_sync_preflight.py").read_text())
+
+
+if __name__ == "__main__":
+    unittest.main()

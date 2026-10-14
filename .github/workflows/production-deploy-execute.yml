@@ -3,16 +3,13 @@ name: UrTruck Production Deploy (execute)
 # Release hardening track A (2026-09-10): the actual SSH/backup/deploy/
 # verify steps, extracted out of secure-production-deploy.yml so there is
 # exactly ONE place that knows how to push to the production server.
-# Two callers:
-#   - secure-production-deploy.yml — the NORMAL path, fires only after
-#     "UrTruck Deploy" (the full release gate: quality-gate + map checks)
-#     succeeds on main. No workflow_dispatch of its own anymore.
-#   - break-glass-production-deploy.yml — the EXPLICIT emergency path,
-#     named so it cannot be mistaken for routine deployment, requiring a
-#     typed confirmation and a written reason, both recorded in this run's
-#     log as the audit trail.
-# Neither caller is a hidden `workflow_dispatch` bolted onto the normal
-# workflow — see this track's report for why that was the confirmed gap.
+# Three callers:
+#   - secure-production-deploy.yml — обычный путь после полного release gate.
+#   - sync-production-push-mode.yml — узкая операция только для PM2 push mode;
+#     сама не публикует код, env, БД, storage или frontend.
+#   - break-glass-production-deploy.yml — отдельный аварийный путь с typed
+#     confirmation и записанной причиной.
+# Все SSH-действия остаются в этом единственном production writer.
 on:
   workflow_call:
     inputs:
@@ -30,6 +27,11 @@ on:
         required: false
         type: string
         default: ""
+      operation:
+        description: "Обычный deploy (по умолчанию) либо узкая синхронизация production push mode"
+        required: false
+        type: string
+        default: "deploy"
 
 permissions:
   contents: read
@@ -40,6 +42,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: ${{ inputs.operation == 'deploy' }}
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 35
@@ -289,3 +292,73 @@ jobs:
           echo 'ROAD_ROUTING_ENDPOINT=guarded'
 
           echo 'SECURE_PRODUCTION_DEPLOY=success'
+
+  sync_push_mode:
+    if: ${{ inputs.operation == 'sync_push_mode' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    env:
+      DEPLOY_SHA: ${{ inputs.deploy_sha }}
+      URTRUCK_REQUIRE_KEY: "1"
+      PM2_PROC: urtruck-security-api
+      PM2_SCHEDULER_PROC: urtruck-security-scheduler
+    steps:
+      - name: Require the exact reviewed main workflow revision
+        env:
+          CALLER_REF: ${{ github.ref }}
+          CALLER_SHA: ${{ github.sha }}
+          OPERATION: ${{ inputs.operation }}
+          REQUESTED_SHA: ${{ inputs.deploy_sha }}
+        run: |
+          set -euo pipefail
+          test "$OPERATION" = "sync_push_mode"
+          test "$CALLER_REF" = "refs/heads/main" || {
+            echo '::error::Push-mode sync is allowed only from the reviewed default branch'
+            exit 1
+          }
+          test "$REQUESTED_SHA" = "$CALLER_SHA" || {
+            echo '::error::Push-mode sync must use the exact caller workflow commit'
+            exit 1
+          }
+          echo "PUSH_MODE_WORKFLOW_SHA=$CALLER_SHA"
+
+      - name: Checkout the exact reviewed workflow revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deploy_sha }}
+
+      - name: Secure SSH preflight
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST"
+          test -n "$SERVER_USER"
+          test -n "${SERVER_SSH_KEY:-}" || { echo '::error::SERVER_SSH_KEY is required'; exit 1; }
+          test -n "${SERVER_SSH_KNOWN_HOSTS:-}" || { echo '::error::SERVER_SSH_KNOWN_HOSTS is required'; exit 1; }
+          echo 'SSH_MODE=key+pinned-known-hosts'
+          bash scripts/deploy-ssh.sh ssh "echo SSH_TRANSPORT=ok"
+
+      - name: Verify the live push code and process identity before mode change
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+          CONFIGURED_BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+        run: |
+          set -euo pipefail
+          test "$CONFIGURED_BACKEND_DIR" = "/home/ubuntu/urtruck/backend" || {
+            echo '::error::Configured backend path does not match the reviewed production runtime'
+            exit 1
+          }
+          bash scripts/deploy-ssh.sh scp scripts/ops/production_push_mode_sync_preflight.py \
+            "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py"
+          bash scripts/deploy-ssh.sh scp scripts/remote_health_check.sh \
+            "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh"
+          bash scripts/deploy-ssh.sh ssh \
+            "set -euo pipefail; trap 'rm -f /tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py /tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh' EXIT; python3 '/tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py' --root '/home/ubuntu/urtruck/backend' --api '$PM2_PROC' --scheduler '$PM2_SCHEDULER_PROC'; chmod 700 '/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh'; bash '/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh' '$PM2_PROC' '$PM2_SCHEDULER_PROC'"

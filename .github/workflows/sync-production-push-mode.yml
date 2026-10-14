@@ -1,0 +1,14 @@
+name: Синхронизация production push mode
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    uses: ./.github/workflows/production-deploy-execute.yml
+    with:
+      deploy_sha: ${{ github.sha }}
+      operation: sync_push_mode
