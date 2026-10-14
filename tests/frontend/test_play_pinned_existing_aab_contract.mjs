@@ -35,6 +35,16 @@ test('pinned existing-AAB upload skips rebuild and keeps the shared Play concurr
   assert.match(workflow, /PLAY_PREFLIGHT_BLOCKED: versionCode \{expected\} must first be completed on internal track/);
   assert.match(workflow, /temporary edit cleanup HTTP/);
   assert.match(workflow, /uses: r0adkll\/upload-google-play@v1/);
-  assert.match(workflow, /this step uploads the existing AAB and never runs Gradle\/build/);
+  assert.match(workflow, /internal uploads the existing AAB; production promotes its completed internal version code without re-uploading or rebuilding/);
   assert.doesNotMatch(workflow, /upload-existing-pinned-aab:[\s\S]{0,14000}gradlew|upload-existing-pinned-aab:[\s\S]{0,14000}Build release AAB/);
+});
+
+test('production reuses the completed internal version without uploading the same bundle twice', () => {
+  assert.match(workflow, /Upload verified AAB to the selected Play track[\s\S]*?if: \$\{\{ inputs\.track != 'production' \}\}/);
+  assert.match(workflow, /Promote the already uploaded internal version to production without re-upload/);
+  assert.match(workflow, /PLAY_PROMOTION_BLOCKED: pinned versionCode is not completed on internal/);
+  assert.match(workflow, /'versionCodes': \[expected\],[\s\S]*?'status': 'completed'/);
+  assert.match(workflow, /changesInReviewBehavior=ERROR_IF_IN_REVIEW/);
+  assert.match(workflow, /in-review changes were not cancelled/);
+  assert.match(workflow, /production promotion must be a completed 100% release after review/);
 });

@@ -511,6 +511,8 @@ jobs:
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           TARGET_TRACK: ${{ inputs.track || 'internal' }}
+          RELEASE_STATUS: ${{ inputs.status || 'draft' }}
+          USER_FRACTION: ${{ inputs.user_fraction || '' }}
         run: |
           set -euo pipefail
           python3 -m pip install --disable-pip-version-check --quiet google-auth requests
@@ -522,6 +524,12 @@ jobs:
           package = 'com.urtruck.app'
           expected = 214116271
           target_track = os.environ['TARGET_TRACK']
+          release_status = os.environ['RELEASE_STATUS']
+          user_fraction = os.environ.get('USER_FRACTION', '').strip()
+          if target_track == 'production' and release_status != 'completed':
+              raise SystemExit('PLAY_PREFLIGHT_BLOCKED: production promotion must be a completed 100% release after review')
+          if target_track == 'production' and user_fraction:
+              raise SystemExit('PLAY_PREFLIGHT_BLOCKED: user_fraction is not valid for the pinned completed production release')
           raw = os.environ.get('PLAY_SERVICE_ACCOUNT_JSON', '')
           if not raw:
               raise SystemExit('PLAY_PREFLIGHT_BLOCKED: Play service-account credential is unavailable')
@@ -600,6 +608,7 @@ jobs:
 
       - name: Upload verified AAB to the selected Play track
         id: upload_existing_to_play
+        if: ${{ inputs.track != 'production' }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -610,6 +619,101 @@ jobs:
           userFraction: ${{ inputs.user_fraction || '' }}
           inAppUpdatePriority: 2
 
+      - name: Promote the already uploaded internal version to production without re-upload
+        id: promote_existing_to_production
+        if: ${{ inputs.track == 'production' }}
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet google-auth requests
+          python3 - <<'PY'
+          import json, os, sys
+          from google.auth.transport.requests import AuthorizedSession
+          from google.oauth2 import service_account
+
+          package = 'com.urtruck.app'
+          expected = 214116271
+          raw = os.environ.get('PLAY_SERVICE_ACCOUNT_JSON', '')
+          if not raw:
+              raise SystemExit('PLAY_PROMOTION_BLOCKED: Play service-account credential is unavailable')
+          credentials = service_account.Credentials.from_service_account_info(
+              json.loads(raw), scopes=['https://www.googleapis.com/auth/androidpublisher'])
+          session = AuthorizedSession(credentials)
+          root = f'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{package}/edits'
+          created = session.post(root, json={}, timeout=45)
+          if not created.ok:
+              raise SystemExit(f'PLAY_PROMOTION_BLOCKED: edits.insert HTTP {created.status_code}')
+          edit_id = created.json().get('id')
+          if not edit_id:
+              raise SystemExit('PLAY_PROMOTION_BLOCKED: temporary edit id missing')
+          committed = False
+          try:
+              response = session.get(f'{root}/{edit_id}/tracks', timeout=45)
+              if not response.ok:
+                  raise SystemExit(f'PLAY_PROMOTION_BLOCKED: tracks read HTTP {response.status_code}')
+              tracks = response.json().get('tracks', [])
+              internal = next((track for track in tracks if track.get('track') == 'internal'), None)
+              production = next((track for track in tracks if track.get('track') == 'production'), None)
+              if internal is None or production is None:
+                  raise SystemExit('PLAY_PROMOTION_BLOCKED: expected internal/production tracks are unavailable')
+              internal_completed = any(
+                  release.get('status') == 'completed' and expected in [int(code) for code in release.get('versionCodes', [])]
+                  for release in internal.get('releases', []))
+              if not internal_completed:
+                  raise SystemExit('PLAY_PROMOTION_BLOCKED: pinned versionCode is not completed on internal')
+              current_production = production.get('releases', [])
+              if any(expected in [int(code) for code in release.get('versionCodes', [])] for release in current_production):
+                  raise SystemExit('PLAY_PROMOTION_BLOCKED: pinned versionCode is already listed on production; inspect current release before retry')
+              if any(release.get('status') in ('draft', 'inProgress') for release in current_production):
+                  raise SystemExit('PLAY_PROMOTION_BLOCKED: production already has a draft or staged rollout; preserve it and resolve before promoting')
+              release = {
+                  'name': 'UrTruck 1.0.9 (214116271)',
+                  'versionCodes': [expected],
+                  'status': 'completed',
+                  'inAppUpdatePriority': 2,
+                  'releaseNotes': [
+                      {'language': 'ru-RU', 'text': 'Теперь профиль можно сохранить без необязательного контакта в мессенджере. Улучшена обработка входа и сохранения профиля.'},
+                      {'language': 'en-US', 'text': 'You can now save your profile without an optional messenger contact. Sign-in and profile saving have been improved.'},
+                  ],
+              }
+              completed_releases = [item for item in current_production if item.get('status') == 'completed']
+              if completed_releases:
+                  latest_completed = max(
+                      completed_releases,
+                      key=lambda item: max([int(code) for code in item.get('versionCodes', [])] or [0]))
+                  targeting = latest_completed.get('countryTargeting')
+                  if targeting:
+                      release['countryTargeting'] = targeting
+              updated = dict(production)
+              updated['releases'] = current_production + [release]
+              result = session.put(f'{root}/{edit_id}/tracks/production', json=updated, timeout=45)
+              if not result.ok:
+                  raise SystemExit(f'PLAY_PROMOTION_BLOCKED: production track update HTTP {result.status_code}')
+              commit = session.post(f'{root}/{edit_id}:commit?changesInReviewBehavior=ERROR_IF_IN_REVIEW', json={}, timeout=45)
+              if not commit.ok:
+                  raise SystemExit(f'PLAY_PROMOTION_BLOCKED: edit commit HTTP {commit.status_code}; in-review changes were not cancelled')
+              committed = True
+              print(json.dumps({
+                  'package': package,
+                  'track': 'production',
+                  'versionCode': expected,
+                  'status': 'completed',
+                  'rolloutPercent': 100,
+                  'source': 'existing completed internal release; no bundle upload or rebuild',
+                  'countryTargetingPreserved': bool(release.get('countryTargeting')),
+                  'commitAccepted': True,
+              }, sort_keys=True))
+          finally:
+              # A committed edit is already closed. On a pre-commit failure,
+              # delete only this workflow's temporary, uncommitted edit.
+              if not committed:
+                  try:
+                      session.delete(f'{root}/{edit_id}', timeout=45)
+                  except Exception:
+                      pass
+          PY
+
       - name: Record existing-AAB upload evidence
         if: always()
         env:
@@ -617,6 +721,7 @@ jobs:
           TRACK: ${{ inputs.track || 'internal' }}
           RELEASE_STATUS: ${{ inputs.status || 'draft' }}
           UPLOAD_OUTCOME: ${{ steps.upload_existing_to_play.outcome }}
+          PROMOTION_OUTCOME: ${{ steps.promote_existing_to_production.outcome }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
@@ -628,5 +733,6 @@ jobs:
           - package/versionCode: `com.urtruck.app / 214116271`
           - requested track/status: `${TRACK} / ${RELEASE_STATUS}`
           - upload action outcome: `${UPLOAD_OUTCOME:-not_run}`
-          - this step uploads the existing AAB and never runs Gradle/build.
+          - same-AAB promotion outcome: `${PROMOTION_OUTCOME:-not_run}`
+          - internal uploads the existing AAB; production promotes its completed internal version code without re-uploading or rebuilding.
           EOF
