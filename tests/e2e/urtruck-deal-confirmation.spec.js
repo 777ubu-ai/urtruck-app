@@ -25,7 +25,7 @@ test.use({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', video
 
 const DEAL = 'confirm-deal';
 const ROOM = 'confirm-room';
-async function fixture(page, { role, initialStatus = 'at_border', failFirst = false, lang = 'RU' }) {
+async function fixture(page, { role, initialStatus = 'at_border', failFirst = false, lang = 'RU', reviewEligible = false }) {
   const user = { id: role === 'driver' ? 'confirm-driver' : 'confirm-client', role, verification_level: 3 };
   const box = { status: initialStatus, posts: [], errors: [], failFirst };
   const deal = () => ({
@@ -77,7 +77,9 @@ async function fixture(page, { role, initialStatus = 'at_border', failFirst = fa
     else if (url.pathname.includes('/chat/')) data = { messages: [], rooms: [], unread: 0 };
     else if (url.pathname.includes('/notifications')) data = { notifications: [], unread: 0 };
     else if (url.pathname.includes('/favorites')) data = { favorites: [] };
-    else if (url.pathname.includes('/reviews')) data = { ok: true, eligible: false, already_reviewed: true, reviews: [], summary: {} };
+    else if (url.pathname.includes('/reviews')) data = {
+      ok: true, eligible: reviewEligible, already_reviewed: !reviewEligible, reviews: [], summary: {},
+    };
     else if (url.pathname.includes('/market/trips')) data = { trips: [], total: 0 };
     else if (url.pathname.includes('/market/cargos')) data = { cargos: [], total: 0 };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
@@ -93,6 +95,16 @@ async function fixture(page, { role, initialStatus = 'at_border', failFirst = fa
   return box;
 }
 const hosts = page => page.locator('[aria-modal="true"]');
+
+test('client: completion with eligible review does not stack rating and status modal hosts', async ({ page }) => {
+  const box = await fixture(page, { role: 'client', initialStatus: 'received', reviewEligible: true });
+  await page.getByTestId('deal-status-open').click();
+  await page.getByTestId('deal-action-complete').click();
+  await page.getByTestId('deal-workspace-confirm-confirm').click();
+  await expect.poll(() => box.status).toBe('completed');
+  await expect(page.getByTestId('deal-review-prompt')).toBeVisible();
+  await expect(hosts(page)).toHaveCount(1);
+});
 
 for (const [role, initialStatus, action, target] of [
   ['driver', 'at_border', 'deal-action-mark-arrived', 'delivered'],
