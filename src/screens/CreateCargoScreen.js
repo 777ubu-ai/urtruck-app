@@ -7,6 +7,7 @@ import CountryFlag from '../components/ui/v1/CountryFlag';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
+import { cargoPublishErrorMessage } from '../utils/cargoPublishError';
 import Screen from '../components/ui/v1/Screen';
 import BrandHeader from '../components/ui/v1/BrandHeader';
 import Field from '../components/ui/v1/Field';
@@ -252,7 +253,7 @@ export default function CreateCargoScreen({ navigation, route }) {
           }],
         });
       } else {
-        toast(r.detail || t('send_error'), 'error');
+        toast(cargoPublishErrorMessage(r, t), 'error');
       }
     } catch (e) {
       // P1 UI-аудит 2026-09-13: не показывать сырой e.message (часто

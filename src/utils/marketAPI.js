@@ -124,7 +124,12 @@ export const marketAPI = {
       body: JSON.stringify(data),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    if (!r.ok) return {
+      ok: false,
+      detail: normalizeDetail(d.detail, r.status),
+      errorCode: typeof d?.detail?.error === 'string' ? d.detail.error : null,
+      status: r.status,
+    };
     return d;
   },
 
