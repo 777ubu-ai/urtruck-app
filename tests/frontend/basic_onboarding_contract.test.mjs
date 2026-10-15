@@ -17,7 +17,8 @@ test('basic endpoint validates the complete minimum profile and sets only basic 
   for (const field of ['citizenship_country', 'full_name', 'birth_date', 'vehicle_registration_country', 'truck_kind', 'body_type', 'vehicle_brand', 'vehicle_plate', 'capacity_tons', 'volume_m3']) {
     assert.match(backend, new RegExp(`['"]${field}['"]`));
   }
-  assert.match(backend, /re\.fullmatch\(r?["']\\d\{12\}["']/);
+  const missingFields = backend.slice(backend.indexOf('def _basic_onboarding_missing'), backend.indexOf('def can_publish_driver_trip'));
+  assert.doesNotMatch(missingFields, /missing\.append\(["']iin["']\)/);
   assert.match(backend, /"status": "basic"/);
   assert.match(backend, /"basic_onboarding_completed": 1/);
   const endpoint = backend.slice(backend.indexOf('def complete_basic_onboarding'), backend.indexOf('@driver_reg_router.post("/submit")'));
