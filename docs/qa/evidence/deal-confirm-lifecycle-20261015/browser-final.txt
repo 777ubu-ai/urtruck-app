@@ -1,0 +1,17 @@
+
+Running 13 tests using 1 worker
+
+[1/13] tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › driver RU: at_border → delivered, один host/cancel/confirm
+[2/13] tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › driver EN: at_border → delivered, один host/cancel/confirm
+[3/13] tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › driver ZH: at_border → delivered, один host/cancel/confirm
+[4/13] tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › client RU: delivered → received, один host/cancel/confirm
+[5/13] tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › client EN: delivered → received, один host/cancel/confirm
+[6/13] tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › client ZH: delivered → received, один host/cancel/confirm
+[7/13] tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › client RU: received → completed, один host/cancel/confirm
+[8/13] tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › client EN: received → completed, один host/cancel/confirm
+[9/13] tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › client ZH: received → completed, один host/cancel/confirm
+[10/13] tests/e2e/urtruck-deal-confirmation.spec.js:129:1 › driver RU: отказ503 виден, статус прежний, повтор после подтверждения работает
+[11/13] tests/e2e/urtruck-deal-confirmation.spec.js:145:3 › driver: отмена принятой сделки требует отдельного подтверждения
+[12/13] tests/e2e/urtruck-deal-confirmation.spec.js:145:3 › client: отмена принятой сделки требует отдельного подтверждения
+[13/13] tests/e2e/urtruck-deal-confirmation.spec.js:160:1 › client не получает действие delivered; карта без внешнего SDK сохраняет expand/chat/back
+  13 passed (26.2s)
