@@ -29,6 +29,7 @@ test('loopback lab APK mode is explicit, exact-source guarded, and cannot target
   assert.ok(workflow.includes('- loopback_lab'));
   assert.ok(workflow.includes('BUILD_OPPO_LOOPBACK_LAB'));
   assert.ok(workflow.includes('git merge-base --is-ancestor 6bf713eac1f9c7339b8651fecc132aa14f7862e5 "$RESOLVED_SOURCE_SHA"'));
+  assert.ok(workflow.includes('fetch-depth: 0'), 'the ancestry guard must have repository history to inspect');
   assert.ok(workflow.includes('QA_API_URL="http://127.0.0.1:8002"'));
   assert.ok(workflow.includes('adb reverse tcp:8002 tcp:8002'));
   assert.ok(workflow.includes('QA2 Android build must not target production'));
