@@ -54,7 +54,8 @@ import {
   getLocationHealth,
   requestForegroundLocationPermission,
 } from '../utils/backgroundLocation';
-import { compressImage } from '../utils/imageCompress';
+import { compressImage, imageUploadByteSize } from '../utils/imageCompress';
+import { prepareChatPhoto } from '../utils/prepareChatPhoto';
 import { voice } from '../utils/voiceRecorder';
 import VoiceMessageBubble from '../components/VoiceMessageBubble';
 import { createVoiceTranscriptState } from '../utils/voiceTranscriptState';
@@ -1201,8 +1202,10 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1 });
       if (pick.canceled || !pick.assets?.[0]?.uri) return;
       const source = pick.assets[0].uri;
-      let uri = source;
-      try { uri = await compressImage(source, { preset: 'chat' }); } catch {}
+      const prepared = await prepareChatPhoto({ uri: source, name: pick.assets[0].fileName || 'photo.jpg' }, {
+        compressImage, readByteSize: imageUploadByteSize,
+      });
+      const uri = prepared.uri;
       const clientId = newClientId();
       const item = {
         id: clientId, mine: true, text: '', photo: true, mediaUrl: uri,
@@ -1212,7 +1215,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       setAttachOpen(false);
       await uploadPhoto(item);
     } catch (error) {
-      toast(error?.isNetwork ? t('no_connection') : t('chat_send_failed'), 'error');
+      toast(error?.code === 'photo_preparation_failed' ? t('photo_preparation_failed')
+        : error?.code === 'photo_too_large' ? t('photo_too_large')
+          : error?.isNetwork ? t('no_connection') : t('chat_send_failed'), 'error');
     }
   }, [uploadPhoto, toast, t]);
 

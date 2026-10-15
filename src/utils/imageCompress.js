@@ -33,7 +33,7 @@ export async function compressImage(uri, opts = {}) {
   const targetKB = opts.targetKB != null ? opts.targetKB : preset.targetKB;
 
   let quality = baseQuality;
-  let out = await compressOnce(uri, maxSide, quality);
+  let out = await compressOnce(uri, maxSide, quality, opts.strict === true);
 
   // Второй проход (и третий) с q−0.1, если файл всё ещё превышает лимит.
   // Не опускаемся ниже 0.4 — иначе OCR/лицо деградируют. Если размер
@@ -43,13 +43,13 @@ export async function compressImage(uri, opts = {}) {
       const kb = await byteSizeKB(out);
       if (kb == null || kb <= targetKB) break;
       quality = Math.max(0.4, Math.round((quality - 0.1) * 100) / 100);
-      out = await compressOnce(uri, maxSide, quality);
+      out = await compressOnce(uri, maxSide, quality, opts.strict === true);
     }
   }
   return out;
 }
 
-async function compressOnce(uri, maxSide, quality) {
+async function compressOnce(uri, maxSide, quality, strict = false) {
   if (Platform.OS === 'web') {
     return compressWeb(uri, maxSide, quality);
   }
@@ -67,8 +67,14 @@ async function compressOnce(uri, maxSide, quality) {
       { compress: quality, format: SaveFormat.JPEG },
     );
     return result.uri;
-  } catch {
-    // Fallback — вернуть оригинал
+  } catch (cause) {
+    // Chat explicitly requires a JPEG result. Other historical callers retain
+    // their existing fallback until their own upload paths are audited.
+    if (strict) {
+      const error = new Error('photo_preparation_failed', { cause });
+      error.code = 'photo_preparation_failed';
+      throw error;
+    }
     return uri;
   }
 }
@@ -85,6 +91,10 @@ async function byteSizeKB(uri) {
     }
     if (Platform.OS !== 'web') {
       const FileSystem = await import('expo-file-system');
+      if (typeof FileSystem.File === 'function') {
+        const file = new FileSystem.File(uri);
+        if (file.exists && Number.isFinite(file.size)) return Math.round(file.size / 1024);
+      }
       const info = await FileSystem.getInfoAsync(uri, { size: true });
       if (info && info.size != null) return Math.round(info.size / 1024);
     }
@@ -116,4 +126,17 @@ async function compressWeb(uri, maxSide, quality) {
     img.onerror = reject;
     img.src = uri;
   });
+}
+
+// Exact byte count for the prepared upload; do not trust the picker size after
+// transcoding. Unknown size fails closed in the chat preparation helper.
+export async function imageUploadByteSize(uri) {
+  if (Platform.OS === 'web') {
+    const response = await fetch(uri);
+    if (!response.ok) throw new Error('photo_read_failed');
+    return (await response.blob()).size;
+  }
+  const { File } = await import('expo-file-system');
+  const file = new File(uri);
+  return file.exists ? file.size : null;
 }
