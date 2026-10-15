@@ -52,10 +52,12 @@ test('all entry points reuse the single Chat route despite different deal and ro
   }
 });
 
-test('only the focused completed-deal workspace opens its review prompt', () => {
+test('only the focused completed-deal workspace opens its review prompt after the status sheet closes', () => {
   assert.match(workspace, /const isFocused = useIsFocused\(\)/);
-  assert.match(workspace, /next === 'eligible' && isFocused/);
-  assert.match(workspace, /fallback === 'eligible' && isFocused/);
+  assert.match(workspace, /reviewEligibility !== 'eligible' \|\| !isFocused \|\| statusModalOpen/);
+  assert.match(workspace, /promptedReviewRef\.current === dealId/);
+  assert.match(workspace, /setReviewEligibility\(next\)/);
+  assert.match(workspace, /setReviewEligibility\(fallback\)/);
   assert.match(workspace, /if \(!isFocused\) setRatingModalOpen\(false\)/);
   assert.match(workspace, /visible=\{ratingModalOpen && isFocused\}/);
 });
