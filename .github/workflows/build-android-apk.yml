@@ -9,11 +9,23 @@ on:
       source_ref:
         description: Exact source commit SHA to build
         required: true
+      build_target:
+        description: QA2 backend target; lab mode is fixed to OPPO USB loopback
+        type: choice
+        required: true
+        default: qa2
+        options:
+          - qa2
+          - lab_loopback
   workflow_call:
     inputs:
       source_ref:
         required: true
         type: string
+      build_target:
+        required: false
+        type: string
+        default: qa2
   push:
     branches: [main, "claude/**"]
 
@@ -41,7 +53,8 @@ jobs:
       - name: Set QA2 build contract
         env:
           EXPECTED_SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
-          QA_API_URL: ${{ secrets.QA2_API_URL }}
+          BUILD_TARGET: ${{ inputs.build_target || 'qa2' }}
+          QA2_API_URL: ${{ secrets.QA2_API_URL }}
         run: |
           set -euo pipefail
           RESOLVED_SOURCE_SHA="$(git rev-parse HEAD)"
@@ -49,10 +62,38 @@ jobs:
             echo "::error::Expected exact source SHA $EXPECTED_SOURCE_SHA, resolved $RESOLVED_SOURCE_SHA"
             exit 1
           }
-          test -n "${QA_API_URL:-}" || {
-            echo "::error::QA2_API_URL is required for QA2 Android builds"
-            exit 1
-          }
+          echo "URTRUCK_TOOLING_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          case "$BUILD_TARGET" in
+            lab_loopback)
+              test "$GITHUB_EVENT_NAME" = workflow_dispatch || {
+                echo "::error::Lab loopback builds require an explicit workflow_dispatch"
+                exit 1
+              }
+              test "$GITHUB_REF" = refs/heads/fix/qa2-loopback-lab-workflow-20261015 || {
+                echo "::error::Lab loopback mode is restricted to the reviewed tooling branch"
+                exit 1
+              }
+              test "$RESOLVED_SOURCE_SHA" = 6bf713eac1f9c7339b8651fecc132aa14f7862e5 || {
+                echo "::error::Lab loopback mode is pinned to app source 6bf713eac1f9c7339b8651fecc132aa14f7862e5"
+                exit 1
+              }
+              QA_API_URL='http://127.0.0.1:8002'
+              test "$QA_API_URL" = 'http://127.0.0.1:8002'
+              echo "QA2_API_TARGET=loopback-lab; runtime health will be confirmed through adb reverse after installation"
+              ;;
+            qa2)
+              QA_API_URL="${QA2_API_URL:-}"
+              test -n "$QA_API_URL" || {
+                echo "::error::QA2_API_URL is required for QA2 Android builds"
+                exit 1
+              }
+              ;;
+            *)
+              echo "::error::Unsupported QA2 Android build target"
+              exit 1
+              ;;
+          esac
+          export QA_API_URL
           QA_HOST="$(python3 - <<'PY'
           from urllib.parse import urlparse
           import os
@@ -62,19 +103,24 @@ jobs:
           test -n "$QA_HOST" || { echo "::error::QA2 API URL has no host"; exit 1; }
           case "$QA_HOST" in
             urtruck.kz|www.urtruck.kz|185.22.65.11)
-              echo "::error::QA2 Android build must not target production"
-              exit 1
-              ;;
-          esac
-          qa_ok=no
-          for path in /health /api/version; do
-            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${QA_API_URL%/}${path}" || true)"
-            [[ "$code" =~ ^2 ]] && qa_ok=yes && break
-          done
-          test "$qa_ok" = yes || {
-            echo "::error::QA2 Android build target is not healthy"
+            echo "::error::QA2 Android build must not target production"
             exit 1
-          }
+            ;;
+          esac
+          if [ "$BUILD_TARGET" = qa2 ]; then
+            qa_ok=no
+            for path in /health /api/version; do
+              code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${QA_API_URL%/}${path}" || true)"
+              [[ "$code" =~ ^2 ]] && qa_ok=yes && break
+            done
+            test "$qa_ok" = yes || {
+              echo "::error::QA2 Android build target is not healthy"
+              exit 1
+            }
+            echo "QA2_API_TARGET=healthy-nonproduction"
+          else
+            test "$QA_API_URL" = 'http://127.0.0.1:8002'
+          fi
           echo "URTRUCK_SOURCE_SHA=$RESOLVED_SOURCE_SHA" >> "$GITHUB_ENV"
           echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
           echo "URTRUCK_VERSION_NAME=1.0.9-qa2" >> "$GITHUB_ENV"
@@ -86,7 +132,6 @@ jobs:
           echo "URTRUCK_VERSION_CODE=$qa2_version_code" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           printf 'EXPO_PUBLIC_API_URL=%s\n' "$QA_API_URL" >> "$GITHUB_ENV"
-          echo "QA2_API_TARGET=healthy-nonproduction"
 
       - name: Verify QA2 build regression contract
         run: node --test tests/frontend/test_qa2_live_build_contract.mjs
@@ -261,6 +306,8 @@ jobs:
           echo "versionCode=$URTRUCK_VERSION_CODE"
           echo "targetSdk=36"
           echo "sourceSHA=${URTRUCK_SOURCE_SHA}"
+          echo "toolingSHA=${URTRUCK_TOOLING_SHA}"
+          echo "apiHost=${EXPO_PUBLIC_API_URL}"
           echo "apkSHA256=$SHA256"
           echo "certificateSHA256=$CERT"
 
