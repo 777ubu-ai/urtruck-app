@@ -1,0 +1,1 @@
+Synthetic loopback fixtures only. Browser: React Native Web, Chromium 390x844. Native/device/GPS/push acceptance PENDING. Screenshots cover nine role/language status confirmations; fixture tokens are synthetic. Source identity is the git commit containing this evidence. No production data used.
