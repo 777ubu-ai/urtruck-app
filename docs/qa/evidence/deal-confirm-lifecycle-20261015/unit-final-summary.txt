@@ -1,0 +1,14 @@
+  ok: legacy auto + dark OS -> dark (got dark, expected dark)
+  ok: legacy auto + light OS -> light (got light, expected light)
+  ok: undefined mode + dark OS -> dark (got dark, expected dark)
+
+All theme resolve tests passed.
+✔ tests/unit/themeResolve.test.mjs (142.599209ms)
+ℹ tests 1207
+ℹ suites 0
+ℹ pass 1207
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11127.3815

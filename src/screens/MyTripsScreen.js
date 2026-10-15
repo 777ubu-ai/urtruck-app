@@ -146,6 +146,10 @@ export default function MyTripsScreen({ navigation, route }) {
   const [busyBidId, setBusyBidId] = useState(null);
   const [extending, setExtending] = useState(null);  // Модель А: продление одним тапом
   const loadRequestRef = useRef(0);
+  const pageRef = useRef({ busy: false, nextOffset: null, scope: null });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [archiveTotal, setArchiveTotal] = useState(null);
 
   // «Ещё актуально» — сбрасывает дату на сегодня, публикация снова живёт
   // 3 дня и возвращается в ленту. Без ручного ввода даты.
@@ -198,40 +202,67 @@ export default function MyTripsScreen({ navigation, route }) {
     setConfirmDialog((current) => { current?.resolve?.(answer); return null; });
   };
 
-  const load = useCallback(async ({ showLoading = true } = {}) => {
+  const load = useCallback(async ({ showLoading = true, append = false } = {}) => {
+    const previous = pageRef.current;
+    if (append && (previous.busy || previous.nextOffset == null)) return;
     const requestId = ++loadRequestRef.current;
-    if (showLoading) setLoading(true);
+    const offset = append ? previous.nextOffset : 0;
+    const section = tab === 'archive' ? 'archive' : 'active';
+    pageRef.current = { ...previous, busy: true, nextOffset: append ? previous.nextOffset : null };
+    if (append) setLoadingMore(true);
+    else if (showLoading) setLoading(true);
     else setRefreshingList(true);
+    setLoadError(false);
     try {
       const token = await withTimeout(require('../utils/storage').storage.get('ur_reg_token'));
       let next;
+      let page = { next_offset: null };
       if (!token) {
         if (isDriver) {
           const trips = await withTimeout(marketAPI.listTrips({}));
-          next = { my_trips: trips.trips || [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true };
+          if (trips.serverError) throw new Error('list_failed');
+          next = { my_trips: trips.trips || [], my_cargos: [], authRequired: true };
         } else {
-          next = { my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [], authRequired: true };
+          next = { my_trips: [], my_cargos: [], authRequired: true };
         }
       } else {
-        let dashboard = await withTimeout(marketAPI.myDashboard());
-        if (dashboard.serverError && isDriver) {
-          try {
-            const trips = await withTimeout(marketAPI.listTrips({}));
-            dashboard = { ...dashboard, my_trips: trips.trips || [] };
-          } catch { /* preserve the dashboard response if its fallback fails */ }
+        page = await withTimeout(marketAPI.myListings({ kind: isDriver ? 'trip' : 'cargo', section, limit: 50, offset }));
+        if (page.serverError) throw new Error('list_failed');
+        if (!mounted.current || requestId !== loadRequestRef.current) return;
+        if (page.authRequired || (append && page.scope !== previous.scope)) {
+          setData({ my_trips: [], my_cargos: [], authRequired: true });
+          setArchiveTotal(null);
+          pageRef.current = { busy: false, nextOffset: null, scope: null };
+          return;
         }
-        next = dashboard;
+        const key = isDriver ? 'my_trips' : 'my_cargos';
+        next = { [key]: page.items, section };
       }
-      if (mounted.current && requestId === loadRequestRef.current) setData(next);
+      if (mounted.current && requestId === loadRequestRef.current) {
+        setData(current => {
+          if (!append) return next;
+          const key = isDriver ? 'my_trips' : 'my_cargos';
+          // Граничные записи при изменении ленты не дублируем.
+          const items = new Map([...(current?.[key] || []), ...(next[key] || [])].map(item => [item.id, item]));
+          return { ...next, [key]: [...items.values()] };
+        });
+        setArchiveTotal(page.archive_total ?? null);
+        pageRef.current = { busy: false, nextOffset: page.next_offset, scope: page.scope || null };
+      }
     } catch (e) {
-      console.warn('[MyTrips] load error:', e.message);
+      if (mounted.current && requestId === loadRequestRef.current) {
+        setLoadError(true);
+        console.warn('[MyTrips] load error:', e.message);
+      }
     } finally {
       if (mounted.current && requestId === loadRequestRef.current) {
+        pageRef.current.busy = false;
         setLoading(false);
         setRefreshingList(false);
+        setLoadingMore(false);
       }
     }
-  }, [isDriver, mounted]);
+  }, [isDriver, tab, mounted]);
 
   const { refreshing, onRefresh } = useSafeRefresh(
     useCallback(() => load({ showLoading: false }), [load]),
@@ -241,6 +272,7 @@ export default function MyTripsScreen({ navigation, route }) {
     if (justCreatedTrip) {
       setData({ my_trips: [justCreatedTrip], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [] });
       setLoading(false);
+      load({ showLoading: false });
     } else if (justCreatedCargo) {
       setData({ my_trips: [], my_cargos: [justCreatedCargo], my_bids: [], incoming_bids: [], my_deals: [] });
       setLoading(false);
@@ -591,7 +623,8 @@ export default function MyTripsScreen({ navigation, route }) {
   const DRIVER_RENDER = { routes: renderMyItem, archive: renderUnpublishedItem };
   const CLIENT_DATA = { searching: clientSearching, archive: clientArchive };
   const CLIENT_RENDER = { searching: renderMyItem, archive: renderUnpublishedItem };
-  const listData = isDriver ? (DRIVER_DATA[tab] || []) : (CLIENT_DATA[tab] || []);
+  const sectionMatches = !data?.section || data.section === (tab === 'archive' ? 'archive' : 'active');
+  const listData = sectionMatches ? (isDriver ? (DRIVER_DATA[tab] || []) : (CLIENT_DATA[tab] || [])) : [];
   const listRenderBase = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
   // Промпт-дизайн: карточки появляются каскадом (выезд 10px + fade, 50мс шаг).
   const listRender = ({ item, index }) => (
@@ -658,7 +691,7 @@ export default function MyTripsScreen({ navigation, route }) {
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Text style={[s.archiveToggleText, { color: tab === 'archive' ? v1Accent.main : v1.textMuted }]}>
-                  {tab === 'archive' ? `‹ ${t('back_to_active')}` : `${t('tab_archive')} (${(isDriver ? driverArchive : clientArchive).length}) ›`}
+                  {tab === 'archive' ? `‹ ${t('back_to_active')}` : `${t('tab_archive')} (${archiveTotal ?? (isDriver ? driverArchive : clientArchive).length}) ›`}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -666,7 +699,24 @@ export default function MyTripsScreen({ navigation, route }) {
         )}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing || refreshingList} onRefresh={onRefresh} />}
-        ListEmptyComponent={renderEmpty()}
+        ListEmptyComponent={!loading && !loadError ? renderEmpty() : null}
+        ListFooterComponent={(
+          <View>
+            {loadError ? <Text style={[s.titleSub, { color: v1.error }]}>{t('load_error')}</Text> : null}
+            {(loadError || pageRef.current.nextOffset != null) && (
+              <TouchableOpacity
+                testID="my-work-load-more"
+                style={s.miniBtn}
+                disabled={loadingMore || loading || refreshingList}
+                onPress={() => load({ showLoading: false, append: pageRef.current.nextOffset != null })}
+              >
+                <Text style={[s.miniBtnText, { color: v1Accent.main }]}>
+                  {loadingMore ? t('my_work_loading') : loadError ? t('chat_attach_retry') : t('my_work_load_more')}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       />
 
       <EditCargoModal

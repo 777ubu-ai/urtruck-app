@@ -17,15 +17,18 @@ export default function AppConfirmModal({
   onCancel,
   onConfirm,
   testID = 'app-confirm-modal',
+  embedded = false,
 }) {
   const v1 = useV1Colors();
+  // В существующем native Modal рисуем только содержимое диалога.
+  // Остальные потребители по умолчанию сохраняют собственный Modal.
+  if (embedded && !visible) return null;
+  const Host = embedded ? View : Modal;
+  const hostProps = embedded
+    ? { style: styles.embeddedHost }
+    : { visible: !!visible, transparent: true, animationType: 'fade', onRequestClose: onCancel };
   return (
-    <Modal
-      visible={!!visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
-    >
+    <Host {...hostProps}>
       <Pressable style={styles.backdrop} onPress={onCancel} testID={`${testID}-backdrop`}>
         <Pressable
           style={[styles.card, { backgroundColor: v1.surface, borderColor: v1.border }]}
@@ -58,11 +61,12 @@ export default function AppConfirmModal({
           </View>
         </Pressable>
       </Pressable>
-    </Modal>
+    </Host>
   );
 }
 
 const styles = StyleSheet.create({
+  embeddedHost: { flex: 1 },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.48)',

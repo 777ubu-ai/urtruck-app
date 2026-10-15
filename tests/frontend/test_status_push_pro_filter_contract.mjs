@@ -111,8 +111,8 @@ test('route filter can select a whole country without forcing a city', () => {
   assert.match(feed, /dirToCountry/);
   assert.match(feed, /allowCountryOnly/);
   assert.match(feed, /countryOnly \? ''/);
-  assert.match(feed, /fromCountry === dirFromCountry/);
-  assert.match(feed, /toCountry === dirToCountry/);
+  assert.match(feed, /fromCountry:\s*dirFromCountry/);
+  assert.match(feed, /toCountry:\s*dirToCountry/);
   assert.match(locationPicker, /allowCountryOnly = false/);
   assert.match(locationPicker, /type:\s*'country'/);
   assert.match(locationPicker, /testID=\{`loc-country-only-\$\{country\}`\}/);

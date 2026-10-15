@@ -430,6 +430,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [emojiOpen, setEmojiOpen] = React.useState(false);
   const [recordSecs, setRecordSecs] = React.useState(0);
   const [confirmDialog, setConfirmDialog] = React.useState(null);
+  const confirmDialogRef = React.useRef(null);
   const [showJumpLatest, setShowJumpLatest] = React.useState(false);
   const [fullImage, setFullImage] = React.useState(null);
   const [pdfPreview, setPdfPreview] = React.useState(null);
@@ -475,8 +476,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const tripStartBusy = React.useRef(false);
   useFocusEffect(React.useCallback(() => {
     tripActionScope.current.focused = true;
-    return () => { tripActionScope.current.focused = false; tripActionScope.current.generation++; };
-  }, []));
+    return () => {
+      tripActionScope.current.focused = false;
+      tripActionScope.current.generation++;
+      // Уход/смена identity отменяет ожидающий пользовательский ответ.
+      const pending = confirmDialogRef.current;
+      confirmDialogRef.current = null;
+      pending?.resolve?.(false);
+      setConfirmDialog(null);
+      setStatusModalOpen(false);
+    };
+  }, [dealId, roomId, session?.user?.id]));
   const recordStartRef = React.useRef(0);
   const recordStopRequestedRef = React.useRef(false);
   const recordAutoStoppedRef = React.useRef(false);
@@ -514,11 +524,23 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => (
-    new Promise((resolve) => setConfirmDialog({ title, message, confirmLabel, destructive, resolve }))
-  ), [t]);
-  const settleConfirm = React.useCallback((answer) => {
-    setConfirmDialog((current) => { current?.resolve?.(answer); return null; });
+  const askConfirm = React.useCallback((title, message = '', confirmLabel = t('confirm'), destructive = false) => {
+    if (!mounted.current || !tripActionScope.current.focused || confirmDialogRef.current) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const dialog = { title, message, confirmLabel, destructive, resolve,
+        generation: tripActionScope.current.generation };
+      confirmDialogRef.current = dialog;
+      setConfirmDialog(dialog);
+    });
+  }, [t]);
+  const settleConfirm = React.useCallback((answer, expected = confirmDialogRef.current) => {
+    const current = confirmDialogRef.current;
+    if (!current || current !== expected) return;
+    confirmDialogRef.current = null;
+    setConfirmDialog(null);
+    const isCurrent = mounted.current && tripActionScope.current.focused
+      && current.generation === tripActionScope.current.generation;
+    current.resolve(Boolean(answer) && isCurrent);
   }, []);
 
   React.useEffect(() => {
@@ -979,7 +1001,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   ), [role, deal?.status, deal?.is_international, t]);
 
   const runNextAction = React.useCallback(async () => {
-    if (!nextAction || nextAction.disabled) return;
+    if (!nextAction || nextAction.disabled || !mounted.current || !tripActionScope.current.focused) return;
+    const generation = tripActionScope.current.generation;
     if (nextAction.key === 'in_progress') { await startTrip(); return; }
     if (['delivered', 'received', 'completed'].includes(nextAction.key)) {
       const message = nextAction.key === 'delivered'
@@ -990,6 +1013,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       const ok = await askConfirm(nextAction.label, message, nextAction.label);
       if (!ok) return;
     }
+    if (!mounted.current || !tripActionScope.current.focused || tripActionScope.current.generation !== generation) return;
     await changeDealStatus(nextAction.key);
   }, [nextAction, startTrip, askConfirm, t, changeDealStatus]);
 
@@ -1011,22 +1035,23 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         if (cancelled) return;
         const next = result?.eligible ? 'eligible' : result?.already_reviewed ? 'submitted' : 'unavailable';
         setReviewEligibility(next);
-        if (next === 'eligible' && isFocused && promptedReviewRef.current !== dealId) {
-          promptedReviewRef.current = dealId;
-          setRatingModalOpen(true);
-        }
       })
       .catch((error) => {
         if (cancelled) return;
         const fallback = error?.status === 404 ? 'eligible' : 'error';
         setReviewEligibility(fallback);
-        if (fallback === 'eligible' && isFocused && promptedReviewRef.current !== dealId) {
-          promptedReviewRef.current = dealId;
-          setRatingModalOpen(true);
-        }
       });
     return () => { cancelled = true; };
   }, [deal?.status, recipientId, dealId, isFocused]);
+
+  // The rating dialog is another native Modal. Keep it behind the open
+  // status/history sheet and present it only after that host has closed.
+  React.useEffect(() => {
+    if (reviewEligibility !== 'eligible' || !isFocused || statusModalOpen || !dealId
+        || promptedReviewRef.current === dealId) return;
+    promptedReviewRef.current = dealId;
+    setRatingModalOpen(true);
+  }, [reviewEligibility, isFocused, statusModalOpen, dealId]);
 
   // Shared by the composer, quick-reply, and call-link — every "send a fixed
   // string" action funnels through here so error handling (section 6) is
@@ -1696,7 +1721,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   } : null;
 
   const cancelDeal = async () => {
+    const generation = tripActionScope.current.generation;
     const ok = await askConfirm(ui.cancelDeal, ui.cancelDealConfirm, ui.cancelDeal, true);
+    if (!mounted.current || !tripActionScope.current.focused || tripActionScope.current.generation !== generation) return;
     if (ok) { setStatusModalOpen(false); await changeDealStatus('cancelled'); }
   };
 
@@ -2261,12 +2288,31 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         {/* Status/history — a single icon-triggered modal instead of a
             permanent second tab (section 12: no redundant tabs when chat is
             already fullscreen). */}
-        <Modal visible={statusModalOpen} transparent animationType="slide" onRequestClose={() => setStatusModalOpen(false)}>
+        <Modal
+          visible={isFocused && (statusModalOpen || !!confirmDialog)}
+          transparent
+          animationType="slide"
+          onRequestClose={() => confirmDialog ? settleConfirm(false, confirmDialog) : setStatusModalOpen(false)}
+        >
+          {confirmDialog ? (
+            <AppConfirmModal
+              embedded
+              visible
+              title={confirmDialog.title}
+              message={confirmDialog.message}
+              cancelLabel={t('cancel')}
+              confirmLabel={confirmDialog.confirmLabel || t('confirm')}
+              destructive={!!confirmDialog.destructive}
+              onCancel={() => settleConfirm(false, confirmDialog)}
+              onConfirm={() => settleConfirm(true, confirmDialog)}
+              testID="deal-workspace-confirm"
+            />
+          ) : (
           <Pressable style={s.modalBackdrop} onPress={() => setStatusModalOpen(false)}>
             <Pressable style={[s.statusModalCard, { backgroundColor: colors.bg, maxHeight: window.height * 0.75 }]} onPress={() => {}} testID="deal-status-panel">
               <View style={s.statusModalHeader}>
                 <Text style={[s.sheetTitle, { color: colors.text }]}>{ui.statuses}</Text>
-                <TouchableOpacity onPress={() => setStatusModalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <TouchableOpacity onPress={() => setStatusModalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} testID="deal-status-close">
                   <Feather name="x" size={20} color={colors.text} />
                 </TouchableOpacity>
               </View>
@@ -2292,19 +2338,9 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               ) : null}
             </Pressable>
           </Pressable>
+          )}
         </Modal>
 
-        <AppConfirmModal
-          visible={!!confirmDialog}
-          title={confirmDialog?.title}
-          message={confirmDialog?.message}
-          cancelLabel={t('cancel')}
-          confirmLabel={confirmDialog?.confirmLabel || t('confirm')}
-          destructive={!!confirmDialog?.destructive}
-          onCancel={() => settleConfirm(false)}
-          onConfirm={() => settleConfirm(true)}
-          testID="deal-workspace-confirm"
-        />
         <RatingModal
           visible={ratingModalOpen && isFocused}
           onClose={() => setRatingModalOpen(false)}
