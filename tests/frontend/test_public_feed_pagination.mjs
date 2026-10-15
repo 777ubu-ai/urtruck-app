@@ -12,10 +12,13 @@ for (const [file, key, method] of [['FeedScreen.js', 'trips', 'listTrips'], ['Ca
     const env = {
       useCallback: fn => fn,
       pageRef: { current: { busy: false, nextOffset: null } }, loadSeqRef: { current: 0 },
+      listRef: { current: { scrollToOffset: ({ offset }) => { state.scrolledTo = offset; } } }, scrollOffsetRef: { current: 1200 },
       setError: value => { state.error = value; }, setNextOffset: value => { state.next = value; },
       setItems: value => { state.items = typeof value === 'function' ? value(state.items) : value; },
       setLoadingMore() {}, setLoading() {}, setRefreshing() {},
       dirFrom: '', dirTo: '', dirFromCountry: 'KZ', dirToCountry: 'CN', filterType: '', myUserId: 'my-id',
+      dateFrom: '20.10.2099', dateTo: '21.10.2099', minPrice: '10', maxPrice: '900', priceCurrency: 'KZT', sortBy: 'price-asc', savedOnly: true,
+      toIso: value => value === '20.10.2099' ? '2099-10-20' : value === '21.10.2099' ? '2099-10-21' : '',
       console: { warn() {} },
       normalizeTrip: x => ({ ...x, from: 'Almaty', to: 'Astana' }),
       normalizeCargo: x => ({ ...x, from: 'Almaty', to: 'Astana' }),
@@ -31,9 +34,13 @@ for (const [file, key, method] of [['FeedScreen.js', 'trips', 'listTrips'], ['Ca
     const h = harness();
     for (let offset = 0; offset < 5000; offset += 50) {
       const pending = h.load({ append: offset > 0 }); await tick();
+      if (offset === 0) { assert.equal(h.env.scrollOffsetRef.current, 0); assert.equal(h.state.scrolledTo, 0); }
       const call = h.calls.at(-1);
       assert.equal(call.args.limit, 50); assert.equal(call.args.offset, offset);
       assert.equal(call.args.fromCountry, 'KZ'); assert.equal(call.args.toCountry, 'CN');
+      assert.equal(call.args.dateFrom, '2099-10-20'); assert.equal(call.args.dateTo, '2099-10-21');
+      assert.equal(call.args.minPrice, 10); assert.equal(call.args.maxPrice, 900);
+      assert.equal(call.args.currency, 'KZT'); assert.equal(call.args.sortBy, 'price-asc'); assert.equal(call.args.savedOnly, true);
       call.resolve(result(offset, offset < 4950 ? offset + 50 : null)); await pending;
     }
     assert.equal(h.state.items.length, 5000);
@@ -68,8 +75,29 @@ const api = readFileSync('src/utils/marketAPI.js', 'utf8');
 test('listTrips передаёт offset в настоящий запрос API', async () => {
   const method = api.slice(api.indexOf('  async listTrips('), api.indexOf('  async getTrip('));
   let url;
-  const load = new Function('authedFetch', 'BASE', 'return {' + method + '}.listTrips;')(
-    async value => { url = value; return { ok: true, json: async () => ({ trips: [] }) }; }, '/market');
-  await load({ limit: 50, offset: 250 });
+  const load = new Function('authedFetch', 'BASE', 'URLSearchParams', 'return {' + method + '}.listTrips;')(
+    async value => { url = value; return { ok: true, json: async () => ({ trips: [], search_contract: 1 }) }; }, '/market', URLSearchParams);
+  await load({ limit: 50, offset: 250, dateFrom: '2099-10-20', minPrice: 500, currency: 'USD', sortBy: 'price-asc', savedOnly: true });
   assert.match(url, /limit=50/); assert.match(url, /offset=250/);
+  assert.match(url, /date_from=2099-10-20/); assert.match(url, /min_price=500/);
+  assert.match(url, /currency=USD/); assert.match(url, /sort_by=price_asc/); assert.match(url, /saved_only=true/);
+});
+
+test('пустые ценовые границы не сериализуются как пустые числа', async () => {
+  const method = api.slice(api.indexOf('  async listTrips('), api.indexOf('  async getTrip('));
+  let url;
+  const load = new Function('authedFetch', 'BASE', 'URLSearchParams', 'return {' + method + '}.listTrips;')(
+    async value => { url = value; return { ok: true, json: async () => ({ trips: [], search_contract: 1 }) }; }, '/market', URLSearchParams);
+  await load({});
+  assert.doesNotMatch(url, /(?:\?|&)min_price=/);
+  assert.doesNotMatch(url, /(?:\?|&)max_price=/);
+});
+
+test('advanced filters fail closed when connected to a backend without the search contract', async () => {
+  const method = api.slice(api.indexOf('  async listCargos('), api.indexOf('  async getCargo('));
+  const load = new Function('authedFetch', 'BASE', 'URLSearchParams', 'return {' + method + '}.listCargos;')(
+    async () => ({ ok: true, json: async () => ({ cargos: [] }) }), '/market', URLSearchParams);
+  const result = await load({ minPrice: 100, currency: 'USD' });
+  assert.equal(result.unsupportedSearchContract, true);
+  assert.equal(result.serverError, true);
 });
