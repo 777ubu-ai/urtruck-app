@@ -169,7 +169,11 @@ export const marketAPI = {
       });
       if (minPrice != null) params.set('min_price', String(minPrice));
       if (maxPrice != null) params.set('max_price', String(maxPrice));
-      const r = await authedFetch(`${BASE}/cargos?${params}`);
+      // The server applies saved_only as an owner-scoped EXISTS predicate.
+      // Public listings stay anonymous; only this owner-specific filter needs
+      // the current session so the API can enforce ownership itself.
+      const init = savedOnly ? { headers: await headers() } : undefined;
+      const r = await authedFetch(`${BASE}/cargos?${params}`, init);
       if (!r.ok) return { cargos: [], total: 0, serverError: true, status: r.status };
       const data = await r.json();
       if ((dateFrom || dateTo || minPrice != null || maxPrice != null || currency || sortBy !== 'newest' || savedOnly) && data?.search_contract !== 1) {
