@@ -46,7 +46,7 @@ test('cargo feed bounds mounted rows without truncating loaded data or paginatio
   assert.match(src, /data=\{loading \? \[\] : visibleItems\}/);
   assert.match(src, /const visibleItems = items/);
   assert.doesNotMatch(src, /visibleItems\s*=\s*items\.(?:slice|splice)/);
-  assert.match(src, /pageRef\.current\.nextOffset/);
+  assert.match(src, /const loadNextPage = useCallback\(\(\) => \{\s*const page = pageRef\.current;/);
 });
 
 test('cargo cards are dense without changing the controls above the list', () => {

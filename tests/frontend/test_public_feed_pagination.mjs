@@ -15,7 +15,7 @@ for (const [file, key, method] of [['FeedScreen.js', 'trips', 'listTrips'], ['Ca
       listRef: { current: { scrollToOffset: ({ offset }) => { state.scrolledTo = offset; } } }, scrollOffsetRef: { current: 1200 },
       setError: value => { state.error = value; }, setNextOffset: value => { state.next = value; },
       setItems: value => { state.items = typeof value === 'function' ? value(state.items) : value; },
-      setLoadingMore() {}, setLoading() {}, setRefreshing() {},
+      setLoadingMore() {}, setLoading() {}, setRefreshing() {}, setErrorAppend: value => { state.errorAppend = value; },
       dirFrom: '', dirTo: '', dirFromCountry: 'KZ', dirToCountry: 'CN', filterType: '', myUserId: 'my-id',
       dateFrom: '20.10.2099', dateTo: '21.10.2099', minPrice: '10', maxPrice: '900', priceCurrency: 'KZT', sortBy: 'price-asc', savedOnly: true,
       toIso: value => value === '20.10.2099' ? '2099-10-20' : value === '21.10.2099' ? '2099-10-21' : '',
@@ -28,7 +28,8 @@ for (const [file, key, method] of [['FeedScreen.js', 'trips', 'listTrips'], ['Ca
     return { state, calls, env, load };
   }
   const result = (offset, next, ids = Array.from({ length: 50 }, (_, i) => offset + i)) => ({
-    [key]: ids.map(id => ({ id: String(id), driver_id: 'foreign', owner_id: 'foreign' })), next_offset: next,
+    [key]: ids.map(id => ({ id: String(id), driver_id: 'foreign', owner_id: 'foreign' })),
+    next_offset: next, has_more: next !== null,
   });
   test(file + ': все 5000 записей через 100 разных offset, с фиксированным лимитом', async () => {
     const h = harness();
@@ -50,7 +51,7 @@ for (const [file, key, method] of [['FeedScreen.js', 'trips', 'listTrips'], ['Ca
   test(file + ': пустая отфильтрованная страница не скрывает следующую, дубли/двойной тап безопасны', async () => {
     const h = harness(); const first = h.load(); await tick();
     h.calls[0].resolve(result(0, 50, [])); await first;
-    assert.equal(h.state.next, 50);
+    assert.equal(h.env.pageRef.current.nextOffset, 50);
     const second = h.load({ append: true }); await tick();
     await h.load({ append: true }); assert.equal(h.calls.length, 2);
     h.calls[1].resolve(result(50, 100, [1, 2])); await second;
@@ -58,17 +59,39 @@ for (const [file, key, method] of [['FeedScreen.js', 'trips', 'listTrips'], ['Ca
     h.calls[2].resolve(result(100, null, [2, 3])); await third;
     assert.deepEqual(h.state.items.map(x => x.id), ['1', '2', '3']);
   });
+  test(file + ': has_more=false останавливает выдачу независимо от total/next_offset', async () => {
+    const h = harness(); const first = h.load(); await tick();
+    h.calls[0].resolve({ ...result(0, 50, [1]), has_more: false, total: 5000 }); await first;
+    await h.load({ append: true });
+    assert.equal(h.calls.length, 1);
+    assert.deepEqual(h.state.items.map(x => x.id), ['1']);
+  });
   test(file + ': ошибка страницы сохраняет список; refresh выигрывает у позднего append', async () => {
     const h = harness(); const first = h.load(); await tick();
     h.calls[0].resolve(result(0, 50, [1])); await first;
     const fail = h.load({ append: true }); await tick();
     h.calls[1].resolve({ serverError: true }); await fail;
     assert.equal(h.state.error, true); assert.deepEqual(h.state.items.map(x => x.id), ['1']);
-    const old = h.load({ append: true }); await tick();
+    await h.load({ append: true });
+    assert.equal(h.calls.length, 2, 'автозагрузка не повторяет неудачный запрос сама');
+    const old = h.load({ append: true, retry: true }); await tick();
     const fresh = h.load(); await tick();
     h.calls[3].resolve(result(0, null, [5])); await fresh;
     h.calls[2].resolve(result(50, null, [2])); await old;
     assert.deepEqual(h.state.items.map(x => x.id), ['5']);
+  });
+}
+
+for (const file of ['FeedScreen.js', 'CargoFeedScreen.js']) {
+  test(file + ': лента использует автоматический end trigger и не рендерит кнопку «Показать ещё»', () => {
+    const source = readFileSync('src/screens/' + file, 'utf8');
+    assert.match(source, /const loadNextPage = useCallback\(\(\) => \{/);
+    assert.match(source, /onEndReached=\{loadNextPage\}/);
+    assert.match(source, /contentHeight - viewportHeight - offset <= viewportHeight \* 0\.5/);
+    assert.match(source, /onEndReachedThreshold=\{0\.5\}/);
+    assert.match(source, /ActivityIndicator size="small"/);
+    assert.match(source, /retry-more/);
+    assert.doesNotMatch(source, /feed-more"/);
   });
 }
 const api = readFileSync('src/utils/marketAPI.js', 'utf8');
