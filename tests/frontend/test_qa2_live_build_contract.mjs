@@ -13,19 +13,21 @@ const iosPodfile = readFileSync('ios/Podfile', 'utf8');
 const iosPodProperties = readFileSync('ios/Podfile.properties.json', 'utf8');
 const iosProject = readFileSync('ios/UrTruck.xcodeproj/project.pbxproj', 'utf8');
 const androidAppBuild = readFileSync('android/app/build.gradle', 'utf8');
+const appConfig = readFileSync('app.config.js', 'utf8');
 
 test('distributed QA2 requires a healthy non-production API target', () => {
-  assert.ok(workflow.includes('QA_API_URL: ${{ secrets.QA2_API_URL }}'));
+  assert.ok(workflow.includes('QA2_API_URL: ${{ secrets.QA2_API_URL }}'));
   assert.ok(workflow.includes('QA2 Android build must not target production'));
   assert.ok(workflow.includes('urtruck.kz|www.urtruck.kz|185.22.65.11'));
   assert.ok(workflow.includes('for path in /health /api/version'));
+  assert.ok(workflow.includes('if [ "$BUILD_TARGET" = qa2 ]; then'));
   assert.ok(workflow.includes("printf 'EXPO_PUBLIC_API_URL=%s\\n' \"$QA_API_URL\""));
   assert.ok(!workflow.includes('EXPO_PUBLIC_API_URL=https://urtruck.kz'));
   assert.ok(!workflow.includes('EXPO_PUBLIC_API_URL=http://127.0.0.1:18001'));
 });
 
 test('QA086 checks out and records an explicitly supplied exact source SHA', () => {
-  const sourceInput = workflow.match(/source_ref:\n([\s\S]*?)\n\s*push:/)?.[1] || '';
+  const sourceInput = workflow.match(/source_ref:\n([\s\S]*?)\n\s*build_target:/)?.[1] || '';
   assert.ok(sourceInput.includes('required: true'));
   assert.ok(!sourceInput.includes('default:'), 'QA2 build must not silently reuse a stale source SHA');
   assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));
@@ -35,7 +37,24 @@ test('QA086 checks out and records an explicitly supplied exact source SHA', () 
   assert.ok(workflow.includes('QA2 Android versionCode must be greater than the previous QA2 APK'));
   assert.ok(!workflow.includes('211040090'), 'workflow must not silently rebuild the previous QA2 APK');
   assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
+  assert.ok(workflow.includes('toolingSHA=${URTRUCK_TOOLING_SHA}'));
   assert.ok(workflow.includes('URTRUCK_VERSION_NAME=1.0.9-qa2'), 'QA2 artifact must carry an explicit -qa2 versionName');
+});
+
+test('loopback lab build is pinned to the reviewed tooling branch and exact app source', () => {
+  assert.ok(workflow.includes('build_target:'));
+  assert.ok(workflow.includes('- lab_loopback'));
+  assert.ok(workflow.includes('BUILD_TARGET: ${{ inputs.build_target || \'qa2\' }}'));
+  assert.ok(workflow.includes('test "$GITHUB_EVENT_NAME" = workflow_dispatch'));
+  assert.ok(workflow.includes('refs/heads/fix/qa2-loopback-lab-workflow-20261015'));
+  assert.ok(workflow.includes('test "$RESOLVED_SOURCE_SHA" = 6bf713eac1f9c7339b8651fecc132aa14f7862e5'));
+  assert.ok(workflow.includes("QA_API_URL='http://127.0.0.1:8002'"));
+  assert.ok(workflow.includes("test \"$QA_API_URL\" = 'http://127.0.0.1:8002'"));
+  assert.ok(workflow.includes('secrets.YANDEX_MAPKIT_API_KEY'));
+  assert.ok(workflow.includes('secrets.QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64'));
+  assert.ok(workflow.includes('URTRUCK_TOOLING_SHA=$GITHUB_SHA'));
+  assert.ok(appConfig.includes("...(isQa2 ? ['./plugins/withQaLocalCleartext'] : [])"));
+  assert.ok(!appConfig.includes("plugins: ['./plugins/withQaLocalCleartext']"));
 });
 
 test('QA2 Android config carries explicit qa2 versionName', () => {
