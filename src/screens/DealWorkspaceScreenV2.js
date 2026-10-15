@@ -1035,22 +1035,23 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         if (cancelled) return;
         const next = result?.eligible ? 'eligible' : result?.already_reviewed ? 'submitted' : 'unavailable';
         setReviewEligibility(next);
-        if (next === 'eligible' && isFocused && promptedReviewRef.current !== dealId) {
-          promptedReviewRef.current = dealId;
-          setRatingModalOpen(true);
-        }
       })
       .catch((error) => {
         if (cancelled) return;
         const fallback = error?.status === 404 ? 'eligible' : 'error';
         setReviewEligibility(fallback);
-        if (fallback === 'eligible' && isFocused && promptedReviewRef.current !== dealId) {
-          promptedReviewRef.current = dealId;
-          setRatingModalOpen(true);
-        }
       });
     return () => { cancelled = true; };
   }, [deal?.status, recipientId, dealId, isFocused]);
+
+  // The rating dialog is another native Modal. Keep it behind the open
+  // status/history sheet and present it only after that host has closed.
+  React.useEffect(() => {
+    if (reviewEligibility !== 'eligible' || !isFocused || statusModalOpen || !dealId
+        || promptedReviewRef.current === dealId) return;
+    promptedReviewRef.current = dealId;
+    setRatingModalOpen(true);
+  }, [reviewEligibility, isFocused, statusModalOpen, dealId]);
 
   // Shared by the composer, quick-reply, and call-link — every "send a fixed
   // string" action funnels through here so error handling (section 6) is
@@ -2311,7 +2312,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             <Pressable style={[s.statusModalCard, { backgroundColor: colors.bg, maxHeight: window.height * 0.75 }]} onPress={() => {}} testID="deal-status-panel">
               <View style={s.statusModalHeader}>
                 <Text style={[s.sheetTitle, { color: colors.text }]}>{ui.statuses}</Text>
-                <TouchableOpacity onPress={() => setStatusModalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <TouchableOpacity onPress={() => setStatusModalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} testID="deal-status-close">
                   <Feather name="x" size={20} color={colors.text} />
                 </TouchableOpacity>
               </View>

@@ -25,4 +25,11 @@ AST-only `graphify update .` выполнен на базовом checkout до 
 
 ## Итоговый состав и доказательства
 
-Заполняется после exact integration CI/review. CI на отдельные PR не переносится автоматически на интеграционное дерево. Нагрузочный и physical-device результаты указываются отдельно от source/CI.
+### Подтверждённый integration regression
+
+- Required E2E run `38686781933`, head `1995d702daf8fb7914b0060ae7bad62580e39067`: новая проверка completion с review eligibility включённой упала; `aria-modal` ожидался `1`, наблюдалось `2`. Остальные E2E в subset: 40 passed. Ошибка в `tests/e2e/urtruck-deal-confirmation.spec.js:99-106`.
+- Фактическая причина подтверждена callback/render path: after shipper completes, eligibility effect открывал `RatingModal` немедленно, пока `statusModalOpen` оставался true; status/history Modal при этом продолжал существовать. Дефект заметен в web E2E, нативная iOS/Android реализация отдельно не принималась.
+- Минимальная source correction: отделить получение eligibility от представления rating prompt; показывать отдельный Rating Modal только после закрытия status/history host. Добавлены regression cases для нормального `eligible:true` и legacy eligibility HTTP 404; header close button получил test ID для штатного тестового tap.
+- Run `38686781933` общий workflow завершился FAILURE из-за этого E2E. Новый required CI и exact diff review после patch pending.
+
+CI на отдельных PR не переносится автоматически на интеграционное дерево. Нагрузочный и physical-device результаты указываются отдельно от source/CI.
