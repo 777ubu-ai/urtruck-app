@@ -32,6 +32,7 @@ LOCAL_PUBLIC_BASE = os.getenv("STORAGE_LOCAL_PUBLIC_BASE", "/security/storage")
 # default for photos, voice, registration and existing remote references.
 PRIVATE_CHAT_ROOT = os.getenv("PRIVATE_CHAT_ATTACHMENT_ROOT", "").strip()
 PRIVATE_CHAT_WRITE = os.getenv("PRIVATE_CHAT_ATTACHMENT_WRITE", "").lower() == "true"
+_PRIVATE_CHAT_SAVE_LOCK = threading.Lock()
 _PRIVATE_CHAT_PRODUCTION_ROOT = Path("/home/ubuntu/urtruck/runtime/private-chat-attachments")
 
 
@@ -70,18 +71,19 @@ def _save_private_chat(data: bytes, key: str) -> str:
     if root not in target.parents or not key.startswith("chat_attachments/"):
         raise StorageSaveError("Invalid private attachment path", provider="private_chat")
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if shutil.disk_usage(root).free < len(data) + 2 * 1024 * 1024 * 1024:
-        raise StorageSaveError("Private attachment disk reserve reached", provider="private_chat")
-    fd, temporary = tempfile.mkstemp(prefix=".upload-", dir=target.parent)
-    try:
-        with os.fdopen(fd, "wb") as out:
-            out.write(data)
-            out.flush()
-            os.fsync(out.fileno())
-        os.replace(temporary, target)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    with _PRIVATE_CHAT_SAVE_LOCK:
+        if shutil.disk_usage(root).free < len(data) + 2 * 1024 * 1024 * 1024:
+            raise StorageSaveError("Private attachment disk reserve reached", provider="private_chat")
+        fd, temporary = tempfile.mkstemp(prefix=".upload-", dir=target.parent)
+        try:
+            with os.fdopen(fd, "wb") as out:
+                out.write(data)
+                out.flush()
+                os.fsync(out.fileno())
+            os.replace(temporary, target)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
     return f"{LOCAL_PUBLIC_BASE.rstrip('/')}/{key}"
 
 

@@ -19,15 +19,29 @@ Rollback новых записей: PRIVATE_CHAT_ATTACHMENT_WRITE=false при �
 Это оставляет доступ к уже отправленным VPS файлам. До выбора режима backup должен
 охватывать private root отдельно от backend code; TTL удаление не добавлено.
 
-64 целевых backend теста PASS: private storage,60MiB roundtrip на disk, HMAC/expiry/
+70 целевых backend тестов PASS: private storage,60MiB roundtrip на disk, HMAC/expiry/
 подмена подписи/path traversal/permissions/disk reserve, старые Supabase refs,
 attachments100MiB boundaries, upload validation/status gate/push/storage cache.
 Это локальные проверки; Nginx и полный production HTTP путь не проверены.
 
 До rollout: усиленный review; backup/restore test private root; concurrency/memory
-проверка100MiB (upload API пока держит bounded100MiB+1bytes на запрос; общий бюджет
-одновременных uploads не доказан); nginx101m+multipart на upload маршруте;
+замер100MiB под реальным worker count (на worker допускаются2 upload, третий429 до
+чтения файла; слоты освобождаются при error/cancel; disk reserve+write сериализованы); nginx101m+multipart на upload маршруте;
 точечный reviewed guarded writer по before-hash вместо полного backend deploy;
 маленький/60/100MiB upload+download с двух финальных магазинных клиентов.
 
 Production/config/данные/магазины не менялись. Не включать только на основании unit PASS.
+
+## Ресурсное ограничение после review
+Добавлен fail-fast admission: максимум2 attachment upload на API worker,
+HTTP429 и Retry-After=2 до чтения файла; finally освобождает слот после ошибки
+и cancellation. Чтение по-прежнему до100MiB+1bytes на upload. FastAPI multipart
+spooling происходит до handler; нужны Nginx request/concurrency лимиты до production.
+Disk reserve check и atomic save выполняются под одним lock внутри процесса.
+Для нескольких worker/process требуется учитывать суммарную память и межпроцессный disk budget.
+
+CI первоначально выявил недокументированные env flags. Они добавлены как optional/default-off
+в backend/.env.example; env-contract4PASS. Прежний backup workflow из base не покрывает
+runtime/private-chat-attachments, поэтому включение нового режима до расширения и проверки
+backup/restore запрещено. Полный откат старого main.py также запрещён, пока существуют
+отправленные local refs: безопасный rollback — write=false при сохранённом reader/root/key.
