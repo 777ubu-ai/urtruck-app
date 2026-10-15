@@ -1,5 +1,4 @@
 """Synthetic RU/ZH OpenAI STT pilot; never reads chats, QA2 DB or user audio."""
-import hashlib
 import json
 import os
 import statistics
@@ -73,9 +72,12 @@ def main():
                     missing.append("ten_tonnes")
                 latencies[language].append(elapsed)
                 total_audio_seconds += seconds
+                # This diagnostic is intentionally content-free.  It may
+                # inspect its synthetic transcript in memory for pass/fail,
+                # but must not export speech text or an audio fingerprint.
                 row = {"language": language, "target_seconds": target, "audio_seconds": seconds,
-                       "api_seconds": elapsed, "model": MODEL, "transcript": transcript,
-                       "missing_facts": missing, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+                       "api_seconds": elapsed, "model": MODEL,
+                       "missing_fact_count": len(missing), "outcome": "pass" if not missing else "failed"}
                 print(json.dumps(row, ensure_ascii=False), flush=True)
                 if missing or not transcript:
                     failures.append((language, target))
