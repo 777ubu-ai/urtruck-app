@@ -13,7 +13,7 @@ from typing import Optional, Tuple
 from urllib.parse import unquote
 
 # ── Size limits ────────────────────────────────────────────────────────────
-MAX_ATTACH_BYTES = 12 * 1024 * 1024          # deal-room attachments
+MAX_ATTACH_BYTES = 100 * 1024 * 1024          # deal-room attachments
 MAX_REGISTRATION_IMAGE_BYTES = 15 * 1024 * 1024  # registration photos
 MAX_CHAT_PHOTO_BYTES = 8 * 1024 * 1024
 MAX_CHAT_VOICE_BYTES = 10 * 1024 * 1024
