@@ -230,7 +230,11 @@ export default function CargoFeedScreen({ navigation }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [pageLimit, setPageLimit] = useState(50);
+  const [nextOffset, setNextOffset] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const pageRef = React.useRef({ busy: false, nextOffset: null });
+  const loadSeqRef = React.useRef(0);
+  useEffect(() => () => { loadSeqRef.current++; }, []);
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
   const [dirFromCountry, setDirFromCountry] = useState('');
@@ -257,7 +261,14 @@ export default function CargoFeedScreen({ navigation }) {
     }
   }, [myUserId]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ append = false } = {}) => {
+    const previous = pageRef.current;
+    if (append && (previous.busy || previous.nextOffset == null)) return;
+    const requestId = ++loadSeqRef.current;
+    const offset = append ? previous.nextOffset : 0;
+    pageRef.current = { busy: true, nextOffset: append ? previous.nextOffset : null };
+    if (append) setLoadingMore(true);
+    else setNextOffset(null);
     setError(false);
     try {
       const result = await marketAPI.listCargos({
@@ -266,7 +277,8 @@ export default function CargoFeedScreen({ navigation }) {
         fromCountry: dirFromCountry,
         toCountry: dirToCountry,
         cargoType: filterType || '',
-        limit: pageLimit,
+        limit: 50,
+        offset,
       });
       // Финальный аудит (§34 ERROR UX, 2026-09-14): marketAPI.listCargos НЕ
       // бросает при сетевой ошибке / 5xx — он возвращает
@@ -280,19 +292,33 @@ export default function CargoFeedScreen({ navigation }) {
       // полностью мёртвой. Подтверждено рантаймом (Playwright: route abort и
       // fulfill 500). FeedScreen.js делает ровно эту проверку — приводим
       // ленту грузов к той же симметрии.
+      if (requestId !== loadSeqRef.current) return;
       if (result?.serverError) throw new Error('cargo_feed_failed');
       const mapped = (result?.cargos || [])
         .filter((cargo) => !myUserId || cargo.owner_id !== myUserId)
         .map((cargo) => normalizeCargo(cargo, myUserId))
         .filter((cargo) => cargo.from && cargo.to);
-      setItems(mapped);
+      const rawCount = (result?.cargos || []).length;
+      const next = result?.next_offset === undefined
+        ? (rawCount === 50 ? offset + 50 : null) : result.next_offset;
+      if (!(next === null || (Number.isInteger(next) && next > offset))) throw new Error('invalid_page');
+      setItems(current => append
+        ? [...new Map([...current, ...mapped].map(item => [item.id, item])).values()]
+        : mapped);
+      pageRef.current = { busy: false, nextOffset: next };
+      setNextOffset(next);
     } catch (e) {
+      if (requestId !== loadSeqRef.current) return;
       console.warn('[CargoFeed] load failed:', e);
       setError(true);
     } finally {
-      setLoading(false);
+      if (requestId === loadSeqRef.current) {
+        pageRef.current.busy = false;
+        setLoadingMore(false);
+        setLoading(false);
+      }
     }
-  }, [dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, pageLimit, myUserId]);
+  }, [dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, myUserId]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
@@ -468,10 +494,21 @@ export default function CargoFeedScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.accent} />}
-        onEndReachedThreshold={0.5}
-        onEndReached={() => {
-          if (!loading && !savedOnly && items.length >= pageLimit) setPageLimit((p) => p + 50);
-        }}
+        ListFooterComponent={(nextOffset != null || (error && items.length > 0)) ? (
+          <View style={styles.emptyWrap}>
+            {error ? <Text style={styles.emptyTitle}>{copy.loadError}</Text> : null}
+            <TouchableOpacity
+              testID="cargo-feed-more"
+              style={[styles.retryBtn, { backgroundColor: palette.accentSoft }]}
+              disabled={loadingMore || loading}
+              onPress={() => load({ append: pageRef.current.nextOffset != null })}
+            >
+              <Text style={[styles.retryText, { color: palette.accent }]}>
+                {loadingMore ? t('my_work_loading') : error ? copy.retry : t('my_work_load_more')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         ListEmptyComponent={
           loading ? (
             <View style={styles.loadingWrap}>

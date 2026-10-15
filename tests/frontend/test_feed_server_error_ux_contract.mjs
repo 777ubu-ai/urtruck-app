@@ -29,7 +29,7 @@ test('marketAPI list endpoints signal failure via serverError instead of throwin
 });
 
 test('CargoFeedScreen turns serverError into the error state (regression)', () => {
-  const load = cargoFeed.match(/const load = useCallback\(async \(\) => \{[\s\S]*?\n  \}, \[/);
+  const load = cargoFeed.match(/const load = useCallback\(async \([^)]*\) => \{[\s\S]*?\n  \}, \[/);
   assert.ok(load, 'load() must be present in CargoFeedScreen');
   assert.match(load[0], /result\?\.serverError/,
     'CargoFeedScreen.load() must inspect result.serverError — иначе 500/offline выглядит как «грузов нет»');
@@ -40,7 +40,7 @@ test('CargoFeedScreen turns serverError into the error state (regression)', () =
 });
 
 test('FeedScreen keeps the same serverError guard', () => {
-  const load = tripFeed.match(/const load = useCallback\(async \(\) => \{[\s\S]*?\n  \}, \[/);
+  const load = tripFeed.match(/const load = useCallback\(async \([^)]*\) => \{[\s\S]*?\n  \}, \[/);
   assert.ok(load, 'load() must be present in FeedScreen');
   assert.match(load[0], /if \(result\?\.serverError\) throw new Error\(/);
   assert.match(load[0], /catch[\s\S]*setError\(true\)/);

@@ -1,0 +1,26 @@
+{
+  "sha": "1080523a04a931dfe4465805e80c4a99c0e4b506",
+  "database": "/private/tmp/urtruck-capacity-20261015-4b24nsc0/synthetic.sqlite",
+  "outbound_network": "blocked",
+  "seed": {
+    "cargos": 5000,
+    "trips": 5000
+  },
+  "scope": "In-process ASGI на Mac; не нагрузка production и не native FPS/память",
+  "cargo": {
+    "dashboard_visible": 50,
+    "payload_bytes": 33675,
+    "p50_ms": 5.62,
+    "p95_ms": 5.75
+  },
+  "trip": {
+    "dashboard_visible": 50,
+    "payload_bytes": 29525,
+    "p50_ms": 4.43,
+    "p95_ms": 5.05
+  },
+  "archive_masks_active_baseline": {
+    "active_in_database": 4900,
+    "active_in_dashboard": 0
+  }
+}

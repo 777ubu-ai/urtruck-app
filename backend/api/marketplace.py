@@ -825,9 +825,14 @@ def list_cargos(
                    from_country, from_point_type, from_point_name,
                    to_country, to_point_type, to_point_name
             FROM cargos WHERE {where_sql}
-            ORDER BY published_at DESC LIMIT ? OFFSET ?
-        """, (*params, limit, offset)).fetchall()
+            ORDER BY published_at DESC, id DESC LIMIT ? OFFSET ?
+        """, (*params, limit + 1, offset)).fetchall()
         total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql}", params).fetchone()[0]
+
+    # Следующая страница определяется ДО hygiene/expiry-фильтров.
+    # Иначе неполная/пустая видимая страница скрывает оставшиеся записи.
+    next_offset = offset + limit if len(rows) > limit else None
+    rows = rows[:limit]
 
     result = []
     today = datetime.utcnow().date()
@@ -849,7 +854,7 @@ def list_cargos(
             continue
         result.append(d)
     # Recompute total to match what the caller actually sees
-    return {"cargos": result, "total": len(result)}
+    return {"cargos": result, "total": len(result), "next_offset": next_offset}
 
 
 @mp_router.post("/cargos/photo")
@@ -1593,8 +1598,13 @@ def list_trips(
                    from_country, from_point_type, from_point_name,
                    to_country, to_point_type, to_point_name
             FROM trips WHERE {where_sql}
-            ORDER BY published_at DESC LIMIT ? OFFSET ?
-        """, (*params, limit, offset)).fetchall()
+            ORDER BY published_at DESC, id DESC LIMIT ? OFFSET ?
+        """, (*params, limit + 1, offset)).fetchall()
+
+    # Следующая страница определяется ДО hygiene/expiry-фильтров.
+    # Иначе неполная/пустая видимая страница скрывает оставшиеся записи.
+    next_offset = offset + limit if len(rows) > limit else None
+    rows = rows[:limit]
 
     trips = [dict(r) for r in rows]
     if not show_demo:
@@ -1635,7 +1645,7 @@ def list_trips(
             t.setdefault("driver_verified", False)
             t.setdefault("driver_rating", 0)
             t.setdefault("driver_reviews_count", 0)
-    return {"trips": trips, "total": len(trips)}
+    return {"trips": trips, "total": len(trips), "next_offset": next_offset}
 
 
 @mp_router.get("/trips/{trip_id}")
@@ -2151,6 +2161,45 @@ def bid_price_events(bid_id: str, user=Depends(require_level(1))):
             (bid_id,),
         ).fetchall()
     return {"events": [dict(r) for r in rows]}
+
+
+# Собственные объявления отдельно от dashboard/unread: фильтр до LIMIT.
+# Таблицы/поля — константы; значения пользователя — SQL-параметры.
+@mp_router.get("/my/listings")
+def my_listings(
+    kind: str = Query("cargo", pattern="^(cargo|trip)$"),
+    section: str = Query("active", pattern="^(active|archive)$"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user=Depends(require_level(1)),
+):
+    table, owner = ("cargos", "owner_id") if kind == "cargo" else ("trips", "driver_id")
+    active_statuses = ("active",) if kind == "cargo" else ("active", "draft")
+    statuses = ("unpublished", "cancelled", "rejected") if section == "archive" else active_statuses
+    placeholders = ",".join("?" for _ in statuses)
+    where = f"{owner} = ? AND COALESCE(status, 'active') IN ({placeholders})"
+    params = (user["id"], *statuses)
+    with get_conn() as c:
+        total = c.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}", params).fetchone()[0]
+        archive_total = c.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE {owner} = ? "
+            "AND status IN ('unpublished','cancelled','rejected')", (user["id"],)
+        ).fetchone()[0]
+        items = [dict(row) for row in c.execute(
+            f"SELECT * FROM {table} WHERE {where} "
+            "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?", (*params, limit, offset)
+        ).fetchall()]
+    if kind == "cargo":
+        for item in items:
+            try:
+                item["photos"] = _sign_cargo_photos(json.loads(item.get("photos") or "[]"))
+            except Exception:
+                item["photos"] = []
+    next_offset = offset + len(items)
+    return {
+        "items": items, "total": total, "archive_total": archive_total,
+        "next_offset": next_offset if items and next_offset < total else None,
+    }
 
 
 # ═══ My Dashboard ═══
