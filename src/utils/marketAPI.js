@@ -148,7 +148,7 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listCargos({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', cargoType = '', limit = 50, offset = 0 } = {}) {
+  async listCargos({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', cargoType = '', dateFrom = '', dateTo = '', minPrice = null, maxPrice = null, currency = '', sortBy = 'newest', savedOnly = false, limit = 50, offset = 0 } = {}) {
     // Never inject demo data on failure — empty list + serverError flag so
     // FeedScreen renders the proper empty state instead of stale fallback.
     try {
@@ -159,12 +159,23 @@ export const marketAPI = {
         from_country: fromCountry,
         to_country: toCountry,
         cargo_type: cargoType,
+        date_from: dateFrom,
+        date_to: dateTo,
+        currency,
+        sort_by: sortBy.replace('-', '_'),
+        saved_only: savedOnly ? 'true' : 'false',
         limit,
         offset,
       });
+      if (minPrice != null) params.set('min_price', String(minPrice));
+      if (maxPrice != null) params.set('max_price', String(maxPrice));
       const r = await authedFetch(`${BASE}/cargos?${params}`);
       if (!r.ok) return { cargos: [], total: 0, serverError: true, status: r.status };
-      return r.json();
+      const data = await r.json();
+      if ((dateFrom || dateTo || minPrice != null || maxPrice != null || currency || sortBy !== 'newest' || savedOnly) && data?.search_contract !== 1) {
+        return { cargos: [], total: 0, serverError: true, unsupportedSearchContract: true };
+      }
+      return data;
     } catch (e) {
       return { cargos: [], total: 0, serverError: true };
     }
@@ -281,7 +292,7 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listTrips({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', truckType = '', limit = 50, offset = 0 } = {}) {
+  async listTrips({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', truckType = '', dateFrom = '', dateTo = '', minPrice = null, maxPrice = null, currency = '', sortBy = 'newest', savedOnly = false, limit = 50, offset = 0 } = {}) {
     try {
       const params = new URLSearchParams({
         status,
@@ -290,12 +301,23 @@ export const marketAPI = {
         from_country: fromCountry,
         to_country: toCountry,
         truck_type: truckType,
+        date_from: dateFrom,
+        date_to: dateTo,
+        currency,
+        sort_by: sortBy.replace('-', '_'),
+        saved_only: savedOnly ? 'true' : 'false',
         limit,
         offset,
       });
+      if (minPrice != null) params.set('min_price', String(minPrice));
+      if (maxPrice != null) params.set('max_price', String(maxPrice));
       const r = await authedFetch(`${BASE}/trips?${params}`);
       if (!r.ok) return { trips: [], total: 0, serverError: true, status: r.status };
-      return r.json();
+      const data = await r.json();
+      if ((dateFrom || dateTo || minPrice != null || maxPrice != null || currency || sortBy !== 'newest' || savedOnly) && data?.search_contract !== 1) {
+        return { trips: [], total: 0, serverError: true, unsupportedSearchContract: true };
+      }
+      return data;
     } catch (e) {
       return { trips: [], total: 0, serverError: true };
     }
