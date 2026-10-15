@@ -322,7 +322,7 @@ async def upload_attachment(
     if not raw:
         raise HTTPException(status_code=400, detail="Пустой файл")
     if len(raw) > _MAX_ATTACH_BYTES:
-        raise HTTPException(status_code=413, detail="Файл слишком большой (максимум 12 МБ)")
+        raise HTTPException(status_code=413, detail=f"Файл слишком большой (максимум {_MAX_ATTACH_BYTES // (1024 * 1024)} МБ)")
 
     sniffed = _sniff_mime(raw)
     if sniffed is None or sniffed not in _ALLOWED:

@@ -229,3 +229,51 @@ def test_attachment_ownership_does_not_bypass_participant_check(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         deal_room.list_conversation_attachments("room", {"id": "outsider"})
     assert exc.value.status_code == 403
+
+
+def test_large_pdf_and_exact_limit_reach_storage(monkeypatch):
+    """60 MiB and the accepted boundary must survive validation unchanged."""
+    monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room: True)
+    monkeypatch.setattr(deal_room.dr, "is_participant", lambda *_args: True)
+    monkeypatch.setattr(deal_room, "_assert_deal_room_open", lambda *_args: None)
+    monkeypatch.setattr(deal_room, "_ensure_attachment_columns", lambda: None)
+    monkeypatch.setattr(deal_room, "_existing_attachment", lambda *_args: None)
+    monkeypatch.setattr(deal_room.file_signing, "sign", lambda value: value)
+    seen = []
+    def save(data, *_args, **_kwargs):
+        seen.append(len(data))
+        return "/storage/chat_attachments/large.pdf"
+    monkeypatch.setattr(deal_room.storage_service, "save_file", save)
+    monkeypatch.setattr(deal_room.dr, "create_attachment", lambda **kwargs: {"id": "large-pdf", **kwargs})
+    for size in (60 * 1024 * 1024, 100 * 1024 * 1024):
+        payload = b"%PDF-1.7\n" + b" " * (size - 9)
+        upload = UploadFile(filename="large.pdf", file=io.BytesIO(payload))
+        upload.headers = {"content-type": "application/pdf"}
+        asyncio.run(deal_room.upload_attachment(
+            conversation_id="room", file=upload, kind="document",
+            message_id=None, client_upload_id=None, user={"id": "owner"},
+        ))
+    assert seen == [60 * 1024 * 1024, 100 * 1024 * 1024]
+
+
+def test_over_limit_rejected_before_storage(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+    monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room: True)
+    monkeypatch.setattr(deal_room.dr, "is_participant", lambda *_args: True)
+    monkeypatch.setattr(deal_room, "_assert_deal_room_open", lambda *_args: None)
+    monkeypatch.setattr(deal_room, "_ensure_attachment_columns", lambda: None)
+    monkeypatch.setattr(deal_room, "_existing_attachment", lambda *_args: None)
+    def unexpected(*args, **kwargs):
+        raise AssertionError("Oversize must not reach storage")
+    monkeypatch.setattr(deal_room.storage_service, "save_file", unexpected)
+    size = 100 * 1024 * 1024 + 1
+    upload = UploadFile(filename="too-large.pdf", file=io.BytesIO(b"%PDF-1.7\n" + b" " * (size - 9)))
+    upload.headers = {"content-type": "application/pdf"}
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(deal_room.upload_attachment(
+            conversation_id="room", file=upload, kind="document",
+            message_id=None, client_upload_id=None, user={"id": "owner"},
+        ))
+    assert exc.value.status_code == 413
+    assert "100" in exc.value.detail
