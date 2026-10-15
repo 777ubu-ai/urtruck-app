@@ -104,7 +104,7 @@ test('border catalog and notifications localize server-owned legacy text', () =>
   // QueueScreenLazyV2.js (checkpoint objects carry their own names).
   assert.match(queue, /localizeCheckpointName\(checkpoint, lang\)/);
   assert.match(queue, /localizeCheckpointName\(\{ \.\.\.selected, name: live\.name \|\| selected\.name \}, lang\)/);
-  assert.match(queue, /active \? L\.selected : L\.tapToOpen/);
+  assert.match(queue, /active \?.*L\.selected.*: L\.tapToOpen/);
   assert.doesNotMatch(queue, /\? L\.selected : 'Нажать'/);
   assert.match(queue, /lookupStatusLabel\(lookup\.status, lang\)/);
   assert.doesNotMatch(queue, /\{lookup\.status_raw \|\| lookup\.status\}/);

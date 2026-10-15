@@ -119,10 +119,10 @@ export default function ShareModal({
   // `brand` toggles the FA5 Brands font face; the icon's tint matches the
   // network's official color so the iconography reads at a glance.
   const CHANNELS = [
-    { name: 'Telegram', icon: 'telegram', brand: true,  color: '#0088CC', onPress: handleTelegram },
-    { name: 'WhatsApp', icon: 'whatsapp', brand: true,  color: '#25D366', onPress: handleWhatsApp },
-    { name: 'WeChat',   icon: 'weixin',   brand: true,  color: '#07C160', onPress: handleWeChat },
-    { name: t('share_copy_link'), icon: 'link', brand: false, color: '#168759', onPress: copyLink },
+    { name: 'Telegram', action: t('share_action_send'), icon: 'telegram', brand: true, color: '#0088CC', onPress: handleTelegram },
+    { name: 'WhatsApp', action: t('share_action_send'), icon: 'whatsapp', brand: true, color: '#25D366', onPress: handleWhatsApp },
+    { name: 'WeChat', action: t('share_action_send'), icon: 'weixin', brand: true, color: '#07C160', onPress: handleWeChat },
+    { name: t('share_copy_link'), action: t('share_action_copy'), icon: 'link', brand: false, color: '#168759', onPress: copyLink },
   ];
 
   return (
@@ -144,14 +144,20 @@ export default function ShareModal({
             {CHANNELS.map((ch) => (
               <TouchableOpacity
                 key={ch.name}
-                style={[s.channelBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
+                style={[s.channelBtn, { backgroundColor: ch.color + '0F', borderColor: ch.color + '66' }]}
                 onPress={ch.onPress}
-                activeOpacity={0.7}
+                activeOpacity={0.68}
+                accessibilityRole="button"
+                accessibilityLabel={`${ch.action}: ${ch.name}`}
               >
                 <View style={[s.iconWrap, { backgroundColor: ch.color + '22' }]}>
                   <FontAwesome5 name={ch.icon} size={20} color={ch.color} brand={ch.brand} />
                 </View>
-                <Text style={[s.channelName, { color: theme.textSecondary }]}>{ch.name}</Text>
+                <Text style={[s.channelName, { color: theme.text }]}>{ch.name}</Text>
+                <View style={s.actionRow}>
+                  <Text style={[s.actionText, { color: ch.color }]}>{ch.action}</Text>
+                  <FontAwesome5 name="arrow-right" size={11} color={ch.color} />
+                </View>
               </TouchableOpacity>
             ))}
           </View>
@@ -169,8 +175,10 @@ const s = StyleSheet.create({
   previewBox: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 16 },
   previewLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2, marginBottom: 6 },
   previewText: { fontSize: 12, lineHeight: 17 },
-  grid: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 12 },
-  channelBtn: { flex: 1, alignItems: 'center', gap: 6, padding: 10, borderRadius: 14, borderWidth: 1 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
+  channelBtn: { width: '47%', minHeight: 118, alignItems: 'center', justifyContent: 'center', gap: 7, padding: 12, borderRadius: 16, borderWidth: 1.5 },
   iconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  channelName: { fontSize: 11, fontWeight: '700' },
+  channelName: { fontSize: 13, fontWeight: '800' },
+  actionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  actionText: { fontSize: 11, fontWeight: '850' },
 });

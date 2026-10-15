@@ -200,6 +200,11 @@ test('the live Border screen actually uses the canonical localizer and has no ba
   // tapToOpen must exist in all four COPY blocks
   const count = [...live.matchAll(/tapToOpen:/g)].length;
   assert.equal(count, 4, `tapToOpen must be defined in RU/KK/EN/ZH (found ${count})`);
+  assert.match(live, /tapToOpen: 'Показать данные'/, 'RU checkpoint action must state the outcome');
+  assert.match(live, /style=\{\[s\.cpAction,/, 'checkpoint action must render as a distinct button surface');
+  assert.match(live, /accessibilityRole="button"/, 'checkpoint card must expose button semantics');
+  assert.match(live, /accessibilityState=\{\{ selected: active \}\}/, 'checkpoint card must expose selection state');
+  assert.match(live, /name="arrow-right"/, 'unselected checkpoint action must have a directional affordance');
   // checkpoint names must never be rendered raw again
   assert.doesNotMatch(live, /numberOfLines=\{1\}>\{checkpoint\.name\}</, 'raw checkpoint.name render must be gone');
 });
