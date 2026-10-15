@@ -281,7 +281,7 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listTrips({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', truckType = '', limit = 50 } = {}) {
+  async listTrips({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', truckType = '', limit = 50, offset = 0 } = {}) {
     try {
       const params = new URLSearchParams({
         status,
@@ -291,6 +291,7 @@ export const marketAPI = {
         to_country: toCountry,
         truck_type: truckType,
         limit,
+        offset,
       });
       const r = await authedFetch(`${BASE}/trips?${params}`);
       if (!r.ok) return { trips: [], total: 0, serverError: true, status: r.status };
@@ -481,6 +482,40 @@ export const marketAPI = {
     const d = await r.json();
     if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
+  },
+
+  // Собственные объявления без общего dashboard-кэша и unread side effects.
+  async myListings({ kind = 'cargo', section = 'active', limit = 50, offset = 0 } = {}) {
+    const h = await headers();
+    const scope = h.Authorization || null;
+    if (!scope) return { authRequired: true, items: [] };
+    try {
+      const params = new URLSearchParams({ kind, section, limit, offset });
+      const r = await authedFetch(`${BASE}/my/listings?${params}`, { headers: h });
+      let d = await r.json().catch(() => null);
+      if ((await headers()).Authorization !== scope) return { authRequired: true, stale: true, items: [] };
+      if (r.status === 401 || r.status === 403) return { authRequired: true, items: [] };
+      // Только 404 старого backend допускает прежний dashboard fallback.
+      // 5xx/сеть не превращаются в успешный пустой список.
+      if (r.status === 404) {
+        d = await marketAPI.myDashboard({ force: true });
+        if (d.authRequired || d.serverError) return { ...d, items: [] };
+        if ((await headers()).Authorization !== scope) return { authRequired: true, stale: true, items: [] };
+        const all = (kind === 'trip' ? d.my_trips : d.my_cargos) || [];
+        const archive = all.filter(item => ['unpublished', 'cancelled', 'rejected'].includes(item.status));
+        const active = all.filter(item => !item.status || item.status === 'active' || (kind === 'trip' && item.status === 'draft'));
+        return { items: section === 'archive' ? archive : active, archive_total: archive.length,
+          next_offset: null, scope, paginationUnavailable: true };
+      }
+      if (!r.ok || !Array.isArray(d?.items) || !Number.isInteger(d?.total)
+          || !Number.isInteger(d?.archive_total)
+          || !(d.next_offset === null || (Number.isInteger(d.next_offset) && d.next_offset > offset))) {
+        return { serverError: true, items: [] };
+      }
+      return { ...d, scope };
+    } catch {
+      return { serverError: true, items: [] };
+    }
   },
 
   // ─── My Dashboard ───

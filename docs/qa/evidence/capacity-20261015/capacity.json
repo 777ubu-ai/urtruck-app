@@ -1,0 +1,60 @@
+{
+  "sha": "1080523a04a931dfe4465805e80c4a99c0e4b506",
+  "working_diff_sha256": "3fac886802850f869094d5901c7f8cb6a2422951daf6094d86a7cf5ed5b43353",
+  "database": "/private/tmp/urtruck-capacity-20261015-215j38ns/synthetic.sqlite",
+  "outbound_network": "blocked",
+  "seed": {
+    "cargos": 5000,
+    "trips": 5000
+  },
+  "scope": "In-process ASGI на Mac; не нагрузка production и не native FPS/память",
+  "cargo": {
+    "dashboard_visible": 50,
+    "payload_bytes": 33675,
+    "p50_ms": 24.43,
+    "p95_ms": 38.49,
+    "paged": {
+      "unique_records": 5000,
+      "requests": 100,
+      "page_bytes_max": 30461,
+      "p50_ms": 27.66,
+      "p95_ms": 72.73
+    }
+  },
+  "trip": {
+    "dashboard_visible": 50,
+    "payload_bytes": 29525,
+    "p50_ms": 10.11,
+    "p95_ms": 40.52,
+    "paged": {
+      "unique_records": 5000,
+      "requests": 100,
+      "page_bytes_max": 29511,
+      "p50_ms": 14.19,
+      "p95_ms": 38.3
+    }
+  },
+  "archive_masks_active_baseline": {
+    "active_in_database": 4900,
+    "active_in_dashboard": 0
+  },
+  "archive_and_owner_isolation": "PASS",
+  "distributed_accounts": {
+    "clients": 5000,
+    "drivers": 5000,
+    "cargos": {
+      "unique_records": 5000,
+      "requests": 100,
+      "page_bytes_max": 25442,
+      "p50_ms": 11.36,
+      "p95_ms": 17.07
+    },
+    "trips": {
+      "unique_records": 5000,
+      "requests": 100,
+      "page_bytes_max": 28591,
+      "p50_ms": 56.03,
+      "p95_ms": 80.31
+    }
+  }
+}
