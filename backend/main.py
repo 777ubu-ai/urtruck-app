@@ -224,8 +224,9 @@ app.include_router(admin_router, prefix="/admin")
 # отдаются анонимно. Файл выдаётся ТОЛЬКО по валидной подписанной ссылке
 # (?exp=&sig=, см. services/file_signing.py) — иначе 403. Подпись ставится
 # на выходе для владельца (/me) и админа (Basic Auth); в БД сырой путь.
-if storage_service.PROVIDER == "local":
-    storage_service.LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
+if storage_service.PROVIDER == "local" or storage_service.private_chat_root() is not None:
+    if storage_service.PROVIDER == "local":
+        storage_service.LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
 
     # Production nginx exposes this handler under /security/storage; keep the
     # same signed endpoint available when the isolated QA backend is reached
@@ -235,8 +236,8 @@ if storage_service.PROVIDER == "local":
     def serve_signed_storage(path: str, exp: Optional[str] = None, sig: Optional[str] = None):
         from services import file_signing
         # Path-traversal: резолвим и требуем, чтобы путь остался внутри LOCAL_ROOT.
-        root = storage_service.LOCAL_ROOT.resolve()
         try:
+            root = storage_service.storage_root_for_key(path)
             full = (root / path).resolve()
         except (OSError, ValueError, RuntimeError):
             raise HTTPException(status_code=403, detail="Forbidden")

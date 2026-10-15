@@ -8,6 +8,7 @@ import tempfile
 import uuid
 import time
 import threading
+import shutil
 from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
@@ -27,6 +28,62 @@ _default_root = (
 )
 LOCAL_ROOT = Path(os.getenv("STORAGE_LOCAL_ROOT", str(_default_root))).expanduser()
 LOCAL_PUBLIC_BASE = os.getenv("STORAGE_LOCAL_PUBLIC_BASE", "/security/storage")
+# Explicitly opt in only NEW deal-room attachments. Supabase stays the
+# default for photos, voice, registration and existing remote references.
+PRIVATE_CHAT_ROOT = os.getenv("PRIVATE_CHAT_ATTACHMENT_ROOT", "").strip()
+PRIVATE_CHAT_WRITE = os.getenv("PRIVATE_CHAT_ATTACHMENT_WRITE", "").lower() == "true"
+_PRIVATE_CHAT_PRODUCTION_ROOT = Path("/home/ubuntu/urtruck/runtime/private-chat-attachments")
+
+
+def private_chat_root() -> Optional[Path]:
+    if not PRIVATE_CHAT_ROOT:
+        if PRIVATE_CHAT_WRITE:
+            raise StorageSaveError("Private chat root is required", provider="private_chat")
+        return None
+    root = Path(PRIVATE_CHAT_ROOT)
+    if not root.is_absolute() or (_PROD and root.resolve() != _PRIVATE_CHAT_PRODUCTION_ROOT):
+        raise StorageSaveError("Private chat root must be persistent and outside deployed/public directories", provider="private_chat")
+    if len(os.getenv("FILE_SIGNING_KEY", "").encode("utf-8")) < 32:
+        raise StorageSaveError("Private chat requires FILE_SIGNING_KEY", provider="private_chat")
+    return root.resolve()
+
+
+def storage_root_for_key(key: str) -> Path:
+    root = private_chat_root()
+    # The read root remains configured when writes are rolled back, so already
+    # sent private attachments remain available. Preserve pre-existing local refs.
+    if root is not None and str(key).startswith("chat_attachments/"):
+        candidate = (root / key).resolve()
+        if root not in candidate.parents:
+            raise ValueError("Invalid private attachment path")
+        if candidate.is_file() or not (LOCAL_ROOT / key).is_file():
+            return root
+    return LOCAL_ROOT.resolve()
+
+
+def _save_private_chat(data: bytes, key: str) -> str:
+    root = private_chat_root()
+    if root is None:
+        raise StorageSaveError("Private chat root is required", provider="private_chat")
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target = (root / key).resolve()
+    if root not in target.parents or not key.startswith("chat_attachments/"):
+        raise StorageSaveError("Invalid private attachment path", provider="private_chat")
+    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if shutil.disk_usage(root).free < len(data) + 2 * 1024 * 1024 * 1024:
+        raise StorageSaveError("Private attachment disk reserve reached", provider="private_chat")
+    fd, temporary = tempfile.mkstemp(prefix=".upload-", dir=target.parent)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            out.write(data)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return f"{LOCAL_PUBLIC_BASE.rstrip('/')}/{key}"
+
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
@@ -219,6 +276,8 @@ def save_file(
     only durable/private storage and must not silently relabel a PDF as JPEG.
     """
     key = _gen_key(category, ext)
+    if category == "chat_attachments" and PRIVATE_CHAT_WRITE:
+        return _save_private_chat(data, key)
     if PROVIDER == "supabase":
         if not (SUPABASE_URL and SUPABASE_KEY):
             raise StorageSaveError("Supabase Storage is not configured", provider="supabase")
@@ -280,7 +339,7 @@ def get_local_path(url_or_path: str) -> Optional[str]:
         return None
     if url_or_path.startswith(LOCAL_PUBLIC_BASE):
         rel = url_or_path[len(LOCAL_PUBLIC_BASE):].lstrip("/")
-        root = LOCAL_ROOT.resolve()
+        root = storage_root_for_key(rel)
         candidate = (root / rel).resolve()
         try:
             candidate.relative_to(root)
