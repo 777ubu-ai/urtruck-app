@@ -25,6 +25,7 @@ from database.db import get_conn, new_id
 # truth shared with registration/profile/chat upload endpoints. These aliases
 # keep the deal-room tests and this module's call sites stable.
 from services import upload_validation as _uv
+from services.upload_admission import bounded_attachment_upload
 
 _MAX_ATTACH_BYTES = _uv.MAX_ATTACH_BYTES
 _XLSX_MIME = _uv.XLSX_MIME
@@ -287,6 +288,7 @@ def support_escalate(body: EscalateBody, user=Depends(require_level(1))):
 
 
 @deal_room_router.post("/chat/conversations/{conversation_id}/attachments")
+@bounded_attachment_upload
 async def upload_attachment(
     conversation_id: str,
     file: UploadFile = File(...),
