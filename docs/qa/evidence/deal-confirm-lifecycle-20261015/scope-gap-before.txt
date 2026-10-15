@@ -1,0 +1,64 @@
+✔ подтверждение после blur не разрешает статусный запрос (0.910959ms)
+✔ старое подтверждение после ухода и возврата не разрешает действие (0.13725ms)
+✔ после unmount подтверждение не разрешает действие (0.073209ms)
+✔ повторный запрос не заменяет первый dialog и не оставляет потерянный promise (0.072625ms)
+✔ актуальное подтверждение/отмена завершаются один раз и дают следующий запрос (0.079584ms)
+✔ скрытый или размонтированный экран не открывает новое подтверждение (0.082417ms)
+✔ старый обработчик dialog не подтверждает следующий dialog (0.084792ms)
+✔ реальный runNextAction не вызывает API после ухода из сделки (1.05325ms)
+✔ focus cleanup закрывает panel и завершает ожидающее действие отменой (0.176833ms)
+✔ реальный runNextAction после актуального Да отправляет ровно один статус (0.594458ms)
+✖ blur между нажатием Да и async-продолжением не отправляет статус (1.344834ms)
+✖ cancelDeal повторно проверяет scope после подтверждения (0.2535ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 10
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 108.575584
+
+✖ failing tests:
+
+test at tests/frontend/test_deal_confirmation_lifecycle.mjs:117:1
+✖ blur между нажатием Да и async-продолжением не отправляет статус (1.344834ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+  + [
+  +   'delivered'
+  + ]
+  - []
+
+      at TestContext.<anonymous> (file:///private/tmp/urtruck-deal-confirm-20261015/tests/frontend/test_deal_confirmation_lifecycle.mjs:126:25)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'delivered' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests/frontend/test_deal_confirmation_lifecycle.mjs:128:1
+✖ cancelDeal повторно проверяет scope после подтверждения (0.2535ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+  + [
+  +   'cancelled'
+  + ]
+  - []
+
+      at TestContext.<anonymous> (file:///private/tmp/urtruck-deal-confirm-20261015/tests/frontend/test_deal_confirmation_lifecycle.mjs:137:25)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'cancelled' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
