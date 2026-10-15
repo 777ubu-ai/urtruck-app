@@ -1,0 +1,33 @@
+✖ статусы + подтверждение используют один native Modal host (10.3395ms)
+✔ обычное открытие статусов сохраняет один host, закрытый экран — ноль (8.338917ms)
+✔ подтверждение без открытого status panel всё ещё имеет host (4.047333ms)
+✔ общий AppConfirmModal сохраняет default native host для остальных экранов (0.92175ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 3
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 425.752417
+
+✖ failing tests:
+
+test at tests/frontend/test_deal_confirmation_host.mjs:81:1
+✖ статусы + подтверждение используют один native Modal host (10.3395ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  2 !== 1
+
+      at TestContext.<anonymous> (file:///private/tmp/urtruck-deal-confirm-20261015/tests/frontend/test_deal_confirmation_host.mjs:83:10)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.start (node:internal/test_runner/test:1096:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

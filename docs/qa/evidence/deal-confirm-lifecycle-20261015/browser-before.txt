@@ -1,0 +1,40 @@
+
+Running 1 test using 1 worker
+
+[1/1] tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › driver RU: at_border → delivered, один host/cancel/confirm
+  1) tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › driver RU: at_border → delivered, один host/cancel/confirm
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  locator('[aria-modal="true"]')
+    Expected: 1
+    Received: 2
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveCount" with timeout 5000ms
+      - waiting for locator('[aria-modal="true"]')
+        9 × locator resolved to 2 elements
+          - unexpected value "2"
+
+
+      106 |     await page.getByTestId(action).click();
+      107 |     await expect(page.getByTestId('deal-workspace-confirm')).toBeVisible();
+    > 108 |     await expect(hosts(page)).toHaveCount(1);
+          |                               ^
+      109 |     await expect(page.getByTestId('deal-status-panel')).toHaveCount(0);
+      110 |     await page.getByTestId('deal-workspace-confirm-cancel').click();
+      111 |     await expect(page.getByTestId('deal-status-panel')).toBeVisible();
+        at /private/tmp/urtruck-deal-confirm-20261015/tests/e2e/urtruck-deal-confirmation.spec.js:108:31
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/urtruck-deal-confirmation--83b4d-ed-один-host-cancel-confirm/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/urtruck-deal-confirmation--83b4d-ed-один-host-cancel-confirm/error-context.md
+
+    Error Context: test-results/urtruck-deal-confirmation--83b4d-ed-один-host-cancel-confirm/error-context.md
+
+
+  1 failed
+    tests/e2e/urtruck-deal-confirmation.spec.js:102:3 › driver RU: at_border → delivered, один host/cancel/confirm
