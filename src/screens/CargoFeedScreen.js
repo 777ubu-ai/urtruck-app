@@ -45,6 +45,9 @@ const TEXT = '#17221D';
 const TEXT_SECONDARY = '#606B66';
 const TEXT_MUTED = '#718078';
 const BORDER = '#E5EAE7';
+// Bound the mounted card window on low-memory devices. `items` and the server
+// cursor remain complete; this only controls the nearby rows kept in the view.
+const CARGO_FEED_WINDOW_SIZE = 7;
 
 const cargoPalette = (ceramic) => ({
   pageBg: ceramic.bg,
@@ -527,6 +530,7 @@ export default function CargoFeedScreen({ navigation }) {
       <FlatList
         ref={listRef}
         style={styles.list}
+        windowSize={CARGO_FEED_WINDOW_SIZE}
         data={loading ? [] : visibleItems}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (

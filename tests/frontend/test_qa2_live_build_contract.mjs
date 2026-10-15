@@ -15,7 +15,7 @@ const iosProject = readFileSync('ios/UrTruck.xcodeproj/project.pbxproj', 'utf8')
 const androidAppBuild = readFileSync('android/app/build.gradle', 'utf8');
 
 test('distributed QA2 requires a healthy non-production API target', () => {
-  assert.ok(workflow.includes('QA_API_URL: ${{ secrets.QA2_API_URL }}'));
+  assert.ok(workflow.includes('QA2_API_URL: ${{ secrets.QA2_API_URL }}'));
   assert.ok(workflow.includes('QA2 Android build must not target production'));
   assert.ok(workflow.includes('urtruck.kz|www.urtruck.kz|185.22.65.11'));
   assert.ok(workflow.includes('for path in /health /api/version'));
@@ -24,8 +24,23 @@ test('distributed QA2 requires a healthy non-production API target', () => {
   assert.ok(!workflow.includes('EXPO_PUBLIC_API_URL=http://127.0.0.1:18001'));
 });
 
+test('loopback lab APK mode is explicit, exact-source guarded, and cannot target production', () => {
+  assert.ok(workflow.includes('api_target:'));
+  assert.ok(workflow.includes('- loopback_lab'));
+  assert.ok(workflow.includes('BUILD_OPPO_LOOPBACK_LAB'));
+  assert.ok(workflow.includes('git merge-base --is-ancestor 6bf713eac1f9c7339b8651fecc132aa14f7862e5 "$RESOLVED_SOURCE_SHA"'));
+  assert.ok(workflow.includes('QA_API_URL="http://127.0.0.1:8002"'));
+  assert.ok(workflow.includes('adb reverse tcp:8002 tcp:8002'));
+  assert.ok(workflow.includes('QA2 Android build must not target production'));
+  assert.ok(workflow.includes('Loopback API is allowed only in explicit loopback_lab mode'));
+  assert.ok(workflow.includes('YANDEX_MAPKIT_API_KEY is required'));
+  assert.ok(workflow.includes('QA2_ANDROID_GOOGLE_SERVICES_JSON_BASE64'));
+  assert.ok(workflow.includes('URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2'));
+  assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
+});
+
 test('QA086 checks out and records an explicitly supplied exact source SHA', () => {
-  const sourceInput = workflow.match(/source_ref:\n([\s\S]*?)\n\s*push:/)?.[1] || '';
+  const sourceInput = workflow.match(/source_ref:\n([\s\S]*?)\n\s+api_target:/)?.[1] || '';
   assert.ok(sourceInput.includes('required: true'));
   assert.ok(!sourceInput.includes('default:'), 'QA2 build must not silently reuse a stale source SHA');
   assert.ok(workflow.includes('ref: ${{ inputs.source_ref || github.sha }}'));

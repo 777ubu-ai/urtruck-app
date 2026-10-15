@@ -40,6 +40,15 @@ test('favorites quick filter runs against the complete server result and keeps b
   assert.match(src, /accessibilityLabel=\{copy\.favorites\}/);
 });
 
+test('cargo feed bounds mounted rows without truncating loaded data or pagination', () => {
+  assert.match(src, /const CARGO_FEED_WINDOW_SIZE = 7/);
+  assert.match(src, /windowSize=\{CARGO_FEED_WINDOW_SIZE\}/);
+  assert.match(src, /data=\{loading \? \[\] : visibleItems\}/);
+  assert.match(src, /const visibleItems = items/);
+  assert.doesNotMatch(src, /visibleItems\s*=\s*items\.(?:slice|splice)/);
+  assert.match(src, /pageRef\.current\.nextOffset/);
+});
+
 test('cargo cards are dense without changing the controls above the list', () => {
   // The 84dp card is independent of the preserved route selector and filters.
   // A one-line 15/19 route remains beside the fixed price rail.
