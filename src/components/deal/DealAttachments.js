@@ -8,7 +8,8 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useTheme } from '../../utils/ThemeContext';
 import { chatAPI, documentKindFromFile } from '../../utils/chatAPI';
-import { compressImage } from '../../utils/imageCompress';
+import { compressImage, imageUploadByteSize } from '../../utils/imageCompress';
+import { prepareChatPhoto } from '../../utils/prepareChatPhoto';
 import { displayAttachmentFilename } from '../../utils/attachmentFilename';
 import { accentFor } from './DealRoom';
 import PdfPreviewModal from './PdfPreviewModal';
@@ -119,7 +120,11 @@ export default function DealAttachments({
       // branch: an XLSX/XLS/CSV routed through compressImage() would
       // corrupt the file, so the gate must cover "is this a photo", not
       // just "is this specifically a PDF" or "not a document".
-      const uploadUri = isImage ? await compressImage(uri, { preset: 'document' }) : uri;
+      const prepared = isImage
+        ? await prepareChatPhoto({ uri, name, preset: 'document' }, {
+          compressImage, readByteSize: imageUploadByteSize,
+        }) : null;
+      const uploadUri = prepared ? prepared.uri : uri;
       const payload = {
         uri: uploadUri,
         // fileObject (the raw web File, from DocumentPicker) only matters
@@ -127,8 +132,8 @@ export default function DealAttachments({
         // above and are sent by uri.
         fileObject: isImage ? null : (fileObject || null),
         kind: 'document',
-        name,
-        type: mime || 'application/octet-stream',
+        name: prepared ? prepared.name : name,
+        type: prepared ? prepared.type : (mime || 'application/octet-stream'),
         // Stable across Retry. Backend uses it as an idempotency key.
         clientUploadId: localId,
       };
@@ -136,7 +141,7 @@ export default function DealAttachments({
       setLocal((prev) => prev.filter((x) => x.localId !== localId));
       await load();
     } catch (error) {
-      patchLocal({ status: 'failed', error: normalizeUploadError(error) });
+      patchLocal({ status: 'failed', error: normalizeUploadError(error), photoError: error?.code || null });
     }
   }, [conversationId, load]);
 
@@ -317,7 +322,9 @@ export default function DealAttachments({
                   key={item.localId}
                   icon={item.isImage ? 'image' : 'file-text'}
                   label={item.name || attachmentLabel(t, item)}
-                  sublabel={formatBytes(item.size)}
+                  sublabel={item.photoError === 'photo_preparation_failed'
+                    ? t('photo_preparation_failed')
+                    : item.photoError === 'photo_too_large' ? t('photo_too_large') : formatBytes(item.size)}
                   statusKey={meta.key}
                   statusColor={meta.color}
                   spinning={item.status === 'uploading' || item.status === 'retrying'}

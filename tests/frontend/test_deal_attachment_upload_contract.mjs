@@ -31,7 +31,10 @@ test('deal document picker uploads office files as files, not compressed images'
   // XLSX/XLS/CSV picked via the shared document flow must never be routed
   // through compressImage(), so the check is "is this a photo", not
   // "is this specifically a recognized office document".
-  assert.match(ui, /const uploadUri = isImage \? await compressImage\(uri, \{ preset: 'document' \}\) : uri/);
+  assert.match(ui, /const prepared = isImage\s*\? await prepareChatPhoto/);
+  assert.match(ui, /const uploadUri = prepared \? prepared.uri : uri/);
+  assert.match(ui, /type: prepared \? prepared.type :/);
+  assert.match(ui, /name: prepared \? prepared.name : name/);
   assert.match(api, /endsWith\('\.xlsx'\)/);
   assert.match(api, /endsWith\('\.xls'\)/);
   assert.match(api, /endsWith\('\.csv'\)/);
