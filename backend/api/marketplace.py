@@ -6,6 +6,7 @@ import sys
 import json
 import re
 import time
+import math
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -785,6 +786,14 @@ def list_cargos(
     show_demo: bool = False,
     limit: int = 50,
     offset: int = 0,
+    date_from: str = "",
+    date_to: str = "",
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    currency: str = "",
+    sort_by: str = "newest",
+    saved_only: bool = False,
+    authorization: Optional[str] = Header(None),
 ):
     """Публичный список грузов. Demo-контент скрыт по умолчанию."""
     _require_public_listing_status(status)
@@ -816,6 +825,15 @@ def list_cargos(
         where.append("to_point_type = ?")
         params.append(to_point_type.lower())
 
+    search_where, search_params, order_sql = _public_search_filters(
+        table="cargos", date_column="pickup_date", item_type="cargo",
+        date_from=date_from, date_to=date_to, min_price=min_price,
+        max_price=max_price, currency=currency, sort_by=sort_by,
+        saved_only=saved_only, authorization=authorization,
+    )
+    where.extend(search_where)
+    params.extend(search_params)
+
     where_sql = " AND ".join(where)
     with get_conn() as c:
         rows = c.execute(f"""
@@ -825,9 +843,14 @@ def list_cargos(
                    from_country, from_point_type, from_point_name,
                    to_country, to_point_type, to_point_name
             FROM cargos WHERE {where_sql}
-            ORDER BY published_at DESC LIMIT ? OFFSET ?
-        """, (*params, limit, offset)).fetchall()
+            ORDER BY {order_sql} LIMIT ? OFFSET ?
+        """, (*params, limit + 1, offset)).fetchall()
         total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql}", params).fetchone()[0]
+
+    # Следующая страница определяется ДО hygiene/expiry-фильтров.
+    # Иначе неполная/пустая видимая страница скрывает оставшиеся записи.
+    next_offset = offset + limit if len(rows) > limit else None
+    rows = rows[:limit]
 
     result = []
     today = datetime.utcnow().date()
@@ -849,7 +872,11 @@ def list_cargos(
             continue
         result.append(d)
     # Recompute total to match what the caller actually sees
-    return {"cargos": result, "total": len(result)}
+    return {
+        "cargos": result, "total": len(result), "next_offset": next_offset,
+        "page_count": len(result), "has_more": next_offset is not None,
+        "search_contract": 1,
+    }
 
 
 @mp_router.post("/cargos/photo")
@@ -948,6 +975,91 @@ def _require_public_listing_status(status: str) -> None:
                 "allowed": sorted(_PUBLIC_LISTING_STATUSES),
             },
         )
+
+
+_PUBLIC_SORTS = frozenset({"newest", "price_asc", "price_desc"})
+_PUBLIC_CURRENCIES = frozenset({"USD", "KZT", "RUB", "CNY"})
+
+
+def _public_search_filters(
+    *, table: str, date_column: str, item_type: str, date_from: str,
+    date_to: str, min_price: Optional[float], max_price: Optional[float],
+    currency: str, sort_by: str, saved_only: bool, authorization: Optional[str],
+):
+    """Build bound SQL predicates for filters that must precede page slicing.
+
+    `table`, `date_column`, and `item_type` are selected only by the two
+    public-list handlers; all user values remain SQL parameters. Price order
+    has no authoritative FX source in this API, so a price query is scoped to
+    one explicitly selected currency rather than comparing unlike amounts.
+    """
+    if sort_by not in _PUBLIC_SORTS:
+        raise HTTPException(status_code=422, detail="sort_by must be newest, price_asc, or price_desc")
+    where = []
+    params = []
+
+    def normalized_date(value: str, label: str):
+        if not value:
+            return None
+        parsed = _parse_iso_date(value)
+        if parsed is None:
+            raise HTTPException(status_code=422, detail=f"{label} must be an ISO date or DD.MM.YYYY")
+        return parsed.isoformat()
+
+    start = normalized_date(date_from, "date_from")
+    end = normalized_date(date_to, "date_to")
+    if start and end and start > end:
+        raise HTTPException(status_code=422, detail="date_from must not be after date_to")
+
+    if min_price is not None and (not math.isfinite(min_price) or min_price < 0):
+        raise HTTPException(status_code=422, detail="min_price must be non-negative")
+    if max_price is not None and (not math.isfinite(max_price) or max_price < 0):
+        raise HTTPException(status_code=422, detail="max_price must be non-negative")
+    if min_price is not None and max_price is not None and min_price > max_price:
+        raise HTTPException(status_code=422, detail="min_price must not exceed max_price")
+
+    currency_code = (currency or "").strip().upper()
+    price_query = sort_by != "newest" or min_price is not None or max_price is not None
+    if price_query:
+        if currency_code not in _PUBLIC_CURRENCIES:
+            raise HTTPException(status_code=422, detail="price sort/filter requires currency USD, KZT, RUB, or CNY")
+        where.append("UPPER(COALESCE(NULLIF(currency, ''), 'USD')) = ?")
+        params.append(currency_code)
+
+    normalized_sql_date = (
+        f"CASE WHEN {date_column} GLOB '[0-9][0-9].[0-9][0-9].[0-9][0-9][0-9][0-9]' "
+        f"THEN substr({date_column}, 7, 4) || '-' || substr({date_column}, 4, 2) || '-' || substr({date_column}, 1, 2) "
+        f"ELSE date({date_column}) END"
+    )
+    if start:
+        where.append(f"{normalized_sql_date} >= date(?)")
+        params.append(start)
+    if end:
+        where.append(f"{normalized_sql_date} <= date(?)")
+        params.append(end)
+    if min_price is not None:
+        where.append("COALESCE(price, 0) >= ?")
+        params.append(min_price)
+    if max_price is not None:
+        where.append("COALESCE(price, 0) <= ?")
+        params.append(max_price)
+    if saved_only:
+        caller = _maybe_user(authorization)
+        if not caller or not caller.get("id"):
+            raise HTTPException(status_code=401, detail="Authentication is required for saved_only")
+        where.append(
+            "EXISTS (SELECT 1 FROM favorites f WHERE f.user_id = ? "
+            "AND f.item_type = ? AND f.item_id = " + table + ".id)"
+        )
+        params.extend((caller["id"], item_type))
+
+    if sort_by == "price_asc":
+        order_sql = "COALESCE(price, 0) ASC, published_at DESC, id DESC"
+    elif sort_by == "price_desc":
+        order_sql = "COALESCE(price, 0) DESC, published_at DESC, id DESC"
+    else:
+        order_sql = "published_at DESC, id DESC"
+    return where, params, order_sql
 
 
 # Track B (2026-09-10): shared "is there still a live delivery in progress
@@ -1555,6 +1667,14 @@ def list_trips(
     show_demo: bool = False,
     limit: int = 50,
     offset: int = 0,
+    date_from: str = "",
+    date_to: str = "",
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    currency: str = "",
+    sort_by: str = "newest",
+    saved_only: bool = False,
+    authorization: Optional[str] = Header(None),
 ):
     _require_public_listing_status(status)
     # Cap пагинации — та же защита, что в list_cargos (аудит C1.4).
@@ -1584,6 +1704,15 @@ def list_trips(
         where.append("to_point_type = ?")
         params.append(to_point_type.lower())
 
+    search_where, search_params, order_sql = _public_search_filters(
+        table="trips", date_column="departure", item_type="trip",
+        date_from=date_from, date_to=date_to, min_price=min_price,
+        max_price=max_price, currency=currency, sort_by=sort_by,
+        saved_only=saved_only, authorization=authorization,
+    )
+    where.extend(search_where)
+    params.extend(search_params)
+
     where_sql = " AND ".join(where)
     with get_conn() as c:
         rows = c.execute(f"""
@@ -1593,8 +1722,13 @@ def list_trips(
                    from_country, from_point_type, from_point_name,
                    to_country, to_point_type, to_point_name
             FROM trips WHERE {where_sql}
-            ORDER BY published_at DESC LIMIT ? OFFSET ?
-        """, (*params, limit, offset)).fetchall()
+            ORDER BY {order_sql} LIMIT ? OFFSET ?
+        """, (*params, limit + 1, offset)).fetchall()
+
+    # Следующая страница определяется ДО hygiene/expiry-фильтров.
+    # Иначе неполная/пустая видимая страница скрывает оставшиеся записи.
+    next_offset = offset + limit if len(rows) > limit else None
+    rows = rows[:limit]
 
     trips = [dict(r) for r in rows]
     if not show_demo:
@@ -1617,17 +1751,21 @@ def list_trips(
     # Обогащение не должно ронять ленту — при любом сбое отдаём дефолты.
     try:
         from database import reviews_dal
+        driver_ids = list(dict.fromkeys(t.get("driver_id") for t in trips if t.get("driver_id")))
+        verified_by_id = {}
         with get_conn() as c2:
-            for t in trips:
-                did = t.get("driver_id")
-                drow = c2.execute(
-                    "SELECT status FROM drivers_registration WHERE id = ?",
-                    (did,),
-                ).fetchone() if did else None
-                t["driver_verified"] = _driver_verified(dict(drow) if drow else None)
+            if driver_ids:
+                placeholders = ",".join("?" for _ in driver_ids)
+                verified_rows = c2.execute(
+                    f"SELECT id, status FROM drivers_registration WHERE id IN ({placeholders})",
+                    driver_ids,
+                ).fetchall()
+                verified_by_id = {row["id"]: _driver_verified(dict(row)) for row in verified_rows}
+        summaries = reviews_dal.get_rating_summaries(driver_ids)
         for t in trips:
             did = t.get("driver_id")
-            summary = reviews_dal.get_rating_summary(did) if did else {}
+            t["driver_verified"] = verified_by_id.get(did, False)
+            summary = summaries.get(did, {}) if did else {}
             t["driver_rating"] = summary.get("average", 0) or 0
             t["driver_reviews_count"] = summary.get("count", 0) or 0
     except Exception:
@@ -1635,7 +1773,11 @@ def list_trips(
             t.setdefault("driver_verified", False)
             t.setdefault("driver_rating", 0)
             t.setdefault("driver_reviews_count", 0)
-    return {"trips": trips, "total": len(trips)}
+    return {
+        "trips": trips, "total": len(trips), "next_offset": next_offset,
+        "page_count": len(trips), "has_more": next_offset is not None,
+        "search_contract": 1,
+    }
 
 
 @mp_router.get("/trips/{trip_id}")
@@ -2151,6 +2293,45 @@ def bid_price_events(bid_id: str, user=Depends(require_level(1))):
             (bid_id,),
         ).fetchall()
     return {"events": [dict(r) for r in rows]}
+
+
+# Собственные объявления отдельно от dashboard/unread: фильтр до LIMIT.
+# Таблицы/поля — константы; значения пользователя — SQL-параметры.
+@mp_router.get("/my/listings")
+def my_listings(
+    kind: str = Query("cargo", pattern="^(cargo|trip)$"),
+    section: str = Query("active", pattern="^(active|archive)$"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user=Depends(require_level(1)),
+):
+    table, owner = ("cargos", "owner_id") if kind == "cargo" else ("trips", "driver_id")
+    active_statuses = ("active",) if kind == "cargo" else ("active", "draft")
+    statuses = ("unpublished", "cancelled", "rejected") if section == "archive" else active_statuses
+    placeholders = ",".join("?" for _ in statuses)
+    where = f"{owner} = ? AND COALESCE(status, 'active') IN ({placeholders})"
+    params = (user["id"], *statuses)
+    with get_conn() as c:
+        total = c.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}", params).fetchone()[0]
+        archive_total = c.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE {owner} = ? "
+            "AND status IN ('unpublished','cancelled','rejected')", (user["id"],)
+        ).fetchone()[0]
+        items = [dict(row) for row in c.execute(
+            f"SELECT * FROM {table} WHERE {where} "
+            "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?", (*params, limit, offset)
+        ).fetchall()]
+    if kind == "cargo":
+        for item in items:
+            try:
+                item["photos"] = _sign_cargo_photos(json.loads(item.get("photos") or "[]"))
+            except Exception:
+                item["photos"] = []
+    next_offset = offset + len(items)
+    return {
+        "items": items, "total": total, "archive_total": archive_total,
+        "next_offset": next_offset if items and next_offset < total else None,
+    }
 
 
 # ═══ My Dashboard ═══

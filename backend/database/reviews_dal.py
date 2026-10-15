@@ -161,6 +161,43 @@ def get_rating_summary(target_id: str) -> dict:
     }
 
 
+def get_rating_summaries(target_ids) -> dict:
+    """Return the existing visible-review summary contract in one query.
+
+    Marketplace pages enrich up to 200 trips at a time. Calling
+    `get_rating_summary` once per trip opens one connection/query per row;
+    this batched variant keeps the same count/average/distribution and gives
+    missing or zero-review drivers the same empty summary.
+    """
+    ids = list(dict.fromkeys(str(value) for value in (target_ids or []) if value))
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    with get_conn() as c:
+        rows = c.execute(
+            "SELECT target_id, COUNT(*) AS cnt, AVG(rating) AS avg, "
+            "SUM(CASE WHEN rating=5 THEN 1 ELSE 0 END) AS r5, "
+            "SUM(CASE WHEN rating=4 THEN 1 ELSE 0 END) AS r4, "
+            "SUM(CASE WHEN rating=3 THEN 1 ELSE 0 END) AS r3, "
+            "SUM(CASE WHEN rating=2 THEN 1 ELSE 0 END) AS r2, "
+            "SUM(CASE WHEN rating=1 THEN 1 ELSE 0 END) AS r1 "
+            f"FROM reviews WHERE is_visible = 1 AND target_id IN ({placeholders}) GROUP BY target_id",
+            ids,
+        ).fetchall()
+    result = {target_id: {"count": 0, "average": 0, "distribution": {}} for target_id in ids}
+    for row in rows:
+        result[row["target_id"]] = {
+            "count": row["cnt"],
+            "average": round(row["avg"] or 0, 2),
+            "distribution": {
+                "5": row["r5"] or 0, "4": row["r4"] or 0,
+                "3": row["r3"] or 0, "2": row["r2"] or 0,
+                "1": row["r1"] or 0,
+            },
+        }
+    return result
+
+
 def has_already_reviewed(author_id: str, target_id: str, trip_id: str) -> bool:
     with get_conn() as c:
         deal = _completed_deal_for_reference(c, author_id, target_id, trip_id)
