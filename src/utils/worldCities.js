@@ -15,9 +15,14 @@ export function searchWorldCities(query, country) {
   if (!q) return [];
   const hits = [];
   for (const code of country ? [country] : Object.keys(rows)) {
-    for (const city of worldCitiesForCountry(code)) {
-      if (city.name.toLocaleLowerCase().includes(q)
-        || city.aliases.some((name) => name.toLocaleLowerCase().includes(q))) hits.push(city);
+    // Search the compact source tuples first. Materializing each country's
+    // complete city directory here permanently retained tens of thousands of
+    // objects in the module cache on every global picker search.
+    for (const [name, aliases, latitude, longitude, population, id] of rows[code] || []) {
+      if (name.toLocaleLowerCase().includes(q)
+        || aliases.some((alias) => alias.toLocaleLowerCase().includes(q))) {
+        hits.push({ name, aliases, latitude, longitude, population, geonameId: id, country: code, type: 'city', source: 'GeoNames' });
+      }
     }
   }
   return hits;
