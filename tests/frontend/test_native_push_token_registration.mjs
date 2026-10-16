@@ -322,3 +322,244 @@ test('queued token rotation survives failure of the old registration', async () 
     assert.equal(calls.length, 2, 'recovery must not loop or storm');
   } finally { globalThis.fetch = old; shim.uninstall(); }
 });
+
+test('logout cleanup runs after an in-flight native registration so stale session cannot be reactivated', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  let activeOwner = null;
+  globalThis.fetch = async (url, opts) => {
+    const path = String(url);
+    calls.push(path);
+    if (path.includes('/register-native')) {
+      // Model the server commit happening before the response is received.
+      activeOwner = 'old-session-user';
+      await new Promise((resolve, reject) => {
+        opts.signal.addEventListener('abort', () => reject(new Error('aborted by logout')), { once: true });
+      });
+      return { status: 200, ok: true, json: async () => ({ ok: true, user_id: activeOwner }) };
+    }
+    if (path.includes('/logout-cleanup')) {
+      activeOwner = null;
+      return { status: 200, ok: true, json: async () => ({ ok: true }) };
+    }
+    return { status: 404, ok: false, json: async () => ({}) };
+  };
+  try {
+    const storage = (await import('./mocks/async-storage.mjs')).default;
+    await storage.setItem('ur_reg_token', 'old-session-token');
+    const push = await freshPush();
+    const registration = push.registerNative();
+    for (let attempt = 0; attempt < 40 && !calls.some((path) => path.includes('/register-native')); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(calls.some((path) => path.includes('/register-native')), true,
+      'registration reached its delayed provider request');
+
+    const cleanup = push.logoutCleanup('old-session-token');
+    assert.equal((await push.registerNative()).reason, 'logout_in_progress',
+      'new registration attempts must wait until logout deactivation is complete');
+    shim.state.nativeDeviceToken = 'token-rotated-during-logout';
+    await shim.NotificationsMock.__emitTokenRotation();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(calls.some((path) => path.includes('/logout-cleanup')), true,
+      'logout deactivation must follow aborting the in-flight registration write');
+    await registration;
+    await cleanup;
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+
+    assert.deepEqual(calls.map((path) => path.includes('/register-native') ? 'register' : 'logout'), ['register', 'logout']);
+    assert.equal(activeOwner, null, 'late completion must not reactivate the logged-out account');
+  } finally { globalThis.fetch = old; shim.uninstall(); }
+});
+
+test('logout does not wait for a pending OS token lookup and stale lookup cannot write after logout', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return { status: 200, ok: true, json: async () => ({ ok: true }) };
+  };
+  try {
+    const storage = (await import('./mocks/async-storage.mjs')).default;
+    await storage.setItem('ur_reg_token', 'old-session-token');
+    shim.state.permissionStatus = 'granted';
+    shim.state.pauseDeviceTokenRead = true;
+    const push = await freshPush();
+    const registration = push.registerNative();
+    for (let attempt = 0; attempt < 40 && !shim.state.deviceTokenReadPaused; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(shim.state.deviceTokenReadPaused, true, 'native token lookup reached the controlled OS wait');
+
+    await push.logoutCleanup('old-session-token');
+    assert.equal(calls.some((url) => url.includes('/logout-cleanup')), true,
+      'logout cleanup must not wait for a pending OS token lookup');
+    shim.state.releaseDeviceTokenRead();
+    await registration;
+    assert.equal(calls.some((url) => url.includes('/register-native')), false,
+      'a token lookup started under the previous auth generation must not register after logout');
+  } finally { globalThis.fetch = old; shim.uninstall(); }
+});
+
+test('registration requested after a new login is replayed after stale token lookup settles', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), authorization: opts?.headers?.Authorization || '' });
+    if (String(url).includes('/logout-cleanup')) {
+      return { status: 200, ok: true, json: async () => ({ ok: true }) };
+    }
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'new-user' }) };
+  };
+  try {
+    const storage = (await import('./mocks/async-storage.mjs')).default;
+    await storage.setItem('ur_reg_token', 'old-session-token');
+    shim.state.permissionStatus = 'granted';
+    shim.state.pauseDeviceTokenRead = true;
+    const push = await freshPush();
+    const staleRegistration = push.registerNative();
+    for (let attempt = 0; attempt < 40 && !shim.state.deviceTokenReadPaused; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(shim.state.deviceTokenReadPaused, true);
+
+    await push.logoutCleanup('old-session-token');
+    await storage.setItem('ur_reg_token', 'new-session-token');
+    const loginRegistration = push.registerNative();
+    shim.state.releaseDeviceTokenRead();
+    await Promise.all([staleRegistration, loginRegistration]);
+    for (let attempt = 0; attempt < 40 && !calls.some((call) => call.url.includes('/register-native')); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const registrations = calls.filter((call) => call.url.includes('/register-native'));
+    assert.equal(registrations.length, 1, 'new session registration is replayed once');
+    assert.equal(registrations[0].authorization, 'Bearer new-session-token');
+  } finally { shim.state.releaseDeviceTokenRead?.(); globalThis.fetch = old; shim.uninstall(); }
+});
+
+test('registration requested during delayed logout cleanup resumes once for the new session', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  let releaseCleanup;
+  globalThis.fetch = async (url, opts) => {
+    const path = String(url);
+    calls.push({ url: path, authorization: opts?.headers?.Authorization || '' });
+    if (path.includes('/logout-cleanup')) {
+      await new Promise((resolve) => { releaseCleanup = resolve; });
+      return { status: 200, ok: true, json: async () => ({ ok: true }) };
+    }
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'new-user' }) };
+  };
+  try {
+    const storage = (await import('./mocks/async-storage.mjs')).default;
+    await storage.setItem('ur_reg_token', 'old-session-token');
+    const push = await freshPush();
+    const cleanup = push.logoutCleanup('old-session-token');
+    for (let attempt = 0; attempt < 40 && !releaseCleanup; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(typeof releaseCleanup, 'function', 'logout cleanup reached its delayed server request');
+
+    await storage.setItem('ur_reg_token', 'new-session-token');
+    assert.equal((await push.registerNative()).reason, 'logout_in_progress');
+    releaseCleanup();
+    await cleanup;
+    for (let attempt = 0; attempt < 40 && !calls.some((call) => call.url.includes('/register-native')); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    const registrations = calls.filter((call) => call.url.includes('/register-native'));
+    assert.equal(registrations.length, 1, 'the deferred new-session registration runs once');
+    assert.equal(registrations[0].authorization, 'Bearer new-session-token');
+  } finally { releaseCleanup?.(); globalThis.fetch = old; shim.uninstall(); }
+});
+
+test('new-session registration resumes when token lookup settles after logout cleanup', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  let releaseCleanup;
+  let releaseTokenRead;
+  let pauseNextSessionRead = true;
+  globalThis.fetch = async (url, opts) => {
+    const path = String(url);
+    calls.push({ url: path, authorization: opts?.headers?.Authorization || '' });
+    if (path.includes('/logout-cleanup')) {
+      await new Promise((resolve) => { releaseCleanup = resolve; });
+      return { status: 200, ok: true, json: async () => ({ ok: true }) };
+    }
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'new-user' }) };
+  };
+  try {
+    const asyncStorage = (await import('./mocks/async-storage.mjs')).default;
+    const originalGetItem = asyncStorage.getItem.bind(asyncStorage);
+    await asyncStorage.setItem('ur_reg_token', 'old-session-token');
+    const push = await freshPush();
+    const cleanup = push.logoutCleanup('old-session-token');
+    for (let attempt = 0; attempt < 40 && !releaseCleanup; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(typeof releaseCleanup, 'function');
+
+    asyncStorage.getItem = async (key) => {
+      if (key === 'ur_reg_token' && pauseNextSessionRead) {
+        pauseNextSessionRead = false;
+        await new Promise((resolve) => { releaseTokenRead = resolve; });
+      }
+      return originalGetItem(key);
+    };
+    await asyncStorage.setItem('ur_reg_token', 'new-session-token');
+    const loginRegistration = push.registerNative();
+    for (let attempt = 0; attempt < 40 && !releaseTokenRead; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(typeof releaseTokenRead, 'function', 'registration waits for the controlled session read');
+
+    releaseCleanup();
+    await cleanup;
+    releaseTokenRead();
+    assert.equal((await loginRegistration).reason, 'logout_in_progress');
+    for (let attempt = 0; attempt < 40 && !calls.some((call) => call.url.includes('/register-native')); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    const registrations = calls.filter((call) => call.url.includes('/register-native'));
+    assert.equal(registrations.length, 1, 'late token lookup resumes registration once');
+    assert.equal(registrations[0].authorization, 'Bearer new-session-token');
+  } finally {
+    releaseCleanup?.(); releaseTokenRead?.();
+    globalThis.fetch = old; shim.uninstall();
+  }
+});
+
+test('logout cancels a scheduled retry and new account registers once', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    const path = String(url);
+    calls.push({ url: path, authorization: opts?.headers?.Authorization || '' });
+    if (path.includes('/logout-cleanup')) return { status: 200, ok: true, json: async () => ({ ok: true }) };
+    if (path.includes('/register-native') && calls.filter((call) => call.url.includes('/register-native')).length === 1) {
+      return { status: 503, ok: false, json: async () => ({}) };
+    }
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'new-user' }) };
+  };
+  try {
+    const storage = (await import('./mocks/async-storage.mjs')).default;
+    await storage.setItem('ur_reg_token', 'old-session-token');
+    const push = await freshPush();
+    assert.equal((await push.registerNative()).status, 503);
+    await push.logoutCleanup('old-session-token');
+    await storage.removeItem('ur_reg_token');
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    assert.equal(calls.filter((call) => call.url.includes('/register-native')).length, 1,
+      'logout must cancel the old session retry timer');
+
+    await storage.setItem('ur_reg_token', 'new-session-token');
+    assert.equal((await push.registerNative()).ok, true);
+    const registrations = calls.filter((call) => call.url.includes('/register-native'));
+    assert.equal(registrations.length, 2, 'new session performs one fresh registration');
+    assert.deepEqual(registrations.map((call) => call.authorization), [
+      'Bearer old-session-token', 'Bearer new-session-token',
+    ]);
+  } finally { globalThis.fetch = old; shim.uninstall(); }
+});

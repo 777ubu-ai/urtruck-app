@@ -1,0 +1,76 @@
+{
+  "run_id": "c1bb0b2a58",
+  "source_sha": "b3fafe483960a8a271da1694e92dd7b60543cf33",
+  "api": "full main:app; real routes; loopback only",
+  "database_file_same_across_restart": true,
+  "storage_root_same_across_restart": true,
+  "users": {
+    "shipper": {
+      "id": "ae21c75f-f4d5-44e7-9aeb-cce9a5cc12e3",
+      "role": "client",
+      "session": "valid"
+    },
+    "driver": {
+      "id": "547386a3-2340-4715-99a3-dc61fafe7db2",
+      "role": "driver",
+      "session": "valid"
+    },
+    "outsider": {
+      "id": "af9742e6-37b9-46a7-bd8b-2defc5450616",
+      "role": "client",
+      "session": "valid"
+    }
+  },
+  "cargo_id": "696baa65-1b6a-424e-9e62-7d4cd7b8186b",
+  "bid_id": "461afee1-2ed6-4d9d-99e2-76ab753b26ca",
+  "deal_id": "438f7245-64a8-4ac4-8c00-0ef574811654",
+  "room_id": "994baec1-83db-4c56-8b15-f77810a7c8be",
+  "deal_status_after_restart": "accepted",
+  "deal_row_equal_before_after": true,
+  "messages_before_after": {
+    "count_before": 2,
+    "count_after": 2,
+    "rows_equal": true,
+    "user_message_idempotent": true
+  },
+  "attachment_id": "0a3e6c9e-1b33-4a26-b016-c6ef16db1771",
+  "attachment_rows_equal": true,
+  "attachment_file_sha256_before": "729e61684d9684a912c45675e98668a05e432f127e59edffeba462393352b417",
+  "attachment_file_sha256_after": "729e61684d9684a912c45675e98668a05e432f127e59edffeba462393352b417",
+  "attachment_download_after_restart": "PASS",
+  "participant_read": "PASS",
+  "outsider_forbidden": "PASS",
+  "duplicate_accept": "409",
+  "duplicate_message_request": 200,
+  "duplicate_upload": "deduplicated; one row/file",
+  "health_before": "ok",
+  "health_after": "ok",
+  "process_restart": "graceful SIGINT shutdown exit 0; a new uvicorn process started with identical DB_PATH and STORAGE_LOCAL_ROOT",
+  "external_email": "MOCK/BETA; no message sent",
+  "push": "not delivered; no real push token/provider used",
+  "production_touched": false,
+  "observed_lab_blocker": "first deal status transition in full main:app returns HTTP 500: chat_messages.event_id column missing after startup import/migration order",
+  "artifact": "synthetic isolated test only",
+  "database_sha256_after_second_shutdown": "a871dfdf2e13b59cb0f04b714f0e603865932aeb01b98cdb46b3ca3469395eed",
+  "test_definition": "synthetic QA fixture, full main:app routes, loopback-only isolated SQLite/local storage",
+  "status_transition": "NOT_RUN: first transition had separately observed HTTP 500 from missing chat_messages.event_id column during this full main:app startup composition",
+  "evidence_note": "Synthetic identifiers only. No bearer tokens, user-entered personal records, server backup contents, or logs included.",
+  "cold_schema_probes": {
+    "fresh_full_main_app_starts": 3,
+    "health_200": 3,
+    "chat_messages_event_id_missing": 3,
+    "sqlite_quick_check": "ok"
+  },
+  "status_transition_failure": {
+    "result": "HTTP 500 on first accepted->in_progress request in a separate fresh full-main run",
+    "sqlite_error": "table chat_messages has no column named event_id",
+    "code": "backend/api/marketplace.py:3765",
+    "scope": "isolated fresh DB only; not a production observation"
+  },
+  "protected_backup_plan": {
+    "observed_existing_backup": "/home/ubuntu/urtruck/backups/baseline-preflight-20261013T205552Z-4cd01978/database-snapshot.db",
+    "observed_permissions": "directory 0700; database file 0600; 58,441,728 bytes",
+    "classification": "existing protected production snapshot, not confirmed to be an approved representative QA backup",
+    "upgrade_status": "UPGRADE_PENDING; no snapshot copied or read"
+  }
+}
