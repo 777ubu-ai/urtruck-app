@@ -75,6 +75,105 @@ test('concurrent native registration is coalesced into one network write', async
   } finally { globalThis.fetch = old; shim.uninstall(); }
 });
 
+test('same token event during getDevicePushTokenAsync does not schedule recursive registration', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  shim.state.emitTokenListenerOnDeviceTokenRead = true;
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return { status: 404, ok: false, json: async () => ({ detail: 'not found' }) };
+  };
+  try {
+    const push = await freshPush();
+    const result = await push.registerNative();
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 404);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(calls.filter((url) => url.includes('/register-native')).length, 1);
+  } finally { globalThis.fetch = old; shim.uninstall(); }
+});
+
+test('a newer listener token wins over a stale getter and is consumed without a retry loop', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  shim.state.emitTokenListenerOnDeviceTokenRead = true;
+  shim.state.tokenListenerEventToken = 'rotated-token-while-getter-is-stale';
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), body: JSON.parse(opts.body) });
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'u-1' }) };
+  };
+  try {
+    const push = await freshPush();
+    const result = await push.registerNative();
+    assert.equal(result.ok, true);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const registrations = calls.filter((call) => call.url.includes('/register-native'));
+    assert.equal(registrations.length, 1, 'one event snapshot must produce one write');
+    assert.equal(registrations[0].body.token, 'rotated-token-while-getter-is-stale');
+  } finally { globalThis.fetch = old; shim.uninstall(); }
+});
+
+test('repeated 404 registration is suppressed for the same token and session', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const oldNow = Date.now;
+  let now = oldNow();
+  Date.now = () => now;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return { status: 404, ok: false, json: async () => ({ detail: 'not found' }) };
+  };
+  try {
+    const push = await freshPush();
+    for (let i = 0; i < 5; i += 1) await push.registerNative();
+    assert.equal(calls.filter((url) => url.includes('/register-native')).length, 1);
+    now += 60_001;
+    await push.registerNative();
+    assert.equal(calls.filter((url) => url.includes('/register-native')).length, 2,
+      'a later app-driven attempt may recover after the bounded failure cooldown');
+  } finally { Date.now = oldNow; globalThis.fetch = old; shim.uninstall(); }
+});
+
+test('same device token is registered for a changed account session', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), authorization: opts.headers.Authorization });
+    return { status: 404, ok: false, json: async () => ({ detail: 'not found' }) };
+  };
+  try {
+    const storage = (await import('./mocks/async-storage.mjs')).default;
+    await storage.setItem('ur_reg_token', 'session-a');
+    const push = await freshPush();
+    await push.registerNative();
+    await storage.setItem('ur_reg_token', 'session-b');
+    await push.registerNative();
+    const callsForRegistration = calls.filter((call) => call.url.includes('/register-native'));
+    assert.equal(callsForRegistration.length, 2);
+    assert.deepEqual(callsForRegistration.map((call) => call.authorization), ['Bearer session-a', 'Bearer session-b']);
+  } finally { globalThis.fetch = old; shim.uninstall(); }
+});
+
+test('transient native registration failure retries with delay and is bounded by success', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), body: JSON.parse(opts.body) });
+    if (calls.length === 1) throw new Error('temporary network failure');
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'u-1' }) };
+  };
+  try {
+    const storage = (await import('./mocks/async-storage.mjs')).default;
+    await storage.setItem('ur_reg_token', 'transient-session');
+    const push = await freshPush();
+    assert.equal((await push.registerNative()).ok, false);
+    assert.equal(calls.length, 1);
+    await new Promise((resolve) => setTimeout(resolve, 1150));
+    assert.equal(calls.filter((call) => call.url.includes('/register-native')).length, 2);
+    assert.equal(calls[0].body.token, calls[1].body.token);
+  } finally { globalThis.fetch = old; shim.uninstall(); }
+});
+
 test('native token rotation re-registers the current installation once', async () => {
   await reset(); const shim = installNativeRequireShim(); const f = fetchMock();
   try {
@@ -124,6 +223,74 @@ test('token rotation during an in-flight registration queues the latest token', 
     assert.equal(registrations[1].authorization, 'Bearer new-user-session-token');
     assert.equal(registrations[0].body.device_id, registrations[1].body.device_id);
   } finally { globalThis.fetch = old; shim.uninstall(); }
+});
+
+test('a duplicate in-flight token cannot replace a queued rotation', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  let releaseFirst;
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), body: JSON.parse(opts.body) });
+    if (calls.length === 1) await new Promise((resolve) => { releaseFirst = resolve; });
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'u-1' }) };
+  };
+  try {
+    const push = await freshPush();
+    const first = push.registerNative();
+    while (!releaseFirst) await new Promise((resolve) => setTimeout(resolve, 0));
+    shim.state.nativeDeviceToken = 'rotated-token-B';
+    await shim.NotificationsMock.__emitTokenRotation();
+    shim.state.nativeDeviceToken = 'fake-native-device-token-abc123';
+    await shim.NotificationsMock.__emitTokenRotation();
+    releaseFirst();
+    await first;
+    for (let attempt = 0; attempt < 20 && calls.length < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(calls.length, 2, 'rotation is sent in exactly one trailing registration');
+    assert.equal(calls[0].body.token, 'fake-native-device-token-abc123');
+    assert.equal(calls[1].body.token, 'rotated-token-B');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(calls.length, 2, 'duplicate old-token callbacks do not create another flight');
+  } finally { globalThis.fetch = old; shim.uninstall(); }
+});
+
+test('a stale old-token callback cannot replace a queued rotation before the getter resolves', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  let releaseFirst;
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), body: JSON.parse(opts.body) });
+    if (calls.length === 1) await new Promise((resolve) => { releaseFirst = resolve; });
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'u-1' }) };
+  };
+  try {
+    const push = await freshPush();
+    const first = push.registerNative();
+    while (!releaseFirst) await new Promise((resolve) => setTimeout(resolve, 0));
+    shim.state.nativeDeviceToken = 'rotated-token-B';
+    await shim.NotificationsMock.__emitTokenRotation();
+
+    shim.state.pauseDeviceTokenRead = true;
+    releaseFirst();
+    await first;
+    for (let attempt = 0; attempt < 30 && !shim.state.deviceTokenReadPaused; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(shim.state.deviceTokenReadPaused, true, 'trailing B registration reached its gated getter');
+
+    shim.state.nativeDeviceToken = 'fake-native-device-token-abc123';
+    await shim.NotificationsMock.__emitTokenRotation();
+    shim.state.releaseDeviceTokenRead();
+    for (let attempt = 0; attempt < 30 && calls.length < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].body.token, 'rotated-token-B');
+  } finally {
+    shim.state.releaseDeviceTokenRead?.();
+    globalThis.fetch = old; shim.uninstall();
+  }
 });
 
 test('queued token rotation survives failure of the old registration', async () => {
