@@ -1,3 +1,5 @@
+> **Текущий авторитетный release checkpoint:** [pr551-release-readiness-checkpoint-20261016.md](pr551-release-readiness-checkpoint-20261016.md). Исторические секции ниже сохраняют состояние на время записи; cold-start P1 закрыт commit `3935bce5d80bc4c9bdae7c0b82aecbdf2342d38f`, а старые QA-data upgrade остаётся `UPGRADE_PENDING`.
+
 # PR551 audit checkpoint — 2026-10-16
 
 Обновлено: 2026-10-16 16:25 Asia/Almaty. Дополнение ниже заменяет устаревшие статусы проверки сохранности и двухстороннего сценария.
