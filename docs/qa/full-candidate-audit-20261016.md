@@ -110,3 +110,39 @@ CI `38890514004` на source head `6c667c36...` и CI `38891284275` на PR head
 - Текущая PR композиция: base `fb23ebd0572c34a889eddc9eea7bdc048db2eef7`; runtime source `6c667c36df230e5aca6469389b73e8a9161c8b97`; двухрольный тест `5df1d7755d0dea6b8dd4461360f909bebfd44616`; checkpoint commit/head `5b6ea23e0a653935e9fa7730b1717b95526582cf`. PR551 остаётся OPEN/DRAFT и не объединён.
 - Сохранность связанной старой QA-цепочки с непустыми сделками, участниками, сообщениями, attachment rows и соответствующими файлами остаётся `PENDING`: подходящая обезличенная копия не найдена. Synthetic двухрольный тест это ограничение не закрывает.
 - Node-forge audit gate прошёл, но `GHSA-86w9-cpqp-85rv` остаётся применимым к установленной `1.4.0` (диапазон `<=1.4.0`); локальная компенсация действует до пересмотра не позднее `2026-12-31T00:00:00.000Z` и не является upstream-исправлением.
+
+## Дополнение 2026-10-16 17:01 Asia/Almaty — независимый review и process restart
+
+### Независимый review тестового diff
+
+Security Review проверил только `6c667c36df230e5aca6469389b73e8a9161c8b97` → `b3fafe483960a8a271da1694e92dd7b60543cf33`, merge-base совпал с base. Результат: **NO FINDINGS**. Новый тест вызывает штатные registration/profile/market/chat/deal-room handlers с bearer dependencies; Auth, сессии, роли, FSM и ownership не заменены заглушками. OTP-доставка, push provider и storage локализованы как явные адаптеры. Повторы проверяют сохранённые идентификаторы/количество строк. Граница: `BETA_MODE` общего pytest harness не доказывает production verification-level threshold.
+
+### Реальный процессный restart в изолированном API lab
+
+На source head `b3fafe48...` запущен полный `main:app` Uvicorn только на loopback, с новой временной SQLite и отдельным local storage, без наследования production credentials, с scheduler disabled. Через реальные HTTP endpoints зарегистрированы выделенные synthetic shipper/driver/outsider, опубликован груз, создано и принято предложение, отправлено сообщение, загружен PDF. API процесс штатно остановлен SIGINT (exit 0) и запущен новым процессом с теми же DB_PATH и STORAGE_LOCAL_ROOT.
+
+После рестарта три bearer-сессии сохранили правильные ID/роли; health был `ok`; deal row и `accepted` status не изменились; 2 сообщения (system + user) совпали до/после, пользовательское сообщение единственно по `client_msg_id`; один deal на bid; PDF row/связи uploader/conversation/message совпали, signed download после рестарта вернул исходные байты; SHA-256 файла до/после `729e61684d9684a912c45675e98668a05e432f127e59edffeba462393352b417`; outsider получил 403; повторный accept — 409; retry upload был deduplicated. Полный безопасный summary с synthetic ID находится в `docs/qa/pr551-process-restart-evidence-20261016.json`.
+
+Email OTP работал в изолированном mock/beta режиме; письма не отправлялись. Внешняя push-доставка не запускалась. Storage был local temp, не production/Supabase. Это process persistence rehearsal, не проверка старой production-схемы.
+
+### Подтверждённый fresh-schema дефект и ограничение статусов
+
+При отдельном первом запросе перехода `accepted → in_progress` в fresh `main:app` SQLite получен `HTTP 500`: `sqlite3.OperationalError: table chat_messages has no column named event_id` в `backend/api/marketplace.py:3765`. Три дополнительных холодных старта на свежих отдельных lab DB каждый вернули health 200, `quick_check=ok`, но не создали `chat_messages.event_id`.
+
+Причина подтверждена source и окружением: `main.py` импортирует `api.marketplace` до `api.chat` (строки 132–134); module-level `_init()` marketplace условно добавляет `event_id` лишь если таблица уже существует (`marketplace.py:469–473`), тогда как базовая `chat_schema.sql` не содержит эту колонку и startup после создания chat schema повторно marketplace init не вызывает. Это P1 fresh-DB/startup compatibility defect; полный status-transition journey на full `main:app` не PASS. Не менялось кодом в этом продолжении; ручное добавление колонки не выполнялось. Следующий безопасный шаг — минимальный regression test на холодный startup/full main, адресный migration-order fix и повторный независимый review/CI до принятия PR.
+
+### План protected-backup upgrade rehearsal
+
+Найден существующий защищённый snapshot `/home/ubuntu/urtruck/backups/baseline-preflight-20261013T205552Z-4cd01978/database-snapshot.db` (каталог `0700`, файл `0600`, около 58 MB); известная запись классифицирует его как forensic snapshot production, а не QA. Его содержимое не читалось и не копировалось. Пригодность как разрешённого representative backup с нужными связанными attachment rows/files не установлена. Поэтому `UPGRADE_PENDING`.
+
+План при наличии/подтверждении владельца: получить разрешение на использование конкретного защищённого snapshot; выполнять копирование и rehearsal только в ACL-ограниченном private encrypted lab volume с режимами каталога `0700`/файлов `0600`; backup оставить read-only и неизменным; не экспортировать строки/содержимое в Git/логи; запускать копию до/после под изолированным candidate без env/credentials, внешних providers и network egress; сравнить точные ID, owners, FK links, statuses, message content hashes, attachment metadata, actual file hashes и owner/participant/outsider access; повторить startup, проверить отсутствие дублей и integrity; сохранить только redacted агрегаты/hashes. Если такой защищённый lab storage недоступен или backup не содержит подходящую цепочку, оставить `UPGRADE_PENDING` до предоставления обезличенной QA копии.
+
+### Текущие blockers и границы
+
+- **P1 — fresh full-main deal transition:** доказан 500 из-за отсутствующего `chat_messages.event_id`; проверить на каждом cold start, применить минимальный fix, required CI и повторный review.
+- **UPGRADE_PENDING — старая связанная пользовательская цепочка:** существующий protected snapshot пока только инвентаризирован; не использован, не доказано, что он QA/репрезентативен и содержит actual files.
+- **External email:** mock/beta путь проверен, реальная доставка письма не проверена.
+- **External push:** не отправлялся; provider acceptance/device delivery не проверялись.
+- **Storage:** только изолированный local storage и signed download; production/Supabase access/ACL не проверялись.
+- **Devices:** физические тесты не выполнялись по scope.
+- PR542–545 остаются вне PR551; PR551 OPEN/DRAFT, без merge; production и магазины не менялись.
