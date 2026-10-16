@@ -29,6 +29,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import TruckMap from '../components/TruckMap';
 import TripMapInfoSheet from '../components/deal/TripMapInfoSheet';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
+import DealSystemEventCard from '../components/deal/DealSystemEventCard';
 import PdfPreviewModal from '../components/deal/PdfPreviewModal';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import RatingModal from '../components/RatingModal';
@@ -1493,7 +1494,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     if (item.system) return (
       <React.Fragment>
         {datePill}
-        <View style={s.systemRow}><Text style={[s.systemText, { color: colors.textMuted }]}>{item.text}</Text></View>
+        <DealSystemEventCard text={item.text} time={item.time} />
       </React.Fragment>
     );
 
@@ -1660,12 +1661,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   ].filter(Boolean).join(' · ');
   const visibleDealStatus = userFacingDealStatus(deal?.status || 'accepted');
   const statusLabel = visibleDealStatus === 'delivered' ? ui.awaitingReceiptStatus : formatStatus(visibleDealStatus);
-  const statusActionIcon =
-    visibleDealStatus === 'in_progress' ? 'truck'
-      : visibleDealStatus === 'at_border' ? 'map-pin'
-        : visibleDealStatus === 'delivered' ? 'package'
-          : visibleDealStatus === 'received' || visibleDealStatus === 'completed' ? 'check-circle'
-            : 'check-circle';
+  const statusActionIcon = 'list';
   const partnerName = text(partner?.name, deal?.counterparty_name, isDriver ? cargo?.owner_name : trip?.driver_display_name);
 
   const rawCargoName = text(deal?.cargo_desc, cargo?.cargo_desc);
@@ -1815,15 +1811,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           testID="deal-header-map"
           accessibilityLabel={t('deal_map_card_title')}
         >
-          <Feather name="map" size={17} color={colors.textMuted} />
+          <Feather name="map" size={20} color={colors.text} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={openStatusModal}
-          style={[s.headerIconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          style={[s.headerIconBtn, s.statusIconBtn, { backgroundColor: colors.driverSoft, borderColor: colors.success }]}
           testID="deal-status-open"
           accessibilityLabel={ui.statuses}
         >
-          <Feather name={statusActionIcon} size={17} color={colors.textMuted} />
+          <Feather name={statusActionIcon} size={22} color={colors.success} />
         </TouchableOpacity>
       </View>
     </View>
@@ -2380,6 +2376,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
   },
+  statusIconBtn: { borderWidth: 1.5 },
   routeHeaderRow: { flexDirection: 'row', alignItems: 'center', minHeight: 25 },
   // Design v1 Commit 4: compact header canon — route 16/900, second line
   // «Сделка №… · price» 12/600.
@@ -2414,8 +2411,6 @@ const s = StyleSheet.create({
   datePillRow: { alignItems: 'center', marginTop: 2, marginBottom: 10 },
   datePill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   datePillText: { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.2 },
-  systemRow: { alignItems: 'center', marginVertical: 5 },
-  systemText: { fontSize: 11.5, fontWeight: '650', paddingHorizontal: 10, paddingVertical: 5, backgroundColor: 'rgba(124,139,130,0.12)', borderRadius: 999 },
   photo: { width: 210, height: 150, borderRadius: 11, marginBottom: 4 },
   translateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   translateText: { fontSize: 11, fontWeight: '700' },
