@@ -352,9 +352,17 @@ export const push = {
 
   async registerNative({ forceRetry = false, tokenOverride = null } = {}) {
     if (nativeRegistrationSuspended) {
+      const suspendedGeneration = nativeRegistrationGeneration;
+      const logoutSessionFingerprint = nativeRegistrationLogoutSessionFingerprint;
       const currentAuthToken = await storage.get(TOKEN_KEY);
-      if (currentAuthToken && authContextFingerprint(currentAuthToken) !== nativeRegistrationLogoutSessionFingerprint) {
-        nativeRegistrationDeferredAfterLogoutGeneration = nativeRegistrationGeneration;
+      if (currentAuthToken && authContextFingerprint(currentAuthToken) !== logoutSessionFingerprint) {
+        if (nativeRegistrationSuspended && suspendedGeneration === nativeRegistrationGeneration) {
+          nativeRegistrationDeferredAfterLogoutGeneration = suspendedGeneration;
+        } else if (!nativeRegistrationSuspended && suspendedGeneration === nativeRegistrationGeneration) {
+          // Cleanup can settle while storage.get is pending. In that ordering,
+          // its finally block cannot see a deferred marker, so resume here.
+          this.registerNative().catch(() => {});
+        }
       }
       return { ok: false, reason: 'logout_in_progress' };
     }
