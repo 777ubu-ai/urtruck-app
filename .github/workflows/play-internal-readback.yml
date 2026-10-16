@@ -1,0 +1,53 @@
+name: Read Play Internal metadata without release changes
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  readback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install official API authentication dependencies
+        run: python -m pip install google-auth requests
+      - name: Read tracks, tester groups and countries; never commit edit
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          python - <<'PYREAD'
+          import os,json,hashlib
+          from google.oauth2 import service_account
+          from google.auth.transport.requests import AuthorizedSession
+          base='https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.urtruck.app/edits'
+          credentials=service_account.Credentials.from_service_account_info(json.loads(os.environ['PLAY_SERVICE_ACCOUNT_JSON']),scopes=['https://www.googleapis.com/auth/androidpublisher'])
+          session=AuthorizedSession(credentials)
+          report={'package':'com.urtruck.app','release_writes':False,'tester_api_email_lists_supported':False}
+          response=session.post(base,json={},timeout=30,allow_redirects=False)
+          if response.status_code!=200:raise SystemExit('Temporary edit creation HTTP '+str(response.status_code))
+          edit=response.json()['id']
+          try:
+           for label,path in [('tracks','tracks'),('internal_testers','testers/internal'),('internal_countries','countryAvailability/internal')]:
+            response=session.get(base+'/'+edit+'/'+path,timeout=30,allow_redirects=False)
+            item={'http_status':response.status_code}
+            if response.status_code==200:
+             data=response.json()
+             if label=='tracks':
+              item['tracks']=[{'track':t.get('track'),'releases':[{'status':r.get('status'),'versionCodes':r.get('versionCodes',[]),'userFraction':r.get('userFraction')} for r in t.get('releases',[])]} for t in data.get('tracks',[])]
+             elif label=='internal_testers':
+              groups=data.get('googleGroups',[])
+              item['google_group_count']=len(groups)
+              item['google_group_fingerprints']=[hashlib.sha256(g.encode()).hexdigest() for g in groups]
+              item['individual_membership']='not exposed by this API'
+             else:item['availability']=data
+            report[label]=item
+          finally:
+           response=session.delete(base+'/'+edit,timeout=30,allow_redirects=False)
+           report['temporary_edit_deleted']=response.status_code in (200,204)
+           report['delete_http_status']=response.status_code
+          print(json.dumps(report,ensure_ascii=False,sort_keys=True))
+          if not report['temporary_edit_deleted']:raise SystemExit('Temporary edit cleanup not confirmed; expires without commit')
+          PYREAD
