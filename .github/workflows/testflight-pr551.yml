@@ -29,7 +29,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  URTRUCK_TOOLING_BRANCH: release/store-public-20261010
+  URTRUCK_TOOLING_BRANCH: main
   URTRUCK_APP_SOURCE_BRANCH: fix/full-candidate-audit-20261016
   URTRUCK_SOURCE_SHA: f8cf82f30c96cfd35bffe7b2fdc67c7c0fb0d227
   URTRUCK_SOURCE_CI_RUN_ID: 38909907753

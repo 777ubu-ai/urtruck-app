@@ -12,7 +12,7 @@ assert.match(dispatch, /upload_mode:[\s\S]*?default: build_only[\s\S]*?options:[
 assert.doesNotMatch(dispatch, /^\s{2}(push|pull_request|schedule):/m, 'no automatic production build trigger is allowed');
 
 assert.ok(workflow.includes('group: urtruck-ios-production-push-inbox'), 'keep the existing single production build concurrency group');
-assert.ok(workflow.includes('URTRUCK_TOOLING_BRANCH: release/store-public-20261010'));
+assert.ok(workflow.includes('URTRUCK_TOOLING_BRANCH: main'));
 assert.ok(workflow.includes('URTRUCK_APP_SOURCE_BRANCH: fix/full-candidate-audit-20261016'));
 assert.ok(workflow.includes('URTRUCK_SOURCE_SHA: f8cf82f30c96cfd35bffe7b2fdc67c7c0fb0d227'));
 assert.match(workflow, /test "\$EXPECTED_TOOLING_SHA" = "\$GITHUB_SHA"/);
