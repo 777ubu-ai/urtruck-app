@@ -27,3 +27,12 @@ Updated 2026-10-16 17:39 UTC / 22:39 Asia/Almaty. Documentation-only checkpoint 
 - Play readback PR554 remains draft; current evidence does not establish Google Group membership for an individual tester or explain the old offer. No accounts/countries/tester settings were changed.
 - `UPGRADE_PENDING`: no authorized protected copy of a representative old QA database and matching storage is available. Synthetic persistence evidence does not close this check.
 - Real email/QQ delivery, physical iOS, actual push delivery on devices, complete deal journey, image recipient rendering, and final AAB DEX remain pending. No public release, production deploy, App Store submission change, or Google Play Production promotion was performed.
+
+## PR555 APK installation readback
+
+Updated 2026-10-16 17:55 UTC / 22:55 Asia/Almaty.
+
+- Artifact `12063605914` from run `38938452127` downloaded and verified. APK SHA-256: `4a4583501fe0f452ac06c23f72f0d7a10a1b9b62d4945e3f7456bd7a44f8b6b6`. Package `com.urtruck.app.qa2`, versionName `1.0.9-qa2`, versionCode `211040107`; embedded QA config resolves API to `http://127.0.0.1:8002`; signer SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. Workflow artifact checks, including merged Firebase service and app-owned DEX classes, completed successfully.
+- `adb install -r` succeeded on Xiaomi `BUA6JB99T465Q49X` and OPPO `WGCA9PSGOFUOWC7D`; no uninstall or data clear. QA `firstInstallTime` stayed `2026-08-31 13:34:28` on Xiaomi and `2026-10-07 13:39:35` on OPPO. Production packages remained installed and unchanged: Xiaomi versionCode `10`; OPPO versionCode `214116271`, with their prior install/update timestamps unchanged.
+- Xiaomi launched the QA app and displayed its existing shipper “Мои грузы” screen. OPPO app process remained alive and the sampled logcat window contained no matching fatal-exception lines, but the display is on Android keyguard; a normal swipe did not expose the app. No lock bypass was attempted. The driver status-button hit-target and confirmation flow are therefore `DEVICE_PENDING` on OPPO; Xiaomi is the shipper role and cannot validate the driver CTA.
+- No new filesystem or device data was cleared. Lab health returned HTTP 200 on `127.0.0.1:8005`; both ADB reverse mappings remain `tcp:8002 -> tcp:8005`. Existing backend logs contain long-lived polling counts, so they are not a clean timed push-loop measurement and no new push acceptance is claimed.
