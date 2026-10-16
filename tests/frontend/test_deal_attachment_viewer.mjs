@@ -16,6 +16,9 @@ test('PDF viewer stays inside UrTruck and receives the original signed URL', () 
   assert.match(nativeViewer, /source=\{\{ uri: url, cacheFileName \}\}/);
   assert.match(viewer, /testID="pdf-preview-modal"/);
   assert.match(viewer, /testID="pdf-preview-close"/);
+  assert.match(viewer, /import \{ SafeAreaView \} from 'react-native-safe-area-context'/);
+  assert.match(viewer, /style=\{s\.closeButton\}/);
+  assert.match(viewer, /closeButton:\s*\{[\s\S]*?minWidth:\s*44,[\s\S]*?minHeight:\s*44/);
 });
 
 test('native PDF preview only reports success after real page content is rendered', () => {
