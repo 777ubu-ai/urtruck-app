@@ -25,6 +25,7 @@ export function installNativeRequireShim() {
     nativeDeviceTokenType: 'android', // mirrors expo-notifications' DevicePushToken.type ('android'|'ios')
     getDevicePushTokenThrows: null, // Error | null — e.g. no google-services.json wired
     emitTokenListenerOnDeviceTokenRead: false,
+    tokenListenerEventToken: null,
     channelCreateCalls: [],
     permissionRequestCalls: 0,
     tokenListeners: [],
@@ -59,7 +60,7 @@ export function installNativeRequireShim() {
       if (state.emitTokenListenerOnDeviceTokenRead) {
         state.emitTokenListenerOnDeviceTokenRead = false;
         for (const listener of state.tokenListeners) listener({
-          data: state.nativeDeviceToken,
+          data: state.tokenListenerEventToken || state.nativeDeviceToken,
           type: state.nativeDeviceTokenType,
         });
       }

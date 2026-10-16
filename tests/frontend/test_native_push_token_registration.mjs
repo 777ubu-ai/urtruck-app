@@ -93,6 +93,26 @@ test('same token event during getDevicePushTokenAsync does not schedule recursiv
   } finally { globalThis.fetch = old; shim.uninstall(); }
 });
 
+test('a newer listener token wins over a stale getter and is consumed without a retry loop', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  shim.state.emitTokenListenerOnDeviceTokenRead = true;
+  shim.state.tokenListenerEventToken = 'rotated-token-while-getter-is-stale';
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), body: JSON.parse(opts.body) });
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'u-1' }) };
+  };
+  try {
+    const push = await freshPush();
+    const result = await push.registerNative();
+    assert.equal(result.ok, true);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const registrations = calls.filter((call) => call.url.includes('/register-native'));
+    assert.equal(registrations.length, 1, 'one event snapshot must produce one write');
+    assert.equal(registrations[0].body.token, 'rotated-token-while-getter-is-stale');
+  } finally { globalThis.fetch = old; shim.uninstall(); }
+});
+
 test('repeated 404 registration is suppressed for the same token and session', async () => {
   await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
   const oldNow = Date.now;

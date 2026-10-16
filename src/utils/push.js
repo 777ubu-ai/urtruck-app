@@ -40,6 +40,7 @@ let nativeRegistrationInFlight = null;
 // on the wire. Only a different token needs one trailing registration; Expo
 // can also emit the current token while getDevicePushTokenAsync() is settling.
 let nativeRegistrationQueued = false;
+let nativeRegistrationQueuedToken = null;
 let nativeRegistrationTokenInFlight = null;
 let nativeLatestTokenEvent = null;
 let nativeRegistrationLastAttempt = null;
@@ -278,6 +279,9 @@ export const push = {
     } finally {
       clearNativeRegistrationRetry();
       nativeRegistrationLastAttempt = null;
+      nativeRegistrationQueued = false;
+      nativeRegistrationQueuedToken = null;
+      nativeLatestTokenEvent = null;
     }
   },
 
@@ -310,12 +314,12 @@ export const push = {
     return Platform.OS === 'ios' || Platform.OS === 'android';
   },
 
-  async registerNative({ forceRetry = false } = {}) {
+  async registerNative({ forceRetry = false, tokenOverride = null } = {}) {
     // Keep one registration flight per JS runtime.  Callers still receive the
     // same result, while a token-listener burst cannot turn into a request
     // storm or monopolise the mobile HTTP dispatcher.
     if (nativeRegistrationInFlight) return nativeRegistrationInFlight;
-    const flight = this._registerNativeOnce({ forceRetry });
+    const flight = this._registerNativeOnce({ forceRetry, tokenOverride });
     nativeRegistrationInFlight = flight;
     try {
       return await flight;
@@ -324,14 +328,16 @@ export const push = {
         nativeRegistrationInFlight = null;
         nativeRegistrationTokenInFlight = null;
         if (nativeRegistrationQueued) {
+          const nextToken = nativeRegistrationQueuedToken;
           nativeRegistrationQueued = false;
-          this.registerNative().catch(() => {});
+          nativeRegistrationQueuedToken = null;
+          this.registerNative({ tokenOverride: nextToken }).catch(() => {});
         }
       }
     }
   },
 
-  async _registerNativeOnce({ forceRetry = false } = {}) {
+  async _registerNativeOnce({ forceRetry = false, tokenOverride = null } = {}) {
     if (!this.isNative()) return { ok: false, reason: 'web' };
     let Notifications, Device;
     try {
@@ -469,10 +475,11 @@ export const push = {
           // errors such as 404). A genuine rotation is coalesced once.
           if (nativeRegistrationTokenInFlight) {
             nativeRegistrationQueued = eventToken !== nativeRegistrationTokenInFlight;
+            nativeRegistrationQueuedToken = nativeRegistrationQueued ? eventToken : null;
           }
           return;
         }
-        this.registerNative().catch(() => {});
+        this.registerNative({ tokenOverride: eventToken }).catch(() => {});
       });
     }
 
@@ -484,13 +491,18 @@ export const push = {
       } catch (e) {
         dbg('getDevicePushTokenAsync failed', String(e));
       }
-      const nativeToken = nativeTokenData?.data;
+      // Expo may emit the rotated token while its getter still returns a
+      // stale value. Consume that event exactly once and register its token;
+      // leaving it cached would queue the same trailing call forever.
+      const tokenEvent = nativeLatestTokenEvent;
+      nativeLatestTokenEvent = null;
+      const nativeToken = tokenEvent || tokenOverride || nativeTokenData?.data;
       if (nativeToken) {
         nativeRegistrationTokenInFlight = nativeToken;
-        // A listener may fire before getDevicePushTokenAsync resolves. Once
-        // the current provider token is known, queue only a genuinely newer
-        // value and discard the same-token notification.
-        nativeRegistrationQueued = !!nativeLatestTokenEvent && nativeLatestTokenEvent !== nativeToken;
+        // Events consumed above belong to this write. Only a later event can
+        // schedule one trailing write.
+        nativeRegistrationQueued = false;
+        nativeRegistrationQueuedToken = null;
         dbg('native token', nativeTokenData?.type, _maskToken(nativeToken)); // P0-1: не логируем токен целиком
         const nativeProvider = Platform.OS === 'android' ? 'fcm' : 'apns';
         const authFingerprint = authContextFingerprint(authToken || '');
