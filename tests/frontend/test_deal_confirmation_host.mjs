@@ -13,7 +13,14 @@ const cjs = require('@babel/plugin-transform-modules-commonjs');
 const workspace = readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
 const component = readFileSync('src/components/ui/AppConfirmModal.js', 'utf8');
 let visibleHosts = 0;
-const host = tag => ({ children, testID, onPress }) => React.createElement(tag, { 'data-testid': testID }, children);
+const host = tag => ({ children, testID, style }) => {
+  const styles = Array.isArray(style) ? style.filter(Boolean) : [style];
+  const paddingBottom = styles.reduce((value, item) => item?.paddingBottom ?? value, undefined);
+  return React.createElement(tag, {
+    'data-testid': testID,
+    ...(paddingBottom == null ? {} : { 'data-padding-bottom': String(paddingBottom) }),
+  }, children);
+};
 const native = {
   Modal: ({ visible, children }) => {
     if (!visible) return null;
@@ -57,7 +64,7 @@ function walk(node) {
 }
 walk(ast);
 assert.ok(fragments.length >= 1);
-function render({ status = true, confirmation = true } = {}) {
+function render({ status = true, confirmation = true, bottomInset = 34 } = {}) {
   visibleHosts = 0;
   const noop = () => {};
   const env = {
@@ -68,7 +75,7 @@ function render({ status = true, confirmation = true } = {}) {
     confirmDialog: confirmation ? { title: 'Доставлен?', confirmLabel: 'Да', message: 'Подтвердите доставку' } : null,
     setStatusModalOpen: noop, settleConfirm: noop, runNextAction: noop, cancelDeal: noop,
     closeStatusPanel: noop,
-    s: {}, colors: {}, insets: { bottom: 34 }, window: { height: 844 }, ui: { statuses: 'Статусы', cancelDeal: 'Отменить' },
+    s: {}, colors: {}, insets: { bottom: bottomInset }, window: { height: 844 }, ui: { statuses: 'Статусы', cancelDeal: 'Отменить' },
     timeline: [], statusLabel: 'В пути', nextAction: { key: 'delivered', label: 'Доставлен' },
     statusLoading: false, trackingLoading: false, nextActionTestId: 'deal-mark-delivered',
     deal: { status: 'at_border' }, t: key => key, isFocused: true,
@@ -87,6 +94,10 @@ test('статусы + подтверждение используют один 
 test('обычное открытие статусов сохраняет один host, закрытый экран — ноль', () => {
   assert.equal(render({ confirmation: false }).hosts, 1);
   assert.equal(render({ confirmation: false, status: false }).hosts, 0);
+});
+test('status panel учитывает нижний safe-area inset и сохраняет базовый отступ', () => {
+  assert.match(render({ confirmation: false, bottomInset: 34 }).markup, /data-testid="deal-status-panel" data-padding-bottom="46"/);
+  assert.match(render({ confirmation: false, bottomInset: 0 }).markup, /data-testid="deal-status-panel" data-padding-bottom="12"/);
 });
 test('подтверждение без открытого status panel всё ещё имеет host', () => {
   assert.equal(render({ status: false }).hosts, 1);
