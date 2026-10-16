@@ -1,4 +1,4 @@
-name: UrTruck PR551 Exact-source TestFlight
+name: UrTruck PR555 Exact-source TestFlight
 
 on:
   workflow_dispatch:
@@ -30,9 +30,9 @@ concurrency:
 
 env:
   URTRUCK_TOOLING_BRANCH: main
-  URTRUCK_APP_SOURCE_BRANCH: fix/full-candidate-audit-20261016
-  URTRUCK_SOURCE_SHA: f8cf82f30c96cfd35bffe7b2fdc67c7c0fb0d227
-  URTRUCK_SOURCE_CI_RUN_ID: 38909907753
+  URTRUCK_APP_SOURCE_BRANCH: fix/deal-status-safe-area-20261016
+  URTRUCK_SOURCE_SHA: 227ab583f1fca4064442356f62ec3b9d21063c6d
+  URTRUCK_SOURCE_CI_RUN_ID: 38945022343
 
 jobs:
   quality-gate:

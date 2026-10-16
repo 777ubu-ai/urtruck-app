@@ -13,13 +13,14 @@ assert.doesNotMatch(dispatch, /^\s{2}(push|pull_request|schedule):/m, 'no automa
 
 assert.ok(workflow.includes('group: urtruck-ios-production-push-inbox'), 'keep the existing single production build concurrency group');
 assert.ok(workflow.includes('URTRUCK_TOOLING_BRANCH: main'));
-assert.ok(workflow.includes('URTRUCK_APP_SOURCE_BRANCH: fix/full-candidate-audit-20261016'));
-assert.ok(workflow.includes('URTRUCK_SOURCE_SHA: f8cf82f30c96cfd35bffe7b2fdc67c7c0fb0d227'));
+assert.ok(workflow.includes('name: UrTruck PR555 Exact-source TestFlight'));
+assert.ok(workflow.includes('URTRUCK_APP_SOURCE_BRANCH: fix/deal-status-safe-area-20261016'));
+assert.ok(workflow.includes('URTRUCK_SOURCE_SHA: 227ab583f1fca4064442356f62ec3b9d21063c6d'));
 assert.match(workflow, /test "\$EXPECTED_TOOLING_SHA" = "\$GITHUB_SHA"/);
 assert.match(workflow, /git checkout --detach "\$URTRUCK_SOURCE_SHA"/);
 assert.match(workflow, /test "\$\(git rev-parse HEAD\)" = "\$URTRUCK_SOURCE_SHA"/);
 
-assert.ok(workflow.includes('URTRUCK_SOURCE_CI_RUN_ID: 38909907753'), 'use the existing successful CI for exact app source');
+assert.ok(workflow.includes('URTRUCK_SOURCE_CI_RUN_ID: 38945022343'), 'use the existing successful CI for exact app source');
 assert.ok(workflow.includes('Verify existing exact-source CI result'));
 assert.ok(workflow.includes('test_ios_pr551_workflow_contract.mjs'), 'run the focused workflow contract test');
 
