@@ -46,6 +46,10 @@ let nativeRegistrationTokenOverrideInFlight = null;
 let nativeLatestTokenEvent = null;
 let nativeRegistrationLastAttempt = null;
 let nativeRegistrationRetryTimer = null;
+let nativeRegistrationSuspended = false;
+let nativeRegistrationGeneration = 0;
+let nativeRegistrationRequestInFlight = null;
+let nativeRegistrationAbortController = null;
 const NATIVE_REGISTRATION_RETRY_DELAYS_MS = [1000, 4000, 16000];
 const NATIVE_REGISTRATION_FAILURE_COOLDOWN_MS = 60_000;
 
@@ -260,7 +264,22 @@ export const push = {
    * ошибка не должна блокировать сам logout.
    */
   async logoutCleanup(token = null) {
+    // Stop retries/token callbacks before deactivating the server registration.
+    // Otherwise a registration already on the wire can finish after logout
+    // cleanup and reactivate the previous account's device token.
+    nativeRegistrationSuspended = true;
+    nativeRegistrationGeneration += 1;
+    clearNativeRegistrationRetry();
+    nativeRegistrationQueued = false;
+    nativeRegistrationQueuedToken = null;
+    nativeLatestTokenEvent = null;
     try {
+      // Abort and settle only the HTTP write. Permission/token SDK work may be
+      // waiting on the OS; its captured generation prevents it from writing
+      // after this logout, without holding logout open on an OS prompt.
+      try { nativeRegistrationAbortController?.abort(); } catch {}
+      const pendingRequest = nativeRegistrationRequestInFlight;
+      if (pendingRequest) await pendingRequest.catch(() => {});
       const authToken = token || await storage.get(TOKEN_KEY);
       if (!authToken) return { ok: false, reason: 'no_token' };
       const deviceId = await getOrCreateDeviceId();
@@ -284,6 +303,8 @@ export const push = {
       nativeRegistrationQueuedToken = null;
       nativeLatestTokenEvent = null;
       nativeRegistrationTokenOverrideInFlight = null;
+      nativeRegistrationTokenInFlight = null;
+      nativeRegistrationSuspended = false;
     }
   },
 
@@ -317,13 +338,18 @@ export const push = {
   },
 
   async registerNative({ forceRetry = false, tokenOverride = null } = {}) {
+    if (nativeRegistrationSuspended) return { ok: false, reason: 'logout_in_progress' };
     // Keep one registration flight per JS runtime.  Callers still receive the
     // same result, while a token-listener burst cannot turn into a request
     // storm or monopolise the mobile HTTP dispatcher.
     if (nativeRegistrationInFlight) return nativeRegistrationInFlight;
     nativeRegistrationTokenOverrideInFlight = tokenOverride || null;
     nativeRegistrationTokenInFlight = tokenOverride || null;
-    const flight = this._registerNativeOnce({ forceRetry, tokenOverride });
+    const flight = this._registerNativeOnce({
+      forceRetry,
+      tokenOverride,
+      generation: nativeRegistrationGeneration,
+    });
     nativeRegistrationInFlight = flight;
     try {
       return await flight;
@@ -343,7 +369,7 @@ export const push = {
     }
   },
 
-  async _registerNativeOnce({ forceRetry = false, tokenOverride = null } = {}) {
+  async _registerNativeOnce({ forceRetry = false, tokenOverride = null, generation = nativeRegistrationGeneration } = {}) {
     if (!this.isNative()) return { ok: false, reason: 'web' };
     let Notifications, Device;
     try {
@@ -420,10 +446,18 @@ export const push = {
     const locale = await storage.get(LANG_KEY);
 
     const registerToken = async ({ pushToken, provider }) => {
+      if (nativeRegistrationSuspended || generation !== nativeRegistrationGeneration) {
+        return { ok: false, reason: 'logout_in_progress', token: pushToken, provider };
+      }
       let regStatus = 0;
       let regUserId;
+      let controller = null;
       try {
-        const resp = await fetch(`${BASE}/register-native`, {
+        if (typeof AbortController === 'function') {
+          controller = new AbortController();
+          nativeRegistrationAbortController = controller;
+        }
+        const request = fetch(`${BASE}/register-native`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -438,13 +472,19 @@ export const push = {
             app_version: appVersion,
             locale: locale || null,
           }),
+          ...(controller ? { signal: controller.signal } : {}),
         });
+        nativeRegistrationRequestInFlight = request;
+        const resp = await request;
         regStatus = resp.status;
         try { const j = await resp.json(); regUserId = j?.user_id; } catch {}
         dbg('register-native', provider, '→', regStatus, 'user_id=', regUserId);
       } catch (e) {
         dbg('register-native network error', provider, String(e));
         return { ok: false, reason: 'register_failed', token: pushToken, provider, status: 0, error: String(e) };
+      } finally {
+        nativeRegistrationRequestInFlight = null;
+        if (nativeRegistrationAbortController === controller) nativeRegistrationAbortController = null;
       }
       if (regStatus === 409) {
         // P0-1: TOKEN_OWNERSHIP_CONFLICT — этот физический токен уже активно
@@ -472,6 +512,7 @@ export const push = {
     if (!nativeTokenListenerBound && typeof Notifications.addPushTokenListener === 'function') {
       nativeTokenListenerBound = true;
       Notifications.addPushTokenListener((event) => {
+        if (nativeRegistrationSuspended) return;
         const eventToken = typeof event?.data === 'string' ? event.data : null;
         if (!eventToken) return;
         if (nativeRegistrationInFlight) {
@@ -536,6 +577,11 @@ export const push = {
 
         if (!sameContext) clearNativeRegistrationRetry();
         nativeResult = await registerToken({ pushToken: nativeToken, provider: nativeProvider });
+        // A response that settles during logout belongs to the invalidated
+        // auth generation. Do not cache it or schedule a transient retry.
+        if (nativeRegistrationSuspended || generation !== nativeRegistrationGeneration) {
+          return nativeResult;
+        }
         const previousRetries = sameContext
           && Date.now() - nativeRegistrationLastAttempt.at < NATIVE_REGISTRATION_FAILURE_COOLDOWN_MS
           ? (nativeRegistrationLastAttempt.retries || 0)
