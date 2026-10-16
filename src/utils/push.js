@@ -45,6 +45,20 @@ let nativeLatestTokenEvent = null;
 let nativeRegistrationLastAttempt = null;
 let nativeRegistrationRetryTimer = null;
 const NATIVE_REGISTRATION_RETRY_DELAYS_MS = [1000, 4000, 16000];
+const NATIVE_REGISTRATION_FAILURE_COOLDOWN_MS = 60_000;
+
+function authContextFingerprint(token) {
+  // Cache identity only; never retain the bearer in module-level state.
+  // Two independent 32-bit hashes make accidental session collisions very unlikely.
+  let first = 0x811c9dc5;
+  let second = 0x9e3779b9;
+  for (let index = 0; index < token.length; index += 1) {
+    const code = token.charCodeAt(index);
+    first = Math.imul(first ^ code, 0x01000193) >>> 0;
+    second = Math.imul(second ^ (code + index), 0x85ebca6b) >>> 0;
+  }
+  return `${first.toString(16)}:${second.toString(16)}`;
+}
 
 function clearNativeRegistrationRetry() {
   if (nativeRegistrationRetryTimer) clearTimeout(nativeRegistrationRetryTimer);
@@ -261,6 +275,9 @@ export const push = {
       return result;
     } catch (e) {
       return { ok: false, reason: 'network_error', error: String(e) };
+    } finally {
+      clearNativeRegistrationRetry();
+      nativeRegistrationLastAttempt = null;
     }
   },
 
@@ -476,22 +493,31 @@ export const push = {
         nativeRegistrationQueued = !!nativeLatestTokenEvent && nativeLatestTokenEvent !== nativeToken;
         dbg('native token', nativeTokenData?.type, _maskToken(nativeToken)); // P0-1: не логируем токен целиком
         const nativeProvider = Platform.OS === 'android' ? 'fcm' : 'apns';
+        const authFingerprint = authContextFingerprint(authToken || '');
         const sameContext = nativeRegistrationLastAttempt?.token === nativeToken
-          && nativeRegistrationLastAttempt?.authToken === authToken
+          && nativeRegistrationLastAttempt?.authFingerprint === authFingerprint
           && nativeRegistrationLastAttempt?.provider === nativeProvider;
         if (sameContext && !forceRetry) {
-          return nativeRegistrationLastAttempt.result;
+          const lastAttempt = nativeRegistrationLastAttempt;
+          if (lastAttempt.result.ok
+            || Date.now() - lastAttempt.at < NATIVE_REGISTRATION_FAILURE_COOLDOWN_MS) {
+            return lastAttempt.result;
+          }
         }
 
         if (!sameContext) clearNativeRegistrationRetry();
         nativeResult = await registerToken({ pushToken: nativeToken, provider: nativeProvider });
-        const previousRetries = sameContext ? (nativeRegistrationLastAttempt?.retries || 0) : 0;
+        const previousRetries = sameContext
+          && Date.now() - nativeRegistrationLastAttempt.at < NATIVE_REGISTRATION_FAILURE_COOLDOWN_MS
+          ? (nativeRegistrationLastAttempt.retries || 0)
+          : 0;
         nativeRegistrationLastAttempt = {
           token: nativeToken,
-          authToken,
+          authFingerprint,
           provider: nativeProvider,
           result: nativeResult,
           retries: previousRetries,
+          at: Date.now(),
         };
         if (nativeResult.ok) await storage.set(NATIVE_TOKEN_KEY, nativeToken);
         if (isTransientNativeRegistrationFailure(nativeResult)) {
@@ -503,9 +529,11 @@ export const push = {
             nativeRegistrationRetryTimer = setTimeout(() => {
               nativeRegistrationRetryTimer = null;
               const last = nativeRegistrationLastAttempt;
-              if (last?.token === nativeToken && last?.authToken === authToken && last?.provider === nativeProvider) {
+              if (last?.token === nativeToken && last?.authFingerprint === authFingerprint && last?.provider === nativeProvider) {
                 storage.get(TOKEN_KEY).then((currentAuthToken) => {
-                  if (currentAuthToken === authToken) this.registerNative({ forceRetry: true }).catch(() => {});
+                  if (authContextFingerprint(currentAuthToken || '') === authFingerprint) {
+                    this.registerNative({ forceRetry: true }).catch(() => {});
+                  }
                 }).catch(() => {});
               }
             }, delay);

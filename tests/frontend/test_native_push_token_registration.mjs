@@ -95,6 +95,9 @@ test('same token event during getDevicePushTokenAsync does not schedule recursiv
 
 test('repeated 404 registration is suppressed for the same token and session', async () => {
   await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const oldNow = Date.now;
+  let now = oldNow();
+  Date.now = () => now;
   const calls = [];
   globalThis.fetch = async (url) => {
     calls.push(String(url));
@@ -104,7 +107,11 @@ test('repeated 404 registration is suppressed for the same token and session', a
     const push = await freshPush();
     for (let i = 0; i < 5; i += 1) await push.registerNative();
     assert.equal(calls.filter((url) => url.includes('/register-native')).length, 1);
-  } finally { globalThis.fetch = old; shim.uninstall(); }
+    now += 60_001;
+    await push.registerNative();
+    assert.equal(calls.filter((url) => url.includes('/register-native')).length, 2,
+      'a later app-driven attempt may recover after the bounded failure cooldown');
+  } finally { Date.now = oldNow; globalThis.fetch = old; shim.uninstall(); }
 });
 
 test('same device token is registered for a changed account session', async () => {
