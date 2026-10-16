@@ -8,7 +8,7 @@
 - Ветка аудита: `fix/full-candidate-audit-20261016`.
 - Текущий source head: `6c667c36df230e5aca6469389b73e8a9161c8b97`, tree `700a695039c3996b78ec57401c16d64dec6bd68a`; base точный SHA исходного кандидата PR550.
 - PR551: https://github.com/777ubu-ai/urtruck-app/pull/551 — OPEN, DRAFT; не объединять.
-- Проверка кода на source head `6c667c36...`: run `38890514004`, SUCCESS, все 3 job (backend, mandatory web E2E, frontend/lint/build). Предыдущий run `38890137677` относился к head `c4773420...` и был отменён после новой правки.
+- Проверка кода на source head `6c667c36...`: run `38890514004`, SUCCESS, все 3 job (backend, mandatory web E2E, frontend/lint/build). PR head `e157b093...`, отличавшийся только этим checkpoint, также прошёл все 3 job в run `38891284275`. Предыдущий run `38890137677` относился к head `c4773420...` и был отменён после новой правки.
 - Изменения только в `src/utils/push.js`, `tests/frontend/test_native_push_token_registration.mjs` и этом checkpoint. Backend, схема/миграции, production, магазинные артефакты, реальные аккаунты и данные не менялись.
 - Последняя правка кода — commit `6c667c36`; API/backend source на финальном кандидате совпадает с кодом, проверенным в изолированном upgrade rehearsal на `2095819deaf42f29ec825821b045e3c95e9551f3`.
 
@@ -62,4 +62,4 @@ PR542–545 не входят в PR551 ancestry/diff и не проверяли�
 
 ## Следующий шаг
 
-CI `38890514004` завершён успешно на source head `6c667c36...`; новый независимый Security Review для этих файлов также завершён без findings строго `fb23ebd...` → `6c667c36...`. Checkpoint фиксируется отдельным documentation-only commit поверх этого source head. PR551 оставить неслитым по прямому указанию владельца.
+CI `38890514004` на source head `6c667c36...` и CI `38891284275` на PR head `e157b093...` завершены успешно. Независимый Security Review точного PR diff `fb23ebd...` → `e157b093...` завершён без findings; прикладной diff совпадает с проверенным `6c667c36...`. PR551 оставить неслитым по прямому указанию владельца.
