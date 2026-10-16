@@ -22,6 +22,7 @@ import { COUNTRIES, COUNTRY_ORDER, POINTS, searchPoints, formatPoint, pointsForC
 import CountryFlag from './ui/v1/CountryFlag';
 import { getCountryName } from '../utils/countries';
 import { customCityForCountry, locationScopeAllowsPoint } from '../utils/worldCities';
+import { createPickerSearchScheduler } from '../utils/pickerSearchScheduler';
 
 const RECENT_KEY = 'ur_recent_places';
 const FAV_KEY = 'ur_fav_places';
@@ -54,6 +55,21 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   // Выбранная страна для режима «страна → города». null = обычный список
   // (популярные/недавние/страны). Тап по стране раскрывает её города.
   const [country, setCountry] = useState(null);
+  const [settledSearch, setSettledSearch] = useState('');
+  const searchScheduler = useMemo(() => createPickerSearchScheduler(), []);
+  const searchKey = JSON.stringify([query, country, scope, lang]);
+  const searchPending = visible && Boolean(query.trim()) && settledSearch !== searchKey;
+
+  useEffect(() => {
+    if (!visible || !query.trim()) {
+      searchScheduler.cancel();
+      setSettledSearch('');
+      return undefined;
+    }
+    searchScheduler.schedule(searchKey, setSettledSearch);
+    return () => searchScheduler.cancel();
+  }, [visible, searchKey, searchScheduler]);
+
   const countryLabel = (code) => {
     const translated = t(`country_${code}`);
     return translated && translated !== `country_${code}`
@@ -116,7 +132,9 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
 
   const hits = useMemo(() => {
     const q = query.trim().toLocaleLowerCase();
-    if (!q) return null;
+    if (!visible || !q) return null;
+    // Never show selectable results (or a custom fallback) for an older query.
+    if (searchPending) return { countryHits: [], pointHits: [] };
     const primary = searchPoints(query, { country: country || undefined });
     const localized = POINTS.filter((p) => {
       if (country && p.country !== country && p.partnerCountry !== country) return false;
@@ -137,7 +155,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
       })
       : [];
     return { countryHits, pointHits };
-  }, [query, scope, lang, country]);
+  }, [query, scope, lang, country, visible, searchPending]);
 
   const s = useMemo(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: v1.bg },
@@ -240,7 +258,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
           в header'е слипалась с временем в статус-баре (жалоба владельца
           28.07, скрин IMG_6789). Свой SafeAreaProvider внутри модалки
           восстанавливает реальные insets, и edges=['top'] снова работает. */}
-      <SafeAreaProvider>
+      {visible ? <SafeAreaProvider>
       <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
         <View style={s.header}>
           <TouchableOpacity style={s.back} onPress={onClose} testID="loc-close" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -278,10 +296,11 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 24 }}>
           {hits ? (
             <>
-              {hits.countryHits.length === 0 && hits.pointHits.length === 0 ? <Text style={s.empty}>{t('loc_no_results')}</Text> : null}
+              {searchPending ? <ActivityIndicator color={v1.driver} testID="loc-search-loading" /> : null}
+              {!searchPending && hits.countryHits.length === 0 && hits.pointHits.length === 0 ? <Text style={s.empty}>{t('loc_no_results')}</Text> : null}
               {hits.countryHits.map((code) => <CountryRow key={`hit-country:${code}`} code={code} fromSearch />)}
               {hits.pointHits.map((p, i) => <Row key={`hit:${pointKey(p)}:${i}`} p={p} />)}
-              {query.trim().length >= 2 && hits.countryHits.length === 0 && hits.pointHits.length === 0 ? (
+              {!searchPending && query.trim().length >= 2 && hits.countryHits.length === 0 && hits.pointHits.length === 0 ? (
                 <>
                   <View style={s.divider} />
                   <Row p={customCityForCountry(query, country)} showHeart={false} />
@@ -356,7 +375,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
           )}
         </ScrollView>
       </SafeAreaView>
-      </SafeAreaProvider>
+      </SafeAreaProvider> : null}
     </Modal>
   );
 }
