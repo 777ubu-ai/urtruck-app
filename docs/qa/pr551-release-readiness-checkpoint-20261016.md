@@ -93,3 +93,25 @@
 - Текущий PR551: OPEN/DRAFT, без merge. Production/store/real data writes: **не выполнялись**.
 - Выпуск в целом: **BLOCKED** из-за `UPGRADE_PENDING`, внешних интеграций и мобильной приёмки; полной готовности не заявлять.
 - Самый ранний внешний шаг: предоставить разрешённую обезличенную old-QA SQLite + соответствующие private files (или отдельно разрешить конкретный protected backup для изолированной копии). Параллельно назначить отдельный контролируемый QQ inbox, Android QA device/аккаунт, iOS APNs sandbox/device и изолированный QA private storage.
+
+## Обновление: защищённый upgrade rehearsal подготовлен
+
+**Время:** 2026-10-16 19:30 Asia/Almaty (13:30 UTC). PR551 остаётся OPEN/DRAFT; production, магазины, аккаунты и данные не менялись.
+
+- Текущий кодовый кандидат перед добавлением rehearsal: HEAD `6cff0543c03464c91ee48cd8f76cb61ebd032ee4`, tree `4d419b6371029dbc268cf6c4cf4d6cdca9c63976`, base `fb23ebd0572c34a889eddc9eea7bdc048db2eef7` (PR550). Прикладной backend fix остаётся commit `3935bce5d80bc4c9bdae7c0b82aecbdf2342d38f`; между ним и текущим кандидатом были только checkpoint-документы. Ветка была чистой до этого task-specific runner.
+- Добавлен `scripts/qa/upgrade_rehearsal.py`: отдельная копия quiescent single-file SQLite и local storage в существующий owner-only каталог; потоковая сверка исходных строк всех таблиц по PK/старым колонкам, повторяемость второго полного запуска `uvicorn main:app`, integrity check, hash всего storage, проверка ролей сессий по копии и реальных participant/outsider API-доступов, скачивание выбранного локального attachment через штатный signed endpoint. stdout/JSON report содержит только counts, aggregate SHA и статусы, включая точные source SHA/tree; требует чистый worktree. Исходники остаются read-only; SQLite sidecars, symlinks, production paths, пустые требуемые таблицы, remote storage refs, небезопасные права и несовпадающие fingerprints отклоняются до запуска.
+- Runtime child environment минимален: `ENV=qa`, `BETA_MODE=false`, отдельные DB/storage paths, пустые внешние credential envs и proxy variables, Sentry/Telegram off, `URTRUCK_ENABLE_SCHEDULER=0`, `CGR_FEATURE_ENABLED=false`; listener привязан только к loopback. Startup schema migrations сохраняются частью нормального старта. Production storage и внешние отправки не используются; отдельная OS-level firewall-политика не создаётся.
+- Новые проверки tooling: `py_compile` для runner/tests, CLI `--help`, `scripts/qa/test_upgrade_rehearsal.py` — **4/4 PASS** (добавленные migration columns сохраняют старую projection; изменение owner/потеря row блокируются; remote attachment URL отвергается; storage manifest стабилен), `git diff --check` PASS. Полный API upgrade rehearsal намеренно **не запускался**.
+- `UPGRADE_PENDING` остаётся: известная QA-копия неполна — нет непустой связанной цепочки `deal → participants → chat_messages → message_attachments` с доступным байтовым файлом. Ранее найденный серверный backup не читался/не копировался и не считается разрешённым QA-материалом. Не возобновлялся общий поиск других копий.
+
+**Минимальный недостающий QA-набор (секреты не передавать в чат):**
+
+1. Один заранее разрешённый, owner-only, quiescent, single-file SQLite QA snapshot (без `-wal/-shm/-journal`) с непустой сделкой, сторонами `client` и `driver`, комнатой, связанными сообщениями, attachment row и сохранённой историей; плюс точный SHA-256.
+2. Соответствующий owner-only local storage каталог с настоящими байтами этих вложений и отдельный локальный storage manifest/hash; remote storage references для этой репетиции недостаточны.
+3. Три валидные выделенные QA session bearer values — два разных участника, один посторонний QA-пользователь — и в файле `0600` только fixture `conversation_id`, `attachment_id`, ожидаемый file SHA-256. Runner read-only сопоставляет session → аккаунт/роль → room/deal ownership внутри изолированной БД, затем реальные attachment API endpoints проверяют допуск участников и отказ outsider; токены и IDs не попадают в отчёт.
+4. Отдельный действующий QA-only `FILE_SIGNING_KEY` в файле `0600`, совместимый с изолированным local storage signing. Production key не нужен и не принимается из `.env`.
+5. В owner-only authorization JSON: вид копии (`sanitized_qa_copy` либо уже отдельная `protected_backup_copy`), `copy_id`, явное разрешение на этот rehearsal и закреплённые database/storage fingerprints. Режим каталога запуска — `0700`; отчёт сохраняется только агрегатами вне Git.
+
+Исполняемая инструкция и точные input JSON fields находятся в [`scripts/qa/UPGRADE_REHEARSAL.md`](../../scripts/qa/UPGRADE_REHEARSAL.md). Минимальный материал можно положить в уже защищённый QA lab; новые платные ресурсы или production writes не нужны.
+
+**Исключённые PR остаются открытыми отдельно:** #542 (ограничения фото/больших файлов), #543 (клиентская подготовка фото), #544 (private chat storage) и #545 (`ROLE_NOT_ALLOWED` локализация/сохранение формы). Ничего из этого не включено в проверенный PR551 и соответствующие пользовательские проблемы им не закрыты.
