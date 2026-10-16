@@ -48,6 +48,8 @@ let nativeRegistrationLastAttempt = null;
 let nativeRegistrationRetryTimer = null;
 let nativeRegistrationSuspended = false;
 let nativeRegistrationGeneration = 0;
+let nativeRegistrationFlightGeneration = null;
+let nativeRegistrationReplayGeneration = null;
 let nativeRegistrationRequestInFlight = null;
 let nativeRegistrationAbortController = null;
 const NATIVE_REGISTRATION_RETRY_DELAYS_MS = [1000, 4000, 16000];
@@ -342,13 +344,24 @@ export const push = {
     // Keep one registration flight per JS runtime.  Callers still receive the
     // same result, while a token-listener burst cannot turn into a request
     // storm or monopolise the mobile HTTP dispatcher.
-    if (nativeRegistrationInFlight) return nativeRegistrationInFlight;
+    if (nativeRegistrationInFlight) {
+      // If logout invalidated the existing flight and a new session asks to
+      // register before an OS token lookup has settled, remember one replay.
+      // Returning the stale promise alone would silently lose the new login's
+      // registration because its auth snapshot belongs to the old generation.
+      if (nativeRegistrationFlightGeneration !== nativeRegistrationGeneration) {
+        nativeRegistrationReplayGeneration = nativeRegistrationGeneration;
+      }
+      return nativeRegistrationInFlight;
+    }
     nativeRegistrationTokenOverrideInFlight = tokenOverride || null;
     nativeRegistrationTokenInFlight = tokenOverride || null;
+    const flightGeneration = nativeRegistrationGeneration;
+    nativeRegistrationFlightGeneration = flightGeneration;
     const flight = this._registerNativeOnce({
       forceRetry,
       tokenOverride,
-      generation: nativeRegistrationGeneration,
+      generation: flightGeneration,
     });
     nativeRegistrationInFlight = flight;
     try {
@@ -356,14 +369,19 @@ export const push = {
     } finally {
       if (nativeRegistrationInFlight === flight) {
         nativeRegistrationInFlight = null;
+        nativeRegistrationFlightGeneration = null;
         nativeRegistrationTokenInFlight = null;
         nativeRegistrationTokenOverrideInFlight = null;
+        const replayGeneration = nativeRegistrationReplayGeneration;
+        nativeRegistrationReplayGeneration = null;
         if (nativeRegistrationQueued) {
           const nextToken = nativeRegistrationQueuedToken;
           nativeRegistrationQueued = false;
           nativeRegistrationQueuedToken = null;
           nativeLatestTokenEvent = null;
           this.registerNative({ tokenOverride: nextToken }).catch(() => {});
+        } else if (replayGeneration === nativeRegistrationGeneration && !nativeRegistrationSuspended) {
+          this.registerNative().catch(() => {});
         }
       }
     }
