@@ -37,11 +37,24 @@ let nativeTokenListenerBound = false;
 // authenticated marketplace traffic on the same device.
 let nativeRegistrationInFlight = null;
 // A provider token can rotate while the current registration request is still
-// on the wire.  Such a callback is not an identical concurrent caller: after
-// the old request settles we must read the provider token again and register
-// the latest value.  A boolean deliberately coalesces callback bursts into a
-// single trailing write.
+// on the wire. Only a different token needs one trailing registration; Expo
+// can also emit the current token while getDevicePushTokenAsync() is settling.
 let nativeRegistrationQueued = false;
+let nativeRegistrationTokenInFlight = null;
+let nativeLatestTokenEvent = null;
+let nativeRegistrationLastAttempt = null;
+let nativeRegistrationRetryTimer = null;
+const NATIVE_REGISTRATION_RETRY_DELAYS_MS = [1000, 4000, 16000];
+
+function clearNativeRegistrationRetry() {
+  if (nativeRegistrationRetryTimer) clearTimeout(nativeRegistrationRetryTimer);
+  nativeRegistrationRetryTimer = null;
+}
+
+function isTransientNativeRegistrationFailure(result) {
+  const status = Number(result?.status || 0);
+  return status === 0 || status === 408 || status === 425 || status === 429 || status >= 500;
+}
 
 function _uuidv4() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -280,18 +293,19 @@ export const push = {
     return Platform.OS === 'ios' || Platform.OS === 'android';
   },
 
-  async registerNative() {
+  async registerNative({ forceRetry = false } = {}) {
     // Keep one registration flight per JS runtime.  Callers still receive the
     // same result, while a token-listener burst cannot turn into a request
     // storm or monopolise the mobile HTTP dispatcher.
     if (nativeRegistrationInFlight) return nativeRegistrationInFlight;
-    const flight = this._registerNativeOnce();
+    const flight = this._registerNativeOnce({ forceRetry });
     nativeRegistrationInFlight = flight;
     try {
       return await flight;
     } finally {
       if (nativeRegistrationInFlight === flight) {
         nativeRegistrationInFlight = null;
+        nativeRegistrationTokenInFlight = null;
         if (nativeRegistrationQueued) {
           nativeRegistrationQueued = false;
           this.registerNative().catch(() => {});
@@ -300,7 +314,7 @@ export const push = {
     }
   },
 
-  async _registerNativeOnce() {
+  async _registerNativeOnce({ forceRetry = false } = {}) {
     if (!this.isNative()) return { ok: false, reason: 'web' };
     let Notifications, Device;
     try {
@@ -401,7 +415,7 @@ export const push = {
         dbg('register-native', provider, '→', regStatus, 'user_id=', regUserId);
       } catch (e) {
         dbg('register-native network error', provider, String(e));
-        return { ok: false, reason: 'register_failed', token: pushToken, provider, error: String(e) };
+        return { ok: false, reason: 'register_failed', token: pushToken, provider, status: 0, error: String(e) };
       }
       if (regStatus === 409) {
         // P0-1: TOKEN_OWNERSHIP_CONFLICT — этот физический токен уже активно
@@ -428,9 +442,17 @@ export const push = {
     // installation metadata rather than reusing this invocation's snapshot.
     if (!nativeTokenListenerBound && typeof Notifications.addPushTokenListener === 'function') {
       nativeTokenListenerBound = true;
-      Notifications.addPushTokenListener(() => {
+      Notifications.addPushTokenListener((event) => {
+        const eventToken = typeof event?.data === 'string' ? event.data : null;
+        if (!eventToken) return;
+        nativeLatestTokenEvent = eventToken;
         if (nativeRegistrationInFlight) {
-          nativeRegistrationQueued = true;
+          // Do not turn a callback that repeats the token we are currently
+          // registering into an immediate retry loop (notably on endpoint
+          // errors such as 404). A genuine rotation is coalesced once.
+          if (nativeRegistrationTokenInFlight) {
+            nativeRegistrationQueued = eventToken !== nativeRegistrationTokenInFlight;
+          }
           return;
         }
         this.registerNative().catch(() => {});
@@ -447,10 +469,48 @@ export const push = {
       }
       const nativeToken = nativeTokenData?.data;
       if (nativeToken) {
+        nativeRegistrationTokenInFlight = nativeToken;
+        // A listener may fire before getDevicePushTokenAsync resolves. Once
+        // the current provider token is known, queue only a genuinely newer
+        // value and discard the same-token notification.
+        nativeRegistrationQueued = !!nativeLatestTokenEvent && nativeLatestTokenEvent !== nativeToken;
         dbg('native token', nativeTokenData?.type, _maskToken(nativeToken)); // P0-1: не логируем токен целиком
         const nativeProvider = Platform.OS === 'android' ? 'fcm' : 'apns';
+        const sameContext = nativeRegistrationLastAttempt?.token === nativeToken
+          && nativeRegistrationLastAttempt?.authToken === authToken
+          && nativeRegistrationLastAttempt?.provider === nativeProvider;
+        if (sameContext && !forceRetry) {
+          return nativeRegistrationLastAttempt.result;
+        }
+
+        if (!sameContext) clearNativeRegistrationRetry();
         nativeResult = await registerToken({ pushToken: nativeToken, provider: nativeProvider });
+        const previousRetries = sameContext ? (nativeRegistrationLastAttempt?.retries || 0) : 0;
+        nativeRegistrationLastAttempt = {
+          token: nativeToken,
+          authToken,
+          provider: nativeProvider,
+          result: nativeResult,
+          retries: previousRetries,
+        };
         if (nativeResult.ok) await storage.set(NATIVE_TOKEN_KEY, nativeToken);
+        if (isTransientNativeRegistrationFailure(nativeResult)) {
+          const retryIndex = previousRetries;
+          const delay = NATIVE_REGISTRATION_RETRY_DELAYS_MS[retryIndex];
+          if (delay !== undefined) {
+            nativeRegistrationLastAttempt.retries = retryIndex + 1;
+            clearNativeRegistrationRetry();
+            nativeRegistrationRetryTimer = setTimeout(() => {
+              nativeRegistrationRetryTimer = null;
+              const last = nativeRegistrationLastAttempt;
+              if (last?.token === nativeToken && last?.authToken === authToken && last?.provider === nativeProvider) {
+                storage.get(TOKEN_KEY).then((currentAuthToken) => {
+                  if (currentAuthToken === authToken) this.registerNative({ forceRetry: true }).catch(() => {});
+                }).catch(() => {});
+              }
+            }, delay);
+          }
+        }
       }
     } catch (e) {
       dbg('native registration block failed', String(e));
