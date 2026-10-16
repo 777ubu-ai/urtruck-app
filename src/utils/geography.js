@@ -235,9 +235,17 @@ export const POINTS = [
 
 // Search across all visible label surfaces (name + aliases + country
 // name). Empty query returns top 12 entries to keep the UI fast.
+const CURATED_CITY_NAMES = new Set(POINTS
+  .filter((point) => point.type === 'city')
+  .flatMap((point) => [point.name, ...(point.aliases || [])]
+    .map((name) => `${point.country}:${name.toLocaleLowerCase()}`)));
+
 export const searchPoints = (query, { country, type } = {}) => {
-  const curatedNames = new Set(POINTS.filter((p) => p.type === 'city').flatMap((p) => [p.name, ...(p.aliases || [])].map((name) => `${p.country}:${name.toLocaleLowerCase()}`)));
-  const worldHits = searchWorldCities(query, country).filter((p) => COUNTRIES[p.country] && ![p.name, ...p.aliases].some((name) => curatedNames.has(`${p.country}:${name.toLocaleLowerCase()}`)));
+  const worldHits = searchWorldCities(query, country, {
+    allowedCountries: COUNTRIES,
+    excludedNames: CURATED_CITY_NAMES,
+    type,
+  });
   let pool = [...POINTS, ...worldHits];
   if (country) pool = pool.filter((p) => p.country === country || p.partnerCountry === country);
   if (type) pool = pool.filter((p) => p.type === type);

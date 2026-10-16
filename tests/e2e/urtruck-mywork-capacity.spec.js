@@ -75,7 +75,8 @@ for (const role of ['client', 'driver']) {
         publicCalls.push({ resource, offset, limit });
         data = { [resource]: Array.from({ length: Math.min(limit, Math.max(0, 251 - offset)) }, (_, i) => ({
           ...item(offset + i), id: 'public-' + (offset + i), owner_id: 'foreign', driver_id: 'foreign', cargo_desc: 'Мебель',
-        })), total: Math.min(limit, Math.max(0, 251 - offset)), next_offset: offset + limit < 251 ? offset + limit : null };
+        })), total: Math.min(limit, Math.max(0, 251 - offset)), next_offset: offset + limit < 251 ? offset + limit : null,
+        has_more: offset + limit < 251 };
       }
       else if (url.pathname.includes('/notifications/unread')) data = { unread: 0 };
       else if (url.pathname.includes('/notifications')) data = { notifications: [] };
@@ -127,14 +128,33 @@ for (const role of ['client', 'driver']) {
     await expect(more).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath('archive-70.png') });
     await page.getByTestId('bottom-nav-feed').click();
-    const publicMore = page.getByTestId(role === 'driver' ? 'cargo-feed-more' : 'trip-feed-more');
+    const publicScreen = page.getByTestId(role === 'driver' ? 'cargo-screen' : 'trip-feed-screen');
+    await publicScreen.scrollIntoViewIfNeeded();
+    await expect(page.getByTestId(role === 'driver' ? 'cargo-card-public-0' : 'trip-card-public-0')).toBeVisible();
+    const hasFeedScroller = await publicScreen.evaluate((screen) => {
+      const nodes = [screen, ...screen.querySelectorAll('*')];
+      const node = nodes.find((item) => {
+        const style = getComputedStyle(item);
+        const hasCards = item.querySelector('[data-testid^="trip-card-"], [data-testid^="cargo-card-"]');
+        return hasCards && item.scrollHeight > item.clientHeight + 1 && /(auto|scroll)/.test(style.overflowY);
+      });
+      if (!node) return false;
+      node.setAttribute('data-qa-public-feed-scroller', 'true');
+      return true;
+    });
+    expect(hasFeedScroller).toBe(true);
+    const feedScroller = publicScreen.locator('[data-qa-public-feed-scroller="true"]');
     for (let offset = 50; offset <= 250; offset += 50) {
-      await publicMore.click();
-      await expect.poll(() => publicCalls.some(x => x.offset === offset)).toBe(true);
-      if (offset < 250) await expect(publicMore).not.toHaveText('Загрузка…');
-      else await expect(publicMore).toHaveCount(0);
+      for (let attempt = 0; attempt < 20 && !publicCalls.some(x => x.offset === offset); attempt++) {
+        await feedScroller.evaluate((node) => {
+          node.scrollTop = node.scrollHeight;
+          node.dispatchEvent(new Event('scroll', { bubbles: true }));
+        });
+        await page.waitForTimeout(100);
+      }
+      expect(publicCalls.some(x => x.offset === offset), JSON.stringify(publicCalls)).toBe(true);
     }
-    await expect(publicMore).toHaveCount(0);
+    expect(publicCalls.some(x => x.offset > 250)).toBe(false);
     expect(errors).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath('public-feed-after-251.png') });
     await testInfo.attach('capacity-observations', { body: JSON.stringify({ role,

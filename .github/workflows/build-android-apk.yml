@@ -226,13 +226,15 @@ jobs:
             python3 scripts/verify_android_firebase_config.py --check-source google-services.json
 
       - name: Expo prebuild (Android, non-interactive)
-        # The tracked Android tree contains the approved full-screen splash and
-        # its native launch wiring. --clean deletes those native files before
-        # the build and silently restores Expo's tiny centered icon splash.
+        # Expo prebuild regenerates android/ even without --clean. App-owned
+        # Kotlin sources are restored from this exact checkout immediately after.
         run: npx expo prebuild --platform android --no-install --non-interactive
         env:
           EXPO_NO_TELEMETRY: 1
           CI: 1
+
+      - name: Restore app-owned Android Kotlin classes removed by prebuild
+        run: python3 scripts/restore_android_qa_native_sources.py --expected-sha "$URTRUCK_SOURCE_SHA"
 
       - name: Verify Google Services Gradle plugin wired after prebuild
         run: python3 scripts/verify_android_firebase_config.py --check-plugin android
@@ -299,6 +301,13 @@ jobs:
           ls -la
           mv app-release.apk UrTruck.apk
           ls -la UrTruck.apk
+
+      - name: Verify merged FCM service and app-owned DEX classes
+        run: |
+          python3 scripts/verify_android_fcm_apk.py \
+            android/app/build/outputs/apk/release/UrTruck.apk \
+            --expected-package "$URTRUCK_EXPECTED_ANDROID_PACKAGE" \
+            --aapt "$ANDROID_HOME/build-tools/36.0.0/aapt"
 
       - name: Verify QA2 artifact manifest
         env:

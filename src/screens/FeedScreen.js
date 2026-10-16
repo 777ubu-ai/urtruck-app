@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   RefreshControl,
   ScrollView,
@@ -139,11 +140,11 @@ export default function FeedScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
-  const [nextOffset, setNextOffset] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const pageRef = React.useRef({ busy: false, nextOffset: null });
+  const pageRef = React.useRef({ busy: false, nextOffset: null, failed: false });
   const loadSeqRef = React.useRef(0);
   useEffect(() => () => { loadSeqRef.current++; }, []);
+  const [errorAppend, setErrorAppend] = useState(false);
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
   const [dirFromCountry, setDirFromCountry] = useState('');
@@ -213,19 +214,19 @@ export default function FeedScreen({ navigation }) {
     }
   }, [myUserId]);
 
-  const load = useCallback(async ({ append = false } = {}) => {
+  const load = useCallback(async ({ append = false, retry = false } = {}) => {
     const previous = pageRef.current;
-    if (append && (previous.busy || previous.nextOffset == null)) return;
+    if (append && (previous.busy || (previous.failed && !retry) || previous.nextOffset == null)) return;
     const requestId = ++loadSeqRef.current;
     const offset = append ? previous.nextOffset : 0;
-    pageRef.current = { busy: true, nextOffset: append ? previous.nextOffset : null };
+    pageRef.current = { busy: true, nextOffset: append ? previous.nextOffset : null, failed: false };
     if (append) setLoadingMore(true);
     else {
-      setNextOffset(null);
       scrollOffsetRef.current = 0;
       listRef.current?.scrollToOffset({ offset: 0, animated: false });
     }
     setError(false);
+    setErrorAppend(false);
     try {
       const result = await marketAPI.listTrips({
         fromCity: dirFrom.trim() || '',
@@ -259,18 +260,18 @@ export default function FeedScreen({ navigation }) {
           };
         })
         .filter((trip) => trip?.id && trip.from && trip.to);
-      const rawCount = (result?.trips || []).length;
-      const next = result?.next_offset === undefined
-        ? (rawCount === 50 ? offset + 50 : null) : result.next_offset;
-      if (!(next === null || (Number.isInteger(next) && next > offset))) throw new Error('invalid_page');
+      if (typeof result?.has_more !== 'boolean') throw new Error('invalid_page');
+      const next = result.has_more ? result.next_offset : null;
+      if (result.has_more && !(Number.isInteger(next) && next > offset)) throw new Error('invalid_page');
       setItems(current => append
         ? [...new Map([...current, ...mapped].map(item => [item.id, item])).values()]
         : mapped);
-      pageRef.current = { busy: false, nextOffset: next };
-      setNextOffset(next);
+      pageRef.current = { busy: false, nextOffset: next, failed: false };
     } catch (err) {
       if (requestId !== loadSeqRef.current) return;
       console.warn('[FeedScreen] load trips failed:', err);
+      pageRef.current.failed = true;
+      setErrorAppend(append);
       setError(true);
     } finally {
       if (requestId === loadSeqRef.current) {
@@ -281,6 +282,11 @@ export default function FeedScreen({ navigation }) {
       }
     }
   }, [dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, myUserId, dateFrom, dateTo, minPrice, maxPrice, priceCurrency, sortBy, savedOnly]);
+
+  const loadNextPage = useCallback(() => {
+    const page = pageRef.current;
+    if (!page.busy && !page.failed && page.nextOffset != null) load({ append: true });
+  }, [load]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
@@ -526,7 +532,13 @@ export default function FeedScreen({ navigation }) {
           scrollOffsetRef.current = offset;
           const visible = offset > 800;
           setShowScrollTop((current) => current === visible ? current : visible);
+          const { height: contentHeight } = event.nativeEvent.contentSize || {};
+          const { height: viewportHeight } = event.nativeEvent.layoutMeasurement || {};
+          if (Number.isFinite(contentHeight) && Number.isFinite(viewportHeight)
+            && contentHeight - viewportHeight - offset <= viewportHeight * 0.5) loadNextPage();
         }}
+        onEndReached={loadNextPage}
+        onEndReachedThreshold={0.5}
         scrollEventThrottle={100}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
@@ -538,18 +550,19 @@ export default function FeedScreen({ navigation }) {
             tintColor={colors.accent}
           />
         )}
-        ListFooterComponent={(nextOffset != null || (error && items.length > 0)) ? (
-          <View style={styles.emptyWrap}>
-            {error ? <Text style={styles.emptyTitle}>{copy.loadError}</Text> : null}
+        ListFooterComponent={loadingMore ? (
+          <View style={styles.pageFooter} testID="trip-feed-loading-more">
+            <ActivityIndicator size="small" color={colors.accent} />
+          </View>
+        ) : error && items.length > 0 ? (
+          <View style={styles.pageFooter}>
+            <Text style={styles.emptyTitle}>{copy.loadError}</Text>
             <TouchableOpacity
-              testID="trip-feed-more"
+              testID="trip-feed-retry-more"
               style={[styles.retryBtn, { backgroundColor: colors.accentSoft }]}
-              disabled={loadingMore || loading}
-              onPress={() => load({ append: pageRef.current.nextOffset != null })}
+              onPress={() => errorAppend ? load({ append: true, retry: true }) : load()}
             >
-              <Text style={[styles.retryText, { color: colors.accent }]}>
-                {loadingMore ? t('my_work_loading') : error ? copy.retry : t('my_work_load_more')}
-              </Text>
+              <Text style={[styles.retryText, { color: colors.accent }]}>{copy.retry}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -809,6 +822,7 @@ const styles = StyleSheet.create({
   // its list spacing.
   cardSpacing: { marginHorizontal: 18, marginBottom: 7 },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
+  pageFooter: { alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8 },
   emptyTitle: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
   retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center' },
   retryText: { fontSize: 14, fontWeight: '700' },
