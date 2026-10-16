@@ -130,6 +130,14 @@ def _volodya_reply(room_id: str, user_text: str, user: dict):
 
 
 def _ensure_columns(c):
+    # Системные сообщения о статусе/цене ссылаются на сохранённое событие
+    # сделки/ставки. Миграция аддитивна: новая схема объявляет колонку в
+    # chat_schema.sql, существующая chat_messages получает её без пересоздания
+    # строк и изменения их ID, владельцев или индексов.
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(chat_messages)").fetchall()}
+    if "event_id" not in cols:
+        c.execute("ALTER TABLE chat_messages ADD COLUMN event_id TEXT")
+
     # QA-аудит P1-3: client_msg_id для идемпотентной отправки (защита от
     # задвоения при ретрае из офлайн-очереди). Миграция идемпотентна —
     # ADD COLUMN только если столбца ещё нет (старые БД не пересоздаются).

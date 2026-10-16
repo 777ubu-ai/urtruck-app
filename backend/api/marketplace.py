@@ -450,8 +450,10 @@ def _init():
         except Exception as e:
             print(f"[startup] bids.{_listing_col} active-UNIQUE migration skipped: {e}", flush=True)
 
-    # Часть 3 (история цены): таблица price_events + связь chat_messages.event_id.
-    # Аддитивно и идемпотентно. Бэкфилл старых ставок НЕ делаем.
+    # Часть 3 (история цены): таблица price_events. Колонка
+    # chat_messages.event_id принадлежит миграции схемы чата, которая
+    # выполняется после создания таблицы. Здесь её не мигрируем: при холодном
+    # старте main.py импортирует marketplace раньше chat.
     with get_conn() as c:
         c.execute("""
             CREATE TABLE IF NOT EXISTS price_events (
@@ -466,13 +468,6 @@ def _init():
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_price_events_bid ON price_events(bid_id, created_at)")
-        # chat_messages.event_id — связь спец-сообщения с событием цены.
-        try:
-            cm_cols = {r["name"] for r in c.execute("PRAGMA table_info(chat_messages)").fetchall()}
-            if cm_cols and "event_id" not in cm_cols:
-                c.execute("ALTER TABLE chat_messages ADD COLUMN event_id TEXT")
-        except Exception:
-            pass
         c.commit()
 
     # Idempotent migration: ensure newer columns exist on legacy DBs.

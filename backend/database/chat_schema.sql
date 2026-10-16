@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   voice_transcript_provider TEXT,
   voice_transcribed_at TEXT,
   is_read INTEGER DEFAULT 0,
+  event_id TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
