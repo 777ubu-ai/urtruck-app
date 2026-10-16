@@ -125,7 +125,7 @@ Security Review проверил только `6c667c36df230e5aca6469389b73e8a91
 
 Email OTP работал в изолированном mock/beta режиме; письма не отправлялись. Внешняя push-доставка не запускалась. Storage был local temp, не production/Supabase. Это process persistence rehearsal, не проверка старой production-схемы.
 
-Required CI `38897681136` завершился **SUCCESS 3/3** на точном PR head `fe4af50ef8a2de47ee791218fc4f0d685a18b826` (backend, frontend/lint/build, mandatory web E2E). Ни runtime-, ни test-diff после независимого review не менялись; этот коммит обновляет только checkpoint. CI не устраняет обнаруженный startup defect и не заменяет upgrade rehearsal на старой схеме.
+Required CI `38898294964` завершился **SUCCESS 3/3** на PR head `73f8f6469e22afbdc3cb332ee34ff3a5b7cd4263` (backend, frontend/lint/build, mandatory web E2E). Ранее `38897681136` также был SUCCESS 3/3 на `fe4af50e...`. Runtime и test diff не менялись; текущая запись только документирует итоговый CI. CI не устраняет обнаруженный startup defect и не заменяет upgrade rehearsal на старой схеме.
 
 ### Подтверждённый fresh-schema дефект и ограничение статусов
 
