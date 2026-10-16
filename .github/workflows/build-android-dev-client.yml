@@ -83,11 +83,15 @@ jobs:
           fi
 
       - name: Expo prebuild (Android, non-interactive)
-        # Preserve the approved native splash resources and launch wiring.
+        # Expo prebuild regenerates android/; tracked app-owned Kotlin sources
+        # are restored from the exact checked-out commit before compilation.
         run: npx expo prebuild --platform android --no-install --non-interactive
         env:
           EXPO_NO_TELEMETRY: 1
           CI: 1
+
+      - name: Restore app-owned Android Kotlin classes removed by prebuild
+        run: python3 scripts/restore_android_qa_native_sources.py --expected-sha "$(git rev-parse HEAD)"
 
       - name: Target API 36 (Google Play требование с 31.08.2026)
         run: |

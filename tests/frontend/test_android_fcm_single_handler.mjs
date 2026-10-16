@@ -35,6 +35,14 @@ test('QA build restores app-owned Kotlin classes after Expo prebuild clears andr
   assert.ok(verify.includes('re.fullmatch(r"classes(?:\\d+)?\\.dex", name)'));
 });
 
+test('Android dev-client restores the same exact-checkout Kotlin classes before compile', () => {
+  const workflow = readFileSync('.github/workflows/build-android-dev-client.yml', 'utf8');
+  const restore = workflow.indexOf('scripts/restore_android_qa_native_sources.py');
+  const build = workflow.indexOf('./gradlew assembleDebug');
+  assert.ok(restore >= 0 && build > restore);
+  assert.match(workflow.slice(restore, build), /--expected-sha .*git rev-parse HEAD/);
+});
+
 test('one non-exported UrTruck handler inherits Expo instead of duplicating presentation', () => {
   const service = readFileSync('android/app/src/main/java/com/urtruck/app/UrTruckFirebaseMessagingService.kt', 'utf8');
   assert.match(manifest, /android:name="expo.modules.notifications.service.ExpoFirebaseMessagingService" tools:node="remove"/);
