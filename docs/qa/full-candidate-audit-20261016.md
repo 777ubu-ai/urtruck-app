@@ -125,6 +125,8 @@ Security Review проверил только `6c667c36df230e5aca6469389b73e8a91
 
 Email OTP работал в изолированном mock/beta режиме; письма не отправлялись. Внешняя push-доставка не запускалась. Storage был local temp, не production/Supabase. Это process persistence rehearsal, не проверка старой production-схемы.
 
+Required CI `38897681136` завершился **SUCCESS 3/3** на точном PR head `fe4af50ef8a2de47ee791218fc4f0d685a18b826` (backend, frontend/lint/build, mandatory web E2E). Ни runtime-, ни test-diff после независимого review не менялись; этот коммит обновляет только checkpoint. CI не устраняет обнаруженный startup defect и не заменяет upgrade rehearsal на старой схеме.
+
 ### Подтверждённый fresh-schema дефект и ограничение статусов
 
 При отдельном первом запросе перехода `accepted → in_progress` в fresh `main:app` SQLite получен `HTTP 500`: `sqlite3.OperationalError: table chat_messages has no column named event_id` в `backend/api/marketplace.py:3765`. Три дополнительных холодных старта на свежих отдельных lab DB каждый вернули health 200, `quick_check=ok`, но не создали `chat_messages.event_id`.
