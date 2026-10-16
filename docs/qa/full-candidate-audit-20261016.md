@@ -20,7 +20,7 @@ Used only an isolated SQLite backup plus synthetic rows and a synthetic local PD
 
 ## Checks
 
-Local final code patch: native push tests 17/17; unit 1248/1248; lint 508 active JS files; web export and static release checks PASS; `git diff --check` PASS. Backend code is unchanged from PR550; its candidate-specific regression subset previously passed 67 tests. PR551 Quality Gate run `38886531524` is required to close CI for the patch; see the PR for current readback.
+Local final code patch: native push tests 17/17; unit 1248/1248; lint 508 active JS files; web export and static release checks PASS; `git diff --check` PASS. Backend code is unchanged from PR550; its candidate-specific regression subset previously passed 67 tests. Required CI status is read from the current PR head; results from older heads do not transfer. See PR551 for live check identity and conclusion.
 
 ## Risks and exclusions
 
