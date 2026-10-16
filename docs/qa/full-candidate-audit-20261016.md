@@ -148,3 +148,37 @@ Required CI `38898294964` завершился **SUCCESS 3/3** на PR head `73f
 - **Storage:** только изолированный local storage и signed download; production/Supabase access/ACL не проверялись.
 - **Devices:** физические тесты не выполнялись по scope.
 - PR542–545 остаются вне PR551; PR551 OPEN/DRAFT, без merge; production и магазины не менялись.
+
+## Дополнение 2026-10-16 18:36 Asia/Almaty — исправление cold-start `chat_messages.event_id`
+
+### Идентичность и изменение
+
+- PR551 base: `fb23ebd0572c34a889eddc9eea7bdc048db2eef7`.
+- Предшествующий head перед этим исправлением: `e4443280dd369690373a7c4963709a50b88793a4`.
+- Backend fix + regression test: commit `3935bce5d80bc4c9bdae7c0b82aecbdf2342d38f`, tree `d5ce02dd25b8b3de9ea2327318aa67ce673e272c`.
+- Изменены `backend/api/chat.py`, `backend/api/marketplace.py`, `backend/database/chat_schema.sql`; добавлен `backend/tests/test_cold_start_deal_status_migration.py`.
+- PR551 остаётся OPEN/DRAFT. Этот commit не затрагивает production, магазины, реальные данные или мобильные сборки.
+
+### Первопричина и исправление
+
+`main.py` импортирует `marketplace` раньше `chat`. Прежняя миграция `event_id` в `_init()` marketplace выполнялась до создания `chat_messages`, условно пропускала отсутствующую таблицу, а исключение подавлялось; поздняя chat schema не объявляла колонку. В результате cold start создавал таблицу без `event_id`, и первый статусный system-message падал при INSERT.
+
+Колонка теперь входит в свежую `chat_schema.sql`; `_ensure_columns()` чата идемпотентно добавляет её после создания таблицы для старой схемы. Удалена ошибочная преждевременная миграция/пустой `except` из marketplace. Изменение аддитивное, существующие строки не пересоздаются, обратное удаление колонки не требуется.
+
+### Доказательства
+
+- RED до изменения: новый тест на пустой SQLite, импортирующий полный `main:app` без предварительной подготовки схемы harness, падал на ожидании `chat_messages.event_id`.
+- GREEN после изменения: `tests/test_cold_start_deal_status_migration.py`, `tests/test_fresh_db_chat_startup.py`, `tests/test_deal_status_actor_fsm.py`, `tests/test_two_role_acceptance_journey.py` — **36/36 PASS** локально.
+- Cold-start сценарий использует штатные main/API handlers, тестовый OTP/push adapter, bearer sessions и три роли; проходит регистрацию, cargo, bid/accept, outsider denial, разрешённые статусы `in_progress → at_border → delivered → received → completed`, повторы, event log и status messages. Затем независимый Python процесс открывает ту же БД и проверяет сохранённые сессии, роли, статусы, события и сообщения.
+- Legacy fixture без `event_id` заранее содержит сообщение; после двух startup-процессов ID, owner, текст, read flag, room link, индексы и количество строк сохранены; `event_id` остаётся NULL. Для схемы с колонкой повторный startup также безопасен.
+- `git diff --check` PASS перед commit.
+- Required GitHub CI run `38901196298`, точный source head `3935bce5d80bc4c9bdae7c0b82aecbdf2342d38f`: **SUCCESS 3/3** (backend canonical + P0/P1 + push/translation, frontend/lint/build, mandatory web E2E).
+- Независимый Security Review backend diff `e4443280dd369690373a7c4963709a50b88793a4` → `3935bce5d80bc4c9bdae7c0b82aecbdf2342d38f`: **NO FINDINGS**. Подтверждены additive migration и сохранение Auth, ролей, ownership, FSM и push guards; review не выдавал тестовые заглушки за внешнюю доставку.
+
+### Ограничения / незакрытые проверки
+
+- `UPGRADE_PENDING`: нет разрешённой репрезентативной старой пользовательской QA-базы с непустой цепочкой сделка/участники/сообщения/attachments и фактическими файлами. Synthetic legacy fixture подтверждает только миграцию схемы/сохранность имеющихся message rows; он не закрывает upgrade сохранности старых пользовательских данных.
+- Внешняя email/push-доставка и физические устройства не проверялись. Тестовые адаптеры не являются подтверждением этих интеграций.
+- Существующие защищённые production snapshot не читались и не копировались. Production и store artifacts не менялись.
+- PR542–545 не входят в PR551 и не проверены как интегрированная композиция.
+- CI был на source commit `3935bce5…`; последующее изменение этого checkpoint/описания PR — только документация. PR остаётся draft, без merge.
