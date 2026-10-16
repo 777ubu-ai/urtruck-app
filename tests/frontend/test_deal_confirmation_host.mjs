@@ -68,7 +68,7 @@ function render({ status = true, confirmation = true } = {}) {
     confirmDialog: confirmation ? { title: 'Доставлен?', confirmLabel: 'Да', message: 'Подтвердите доставку' } : null,
     setStatusModalOpen: noop, settleConfirm: noop, runNextAction: noop, cancelDeal: noop,
     closeStatusPanel: noop,
-    s: {}, colors: {}, window: { height: 844 }, ui: { statuses: 'Статусы', cancelDeal: 'Отменить' },
+    s: {}, colors: {}, insets: { bottom: 34 }, window: { height: 844 }, ui: { statuses: 'Статусы', cancelDeal: 'Отменить' },
     timeline: [], statusLabel: 'В пути', nextAction: { key: 'delivered', label: 'Доставлен' },
     statusLoading: false, trackingLoading: false, nextActionTestId: 'deal-mark-delivered',
     deal: { status: 'at_border' }, t: key => key, isFocused: true,
