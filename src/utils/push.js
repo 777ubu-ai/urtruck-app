@@ -48,6 +48,8 @@ let nativeRegistrationLastAttempt = null;
 let nativeRegistrationRetryTimer = null;
 let nativeRegistrationSuspended = false;
 let nativeRegistrationGeneration = 0;
+let nativeRegistrationDeferredAfterLogoutGeneration = null;
+let nativeRegistrationLogoutSessionFingerprint = null;
 let nativeRegistrationFlightGeneration = null;
 let nativeRegistrationReplayGeneration = null;
 let nativeRegistrationRequestInFlight = null;
@@ -271,6 +273,7 @@ export const push = {
     // cleanup and reactivate the previous account's device token.
     nativeRegistrationSuspended = true;
     nativeRegistrationGeneration += 1;
+    nativeRegistrationLogoutSessionFingerprint = token ? authContextFingerprint(token) : null;
     clearNativeRegistrationRetry();
     nativeRegistrationQueued = false;
     nativeRegistrationQueuedToken = null;
@@ -299,6 +302,10 @@ export const push = {
     } catch (e) {
       return { ok: false, reason: 'network_error', error: String(e) };
     } finally {
+      const shouldReplayRegistration =
+        nativeRegistrationDeferredAfterLogoutGeneration === nativeRegistrationGeneration;
+      nativeRegistrationDeferredAfterLogoutGeneration = null;
+      nativeRegistrationLogoutSessionFingerprint = null;
       clearNativeRegistrationRetry();
       nativeRegistrationLastAttempt = null;
       nativeRegistrationQueued = false;
@@ -307,6 +314,10 @@ export const push = {
       nativeRegistrationTokenOverrideInFlight = null;
       nativeRegistrationTokenInFlight = null;
       nativeRegistrationSuspended = false;
+      // AuthContext may time out its wait for logout cleanup while a new
+      // account signs in. A registration requested during that window must
+      // resume only after server-side deactivation has settled.
+      if (shouldReplayRegistration) this.registerNative().catch(() => {});
     }
   },
 
@@ -340,7 +351,13 @@ export const push = {
   },
 
   async registerNative({ forceRetry = false, tokenOverride = null } = {}) {
-    if (nativeRegistrationSuspended) return { ok: false, reason: 'logout_in_progress' };
+    if (nativeRegistrationSuspended) {
+      const currentAuthToken = await storage.get(TOKEN_KEY);
+      if (currentAuthToken && authContextFingerprint(currentAuthToken) !== nativeRegistrationLogoutSessionFingerprint) {
+        nativeRegistrationDeferredAfterLogoutGeneration = nativeRegistrationGeneration;
+      }
+      return { ok: false, reason: 'logout_in_progress' };
+    }
     // Keep one registration flight per JS runtime.  Callers still receive the
     // same result, while a token-listener burst cannot turn into a request
     // storm or monopolise the mobile HTTP dispatcher.

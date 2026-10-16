@@ -437,6 +437,43 @@ test('registration requested after a new login is replayed after stale token loo
   } finally { shim.state.releaseDeviceTokenRead?.(); globalThis.fetch = old; shim.uninstall(); }
 });
 
+test('registration requested during delayed logout cleanup resumes once for the new session', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  let releaseCleanup;
+  globalThis.fetch = async (url, opts) => {
+    const path = String(url);
+    calls.push({ url: path, authorization: opts?.headers?.Authorization || '' });
+    if (path.includes('/logout-cleanup')) {
+      await new Promise((resolve) => { releaseCleanup = resolve; });
+      return { status: 200, ok: true, json: async () => ({ ok: true }) };
+    }
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'new-user' }) };
+  };
+  try {
+    const storage = (await import('./mocks/async-storage.mjs')).default;
+    await storage.setItem('ur_reg_token', 'old-session-token');
+    const push = await freshPush();
+    const cleanup = push.logoutCleanup('old-session-token');
+    for (let attempt = 0; attempt < 40 && !releaseCleanup; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(typeof releaseCleanup, 'function', 'logout cleanup reached its delayed server request');
+
+    await storage.setItem('ur_reg_token', 'new-session-token');
+    assert.equal((await push.registerNative()).reason, 'logout_in_progress');
+    releaseCleanup();
+    await cleanup;
+    for (let attempt = 0; attempt < 40 && !calls.some((call) => call.url.includes('/register-native')); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    const registrations = calls.filter((call) => call.url.includes('/register-native'));
+    assert.equal(registrations.length, 1, 'the deferred new-session registration runs once');
+    assert.equal(registrations[0].authorization, 'Bearer new-session-token');
+  } finally { releaseCleanup?.(); globalThis.fetch = old; shim.uninstall(); }
+});
+
 test('logout cancels a scheduled retry and new account registers once', async () => {
   await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
   const calls = [];
