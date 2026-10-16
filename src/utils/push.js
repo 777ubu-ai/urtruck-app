@@ -331,6 +331,7 @@ export const push = {
           const nextToken = nativeRegistrationQueuedToken;
           nativeRegistrationQueued = false;
           nativeRegistrationQueuedToken = null;
+          nativeLatestTokenEvent = null;
           this.registerNative({ tokenOverride: nextToken }).catch(() => {});
         }
       }
@@ -468,17 +469,23 @@ export const push = {
       Notifications.addPushTokenListener((event) => {
         const eventToken = typeof event?.data === 'string' ? event.data : null;
         if (!eventToken) return;
-        nativeLatestTokenEvent = eventToken;
         if (nativeRegistrationInFlight) {
           // Do not turn a callback that repeats the token we are currently
           // registering into an immediate retry loop (notably on endpoint
           // errors such as 404). A genuine rotation is coalesced once.
           if (nativeRegistrationTokenInFlight) {
-            nativeRegistrationQueued = eventToken !== nativeRegistrationTokenInFlight;
-            nativeRegistrationQueuedToken = nativeRegistrationQueued ? eventToken : null;
+            if (eventToken === nativeRegistrationTokenInFlight) return;
+            nativeLatestTokenEvent = eventToken;
+            nativeRegistrationQueued = true;
+            nativeRegistrationQueuedToken = eventToken;
+          } else {
+            // The getter has not exposed its token yet. Keep only the latest
+            // callback snapshot; it is consumed when the getter settles.
+            nativeLatestTokenEvent = eventToken;
           }
           return;
         }
+        nativeLatestTokenEvent = eventToken;
         this.registerNative({ tokenOverride: eventToken }).catch(() => {});
       });
     }

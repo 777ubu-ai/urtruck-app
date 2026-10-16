@@ -225,6 +225,36 @@ test('token rotation during an in-flight registration queues the latest token', 
   } finally { globalThis.fetch = old; shim.uninstall(); }
 });
 
+test('a duplicate in-flight token cannot replace a queued rotation', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  let releaseFirst;
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), body: JSON.parse(opts.body) });
+    if (calls.length === 1) await new Promise((resolve) => { releaseFirst = resolve; });
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'u-1' }) };
+  };
+  try {
+    const push = await freshPush();
+    const first = push.registerNative();
+    while (!releaseFirst) await new Promise((resolve) => setTimeout(resolve, 0));
+    shim.state.nativeDeviceToken = 'rotated-token-B';
+    await shim.NotificationsMock.__emitTokenRotation();
+    shim.state.nativeDeviceToken = 'fake-native-device-token-abc123';
+    await shim.NotificationsMock.__emitTokenRotation();
+    releaseFirst();
+    await first;
+    for (let attempt = 0; attempt < 20 && calls.length < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(calls.length, 2, 'rotation is sent in exactly one trailing registration');
+    assert.equal(calls[0].body.token, 'fake-native-device-token-abc123');
+    assert.equal(calls[1].body.token, 'rotated-token-B');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(calls.length, 2, 'duplicate old-token callbacks do not create another flight');
+  } finally { globalThis.fetch = old; shim.uninstall(); }
+});
+
 test('queued token rotation survives failure of the old registration', async () => {
   await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
   const calls = [];
