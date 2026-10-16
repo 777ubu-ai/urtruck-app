@@ -101,3 +101,12 @@ CI `38890514004` на source head `6c667c36...` и CI `38891284275` на PR head
 2. Проверить независимое review нового base→head diff; предыдущее review подтверждает runtime patch, но не добавленный сценарный тест.
 3. Повторить upgrade-preservation только при появлении подходящей обезличенной QA-копии с непустыми attachments и файлами. До этого сохранность таких файлов — `PENDING`.
 4. PR542–545 остаются отдельно; production, магазины и реальные пользовательские данные не менялись.
+
+## Итоговое дополнение 2026-10-16 — CI и состояние PR551
+
+- Required PR CI `38893764718` завершился `SUCCESS` на точном PR head `5b6ea23e0a653935e9fa7730b1717b95526582cf`, checkout/tree `dfd32df936a2662cd73e9b302e9a54e274262260`; backend, mandatory web E2E и frontend/lint/build — 3/3 jobs.
+- Новый двухрольный сценарий и целевые существующие backend регрессии локально прошли 65/65 на отдельной test DB. В CI прошли также canonical backend suite, P0/P1 security subset, Push/Bell subset, Translation/STT boundary, mandatory web E2E, dependency audit, lint и web build.
+- Это завершает пункты CI, записанные выше как ожидающие. Нового независимого Security Review добавленного тестового diff не проводилось; прежний review относится к runtime diff `fb23ebd...` → `6c667c36...`.
+- Текущая PR композиция: base `fb23ebd0572c34a889eddc9eea7bdc048db2eef7`; runtime source `6c667c36df230e5aca6469389b73e8a9161c8b97`; двухрольный тест `5df1d7755d0dea6b8dd4461360f909bebfd44616`; checkpoint commit/head `5b6ea23e0a653935e9fa7730b1717b95526582cf`. PR551 остаётся OPEN/DRAFT и не объединён.
+- Сохранность связанной старой QA-цепочки с непустыми сделками, участниками, сообщениями, attachment rows и соответствующими файлами остаётся `PENDING`: подходящая обезличенная копия не найдена. Synthetic двухрольный тест это ограничение не закрывает.
+- Node-forge audit gate прошёл, но `GHSA-86w9-cpqp-85rv` остаётся применимым к установленной `1.4.0` (диапазон `<=1.4.0`); локальная компенсация действует до пересмотра не позднее `2026-12-31T00:00:00.000Z` и не является upstream-исправлением.
