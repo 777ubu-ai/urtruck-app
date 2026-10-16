@@ -115,3 +115,11 @@
 Исполняемая инструкция и точные input JSON fields находятся в [`scripts/qa/UPGRADE_REHEARSAL.md`](../../scripts/qa/UPGRADE_REHEARSAL.md). Минимальный материал можно положить в уже защищённый QA lab; новые платные ресурсы или production writes не нужны.
 
 **Исключённые PR остаются открытыми отдельно:** #542 (ограничения фото/больших файлов), #543 (клиентская подготовка фото), #544 (private chat storage) и #545 (`ROLE_NOT_ALLOWED` локализация/сохранение формы). Ничего из этого не включено в проверенный PR551 и соответствующие пользовательские проблемы им не закрыты.
+
+### Итоговый readback PR551 после добавления rehearsal
+
+- PR551: OPEN/DRAFT; base `fb23ebd0572c34a889eddc9eea7bdc048db2eef7`.
+- Кандидат, проверенный run: head `7e4ab1c96f34eae5fc50a69b2f7baec50369e47e`, tree `42f815591263727160d6b667b9472d9d83b16095`.
+- Required CI run `38909031950`: **SUCCESS 3/3**. Backend job фактически checkout'ил test-merge `3e557da` — `7e4ab1c9` в base `fb23ebd0`; canonical backend suite, P0/P1, push/bell, translation/STT boundary прошли. Frontend/lint/audit/build и mandatory web E2E также SUCCESS.
+- Файлы после проверенного прикладного backend source commit `3935bce5d80bc4c9bdae7c0b82aecbdf2342d38f` — только QA runner, его 4 точечных теста и checkpoint/instruction docs; app/backend runtime не изменялся. PR остаётся draft и не объединён.
+- Полный upgrade rehearsal всё ещё **UPGRADE_PENDING**: защищённого старого QA snapshot с согласованными сообщениями, attachment metadata и байтами файла нет; не хватает также трёх выделенных действующих QA sessions и QA-only signing key. Runner не запускался.
