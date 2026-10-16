@@ -27,12 +27,21 @@ assert.ok(workflow.includes('EXPO_PUBLIC_API_URL: https://urtruck.kz'));
 assert.ok(workflow.includes('URTRUCK_BUILD_FLAVOR: production'));
 assert.ok(workflow.includes('secrets.YANDEX_MAPS_JS_API_KEY'));
 assert.ok(workflow.includes('secrets.YANDEX_MAPKIT_API_KEY'));
+assert.ok(workflow.includes('npx --yes eas-cli@25.0.0'), 'pin EAS CLI to a fixed version');
+assert.doesNotMatch(workflow, /eas-cli@latest/, 'do not resolve a moving EAS CLI tag');
+const installDependencies = workflow.match(/      - name: Install dependencies([\s\S]*?)(?=\n      - name:|$)/)?.[1] || '';
+assert.doesNotMatch(installDependencies, /EXPO_TOKEN|YANDEX|OPENROUTESERVICE/,
+  'production credentials must not be inherited by npm install lifecycle scripts');
+assert.match(workflow, /name: Build signed IPA locally[\s\S]*?env:[\s\S]*?EXPO_TOKEN: \$\{\{ secrets\.EXPO_TOKEN \}\}/,
+  'EAS token is available only to the signed build step that needs it');
+assert.match(workflow, /name: Inject production runtime configuration[\s\S]*?env:[\s\S]*?YANDEX_ROUTER_API_KEY: \$\{\{ secrets\.YANDEX_ROUTER_API_KEY \}\}/,
+  'runtime provider keys are scoped to runtime config injection');
 assert.ok(workflow.includes('codesign --verify --deep --strict'));
 assert.ok(workflow.includes("entitlements['aps-environment'] == 'production'"));
 assert.ok(workflow.includes("config['extra']['urtruckApiUrl'].rstrip('/') == 'https://urtruck.kz'"));
 assert.ok(workflow.includes("info['CFBundleIdentifier'] == 'com.urtruck.app'"));
 assert.ok(workflow.includes("info['CFBundleShortVersionString'] == '1.0.9'"));
-assert.ok(workflow.includes('npx eas-cli@latest build:version:get --platform ios --profile production --json'));
+assert.ok(workflow.includes('npx --yes eas-cli@25.0.0 build:version:get --platform ios --profile production --json'));
 assert.ok(workflow.indexOf('name: Verify exact branch and credentials')
   < workflow.indexOf('name: Install dependencies'),
   'pin and validate the checked-out source before running npm lifecycle scripts');
@@ -52,7 +61,7 @@ assert.doesNotMatch(workflow, /URTRUCK_MIN_IOS_BUILD:\s*98/,
 assert.ok(submitStep, 'TestFlight upload step must exist');
 assert.match(submitStep, /if: \$\{\{ inputs\.upload_mode == 'upload_testflight' \}\}/,
   'TestFlight upload must require explicit opt-in');
-assert.equal((workflow.match(/npx eas-cli@latest submit --platform ios/g) || []).length, 1,
+assert.equal((workflow.match(/npx --yes eas-cli@25\.0\.0 submit --platform ios/g) || []).length, 1,
   'keep a single explicit TestFlight upload command');
 assert.ok(workflow.indexOf('name: Upload private IPA artifact') < workflow.indexOf('name: Submit IPA to TestFlight'));
 assert.doesNotMatch(workflow, /--auto-submit|Add for Review|Submit for App Review|appStoreReviewSubmissions/,

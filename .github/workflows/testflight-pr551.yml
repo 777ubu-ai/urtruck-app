@@ -90,15 +90,9 @@ jobs:
     timeout-minutes: 180
     environment: production
     env:
-      GH_TOKEN: ${{ github.token }}
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EXPO_PUBLIC_API_URL: https://urtruck.kz
       URTRUCK_BUILD_FLAVOR: production
       URTRUCK_TOOLING_SHA: ${{ github.sha }}
-      EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
-      EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-      YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
-      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
       URTRUCK_UPLOAD_MODE: ${{ inputs.upload_mode }}
       ASC_MAX_IOS_BUILD: ${{ inputs.asc_max_ios_build }}
 
@@ -125,9 +119,6 @@ jobs:
           git cat-file -e "$URTRUCK_SOURCE_SHA^{commit}"
           git checkout --detach "$URTRUCK_SOURCE_SHA"
           test "$(git rev-parse HEAD)" = "$URTRUCK_SOURCE_SHA"
-          test -n "${EXPO_TOKEN:-}"
-          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
-          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
           echo "TOOLING_SHA=$URTRUCK_TOOLING_SHA"
           echo "APP_SOURCE_SHA=$URTRUCK_SOURCE_SHA"
           echo "UPLOAD_MODE=$URTRUCK_UPLOAD_MODE"
@@ -143,12 +134,14 @@ jobs:
 
       - name: Verify EAS account and build counter
         shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           set -euo pipefail
-          npx eas-cli@latest whoami
+          npx --yes eas-cli@25.0.0 whoami
           case "$ASC_MAX_IOS_BUILD" in (*[!0-9]*|'') echo "::error::asc_max_ios_build must be a freshly read numeric ASC build number"; exit 1;; esac
           EAS_VERSION_JSON="$RUNNER_TEMP/eas-ios-build-version.json"
-          npx eas-cli@latest build:version:get --platform ios --profile production --json > "$EAS_VERSION_JSON"
+          npx --yes eas-cli@25.0.0 build:version:get --platform ios --profile production --json > "$EAS_VERSION_JSON"
           EAS_CURRENT_IOS_BUILD="$(node - "$EAS_VERSION_JSON" <<'NODE'
           const fs = require('fs');
           const result = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -167,7 +160,15 @@ jobs:
 
       - name: Inject production runtime configuration
         shell: bash
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+          YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
+          OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
         run: |
+          set -euo pipefail
+          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
           node <<'NODE'
           const fs = require('fs');
           const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
@@ -198,9 +199,11 @@ jobs:
 
       - name: Build signed IPA locally
         shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           set -euo pipefail
-          npx eas-cli@latest build --platform ios --profile production --local --non-interactive --output "$RUNNER_TEMP/UrTruck.ipa"
+          npx --yes eas-cli@25.0.0 build --platform ios --profile production --local --non-interactive --output "$RUNNER_TEMP/UrTruck.ipa"
           test -s "$RUNNER_TEMP/UrTruck.ipa"
           shasum -a 256 "$RUNNER_TEMP/UrTruck.ipa" | tee "$RUNNER_TEMP/UrTruck.ipa.sha256"
 
@@ -249,4 +252,6 @@ jobs:
       - name: Submit IPA to TestFlight
         if: ${{ inputs.upload_mode == 'upload_testflight' }}
         shell: bash
-        run: npx eas-cli@latest submit --platform ios --profile production --path "$RUNNER_TEMP/UrTruck.ipa" --non-interactive --wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx --yes eas-cli@25.0.0 submit --platform ios --profile production --path "$RUNNER_TEMP/UrTruck.ipa" --non-interactive --wait
