@@ -1,4 +1,4 @@
-const { withAndroidManifest, withMainApplication } = require('@expo/config-plugins');
+const { withAndroidManifest, withMainApplication, withAppBuildGradle } = require('@expo/config-plugins');
 
 const FIREBASE_BASE_SERVICE = 'com.google.firebase.messaging.FirebaseMessagingService';
 const EXPO_SERVICE = 'expo.modules.notifications.service.ExpoFirebaseMessagingService';
@@ -44,7 +44,7 @@ module.exports = function withAndroidSingleFcmHandler(config) {
 
   // Expo prebuild regenerates MainApplication.kt. Keep the app-owned native
   // modules registered in both production and suffixed QA application IDs.
-  return withMainApplication(withFcmManifest, (mod) => {
+  const withNativePackages = withMainApplication(withFcmManifest, (mod) => {
     const main = mod.modResults;
     if (main.language !== 'kt') throw new Error('UrTruck Android native packages require a Kotlin MainApplication');
     const importLines = [
@@ -86,6 +86,43 @@ module.exports = function withAndroidSingleFcmHandler(config) {
       contents = contents.replace(onCreateSuper, `${onCreateSuper}${delegationSetup}`);
     }
     main.contents = contents;
+    return mod;
+  });
+
+  // The checked-in Android tree has these explicit dependencies, but Expo
+  // prebuild regenerates app/build.gradle and drops them. Native Kotlin
+  // sources restored by the QA workflows must compile against the same pins.
+  return withAppBuildGradle(withNativePackages, (mod) => {
+    if (mod.modResults.language !== 'groovy') {
+      throw new Error('UrTruck Android native dependencies require Groovy app/build.gradle');
+    }
+    let contents = mod.modResults.contents;
+    const required = [
+      'implementation("com.google.firebase:firebase-messaging:25.0.1")',
+      'implementation("me.leolin:ShortcutBadger:1.1.22@aar")',
+    ];
+    const coordinates = [
+      ['com.google.firebase:firebase-messaging', required[0]],
+      ['me.leolin:ShortcutBadger', required[1]],
+    ];
+    const missing = [];
+    for (const [coordinate, declaration] of coordinates) {
+      const escapedCoordinate = coordinate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const current = contents.match(new RegExp(`implementation\\s*\\(?["']${escapedCoordinate}:([^"']+)["']\\)?`));
+      const expectedVersion = declaration.match(/:([^:"']+)["']/)[1];
+      if (current && current[1] !== expectedVersion) {
+        throw new Error(`Unexpected UrTruck Android dependency pin for ${coordinate}`);
+      }
+      if (!current) missing.push(declaration);
+    }
+    if (missing.length) {
+      const dependencyBlock = /(^|\n)(dependencies\s*\{)/m;
+      if (!dependencyBlock.test(contents)) throw new Error('Generated app/build.gradle dependencies block missing');
+      contents = contents.replace(dependencyBlock, (match, prefix, block) => (
+        `${prefix}${block}\n    ${missing.join('\n    ')}`
+      ));
+    }
+    mod.modResults.contents = contents;
     return mod;
   });
 };

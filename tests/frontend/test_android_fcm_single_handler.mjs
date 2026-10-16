@@ -18,6 +18,7 @@ test('Expo prebuild always reapplies the single FCM handler contract', () => {
   assert.ok(appConfig.expo.plugins.includes('./plugins/withAndroidSingleFcmHandler'));
   assert.match(plugin, /withAndroidManifest/);
   assert.match(plugin, /withMainApplication/);
+  assert.match(plugin, /withAppBuildGradle/);
   assert.match(plugin, /com\.google\.firebase\.messaging\.FirebaseMessagingService/);
   assert.match(plugin, /'tools:node': 'remove'/);
   assert.match(plugin, /add\(UrTruckNotificationBadgePackage\(\)\)/);
@@ -68,12 +69,20 @@ test('prebuild callback is idempotent and replaces both competing SDK handlers',
     language: 'kt',
     contents: `package com.urtruck.app.qa2\n\nimport com.facebook.react.PackageList\n\nclass MainApplication {\n  val packages = PackageList(this).packages.apply {\n  }\n  override fun onCreate() {\n    super.onCreate()\n  }\n}`,
   };
+  const appBuildGradle = {
+    language: 'groovy',
+    contents: 'plugins { id "com.android.application" }\n\ndependencies {\n    implementation("com.facebook.react:react-android")\n}',
+  };
   vm.runInNewContext(plugin, {
     module,
     require: () => ({
       withAndroidManifest: (config, callback) => callback(config),
       withMainApplication: (config, callback) => {
         callback({ modResults: mainApplication });
+        return config;
+      },
+      withAppBuildGradle: (config, callback) => {
+        callback({ modResults: appBuildGradle });
         return config;
       },
     }),
@@ -100,4 +109,8 @@ test('prebuild callback is idempotent and replaces both competing SDK handlers',
   assert.match(mainApplication.contents, /add\(UrTruckSystemBarsPackage\(\)\)/);
   assert.match(mainApplication.contents, /FirebaseMessaging\.getInstance\(\)\.setNotificationDelegationEnabled\(false\)/);
   assert.equal((mainApplication.contents.match(/setNotificationDelegationEnabled\(false\)/g) || []).length, 1);
+  assert.match(appBuildGradle.contents, /implementation\("com\.google\.firebase:firebase-messaging:25\.0\.1"\)/);
+  assert.match(appBuildGradle.contents, /implementation\("me\.leolin:ShortcutBadger:1\.1\.22@aar"\)/);
+  assert.equal((appBuildGradle.contents.match(/firebase-messaging:25\.0\.1/g) || []).length, 1);
+  assert.equal((appBuildGradle.contents.match(/ShortcutBadger:1\.1\.22@aar/g) || []).length, 1);
 });
