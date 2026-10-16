@@ -255,6 +255,44 @@ test('a duplicate in-flight token cannot replace a queued rotation', async () =>
   } finally { globalThis.fetch = old; shim.uninstall(); }
 });
 
+test('a stale old-token callback cannot replace a queued rotation before the getter resolves', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const calls = [];
+  let releaseFirst;
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), body: JSON.parse(opts.body) });
+    if (calls.length === 1) await new Promise((resolve) => { releaseFirst = resolve; });
+    return { status: 200, ok: true, json: async () => ({ ok: true, user_id: 'u-1' }) };
+  };
+  try {
+    const push = await freshPush();
+    const first = push.registerNative();
+    while (!releaseFirst) await new Promise((resolve) => setTimeout(resolve, 0));
+    shim.state.nativeDeviceToken = 'rotated-token-B';
+    await shim.NotificationsMock.__emitTokenRotation();
+
+    shim.state.pauseDeviceTokenRead = true;
+    releaseFirst();
+    await first;
+    for (let attempt = 0; attempt < 30 && !shim.state.deviceTokenReadPaused; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(shim.state.deviceTokenReadPaused, true, 'trailing B registration reached its gated getter');
+
+    shim.state.nativeDeviceToken = 'fake-native-device-token-abc123';
+    await shim.NotificationsMock.__emitTokenRotation();
+    shim.state.releaseDeviceTokenRead();
+    for (let attempt = 0; attempt < 30 && calls.length < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].body.token, 'rotated-token-B');
+  } finally {
+    shim.state.releaseDeviceTokenRead?.();
+    globalThis.fetch = old; shim.uninstall();
+  }
+});
+
 test('queued token rotation survives failure of the old registration', async () => {
   await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
   const calls = [];

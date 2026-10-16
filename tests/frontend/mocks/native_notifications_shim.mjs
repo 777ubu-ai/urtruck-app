@@ -26,6 +26,9 @@ export function installNativeRequireShim() {
     getDevicePushTokenThrows: null, // Error | null — e.g. no google-services.json wired
     emitTokenListenerOnDeviceTokenRead: false,
     tokenListenerEventToken: null,
+    pauseDeviceTokenRead: false,
+    deviceTokenReadPaused: false,
+    releaseDeviceTokenRead: null,
     channelCreateCalls: [],
     permissionRequestCalls: 0,
     tokenListeners: [],
@@ -57,6 +60,12 @@ export function installNativeRequireShim() {
     },
     async getDevicePushTokenAsync() {
       if (state.getDevicePushTokenThrows) throw state.getDevicePushTokenThrows;
+      if (state.pauseDeviceTokenRead) {
+        state.deviceTokenReadPaused = true;
+        await new Promise((resolve) => { state.releaseDeviceTokenRead = resolve; });
+        state.pauseDeviceTokenRead = false;
+        state.deviceTokenReadPaused = false;
+      }
       if (state.emitTokenListenerOnDeviceTokenRead) {
         state.emitTokenListenerOnDeviceTokenRead = false;
         for (const listener of state.tokenListeners) listener({

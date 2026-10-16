@@ -42,6 +42,7 @@ let nativeRegistrationInFlight = null;
 let nativeRegistrationQueued = false;
 let nativeRegistrationQueuedToken = null;
 let nativeRegistrationTokenInFlight = null;
+let nativeRegistrationTokenOverrideInFlight = null;
 let nativeLatestTokenEvent = null;
 let nativeRegistrationLastAttempt = null;
 let nativeRegistrationRetryTimer = null;
@@ -282,6 +283,7 @@ export const push = {
       nativeRegistrationQueued = false;
       nativeRegistrationQueuedToken = null;
       nativeLatestTokenEvent = null;
+      nativeRegistrationTokenOverrideInFlight = null;
     }
   },
 
@@ -319,6 +321,8 @@ export const push = {
     // same result, while a token-listener burst cannot turn into a request
     // storm or monopolise the mobile HTTP dispatcher.
     if (nativeRegistrationInFlight) return nativeRegistrationInFlight;
+    nativeRegistrationTokenOverrideInFlight = tokenOverride || null;
+    nativeRegistrationTokenInFlight = tokenOverride || null;
     const flight = this._registerNativeOnce({ forceRetry, tokenOverride });
     nativeRegistrationInFlight = flight;
     try {
@@ -327,6 +331,7 @@ export const push = {
       if (nativeRegistrationInFlight === flight) {
         nativeRegistrationInFlight = null;
         nativeRegistrationTokenInFlight = null;
+        nativeRegistrationTokenOverrideInFlight = null;
         if (nativeRegistrationQueued) {
           const nextToken = nativeRegistrationQueuedToken;
           nativeRegistrationQueued = false;
@@ -475,6 +480,11 @@ export const push = {
           // errors such as 404). A genuine rotation is coalesced once.
           if (nativeRegistrationTokenInFlight) {
             if (eventToken === nativeRegistrationTokenInFlight) return;
+            // During a trailing registration, Expo can replay the previous
+            // token while getDevicePushTokenAsync() is still settling. Do not
+            // replace the explicit rotated token with the last attempted one.
+            if (nativeRegistrationTokenOverrideInFlight
+              && eventToken === nativeRegistrationLastAttempt?.token) return;
             nativeLatestTokenEvent = eventToken;
             nativeRegistrationQueued = true;
             nativeRegistrationQueuedToken = eventToken;
