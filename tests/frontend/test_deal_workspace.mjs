@@ -96,8 +96,8 @@ test('deal workspace uses canonical header action buttons instead of large map/s
   assert.match(workspace, /borderRadius: 22/);
   assert.match(workspace, /borderWidth: StyleSheet\.hairlineWidth/);
   assert.match(workspace, /backgroundColor: colors\.surface, borderColor: colors\.border/);
-  assert.match(workspace, /<Feather name="map" size=\{17\} color=\{colors\.textMuted\}/);
-  assert.match(workspace, /<Feather name=\{statusActionIcon\} size=\{17\} color=\{colors\.textMuted\}/);
+  assert.match(workspace, /<Feather name="map" size=\{20\} color=\{colors\.text\}/);
+  assert.match(workspace, /<Feather name=\{statusActionIcon\} size=\{22\} color=\{colors\.success\}/);
   // Compact header canon: route 16/900 + «Сделка №… · price» second line.
   assert.match(workspace, /routeTitle: \{ flex: 1, fontSize: 16, fontWeight: '900'/);
   assert.match(workspace, /dealNoLine: \{ fontSize: 12, fontWeight: '600'/);
