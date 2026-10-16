@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import PdfPreviewContent from './PdfPreviewContent';
 
 /**
@@ -43,29 +43,31 @@ export default function PdfPreviewModal({ visible, url, title = 'PDF', onClose }
       onRequestClose={onClose}
       testID="pdf-preview-modal"
     >
-      <SafeAreaView style={s.safe}>
-        <View style={s.header}>
-          <Text numberOfLines={1} style={s.title}>{title}</Text>
-          <TouchableOpacity
-            onPress={onClose}
-            style={s.closeButton}
-            testID="pdf-preview-close"
-            accessibilityRole="button"
-            accessibilityLabel="Close PDF preview"
-          >
-            <Text style={s.close}>×</Text>
-          </TouchableOpacity>
-        </View>
-        {content}
-        {Platform.OS !== 'web' && pageState.rendered ? (
-          <Text testID="pdf-preview-page-rendered" style={s.pageStatus}>
-            {pageState.page}/{pageState.pages}
-          </Text>
-        ) : null}
-        {Platform.OS !== 'web' && renderError ? (
-          <Text testID="pdf-preview-render-error" style={s.error}>PDF preview unavailable</Text>
-        ) : null}
-      </SafeAreaView>
+      <SafeAreaProvider>
+        <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
+          <View style={s.header}>
+            <Text numberOfLines={1} style={s.title}>{title}</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              style={s.closeButton}
+              testID="pdf-preview-close"
+              accessibilityRole="button"
+              accessibilityLabel="Close PDF preview"
+            >
+              <Text style={s.close}>×</Text>
+            </TouchableOpacity>
+          </View>
+          {content}
+          {Platform.OS !== 'web' && pageState.rendered ? (
+            <Text testID="pdf-preview-page-rendered" style={s.pageStatus}>
+              {pageState.page}/{pageState.pages}
+            </Text>
+          ) : null}
+          {Platform.OS !== 'web' && renderError ? (
+            <Text testID="pdf-preview-render-error" style={s.error}>PDF preview unavailable</Text>
+          ) : null}
+        </SafeAreaView>
+      </SafeAreaProvider>
     </Modal>
   );
 }
