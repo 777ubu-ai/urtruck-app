@@ -2309,7 +2309,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             />
           ) : (
           <Pressable style={s.modalBackdrop} onPress={() => setStatusModalOpen(false)}>
-            <Pressable style={[s.statusModalCard, { backgroundColor: colors.bg, maxHeight: window.height * 0.75 }]} onPress={() => {}} testID="deal-status-panel">
+            <Pressable style={[s.statusModalCard, { backgroundColor: colors.bg, maxHeight: window.height * 0.75, paddingBottom: insets.bottom + 12 }]} onPress={() => {}} testID="deal-status-panel">
               <View style={s.statusModalHeader}>
                 <Text style={[s.sheetTitle, { color: colors.text }]}>{ui.statuses}</Text>
                 <TouchableOpacity onPress={() => setStatusModalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} testID="deal-status-close">

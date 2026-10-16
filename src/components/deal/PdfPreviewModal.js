@@ -2,12 +2,12 @@ import React from 'react';
 import {
   Modal,
   Platform,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import PdfPreviewContent from './PdfPreviewContent';
 
 /**
@@ -43,23 +43,31 @@ export default function PdfPreviewModal({ visible, url, title = 'PDF', onClose }
       onRequestClose={onClose}
       testID="pdf-preview-modal"
     >
-      <SafeAreaView style={s.safe}>
-        <View style={s.header}>
-          <Text numberOfLines={1} style={s.title}>{title}</Text>
-          <TouchableOpacity onPress={onClose} testID="pdf-preview-close" accessibilityLabel="Close PDF preview">
-            <Text style={s.close}>×</Text>
-          </TouchableOpacity>
-        </View>
-        {content}
-        {Platform.OS !== 'web' && pageState.rendered ? (
-          <Text testID="pdf-preview-page-rendered" style={s.pageStatus}>
-            {pageState.page}/{pageState.pages}
-          </Text>
-        ) : null}
-        {Platform.OS !== 'web' && renderError ? (
-          <Text testID="pdf-preview-render-error" style={s.error}>PDF preview unavailable</Text>
-        ) : null}
-      </SafeAreaView>
+      <SafeAreaProvider>
+        <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
+          <View style={s.header}>
+            <Text numberOfLines={1} style={s.title}>{title}</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              style={s.closeButton}
+              testID="pdf-preview-close"
+              accessibilityRole="button"
+              accessibilityLabel="Close PDF preview"
+            >
+              <Text style={s.close}>×</Text>
+            </TouchableOpacity>
+          </View>
+          {content}
+          {Platform.OS !== 'web' && pageState.rendered ? (
+            <Text testID="pdf-preview-page-rendered" style={s.pageStatus}>
+              {pageState.page}/{pageState.pages}
+            </Text>
+          ) : null}
+          {Platform.OS !== 'web' && renderError ? (
+            <Text testID="pdf-preview-render-error" style={s.error}>PDF preview unavailable</Text>
+          ) : null}
+        </SafeAreaView>
+      </SafeAreaProvider>
     </Modal>
   );
 }
@@ -73,6 +81,12 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#151E19',
+  },
+  closeButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: { flex: 1, color: '#F3F7F4', fontSize: 16, fontWeight: '700', marginRight: 12 },
   close: { color: '#F3F7F4', fontSize: 32, lineHeight: 34, fontWeight: '300' },
