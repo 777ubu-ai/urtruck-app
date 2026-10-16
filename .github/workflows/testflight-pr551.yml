@@ -1,0 +1,252 @@
+name: UrTruck PR551 Exact-source TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_tooling_sha:
+        description: Точный tooling commit, проверенный независимым review
+        required: true
+        type: string
+      asc_max_ios_build:
+        description: Свежий максимальный номер iOS build для версии 1.0.9 из App Store Connect (только чтение)
+        required: true
+        type: string
+      upload_mode:
+        description: Оставить IPA приватным или явно загрузить его в TestFlight
+        required: true
+        type: choice
+        default: build_only
+        options:
+          - build_only
+          - upload_testflight
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: urtruck-ios-production-push-inbox
+  cancel-in-progress: false
+
+env:
+  URTRUCK_TOOLING_BRANCH: release/store-public-20261010
+  URTRUCK_APP_SOURCE_BRANCH: fix/full-candidate-audit-20261016
+  URTRUCK_SOURCE_SHA: f8cf82f30c96cfd35bffe7b2fdc67c7c0fb0d227
+  URTRUCK_SOURCE_CI_RUN_ID: 38909907753
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      EXPECTED_TOOLING_SHA: ${{ inputs.expected_tooling_sha }}
+    steps:
+      - name: Checkout reviewed tooling workflow
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify reviewed tooling ref and frozen app source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$URTRUCK_TOOLING_BRANCH"
+          test "$EXPECTED_TOOLING_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch --no-tags origin \
+            "refs/heads/$URTRUCK_APP_SOURCE_BRANCH:refs/remotes/origin/$URTRUCK_APP_SOURCE_BRANCH"
+          git merge-base --is-ancestor "$URTRUCK_SOURCE_SHA" \
+            "refs/remotes/origin/$URTRUCK_APP_SOURCE_BRANCH"
+          echo "TOOLING_SHA=$GITHUB_SHA"
+          echo "APP_SOURCE_BRANCH=$URTRUCK_APP_SOURCE_BRANCH"
+          echo "APP_SOURCE_SHA=$URTRUCK_SOURCE_SHA"
+
+      - name: Verify existing exact-source CI result
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_identity="$(gh api "repos/$GH_REPO/actions/runs/$URTRUCK_SOURCE_CI_RUN_ID" \
+            --jq '[.head_sha, .status, .conclusion] | @tsv')"
+          expected_identity="$(printf '%s\tcompleted\tsuccess' "$URTRUCK_SOURCE_SHA")"
+          test "$run_identity" = "$expected_identity"
+          gh api "repos/$GH_REPO/actions/runs/$URTRUCK_SOURCE_CI_RUN_ID/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.name == "quality-gate / Backend tests" or .name == "quality-gate / Mandatory web E2E subset" or .name == "quality-gate / Frontend tests, lint, and build") | .conclusion] | length == 3 and all(.[]; . == "success")' \
+            | grep -qx true
+          echo "EXACT_SOURCE_CI=pass ($URTRUCK_SOURCE_CI_RUN_ID / $URTRUCK_SOURCE_SHA)"
+
+      - name: Validate iOS release workflow contract
+        run: node tests/frontend/test_ios_pr551_workflow_contract.mjs
+
+  build-and-upload:
+    needs: quality-gate
+    runs-on: macos-15
+    timeout-minutes: 180
+    environment: production
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_API_URL: https://urtruck.kz
+      URTRUCK_BUILD_FLAVOR: production
+      URTRUCK_TOOLING_SHA: ${{ github.sha }}
+      EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+      EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+      YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
+      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+      URTRUCK_UPLOAD_MODE: ${{ inputs.upload_mode }}
+      ASC_MAX_IOS_BUILD: ${{ inputs.asc_max_ios_build }}
+
+    steps:
+      - name: Checkout tooling commit and exact frozen app source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact branch and credentials
+        shell: bash
+        env:
+          EXPECTED_TOOLING_SHA: ${{ inputs.expected_tooling_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$URTRUCK_TOOLING_BRANCH"
+          test "$EXPECTED_TOOLING_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$URTRUCK_TOOLING_SHA"
+          git fetch --no-tags origin \
+            "refs/heads/$URTRUCK_APP_SOURCE_BRANCH:refs/remotes/origin/$URTRUCK_APP_SOURCE_BRANCH"
+          git merge-base --is-ancestor "$URTRUCK_SOURCE_SHA" \
+            "refs/remotes/origin/$URTRUCK_APP_SOURCE_BRANCH"
+          git cat-file -e "$URTRUCK_SOURCE_SHA^{commit}"
+          git checkout --detach "$URTRUCK_SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$URTRUCK_SOURCE_SHA"
+          test -n "${EXPO_TOKEN:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
+          echo "TOOLING_SHA=$URTRUCK_TOOLING_SHA"
+          echo "APP_SOURCE_SHA=$URTRUCK_SOURCE_SHA"
+          echo "UPLOAD_MODE=$URTRUCK_UPLOAD_MODE"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify EAS account and build counter
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx eas-cli@latest whoami
+          case "$ASC_MAX_IOS_BUILD" in (*[!0-9]*|'') echo "::error::asc_max_ios_build must be a freshly read numeric ASC build number"; exit 1;; esac
+          EAS_VERSION_JSON="$RUNNER_TEMP/eas-ios-build-version.json"
+          npx eas-cli@latest build:version:get --platform ios --profile production --json > "$EAS_VERSION_JSON"
+          EAS_CURRENT_IOS_BUILD="$(node - "$EAS_VERSION_JSON" <<'NODE'
+          const fs = require('fs');
+          const result = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const value = result.buildNumber ?? result.ios?.buildNumber;
+          if (!/^\d+$/.test(String(value ?? ''))) throw new Error('EAS did not return a numeric iOS build number');
+          process.stdout.write(String(value));
+          NODE
+          )"
+          test "$EAS_CURRENT_IOS_BUILD" -ge "$ASC_MAX_IOS_BUILD" || {
+            echo "::error::EAS iOS build counter ($EAS_CURRENT_IOS_BUILD) trails fresh ASC maximum ($ASC_MAX_IOS_BUILD); refusing to build until counters are reconciled"
+            exit 1
+          }
+          printf 'EAS_CURRENT_IOS_BUILD=%s\n' "$EAS_CURRENT_IOS_BUILD" >> "$GITHUB_ENV"
+          printf 'URTRUCK_NEXT_IOS_BUILD=%s\n' "$((EAS_CURRENT_IOS_BUILD + 1))" >> "$GITHUB_ENV"
+          echo "IOS_BUILD_PREFLIGHT_PASS asc_max=$ASC_MAX_IOS_BUILD eas_current=$EAS_CURRENT_IOS_BUILD expected_next=$((EAS_CURRENT_IOS_BUILD + 1))"
+
+      - name: Inject production runtime configuration
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          eas.build.production.env = {
+            ...(eas.build.production.env || {}),
+            URTRUCK_BUILD_FLAVOR: process.env.URTRUCK_BUILD_FLAVOR,
+            EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+            EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY,
+            EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY
+          };
+          if (process.env.YANDEX_ROUTER_API_KEY) {
+            eas.build.production.env.YANDEX_ROUTER_API_KEY = process.env.YANDEX_ROUTER_API_KEY;
+          }
+          if (process.env.OPENROUTESERVICE_API_KEY) {
+            eas.build.production.env.OPENROUTESERVICE_API_KEY = process.env.OPENROUTESERVICE_API_KEY;
+          }
+          fs.writeFileSync('eas.json', JSON.stringify(eas, null, 2) + '\n');
+          NODE
+
+      - name: Select Xcode 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE_APP=$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' | sort -V | tail -1)
+          test -n "$XCODE_APP"
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+
+      - name: Build signed IPA locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx eas-cli@latest build --platform ios --profile production --local --non-interactive --output "$RUNNER_TEMP/UrTruck.ipa"
+          test -s "$RUNNER_TEMP/UrTruck.ipa"
+          shasum -a 256 "$RUNNER_TEMP/UrTruck.ipa" | tee "$RUNNER_TEMP/UrTruck.ipa.sha256"
+
+      - name: Verify signed production IPA before submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios-verified"
+          unzip -q "$RUNNER_TEMP/UrTruck.ipa" -d "$RUNNER_TEMP/ios-verified"
+          APP_DIR="$(find "$RUNNER_TEMP/ios-verified/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$APP_DIR"
+          codesign --verify --deep --strict "$APP_DIR"
+          python3 - "$APP_DIR" "$RUNNER_TEMP/UrTruck-manifest.json" <<'PYVERIFY'
+          import json, pathlib, plistlib, sys, os, subprocess
+          app = pathlib.Path(sys.argv[1])
+          info = plistlib.loads((app / 'Info.plist').read_bytes())
+          config = json.loads((app / 'EXConstants.bundle/app.config').read_text())
+          assert info['CFBundleIdentifier'] == 'com.urtruck.app'
+          assert info['CFBundleShortVersionString'] == '1.0.9'
+          number = str(info['CFBundleVersion'])
+          assert number.isdigit()
+          assert int(number) > int(os.environ['ASC_MAX_IOS_BUILD'])
+          assert int(number) > int(os.environ['EAS_CURRENT_IOS_BUILD'])
+          assert int(number) == int(os.environ['URTRUCK_NEXT_IOS_BUILD'])
+          assert config['extra']['urtruckApiUrl'].rstrip('/') == 'https://urtruck.kz'
+          assert config['extra']['urtruckBuildFlavor'] == 'production'
+          signed = subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(app)], stderr=subprocess.DEVNULL)
+          entitlements = plistlib.loads(signed)
+          assert entitlements['aps-environment'] == 'production'
+          assert entitlements['application-identifier'].endswith('.com.urtruck.app')
+          manifest = dict(sourceSHA=os.environ['URTRUCK_SOURCE_SHA'], toolingSHA=os.environ['URTRUCK_TOOLING_SHA'], bundleIdentifier=info['CFBundleIdentifier'], versionName='1.0.9', buildNumber=number, ascMaxBuild=os.environ['ASC_MAX_IOS_BUILD'], easPreviousBuild=os.environ['EAS_CURRENT_IOS_BUILD'], expectedNextBuild=os.environ['URTRUCK_NEXT_IOS_BUILD'], apiHost='urtruck.kz', flavor='production', apsEnvironment='production', uploadMode=os.environ['URTRUCK_UPLOAD_MODE'])
+          pathlib.Path(sys.argv[2]).write_text(json.dumps(manifest, indent=2) + '\n')
+          print(json.dumps(manifest))
+          PYVERIFY
+
+      - name: Upload private IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-TestFlight-IPA
+          path: |
+            ${{ runner.temp }}/UrTruck.ipa
+            ${{ runner.temp }}/UrTruck.ipa.sha256
+            ${{ runner.temp }}/UrTruck-manifest.json
+          retention-days: 14
+
+      - name: Submit IPA to TestFlight
+        if: ${{ inputs.upload_mode == 'upload_testflight' }}
+        shell: bash
+        run: npx eas-cli@latest submit --platform ios --profile production --path "$RUNNER_TEMP/UrTruck.ipa" --non-interactive --wait
