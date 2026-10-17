@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Header, UploadFile, File
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 from database.db import get_conn, new_id
 from api.verification_gate import require_level, require_active_level, require_driver_trip_publication, get_user, _extract_driver
@@ -561,6 +561,7 @@ def _init():
                 locked_at    TEXT,
                 completed_at TEXT,
                 last_signal_at TEXT,
+                capture_mode TEXT NOT NULL DEFAULT 'continuous' CHECK (capture_mode IN ('continuous', 'snapshot')),
                 updated_at   TEXT DEFAULT CURRENT_TIMESTAMP,
                 CHECK (status IN ('pending', 'active', 'declined', 'stopped'))
             )
@@ -572,6 +573,7 @@ def _init():
             ("locked_at", "ALTER TABLE deal_tracking ADD COLUMN locked_at TEXT"),
             ("completed_at", "ALTER TABLE deal_tracking ADD COLUMN completed_at TEXT"),
             ("last_signal_at", "ALTER TABLE deal_tracking ADD COLUMN last_signal_at TEXT"),
+            ("capture_mode", "ALTER TABLE deal_tracking ADD COLUMN capture_mode TEXT NOT NULL DEFAULT 'continuous' CHECK (capture_mode IN ('continuous', 'snapshot'))"),
         ]:
             if col not in tracking_cols:
                 c.execute(ddl)
@@ -3763,7 +3765,8 @@ def _record_deal_transition_effects(c, deal, new_status, actor_uid, event_payloa
                   (text[:50], deal["chat_room_id"]))
 
 
-def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id: str) -> dict | None:
+def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id: str,
+                     capture_mode: Literal["continuous", "snapshot"] = "continuous") -> dict | None:
     """Единая точка входа для смены deals.status — валидирует и атомарно
     применяет переход. Вызывается ИЗ УЖЕ ОТКРЫТОЙ транзакции (`c` — тот же
     коннект, что открыл вызывающий, чтобы cargos/trips-синк оставался в
@@ -3849,12 +3852,12 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
         c.execute("DELETE FROM deal_locations WHERE deal_id = ?", (deal_id,))
         c.execute(
             "INSERT INTO deal_tracking "
-            "(deal_id, status, requested_by, requested_at, responded_at, stopped_at, locked_at, completed_at, updated_at) "
-            "VALUES (?, 'active', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP) "
+            "(deal_id, status, requested_by, requested_at, responded_at, stopped_at, locked_at, completed_at, capture_mode, updated_at) "
+            "VALUES (?, 'active', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP, NULL, ?, CURRENT_TIMESTAMP) "
             "ON CONFLICT(deal_id) DO UPDATE SET status='active', requested_by=excluded.requested_by, "
             "requested_at=CURRENT_TIMESTAMP, responded_at=CURRENT_TIMESTAMP, stopped_at=NULL, "
-            "locked_at=CURRENT_TIMESTAMP, completed_at=NULL, updated_at=CURRENT_TIMESTAMP",
-            (deal_id, actor_uid),
+            "locked_at=CURRENT_TIMESTAMP, completed_at=NULL, capture_mode=excluded.capture_mode, updated_at=CURRENT_TIMESTAMP",
+            (deal_id, actor_uid, capture_mode),
         )
         c.execute(
             "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'tracking_started_with_trip', ?)",
@@ -3911,7 +3914,9 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
 
 
 @mp_router.patch("/deals/{deal_id}/status")
-def update_deal_status(deal_id: str, new_status: str, user=Depends(require_active_level(1))):
+def update_deal_status(deal_id: str, new_status: str,
+                       user=Depends(require_active_level(1)),
+                       capture_mode: Literal["continuous", "snapshot"] = "continuous"):
     # Этап-хаб заказа: добавлен промежуточный статус at_border («На границе») —
     # ключевой для коридора Китай↔КЗ. Порядок: accepted → in_progress →
     # at_border → delivered (cancelled — из любого рабочего).
@@ -3933,7 +3938,7 @@ def update_deal_status(deal_id: str, new_status: str, user=Depends(require_activ
             raise HTTPException(status_code=403)
         cur_status_before = _canonical_deal_status(deal.get("status") or "accepted")
         try:
-            event_payload = _transition_deal(c, deal, new_status, uid, request_id)
+            event_payload = _transition_deal(c, deal, new_status, uid, request_id, capture_mode)
         except DealTransitionError as e:
             raise HTTPException(status_code=e.status_code, detail=e.detail)
         if event_payload is None:
@@ -3961,7 +3966,7 @@ _TRACKING_DEAL_STATUSES = ("accepted", "in_progress", "at_border")
 
 def _tracking_payload(c, deal_id: str) -> dict:
     row = c.execute(
-        "SELECT status, requested_by, requested_at, responded_at, stopped_at, locked_at, completed_at, last_signal_at, updated_at "
+        "SELECT status, requested_by, requested_at, responded_at, stopped_at, locked_at, completed_at, last_signal_at, capture_mode, updated_at "
         "FROM deal_tracking WHERE deal_id = ?",
         (deal_id,),
     ).fetchone()
@@ -4071,7 +4076,8 @@ def check_gps_heartbeats_job() -> dict:
         stale = c.execute(
             """SELECT dt.deal_id, d.shipper_id FROM deal_tracking dt
                JOIN deals d ON d.id = dt.deal_id
-               WHERE dt.status = 'active' AND d.status IN ('in_progress', 'at_border')
+               WHERE dt.status = 'active' AND dt.capture_mode = 'continuous'
+                 AND d.status IN ('in_progress', 'at_border')
                  AND dt.last_signal_at IS NOT NULL
                  AND dt.last_signal_at <= datetime(CURRENT_TIMESTAMP, ?)""",
             (f"-{GPS_LOST_THRESHOLD_MINUTES} minutes",),
@@ -4119,7 +4125,34 @@ def list_active_driver_tracking(user=Depends(require_level(1))):
             "AND d.status IN ('in_progress','at_border')",
             (user["id"],),
         ).fetchall()
-    return {"ok": True, "deal_ids": [r["deal_id"] for r in rows]}
+    return {"ok": True, "deal_ids": [r["deal_id"] for r in rows],
+            "snapshot_location_supported": True}
+
+
+@mp_router.post("/deals/{deal_id}/tracking/snapshot-mode")
+def activate_snapshot_tracking(deal_id: str, user=Depends(require_active_level(1))):
+    """Idempotent upgrade of the driver's own active trip, without a GPS fix.
+
+    Existing continuous clients never call this route. A new client calls it
+    on resume so the watchdog cannot mistake normal map closure for GPS loss.
+    """
+    with get_conn() as c:
+        if not c.in_transaction:
+            c.execute("BEGIN IMMEDIATE")
+        deal = c.execute("SELECT driver_id,status FROM deals WHERE id=?", (deal_id,)).fetchone()
+        if not deal:
+            raise HTTPException(status_code=404, detail="Сделка не найдена")
+        if deal["driver_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Режим GPS меняет только водитель сделки")
+        updated = c.execute(
+            "UPDATE deal_tracking SET capture_mode='snapshot', updated_at=CURRENT_TIMESTAMP "
+            "WHERE deal_id=? AND status='active' AND EXISTS "
+            "(SELECT 1 FROM deals WHERE id=? AND status IN ('in_progress','at_border'))",
+            (deal_id, deal_id),
+        )
+        if updated.rowcount != 1:
+            raise HTTPException(status_code=409, detail="Нет активного отслеживания рейса")
+    return {"ok": True, "capture_mode": "snapshot"}
 
 
 @mp_router.post("/deals/{deal_id}/tracking/request")
@@ -4268,6 +4301,7 @@ class DealLocationIn(BaseModel):
     # Client capture time survives the persistent offline FIFO. Unix ms.
     captured_at_ms: Optional[int] = Field(default=None, ge=946684800000, le=4102444800000)
     sample_id: Optional[str] = Field(default=None, min_length=1, max_length=300)
+    capture_mode: Literal["continuous", "snapshot"] = "continuous"
 
 
 @mp_router.post("/deals/{deal_id}/location")
@@ -4329,12 +4363,16 @@ def update_deal_location(deal_id: str, body: DealLocationIn, user=Depends(requir
                 "AND (last_signal_at IS NULL OR last_signal_at <= ?)",
                 (captured_sql, deal_id, captured_sql),
             )
+            # Older clients omit this field and retain the continuous watchdog.
+            # A queued older sample cannot switch a newer client's mode.
+            c.execute("UPDATE deal_tracking SET capture_mode=? WHERE deal_id=?",
+                      (body.capture_mode, deal_id))
         # A historical FIFO sample may be valid route evidence but must not
         # resurrect GPS health. Only a near-live sample clears gps_lost.
         fresh_for_restore = (now_ms - captured_ms) <= 180 * 1000
         shipper_id = None
         ev_id = None
-        if was_lost and fresh_for_restore:
+        if was_lost and fresh_for_restore and body.capture_mode == "continuous":
             _ev = c.execute(
                 "INSERT INTO deal_tracking_events (deal_id, event_type, actor_id) VALUES (?, 'gps_restored', ?)",
                 (deal_id, user["id"]),
