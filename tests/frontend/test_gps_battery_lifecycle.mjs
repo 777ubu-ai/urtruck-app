@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const root = process.env.GPS_TEST_SOURCE_ROOT || '.';
 const flush = async () => { for (let i = 0; i < 12; i++) await new Promise(r => setImmediate(r)); };
-function hookHarness(initial = 'active', foregroundOnly = false) {
+function hookHarness(initial = 'active', foregroundOnly = false, snapshotSupported = true) {
   const values = [], effects = [], intervals = new Map(), listeners = new Set();
   const calls = { sample: 0, post: 0, refresh: 0, start: 0, stop: 0 };
   let cursor = 0, effectCursor = 0, nextId = 1, mapOpen = true, mapTargets = ['deal'];
@@ -29,7 +29,7 @@ function hookHarness(initial = 'active', foregroundOnly = false) {
       prior?.cleanup?.(); effects[n] = { deps, cb };
     },
     storage: { get: async () => 'session' },
-    marketAPI: { activeTrackingDeals: async () => { calls.refresh++; return { ok: true, deal_ids: ['deal'] }; } },
+    marketAPI: { activeTrackingDeals: async () => { calls.refresh++; return { ok: true, deal_ids: ['deal'], snapshot_location_supported: snapshotSupported }; } },
     setActiveDealIds: async () => {}, startBackgroundTracking: async () => { calls.start++; },
     stopBackgroundTracking: async () => { calls.stop++; },
     pushLocationToDeals: async () => { calls.post++; }, LocationModule: native,
@@ -160,6 +160,13 @@ test('map-only: лента/список сделок не запускают GPS
   h.setMap(false); await flush(); h.render(); await flush(); const sent = h.calls.post;
   for (const tick of h.intervals.values()) tick(); await flush(); assert.equal(h.calls.sample, 1); assert.equal(h.calls.post, sent);
   h.setMap(true); await flush(); h.render(); await flush(); assert.equal(h.calls.sample, 2);
+});
+test('старый backend без snapshot capability не запускает разовое измерение', async () => {
+  const h = hookHarness('active', true, false);
+  h.render(); await flush(); h.render(); await flush();
+  assert.ok(h.calls.refresh > 0);
+  assert.equal(h.calls.sample, 0);
+  assert.equal(h.calls.post, 0);
 });
 test('map-only: уход с карты во время измерения запрещает позднюю отправку', async () => {
   const h = hookHarness('active', true); let resolve; h.native.wait = new Promise(r => { resolve = r; });
