@@ -187,7 +187,7 @@ export default function DriverDetail({ navigation, route }) {
           { text: t('cancel'), style: 'cancel' },
           { text: t('contactViewOffers'), onPress: () => {
             if (route.params?.returnToOffers) navigation.goBack();
-            else navigation.navigate('Deals', { role });
+            else navigation.navigate('Main', { screen: 'Deals', params: { role } });
           } },
         ]);
         return;

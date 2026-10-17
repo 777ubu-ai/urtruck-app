@@ -21,6 +21,7 @@ test('no deal is shown only after a successful room response; load failure offer
   assert.match(driverDetail, /if \(rooms\.length === 0\)[\s\S]*contactNoDealBody/);
   assert.match(driverDetail, /catch \{[\s\S]*contactErrorTitle[\s\S]*contactRetry/);
   assert.match(cargoDetail, /returnToOffers: true/);
+  assert.match(driverDetail, /navigation\.navigate\('Main', \{ screen: 'Deals', params: \{ role \} \}\)/);
 });
 
 test('guest contact uses the normal verification gate and login route', () => {
