@@ -442,7 +442,15 @@ diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yama
          }
          val listener: Session.RouteListener = object : Session.RouteListener {
              override fun onMasstransitRoutes(routes: List<Route>) {
-@@ -590,10 +590,10 @@
+@@ -585,15 +585,18 @@
+     fun setShowUserPosition(show: Boolean) {
++        // A hidden user-location layer still registers Android location listeners.
++        // Route maps render their own truck marker and must not create this layer.
++        if (!show && userLocationLayer == null) return
+         if (userLocationLayer == null) {
+             userLocationLayer = MapKitFactory.getInstance().createUserLocationLayer(mapWindow)
+         }
+
          if (show) {
              userLocationLayer!!.setObjectListener(this)
              userLocationLayer!!.isVisible = true
@@ -455,7 +463,7 @@ diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yama
              userLocationLayer!!.setObjectListener(null)
          }
      }
-@@ -626,7 +626,7 @@
+@@ -626,7 +629,7 @@
          val routeMetadata = Arguments.createMap()
          val routeWeightData = Arguments.createMap()
          val sectionWeightData = Arguments.createMap()
@@ -464,7 +472,7 @@ diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yama
          routeWeightData.putString("time", routeWeight.time.text)
          routeWeightData.putInt("transferCount", routeWeight.transfersCount)
          routeWeightData.putDouble("walkingDistance", routeWeight.walkingDistance.value)
-@@ -654,12 +654,12 @@
+@@ -654,12 +657,12 @@
                      if (transports[type] != null) {
                          val list = transports[type]
                          if (list != null) {
