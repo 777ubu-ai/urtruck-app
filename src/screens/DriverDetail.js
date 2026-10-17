@@ -131,7 +131,7 @@ export default function DriverDetail({ navigation, route }) {
 
   if (driver._profileMissing) {
     return (
-      <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
+      <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top', 'bottom']}>
         <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 }}>
           <Text style={{ fontSize: 56 }}>🪪</Text>
@@ -210,7 +210,7 @@ export default function DriverDetail({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top', 'bottom']}>
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
         onShare={() => setShareModal(true)}
