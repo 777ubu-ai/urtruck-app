@@ -13,6 +13,8 @@ import { LEVELS } from '../utils/AuthContext';
 import { reviewsAPI } from '../utils/reviews';
 import RatingModal from '../components/RatingModal';
 import { marketAPI } from '../utils/marketAPI';
+import { chatAPI } from '../utils/chatAPI';
+import { fetchPartnerDealRooms } from '../utils/driverDealRooms';
 import { API_BASE } from '../config/env';
 import {v1Colors, useV1Colors, v1Radius, v1AccentFor} from '../theme/designV1';
 import GlassCard from '../components/ui/v1/GlassCard';
@@ -32,7 +34,10 @@ export default function DriverDetail({ navigation, route }) {
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();
   const [shareModal, setShareModal] = useState(false);
-  const [contactOpened, setContactOpened] = useState(false);
+  const [contactBusy, setContactBusy] = useState(false);
+  const contactBusyRef = React.useRef(false);
+  const [contactDeals, setContactDeals] = useState([]);
+  const [contactChooserVisible, setContactChooserVisible] = useState(false);
   const [rateModal, setRateModal] = useState(false);
   const [reviewsData, setReviewsData] = useState(null);
   const [serverProfile, setServerProfile] = useState(null);
@@ -126,7 +131,7 @@ export default function DriverDetail({ navigation, route }) {
 
   if (driver._profileMissing) {
     return (
-      <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
+      <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top', 'bottom']}>
         <BrandBarWithShare onBack={() => navigation.goBack()} accent={v1Accent.main} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 }}>
           <Text style={{ fontSize: 56 }}>🪪</Text>
@@ -150,16 +155,62 @@ export default function DriverDetail({ navigation, route }) {
   const driverPhone = driver.phone || '';
   const driverPlate = driver.plate_truck || driver.vehicle_plate || '';
 
+  const openDealChat = (room) => {
+    setContactChooserVisible(false);
+    // Send only public identity needed by the canonical chat resolver. Never
+    // pass the profile's phone/contact fields into the chat route.
+    navigation.navigate('Chat', {
+      roomId: room.id,
+      dealId: room.deal_id,
+      partner: { id: driver.id, name: driverName, _server: true },
+      role,
+    });
+  };
+
   const openContact = async () => {
-    // Контакты — самый строгий замок: требует identity (level 2)
-    const ok = await requireLevel(LEVELS.PHONE, 'contact');
-    if (!ok) return;
-    setContactOpened(true);
-    navigation.navigate('Chat', { partner: driver, role });
+    if (contactBusyRef.current) return;
+    contactBusyRef.current = true;
+    setContactBusy(true);
+    try {
+      const ok = await requireLevel(LEVELS.PHONE, 'contact', role === 'client' ? 'client' : null);
+      if (!ok) return;
+
+      // /chat/rooms is authenticated and only returns rooms accessible to
+      // this account. A failed request stays an error; it is never treated as
+      // an empty deal list.
+      const rooms = await fetchPartnerDealRooms(
+        (offset) => chatAPI.rooms({ partnerId: driver.id, offset }),
+        driver.id,
+      );
+      if (rooms.length === 0) {
+        Alert.alert(t('contactNoDealTitle'), t('contactNoDealBody'), [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('contactViewOffers'), onPress: () => {
+            if (route.params?.returnToOffers) navigation.goBack();
+            else navigation.navigate('Main', { screen: 'Deals', params: { role } });
+          } },
+        ]);
+        return;
+      }
+      if (rooms.length === 1) {
+        openDealChat(rooms[0]);
+        return;
+      }
+      setContactDeals(rooms);
+      setContactChooserVisible(true);
+    } catch {
+      Alert.alert(t('contactErrorTitle'), t('contactErrorBody'), [
+        { text: t('cancel'), style: 'cancel' },
+        { text: t('contactRetry'), onPress: () => { void openContact(); } },
+      ]);
+    } finally {
+      contactBusyRef.current = false;
+      setContactBusy(false);
+    }
   };
 
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.container, { backgroundColor: v1.bg }]} edges={['top', 'bottom']}>
       <BrandBarWithShare
         onBack={() => navigation.goBack()}
         onShare={() => setShareModal(true)}
@@ -293,15 +344,16 @@ export default function DriverDetail({ navigation, route }) {
           )}
         </GlassCard>
 
-        <TouchableOpacity style={[s.contactBtn, { backgroundColor: contactOpened ? v1Colors.driver : v1Accent.main }]} onPress={openContact} disabled={contactOpened}>
-          {contactOpened ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Feather name="check-circle" size={16} color="#0A0A0A" />
-              <Text style={[s.contactBtnText, { color: '#0A0A0A' }]}>{t('contactOpened')}</Text>
-            </View>
-          ) : (
-            <Text style={[s.contactBtnText, { color: '#0A0A0A' }]}>{t('openContact')}</Text>
-          )}
+        <TouchableOpacity
+          style={[s.contactBtn, { backgroundColor: v1Accent.main, opacity: contactBusy ? 0.7 : 1 }]}
+          onPress={openContact}
+          disabled={contactBusy}
+          testID="driver-open-deal-chat"
+          accessibilityRole="button"
+        >
+          <Text style={[s.contactBtnText, { color: '#0A0A0A' }]}>
+            {contactBusy ? t('contactLoading') : t('openContact')}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -352,6 +404,38 @@ export default function DriverDetail({ navigation, route }) {
               </TouchableOpacity>
             ))}
             <TouchableOpacity onPress={() => setReportModal(false)} style={s.reasonCancel} disabled={reporting}>
+              <Text style={[s.reasonCancelText, { color: v1.textMuted }]}>{t('cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      <Modal
+        visible={contactChooserVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setContactChooserVisible(false)}
+      >
+        <Pressable style={s.modalOverlay} onPress={() => setContactChooserVisible(false)}>
+          <Pressable style={[s.modalCard, { backgroundColor: v1.card, borderColor: v1.border }]} onPress={() => {}}>
+            <Text style={[s.modalTitle, { color: v1.text }]}>{t('contactDealChooserTitle')}</Text>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {contactDeals.map((room, index) => {
+                const routeLabel = room.route_label || [room.route_from, room.route_to].filter(Boolean).join(' → ');
+                const label = `${t('contactDealFallback')} ${index + 1}${routeLabel ? ` · ${routeLabel}` : ''}`;
+                return (
+                  <TouchableOpacity
+                    key={room.id}
+                    style={[s.reasonRow, { borderColor: v1.border }]}
+                    onPress={() => openDealChat(room)}
+                    accessibilityRole="button"
+                    testID={`driver-deal-choice-${index + 1}`}
+                  >
+                    <Text style={[s.reasonText, { color: v1.text }]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity onPress={() => setContactChooserVisible(false)} style={s.reasonCancel}>
               <Text style={[s.reasonCancelText, { color: v1.textMuted }]}>{t('cancel')}</Text>
             </TouchableOpacity>
           </Pressable>

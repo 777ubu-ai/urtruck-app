@@ -13,7 +13,7 @@ import { useTheme } from '../utils/ThemeContext';
 import { useShipperCeramicColors } from '../theme/designV1';
 import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
-import { CURRENCY_SYMBOLS } from '../utils/normalizers';
+import { CURRENCY_SYMBOLS, parseWeightTonsInput } from '../utils/normalizers';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import Feather from '@expo/vector-icons/Feather';
 import DatePicker from './DatePicker';
@@ -76,7 +76,11 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved, role 
     const pv = num(price);
     if (!price.trim() || pv == null || pv <= 0) { toast(t('val_price_required'), 'error'); return; }
     payload.price = Math.round(pv);
-    if (weight.trim() !== '' && num(weight) != null) payload.weight_tons = num(weight);
+    if (weight.trim() !== '') {
+      const weightTons = parseWeightTonsInput(weight);
+      if (weightTons == null || weightTons < 0) { toast(t('val_weight_invalid'), 'error'); return; }
+      payload.weight_tons = weightTons;
+    }
     if (volume.trim() !== '' && num(volume) != null) payload.volume_m3 = num(volume);
     if (truckType) payload.cargo_type = truckType;
     payload.payment_type = paymentType || '';  // '' → бэк снимет тип оплаты

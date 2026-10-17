@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { KeyboardSafeScrollView } from './ui/v1/KeyboardSafeLayout';
 import { useI18n } from '../utils/useI18n';
@@ -7,6 +7,7 @@ import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { vehicleAPI } from '../utils/vehicleAPI';
 import { CURRENCY_SYMBOLS } from '../utils/normalizers';
+import { acquireSingleFlight, releaseSingleFlight } from '../utils/singleFlightLock';
 
 // PR-C2 (BidModal P0): currency-aware quick prices.
 // До этого все chips и subtitle рендерились с hardcoded `$` —
@@ -73,6 +74,7 @@ export default function BidModal({
   const [bid, setBid] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const submitLockRef = useRef(null);
   const [error, setError] = useState('');
   // Ставку больше нельзя отправить (сессия истекла / ставка уже принята и т.п.):
   // блокируем кнопку, чтобы пользователь не жал повторно и не ловил ту же ошибку.
@@ -161,6 +163,7 @@ export default function BidModal({
       setError(msg[lang] || msg.RU);
       return;
     }
+    if (!acquireSingleFlight(submitLockRef, 'bid-submit')) return;
     setLoading(true);
     setError('');
     try {
@@ -218,6 +221,7 @@ export default function BidModal({
     } catch (e) {
       setError(t('no_connection'));
     } finally {
+      releaseSingleFlight(submitLockRef, 'bid-submit');
       setLoading(false);
     }
   };

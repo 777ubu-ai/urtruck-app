@@ -708,13 +708,33 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
 
 
 @chat_router.get("/rooms")
-def my_rooms(user=Depends(require_level(1))):
+def my_rooms(
+    user=Depends(require_level(1)),
+    partner_id: Optional[str] = None,
+    offset: int = 0,
+):
+    if partner_id is not None and (not partner_id.strip() or len(partner_id) > 128):
+        raise HTTPException(status_code=422, detail="invalid_partner_id")
+    if offset < 0 or offset > 1000000:
+        raise HTTPException(status_code=422, detail="invalid_offset")
     uid = user["id"]
     visible_statuses = ",".join("?" for _ in _DEAL_CHAT_STATUSES)
     demo_exclusion = "" if ENABLE_DEMO_CHAT else " AND r.participant_1 != ? AND r.participant_2 != ?"
     room_params = [uid, uid, uid, SUPPORT_ID, SUPPORT_ID, *_DEAL_CHAT_STATUSES]
+    partner_filter = ""
+    if partner_id is not None:
+        # Apply the caller/counterparty pair filter before LIMIT. This lets a
+        # profile action distinguish "no deal with this driver" from a deal
+        # room that fell outside the general recent-rooms window.
+        partner_filter = " AND ((r.participant_1 = ? AND r.participant_2 = ?) OR (r.participant_2 = ? AND r.participant_1 = ?))"
+        room_params.extend((uid, partner_id, uid, partner_id))
     if not ENABLE_DEMO_CHAT:
         room_params.extend((VOLODYA_ID, VOLODYA_ID))
+    pagination_sql = ""
+    partner_limit = 50
+    if partner_id is not None:
+        pagination_sql = " LIMIT ? OFFSET ?"
+        room_params.extend((partner_limit + 1, offset))
     with get_conn() as c:
         # Блок 5 аудита (P1-1, вариант B): per-room unread — тот же фильтр
         # sender_id != 'system', что и в /chat/unread ниже, чтобы карточка
@@ -746,9 +766,13 @@ def my_rooms(user=Depends(require_level(1))):
                       )
                     )
                 )
-              ){demo_exclusion}
-            ORDER BY r.last_at DESC LIMIT 50
+              ){partner_filter}{demo_exclusion}
+            ORDER BY {('r.created_at DESC, r.id DESC' if partner_id is not None else 'r.last_at DESC')}{pagination_sql if partner_id is not None else ' LIMIT 50'}
         """, room_params).fetchall()
+
+    partner_has_more = partner_id is not None and len(rows) > partner_limit
+    if partner_has_more:
+        rows = rows[:partner_limit]
 
     rooms = []
     for r in rows:
@@ -797,7 +821,15 @@ def my_rooms(user=Depends(require_level(1))):
     # отменённые). Support всегда виден. deal_status/is_support проставлены
     # обогащением выше.
     rooms = [r for r in rooms if r.get("is_support") or r.get("deal_status") in _DEAL_CHAT_STATUSES]
-    return {"rooms": rooms}
+    result = {"rooms": rooms}
+    if partner_id is not None:
+        result.update({
+            "partner_id": partner_id,
+            "partner_filter_applied": True,
+            "has_more": partner_has_more,
+            "next_offset": offset + partner_limit if partner_has_more else None,
+        })
+    return result
 
 
 def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:

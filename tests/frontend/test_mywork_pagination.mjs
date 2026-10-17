@@ -1,24 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { reconcileCreatedCargoOverlay } from '../../src/utils/createdCargoOverlay.js';
 
 const screen = readFileSync('src/screens/MyTripsScreen.js', 'utf8');
 const start = screen.indexOf('  const load = useCallback(');
 const end = screen.indexOf('\n  const { refreshing, onRefresh }', start);
+const initialEffectStart = screen.indexOf('  useEffect(() => {', end);
+const initialEffectEnd = screen.indexOf('\n\n  // 27.07:', initialEffectStart);
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const page = (ids, next = null, scope = 'fixture-A') => ({
   items: ids.map(id => ({ id, status: 'active' })), next_offset: next, archive_total: 70, scope,
 });
-function harness({ driver = false } = {}) {
-  const state = { data: null };
+function harness({ driver = false, createdCargo = null, token = 'fixture-A', data = null, pageRef = null } = {}) {
+  const state = { data, createdCargoOverlay: createdCargo };
   const calls = [];
   const env = {
-    pageRef: { current: { busy: false, nextOffset: null, scope: null } },
+    pageRef: { current: pageRef || { busy: false, nextOffset: null, scope: null } },
     loadRequestRef: { current: 0 }, mounted: { current: true }, isDriver: driver,
+    createdCargoOverlayRef: { current: createdCargo }, reconcileCreatedCargoOverlay,
     useCallback: fn => fn, withTimeout: promise => promise,
-    require: () => ({ storage: { get: async () => 'fixture-A' } }),
+    require: () => ({ storage: { get: async () => typeof token === 'function' ? token() : token } }),
     marketAPI: { myListings: args => new Promise(resolve => calls.push({ args, resolve })) },
     setData: value => { state.data = typeof value === 'function' ? value(state.data) : value; },
+    setCreatedCargoOverlay: value => { state.createdCargoOverlay = value; },
     setArchiveTotal: value => { state.archiveTotal = value; },
     setLoadError: value => { state.error = value; },
     setLoading() {}, setRefreshingList() {}, setLoadingMore() {}, console: { warn() {} },
@@ -83,6 +88,82 @@ test('смена аккаунта при append очищает чужие зап
   const first = load(); await tick(); h.calls[0].resolve(page(['private-A'], 50)); await first;
   const next = load({ append: true }); await tick(); h.calls[1].resolve(page(['B'], null, 'fixture-B')); await next;
   assert.deepEqual(h.state.data.my_cargos, []); assert.equal(h.state.data.authRequired, true);
+});
+
+test('истёкшая сессия при append очищает приватные карточки и временный груз', async () => {
+  const createdCargo = { id: 'optimistic-cargo', status: 'active' };
+  const h = harness({
+    token: null,
+    createdCargo,
+    data: { my_cargos: [{ id: 'private-cargo', status: 'active' }] },
+    pageRef: { busy: false, nextOffset: 50, scope: 'fixture-A' },
+  });
+
+  await h.render('searching')({ append: true });
+
+  assert.equal(h.state.createdCargoOverlay, null);
+  assert.equal(h.env.createdCargoOverlayRef.current, null);
+  assert.deepEqual(h.state.data, { my_trips: [], my_cargos: [], authRequired: true });
+  assert.equal(h.calls.length, 0, 'без сессии защищённая страница не запрашивается');
+  assert.equal(h.env.pageRef.current.nextOffset, null);
+});
+
+test('запаздывающий null-токен старого запроса не очищает данные новой сессии', async () => {
+  let resolveOldToken;
+  let reads = 0;
+  const oldToken = new Promise(resolve => { resolveOldToken = resolve; });
+  const h = harness({
+    token: () => (++reads === 1 ? oldToken : Promise.resolve('fixture-B')),
+    data: { my_cargos: [{ id: 'old-page', status: 'active' }] },
+    pageRef: { busy: false, nextOffset: null, scope: null },
+  });
+  const oldRequest = h.render('searching')();
+  const freshRequest = h.render('searching')();
+  await tick();
+  h.calls[0].resolve(page(['account-B-cargo'], null, 'fixture-B'));
+  await freshRequest;
+  const newOverlay = { id: 'new-session-overlay', status: 'active' };
+  h.env.createdCargoOverlayRef.current = newOverlay;
+  h.state.createdCargoOverlay = newOverlay;
+
+  resolveOldToken(null);
+  await oldRequest;
+
+  assert.deepEqual(h.state.data.my_cargos.map(item => item.id), ['account-B-cargo']);
+  assert.equal(h.state.createdCargoOverlay, newOverlay);
+});
+
+test('успешный authoritative refresh clears an optimistic cargo omitted after acceptance', async () => {
+  const createdCargo = { id: 'accepted-cargo', status: 'active', cargo_desc: 'before offer' };
+  const h = harness({ createdCargo }); const load = h.render('searching');
+  const request = load(); await tick();
+  h.calls[0].resolve(page(['other-active-cargo']));
+  await request;
+  assert.equal(h.state.createdCargoOverlay, null);
+  assert.deepEqual(h.state.data.my_cargos.map(item => item.id), ['other-active-cargo']);
+});
+
+test('смена вкладки не возвращает оптимистичный груз после authoritative refresh', async () => {
+  const createdCargo = { id: 'accepted-cargo', status: 'active', cargo_desc: 'before offer' };
+  const h = harness({ createdCargo });
+  const runInitialEffect = tab => new Function(
+    'useEffect', 'justCreatedTrip', 'justCreatedCargo', 'setData', 'setLoading', 'load', 'isDriver',
+    screen.slice(initialEffectStart, initialEffectEnd),
+  )((callback) => callback(), null, createdCargo, h.env.setData, h.env.setLoading, h.render(tab), false);
+
+  runInitialEffect('active');
+  await tick();
+  h.calls[0].resolve(page(['other-active-cargo']));
+  await tick();
+  assert.equal(h.state.createdCargoOverlay, null);
+  assert.deepEqual(h.state.data.my_cargos.map(item => item.id), ['other-active-cargo']);
+
+  runInitialEffect('archive');
+  await tick();
+  assert.deepEqual(h.state.data.my_cargos.map(item => item.id), ['other-active-cargo']);
+  h.calls[1].resolve(page(['archived-cargo']));
+  await tick();
+  assert.deepEqual(h.state.data.my_cargos.map(item => item.id), ['archived-cargo']);
 });
 
 const api = readFileSync('src/utils/marketAPI.js', 'utf8');
