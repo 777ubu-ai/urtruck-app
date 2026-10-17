@@ -4,10 +4,10 @@
  * Keep this separate from production Android metadata: QA2 artifacts are
  * installed directly on physical test devices and never submitted to Play.
  */
-// PR561 snapshot candidate 211040112 is installed on Xiaomi and OPPO.
-// Advance for the MapKit listener fix without clearing either QA package.
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 211040112;
-const QA2_ANDROID_VERSION_CODE = 211040113;
+// PR561 MapKit user-layer fix 211040113 is installed on Xiaomi and OPPO.
+// Advance for MapKit lifecycle cleanup without clearing either QA package.
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 211040113;
+const QA2_ANDROID_VERSION_CODE = 211040114;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {

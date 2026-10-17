@@ -240,59 +240,6 @@ index 0000000..51aa151
 +		INJECTED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml
 +	android:minSdkVersion
 +		INJECTED from /private/tmp/urtruck-security-upgrade-20260919/node_modules/react-native-yamap/android/src/main/AndroidManifest.xml
-diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt
-index 54d8a0f..0d370d1 100644
---- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt
-+++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt
-@@ -85,6 +85,7 @@ class ClusteredYamapViewManager internal constructor() : ViewGroupManager<Cluste
-                 )
-             )
-             .build()
-+            .toMutableMap()
-     }
-
-     override fun getCommandsMap(): Map<String, Int>? {
-@@ -128,7 +129,7 @@ class ClusteredYamapViewManager internal constructor() : ViewGroupManager<Cluste
-             }
-
-             "findRoutes" -> if (args != null) {
--                findRoutes(view, args.getArray(0), args.getArray(1), args.getString(2))
-+                findRoutes(view, args.getArray(0), args.getArray(1), requireNotNull(args.getString(2)))
-             }
-
-             "setZoom" -> if (args != null) {
-@@ -152,11 +153,11 @@ class ClusteredYamapViewManager internal constructor() : ViewGroupManager<Cluste
-             }
-
-             "getScreenPoints" -> if (args != null) {
--                view.emitWorldToScreenPoints(args.getArray(0), args.getString(1))
-+                view.emitWorldToScreenPoints(requireNotNull(args.getArray(0)), args.getString(1))
-             }
-
-             "getWorldPoints" -> if (args != null) {
--                view.emitScreenToWorldPoints(args.getArray(0), args.getString(1))
-+                view.emitScreenToWorldPoints(requireNotNull(args.getArray(0)), args.getString(1))
-             }
-
-             else -> throw IllegalArgumentException(
-@@ -171,7 +172,7 @@ class ClusteredYamapViewManager internal constructor() : ViewGroupManager<Cluste
-
-     @ReactProp(name = "clusteredMarkers")
-     fun setClusteredMarkers(view: View, points: ReadableArray) {
--        castToYaMapView(view).setClusteredMarkers(points.toArrayList())
-+        castToYaMapView(view).setClusteredMarkers(ArrayList(points.toArrayList().filterNotNull()))
-     }
-
-     @ReactProp(name = "clusterColor")
-@@ -243,7 +244,7 @@ class ClusteredYamapViewManager internal constructor() : ViewGroupManager<Cluste
-             val vehicles = ArrayList<String>()
-             if (jsVehicles != null) {
-                 for (i in 0 until jsVehicles.size()) {
--                    vehicles.add(jsVehicles.getString(i))
-+                    jsVehicles.getString(i)?.let(vehicles::add)
-                 }
-             }
-             castToYaMapView(view).findRoutes(points, vehicles, id)
 diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapCircleManager.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapCircleManager.kt
 index 85be269..8769db6 100644
 --- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapCircleManager.kt
@@ -350,50 +297,6 @@ index 8be99c8..97776e8 100644
      }
 
      private fun castToPolylineView(view: View): YamapPolyline {
-diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt
-index 8b05905..cea9bfb 100644
---- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt
-+++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt
-@@ -85,6 +85,7 @@ class YamapViewManager internal constructor() : ViewGroupManager<YamapView>() {
-                 )
-             )
-             .build()
-+            .toMutableMap()
-     }
-
-     override fun getCommandsMap(): Map<String, Int>? {
-@@ -128,7 +129,7 @@ class YamapViewManager internal constructor() : ViewGroupManager<YamapView>() {
-             }
-
-             "findRoutes" -> if (args != null) {
--                findRoutes(view, args.getArray(0), args.getArray(1), args.getString(2))
-+                findRoutes(view, args.getArray(0), args.getArray(1), requireNotNull(args.getString(2)))
-             }
-
-             "setZoom" -> if (args != null) {
-@@ -152,11 +153,11 @@ class YamapViewManager internal constructor() : ViewGroupManager<YamapView>() {
-             }
-
-             "getScreenPoints" -> if (args != null) {
--                view.emitWorldToScreenPoints(args.getArray(0), args.getString(1))
-+                view.emitWorldToScreenPoints(requireNotNull(args.getArray(0)), args.getString(1))
-             }
-
-             "getWorldPoints" -> if (args != null) {
--                view.emitScreenToWorldPoints(args.getArray(0), args.getString(1))
-+                view.emitScreenToWorldPoints(requireNotNull(args.getArray(0)), args.getString(1))
-             }
-
-             else -> throw IllegalArgumentException(
-@@ -237,7 +238,7 @@ class YamapViewManager internal constructor() : ViewGroupManager<YamapView>() {
-
-             if (jsVehicles != null) {
-                 for (i in 0 until jsVehicles.size()) {
--                    vehicles.add(jsVehicles.getString(i))
-+                    jsVehicles.getString(i)?.let(vehicles::add)
-                 }
-             }
-
 diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt
 --- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt
 +++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/view/YamapView.kt
@@ -488,3 +391,130 @@ diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yama
                          transports[type] = list
                      }
                      routeMetadata.putString("type", type)
+diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt
+--- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt
++++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/YamapViewManager.kt
+@@ -87,0 +88 @@
++            .toMutableMap()
+@@ -131 +132 @@
+-                findRoutes(view, args.getArray(0), args.getArray(1), args.getString(2))
++                findRoutes(view, args.getArray(0), args.getArray(1), requireNotNull(args.getString(2)))
+@@ -155 +156 @@
+-                view.emitWorldToScreenPoints(args.getArray(0), args.getString(1))
++                view.emitWorldToScreenPoints(requireNotNull(args.getArray(0)), args.getString(1))
+@@ -159 +160 @@
+-                view.emitScreenToWorldPoints(args.getArray(0), args.getString(1))
++                view.emitScreenToWorldPoints(requireNotNull(args.getArray(0)), args.getString(1))
+@@ -179,2 +180 @@
+-        MapKitFactory.getInstance().onStart()
+-        view.onStart()
++        MapKitViewLifecycle.add(view)
+@@ -182,0 +183,5 @@
++    }
++
++    override fun onDropViewInstance(view: YamapView) {
++        MapKitViewLifecycle.remove(view)
++        super.onDropViewInstance(view)
+@@ -240 +245 @@
+-                    vehicles.add(jsVehicles.getString(i))
++                    jsVehicles.getString(i)?.let(vehicles::add)
+diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt
+--- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt
++++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/ClusteredYamapViewManager.kt
+@@ -87,0 +88 @@
++            .toMutableMap()
+@@ -131 +132 @@
+-                findRoutes(view, args.getArray(0), args.getArray(1), args.getString(2))
++                findRoutes(view, args.getArray(0), args.getArray(1), requireNotNull(args.getString(2)))
+@@ -155 +156 @@
+-                view.emitWorldToScreenPoints(args.getArray(0), args.getString(1))
++                view.emitWorldToScreenPoints(requireNotNull(args.getArray(0)), args.getString(1))
+@@ -159 +160 @@
+-                view.emitScreenToWorldPoints(args.getArray(0), args.getString(1))
++                view.emitScreenToWorldPoints(requireNotNull(args.getArray(0)), args.getString(1))
+@@ -174 +175 @@
+-        castToYaMapView(view).setClusteredMarkers(points.toArrayList())
++        castToYaMapView(view).setClusteredMarkers(ArrayList(points.toArrayList().filterNotNull()))
+@@ -189,2 +190 @@
+-        MapKitFactory.getInstance().onStart()
+-        view.onStart()
++        MapKitViewLifecycle.add(view)
+@@ -191,0 +192,5 @@
++    }
++
++    override fun onDropViewInstance(view: ClusteredYamapView) {
++        MapKitViewLifecycle.remove(view)
++        super.onDropViewInstance(view)
+@@ -246 +251 @@
+-                    vehicles.add(jsVehicles.getString(i))
++                    jsVehicles.getString(i)?.let(vehicles::add)
+diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/RNYamapModule.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/RNYamapModule.kt
+--- a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/RNYamapModule.kt
++++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/RNYamapModule.kt
+@@ -6,0 +7 @@
++import com.facebook.react.bridge.LifecycleEventListener
+@@ -15 +16 @@
+-    ReactContextBaseJavaModule(context) {
++    ReactContextBaseJavaModule(context), LifecycleEventListener {
+@@ -17,0 +19 @@
++        context?.addLifecycleEventListener(this)
+@@ -18,0 +21,4 @@
++
++    override fun onHostResume() = MapKitViewLifecycle.resume()
++    override fun onHostPause() = MapKitViewLifecycle.pause()
++    override fun onHostDestroy() = MapKitViewLifecycle.pause()
+@@ -43 +48,0 @@
+-                MapKitFactory.getInstance().onStart()
+diff --git a/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/MapKitViewLifecycle.kt b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/MapKitViewLifecycle.kt
+new file mode 100644
+--- /dev/null
++++ b/node_modules/react-native-yamap/android/src/main/java/ru/vvdev/yamap/MapKitViewLifecycle.kt
+@@ -0,0 +1,48 @@
++package ru.vvdev.yamap
++
++import com.yandex.mapkit.MapKitFactory
++import com.yandex.mapkit.mapview.MapView
++
++// Keep the SDK and its location listeners active only while a React map is visible.
++internal object MapKitViewLifecycle {
++    private val views = mutableSetOf<MapView>()
++    private var foreground = true
++    private var started = false
++
++    fun add(view: MapView) {
++        if (!views.add(view)) return
++        if (!foreground) return
++        if (!started) {
++            MapKitFactory.getInstance().onStart()
++            started = true
++        }
++        view.onStart()
++    }
++
++    fun remove(view: MapView) {
++        if (!views.remove(view)) return
++        if (foreground && started) view.onStop()
++        if (views.isEmpty() && started) {
++            MapKitFactory.getInstance().onStop()
++            started = false
++        }
++    }
++
++    fun pause() {
++        if (!foreground) return
++        foreground = false
++        if (!started) return
++        views.forEach(MapView::onStop)
++        MapKitFactory.getInstance().onStop()
++        started = false
++    }
++
++    fun resume() {
++        if (foreground) return
++        foreground = true
++        if (views.isEmpty()) return
++        MapKitFactory.getInstance().onStart()
++        started = true
++        views.forEach(MapView::onStart)
++    }
++}
