@@ -46,6 +46,8 @@ import SecondaryButton from '../components/ui/actions/SecondaryButton';
 import DestructiveButton from '../components/ui/actions/DestructiveButton';
 import PriceSavingsBadge from '../components/deal/PriceSavingsBadge';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
+import { acquireSingleFlight, releaseSingleFlight } from '../utils/singleFlightLock';
+import { bidActionFailureMessage } from '../utils/bidActionFeedback';
 
 
 // HOT-003: скрываем техмусор из description (остатки init_db, стектрейсы и т.п.)
@@ -181,6 +183,11 @@ export default function CargoDetail({ navigation, route }) {
   // JSX paths read defensively. Closures (handlers, useEffect) reference `c`
   // freshly via the latest render, like any other derived value.
   const [accepting, setAccepting] = useState(null);
+  const [confirmingBid, setConfirmingBid] = useState(null);
+  const acceptConfirmLock = React.useRef(null);
+  const rejectBidLock = React.useRef(null);
+  const counterBidLock = React.useRef(null);
+  const [counterBidAction, setCounterBidAction] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const [cancelling, setCancelling] = useState(null);
   const [chatRoomId, setChatRoomId] = useState(null);
@@ -372,6 +379,8 @@ export default function CargoDetail({ navigation, route }) {
   };
 
   const acceptCounter = async (bid) => {
+    if (!acquireSingleFlight(counterBidLock, bid.id)) return;
+    setCounterBidAction(bid.id);
     try {
       const r = await marketAPI.acceptCounterBid(bid.id);
       if (r.ok) {
@@ -383,24 +392,32 @@ export default function CargoDetail({ navigation, route }) {
         // в чат сделки, а не «ищите сами кнопку внизу карточки».
         if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
       } else {
-        toast(r.detail || t('accept_failed'), 'error');
+        toast(bidActionFailureMessage(r, 'accept_failed', t), 'error');
       }
     } catch {
       toast(t('no_connection'), 'error');
+    } finally {
+      releaseSingleFlight(counterBidLock, bid.id);
+      setCounterBidAction(null);
     }
   };
 
   const declineCounter = async (bid) => {
+    if (!acquireSingleFlight(counterBidLock, bid.id)) return;
+    setCounterBidAction(bid.id);
     try {
       const r = await marketAPI.declineCounterBid(bid.id);
       if (r.ok) {
         toast('↩ ' + t('counter_declined'), 'success');
         loadBids();
       } else {
-        toast(r.detail || t('reject_failed'), 'error');
+        toast(bidActionFailureMessage(r, 'reject_failed', t), 'error');
       }
     } catch {
       toast(t('no_connection'), 'error');
+    } finally {
+      releaseSingleFlight(counterBidLock, bid.id);
+      setCounterBidAction(null);
     }
   };
 
@@ -725,6 +742,7 @@ export default function CargoDetail({ navigation, route }) {
                     onPress={() => navigation.navigate('DriverDetail', {
                       driver: { id: b.bidderId, name: b.name, rating: b.rating, reviews: b.reviews, verified: b.verified, _server: true, _isDriver: true },
                       role,
+                      returnToOffers: true,
                     })}
                   >
                     <Text style={[s.bidName, { color: theme.text }]}>{b.name}{b.isMine ? ' ' + t('you_marker') : (b.bidderId ? ' ›' : '')}</Text>
@@ -780,30 +798,38 @@ export default function CargoDetail({ navigation, route }) {
                       label={`${t('accept_bid_btn')} ${formatPrice(b.amount, c.currency || 'USD', t)}`}
                       numberOfLines={2}
                       loading={accepting === b.id}
-                      disabled={!!accepting || !!rejecting}
+                      disabled={!!accepting || !!rejecting || !!confirmingBid}
                       success={dealStatus === 'accepted' && dealId != null}
                       onPress={async () => {
+                        if (!acquireSingleFlight(acceptConfirmLock, b.id)) return;
+                        setConfirmingBid(b.id);
                         const sum = formatPrice(b.amount, c.currency);
                         const msg = t('accept_bid_confirm').replace('{sum}', sum);
-                        const ok = await askConfirm(t('accept_bid_confirm_title'), msg, t('accept_bid_btn'));
-                        if (!ok) return;
-                        setAccepting(b.id);
                         try {
-                          const r = await marketAPI.acceptBid(b.id);
-                          if (r.ok) {
-                            toast('✓ ' + t('driver_chosen'), 'success');
-                            if (r.chat_room_id) setChatRoomId(r.chat_room_id);
-                            if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
-                            loadBids();
-                            // WhatsApp-упрощение (04.08.2026, п.9 ТЗ): сразу в чат сделки.
-                            if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
-                          } else {
-                            toast(r.detail || t('accept_failed'), 'error');
+                          const ok = await askConfirm(t('accept_bid_confirm_title'), msg, t('accept_bid_btn'));
+                          if (!ok) return;
+                          setAccepting(b.id);
+                          try {
+                            const r = await marketAPI.acceptBid(b.id);
+                            if (r.ok) {
+                              toast('✓ ' + t('driver_chosen'), 'success');
+                              if (r.chat_room_id) setChatRoomId(r.chat_room_id);
+                              if (r.deal_id) { setDealId(r.deal_id); setDealStatus('accepted'); }
+                              loadBids();
+                              // WhatsApp-упрощение (04.08.2026, п.9 ТЗ): сразу в чат сделки.
+                              if (r.chat_room_id) navigation.navigate('Chat', { roomId: r.chat_room_id, dealId: r.deal_id, role });
+                            } else {
+                              toast(bidActionFailureMessage(r, 'accept_failed', t), 'error');
+                            }
+                          } catch {
+                            toast(t('no_connection'), 'error');
+                          } finally {
+                            setAccepting(null);
                           }
-                        } catch {
-                          toast(t('no_connection'), 'error');
+                        } finally {
+                          releaseSingleFlight(acceptConfirmLock, b.id);
+                          setConfirmingBid(null);
                         }
-                        setAccepting(null);
                       }}
                     />
                     <SecondaryButton
@@ -811,12 +837,13 @@ export default function CargoDetail({ navigation, route }) {
                       role="client"
                       icon="🔁"
                       label={t('counter_offer')}
-                      disabled={!!accepting || !!rejecting}
+                      disabled={!!accepting || !!rejecting || !!confirmingBid}
                       onPress={() => sendCounter(b)}
                     />
                     <TouchableOpacity
                       testID="bid-reject"
                       onPress={async () => {
+                        if (!acquireSingleFlight(rejectBidLock, b.id)) return;
                         setRejecting(b.id);
                         try {
                           const r = await marketAPI.rejectBid(b.id);
@@ -824,14 +851,16 @@ export default function CargoDetail({ navigation, route }) {
                             toast('❌ ' + t('bid_rejected_toast'), 'success');
                             loadBids();
                           } else {
-                            toast(r.detail || t('reject_failed'), 'error');
+                            toast(bidActionFailureMessage(r, 'reject_failed', t), 'error');
                           }
                         } catch {
                           toast(t('no_connection'), 'error');
+                        } finally {
+                          releaseSingleFlight(rejectBidLock, b.id);
+                          setRejecting(null);
                         }
-                        setRejecting(null);
                       }}
-                      disabled={!!accepting || !!rejecting}
+                      disabled={!!accepting || !!rejecting || !!confirmingBid}
                       style={{ alignSelf: 'center', maxWidth: '100%', paddingVertical: 6, paddingHorizontal: 10 }}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     >
@@ -853,15 +882,19 @@ export default function CargoDetail({ navigation, route }) {
                     <TouchableOpacity
                       testID="bid-reject"
                       onPress={async () => {
+                        if (!acquireSingleFlight(rejectBidLock, b.id)) return;
                         setRejecting(b.id);
                         try {
                           const r = await marketAPI.rejectBid(b.id);
                           if (r.ok) { toast('❌ ' + t('bid_rejected_toast'), 'success'); loadBids(); }
-                          else toast(r.detail || t('reject_failed'), 'error');
+                          else toast(bidActionFailureMessage(r, 'reject_failed', t), 'error');
                         } catch { toast(t('no_connection'), 'error'); }
-                        setRejecting(null);
+                        finally {
+                          releaseSingleFlight(rejectBidLock, b.id);
+                          setRejecting(null);
+                        }
                       }}
-                      disabled={!!rejecting || !!accepting}
+                      disabled={!!rejecting || !!accepting || !!confirmingBid}
                       style={{ alignSelf: 'center', maxWidth: '100%', paddingVertical: 6, paddingHorizontal: 10 }}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     >
@@ -882,12 +915,15 @@ export default function CargoDetail({ navigation, route }) {
                       icon="✓"
                       label={`${t('accept_counter')} ${formatPrice(b.counterAmount, c.currency || 'USD', t)}`}
                       numberOfLines={2}
+                      loading={counterBidAction === b.id}
+                      disabled={!!counterBidAction}
                       onPress={() => acceptCounter(b)}
                     />
                     <DestructiveButton
                       testID="bid-decline-counter"
                       icon="↩"
                       label={t('decline_counter')}
+                      disabled={!!counterBidAction}
                       onPress={() => declineCounter(b)}
                     />
                   </View>
@@ -973,12 +1009,15 @@ export default function CargoDetail({ navigation, route }) {
                     icon="✓"
                     label={`${t('accept_counter')} ${formatPrice(myPendingBid.counterAmount, c.currency, t)}`}
                     numberOfLines={2}
+                    loading={counterBidAction === myPendingBid.id}
+                    disabled={!!counterBidAction}
                     onPress={() => acceptCounter(myPendingBid)}
                   />
                   <DestructiveButton
                     testID="cargo-counter-decline"
                     icon="↩"
                     label={t('decline_counter')}
+                    disabled={!!counterBidAction}
                     onPress={() => declineCounter(myPendingBid)}
                   />
                 </View>
