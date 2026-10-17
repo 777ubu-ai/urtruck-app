@@ -1,6 +1,8 @@
 import React from 'react';
-import { Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import { foregroundLocationCopy } from '../../utils/locationModeCopy';
+import { FOREGROUND_LOCATION_ONLY } from '../../utils/backgroundLocation';
 
 const COPY = {
   RU: {
@@ -102,14 +104,15 @@ export default function BackgroundLocationDisclosureModal({
   onOpenSettings,
   onCheckAgain,
 }) {
-  const ui = COPY[lang] || COPY.RU;
+  const selectedLang = COPY[lang] ? lang : 'RU';
+  const ui = { ...COPY[selectedLang], ...(FOREGROUND_LOCATION_ONLY && Platform.OS !== 'web' ? foregroundLocationCopy[selectedLang] : {}) };
   const settingsMode = mode === 'settings';
   const canOpenNativeSettings = Platform.OS !== 'web';
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={s.backdrop} testID="background-location-disclosure">
-        <View style={s.card}>
+        <ScrollView style={s.scroll} contentContainerStyle={s.card} bounces={false}>
           <View style={s.heroIcon}>
             <Feather name="map-pin" size={38} color="#1264E6" />
           </View>
@@ -174,13 +177,14 @@ export default function BackgroundLocationDisclosureModal({
               </TouchableOpacity>
             </>
           )}
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
+  scroll: { width: '100%', maxWidth: 520, maxHeight: '90%', alignSelf: 'center', borderRadius: 28 },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(9, 14, 20, 0.60)',

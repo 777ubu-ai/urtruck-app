@@ -8,7 +8,7 @@ const hook = readFileSync('src/hooks/useDealLocationBroadcast.js', 'utf8');
 test('headless GPS refreshes server-approved deal ids before posting', () => {
   assert.match(bg, /refreshBackgroundActiveDealIds/);
   assert.match(bg, /market\/tracking\/active/);
-  assert.match(bg, /if \(!response\?\.ok\) return fallback/);
+  assert.match(bg, /if \(!response\?\.ok\) return \{ ids: fallback, confirmed: false \}/);
   assert.match(bg, /Offline is not the same as \"no active deals\"/);
 });
 

@@ -1,3 +1,5 @@
+import { FOREGROUND_LOCATION_ONLY } from '../utils/backgroundLocation';
+import { foregroundLocationCopy } from '../utils/locationModeCopy';
 import React from 'react';
 import { keyboardHostOffset } from '../utils/keyboardHostOffset';
 import {
@@ -2218,6 +2220,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 />
               ) : null}
             </View>
+            {FOREGROUND_LOCATION_ONLY ? <Text style={[s.finishedGpsHint, { color: colors.textMuted }]} testID="deal-gps-foreground-only-notice">{(foregroundLocationCopy[language] || foregroundLocationCopy.RU).background}</Text> : null}
             {!mapExpanded ? (
               <TripMapInfoSheet
                 copy={ui}

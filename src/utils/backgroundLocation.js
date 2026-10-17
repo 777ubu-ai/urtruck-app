@@ -3,14 +3,18 @@
 // foreground permission, затем включает "Разрешить всегда" для активного
 // рейса. Координаты отправляются только по серверно-разрешённым сделкам.
 // Web показывает тот же per-trip disclosure перед browser location permission.
-// iOS сохраняет отдельный background-location flow.
-import { Platform } from 'react-native';
+// Временный foreground-only режим действует на iOS и Android.
+import { Platform, AppState } from 'react-native';
+import { captureForegroundPosition } from './foregroundLocation';
 import { storage, durableStorage } from './storage';
 import { createLocationQueue, locationSampleId } from './locationQueue';
 import { t } from './i18n';
 import { API_BASE } from '../config/env';
 import { requestLocationPermissionThroughDisclosure } from './locationPermissionCoordinator';
 export { openLocationSettings } from './locationSettings';
+
+// Временный режим по решению владельца от 17.10.2026: GPS только при открытом приложении.
+export const FOREGROUND_LOCATION_ONLY = true;
 
 export const BG_LOCATION_TASK = 'urtruck-deal-location';
 const BG_DEALS_KEY = 'ur_bg_deal_ids';
@@ -51,6 +55,7 @@ function backgroundTrackingOptions(locationModule) {
 }
 
 async function restoreTrackingAfterCancelledLogout(locationModule, expectedToken) {
+  if (FOREGROUND_LOCATION_ONLY) return await storage.get(TOKEN_KEY) === expectedToken;
   try {
     if (await storage.get(TOKEN_KEY) !== expectedToken) return false;
     const permission = await getBackgroundLocationPermissionState();
@@ -123,6 +128,7 @@ function sampleForDeal(dealId, coords) {
 }
 
 async function postLocationSample(sample, token) {
+  if (FOREGROUND_LOCATION_ONLY && AppState.currentState !== 'active') return false;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
@@ -154,7 +160,7 @@ async function postLocationSample(sample, token) {
 
 async function refreshBackgroundActiveDealIds(token, fallbackIds = []) {
   const fallback = Array.isArray(fallbackIds) ? fallbackIds : [];
-  if (!token) return fallback;
+  if (!token) return { ids: fallback, confirmed: false };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
@@ -162,18 +168,18 @@ async function refreshBackgroundActiveDealIds(token, fallbackIds = []) {
       headers: { Authorization: `Bearer ${token}` },
       signal: controller.signal,
     });
-    if (!response?.ok) return fallback;
+    if (!response?.ok) return { ids: fallback, confirmed: false };
     const data = await response.json().catch(() => ({}));
     if (data?.ok !== true || !Array.isArray(data.deal_ids)
-        || !data.deal_ids.every((id) => typeof id === 'string' && id.length > 0)) return fallback;
-    if (await storage.get(TOKEN_KEY) !== token) return [];
+        || !data.deal_ids.every((id) => typeof id === 'string' && id.length > 0)) return { ids: fallback, confirmed: false };
+    if (await storage.get(TOKEN_KEY) !== token) return { ids: [], confirmed: false };
     const ids = [...new Set(data.deal_ids)];
     await storage.set(BG_DEALS_KEY, JSON.stringify(ids));
-    return ids;
+    return { ids, confirmed: true };
   } catch {
     // Offline is not the same as "no active deals". Keep the last server-
     // approved IDs so samples continue entering the persistent FIFO.
-    return fallback;
+    return { ids: fallback, confirmed: false };
   } finally {
     clearTimeout(timeout);
   }
@@ -189,6 +195,7 @@ async function pushLocationToDealsNow(coords, explicitDealIds = null, epoch = lo
     const storedIds = rawIds ? JSON.parse(rawIds) : [];
     let ids = Array.isArray(explicitDealIds) ? explicitDealIds : storedIds;
     if (!token || epoch !== locationSessionEpoch) return;
+    if (FOREGROUND_LOCATION_ONLY && AppState.currentState !== 'active') return;
     const ownerId = JSON.parse(await storage.get('ur_session') || 'null')?.user?.id;
     if (!ownerId) return;
     if (epoch !== locationSessionEpoch || await storage.get(TOKEN_KEY) !== token) return;
@@ -207,14 +214,19 @@ async function pushLocationToDealsNow(coords, explicitDealIds = null, epoch = lo
     // Весь callback записан до первого сетевого ожидания, даже offline.
     if (epoch !== locationSessionEpoch || await storage.get(TOKEN_KEY) !== token) return;
     await persist(ids);
+    let activeResult = null;
     if (!Array.isArray(explicitDealIds)) {
-      ids = await refreshBackgroundActiveDealIds(token, ids);
+      activeResult = await refreshBackgroundActiveDealIds(token, ids);
+      ids = activeResult.ids;
     }
-    if (!Array.isArray(ids) || !ids.length) return;
+    if (!Array.isArray(ids) || !ids.length) {
+      return { ok: true, trackingIdleConfirmed: activeResult?.confirmed === true };
+    }
     if (await storage.get(TOKEN_KEY) !== token) return;
     await persist(ids);
     for (const id of ids) {
       await locationQueue.drain(id, (sample) => postLocationSample(sample, token), async () => {
+        if (FOREGROUND_LOCATION_ONLY && AppState.currentState !== 'active') return false;
         if (await storage.get(TOKEN_KEY) !== token) return false;
         const active = JSON.parse(await storage.get(BG_DEALS_KEY) || '[]');
         return active.includes(id);
@@ -240,15 +252,25 @@ export function pushLocationToDeals(coords, explicitDealIds = null) {
 if (TaskManager) {
   try {
     TaskManager.defineTask(BG_LOCATION_TASK, async ({ data, error } = {}) => {
+      if (FOREGROUND_LOCATION_ONLY) { await stopBackgroundTracking(); return; }
       if (error) return;
+      const epoch = locationSessionEpoch;
+      const token = await storage.get(TOKEN_KEY);
       const locations = data?.locations;
-      if (Array.isArray(locations) && locations.length) {
-        await pushLocationToDeals(locations.map((item) => ({ ...item.coords, timestamp: item.timestamp ?? item.coords?.timestamp })));
-      } else {
-        // Пустой callback только повторяет очередь. Старый GPS не становится
-        // новым heartbeat: свежесть подтверждается настоящим измерением ОС.
-        await pushLocationToDeals(null);
-      }
+      const samples = Array.isArray(locations) && locations.length
+        ? locations.map((item) => ({ ...item.coords, timestamp: item.timestamp ?? item.coords?.timestamp }))
+        : null;
+      // Ожидаем FIFO вне lifecycle-lock: logout может ждать ту же очередь.
+      // Обратный порядок блокировок вызвал бы взаимное ожидание.
+      const result = await pushLocationToDeals(samples);
+      if (!result?.trackingIdleConfirmed || !token) return;
+      await runTrackingLifecycle(async () => {
+        if (epoch !== locationSessionEpoch || await storage.get(TOKEN_KEY) !== token) return;
+        const ids = JSON.parse(await storage.get(BG_DEALS_KEY) || '[]');
+        // Новый начатый рейс отменяет устаревшее решение об остановке.
+        if (!Array.isArray(ids) || ids.length) return;
+        await stopBackgroundTrackingNow();
+      });
     });
   } catch { /* duplicate definition during hot reload is safe */ }
 }
@@ -277,10 +299,10 @@ export async function getBackgroundLocationPermissionState() {
 
   try {
     const fg = await locationModule.getForegroundPermissionsAsync();
-    if (Platform.OS === 'web') {
+    if (Platform.OS === 'web' || FOREGROUND_LOCATION_ONLY) {
       return {
         supported: true,
-        platform: 'web',
+        platform: Platform.OS,
         foreground: fg.status,
         foregroundCanAskAgain: fg.canAskAgain !== false,
         background: 'not_applicable',
@@ -358,6 +380,7 @@ export async function requestForegroundLocationPermission() {
 }
 
 export async function requestBackgroundLocationPermission() {
+  if (FOREGROUND_LOCATION_ONLY) return requestForegroundLocationPermission();
   if (Platform.OS === 'web') return { ok: true, foregroundOnly: true };
 
   const locationModule = await resolveLocationModule();
@@ -417,16 +440,17 @@ export async function ensureBackgroundLocationPermission() {
 
   const fg = await requestForegroundLocationPermission();
   if (!fg.ok) return fg;
+  if (FOREGROUND_LOCATION_ONLY) return { ...fg, foregroundOnly: true };
   const bg = await requestBackgroundLocationPermission();
   if (!bg.ok) return bg;
   return { ok: true, foregroundOnly: false };
 }
 
-export async function getCurrentLocationPayload() {
+export async function getCurrentLocationPayload(options = {}) {
   const locationModule = await resolveLocationModule();
   if (!locationModule) return null;
   try {
-    const pos = await locationModule.getCurrentPositionAsync({ accuracy: locationModule.Accuracy.Balanced });
+    const pos = await captureForegroundPosition(locationModule, { ...options, appState: AppState });
     const c = pos?.coords;
     if (!c || !Number.isFinite(c.latitude) || !Number.isFinite(c.longitude)) return null;
     return {
@@ -450,10 +474,7 @@ export async function getLocationHealth() {
     if (permission.status !== 'granted') return { state: 'permission_denied' };
     const provider = await locationModule.getProviderStatusAsync?.();
     if (provider && provider.locationServicesEnabled === false) return { state: 'system_disabled' };
-    const position = await Promise.race([
-      locationModule.getCurrentPositionAsync({ accuracy: locationModule.Accuracy.Balanced }),
-      new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
-    ]);
+    const position = await captureForegroundPosition(locationModule, { appState: AppState });
     const c = position?.coords;
     if (!c || !Number.isFinite(c.latitude) || !Number.isFinite(c.longitude)) return { state: 'no_fix' };
     return { state: 'ready', point: { lat: c.latitude, lng: c.longitude } };
@@ -468,6 +489,10 @@ export async function getLocationHealth() {
 export async function startBackgroundTracking({ forceReconfigure = false } = {}) {
   const epoch = locationSessionEpoch;
   return runTrackingLifecycle(async () => {
+    if (FOREGROUND_LOCATION_ONLY) {
+      const result = await stopBackgroundTrackingNow();
+      return { ok: result.ok, foregroundOnly: true, reason: result.reason };
+    }
     if (epoch !== locationSessionEpoch || !await storage.get(TOKEN_KEY)) return { ok: false, reason: 'session_changed' };
     if (Platform.OS === 'web') return { ok: false, reason: 'background_unavailable', foregroundOnly: true };
     const locationModule = await resolveLocationModule();
@@ -558,6 +583,7 @@ export function stopBackgroundTrackingForLogout(expectedToken, { signal } = {}) 
 }
 
 export function restoreBackgroundTrackingForLogoutFailure(expectedToken, wasStopped = false) {
+  if (FOREGROUND_LOCATION_ONLY) return Promise.resolve({ ok: true, restored: false, foregroundOnly: true });
   if (!wasStopped) return Promise.resolve({ ok: true, restored: false });
   return runTrackingLifecycle(async () => {
     if (await storage.get(TOKEN_KEY) !== expectedToken) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import * as Location from 'expo-location';
 import { useTheme } from '../utils/ThemeContext';
@@ -8,6 +8,7 @@ import { localizePlace } from '../utils/places';
 import { parseRouteCities } from '../utils/geo';
 import { routingAPI } from '../utils/routingAPI';
 import { fetchRates } from '../utils/exchangeRates';
+import { captureForegroundPosition } from '../utils/foregroundLocation';
 
 const COPY = {
   RU: {
@@ -153,10 +154,11 @@ export default function TripRoutePanel({
       const permission = await Location.getForegroundPermissionsAsync();
       if (permission.status !== 'granted') return;
       let position = await Location.getLastKnownPositionAsync({ maxAge: 15 * 60 * 1000, requiredAccuracy: 5000 });
-      if (!position) position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      if (cancelled || !position?.coords) return;
+      if (!position) position = await captureForegroundPosition(Location, { appState: AppState, signal: controller.signal });
+      if (cancelled || AppState.currentState !== 'active' || !position?.coords) return;
       const { latitude, longitude } = position.coords;
       const places = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
+      if (cancelled || AppState.currentState !== 'active') return;
       const place = places?.[0];
       const city = place?.city || place?.district || place?.subregion || place?.region || '';
       const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&current=temperature_2m,apparent_temperature,weather_code&timezone=auto`;
