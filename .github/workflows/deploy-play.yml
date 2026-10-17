@@ -252,6 +252,10 @@ jobs:
             exit 1
           fi
           manifest_xml=$(java -jar "$bundletool_jar" dump manifest --bundle "$aab" --module base)
+          if printf '%s\n' "$manifest_xml" | grep -E 'android\.permission\.(ACCESS_BACKGROUND_LOCATION|FOREGROUND_SERVICE_LOCATION)' ; then
+            echo "::error::Snapshot AAB unexpectedly declares background/location-service permission"
+            exit 1
+          fi
           printf '%s\n' "$manifest_xml" | grep -q 'package="com.urtruck.app"'
           printf '%s\n' "$manifest_xml" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
           echo "Verified com.urtruck.app versionCode=${URTRUCK_VERSION_CODE} inside AAB"

@@ -946,11 +946,11 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const metrics = routeMetricValues(routeSummary, hasLivePoint && capturedMs > 0
     && gpsClock - capturedMs >= -5000 && gpsClock - capturedMs <= 180000);
 
-  const changeDealStatus = React.useCallback(async (nextStatus) => {
+  const changeDealStatus = React.useCallback(async (nextStatus, captureMode = null) => {
     if (!dealId || statusLoading) return null;
     setStatusLoading(true);
     try {
-      const result = await marketAPI.updateDealStatus(dealId, nextStatus);
+      const result = await marketAPI.updateDealStatus(dealId, nextStatus, captureMode);
       if (result?.ok === false) toast(result.detail || t('update_failed'), 'error');
       await refreshDeal();
       await refreshTimeline();
@@ -979,7 +979,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         toast(message, 'error');
         return;
       }
-      const result = await changeDealStatus('in_progress');
+      if (FOREGROUND_LOCATION_ONLY) {
+        const capability = await marketAPI.activeTrackingDeals();
+        if (!isCurrent()) return;
+        if (capability?.snapshot_location_supported !== true) {
+          toast(t('gps_snapshot_server_unavailable'), 'error');
+          return;
+        }
+      }
+      const result = await changeDealStatus('in_progress', FOREGROUND_LOCATION_ONLY ? 'snapshot' : null);
       if (!isCurrent()) return;
       if (result?.ok && !FOREGROUND_LOCATION_ONLY) {
         const point = await getCurrentLocationPayload();

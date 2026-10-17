@@ -37,17 +37,20 @@ requireMatch(infoPlist, new RegExp(`<string>${app.ios.buildNumber}</string>`), '
 
 for (const key of [
   'NSCameraUsageDescription',
-  'NSLocationAlwaysAndWhenInUseUsageDescription',
   'NSLocationWhenInUseUsageDescription',
   'NSMicrophoneUsageDescription',
-  'NSMotionUsageDescription',
   'NSPhotoLibraryUsageDescription',
 ]) {
   requireMatch(infoPlist, new RegExp(`<key>${key}</key>\\s*<string>[^<]+</string>`), `Info.plist is missing ${key}`);
   if (!app.ios.infoPlist[key]) fail(`app.json is missing ${key}`);
 }
 requireMatch(infoPlist, /<string>remote-notification<\/string>/, 'iOS remote notification background mode is missing');
-requireMatch(infoPlist, /<string>location<\/string>/, 'iOS background location mode is missing');
+if (/<string>location<\/string>/.test(infoPlist) || app.ios.infoPlist.UIBackgroundModes?.includes('location')) {
+  fail('snapshot mode must not declare iOS background location');
+}
+if (infoPlist.includes('NSLocationAlways') || app.ios.infoPlist.NSLocationAlwaysAndWhenInUseUsageDescription) {
+  fail('snapshot mode must not request Always location');
+}
 
 requireMatch(androidAppGradle, /applicationId ['"]com\.urtruck\.app['"]/, 'Android application id is incorrect');
 requireMatch(androidAppGradle, new RegExp(`versionName ["']${app.version.replaceAll('.', '\\.')}["']`), 'Android version name differs from app.json');
@@ -56,6 +59,15 @@ requireMatch(androidAppGradle, /applicationIdSuffix ['"]\.qa2['"]/, 'isolated QA
 requireMatch(androidRootGradle, /com\.google\.gms:google-services/, 'Firebase Gradle plugin dependency is missing');
 requireMatch(androidAppGradle, /apply plugin: ["']com\.google\.gms\.google-services["']/, 'Firebase Gradle plugin wiring is missing');
 requireMatch(androidAppGradle, /releaseTaskRequested[\s\S]+URTRUCK_UPLOAD_STORE_FILE[\s\S]+URTRUCK_ALLOW_DEBUG_SIGNED_RELEASE/, 'release signing is not fail-closed');
+const androidManifest = read('android/app/src/main/AndroidManifest.xml');
+const locationPlugin = app.plugins.find((entry) => Array.isArray(entry) && entry[0] === 'expo-location')?.[1];
+if (app.android.permissions.some((permission) => ['android.permission.ACCESS_BACKGROUND_LOCATION', 'android.permission.FOREGROUND_SERVICE_LOCATION'].includes(permission))
+    || /android\.permission\.(ACCESS_BACKGROUND_LOCATION|FOREGROUND_SERVICE_LOCATION)/.test(androidManifest)
+    || locationPlugin?.isIosBackgroundLocationEnabled !== false
+    || locationPlugin?.isAndroidBackgroundLocationEnabled !== false
+    || locationPlugin?.isAndroidForegroundServiceEnabled !== false) {
+  fail('snapshot mode must not declare native background location or location foreground service');
+}
 
 if (!process.exitCode) {
   console.log(`[release-gate] native config parity PASS; version=${app.version}; ios=${app.ios.buildNumber}; android=${app.android.versionCode}`);

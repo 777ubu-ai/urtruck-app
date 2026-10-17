@@ -8,6 +8,8 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
 import { FOREGROUND_LOCATION_ONLY, stopBackgroundTracking } from '../utils/backgroundLocation';
+import { marketAPI } from '../utils/marketAPI';
+import { storage } from '../utils/storage';
 import BottomNav from '../components/ui/v1/BottomNav';
 
 import HowItWorksScreen from '../screens/HowItWorksScreen';
@@ -92,6 +94,34 @@ function MainTabs({ route }) {
     const sub = AppState.addEventListener('change', state => { if (state !== 'active') stop(); });
     return () => { sub?.remove?.(); stop(); };
   }, []);
+
+  // A driver updating mid-trip may still have a continuous-mode server row.
+  // Switch only that authenticated driver's active deals, without requesting
+  // location. Old servers omit the capability and remain untouched.
+  useEffect(() => {
+    if (!FOREGROUND_LOCATION_ONLY || session?.user?.role !== 'driver') return undefined;
+    let alive = true;
+    let busy = false;
+    const sync = async () => {
+      if (!alive || busy || AppState.currentState !== 'active') return;
+      busy = true;
+      try {
+        const token = await storage.get('ur_reg_token');
+        if (!token || !alive) return;
+        const result = await marketAPI.activeTrackingDeals();
+        if (!alive || result?.snapshot_location_supported !== true
+            || !Array.isArray(result.deal_ids) || await storage.get('ur_reg_token') !== token) return;
+        for (const id of result.deal_ids) {
+          if (!alive || await storage.get('ur_reg_token') !== token) return;
+          await marketAPI.activateSnapshotTracking(id);
+        }
+      } catch { /* A later foreground entry retries; no GPS is started. */ }
+      finally { busy = false; }
+    };
+    sync();
+    const sub = AppState.addEventListener('change', state => { if (state === 'active') sync(); });
+    return () => { alive = false; sub?.remove?.(); };
+  }, [session?.user?.id, session?.user?.role]);
 
   // Канон таб-баров (приказ владельца 2026-07-26, обе волны).
   // Обе роли живут по одной логике: «Сделки» = единый инбокс (ставки сверху,

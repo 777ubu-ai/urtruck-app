@@ -3,7 +3,7 @@
 // "PR #255 changed files do not include InfoPlist.strings / locale .lproj
 //  resources, while ios/UrTruck/Info.plist and app.json permission
 //  descriptions remain Russian-only (camera, microphone, photos,
-//  WhenInUse/Always location). For ZH/EN/KK users, Apple system permission
+//  WhenInUse location). For ZH/EN/KK users, Apple system permission
 //  dialogs must not display Russian."
 //
 // Apple resolves NS*UsageDescription against the app's localizations, so the
@@ -21,11 +21,8 @@ const LOCALES = ['ru', 'en', 'zh-Hans', 'kk'];
 const PERMISSION_KEYS = [
   'NSCameraUsageDescription',
   'NSMicrophoneUsageDescription',
-  'NSMotionUsageDescription',
   'NSPhotoLibraryUsageDescription',
   'NSLocationWhenInUseUsageDescription',
-  'NSLocationAlwaysAndWhenInUseUsageDescription',
-  'NSLocationAlwaysUsageDescription',
 ];
 const CYRILLIC = /[А-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі]/;
 const CJK = /[㐀-䶿一-鿿]/;

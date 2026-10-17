@@ -47,6 +47,7 @@ export function useDealLocationBroadcast(activeDealIds, { enabled = false } = {}
         const r = await marketAPI.activeTrackingDeals();
         if (!alive || r?.ok === false) return;
         if (!token || await storage.get('ur_reg_token') !== token || r?.ok !== true
+            || (FOREGROUND_LOCATION_ONLY && r.snapshot_location_supported !== true)
             || !Array.isArray(r.deal_ids) || !r.deal_ids.every((id) => typeof id === 'string' && id.length > 0)) return;
         const requested = new Set(Array.isArray(activeDealIds) ? activeDealIds : []);
         setPermittedIds(r.deal_ids.filter(id => requested.has(id)));

@@ -255,6 +255,15 @@ export const marketAPI = {
       return r.ok ? d : { ok: false, deal_ids: [] };
     } catch { return { ok: false, deal_ids: [] }; }
   },
+  async activateSnapshotTracking(dealId) {
+    try {
+      const r = await authedFetch(`${BASE}/deals/${encodeURIComponent(dealId)}/tracking/snapshot-mode`, {
+        method: 'POST', headers: await headers(),
+      });
+      const d = await r.json().catch(() => ({}));
+      return r.ok ? d : { ok: false, status: r.status, detail: normalizeDetail(d.detail, r.status) };
+    } catch { return { ok: false, detail: 'network_error' }; }
+  },
 
   // Задача A: правка своего активного груза (цена/описание/вес/объём).
   async updateCargo(id, payload) {
@@ -625,8 +634,9 @@ export const marketAPI = {
     return d;
   },
 
-  async updateDealStatus(dealId, newStatus) {
-    const r = await authedFetch(`${BASE}/deals/${dealId}/status?new_status=${newStatus}`, {
+  async updateDealStatus(dealId, newStatus, captureMode = null) {
+    const snapshotParam = captureMode === 'snapshot' ? '&capture_mode=snapshot' : '';
+    const r = await authedFetch(`${BASE}/deals/${dealId}/status?new_status=${newStatus}${snapshotParam}`, {
       method: 'PATCH', headers: await headers(),
     });
     const d = await r.json();
