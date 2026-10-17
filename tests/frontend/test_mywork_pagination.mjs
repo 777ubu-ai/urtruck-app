@@ -12,15 +12,15 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 const page = (ids, next = null, scope = 'fixture-A') => ({
   items: ids.map(id => ({ id, status: 'active' })), next_offset: next, archive_total: 70, scope,
 });
-function harness({ driver = false, createdCargo = null } = {}) {
-  const state = { data: null, createdCargoOverlay: createdCargo };
+function harness({ driver = false, createdCargo = null, token = 'fixture-A', data = null, pageRef = null } = {}) {
+  const state = { data, createdCargoOverlay: createdCargo };
   const calls = [];
   const env = {
-    pageRef: { current: { busy: false, nextOffset: null, scope: null } },
+    pageRef: { current: pageRef || { busy: false, nextOffset: null, scope: null } },
     loadRequestRef: { current: 0 }, mounted: { current: true }, isDriver: driver,
     createdCargoOverlayRef: { current: createdCargo }, reconcileCreatedCargoOverlay,
     useCallback: fn => fn, withTimeout: promise => promise,
-    require: () => ({ storage: { get: async () => 'fixture-A' } }),
+    require: () => ({ storage: { get: async () => token } }),
     marketAPI: { myListings: args => new Promise(resolve => calls.push({ args, resolve })) },
     setData: value => { state.data = typeof value === 'function' ? value(state.data) : value; },
     setCreatedCargoOverlay: value => { state.createdCargoOverlay = value; },
@@ -88,6 +88,24 @@ test('смена аккаунта при append очищает чужие зап
   const first = load(); await tick(); h.calls[0].resolve(page(['private-A'], 50)); await first;
   const next = load({ append: true }); await tick(); h.calls[1].resolve(page(['B'], null, 'fixture-B')); await next;
   assert.deepEqual(h.state.data.my_cargos, []); assert.equal(h.state.data.authRequired, true);
+});
+
+test('истёкшая сессия при append очищает приватные карточки и временный груз', async () => {
+  const createdCargo = { id: 'optimistic-cargo', status: 'active' };
+  const h = harness({
+    token: null,
+    createdCargo,
+    data: { my_cargos: [{ id: 'private-cargo', status: 'active' }] },
+    pageRef: { busy: false, nextOffset: 50, scope: 'fixture-A' },
+  });
+
+  await h.render('searching')({ append: true });
+
+  assert.equal(h.state.createdCargoOverlay, null);
+  assert.equal(h.env.createdCargoOverlayRef.current, null);
+  assert.deepEqual(h.state.data, { my_trips: [], my_cargos: [], authRequired: true });
+  assert.equal(h.calls.length, 0, 'без сессии защищённая страница не запрашивается');
+  assert.equal(h.env.pageRef.current.nextOffset, null);
 });
 
 test('успешный authoritative refresh clears an optimistic cargo omitted after acceptance', async () => {

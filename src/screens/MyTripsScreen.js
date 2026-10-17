@@ -221,6 +221,16 @@ export default function MyTripsScreen({ navigation, route }) {
       let next;
       let page = { next_offset: null };
       if (!token) {
+        if (!isDriver) {
+          // Never keep owner-scoped cargo (including the optimistic publish
+          // overlay) visible after the session has expired or the account logs out.
+          createdCargoOverlayRef.current = null;
+          setCreatedCargoOverlay(null);
+          setData({ my_trips: [], my_cargos: [], authRequired: true });
+          setArchiveTotal(null);
+          pageRef.current = { busy: false, nextOffset: null, scope: null };
+          return;
+        }
         if (isDriver) {
           const trips = await withTimeout(marketAPI.listTrips({}));
           if (trips.serverError) throw new Error('list_failed');
