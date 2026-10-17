@@ -17,20 +17,33 @@ const INTERVAL_MS = 25000;
 export function useDealLocationBroadcast(activeDealIds) {
   const idsRef = useRef([]);
   const [permittedIds, setPermittedIds] = useState(null);
+  const [foreground, setForeground] = useState(AppState.currentState === 'active');
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => setForeground(state === 'active'));
+    return () => sub?.remove?.();
+  }, []);
   const candidateKey = (Array.isArray(activeDealIds) ? activeDealIds : []).join(',');
 
   // Source of truth is /tracking/active, not the local deal list. Polling
   // starts promptly after «Начать рейс» and returns an empty list immediately
   // after delivery/cancellation.
   useEffect(() => {
+    if (!foreground) return undefined;
     let alive = true;
+    let refreshing = false;
     const refresh = async () => {
-      const token = await storage.get('ur_reg_token');
-      const r = await marketAPI.activeTrackingDeals();
-      if (!alive || r?.ok === false) return;
-      if (!token || await storage.get('ur_reg_token') !== token || r?.ok !== true
-          || !Array.isArray(r.deal_ids) || !r.deal_ids.every((id) => typeof id === 'string' && id.length > 0)) return;
-      setPermittedIds(r.deal_ids);
+      if (!alive || refreshing || AppState.currentState !== 'active') return;
+      refreshing = true;
+      try {
+        const token = await storage.get('ur_reg_token');
+        const r = await marketAPI.activeTrackingDeals();
+        if (!alive || r?.ok === false) return;
+        if (!token || await storage.get('ur_reg_token') !== token || r?.ok !== true
+            || !Array.isArray(r.deal_ids) || !r.deal_ids.every((id) => typeof id === 'string' && id.length > 0)) return;
+        setPermittedIds(r.deal_ids);
+      } catch { /* Offline не выключает системный GPS принятого рейса. */ }
+      finally { refreshing = false; }
     };
     // Server truth must be queried even when the local dashboard has not yet
     // hydrated. Clearing persisted IDs before this response used to kill a
@@ -38,7 +51,7 @@ export function useDealLocationBroadcast(activeDealIds) {
     refresh();
     const iv = setInterval(refresh, 15000);
     return () => { alive = false; clearInterval(iv); };
-  }, [candidateKey]);
+  }, [candidateKey, foreground]);
 
   if (Array.isArray(permittedIds)) idsRef.current = permittedIds;
   const key = Array.isArray(permittedIds) ? permittedIds.join(',') : null;
@@ -78,15 +91,18 @@ export function useDealLocationBroadcast(activeDealIds) {
   }, [key]);
 
   useEffect(() => {
-    if (!idsRef.current.length) return;
+    if (!foreground || !idsRef.current.length) return undefined;
 
     let Location = null;
     let granted = false;
     let timer = null;
     let mounted = true;
+    let pushing = false;
 
     const push = async () => {
-      if (!granted || !Location || !idsRef.current.length) return;
+      if (!mounted || pushing || AppState.currentState !== 'active'
+          || !granted || !Location || !idsRef.current.length) return;
+      pushing = true;
       try {
         const token = await storage.get('ur_reg_token');
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -96,9 +112,11 @@ export function useDealLocationBroadcast(activeDealIds) {
           heading: c.heading != null && c.heading >= 0 ? c.heading : null,
           speed: c.speed != null && c.speed >= 0 ? c.speed : null,
         };
-        if (!mounted || !token || await storage.get('ur_reg_token') !== token) return;
+        if (!mounted || AppState.currentState !== 'active'
+            || !token || await storage.get('ur_reg_token') !== token) return;
         await pushLocationToDeals({ ...payload, timestamp: pos.timestamp }, idsRef.current);
       } catch {}
+      finally { pushing = false; }
     };
 
     (async () => {
@@ -118,7 +136,7 @@ export function useDealLocationBroadcast(activeDealIds) {
       if (timer) clearInterval(timer);
       sub?.remove?.();
     };
-  }, [key]);
+  }, [key, foreground]);
 }
 
 export default useDealLocationBroadcast;

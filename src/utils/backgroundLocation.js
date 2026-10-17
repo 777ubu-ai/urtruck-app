@@ -154,7 +154,7 @@ async function postLocationSample(sample, token) {
 
 async function refreshBackgroundActiveDealIds(token, fallbackIds = []) {
   const fallback = Array.isArray(fallbackIds) ? fallbackIds : [];
-  if (!token) return fallback;
+  if (!token) return { ids: fallback, confirmed: false };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
@@ -162,18 +162,18 @@ async function refreshBackgroundActiveDealIds(token, fallbackIds = []) {
       headers: { Authorization: `Bearer ${token}` },
       signal: controller.signal,
     });
-    if (!response?.ok) return fallback;
+    if (!response?.ok) return { ids: fallback, confirmed: false };
     const data = await response.json().catch(() => ({}));
     if (data?.ok !== true || !Array.isArray(data.deal_ids)
-        || !data.deal_ids.every((id) => typeof id === 'string' && id.length > 0)) return fallback;
-    if (await storage.get(TOKEN_KEY) !== token) return [];
+        || !data.deal_ids.every((id) => typeof id === 'string' && id.length > 0)) return { ids: fallback, confirmed: false };
+    if (await storage.get(TOKEN_KEY) !== token) return { ids: [], confirmed: false };
     const ids = [...new Set(data.deal_ids)];
     await storage.set(BG_DEALS_KEY, JSON.stringify(ids));
-    return ids;
+    return { ids, confirmed: true };
   } catch {
     // Offline is not the same as "no active deals". Keep the last server-
     // approved IDs so samples continue entering the persistent FIFO.
-    return fallback;
+    return { ids: fallback, confirmed: false };
   } finally {
     clearTimeout(timeout);
   }
@@ -207,10 +207,14 @@ async function pushLocationToDealsNow(coords, explicitDealIds = null, epoch = lo
     // Весь callback записан до первого сетевого ожидания, даже offline.
     if (epoch !== locationSessionEpoch || await storage.get(TOKEN_KEY) !== token) return;
     await persist(ids);
+    let activeResult = null;
     if (!Array.isArray(explicitDealIds)) {
-      ids = await refreshBackgroundActiveDealIds(token, ids);
+      activeResult = await refreshBackgroundActiveDealIds(token, ids);
+      ids = activeResult.ids;
     }
-    if (!Array.isArray(ids) || !ids.length) return;
+    if (!Array.isArray(ids) || !ids.length) {
+      return { ok: true, trackingIdleConfirmed: activeResult?.confirmed === true };
+    }
     if (await storage.get(TOKEN_KEY) !== token) return;
     await persist(ids);
     for (const id of ids) {
@@ -241,14 +245,23 @@ if (TaskManager) {
   try {
     TaskManager.defineTask(BG_LOCATION_TASK, async ({ data, error } = {}) => {
       if (error) return;
+      const epoch = locationSessionEpoch;
+      const token = await storage.get(TOKEN_KEY);
       const locations = data?.locations;
-      if (Array.isArray(locations) && locations.length) {
-        await pushLocationToDeals(locations.map((item) => ({ ...item.coords, timestamp: item.timestamp ?? item.coords?.timestamp })));
-      } else {
-        // Пустой callback только повторяет очередь. Старый GPS не становится
-        // новым heartbeat: свежесть подтверждается настоящим измерением ОС.
-        await pushLocationToDeals(null);
-      }
+      const samples = Array.isArray(locations) && locations.length
+        ? locations.map((item) => ({ ...item.coords, timestamp: item.timestamp ?? item.coords?.timestamp }))
+        : null;
+      // Ожидаем FIFO вне lifecycle-lock: logout может ждать ту же очередь.
+      // Обратный порядок блокировок вызвал бы взаимное ожидание.
+      const result = await pushLocationToDeals(samples);
+      if (!result?.trackingIdleConfirmed || !token) return;
+      await runTrackingLifecycle(async () => {
+        if (epoch !== locationSessionEpoch || await storage.get(TOKEN_KEY) !== token) return;
+        const ids = JSON.parse(await storage.get(BG_DEALS_KEY) || '[]');
+        // Новый начатый рейс отменяет устаревшее решение об остановке.
+        if (!Array.isArray(ids) || ids.length) return;
+        await stopBackgroundTrackingNow();
+      });
     });
   } catch { /* duplicate definition during hot reload is safe */ }
 }
