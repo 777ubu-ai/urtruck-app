@@ -110,7 +110,7 @@ for (const [source, label] of [
 
 must(workspace, 'ensureBackgroundLocationPermission()', 'start trip checks location permission');
 const permissionIndex = workspace.indexOf('ensureBackgroundLocationPermission()');
-const statusIndex = workspace.indexOf("changeDealStatus('in_progress')");
+const statusIndex = workspace.indexOf("changeDealStatus('in_progress', FOREGROUND_LOCATION_ONLY ? 'snapshot' : null)");
 if (permissionIndex < 0 || statusIndex < 0 || permissionIndex > statusIndex) {
   throw new Error('GPS consent contract violation: deal becomes in_progress before permission succeeds');
 }
