@@ -8,7 +8,6 @@ import { localizePlace } from '../utils/places';
 import { parseRouteCities } from '../utils/geo';
 import { routingAPI } from '../utils/routingAPI';
 import { fetchRates } from '../utils/exchangeRates';
-import { captureForegroundPosition } from '../utils/foregroundLocation';
 
 const COPY = {
   RU: {
@@ -153,8 +152,7 @@ export default function TripRoutePanel({
       if (role !== 'driver') return;
       const permission = await Location.getForegroundPermissionsAsync();
       if (permission.status !== 'granted') return;
-      let position = await Location.getLastKnownPositionAsync({ maxAge: 15 * 60 * 1000, requiredAccuracy: 5000 });
-      if (!position) position = await captureForegroundPosition(Location, { appState: AppState, signal: controller.signal });
+      const position = await Location.getLastKnownPositionAsync({ maxAge: 15 * 60 * 1000, requiredAccuracy: 5000 });
       if (cancelled || AppState.currentState !== 'active' || !position?.coords) return;
       const { latitude, longitude } = position.coords;
       const places = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);

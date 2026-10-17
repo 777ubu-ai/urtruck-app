@@ -1,3 +1,5 @@
+import { useIsFocused } from '@react-navigation/native';
+import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 // TrackTruckScreen — карта сделки внутри UrTruck.
 // Маршрут показывается сразу после создания сделки. GPS водителя, когда появится,
@@ -15,6 +17,8 @@ import { getLanguage } from '../utils/i18n';
 
 export default function TrackTruckScreen({ navigation, route }) {
   const { dealId, from, to, driverName, capacityTons } = route.params || {};
+  const isFocused = useIsFocused();
+  useDealLocationBroadcast(dealId ? [dealId] : [], { enabled: isFocused && Boolean(dealId) });
   const { t } = useI18n();
   const { theme } = useTheme();
   const [loc, setLoc] = useState(null);

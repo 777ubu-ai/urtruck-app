@@ -1,3 +1,4 @@
+import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import { FOREGROUND_LOCATION_ONLY } from '../utils/backgroundLocation';
 import { foregroundLocationCopy } from '../utils/locationModeCopy';
@@ -880,6 +881,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const trackingActive = Boolean(dealId && LIVE_TRACKING_STATUSES.includes(deal?.status));
   const locationReadable = Boolean(dealId && LOCATION_HISTORY_STATUSES.includes(deal?.status));
+  useDealLocationBroadcast(dealId ? [dealId] : [], { enabled: isFocused && viewMode === VIEW_MAP && role === 'driver' && trackingActive });
   const refreshLocation = React.useCallback(async () => {
     if (!locationReadable || !dealId) {
       setLocation(null);
@@ -968,7 +970,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       const permission = await ensureBackgroundLocationPermission();
       if (!isCurrent()) return;
       if (!permission.ok) { toast(t('track_permission_needed'), 'error'); return; }
-      const health = await getLocationHealth();
+      const health = await getLocationHealth({ requestPosition: !FOREGROUND_LOCATION_ONLY });
       if (!isCurrent()) return;
       if (health.state !== 'ready') {
         const message = health.state === 'system_disabled' ? t('gps_system_disabled')
@@ -979,7 +981,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
       }
       const result = await changeDealStatus('in_progress');
       if (!isCurrent()) return;
-      if (result?.ok) {
+      if (result?.ok && !FOREGROUND_LOCATION_ONLY) {
         const point = await getCurrentLocationPayload();
         if (!isCurrent()) return;
         if (point) {

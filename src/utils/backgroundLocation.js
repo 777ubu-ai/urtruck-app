@@ -466,7 +466,7 @@ export async function getCurrentLocationPayload(options = {}) {
 
 // Read-only preflight for Start trip. It never requests permissions and keeps
 // GPS capability errors distinct for truthful UI messaging.
-export async function getLocationHealth() {
+export async function getLocationHealth({ requestPosition = true } = {}) {
   const locationModule = await resolveLocationModule();
   if (!locationModule) return { state: 'unsupported' };
   try {
@@ -474,6 +474,7 @@ export async function getLocationHealth() {
     if (permission.status !== 'granted') return { state: 'permission_denied' };
     const provider = await locationModule.getProviderStatusAsync?.();
     if (provider && provider.locationServicesEnabled === false) return { state: 'system_disabled' };
+    if (!requestPosition) return { state: 'ready', point: null };
     const position = await captureForegroundPosition(locationModule, { appState: AppState });
     const c = position?.coords;
     if (!c || !Number.isFinite(c.latitude) || !Number.isFinite(c.longitude)) return { state: 'no_fix' };

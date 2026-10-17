@@ -1,15 +1,13 @@
-import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import { onboardingNavKey } from '../utils/onboardingNavKey';
 import React from 'react';
 import { View, Text, Animated, AppState } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
-import { marketAPI } from '../utils/marketAPI';
-import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
+import { FOREGROUND_LOCATION_ONLY, stopBackgroundTracking } from '../utils/backgroundLocation';
 import BottomNav from '../components/ui/v1/BottomNav';
 
 import HowItWorksScreen from '../screens/HowItWorksScreen';
@@ -86,30 +84,14 @@ function MainTabs({ route }) {
   const role = ['driver', 'client'].includes(session?.user?.role) ? session.user.role : (route?.params?.role || 'client');
   const isDriver = role === 'driver';
 
-  // Передача позиции живёт на уровне всего приложения. «Начать рейс» одним
-  // действием переводит сделку в in_progress и включает её на сервере; после
-  // доставки/отмены сервер сразу перестаёт принимать новые координаты.
-  const [inWorkDealIds, setInWorkDealIds] = useState([]);
+  // Login/tabs never request a position. Only remove a persisted legacy task.
   useEffect(() => {
-    if (!isDriver) { setInWorkDealIds([]); return; }
-    let alive = true;
-    const IN_WORK = ['in_progress', 'at_border'];
-    const fetchIds = async () => {
-      if (!alive || AppState.currentState !== 'active') return;
-      try {
-        const d = await marketAPI.myDashboard();
-        const ids = (d?.my_deals || [])
-          .filter((x) => IN_WORK.includes(x.status))
-          .map((x) => x.id)
-          .filter(Boolean);
-        if (alive) setInWorkDealIds(ids);
-      } catch { /* тихо */ }
-    };
-    fetchIds();
-    const iv = setInterval(fetchIds, 15000);
-    return () => { alive = false; clearInterval(iv); };
-  }, [isDriver]);
-  useDealLocationBroadcast(inWorkDealIds);
+    if (!FOREGROUND_LOCATION_ONLY) return undefined;
+    const stop = () => { stopBackgroundTracking(); };
+    stop();
+    const sub = AppState.addEventListener('change', state => { if (state !== 'active') stop(); });
+    return () => { sub?.remove?.(); stop(); };
+  }, []);
 
   // Канон таб-баров (приказ владельца 2026-07-26, обе волны).
   // Обе роли живут по одной логике: «Сделки» = единый инбокс (ставки сверху,

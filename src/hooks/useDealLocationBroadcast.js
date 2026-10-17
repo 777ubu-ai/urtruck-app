@@ -1,6 +1,6 @@
-// useDealLocationBroadcast — «Начать рейс» автоматически включает GPS на
-// сервере. Хук передаёт координаты только для активных рейсов и прекращает
-// передачу сразу после доставки/отмены.
+// Map-owned one-shot capture: explicit enabled visibility is required.
+// Root tabs/login never request coordinates. Leaving the focused map aborts
+// capture; the server still authorizes every active deal before sampling.
 //
 // Google Play contract: this hook NEVER opens a permission prompt. Permission
 // is requested only from the explicit Deal Workspace disclosure flow. Android
@@ -14,7 +14,7 @@ import { pushLocationToDeals, setActiveDealIds, startBackgroundTracking, stopBac
 
 const INTERVAL_MS = 25000;
 
-export function useDealLocationBroadcast(activeDealIds) {
+export function useDealLocationBroadcast(activeDealIds, { enabled = false } = {}) {
   const idsRef = useRef([]);
   const [permittedIds, setPermittedIds] = useState(null);
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
@@ -32,7 +32,11 @@ export function useDealLocationBroadcast(activeDealIds) {
   // starts promptly after «Начать рейс» and returns an empty list immediately
   // after delivery/cancellation.
   useEffect(() => {
-    if (!foreground) return undefined;
+    if (!foreground || !enabled) {
+      idsRef.current = [];
+      setPermittedIds(null);
+      return undefined;
+    }
     let alive = true;
     let refreshing = false;
     const refresh = async () => {
@@ -44,7 +48,8 @@ export function useDealLocationBroadcast(activeDealIds) {
         if (!alive || r?.ok === false) return;
         if (!token || await storage.get('ur_reg_token') !== token || r?.ok !== true
             || !Array.isArray(r.deal_ids) || !r.deal_ids.every((id) => typeof id === 'string' && id.length > 0)) return;
-        setPermittedIds(r.deal_ids);
+        const requested = new Set(Array.isArray(activeDealIds) ? activeDealIds : []);
+        setPermittedIds(r.deal_ids.filter(id => requested.has(id)));
       } catch { /* Offline не выключает системный GPS принятого рейса. */ }
       finally { refreshing = false; }
     };
@@ -54,17 +59,19 @@ export function useDealLocationBroadcast(activeDealIds) {
     refresh();
     const iv = setInterval(refresh, 15000);
     return () => { alive = false; clearInterval(iv); };
-  }, [candidateKey, foreground]);
+  }, [candidateKey, foreground, enabled]);
 
-  if (Array.isArray(permittedIds)) idsRef.current = permittedIds;
-  const key = Array.isArray(permittedIds) ? permittedIds.join(',') : null;
+  // A changed map target invalidates the previous capture before async refresh.
+  const requestedIds = new Set(Array.isArray(activeDealIds) ? activeDealIds : []);
+  if (Array.isArray(permittedIds)) idsRef.current = permittedIds.filter(id => requestedIds.has(id));
+  const key = Array.isArray(permittedIds) ? idsRef.current.join(',') : null;
 
   // Store only server-approved deals. startBackgroundTracking checks existing
   // OS grants and cannot request anything by itself. On Android 14+ a location
   // foreground service must be started while the app is visible, so a delayed
   // server response never causes an illegal background service start.
   useEffect(() => {
-    if (Platform.OS === 'web' || key === null) return undefined;
+    if (!enabled || Platform.OS === 'web' || key === null) return undefined;
 
     let alive = true;
     const syncTracking = async ({ forceReconfigure = false } = {}) => {
@@ -91,10 +98,10 @@ export function useDealLocationBroadcast(activeDealIds) {
       alive = false;
       sub?.remove?.();
     };
-  }, [key]);
+  }, [key, enabled]);
 
   useEffect(() => {
-    if (!foreground || !idsRef.current.length) return undefined;
+    if (!enabled || !foreground || !idsRef.current.length) return undefined;
 
     let Location = null;
     let granted = false;
@@ -136,7 +143,7 @@ export function useDealLocationBroadcast(activeDealIds) {
       if (timer) clearInterval(timer);
       sub?.remove?.();
     };
-  }, [key, foreground]);
+  }, [key, foreground, enabled]);
 }
 
 export default useDealLocationBroadcast;
