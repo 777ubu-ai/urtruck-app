@@ -218,6 +218,7 @@ export default function MyTripsScreen({ navigation, route }) {
     setLoadError(false);
     try {
       const token = await withTimeout(require('../utils/storage').storage.get('ur_reg_token'));
+      if (!mounted.current || requestId !== loadRequestRef.current) return;
       let next;
       let page = { next_offset: null };
       if (!token) {

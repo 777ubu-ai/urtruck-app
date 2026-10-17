@@ -20,7 +20,7 @@ function harness({ driver = false, createdCargo = null, token = 'fixture-A', dat
     loadRequestRef: { current: 0 }, mounted: { current: true }, isDriver: driver,
     createdCargoOverlayRef: { current: createdCargo }, reconcileCreatedCargoOverlay,
     useCallback: fn => fn, withTimeout: promise => promise,
-    require: () => ({ storage: { get: async () => token } }),
+    require: () => ({ storage: { get: async () => typeof token === 'function' ? token() : token } }),
     marketAPI: { myListings: args => new Promise(resolve => calls.push({ args, resolve })) },
     setData: value => { state.data = typeof value === 'function' ? value(state.data) : value; },
     setCreatedCargoOverlay: value => { state.createdCargoOverlay = value; },
@@ -106,6 +106,31 @@ test('истёкшая сессия при append очищает приватн�
   assert.deepEqual(h.state.data, { my_trips: [], my_cargos: [], authRequired: true });
   assert.equal(h.calls.length, 0, 'без сессии защищённая страница не запрашивается');
   assert.equal(h.env.pageRef.current.nextOffset, null);
+});
+
+test('запаздывающий null-токен старого запроса не очищает данные новой сессии', async () => {
+  let resolveOldToken;
+  let reads = 0;
+  const oldToken = new Promise(resolve => { resolveOldToken = resolve; });
+  const h = harness({
+    token: () => (++reads === 1 ? oldToken : Promise.resolve('fixture-B')),
+    data: { my_cargos: [{ id: 'old-page', status: 'active' }] },
+    pageRef: { busy: false, nextOffset: null, scope: null },
+  });
+  const oldRequest = h.render('searching')();
+  const freshRequest = h.render('searching')();
+  await tick();
+  h.calls[0].resolve(page(['account-B-cargo'], null, 'fixture-B'));
+  await freshRequest;
+  const newOverlay = { id: 'new-session-overlay', status: 'active' };
+  h.env.createdCargoOverlayRef.current = newOverlay;
+  h.state.createdCargoOverlay = newOverlay;
+
+  resolveOldToken(null);
+  await oldRequest;
+
+  assert.deepEqual(h.state.data.my_cargos.map(item => item.id), ['account-B-cargo']);
+  assert.equal(h.state.createdCargoOverlay, newOverlay);
 });
 
 test('успешный authoritative refresh clears an optimistic cargo omitted after acceptance', async () => {
