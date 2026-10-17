@@ -17,6 +17,7 @@ import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import FadeInUp from '../components/ui/FadeInUp';
 import Feather from '@expo/vector-icons/Feather';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
+import { reconcileCreatedCargoOverlay } from '../utils/createdCargoOverlay';
 import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
@@ -135,6 +136,8 @@ export default function MyTripsScreen({ navigation, route }) {
   // Клиентский аналог: только что опубликованный груз показываем сразу в
   // «Ищу машину», не дожидаясь серверного refetch (замыкаем цикл публикации).
   const justCreatedCargo = route.params?.justCreatedCargo || null;
+  const [createdCargoOverlay, setCreatedCargoOverlay] = useState(justCreatedCargo);
+  const createdCargoOverlayRef = useRef(justCreatedCargo);
   const [tab, setTab] = useState(normInitialTab);
   const mounted = useMountedRef();  // QA-аудит P1-8
   const [data, setData] = useState(null);
@@ -230,6 +233,8 @@ export default function MyTripsScreen({ navigation, route }) {
         if (page.serverError) throw new Error('list_failed');
         if (!mounted.current || requestId !== loadRequestRef.current) return;
         if (page.authRequired || (append && page.scope !== previous.scope)) {
+          createdCargoOverlayRef.current = null;
+          setCreatedCargoOverlay(null);
           setData({ my_trips: [], my_cargos: [], authRequired: true });
           setArchiveTotal(null);
           pageRef.current = { busy: false, nextOffset: null, scope: null };
@@ -239,6 +244,16 @@ export default function MyTripsScreen({ navigation, route }) {
         next = { [key]: page.items, section };
       }
       if (mounted.current && requestId === loadRequestRef.current) {
+        if (!isDriver && !append) {
+          const reconciled = reconcileCreatedCargoOverlay(
+            next.my_cargos || [],
+            createdCargoOverlayRef.current,
+            { authoritative: true },
+          );
+          next = { ...next, my_cargos: reconciled.items };
+          createdCargoOverlayRef.current = reconciled.overlay;
+          setCreatedCargoOverlay(reconciled.overlay);
+        }
         setData(current => {
           if (!append) return next;
           const key = isDriver ? 'my_trips' : 'my_cargos';
@@ -274,7 +289,9 @@ export default function MyTripsScreen({ navigation, route }) {
       setLoading(false);
       load({ showLoading: false });
     } else if (justCreatedCargo) {
-      setData({ my_trips: [], my_cargos: [justCreatedCargo], my_bids: [], incoming_bids: [], my_deals: [] });
+      // Cargo is rendered through the one-shot overlay above. Do not seed the
+      // backing list here: `load` changes with the selected tab, so this effect
+      // can run again after an authoritative response has cleared the overlay.
       setLoading(false);
       // Фоном подтягиваем серверные данные, чтобы список стал полным.
       load({ showLoading: false });
@@ -295,8 +312,8 @@ export default function MyTripsScreen({ navigation, route }) {
   if (justCreatedTrip && isDriver && !myItemsRaw.find(i => i.id === justCreatedTrip.id)) {
     myItemsRaw = [justCreatedTrip, ...myItemsRaw];
   }
-  if (justCreatedCargo && !isDriver && !myItemsRaw.find(i => i.id === justCreatedCargo.id)) {
-    myItemsRaw = [justCreatedCargo, ...myItemsRaw];
+  if (!isDriver && createdCargoOverlay) {
+    myItemsRaw = reconcileCreatedCargoOverlay(myItemsRaw, createdCargoOverlay).items;
   }
 
   // RC2 hotfix (P0-4): expired (pickup_date < сегодня) больше не

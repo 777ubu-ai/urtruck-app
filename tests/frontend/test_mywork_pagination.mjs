@@ -1,24 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { reconcileCreatedCargoOverlay } from '../../src/utils/createdCargoOverlay.js';
 
 const screen = readFileSync('src/screens/MyTripsScreen.js', 'utf8');
 const start = screen.indexOf('  const load = useCallback(');
 const end = screen.indexOf('\n  const { refreshing, onRefresh }', start);
+const initialEffectStart = screen.indexOf('  useEffect(() => {', end);
+const initialEffectEnd = screen.indexOf('\n\n  // 27.07:', initialEffectStart);
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const page = (ids, next = null, scope = 'fixture-A') => ({
   items: ids.map(id => ({ id, status: 'active' })), next_offset: next, archive_total: 70, scope,
 });
-function harness({ driver = false } = {}) {
-  const state = { data: null };
+function harness({ driver = false, createdCargo = null } = {}) {
+  const state = { data: null, createdCargoOverlay: createdCargo };
   const calls = [];
   const env = {
     pageRef: { current: { busy: false, nextOffset: null, scope: null } },
     loadRequestRef: { current: 0 }, mounted: { current: true }, isDriver: driver,
+    createdCargoOverlayRef: { current: createdCargo }, reconcileCreatedCargoOverlay,
     useCallback: fn => fn, withTimeout: promise => promise,
     require: () => ({ storage: { get: async () => 'fixture-A' } }),
     marketAPI: { myListings: args => new Promise(resolve => calls.push({ args, resolve })) },
     setData: value => { state.data = typeof value === 'function' ? value(state.data) : value; },
+    setCreatedCargoOverlay: value => { state.createdCargoOverlay = value; },
     setArchiveTotal: value => { state.archiveTotal = value; },
     setLoadError: value => { state.error = value; },
     setLoading() {}, setRefreshingList() {}, setLoadingMore() {}, console: { warn() {} },
@@ -83,6 +88,39 @@ test('смена аккаунта при append очищает чужие зап
   const first = load(); await tick(); h.calls[0].resolve(page(['private-A'], 50)); await first;
   const next = load({ append: true }); await tick(); h.calls[1].resolve(page(['B'], null, 'fixture-B')); await next;
   assert.deepEqual(h.state.data.my_cargos, []); assert.equal(h.state.data.authRequired, true);
+});
+
+test('успешный authoritative refresh clears an optimistic cargo omitted after acceptance', async () => {
+  const createdCargo = { id: 'accepted-cargo', status: 'active', cargo_desc: 'before offer' };
+  const h = harness({ createdCargo }); const load = h.render('searching');
+  const request = load(); await tick();
+  h.calls[0].resolve(page(['other-active-cargo']));
+  await request;
+  assert.equal(h.state.createdCargoOverlay, null);
+  assert.deepEqual(h.state.data.my_cargos.map(item => item.id), ['other-active-cargo']);
+});
+
+test('смена вкладки не возвращает оптимистичный груз после authoritative refresh', async () => {
+  const createdCargo = { id: 'accepted-cargo', status: 'active', cargo_desc: 'before offer' };
+  const h = harness({ createdCargo });
+  const runInitialEffect = tab => new Function(
+    'useEffect', 'justCreatedTrip', 'justCreatedCargo', 'setData', 'setLoading', 'load', 'isDriver',
+    screen.slice(initialEffectStart, initialEffectEnd),
+  )((callback) => callback(), null, createdCargo, h.env.setData, h.env.setLoading, h.render(tab), false);
+
+  runInitialEffect('active');
+  await tick();
+  h.calls[0].resolve(page(['other-active-cargo']));
+  await tick();
+  assert.equal(h.state.createdCargoOverlay, null);
+  assert.deepEqual(h.state.data.my_cargos.map(item => item.id), ['other-active-cargo']);
+
+  runInitialEffect('archive');
+  await tick();
+  assert.deepEqual(h.state.data.my_cargos.map(item => item.id), ['other-active-cargo']);
+  h.calls[1].resolve(page(['archived-cargo']));
+  await tick();
+  assert.deepEqual(h.state.data.my_cargos.map(item => item.id), ['archived-cargo']);
 });
 
 const api = readFileSync('src/utils/marketAPI.js', 'utf8');
