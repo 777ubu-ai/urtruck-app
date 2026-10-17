@@ -10,8 +10,8 @@
 //   title      — заголовок экрана ("Откуда груз?" / "Куда везём груз?")
 //   showGeo    — показывать «Определить по геолокации» (для «Откуда»)
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { AppState, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, v1Radius } from '../theme/designV1';
@@ -23,6 +23,7 @@ import CountryFlag from './ui/v1/CountryFlag';
 import { getCountryName } from '../utils/countries';
 import { customCityForCountry, locationScopeAllowsPoint } from '../utils/worldCities';
 import { createPickerSearchScheduler } from '../utils/pickerSearchScheduler';
+import { captureForegroundPosition } from '../utils/foregroundLocation';
 
 const RECENT_KEY = 'ur_recent_places';
 const FAV_KEY = 'ur_fav_places';
@@ -51,6 +52,8 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   const [recent, setRecent] = useState([]);
   const [favs, setFavs] = useState([]);
   const [geoLoading, setGeoLoading] = useState(false);
+  const geoRequest = useRef(null);
+  useEffect(() => () => { geoRequest.current?.abort(); }, [visible]);
   const [scope, setScope] = useState('all');
   // Выбранная страна для режима «страна → города». null = обычный список
   // (популярные/недавние/страны). Тап по стране раскрывает её города.
@@ -114,20 +117,23 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   const useGeo = async () => {
     if (geoLoading) return;
     setGeoLoading(true);
+    const controller = new AbortController();
+    geoRequest.current = controller;
     try {
       const Location = require('expo-location');
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
-        const pos = await Location.getCurrentPositionAsync({});
+        const pos = await captureForegroundPosition(Location, { appState: AppState, signal: controller.signal });
+        if (!pos || controller.signal.aborted || AppState.currentState !== 'active') return;
         const geo = await Location.reverseGeocodeAsync({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
         const city = geo && geo[0] ? (geo[0].city || geo[0].region || geo[0].subregion) : null;
-        if (city) {
+        if (city && !controller.signal.aborted && AppState.currentState === 'active') {
           const match = POINTS.find((p) => p.name.toLowerCase() === String(city).toLowerCase());
           pick(match || { name: city, country: 'XX', type: 'city', custom: true });
         }
       }
     } catch { /* геолокация недоступна — тихо */ }
-    finally { setGeoLoading(false); }
+    finally { if (geoRequest.current === controller) { geoRequest.current = null; setGeoLoading(false); } }
   };
 
   const hits = useMemo(() => {

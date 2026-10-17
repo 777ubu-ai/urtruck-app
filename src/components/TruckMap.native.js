@@ -126,16 +126,23 @@ export default function TruckMap({
       return () => { active = false; };
     }
     setMapKitInitState('loading');
+    const timeout = setTimeout(() => {
+      if (!active) return;
+      active = false;
+      mapKitInitPromise = null;
+      setMapKitInitState('error');
+    }, 8000);
     initializeMapKit().then(
-      () => { if (active) setMapKitInitState('ready'); },
+      () => { clearTimeout(timeout); if (active) setMapKitInitState('ready'); },
       () => {
+        clearTimeout(timeout);
         if (active) {
           console.warn('[UrTruck MapKit]', { stage: 'initialization_failed', nativeModulePresent: MAPKIT_AVAILABLE, keyPresent: Boolean(YANDEX_MAPKIT_API_KEY) });
           setMapKitInitState('error');
         }
       },
     );
-    return () => { active = false; };
+    return () => { active = false; clearTimeout(timeout); };
   }, [mapKitInitAttempt]);
 
   React.useEffect(() => {

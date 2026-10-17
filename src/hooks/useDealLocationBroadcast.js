@@ -4,13 +4,13 @@
 //
 // Google Play contract: this hook NEVER opens a permission prompt. Permission
 // is requested only from the explicit Deal Workspace disclosure flow. Android
-// location foreground service is started only while the app is visible; once
-// started, the OS service keeps the active-trip task alive when minimized.
+// temporary foreground-only mode stops native tracking; fresh fixes are
+// cancellable and never continue after minimizing or locking the phone.
 import { useEffect, useRef, useState } from 'react';
 import { Platform, AppState } from 'react-native';
 import { marketAPI } from '../utils/marketAPI';
 import { storage } from '../utils/storage';
-import { pushLocationToDeals, setActiveDealIds, startBackgroundTracking, stopBackgroundTracking } from '../utils/backgroundLocation';
+import { pushLocationToDeals, setActiveDealIds, startBackgroundTracking, stopBackgroundTracking, FOREGROUND_LOCATION_ONLY, getCurrentLocationPayload } from '../utils/backgroundLocation';
 
 const INTERVAL_MS = 25000;
 
@@ -22,6 +22,9 @@ export function useDealLocationBroadcast(activeDealIds) {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => setForeground(state === 'active'));
     return () => sub?.remove?.();
+  }, []);
+  useEffect(() => {
+    if (FOREGROUND_LOCATION_ONLY) stopBackgroundTracking();
   }, []);
   const candidateKey = (Array.isArray(activeDealIds) ? activeDealIds : []).join(',');
 
@@ -68,7 +71,7 @@ export function useDealLocationBroadcast(activeDealIds) {
       const ids = idsRef.current;
       await setActiveDealIds(ids);
       if (!alive) return;
-      if (!ids.length) {
+      if (FOREGROUND_LOCATION_ONLY || !ids.length) {
         await stopBackgroundTracking();
         return;
       }
@@ -98,6 +101,7 @@ export function useDealLocationBroadcast(activeDealIds) {
     let timer = null;
     let mounted = true;
     let pushing = false;
+    const controller = new AbortController();
 
     const push = async () => {
       if (!mounted || pushing || AppState.currentState !== 'active'
@@ -105,16 +109,11 @@ export function useDealLocationBroadcast(activeDealIds) {
       pushing = true;
       try {
         const token = await storage.get('ur_reg_token');
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const c = pos.coords || {};
-        const payload = {
-          lat: c.latitude, lng: c.longitude,
-          heading: c.heading != null && c.heading >= 0 ? c.heading : null,
-          speed: c.speed != null && c.speed >= 0 ? c.speed : null,
-        };
+        const payload = await getCurrentLocationPayload({ signal: controller.signal });
+        if (!payload) return;
         if (!mounted || AppState.currentState !== 'active'
             || !token || await storage.get('ur_reg_token') !== token) return;
-        await pushLocationToDeals({ ...payload, timestamp: pos.timestamp }, idsRef.current);
+        await pushLocationToDeals(payload, idsRef.current);
       } catch {}
       finally { pushing = false; }
     };
@@ -133,6 +132,7 @@ export function useDealLocationBroadcast(activeDealIds) {
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') push(); });
     return () => {
       mounted = false;
+      controller.abort();
       if (timer) clearInterval(timer);
       sub?.remove?.();
     };

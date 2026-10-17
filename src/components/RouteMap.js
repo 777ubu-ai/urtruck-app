@@ -1,3 +1,5 @@
+import { FOREGROUND_LOCATION_ONLY } from '../utils/backgroundLocation';
+import { foregroundLocationCopy } from '../utils/locationModeCopy';
 import React from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -125,6 +127,7 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
           ) : null}
         </View>
 
+        {FOREGROUND_LOCATION_ONLY ? <Text style={[s.route, { color: theme.textMuted }]} testID="gps-foreground-only-notice">{(foregroundLocationCopy[lang] || foregroundLocationCopy.RU).background}</Text> : null}
         {routeSummary ? (
           <View style={[s.metrics, { borderTopColor: theme.border }]} testID="route-map-real-metrics">
             <View style={s.metric}>

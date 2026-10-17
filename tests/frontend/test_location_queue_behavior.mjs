@@ -1,3 +1,4 @@
+// Проверка сохранённого legacy background-режима; текущий foreground-only проверен отдельно.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -59,7 +60,7 @@ function backgroundHarness(reply, store = memoryStore(), postReply = null) {
   store.data.set('ur_bg_deal_ids', '["deal"]');
   const posts = [];
   let task;
-  let source = readFileSync('src/utils/backgroundLocation.js', 'utf8')
+  let source = readFileSync('src/utils/backgroundLocation.js', 'utf8').replace('const FOREGROUND_LOCATION_ONLY = true;', 'const FOREGROUND_LOCATION_ONLY = false;')
     .replace(/^import .*;\n/gm, '').replace(/^export \{.*\} from .*;\n/gm, '')
     .replace(/export /g, '');
   source += '\nglobalThis.api = {pushLocationToDeals, setActiveDealIds};';

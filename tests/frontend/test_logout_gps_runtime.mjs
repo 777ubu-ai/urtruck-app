@@ -1,9 +1,10 @@
+// Проверка сохранённого legacy background-режима; текущий foreground-only проверен отдельно.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const bgSource = fs.readFileSync('src/utils/backgroundLocation.js', 'utf8');
+const bgSource = fs.readFileSync('src/utils/backgroundLocation.js', 'utf8').replace('const FOREGROUND_LOCATION_ONLY = true;', 'const FOREGROUND_LOCATION_ONLY = false;').replace('const FOREGROUND_LOCATION_ONLY = true;', 'const FOREGROUND_LOCATION_ONLY = false;');
 function harness() {
   const data = new Map();
   const calls = [];

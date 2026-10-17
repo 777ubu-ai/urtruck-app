@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const root = process.env.GPS_TEST_SOURCE_ROOT || '.';
 const flush = async () => { for (let i = 0; i < 12; i++) await new Promise(r => setImmediate(r)); };
-function hookHarness(initial = 'active') {
+function hookHarness(initial = 'active', foregroundOnly = false) {
   const values = [], effects = [], intervals = new Map(), listeners = new Set();
   const calls = { sample: 0, post: 0, refresh: 0, start: 0, stop: 0 };
   let cursor = 0, effectCursor = 0, nextId = 1;
@@ -19,7 +19,7 @@ function hookHarness(initial = 'active') {
       return { coords: { latitude: 43, longitude: 76 }, timestamp: Date.now() };
     },
   };
-  const scope = { Platform: { OS: 'ios' }, AppState: app,
+  const scope = { FOREGROUND_LOCATION_ONLY: foregroundOnly, AbortController, getCurrentLocationPayload: async () => { const p = await native.getCurrentPositionAsync(); return { lat: p.coords.latitude, lng: p.coords.longitude, timestamp: p.timestamp }; }, Platform: { OS: 'ios' }, AppState: app,
     useRef: v => { const n = cursor++; return values[n] ??= { current: v }; },
     useState: v => { const n = cursor++; if (!(n in values)) values[n] = v;
       return [values[n], x => { values[n] = x; }]; },
@@ -88,7 +88,7 @@ function taskHarness(reply) {
     require: name => name === 'expo-task-manager' ? { defineTask: (_, cb) => { task = cb; } } : native,
     fetch: async () => reply(data),
   };
-  const source = readFileSync(`${root}/src/utils/backgroundLocation.js`, 'utf8')
+  const source = readFileSync(`${root}/src/utils/backgroundLocation.js`, 'utf8').replace('const FOREGROUND_LOCATION_ONLY = true;', 'const FOREGROUND_LOCATION_ONLY = false;')
     .replace(/^import .*;\s*$/gm, '').replace(/^export .* from .*;\s*$/gm, '').replace(/^export /gm, '');
   vm.runInNewContext(source + '\nglobalThis.lock = runTrackingLifecycle;', scope);
   return { task, data, calls, native, lock: scope.lock };
@@ -129,4 +129,13 @@ test('headless: неудачная native stop повторяется на сл�
   h.native.stopLocationUpdatesAsync = async () => { h.calls.stop++; if (h.calls.stop === 1) throw Error('native failure'); };
   await h.task(locationEvent()); await h.task(locationEvent());
   assert.equal(h.calls.stop, 2);
+});
+
+
+test('текущий foreground-only: открытие обновляет позицию без запуска фонового сервиса', async () => {
+  const h = hookHarness('active', true); h.render(); await flush(); h.render(); await flush();
+  assert.ok(h.calls.sample > 0); assert.equal(h.calls.start, 0); assert.ok(h.calls.stop > 0);
+  h.change('background'); await flush(); const count = h.calls.sample;
+  for (const cb of h.intervals.values()) cb(); await flush(); assert.equal(h.calls.sample, count);
+  h.change('active'); await flush(); h.render(); await flush(); assert.ok(h.calls.sample > count); assert.equal(h.calls.start, 0);
 });

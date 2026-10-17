@@ -5,6 +5,7 @@ import { AppState, Platform, StyleSheet, View } from 'react-native';
 import BackgroundLocationDisclosureModal from './BackgroundLocationDisclosureModal';
 import {
   getBackgroundLocationPermissionState,
+  FOREGROUND_LOCATION_ONLY,
   openLocationSettings,
   requestForegroundLocationPermission,
 } from '../../utils/backgroundLocation';
@@ -50,9 +51,9 @@ export default function DealLocationPermissionGate({ role, children }) {
 
   const successPayload = React.useCallback(() => ({
     ok: true,
-    foregroundOnly: Platform.OS !== 'android',
-    foregroundService: Platform.OS === 'android',
-    backgroundRequired: Platform.OS === 'android',
+    foregroundOnly: FOREGROUND_LOCATION_ONLY || Platform.OS !== 'android',
+    foregroundService: !FOREGROUND_LOCATION_ONLY && Platform.OS === 'android',
+    backgroundRequired: !FOREGROUND_LOCATION_ONLY && Platform.OS === 'android',
   }), []);
 
   const beginDisclosure = React.useCallback(async (context = {}) => {
