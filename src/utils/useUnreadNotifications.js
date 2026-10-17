@@ -1,3 +1,4 @@
+import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from './foregroundPolling';
 // useUnreadNotifications — fetches the server-side unread counter every
 // 30s (and on AppState 'active'). Falls back to 0 silently on any error
 // so screens never crash because of a flaky network. Designed for the
@@ -22,6 +23,7 @@ export function useUnreadNotifications(enabled = true, { includeChat = false } =
     }
     let mounted = true;
     const fetchCount = async () => {
+      if (!mounted || AppState.currentState !== 'active') return;
       try {
         const [notificationResult, chatResult] = await Promise.all([
           notificationsAPI.unread(),
@@ -29,16 +31,13 @@ export function useUnreadNotifications(enabled = true, { includeChat = false } =
         ]);
         const notifications = (notificationResult && (notificationResult.unread ?? notificationResult.count ?? notificationResult.total)) || 0;
         const chats = (chatResult && (chatResult.unread ?? chatResult.count ?? chatResult.total)) || 0;
-        if (mounted) setCount((Number(notifications) || 0) + (Number(chats) || 0));
+        if (mounted && AppState.currentState === 'active') setCount((Number(notifications) || 0) + (Number(chats) || 0));
       } catch {
         // silent — leave previous value
       }
     };
     fetchCount();
     timerRef.current = setInterval(fetchCount, POLL_MS);
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') fetchCount();
-    });
     // Мгновенный re-fetch, когда экран пометил уведомления прочитанными
     // (MyWork при фокусе) — иначе бейдж висел бы до следующего 12-сек poll.
     const unsub = subscribeNotifRead(fetchCount);
@@ -46,7 +45,6 @@ export function useUnreadNotifications(enabled = true, { includeChat = false } =
     return () => {
       mounted = false;
       clearInterval(timerRef.current);
-      sub?.remove?.();
       unsub?.();
       unsubChat?.();
     };

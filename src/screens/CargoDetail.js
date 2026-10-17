@@ -1,3 +1,4 @@
+import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert, Image, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';

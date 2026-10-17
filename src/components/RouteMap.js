@@ -1,3 +1,6 @@
+import { useIsFocused } from '@react-navigation/native';
+import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
+import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import { FOREGROUND_LOCATION_ONLY } from '../utils/backgroundLocation';
 import { foregroundLocationCopy } from '../utils/locationModeCopy';
 import React from 'react';
@@ -51,6 +54,8 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
   }, [capacityTons]);
 
   const trackingActive = Boolean(dealId && ['in_progress', 'at_border', 'delivered'].includes(dealStatus));
+  const isFocused = useIsFocused();
+  useDealLocationBroadcast(dealId ? [dealId] : [], { enabled: isFocused && routeOpen && trackingActive });
   const routePoints = React.useMemo(() => dedupePoints([
     ...parseRouteCities(from),
     ...(transit ? parseRouteCities(transit) : []),

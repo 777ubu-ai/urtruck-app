@@ -1,3 +1,4 @@
+import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,

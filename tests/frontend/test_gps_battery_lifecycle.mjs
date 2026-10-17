@@ -8,7 +8,7 @@ const flush = async () => { for (let i = 0; i < 12; i++) await new Promise(r => 
 function hookHarness(initial = 'active', foregroundOnly = false) {
   const values = [], effects = [], intervals = new Map(), listeners = new Set();
   const calls = { sample: 0, post: 0, refresh: 0, start: 0, stop: 0 };
-  let cursor = 0, effectCursor = 0, nextId = 1;
+  let cursor = 0, effectCursor = 0, nextId = 1, mapOpen = true, mapTargets = ['deal'];
   const app = { currentState: initial, addEventListener: (_, cb) => {
     listeners.add(cb); return { remove: () => listeners.delete(cb) };
   } };
@@ -41,10 +41,10 @@ function hookHarness(initial = 'active', foregroundOnly = false) {
     .replace("await import('expo-location')", 'LocationModule');
   vm.runInNewContext(source + '\nglobalThis.hook = useDealLocationBroadcast;', scope);
   function render() {
-    cursor = 0; effectCursor = 0; scope.hook(['deal']);
+    cursor = 0; effectCursor = 0; scope.hook(mapTargets, { enabled: mapOpen });
     for (const e of effects) if (e.cb) { const cb = e.cb; e.cb = null; e.cleanup = cb(); }
   }
-  return { calls, native, app, intervals, render,
+  return { calls, native, app, intervals, render, setMap: value => { mapOpen = value; render(); }, setTargets: value => { mapTargets = value; render(); },
     change: state => { app.currentState = state; for (const cb of [...listeners]) cb(state); render(); },
   };
 }
@@ -138,4 +138,38 @@ test('текущий foreground-only: открытие обновляет поз
   h.change('background'); await flush(); const count = h.calls.sample;
   for (const cb of h.intervals.values()) cb(); await flush(); assert.equal(h.calls.sample, count);
   h.change('active'); await flush(); h.render(); await flush(); assert.ok(h.calls.sample > count); assert.equal(h.calls.start, 0);
+});
+
+
+test('one-shot: полученный fix не повторяется по таймеру или дублирующему active событию', async () => {
+  const h = hookHarness('active', true); h.render(); await flush(); h.render(); await flush();
+  assert.equal(h.calls.sample, 1);
+  const sent = h.calls.post;
+  for (let n = 0; n < 6; n++) { for (const cb of h.intervals.values()) cb(); await flush(); h.render(); }
+  h.change('active'); await flush(); h.render(); await flush();
+  assert.equal(h.calls.sample, 1); assert.equal(h.calls.post, sent);
+  h.change('background'); await flush(); h.change('active'); await flush(); h.render(); await flush();
+  assert.equal(h.calls.sample, 2);
+});
+
+
+test('map-only: лента/список сделок не запускают GPS; закрытие и повторное открытие карты управляют fix', async () => {
+  const h = hookHarness('active', true); h.setMap(false); await flush(); h.render(); await flush();
+  assert.equal(h.calls.sample, 0); assert.equal(h.calls.refresh, 0); assert.equal(h.calls.post, 0);
+  h.setMap(true); await flush(); h.render(); await flush(); assert.equal(h.calls.sample, 1);
+  h.setMap(false); await flush(); h.render(); await flush(); const sent = h.calls.post;
+  for (const tick of h.intervals.values()) tick(); await flush(); assert.equal(h.calls.sample, 1); assert.equal(h.calls.post, sent);
+  h.setMap(true); await flush(); h.render(); await flush(); assert.equal(h.calls.sample, 2);
+});
+test('map-only: уход с карты во время измерения запрещает позднюю отправку', async () => {
+  const h = hookHarness('active', true); let resolve; h.native.wait = new Promise(r => { resolve = r; });
+  h.render(); await flush(); h.render(); await flush(); assert.equal(h.calls.sample, 1);
+  h.setMap(false); await flush(); resolve(); await flush(); assert.equal(h.calls.post, 0);
+});
+
+test('map-only: смена сделки немедленно отменяет fix прежней карты до нового server refresh', async () => {
+  const h = hookHarness('active', true); let resolve; h.native.wait = new Promise(r => { resolve = r; });
+  h.render(); await flush(); h.render(); await flush(); assert.equal(h.calls.sample, 1);
+  h.setTargets(['other']); resolve(); await flush(); assert.equal(h.calls.post, 0);
+  h.render(); await flush(); assert.equal(h.calls.sample, 1);
 });
