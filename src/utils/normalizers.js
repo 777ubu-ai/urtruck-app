@@ -55,6 +55,32 @@ const displayUnits = (lang = 'RU') => {
   return { ton: 'т', volume: 'м³' };
 };
 
+// Cargo weights are stored and transported in tonnes. Group only numeric
+// values for readability; non-numeric legacy strings are preserved verbatim.
+export const formatWeightTons = (value, lang = 'RU') => {
+  if (value === null || value === undefined || String(value).trim() === '') return '';
+  const raw = String(value).trim();
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric)) return raw;
+  const locale = String(lang || 'RU').toUpperCase();
+  const [integer, fraction] = String(numeric).split('.');
+  const groupSeparator = locale === 'EN' || locale === 'ZH' ? ',' : ' ';
+  const decimalSeparator = locale === 'RU' || locale === 'KK' ? ',' : '.';
+  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, groupSeparator);
+  return fraction ? `${grouped}${decimalSeparator}${fraction}` : grouped;
+};
+
+// The cargo form is explicitly labeled in tonnes. Accept either decimal
+// separator but reject partial parses such as parseFloat("20,5") === 20.
+export const parseWeightTonsInput = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const normalized = raw.replace(/[\s\u00a0\u202f]/g, '').replace(',', '.');
+  if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 // Exported for FavoritesScreen (saved-item snapshots store raw departure
 // strings; the hub must localize them the same way tripDisplay does).
 export const displayDate = (value, lang = 'RU') => {
@@ -162,7 +188,10 @@ export const normalizeCargo = (raw, lang = 'RU') => {
 export const cargoDisplay = (cargo, t, lang = 'RU') => {
   const dash = (t && t('not_specified')) || 'Not specified';
   const units = displayUnits(lang);
-  const weight = cargo?.weightTons > 0 ? `${cargo.weightTons} ${units.ton}` : dash;
+  const weightNumber = Number(cargo?.weightTons);
+  const legacyWeight = cargo?.weightTons != null && String(cargo.weightTons).trim() !== '';
+  const hasWeight = Number.isFinite(weightNumber) ? weightNumber > 0 : legacyWeight;
+  const weight = hasWeight ? `${formatWeightTons(cargo.weightTons, lang)} ${units.ton}` : dash;
   const volume = cargo?.volumeM3 > 0 ? `${cargo.volumeM3} ${units.volume}` : dash;
   return {
     from: localizePlace(sanitizeForDisplay(cargo?.from), lang) || dash,

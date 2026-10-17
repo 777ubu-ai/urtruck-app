@@ -21,6 +21,7 @@ import { normalizeDateInput } from '../utils/dateInput';
 import { PhotoPicker } from '../components/PhotoGallery';
 import {v1Colors, useV1Colors, useShipperCeramicColors, v1Radius, v1Spacing, v1Typography, v1AccentFor} from '../theme/designV1';
 import { TRUCK_KEYS } from '../utils/truckConstants';
+import { parseWeightTonsInput } from '../utils/normalizers';
 import TruckTypeGrid from '../components/TruckTypeGrid';
 
 // PR-C1: backend cargos schema (marketplace_schema.sql) и CargoIn
@@ -158,9 +159,10 @@ export default function CreateCargoScreen({ navigation, route }) {
     if (!from.trim()) errs.from = t('val_from_required');
     if (!to.trim()) errs.to = t('val_to_required');
     if (!cargoDesc.trim()) errs.cargoDesc = t('val_cargo_desc_required');
-    const wNum = parseFloat(tons) || 0;
+    const wNum = parseWeightTonsInput(tons);
     const vNum = parseFloat(m3) || 0;
-    if (wNum <= 0 && vNum <= 0) errs.weight = t('val_weight_or_volume_required');
+    if (tons.trim() && (wNum == null || wNum < 0)) errs.weight = t('val_weight_invalid');
+    else if ((wNum == null || wNum <= 0) && vNum <= 0) errs.weight = t('val_weight_or_volume_required');
     const pNum = parseInt(String(price || '').replace(/\s/g, ''), 10) || 0;
     if (pNum <= 0) errs.price = t('val_price_required');
     // Дата загрузки обязательна (симметрично рейсу): без неё груз через 2 дня
@@ -190,7 +192,7 @@ export default function CreateCargoScreen({ navigation, route }) {
       to_city: toPoint?.name || cleanPlaceName(to.trim()),
       cargo_desc: cargoDesc.trim(),
       cargo_type: truckType,
-      weight_tons: parseFloat(tons) || 0,
+      weight_tons: wNum ?? 0,
       volume_m3: parseFloat(m3) || 0,
       price: priceNum,
       currency: currency,
