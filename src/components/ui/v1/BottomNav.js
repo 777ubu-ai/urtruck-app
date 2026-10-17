@@ -1,3 +1,4 @@
+import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../../../utils/foregroundPolling';
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, AppState } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -67,9 +68,10 @@ export default function BottomNav({ state, navigation }) {
     let active = true;
     setDealsUnread(0);
     const fetchUnread = async () => {
+      if (!active || AppState.currentState !== 'active') return;
       try {
         const result = await refreshAppIconBadge();
-        if (active && result?.reason !== 'superseded' && Number.isFinite(result?.badge)) {
+        if (active && AppState.currentState === 'active' && result?.reason !== 'superseded' && Number.isFinite(result?.badge)) {
           setDealsUnread(result.badge);
         }
       } catch {
@@ -79,24 +81,20 @@ export default function BottomNav({ state, navigation }) {
 
     fetchUnread();
     pollTimer.current = setInterval(fetchUnread, UNREAD_POLL_MS);
-    const appStateSub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') fetchUnread();
-    });
     const readSub = subscribeChatRead(fetchUnread);
 
     return () => {
       active = false;
       clearInterval(pollTimer.current);
-      appStateSub?.remove?.();
       readSub?.();
     };
   }, [hasToken, session?.user?.id]);
 
   useEffect(() => {
-    if (!hasToken) return undefined;
+    if (!hasToken || AppState.currentState !== 'active') return undefined;
     let active = true;
     refreshAppIconBadge().then((result) => {
-      if (active && result?.reason !== 'superseded' && Number.isFinite(result?.badge)) {
+      if (active && AppState.currentState === 'active' && result?.reason !== 'superseded' && Number.isFinite(result?.badge)) {
         setDealsUnread(result.badge);
       }
     });

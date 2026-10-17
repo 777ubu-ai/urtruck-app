@@ -5,7 +5,7 @@
 // Google Play contract: this hook NEVER opens a permission prompt. Permission
 // is requested only from the explicit Deal Workspace disclosure flow. Android
 // temporary foreground-only mode stops native tracking; fresh fixes are
-// cancellable and never continue after minimizing or locking the phone.
+// one-shot, cancellable and never continue after minimizing or locking the phone.
 import { useEffect, useRef, useState } from 'react';
 import { Platform, AppState } from 'react-native';
 import { marketAPI } from '../utils/marketAPI';
@@ -125,11 +125,11 @@ export function useDealLocationBroadcast(activeDealIds) {
         granted = status === 'granted';
         if (!granted || !mounted) return;
         push();
-        timer = setInterval(push, INTERVAL_MS);
+        if (!FOREGROUND_LOCATION_ONLY) timer = setInterval(push, INTERVAL_MS);
       } catch {}
     })();
 
-    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') push(); });
+    const sub = FOREGROUND_LOCATION_ONLY ? null : AppState.addEventListener('change', (s) => { if (s === 'active') push(); });
     return () => {
       mounted = false;
       controller.abort();

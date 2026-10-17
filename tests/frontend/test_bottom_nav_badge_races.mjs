@@ -26,7 +26,7 @@ function harness(refreshAppIconBadge, initial = 3, hasToken = true) {
     clearAppIconBadge: () => { state.clears += 1; },
     pollTimer: { current: null }, UNREAD_POLL_MS: 12000,
     setInterval: () => 1, clearInterval: () => {},
-    AppState: { addEventListener: () => ({ remove() {} }) },
+    AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
     subscribeChatRead: (callback) => { onRead = callback; return () => {}; },
   };
   return {

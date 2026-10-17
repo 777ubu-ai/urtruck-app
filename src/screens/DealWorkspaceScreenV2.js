@@ -1,3 +1,4 @@
+import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import { FOREGROUND_LOCATION_ONLY } from '../utils/backgroundLocation';
 import { foregroundLocationCopy } from '../utils/locationModeCopy';
 import React from 'react';
@@ -587,7 +588,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   React.useEffect(() => {
     if (!recording) { setRecordSecs(0); return undefined; }
-    const timer = setInterval(() => {
+    const timer = globalThis.setInterval(() => {
       const elapsedMs = Math.max(0, Date.now() - recordStartRef.current);
       const elapsed = Math.floor(elapsedMs / 1000);
       setRecordSecs(Math.min(VOICE_MAX_DURATION_SEC, elapsed));
@@ -598,7 +599,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         finishRecordingRef.current?.();
       }
     }, 500);
-    return () => clearInterval(timer);
+    return () => globalThis.clearInterval(timer);
   }, [recording]);
 
   React.useEffect(() => {

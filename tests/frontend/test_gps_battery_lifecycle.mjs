@@ -139,3 +139,15 @@ test('текущий foreground-only: открытие обновляет поз
   for (const cb of h.intervals.values()) cb(); await flush(); assert.equal(h.calls.sample, count);
   h.change('active'); await flush(); h.render(); await flush(); assert.ok(h.calls.sample > count); assert.equal(h.calls.start, 0);
 });
+
+
+test('one-shot: полученный fix не повторяется по таймеру или дублирующему active событию', async () => {
+  const h = hookHarness('active', true); h.render(); await flush(); h.render(); await flush();
+  assert.equal(h.calls.sample, 1);
+  const sent = h.calls.post;
+  for (let n = 0; n < 6; n++) { for (const cb of h.intervals.values()) cb(); await flush(); h.render(); }
+  h.change('active'); await flush(); h.render(); await flush();
+  assert.equal(h.calls.sample, 1); assert.equal(h.calls.post, sent);
+  h.change('background'); await flush(); h.change('active'); await flush(); h.render(); await flush();
+  assert.equal(h.calls.sample, 2);
+});

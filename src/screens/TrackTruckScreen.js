@@ -1,3 +1,4 @@
+import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 // TrackTruckScreen — карта сделки внутри UrTruck.
 // Маршрут показывается сразу после создания сделки. GPS водителя, когда появится,
 // автоматически накладывается на ту же карту; отдельного пустого экрана ожидания нет.

@@ -1,3 +1,4 @@
+import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 // ChatsListScreen — «Сделки» (dealsMode) и «Чаты» (обычный режим).
 //
 // Архитектура «Сделки» (WhatsApp-style, 04.08.2026):

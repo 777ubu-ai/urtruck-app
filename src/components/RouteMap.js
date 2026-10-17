@@ -1,3 +1,4 @@
+import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import { FOREGROUND_LOCATION_ONLY } from '../utils/backgroundLocation';
 import { foregroundLocationCopy } from '../utils/locationModeCopy';
 import React from 'react';

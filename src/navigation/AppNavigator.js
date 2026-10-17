@@ -1,13 +1,13 @@
+import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import { onboardingNavKey } from '../utils/onboardingNavKey';
 import React from 'react';
-import { View, Text, Animated } from 'react-native';
+import { View, Text, Animated, AppState } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useState, useEffect } from 'react';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
-import { getChats, subscribe, getUnreadNotifications } from '../utils/store';
 import { marketAPI } from '../utils/marketAPI';
 import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import BottomNav from '../components/ui/v1/BottomNav';
@@ -85,12 +85,6 @@ function MainTabs({ route }) {
   const { theme } = useTheme();
   const role = ['driver', 'client'].includes(session?.user?.role) ? session.user.role : (route?.params?.role || 'client');
   const isDriver = role === 'driver';
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    const unsub = subscribe(() => setTick(n => n + 1));
-    return unsub;
-  }, []);
 
   // Передача позиции живёт на уровне всего приложения. «Начать рейс» одним
   // действием переводит сделку в in_progress и включает её на сервере; после
@@ -101,6 +95,7 @@ function MainTabs({ route }) {
     let alive = true;
     const IN_WORK = ['in_progress', 'at_border'];
     const fetchIds = async () => {
+      if (!alive || AppState.currentState !== 'active') return;
       try {
         const d = await marketAPI.myDashboard();
         const ids = (d?.my_deals || [])
