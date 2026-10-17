@@ -156,8 +156,13 @@ export const chatAPI = {
     return r.json();
   },
 
-  async rooms() {
-    const r = await authedFetch(`${BASE}/rooms`, { headers: await headers() });
+  async rooms({ partnerId, offset } = {}) {
+    const params = new URLSearchParams();
+    if (partnerId != null) params.set('partner_id', String(partnerId));
+    if (partnerId != null && offset != null) params.set('offset', String(offset));
+    const encodedParams = params.toString();
+    const query = encodedParams ? `?${encodedParams}` : '';
+    const r = await authedFetch(`${BASE}/rooms${query}`, { headers: await headers() });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
       throw new Error(body?.detail || `rooms failed ${r.status}`);

@@ -203,6 +203,70 @@ def test_recent_hidden_rooms_do_not_evict_active_unread_room_from_room_list():
     assert unread_count(user=_u(owner))["unread"] == 1
 
 
+def test_partner_room_filter_finds_old_deal_outside_recent_50_and_is_scoped_to_caller():
+    owner = "own_" + uuid.uuid4().hex[:8]
+    target_driver = "drv_" + uuid.uuid4().hex[:8]
+    outsider = "out_" + uuid.uuid4().hex[:8]
+    _mk_users(owner, target_driver, outsider)
+
+    target_cargo = "cg_" + uuid.uuid4().hex[:8]
+    target_room = get_or_create_deal_room(target_cargo, owner, target_driver)
+    _mk_accepted_deal(target_cargo, owner, target_driver, target_room)
+    with get_conn() as c:
+        c.execute("UPDATE chat_rooms SET last_at='2020-01-01 00:00:00' WHERE id=?", (target_room,))
+
+    for index in range(50):
+        driver = "drv_" + uuid.uuid4().hex[:8]
+        _mk_users(driver)
+        cargo = "cg_" + uuid.uuid4().hex[:8]
+        room = get_or_create_deal_room(cargo, owner, driver)
+        _mk_accepted_deal(cargo, owner, driver, room)
+        with get_conn() as c:
+            c.execute("UPDATE chat_rooms SET last_at=? WHERE id=?", (f"2026-10-16 12:{index:02d}:00", room))
+
+    recent = my_rooms(user=_u(owner))["rooms"]
+    assert len(recent) == 50
+    assert all(room["id"] != target_room for room in recent)
+
+    targeted = my_rooms(user=_u(owner), partner_id=target_driver, offset=0)
+    assert targeted["partner_filter_applied"] is True
+    assert targeted["partner_id"] == target_driver
+    assert [room["id"] for room in targeted["rooms"]] == [target_room]
+    assert targeted["has_more"] is False
+    assert targeted["next_offset"] is None
+
+    outsider_view = my_rooms(user=_u(outsider), partner_id=target_driver, offset=0)
+    assert outsider_view["rooms"] == []
+
+
+def test_partner_room_filter_paginates_more_than_50_deals_without_losing_oldest():
+    owner = "own_" + uuid.uuid4().hex[:8]
+    partner = "drv_" + uuid.uuid4().hex[:8]
+    _mk_users(owner, partner)
+    room_ids = []
+    for index in range(51):
+        cargo = "cg_" + uuid.uuid4().hex[:8]
+        room = get_or_create_deal_room(cargo, owner, partner)
+        _mk_accepted_deal(cargo, owner, partner, room)
+        room_ids.append(room)
+        with get_conn() as c:
+            c.execute("UPDATE chat_rooms SET last_at=? WHERE id=?", (f"2026-10-16 12:{index:02d}:00", room))
+
+    first = my_rooms(user=_u(owner), partner_id=partner, offset=0)
+    # A new message changes mutable last_at after page one. The chooser's
+    # stable creation-order cursor must not move this room across its offset.
+    with get_conn() as c:
+        c.execute("UPDATE chat_rooms SET last_at='2030-01-01 00:00:00' WHERE id=?", (room_ids[-1],))
+    second = my_rooms(user=_u(owner), partner_id=partner, offset=50)
+    assert first["has_more"] is True
+    assert first["next_offset"] == 50
+    assert len(first["rooms"]) == 50
+    assert second["has_more"] is False
+    assert second["next_offset"] is None
+    assert len(second["rooms"]) == 1
+    assert {room["id"] for room in first["rooms"] + second["rooms"]} == set(room_ids)
+
+
 def test_third_user_cannot_read_or_send():
     o, d, t = ("own_" + uuid.uuid4().hex[:6], "drv_" + uuid.uuid4().hex[:6], "thr_" + uuid.uuid4().hex[:6])
     cargo = "cg_" + uuid.uuid4().hex[:6]

@@ -2,34 +2,49 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const chatRouter = fs.readFileSync('src/screens/ChatScreenV2.js', 'utf8');
 const driverDetail = fs.readFileSync('src/screens/DriverDetail.js', 'utf8');
-const myTrips = fs.readFileSync('src/screens/MyTripsScreen.js', 'utf8');
+const cargoDetail = fs.readFileSync('src/screens/CargoDetail.js', 'utf8');
+const gate = fs.readFileSync('src/components/VerificationGate.js', 'utf8');
+const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 
-test('driver profile partner-only chat entry resolves a deal-linked room before legacy fallback', () => {
-  assert.match(driverDetail, /navigation\.navigate\('Chat', \{ partner: driver, role \}\)/);
-  assert.match(chatRouter, /const partnerId = params\.partner\?\.id \|\| null/);
-  assert.match(chatRouter, /Array\.isArray\(data\?\.rooms\) \? data\.rooms : \[\]/);
-  assert.match(chatRouter, /item\.deal_id && String\(item\.partner_id\) === String\(partnerId\)/);
-  assert.match(chatRouter, /const nextDealId = params\.dealId \|\| room\?\.deal_id \|\| null/);
-  assert.match(chatRouter, /return <DealWorkspaceRoute/);
+test('driver profile resolves an authorized deal room before navigating and never passes phone data', () => {
+  assert.match(driverDetail, /fetchPartnerDealRooms\([\s\S]*chatAPI\.rooms\(\{ partnerId: driver\.id, offset \}\)/);
+  assert.match(driverDetail, /roomId: room\.id,[\s\S]*dealId: room\.deal_id/);
+  assert.match(driverDetail, /partner: \{ id: driver\.id, name: driverName, _server: true \}/);
+  assert.doesNotMatch(driverDetail, /navigation\.navigate\('Chat', \{ partner: driver, role \}\)/);
+  assert.doesNotMatch(driverDetail, /setContactOpened\(true\)/);
+  assert.match(driverDetail, /contactDeals\.map/);
 });
 
-test('partner-only contact without an accepted deal fails closed instead of opening legacy chat', () => {
-  assert.match(chatRouter, /const \[blockedPartnerEntry, setBlockedPartnerEntry\] = React\.useState\(false\)/);
-  assert.match(chatRouter, /const partnerOnlyWithoutDeal = Boolean\(partnerId && !roomId && !nextDealId\)/);
-  assert.match(chatRouter, /setBlockedPartnerEntry\(partnerOnlyWithoutDeal\)/);
-  assert.match(chatRouter, /navigation\.navigate\('Deals', \{ role: params\.role \}\)/);
-  assert.match(chatRouter, /if \(!checked \|\| blockedPartnerEntry\)/);
+test('no deal is shown only after a successful room response; load failure offers retry', () => {
+  assert.match(driverDetail, /const rooms = await fetchPartnerDealRooms\(/);
+  assert.match(driverDetail, /if \(rooms\.length === 0\)[\s\S]*contactNoDealBody/);
+  assert.match(driverDetail, /catch \{[\s\S]*contactErrorTitle[\s\S]*contactRetry/);
+  assert.match(cargoDetail, /returnToOffers: true/);
 });
 
-test('driver active trip has the same management symmetry: edit plus unpublish', () => {
-  assert.match(myTrips, /testID="my-trip-edit-btn"/);
-  assert.match(myTrips, /testID="my-trip-unpublish-btn"/);
-  assert.match(myTrips, /marketAPI\.unpublishTrip\(item\.id\)/);
-  assert.match(myTrips, /confirmAction\(t\('trip_delete_q'\), t\('trip_delete'\), true\)/);
+test('guest contact uses the normal verification gate and login route', () => {
+  assert.match(driverDetail, /requireLevel\(LEVELS\.PHONE, 'contact'/);
+  assert.match(gate, /navigation\.navigate\('PhoneV2'/);
+  for (const text of [
+    'Войдите, чтобы открыть чат согласованной сделки',
+    'Sign in to open an agreed deal chat',
+    'Келісілген мәміле чатын ашу үшін кіріңіз',
+    '请登录以打开已达成交易的聊天',
+  ]) assert.ok(gate.includes(text), `missing localized gate copy: ${text}`);
 });
 
-test('external phone Telegram WhatsApp handoff helper is absent from product source', () => {
-  assert.equal(fs.existsSync('src/utils/contactPartner.js'), false);
+test('deal-chat action labels and failures have RU, KK, ZH, EN strings', () => {
+  for (const key of ['openContact', 'contactLoading', 'contactErrorTitle', 'contactErrorBody', 'contactRetry', 'contactNoDealTitle', 'contactNoDealBody', 'contactViewOffers', 'contactDealChooserTitle', 'contactDealFallback']) {
+    assert.ok(i18n.includes(`${key}:`), `missing ${key}`);
+  }
+  for (const text of ['Открыть чат сделки', 'Мәміле чатын ашу', '打开交易聊天', 'Open deal chat']) {
+    assert.ok(i18n.includes(text), `missing ${text}`);
+  }
+});
+
+test('third party entry stays behind authenticated room discovery and backend access checks', () => {
+  assert.match(driverDetail, /chatAPI\.rooms\(\{ partnerId: driver\.id, offset \}\)/);
+  assert.match(driverDetail, /if \(contactBusyRef\.current\) return/);
+  assert.match(driverDetail, /partner: \{ id: driver\.id, name: driverName, _server: true \}/);
 });
