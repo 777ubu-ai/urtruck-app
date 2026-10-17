@@ -17,14 +17,18 @@ const MAPKIT_CONFIGURED = MAPKIT_AVAILABLE && Boolean(YANDEX_MAPKIT_API_KEY);
 // mounts. Merely exposing EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY to JavaScript does
 // not initialise the native SDK.
 let mapKitInitPromise = null;
+let mapKitInitGeneration = 0;
 const initializeMapKit = () => {
   if (!MAPKIT_CONFIGURED) return Promise.resolve(false);
   if (!mapKitInitPromise) {
+    const generation = ++mapKitInitGeneration;
     // Ошибка SDK не должна навсегда блокировать восстановление карты.
     mapKitInitPromise = Promise.resolve()
       .then(() => YaMap.init(YANDEX_MAPKIT_API_KEY))
       .catch((error) => {
-        mapKitInitPromise = null;
+        // Таймаут уже мог разрешить Retry и создать новую попытку.
+        // Поздний отказ старого native-вызова не должен сбросить её Promise.
+        if (mapKitInitGeneration === generation) mapKitInitPromise = null;
         throw error;
       });
   }
@@ -129,6 +133,8 @@ export default function TruckMap({
     const timeout = setTimeout(() => {
       if (!active) return;
       active = false;
+      // Инвалидация отделяет возможное позднее завершение native-вызова от Retry.
+      mapKitInitGeneration += 1;
       mapKitInitPromise = null;
       setMapKitInitState('error');
     }, 8000);
