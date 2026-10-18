@@ -305,7 +305,7 @@ test('every plus-menu tile has a real handler — no decorative buttons', () => 
   // Each tile object must carry an onPress that resolves to a real,
   // in-file function reference, not a no-op.
   const onPressMatches = [...items.matchAll(/onPress:\s*([^,}]+)/g)].map((m) => m[1].trim());
-  assert.equal(onPressMatches.length, 7, `expected 7 plus-menu tiles with onPress, found ${onPressMatches.length}`);
+  assert.equal(onPressMatches.length, 8, `expected 7 existing tiles plus the private driver-expense tile, found ${onPressMatches.length}`);
   for (const handler of onPressMatches) {
     assert.notEqual(handler, '() => {}', `plus-menu tile has a no-op handler: ${handler}`);
     assert.notEqual(handler, 'null', `plus-menu tile has a null handler: ${handler}`);

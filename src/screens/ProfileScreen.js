@@ -23,6 +23,7 @@ import CountryFlag from '../components/ui/v1/CountryFlag';
 import { localizePlace } from '../utils/places';
 import { appVersionLabel } from '../utils/appVersionLabel';
 import { getVehicleCopy } from '../utils/vehicleSetupCopy';
+import { getExpenseCopy } from '../utils/expenseCopy';
 
 const LANGS = [
   { code: 'RU', country: 'RU' },
@@ -141,6 +142,7 @@ export default function ProfileScreen({ navigation, route }) {
     ] : []),
     ...(isDriver ? [
       { icon: 'truck', label: getVehicleCopy(uiLang).myVehicles, screen: 'VehicleChooser', params: { origin: 'Profile' }, testID: 'profile-my-vehicles' },
+      { icon: 'book-open', label: getExpenseCopy(uiLang).title, screen: 'DriverExpenses', testID: 'profile-my-expenses' },
       ...(ADVANCED_VERIFICATION_VISIBLE ? [
         { icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' },
       ] : []),

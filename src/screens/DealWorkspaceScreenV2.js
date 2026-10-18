@@ -1,3 +1,4 @@
+import { getExpenseCopy } from '../utils/expenseCopy';
 import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import { FOREGROUND_LOCATION_ONLY } from '../utils/backgroundLocation';
@@ -1800,6 +1801,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     { key: 'location', icon: 'map-marker-alt', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' },
     { key: 'document', icon: 'file-alt', label: ui.attachDocument, onPress: pickAndSendDocument, testID: 'deal-chat-attach-document' },
     { key: 'contact', icon: 'user-alt', label: ui.attachContact, onPress: sendContactCard, testID: 'deal-chat-attach-contact' },
+    ...(session?.user?.role === 'driver' && dealId ? [{ key: 'expenses', icon: 'receipt', label: getExpenseCopy(lang).tripTitle, onPress: () => { setAttachOpen(false); navigation.navigate('DriverExpenses', { dealId }); }, testID: 'deal-chat-attach-expenses' }] : []),
   ];
 
   const hasComposerText = input.length > 0;
