@@ -20,6 +20,7 @@ export async function requestExpense(path = '', options = {}) {
 }
 export const expenseAPI = {
   options: (dealId) => requestExpense('/options' + query({ deal_id: dealId })),
+  deals: (params) => requestExpense('/options/deals' + query(params)),
   list: (params) => requestExpense(query(params)),
   save: (body, id) => requestExpense(id ? `/${encodeURIComponent(id)}` : '', {
     method: id ? 'PUT' : 'POST', body: JSON.stringify(body),

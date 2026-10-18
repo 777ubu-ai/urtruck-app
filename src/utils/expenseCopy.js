@@ -1,4 +1,5 @@
 const RU = {
+  searchDeals: 'Поиск рейса по маршруту или ID', search: 'Найти', noDealsFound: 'Рейсы не найдены',
   title: 'Мои расходы', tripTitle: 'Расходы рейса', add: 'Добавить расход', edit: 'Изменить расход', save: 'Сохранить расход',
   amount: 'Сумма', currency: 'Валюта', category: 'На что потратил?', description: 'Описание — необязательно', placeholder: 'Например, купил хлеб и жвачку',
   date: 'Дата (ГГГГ-ММ-ДД)', vehicle: 'Машина', deal: 'Рейс', allVehicles: 'Все машины', allDeals: 'Все рейсы', noVehicle: 'Без машины', noDeal: 'Без рейса',
@@ -10,6 +11,7 @@ const RU = {
   driverOnly: 'Расходы доступны после входа в аккаунт водителя.', fuel: 'Топливо', food: 'Еда', parking: 'Стоянка', daily: 'Суточные', repair: 'Ремонт', other: 'Другое',
 };
 const EN = {
+  searchDeals: 'Search trips by route or ID', search: 'Search', noDealsFound: 'No trips found',
   title: 'My expenses', tripTitle: 'Trip expenses', add: 'Add expense', edit: 'Edit expense', save: 'Save expense',
   amount: 'Amount', currency: 'Currency', category: 'What did you spend on?', description: 'Description — optional', placeholder: 'For example, bread and chewing gum',
   date: 'Date (YYYY-MM-DD)', vehicle: 'Vehicle', deal: 'Trip', allVehicles: 'All vehicles', allDeals: 'All trips', noVehicle: 'No vehicle', noDeal: 'No trip',
@@ -21,6 +23,7 @@ const EN = {
   driverOnly: 'Sign in to a driver account to use expenses.', fuel: 'Fuel', food: 'Food', parking: 'Parking', daily: 'Daily allowance', repair: 'Repairs', other: 'Other',
 };
 const KK = {
+  searchDeals: 'Рейсті бағыт немесе ID бойынша іздеу', search: 'Іздеу', noDealsFound: 'Рейстер табылмады',
   title: 'Менің шығындарым', tripTitle: 'Рейс шығындары', add: 'Шығын қосу', edit: 'Шығынды өзгерту', save: 'Шығынды сақтау',
   amount: 'Сома', currency: 'Валюта', category: 'Не үшін жұмсалды?', description: 'Сипаттама — міндетті емес', placeholder: 'Мысалы, нан мен сағыз сатып алдым',
   date: 'Күні (ЖЖЖЖ-АА-КК)', vehicle: 'Көлік', deal: 'Рейс', allVehicles: 'Барлық көліктер', allDeals: 'Барлық рейстер', noVehicle: 'Көліксіз', noDeal: 'Рейссіз',
@@ -32,6 +35,7 @@ const KK = {
   driverOnly: 'Шығындар жүргізуші аккаунтына кіргеннен кейін қолжетімді.', fuel: 'Жанармай', food: 'Тамақ', parking: 'Тұрақ', daily: 'Тәуліктік', repair: 'Жөндеу', other: 'Басқа',
 };
 const ZH = {
+  searchDeals: '按路线或 ID 搜索行程', search: '搜索', noDealsFound: '未找到行程',
   title: '我的支出', tripTitle: '行程支出', add: '添加支出', edit: '修改支出', save: '保存支出',
   amount: '金额', currency: '币种', category: '支出类别', description: '备注（选填）', placeholder: '例如：购买面包和口香糖',
   date: '日期（YYYY-MM-DD）', vehicle: '车辆', deal: '行程', allVehicles: '所有车辆', allDeals: '所有行程', noVehicle: '未关联车辆', noDeal: '未关联行程',
