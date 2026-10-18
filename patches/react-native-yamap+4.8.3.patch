@@ -554,3 +554,17 @@ new file mode 100644
 +        views.forEach(MapView::onStart)
 +    }
 +}
+diff --git a/node_modules/react-native-yamap/ios/View/RNYMView.m b/node_modules/react-native-yamap/ios/View/RNYMView.m
+--- a/node_modules/react-native-yamap/ios/View/RNYMView.m
++++ b/node_modules/react-native-yamap/ios/View/RNYMView.m
+@@ -516,2 +516,4 @@
+ - (void)setListenUserLocation:(BOOL) listen {
++    // Route maps use their own marker; false must not create a location layer.
++    if (!listen && userLayer == nil) return;
+     YMKMapKit *inst = [YMKMapKit sharedInstance];
+@@ -532,4 +534,5 @@
+ - (void)setFollowUser:(BOOL)follow {
++    if (!follow && userLayer == nil) return;
+     if (userLayer == nil) {
+         [self setListenUserLocation: follow];
+     }

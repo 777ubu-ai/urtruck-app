@@ -102,25 +102,39 @@ function MainTabs({ route }) {
     if (!FOREGROUND_LOCATION_ONLY || session?.user?.role !== 'driver') return undefined;
     let alive = true;
     let busy = false;
+    let generation = 0;
     const sync = async () => {
       if (!alive || busy || AppState.currentState !== 'active') return;
       busy = true;
+      const epoch = generation;
+      const isCurrent = () => alive && epoch === generation && AppState.currentState === 'active';
       try {
         const token = await storage.get('ur_reg_token');
-        if (!token || !alive) return;
+        if (!token || !isCurrent()) return;
+        const sameSession = async () => {
+          const currentToken = await storage.get('ur_reg_token');
+          return isCurrent() && currentToken === token;
+        };
         const result = await marketAPI.activeTrackingDeals();
-        if (!alive || result?.snapshot_location_supported !== true
-            || !Array.isArray(result.deal_ids) || await storage.get('ur_reg_token') !== token) return;
+        if (!isCurrent() || result?.ok === false || result?.snapshot_location_supported !== true
+            || !Array.isArray(result.deal_ids) || !await sameSession()) return;
         for (const id of result.deal_ids) {
-          if (!alive || await storage.get('ur_reg_token') !== token) return;
+          if (!isCurrent() || !await sameSession()) return;
           await marketAPI.activateSnapshotTracking(id);
         }
       } catch { /* A later foreground entry retries; no GPS is started. */ }
-      finally { busy = false; }
+      finally {
+        busy = false;
+        // Resume may arrive while an obsolete request is still finishing.
+        if (alive && epoch !== generation && AppState.currentState === 'active') sync();
+      }
     };
     sync();
-    const sub = AppState.addEventListener('change', state => { if (state === 'active') sync(); });
-    return () => { alive = false; sub?.remove?.(); };
+    const sub = AppState.addEventListener('change', state => {
+      generation += 1;
+      if (state === 'active') sync();
+    });
+    return () => { alive = false; generation += 1; sub?.remove?.(); };
   }, [session?.user?.id, session?.user?.role]);
 
   // Канон таб-баров (приказ владельца 2026-07-26, обе волны).

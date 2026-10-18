@@ -67,7 +67,6 @@ jobs:
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF_NAME" = main
           test "$CONFIRMATION" = BUILD_QA2_TESTFLIGHT
-          test "$QA_SOURCE_SHA" = "${QA_SOURCE_SHA,,}"
           [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
           test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/561" --jq '.state')" = open

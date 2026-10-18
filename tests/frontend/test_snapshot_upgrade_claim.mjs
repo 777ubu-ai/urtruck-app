@@ -8,7 +8,7 @@ const effect = source.slice(source.indexOf('  // A driver updating mid-trip'),
   source.indexOf('  // Канон таб-баров'));
 const flush = async () => { for (let n = 0; n < 8; n++) await new Promise(resolve => setImmediate(resolve)); };
 
-function harness(role = 'driver', supported = true, holdRead = null) {
+function harness(role = 'driver', supported = true, holdRead = null, holdMode = null, dealIds = ['owned-deal']) {
   let callback, listener, token = 'driver-A';
   const calls = [];
   const app = { currentState: 'active', addEventListener: (_, cb) => {
@@ -21,14 +21,14 @@ function harness(role = 'driver', supported = true, holdRead = null) {
     marketAPI: {
       activeTrackingDeals: async () => {
         calls.push('read'); if (holdRead) await holdRead;
-        return { snapshot_location_supported: supported, deal_ids: ['owned-deal'] };
+        return { snapshot_location_supported: supported, deal_ids: dealIds };
       },
-      activateSnapshotTracking: async (id) => { calls.push('mode:' + id); return { ok: true }; },
+      activateSnapshotTracking: async (id) => { calls.push('mode:' + id); if (holdMode) await holdMode; return { ok: true }; },
     },
     useEffect: (cb) => { callback = cb; },
   };
   vm.runInNewContext(effect, scope);
-  return { calls, start: () => callback(), resume: () => listener?.('active'), rotate: () => { token = 'driver-B'; },
+  return { calls, start: () => callback(), resume: () => listener?.('active'), background: () => { app.currentState = 'background'; listener?.('background'); }, rotate: () => { token = 'driver-B'; },
     app };
 }
 
@@ -52,5 +52,45 @@ test('смена токена во время ответа исключает з
   const hold = new Promise(resolve => { release = resolve; });
   const h = harness('driver', true, hold); h.start(); await flush();
   h.rotate(); release(); await flush();
+  assert.deepEqual(h.calls, ['read']);
+});
+
+
+test('сворачивание во время ответа сервера не запускает смену режима в фоне', async () => {
+  let release;
+  const hold = new Promise(resolve => { release = resolve; });
+  const h = harness('driver', true, hold); const stop = h.start(); await flush();
+  h.background(); release(); await flush();
+  assert.deepEqual(h.calls, ['read']);
+  stop();
+});
+
+test('возврат после прерванной проверки запускает только актуальную проверку', async () => {
+  let release;
+  const hold = new Promise(resolve => { release = resolve; });
+  const h = harness('driver', true, hold); const stop = h.start(); await flush();
+  h.background(); h.app.currentState = 'active'; h.resume();
+  release(); await flush();
+  assert.deepEqual(h.calls, ['read', 'read', 'mode:owned-deal']);
+  stop();
+});
+
+
+test('сворачивание между сделками не отправляет следующий запрос смены режима', async () => {
+  let release;
+  const hold = new Promise(resolve => { release = resolve; });
+  const h = harness('driver', true, null, hold, ['first', 'second']);
+  const stop = h.start(); await flush();
+  assert.deepEqual(h.calls, ['read', 'mode:first']);
+  h.background(); release(); await flush();
+  assert.deepEqual(h.calls, ['read', 'mode:first']);
+  stop();
+});
+
+test('размонтирование во время ответа не пишет и не перезапускает проверку', async () => {
+  let release;
+  const hold = new Promise(resolve => { release = resolve; });
+  const h = harness('driver', true, hold); const stop = h.start(); await flush();
+  stop(); release(); await flush();
   assert.deepEqual(h.calls, ['read']);
 });
