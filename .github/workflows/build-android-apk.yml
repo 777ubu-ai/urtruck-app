@@ -318,6 +318,11 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           BADGING="$($AAPT dump badging "$APK")"
+          PERMISSIONS="$($AAPT dump permissions "$APK")"
+          if printf '%s\n' "$PERMISSIONS" | grep -E 'android\.permission\.(ACCESS_BACKGROUND_LOCATION|FOREGROUND_SERVICE_LOCATION)' ; then
+            echo "::error::Snapshot QA APK unexpectedly declares background/location-service permission"
+            exit 1
+          fi
           echo "$BADGING" | grep -F "package: name='com.urtruck.app.qa2' versionCode='${URTRUCK_VERSION_CODE}' versionName='${URTRUCK_VERSION_NAME}'"
           echo "$BADGING" | grep -F "targetSdkVersion:'36'"
           CERT="$($APKSIGNER verify --print-certs "$APK" | sed -n 's/.*SHA-256 digest: //p' | head -n 1)"

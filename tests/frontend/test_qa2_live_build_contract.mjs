@@ -120,13 +120,19 @@ test('explicit QA release stays in the isolated QA2 package', () => {
 });
 
 test('TestFlight uses a protected exact-SHA QA2 trigger and never the production API', () => {
-  assert.ok(testflightWorkflow.includes('uses: ./.github/workflows/quality-gate-reusable.yml'));
-  assert.ok(testflightWorkflow.includes('needs: quality-gate'));
-  assert.ok(testflightWorkflow.includes("'qa2-final-testflight-*'"));
+  assert.ok(testflightWorkflow.includes('environment: production'));
+  assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = main'));
+  assert.ok(testflightWorkflow.includes('QA_SOURCE_SHA: ${{ inputs.source_sha }}'));
+  assert.ok(testflightWorkflow.includes('test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"'));
+  assert.ok(testflightWorkflow.includes('pulls/561'));
+  assert.ok(testflightWorkflow.includes('commits/$QA_SOURCE_SHA/check-runs'));
+  assert.ok(testflightWorkflow.includes("'quality-gate / Backend tests'"));
+  assert.ok(testflightWorkflow.includes("'quality-gate / Frontend tests, lint, and build'"));
+  assert.ok(testflightWorkflow.includes("'quality-gate / Mandatory web E2E subset'"));
+  assert.ok(!testflightWorkflow.includes("'qa2-final-testflight-*'"));
+  assert.ok(!testflightWorkflow.includes('push:\n    branches:'));
   assert.ok(testflightWorkflow.includes('BUILD_QA2_TESTFLIGHT'));
-  assert.ok(testflightWorkflow.includes('QA_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}'));
-  assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = "qa2-final-testflight-$QA_SOURCE_SHA"'));
-  assert.ok(testflightWorkflow.includes('git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate'));
+  assert.ok(testflightWorkflow.includes('URTRUCK_MIN_IOS_BUILD: 99'));
   assert.ok(testflightWorkflow.includes('QA2_API_URL: ${{ secrets.QA2_API_URL }}'));
   assert.ok(testflightWorkflow.includes('test "$QA_HOST" = qa2.urtruck.kz'));
   assert.ok(!testflightWorkflow.includes('EXPO_PUBLIC_API_URL: https://urtruck.kz'));
@@ -148,4 +154,19 @@ test('Play workflow can build a signed AAB without submitting and records releas
   assert.ok(playWorkflow.includes('uses: actions/upload-artifact@v4'));
   assert.ok(playWorkflow.includes('AAB SHA-256=${aab_sha}'));
   assert.ok(playWorkflow.includes('Upload certificate SHA-256=${cert_sha}'));
+});
+
+
+test('TestFlight SHA guard исполняется штатным Bash macOS без Bash 4 substitutions', () => {
+  const guard = testflightWorkflow.split('\n').filter(line =>
+    line.includes('test "$QA_SOURCE_SHA"') || line.includes('[[ "$QA_SOURCE_SHA" =~')).map(line => line.trim()).join('\n');
+  assert.ok(guard.includes('^[0-9a-f]{40}$'));
+  for (const sha of ['41a2ae6afd92b0f86708e828a2664e41d3600f7e', 'UPPERCASE', 'abc', '']) {
+    const run = () => execFileSync('/bin/bash', ['-c', 'set -e\n' + guard], {
+      env: { ...process.env, QA_SOURCE_SHA: sha }, stdio: 'pipe',
+    });
+    if (/^[0-9a-f]{40}$/.test(sha)) assert.doesNotThrow(run);
+    else assert.throws(run);
+  }
+  assert.doesNotMatch(guard, /\$\{QA_SOURCE_SHA,,\}/);
 });

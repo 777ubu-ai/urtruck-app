@@ -129,6 +129,79 @@ def test_healthy_to_stale_fires_one_gps_lost():
     assert gps_events(d) == ["gps_lost"]
 
 
+def test_snapshot_fix_does_not_trigger_continuous_gps_loss():
+    d = seed_deal("in_progress")
+    approve_tracking(d)
+    as_user(DRIVER)
+    active = client.get("/api/v1/market/tracking/active")
+    assert active.status_code == 200
+    assert active.json().get("snapshot_location_supported") is True
+    point = client.post(f"/api/v1/market/deals/{d}/location",
+                        json={"lat": 43.2, "lng": 76.9, "capture_mode": "snapshot"})
+    assert point.status_code == 200, point.text
+    make_stale(d)
+    assert check_gps_heartbeats_job()["fired"] == 0
+    assert gps_events(d) == []
+    with get_conn() as c:
+        row = c.execute("SELECT capture_mode FROM deal_tracking WHERE deal_id=?", (d,)).fetchone()
+    assert row["capture_mode"] == "snapshot"
+
+
+def test_old_client_still_has_continuous_watchdog_after_snapshot_client():
+    d = seed_deal("in_progress")
+    approve_tracking(d)
+    as_user(DRIVER)
+    assert client.post(f"/api/v1/market/deals/{d}/location",
+                       json={"lat": 43.2, "lng": 76.9, "capture_mode": "snapshot"}).status_code == 200
+    with get_conn() as c:
+        assert c.execute("SELECT capture_mode FROM deal_tracking WHERE deal_id=?", (d,)).fetchone()["capture_mode"] == "snapshot"
+    assert send_ping(d).status_code == 200  # old client omits capture_mode
+    make_stale(d)
+    assert check_gps_heartbeats_job()["fired"] == 1
+    assert gps_events(d) == ["gps_lost"]
+
+
+def test_third_party_cannot_switch_tracking_mode_with_location_payload():
+    d = seed_deal("in_progress")
+    approve_tracking(d)
+    as_user("unrelated-user")
+    denied = client.post(f"/api/v1/market/deals/{d}/location",
+                         json={"lat": 43.2, "lng": 76.9, "capture_mode": "snapshot"})
+    assert denied.status_code == 403
+    with get_conn() as c:
+        row = c.execute("SELECT capture_mode FROM deal_tracking WHERE deal_id=?", (d,)).fetchone()
+    assert row["capture_mode"] == "continuous"
+
+
+def test_new_client_starts_trip_in_snapshot_mode_before_first_fix():
+    d = seed_deal("accepted")
+    as_user(DRIVER)
+    result = client.patch(f"/api/v1/market/deals/{d}/status?new_status=in_progress&capture_mode=snapshot")
+    assert result.status_code == 200, result.text
+    with get_conn() as c:
+        row = c.execute("SELECT status,capture_mode,last_signal_at FROM deal_tracking WHERE deal_id=?", (d,)).fetchone()
+    assert row["status"] == "active"
+    assert row["capture_mode"] == "snapshot"
+    assert row["last_signal_at"] is None
+
+
+def test_driver_can_convert_own_active_old_trip_to_snapshot_without_fix():
+    d = seed_deal("in_progress")
+    approve_tracking(d)
+    assert send_ping(d).status_code == 200
+    as_user("unrelated-user")
+    assert client.post(f"/api/v1/market/deals/{d}/tracking/snapshot-mode").status_code == 403
+    as_user(DRIVER)
+    for _ in range(2):
+        result = client.post(f"/api/v1/market/deals/{d}/tracking/snapshot-mode")
+        assert result.status_code == 200, result.text
+    with get_conn() as c:
+        row = c.execute("SELECT capture_mode FROM deal_tracking WHERE deal_id=?", (d,)).fetchone()
+    assert row["capture_mode"] == "snapshot"
+    make_stale(d)
+    assert check_gps_heartbeats_job()["fired"] == 0
+
+
 def test_still_stale_does_not_spam():
     d = seed_deal("in_progress")
     approve_tracking(d)

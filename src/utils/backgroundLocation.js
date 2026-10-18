@@ -1,9 +1,8 @@
-// backgroundLocation — GPS-трекинг водителя по активным сделкам.
-// Android: пользователь явно запускает рейс, подтверждает disclosure, даёт
-// foreground permission, затем включает "Разрешить всегда" для активного
-// рейса. Координаты отправляются только по серверно-разрешённым сделкам.
-// Web показывает тот же per-trip disclosure перед browser location permission.
-// Временный foreground-only режим действует на iOS и Android.
+// backgroundLocation — координаты водителя по активным сделкам.
+// Новый native-кандидат делает один foreground fix только на открытой карте;
+// старые continuous-клиенты сохраняют отдельный серверный режим и watchdog.
+// Координаты отправляются только по серверно-разрешённым сделкам.
+// Web показывает per-trip disclosure перед browser location permission.
 import { Platform, AppState } from 'react-native';
 import { captureForegroundPosition } from './foregroundLocation';
 import { storage, durableStorage } from './storage';
@@ -13,7 +12,7 @@ import { API_BASE } from '../config/env';
 import { requestLocationPermissionThroughDisclosure } from './locationPermissionCoordinator';
 export { openLocationSettings } from './locationSettings';
 
-// Временный режим по решению владельца от 17.10.2026: GPS только при открытом приложении.
+// Решение владельца от 18.10.2026: автоматический GPS только на открытой карте.
 export const FOREGROUND_LOCATION_ONLY = true;
 
 export const BG_LOCATION_TASK = 'urtruck-deal-location';
@@ -129,6 +128,22 @@ function sampleForDeal(dealId, coords) {
 
 async function postLocationSample(sample, token) {
   if (FOREGROUND_LOCATION_ONLY && AppState.currentState !== 'active') return false;
+  if (FOREGROUND_LOCATION_ONLY) {
+    // An old backend silently ignores capture_mode and would emit gps_lost
+    // after a legitimate one-shot fix. Leave the sample queued until the
+    // compatible backend is available; never report a false live heartbeat.
+    const capabilityAbort = new AbortController();
+    const capabilityTimeout = setTimeout(() => capabilityAbort.abort(), 8000);
+    let capability;
+    try {
+      capability = await fetch(`${API_BASE}/market/tracking/active`, {
+        headers: { Authorization: `Bearer ${token}` }, signal: capabilityAbort.signal,
+      }).then(r => r.ok ? r.json() : null);
+    } catch { capability = null; }
+    finally { clearTimeout(capabilityTimeout); }
+    if (capability?.snapshot_location_supported !== true
+        || await storage.get(TOKEN_KEY) !== token || AppState.currentState !== 'active') return false;
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
@@ -143,6 +158,7 @@ async function postLocationSample(sample, token) {
         speed: sample.speed,
         captured_at_ms: sample.capturedAt,
         sample_id: locationSampleId(sample),
+        ...(FOREGROUND_LOCATION_ONLY ? { capture_mode: 'snapshot' } : {}),
       }),
     });
     if ([400, 403, 404, 409, 422].includes(response?.status)) {

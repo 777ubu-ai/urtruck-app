@@ -42,7 +42,7 @@ test('driver crosses at_border only on international routes; domestic goes strai
   assert.equal(unknown[0].disabled, true, 'unknown international-ness must block progress rather than guessing a route');
 });
 
-test('start trip requests background location permission before flipping status to in_progress', () => {
+test('start trip requests location permission before flipping status to in_progress', () => {
   // getAvailableDealActions only decides *which* action is offered; the
   // permission gate itself lives in the mounted screen's startTrip(), so
   // this one stays a targeted source check against the live file (no
@@ -52,9 +52,9 @@ test('start trip requests background location permission before flipping status 
   assert.match(src, /const startTrip = React\.useCallback\(async \(\) => \{/);
   assert.match(src, /const permission = await ensureBackgroundLocationPermission\(\);/);
   assert.match(src, /if \(!permission\.ok\) \{ toast\(t\('track_permission_needed'\), 'error'\); return; \}/);
-  assert.match(src, /const result = await changeDealStatus\('in_progress'\);/);
+  assert.match(src, /const result = await changeDealStatus\('in_progress', FOREGROUND_LOCATION_ONLY \? 'snapshot' : null\);/);
   // Permission must be requested before the status write, not after.
   const permIdx = src.indexOf('await ensureBackgroundLocationPermission()');
-  const statusIdx = src.indexOf("changeDealStatus('in_progress')");
+  const statusIdx = src.indexOf("changeDealStatus('in_progress', FOREGROUND_LOCATION_ONLY ? 'snapshot' : null)");
   assert.ok(permIdx > -1 && statusIdx > -1 && permIdx < statusIdx, 'permission must be requested before the deal status flips to in_progress');
 });

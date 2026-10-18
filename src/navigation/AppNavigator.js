@@ -1,3 +1,4 @@
+import DriverExpensesScreen from '../screens/DriverExpensesScreen';
 import { onboardingNavKey } from '../utils/onboardingNavKey';
 import React from 'react';
 import { View, Text, Animated, AppState } from 'react-native';
@@ -8,6 +9,8 @@ import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
 import { FOREGROUND_LOCATION_ONLY, stopBackgroundTracking } from '../utils/backgroundLocation';
+import { marketAPI } from '../utils/marketAPI';
+import { storage } from '../utils/storage';
 import BottomNav from '../components/ui/v1/BottomNav';
 
 import HowItWorksScreen from '../screens/HowItWorksScreen';
@@ -92,6 +95,48 @@ function MainTabs({ route }) {
     const sub = AppState.addEventListener('change', state => { if (state !== 'active') stop(); });
     return () => { sub?.remove?.(); stop(); };
   }, []);
+
+  // A driver updating mid-trip may still have a continuous-mode server row.
+  // Switch only that authenticated driver's active deals, without requesting
+  // location. Old servers omit the capability and remain untouched.
+  useEffect(() => {
+    if (!FOREGROUND_LOCATION_ONLY || session?.user?.role !== 'driver') return undefined;
+    let alive = true;
+    let busy = false;
+    let generation = 0;
+    const sync = async () => {
+      if (!alive || busy || AppState.currentState !== 'active') return;
+      busy = true;
+      const epoch = generation;
+      const isCurrent = () => alive && epoch === generation && AppState.currentState === 'active';
+      try {
+        const token = await storage.get('ur_reg_token');
+        if (!token || !isCurrent()) return;
+        const sameSession = async () => {
+          const currentToken = await storage.get('ur_reg_token');
+          return isCurrent() && currentToken === token;
+        };
+        const result = await marketAPI.activeTrackingDeals();
+        if (!isCurrent() || result?.ok === false || result?.snapshot_location_supported !== true
+            || !Array.isArray(result.deal_ids) || !await sameSession()) return;
+        for (const id of result.deal_ids) {
+          if (!isCurrent() || !await sameSession()) return;
+          await marketAPI.activateSnapshotTracking(id);
+        }
+      } catch { /* A later foreground entry retries; no GPS is started. */ }
+      finally {
+        busy = false;
+        // Resume may arrive while an obsolete request is still finishing.
+        if (alive && epoch !== generation && AppState.currentState === 'active') sync();
+      }
+    };
+    sync();
+    const sub = AppState.addEventListener('change', state => {
+      generation += 1;
+      if (state === 'active') sync();
+    });
+    return () => { alive = false; generation += 1; sub?.remove?.(); };
+  }, [session?.user?.id, session?.user?.role]);
 
   // Канон таб-баров (приказ владельца 2026-07-26, обе волны).
   // Обе роли живут по одной логике: «Сделки» = единый инбокс (ставки сверху,
@@ -191,6 +236,7 @@ export default function AppNavigator() {
         <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
         <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
         <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
+        <Stack.Screen name="DriverExpenses" component={DriverExpensesScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
       </Stack.Navigator>
@@ -253,6 +299,7 @@ export default function AppNavigator() {
           <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
           <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
           <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
+          <Stack.Screen name="DriverExpenses" component={DriverExpensesScreen} />
         </>
       ) : (
         // Полностью в приложении
@@ -289,6 +336,7 @@ export default function AppNavigator() {
           <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
           <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
           <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
+          <Stack.Screen name="DriverExpenses" component={DriverExpensesScreen} />
         <Stack.Screen name="Citizenship" component={CitizenshipScreen} />
         <Stack.Screen name="Identity" component={IdentityStepScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />

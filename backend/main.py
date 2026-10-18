@@ -210,6 +210,8 @@ app.include_router(chat_router, prefix="/api/v1/chat")
 app.include_router(deal_room_router, prefix="/api/v1")
 app.include_router(notif_router, prefix="/api/v1/notifications")
 app.include_router(profile_router, prefix="/api/v1/users")
+from api.driver_expenses import router as expenses_router, init_expenses_schema
+app.include_router(expenses_router, prefix="/api/v1/driver/expenses")
 app.include_router(auth_otp_router, prefix="/api/auth")
 app.include_router(ss_router, prefix="/api/v1/searches")
 app.include_router(qa_router, prefix="/api/v1/qa")
@@ -276,6 +278,7 @@ def startup():
     registration_dal.init_registration_schema()
     from database import vehicles_dal
     vehicles_dal.init_vehicles_schema()
+    init_expenses_schema()
     # api.chat импортируется при регистрации роутеров, когда новая БД ещё не
     # имеет registration-схему. Создаём special users только после неё;
     # операция идемпотентна для существующих БД.

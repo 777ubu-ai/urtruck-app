@@ -4,10 +4,10 @@
  * Keep this separate from production Android metadata: QA2 artifacts are
  * installed directly on physical test devices and never submitted to Play.
  */
-// Installed PR558 QA2 candidate 211040110 remains on Xiaomi and OPPO; advance
-// without uninstalling or clearing their data.
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 211040110;
-const QA2_ANDROID_VERSION_CODE = 211040111;
+// PR561+562 candidate 211040114 is installed on Xiaomi and OPPO.
+// Advance so the merged review fixes can be installed as a real in-place update.
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 211040114;
+const QA2_ANDROID_VERSION_CODE = 211040115;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {

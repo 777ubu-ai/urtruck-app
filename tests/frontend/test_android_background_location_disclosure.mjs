@@ -6,6 +6,7 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 const gate = read('src/components/deal/DealLocationPermissionGate.js');
 const routeHost = read('src/components/deal/DealWorkspaceRoute.js');
 const disclosure = read('src/components/deal/BackgroundLocationDisclosureModal.js');
+const snapshotCopy = read('src/utils/locationModeCopy.js');
 const tracker = read('src/utils/backgroundLocation.js');
 const coordinator = read('src/utils/locationPermissionCoordinator.js');
 const nativeMap = read('src/components/TruckMap.native.js');
@@ -18,7 +19,11 @@ const trip = read('src/screens/TripDetailV2.js');
 const manifest = read('android/app/src/main/AndroidManifest.xml');
 const app = JSON.parse(read('app.json')).expo;
 
-test('prominent disclosure matches Play background-location behavior', () => {
+test('prominent disclosure uses snapshot copy on the new native build', () => {
+  assert.match(disclosure, /FOREGROUND_LOCATION_ONLY && Platform\.OS !== 'web' \? foregroundLocationCopy/);
+  assert.match(snapshotCopy, /Местоположение определяется один раз при открытии карты рейса/);
+  assert.match(snapshotCopy, /关闭地图、离开页面/);
+  // The legacy copy is retained only for supported continuous clients.
   assert.match(disclosure, /Разрешить GPS-отслеживание\?/);
   assert.match(disclosure, /точное местоположение автомобиля/);
   assert.match(disclosure, /передавать его грузоотправителю/);
@@ -96,7 +101,7 @@ test('web denied recovery never offers or calls native app settings', () => {
 
 test('Start trip cannot enter in_progress before permission succeeds', () => {
   const permissionIndex = workspace.indexOf('ensureBackgroundLocationPermission()');
-  const statusIndex = workspace.indexOf("changeDealStatus('in_progress')");
+  const statusIndex = workspace.indexOf("changeDealStatus('in_progress', FOREGROUND_LOCATION_ONLY ? 'snapshot' : null)");
   assert.ok(permissionIndex >= 0 && statusIndex >= 0);
   assert.ok(permissionIndex < statusIndex);
   assert.match(tracker, /requestLocationPermissionThroughDisclosure\(\{ source: 'start_trip' \}\)/);
@@ -114,7 +119,7 @@ test('background broadcaster never opens runtime permission prompts', () => {
   assert.doesNotMatch(startFn, /requestBackgroundLocationPermission\(\)/);
 });
 
-test('Android location foreground service starts only while app is visible and re-registers after settings return', () => {
+test('legacy Android foreground service branch remains gated to a visible app', () => {
   assert.match(hook, /AppState\.currentState !== 'active'/);
   assert.match(hook, /state === 'active'/);
   assert.match(hook, /syncTracking\(\{ forceReconfigure: true \}\)/);
@@ -131,23 +136,23 @@ test('completed trip cleanup resolves expo-location after a native task survives
   assert.doesNotMatch(stopFn, /if \(!TaskManager \|\| !Location\)/);
 });
 
-test('Android config declares background location and keeps location foreground service', () => {
+test('snapshot build declares foreground location without background location service', () => {
   assert.equal(app.android.versionCode, 9);
   assert.ok(app.android.permissions.includes('android.permission.ACCESS_FINE_LOCATION'));
   assert.ok(app.android.permissions.includes('android.permission.ACCESS_COARSE_LOCATION'));
   assert.ok(app.android.permissions.includes('android.permission.FOREGROUND_SERVICE'));
-  assert.ok(app.android.permissions.includes('android.permission.FOREGROUND_SERVICE_LOCATION'));
-  assert.ok(app.android.permissions.includes('android.permission.ACCESS_BACKGROUND_LOCATION'));
-  assert.match(manifest, /android\.permission\.ACCESS_BACKGROUND_LOCATION/);
-  assert.match(manifest, /android\.permission\.FOREGROUND_SERVICE_LOCATION/);
+  assert.ok(!app.android.permissions.includes('android.permission.FOREGROUND_SERVICE_LOCATION'));
+  assert.ok(!app.android.permissions.includes('android.permission.ACCESS_BACKGROUND_LOCATION'));
+  assert.doesNotMatch(manifest, /android\.permission\.ACCESS_BACKGROUND_LOCATION/);
+  assert.doesNotMatch(manifest, /android\.permission\.FOREGROUND_SERVICE_LOCATION/);
 
   const plugin = app.plugins.find((entry) => Array.isArray(entry) && entry[0] === 'expo-location');
-  assert.equal(plugin?.[1]?.isAndroidForegroundServiceEnabled, true);
-  assert.equal(plugin?.[1]?.isAndroidBackgroundLocationEnabled, true);
-  assert.equal(plugin?.[1]?.isIosBackgroundLocationEnabled, true);
+  assert.equal(plugin?.[1]?.isAndroidForegroundServiceEnabled, false);
+  assert.equal(plugin?.[1]?.isAndroidBackgroundLocationEnabled, false);
+  assert.equal(plugin?.[1]?.isIosBackgroundLocationEnabled, false);
 });
 
-test('Android permission state requires foreground and background grants for the trip service', () => {
+test('legacy continuous permission branch still requires both grants', () => {
   assert.match(tracker, /Platform\.OS === 'android'/);
   assert.match(tracker, /background: bg\.status/);
   assert.match(tracker, /ok: fg\.status === 'granted' && bg\.status === 'granted'/);

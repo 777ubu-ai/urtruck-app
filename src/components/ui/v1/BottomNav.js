@@ -165,7 +165,7 @@ export default function BottomNav({ state, navigation }) {
                   isFocused ? styles.labelActive : styles.labelInactive,
                   { color: labelColor, fontSize: sp(11) },
                 ]}
-                numberOfLines={1}
+                numberOfLines={2}
               >
                 {label}
               </Text>
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, shadowColor: 'transparent', shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0,
   },
   label: {
-    height: LABEL_H, fontSize: 11, marginTop: 2,
+    minHeight: LABEL_H, fontSize: 11, marginTop: 2,
     textAlign: 'center', includeFontPadding: false,
   },
   labelActive: { fontWeight: '800' },
