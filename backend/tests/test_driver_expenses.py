@@ -143,7 +143,10 @@ def test_options_and_requested_historical_deal_are_owner_scoped(client):
     assert {v['id'] for v in result['vehicles']} == {'v1','v3'}
     assert {d['id'] for d in result['deals']} == {'d1','d3'}
     assert client.get('/expenses/options?deal_id=d2').status_code == 404
+    item = add(client)
     with sqlite3.connect(config.DB_PATH) as c:
         c.execute("DELETE FROM vehicles WHERE id='v1'")
-    assert add(client)['vehicle_plate'] == 'A123'
+    edited = client.put('/expenses/' + item['id'], json=payload(version=1))
+    assert edited.status_code == 200 and edited.json()['expense']['vehicle_plate'] == 'A123'
+    assert client.post('/expenses', json=payload()).status_code == 404
     assert add(client, deal_id=None)['vehicle_id'] is None
