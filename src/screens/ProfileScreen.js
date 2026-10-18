@@ -247,7 +247,7 @@ export default function ProfileScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {isDriver ? (
+        {isDriver && session?.user?.role === 'driver' ? (
           <TouchableOpacity
             style={[s.expenseCard, { backgroundColor: baseV1.driverSoft, borderColor: baseV1.driver }]}
             onPress={() => navigation.navigate('DriverExpenses', { role, targetId: session?.user?.id })}
