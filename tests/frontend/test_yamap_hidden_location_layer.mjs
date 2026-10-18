@@ -19,3 +19,12 @@ test('native MapKit releases views and pauses location listeners off screen', ()
   assert.match(patch, /view\.onStop\(\)/);
   assert.match(patch, /MapKitFactory\.getInstance\(\)\.onStop\(\)/);
 });
+
+
+test('iOS false location props не создают скрытый слой геолокации', () => {
+  const patch = readFileSync('patches/react-native-yamap+4.8.3.patch', 'utf8');
+  const ios = patch.slice(patch.indexOf('diff --git a/node_modules/react-native-yamap/ios/View/RNYMView.m'));
+  assert.ok(ios.startsWith('diff --git'), 'нужен iOS patch, одного Android исправления недостаточно');
+  assert.match(ios, /setListenUserLocation:\(BOOL\) listen \{[\s\S]*?\+\s*if \(!listen && userLayer == nil\) return;/);
+  assert.match(ios, /setFollowUser:\(BOOL\)follow \{[\s\S]*?\+\s*if \(!follow && userLayer == nil\) return;/);
+});

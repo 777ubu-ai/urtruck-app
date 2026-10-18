@@ -155,3 +155,18 @@ test('Play workflow can build a signed AAB without submitting and records releas
   assert.ok(playWorkflow.includes('AAB SHA-256=${aab_sha}'));
   assert.ok(playWorkflow.includes('Upload certificate SHA-256=${cert_sha}'));
 });
+
+
+test('TestFlight SHA guard исполняется штатным Bash macOS без Bash 4 substitutions', () => {
+  const guard = testflightWorkflow.split('\n').filter(line =>
+    line.includes('test "$QA_SOURCE_SHA"') || line.includes('[[ "$QA_SOURCE_SHA" =~')).map(line => line.trim()).join('\n');
+  assert.ok(guard.includes('^[0-9a-f]{40}$'));
+  for (const sha of ['41a2ae6afd92b0f86708e828a2664e41d3600f7e', 'UPPERCASE', 'abc', '']) {
+    const run = () => execFileSync('/bin/bash', ['-c', 'set -e\n' + guard], {
+      env: { ...process.env, QA_SOURCE_SHA: sha }, stdio: 'pipe',
+    });
+    if (/^[0-9a-f]{40}$/.test(sha)) assert.doesNotThrow(run);
+    else assert.throws(run);
+  }
+  assert.doesNotMatch(guard, /\$\{QA_SOURCE_SHA,,\}/);
+});
