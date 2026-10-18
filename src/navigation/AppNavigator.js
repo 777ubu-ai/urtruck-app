@@ -1,3 +1,4 @@
+import DriverExpensesScreen from '../screens/DriverExpensesScreen';
 import { onboardingNavKey } from '../utils/onboardingNavKey';
 import React from 'react';
 import { View, Text, Animated, AppState } from 'react-native';
@@ -235,6 +236,7 @@ export default function AppNavigator() {
         <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
         <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
         <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
+        <Stack.Screen name="DriverExpenses" component={DriverExpensesScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
       </Stack.Navigator>
@@ -297,6 +299,7 @@ export default function AppNavigator() {
           <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
           <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
           <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
+          <Stack.Screen name="DriverExpenses" component={DriverExpensesScreen} />
         </>
       ) : (
         // Полностью в приложении
@@ -333,6 +336,7 @@ export default function AppNavigator() {
           <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
           <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
           <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
+          <Stack.Screen name="DriverExpenses" component={DriverExpensesScreen} />
         <Stack.Screen name="Citizenship" component={CitizenshipScreen} />
         <Stack.Screen name="Identity" component={IdentityStepScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
