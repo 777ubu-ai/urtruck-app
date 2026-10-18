@@ -39,6 +39,34 @@ test('production Android build rejects a QA2 API override', () => {
   assert.match(result.stderr, /Production Android build must use https:\/\/urtruck\.kz/);
 });
 
+test('Google Play Internal accepts QA2 only after explicit opt-in', () => {
+  const result = runConfig({
+    URTRUCK_BUILD_FLAVOR: 'production',
+    URTRUCK_QA2_INTERNAL_STORE: 'true',
+    EXPO_PUBLIC_API_URL: 'https://qa2.urtruck.kz',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).urtruckApiUrl, 'https://qa2.urtruck.kz');
+  assert.equal(JSON.parse(result.stdout).urtruckBuildFlavor, 'production');
+});
+
+test('Google Play Internal opt-in rejects non-exact QA2 endpoints', () => {
+  for (const apiUrl of [
+    'http://qa2.urtruck.kz',
+    'https://other.example.invalid',
+    'https://qa2.urtruck.kz:8443',
+    'https://qa2.urtruck.kz/path',
+  ]) {
+    const result = runConfig({
+      URTRUCK_BUILD_FLAVOR: 'production',
+      URTRUCK_QA2_INTERNAL_STORE: 'true',
+      EXPO_PUBLIC_API_URL: apiUrl,
+    });
+    assert.notEqual(result.status, 0, `${apiUrl} should be rejected`);
+    assert.match(result.stderr, /QA2 Internal store build requires https:\/\/qa2\.urtruck\.kz/);
+  }
+});
+
 test('production Android build pins the canonical API when no override is supplied', () => {
   const result = runConfig({
     EXPO_PUBLIC_API_URL: '',

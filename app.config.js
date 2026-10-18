@@ -2,12 +2,34 @@ const { existsSync } = require('node:fs');
 const { QA2_ANDROID_VERSION_CODE } = require('./config/qa2-android-build-metadata');
 
 const isQa2 = process.env.URTRUCK_BUILD_FLAVOR === 'qa2';
+// Allow QA2 only for an explicitly opted-in Google Play Internal build,
+// which retains the production package ID for in-place installation.
+const isQa2InternalStore = process.env.URTRUCK_QA2_INTERNAL_STORE === 'true';
 const qa2VersionCode = Number(process.env.URTRUCK_VERSION_CODE || QA2_ANDROID_VERSION_CODE);
 const apiOverride = process.env.EXPO_PUBLIC_API_URL || '';
 const PRODUCTION_API_URL = 'https://urtruck.kz';
-const isProductionBuild = !isQa2;
+const isProductionBuild = !isQa2 && !isQa2InternalStore;
 
 const normalizedApiOverride = apiOverride.replace(/\/+$/, '');
+
+if (isQa2InternalStore) {
+  let qa2InternalUrl;
+  try {
+    qa2InternalUrl = new URL(normalizedApiOverride);
+  } catch {
+    throw new Error('QA2 Internal store build requires https://qa2.urtruck.kz');
+  }
+  if (
+    qa2InternalUrl.protocol !== 'https:'
+    || qa2InternalUrl.hostname !== 'qa2.urtruck.kz'
+    || qa2InternalUrl.port
+    || qa2InternalUrl.pathname !== '/'
+    || qa2InternalUrl.search
+    || qa2InternalUrl.hash
+  ) {
+    throw new Error('QA2 Internal store build requires https://qa2.urtruck.kz');
+  }
+}
 
 if (
   isProductionBuild
