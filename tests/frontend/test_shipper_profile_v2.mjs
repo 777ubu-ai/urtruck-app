@@ -55,7 +55,7 @@ test('shipper has its own visual identity while only driver enters vehicle setup
   assert.match(profile, /shipperColors/);
   assert.match(profile, /primary: '#C2410C'/);
   assert.match(profile, /if \(role === 'driver'\)[\s\S]*navigation\.replace\('VehicleSetupCountry'/);
-  assert.match(profile, /setRole\(role\);\s*navigation\.reset/);
+  assert.match(profile, /await setRole\(role, \{ expectedToken: ownerToken, isCurrent: \(\) => formMountedRef\.current \}\);\s*if \(roleSaved\?\.ok === false \|\| !await formIsCurrent\(\)\) return;\s*navigation\.reset/);
   assert.doesNotMatch(profileMenu, /testID: 'profile-favorites'/);
   assert.doesNotMatch(profileMenu, /icon: 'heart'/);
 });

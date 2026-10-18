@@ -375,7 +375,7 @@ test('short onboarding requires only name and phone; company and location stay o
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
   assert.doesNotMatch(profile, /validCompany/);
-  assert.match(profile, /setRole\(role\)/);
+  assert.match(profile, /setRole\(role, \{ expectedToken: ownerToken, isCurrent: \(\) => formMountedRef\.current \}\)/);
   assert.match(profileApi, /PHONE_REQUIRED/);
   assert.match(profileApi, /NAME_REQUIRED/);
   assert.doesNotMatch(profileApi, /COMPANY_REQUIRED/);
