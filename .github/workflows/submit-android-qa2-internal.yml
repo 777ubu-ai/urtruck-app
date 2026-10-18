@@ -109,6 +109,12 @@ jobs:
           echo "SOURCE_SHA=$QA_SOURCE_SHA"
           echo "QA2_API_HOST=$QA_HOST"
 
+      - name: Apply reviewed native dependency patches
+        run: |
+          set -euo pipefail
+          test -s patches/react-native-yamap+4.8.3.patch
+          ./node_modules/.bin/patch-package --error-on-fail
+
       - name: Materialize Firebase config for the production Android package
         env:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
