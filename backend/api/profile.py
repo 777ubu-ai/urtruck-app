@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import os
 import re
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -528,5 +529,21 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
     if not updates:
         return {"ok": True, "detail": "Нечего обновлять"}
 
-    reg_dal.update_driver(user["id"], updates)
+    if "phone" in updates:
+        # Первичная привязка тоже учитывает старые номера с форматированием.
+        from database.db import get_conn
+        with get_conn() as c:
+            phones = c.execute(
+                "SELECT phone FROM drivers_registration WHERE id <> ? AND phone IS NOT NULL",
+                (user["id"],),
+            ).fetchall()
+        if any(_is_real_phone(row["phone"]) and _canonical_phone(row["phone"]) == body_phone for row in phones):
+            _phone_change_error("PHONE_ALREADY_IN_USE", "Этот номер уже используется", 409)
+    try:
+        reg_dal.update_driver(user["id"], updates)
+    except sqlite3.IntegrityError as exc:
+        # Проверка выше не заменяет UNIQUE при одновременных сохранениях.
+        if "phone" in updates and "UNIQUE constraint failed: drivers_registration.phone" in str(exc):
+            _phone_change_error("PHONE_ALREADY_IN_USE", "Этот номер уже используется", 409)
+        raise
     return {"ok": True}

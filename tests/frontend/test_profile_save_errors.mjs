@@ -10,6 +10,7 @@ function harness(saved, extra = {}) {
   const state = { errors: {}, serverError: '', busy: false, navigation: [], roles: [], requests: [] };
   const env = {
     busy: false, validate: () => true, name: ' QA User ', phone: '+77000000001', role: 'client',
+    formMountedRef: { current: true }, savingRef: { current: false },
     company: '', country: '', city: '', messengerType: '', sameAsPhone: true, messengerId: '',
     ui: copy.RU, t: (key) => key,
     setErrors: (fn) => { state.errors = fn(state.errors); },
@@ -17,6 +18,7 @@ function harness(saved, extra = {}) {
     setBusy: (value) => { state.busy = value; },
     setRole: (role) => state.roles.push(role),
     regAPI: {
+      getToken: async () => 'mock-token',
       updateProfile: async (payload) => { state.requests.push(payload); return saved; },
       saveDriverDraft: async () => ({ ok: true }),
     },
@@ -117,12 +119,12 @@ test('новые причины ошибок определены для все�
 });
 
 const registration = readFileSync('src/utils/registration.js', 'utf8');
-const updateBody = registration.split('async updateProfile(payload = {}) {')[1].split('\n  },\n\n  // Безопасная смена телефона:')[0];
+const updateBody = registration.split('async updateProfile(payload = {}, { expectedToken = null } = {}) {')[1].split('\n  },\n\n  // Безопасная смена телефона:')[0];
 
 test('updateProfile сохраняет HTTP status и требует успешный HTTP даже при ok в JSON', async () => {
   for (const status of [200, 401, 429]) {
     const responseOk = status === 200;
-    const run = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}) { ${updateBody} };`)(
+    const run = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}, { expectedToken = null } = {}) { ${updateBody} };`)(
       'https://qa.invalid/api/v1', () => ({ ok: false, authRequired: true }),
       async () => ({ ok: responseOk, status, json: async () => ({ ok: true, status: 999, detail: 'test' }) }),
     );
@@ -134,7 +136,7 @@ test('updateProfile сохраняет HTTP status и требует успеш�
 
 test('updateProfile не считает пустой/повреждённый HTTP 200 сохранённым профилем', async () => {
   for (const payload of [{}, null, { ok: false }]) {
-    const run = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}) { ${updateBody} };`)(
+    const run = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}, { expectedToken = null } = {}) { ${updateBody} };`)(
       '/api', () => ({ ok: false }),
       async () => ({ ok: true, status: 200, json: async () => payload }),
     );
@@ -143,7 +145,7 @@ test('updateProfile не считает пустой/повреждённый HT
 });
 
 test('ошибки сети и сервера при Save различаются и не меняют роль/экран', async () => {
-  const failedNetwork = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}) { ${updateBody} };`)(
+  const failedNetwork = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}, { expectedToken = null } = {}) { ${updateBody} };`)(
     '/api', () => ({ ok: false }), async () => { throw new TypeError('offline'); },
   );
   const result = await failedNetwork.call({ getToken: async () => 'fixture-only' }, { name: 'QA' });
@@ -159,9 +161,52 @@ test('ошибки сети и сервера при Save различаются
 });
 
 test('updateProfile без token не делает сетевой запрос', async () => {
-  const run = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}) { ${updateBody} };`)(
+  const run = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}, { expectedToken = null } = {}) { ${updateBody} };`)(
     'https://qa.invalid/api/v1', () => ({ ok: false, authRequired: true }),
     async () => { assert.fail('Неавторизованный PATCH не должен отправляться'); },
   );
   assert.deepEqual(await run.call({ getToken: async () => null }), { ok: false, authRequired: true });
+});
+
+for (const role of ['driver', 'client']) {
+  test(`${role}: запоздалый Save A не пишет черновик/роль и не навигирует после входа B`, async () => {
+    let token = 'A', release;
+    const blocked = new Promise((r) => { release = r; });
+    const writes = [];
+    const h = harness(null, { role, regAPI: {
+      getToken: async () => token,
+      updateProfile: async () => blocked,
+      saveDriverDraft: async (payload) => { writes.push({ token, payload }); return { ok: true }; },
+    } });
+    const saving = h.run();
+    await new Promise((r) => setImmediate(r));
+    token = 'B'; release({ ok: true });
+    await saving;
+    assert.deepEqual(writes, []);
+    assert.deepEqual(h.state.roles, []);
+    assert.deepEqual(h.state.navigation, []);
+  });
+}
+
+test('уход с формы во время сохранения не запускает дальнейшие действия', async () => {
+  let release;
+  const mounted = { current: true }, writes = [];
+  const h = harness(null, { role: 'driver', formMountedRef: mounted, regAPI: {
+    getToken: async () => 'A',
+    updateProfile: () => new Promise((r) => { release = r; }),
+    saveDriverDraft: async () => { writes.push('draft'); return { ok: true }; },
+  } });
+  const saving = h.run();
+  await new Promise((r) => setImmediate(r));
+  mounted.current = false; release({ ok: true }); await saving;
+  assert.deepEqual(writes, []);
+  assert.deepEqual(h.state.navigation, []);
+});
+
+test('ожидаемый token не позволяет отправить PATCH под новой сессией', async () => {
+  const run = new Function('API_BASE', 'authRequiredResult', 'fetch', `return async function(payload = {}, { expectedToken = null } = {}) { ${updateBody} };`)(
+    '/api', () => ({ ok: false }), async () => { assert.fail('PATCH под B запрещён'); },
+  );
+  const result = await run.call({ getToken: async () => 'B' }, { name: 'Имя A' }, { expectedToken: 'A' });
+  assert.equal(result.sessionChanged, true);
 });

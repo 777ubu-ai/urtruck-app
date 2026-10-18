@@ -159,7 +159,7 @@ test('new start waits for an old native stop to finish',async()=>{
 
 const profile=fs.readFileSync('src/screens/ProfileScreen.js','utf8');
 const auth=fs.readFileSync('src/utils/AuthContext.js','utf8');
-const authMutationSource=auth.slice(auth.indexOf('let authMutationChain'),auth.indexOf('const withTimeout'));
+const authMutationSource=fs.readFileSync('src/utils/authMutation.js','utf8').replace(/export /g,'')+'\n'+auth.slice(auth.indexOf('async function authOwnerIsCurrent'),auth.indexOf('const withTimeout'));
 const authMutationApi=vm.runInNewContext(authMutationSource+'\n({runAuthMutation,commitGuestToken})',{});
 const ownerGuardSource=auth.slice(auth.indexOf('async function authOwnerIsCurrent'),auth.indexOf('const withTimeout'));
 const ownerGuardApi=vm.runInNewContext(ownerGuardSource+'\n({authOwnerIsCurrent})',{});
@@ -236,7 +236,7 @@ test('signOut checks bounded native stop before clearing session or bearer',()=>
   assert.ok(handler.indexOf('await clearBackgroundLocationSampleForLogout(authToken)')<handler.indexOf('setSession(null)'));
   assert.match(handler,/const signOut = \([^\n]*\) => runAuthMutation\(async \(\) => \{/);
   const signIn=auth.slice(auth.indexOf('const signIn ='),auth.indexOf('const setRole'));
-  assert.match(signIn,/const signIn = \(phone, level = 1, token = null\) => runAuthMutation\(async \(\) => \{/);
+  assert.match(signIn,/const signIn = \(phone, level = 1, token = null, \{[^\n]+\} = \{\}\) => runAuthMutation\(async \(\) => \{/);
   assert.ok(handler.indexOf("lastSampleCleanup?.reason === 'session_changed'")<handler.indexOf('setSession(null)'));
   const ensureGuest=auth.slice(auth.indexOf('const ensureGuest = useCallback'),auth.indexOf('const signIn ='));
   assert.match(ensureGuest,/regAPI\.ensureGuest\(\{ persist: false \}\)/);

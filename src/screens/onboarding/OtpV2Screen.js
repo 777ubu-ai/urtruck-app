@@ -35,6 +35,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
+import { resolveLoginAccount, loginIsCurrent } from '../../utils/loginAccount';
 import { push } from '../../utils/push';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 import { brandLight as brand, radius, typography } from '../../theme/brandV2';
@@ -59,17 +60,6 @@ const maskPhone = (raw) => {
   return `+${country} ${operator} *** ${last3}`;
 };
 
-// jo***@qq.com — оставляем первые 2 символа локальной части и домен.
-const maskEmail = (raw) => {
-  const e = (raw || '').trim();
-  const at = e.indexOf('@');
-  if (at < 1) return e;
-  const local = e.slice(0, at);
-  const domain = e.slice(at);
-  const head = local.slice(0, 2);
-  return `${head}***${domain}`;
-};
-
 export default function OtpV2Screen({ navigation, route }) {
   const _b = brand;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
@@ -92,6 +82,13 @@ export default function OtpV2Screen({ navigation, route }) {
   const [error, setError] = useState('');
   const [mockCode, setMockCode] = useState(initialMockCode);
   const inputRef = useRef(null);
+  const pendingLoginRef = useRef(null);
+  const verifyingRef = useRef(false);
+  const authMountedRef = useRef(true);
+  useEffect(() => {
+    authMountedRef.current = true;
+    return () => { authMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus?.(), 250);
@@ -143,17 +140,19 @@ export default function OtpV2Screen({ navigation, route }) {
 
   const verify = async (codeArg) => {
     const c = codeArg || code;
-    if (loading) return;
+    if (verifyingRef.current || !authMountedRef.current) return;
     if (c.length < CODE_LEN) {
       setError(t('otp_v2_wrong'));
       return;
     }
     setLoading(true);
+    verifyingRef.current = true;
     setError('');
     try {
-      const r = isEmail
-        ? await regAPI.verifyEmailCode(identifier, c)
-        : await regAPI.verifyCode(identifier, c);
+      const r = pendingLoginRef.current || (isEmail
+        ? await regAPI.verifyEmailCode(identifier, c, { isCurrent: () => authMountedRef.current })
+        : await regAPI.verifyCode(identifier, c, { isCurrent: () => authMountedRef.current }));
+      if (!authMountedRef.current || r.sessionChanged) return;
       if (r.cooldown) {
         setSecondsLeft(r.cooldown_sec || 60);
         setError(t('otp_v2_wrong'));
@@ -176,20 +175,24 @@ export default function OtpV2Screen({ navigation, route }) {
         setCode('');
         return;
       }
-      await signIn(identifier, r.verification_level || 1);
+      // Сохраняем подтверждённый вход для retry без повторного расходования OTP.
+      pendingLoginRef.current = r;
+      const ownsLogin = () => loginIsCurrent(r.token, () => regAPI.getToken(), () => authMountedRef.current);
+      if (!await ownsLogin()) return;
+      const account = await resolveLoginAccount(r, () => regAPI.me());
+      if (!await ownsLogin()) return;
+      const signedIn = await signIn(identifier, r.verification_level || 1, r.token, {
+        expectedToken: r.token, userId: account.id, isCurrent: () => authMountedRef.current,
+      });
+      if (signedIn === false || !await ownsLogin()) return;
+      const detectedRole = account.role;
       push.autoRegister?.().catch(() => {});
 
-      // RC2: если backend знает роль — в Main. Иначе на RoleV2.
-      let detectedRole = r.role && r.role !== 'guest' ? r.role : null;
-      if (!detectedRole) {
-        try {
-          const me = await regAPI.me();
-          if (me?.role && me.role !== 'guest') detectedRole = me.role;
-        } catch {}
-      }
       if (detectedRole) {
-        setRole(detectedRole);
+        const roleSaved = await setRole(detectedRole, { expectedToken: r.token, isCurrent: () => authMountedRef.current });
+        if (roleSaved?.ok === false || !await ownsLogin()) return;
         await refreshLevel?.().catch(() => {});
+        if (!await ownsLogin()) return;
         navigation.reset({
           index: 0,
           routes: [{ name: 'Main', params: { role: detectedRole } }],
@@ -203,10 +206,13 @@ export default function OtpV2Screen({ navigation, route }) {
     } catch (e) {
       // 7.4: сетевой сбой (fetch throw) ≠ неверный код. На 3G в рейсе водитель
       // тыкал код, думая что ошибся, а это отвалилась связь. Разводим.
-      setError(t('no_connection'));
-      setCode('');
+      if (authMountedRef.current) {
+        setError(t(pendingLoginRef.current ? 'auth_account_load_failed' : 'no_connection'));
+        if (!pendingLoginRef.current) setCode('');
+      }
     } finally {
-      setLoading(false);
+      verifyingRef.current = false;
+      if (authMountedRef.current) setLoading(false);
     }
   };
 
@@ -263,7 +269,7 @@ export default function OtpV2Screen({ navigation, route }) {
           <Text style={s.phoneHint}>
             {t('otp_v2_sent_to')}{' '}
             <Text style={s.phoneStrong}>
-              {isEmail ? maskEmail(identifier) : maskPhone(identifier)}
+              {isEmail ? identifier : maskPhone(identifier)}
             </Text>
           </Text>
 

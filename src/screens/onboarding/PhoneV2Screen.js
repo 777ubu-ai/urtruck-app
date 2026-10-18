@@ -41,6 +41,7 @@ import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
+import { resolveLoginAccount, loginIsCurrent } from '../../utils/loginAccount';
 import { push } from '../../utils/push';
 import {
   AUTH_ERROR_CODES,
@@ -163,6 +164,11 @@ export default function PhoneV2Screen({ navigation, route }) {
   // hidden button can never silently be read as "Apple checked, PASS".
   const [appleGate, setAppleGate] = useState({ show: false, reason: 'PENDING' });
   const finishingSocialRef = useRef(false);
+  const authMountedRef = useRef(true);
+  useEffect(() => {
+    authMountedRef.current = true;
+    return () => { authMountedRef.current = false; };
+  }, []);
   const role = route?.params?.role || null;
   const routedSocialUrl = route?.params?.socialAuthUrl || null;
 
@@ -194,20 +200,22 @@ export default function PhoneV2Screen({ navigation, route }) {
   }, [routedSocialUrl]);
 
   const goAfterLogin = useCallback(async (result, identifier, channel) => {
-    await signIn(identifier, result.verification_level || 1, result.token);
+    const ownsLogin = () => loginIsCurrent(result.token, () => regAPI.getToken(), () => authMountedRef.current);
+    if (!await ownsLogin()) return;
+    const account = await resolveLoginAccount(result, () => regAPI.me());
+    if (!await ownsLogin()) return;
+    const signedIn = await signIn(identifier, result.verification_level || 1, result.token, {
+      expectedToken: result.token, userId: account.id, isCurrent: () => authMountedRef.current,
+    });
+    if (signedIn === false || !await ownsLogin()) return;
+    const detectedRole = account.role;
     push.autoRegister?.().catch(() => {});
 
-    let detectedRole = result.role && result.role !== 'guest' ? result.role : null;
-    if (!detectedRole) {
-      try {
-        const me = await regAPI.me();
-        if (me?.role && me.role !== 'guest') detectedRole = me.role;
-      } catch {}
-    }
-
     if (detectedRole) {
-      setRole(detectedRole);
+      const roleSaved = await setRole(detectedRole, { expectedToken: result.token, isCurrent: () => authMountedRef.current });
+      if (roleSaved?.ok === false || !await ownsLogin()) return;
       await refreshLevel?.().catch(() => {});
+      if (!await ownsLogin()) return;
       navigation.reset({
         index: 0,
         routes: [{ name: 'Main', params: { role: detectedRole } }],
@@ -236,7 +244,7 @@ export default function PhoneV2Screen({ navigation, route }) {
     setSocialBusy(provider);
     setSocialError(null);
     try {
-      const result = await completeSocialAuth(url);
+      const result = await completeSocialAuth(url, { isCurrent: () => authMountedRef.current });
       if (!result) {
         // Duplicate delivery of an already-processed callback — no-op, not
         // an error (see socialAuth.js lastProcessedCallbackKey guard).
