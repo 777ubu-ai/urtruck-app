@@ -72,6 +72,7 @@ export default function ProfileScreen({ navigation, route }) {
     textSecondary: v1.textMuted,
   };
   const { t, lang: uiLang } = useI18n();
+  const expenseCopy = getExpenseCopy(uiLang);
   const tonUnit = uiLang === 'ZH' ? '吨' : uiLang === 'EN' ? 't' : 'т';
   const cubicMeterUnit = uiLang === 'ZH' ? '立方米' : 'м³';
   const { session, signOut, verificationLevel } = useAuth();
@@ -142,7 +143,6 @@ export default function ProfileScreen({ navigation, route }) {
     ] : []),
     ...(isDriver ? [
       { icon: 'truck', label: getVehicleCopy(uiLang).myVehicles, screen: 'VehicleChooser', params: { origin: 'Profile' }, testID: 'profile-my-vehicles' },
-      { icon: 'book-open', label: getExpenseCopy(uiLang).title, screen: 'DriverExpenses', testID: 'profile-my-expenses' },
       ...(ADVANCED_VERIFICATION_VISIBLE ? [
         { icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' },
       ] : []),
@@ -246,6 +246,27 @@ export default function ProfileScreen({ navigation, route }) {
             <Feather name="edit-2" size={16} color={theme.textMuted} />
           </TouchableOpacity>
         </View>
+
+        {isDriver ? (
+          <TouchableOpacity
+            style={[s.expenseCard, { backgroundColor: baseV1.driverSoft, borderColor: baseV1.driver }]}
+            onPress={() => navigation.navigate('DriverExpenses', { role, targetId: session?.user?.id })}
+            activeOpacity={0.7}
+            testID="profile-my-expenses"
+            accessibilityRole="button"
+            accessibilityLabel={expenseCopy.title}
+            accessibilityHint={expenseCopy.privacy}
+          >
+            <View style={[s.expenseIconWrap, { backgroundColor: theme.card }]}>
+              <Feather name="book-open" size={24} color={baseV1.driver} />
+            </View>
+            <View style={s.expenseCardText}>
+              <Text style={[s.expenseTitle, { color: theme.text }]}>{expenseCopy.title}</Text>
+              <Text style={[s.expenseSubtitle, { color: theme.text }]}>{expenseCopy.privacy}</Text>
+            </View>
+            <Feather name="chevron-right" size={22} color={baseV1.driver} />
+          </TouchableOpacity>
+        ) : null}
 
         {ADVANCED_VERIFICATION_VISIBLE && isDriver ? (
           <View style={[s.proCard, { backgroundColor: theme.card, borderColor: proActive ? accent : theme.border }]}>
@@ -409,6 +430,11 @@ const s = StyleSheet.create({
   ratingInline: { fontSize: 12, fontWeight: '700', flexShrink: 0 },
   subtitle: { fontSize: 12 },
   editBtnInline: { position: 'absolute', top: 10, right: 10, padding: 4 },
+  expenseCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1.5, padding: 16, minHeight: 100, marginBottom: 14 },
+  expenseIconWrap: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  expenseCardText: { flex: 1, minWidth: 0 },
+  expenseTitle: { fontSize: 18, fontWeight: '800' },
+  expenseSubtitle: { fontSize: 12, lineHeight: 18, marginTop: 4 },
   menuGroup: { borderRadius: 10, borderWidth: 1, marginBottom: 14, overflow: 'hidden' },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
   menuSeparator: { height: StyleSheet.hairlineWidth, marginLeft: 50 },
