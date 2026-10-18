@@ -155,3 +155,28 @@ test('shipper keeps the seven chat actions and has no expense entry', async ({pa
   await expect(page.getByTestId('deal-chat-attach-expenses')).toHaveCount(0);
   expect(box.errors).toEqual([]);
 });
+
+for (const [lang, title] of [['RU','Расходы рейса'],['KK','Рейс шығындары'],['ZH','行程支出'],['EN','Trip expenses']]) {
+  test(`полная подпись расходов и восемь доступных кнопок меню: ${lang}`, async ({ page }) => {
+    const box = await fixture(page,{role:'driver',lang});
+    await page.getByTestId('deal-chat-plus').click();
+    const buttons = ['photo','camera','share','status','location','document','contact','expenses'].map(key=>page.getByTestId('deal-chat-attach-'+key));
+    const bounds=[];
+    for (const button of buttons) {
+      await button.scrollIntoViewIfNeeded();
+      await expect(button).toBeVisible();
+      await expect(button).toBeEnabled();
+      bounds.push(await button.boundingBox());
+    }
+    const expense=buttons[7];
+    await expect(expense).toHaveAttribute('aria-label',title);
+    await expect(expense).toContainText(title);
+    const textFits=await expense.evaluate(node=>Array.from(node.querySelectorAll('div')).filter(n=>n.textContent===node.getAttribute('aria-label')).every(n=>n.scrollWidth<=n.clientWidth+1));
+    expect(textFits).toBeTruthy();
+    for(const b of bounds){expect(b.width).toBeGreaterThanOrEqual(44);expect(b.height).toBeGreaterThanOrEqual(44);}
+    await page.screenshot({path:`/private/tmp/urtruck-expenses-candidate-menu-${lang}.png`,fullPage:true});
+    await expense.click();
+    await expect(page.getByTestId('expenses-add')).toBeVisible();
+    expect(box.posts).toHaveLength(0);expect(box.errors).toEqual([]);
+  });
+}
