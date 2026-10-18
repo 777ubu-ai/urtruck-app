@@ -145,3 +145,8 @@ def test_bad_cursors_are_rejected(client, path, cursor):
 def test_cursor_integers_fit_sqlite_and_do_not_raise_500(client, position, snapshot):
     token = api._cursor('expenses','driver',[None,None],['2026-10-18','2026-10-18 00:00:00',position,'id'],snapshot)
     assert client.get('/expenses', params={'cursor':token}).status_code == 400
+
+
+def test_cursor_with_unpaired_unicode_is_rejected_before_sqlite(client):
+    token = api._cursor('expenses','driver',[None,None],['\ud800','2026-10-18 00:00:00',1,'id'],1)
+    assert client.get('/expenses', params={'cursor':token}).status_code == 400

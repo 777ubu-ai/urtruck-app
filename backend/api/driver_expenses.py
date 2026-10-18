@@ -66,6 +66,8 @@ def _cursor(kind, owner, filters, position, snapshot=None):
 def _read_cursor(token, kind, owner, filters):
     try:
         data = json.loads(base64.b64decode(token + "=" * (-len(token) % 4), altchars=b"-_", validate=True))
+        # JSON допускает одиночные surrogate; SQLite принимает только корректный UTF-8.
+        json.dumps(data, ensure_ascii=False).encode("utf-8")
         if (not isinstance(data, dict) or data.get("v") != 1 or data.get("kind") != kind
                 or data.get("owner") != owner or data.get("filters") != filters):
             raise ValueError()
