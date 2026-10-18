@@ -27,6 +27,9 @@ test('Google Play release is hard-pinned to QA2 and the Internal track', () => {
   assert.ok(workflow.includes('environment: production'), 'protected Environment approval is required');
   assert.ok(!workflow.includes('tracks: ${{ inputs.track'));
   assert.doesNotMatch(workflow, /EXPO_PUBLIC_API_URL:\s*https:\/\/urtruck\.kz(?:\s|$)/m);
+  const buildStep = workflow.match(/      - name: Build and test signed QA2 AAB\n        env:\n([\s\S]*?)(?=\n        run:)/)?.[1] || '';
+  assert.match(buildStep, /URTRUCK_QA2_INTERNAL_STORE:\s*'true'/,
+    'QA2 API override must be explicitly limited to the Internal build step');
 });
 
 test('QA2 AAB verifies the exact API host, Firebase, 16 KB alignment, and no background location', () => {
