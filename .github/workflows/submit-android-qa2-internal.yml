@@ -148,6 +148,7 @@ jobs:
 
       - name: Build and test signed QA2 AAB
         env:
+          URTRUCK_QA2_INTERNAL_STORE: 'true'
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ runner.temp }}/urtruck-upload-key.jks
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
