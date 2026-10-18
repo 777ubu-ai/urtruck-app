@@ -83,6 +83,7 @@ module.exports = ({ config }) => {
   plugins: [
     ...(config.plugins || []),
     './plugins/withAndroidFullscreenSplash',
+    './plugins/withAndroidSnapshotLocation',
     ...(isQa2 ? ['./plugins/withQaLocalCleartext'] : []),
   ],
   });
