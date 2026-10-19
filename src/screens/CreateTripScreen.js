@@ -353,6 +353,8 @@ export default function CreateTripScreen({ navigation, route }) {
             featherIcon="calendar"
             label={t('departure')}
             value={departure}
+            valueNumberOfLines={0}
+            testID="trip-departure-field"
             placeholder=""
             onPress={() => setShowDeparturePicker((v) => !v)}
           />

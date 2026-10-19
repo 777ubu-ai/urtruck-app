@@ -129,6 +129,15 @@ test('два синхронных нажатия публикации рейса
  assert.equal(h.calls.filter(x=>x[0]==='nav').length,1);
 });
 
+test('дата рейса переносится в узком поле и сохраняется полностью после выбора',async()=>{
+ const h=cargoHarness({kind:'trip',role:'driver'});h.fillTrip();
+ const date=h.byType('Field').find(x=>x.props.label==='departure');
+ assert.equal(date.props.valueNumberOfLines,0);
+ assert.equal(date.props.value,'25.10.2026');
+ await h.byId('trip-submit-button').props.onPress();
+ assert.equal(h.calls.find(x=>x[0]==='trip')[1].departure,'2026-10-25');
+});
+
 
 test('невалидная сумма отмечается в конкретном поле без POST',async()=>{
  const h=cargoHarness();h.fill();h.byId('cargo-price-field').props.onChangeText('0');await h.byId('cargo-submit-button').props.onPress();
