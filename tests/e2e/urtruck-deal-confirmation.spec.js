@@ -87,6 +87,8 @@ async function fixture(page, { role, initialStatus = 'at_border', failFirst = fa
   });
   await page.goto(base, { waitUntil: 'networkidle' });
   await expect(page.getByTestId('bottom-nav-deals')).toBeVisible({ timeout: 20000 });
+  // Дожидаемся асинхронной проверки browser permission: баннер сдвигает вкладки.
+  await expect(page.getByTestId('push-permission-banner')).toBeVisible();
   await page.getByTestId('bottom-nav-deals').click();
   await page.getByTestId('deals-tab-active').click();
   await expect(page.getByTestId('deals-deal-card')).toHaveCount(1);
