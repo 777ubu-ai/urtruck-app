@@ -1,3 +1,6 @@
+import { usePublicationDraft } from '../hooks/usePublicationDraft';
+import { sessionRole, confirmPublicationSession } from '../utils/publicationSession';
+import { regAPI } from '../utils/registration';
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -51,6 +54,13 @@ const normalizeDecimal = (v) => {
 const vehicleBodyToMarketType = (body) => ({ curtain_sider: 'tent', refrigerated: 'ref', insulated: 'izoterm', flatbed: 'platform', container_platform: 'platform', dump_body: 'dump_truck', tanker: 'tanker', lowboy: 'platform', car_carrier: 'auto', van: 'van' }[body] || body);
 
 export default function CreateTripScreen({ navigation, route }) {
+  const { session, refreshLevel } = useAuth();
+  const role = sessionRole(session);
+  const ownerRef = React.useRef(session?.user?.id);
+  const sessionRef = React.useRef(session);
+  sessionRef.current = session;
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
 
@@ -85,11 +95,11 @@ export default function CreateTripScreen({ navigation, route }) {
   draftText: { fontSize: 13, fontWeight: '700' },
 
   }), [v1]);
-  const role = route?.params?.role || 'driver';
+
   const accent = v1AccentFor('driver');
   const { t, lang } = useI18n();
   const { toast } = useToast();
-  const { session } = useAuth();
+
 
   const displayRoutePoint = (raw, point) => {
     const canonical = point?.name || cleanPlaceName(raw || '');
@@ -135,8 +145,11 @@ export default function CreateTripScreen({ navigation, route }) {
   const [showTruckPicker, setShowTruckPicker] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
 
+  const submissionInFlight = React.useRef(false);
+  const draft = usePublicationDraft(`trip:${route?.params?.vehicleId || vehicle?.id || 'unbound'}`, ownerRef.current, { from, fromPoint, to, toPoint, transit, departure, arrival, truckType, tons, m3, price, currency }, { from: setFrom, fromPoint: setFromPoint, to: setTo, toPoint: setToPoint, transit: setTransit, departure: setDeparture, arrival: setArrival, truckType: setTruckType, tons: setTons, m3: setM3, price: setPrice, currency: setCurrency });
+
   const submit = async () => {
-    if (submitting) return;
+    if (submitting || submissionInFlight.current) return;
     const errs = {};
     if (!from.trim()) errs.from = t('val_from_required');
     if (!to.trim()) errs.to = t('val_to_required');
@@ -159,6 +172,7 @@ export default function CreateTripScreen({ navigation, route }) {
       return;
     }
     setErrors({});
+    submissionInFlight.current = true;
     setSubmitting(true);
     const priceNum = Math.max(0, parseInt(String(price || '').replace(/\s/g, ''), 10) || 0);
     const payload = {
@@ -186,8 +200,16 @@ export default function CreateTripScreen({ navigation, route }) {
       to_point_name:   toPoint?.name      || null,
     };
     try {
-      const r = await marketAPI.createTrip(payload);
+      await draft.save();
+      const sessionGuard = await confirmPublicationSession({
+        expectedRole: 'driver', expectedUserId: ownerRef.current,
+        getSession: () => mountedRef.current ? sessionRef.current : null, readToken: () => regAPI.getToken(),
+        readAccount: token => regAPI.publicationAccount(token),
+      });
+      const r = await marketAPI.createTrip(payload, sessionGuard);
       if (r.ok || r.id) {
+        await draft.clear();
+        if (!sessionGuard.isCurrent() || await regAPI.getToken() !== sessionGuard.expectedToken || !sessionGuard.isCurrent()) return;
         toast('✓ ' + t('trip_published'), 'success', 4000);
         const justCreated = { id: r.id, ...payload, status: 'active', created_at: new Date().toISOString() };
         navigation.reset({
@@ -202,17 +224,32 @@ export default function CreateTripScreen({ navigation, route }) {
           }],
         });
       } else {
+        if (!sessionGuard.isCurrent() || await regAPI.getToken() !== sessionGuard.expectedToken || !sessionGuard.isCurrent()) return;
         toast(r.detail || t('send_error'), 'error');
       }
     } catch (e) {
       // P1 UI-аудит 2026-09-13: не показывать сырой e.message (часто
       // непереведённая браузерная строка вроде "Failed to fetch") — только
       // локализованный текст, как во всех остальных catch-блоках рядом.
-      toast(t('network_error'), 'error');
+      if (!mountedRef.current || sessionRef.current?.user?.id !== ownerRef.current) return;
+      if (e?.code === 'PUBLICATION_ROLE_NOT_ALLOWED') refreshLevel().catch(() => {});
+      toast(t(e?.code === 'PUBLICATION_DRAFT_FAILED' ? 'publication_draft_save_failed' : e?.code === 'PUBLICATION_SESSION_CHANGED' ? 'session_expired' : e?.code === 'PUBLICATION_ROLE_NOT_ALLOWED' ? 'publication_role_trip' : e?.code === 'CARGO_PHOTO_UPLOAD_FAILED' ? 'photo_failed' : 'network_error'), 'error');
     } finally {
+      submissionInFlight.current = false;
       setSubmitting(false);
     }
   };
+
+  if (role !== 'driver') {
+    return <Screen><BrandHeader onBack={() => navigation.goBack()} />
+      <Text accessibilityRole="alert">{t('publication_role_trip')}</Text>
+      <PrimaryButton testID="publication-open-correct-role" label={t(role === 'driver' ? 'publish_route' : 'place_cargo')}
+        onPress={() => navigation.navigate('Main', { role, screen: 'MyWork' })} />
+    </Screen>;
+  }
+
+  if (!draft.ready) return <Screen><BrandHeader onBack={() => navigation.goBack()} /><Text>{t(draft.loadError ? 'publication_draft_load_failed' : 'my_work_loading')}</Text>
+    {draft.loadError ? <PrimaryButton label={t('repeat_action')} testID="publication-draft-retry" onPress={draft.retry} /> : null}</Screen>;
 
   // Design v1 Commit 2: sticky footer CTA (same pattern as CreateCargoScreen)
   // — the submit button renders in Screen's `footer` slot, above the IME,

@@ -1,3 +1,4 @@
+import { sessionRole } from '../../src/utils/publicationSession.js';
 import test from 'node:test';
 import { createRequire } from 'node:module';
 const require=createRequire(import.meta.url);
@@ -12,7 +13,7 @@ test('карточка расходов: четыре языка, обе тем�
  for(const lang of ['RU','EN','KK','ZH'])for(const dark of [false,true])for(const role of ['driver','client'])for(const accountRole of ['driver','client',null]){
   const colors=dark?DARK:LIGHT;const navigations=[];
   const React={createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:Symbol('Fragment'),useState:v=>[typeof v==='function'?v():v,()=>{}],useEffect:()=>{},useCallback:f=>f};
-  const mocks={
+  const mocks={ '../utils/publicationSession':{sessionRole},
    react:React,'react-native':{View:'View',Text:'Text',TouchableOpacity:'TouchableOpacity',StyleSheet:{create:x=>x,hairlineWidth:0.5},ScrollView:'ScrollView',Alert:{alert:()=>{}},Platform:{OS:'android'},Image:'Image'},
    'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'@react-navigation/native':{useFocusEffect:()=>{}},'@expo/vector-icons/Feather':'Feather',
    '../utils/i18n':{setLanguage:()=>{},getLanguage:()=>lang},'../utils/useI18n':{useI18n:()=>({t:k=>k,lang})},'../utils/ThemeContext':{useTheme:()=>({isDark:dark,toggleTheme:()=>{}})},
@@ -24,8 +25,8 @@ test('карточка расходов: четыре языка, обе тем�
   vm.runInNewContext(source,{exports:module.exports,module,require:name=>{if(!(name in mocks))throw Error('Неожиданный импорт: '+name);return mocks[name]},process:{env:{}},console});
   const tree=module.exports.default({route:{params:{role}},navigation:{canGoBack:()=>true,goBack:()=>{},navigate:(...args)=>navigations.push(args)}});
   const nodes=[];function walk(n){if(Array.isArray(n)){n.forEach(walk);return;}if(!n||typeof n!=='object')return;if(n.props){nodes.push(n);walk(n.props.children);}}walk(tree);
-  const cards=nodes.filter(n=>n.props.testID==='profile-my-expenses');assert.equal(cards.length,role==='driver'&&accountRole==='driver'?1:0);
-  if(role==='driver'&&accountRole==='driver'){
+  const cards=nodes.filter(n=>n.props.testID==='profile-my-expenses');assert.equal(cards.length,accountRole==='driver'?1:0);
+  if(accountRole==='driver'){
    const card=cards[0];assert.equal(card.props.accessibilityRole,'button');assert.equal(card.props.accessibilityLabel,getExpenseCopy(lang).title);assert.equal(card.props.accessibilityHint,getExpenseCopy(lang).privacy);
    assert.ok(nodes.indexOf(card)<nodes.findIndex(n=>n.props.testID==='profile-notifications'));
    card.props.onPress();assert.equal(navigations[0][0],'DriverExpenses');assert.equal(navigations[0][1].role,'driver');assert.equal(navigations[0][1].targetId,'test-driver');

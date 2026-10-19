@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const api = readFileSync('src/utils/marketAPI.js', 'utf8');
 const method = api.split('  async myDashboard(')[1].split('  // ─── Drivers')[0];
-const moduleState = api.slice(api.indexOf('const DASHBOARD_CACHE_MS'), api.indexOf('async function headers()'));
+const moduleState = api.slice(api.indexOf('const DASHBOARD_CACHE_MS'), api.indexOf('async function headers('));
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 function harness() {
   let identity = 'fixture-A';

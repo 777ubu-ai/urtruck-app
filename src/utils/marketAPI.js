@@ -20,8 +20,11 @@ let dashboardInFlight = null;
 let dashboardScope = null;
 let dashboardRevision = 0;
 
-async function headers() {
+async function headers({ expectedToken = null, isCurrent = () => true } = {}) {
   const token = await storage.get(TOKEN_KEY);
+  if (!isCurrent() || (expectedToken && token !== expectedToken)) {
+    const e = new Error('PUBLICATION_SESSION_CHANGED'); e.code = 'PUBLICATION_SESSION_CHANGED'; throw e;
+  }
   return {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
@@ -118,9 +121,9 @@ export const marketAPI = {
   },
 
   // ─── Cargos ───
-  async createCargo(data) {
+  async createCargo(data, sessionGuard = {}) {
     const r = await authedFetch(`${BASE}/cargos`, {
-      method: 'POST', headers: await headers(),
+      method: 'POST', headers: await headers(sessionGuard),
       body: JSON.stringify(data),
     });
     const d = await r.json();
@@ -130,8 +133,7 @@ export const marketAPI = {
 
   // Загрузка одного фото груза → storage-ключ (мультипарт, как в чате).
   // Ключ кладётся в cargos.photos; сервер подпишет его на выдаче.
-  async uploadCargoPhoto(uri) {
-    const token = await storage.get('ur_reg_token');
+  async uploadCargoPhoto(uri, sessionGuard = {}) {
     const form = new FormData();
     if (Platform.OS === 'web') {
       const blob = await fetch(uri).then((x) => x.blob());
@@ -141,7 +143,7 @@ export const marketAPI = {
     }
     const r = await authedFetch(`${BASE}/cargos/photo`, {
       method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: (({ Authorization }) => Authorization ? { Authorization } : {})(await headers(sessionGuard)),
       body: form,
     });
     if (!r.ok) throw new Error(`cargo photo upload failed ${r.status}`);
@@ -297,9 +299,9 @@ export const marketAPI = {
   },
 
   // ─── Trips ───
-  async createTrip(data) {
+  async createTrip(data, sessionGuard = {}) {
     const r = await authedFetch(`${BASE}/trips`, {
-      method: 'POST', headers: await headers(),
+      method: 'POST', headers: await headers(sessionGuard),
       body: JSON.stringify(data),
     });
     return r.json();

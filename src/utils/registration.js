@@ -1,3 +1,4 @@
+import { authedFetch } from './authEvents';
 // Client for /api/v1/register/*
 import { Platform } from 'react-native';
 import { storage } from './storage';
@@ -100,6 +101,17 @@ export const regAPI = {
       }
     }
     return data;
+  },
+
+  // Проверка публикации использует один bearer и не меняет локальную сессию.
+  async publicationAccount(token) {
+    const r = await authedFetch(`${BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) {
+      const e = new Error('PUBLICATION_ACCOUNT_UNAVAILABLE');
+      e.code = r.status === 401 ? 'PUBLICATION_SESSION_CHANGED' : 'PUBLICATION_ACCOUNT_UNAVAILABLE';
+      throw e;
+    }
+    return r.json();
   },
 
   async me() {

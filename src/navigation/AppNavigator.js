@@ -1,3 +1,4 @@
+import { sessionRole } from '../utils/publicationSession';
 import DriverExpensesScreen from '../screens/DriverExpensesScreen';
 import { onboardingNavKey } from '../utils/onboardingNavKey';
 import React from 'react';
@@ -84,7 +85,7 @@ function chatRouteId() {
 function MainTabs({ route }) {
   const { session } = useAuth();
   const { theme } = useTheme();
-  const role = ['driver', 'client'].includes(session?.user?.role) ? session.user.role : (route?.params?.role || 'client');
+  const role = sessionRole(session, route?.params?.role) || 'client';
   const isDriver = role === 'driver';
 
   // Login/tabs never request a position. Only remove a persisted legacy task.
@@ -151,6 +152,7 @@ function MainTabs({ route }) {
   // ROLE_ACCENT / LABEL_ACCENT).
   return (
     <Tab.Navigator
+      key={`${session?.user?.id || 'guest'}:${role}`}
       screenOptions={{ headerShown: false }}
       // Без sceneContainerStyle React Navigation красит фон сцены белым
       // (DefaultTheme), и в тёмной теме он просвечивал снизу через
@@ -258,7 +260,7 @@ export default function AppNavigator() {
 
   return (
     <Stack.Navigator
-      key={navKey === 'norole' ? 'guest' : navKey}
+      key={navKey === 'main' ? `main:${session?.user?.id || 'guest'}` : (navKey === 'norole' ? 'guest' : navKey)}
       initialRouteName={navKey === 'norole' ? 'RoleV2' : (navKey === 'main' ? 'Main' : 'OnboardingV2')}
       screenOptions={{ headerShown: false }}
     >

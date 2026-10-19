@@ -1,3 +1,4 @@
+import { sessionRole } from './publicationSession';
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from './storage';
 import { runAuthMutation } from './authMutation';
@@ -106,14 +107,14 @@ export const AuthProvider = ({ children }) => {
         setVerificationLevel(me.verification_level);
         if (me.id || hasRealRole) {
           const prev = sessionRef.current;
-          const base = prev?.user || {};
+          const base = prev?.user?.id === me.id ? prev.user : {};
           const fullName = profile?.name || me.full_name || null;
           const city = profile?.city || null;
           const next = {
             ...(prev || {}),
             user: {
               ...base,
-              role: hasRealRole ? me.role : (base.role || null),
+              role: sessionRole({ user: me }),
               phone: me.phone || base.phone,
               id: me.id || base.id,
               name: fullName || base.name || null,

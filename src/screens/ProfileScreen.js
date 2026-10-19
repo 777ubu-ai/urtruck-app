@@ -1,3 +1,4 @@
+import { sessionRole } from '../utils/publicationSession';
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -58,7 +59,8 @@ const APP_VERSION_LABEL = (() => {
 })();
 
 export default function ProfileScreen({ navigation, route }) {
-  const { role } = route.params || {};
+  const { session, signOut, verificationLevel } = useAuth();
+  const role = sessionRole(session, route.params?.role);
   const isDriver = role === 'driver';
   const baseV1 = useV1Colors();
   const shipper = useShipperCeramicColors();
@@ -75,7 +77,7 @@ export default function ProfileScreen({ navigation, route }) {
   const expenseCopy = getExpenseCopy(uiLang);
   const tonUnit = uiLang === 'ZH' ? '吨' : uiLang === 'EN' ? 't' : 'т';
   const cubicMeterUnit = uiLang === 'ZH' ? '立方米' : 'м³';
-  const { session, signOut, verificationLevel } = useAuth();
+
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
   const [confirmDialog, setConfirmDialog] = useState(null);
