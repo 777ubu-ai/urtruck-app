@@ -36,3 +36,9 @@ test('серверный аккаунт другой роли или друго�
   await assert.rejects(confirmPublicationSession({expectedRole:'client',expectedUserId:'a',getSession:()=>({user:{id:'a',role:'client'}}),readToken:async()=>'a-token',readAccount:async()=>account}));
  }
 });
+
+test('409 публикации обеих форм возвращает явный конфликт и исходный результат',async()=>{
+ const original=global.fetch;global.fetch=async()=>({ok:false,status:409,json:async()=>({detail:{error:'PUBLICATION_IDEMPOTENCY_CONFLICT',original_result:{ok:true,id:'initial'}}})});
+ try{for(const fn of [marketAPI.createCargo,marketAPI.createTrip]){const r=await fn({client_id:'persisted-operation'});assert.equal(r.ok,false);assert.equal(r.code,'PUBLICATION_IDEMPOTENCY_CONFLICT');assert.equal(r.originalResult.id,'initial');assert.equal(typeof r.detail,'string');}}
+ finally{global.fetch=original;}
+});

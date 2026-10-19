@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Literal
 
 from database.db import get_conn, new_id
+from database import publication_operations
 from api.verification_gate import require_level, require_active_level, require_driver_trip_publication, get_user, _extract_driver
 from api.push import send_to_user
 from services import file_signing as _cargo_file_signing
@@ -590,6 +591,7 @@ def _init():
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_deal_tracking_events_deal ON deal_tracking_events(deal_id, created_at)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_deal_tracking_status ON deal_tracking(status, updated_at)")
+        publication_operations.init_schema(c)
         c.commit()
     # One-time migration: picked_up → in_progress (status removed from code).
     with get_conn() as c:
@@ -602,6 +604,7 @@ _init()
 # ═══ Models ═══
 
 class CargoIn(BaseModel):
+    client_id: Optional[str] = Field(default=None, min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
     from_city: str
     to_city: str
     cargo_desc: str  # max 500 chars, strip
@@ -640,6 +643,7 @@ class CargoIn(BaseModel):
 
 
 class TripIn(BaseModel):
+    client_id: Optional[str] = Field(default=None, min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
     from_city: str
     to_city: str
     transit: Optional[str] = None
@@ -725,7 +729,6 @@ def create_cargo(body: CargoIn, user=Depends(require_active_level(1))):
     if not body.cargo_desc:
         raise HTTPException(status_code=400, detail="Укажите что везти")
     # Stage 52 / P1-8: дата погрузки не может быть в прошлом.
-    _validate_future_date(body.pickup_date, "pickup_date")
     # Pilot currency whitelist (Stage 5 / rev. 3): RUB / USD / KZT / CNY.
     # UZS / KGS / EUR / AED removed from publish flows. A typo or removed
     # currency code falls back to USD so the cargos.currency column never
@@ -742,6 +745,10 @@ def create_cargo(body: CargoIn, user=Depends(require_active_level(1))):
     fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
     tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
     with get_conn() as c:
+        previous = publication_operations.replay(c, user['id'], 'cargo', body)
+        if previous is not None:
+            return previous
+        _validate_future_date(body.pickup_date, "pickup_date")
         pay = body.payment_type if body.payment_type in ("cash", "cashless", "any") else None
         c.execute("""
             INSERT INTO cargos (id, owner_id, owner_phone, owner_name,
@@ -756,6 +763,7 @@ def create_cargo(body: CargoIn, user=Depends(require_active_level(1))):
               body.pickup_date,
               json.dumps(body.photos or [], ensure_ascii=False),
               fc, fpt, fpn, tc, tpt, tpn))
+        publication_operations.record(c, user['id'], 'cargo', body, {'id': cid, 'ok': True})
 
     # Push подписчикам маршрута
     try:
@@ -1526,7 +1534,6 @@ def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
     if not body.from_city or not body.to_city:
         raise HTTPException(status_code=400, detail="Укажите маршрут: откуда и куда")
     # Stage 52 / P1-8: дата выезда не может быть в прошлом.
-    _validate_future_date(body.departure, "departure")
     # Same pilot whitelist as create_cargo — see note there.
     currency = (body.currency or "USD").upper()
     if currency not in ("USD", "KZT", "RUB", "CNY"):
@@ -1535,6 +1542,10 @@ def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
     fc, fpt, fpn = _norm_route_triple(body.from_country, body.from_point_type, body.from_point_name)
     tc, tpt, tpn = _norm_route_triple(body.to_country, body.to_point_type, body.to_point_name)
     with get_conn() as c:
+        previous = publication_operations.replay(c, user['id'], 'trip', body)
+        if previous is not None:
+            return previous
+        _validate_future_date(body.departure, "departure")
         resolved_vehicle_id = body.vehicle_id
         try:
             if resolved_vehicle_id:
@@ -1568,6 +1579,7 @@ def create_trip(body: TripIn, user=Depends(require_driver_trip_publication)):
               body.capacity_tons, body.available_m3, body.price, currency,
               body.departure, body.arrival,
               fc, fpt, fpn, tc, tpt, tpn))
+        publication_operations.record(c, user['id'], 'trip', body, {'id': tid, 'ok': True})
     return {"id": tid, "ok": True}
 
 

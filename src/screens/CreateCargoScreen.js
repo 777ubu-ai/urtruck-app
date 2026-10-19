@@ -152,6 +152,7 @@ export default function CreateCargoScreen({ navigation, route }) {
   const [errors, setErrors] = useState({});
 
   // Picker overlays
+  const [publicationConflict, setPublicationConflict] = useState(null);
   const [showFromPicker, setShowFromPicker] = useState(false);
   const [showToPicker, setShowToPicker] = useState(false);
   // Stage 42: showDescPicker удалён — Описание груза теперь inline-input.
@@ -199,7 +200,7 @@ export default function CreateCargoScreen({ navigation, route }) {
     // legacy from_city / to_city strings. Backend tolerates missing
     // fields (free-text fallback supplies country='XX' for orphans),
     // so the picker output can land directly without further shaping.
-    const payload = {
+    let payload = {
       from_city: fromPoint?.name || cleanPlaceName(from.trim()),
       to_city: toPoint?.name || cleanPlaceName(to.trim()),
       cargo_desc: cargoDesc.trim(),
@@ -220,6 +221,7 @@ export default function CreateCargoScreen({ navigation, route }) {
     };
     try {
       await draft.save();
+      const operation = await draft.prepare();
       const sessionGuard = await confirmPublicationSession({
         expectedRole: 'client', expectedUserId: ownerRef.current,
         getSession: () => mountedRef.current ? sessionRef.current : null, readToken: () => regAPI.getToken(),
@@ -229,7 +231,9 @@ export default function CreateCargoScreen({ navigation, route }) {
       // payload. Раньше сохранялся локальный uri устройства (blob:/file:) —
       // у другого пользователя фото не открывалось. Выбранное фото нельзя
       // молча потерять: сохраняем успешные keys для повторной попытки.
-      if (photos && photos.length) {
+      if (operation.replayPayload) {
+        payload = operation.replayPayload;
+      } else if (photos && photos.length) {
         const keys = [];
         for (const uri of photos) {
           let key = uploadedPhotos.current.get(uri);
@@ -250,9 +254,10 @@ export default function CreateCargoScreen({ navigation, route }) {
         }
         payload.photos = keys;
       }
+      payload = await draft.snapshot(operation.clientId, payload);
       const r = await marketAPI.createCargo(payload, sessionGuard);
       if (r.ok || r.id) {
-        await draft.clear();
+        if (await draft.clear(operation.clientId) === false) return;
         if (!sessionGuard.isCurrent() || await regAPI.getToken() !== sessionGuard.expectedToken || !sessionGuard.isCurrent()) return;
         toast('✓ ' + t('cargo_published'), 'success', 4000);
         // Замыкаем цикл: ведём в «Ищу машину» с только что размещённым
@@ -276,7 +281,10 @@ export default function CreateCargoScreen({ navigation, route }) {
         });
       } else {
         if (!sessionGuard.isCurrent() || await regAPI.getToken() !== sessionGuard.expectedToken || !sessionGuard.isCurrent()) return;
-        toast(r.detail || t('send_error'), 'error');
+        if (r.code === 'PUBLICATION_IDEMPOTENCY_CONFLICT' && r.originalResult?.id) {
+          setPublicationConflict({ clientId: operation.clientId, result: r.originalResult });
+          toast(t('publication_content_conflict'), 'error', 6000);
+        } else toast(r.detail || t('send_error'), 'error');
       }
     } catch (e) {
       // P1 UI-аудит 2026-09-13: не показывать сырой e.message (часто
@@ -290,6 +298,23 @@ export default function CreateCargoScreen({ navigation, route }) {
       setSubmitting(false);
     }
   };
+
+  const conflictActions = publicationConflict ? <View testID="publication-conflict">
+    <Text accessibilityRole="alert">{t('publication_content_conflict')}</Text>
+    <PrimaryButton testID="publication-open-original" disabled={submitting} label={t('publication_open_original')}
+      onPress={() => { if (!submissionInFlight.current && sessionRef.current?.user?.id === ownerRef.current) navigation.navigate('CargoDetail', { cargoId: publicationConflict.result.id, role }); }} />
+    <PrimaryButton testID="publication-new-operation" disabled={submitting} label={t('publication_new_operation')}
+      onPress={async () => {
+        if (submissionInFlight.current || sessionRef.current?.user?.id !== ownerRef.current || !mountedRef.current) return;
+        submissionInFlight.current = true;
+        setSubmitting(true);
+        try {
+          await draft.resetOperation(publicationConflict.clientId);
+          if (mountedRef.current && sessionRef.current?.user?.id === ownerRef.current) setPublicationConflict(null);
+        } catch { if (mountedRef.current && sessionRef.current?.user?.id === ownerRef.current) toast(t('publication_draft_save_failed'), 'error'); }
+        finally { submissionInFlight.current = false; if (mountedRef.current) setSubmitting(false); }
+      }} />
+  </View> : null;
 
   if (role !== 'client') {
     return <Screen><BrandHeader onBack={() => navigation.goBack()} />
@@ -324,6 +349,7 @@ export default function CreateCargoScreen({ navigation, route }) {
     >
       <BrandHeader ceramic onBack={() => navigation.goBack()} accent={accent.main} />
 
+      {conflictActions}
       <Text style={s.title}>{t('postCargo')}</Text>
       <Text style={s.subtitle}>{t('create_cargo_subtitle')}</Text>
 

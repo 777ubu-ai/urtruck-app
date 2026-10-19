@@ -127,7 +127,7 @@ export const marketAPI = {
       body: JSON.stringify(data),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status, code: d.detail?.error, originalResult: d.detail?.original_result };
     return d;
   },
 
@@ -304,7 +304,9 @@ export const marketAPI = {
       method: 'POST', headers: await headers(sessionGuard),
       body: JSON.stringify(data),
     });
-    return r.json();
+    const d = await r.json();
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status, code: d.detail?.error, originalResult: d.detail?.original_result };
+    return d;
   },
 
   async listTrips({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', truckType = '', dateFrom = '', dateTo = '', minPrice = null, maxPrice = null, currency = '', sortBy = 'newest', savedOnly = false, limit = 50, offset = 0 } = {}) {

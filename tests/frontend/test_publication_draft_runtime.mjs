@@ -74,3 +74,65 @@ test('ошибка hydration не перезаписывает существу�
   fail=false;result.retry();h.render();await tick();result=h.render();assert.equal(result.ready,true);assert.equal(h.values.description,'электросамокаты');assert.equal(h.values.price,'4500');
  }finally{h.unmount();durableStorage.get=get;await drafts.clearPublicationDraft(k);}
 });
+
+test('ключ и точный запрос с фото сохраняются при перезапуске и обычном autosave',async()=>{
+ const owner='restart-'+(++sequence),k=drafts.publicationDraftKey('cargo',owner),values={description:'контроль',photos:['file:temporary']};
+ await drafts.savePublicationDraft(k,values);const op=await drafts.preparePublicationDraft(k,owner,'cargo',values);
+ const body=await drafts.snapshotPublicationPayload(k,owner,'cargo',values,op.clientId,{price:4500,photos:['storage/uploaded-key']});
+ await drafts.savePublicationDraft(k,values);
+ const restarted=await import('../../src/utils/publicationDraft.js?operation-restart');
+ const restored=await restarted.readPublicationDraft(k);assert.equal(restored._publication.clientId,op.clientId);
+ const retry=await restarted.preparePublicationDraft(k,owner,'cargo',values);
+ assert.equal(retry.clientId,op.clientId);assert.deepEqual(retry.replayPayload,body);
+ await restarted.clearPublicationDraft(k,values,op.clientId);assert.equal(await restarted.readPublicationDraft(k),null);
+});
+test('изменённая форма сохраняет прежний ключ до явного начала новой операции',async()=>{
+ const owner='change-'+(++sequence),k=drafts.publicationDraftKey('cargo',owner),old={price:'100'},fresh={price:'200'};
+ await drafts.savePublicationDraft(k,old);const op=await drafts.preparePublicationDraft(k,owner,'cargo',old);
+ await drafts.snapshotPublicationPayload(k,owner,'cargo',old,op.clientId,{price:100});await drafts.savePublicationDraft(k,fresh);
+ const retry=await drafts.preparePublicationDraft(k,owner,'cargo',fresh);assert.equal(retry.clientId,op.clientId);assert.equal(retry.replayPayload,null);
+ const changed=await drafts.snapshotPublicationPayload(k,owner,'cargo',fresh,op.clientId,{price:200});assert.equal(changed.client_id,op.clientId);assert.equal(changed.price,200);
+ assert.equal((await drafts.readPublicationDraft(k))._publication.payload.price,100);
+ await drafts.resetPublicationOperation(k,op.clientId);assert.equal((await drafts.readPublicationDraft(k)).price,'200');
+ assert.notEqual((await drafts.preparePublicationDraft(k,owner,'cargo',fresh)).clientId,op.clientId);await drafts.clearPublicationDraft(k);
+});
+test('конкурентная подготовка выдаёт один ключ и не переносит его другому владельцу',async()=>{
+ const owner='race-'+(++sequence),k=drafts.publicationDraftKey('cargo',owner);await drafts.savePublicationDraft(k,{price:'100'});
+ const ops=await Promise.all(Array.from({length:5},()=>drafts.preparePublicationDraft(k,owner,'cargo',{price:'100'})));
+ assert.equal(new Set(ops.map(x=>x.clientId)).size,1);
+ await assert.rejects(drafts.preparePublicationDraft(k,'different-owner','cargo',{price:'100'}),{code:'PUBLICATION_DRAFT_FAILED'});
+ assert.equal((await drafts.readPublicationDraft(k))._publication.ownerId,owner);await drafts.clearPublicationDraft(k);
+});
+
+test('поздний успех после повторного входа не даёт autosave другой формы создать новый ключ',async()=>{
+ const owner='late-login-'+(++sequence),k=drafts.publicationDraftKey('cargo',owner),first=hookHarness(owner),second=hookHarness(owner);
+ try{
+  first.render();await tick();first.render();first.values.price='4500';const submitted=first.render();await submitted.save();const op=await submitted.prepare();await submitted.snapshot(op.clientId,{price:4500});first.unmount();
+  second.render();await tick();const restored=second.render();assert.equal(second.values.price,'4500');assert.equal((await restored.prepare()).clientId,op.clientId);
+  await submitted.clear(op.clientId);
+  await new Promise(r=>setTimeout(r,280));
+  await assert.rejects(restored.save(),{code:'PUBLICATION_DRAFT_FAILED'});
+  await assert.rejects(restored.prepare(),{code:'PUBLICATION_DRAFT_FAILED'});
+  assert.equal(await drafts.readPublicationDraft(k),null);
+  const fresh=hookHarness(owner);try{fresh.render();await tick();fresh.render();fresh.values.price='5000';const f=fresh.render();await f.save();assert.notEqual((await f.prepare()).clientId,op.clientId);}finally{fresh.unmount();}
+ }finally{first.unmount();second.unmount();await durableStorage.remove(k);}
+});
+
+test('явный reset инвалидирует autosave другого экземпляра, сохраняя поля владельца',async()=>{
+ const owner='reset-lease-'+(++sequence),k=drafts.publicationDraftKey('cargo',owner),a=hookHarness(owner),b=hookHarness(owner);
+ try{
+  a.render();await tick();a.render();a.values.price='4500';const one=a.render();await one.save();const op=await one.prepare();await one.snapshot(op.clientId,{price:4500});
+  b.render();await tick();const stale=b.render();await one.resetOperation(op.clientId);
+  await assert.rejects(stale.save(),{code:'PUBLICATION_DRAFT_FAILED'});await assert.rejects(stale.prepare(),{code:'PUBLICATION_DRAFT_FAILED'});
+  const current=a.render();await current.save();assert.notEqual((await current.prepare()).clientId,op.clientId);assert.equal((await drafts.readPublicationDraft(k)).price,'4500');
+ }finally{a.unmount();b.unmount();await durableStorage.remove(k);}
+});
+
+test('поздний clear старого поколения не отключает autosave текущего hook',async()=>{
+ const owner='same-hook-reset-'+(++sequence),k=drafts.publicationDraftKey('cargo',owner),h=hookHarness(owner);
+ try{
+  h.render();await tick();h.render();h.values.price='4500';const old=h.render();await old.save();const op=await old.prepare();await old.snapshot(op.clientId,{price:4500});
+  await old.resetOperation(op.clientId);h.render();assert.equal(await old.clear(op.clientId),false);
+  h.values.price='4600';h.render();await new Promise(r=>setTimeout(r,280));assert.equal((await drafts.readPublicationDraft(k)).price,'4600');
+ }finally{h.unmount();await durableStorage.remove(k);}
+});

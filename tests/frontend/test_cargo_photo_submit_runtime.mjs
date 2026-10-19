@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { parseWeightTonsInput } from '../../src/utils/normalizers.js';
-const publicationEnv = () => ({confirmPublicationSession, draft:{save:async()=>{},clear:async()=>{}},
+const publicationEnv = () => ({confirmPublicationSession, draft:{save:async()=>{},prepare:async()=>({clientId:"test-photo-operation"}),snapshot:async(id,p)=>({...p,client_id:id}),clear:async()=>{}},
  ownerRef:{current:'test-user'},sessionRef:{current:{user:{id:'test-user',role:'client'}}},mountedRef:{current:true},refreshLevel:async()=>{},
  regAPI:{getToken:async()=>'test-bearer',publicationAccount:async()=>({id:'test-user',role:'client'})}});
 const src=fs.readFileSync('src/screens/CreateCargoScreen.js','utf8');

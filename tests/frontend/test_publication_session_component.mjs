@@ -23,7 +23,7 @@ function cargoHarness({ role = 'client', routeRole = 'client', serverRole = role
     if(name.endsWith('/useI18n'))return {useI18n:()=>({t:x=>x,lang:'RU'})};
     if(name.endsWith('/Toast'))return {useToast:()=>({toast:(...x)=>calls.push(['toast',...x])})};
     if(name.endsWith('/AuthContext'))return {useAuth:()=>auth};
-    if(name.endsWith('/usePublicationDraft'))return {usePublicationDraft:()=>({ready:true,save:async()=>{},clear:async()=>{calls.push(['draft-clear']);}})};
+    if(name.endsWith('/usePublicationDraft'))return {usePublicationDraft:()=>({ready:true,save:async()=>{},prepare:async()=>({clientId:'test-operation'}),snapshot:async(id,p)=>({...p,client_id:id}),resetOperation:async()=>{calls.push(['reset-operation']);},clear:async()=>{calls.push(['draft-clear']);}})};
     if(name.endsWith('/registration'))return {regAPI};
     if(name.endsWith('/marketAPI'))return {marketAPI};
     if(name.endsWith('/publicationSession'))return publication;
@@ -134,4 +134,17 @@ test('невалидная сумма отмечается в конкретно
  const h=cargoHarness();h.fill();h.byId('cargo-price-field').props.onChangeText('0');await h.byId('cargo-submit-button').props.onPress();
  assert.equal(h.calls.filter(x=>x[0]==='create').length,0);assert.ok(h.calls.some(x=>x[0]==='toast'&&x[1]==='val_price_required'));
  assert.equal(h.byId('cargo-price-field').props.value,'0');
+});
+
+for (const kind of ['cargo', 'trip']) test(`${kind}: конфликт открывает исходное объявление, reset явный и не публикует`, async()=>{
+ const h=cargoHarness({kind,role:kind==='cargo'?'client':'driver'});
+ kind==='cargo'?h.fill():h.fillTrip();
+ h.marketAPI[kind==='cargo'?'createCargo':'createTrip']=async()=>({ok:false,code:'PUBLICATION_IDEMPOTENCY_CONFLICT',originalResult:{ok:true,id:'original-id'}});
+ await h.byId(kind==='cargo'?'cargo-submit-button':'trip-submit-button').props.onPress();
+ h.byId('publication-open-original').props.onPress();
+ const nav=h.calls.find(x=>x[0]==='navigate');assert.equal(nav[1],kind==='cargo'?'CargoDetail':'TripDetail');assert.equal(nav[2][kind==='cargo'?'cargoId':'tripId'],'original-id');
+ await h.byId('publication-new-operation').props.onPress();
+ assert.equal(h.calls.filter(x=>x[0]==='reset-operation').length,1);
+ assert.equal(h.byId(kind==='cargo'?'cargo-price-field':'trip-price-input').props.value,'4500');
+ assert.equal(h.calls.filter(x=>x[0]==='nav').length,0);
 });
