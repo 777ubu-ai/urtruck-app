@@ -41,6 +41,9 @@ if (
   );
 }
 
+const sourceSha = process.env.URTRUCK_SOURCE_SHA || process.env.GITHUB_SHA || '';
+if (sourceSha && !/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error('Неверный SHA исходника сборки');
+
 const resolvedApiUrl = isProductionBuild ? PRODUCTION_API_URL : apiOverride;
 
 // QA2 must never silently reuse the production API. A missing or production
@@ -69,6 +72,7 @@ module.exports = ({ config }) => {
   extra: {
     ...(config.extra || {}),
     ...(resolvedApiUrl ? { urtruckApiUrl: resolvedApiUrl } : {}),
+    ...(sourceSha ? { urtruckSourceSha: sourceSha } : {}),
     urtruckBuildFlavor: isQa2 ? 'qa2' : 'production',
   },
   android: {
