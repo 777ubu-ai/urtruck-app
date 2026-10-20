@@ -11,6 +11,8 @@ import { FOREGROUND_LOCATION_ONLY, stopBackgroundTracking } from '../utils/backg
 import { marketAPI } from '../utils/marketAPI';
 import { storage } from '../utils/storage';
 import BottomNav from '../components/ui/v1/BottomNav';
+import ExternalFreightFeedScreen from '../screens/ExternalFreightFeedScreen';
+import { EXTERNAL_FREIGHT_ENABLED } from '../utils/externalFreightFeed';
 
 import HowItWorksScreen from '../screens/HowItWorksScreen';
 import AboutScreen from '../screens/AboutScreen';
@@ -305,6 +307,7 @@ export default function AppNavigator() {
           {/* Профиль теперь открывается из ☰ (top-right) как отдельный экран
               стека, а не как вкладка таб-бара (её занял «Дела»). */}
           <Stack.Screen name="Profile" component={ProfileScreen} />
+          {EXTERNAL_FREIGHT_ENABLED && (sessionRole(session) === 'driver' || sessionRole(session) === 'client') ? <Stack.Screen name="ExternalFreightFeed" component={ExternalFreightFeedScreen} /> : null}
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
