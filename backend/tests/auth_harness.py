@@ -60,10 +60,23 @@ def override_require_level(app, dependency_fn):
             _collect(sub, seen)
 
     calls = set()
-    for route in app.routes:
-        dependant = getattr(route, "dependant", None)
-        if dependant is not None:
-            _collect(dependant, calls)
+    seen_routers = set()
+
+    def _collect_routes(routes):
+        for route in routes:
+            dependant = getattr(route, "dependant", None)
+            if dependant is not None:
+                _collect(dependant, calls)
+            # FastAPI 0.156+ stores included APIRouters as lazy
+            # _IncludedRouter objects instead of flattening them into
+            # app.routes. Older FastAPI releases still expose flattened
+            # APIRoutes, so both layouts are supported here.
+            nested_router = getattr(route, "original_router", None)
+            if nested_router is not None and id(nested_router) not in seen_routers:
+                seen_routers.add(id(nested_router))
+                _collect_routes(getattr(nested_router, "routes", ()))
+
+    _collect_routes(app.routes)
 
     for call in calls:
         app.dependency_overrides[call] = dependency_fn
