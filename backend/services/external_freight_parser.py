@@ -82,6 +82,14 @@ def _published(value):
     return str(value)
 
 
+def _weight_tonnes(text):
+    match = _WEIGHT.search(text)
+    if not match:
+        return None
+    value = float(match.group(1).replace(",", "."))
+    return value / 1000 if match.group(2).lower() == "кг" else value
+
+
 def _loading_date(text):
     for match in _DATE.finditer(text):
         value = match.group(1)
@@ -152,7 +160,7 @@ def map_selected_message(raw: dict) -> dict:
         "destination": destination or None,
         "cargo_name": _first(_CARGO, text),
         "body_types": bodies,
-        "weight": float(_first(_WEIGHT, text).replace(",", ".").replace(" ", "")) if _first(_WEIGHT, text) else None,
+        "weight": _weight_tonnes(text),
         "volume": float(_first(_VOLUME, text).replace(",", ".").replace(" ", "")) if _first(_VOLUME, text) else None,
         "vehicle_count": int(_first(_COUNT, text)) if _first(_COUNT, text) else None,
         "loading_date": _loading_date(text),
