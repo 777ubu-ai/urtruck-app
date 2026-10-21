@@ -7,13 +7,13 @@ import { EXTERNAL_FREIGHT_ENABLED } from '../../../utils/externalFreightFeed';
 import { useI18n } from '../../../utils/useI18n';
 
 /** Canonical root header: profile/menu only. Native push + tab badges remain active. */
-export default function RootHeader({ navigation, role, testID = 'root-header', menuTestID, ceramic = false, showBack = false, compact = false }) {
+export default function RootHeader({ navigation, role, testID = 'root-header', menuTestID, ceramic = false, showBack = false, compact = false, externalFeedEntry = false }) {
   const colors = useV1Colors();
   const ceramicColors = useDriverCeramicColors();
   const { lang } = useI18n();
   const palette = ceramic ? ceramicColors : colors;
   const labels = { RU: role === 'driver' ? 'Лента грузов' : 'Лента машин', KK: role === 'driver' ? 'Жүк лентасы' : 'Көлік лентасы', ZH: role === 'driver' ? '货源信息' : '空车信息', EN: role === 'driver' ? 'Cargo feed' : 'Available trucks' };
-  const showFeed = EXTERNAL_FREIGHT_ENABLED && (role === 'driver' || role === 'client');
+  const showFeed = externalFeedEntry && EXTERNAL_FREIGHT_ENABLED && (role === 'driver' || role === 'client');
   return (
     <View style={[s.row, compact && (showFeed ? s.compactWithFeed : s.compact), (showBack || showFeed) && s.rowWithBack, { backgroundColor: palette.bg }]} testID={testID}>
       {showBack ? (

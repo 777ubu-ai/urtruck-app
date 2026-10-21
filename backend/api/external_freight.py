@@ -55,6 +55,7 @@ def list_external_feed(
     min_price: float | None = Query(None, ge=0), max_price: float | None = Query(None, ge=0),
     sort: str = Query("newest", pattern="^(newest|price_asc|price_desc)$"),
     limit: int = Query(30, ge=1, le=100), cursor: str | None = Query(None, max_length=1000),
+    saved_only: bool = Query(False),
     user: dict = Depends(require_level(1)),
 ):
     _ensure_enabled()
@@ -77,9 +78,28 @@ def list_external_feed(
         return dal.list_items(kind=kind, origin=origin, destination=destination, body_type=body_type,
                               origin_country=origin_country, destination_country=destination_country,
                               published_from=published_from, published_to=published_to, currency=currency,
-                              min_price=min_price, max_price=max_price, sort=sort, limit=limit, cursor=cursor)
+                              min_price=min_price, max_price=max_price, sort=sort, limit=limit, cursor=cursor,
+                              owner_id=user["id"], saved_only=saved_only)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+
+
+@router.put("/{item_id}/bookmark")
+def save_external_item(item_id: str, user: dict = Depends(require_level(1))):
+    _ensure_enabled()
+    result = dal.set_bookmark(user["id"], item_id, _user_kind(user), True)
+    if result is None:
+        raise HTTPException(status_code=404, detail={"error": "external_item_not_found"})
+    return result
+
+
+@router.delete("/{item_id}/bookmark")
+def unsave_external_item(item_id: str, user: dict = Depends(require_level(1))):
+    _ensure_enabled()
+    result = dal.set_bookmark(user["id"], item_id, _user_kind(user), False)
+    if result is None:
+        raise HTTPException(status_code=404, detail={"error": "external_item_not_found"})
+    return result
 
 
 @router.post("/events")
@@ -97,7 +117,7 @@ def record_external_event(event: AnalyticsEvent, user: dict = Depends(require_le
 def get_external_item(item_id: str, user: dict = Depends(require_level(1))):
     _ensure_enabled()
     kind = _user_kind(user)
-    item = dal.get_item(item_id)
+    item = dal.get_item(item_id, owner_id=user["id"])
     if not item or item["kind"] != kind:
         raise HTTPException(status_code=404, detail={"error": "external_item_not_found"})
     return {"item": item}
@@ -140,7 +160,7 @@ def translate_external_item(item_id: str, target_lang: str = Query(..., min_leng
     lang = target_lang.upper()
     if lang not in _LANGS:
         raise HTTPException(status_code=422, detail={"error": "unsupported_language"})
-    item = dal.get_item(item_id)
+    item = dal.get_item(item_id, owner_id=user["id"])
     if not item or item["kind"] != kind:
         raise HTTPException(status_code=404, detail={"error": "external_item_not_found"})
     if lang == (os.getenv("APP_DEFAULT_LANGUAGE", "RU").upper()):

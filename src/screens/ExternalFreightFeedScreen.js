@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import * as Clipboard from 'expo-clipboard';
 import DatePicker from '../components/DatePicker';
+import BookmarkButton from '../components/ui/v1/BookmarkButton';
 import LocationPickerModal from '../components/LocationPickerModal';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../utils/useI18n';
@@ -28,6 +29,12 @@ const bodyLabels = {
   ZH: { tent: '篷车', ref: '冷藏车', izoterm: '保温车', board: '平板车', tipper: '自卸车', lowboy: '低平板车' },
   EN: { tent: 'Tent', ref: 'Refrigerated', izoterm: 'Insulated', board: 'Flatbed', tipper: 'Tipper', lowboy: 'Lowboy' },
 };
+const SAVED_COPY = {
+  RU: { saved: 'Сохранённые', save: 'Сохранить', unsave: 'Убрать из сохранённых', expired: 'Устарело', closed: 'Закрыто', unavailable: 'Объявление недоступно' },
+  KK: { saved: 'Сақталғандар', save: 'Сақтау', unsave: 'Сақталғаннан алып тастау', expired: 'Ескірген', closed: 'Жабық', unavailable: 'Хабарландыру қолжетімсіз' },
+  ZH: { saved: '已收藏', save: '收藏', unsave: '取消收藏', expired: '已过期', closed: '已关闭', unavailable: '信息不可用' },
+  EN: { saved: 'Saved', save: 'Save', unsave: 'Remove from saved', expired: 'Expired', closed: 'Closed', unavailable: 'Listing unavailable' },
+};
 const currencies = ['KZT', 'USD', 'EUR', 'RUB', 'CNY'];
 
 export default function ExternalFreightFeedScreen({ navigation }) {
@@ -39,12 +46,21 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const { theme } = useTheme();
   const { toast } = useToast();
   const l = COPY[lang] || COPY.EN;
+  const sl = SAVED_COPY[lang] || SAVED_COPY.EN;
+  const [savedOnly, setSavedOnly] = useState(false);
+  const [saving, setSaving] = useState({});
+  const bookmarkRequestsRef = useRef(new Map());
+  const ownerKey = `${session?.user?.id || ''}:${role}`;
+  const ownerRef = useRef(ownerKey);
+  ownerRef.current = ownerKey;
   const emptyFilters = { origin: '', destination: '', origin_country: '', destination_country: '', body_type: '', published_from: '', published_to: '', currency: '', min_price: '', max_price: '', sort: 'newest' };
   const [filters, setFilters] = useState(emptyFilters);
   const [draft, setDraft] = useState(filters);
   const [modal, setModal] = useState(null);
   const [picker, setPicker] = useState(null);
   const [rows, setRows] = useState([]);
+  const [rowsOwner, setRowsOwner] = useState(ownerKey);
+  const visibleRows = rowsOwner === ownerKey ? rows : [];
   const [cursor, setCursor] = useState(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -73,22 +89,33 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     if (controller) requestRef.current = controller;
     const signal = suppliedSignal || controller?.signal;
     setBusy(true); setError(null);
-    const raw = buildExternalFeedQuery(filters, { cursor, limit: 30, reset });
+    const owner = ownerKey;
+    const raw = { ...buildExternalFeedQuery(filters, { cursor, limit: 30, reset }), saved_only: savedOnly };
     const result = await externalFreightAPI.list(raw, signal).catch(() => ({ ok: false, error: 'network_error' }));
-    if (sequence !== sequenceRef.current || signal?.aborted) return;
+    if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
     if (!result.ok) {
       setError(result.error || 'server_error');
       setBusy(false); setRefreshing(false);
       return;
     }
     const incoming = Array.isArray(result.items) ? result.items : [];
+    setRowsOwner(owner);
     setRows(current => reset ? incoming : appendUnique(current, incoming));
     setCursor(result.next_cursor || null);
     setBusy(false); setRefreshing(false);
-  }, [busy, filters, cursor]);
+  }, [busy, filters, cursor, savedOnly, ownerKey]);
   loadRef.current = load;
 
-  useEffect(() => { load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters]);
+  useEffect(() => { setRows([]); setCursor(null); load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters, savedOnly, ownerKey]);
+  useEffect(() => {
+    setExpanded({}); setTranslations({}); setSaving({});
+    return () => {
+      bookmarkRequestsRef.current.forEach(controller => controller.abort());
+      bookmarkRequestsRef.current.clear();
+      translationRequestsRef.current.forEach(controller => controller.abort());
+      translationRequestsRef.current.clear();
+    };
+  }, [ownerKey]);
   useEffect(() => { externalFreightAPI.event('feed_open'); }, []);
   useEffect(() => {
     const cancel = () => {
@@ -97,6 +124,9 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       requestRef.current = null;
       translationRequestsRef.current.forEach(controller => controller.abort());
       translationRequestsRef.current.clear();
+      bookmarkRequestsRef.current.forEach(controller => controller.abort());
+      bookmarkRequestsRef.current.clear();
+      setSaving({});
       setTranslating({});
       setBusy(false);
       setRefreshing(false);
@@ -138,16 +168,38 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const copyContact = async (contact) => {
     try { await Clipboard.setStringAsync(String(contact)); externalFreightAPI.event('contact_copy'); toast(l.copied, 'success'); } catch { toast(l.retry, 'error'); }
   };
+  const toggleBookmark = async (item) => {
+    if (bookmarkRequestsRef.current.has(item.id)) return;
+    const owner = ownerRef.current;
+    const desired = !item.saved;
+    const controller = new AbortController();
+    bookmarkRequestsRef.current.set(item.id, controller);
+    setSaving(current => ({ ...current, [item.id]: true }));
+    try {
+      const result = await externalFreightAPI.bookmark(item.id, desired, controller.signal, () => owner === ownerRef.current);
+      if (controller.signal.aborted || owner !== ownerRef.current) return;
+      if (!result.ok || result.saved !== desired) { toast(l.retry, 'error'); return; }
+      setRows(current => savedOnly && !desired ? current.filter(row => row.id !== item.id) : current.map(row => row.id === item.id ? { ...row, saved: desired } : row));
+    } catch (error) {
+      if (error?.name !== 'AbortError' && owner === ownerRef.current) toast(l.retry, 'error');
+    } finally {
+      if (bookmarkRequestsRef.current.get(item.id) === controller) {
+        bookmarkRequestsRef.current.delete(item.id);
+        setSaving(current => ({ ...current, [item.id]: false }));
+      }
+    }
+  };
   const translate = async (item) => {
     if (translations[item.id]?.revision === item.source_revision && translations[item.id]?.lang === lang) { setTranslations(current => ({ ...current, [item.id]: { ...current[item.id], show: !current[item.id].show } })); return; }
     if (translating[item.id]) return;
+    const owner = ownerRef.current;
     externalFreightAPI.event('translation_request');
     const controller = new AbortController();
     translationRequestsRef.current.set(item.id, controller);
     setTranslating(current => ({ ...current, [item.id]: true }));
     try {
       const result = await externalFreightAPI.translate(item.id, lang, controller.signal);
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || owner !== ownerRef.current) return;
       if (!result.ok || !result.translated_text) { toast(l.retry, 'error'); return; }
       if (result.source_revision !== item.source_revision || lang !== languageRef.current) return;
       setTranslations(current => ({ ...current, [item.id]: { revision: result.source_revision, lang, text: result.translated_text, show: true } }));
@@ -173,16 +225,23 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     const locations = item.kind === 'cargo' ? [item.origin, item.destination] : [item.origin, item.destination];
     const price = item.price_state === 'negotiable' ? l.negotiable : item.price_state === 'known' ? `${formatNumber(item.amount)} ${item.currency}` : l.unknown;
     return <View style={styles.card} testID={`external-feed-card-${item.id}`}>
-      <Text style={styles.route} numberOfLines={2}>{locations.filter(Boolean).join(' → ')}</Text>
+      <View style={styles.cardHeading}>
+        <Text style={[styles.route, styles.routeFlex]} numberOfLines={2}>{item.status === 'unavailable' ? sl.unavailable : locations.filter(Boolean).join(' → ')}</Text>
+        <View style={styles.saveSlot}>
+          <BookmarkButton saved={item.saved} onPress={() => toggleBookmark(item)} accessibilityLabel={item.saved ? sl.unsave : sl.save} testID={`external-feed-bookmark-${item.id}`} />
+          {saving[item.id] ? <ActivityIndicator size="small" color="#168759" /> : null}
+        </View>
+      </View>
+      {['expired', 'closed'].includes(item.status) ? <Text style={styles.meta}>{sl[item.status]}</Text> : null}
       {item.kind === 'cargo' && item.cargo_name ? <Text style={styles.strong}>{item.cargo_name}</Text> : null}
       {item.body_types?.length ? <Text style={styles.meta}>{(item.body_types || []).map(x => bodyLabels[lang]?.[x] || x).join(', ')}</Text> : null}
       {item.weight != null || item.volume != null ? <Text style={styles.meta}>{[item.weight != null ? `${formatNumber(item.weight)} t` : '', item.volume != null ? `${formatNumber(item.volume)} m³` : ''].filter(Boolean).join(' · ')}</Text> : null}
       {item.vehicle_count != null ? <Text style={styles.meta}>{`${item.vehicle_count} ${isDriver ? ({ RU: 'машин требуется', KK: 'көлік қажет', ZH: '需要车辆', EN: 'trucks needed' }[lang] || 'trucks needed') : ({ RU: 'машин свободно', KK: 'бос көлік', ZH: '有空车', EN: 'trucks available' }[lang] || 'trucks available')}`}</Text> : null}
       {item.loading_date || item.ready_text ? <Text style={styles.meta}>{item.loading_date || item.ready_text}</Text> : null}
-      <Text style={styles.price}>{price}</Text>
+      {item.status !== 'unavailable' ? <Text style={styles.price}>{price}</Text> : null}
       {Array.isArray(item.contacts) && item.contacts.filter(Boolean).map((contact, index) => <TouchableOpacity key={`${item.id}-contact-${index}`} onPress={() => copyContact(contact)} style={styles.contact} accessibilityRole="button" testID={`external-feed-copy-${item.id}-${index}`}><Text style={styles.contactText} selectable>{contact}</Text><Feather name="copy" size={14} color={'#168759'} /></TouchableOpacity>)}
       <Text style={styles.date}>{formatDate(item.source_published_at, lang)}</Text>
-      {open ? <View style={styles.details}>
+      {item.status === 'unavailable' ? null : open ? <View style={styles.details}>
         {item.original_text ? <Text style={styles.original}>{translated ? translations[item.id]?.text : item.original_text}</Text> : null}
         {item.ready_text && item.loading_date ? <Text style={styles.meta}>{item.ready_text}</Text> : null}
         <TouchableOpacity onPress={() => translate(item)} disabled={!!translating[item.id]} style={styles.textAction} testID={`external-feed-translate-${item.id}`}><Text style={styles.link}>{translating[item.id] ? l.loading : translated ? l.original : l.translate}</Text></TouchableOpacity>
@@ -195,14 +254,18 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']} testID="external-freight-feed-screen">
     <View style={styles.header}>
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.back} accessibilityRole="button" accessibilityLabel={l.cancel} testID="external-feed-back"><Feather name="arrow-left" size={23} color={theme.text} /></TouchableOpacity>
-      <Text style={styles.title} numberOfLines={1}>{title}</Text><View style={styles.headerSpacer} />
+      <Text style={styles.title} numberOfLines={1}>{title}</Text>
+      <TouchableOpacity style={styles.savedHeader} onPress={() => setSavedOnly(current => !current)} accessibilityRole="button" accessibilityLabel={sl.saved} accessibilityState={{ selected: savedOnly }} testID="external-feed-saved-only">
+        <Feather name="bookmark" size={20} color={savedOnly ? '#168759' : theme.textMuted} />
+        <Text style={styles.link}>{sl.saved}</Text>
+      </TouchableOpacity>
     </View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filterContent} keyboardShouldPersistTaps="handled">
       {filterButton('origin', l.from, filters.origin ? `${filters.origin}${filters.origin_country ? `, ${filters.origin_country}` : ''}` : '')}{filterButton('destination', l.to, filters.destination ? `${filters.destination}${filters.destination_country ? `, ${filters.destination_country}` : ''}` : '')}{filterButton('body', l.body, filters.body_type ? bodyLabels[lang]?.[filters.body_type] || filters.body_type : '')}{filterButton('date', l.date, filters.published_from ? `${formatDate(filters.published_from, lang)}${filters.published_to ? ` – ${formatDate(filters.published_to, lang)}` : ''}` : '')}{filterButton('price', l.price, filters.currency || filters.min_price || filters.max_price ? [filters.min_price, filters.max_price].filter(Boolean).join('–') + (filters.currency ? ` ${filters.currency}` : '') : '')}
     </ScrollView>
     {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: true })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}
     {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{error === 'network_error' ? l.network : l.server}</Text><TouchableOpacity style={styles.primary} onPress={() => load({ reset: true })}><Text style={styles.primaryText}>{l.retry}</Text></TouchableOpacity></View> : null}
-    {!error || rows.length ? <FlatList data={rows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => { if (!busy && cursor) load(); }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.published_from || filters.min_price ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
+    {!error || rows.length ? <FlatList data={visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => { if (!busy && cursor) load(); }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.published_from || filters.min_price ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
     <LocationPickerModal visible={picker === 'origin' || picker === 'destination'} onClose={() => setPicker(null)} title={picker === 'origin' ? l.from : l.to} allowCountryOnly onSelect={(value, point) => { const key = picker; const selection = { [key]: point?.name || (typeof value === 'string' ? value : value?.city || ''), [`${key}_country`]: point?.country || '' }; externalFreightAPI.event('filter_apply'); setDraft(current => ({ ...current, ...selection })); setFilters(current => ({ ...current, ...selection })); setPicker(null); }} />
     <Modal visible={!!modal} transparent animationType="slide" onRequestClose={() => setModal(null)}>
       <Pressable style={styles.scrim} onPress={() => setModal(null)}><Pressable style={styles.sheet} onPress={e => e.stopPropagation()}>
@@ -222,6 +285,7 @@ function formatDate(value, lang) { if (!value) return ''; const date = new Date(
 
 function makeStyles(theme, sp) {
   return StyleSheet.create({
+    cardHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 }, routeFlex: { flex: 1 }, saveSlot: { alignItems: 'center', gap: 4 }, savedHeader: { minHeight: 44, maxWidth: '43%', flexDirection: 'row', alignItems: 'center', gap: 5, paddingLeft: 6 },
     safe: { flex: 1, backgroundColor: theme.bg }, header: { minHeight: 52, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border }, back: { width: 42, height: 44, alignItems: 'flex-start', justifyContent: 'center' }, title: { flex: 1, color: theme.text, fontSize: sp(18), fontWeight: '700' }, headerSpacer: { width: 10 },
     filters: { flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border }, filterContent: { paddingHorizontal: 10, alignItems: 'center', gap: 7 }, filterButton: { minHeight: 36, maxWidth: 240, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }, filterActive: { borderColor: '#168759', backgroundColor: theme.surface }, filterText: { color: theme.text, fontSize: sp(13), flexShrink: 1, flexWrap: 'wrap' }, filterTextActive: { color: '#168759', fontWeight: '600' },
     list: { padding: 12, paddingBottom: 22 }, listEmpty: { flexGrow: 1, justifyContent: 'center', padding: 20 }, card: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 16, padding: 15, marginBottom: 11, gap: 7 }, route: { fontSize: sp(17), lineHeight: sp(24), fontWeight: '700', color: theme.text }, strong: { color: theme.text, fontSize: sp(15), fontWeight: '600' }, meta: { color: theme.textMuted, fontSize: sp(14), lineHeight: sp(20) }, price: { color: '#168759', fontSize: sp(16), fontWeight: '700' }, contact: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }, contactText: { color: theme.text, fontSize: sp(14), flex: 1 }, date: { color: theme.textMuted, fontSize: sp(12) }, details: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border, marginTop: 5, paddingTop: 10, gap: 8 }, original: { color: theme.text, fontSize: sp(14), lineHeight: sp(21) }, textAction: { alignSelf: 'flex-start', paddingVertical: 4 }, link: { color: '#168759', fontSize: sp(14), fontWeight: '600' },

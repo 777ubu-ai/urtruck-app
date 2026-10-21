@@ -31,6 +31,9 @@ class ExternalFreightFeedAdapter:
               payload TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at REAL NOT NULL DEFAULT 0,
               delivered_at REAL, last_http_status INTEGER, PRIMARY KEY(source_id,source_message_id,segment_id)
             )""")
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(selected_outbox)")}
+            if "generation" not in columns:
+                db.execute("ALTER TABLE selected_outbox ADD COLUMN generation INTEGER NOT NULL DEFAULT 1")
             db.execute("CREATE INDEX IF NOT EXISTS ix_selected_outbox_due ON selected_outbox(delivered_at,next_attempt_at)")
 
     def _connect(self):
@@ -58,7 +61,7 @@ class ExternalFreightFeedAdapter:
             if existing and existing["payload"] == encoded:
                 return False
             if existing:
-                db.execute("UPDATE selected_outbox SET payload=?,attempts=0,next_attempt_at=0,delivered_at=NULL,last_http_status=NULL WHERE source_id=? AND source_message_id=? AND segment_id=?", (encoded, *identity))
+                db.execute("UPDATE selected_outbox SET payload=?,generation=generation+1,attempts=0,next_attempt_at=0,delivered_at=NULL,last_http_status=NULL WHERE source_id=? AND source_message_id=? AND segment_id=?", (encoded, *identity))
             else:
                 db.execute("INSERT INTO selected_outbox(source_id,source_message_id,segment_id,payload) VALUES(?,?,?,?)", (*identity, encoded))
         return True
@@ -68,6 +71,20 @@ class ExternalFreightFeedAdapter:
             return db.execute("SELECT COUNT(*) FROM selected_outbox WHERE delivered_at IS NULL").fetchone()[0]
 
     def flush_once(self):
+        # Один отправитель на durable outbox, включая разные процессы.
+        # enqueue не блокируется: новая версия останется pending до своего ACK.
+        import fcntl
+        with open(self.db_path + '.flush.lock', 'a') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return {'status': 'busy', 'sent': 0, 'pending': self.pending_count()}
+            try:
+                return self._flush_locked()
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+    def _flush_locked(self):
         if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "false").lower() not in {"1", "true", "yes"}:
             return {"status": "disabled", "sent": 0, "pending": self.pending_count()}
         if not self.api_url or not self.importer_key:
@@ -94,7 +111,7 @@ class ExternalFreightFeedAdapter:
                 raise ValueError("invalid_import_ack")
             with self._connect() as db:
                 for row in rows:
-                    db.execute("UPDATE selected_outbox SET delivered_at=?,last_http_status=? WHERE source_id=? AND source_message_id=? AND segment_id=? AND delivered_at IS NULL", (datetime.fromtimestamp(now, timezone.utc).isoformat(), status, row["source_id"], row["source_message_id"], row["segment_id"]))
+                    db.execute("UPDATE selected_outbox SET delivered_at=?,last_http_status=? WHERE source_id=? AND source_message_id=? AND segment_id=? AND delivered_at IS NULL AND generation=?", (datetime.fromtimestamp(now, timezone.utc).isoformat(), status, row["source_id"], row["source_message_id"], row["segment_id"], row["generation"]))
             return {"status": "delivered", "sent": len(rows), "pending": self.pending_count(), "http_status": status}
         except Exception as exc:
             status = getattr(exc, "code", None)
@@ -102,5 +119,5 @@ class ExternalFreightFeedAdapter:
                 for row in rows:
                     attempts = row["attempts"] + 1
                     delay = min(5 * (2 ** min(attempts - 1, 8)), MAX_BACKOFF_SECONDS)
-                    db.execute("UPDATE selected_outbox SET attempts=?,next_attempt_at=?,last_http_status=? WHERE source_id=? AND source_message_id=? AND segment_id=? AND delivered_at IS NULL", (attempts, now + delay, status, row["source_id"], row["source_message_id"], row["segment_id"]))
+                    db.execute("UPDATE selected_outbox SET attempts=?,next_attempt_at=?,last_http_status=? WHERE source_id=? AND source_message_id=? AND segment_id=? AND delivered_at IS NULL AND generation=?", (attempts, now + delay, status, row["source_id"], row["source_message_id"], row["segment_id"], row["generation"]))
             return {"status": "retry_scheduled", "sent": 0, "pending": self.pending_count(), "retry_after_seconds": min(5 * (2 ** min(max((row["attempts"] for row in rows), default=0), 8)), MAX_BACKOFF_SECONDS), "http_status": status}

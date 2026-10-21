@@ -506,7 +506,7 @@ export default function FeedScreen({ navigation }) {
       edges={['top']}
       testID="trip-feed-screen"
     >
-      <RootHeader navigation={navigation} role={role} testID="trip-feed-minimal-header" menuTestID="feed-menu-btn" />
+      <RootHeader externalFeedEntry navigation={navigation} role={role} testID="trip-feed-minimal-header" menuTestID="feed-menu-btn" />
 
       <FlatList
         ref={listRef}

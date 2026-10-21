@@ -12,8 +12,9 @@ function queryString(values = {}) {
   return params.toString();
 }
 
-async function request(path, { signal, method = 'GET', body } = {}) {
+async function request(path, { signal, method = 'GET', body, isCurrent } = {}) {
   const token = await storage.get('ur_reg_token');
+  if (isCurrent && !isCurrent()) return { ok: false, error: 'session_changed' };
   if (!token) return { ok: false, status: 401, error: 'auth_required' };
   try {
     const response = await authedFetch(`${API_BASE}/external-freight${path}`, {
@@ -34,6 +35,9 @@ export const externalFreightAPI = {
   list(filters = {}, signal) {
     const query = queryString(filters);
     return request(query ? `?${query}` : '', { signal });
+  },
+  bookmark(id, saved, signal, isCurrent) {
+    return request(`/${encodeURIComponent(id)}/bookmark`, { method: saved ? 'PUT' : 'DELETE', signal, isCurrent });
   },
   translate(id, targetLang, signal) {
     return request(`/${encodeURIComponent(id)}/translate?${queryString({ target_lang: targetLang })}`, { method: 'POST', signal });
