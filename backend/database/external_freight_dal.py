@@ -53,6 +53,13 @@ def init_schema():
           FOREIGN KEY(item_id) REFERENCES external_freight_items(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS ix_external_freight_body_type ON external_freight_item_body_types(body_type,item_id);
+        CREATE TABLE IF NOT EXISTS external_freight_bookmarks (
+          owner_id TEXT NOT NULL, item_id TEXT NOT NULL, saved_at TEXT NOT NULL,
+          PRIMARY KEY(owner_id,item_id),
+          FOREIGN KEY(item_id) REFERENCES external_freight_items(id) ON DELETE RESTRICT
+        );
+        CREATE INDEX IF NOT EXISTS ix_external_freight_bookmark_item
+          ON external_freight_bookmarks(item_id);
         CREATE TABLE IF NOT EXISTS external_freight_translations (
           item_id TEXT NOT NULL, source_revision TEXT NOT NULL, target_lang TEXT NOT NULL,
           translated_text TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -226,11 +233,12 @@ def _serialize(row):
 
 def list_items(*, kind, origin=None, destination=None, body_type=None, published_from=None, published_to=None,
                origin_country=None, destination_country=None, currency=None, min_price=None, max_price=None,
-               sort="newest", limit=30, cursor=None):
+               sort="newest", limit=30, cursor=None, owner_id=None, saved_only=False):
     now = _utc().isoformat()
     snapshot_at = now
     last_date = last_id = None
     cursor_filters = {
+        "owner_id": str(owner_id) if owner_id is not None else None, "saved_only": bool(saved_only),
         "origin": origin, "destination": destination, "body_type": body_type,
         "origin_country": origin_country.upper() if origin_country else None,
         "destination_country": destination_country.upper() if destination_country else None,
@@ -248,8 +256,16 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, published
             snapshot_at, last_date, last_id = decoded["snapshot"], decoded["date"], decoded["id"]
         except Exception as exc:
             raise ValueError("invalid_cursor") from exc
-    clauses = ["kind=?", "status='active'", "expires_at>?", "ingested_at<=?"]
-    params = [kind, now, snapshot_at]
+    clauses = ["kind=?", "ingested_at<=?"]
+    params = [kind, snapshot_at]
+    if saved_only:
+        if not owner_id:
+            raise ValueError("bookmark_owner_required")
+        clauses.append("EXISTS (SELECT 1 FROM external_freight_bookmarks b WHERE b.item_id=external_freight_items.id AND b.owner_id=?)")
+        params.append(str(owner_id))
+    else:
+        clauses.extend(["status='active'", "expires_at>?"])
+        params.append(now)
     for field, value in (("origin_folded", origin), ("destination_folded", destination)):
         if value:
             clauses.append(f"{field} LIKE ?")
@@ -302,12 +318,49 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, published
         cursor_value = final["amount"] if sort.startswith("price_") else final["source_published_at"]
         raw = json.dumps({"kind": kind, "sort": sort, "filters": cursor_filters, "snapshot": snapshot_at, "date": cursor_value, "id": final["id"]}, separators=(",", ":")).encode()
         next_cursor = base64.urlsafe_b64encode(raw).decode().rstrip("=")
-    return {"items": [_serialize(row) for row in rows], "next_cursor": next_cursor, "has_more": has_more, "snapshot_at": snapshot_at}
+    saved_ids = set()
+    if owner_id and rows:
+        # Не скачиваем все закладки владельца ради страницы из 30 карточек.
+        placeholders = ",".join("?" for _ in rows)
+        with get_conn() as c:
+            saved_ids = {r[0] for r in c.execute(f"SELECT item_id FROM external_freight_bookmarks WHERE owner_id=? AND item_id IN ({placeholders})", (str(owner_id), *(row["id"] for row in rows)))}
+    items = []
+    for row in rows:
+        if row["status"] in {"hidden", "review"}:
+            item = {"id": row["id"], "kind": row["kind"], "status": "unavailable", "saved": True}
+        else:
+            item = _serialize(row)
+            item["saved"] = row["id"] in saved_ids
+            if item["status"] == "active" and item["expires_at"] and item["expires_at"] <= now:
+                item["status"] = "expired"
+        items.append(item)
+    return {"items": items, "next_cursor": next_cursor, "has_more": has_more, "snapshot_at": snapshot_at}
 
 
-def get_item(item_id):
+def set_bookmark(owner_id, item_id, kind, saved):
+    """Явное идемпотентное состояние; владелец приходит только из auth."""
     with get_conn() as c:
-        row = c.execute("SELECT * FROM external_freight_items WHERE id=? AND status='active' AND expires_at>?", (item_id, _utc().isoformat())).fetchone()
+        row = c.execute("SELECT kind,status,expires_at FROM external_freight_items WHERE id=?", (item_id,)).fetchone()
+        existing = c.execute("SELECT 1 FROM external_freight_bookmarks WHERE owner_id=? AND item_id=?", (str(owner_id), item_id)).fetchone()
+        if not row or row["kind"] != kind:
+            return None
+        if saved:
+            if not existing and (row["status"] != "active" or not row["expires_at"] or row["expires_at"] <= _utc().isoformat()):
+                return None
+            c.execute("INSERT OR IGNORE INTO external_freight_bookmarks(owner_id,item_id,saved_at) VALUES(?,?,?)", (str(owner_id), item_id, _utc().isoformat()))
+        else:
+            c.execute("DELETE FROM external_freight_bookmarks WHERE owner_id=? AND item_id=?", (str(owner_id), item_id))
+    return {"id": item_id, "saved": bool(saved)}
+
+
+def get_item(item_id, owner_id=None):
+    with get_conn() as c:
+        row = c.execute("""SELECT * FROM external_freight_items WHERE id=?
+          AND status IN ('active','expired','closed')
+          AND ((status='active' AND expires_at>?) OR EXISTS (
+            SELECT 1 FROM external_freight_bookmarks b
+            WHERE b.item_id=external_freight_items.id AND b.owner_id=?))""",
+          (item_id, _utc().isoformat(), str(owner_id) if owner_id is not None else "")).fetchone()
     return _serialize(row) if row else None
 
 

@@ -531,7 +531,7 @@ export default function CargoFeedScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
       <DriverRouteBackdrop />
-      <RootHeader ceramic navigation={navigation} role={role} testID="cargo-feed-minimal-header" menuTestID="feed-menu-btn" />
+      <RootHeader externalFeedEntry ceramic navigation={navigation} role={role} testID="cargo-feed-minimal-header" menuTestID="feed-menu-btn" />
 
       <FlatList
         ref={listRef}

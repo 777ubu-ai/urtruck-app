@@ -50,6 +50,7 @@ def _feed_setup(monkeypatch):
     dal.init_schema()
     yield
     with get_conn() as c:
+        c.execute("DELETE FROM external_freight_bookmarks")
         c.execute("DELETE FROM external_freight_translations")
         c.execute("DELETE FROM external_freight_audit")
         c.execute("DELETE FROM external_freight_delivery")
@@ -206,7 +207,9 @@ def test_admin_hide_audits_and_removes_only_external_listing():
     ("Нужен тент, груз готов", "cargo", "active"),
     ("Есть свободный тент, ищу груз", "vehicle", "active"),
     ("груз тент машина", None, "review"),
-    ("Нужен груз. Есть свободная машина", None, "review"),
+    ("Нужен груз. Есть свободная машина", "vehicle", "active"),
+    ("Нужен груз. Свободный тент. Алматы → Ташкент", "vehicle", "active"),
+    ("Нужен тент. Есть груз и свободная машина", None, "review"),
     ("Уже нашли машину", None, "closed"),
 ])
 def test_conservative_classifier(text, kind, status):
@@ -310,3 +313,88 @@ def test_translation_token_guard_rejects_changed_number(monkeypatch):
     monkeypatch.setattr(translate_service, "translate_text", lambda text, lang: {"translated_text": text.replace("UTMARKER0000X", "")})
     with pytest.raises(translate_service.TranslationError):
         _translate_preserving_tokens("1500 KZT", "en")
+
+
+def test_bookmarks_are_idempotent_private_and_role_scoped():
+    global _actor
+    item_id = _import(_record(text="Нужен тент, груз готов")).json()["results"][0]["id"]
+    _actor = {"id": "saved-owner", "role": "driver"}
+    url = f"/api/v1/external-freight/{item_id}/bookmark"
+    for _ in range(2):
+        assert client.put(url).json() == {"id": item_id, "saved": True}
+    assert client.get("/api/v1/external-freight").json()["items"][0]["saved"] is True
+    assert len(client.get("/api/v1/external-freight?saved_only=true").json()["items"]) == 1
+    with get_conn() as c:
+        assert c.execute("SELECT COUNT(*) FROM external_freight_bookmarks").fetchone()[0] == 1
+    _actor = {"id": "other-driver", "role": "driver"}
+    assert client.get("/api/v1/external-freight?saved_only=true").json()["items"] == []
+    assert client.delete(url).status_code == 200
+    _actor = {"id": "shipper", "role": "client"}
+    assert client.put(url).status_code == 404
+    _actor = {"id": "saved-owner", "role": "driver"}
+    assert len(client.get("/api/v1/external-freight?saved_only=true").json()["items"]) == 1
+    assert client.delete(url).json()["saved"] is False
+    assert client.delete(url).json()["saved"] is False
+    assert client.get("/api/v1/external-freight?saved_only=true").json()["items"] == []
+    _actor = None
+    assert client.put(url).status_code == 401
+
+
+def test_saved_expired_closed_and_hidden_do_not_leak_or_extend_ttl():
+    global _actor
+    item_id = _import(_record(text="Нужен тент, груз готов")).json()["results"][0]["id"]
+    _actor = {"id": "saved-owner", "role": "driver"}
+    url = f"/api/v1/external-freight/{item_id}/bookmark"
+    assert client.put(url).status_code == 200
+    past = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    with get_conn() as c:
+        c.execute("UPDATE external_freight_items SET expires_at=? WHERE id=?", (past, item_id))
+    assert client.get("/api/v1/external-freight").json()["items"] == []
+    saved = client.get("/api/v1/external-freight?saved_only=true").json()["items"][0]
+    assert saved["status"] == "expired" and saved["contacts"]
+    assert client.get(f"/api/v1/external-freight/{item_id}").status_code == 200
+    _actor = {"id": "not-saved", "role": "driver"}
+    assert client.get(f"/api/v1/external-freight/{item_id}").status_code == 404
+    _actor = {"id": "saved-owner", "role": "driver"}
+    assert client.put(url).status_code == 200
+    with get_conn() as c:
+        assert c.execute("SELECT expires_at FROM external_freight_items WHERE id=?", (item_id,)).fetchone()[0] == past
+        c.execute("UPDATE external_freight_items SET status='closed' WHERE id=?", (item_id,))
+    assert client.get("/api/v1/external-freight?saved_only=true").json()["items"][0]["status"] == "closed"
+    dal.hide_item(item_id, "operator")
+    saved = client.get("/api/v1/external-freight?saved_only=true").json()["items"][0]
+    assert saved == {"id": item_id, "kind": "cargo", "status": "unavailable", "saved": True}
+    assert client.get(f"/api/v1/external-freight/{item_id}").status_code == 404
+    assert client.post(f"/api/v1/external-freight/{item_id}/translate?target_lang=EN").status_code == 404
+    assert client.delete(url).status_code == 200
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_adapter_inflight_edit_survives_stale_ack_or_error(tmp_path, monkeypatch, failure):
+    import json
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    record = _record(source="inflight", message="one")
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self): return json.dumps({"results": [{"id": "one", "result": "updated"}]}).encode()
+    def send(request, timeout):
+        adapter.enqueue({**record, "original_text": "Нужен тент. Новая версия"})
+        # Другой sender не должен обогнать ещё не завершившийся запрос.
+        assert adapter.flush_once()["status"] == "busy"
+        if failure:
+            raise TimeoutError("lost response")
+        return Response()
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "inflight.db"), api_url="https://qa.example", importer_key="test", opener=send)
+    adapter.enqueue(record)
+    adapter.flush_once()
+    assert adapter.pending_count() == 1
+    with adapter._connect() as db:
+        row = db.execute("SELECT * FROM selected_outbox").fetchone()
+        assert row["attempts"] == 0 and row["next_attempt_at"] == 0
+        assert json.loads(row["payload"])["original_text"].endswith("Новая версия")
+    adapter.opener = lambda *a, **kw: Response()
+    assert adapter.flush_once()["status"] == "delivered"
+    assert adapter.pending_count() == 0
