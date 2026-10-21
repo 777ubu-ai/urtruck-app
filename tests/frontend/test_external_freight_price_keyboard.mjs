@@ -12,6 +12,8 @@ test('price filter keeps its fields scrollable and Apply above the Android keybo
 
   const scrollStart = source.indexOf('<ScrollView keyboardShouldPersistTaps="handled" style={styles.sheetScroll}');
   const apply = source.indexOf('testID="external-feed-apply-filters"');
-  const scrollEnd = source.lastIndexOf('</ScrollView>', apply);
-  assert.ok(scrollStart >= 0 && scrollEnd > scrollStart && apply > scrollEnd, 'Apply remains a fixed footer outside the scrollable form');
+  const priceInputs = source.indexOf('value={draft.min_price}');
+  const priceSort = source.indexOf("[['newest', l.newest]");
+  assert.ok(scrollStart >= 0 && apply >= 0 && apply < scrollStart, 'Apply stays in the fixed header above the keyboard');
+  assert.ok(priceInputs > scrollStart && priceSort > priceInputs, 'currency and price fields appear before optional sort choices');
 });
