@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { activateExternalFeedFilter } from '../../src/utils/externalFeedFilterPress.js';
 
 const source = readFileSync(new URL('../../src/screens/ExternalFreightFeedScreen.js', import.meta.url), 'utf8');
 
@@ -16,4 +17,37 @@ test('price filter keeps its fields scrollable and Apply above the Android keybo
   const priceSort = source.indexOf("[['newest', l.newest]");
   assert.ok(scrollStart >= 0 && apply >= 0 && apply < scrollStart, 'Apply stays in the fixed header above the keyboard');
   assert.ok(priceInputs > scrollStart && priceSort > priceInputs, 'currency and price fields appear before optional sort choices');
+});
+
+test('non-location filters mount their scrim only after the chip press completes', () => {
+  const filters = { currency: 'KZT' };
+  const events = [];
+  let scheduled;
+  activateExternalFeedFilter({
+    name: 'price',
+    filters,
+    setDraft: value => events.push(['draft', value]),
+    setPicker: value => events.push(['picker', value]),
+    setModal: value => events.push(['modal', value]),
+    schedule: callback => { events.push(['scheduled']); scheduled = callback; },
+  });
+
+  assert.deepEqual(events, [['draft', filters], ['scheduled']]);
+  scheduled();
+  assert.deepEqual(events, [['draft', filters], ['scheduled'], ['modal', 'price']]);
+});
+
+test('route filters keep using the location picker directly', () => {
+  const filters = {};
+  const events = [];
+  activateExternalFeedFilter({
+    name: 'origin',
+    filters,
+    setDraft: value => events.push(['draft', value]),
+    setPicker: value => events.push(['picker', value]),
+    setModal: value => events.push(['modal', value]),
+    schedule: callback => { events.push(['scheduled']); callback(); },
+  });
+
+  assert.deepEqual(events, [['draft', filters], ['picker', 'origin']]);
 });

@@ -17,6 +17,7 @@ import { BODY_TYPES } from '../utils/truckConstants';
 import { getCountryName } from '../utils/countries';
 import { externalFreightAPI } from '../utils/externalFreightFeed';
 import { appendUnique, buildExternalFeedQuery, canSortPrice, externalLocationSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
+import { activateExternalFeedFilter } from '../utils/externalFeedFilterPress';
 
 const COPY = {
   RU: { cargoTitle: 'Лента грузов', vehicleTitle: 'Лента машин', from: 'Откуда', to: 'Куда', body: 'Кузов', date: 'Дата', price: 'Цена', empty: 'Объявлений пока нет', none: 'По фильтрам ничего не найдено', network: 'Нет соединения. Уже загруженные объявления сохранены.', server: 'Сервис ленты временно недоступен.', retry: 'Повторить', more: 'Ещё', less: 'Свернуть', translate: 'Перевести', original: 'Оригинал', copied: 'Контакт скопирован', today: 'Сегодня', yesterday: 'Вчера', apply: 'Применить', choose: 'Выбрать из списка', reset: 'Сбросить', cancel: 'Отмена', negotiable: 'Договорная', unknown: 'Цена не указана', loading: 'Загрузка…', dateFrom: 'С', dateTo: 'По', currency: 'Валюта', min: 'От суммы', max: 'До суммы', newest: 'Сначала новые', asc: 'Дешевле', desc: 'Дороже', retryPage: 'Не удалось загрузить следующую страницу', invalidPrice: 'Укажите валюту и корректный диапазон цены.', invalidDate: 'Начало периода не может быть позже окончания.' },
@@ -218,7 +219,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     ? `${filters[key]}${filters[`${key}_country`] ? `, ${filters[`${key}_country`]}` : ''}`
     : filters[`${key}_country`] ? getCountryName(filters[`${key}_country`], lang) : '';
   const filterButton = (name, label, value) => (
-    <TouchableOpacity key={name} style={[styles.filterButton, value ? styles.filterActive : null]} onPress={() => { setDraft(filters); if (name === 'origin' || name === 'destination') setPicker(name); else setModal(name); }} accessibilityRole="button" accessibilityLabel={label} testID={`external-feed-filter-${name}`}>
+    <TouchableOpacity key={name} style={[styles.filterButton, value ? styles.filterActive : null]} onPress={() => activateExternalFeedFilter({ name, filters, setDraft, setPicker, setModal })} accessibilityRole="button" accessibilityLabel={label} testID={`external-feed-filter-${name}`}>
       <Text style={[styles.filterText, value ? styles.filterTextActive : null]}>{label}{value ? ` · ${value}` : ''}</Text><Feather name="chevron-down" size={13} color={value ? '#168759' : theme.textMuted} />
     </TouchableOpacity>
   );
