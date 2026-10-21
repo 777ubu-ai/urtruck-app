@@ -4,9 +4,9 @@
  * Keep this separate from production Android metadata: QA2 artifacts are
  * installed directly on physical test devices and never submitted to Play.
  */
-// Исправить открытие внешних фильтров после физической проверки Xiaomi.
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494464;
-const QA2_ANDROID_VERSION_CODE = 214494465;
+// Дождаться завершения Android touch-up перед открытием фильтра.
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494465;
+const QA2_ANDROID_VERSION_CODE = 214494466;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {

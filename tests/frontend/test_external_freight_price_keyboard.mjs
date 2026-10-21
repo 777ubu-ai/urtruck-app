@@ -51,3 +51,18 @@ test('route filters keep using the location picker directly', () => {
 
   assert.deepEqual(events, [['draft', filters], ['picker', 'origin']]);
 });
+
+test('price modal waits until after the Android touch-up event', async () => {
+  const events = [];
+  activateExternalFeedFilter({
+    name: 'price',
+    filters: {},
+    setDraft: () => events.push('draft'),
+    setPicker: () => events.push('picker'),
+    setModal: value => events.push(value),
+  });
+
+  assert.deepEqual(events, ['draft']);
+  await new Promise(resolve => setTimeout(resolve, 150));
+  assert.deepEqual(events, ['draft', 'price']);
+});

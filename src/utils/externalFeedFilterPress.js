@@ -4,7 +4,7 @@ export function activateExternalFeedFilter({
   setDraft,
   setPicker,
   setModal,
-  schedule = callback => requestAnimationFrame(callback),
+  schedule = callback => setTimeout(callback, 120),
 }) {
   setDraft(filters);
   if (name === 'origin' || name === 'destination') {
@@ -12,7 +12,8 @@ export function activateExternalFeedFilter({
     return;
   }
 
-  // Finish the chip press before mounting the full-screen scrim. Android can
-  // otherwise send the same touch-up to the new scrim and close it at once.
+  // Finish the chip press before mounting the full-screen scrim. On Android,
+  // a frame callback can still run before touch-up, allowing the new scrim to
+  // receive that event and close the sheet immediately.
   schedule(() => setModal(name));
 }
