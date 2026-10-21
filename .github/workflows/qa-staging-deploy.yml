@@ -188,6 +188,8 @@ jobs:
             *) pre_source=unknown ;;
           esac
           pre_hash="$(cd "$qa_backend" && find . -type f ! -path './venv/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          # QA2 snapshots contain user data; restrict the directory and file at creation.
+          umask 077
           backup_id="backend-code-$(date -u +%Y%m%dT%H%M%SZ)"
           backup_dir="$qa_root/backups/$backup_id"
           mkdir -p "$backup_dir"

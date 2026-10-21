@@ -76,6 +76,7 @@ test('QA2 deploy snapshots the live SQLite database and verifies a separate rest
   assert.match(workflow, /QA_DB_RESTORE_PROBE=pass/);
   assert.match(workflow, /DB_BACKUP_HASH=\$db_backup_hash/);
   assert.match(workflow, /chmod 600/);
+  assert.ok(workflow.indexOf('umask 077\n          backup_id=') < backupPosition);
 });
 
 test('QA2 backend deploy has rollback and self-contained runtime QA2P isolation proof', () => {
