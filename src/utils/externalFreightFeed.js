@@ -39,9 +39,6 @@ export const externalFreightAPI = {
   bookmark(id, saved, signal, isCurrent) {
     return request(`/${encodeURIComponent(id)}/bookmark`, { method: saved ? 'PUT' : 'DELETE', signal, isCurrent });
   },
-  translate(id, targetLang, signal) {
-    return request(`/${encodeURIComponent(id)}/translate?${queryString({ target_lang: targetLang })}`, { method: 'POST', signal });
-  },
   event(name) {
     return request('/events', { method: 'POST', body: { name } }).catch(() => ({ ok: false }));
   },

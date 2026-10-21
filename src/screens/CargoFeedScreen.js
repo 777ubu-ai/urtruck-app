@@ -30,6 +30,7 @@ import { TRUCK_KEYS } from '../utils/truckConstants';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import RootHeader from '../components/ui/v1/RootHeader';
+import ExternalFreightEntry from '../components/externalFreight/ExternalFreightEntry';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import CompactFilterChip from '../components/ui/v1/CompactFilterChip';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
@@ -531,7 +532,9 @@ export default function CargoFeedScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: palette.pageBg }]} edges={['top']} testID="cargo-screen">
       <DriverRouteBackdrop />
-      <RootHeader externalFeedEntry ceramic navigation={navigation} role={role} testID="cargo-feed-minimal-header" menuTestID="feed-menu-btn" />
+      <ExternalFreightEntry ceramic navigation={navigation} role={role}>
+        <RootHeader ceramic navigation={navigation} role={role} testID="cargo-feed-minimal-header" menuTestID="feed-menu-btn" />
+      </ExternalFreightEntry>
 
       <FlatList
         ref={listRef}

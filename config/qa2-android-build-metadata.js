@@ -4,9 +4,9 @@
  * Keep this separate from production Android metadata: QA2 artifacts are
  * installed directly on physical test devices and never submitted to Play.
  */
-// Дождаться завершения Android touch-up перед открытием фильтра.
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494465;
-const QA2_ANDROID_VERSION_CODE = 214494466;
+// Изолированная внешняя лента: локальные компоненты и перевод отключён.
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494466;
+const QA2_ANDROID_VERSION_CODE = 214494467;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {

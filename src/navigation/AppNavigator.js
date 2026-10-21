@@ -1,4 +1,4 @@
-import { sessionRole } from '../utils/publicationSession';
+import { sessionRole } from '../utils/externalFreightSession';
 import { onboardingNavKey } from '../utils/onboardingNavKey';
 import React from 'react';
 import { View, Text, Animated, AppState } from 'react-native';

@@ -50,11 +50,14 @@ test('missing auth and rejected save never report success', async () => {
   assert.equal(result.error, 'unavailable');
 });
 
-test('external entry is opt-in only on the two agreed feeds', () => {
+test('external entry is isolated from the shared header', () => {
   const read = path => fs.readFileSync(new URL('../../' + path, import.meta.url), 'utf8');
-  const header = read('src/components/ui/v1/RootHeader.js');
-  assert.match(header, /externalFeedEntry = false/);
-  assert.match(header, /showFeed = externalFeedEntry && EXTERNAL_FREIGHT_ENABLED/);
-  for (const file of ['CargoFeedScreen.js', 'FeedScreen.js']) assert.match(read('src/screens/' + file), /<RootHeader externalFeedEntry/);
-  for (const file of ['DealsScreen.js', 'MyTripsScreen.js', 'QueueScreenLazyV2.js']) assert.doesNotMatch(read('src/screens/' + file), /<RootHeader[^>]*externalFeedEntry/);
+  const shared = read('src/components/ui/v1/RootHeader.js');
+  assert.doesNotMatch(shared, /externalFreight|externalFeed|Лента/);
+  const entry = read('src/components/externalFreight/ExternalFreightEntry.js');
+  assert.match(entry, /!EXTERNAL_FREIGHT_ENABLED/);
+  assert.match(entry, /return children/);
+  assert.match(entry, /\{children\}/);
+  for (const file of ['CargoFeedScreen.js', 'FeedScreen.js']) assert.match(read('src/screens/' + file), /<ExternalFreightEntry/);
+  for (const file of ['DealsScreen.js', 'MyTripsScreen.js', 'QueueScreenLazyV2.js']) assert.doesNotMatch(read('src/screens/' + file), /ExternalFreightEntry/);
 });

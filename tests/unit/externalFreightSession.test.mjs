@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sessionRole } from '../../src/utils/publicationSession.js';
+import { sessionRole } from '../../src/utils/externalFreightSession.js';
 
 test('feed role comes from the authenticated user and normalizes shipper', () => {
   assert.equal(sessionRole({ user: { role: 'driver' } }), 'driver');

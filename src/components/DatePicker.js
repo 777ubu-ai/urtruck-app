@@ -27,7 +27,7 @@ const CALENDAR_LABELS = {
   },
 };
 
-export default function DatePicker({ value, onChange, onClose, placeholder = 'DD.MM.YYYY', style, min, max, defaultOpen = false, allowPast = false }) {
+export default function DatePicker({ value, onChange, onClose, placeholder = 'DD.MM.YYYY', style, min, max, defaultOpen = false }) {
   const { theme } = useTheme();
   const { lang } = useI18n();
   const labels = CALENDAR_LABELS[lang] || CALENDAR_LABELS.EN;
@@ -51,7 +51,7 @@ export default function DatePicker({ value, onChange, onClose, placeholder = 'DD
 
   const pick = (day) => {
     const picked = new Date(viewYear, viewMonth, day);
-    if (picked < todayStart && !allowPast) return;
+    if (picked < todayStart) return;
     const d = String(day).padStart(2, '0');
     const m = String(viewMonth + 1).padStart(2, '0');
     onChange(`${d}.${m}.${viewYear}`);
@@ -88,7 +88,7 @@ export default function DatePicker({ value, onChange, onClose, placeholder = 'DD
           const day = i + 1;
           const isSelected = selected && selected.d === day && selected.m === viewMonth + 1 && selected.y === viewYear;
           const dayDate = new Date(viewYear, viewMonth, day);
-          const isPast = dayDate < todayStart && !allowPast;
+          const isPast = dayDate < todayStart;
           const isToday = day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
           return (
             <TouchableOpacity

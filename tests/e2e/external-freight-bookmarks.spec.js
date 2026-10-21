@@ -22,7 +22,7 @@ test.use({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', video
 
 async function boot(page, role = 'driver') {
   const user = { id: 'feed-fixture-' + role, role, verification_level: 3, basic_onboarding_completed: 1 };
-  const box = { saved: false, fail: false, writes: 0, errors: [], feedQueries: [] };
+  const box = { saved: false, fail: false, writes: 0, errors: [], feedQueries: [], businessWrites: [], aiRequests: [] };
   const item = { id: 'external-fixture', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active', origin: 'Алматы', destination: 'Ташкент',
     original_text: 'Нужен тент. Груз готов', source_revision: 'fixture-revision', source_published_at: '2026-10-21T05:00:00Z', body_types: ['tent'], amount: 1500, currency: 'USD', price_state: 'known', contacts: ['+7 700 000 00 01'] };
   page.on('pageerror', error => box.errors.push(error.message));
@@ -33,7 +33,9 @@ async function boot(page, role = 'driver') {
   }, user);
   await page.route('**/*', async route => {
     const u = new URL(route.request().url());
-    if (u.origin !== base) return route.abort();
+    if (u.origin !== base && u.origin !== "https://qa2.urtruck.kz") return route.abort();
+    if (u.pathname.includes("/market/") && route.request().method() !== "GET") box.businessWrites.push(u.pathname);
+    if (u.pathname.includes("translate") || u.pathname.includes("/ai/")) box.aiRequests.push(u.pathname);
     if (!u.pathname.startsWith('/api/')) return route.continue();
     let data = {};
     if (u.pathname === '/api/v1/register/me') data = user;
@@ -114,3 +116,34 @@ test('route filters directly open visible search and distinguish country from ci
   expect(box.feedQueries.at(-1).destination_country).toBe('UZ');
   expect(box.errors).toEqual([]);
 });
+
+for (const role of ['driver', 'client']) {
+  test(role + ': feed filters do not mutate main filters or write business records; AI stays unused', async ({ page }) => {
+    const box = await boot(page, role);
+    await page.getByTestId('external-feed-back').click();
+    const prefix = role === 'driver' ? 'cargo' : 'trip';
+    await page.getByTestId(prefix + '-filter-price').click();
+    await page.getByTestId(prefix + '-price-currency-USD').click();
+    await page.getByTestId(prefix + '-price-min').fill('2400');
+    await page.getByTestId('filter-sheet-apply').click();
+    const mainFilter = await page.getByTestId(prefix + '-filter-price').textContent();
+    await page.getByTestId('external-freight-entry').click();
+    await expect(page.getByTestId('bottom-nav')).not.toBeVisible();
+    await page.getByTestId('external-feed-filter-price').click();
+    await expect(page.getByTestId('external-feed-price-min')).toBeVisible();
+    await page.getByTestId('external-feed-currency-KZT').click();
+    await page.getByTestId('external-feed-price-min').fill('1500');
+    await expect(page.getByTestId('external-feed-apply-filters')).toBeInViewport();
+    await page.getByTestId('external-feed-apply-filters').click();
+    await expect.poll(() => box.feedQueries.at(-1)?.min_price).toBe('1500');
+    await page.getByTestId('external-feed-expand-external-fixture').click();
+    await expect(page.getByTestId('external-feed-translate-external-fixture')).toHaveCount(0);
+    await page.getByTestId('external-feed-back').click();
+    await expect(page.getByTestId(prefix + '-filter-price')).toHaveText(mainFilter);
+    await page.getByTestId(prefix + '-filter-price').click();
+    await expect(page.getByTestId(prefix + '-price-min')).toHaveValue('2400');
+    expect(box.businessWrites).toEqual([]);
+    expect(box.aiRequests).toEqual([]);
+    expect(box.errors).toEqual([]);
+  });
+}
