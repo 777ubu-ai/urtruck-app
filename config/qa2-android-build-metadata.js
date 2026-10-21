@@ -5,8 +5,8 @@
  * installed directly on physical test devices and never submitted to Play.
  */
 // Внешняя лента с закладками: отдельная идентичность QA2, без изменения production.
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494458;
-const QA2_ANDROID_VERSION_CODE = 214494459;
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494459;
+const QA2_ANDROID_VERSION_CODE = 214494460;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {

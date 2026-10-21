@@ -28,6 +28,13 @@ export function buildExternalFeedQuery(filters = {}, { cursor, limit = 30, reset
   return query;
 }
 
+export function externalLocationSelection(key, value, point) {
+  const country = point?.country && point.country !== 'XX' ? point.country : '';
+  const countryOnly = point?.countryOnly || point?.type === 'country';
+  const city = countryOnly ? '' : point?.name || (typeof value === 'string' ? value : value?.city || '');
+  return { [key]: city, [`${key}_country`]: country };
+}
+
 export function feedKindForRole(role) {
   if (role === 'driver') return 'cargo';
   if (role === 'client' || role === 'shipper') return 'vehicle';

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendUnique, buildExternalFeedQuery, canSortPrice, feedKindForRole, isValidPublicationRange } from '../../src/utils/externalFreightModel.js';
+import { appendUnique, buildExternalFeedQuery, canSortPrice, externalLocationSelection, feedKindForRole, isValidPublicationRange } from '../../src/utils/externalFreightModel.js';
 
 test('feed kind follows the authenticated role and has no guest fallback', () => {
   assert.equal(feedKindForRole('driver'), 'cargo');
@@ -42,4 +42,17 @@ test('publication range accepts reversed calendar dates only when ordered', () =
 test('next-page append is idempotent and preserves first-page order', () => {
   const first = [{ id: 'a' }, { id: 'b' }];
   assert.deepEqual(appendUnique(first, [{ id: 'b' }, { id: 'c' }]), [{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+});
+
+test('country-only selection filters the country without treating its label as a city', () => {
+  const selection = externalLocationSelection('origin', 'Китай', { name: 'Китай', country: 'CN', type: 'country', countryOnly: true });
+  assert.deepEqual(selection, { origin: '', origin_country: 'CN' });
+  const query = buildExternalFeedQuery(selection);
+  assert.equal(query.origin, undefined);
+  assert.equal(query.origin_country, 'CN');
+});
+
+test('city selection preserves its spelling and custom unknown country does not constrain results', () => {
+  assert.deepEqual(externalLocationSelection('destination', 'Ташкент', { name: 'Ташкент', country: 'UZ', type: 'city' }), { destination: 'Ташкент', destination_country: 'UZ' });
+  assert.deepEqual(externalLocationSelection('origin', 'Алашанкоу', { name: 'Алашанкоу', country: 'XX', custom: true }), { origin: 'Алашанкоу', origin_country: '' });
 });
