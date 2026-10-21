@@ -22,6 +22,11 @@ on:
         description: Type BUILD_OPPO_LOOPBACK_LAB only for loopback_lab
         required: false
         type: string
+      enable_external_freight_feed:
+        description: Enable the external freight feed in this QA-only APK
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       source_ref:
@@ -34,6 +39,10 @@ on:
       lab_confirmation:
         required: false
         type: string
+      enable_external_freight_feed:
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [main, "claude/**"]
 
@@ -65,6 +74,7 @@ jobs:
           QA2_API_URL: ${{ secrets.QA2_API_URL }}
           API_TARGET: ${{ inputs.api_target || 'qa2' }}
           LAB_CONFIRMATION: ${{ inputs.lab_confirmation || '' }}
+          ENABLE_EXTERNAL_FREIGHT_FEED: ${{ inputs.enable_external_freight_feed || false }}
         run: |
           set -euo pipefail
           RESOLVED_SOURCE_SHA="$(git rev-parse HEAD)"
@@ -145,6 +155,17 @@ jobs:
           echo "URTRUCK_VERSION_CODE=$qa2_version_code" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
           printf 'EXPO_PUBLIC_API_URL=%s\n' "$QA_API_URL" >> "$GITHUB_ENV"
+          if [ "$ENABLE_EXTERNAL_FREIGHT_FEED" = "true" ]; then
+            test "$API_TARGET" = "qa2" || {
+              echo "::error::External freight feed is enabled only for a QA2 API build"
+              exit 1
+            }
+            echo "EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED=true" >> "$GITHUB_ENV"
+            echo "EXTERNAL_FREIGHT_FEED=enabled"
+          else
+            echo "EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED=false" >> "$GITHUB_ENV"
+            echo "EXTERNAL_FREIGHT_FEED=disabled"
+          fi
 
       - name: Verify QA2 build regression contract
         run: node --test tests/frontend/test_qa2_live_build_contract.mjs
