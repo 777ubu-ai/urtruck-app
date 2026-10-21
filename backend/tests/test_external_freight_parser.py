@@ -128,8 +128,9 @@ def test_readiness_is_not_appended_to_destination():
 
 
 def test_kilograms_are_normalized_to_card_tonnes():
-    item = map_selected_message(_queue("Хоргос - Алматы\nНужен тент\nГруз готов 22000 кг"))
-    assert item["weight"] == 22
+    for weight in ("22000 кг", "22 000 кг", "22\u00a0000 кг"):
+        item = map_selected_message(_queue("Хоргос - Алматы\nНужен тент\nГруз готов " + weight))
+        assert item["weight"] == 22
 
 
 def test_decimal_tonnes_are_preserved():
