@@ -197,7 +197,7 @@ def import_records(records):
     columns = ["kind", "source_published_at", "ingested_at", "updated_at", "expires_at", "original_text", "source_revision", "origin", "destination", "origin_country", "destination_country", "origin_folded", "destination_folded", "cargo_name", "body_types", "weight", "volume", "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state", "contacts", "status", "origin_source", "created_by"]
     with get_conn() as c:
         for values in normalized_batch:
-            current = c.execute("SELECT id, expires_at, source_published_at, ingested_at, source_revision, status FROM external_freight_items WHERE source_id=? AND source_message_id=? AND segment_id=?", (values["source_id"], values["source_message_id"], values["segment_id"])).fetchone()
+            current = c.execute("SELECT * FROM external_freight_items WHERE source_id=? AND source_message_id=? AND segment_id=?", (values["source_id"], values["source_message_id"], values["segment_id"])).fetchone()
             if current:
                 values["id"] = current["id"]
                 values["expires_at"] = current["expires_at"]
@@ -206,13 +206,18 @@ def import_records(records):
                 values["ingested_at"] = current["ingested_at"]
                 if current["source_published_at"]:
                     values["source_published_at"] = current["source_published_at"]
-                if current["status"] in {"hidden", "closed"}:
+                unchanged = all(values[key] == current[key] for key in columns
+                                if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
+                if current["status"] in {"hidden", "closed"} or (
+                        current["status"] == "active" and values["status"] == "review" and unchanged):
                     values["status"] = current["status"]
+                if values["status"] == "closed":
+                    values["kind"] = current["kind"]
                 if values["status"] == "active" and (not values["expires_at"] or _utc(values["expires_at"]) <= _utc()):
                     values["status"] = "expired"
                 assignments = ",".join(f"{key}=?" for key in columns)
                 c.execute(f"UPDATE external_freight_items SET {assignments} WHERE id=?", [values[key] for key in columns] + [values["id"]])
-                action = "updated" if values["source_revision"] != current["source_revision"] else "replayed"
+                action = "updated" if not unchanged or values["status"] != current["status"] else "replayed"
             else:
                 all_columns = ["id", "source_id", "source_message_id", "segment_id"] + columns
                 c.execute(f"INSERT INTO external_freight_items ({','.join(all_columns)}) VALUES ({','.join('?' for _ in all_columns)})", [values[k] for k in all_columns])

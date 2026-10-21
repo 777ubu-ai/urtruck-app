@@ -538,3 +538,239 @@ def test_count_zero_and_six_digit_count_without_cap():
             SELECT 'large-'||n,'cargo','large',CAST(n AS TEXT),'0',source_published_at,ingested_at,updated_at,expires_at,original_text,source_revision,'active'
             FROM numbers CROSS JOIN external_freight_items WHERE id=?""", (item_id,))
     assert client.get("/api/v1/external-freight/count").json()["count"] == 100001
+
+
+def test_manual_approval_survives_identical_replay_but_changed_payload_requires_review():
+    global _actor
+    record = _record(source="manual-replay", text="Есть груз и свободная машина")
+    item_id = _import(record).json()["results"][0]["id"]
+    _actor = {"id": "operator", "role": "support"}
+    assert client.post(f"/api/v1/external-freight/{item_id}/approve").status_code == 200
+    with get_conn() as c:
+        before = dict(c.execute("SELECT * FROM external_freight_items WHERE id=?", (item_id,)).fetchone())
+    repeated = _import(record).json()["results"][0]
+    assert repeated["result"] == "replayed"
+    assert repeated["status"] == "active"
+    with get_conn() as c:
+        after = dict(c.execute("SELECT * FROM external_freight_items WHERE id=?", (item_id,)).fetchone())
+    assert after["expires_at"] == before["expires_at"]
+    assert after["ingested_at"] == before["ingested_at"]
+    _actor = {"id": "driver", "role": "driver"}
+    assert client.get("/api/v1/external-freight/count").json()["count"] == 1
+    changed = _import({**record, "amount": 2500, "currency": "USD"}).json()["results"][0]
+    assert changed["status"] == "review"
+    assert client.get("/api/v1/external-freight/count").json()["count"] == 0
+
+
+def test_permanent_422_quarantines_only_invalid_record_and_corrected_generation_delivers(tmp_path, monkeypatch):
+    import urllib.error
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    calls = []
+    def opener(request, timeout):
+        import json
+        payload = json.loads(request.data)
+        calls.append(len(payload["records"]))
+        response = client.post("/api/v1/external-freight/import", headers={"X-External-Importer-Key": "test-importer-key-only"}, json=payload)
+        if response.status_code >= 400:
+            raise urllib.error.HTTPError(request.full_url, response.status_code, "test", {}, None)
+        class Response:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return response.content
+        return Response()
+    options = dict(db_path=str(tmp_path / "adapter.sqlite3"), api_url="https://qa2.urtruck.kz",
+                   importer_key="test-importer-key-only", opener=opener)
+    adapter = ExternalFreightFeedAdapter(**options)
+    bad = _record(source="a-invalid", message="one", amount=2_000_000_000, currency="KZT")
+    good = _record(source="b-valid", message="two", amount=1500, currency="KZT")
+    adapter.enqueue(bad)
+    adapter.enqueue(good)
+    result = adapter.flush_once()
+    assert result["sent"] == 1
+    assert adapter.pending_count() == 0
+    assert adapter.quarantined_count() == 1
+    assert calls == [2, 1, 1]
+    restarted = ExternalFreightFeedAdapter(**options)
+    assert restarted.flush_once()["status"] == "idle"
+    assert not restarted.enqueue(bad)
+    assert restarted.enqueue({**bad, "amount": 2500})
+    assert restarted.quarantined_count() == 0
+    assert restarted.flush_once()["sent"] == 1
+    assert restarted.pending_count() == 0
+
+
+@pytest.mark.parametrize("failure_status", [401, 403, 429, 503])
+def test_isolation_does_not_quarantine_auth_rate_or_temporary_failure(tmp_path, monkeypatch, failure_status):
+    import urllib.error
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    attempts = []
+    def send(request, timeout):
+        attempts.append(1)
+        raise urllib.error.HTTPError(request.full_url, 422 if len(attempts) == 1 else failure_status, "test", {}, None)
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "state.sqlite3"), api_url="https://qa2.urtruck.kz",
+        importer_key="test", opener=send)
+    adapter.enqueue(_record(source="a"))
+    adapter.enqueue(_record(source="b"))
+    result = adapter.flush_once()
+    assert result["status"] == "retry_scheduled"
+    assert result["http_status"] == failure_status
+    assert result["pending"] == 2
+    assert adapter.quarantined_count() == 0
+    assert len(attempts) == 2
+
+
+def test_stale_422_never_quarantines_corrected_inflight_generation(tmp_path, monkeypatch):
+    import json
+    import urllib.error
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    record = _record(source="generation", amount=2_000_000_000, currency="KZT")
+    calls = []
+    def send(request, timeout):
+        calls.append(1)
+        if len(calls) == 2:
+            adapter.enqueue({**record, "amount": 1500})
+        if len(calls) <= 2:
+            raise urllib.error.HTTPError(request.full_url, 422, "test", {}, None)
+        class Response:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return json.dumps({"results": [{"id": "one", "result": "created"}]}).encode()
+        return Response()
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "state.sqlite3"), api_url="https://qa2.urtruck.kz",
+        importer_key="test", opener=send)
+    adapter.enqueue(record)
+    assert adapter.flush_once()["pending"] == 1
+    assert adapter.quarantined_count() == 0
+    assert adapter.flush_once()["sent"] == 1
+
+
+def test_full_invalid_batch_cannot_starve_following_valid_record(tmp_path, monkeypatch):
+    import json
+    import urllib.error
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    def send(request, timeout):
+        records = json.loads(request.data)["records"]
+        if any(r.get("amount", 0) > 1_000_000_000 for r in records):
+            raise urllib.error.HTTPError(request.full_url, 422, "test", {}, None)
+        class Response:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return json.dumps({"results": [{"id": r["source_id"], "result": "created"} for r in records]}).encode()
+        return Response()
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "state.sqlite3"), api_url="https://qa2.urtruck.kz",
+        importer_key="test", opener=send)
+    for index in range(50):
+        adapter.enqueue(_record(source=f"a-invalid-{index:02}", amount=2_000_000_000, currency="KZT"))
+    adapter.enqueue(_record(source="z-valid", amount=1500, currency="KZT"))
+    first = adapter.flush_once()
+    assert first["sent"] == 0
+    assert first["quarantined"] == 50
+    assert first["pending"] == 1
+    assert adapter.flush_once()["sent"] == 1
+    assert adapter.pending_count() == 0
+
+
+def test_bridge_edit_and_close_reach_real_importer_without_extending_ttl(tmp_path, monkeypatch):
+    import hashlib
+    import sqlite3
+    import urllib.error
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    from services.external_freight_queue_bridge import PublishedQueueBridge
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    source = tmp_path / "published.sqlite3"
+    published = (datetime.now(timezone.utc)-timedelta(hours=6)).timestamp()
+    with sqlite3.connect(source) as c:
+        c.execute("CREATE TABLE queue(id INTEGER PRIMARY KEY,source_id TEXT,source_message INTEGER,source_date REAL,text TEXT,phones TEXT,status TEXT,destination_message INTEGER)")
+        c.execute("INSERT INTO queue VALUES(1,'vehicle',1,?,?,'[]','published',1)", (published, "Алматы → Ташкент\nЕсть свободный тент, ищу груз"))
+    def send(request, timeout):
+        response = client.post("/api/v1/external-freight/import",
+            headers={"X-External-Importer-Key": "test-importer-key-only", "Content-Type": "application/json"}, content=request.data)
+        if response.status_code != 200:
+            raise urllib.error.HTTPError(request.full_url, response.status_code, "test", {}, None)
+        class Response:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return response.content
+        return Response()
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "bridge.sqlite3"),
+        api_url="https://qa2.urtruck.kz", importer_key="test-importer-key-only", opener=send)
+    def run():
+        before = hashlib.sha256(source.read_bytes()).hexdigest()
+        result = PublishedQueueBridge(source, adapter).run_once()
+        assert hashlib.sha256(source.read_bytes()).hexdigest() == before
+        assert result["sent"] == 1
+    run()
+    with get_conn() as c:
+        before = dict(c.execute("SELECT * FROM external_freight_items").fetchone())
+    assert before["kind"] == "vehicle"
+    with sqlite3.connect(source) as c:
+        c.execute("UPDATE queue SET text=text || '\nЦена 1500 USD',source_date=source_date+3600")
+    run()
+    with get_conn() as c:
+        edited = dict(c.execute("SELECT * FROM external_freight_items").fetchone())
+    assert edited["id"] == before["id"]
+    assert edited["amount"] == 1500
+    assert edited["expires_at"] == before["expires_at"]
+    assert edited["source_published_at"] == before["source_published_at"]
+    with sqlite3.connect(source) as c:
+        c.execute("UPDATE queue SET text='Уже нашли машину'")
+    run()
+    with get_conn() as c:
+        closed = dict(c.execute("SELECT * FROM external_freight_items").fetchone())
+    assert closed["status"] == "closed"
+    assert closed["kind"] == "vehicle"
+    assert closed["id"] == before["id"]
+    assert closed["expires_at"] == before["expires_at"]
+    global _actor
+    _actor = {"id": "client", "role": "client"}
+    assert client.get("/api/v1/external-freight/count").json()["count"] == 0
+
+
+@pytest.mark.parametrize("partial_quarantine_column", [False, True])
+def test_adapter_schema_upgrade_preserves_legacy_pending_payload(tmp_path, partial_quarantine_column):
+    import json
+    import sqlite3
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    state = tmp_path / "legacy.sqlite3"
+    payload = json.dumps(_record(source="legacy-state", message="one"))
+    with sqlite3.connect(state) as c:
+        c.execute("""CREATE TABLE selected_outbox(source_id TEXT,source_message_id TEXT,segment_id TEXT,
+            payload TEXT,attempts INTEGER DEFAULT 0,next_attempt_at REAL DEFAULT 0,
+            delivered_at REAL,last_http_status INTEGER,PRIMARY KEY(source_id,source_message_id,segment_id))""")
+        c.execute("INSERT INTO selected_outbox(source_id,source_message_id,segment_id,payload) VALUES('legacy-state','one','0',?)", (payload,))
+        if partial_quarantine_column:
+            c.execute("ALTER TABLE selected_outbox ADD COLUMN quarantined_at TEXT")
+    adapter = ExternalFreightFeedAdapter(db_path=str(state), api_url="https://qa2.urtruck.kz", importer_key="test")
+    assert adapter.pending_count() == 1
+    with adapter._connect() as c:
+        row = c.execute("SELECT * FROM selected_outbox").fetchone()
+        assert row["payload"] == payload
+        assert row["generation"] == 1
+        assert row["quarantined_at"] is None and row["quarantine_reason"] is None
+
+
+def test_isolation_time_budget_preserves_unexamined_rows_for_retry(tmp_path, monkeypatch):
+    import time
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "budget.sqlite3"),
+        api_url="https://qa2.urtruck.kz", importer_key="test", clock=lambda: 1000,
+        opener=lambda *args, **kwargs: pytest.fail("После истечения бюджета сеть не вызывается"))
+    adapter.enqueue(_record(source="budget"))
+    with adapter._connect() as c:
+        rows = c.execute("SELECT * FROM selected_outbox").fetchall()
+    result = adapter._isolate_validation_errors(rows, 1000, time.monotonic()-1)
+    assert result["status"] == "retry_scheduled"
+    assert result["pending"] == 1
+    assert adapter.quarantined_count() == 0
+    with adapter._connect() as c:
+        row = c.execute("SELECT * FROM selected_outbox").fetchone()
+        assert row["next_attempt_at"] == 1005 and row["attempts"] == 1

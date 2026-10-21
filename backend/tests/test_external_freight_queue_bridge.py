@@ -123,3 +123,42 @@ def test_bad_source_record_does_not_block_following_record(bridge):
     assert result["rejected"] == 1
     assert result["sent"] == 1
     assert worker.run_once()["scanned"] == 0
+
+
+def test_delivered_source_edit_and_closure_are_replayed_after_restart(bridge):
+    worker, calls = bridge
+    add(worker)
+    assert worker.run_once()["sent"] == 1
+    published_at = calls[-1]["source_published_at"]
+    with sqlite3.connect(worker.source_path) as db:
+        db.execute("UPDATE queue SET text=text || '\nЦена 5800 USD', phones=? WHERE id=1", ('["+77770000001"]',))
+    worker = PublishedQueueBridge(worker.source_path, worker.adapter)
+    assert worker.run_once()["sent"] == 1
+    assert calls[-1]["amount"] == 5800
+    assert calls[-1]["contacts"] == ["+77770000001"]
+    assert calls[-1]["source_published_at"] == published_at
+    assert worker.run_once()["scanned"] == 0
+    with sqlite3.connect(worker.source_path) as db:
+        db.execute("UPDATE queue SET text='Уже нашли машину' WHERE id=1")
+    worker = PublishedQueueBridge(worker.source_path, worker.adapter)
+    assert worker.run_once()["sent"] == 1
+    assert calls[-1]["status"] == "closed"
+    assert calls[-1]["source_published_at"] == published_at
+    assert worker.run_once()["scanned"] == 0
+
+
+def test_contact_only_edit_is_replayed_and_legacy_seen_schema_migrates(bridge):
+    worker, calls = bridge
+    add(worker)
+    # Старая схема без ревизий сохраняется; уже seen надо пересверить один раз.
+    with worker.adapter._connect() as db:
+        db.execute("DROP TABLE published_bridge_seen")
+        db.execute("CREATE TABLE published_bridge_seen(destination_message INTEGER PRIMARY KEY)")
+        db.execute("INSERT INTO published_bridge_seen VALUES(1)")
+    worker = PublishedQueueBridge(worker.source_path, worker.adapter)
+    assert worker.run_once()["sent"] == 1
+    with sqlite3.connect(worker.source_path) as db:
+        db.execute("UPDATE queue SET phones=? WHERE id=1", ('["+77770000002"]',))
+    assert worker.run_once()["sent"] == 1
+    assert calls[-1]["contacts"] == ["+77770000002"]
+    assert worker.run_once()["scanned"] == 0

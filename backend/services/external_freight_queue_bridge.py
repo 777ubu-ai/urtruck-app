@@ -4,6 +4,7 @@
 Запускать oneshot таймером раз в минуту; секрет только в EnvironmentFile.
 """
 import fcntl
+import hashlib
 import json
 import os
 import sqlite3
@@ -36,6 +37,9 @@ class PublishedQueueBridge:
         with adapter._connect() as state:
             state.execute("""CREATE TABLE IF NOT EXISTS published_bridge_seen (
                 destination_message INTEGER PRIMARY KEY)""")
+            columns = {row["name"] for row in state.execute("PRAGMA table_info(published_bridge_seen)")}
+            if "source_revision" not in columns:
+                state.execute("ALTER TABLE published_bridge_seen ADD COLUMN source_revision TEXT")
             state.execute("""CREATE TABLE IF NOT EXISTS published_bridge_rejections (
                 destination_message INTEGER PRIMARY KEY, reason TEXT NOT NULL)""")
 
@@ -62,11 +66,18 @@ class PublishedQueueBridge:
             source.row_factory = sqlite3.Row
             source.execute("ATTACH DATABASE ? AS bridge_state",
                            (Path(self.adapter.db_path).resolve().as_uri() + "?mode=ro",))
-            rows = source.execute("""SELECT q.* FROM queue q
+            # Хеш всех исходных полей замечает правку текста/контактов после ACK.
+            source.create_function("bridge_revision", -1, lambda *values: hashlib.sha256(
+                json.dumps(values, ensure_ascii=False, default=str).encode("utf-8")).hexdigest())
+            columns = [row["name"] for row in source.execute("PRAGMA table_info(queue)")]
+            arguments = ",".join('q."' + name.replace('"', '""') + '"' for name in columns)
+            revision = f"bridge_revision({arguments})"
+            rows = source.execute(f"""SELECT q.*, {revision} AS bridge_source_revision FROM queue q
                 WHERE status='published' AND destination_message>0
                 AND source_date>=? AND source_date<=?
                 AND NOT EXISTS (SELECT 1 FROM bridge_state.published_bridge_seen s
-                                WHERE s.destination_message=q.destination_message)
+                                WHERE s.destination_message=q.destination_message
+                                AND s.source_revision={revision})
                 ORDER BY destination_message,id LIMIT ?""",
                 (now - ACTIVE_SECONDS, now + 300, MAX_SCAN)).fetchall()
         enqueued = rejected = review = 0
@@ -74,7 +85,7 @@ class PublishedQueueBridge:
             try:
                 record = map_selected_message(dict(row))
                 # Не показываем пустой маршрут в автоматически принятой карточке.
-                if not record.get("origin") or not record.get("destination"):
+                if record["status"] == "active" and (not record.get("origin") or not record.get("destination")):
                     record["status"] = "review"
                     record["classification_status"] = "review"
                 review += record["status"] == "review"
@@ -86,12 +97,14 @@ class PublishedQueueBridge:
                                   (row["destination_message"], "invalid_source_record"))
             # Durable enqueue precedes acknowledgement: interrupted runs replay.
             with self.adapter._connect() as state:
-                state.execute("INSERT OR IGNORE INTO published_bridge_seen VALUES(?)",
-                              (row["destination_message"],))
+                state.execute("""INSERT INTO published_bridge_seen(destination_message,source_revision) VALUES(?,?)
+                              ON CONFLICT(destination_message) DO UPDATE SET source_revision=excluded.source_revision""",
+                              (row["destination_message"], row["bridge_source_revision"]))
         delivery = self.adapter.flush_once()
         return {"status": delivery["status"], "scanned": len(rows), "enqueued": enqueued,
                 "review": review, "rejected": rejected, "sent": delivery.get("sent", 0),
-                "pending": delivery.get("pending", self.adapter.pending_count())}
+                "pending": delivery.get("pending", self.adapter.pending_count()),
+                "quarantined": delivery.get("quarantined", self.adapter.quarantined_count())}
 
 
 def main():
