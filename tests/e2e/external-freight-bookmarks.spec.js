@@ -99,21 +99,32 @@ test('failed save keeps unsaved state and allows retry', async ({ page }) => {
 test('route filters directly open visible search and distinguish country from city', async ({ page }) => {
   const box = await boot(page);
   await page.getByTestId('external-feed-filter-origin').click();
-  const search = page.getByTestId('loc-search');
+  const search = page.getByTestId('external-feed-location-search');
   await expect(search).toBeVisible();
   await expect(search).toBeInViewport();
   await expect(page.getByTestId('loc-geo')).toHaveCount(0);
   await search.fill('Китай');
-  await page.getByTestId('loc-country-CN').click();
+  await page.getByTestId('external-feed-apply-filters').click();
   await expect(page.getByTestId('external-feed-filter-origin')).toContainText('Китай');
   await expect.poll(() => box.feedQueries.at(-1)?.origin_country).toBe('CN');
   expect(box.feedQueries.at(-1).origin).toBeUndefined();
   await page.getByTestId('external-feed-filter-destination').click();
-  await expect(page.getByTestId('loc-search')).toBeInViewport();
-  await page.getByTestId('loc-search').fill('Ташкент');
-  await page.getByTestId('loc-point-Ташкент').click();
+  await expect(search).toBeInViewport();
+  await search.fill('Ташкент');
+  await search.press('Enter');
   await expect.poll(() => box.feedQueries.at(-1)?.destination).toBe('Ташкент');
-  expect(box.feedQueries.at(-1).destination_country).toBe('UZ');
+  expect(box.feedQueries.at(-1).destination_country).toBeUndefined();
+  const requests = box.feedQueries.length;
+  await page.getByTestId('external-feed-filter-origin').click();
+  await search.fill('Хоргос');
+  expect(box.feedQueries.length).toBe(requests); // Не запрашиваем API на каждый символ.
+  await page.getByTestId('external-feed-filter-overlay').getByText('Отмена', { exact: true }).click();
+  await expect(page.getByTestId('external-feed-filter-origin')).toContainText('Китай');
+  await page.getByTestId('external-feed-filter-origin').click();
+  await search.fill('Бахты');
+  await page.getByTestId('external-feed-apply-filters').click();
+  await expect.poll(() => box.feedQueries.at(-1)?.origin).toBe('Бахты');
+  expect(box.feedQueries.at(-1).origin_country).toBeUndefined();
   expect(box.errors).toEqual([]);
 });
 
@@ -132,10 +143,10 @@ for (const role of ['driver', 'client']) {
     await page.getByTestId('external-feed-filter-price').click();
     await expect(page.getByTestId('external-feed-price-min')).toBeVisible();
     await page.getByTestId('external-feed-currency-KZT').click();
-    await page.getByTestId('external-feed-price-min').fill('1500');
+    await page.getByTestId('external-feed-price-min').fill('1500,5');
     await expect(page.getByTestId('external-feed-apply-filters')).toBeInViewport();
     await page.getByTestId('external-feed-apply-filters').click();
-    await expect.poll(() => box.feedQueries.at(-1)?.min_price).toBe('1500');
+    await expect.poll(() => box.feedQueries.at(-1)?.min_price).toBe('1500.5');
     await page.getByTestId('external-feed-expand-external-fixture').click();
     await expect(page.getByTestId('external-feed-translate-external-fixture')).toHaveCount(0);
     await page.getByTestId('external-feed-back').click();
@@ -145,5 +156,41 @@ for (const role of ['driver', 'client']) {
     expect(box.businessWrites).toEqual([]);
     expect(box.aiRequests).toEqual([]);
     expect(box.errors).toEqual([]);
+  });
+}
+
+for (const role of ['driver', 'client']) {
+  test(role + ': all five filters reopen, cancel drafts and work when the feed API fails', async ({ page }) => {
+    const box = await boot(page, role);
+    await page.setViewportSize({ width: role === 'driver' ? 320 : 390, height: 700 });
+    for (let cycle = 0; cycle < 2; cycle += 1) {
+      for (const name of ['origin', 'destination', 'body', 'date', 'price']) {
+        await page.getByTestId('external-feed-filter-' + name).click();
+        const overlay = page.getByTestId('external-feed-filter-overlay');
+        await expect(overlay).toBeVisible();
+        await expect(page.getByTestId('external-feed-apply-filters')).toBeInViewport();
+        if (name === 'origin' || name === 'destination') {
+          await expect(page.getByTestId('external-feed-location-search')).toBeInViewport();
+          await page.getByTestId('external-feed-location-search').fill(name === 'origin' ? 'Хоргос' : 'Бахты');
+        }
+        if (name === 'price') {
+          await page.getByTestId('external-feed-price-min').fill('999');
+          await expect(page.getByTestId('external-feed-price-min')).toBeInViewport();
+        }
+        await overlay.getByText('Отмена', { exact: true }).click();
+        await expect(overlay).not.toBeVisible();
+      }
+    }
+    await page.getByTestId('external-feed-filter-price').click();
+    await expect(page.getByTestId('external-feed-price-min')).toHaveValue('');
+    await page.getByTestId('external-feed-filter-overlay').getByText('Отмена', { exact: true }).click();
+    await page.route('**/api/v1/external-freight?**', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }));
+    await page.getByTestId('external-feed-saved-only').click();
+    await expect(page.getByText('Сервис ленты временно недоступен.', { exact: true })).toBeVisible();
+    await page.getByTestId('external-feed-filter-price').click();
+    await expect(page.getByTestId('external-feed-price-min')).toBeVisible();
+    expect(box.errors).toEqual([]);
+    expect(box.businessWrites).toEqual([]);
+    expect(box.aiRequests).toEqual([]);
   });
 }

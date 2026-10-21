@@ -56,3 +56,12 @@ test('city selection preserves its spelling and custom unknown country does not 
   assert.deepEqual(externalLocationSelection('destination', 'Ташкент', { name: 'Ташкент', country: 'UZ', type: 'city' }), { destination: 'Ташкент', destination_country: 'UZ' });
   assert.deepEqual(externalLocationSelection('origin', 'Алашанкоу', { name: 'Алашанкоу', country: 'XX', custom: true }), { origin: 'Алашанкоу', origin_country: '' });
 });
+
+test('price validation accepts decimal comma consistently with the outgoing query', () => {
+  assert.equal(canSortPrice({ currency: 'USD', min_price: '1,5', max_price: '2,75' }), true);
+  assert.equal(buildExternalFeedQuery({ min_price: '1,5' }).min_price, 1.5);
+  assert.equal(canSortPrice({ currency: 'USD', min_price: '3,5', max_price: '2,75' }), false);
+  for (const value of ['1,2,3', 'Infinity', '-1']) {
+    assert.equal(canSortPrice({ currency: 'USD', min_price: value }), false);
+  }
+});

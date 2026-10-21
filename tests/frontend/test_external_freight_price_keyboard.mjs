@@ -22,6 +22,6 @@ for (const name of ['origin', 'destination', 'body', 'date', 'price']) {
       setPicker: value => events.push(['picker', value]),
       setModal: value => events.push(['modal', value]),
     });
-    assert.deepEqual(events, [['draft', filters], [name === 'origin' || name === 'destination' ? 'picker' : 'modal', name]]);
+    assert.deepEqual(events, [['draft', filters], ['modal', name]]);
   });
 }

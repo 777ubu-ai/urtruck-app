@@ -35,6 +35,16 @@ export function externalLocationSelection(key, value, point) {
   return { [key]: city, [`${key}_country`]: country };
 }
 
+/** Прямой ввод для внешней ленты: без сканирования городского справочника. */
+export function externalLocationTextSelection(key, value, countries = []) {
+  if (key !== 'origin' && key !== 'destination') throw new Error('invalid_location_key');
+  const text = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+  const query = text.toLocaleLowerCase();
+  const country = query ? countries.find(item => [item.iso, item.name, ...Object.values(item.names || {})]
+    .some(name => String(name || '').toLocaleLowerCase() === query)) : null;
+  return { [key]: country ? '' : text, [`${key}_country`]: country?.iso || '' };
+}
+
 export function feedKindForRole(role) {
   if (role === 'driver') return 'cargo';
   if (role === 'client' || role === 'shipper') return 'vehicle';
@@ -42,9 +52,12 @@ export function feedKindForRole(role) {
 }
 
 export function canSortPrice({ currency, min_price, max_price }) {
-  return Boolean(currency) && (min_price === '' || min_price == null || Number(min_price) >= 0)
-    && (max_price === '' || max_price == null || Number(max_price) >= 0)
-    && (min_price === '' || min_price == null || max_price === '' || max_price == null || Number(min_price) <= Number(max_price));
+  const amount = value => value === '' || value == null ? null : Number(String(value).replace(',', '.'));
+  const min = amount(min_price);
+  const max = amount(max_price);
+  return Boolean(currency) && (min == null || (Number.isFinite(min) && min >= 0))
+    && (max == null || (Number.isFinite(max) && max >= 0))
+    && (min == null || max == null || min <= max);
 }
 
 export function isValidPublicationRange({ published_from, published_to }) {
