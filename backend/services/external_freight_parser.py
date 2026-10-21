@@ -5,11 +5,13 @@
 """
 import json
 import re
+import unicodedata
 from datetime import datetime, timezone
 
 from services.external_freight_classifier import classify_message
 
-_ROUTE = re.compile(r"(?m)^\s*([^\n→]{2,80}?)\s*(?:→|->|➜|➡)\s*([^\n]{2,80}?)\s*$")
+_ROUTE = re.compile(r"(?m)^[ \t]*([^\n→]{2,80}?)(?:[ \t]*(?:→|->|➜|➡)[ \t]*|[ \t]+[-–—][ \t]+)([^\n]{2,120}?)[ \t]*$")
+_NOT_ROUTE_LABEL = re.compile(r"(?i)^(?:груз|цена|фрахт|вес|объём|объем|оплата|контакт|телефон|нужен|нужны|требуется)\b")
 _LABELLED_ROUTE = re.compile(
     r"(?is)(?:откуда|загрузка|погрузка)\s*[:：-]\s*([^\n,;]{2,80})[\s,;]+(?:куда|выгрузка|доставка)\s*[:：-]\s*([^\n,;]{2,80})"
 )
@@ -18,7 +20,7 @@ _VOLUME = re.compile(r"(?i)(?<![\w.])(\d+(?:[.,]\d+)?)\s*(м\s*[³3]|куб(?:о
 _COUNT = re.compile(r"(?i)(?:нужно|требуется|требуются|нужны|количество)\s*[:：-]?\s*(\d{1,4})\s*(?:машин|авто|фур)")
 _CARGO = re.compile(r"(?im)^\s*(?:груз|наименование груза)\s*[:：-]\s*([^\n;]{2,120})")
 _READY = re.compile(r"(?im)^\s*(?:готовность|готов|дата погрузки|загрузка)\s*[:：-]\s*([^\n;]{2,120})")
-_PRICE = re.compile(r"(?i)(?<!\d)(\d[\d \t.,]{0,14})[ \t]*(USD|US\$|EUR|€|RUB|₽|KZT|тг|CNY|¥)(?=$|[\W])")
+_PRICE = re.compile(r"(?i)(?<!\d)(\d[\d \t.,]{0,14})[ \t]*(USD|US\$|\$|EUR|€|RUB|₽|KZT|тг|CNY|¥)(?=$|[\W])")
 _NEGOTIABLE = re.compile(r"(?i)\b(?:договорная|цена договорная|торг уместен)\b")
 _DATE = re.compile(r"(?<!\d)(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})(?!\d)")
 _BODY = (
@@ -29,7 +31,20 @@ _BODY = (
     ("tipper", re.compile(r"(?i)\b(?:самосвал|tipper)\b")),
     ("lowboy", re.compile(r"(?i)\b(?:низкорамник|трал|lowboy)\b")),
 )
-_CURRENCY = {"USD": "USD", "US$": "USD", "EUR": "EUR", "€": "EUR", "RUB": "RUB", "₽": "RUB", "KZT": "KZT", "тг": "KZT", "CNY": "CNY", "¥": "CNY"}
+_CURRENCY = {"USD": "USD", "US$": "USD", "$": "USD", "EUR": "EUR", "€": "EUR", "RUB": "RUB", "₽": "RUB", "KZT": "KZT", "тг": "KZT", "CNY": "CNY", "¥": "CNY"}
+
+
+def _place(value):
+    # Strip decoration only. Keep the spelling supplied by the source;
+    # never resolve a city, country or coordinates from an emoji.
+    value = "".join(c for c in value if unicodedata.category(c) not in {"So", "Sk"} and c != "\ufe0f")
+    value = value.strip(" \t,.;:!#")
+    if (not value or len(value) > 80 or _NOT_ROUTE_LABEL.search(value)
+            or re.search(r"(?i)\b(?:срочно|готов|погрузка|выгрузка|тент|реф|тонн|фрахт|машин)\b", value)
+            or any(c.isdigit() for c in value)
+            or not all(c.isalpha() or c.isspace() or c in "-(),.'’" for c in value)):
+        return None
+    return value
 
 
 def _first(pattern, text, group=1):
@@ -98,14 +113,17 @@ def map_selected_message(raw: dict) -> dict:
     if status != "active" or not kind:
         status = "review" if status != "closed" else "closed"
         kind = kind if kind in {"cargo", "vehicle"} else "cargo"
-    routes = list(_ROUTE.finditer(text))
+    routes = [match for match in _ROUTE.finditer(text)
+              if not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip())]
     if len(routes) > 1:
         status = "review"
         route = None
     else:
         route = routes[0] if routes else _LABELLED_ROUTE.search(text)
-    origin = route.group(1).strip(" \t,.;") if route else raw.get("origin")
-    destination = route.group(2).strip(" \t,.;") if route else raw.get("destination")
+    origin = _place(route.group(1)) if route else raw.get("origin")
+    destination = _place(route.group(2)) if route else raw.get("destination")
+    if (not origin or not destination) and status == "active":
+        status = "review"
     amount, currency, price_state = _amount(text)
     bodies = [name for name, pattern in _BODY if pattern.search(text)]
     phones = raw.get("contacts", raw.get("phones", []))
