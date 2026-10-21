@@ -1,0 +1,43 @@
+{
+  "platform": "web",
+  "source": "a1b15465",
+  "buttonBounds": {
+    "x": 316.96875,
+    "y": 195,
+    "width": 73.34375,
+    "height": 36
+  },
+  "overlayBounds": {
+    "x": 0,
+    "y": 143,
+    "width": 390,
+    "height": 701
+  },
+  "trace": [
+    {
+      "stage": "modal-state",
+      "modal": null,
+      "at": 1792604752943
+    },
+    {
+      "stage": "press",
+      "name": "price",
+      "at": 1792604753076
+    },
+    {
+      "stage": "modal-state",
+      "modal": "price",
+      "at": 1792604753203
+    },
+    {
+      "stage": "overlay-layout",
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 701,
+      "left": 0,
+      "top": 143,
+      "at": 1792604753206
+    }
+  ]
+}
