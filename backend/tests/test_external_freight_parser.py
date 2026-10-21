@@ -76,3 +76,52 @@ def test_ambiguous_price_invalid_date_and_multiple_routes_stay_unpublished_or_un
     assert multi_route["status"] == "review"
     assert multi_route["origin"] is None and multi_route["destination"] is None
     assert multi_route["contacts"] == []
+
+
+def test_spaced_hyphen_route_and_bare_dollar():
+    item = map_selected_message(_queue("📌Алашанькоу - Ташкент📌\nНужен тент\nГруз готов\nФрахт 5800$"))
+    assert (item["origin"], item["destination"]) == ("Алашанькоу", "Ташкент")
+    assert item["status"] == "active"
+    assert (item["amount"], item["currency"]) == (5800, "USD")
+
+
+def test_flags_and_parenthesized_place_preserved_without_country_inference():
+    item = map_selected_message(_queue("🇷🇺Екатеринбург(Асбест) — 🇺🇿Андижан\nНужен тент\nГруз готов"))
+    assert (item["origin"], item["destination"]) == ("Екатеринбург(Асбест)", "Андижан")
+    assert item.get("origin_country") is None
+
+
+def test_hyphenated_city_is_not_split_without_spaces():
+    item = map_selected_message(_queue("Ростов-на-Дону – Алматы\nНужен тент\nГруз готов"))
+    assert item["origin"] == "Ростов-на-Дону"
+    assert item["destination"] == "Алматы"
+
+
+def test_hyphen_multi_route_is_review_and_does_not_share_contacts():
+    item = map_selected_message(_queue("Нужен тент\nАлашанькоу - Ташкент\nХоргос — Алматы\nГруз готов"))
+    assert item["status"] == "review"
+    assert item["contacts"] == []
+    assert item["origin"] is None and item["destination"] is None
+
+
+def test_cargo_heading_does_not_become_route():
+    item = map_selected_message(_queue("Хоргос - Алматы\nГруз - Шины\nНужен тент\nГруз готов"))
+    assert item["status"] == "active"
+    assert (item["origin"], item["destination"]) == ("Хоргос", "Алматы")
+
+
+def test_inline_conditions_not_interpreted_as_destination():
+    item = map_selected_message(_queue("Алашанькоу — Алматы тент 27 тонн 4800$\nНужен тент\nГруз готов"))
+    assert item["status"] == "review"
+    assert item["destination"] is None
+
+
+def test_missing_route_never_automatically_active():
+    item = map_selected_message(_queue("Нужен тент\nГруз готов"))
+    assert item["status"] == "review"
+
+
+def test_readiness_is_not_appended_to_destination():
+    item = map_selected_message(_queue("АЛАШАНЬКОУ - БУХАРА СРОЧНО\nНужен тент\nГруз готов"))
+    assert item["status"] == "review"
+    assert item["destination"] is None
