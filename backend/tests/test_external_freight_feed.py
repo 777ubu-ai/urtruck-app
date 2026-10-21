@@ -112,6 +112,24 @@ def test_ambiguous_missing_date_and_closed_source_are_not_published():
     assert client.get("/api/v1/external-freight").json()["items"] == []
 
 
+def test_bulk_cargo_wording_is_not_misclassified_as_a_free_vehicle():
+    text = "Актуальные загрузки: требуются машины. Груз: хлопок, маршрут Алматы → Ташкент"
+    cargo = _record(source="bulk-cargo", message="cargo", kind="cargo", text=text)
+    wrong_role = _record(source="bulk-cargo", message="vehicle", kind="vehicle", text=text)
+    cargo_result = _import(cargo).json()["results"][0]
+    wrong_role_result = _import(wrong_role).json()["results"][0]
+
+    assert cargo_result["status"] == "active"
+    assert wrong_role_result["status"] == "review"
+
+    mixed = _record(
+        source="mixed-intent",
+        text="Порожний тент, ищу груз. Груз: полиэтилен, одновременно требуются 3 машины",
+        kind="vehicle",
+    )
+    assert _import(mixed).json()["results"][0]["status"] == "review"
+
+
 def test_replay_and_edit_preserve_original_expiry_and_identity():
     published = datetime.now(timezone.utc) - timedelta(hours=20)
     original = _record(source="replay", message="1", published=published)
