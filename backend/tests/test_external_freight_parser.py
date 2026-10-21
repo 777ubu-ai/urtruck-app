@@ -125,3 +125,13 @@ def test_readiness_is_not_appended_to_destination():
     item = map_selected_message(_queue("АЛАШАНЬКОУ - БУХАРА СРОЧНО\nНужен тент\nГруз готов"))
     assert item["status"] == "review"
     assert item["destination"] is None
+
+
+def test_kilograms_are_normalized_to_card_tonnes():
+    item = map_selected_message(_queue("Хоргос - Алматы\nНужен тент\nГруз готов 22000 кг"))
+    assert item["weight"] == 22
+
+
+def test_decimal_tonnes_are_preserved():
+    item = map_selected_message(_queue("Хоргос - Алматы\nНужен тент\nГруз готов 21,5 т"))
+    assert item["weight"] == 21.5
