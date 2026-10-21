@@ -279,7 +279,8 @@ def startup():
     from database import vehicles_dal
     vehicles_dal.init_vehicles_schema()
     from database.external_freight_dal import init_schema as init_external_freight_schema
-    init_external_freight_schema()
+    if os.getenv("EXTERNAL_FREIGHT_FEED_ENABLED", "false").strip().lower() in {"1", "true", "yes"}:
+        init_external_freight_schema()
     # api.chat импортируется при регистрации роутеров, когда новая БД ещё не
     # имеет registration-схему. Создаём special users только после неё;
     # операция идемпотентна для существующих БД.

@@ -1,4 +1,4 @@
-"""Контракт отдельной внешней ленты на общей изолированной тестовой БД."""
+"""Контракт отдельной внешней ленты на отдельной изолированной тестовой БД."""
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from api import external_freight
 from api.verification_gate import require_admin
 from database import external_freight_dal as dal
-from database.db import get_conn
+from database.external_freight_connection import get_conn
 
 _actor = None
 
@@ -42,16 +42,16 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def _feed_setup(monkeypatch):
+def _feed_setup(monkeypatch, tmp_path):
     global _actor
     _actor = None
     monkeypatch.setenv("EXTERNAL_FREIGHT_FEED_ENABLED", "true")
     monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORTER_KEY", "test-importer-key-only")
+    monkeypatch.setenv("EXTERNAL_FREIGHT_DB_PATH", str(tmp_path / "external.sqlite3"))
     dal.init_schema()
     yield
     with get_conn() as c:
         c.execute("DELETE FROM external_freight_bookmarks")
-        c.execute("DELETE FROM external_freight_translations")
         c.execute("DELETE FROM external_freight_audit")
         c.execute("DELETE FROM external_freight_delivery")
         c.execute("DELETE FROM external_freight_metrics")
@@ -345,31 +345,18 @@ def test_adapter_recovers_after_server_commit_and_lost_response_without_duplicat
     assert calls[0] == 2
 
 
-def test_translation_is_explicit_cached_per_revision_and_preserves_numbers(monkeypatch):
-    import api.external_freight as api_module
-    item_id = _import(_record(source="translation", text="Нужен тент. 1500 KZT, +7 777 000 00 00")).json()["results"][0]["id"]
-    _actor = {"id": "driver", "role": "driver"}
-    # TestClient runs requests on its own thread; route dependencies use the
-    # process-shared test actor declared above.
-    globals()["_actor"] = _actor
-    calls = []
-    monkeypatch.setattr(api_module, "_translate_preserving_tokens", lambda text, lang: calls.append((text, lang)) or text.replace("Нужен", "Need"))
-    first = client.post(f"/api/v1/external-freight/{item_id}/translate", params={"target_lang": "EN"})
-    second = client.post(f"/api/v1/external-freight/{item_id}/translate", params={"target_lang": "EN"})
-    assert first.status_code == 200 and second.status_code == 200
-    assert len(calls) == 1 and second.json()["cached"] is True
-    assert "1500" in first.json()["translated_text"] and "+7 777 000 00 00" in first.json()["translated_text"]
-    assert client.post(f"/api/v1/external-freight/{item_id}/translate", params={"target_lang": "FR"}).status_code == 422
-
-
-def test_translation_token_guard_rejects_changed_number(monkeypatch):
-    import services.translate_service as translate_service
-    # The route's validator compares protected-token sequences after sentinel
-    # restoration; this focused regression proves the sentinel contract.
-    from api.external_freight import _translate_preserving_tokens
-    monkeypatch.setattr(translate_service, "translate_text", lambda text, lang: {"translated_text": text.replace("UTMARKER0000X", "")})
-    with pytest.raises(translate_service.TranslationError):
-        _translate_preserving_tokens("1500 KZT", "en")
+def test_translation_is_disabled_without_loading_shared_ai(monkeypatch):
+    import sys
+    monkeypatch.setitem(sys.modules, "services.translate_service", None)
+    item_id = _import(_record(source="ai-down", text="Нужен тент. 1500 KZT")).json()["results"][0]["id"]
+    globals()["_actor"] = {"id": "driver", "role": "driver"}
+    assert client.get("/api/v1/external-freight").json()["items"][0]["id"] == item_id
+    assert client.put(f"/api/v1/external-freight/{item_id}/bookmark").status_code == 200
+    for lang in ("RU", "KK", "ZH", "EN"):
+        response = client.post(f"/api/v1/external-freight/{item_id}/translate", params={"target_lang": lang})
+        assert response.status_code == 503
+        assert response.json()["detail"]["error"] == "external_feed_translation_disabled"
+    assert sys.modules["services.translate_service"] is None
 
 
 def test_bookmarks_are_idempotent_private_and_role_scoped():
@@ -455,3 +442,46 @@ def test_adapter_inflight_edit_survives_stale_ack_or_error(tmp_path, monkeypatch
     adapter.opener = lambda *a, **kw: Response()
     assert adapter.flush_once()["status"] == "delivered"
     assert adapter.pending_count() == 0
+
+
+def test_import_read_bookmark_do_not_touch_primary_database_or_actor(monkeypatch):
+    import config
+    import sqlite3
+    from database import db
+
+    def snapshot():
+        with sqlite3.connect(config.DB_PATH) as conn:
+            return tuple(conn.iterdump())
+
+    before = snapshot()
+    def forbidden_primary_connection():
+        raise AssertionError("Лента не должна открывать основную БД для хранения")
+    monkeypatch.setattr(db, "get_conn", forbidden_primary_connection)
+    item_id = _import(_record(source="isolated", text="Нужен тент, груз готов")).json()["results"][0]["id"]
+    global _actor
+    _actor = {"id": "scope-driver", "role": "driver", "profile": {"name": "Тест"}}
+    actor_before = repr(_actor)
+    assert client.get("/api/v1/external-freight").json()["items"][0]["id"] == item_id
+    assert client.put(f"/api/v1/external-freight/{item_id}/bookmark").status_code == 200
+    assert client.get("/api/v1/external-freight?saved_only=true").json()["items"][0]["id"] == item_id
+    assert client.delete(f"/api/v1/external-freight/{item_id}/bookmark").status_code == 200
+    assert snapshot() == before
+    assert repr(_actor) == actor_before
+    with get_conn() as conn:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert tables and all(name.startswith("external_freight_") for name in tables)
+
+
+def test_external_connection_rejects_primary_file_and_alias(tmp_path, monkeypatch):
+    import config
+    from pathlib import Path
+    from database.external_freight_connection import database_path
+    with monkeypatch.context() as patch:
+        patch.setenv("EXTERNAL_FREIGHT_DB_PATH", config.DB_PATH)
+        with pytest.raises(RuntimeError, match="must_be_separate"):
+            database_path()
+        alias = tmp_path / "primary-alias.sqlite3"
+        alias.symlink_to(Path(config.DB_PATH).resolve())
+        patch.setenv("EXTERNAL_FREIGHT_DB_PATH", str(alias))
+        with pytest.raises(RuntimeError, match="must_be_separate"):
+            database_path()

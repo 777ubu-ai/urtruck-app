@@ -16,20 +16,19 @@ if args.size < 1000:
 
 db_file = tempfile.NamedTemporaryFile(prefix="urtruck-external-feed-", suffix=".sqlite3", delete=False)
 db_file.close()
-os.environ["DB_PATH"] = db_file.name
+os.environ["EXTERNAL_FREIGHT_DB_PATH"] = db_file.name
 ROOT = Path(__file__).resolve().parents[2]
 import sys
 sys.path.insert(0, str(ROOT / "backend"))
 
-from database import db
+from database.external_freight_connection import get_conn
 from database import external_freight_dal as dal
 
-db.init_db()
 dal.init_schema()
 now = datetime.now(timezone.utc)
 base = now - timedelta(days=5)
 rows, bodies = [], []
-with db.get_conn() as conn:
+with get_conn() as conn:
     for i in range(args.size):
         kind = "cargo" if i % 2 == 0 else "vehicle"
         city_ok = i % 10 == 0

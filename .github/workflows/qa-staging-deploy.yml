@@ -196,7 +196,7 @@ jobs:
           cp -- "$qa_root/.env" "$backup_dir/qa2.env"
           chmod 600 "$backup_dir/qa2.env"
           db_backup="$backup_dir/qa2.sqlite3"
-          python3 - "$db_path" "$db_backup" <<'PY'
+          python3 - "$db_path" "$db_backup" "$qa_root/.env" <<'PY'
           from pathlib import Path
           import os, sqlite3, sys
 
@@ -226,6 +226,36 @@ jobs:
           restore_probe.unlink()
           print('QA_DB_BACKUP=online-snapshot-verified')
           print('QA_DB_RESTORE_PROBE=pass')
+          # Отдельная БД ленты не включается в snapshot основного продукта.
+          values = {}
+          for line in Path(sys.argv[3]).read_text(encoding='utf-8').splitlines():
+              if '=' in line and not line.lstrip().startswith('#'):
+                  key, value = line.split('=', 1)
+                  values[key.strip()] = value.strip().strip('"').strip("'")
+          feed = Path(values.get('EXTERNAL_FREIGHT_DB_PATH') or source_path.with_name('external-freight.sqlite3')).resolve()
+          qa_root = Path('/home/ubuntu/urtruck-qa2').resolve()
+          if qa_root not in feed.parents or feed == source_path or (feed.exists() and feed.samefile(source_path)):
+              raise SystemExit('QA_EXTERNAL_FEED_DB_ISOLATION_FAILED')
+          if feed.exists():
+              feed_backup = backup_path.with_name('external-freight.sqlite3')
+              source = sqlite3.connect(feed.as_uri() + '?mode=ro', uri=True, timeout=15)
+              target = sqlite3.connect(feed_backup)
+              try:
+                  source.backup(target)
+                  if target.execute('PRAGMA integrity_check').fetchone() != ('ok',):
+                      raise SystemExit('QA_EXTERNAL_FEED_BACKUP_FAILED')
+              finally:
+                  source.close()
+                  target.close()
+              os.chmod(feed_backup, 0o600)
+              print('QA_EXTERNAL_FEED_DB_BACKUP=verified')
+          else:
+              # Не потерять данные, если старый кандидат когда-либо использовал общую БД.
+              with sqlite3.connect(source_path.as_uri() + '?mode=ro', uri=True) as primary:
+                  legacy = primary.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='external_freight_items'").fetchone()
+                  if legacy and primary.execute('SELECT 1 FROM external_freight_items LIMIT 1').fetchone():
+                      raise SystemExit('QA_EXTERNAL_FEED_LEGACY_MIGRATION_REQUIRED')
+              print('QA_EXTERNAL_FEED_DB_BACKUP=not-yet-created')
           PY
           test -s "$db_backup"
           db_backup_hash="$(sha256sum "$db_backup" | awk '{print $1}')"

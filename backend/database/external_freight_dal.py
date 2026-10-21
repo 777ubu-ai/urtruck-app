@@ -5,7 +5,7 @@ import math
 import re
 from datetime import datetime, timedelta, timezone
 
-from database.db import get_conn, new_id
+from database.external_freight_connection import get_conn, new_id
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
@@ -60,12 +60,6 @@ def init_schema():
         );
         CREATE INDEX IF NOT EXISTS ix_external_freight_bookmark_item
           ON external_freight_bookmarks(item_id);
-        CREATE TABLE IF NOT EXISTS external_freight_translations (
-          item_id TEXT NOT NULL, source_revision TEXT NOT NULL, target_lang TEXT NOT NULL,
-          translated_text TEXT NOT NULL, created_at TEXT NOT NULL,
-          PRIMARY KEY(item_id, source_revision, target_lang),
-          FOREIGN KEY(item_id) REFERENCES external_freight_items(id) ON DELETE CASCADE
-        );
         CREATE TABLE IF NOT EXISTS external_freight_audit (
           id TEXT PRIMARY KEY, item_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
           created_at TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}'
@@ -364,19 +358,6 @@ def get_item(item_id, owner_id=None):
     return _serialize(row) if row else None
 
 
-def get_translation(item_id, revision, lang):
-    with get_conn() as c:
-        row = c.execute("SELECT translated_text FROM external_freight_translations WHERE item_id=? AND source_revision=? AND target_lang=?", (item_id, revision, lang)).fetchone()
-    return row[0] if row else None
-
-
-def store_translation(item_id, revision, lang, translated):
-    with get_conn() as c:
-        c.execute("INSERT OR IGNORE INTO external_freight_translations(item_id,source_revision,target_lang,translated_text,created_at) VALUES(?,?,?,?,?)", (item_id, revision, lang, translated, _utc().isoformat()))
-        row = c.execute("SELECT translated_text FROM external_freight_translations WHERE item_id=? AND source_revision=? AND target_lang=?", (item_id, revision, lang)).fetchone()
-    return row[0]
-
-
 def hide_item(item_id, actor):
     with get_conn() as c:
         cur = c.execute("UPDATE external_freight_items SET status='hidden',updated_at=? WHERE id=? AND status!='hidden'", (_utc().isoformat(), item_id))
@@ -385,7 +366,7 @@ def hide_item(item_id, actor):
         return cur.rowcount > 0
 
 
-ALLOWED_EVENTS = {"feed_open", "filter_apply", "card_expand", "contact_copy", "translation_request", "own_listing_entry"}
+ALLOWED_EVENTS = {"feed_open", "filter_apply", "card_expand", "contact_copy", "own_listing_entry"}
 
 
 def record_event(event_name):

@@ -1,9 +1,6 @@
 """Read-only client API and isolated importer for external freight feed."""
 import hmac
 import os
-import re
-import threading
-from concurrent.futures import Future
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -14,10 +11,6 @@ from database import external_freight_dal as dal
 from services.external_freight_classifier import classify_message
 
 router = APIRouter(tags=["external-freight"])
-_translation_lock = threading.Lock()
-_translation_futures: dict[tuple[str, str, str], Future] = {}
-_PROTECTED = re.compile(r"(?:\+?\d[\d\s()./-]{5,}\d|\b\d+(?:[.,]\d+)?\b|\b[A-Z]{3}\b)")
-_LANGS = {"RU", "KK", "ZH", "EN"}
 
 
 def feature_enabled():
@@ -123,81 +116,14 @@ def get_external_item(item_id: str, user: dict = Depends(require_level(1))):
     return {"item": item}
 
 
-def _protected_tokens(text):
-    return _PROTECTED.findall(text)
-
-
-def _translate_preserving_tokens(text, target_lang):
-    from services.translate_service import translate_text, TranslationError
-
-    tokens = []
-    def replace(match):
-        marker = f"UTMARKER{len(tokens):04d}X"
-        tokens.append(match.group(0))
-        return marker
-
-    masked = _PROTECTED.sub(replace, text)
-    result = translate_text(masked, target_lang.lower())
-    translated = str(result.get("translated_text") or "")
-    if not translated or len(translated) > 20000:
-        raise TranslationError("Перевод временно недоступен", code="TRANSLATION_FAILED")
-    for index, token in enumerate(tokens):
-        marker = f"UTMARKER{index:04d}X"
-        if translated.count(marker) != 1:
-            raise TranslationError("Не удалось сохранить числа и контакты", code="TRANSLATION_FAILED")
-        translated = translated.replace(marker, token)
-    if _protected_tokens(translated) != tokens:
-        raise TranslationError("Не удалось сохранить числа и контакты", code="TRANSLATION_FAILED")
-    return translated
-
-
 @router.post("/{item_id}/translate")
 def translate_external_item(item_id: str, target_lang: str = Query(..., min_length=2, max_length=2), user: dict = Depends(require_level(1))):
+    """Совместимый отказ старым клиентам: перевод ленты отключён владельцем."""
     _ensure_enabled()
-    from services.translate_service import TranslationError
-
-    kind = _user_kind(user)
-    lang = target_lang.upper()
-    if lang not in _LANGS:
-        raise HTTPException(status_code=422, detail={"error": "unsupported_language"})
     item = dal.get_item(item_id, owner_id=user["id"])
-    if not item or item["kind"] != kind:
+    if not item or item["kind"] != _user_kind(user):
         raise HTTPException(status_code=404, detail={"error": "external_item_not_found"})
-    if lang == (os.getenv("APP_DEFAULT_LANGUAGE", "RU").upper()):
-        # Target usually follows the active app locale; callers may request the
-        # translation explicitly, so do not silently return original text.
-        pass
-    revision = item["source_revision"]
-    cached = dal.get_translation(item_id, revision, lang)
-    if cached:
-        return {"translated_text": cached, "source_revision": revision, "cached": True}
-    key = (item_id, revision, lang)
-    with _translation_lock:
-        future = _translation_futures.get(key)
-        owner = future is None
-        if owner:
-            future = Future()
-            _translation_futures[key] = future
-    try:
-        if owner:
-            try:
-                translated = _translate_preserving_tokens(item["original_text"], lang)
-                future.set_result(dal.store_translation(item_id, revision, lang, translated))
-            except Exception as exc:
-                future.set_exception(exc)
-        try:
-            translated = future.result(timeout=15)
-        except TimeoutError as exc:
-            raise HTTPException(status_code=503, detail={"error": "translation_timeout"}) from exc
-        except TranslationError as exc:
-            raise HTTPException(status_code=503, detail={"error": exc.code}) from exc
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail={"error": "translation_failed"}) from exc
-        return {"translated_text": translated, "source_revision": revision, "cached": False}
-    finally:
-        if owner:
-            with _translation_lock:
-                _translation_futures.pop(key, None)
+    raise HTTPException(status_code=503, detail={"error": "external_feed_translation_disabled"})
 
 
 @router.post("/import")
