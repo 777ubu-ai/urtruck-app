@@ -22,7 +22,7 @@ test.use({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', video
 
 async function boot(page, role = 'driver') {
   const user = { id: 'feed-fixture-' + role, role, verification_level: 3, basic_onboarding_completed: 1 };
-  const box = { saved: false, fail: false, writes: 0, errors: [] };
+  const box = { saved: false, fail: false, writes: 0, errors: [], feedQueries: [] };
   const item = { id: 'external-fixture', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active', origin: 'Алматы', destination: 'Ташкент',
     original_text: 'Нужен тент. Груз готов', source_revision: 'fixture-revision', source_published_at: '2026-10-21T05:00:00Z', body_types: ['tent'], amount: 1500, currency: 'USD', price_state: 'known', contacts: ['+7 700 000 00 01'] };
   page.on('pageerror', error => box.errors.push(error.message));
@@ -42,7 +42,7 @@ async function boot(page, role = 'driver') {
       box.writes += 1;
       if (box.fail) { box.fail = false; return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }); }
       box.saved = route.request().method() === 'PUT'; data = { id: item.id, saved: box.saved };
-    } else if (u.pathname === '/api/v1/external-freight') data = { items: u.searchParams.get('saved_only') === 'true' && !box.saved ? [] : [{ ...item, saved: box.saved }], next_cursor: null };
+    } else if (u.pathname === '/api/v1/external-freight') { box.feedQueries.push(Object.fromEntries(u.searchParams)); data = { items: u.searchParams.get('saved_only') === 'true' && !box.saved ? [] : [{ ...item, saved: box.saved }], next_cursor: null }; }
     else if (u.pathname.endsWith('/translate')) data = { translated_text: 'Truck needed. Cargo ready', source_revision: item.source_revision };
     else if (u.pathname.includes('/notifications')) data = { notifications: [], unread: 0 };
     else if (u.pathname.includes('/chat/')) data = { messages: [], rooms: [], unread: 0 };
@@ -91,5 +91,26 @@ test('failed save keeps unsaved state and allows retry', async ({ page }) => {
   await expect(page.getByText('Повторить', { exact: true }).filter({ visible: true })).toBeVisible();
   await button.click();
   await expect(button).toHaveAttribute('aria-label', 'Убрать из сохранённых');
+  expect(box.errors).toEqual([]);
+});
+
+test('route filters directly open visible search and distinguish country from city', async ({ page }) => {
+  const box = await boot(page);
+  await page.getByTestId('external-feed-filter-origin').click();
+  const search = page.getByTestId('loc-search');
+  await expect(search).toBeVisible();
+  await expect(search).toBeInViewport();
+  await expect(page.getByTestId('loc-geo')).toHaveCount(0);
+  await search.fill('Китай');
+  await page.getByTestId('loc-country-CN').click();
+  await expect(page.getByTestId('external-feed-filter-origin')).toContainText('Китай');
+  await expect.poll(() => box.feedQueries.at(-1)?.origin_country).toBe('CN');
+  expect(box.feedQueries.at(-1).origin).toBeUndefined();
+  await page.getByTestId('external-feed-filter-destination').click();
+  await expect(page.getByTestId('loc-search')).toBeInViewport();
+  await page.getByTestId('loc-search').fill('Ташкент');
+  await page.getByTestId('loc-point-Ташкент').click();
+  await expect.poll(() => box.feedQueries.at(-1)?.destination).toBe('Ташкент');
+  expect(box.feedQueries.at(-1).destination_country).toBe('UZ');
   expect(box.errors).toEqual([]);
 });

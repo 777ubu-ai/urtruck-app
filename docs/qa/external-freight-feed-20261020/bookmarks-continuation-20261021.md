@@ -38,3 +38,13 @@ Xiaomi BUA6JB99T465Q49X доступен ADB; iPhone Bah (2) Offline. Новог
 ## Итог
 
 PARTIAL: код и локальная приёмка закладок готовы, полный QA-пилот нет. Не выполнены review additive schema, финальный CI/SHA APK, штатный QA2 deploy, реальная интеграция адаптера с агентом, живой перевод и физическая приёмка Android/iPhone. Production, публичные каналы и действующий Telegram publisher не затронуты. Исходный dirty implementation-checkpoint.md не включать в commit автоматически.
+
+## Исправление фильтров направления по фото владельца, 21.10.2026
+
+PRE-FLIGHT: feature branch HEAD a75be5be4dba955a0b9c76ba25ef7540364450b3. Существующие dirty checkpoint и qa-evidence сохранены. Scope только ExternalFreightFeedScreen, чистая externalFreightModel и связанные тесты; общий LocationPickerModal/география/GPS/backend не менялись. Rollback — revert отдельного UI-коммита.
+
+Убран промежуточный нижний диалог «Откуда/Куда» с полем, не защищённым от перекрытия native-клавиатурой. Оба фильтра сразу открывают существующий полноэкранный LocationPickerModal с поиском вверху, подсказками и showGeo=false. Выбор countryOnly передаёт только ISO country, без ошибочного city='Китай'; чип показывает название страны. Для пользовательского города с неизвестной страной XX код страны не добавляется в query.
+
+Проверки: model 7/7 PASS, lint 561 JS PASS, QA web export PASS, React loopback E2E 4/4 PASS (два сценария ролей, retry закладки, непосредственный поиск и запросы CN country-only / Ташкент UZ). Native-клавиатура Xiaomi/iOS на исправленном бинарнике пока не проверена.
+
+Установленный APK 214494459 из 0759d4a6 этой UI-правки не содержит. Нужна новая сборка после объединения остальных согласованных UI-замечаний; старую не засчитывать. PR568 integration SHA 701354cdecb25721d5dc617084702d75804ebcff уже имеет 3/3 CI SUCCESS; туда нужно включить новый UI-коммит штатным переносом с сохранением classifier fix. Продвижение/deploy в этой правке не выполнялись.
