@@ -68,15 +68,19 @@ def _published(value):
 
 
 def _loading_date(text):
-    value = _first(_DATE, text)
-    if not value:
-        return None
-    for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%y", "%d/%m/%y", "%d-%m-%y"):
-        try:
-            datetime.strptime(value, fmt)
-            return value
-        except ValueError:
+    for match in _DATE.finditer(text):
+        value = match.group(1)
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        line_end = text.find("\n", match.end())
+        line = text[line_start:line_end if line_end >= 0 else len(text)]
+        if not re.search(r"(?i)(?:погруз|загруз|готов|подач|выезд|свобод|освобод|дата)", line):
             continue
+        for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%y", "%d/%m/%y", "%d-%m-%y"):
+            try:
+                datetime.strptime(value, fmt)
+                return value
+            except ValueError:
+                continue
     return None
 
 

@@ -20,7 +20,7 @@ def _queue(text, **extra):
 def test_maps_explicit_cargo_fields_and_keeps_original_text_and_contact():
     text = (
         "Нужен тент, груз готов\nХоргос → Алматы\n"
-        "Груз: электросамокаты\n25 т, 150 м³\n25.10.2026\n4 500 USD"
+        "Груз: электросамокаты\n25 т, 150 м³\nПогрузка: 25.10.2026\n4 500 USD"
     )
     item = map_selected_message(_queue(text))
     assert item["kind"] == "cargo"
@@ -45,6 +45,11 @@ def test_price_missing_and_negotiable_are_distinct():
     negotiable = map_selected_message(_queue("Нужен тент, груз готов\nХоргос → Алматы\nЦена договорная"))
     assert (unknown["amount"], unknown["currency"], unknown["price_state"]) == (None, None, "unknown")
     assert (negotiable["amount"], negotiable["currency"], negotiable["price_state"]) == (None, None, "negotiable")
+
+
+def test_unlabelled_date_is_not_assumed_to_be_loading_date():
+    item = map_selected_message(_queue("Нужен тент, груз готов\nХоргос → Алматы\n25.10.2026"))
+    assert item["loading_date"] is None
 
 
 def test_ambiguous_or_multi_request_text_stays_review_without_shared_contact():
