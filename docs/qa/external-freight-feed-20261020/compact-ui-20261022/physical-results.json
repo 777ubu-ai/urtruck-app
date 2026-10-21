@@ -1,0 +1,50 @@
+[
+  {
+    "name": "huawei",
+    "serialSuffix": "2582",
+    "role": "driver",
+    "title": "Лента грузов",
+    "metrics": {
+      "width": 350,
+      "height": 644,
+      "dpr": 2.875,
+      "scrollWidth": 350
+    },
+    "collapsed": {
+      "x": 12,
+      "y": 269.7826232910156,
+      "width": 326.60870361328125,
+      "height": 323.0869445800781
+    },
+    "errors": [],
+    "checks": [
+      "collapse/full text 24 conditions/collapse",
+      "bookmark survives reload and saved-only"
+    ],
+    "source": "physical Chrome; synthetic data; working tree UI patch; no APK"
+  },
+  {
+    "name": "xiaomi",
+    "serialSuffix": "Q49X",
+    "role": "client",
+    "title": "Лента машин",
+    "metrics": {
+      "width": 271,
+      "height": 520,
+      "dpr": 2.6579864025115967,
+      "scrollWidth": 271
+    },
+    "collapsed": {
+      "x": 11.998039245605469,
+      "y": 348.9836120605469,
+      "width": 246.88565826416016,
+      "height": 302.2200622558594
+    },
+    "errors": [],
+    "checks": [
+      "collapse/full text 24 conditions/collapse",
+      "bookmark survives reload and saved-only"
+    ],
+    "source": "physical Chrome; synthetic data; working tree UI patch; no APK"
+  }
+]

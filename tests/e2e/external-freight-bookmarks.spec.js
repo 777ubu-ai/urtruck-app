@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 let server, base;
 test.beforeAll(async () => {
-  const dist = path.resolve(__dirname, '../../dist');
+  const dist = process.env.EXTERNAL_FEED_TEST_DIST || path.resolve(__dirname, '../../dist');
   server = http.createServer((req, res) => {
     if (req.url.startsWith('/api/')) { res.writeHead(503); return res.end(); }
     let file = path.resolve(dist, '.' + decodeURIComponent(req.url.split('?')[0]));
@@ -24,7 +24,7 @@ async function boot(page, role = 'driver', options = {}) {
   const user = { id: 'feed-fixture-' + role, role, verification_level: 3, basic_onboarding_completed: 1 };
   const box = { saved: false, fail: false, writes: 0, errors: [], feedQueries: [], businessWrites: [], aiRequests: [] };
   const item = { id: 'external-fixture', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active', origin: 'Алматы', destination: 'Ташкент',
-    original_text: 'Нужен тент. Груз готов', source_revision: 'fixture-revision', source_published_at: '2026-10-21T05:00:00Z', body_types: ['tent'], amount: 1500, currency: 'USD', price_state: 'known', contacts: ['+7 700 000 00 01'] };
+    original_text: options.text ?? Array.from({ length: 16 }, (_, i) => `Условие ${i + 1}: нужен тент, груз готов, документы на погрузке.`).join('\n'), source_revision: 'fixture-revision', source_published_at: '2026-10-21T05:00:00Z', body_types: ['tent'], amount: 1500, currency: 'USD', price_state: 'known', contacts: ['+7 700 000 00 01'], ...options.item };
   page.on('pageerror', error => box.errors.push(error.message));
   await page.addInitScript(user => {
     localStorage.setItem('ur_reg_token', 'synthetic-feed-token');
@@ -243,5 +243,90 @@ test('entry remains usable without a count when API is unavailable', async ({ pa
   await expect(page.getByTestId('external-freight-count')).toHaveCount(0);
   await page.getByTestId('external-freight-entry').click();
   await expect(page.getByTestId('external-feed-card-external-fixture')).toBeVisible();
+  expect(box.errors).toEqual([]);
+});
+
+// Проверяем наблюдаемое поведение и границы, а не копию реализации стилей.
+for (const role of ['driver', 'client']) {
+  test(role + ': compact card and full title fit 320px; full description is recoverable', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    const text = Array.from({ length: 40 }, (_, i) => `Условие ${i + 1}: оригинальные условия перевозки без сокращения.`).join('\n');
+    const box = await boot(page, role, { text, item: { weight: 25, volume: 150, vehicle_count: 1, cargo_name: role === 'driver' ? 'Упаковка' : undefined } });
+    const card = page.getByTestId('external-feed-card-external-fixture');
+    const description = page.getByTestId('external-feed-description-external-fixture');
+    const toggle = page.getByTestId('external-feed-expand-external-fixture');
+    await expect(toggle).toBeVisible();
+    await expect(page.getByTestId('external-feed-title')).toHaveText(role === 'driver' ? 'Лента грузов' : 'Лента машин');
+    await expect(page.getByTestId('external-feed-summary-external-fixture')).toContainText('Тент · 25 т · 150 м³ · 1 машина');
+    const bounds = await card.boundingBox(), preview = await description.boundingBox();
+    expect(bounds.height).toBeLessThan(370);
+    expect(preview.height).toBeLessThanOrEqual(91);
+    const viewport = page.viewportSize().width;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await page.screenshot({ path: `test-results/external-compact-${role}-320.png`, fullPage: true });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(description).toHaveText(text);
+    expect((await description.boundingBox()).height).toBeGreaterThan(preview.height * 3);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect((await description.boundingBox()).height).toBeLessThanOrEqual(91);
+    expect(box.aiRequests).toEqual([]); expect(box.businessWrites).toEqual([]); expect(box.errors).toEqual([]);
+  });
+
+  test(role + ': enlarged text stays inside header, cards and filter actions', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    const box = await boot(page, role);
+    async function enlarge() {
+      await page.evaluate(() => {
+        for (const el of document.querySelectorAll('[data-testid="external-freight-feed-screen"] [dir="auto"], [data-testid="external-feed-filter-overlay"] [dir="auto"]')) {
+          if (el.dataset.scaled) continue;
+          el.dataset.scaled = '1';
+          const s = getComputedStyle(el), size = parseFloat(s.fontSize), height = parseFloat(s.lineHeight);
+          el.style.fontSize = `${size * 1.5}px`;
+          if (Number.isFinite(height)) el.style.lineHeight = `${height * 1.5}px`;
+        }
+      });
+    }
+    await enlarge();
+    const title = page.getByTestId('external-feed-title');
+    const titleBox = await title.boundingBox(), savedBox = await page.getByTestId('external-feed-saved-only').boundingBox();
+    expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(savedBox.x + 1);
+    expect(await title.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    const card = page.getByTestId('external-feed-card-external-fixture');
+    expect(await card.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await page.screenshot({ path: `test-results/external-compact-${role}-large-text.png`, fullPage: true });
+    await page.getByTestId('external-feed-filter-origin').click();
+    await enlarge();
+    await expect(page.getByTestId('external-feed-location-search')).toBeInViewport();
+    const apply = page.getByTestId('external-feed-apply-filters');
+    await expect(apply).toBeInViewport();
+    expect(await apply.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    for (const label of ['Сброс', 'Отмена', 'Найти']) {
+      const action = page.getByTestId('external-feed-filter-overlay').getByRole('button', { name: label, exact: true });
+      await expect(action).toBeVisible();
+      const textBox = action.getByText(label, { exact: true });
+      const singleLine = await textBox.evaluate(el => el.getBoundingClientRect().height <= parseFloat(getComputedStyle(el).fontSize) * 1.4);
+      expect(singleLine, label + ': слово не разрывается внутри кнопки').toBe(true);
+    }
+    await page.screenshot({ path: `test-results/external-filter-${role}-large-text.png`, fullPage: true });
+    await page.getByTestId('external-feed-location-search').fill('Китай');
+    await apply.click();
+    await expect.poll(() => box.feedQueries.at(-1)?.origin_country).toBe('CN');
+    expect(box.errors).toEqual([]);
+  });
+}
+
+test('short original text needs no expand button and copying contact does not focus an input', async ({ page, context }) => {
+  const box = await boot(page, 'driver', { text: 'Груз готов.' });
+  const description = page.getByTestId('external-feed-description-external-fixture');
+  await expect(description).toHaveText('Груз готов.');
+  await expect(page.getByTestId('external-feed-expand-external-fixture')).toHaveCount(0);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByTestId('external-feed-copy-external-fixture-0').click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('+7 700 000 00 01');
+  expect(await page.evaluate(() => ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName))).toBe(false);
   expect(box.errors).toEqual([]);
 });

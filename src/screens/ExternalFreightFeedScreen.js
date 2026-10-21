@@ -7,6 +7,9 @@ import Feather from '@expo/vector-icons/Feather';
 import * as Clipboard from 'expo-clipboard';
 import DatePicker from '../components/externalFreight/ExternalFeedDatePicker';
 import BookmarkButton from '../components/ui/v1/BookmarkButton';
+import PrimaryButton from '../components/ui/v1/PrimaryButton';
+import SecondaryButton from '../components/ui/actions/SecondaryButton';
+import ExternalFeedDescription from '../components/externalFreight/ExternalFeedDescription';
 // Направления внешней ленты вводятся текстом; общий городской picker не подключаем.
 import { useToast } from '../components/Toast';
 import { useI18n } from '../utils/useI18n';
@@ -19,10 +22,10 @@ import { externalFreightAPI } from '../utils/externalFreightFeed';
 import { appendUnique, buildExternalFeedQuery, canSortPrice, externalLocationTextSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
 
 const COPY = {
-  RU: { cargoTitle: 'Лента грузов', vehicleTitle: 'Лента машин', from: 'Откуда', to: 'Куда', body: 'Кузов', date: 'Дата', price: 'Цена', empty: 'Объявлений пока нет', none: 'По фильтрам ничего не найдено', network: 'Нет соединения. Уже загруженные объявления сохранены.', server: 'Сервис ленты временно недоступен.', retry: 'Повторить', more: 'Ещё', less: 'Свернуть', copied: 'Контакт скопирован', today: 'Сегодня', yesterday: 'Вчера', apply: 'Применить', choose: 'Выбрать из списка', reset: 'Сбросить', cancel: 'Отмена', negotiable: 'Договорная', unknown: 'Цена не указана', loading: 'Загрузка…', dateFrom: 'С', dateTo: 'По', currency: 'Валюта', min: 'От суммы', max: 'До суммы', newest: 'Сначала новые', asc: 'Дешевле', desc: 'Дороже', retryPage: 'Не удалось загрузить следующую страницу', invalidPrice: 'Укажите валюту и корректный диапазон цены.', invalidDate: 'Начало периода не может быть позже окончания.' },
-  KK: { cargoTitle: 'Жүк лентасы', vehicleTitle: 'Көлік лентасы', from: 'Қайдан', to: 'Қайда', body: 'Шанақ', date: 'Күні', price: 'Бағасы', empty: 'Әзірге хабарландыру жоқ', none: 'Сүзгі бойынша нәтиже жоқ', network: 'Желі жоқ. Жүктелген хабарландырулар сақталды.', server: 'Лента қызметі уақытша қолжетімсіз.', retry: 'Қайталау', more: 'Тағы', less: 'Жию', copied: 'Байланыс көшірілді', today: 'Бүгін', yesterday: 'Кеше', apply: 'Қолдану', choose: 'Тізімнен таңдау', reset: 'Тазарту', cancel: 'Бас тарту', negotiable: 'Келісімді', unknown: 'Бағасы көрсетілмеген', loading: 'Жүктелуде…', dateFrom: 'Бастап', dateTo: 'Дейін', currency: 'Валюта', min: 'Ең азы', max: 'Ең көбі', newest: 'Алдымен жаңалары', asc: 'Арзанырақ', desc: 'Қымбатырақ', retryPage: 'Келесі бетті жүктеу мүмкін болмады', invalidPrice: 'Валюта мен баға аралығын тексеріңіз.', invalidDate: 'Жарияланым күндерінің аралығын тексеріңіз.' },
-  ZH: { cargoTitle: '货源信息', vehicleTitle: '空车信息', from: '出发地', to: '目的地', body: '车厢类型', date: '日期', price: '价格', empty: '暂无公告', none: '没有符合筛选条件的结果', network: '网络不可用，已加载的信息已保留。', server: '信息服务暂时不可用。', retry: '重试', more: '更多', less: '收起', copied: '联系方式已复制', today: '今天', yesterday: '昨天', apply: '应用', choose: '从列表选择', reset: '重置', cancel: '取消', negotiable: '价格面议', unknown: '未提供价格', loading: '加载中…', dateFrom: '开始', dateTo: '结束', currency: '币种', min: '最低', max: '最高', newest: '最新优先', asc: '价格升序', desc: '价格降序', retryPage: '无法加载下一页', invalidPrice: '请检查币种和价格范围。', invalidDate: '请检查发布日期范围。' },
-  EN: { cargoTitle: 'Cargo feed', vehicleTitle: 'Available trucks', from: 'From', to: 'To', body: 'Body', date: 'Date', price: 'Price', empty: 'No listings yet', none: 'No results for these filters', network: 'No connection. Loaded listings are kept.', server: 'The feed service is temporarily unavailable.', retry: 'Retry', more: 'More', less: 'Collapse', copied: 'Contact copied', today: 'Today', yesterday: 'Yesterday', apply: 'Apply', choose: 'Choose from list', reset: 'Reset', cancel: 'Cancel', negotiable: 'Negotiable', unknown: 'Price not provided', loading: 'Loading…', dateFrom: 'From', dateTo: 'To', currency: 'Currency', min: 'Minimum', max: 'Maximum', newest: 'Newest first', asc: 'Lowest price', desc: 'Highest price', retryPage: 'Could not load the next page', invalidPrice: 'Check the currency and price range.', invalidDate: 'Check the publication date range.' },
+  RU: { cargoTitle: 'Лента грузов', vehicleTitle: 'Лента машин', from: 'Откуда', to: 'Куда', body: 'Кузов', date: 'Дата', price: 'Цена', empty: 'Объявлений пока нет', none: 'По фильтрам ничего не найдено', network: 'Нет соединения. Уже загруженные объявления сохранены.', server: 'Сервис ленты временно недоступен.', retry: 'Повторить', more: 'Показать полностью', less: 'Свернуть', copied: 'Контакт скопирован', today: 'Сегодня', yesterday: 'Вчера', apply: 'Найти', choose: 'Выбрать из списка', reset: 'Сброс', cancel: 'Отмена', negotiable: 'Договорная', unknown: 'Цена не указана', loading: 'Загрузка…', published: 'Опубликовано', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'С', dateTo: 'По', currency: 'Валюта', min: 'От суммы', max: 'До суммы', newest: 'Сначала новые', asc: 'Дешевле', desc: 'Дороже', retryPage: 'Не удалось загрузить следующую страницу', invalidPrice: 'Укажите валюту и корректный диапазон цены.', invalidDate: 'Начало периода не может быть позже окончания.' },
+  KK: { cargoTitle: 'Жүк лентасы', vehicleTitle: 'Көлік лентасы', from: 'Қайдан', to: 'Қайда', body: 'Шанақ', date: 'Күні', price: 'Бағасы', empty: 'Әзірге хабарландыру жоқ', none: 'Сүзгі бойынша нәтиже жоқ', network: 'Желі жоқ. Жүктелген хабарландырулар сақталды.', server: 'Лента қызметі уақытша қолжетімсіз.', retry: 'Қайталау', more: 'Тағы', less: 'Жию', copied: 'Байланыс көшірілді', today: 'Бүгін', yesterday: 'Кеше', apply: 'Қолдану', choose: 'Тізімнен таңдау', reset: 'Тазарту', cancel: 'Бас тарту', negotiable: 'Келісімді', unknown: 'Бағасы көрсетілмеген', loading: 'Жүктелуде…', published: 'Жарияланған', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'Бастап', dateTo: 'Дейін', currency: 'Валюта', min: 'Ең азы', max: 'Ең көбі', newest: 'Алдымен жаңалары', asc: 'Арзанырақ', desc: 'Қымбатырақ', retryPage: 'Келесі бетті жүктеу мүмкін болмады', invalidPrice: 'Валюта мен баға аралығын тексеріңіз.', invalidDate: 'Жарияланым күндерінің аралығын тексеріңіз.' },
+  ZH: { cargoTitle: '货源信息', vehicleTitle: '空车信息', from: '出发地', to: '目的地', body: '车厢类型', date: '日期', price: '价格', empty: '暂无公告', none: '没有符合筛选条件的结果', network: '网络不可用，已加载的信息已保留。', server: '信息服务暂时不可用。', retry: '重试', more: '更多', less: '收起', copied: '联系方式已复制', today: '今天', yesterday: '昨天', apply: '应用', choose: '从列表选择', reset: '重置', cancel: '取消', negotiable: '价格面议', unknown: '未提供价格', loading: '加载中…', published: '发布时间', weightUnit: '吨', volumeUnit: '立方米', dateFrom: '开始', dateTo: '结束', currency: '币种', min: '最低', max: '最高', newest: '最新优先', asc: '价格升序', desc: '价格降序', retryPage: '无法加载下一页', invalidPrice: '请检查币种和价格范围。', invalidDate: '请检查发布日期范围。' },
+  EN: { cargoTitle: 'Cargo feed', vehicleTitle: 'Available trucks', from: 'From', to: 'To', body: 'Body', date: 'Date', price: 'Price', empty: 'No listings yet', none: 'No results for these filters', network: 'No connection. Loaded listings are kept.', server: 'The feed service is temporarily unavailable.', retry: 'Retry', more: 'Show full text', less: 'Collapse', copied: 'Contact copied', today: 'Today', yesterday: 'Yesterday', apply: 'Apply', choose: 'Choose from list', reset: 'Reset', cancel: 'Cancel', negotiable: 'Negotiable', unknown: 'Price not provided', loading: 'Loading…', published: 'Published', weightUnit: 't', volumeUnit: 'm³', dateFrom: 'From', dateTo: 'To', currency: 'Currency', min: 'Minimum', max: 'Maximum', newest: 'Newest first', asc: 'Lowest price', desc: 'Highest price', retryPage: 'Could not load the next page', invalidPrice: 'Check the currency and price range.', invalidDate: 'Check the publication date range.' },
 };
 const bodyLabels = {
   RU: { tent: 'Тент', ref: 'Рефрижератор', izoterm: 'Изотерм', board: 'Борт', tipper: 'Самосвал', lowboy: 'Трал' },
@@ -66,7 +69,6 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [expanded, setExpanded] = useState({});
   const requestRef = useRef(null);
   const sequenceRef = useRef(0);
   const blurredRef = useRef(false);
@@ -104,7 +106,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
 
   useEffect(() => { setRows([]); setCursor(null); load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters, savedOnly, ownerKey]);
   useEffect(() => {
-    setExpanded({}); setSaving({});
+    setSaving({});
     return () => {
       bookmarkRequestsRef.current.forEach(controller => controller.abort());
       bookmarkRequestsRef.current.clear();
@@ -194,12 +196,11 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   );
 
   const renderItem = ({ item }) => {
-    const open = !!expanded[item.id];
     const locations = item.kind === 'cargo' ? [item.origin, item.destination] : [item.origin, item.destination];
     const price = item.price_state === 'negotiable' ? l.negotiable : item.price_state === 'known' ? `${formatNumber(item.amount)} ${item.currency}` : l.unknown;
     return <View style={styles.card} testID={`external-feed-card-${item.id}`}>
       <View style={styles.cardHeading}>
-        <Text style={[styles.route, styles.routeFlex]} numberOfLines={2}>{item.status === 'unavailable' ? sl.unavailable : locations.filter(Boolean).join(' → ')}</Text>
+        <Text style={[styles.route, styles.routeFlex]}>{item.status === 'unavailable' ? sl.unavailable : locations.filter(Boolean).join(' → ')}</Text>
         <View style={styles.saveSlot}>
           <BookmarkButton saved={item.saved} onPress={() => toggleBookmark(item)} accessibilityLabel={item.saved ? sl.unsave : sl.save} testID={`external-feed-bookmark-${item.id}`} />
           {saving[item.id] ? <ActivityIndicator size="small" color="#168759" /> : null}
@@ -207,18 +208,22 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       </View>
       {['expired', 'closed'].includes(item.status) ? <Text style={styles.meta}>{sl[item.status]}</Text> : null}
       {item.kind === 'cargo' && item.cargo_name ? <Text style={styles.strong}>{item.cargo_name}</Text> : null}
-      {item.body_types?.length ? <Text style={styles.meta}>{(item.body_types || []).map(x => bodyLabels[lang]?.[x] || x).join(', ')}</Text> : null}
-      {item.weight != null || item.volume != null ? <Text style={styles.meta}>{[item.weight != null ? `${formatNumber(item.weight)} t` : '', item.volume != null ? `${formatNumber(item.volume)} m³` : ''].filter(Boolean).join(' · ')}</Text> : null}
-      {item.vehicle_count != null ? <Text style={styles.meta}>{`${item.vehicle_count} ${isDriver ? ({ RU: 'машин требуется', KK: 'көлік қажет', ZH: '需要车辆', EN: 'trucks needed' }[lang] || 'trucks needed') : ({ RU: 'машин свободно', KK: 'бос көлік', ZH: '有空车', EN: 'trucks available' }[lang] || 'trucks available')}`}</Text> : null}
+      <Text style={styles.meta} testID={`external-feed-summary-${item.id}`}>{[
+        ...(item.body_types || []).map(x => bodyLabels[lang]?.[x] || x),
+        item.weight != null ? `${formatNumber(item.weight)} ${l.weightUnit}` : '',
+        item.volume != null ? `${formatNumber(item.volume)} ${l.volumeUnit}` : '',
+        item.vehicle_count != null ? vehicleCountLabel(item.vehicle_count, lang, isDriver) : '',
+      ].filter(Boolean).join(' · ')}</Text>
       {item.loading_date || item.ready_text ? <Text style={styles.meta}>{item.loading_date || item.ready_text}</Text> : null}
       {item.status !== 'unavailable' ? <Text style={styles.price}>{price}</Text> : null}
-      {Array.isArray(item.contacts) && item.contacts.filter(Boolean).map((contact, index) => <TouchableOpacity key={`${item.id}-contact-${index}`} onPress={() => copyContact(contact)} style={styles.contact} accessibilityRole="button" testID={`external-feed-copy-${item.id}-${index}`}><Text style={styles.contactText} selectable>{contact}</Text><Feather name="copy" size={14} color={'#168759'} /></TouchableOpacity>)}
-      <Text style={styles.date}>{formatDate(item.source_published_at, lang)}</Text>
-      {item.status === 'unavailable' ? null : open ? <View style={styles.details}>
-        {item.original_text ? <Text style={styles.original}>{item.original_text}</Text> : null}
-        {item.ready_text && item.loading_date ? <Text style={styles.meta}>{item.ready_text}</Text> : null}
-        <TouchableOpacity onPress={() => setExpanded(current => ({ ...current, [item.id]: false }))} style={styles.textAction}><Text style={styles.link}>{l.less}</Text></TouchableOpacity>
-      </View> : <TouchableOpacity onPress={() => { externalFreightAPI.event('card_expand'); setExpanded(current => ({ ...current, [item.id]: true })); }} style={styles.textAction} testID={`external-feed-expand-${item.id}`}><Text style={styles.link}>{l.more}</Text></TouchableOpacity>}
+      {Array.isArray(item.contacts) && item.contacts.filter(Boolean).map((contact, index) => <TouchableOpacity key={`${item.id}-contact-${index}`} onPress={() => copyContact(contact)} style={styles.contact} accessibilityRole="button" testID={`external-feed-copy-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color={'#168759'} /></TouchableOpacity>)}
+      <Text style={styles.date}>{l.published}: {formatDate(item.source_published_at, lang)}</Text>
+      {item.status !== 'unavailable' && item.original_text ? <ExternalFeedDescription
+        key={`${ownerKey}:${item.id}`} text={item.original_text} styles={styles}
+        moreLabel={l.more} lessLabel={l.less} itemId={item.id}
+        onExpand={() => externalFreightAPI.event('card_expand')}
+      /> : null}
+      {item.ready_text && item.loading_date ? <Text style={styles.meta}>{item.ready_text}</Text> : null}
     </View>;
   };
 
@@ -226,17 +231,16 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']} testID="external-freight-feed-screen">
     <View style={styles.header}>
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.back} accessibilityRole="button" accessibilityLabel={l.cancel} testID="external-feed-back"><Feather name="arrow-left" size={23} color={theme.text} /></TouchableOpacity>
-      <Text style={styles.title} numberOfLines={1}>{title}</Text>
-      <TouchableOpacity style={styles.savedHeader} onPress={() => setSavedOnly(current => !current)} accessibilityRole="button" accessibilityLabel={sl.saved} accessibilityState={{ selected: savedOnly }} testID="external-feed-saved-only">
+      <Text style={styles.title} testID="external-feed-title">{savedOnly ? `${title} · ${sl.saved}` : title}</Text>
+      <TouchableOpacity style={styles.savedHeader} onPress={() => setSavedOnly(current => !current)} accessibilityRole="button" accessibilityLabel={sl.saved} accessibilityState={{ selected: savedOnly }} aria-pressed={savedOnly} testID="external-feed-saved-only">
         <Feather name="bookmark" size={20} color={savedOnly ? '#168759' : theme.textMuted} />
-        <Text style={styles.link}>{sl.saved}</Text>
       </TouchableOpacity>
     </View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filterContent} keyboardShouldPersistTaps="handled">
       {filterButton('origin', l.from, locationLabel('origin'))}{filterButton('destination', l.to, locationLabel('destination'))}{filterButton('body', l.body, filters.body_type ? bodyLabels[lang]?.[filters.body_type] || filters.body_type : '')}{filterButton('date', l.date, filters.published_from ? `${formatDate(filters.published_from, lang)}${filters.published_to ? ` – ${formatDate(filters.published_to, lang)}` : ''}` : '')}{filterButton('price', l.price, filters.currency || filters.min_price || filters.max_price ? [filters.min_price, filters.max_price].filter(Boolean).join('–') + (filters.currency ? ` ${filters.currency}` : '') : '')}
     </ScrollView>
     {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: true })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}
-    {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{error === 'network_error' ? l.network : l.server}</Text><TouchableOpacity style={styles.primary} onPress={() => load({ reset: true })}><Text style={styles.primaryText}>{l.retry}</Text></TouchableOpacity></View> : null}
+    {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{error === 'network_error' ? l.network : l.server}</Text><PrimaryButton label={l.retry} onPress={() => load({ reset: true })} style={styles.retryButton} /></View> : null}
     {!error || rows.length ? <FlatList data={visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => { if (!busy && cursor) load(); }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.published_from || filters.min_price ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
     {/* Текстовый поиск не монтирует общий справочник стран/городов. */}
     <Modal visible={!!modal} transparent animationType="fade" onRequestClose={() => setModal(null)}>
@@ -245,7 +249,11 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       <KeyboardAvoidingView style={styles.keyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} pointerEvents="box-none">
       <Pressable style={styles.sheet} onPress={e => e.stopPropagation()}>
         <Text style={styles.sheetTitle}>{modal === 'origin' ? l.from : modal === 'destination' ? l.to : modal === 'body' ? l.body : modal === 'date' ? l.date : l.price}</Text>
-        <View style={styles.actions}><TouchableOpacity onPress={resetFilters}><Text style={styles.link}>{l.reset}</Text></TouchableOpacity><TouchableOpacity onPress={() => setModal(null)}><Text style={styles.link}>{l.cancel}</Text></TouchableOpacity><TouchableOpacity style={styles.primary} onPress={applyFilters} testID="external-feed-apply-filters"><Text style={styles.primaryText}>{l.apply}</Text></TouchableOpacity></View>
+        <View style={styles.actions}>
+          <SecondaryButton label={l.reset} onPress={resetFilters} role={role} numberOfLines={null} style={styles.filterAction} />
+          <SecondaryButton label={l.cancel} onPress={() => setModal(null)} role={role} numberOfLines={null} style={styles.filterAction} />
+          <SecondaryButton label={l.apply} onPress={applyFilters} role={role} numberOfLines={null} testID="external-feed-apply-filters" style={styles.filterAction} />
+        </View>
         <ScrollView keyboardShouldPersistTaps="handled" style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
         {isLocationModal ? <TextInput value={draft[modal] || (draft[`${modal}_country`] ? getCountryName(draft[`${modal}_country`], lang) : '')} onChangeText={text => setDraft(current => ({ ...current, [modal]: text, [`${modal}_country`]: '' }))} placeholder={modal === 'origin' ? l.from : l.to} placeholderTextColor={theme.textMuted} style={styles.input} maxLength={120} autoFocus autoCorrect={false} autoCapitalize="words" returnKeyType="search" onSubmitEditing={applyFilters} testID="external-feed-location-search" accessibilityLabel={modal === 'origin' ? l.from : l.to} /> : null}
         {modal === 'body' ? <ScrollView style={{ maxHeight: 310 }}>{BODY_TYPES.map(body => <TouchableOpacity key={body} style={styles.option} onPress={() => setDraft(current => ({ ...current, body_type: current.body_type === body ? '' : body }))}><Text style={styles.optionText}>{bodyLabels[lang]?.[body] || body}</Text><Text style={styles.optionText}>{draft.body_type === body ? '✓' : ''}</Text></TouchableOpacity>)}</ScrollView> : null}
@@ -259,16 +267,60 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   </SafeAreaView>;
 }
 
+function vehicleCountLabel(value, lang, needed) {
+  if (lang === 'RU') {
+    const n = Math.abs(Number(value)), last = n % 10, teen = n % 100;
+    const noun = last === 1 && teen !== 11 ? 'машина' : last >= 2 && last <= 4 && (teen < 12 || teen > 14) ? 'машины' : 'машин';
+    return `${value} ${noun}`;
+  }
+  return `${value} ${needed ? ({ KK: 'көлік қажет', ZH: '需要车辆', EN: 'trucks needed' }[lang] || 'trucks needed') : ({ KK: 'бос көлік', ZH: '有空车', EN: 'trucks available' }[lang] || 'trucks available')}`;
+}
+
 function formatNumber(value) { return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(Number(value)); }
 function formatDate(value, lang) { if (!value) return ''; const dmy = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value); const date = dmy ? new Date(+dmy[3], +dmy[2] - 1, +dmy[1]) : new Date(value); return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(({ RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-GB' })[lang] || 'en-GB', { dateStyle: 'medium' }).format(date); }
 
 function makeStyles(theme, sp) {
   return StyleSheet.create({
-    cardHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 }, routeFlex: { flex: 1 }, saveSlot: { alignItems: 'center', gap: 4 }, savedHeader: { minHeight: 44, maxWidth: '43%', flexDirection: 'row', alignItems: 'center', gap: 5, paddingLeft: 6 },
-    safe: { flex: 1, backgroundColor: theme.bg }, header: { minHeight: 52, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border }, back: { width: 42, height: 44, alignItems: 'flex-start', justifyContent: 'center' }, title: { flex: 1, color: theme.text, fontSize: sp(18), fontWeight: '700' }, headerSpacer: { width: 10 },
-    filters: { flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border }, filterContent: { paddingHorizontal: 10, alignItems: 'center', gap: 7 }, filterButton: { minHeight: 36, maxWidth: 240, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }, filterActive: { borderColor: '#168759', backgroundColor: theme.surface }, filterText: { color: theme.text, fontSize: sp(13), flexShrink: 1, flexWrap: 'wrap' }, filterTextActive: { color: '#168759', fontWeight: '600' },
-    list: { padding: 12, paddingBottom: 22 }, listEmpty: { flexGrow: 1, justifyContent: 'center', padding: 20 }, card: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 16, padding: 15, marginBottom: 11, gap: 7 }, route: { fontSize: sp(17), lineHeight: sp(24), fontWeight: '700', color: theme.text }, strong: { color: theme.text, fontSize: sp(15), fontWeight: '600' }, meta: { color: theme.textMuted, fontSize: sp(14), lineHeight: sp(20) }, price: { color: '#168759', fontSize: sp(16), fontWeight: '700' }, contact: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }, contactText: { color: theme.text, fontSize: sp(14), flex: 1 }, date: { color: theme.textMuted, fontSize: sp(12) }, details: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border, marginTop: 5, paddingTop: 10, gap: 8 }, original: { color: theme.text, fontSize: sp(14), lineHeight: sp(21) }, textAction: { alignSelf: 'flex-start', paddingVertical: 4 }, link: { color: '#168759', fontSize: sp(14), fontWeight: '600' },
-    warning: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: theme.surface }, warningText: { color: theme.textMuted, fontSize: sp(12) }, center: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', gap: 14 }, message: { color: theme.textMuted, textAlign: 'center', fontSize: sp(15), lineHeight: sp(22) }, primary: { minHeight: 40, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#168759', justifyContent: 'center', alignItems: 'center' }, primaryText: { color: '#fff', fontSize: sp(14), fontWeight: '700' },
-    modalOverlay: { flex: 1 }, keyboardAvoiding: { flex: 1, justifyContent: 'flex-end' }, scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,.42)' }, sheet: { maxHeight: '84%', backgroundColor: theme.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 18, gap: 12 }, sheetScroll: { flexShrink: 1 }, sheetContent: { gap: 12 }, sheetTitle: { color: theme.text, fontSize: sp(18), fontWeight: '700', marginBottom: 4 }, hint: { color: theme.textMuted, fontSize: sp(13), marginVertical: 5 }, option: { minHeight: 45, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, optionText: { color: theme.text, fontSize: sp(15) }, input: { minHeight: 46, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 12, color: theme.text, fontSize: sp(15), backgroundColor: theme.bg }, quickRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9, marginVertical: 5 }, currencyChip: { borderWidth: 1, borderColor: theme.border, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 12 }, currencySelected: { borderColor: '#168759', backgroundColor: theme.bg }, actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 8 },
+    safe: { flex: 1, backgroundColor: theme.bg },
+    header: { flexShrink: 0, minHeight: 52, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+    back: { width: 36, minHeight: 44, alignItems: 'flex-start', justifyContent: 'center', flexShrink: 0 },
+    title: { flex: 1, minWidth: 0, color: theme.text, fontSize: sp(18), lineHeight: sp(23), fontWeight: '700' },
+    savedHeader: { width: 44, minHeight: 44, borderWidth: 1, borderColor: theme.border, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    filters: { flexGrow: 0, flexShrink: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+    filterContent: { paddingHorizontal: 12, paddingVertical: 7, alignItems: 'center', gap: 7 },
+    filterButton: { minHeight: 40, maxWidth: 240, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, borderRadius: 20, paddingHorizontal: 11, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
+    filterActive: { borderColor: '#168759', backgroundColor: theme.surface },
+    filterText: { color: theme.text, fontSize: sp(13), flexShrink: 1, minWidth: 0, flexWrap: 'wrap' },
+    filterTextActive: { color: '#168759', fontWeight: '600' },
+    list: { paddingHorizontal: 12, paddingTop: 7, paddingBottom: 22 }, listEmpty: { flexGrow: 1, justifyContent: 'center', padding: 20 },
+    // Геометрия существующей MarketplaceCard; высота растёт вместе с содержимым и системным шрифтом.
+    card: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 7, gap: 3, minWidth: 0 },
+    cardHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, minWidth: 0 }, routeFlex: { flex: 1, minWidth: 0 }, saveSlot: { alignItems: 'center', gap: 4, flexShrink: 0 },
+    route: { fontSize: sp(15), lineHeight: sp(19), fontWeight: '700', color: theme.text },
+    strong: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), fontWeight: '600', minWidth: 0, flexShrink: 1 },
+    meta: { color: theme.textMuted, fontSize: sp(12), lineHeight: sp(17), minWidth: 0, flexShrink: 1 },
+    price: { color: '#168759', fontSize: sp(16), lineHeight: sp(21), fontWeight: '700', minWidth: 0, flexShrink: 1 },
+    contact: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0 },
+    contactText: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), flex: 1, minWidth: 0, flexShrink: 1 },
+    date: { color: theme.textMuted, fontSize: sp(11), lineHeight: sp(16), minWidth: 0, flexShrink: 1 },
+    details: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border, marginTop: 3, paddingTop: 6, minWidth: 0 },
+    descriptionMeasure: { position: 'absolute', top: 0, left: 0, right: 0, opacity: 0 },
+    descriptionBox: { minWidth: 0 },
+    original: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), minWidth: 0, flexShrink: 1 },
+    textAction: { alignSelf: 'flex-start', minHeight: 44, maxWidth: '100%', paddingVertical: 8, justifyContent: 'center' },
+    link: { color: '#168759', fontSize: sp(13), lineHeight: sp(18), fontWeight: '600', flexShrink: 1, minWidth: 0 },
+    warning: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: theme.surface }, warningText: { color: theme.textMuted, fontSize: sp(12) },
+    center: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', gap: 14 }, message: { color: theme.textMuted, textAlign: 'center', fontSize: sp(14), lineHeight: sp(20) },
+    retryButton: { alignSelf: 'stretch' },
+    modalOverlay: { flex: 1 }, keyboardAvoiding: { flex: 1, justifyContent: 'flex-end' }, scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,.42)' },
+    sheet: { maxHeight: '90%', backgroundColor: theme.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 14, paddingBottom: 14, gap: 8, minWidth: 0 },
+    sheetScroll: { flexShrink: 1 }, sheetContent: { gap: 10, paddingBottom: 4 }, sheetTitle: { color: theme.text, fontSize: sp(18), lineHeight: sp(23), fontWeight: '700' },
+    hint: { color: theme.textMuted, fontSize: sp(13), marginVertical: 5 }, option: { minHeight: 45, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+    optionText: { color: theme.text, fontSize: sp(14), flexShrink: 1, minWidth: 0 },
+    input: { minHeight: 46, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: theme.text, fontSize: sp(14), backgroundColor: theme.bg, minWidth: 0 },
+    quickRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginVertical: 5 },
+    currencyChip: { borderWidth: 1, borderColor: theme.border, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 12 }, currencySelected: { borderColor: '#168759', backgroundColor: theme.bg },
+    actions: { flexDirection: 'row', alignItems: 'stretch', gap: 6, flexShrink: 0 },
+    filterAction: { flexGrow: 1, flexShrink: 1, flexBasis: 0, alignSelf: 'stretch', width: 'auto', minWidth: 0, maxWidth: '100%', height: 'auto', minHeight: 48, paddingHorizontal: 0, paddingVertical: 8 },
   });
 }

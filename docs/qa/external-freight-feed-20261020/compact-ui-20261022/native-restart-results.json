@@ -1,0 +1,16 @@
+[
+  {
+    "device": "xiaomi",
+    "role": "client",
+    "chrome_process_restart": "PASS",
+    "bookmark": "PASS",
+    "source": "synthetic stand8770; no APK; no data clearing"
+  },
+  {
+    "device": "huawei",
+    "role": "driver",
+    "chrome_process_restart": "PASS",
+    "bookmark": "PASS",
+    "source": "synthetic stand8770; no APK; no data clearing"
+  }
+]
