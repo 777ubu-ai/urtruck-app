@@ -7,7 +7,8 @@
 // modes — tints below the sheet read fine on white and on near-black.
 
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from './KeyboardSafeLayout';
 import { useV1Colors } from '../../../theme/designV1';
 import { useTheme } from '../../../utils/ThemeContext';
 
@@ -15,17 +16,11 @@ export default function BottomSheet({ visible, onClose, title, children, scroll 
   const colors = useV1Colors();
   const { isDark } = useTheme();
   const overlayBg = isDark ? 'rgba(0,0,0,0.7)' : 'rgba(15,23,42,0.45)';
-  // Stage 52 / P1-9: на iOS клавиатура перекрывала input «Откуда»/«Куда»
-  // в Direction sheet — Modal сам по себе не поднимается при появлении
-  // клавиатуры. Оборачиваем содержимое в KeyboardAvoidingView с behavior
-  // 'padding', чтобы sheet+overlay сдвигались наверх ровно на высоту
-  // клавиатуры. На Android Modal handle keyboard сам через windowSoftInput.
+  // Общий контракт учитывает и Android edge-to-edge, где одного
+  // adjustResize недостаточно. Footer остаётся вне прокручиваемого тела.
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
+      <KeyboardSafeLayout>
         <TouchableOpacity style={[s.overlay, { backgroundColor: overlayBg }]} activeOpacity={1} onPress={onClose} testID={testID ? `${testID}-overlay` : undefined}>
           <TouchableOpacity
             style={[
@@ -39,19 +34,20 @@ export default function BottomSheet({ visible, onClose, title, children, scroll 
             <View style={[s.handle, { backgroundColor: colors.borderStrong }]} />
             {title ? <Text style={[s.title, { color: colors.text }]}>{title}</Text> : null}
             {scroll
-              ? <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+              ? <KeyboardSafeScrollView style={s.body} showsVerticalScrollIndicator={false}>{children}</KeyboardSafeScrollView>
               : children}
             {/* Закреплённый футер — кнопки действий всегда видны, не уезжают
                 в прокрутку (баг «внизу кнопки не видать» в длинном фильтре). */}
             {footer ? <View style={{ marginTop: 12 }}>{footer}</View> : null}
           </TouchableOpacity>
         </TouchableOpacity>
-      </KeyboardAvoidingView>
+      </KeyboardSafeLayout>
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
+  body: { maxHeight: 480, flexShrink: 1 },
   overlay: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
     borderTopLeftRadius: 28, borderTopRightRadius: 28,

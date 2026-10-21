@@ -28,6 +28,7 @@ function harness() {
     }},'@expo/vector-icons/Feather':'Feather','../utils/AuthContext':{useAuth:()=>({session:{user}})},
     '../utils/useI18n':{useI18n:()=>({lang:'RU'})},'../theme/designV1':{useV1Colors:()=>({text:'#000',textMuted:'#555',surface:'#fff',border:'#ddd',bg:'#fff'})},
     '../utils/expenseAPI':{expenseAPI:api},'../utils/expenseCopy':{getExpenseCopy},'../utils/expenseModel':model,'../components/ui/AppConfirmModal':'AppConfirmModal'};
+  mocks['../components/ui/v1/KeyboardSafeLayout']={__esModule:true,default:'KeyboardSafeLayout',KeyboardSafeScrollView:'KeyboardSafeScrollView'};
   mocks['react-native'].StyleSheet={create:s=>s};mocks['react-native'].Platform={OS:'android'};
   const module={exports:{}};vm.runInNewContext(code,{exports:module.exports,module,require:n=>{assert.ok(n in mocks,n);return mocks[n];},Map,console});
   function render(){slot=0;refSlot=0;effectSlot=0;dirty=false;tree=module.exports.default({route:{key:'test'},navigation:{goBack:()=>{}}});pendingEffects.splice(0).forEach(f=>f());}

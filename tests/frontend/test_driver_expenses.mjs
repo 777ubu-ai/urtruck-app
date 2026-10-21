@@ -69,7 +69,9 @@ test('expense navigation is isolated from chat sends, timers and GPS',()=>{
   assert.doesNotMatch(screen,/setInterval|expo-location|sendMessage|sendRawText/);
   assert.match(screen,/busyRef\.current = true/);
   assert.match(screen,/data\.filterKey === filterKey/);
-  assert.match(screen,/KeyboardAvoidingView/);
+  assert.match(screen,/KeyboardSafeLayout/);
+  assert.match(screen,/KeyboardSafeScrollView/);
+  assert.doesNotMatch(screen,/KeyboardAvoidingView/);
   const nav=readFileSync('src/navigation/AppNavigator.js','utf8');
   assert.equal((nav.match(/name="DriverExpenses"/g)||[]).length,(nav.match(/name="VehicleChooser"/g)||[]).length);
 });

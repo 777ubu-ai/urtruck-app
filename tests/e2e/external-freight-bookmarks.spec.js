@@ -114,3 +114,41 @@ test('route filters directly open visible search and distinguish country from ci
   expect(box.feedQueries.at(-1).destination_country).toBe('UZ');
   expect(box.errors).toEqual([]);
 });
+
+
+test('price filter remains usable when the available viewport shrinks', async ({ page }) => {
+  const box = await boot(page);
+  await page.getByTestId('external-feed-filter-price').click();
+  await page.getByText('USD', { exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 500 });
+  const min = page.getByTestId('external-feed-price-min');
+  const max = page.getByTestId('external-feed-price-max');
+  await min.fill('1500');
+  await max.fill('3000');
+  await expect(max).toHaveValue('3000');
+  const apply = page.getByTestId('external-feed-apply-filters');
+  await expect(apply).toBeInViewport();
+  await apply.click();
+  await expect.poll(() => box.feedQueries.at(-1)?.min_price).toBe('1500');
+  await expect.poll(() => box.feedQueries.at(-1)?.max_price).toBe('3000');
+  expect(box.errors).toEqual([]);
+});
+
+
+test('shared marketplace price sheet scrolls its inputs and actions in a short viewport', async ({ page }) => {
+  await boot(page);
+  await page.getByTestId('external-feed-back').click();
+  await page.getByText('Цена', { exact: true }).filter({ visible: true }).first().click();
+  const sheet = page.getByTestId('filter-price-sheet');
+  await expect(sheet).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 500 });
+  await page.getByTestId('cargo-price-currency-USD').click();
+  await page.getByTestId('cargo-price-min').fill('1500');
+  await page.getByTestId('cargo-price-max').fill('3000');
+  await expect(page.getByTestId('cargo-price-max')).toHaveValue('3000');
+  const apply = sheet.getByText('Применить', { exact: true });
+  await apply.scrollIntoViewIfNeeded();
+  await expect(apply).toBeInViewport();
+  await apply.click();
+  await expect(sheet).not.toBeVisible();
+});
