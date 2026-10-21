@@ -35,6 +35,16 @@ export function externalLocationSelection(key, value, point) {
   return { [key]: city, [`${key}_country`]: country };
 }
 
+/** Прямой ввод для внешней ленты: без сканирования городского справочника. */
+export function externalLocationTextSelection(key, value, countries = []) {
+  if (key !== 'origin' && key !== 'destination') throw new Error('invalid_location_key');
+  const text = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+  const query = text.toLocaleLowerCase();
+  const country = query ? countries.find(item => [item.iso, item.name, ...Object.values(item.names || {})]
+    .some(name => String(name || '').toLocaleLowerCase() === query)) : null;
+  return { [key]: country ? '' : text, [`${key}_country`]: country?.iso || '' };
+}
+
 export function feedKindForRole(role) {
   if (role === 'driver') return 'cargo';
   if (role === 'client' || role === 'shipper') return 'vehicle';
