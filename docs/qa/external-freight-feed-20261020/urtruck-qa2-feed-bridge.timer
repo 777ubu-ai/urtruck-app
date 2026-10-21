@@ -1,0 +1,11 @@
+[Unit]
+Description=UrTruck QA2 feed mirror every minute
+
+[Timer]
+OnBootSec=30
+OnUnitInactiveSec=60
+AccuracySec=5
+Unit=urtruck-qa2-feed-bridge.service
+
+[Install]
+WantedBy=timers.target
