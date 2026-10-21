@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, Text, Pressable, TextInput, FlatList, ScrollView, Modal, ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { View, Text, Pressable, TextInput, FlatList, Modal, ActivityIndicator, StyleSheet } from 'react-native';
+import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../components/ui/v1/KeyboardSafeLayout';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
@@ -177,8 +178,8 @@ export default function DriverExpensesScreen({ route, navigation }) {
       <Text style={[s.title, { color: colors.text }]}>{activeForm ? activeForm.id ? c.edit : c.add : fixedDeal ? c.tripTitle : c.title}</Text>
     </View>
     {!driver ? <Text style={[s.notice, { color: colors.text }]}>{c.driverOnly}</Text> : activeForm ? (
-      <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <KeyboardSafeLayout style={s.flex}>
+        <KeyboardSafeScrollView contentContainerStyle={s.content}>
           {field(c.deal, tripName(activeForm.deal_id, activeForm.deal_label), () => { if (!fixedDeal) choose('deal', true); }, 'expense-deal')}
           {field(c.vehicle, vehicleName(activeForm.vehicle_id, activeForm.vehicle_plate), () => {
             const d = page.deals.find(value => value.id === activeForm.deal_id);
@@ -198,8 +199,8 @@ export default function DriverExpensesScreen({ route, navigation }) {
           <Pressable disabled={busy} accessibilityRole="button" onPress={save} style={s.primary} testID="expense-save">
             {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.primaryText}>{c.save}</Text>}
           </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardSafeScrollView>
+      </KeyboardSafeLayout>
     ) : <FlatList data={page.expenses} keyExtractor={item => item.id} contentContainerStyle={s.content}
       ListHeaderComponent={<View>
         <Text style={[s.muted, { color: colors.textMuted }]}>{c.privacy}</Text>

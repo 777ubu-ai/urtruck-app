@@ -7,12 +7,22 @@ on:
         description: Type DEPLOY_QA2 to deploy only the isolated QA backend
         required: true
         type: string
+      enable_external_freight_feed:
+        description: Enable the reviewed external feed only in QA2
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       confirmation:
         description: Explicit QA-only deploy confirmation
         required: true
         type: string
+      enable_external_freight_feed:
+        description: Enable the reviewed external feed only in QA2
+        required: false
+        type: boolean
+        default: false
     secrets:
       QA2_API_URL:
         required: true
@@ -206,6 +216,45 @@ jobs:
           echo "QA_BACKUP=code-only-ready"
           REMOTE
 
+      - name: Enable external freight feed in isolated QA2 environment
+        if: ${{ inputs.enable_external_freight_feed }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_env="$qa_root/.env"
+          test "$(readlink -f "$(dirname "$qa_env")")" = "$(readlink -f "$qa_root")"
+          test -f /tmp/urtruck-qa2-deploy.state
+          . /tmp/urtruck-qa2-deploy.state
+          test -f "$ENV_BACKUP"
+          python3 - "$qa_env" <<'PY'
+          from pathlib import Path
+          import os, sys
+          path = Path(sys.argv[1]).resolve()
+          if path != Path('/home/ubuntu/urtruck-qa2/.env'):
+              raise SystemExit('QA2_EXTERNAL_FEED_ENV_PATH_INVALID')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          result, seen = [], False
+          for line in lines:
+              if '=' in line and not line.lstrip().startswith('#') and line.split('=', 1)[0].strip() == 'EXTERNAL_FREIGHT_FEED_ENABLED':
+                  if not seen:
+                      result.append('EXTERNAL_FREIGHT_FEED_ENABLED=true')
+                      seen = True
+                  continue
+              result.append(line)
+          if not seen:
+              result.append('EXTERNAL_FREIGHT_FEED_ENABLED=true')
+          tmp = path.with_name('.env.external-feed.tmp')
+          tmp.write_text('\n'.join(result) + '\n', encoding='utf-8')
+          os.chmod(tmp, 0o600)
+          os.replace(tmp, path)
+          print('QA2_EXTERNAL_FEED_FLAG=enabled')
+          PY
+          REMOTE
+
       - name: Mirror exact backend source into isolated QA2 backend
         shell: bash
         run: |
@@ -342,6 +391,13 @@ jobs:
           test "\$(readlink -f "/proc/\$new_pid/cwd")" = "\$(readlink -f "\$qa_backend")"
           curl -fsS http://127.0.0.1:8002/api/version >/dev/null
           curl -fsS http://127.0.0.1:8002/health >/dev/null
+          if test '${{ inputs.enable_external_freight_feed }}' = true; then
+            openapi="$(curl -fsS http://127.0.0.1:8002/openapi.json)"
+            printf '%s' "$openapi" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "/api/v1/external-freight" in d.get("paths", {}), "QA2_EXTERNAL_FEED_ROUTE_MISSING"'
+            code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8002/api/v1/external-freight/import -H 'Content-Type: application/json' -d '{"records":[]}')"
+            test "$code" = 401 || { echo '::error::QA2_EXTERNAL_FEED_FLAG_NOT_ENABLED'; exit 1; }
+            echo 'QA2_EXTERNAL_FEED_RUNTIME=enabled-import-auth-required'
+          fi
           ai_info="\$(curl -fsS http://127.0.0.1:8002/api/v1/chat/translate/info)"
           printf '%s' "\$ai_info" | python3 -c '
           import json, sys

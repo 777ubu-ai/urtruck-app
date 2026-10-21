@@ -83,6 +83,22 @@ def get_trip(trip_id):
         return dict(c.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone())
 
 
+def public_ids(entity):
+    # Общая suite содержит больше одной страницы и записи с одинаковой секундой.
+    # Публикация не обязана оказаться на первой странице: идём по контракту API.
+    result, offset = set(), 0
+    while True:
+        response = client.get(f"/api/v1/market/{entity}", params={"status": "active", "offset": offset, "limit": 50})
+        expect(response.status_code == 200, "public page available")
+        body = response.json()
+        result.update(row["id"] for row in body[entity])
+        next_offset = body.get("next_offset")
+        if next_offset is None:
+            return result
+        expect(next_offset > offset, "public cursor makes progress")
+        offset = next_offset
+
+
 def test_migration_idempotent_and_backfilled():
     print("\n=== test_migration_idempotent_and_backfilled ===")
     from database.db import get_conn
@@ -154,8 +170,7 @@ def test_unpublish_republish_cycle():
     expect(bid_status_after == "cancelled", f"old bid stays cancelled after republish (got {bid_status_after})")
 
     # Объект снова виден в публичной ленте.
-    r = client.get("/api/v1/market/cargos", params={"status": "active"})
-    ids = [c["id"] for c in r.json()["cargos"]]
+    ids = public_ids("cargos")
     expect(cargo_id in ids, "republished cargo visible again in public feed")
 
 
@@ -182,8 +197,7 @@ def test_trip_republish_sets_published_at():
     trip = get_trip(trip_id)
     expect(trip["published_at"] > "2020-01-01 00:00:00", "trip published_at grew after republish")
 
-    r = client.get("/api/v1/market/trips", params={"status": "active"})
-    ids = [t["id"] for t in r.json()["trips"]]
+    ids = public_ids("trips")
     expect(trip_id in ids, "republished trip visible again in public feed")
 
 

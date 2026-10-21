@@ -4,9 +4,9 @@
  * Keep this separate from production Android metadata: QA2 artifacts are
  * installed directly on physical test devices and never submitted to Play.
  */
-// Кандидат расходов обновляет OPPO поверх QA2 Internal1.0.9(214494457).
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494457;
-const QA2_ANDROID_VERSION_CODE = 214494458;
+// Внешняя лента с закладками: отдельная идентичность QA2, без изменения production.
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494458;
+const QA2_ANDROID_VERSION_CODE = 214494459;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {

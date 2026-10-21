@@ -1,0 +1,17 @@
+[Unit]
+Description=UrTruck QA2 mirror of confirmed Telegram publications
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/urtruck-qa2/backend
+EnvironmentFile=/home/ubuntu/urtruck-qa2/external-feed-bridge.env
+ExecStart=/home/ubuntu/urtruck-qa2/backend/venv/bin/python -m services.external_freight_queue_bridge
+TimeoutStartSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/home/ubuntu/urtruck-telegram-feed
+ReadWritePaths=/home/ubuntu/urtruck-qa2/external-feed
