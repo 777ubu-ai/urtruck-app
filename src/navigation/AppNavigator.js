@@ -1,3 +1,4 @@
+import { sessionRole } from '../utils/publicationSession';
 import { onboardingNavKey } from '../utils/onboardingNavKey';
 import React from 'react';
 import { View, Text, Animated, AppState } from 'react-native';
