@@ -158,3 +158,53 @@ for (const role of ['driver', 'client']) {
     expect(box.errors).toEqual([]);
   });
 }
+
+for (const name of ['origin', 'destination', 'body', 'date', 'price']) {
+  test('all filters: apply, cancel and reopen ' + name, async ({ page }) => {
+    const box = await boot(page, 'client');
+    const button = page.getByTestId('external-feed-filter-' + name);
+    await button.scrollIntoViewIfNeeded();
+    await button.click();
+    const overlay = page.getByTestId('external-feed-filter-overlay');
+    await expect(overlay).toBeVisible();
+    await expect(page.getByTestId('external-feed-apply-filters')).toBeInViewport();
+    if (name === 'origin' || name === 'destination') {
+      const search = page.getByTestId('external-feed-location-search');
+      await expect(search).toBeInViewport();
+      await search.fill(name === 'origin' ? 'China' : 'Алматы');
+    } else if (name === 'body') await overlay.getByText('Тент', { exact: true }).click();
+    else if (name === 'date') await overlay.getByText('Сегодня', { exact: true }).click();
+    else {
+      await page.getByTestId('external-feed-currency-KZT').click();
+      await page.getByTestId('external-feed-price-min').fill('1500,5');
+    }
+    await page.getByTestId('external-feed-apply-filters').click();
+    await expect(overlay).not.toBeVisible();
+    if (name === 'origin') await expect.poll(() => box.feedQueries.at(-1)?.origin_country).toBe('CN');
+    if (name === 'destination') await expect.poll(() => box.feedQueries.at(-1)?.destination).toBe('Алматы');
+    if (name === 'body') await expect.poll(() => box.feedQueries.at(-1)?.body_type).toBe('tent');
+    if (name === 'date') {
+      await expect.poll(() => box.feedQueries.at(-1)?.published_from).toBeTruthy();
+      // Выбранная дата видна на чипе, а не только в отправленном query.
+      const month = await page.evaluate(() => new Intl.DateTimeFormat('ru-RU', { month: 'short' }).format(new Date()));
+      await expect(button).toContainText(month);
+    }
+    if (name === 'price') await expect.poll(() => box.feedQueries.at(-1)?.min_price).toBe('1500.5');
+    const appliedQuery = JSON.stringify(box.feedQueries.at(-1));
+    await button.click();
+    await expect(overlay).toBeVisible();
+    if (name === 'origin' || name === 'destination') await page.getByTestId('external-feed-location-search').fill('Не применять');
+    else if (name === 'body') await overlay.getByText('Тент', { exact: true }).click();
+    else if (name === 'date') await overlay.getByText('Вчера', { exact: true }).click();
+    else await page.getByTestId('external-feed-price-min').fill('9999');
+    await overlay.getByText('Отмена', { exact: true }).click();
+    await expect(overlay).not.toBeVisible();
+    expect(JSON.stringify(box.feedQueries.at(-1))).toBe(appliedQuery);
+    await button.click();
+    await expect(overlay).toBeVisible();
+    if (name === 'origin') await expect(page.getByTestId('external-feed-location-search')).toHaveValue('Китай');
+    if (name === 'destination') await expect(page.getByTestId('external-feed-location-search')).toHaveValue('Алматы');
+    if (name === 'price') await expect(page.getByTestId('external-feed-price-min')).toHaveValue('1500.5');
+    expect(box.errors).toEqual([]);
+  });
+}

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { activateExternalFeedFilter } from '../../src/utils/externalFeedFilterPress.js';
 const source = readFileSync(new URL('../../src/screens/ExternalFreightFeedScreen.js', import.meta.url), 'utf8');
 
 test('price fields stay in the feed-owned modal with fixed header actions', () => {
@@ -12,16 +11,3 @@ test('price fields stay in the feed-owned modal with fixed header actions', () =
   assert.ok(source.indexOf('testID="external-feed-apply-filters"') < scrollStart);
   assert.ok(source.indexOf('testID="external-feed-price-min"') > scrollStart);
 });
-
-for (const name of ['origin', 'destination', 'body', 'date', 'price']) {
-  test('filter activation: ' + name, () => {
-    const events = [];
-    const filters = { currency: 'KZT' };
-    activateExternalFeedFilter({ name, filters,
-      setDraft: value => events.push(['draft', value]),
-      setPicker: value => events.push(['picker', value]),
-      setModal: value => events.push(['modal', value]),
-    });
-    assert.deepEqual(events, [['draft', filters], [name === 'origin' || name === 'destination' ? 'picker' : 'modal', name]]);
-  });
-}

@@ -137,6 +137,8 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     const next = isLocationModal
       ? { ...draft, ...externalLocationTextSelection(modal, draft[modal] || getCountryName(draft[`${modal}_country`], lang) || '', ALL_COUNTRIES) }
       : { ...draft };
+    // Числовая клавиатура может вводить запятую; валидатор и API получают одинаковое значение.
+    for (const key of ['min_price', 'max_price']) next[key] = String(next[key] || '').trim().replace(',', '.');
     if (!isValidPublicationRange(next)) {
       Alert.alert(l.date, l.invalidDate);
       return;
@@ -258,7 +260,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
 }
 
 function formatNumber(value) { return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(Number(value)); }
-function formatDate(value, lang) { if (!value) return ''; const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(({ RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-GB' })[lang] || 'en-GB', { dateStyle: 'medium' }).format(date); }
+function formatDate(value, lang) { if (!value) return ''; const dmy = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value); const date = dmy ? new Date(+dmy[3], +dmy[2] - 1, +dmy[1]) : new Date(value); return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(({ RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-GB' })[lang] || 'en-GB', { dateStyle: 'medium' }).format(date); }
 
 function makeStyles(theme, sp) {
   return StyleSheet.create({
