@@ -50,8 +50,26 @@ class ExternalFreightFeedAdapter:
         return str(record["source_id"])[:120], str(record["source_message_id"])[:160], str(record.get("segment_id") or "0")[:80]
 
     def enqueue(self, selected_record):
-        """Durable insert/upsert of the agent's already-selected result."""
-        record = dict(selected_record)
+        """Durable insert/upsert of an agent-selected result.
+
+        Legacy queue rows are mapped conservatively here. Fully structured
+        importer records remain backward compatible and explicit values win.
+        """
+        from services.external_freight_parser import map_selected_message
+
+        source = dict(selected_record)
+        record = map_selected_message(source)
+        contract_keys = {
+            "kind", "source_id", "source_message_id", "segment_id", "source_published_at",
+            "original_text", "source_revision", "status", "classification_status", "origin", "destination",
+            "origin_country", "destination_country", "cargo_name", "body_types", "weight", "volume",
+            "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state",
+            "contacts", "origin_source", "created_by",
+        }
+        explicit = {key: value for key, value in source.items() if key in contract_keys and value not in (None, "")}
+        if explicit.get("status") not in {"active", "review", "closed", "hidden"}:
+            explicit.pop("status", None)
+        record.update(explicit)
         identity = self._identity(record)
         encoded = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
         if len(encoded.encode("utf-8")) > 30000:

@@ -267,6 +267,45 @@ def test_agent_adapter_durable_retry_and_edit_are_independent_of_telegram(tmp_pa
     assert restarted.pending_count() == 1
 
 
+def test_agent_adapter_maps_private_queue_shape_without_forwarding_queue_fields(tmp_path, monkeypatch):
+    import json
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    sent = []
+
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self): return json.dumps({"results": [{"id": "item-1", "result": "created"}]}).encode()
+
+    def opener(request, timeout):
+        sent.append(json.loads(request.data.decode()))
+        return Response()
+
+    adapter = ExternalFreightFeedAdapter(
+        db_path=str(tmp_path / "queue-adapter.db"), api_url="https://isolated.invalid",
+        importer_key="local-test-only", opener=opener,
+    )
+    queue_row = {
+        "id": 901, "source": "reviewed-channel", "source_id": 44,
+        "source_message": 771, "source_date": 1792540800,
+        "text": "Нужен тент, груз готов\nХоргос → Алматы\n25 т\nЦена договорная",
+        "phones": '["+7 700 123 45 67"]', "fingerprint": "private-fingerprint",
+        "status": "published", "destination_message": 1901,
+    }
+    assert adapter.enqueue(queue_row) is True
+    assert adapter.flush_once()["status"] == "delivered"
+    mapped = sent[0]["records"][0]
+    assert mapped["source_message_id"] == "771"
+    assert mapped["origin"] == "Хоргос" and mapped["destination"] == "Алматы"
+    assert mapped["price_state"] == "negotiable"
+    assert mapped["contacts"] == ["+7 700 123 45 67"]
+    assert mapped["source_published_at"] == "2026-10-21T00:00:00+00:00"
+    assert not {"text", "phones", "fingerprint", "destination_message"}.intersection(mapped)
+
+
 def test_adapter_recovers_after_server_commit_and_lost_response_without_duplicate(tmp_path, monkeypatch):
     import json
     from services.external_freight_import_adapter import ExternalFreightFeedAdapter
