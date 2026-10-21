@@ -47,6 +47,14 @@ on:
         required: false
         default: ""
         type: string
+      api_environment:
+        description: "Среда API: QA2 разрешён только в Internal testing"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - qa2
       track:
         description: "Google Play track"
         required: true
@@ -107,6 +115,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Проверить среду и ограничить QA2 внутренним треком
+        env:
+          API_ENVIRONMENT: ${{ inputs.api_environment || 'production' }}
+          PLAY_TRACK: ${{ inputs.track || 'internal' }}
+          EXPO_PUBLIC_API_URL: https://urtruck.kz
+        run: node scripts/qa2-internal-store-config.mjs
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -203,7 +218,8 @@ jobs:
       - name: Build release AAB
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play }}
         env:
-          EXPO_PUBLIC_API_URL: https://urtruck.kz
+          EXPO_PUBLIC_API_URL: ${{ env.EXPO_PUBLIC_API_URL }}
+          URTRUCK_QA2_INTERNAL_STORE: ${{ env.URTRUCK_QA2_INTERNAL_STORE }}
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
           EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
@@ -221,7 +237,8 @@ jobs:
       - name: Build signed production APK for device QA
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_installable_apk }}
         env:
-          EXPO_PUBLIC_API_URL: https://urtruck.kz
+          EXPO_PUBLIC_API_URL: ${{ env.EXPO_PUBLIC_API_URL }}
+          URTRUCK_QA2_INTERNAL_STORE: ${{ env.URTRUCK_QA2_INTERNAL_STORE }}
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
           EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
@@ -252,12 +269,19 @@ jobs:
             exit 1
           fi
           manifest_xml=$(java -jar "$bundletool_jar" dump manifest --bundle "$aab" --module base)
+          printf '%s\n' "$manifest_xml" | python3 scripts/verify_android_snapshot_manifest.py
           if printf '%s\n' "$manifest_xml" | grep -E 'android\.permission\.(ACCESS_BACKGROUND_LOCATION|FOREGROUND_SERVICE_LOCATION)' ; then
             echo "::error::Snapshot AAB unexpectedly declares background/location-service permission"
             exit 1
           fi
           printf '%s\n' "$manifest_xml" | grep -q 'package="com.urtruck.app"'
           printf '%s\n' "$manifest_xml" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
+          unzip -p "$aab" base/assets/app.config > "$RUNNER_TEMP/aab-app-config.json"
+          if [ "$API_ENVIRONMENT" = qa2 ]; then
+            node scripts/qa2-internal-store-config.mjs "$RUNNER_TEMP/aab-app-config.json"
+          else
+            node scripts/verify-production-apk-config.mjs "$RUNNER_TEMP/aab-app-config.json"
+          fi
           echo "Verified com.urtruck.app versionCode=${URTRUCK_VERSION_CODE} inside AAB"
 
       - name: Record AAB checksum and upload certificate
@@ -275,6 +299,12 @@ jobs:
             -alias "$ANDROID_KEY_ALIAS" \
             | sed -n 's/^[[:space:]]*SHA256: //p' | head -1)
           test -n "$cert_sha"
+          expected_cert="bb2474c2ed08076f7141fe1e4d3f6c604fc3e860fe5811e3c2fcd129e7cb88b4"
+          actual_cert=$(printf '%s' "$cert_sha" | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          if [ "$actual_cert" != "$expected_cert" ]; then
+            echo "::error::Upload certificate differs from the registered Google Play certificate"
+            exit 1
+          fi
           echo "AAB_SHA256=${aab_sha}" >> "$GITHUB_ENV"
           echo "UPLOAD_CERT_SHA256=${cert_sha}" >> "$GITHUB_ENV"
           echo "Source SHA=${GITHUB_SHA}"
@@ -292,13 +322,17 @@ jobs:
           test -f "$apk"
           badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk")"
           printf '%s\n' "$badging" | grep -F "package: name='com.urtruck.app' versionCode='${URTRUCK_VERSION_CODE}' versionName='1.0.9'"
-          unzip -p "$apk" assets/index.android.bundle | grep -aq 'https://urtruck.kz'
+          unzip -p "$apk" assets/index.android.bundle | grep -aq "$EXPO_PUBLIC_API_URL"
           # The JS bundle legitimately contains the QA2 host allowlist for public share links.
           # Verify the actual Expo config embedded in this APK instead of treating any
           # occurrence of that domain in unrelated code as the configured API endpoint.
           embedded_config="$RUNNER_TEMP/urtruck-embedded-app-config.json"
           unzip -p "$apk" assets/app.config > "$embedded_config"
-          node scripts/verify-production-apk-config.mjs "$embedded_config"
+          if [ "$API_ENVIRONMENT" = qa2 ]; then
+            node scripts/qa2-internal-store-config.mjs "$embedded_config"
+          else
+            node scripts/verify-production-apk-config.mjs "$embedded_config"
+          fi
           apk_cert="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr '[:lower:]' '[:upper:]')"
           key_cert="$(keytool -list -v -keystore "$RUNNER_TEMP/urtruck-upload-key.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           test -n "$apk_cert" && test "$apk_cert" = "$key_cert"
@@ -337,7 +371,7 @@ jobs:
             --arg hmac_sha256 "$auth_tag" \
             --arg package "com.urtruck.app" \
             --arg version_name "1.0.9" \
-            --arg api_host "urtruck.kz" \
+            --arg api_host "${EXPO_PUBLIC_API_URL#https://}" \
             --argjson version_code "$URTRUCK_VERSION_CODE" \
             '{source_sha:$source_sha, apk_sha256:$apk_sha, ciphertext_sha256:$ciphertext_sha, iv_hex:$iv, hmac_sha256:$hmac_sha256, package:$package, version_name:$version_name, version_code:$version_code, api_host:$api_host}' \
             > "$envelope/manifest.json"

@@ -210,6 +210,8 @@ app.include_router(chat_router, prefix="/api/v1/chat")
 app.include_router(deal_room_router, prefix="/api/v1")
 app.include_router(notif_router, prefix="/api/v1/notifications")
 app.include_router(profile_router, prefix="/api/v1/users")
+from api.driver_expenses import router as expenses_router, init_expenses_schema
+app.include_router(expenses_router, prefix="/api/v1/driver/expenses")
 from api.external_freight import router as external_freight_router
 app.include_router(external_freight_router, prefix="/api/v1/external-freight")
 app.include_router(auth_otp_router, prefix="/api/auth")
@@ -278,6 +280,7 @@ def startup():
     registration_dal.init_registration_schema()
     from database import vehicles_dal
     vehicles_dal.init_vehicles_schema()
+    init_expenses_schema()
     from database.external_freight_dal import init_schema as init_external_freight_schema
     if os.getenv("EXTERNAL_FREIGHT_FEED_ENABLED", "false").strip().lower() in {"1", "true", "yes"}:
         init_external_freight_schema()

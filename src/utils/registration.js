@@ -1,6 +1,8 @@
+import { authedFetch } from './authEvents';
 // Client for /api/v1/register/*
 import { Platform } from 'react-native';
 import { storage } from './storage';
+import { commitVerifiedLogin } from './authMutation';
 import { compressImage } from './imageCompress';
 import { getLanguage, t as tGlobal } from './i18n';
 import { API_BASE } from '../config/env';
@@ -101,6 +103,17 @@ export const regAPI = {
     return data;
   },
 
+  // Проверка публикации использует один bearer и не меняет локальную сессию.
+  async publicationAccount(token) {
+    const r = await authedFetch(`${BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) {
+      const e = new Error('PUBLICATION_ACCOUNT_UNAVAILABLE');
+      e.code = r.status === 401 ? 'PUBLICATION_SESSION_CHANGED' : 'PUBLICATION_ACCOUNT_UNAVAILABLE';
+      throw e;
+    }
+    return r.json();
+  },
+
   async me() {
     const token = await this.getToken();
     if (!token) return null;
@@ -112,6 +125,7 @@ export const regAPI = {
       // Юзер сам выйдет через signOut если нужно.
       return null;
     }
+    if (!r.ok) throw new Error('ACCOUNT_FETCH_FAILED');
     const data = await r.json();
     if (typeof data.verification_level === 'number') {
       await storage.set(LEVEL_KEY, String(data.verification_level));
@@ -173,7 +187,7 @@ export const regAPI = {
     return data;
   },
 
-  async verifyCode(phone, code) {
+  async verifyCode(phone, code, { isCurrent = () => true } = {}) {
     // Апгрейд гостевого токена в phone-верифицированный
     const guestToken = await storage.get(TOKEN_KEY);
     const r = await fetch(`${BASE}/whatsapp/verify`, {
@@ -200,8 +214,14 @@ export const regAPI = {
       };
     }
     if (data.token) {
-      await storage.set(TOKEN_KEY, data.token);
-      await storage.set(LEVEL_KEY, String(data.verification_level || 1));
+      const committed = await commitVerifiedLogin({ expectedToken: guestToken,
+        readToken: () => storage.get(TOKEN_KEY), isCurrent,
+        write: async () => {
+          await storage.set(TOKEN_KEY, data.token);
+          await storage.set(LEVEL_KEY, String(data.verification_level || 1));
+        },
+      });
+      if (!committed) return { token: null, sessionChanged: true };
     }
     return data;
   },
@@ -243,7 +263,7 @@ export const regAPI = {
     };
   },
 
-  async verifyEmailCode(email, code) {
+  async verifyEmailCode(email, code, { isCurrent = () => true } = {}) {
     const guestToken = await storage.get(TOKEN_KEY);
     const r = await fetch(`${BASE}/email/verify`, {
       method: 'POST',
@@ -263,8 +283,14 @@ export const regAPI = {
                detail: normalizeDetail(data.detail, 'rate_limited') };
     }
     if (data.token) {
-      await storage.set(TOKEN_KEY, data.token);
-      await storage.set(LEVEL_KEY, String(data.verification_level || 1));
+      const committed = await commitVerifiedLogin({ expectedToken: guestToken,
+        readToken: () => storage.get(TOKEN_KEY), isCurrent,
+        write: async () => {
+          await storage.set(TOKEN_KEY, data.token);
+          await storage.set(LEVEL_KEY, String(data.verification_level || 1));
+        },
+      });
+      if (!committed) return { token: null, sessionChanged: true };
     }
     return data;
   },
@@ -383,9 +409,10 @@ export const regAPI = {
   // passport_intl_url, tir_book_url, cmr_insurance_url). Если backend
   // ещё не задеплоен с этими полями — он молча игнорирует extras
   // (Pydantic по умолчанию ignores), ничего не ломается.
-  async updateProfile(payload = {}) {
+  async updateProfile(payload = {}, { expectedToken = null } = {}) {
     const token = await this.getToken();
     if (!token) return authRequiredResult();
+    if (expectedToken && token !== expectedToken) return { ok: false, sessionChanged: true };
 
     const allowed = [
       'name', 'city', 'about', 'phone', 'role', 'contact_email',
@@ -721,9 +748,10 @@ export const regAPI = {
   // ТЗ §0.1 — авто-сохранение шага мастера. payload — любое подмножество
   // полей (бэкенд берёт только whitelisted). Fail-tolerant: возвращает
   // { ok:false } при сетевой ошибке, чтобы UI не вис.
-  async saveDriverDraft(payload = {}) {
+  async saveDriverDraft(payload = {}, { expectedToken = null } = {}) {
     const token = await this.getToken();
     if (!token) return authRequiredResult();
+    if (expectedToken && token !== expectedToken) return { ok: false, sessionChanged: true };
     try {
       const r = await fetch(`${DRIVER_REG_BASE}/draft`, {
         method: 'PATCH',

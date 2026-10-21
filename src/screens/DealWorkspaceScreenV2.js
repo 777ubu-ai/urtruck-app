@@ -1,3 +1,4 @@
+import { getExpenseCopy } from '../utils/expenseCopy';
 import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import { FOREGROUND_LOCATION_ONLY } from '../utils/backgroundLocation';
@@ -15,6 +16,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -1800,6 +1802,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     { key: 'location', icon: 'map-marker-alt', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' },
     { key: 'document', icon: 'file-alt', label: ui.attachDocument, onPress: pickAndSendDocument, testID: 'deal-chat-attach-document' },
     { key: 'contact', icon: 'user-alt', label: ui.attachContact, onPress: sendContactCard, testID: 'deal-chat-attach-contact' },
+    ...(session?.user?.role === 'driver' && dealId ? [{ key: 'expenses', icon: 'receipt', label: getExpenseCopy(lang).tripTitle, onPress: () => { setAttachOpen(false); navigation.navigate('DriverExpenses', { dealId }); }, testID: 'deal-chat-attach-expenses' }] : []),
   ];
 
   const hasComposerText = input.length > 0;
@@ -2157,19 +2160,23 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 ) : null}
 
                 {attachOpen ? (
-                  <View style={[s.attachMenu, { backgroundColor: colors.bg, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom + 18, 26) }]} testID="deal-chat-attach-menu">
+                  <ScrollView style={[s.attachMenu, { backgroundColor: colors.bg, borderTopColor: colors.border, maxHeight: window.height * 0.6 }]}
+                    contentContainerStyle={[s.attachMenuContent, { paddingBottom: Math.max(insets.bottom + 18, 26) }]}
+                    keyboardShouldPersistTaps="handled" testID="deal-chat-attach-menu">
                     <TouchableOpacity style={s.attachHandleHit} onPress={collapseComposer} testID="deal-chat-attach-collapse" activeOpacity={0.8}>
                       <View style={[s.attachHandle, { backgroundColor: colors.border }]} />
                     </TouchableOpacity>
                     {PLUS_MENU.map((item) => (
-                      <TouchableOpacity key={item.key} style={s.attachItem} onPress={item.onPress} testID={item.testID} disabled={item.busy}>
+                      <TouchableOpacity key={item.key} style={[s.attachItem, window.fontScale > 1.2 && s.attachItemLarge]}
+                        accessibilityRole="button" accessibilityLabel={item.label}
+                        onPress={item.onPress} testID={item.testID} disabled={item.busy}>
                         <View style={[s.attachIcon, { backgroundColor: colors.surface }]}>
                           {item.busy ? <ActivityIndicator size="small" color="#168759" /> : <FontAwesome5 name={item.icon} size={30} color={colors.textMuted} solid />}
                         </View>
-                        <Text style={[s.attachLabel, { color: colors.textMuted }]} numberOfLines={1}>{item.label}</Text>
+                        <Text style={[s.attachLabel, { color: colors.textMuted }]}>{item.label}</Text>
                       </TouchableOpacity>
                     ))}
-                  </View>
+                  </ScrollView>
                 ) : null}
               </>
             )}
@@ -2453,12 +2460,14 @@ const s = StyleSheet.create({
   recordCancelBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   recordSendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#168759', alignItems: 'center', justifyContent: 'center' },
 
-  attachMenu: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30, borderTopWidth: StyleSheet.hairlineWidth },
+  attachMenu: { position: 'relative', flexGrow: 0, flexShrink: 1, borderTopWidth: StyleSheet.hairlineWidth },
+  attachMenuContent: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 252, paddingHorizontal: 24, paddingTop: 30 },
   attachHandleHit: { position: 'absolute', top: 0, left: 0, right: 0, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   attachHandle: { width: 48, height: 5, borderRadius: 3 },
   attachItem: { width: '25%', alignItems: 'center', gap: 11, marginBottom: 24 },
+  attachItemLarge: { width: '50%' },
   attachIcon: { width: 64, height: 64, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  attachLabel: { fontSize: 13.5, fontWeight: '400', textAlign: 'center' },
+  attachLabel: { fontSize: 13.5, fontWeight: '400', textAlign: 'center', maxWidth: '100%', paddingHorizontal: 4 },
 
   emojiMenu: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 12 },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },

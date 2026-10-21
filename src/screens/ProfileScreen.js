@@ -1,3 +1,4 @@
+import { sessionRole } from '../utils/publicationSession';
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,6 +24,7 @@ import CountryFlag from '../components/ui/v1/CountryFlag';
 import { localizePlace } from '../utils/places';
 import { appVersionLabel } from '../utils/appVersionLabel';
 import { getVehicleCopy } from '../utils/vehicleSetupCopy';
+import { getExpenseCopy } from '../utils/expenseCopy';
 
 const LANGS = [
   { code: 'RU', country: 'RU' },
@@ -57,7 +59,8 @@ const APP_VERSION_LABEL = (() => {
 })();
 
 export default function ProfileScreen({ navigation, route }) {
-  const { role } = route.params || {};
+  const { session, signOut, verificationLevel } = useAuth();
+  const role = sessionRole(session, route.params?.role);
   const isDriver = role === 'driver';
   const baseV1 = useV1Colors();
   const shipper = useShipperCeramicColors();
@@ -71,9 +74,10 @@ export default function ProfileScreen({ navigation, route }) {
     textSecondary: v1.textMuted,
   };
   const { t, lang: uiLang } = useI18n();
+  const expenseCopy = getExpenseCopy(uiLang);
   const tonUnit = uiLang === 'ZH' ? '吨' : uiLang === 'EN' ? 't' : 'т';
   const cubicMeterUnit = uiLang === 'ZH' ? '立方米' : 'м³';
-  const { session, signOut, verificationLevel } = useAuth();
+
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
   const [lang, setLang] = useState(getLanguage());
   const [confirmDialog, setConfirmDialog] = useState(null);
@@ -245,6 +249,27 @@ export default function ProfileScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
+        {isDriver && session?.user?.role === 'driver' ? (
+          <TouchableOpacity
+            style={[s.expenseCard, { backgroundColor: baseV1.driverSoft, borderColor: baseV1.driver }]}
+            onPress={() => navigation.navigate('DriverExpenses', { role, targetId: session?.user?.id })}
+            activeOpacity={0.7}
+            testID="profile-my-expenses"
+            accessibilityRole="button"
+            accessibilityLabel={expenseCopy.title}
+            accessibilityHint={expenseCopy.privacy}
+          >
+            <View style={[s.expenseIconWrap, { backgroundColor: theme.card }]}>
+              <Feather name="book-open" size={24} color={baseV1.driver} />
+            </View>
+            <View style={s.expenseCardText}>
+              <Text style={[s.expenseTitle, { color: theme.text }]}>{expenseCopy.title}</Text>
+              <Text style={[s.expenseSubtitle, { color: theme.text }]}>{expenseCopy.privacy}</Text>
+            </View>
+            <Feather name="chevron-right" size={22} color={baseV1.driver} />
+          </TouchableOpacity>
+        ) : null}
+
         {ADVANCED_VERIFICATION_VISIBLE && isDriver ? (
           <View style={[s.proCard, { backgroundColor: theme.card, borderColor: proActive ? accent : theme.border }]}>
             <View style={s.proHeader}>
@@ -407,6 +432,11 @@ const s = StyleSheet.create({
   ratingInline: { fontSize: 12, fontWeight: '700', flexShrink: 0 },
   subtitle: { fontSize: 12 },
   editBtnInline: { position: 'absolute', top: 10, right: 10, padding: 4 },
+  expenseCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1.5, padding: 16, minHeight: 100, marginBottom: 14 },
+  expenseIconWrap: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  expenseCardText: { flex: 1, minWidth: 0 },
+  expenseTitle: { fontSize: 18, fontWeight: '800' },
+  expenseSubtitle: { fontSize: 12, lineHeight: 18, marginTop: 4 },
   menuGroup: { borderRadius: 10, borderWidth: 1, marginBottom: 14, overflow: 'hidden' },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
   menuSeparator: { height: StyleSheet.hairlineWidth, marginLeft: 50 },

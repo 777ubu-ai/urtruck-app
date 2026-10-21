@@ -8,10 +8,12 @@ import {
   Text,
   Pressable,
   StyleSheet,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
+import AuthAccountHint from '../../components/AuthAccountHint';
 import { brandLight, radius, typography } from '../../theme/brandV2';
 
 function StepIndicator({ s }) {
@@ -96,12 +98,13 @@ export default function RoleScreenV2({ navigation, route }) {
         </Pressable>
       </View>
 
-      <View style={s.content}>
+      <ScrollView contentContainerStyle={s.content}>
         <StepIndicator s={s} />
         <Text style={s.stepCaption}>1 / 2</Text>
 
         <Text style={s.title}>{t('role_v2_title')}</Text>
         <Text style={s.subtitle}>{t('role_v2_subtitle')}</Text>
+        <AuthAccountHint identifier={signupIdentity} navigation={navigation} />
 
         <View style={s.cardsCol}>
           <RoleCard
@@ -125,7 +128,7 @@ export default function RoleScreenV2({ navigation, route }) {
             testID="role-v2-driver"
           />
         </View>
-      </View>
+      </ScrollView>
 
       <View style={s.ctaWrap}>
         <Pressable
@@ -169,7 +172,7 @@ const makeStyles = (colors) => StyleSheet.create({
     opacity: 0.6,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 24,
     paddingTop: 4,
   },

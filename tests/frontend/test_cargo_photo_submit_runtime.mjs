@@ -1,15 +1,19 @@
+import { confirmPublicationSession } from '../../src/utils/publicationSession.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { parseWeightTonsInput } from '../../src/utils/normalizers.js';
+const publicationEnv = () => ({confirmPublicationSession, draft:{save:async()=>{},prepare:async()=>({clientId:"test-photo-operation"}),snapshot:async(id,p)=>({...p,client_id:id}),clear:async()=>{}},
+ ownerRef:{current:'test-user'},sessionRef:{current:{user:{id:'test-user',role:'client'}}},mountedRef:{current:true},refreshLevel:async()=>{},
+ regAPI:{getToken:async()=>'test-bearer',publicationAccount:async()=>({id:'test-user',role:'client'})}});
 const src=fs.readFileSync('src/screens/CreateCargoScreen.js','utf8');
 const start=src.indexOf('  const submit = async () => {');
 const end=src.indexOf('\n  };',start)+5;
 const actual=src.slice(start,end)+'\nsubmit';
 function setup(photos,upload) {
  const calls=[],uploadedPhotos={current:new Map()}, submissionInFlight={current:false};
- const ctx={from:'Алматы',to:'Астана',cargoDesc:'Груз',tons:'1',m3:'0',price:'1000',pickupDate:'2099-01-01',parseWeightTonsInput,
+ const ctx={...publicationEnv(),from:'Алматы',to:'Астана',cargoDesc:'Груз',tons:'1',m3:'0',price:'1000',pickupDate:'2099-01-01',parseWeightTonsInput,
  fromPoint:null,toPoint:null,truckType:'tent',currency:'USD',paymentType:null,photos,submitting:false,uploadedPhotos,submissionInFlight,
  setErrors:()=>{},setSubmitting:x=>calls.push(['busy',x]),t:x=>x,toast:(...x)=>calls.push(['toast',...x]),
  normalizeDateInput:x=>x,addCustomCargoType:()=>{},cleanPlaceName:x=>x,role:'client',navigation:{reset:x=>calls.push(['nav',x])},
@@ -44,7 +48,7 @@ test('cargo with no photos still publishes once',async()=>{
 
 test('cargo submission preserves decimal comma in the tonnes payload', async () => {
  const h=setup([],()=>{throw Error('not called');});
- h.submit=vm.runInNewContext(actual, {
+ h.submit=vm.runInNewContext(actual, {...publicationEnv(),
   from:'Алматы',to:'Астана',cargoDesc:'Груз',tons:'20,5',m3:'0',price:'1000',pickupDate:'2099-01-01',
   fromPoint:null,toPoint:null,truckType:'tent',currency:'USD',paymentType:null,photos:[],submitting:false,
   uploadedPhotos:{current:new Map()},submissionInFlight:{current:false},parseWeightTonsInput,
