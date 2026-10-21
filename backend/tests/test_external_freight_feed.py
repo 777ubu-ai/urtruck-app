@@ -485,3 +485,56 @@ def test_external_connection_rejects_primary_file_and_alias(tmp_path, monkeypatc
         patch.setenv("EXTERNAL_FREIGHT_DB_PATH", str(alias))
         with pytest.raises(RuntimeError, match="must_be_separate"):
             database_path()
+
+
+def test_review_approval_uses_only_external_database(monkeypatch):
+    from database import db
+    def forbidden_main_connection(*args, **kwargs):
+        pytest.fail("Лента обратилась к основной базе")
+    monkeypatch.setattr(db, "get_conn", forbidden_main_connection)
+    item_id = _import(_record(source="approve-isolation", text="Есть груз и свободная машина")).json()["results"][0]["id"]
+    global _actor
+    _actor = {"id": "operator", "role": "support"}
+    assert client.post(f"/api/v1/external-freight/{item_id}/approve").status_code == 200
+    assert client.post(f"/api/v1/external-freight/{item_id}/approve").status_code == 409
+    with get_conn() as c:
+        assert c.execute("SELECT status FROM external_freight_items WHERE id=?", (item_id,)).fetchone()[0] == "active"
+        assert c.execute("SELECT COUNT(*) FROM external_freight_audit WHERE item_id=? AND action='approved'", (item_id,)).fetchone()[0] == 1
+
+
+def test_count_is_authorized_role_scoped_and_excludes_inactive_and_expired(monkeypatch):
+    global _actor
+    assert client.get("/api/v1/external-freight/count").status_code == 401
+    for index in range(3):
+        _import(_record(source=f"count-{index}"))
+    _import(_record(source="count-vehicle", kind="vehicle", text="Есть свободный тент, ищу груз"))
+    _import(_record(source="count-review", text="Есть груз и свободная машина"))
+    hidden = _import(_record(source="count-hidden")).json()["results"][0]["id"]
+    _actor = {"id": "support", "role": "support"}
+    client.post(f"/api/v1/external-freight/{hidden}/hide")
+    expired = _import(_record(source="count-expired")).json()["results"][0]["id"]
+    # Даже без запуска cleanup истёкшая active-запись не учитывается.
+    with get_conn() as c:
+        c.execute("UPDATE external_freight_items SET expires_at=? WHERE id=?", ((datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat(), expired))
+    _actor = {"id": "driver", "role": "driver"}
+    assert client.get("/api/v1/external-freight/count?kind=vehicle&limit=1").json() == {"kind": "cargo", "count": 3}
+    _actor = {"id": "client", "role": "client"}
+    assert client.get("/api/v1/external-freight/count").json() == {"kind": "vehicle", "count": 1}
+    _actor = {"id": "guest", "role": "guest"}
+    assert client.get("/api/v1/external-freight/count").status_code == 403
+    monkeypatch.setenv("EXTERNAL_FREIGHT_FEED_ENABLED", "false")
+    _actor = {"id": "driver", "role": "driver"}
+    assert client.get("/api/v1/external-freight/count").status_code == 404
+
+
+def test_count_zero_and_six_digit_count_without_cap():
+    global _actor
+    _actor = {"id": "driver", "role": "driver"}
+    assert client.get("/api/v1/external-freight/count").json()["count"] == 0
+    item_id = _import(_record(source="count-large")).json()["results"][0]["id"]
+    with get_conn() as c:
+        c.execute("""WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM numbers WHERE n<100000)
+            INSERT INTO external_freight_items(id,kind,source_id,source_message_id,segment_id,source_published_at,ingested_at,updated_at,expires_at,original_text,source_revision,status)
+            SELECT 'large-'||n,'cargo','large',CAST(n AS TEXT),'0',source_published_at,ingested_at,updated_at,expires_at,original_text,source_revision,'active'
+            FROM numbers CROSS JOIN external_freight_items WHERE id=?""", (item_id,))
+    assert client.get("/api/v1/external-freight/count").json()["count"] == 100001

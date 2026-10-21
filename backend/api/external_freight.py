@@ -38,6 +38,13 @@ def _ensure_enabled():
         raise HTTPException(status_code=404, detail={"error": "external_feed_disabled"})
 
 
+@router.get("/count")
+def count_external_feed(user: dict = Depends(require_level(1))):
+    _ensure_enabled()
+    kind = _user_kind(user)
+    return {"kind": kind, "count": dal.count_active_items(kind)}
+
+
 @router.get("")
 def list_external_feed(
     origin: str | None = Query(None, max_length=240), destination: str | None = Query(None, max_length=240),
@@ -162,13 +169,13 @@ def approve_external_item(item_id: str, admin: dict = Depends(require_admin)):
     item = dal.get_item(item_id)
     if not item:
         # Review/expired rows are intentionally omitted from public get_item.
-        from database.db import get_conn
+        from database.external_freight_connection import get_conn
         with get_conn() as c:
             row = c.execute("SELECT * FROM external_freight_items WHERE id=? AND status='review'", (item_id,)).fetchone()
         item = dict(row) if row else None
     if not item or not item.get("source_published_at"):
         raise HTTPException(status_code=404, detail={"error": "review_item_not_found"})
-    from database.db import get_conn
+    from database.external_freight_connection import get_conn
     with get_conn() as c:
         c.execute("UPDATE external_freight_items SET status='active',updated_at=? WHERE id=? AND status='review' AND expires_at>?",
                   (dal._utc().isoformat(), item_id, dal._utc().isoformat()))

@@ -82,6 +82,17 @@ def init_schema():
         c.execute("CREATE INDEX IF NOT EXISTS ix_external_freight_destination_route ON external_freight_items(kind,status,destination_folded,source_published_at DESC,id DESC)")
 
 
+def count_active_items(kind: str) -> int:
+    """Тот же срок видимости, что у публичной ленты; без страниц и закладок."""
+    if kind not in {"cargo", "vehicle"}:
+        raise ValueError("invalid_feed_kind")
+    with get_conn() as c:
+        return c.execute(
+            "SELECT COUNT(*) FROM external_freight_items WHERE kind=? AND status='active' AND expires_at>?",
+            (kind, _utc().isoformat()),
+        ).fetchone()[0]
+
+
 def normalize_record(raw: dict, *, require_reviewed=True):
     if not isinstance(raw, dict):
         raise ValueError("record_must_be_object")

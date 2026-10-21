@@ -20,7 +20,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => { await new Promise(resolve => server.close(resolve)); });
 test.use({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', video: 'off', trace: 'off' });
 
-async function boot(page, role = 'driver') {
+async function boot(page, role = 'driver', options = {}) {
   const user = { id: 'feed-fixture-' + role, role, verification_level: 3, basic_onboarding_completed: 1 };
   const box = { saved: false, fail: false, writes: 0, errors: [], feedQueries: [], businessWrites: [], aiRequests: [] };
   const item = { id: 'external-fixture', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active', origin: 'Алматы', destination: 'Ташкент',
@@ -40,6 +40,10 @@ async function boot(page, role = 'driver') {
     let data = {};
     if (u.pathname === '/api/v1/register/me') data = user;
     else if (u.pathname === '/api/v1/users/me') data = { ...user, name: 'Тест ленты' };
+    else if (u.pathname === '/api/v1/external-freight/count') {
+      if (options.countFail) return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+      data = { kind: role === 'driver' ? 'cargo' : 'vehicle', count: options.count ?? 100001 };
+    }
     else if (u.pathname.endsWith('/external-fixture/bookmark')) {
       box.writes += 1;
       if (box.fail) { box.fail = false; return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }); }
@@ -58,6 +62,8 @@ async function boot(page, role = 'driver') {
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('bottom-nav')).toBeVisible({ timeout: 25000 });
   if (role === 'client') await page.getByTestId('bottom-nav-feed').click();
+  if (!options.countFail) await expect(page.getByTestId('external-freight-count')).toHaveText(String(options.count ?? 100001).replace(/\B(?=(\d{3})+(?!\d))/g, ' '));
+  if (options.entryOnly) return box;
   await page.getByTestId('external-freight-entry').click();
   await expect(page.getByTestId('external-feed-card-external-fixture')).toBeVisible();
   return box;
@@ -208,3 +214,34 @@ for (const name of ['origin', 'destination', 'body', 'date', 'price']) {
     expect(box.errors).toEqual([]);
   });
 }
+
+
+for (const role of ['driver', 'client']) {
+  test(role + ': prominent entry fits a six-digit counter on a narrow screen', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    const box = await boot(page, role, { entryOnly: true });
+    const entry = page.getByTestId('external-freight-entry');
+    const count = page.getByTestId('external-freight-count');
+    await expect(count).toHaveText('100 001');
+    const bounds = await entry.boundingBox(), badge = await count.boundingBox();
+    expect(badge.x + badge.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(240);
+    await expect(entry).toHaveCSS('border-top-width', '1px');
+    await page.screenshot({ path: 'test-results/external-entry-' + role + '-320.png' });
+    await entry.click();
+    await expect(page.getByTestId('external-feed-card-external-fixture')).toBeVisible();
+    await expect(page.getByTestId('bottom-nav')).not.toBeVisible();
+    expect(box.errors).toEqual([]);
+  });
+}
+test('entry distinguishes a confirmed zero from an unavailable count', async ({ page }) => {
+  await boot(page, 'driver', { count: 0, entryOnly: true });
+  await expect(page.getByTestId('external-freight-count')).toHaveText('0');
+});
+test('entry remains usable without a count when API is unavailable', async ({ page }) => {
+  const box = await boot(page, 'client', { countFail: true, entryOnly: true });
+  await expect(page.getByTestId('external-freight-count')).toHaveCount(0);
+  await page.getByTestId('external-freight-entry').click();
+  await expect(page.getByTestId('external-feed-card-external-fixture')).toBeVisible();
+  expect(box.errors).toEqual([]);
+});
