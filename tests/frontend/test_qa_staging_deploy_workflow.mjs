@@ -65,6 +65,19 @@ test('QA2 backend deploy protects database, storage and production', () => {
   assert.match(workflow, /Production version fingerprint changed during QA-only deploy/);
 });
 
+test('QA2 deploy snapshots the live SQLite database and verifies a separate restore probe before mutation', () => {
+  const backupPosition = workflow.indexOf('QA_DB_BACKUP=online-snapshot-verified');
+  const mutationPosition = workflow.indexOf('Mirror exact backend source into isolated QA2 backend');
+  assert.ok(backupPosition >= 0 && mutationPosition > backupPosition);
+  assert.match(workflow, /db_backup="\$backup_dir\/qa2\.sqlite3"/);
+  assert.match(workflow, /source\.backup\(target\)/);
+  assert.match(workflow, /restore_probe = backup_path\.with_name\('restore-probe\.sqlite3'\)/);
+  assert.match(workflow, /PRAGMA integrity_check/);
+  assert.match(workflow, /QA_DB_RESTORE_PROBE=pass/);
+  assert.match(workflow, /DB_BACKUP_HASH=\$db_backup_hash/);
+  assert.match(workflow, /chmod 600/);
+});
+
 test('QA2 backend deploy has rollback and self-contained runtime QA2P isolation proof', () => {
   assert.match(workflow, /Roll back QA2 code and settings if deploy validation fails/);
   assert.match(workflow, /if: failure\(\)/);
