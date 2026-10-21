@@ -7,17 +7,16 @@ import Feather from '@expo/vector-icons/Feather';
 import * as Clipboard from 'expo-clipboard';
 import DatePicker from '../components/externalFreight/ExternalFeedDatePicker';
 import BookmarkButton from '../components/ui/v1/BookmarkButton';
-import LocationPickerModal from '../components/LocationPickerModal';
+// Направления внешней ленты вводятся текстом; общий городской picker не подключаем.
 import { useToast } from '../components/Toast';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
 import { sessionRole } from '../utils/externalFreightSession';
 import { BODY_TYPES } from '../utils/truckConstants';
-import { getCountryName } from '../utils/countries';
+import { ALL_COUNTRIES, getCountryName } from '../utils/countries';
 import { externalFreightAPI } from '../utils/externalFreightFeed';
-import { appendUnique, buildExternalFeedQuery, canSortPrice, externalLocationSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
-import { activateExternalFeedFilter } from '../utils/externalFeedFilterPress';
+import { appendUnique, buildExternalFeedQuery, canSortPrice, externalLocationTextSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
 
 const COPY = {
   RU: { cargoTitle: 'Лента грузов', vehicleTitle: 'Лента машин', from: 'Откуда', to: 'Куда', body: 'Кузов', date: 'Дата', price: 'Цена', empty: 'Объявлений пока нет', none: 'По фильтрам ничего не найдено', network: 'Нет соединения. Уже загруженные объявления сохранены.', server: 'Сервис ленты временно недоступен.', retry: 'Повторить', more: 'Ещё', less: 'Свернуть', copied: 'Контакт скопирован', today: 'Сегодня', yesterday: 'Вчера', apply: 'Применить', choose: 'Выбрать из списка', reset: 'Сбросить', cancel: 'Отмена', negotiable: 'Договорная', unknown: 'Цена не указана', loading: 'Загрузка…', dateFrom: 'С', dateTo: 'По', currency: 'Валюта', min: 'От суммы', max: 'До суммы', newest: 'Сначала новые', asc: 'Дешевле', desc: 'Дороже', retryPage: 'Не удалось загрузить следующую страницу', invalidPrice: 'Укажите валюту и корректный диапазон цены.', invalidDate: 'Начало периода не может быть позже окончания.' },
@@ -59,7 +58,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const [filters, setFilters] = useState(emptyFilters);
   const [draft, setDraft] = useState(filters);
   const [modal, setModal] = useState(null);
-  const [picker, setPicker] = useState(null);
+  const isLocationModal = modal === 'origin' || modal === 'destination';
   const [rows, setRows] = useState([]);
   const [rowsOwner, setRowsOwner] = useState(ownerKey);
   const visibleRows = rowsOwner === ownerKey ? rows : [];
@@ -135,7 +134,9 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   }, [navigation]);
 
   const applyFilters = () => {
-    const next = { ...draft };
+    const next = isLocationModal
+      ? { ...draft, ...externalLocationTextSelection(modal, draft[modal] || getCountryName(draft[`${modal}_country`], lang) || '', ALL_COUNTRIES) }
+      : { ...draft };
     if (!isValidPublicationRange(next)) {
       Alert.alert(l.date, l.invalidDate);
       return;
@@ -185,7 +186,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     ? `${filters[key]}${filters[`${key}_country`] ? `, ${filters[`${key}_country`]}` : ''}`
     : filters[`${key}_country`] ? getCountryName(filters[`${key}_country`], lang) : '';
   const filterButton = (name, label, value) => (
-    <TouchableOpacity key={name} style={[styles.filterButton, value ? styles.filterActive : null]} onPress={() => activateExternalFeedFilter({ name, filters, setDraft, setPicker, setModal })} accessibilityRole="button" accessibilityLabel={label} testID={`external-feed-filter-${name}`}>
+    <TouchableOpacity key={name} style={[styles.filterButton, value ? styles.filterActive : null]} onPress={() => { setDraft(filters); setModal(name); }} accessibilityRole="button" accessibilityLabel={label} testID={`external-feed-filter-${name}`}>
       <Text style={[styles.filterText, value ? styles.filterTextActive : null]}>{label}{value ? ` · ${value}` : ''}</Text><Feather name="chevron-down" size={13} color={value ? '#168759' : theme.textMuted} />
     </TouchableOpacity>
   );
@@ -235,7 +236,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: true })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}
     {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{error === 'network_error' ? l.network : l.server}</Text><TouchableOpacity style={styles.primary} onPress={() => load({ reset: true })}><Text style={styles.primaryText}>{l.retry}</Text></TouchableOpacity></View> : null}
     {!error || rows.length ? <FlatList data={visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => { if (!busy && cursor) load(); }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.published_from || filters.min_price ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
-    <LocationPickerModal visible={picker === 'origin' || picker === 'destination'} onClose={() => setPicker(null)} title={picker === 'origin' ? l.from : l.to} allowCountryOnly showGeo={false} onSelect={(value, point) => { const key = picker; const selection = externalLocationSelection(key, value, point); externalFreightAPI.event('filter_apply'); setDraft(current => ({ ...current, ...selection })); setFilters(current => ({ ...current, ...selection })); setPicker(null); }} />
+    {/* Текстовый поиск не монтирует общий справочник стран/городов. */}
     <Modal visible={!!modal} transparent animationType="fade" onRequestClose={() => setModal(null)}>
     <View style={styles.modalOverlay} testID="external-feed-filter-overlay">
       <Pressable style={styles.scrim} onPress={() => setModal(null)} />
@@ -244,6 +245,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         <Text style={styles.sheetTitle}>{modal === 'origin' ? l.from : modal === 'destination' ? l.to : modal === 'body' ? l.body : modal === 'date' ? l.date : l.price}</Text>
         <View style={styles.actions}><TouchableOpacity onPress={resetFilters}><Text style={styles.link}>{l.reset}</Text></TouchableOpacity><TouchableOpacity onPress={() => setModal(null)}><Text style={styles.link}>{l.cancel}</Text></TouchableOpacity><TouchableOpacity style={styles.primary} onPress={applyFilters} testID="external-feed-apply-filters"><Text style={styles.primaryText}>{l.apply}</Text></TouchableOpacity></View>
         <ScrollView keyboardShouldPersistTaps="handled" style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
+        {isLocationModal ? <TextInput value={draft[modal] || (draft[`${modal}_country`] ? getCountryName(draft[`${modal}_country`], lang) : '')} onChangeText={text => setDraft(current => ({ ...current, [modal]: text, [`${modal}_country`]: '' }))} placeholder={modal === 'origin' ? l.from : l.to} placeholderTextColor={theme.textMuted} style={styles.input} maxLength={120} autoFocus autoCorrect={false} autoCapitalize="words" returnKeyType="search" onSubmitEditing={applyFilters} testID="external-feed-location-search" accessibilityLabel={modal === 'origin' ? l.from : l.to} /> : null}
         {modal === 'body' ? <ScrollView style={{ maxHeight: 310 }}>{BODY_TYPES.map(body => <TouchableOpacity key={body} style={styles.option} onPress={() => setDraft(current => ({ ...current, body_type: current.body_type === body ? '' : body }))}><Text style={styles.optionText}>{bodyLabels[lang]?.[body] || body}</Text><Text style={styles.optionText}>{draft.body_type === body ? '✓' : ''}</Text></TouchableOpacity>)}</ScrollView> : null}
         {modal === 'date' ? <View><View style={styles.quickRow}><TouchableOpacity onPress={() => choosePresetDate(0)}><Text style={styles.link}>{l.today}</Text></TouchableOpacity><TouchableOpacity onPress={() => choosePresetDate(1)}><Text style={styles.link}>{l.yesterday}</Text></TouchableOpacity></View><Text style={styles.hint}>{l.dateFrom}</Text><DatePicker value={draft.published_from} onChange={value => setDraft(current => ({ ...current, published_from: value }))} allowPast /><Text style={styles.hint}>{l.dateTo}</Text><DatePicker value={draft.published_to} onChange={value => setDraft(current => ({ ...current, published_to: value }))} allowPast /></View> : null}
         {priceModal ? <View><View style={styles.quickRow}>{currencies.map(value => <TouchableOpacity key={value} testID={`external-feed-currency-${value}`} style={[styles.currencyChip, draft.currency === value && styles.currencySelected]} onPress={() => setDraft(current => ({ ...current, currency: value }))}><Text style={styles.optionText}>{value}</Text></TouchableOpacity>)}</View><View style={styles.quickRow}><TextInput testID="external-feed-price-min" keyboardType="decimal-pad" value={draft.min_price} onChangeText={text => setDraft(current => ({ ...current, min_price: text.replace(/[^0-9.,]/g, '') }))} placeholder={l.min} placeholderTextColor={theme.textMuted} style={[styles.input, { flex: 1 }]} /><TextInput testID="external-feed-price-max" keyboardType="decimal-pad" value={draft.max_price} onChangeText={text => setDraft(current => ({ ...current, max_price: text.replace(/[^0-9.,]/g, '') }))} placeholder={l.max} placeholderTextColor={theme.textMuted} style={[styles.input, { flex: 1 }]} /></View>{[['newest', l.newest], ['price_asc', l.asc], ['price_desc', l.desc]].map(([value, label]) => <TouchableOpacity key={value} disabled={value !== 'newest' && !draft.currency} style={styles.option} onPress={() => setDraft(current => ({ ...current, sort: value }))}><Text style={[styles.optionText, value !== 'newest' && !draft.currency && { opacity: 0.45 }]}>{label}</Text><Text style={styles.optionText}>{draft.sort === value ? '✓' : ''}</Text></TouchableOpacity>)}</View> : null}

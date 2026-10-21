@@ -99,21 +99,32 @@ test('failed save keeps unsaved state and allows retry', async ({ page }) => {
 test('route filters directly open visible search and distinguish country from city', async ({ page }) => {
   const box = await boot(page);
   await page.getByTestId('external-feed-filter-origin').click();
-  const search = page.getByTestId('loc-search');
+  const search = page.getByTestId('external-feed-location-search');
   await expect(search).toBeVisible();
   await expect(search).toBeInViewport();
   await expect(page.getByTestId('loc-geo')).toHaveCount(0);
   await search.fill('Китай');
-  await page.getByTestId('loc-country-CN').click();
+  await page.getByTestId('external-feed-apply-filters').click();
   await expect(page.getByTestId('external-feed-filter-origin')).toContainText('Китай');
   await expect.poll(() => box.feedQueries.at(-1)?.origin_country).toBe('CN');
   expect(box.feedQueries.at(-1).origin).toBeUndefined();
   await page.getByTestId('external-feed-filter-destination').click();
-  await expect(page.getByTestId('loc-search')).toBeInViewport();
-  await page.getByTestId('loc-search').fill('Ташкент');
-  await page.getByTestId('loc-point-Ташкент').click();
+  await expect(search).toBeInViewport();
+  await search.fill('Ташкент');
+  await search.press('Enter');
   await expect.poll(() => box.feedQueries.at(-1)?.destination).toBe('Ташкент');
-  expect(box.feedQueries.at(-1).destination_country).toBe('UZ');
+  expect(box.feedQueries.at(-1).destination_country).toBeUndefined();
+  const requests = box.feedQueries.length;
+  await page.getByTestId('external-feed-filter-origin').click();
+  await search.fill('Хоргос');
+  expect(box.feedQueries.length).toBe(requests); // Не запрашиваем API на каждый символ.
+  await page.getByTestId('external-feed-filter-overlay').getByText('Отмена', { exact: true }).click();
+  await expect(page.getByTestId('external-feed-filter-origin')).toContainText('Китай');
+  await page.getByTestId('external-feed-filter-origin').click();
+  await search.fill('Бахты');
+  await page.getByTestId('external-feed-apply-filters').click();
+  await expect.poll(() => box.feedQueries.at(-1)?.origin).toBe('Бахты');
+  expect(box.feedQueries.at(-1).origin_country).toBeUndefined();
   expect(box.errors).toEqual([]);
 });
 
