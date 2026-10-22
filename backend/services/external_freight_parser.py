@@ -18,6 +18,10 @@ _KNOWN_COMPACT_ROUTES = {"хоргос-алматы": ("Хоргос", "Алма
 def _compact_route_lines(text):
     result = []
     for line in text.splitlines():
+        # A spaced route is already handled by _ROUTE; don't count that same
+        # line twice as both compact and explicit route evidence.
+        if _ROUTE.fullmatch(line):
+            continue
         key = unicodedata.normalize("NFKC", line).casefold().replace("ё", "е")
         key = re.sub(r"\s+", "", key)
         if key in _KNOWN_COMPACT_ROUTES:
