@@ -205,3 +205,11 @@ def test_compact_and_labelled_routes_in_same_message_stay_unattributed_for_revie
     assert item["kind"] == "vehicle"
     assert item["status"] == "review"
     assert item["origin"] is None and item["destination"] is None
+
+
+def test_compact_route_with_partial_label_stays_unattributed_for_review():
+    text = "Есть машина\nХоргос-Алматы\nОткуда: Астана"
+    item = map_selected_message(_queue(text))
+    assert item["kind"] == "vehicle"
+    assert item["status"] == "review"
+    assert item["origin"] is None and item["destination"] is None

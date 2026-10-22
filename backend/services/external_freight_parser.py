@@ -24,6 +24,7 @@ def _compact_route_lines(text):
             result.append(_KNOWN_COMPACT_ROUTES[key])
     return result
 _NOT_ROUTE_LABEL = re.compile(r"(?i)^(?:груз|цена|фрахт|вес|объём|объем|оплата|контакт|телефон|нужен|нужны|требуется)\b")
+_ROUTE_LABEL_HINT = re.compile(r"(?i)\b(?:откуда|куда|загрузка|погрузка|выгрузка|доставка)\s*[:：]")
 _LABELLED_ROUTE = re.compile(
     r"(?is)(?:откуда|загрузка|погрузка)\s*[:：-]\s*([^\n,;]{2,80})[\s,;]+(?:куда|выгрузка|доставка)\s*[:：-]\s*([^\n,;]{2,80})"
 )
@@ -142,7 +143,8 @@ def map_selected_message(raw: dict) -> dict:
     labelled_route = _LABELLED_ROUTE.search(text)
     route_conflict = (len(routes) > 1 or len(compact_routes) > 1
                       or bool(routes and compact_routes)
-                      or bool(labelled_route and (routes or compact_routes)))
+                      or bool(labelled_route and (routes or compact_routes))
+                      or bool(compact_routes and _ROUTE_LABEL_HINT.search(text)))
     if route_conflict:
         status = "review"
         route = None
