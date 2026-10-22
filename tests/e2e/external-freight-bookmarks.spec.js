@@ -381,6 +381,36 @@ test('continuous head insertion preserves the scrolled card position', async ({ 
   await page.clock.runFor(21000);
   await expect(page.getByTestId('external-feed-card-head-new')).toBeAttached();
   await expect.poll(async()=>Math.abs((await anchor.boundingBox()).y-before)).toBeLessThan(4);
+  await expect(page.getByTestId('external-feed-new-listings')).toContainText('1');
   await page.screenshot({path:'test-results/external-feed-continuous-scroll.png'});
+  await page.getByTestId('external-feed-new-listings').click();
+  await page.clock.runFor(1000);
+  await expect(page.getByTestId('external-feed-card-head-new')).toBeInViewport();
+  await expect(page.getByTestId('external-feed-new-listings')).toHaveCount(0);
   expect(box.errors).toEqual([]);
 });
+
+for (const role of ['driver', 'client']) {
+  test(role + ': timeline receives new listings at bottom without duplicates', async ({ page }) => {
+    await page.clock.install();
+    const box = await boot(page, role);
+    const kind = role === 'driver' ? 'cargo' : 'vehicle';
+    const older = { id: 'timeline-old', kind, status: 'active', origin: 'Алматы', destination: 'Астана',
+      original_text: 'Готов к погрузке', price_state: 'unknown', contacts: [], source_published_at: '2026-10-22T10:00:00Z' };
+    const newer = { ...older, id: 'timeline-new', source_published_at: '2026-10-22T10:01:00Z' };
+    box.liveItems = [older];
+    await page.clock.runFor(21000);
+    await expect(page.getByTestId('external-feed-card-timeline-old')).toBeVisible();
+    box.liveItems = [newer, older];
+    await page.clock.runFor(21000);
+    const newestCard = page.getByTestId('external-feed-card-timeline-new');
+    const olderCard = page.getByTestId('external-feed-card-timeline-old');
+    await expect(newestCard).toBeInViewport();
+    expect((await newestCard.boundingBox()).y).toBeGreaterThan((await olderCard.boundingBox()).y);
+    await page.clock.runFor(21000);
+    await expect(newestCard).toHaveCount(1);
+    await expect(page.getByTestId('external-feed-new-listings')).toHaveCount(0);
+    expect(box.errors).toEqual([]);
+    expect(box.businessWrites).toEqual([]);
+  });
+}
