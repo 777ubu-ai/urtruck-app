@@ -54,3 +54,12 @@
 Независимое review/CI этого коммита, QA2 deploy, новая APK-сборка и физическая проверка её на Huawei/Xiaomi. Исправление серверного моста d458ac30 находится в отдельной ветке, сюда не включено.
 
 Итог: код и локальная web-проверка PASS; поставка на устройства pending.
+
+
+## Верхняя закладка — визуальное дополнение
+
+PRE-FLIGHT: branch тот же, starting SHA a762f8479c77111708d0a4934d4beae9d7f80d76. Scope: только glyph верхней кнопки ExternalFreightFeedScreen, существующие browser bookmark-сценарии и evidence. Known-good: toggle savedOnly и сохранение карточки доказаны на предыдущем коде; до правки верхний glyph был только контурным. Защищены API/данные/логика закладок, навигация, backend, Telegram, production и магазины. Rollback: revert отдельного визуального коммита.
+
+Активное состояние верхней кнопки использует solid FontAwesome5 bookmark и тот же colors.driver из useV1Colors, что BookmarkButton в карточке. Неактивное — прежний контур Feather. Выбранность уже передавалась accessibilityState/aria-pressed и сохранена. Визуально проверен снимок водителя; оба существующих browser bookmark-сценария PASS (2/2), QA2 web build, lint и diff-check PASS. Полные 142 Node/26 browser выше относятся к предыдущему a762f847; для этого изменения выполнены только связанные проверки.
+
+Синтетические снимки: [водитель](share-collapse-20261022/driver-saved-header-active.png), [грузоотправитель](share-collapse-20261022/client-saved-header-active.png). Новая APK-сборка и физическая приёмка дополнения не выполнялись.

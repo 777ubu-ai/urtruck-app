@@ -4,6 +4,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import { useV1Colors } from '../theme/designV1';
 import * as Clipboard from 'expo-clipboard';
 import DatePicker from '../components/externalFreight/ExternalFeedDatePicker';
 import BookmarkButton from '../components/ui/v1/BookmarkButton';
@@ -51,6 +53,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const kind = feedKindForRole(role);
   const { lang, sp, t } = useI18n();
   const { theme } = useTheme();
+  const bookmarkColors = useV1Colors();
   const { toast } = useToast();
   const l = COPY[lang] || COPY.EN;
   const sl = SAVED_COPY[lang] || SAVED_COPY.EN;
@@ -244,7 +247,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.back} accessibilityRole="button" accessibilityLabel={l.cancel} testID="external-feed-back"><Feather name="arrow-left" size={23} color={theme.text} /></TouchableOpacity>
       <Text style={styles.title} testID="external-feed-title">{savedOnly ? `${title} · ${sl.saved}` : title}</Text>
       <TouchableOpacity style={styles.savedHeader} onPress={() => setSavedOnly(current => !current)} accessibilityRole="button" accessibilityLabel={sl.saved} accessibilityState={{ selected: savedOnly }} aria-pressed={savedOnly} testID="external-feed-saved-only">
-        <Feather name="bookmark" size={20} color={savedOnly ? '#168759' : theme.textMuted} />
+        {savedOnly ? <FontAwesome5 name="bookmark" size={18} color={bookmarkColors.driver} solid /> : <Feather name="bookmark" size={20} color={bookmarkColors.textMuted} />}
       </TouchableOpacity>
     </View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filterContent} keyboardShouldPersistTaps="handled">

@@ -90,7 +90,9 @@ for (const role of ['driver', 'client']) {
     await page.getByTestId('external-freight-entry').click();
     await expect(page.getByTestId('external-feed-bookmark-external-fixture')).toHaveAttribute('aria-label', 'Убрать из сохранённых');
     await page.getByTestId('external-feed-saved-only').click();
+    await expect(page.getByTestId('external-feed-saved-only')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('external-feed-card-external-fixture')).toBeVisible();
+    await page.screenshot({ path: `test-results/external-saved-header-${role}-active.png`, fullPage: true });
     await page.getByTestId('external-feed-bookmark-external-fixture').click();
     await expect(page.getByTestId('external-feed-card-external-fixture')).toHaveCount(0);
     await page.getByTestId('external-feed-saved-only').click();
