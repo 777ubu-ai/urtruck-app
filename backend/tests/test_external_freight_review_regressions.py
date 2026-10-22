@@ -199,3 +199,29 @@ def test_delivery_ack_timestamp_is_recorded_after_successful_response(tmp_path,m
     assert a.flush_once()['sent']==1
     with a._connect() as state:stamp=state.execute('select delivered_at from selected_outbox').fetchone()[0]
     assert datetime.fromisoformat(stamp).timestamp()==clock[0]
+
+
+def test_country_headers_allow_separate_routes_without_shared_contacts_or_prices():
+    from services.external_freight_parser import map_selected_messages
+    raw={'source_id':'123','source_message':1,'source_date':1792680000,
+         'text':'🇷🇺 РОССИЯ 🇷🇺\n\n🚛 АЛАШАНЬКОУ → ПЕРМЬ\nГруз: оборудование\nФрахт: 6500$\n━━━━━━━━━━\n🇰🇿 КАЗАХСТАН 🇰🇿\n\n🚛 АЛАШАНЬКОУ → КАРАГАНДА\nГруз: шины\n+77001234567'}
+    first,second=map_selected_messages(raw)
+    assert first['status']==second['status']=='active'
+    assert first['origin']=='АЛАШАНЬКОУ' and first['destination']=='ПЕРМЬ'
+    assert first['amount']==6500 and first['contacts']==[]
+    assert second['destination']=='КАРАГАНДА' and second['amount'] is None
+    assert second['contacts']==['+77001234567']
+    for prefix in ['Общий контакт: +77001234567\n','Общая цена: 5000 USD\n','Общий груз: шины\n']:
+        ambiguous=map_selected_messages({**raw,'text':prefix+raw['text']})
+        assert len(ambiguous)==1 and ambiguous[0]['status']=='review'
+
+
+def test_intermediate_country_section_fields_never_bleed_into_previous_route():
+    from services.external_freight_parser import map_selected_messages
+    for shared in ['Контакт: +77001234567\nЦена: 5000 USD\n','Груз: оборудование\n']:
+        text='РОССИЯ\nАлматы → Москва\nГруз: шины\n\nКАЗАХСТАН\n'+shared+'Астана → Бишкек\nГруз: доски'
+        records=map_selected_messages({'source_id':'123','source_message':1,'text':text})
+        assert len(records)==1 and records[0]['status']=='review'
+    text='РОССИЯ\nАлматы → Москва\nГруз: шины\nКАЗАХСТАН\nАстана → Бишкек\nГруз: доски\nКИТАЙ\nКонтакт: +77001234567'
+    records=map_selected_messages({'source_id':'123','source_message':1,'text':text})
+    assert len(records)==1 and records[0]['status']=='review'
