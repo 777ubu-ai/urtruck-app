@@ -31,6 +31,7 @@ test('vehicle setup is a four-step flow with independent country fields', () => 
 test('vehicle setup keeps machine separate and reuses it for publishing', () => {
   assert.match(review, /vehicleAPI\.save/);
   assert.match(api, /driver\/vehicles/);
+  assert.match(chooser, /c\.bodies\?\.\[vehicle\.body_type\] \|\| vehicle\.body_type/);
   assert.match(read('backend/database/vehicles_schema.sql'), /CREATE TABLE IF NOT EXISTS vehicles/);
   assert.match(read('src/screens/MyTripsScreen.js'), /vehicles\.length === 0/);
   assert.match(read('src/screens/CreateTripScreen.js'), /vehicle_id/);

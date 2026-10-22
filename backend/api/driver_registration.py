@@ -7,7 +7,6 @@
 
 Аутентификация — общий Bearer-токен регистрации (как в api/registration.py).
 """
-import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -153,9 +152,6 @@ def _basic_onboarding_missing(driver: dict) -> list[str]:
     # Старые черновики могли сохранить тип транспорта под vehicle_type.
     if not str(driver.get("truck_kind") or driver.get("vehicle_type") or "").strip():
         missing.append("truck_kind")
-    iin = re.sub(r"\s+", "", str(driver.get("iin") or ""))
-    if not re.fullmatch(r"\d{12}", iin):
-        missing.append("iin")
     for field in ("capacity_tons", "volume_m3"):
         try:
             if float(driver.get(field)) <= 0:
