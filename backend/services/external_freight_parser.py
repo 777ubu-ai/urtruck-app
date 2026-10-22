@@ -152,7 +152,7 @@ def map_selected_message(raw: dict) -> dict:
         compact_route = compact_routes[0] if compact_routes else None
     origin = (_place(route.group(1)) if route else compact_route[0] if compact_route else raw.get("origin"))
     destination = (_place(route.group(2)) if route else compact_route[1] if compact_route else raw.get("destination"))
-    if not origin and not destination:
+    if not origin and not destination and not route_conflict:
         partial = re.search(r"(?im)^\s*(?:местонахождение|нахожусь|стою|откуда|из)\s*[:：]?\s+([^\n;]{2,80})$", text)
         origin = _place(partial.group(1)) if partial else None
         if not origin and kind=="vehicle":
