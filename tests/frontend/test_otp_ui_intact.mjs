@@ -39,6 +39,7 @@ test('OtpV2Screen авто-верифицирует при полном коде
 test('verify реально дергает backend verify-эндпоинт', () => {
   // verify() обращается к regAPI.verifyEmailCode / verifyCode — т.е. UI-путь
   // действительно ведёт к серверной проверке, а не заглушке.
-  assert.match(otp, /regAPI\.verifyEmailCode\(identifier, c\)/);
-  assert.match(otp, /regAPI\.verifyCode\(identifier, c\)/);
+  assert.match(otp, /regAPI\.verifyEmailCode\(identifier, c, \{ isCurrent: \(\) => authMountedRef\.current \}\)/);
+  assert.match(otp, /regAPI\.verifyCode\(identifier, c, \{ isCurrent: \(\) => authMountedRef\.current \}\)/);
+  assert.match(otp, /if \(!authMountedRef\.current \|\| r\.sessionChanged\) return/);
 });

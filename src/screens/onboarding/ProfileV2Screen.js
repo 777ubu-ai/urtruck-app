@@ -4,7 +4,7 @@
 // Дата рождения и ИИН не запрашиваются в базовой регистрации.
 // Email принадлежит auth-identity и повторно у пользователя не спрашивается.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -19,6 +19,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { regAPI } from '../../utils/registration';
+import AuthAccountHint from '../../components/AuthAccountHint';
 import { brandLight, radius, typography } from '../../theme/brandV2';
 import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
@@ -314,6 +315,12 @@ export default function ProfileV2Screen({ navigation, route }) {
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
+  const formMountedRef = useRef(true);
+  const savingRef = useRef(false);
+  useEffect(() => {
+    formMountedRef.current = true;
+    return () => { formMountedRef.current = false; };
+  }, []);
 
   const validName = name.trim().length >= 2;
   const validPhone = isRealPhone(phone);
@@ -337,10 +344,20 @@ export default function ProfileV2Screen({ navigation, route }) {
   };
 
   const onContinue = async () => {
-    if (busy || !validate()) return;
+    if (busy || savingRef.current || !validate()) return;
+    savingRef.current = true;
     setBusy(true);
     setServerError('');
+    let ownerToken = null;
+    const formIsCurrent = async () => {
+      try {
+        return formMountedRef.current && Boolean(ownerToken)
+          && await regAPI.getToken() === ownerToken && formMountedRef.current;
+      } catch { return false; }
+    };
     try {
+      ownerToken = await regAPI.getToken();
+      if (!await formIsCurrent()) return;
       const effectiveMessengerId = messengerType === 'whatsapp' && sameAsPhone
         ? phone.trim()
         : messengerId.trim();
@@ -356,7 +373,8 @@ export default function ProfileV2Screen({ navigation, route }) {
         messenger_id: messengerType ? effectiveMessengerId : '',
       };
 
-      const saved = await regAPI.updateProfile(payload);
+      const saved = await regAPI.updateProfile(payload, { expectedToken: ownerToken });
+      if (!await formIsCurrent()) return;
       if (!saved?.ok) {
         if (saved?.networkError) {
           setServerError(t('no_connection'));
@@ -408,7 +426,8 @@ export default function ProfileV2Screen({ navigation, route }) {
       if (role === 'driver') {
         const draftSaved = await regAPI.saveDriverDraft({
           full_name: name.trim(),
-        });
+        }, { expectedToken: ownerToken });
+        if (!await formIsCurrent()) return;
         if (!draftSaved?.ok) throw new Error('basic_profile_save_failed');
       }
 
@@ -424,12 +443,16 @@ export default function ProfileV2Screen({ navigation, route }) {
       }
 
       // Для не-driver ролей сохраняем прежний переход после профиля.
-      setRole(role);
+      const roleSaved = await setRole(role, { expectedToken: ownerToken, isCurrent: () => formMountedRef.current });
+      if (roleSaved?.ok === false || !await formIsCurrent()) return;
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
     } catch {
-      setServerError(t('profile_v2_save_failed'));
+      if (formMountedRef.current && (!ownerToken || await formIsCurrent())) {
+        setServerError(t('profile_v2_save_failed'));
+      }
     } finally {
-      setBusy(false);
+      savingRef.current = false;
+      if (formMountedRef.current) setBusy(false);
     }
   };
 
@@ -460,6 +483,7 @@ export default function ProfileV2Screen({ navigation, route }) {
           <Text style={s.stepCaption}>2 / 2</Text>
           <Text style={s.title}>{role === 'driver' ? ui.driverTitle : ui.shipperTitle}</Text>
           <Text style={s.subtitle}>{role === 'driver' ? ui.driverSubtitle : ui.shipperSubtitle}</Text>
+          <AuthAccountHint identifier={signupIdentity} navigation={navigation} disabled={busy} />
 
           <ProfileField
             id="name"

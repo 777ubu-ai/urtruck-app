@@ -1,0 +1,15 @@
+{
+  "base_commit": "f4575bc9e2997236dac19e14a4a15bfae0ce2191",
+  "source_sha256": {
+    "src/screens/ExternalFreightFeedScreen.js": "8a971bdf22a984c7968f468e36060af159fb6137b7ed10220d64d225cb7b1e71",
+    "src/components/externalFreight/ExternalFeedDescription.js": "21843ca8db9beb9d70560f27151e3384be84fa6a55f19907c604c29814acf303",
+    "src/components/ui/v1/PrimaryButton.js": "ee00f892810b79f83221496e326151b30a31f37ddc059c73ea567b5181663260",
+    "src/components/ui/actions/SecondaryButton.js": "76e2da34922855158ce96e94b3d4922feb0bbebd0a2b9294d57d12d7c1df3302",
+    "package.json": "a322872cbe3402ead237384b92339af5230a1a57f1aebffb38fc71923ef3fa74",
+    "package-lock.json": "e79b70d99e724e664bd240d828d9cd15e1d44dede9f1ad12bace3f95ceb709e4"
+  },
+  "web_bundles_sha256": {
+    "index-c30f8c8d2e696538cccb4143143df6de.js": "36cac38ab150c8fb6ec1a7a111d9c2a416c985e09069909db38af46fffb3e475",
+    "index-9f8559778fc183146af9da0638d8b45d.js": "fe001733679ee0b519f521e7d6029932e143f654785daacd65a4db28db1b91ea"
+  }
+}

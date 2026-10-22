@@ -214,6 +214,19 @@ jobs:
             tests/e2e/profile-save-recovery.spec.js \
             tests/e2e/urtruck-runtime-crash-regression.spec.js \
             tests/e2e/urtruck-deal-confirmation.spec.js
+      - name: Повтор публикации после потери ответа и перезапуска
+        run: |
+          set -euo pipefail
+          URTRUCK_ENV=test ENV=test BETA_MODE=true URTRUCK_ENABLE_SCHEDULER=0 \
+            CGR_FEATURE_ENABLED=false SENTRY_DSN='' PYTHONPATH="$PWD:$PWD/backend" \
+            DB_PATH="$RUNNER_TEMP/publication-replay.db" CGR_IIN_SALT=ci-replay-isolated \
+            python -m uvicorn main:app --host 127.0.0.1 --port 8003 > "$RUNNER_TEMP/publication-replay-backend.log" 2>&1 &
+          replay_backend_pid=$!
+          E2E_PORT=4699 E2E_BACKEND=http://127.0.0.1:8003 node scripts/e2e-static-proxy.js > "$RUNNER_TEMP/publication-replay-proxy.log" 2>&1 &
+          replay_proxy_pid=$!
+          trap 'kill "$replay_backend_pid" "$replay_proxy_pid" 2>/dev/null || true' EXIT
+          npx wait-on --http-get http://127.0.0.1:4699/api/v1/system/info
+          E2E_BASE=http://127.0.0.1:4699 npx playwright test tests/e2e/publication-lost-response.spec.js --workers=1
       - name: Upload E2E diagnostics
         if: always()
         uses: actions/upload-artifact@v4

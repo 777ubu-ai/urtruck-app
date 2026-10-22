@@ -426,7 +426,7 @@ def active_devices(user_id: str) -> list[dict[str, Any]]:
         rows = c.execute(
             """
             SELECT id, user_id, device_id, platform, app_id, push_provider, push_token,
-                   locale, app_version, os_version, device_model, onesignal_subscription_id, onesignal_user_id
+                   locale, app_version, os_version, device_model, onesignal_subscription_id, onesignal_user_id, registration_version
             FROM push_devices
             WHERE user_id = ? AND enabled = 1
             ORDER BY last_seen_at DESC, id DESC
@@ -503,29 +503,30 @@ def log_delivery(event_id: Optional[str], user_id: str, device: dict, result: Pr
                 ),
             )
             row_id = cur.lastrowid
+            # Только тот же владелец и та же регистрация, для которой отправлен push.
+            match = "id = ? AND user_id IS ? AND push_provider = ? AND push_token = ? AND registration_version = ?"
+            scope = (device.get("id"), user_id, device.get("push_provider"), device.get("push_token"), device.get("registration_version"))
             if result.status == "sent":
+                c.execute("UPDATE push_delivery_log SET sent_at = CURRENT_TIMESTAMP WHERE id = ?", (row_id,))
                 c.execute(
-                    "UPDATE push_delivery_log SET sent_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (row_id,),
-                )
-                c.execute(
-                    "UPDATE push_devices SET last_success_at = CURRENT_TIMESTAMP, failure_count = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (device.get("id"),),
+                    "UPDATE push_devices SET last_success_at = CURRENT_TIMESTAMP, failure_count = 0, updated_at = CURRENT_TIMESTAMP WHERE " + match,
+                    scope,
                 )
             else:
                 c.execute(
-                    "UPDATE push_devices SET last_failure_at = CURRENT_TIMESTAMP, failure_count = failure_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (device.get("id"),),
+                    "UPDATE push_devices SET last_failure_at = CURRENT_TIMESTAMP, failure_count = failure_count + 1, updated_at = CURRENT_TIMESTAMP WHERE " + match,
+                    scope,
                 )
-                if result.error_code == "invalid_token":
-                    c.execute(
-                        "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, invalidated_reason = 'invalid_token' WHERE id = ?",
-                        (device.get("id"),),
+                if result.error_code == "invalid_token" and not result.retryable and result.provider == device.get("push_provider"):
+                    invalidated = c.execute(
+                        "UPDATE push_devices SET enabled = 0, invalidated_at = CURRENT_TIMESTAMP, invalidated_reason = 'invalid_token' WHERE " + match,
+                        scope,
                     )
-                    c.execute(
-                        "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, invalidated_reason = 'invalid_token' WHERE token = ?",
-                        (device.get("push_token"),),
-                    )
+                    if invalidated.rowcount:
+                        c.execute(
+                            "UPDATE push_tokens_native SET active = 0, invalidated_at = CURRENT_TIMESTAMP, invalidated_reason = 'invalid_token' WHERE token = ? AND user_id IS ? AND provider = ?",
+                            (device.get("push_token"), user_id, result.provider),
+                        )
     except Exception:
         return
 

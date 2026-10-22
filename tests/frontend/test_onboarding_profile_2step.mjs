@@ -25,7 +25,7 @@ test('role is not committed to AuthContext before required profile saves success
   assert.doesNotMatch(role, /setRole\(/);
   assert.match(profile, /const \{ session, setRole \} = useAuth\(\)/);
   const savedCheck = profile.indexOf('if (!saved?.ok)');
-  const roleCommit = profile.indexOf('setRole(role)');
+  const roleCommit = profile.indexOf('setRole(role, { expectedToken: ownerToken,');
   assert.ok(savedCheck >= 0, 'profile must check backend save result');
   assert.ok(roleCommit > savedCheck, 'role may enter AuthContext only after successful profile save');
 });

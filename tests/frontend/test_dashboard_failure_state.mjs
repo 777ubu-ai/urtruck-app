@@ -37,7 +37,7 @@ test('client не кеширует ошибку как успешно загру
     authedFetch: async () => { calls++; return { status: calls === 1 ? 500 : 200, ok: calls > 1, json: async () => calls === 1 ? {} : { my_deals: [{ id: 'recovered' }] } }; },
     console: { warn() {} },
   };
-  const state = api.slice(api.indexOf('const DASHBOARD_CACHE_MS'), api.indexOf('async function headers()'));
+  const state = api.slice(api.indexOf('const DASHBOARD_CACHE_MS'), api.indexOf('async function headers('));
   const fetch = new Function(...Object.keys(env), `${state} return { async myDashboard(${method} }.myDashboard;`)(...Object.values(env));
   assert.equal((await fetch()).serverError, true);
   assert.equal((await fetch()).my_deals[0].id, 'recovered');
@@ -50,7 +50,7 @@ test('client не кеширует ошибку как успешно загру
   let calls = 0;
   const env = { headers: async () => ({ Authorization: 'test-only' }), BASE: '/market', console: { warn() {} },
     authedFetch: async () => ({ status: 200, ok: true, json: async () => ++calls === 1 ? {} : { my_deals: [] } }) };
-  const state = api.slice(api.indexOf('const DASHBOARD_CACHE_MS'), api.indexOf('async function headers()'));
+  const state = api.slice(api.indexOf('const DASHBOARD_CACHE_MS'), api.indexOf('async function headers('));
   const fetch = new Function(...Object.keys(env), `${state} return { async myDashboard(${method} }.myDashboard;`)(...Object.values(env));
   assert.equal((await fetch()).serverError, true); assert.deepEqual((await fetch()).my_deals, []); assert.equal(calls, 2);
 });

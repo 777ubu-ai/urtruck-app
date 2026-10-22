@@ -1,5 +1,7 @@
+import { sessionRole } from './publicationSession';
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from './storage';
+import { runAuthMutation } from './authMutation';
 import { regAPI } from './registration';
 import { clearSocialAuthSession } from './socialAuth';
 import { subscribeAuthExpired, setAuthExpirySuppressed, configureAuthExpiryValidation } from './authEvents';
@@ -34,14 +36,6 @@ const AuthContext = createContext({
 
 const KEY = 'ur_session';
 const LOGOUT_NETWORK_TIMEOUT_MS = 3000;
-let authMutationChain = Promise.resolve();
-
-function runAuthMutation(operation) {
-  const job = authMutationChain.then(operation);
-  authMutationChain = job.catch(() => {});
-  return job;
-}
-
 async function authOwnerIsCurrent(expectedToken, expectedGeneration, readGeneration, readToken) {
   if (readGeneration() !== expectedGeneration) return false;
   const liveToken = await readToken();
@@ -113,14 +107,14 @@ export const AuthProvider = ({ children }) => {
         setVerificationLevel(me.verification_level);
         if (me.id || hasRealRole) {
           const prev = sessionRef.current;
-          const base = prev?.user || {};
+          const base = prev?.user?.id === me.id ? prev.user : {};
           const fullName = profile?.name || me.full_name || null;
           const city = profile?.city || null;
           const next = {
             ...(prev || {}),
             user: {
               ...base,
-              role: hasRealRole ? me.role : (base.role || null),
+              role: sessionRole({ user: me }),
               phone: me.phone || base.phone,
               id: me.id || base.id,
               name: fullName || base.name || null,
@@ -192,17 +186,19 @@ export const AuthProvider = ({ children }) => {
     );
   }, []);
 
-  const signIn = (phone, level = 1, token = null) => runAuthMutation(async () => {
+  const signIn = (phone, level = 1, token = null, { expectedToken = null, userId = null, isCurrent = () => true } = {}) => runAuthMutation(async () => {
+    if (!isCurrent() || (expectedToken && await regAPI.getToken() !== expectedToken) || !isCurrent()) return false;
     const generation = ++authGenerationRef.current;
     if (token) {
       await storage.set('ur_reg_token', token);
     }
     const existing = await regAPI.getToken();
+    if (!isCurrent()) return false;
     if (!existing) {
       throw new Error('NO_TOKEN');
     }
-    const prevRole = sessionRef.current?.user?.role || null;
-    const s = { user: { phone, role: prevRole, id: sessionRef.current?.user?.id || ('u_' + Date.now()) } };
+    // Другая подтверждённая почта не наследует ID/роль прежнего владельца.
+    const s = { user: { phone, role: null, id: userId } };
     sessionRef.current = s;
     setSession(s);
     setVerificationLevel(level);
@@ -210,19 +206,23 @@ export const AuthProvider = ({ children }) => {
     await storage.set(KEY, JSON.stringify(s));
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       // eslint-disable-next-line no-console
-      console.warn('[Auth] login success', { identifier: phone, level, role: prevRole });
+      console.warn('[Auth] login success', { level });
     }
     refreshLevel({ expectedToken: existing, expectedGeneration: generation }).catch(() => {});
     return true;
   });
 
-  const setRole = (role) => runAuthMutation(async () => {
+  const setRole = (role, { expectedToken = null, isCurrent = () => true } = {}) => runAuthMutation(async () => {
+    if (!isCurrent() || (expectedToken && await regAPI.getToken() !== expectedToken) || !isCurrent()) {
+      return { ok: false, reason: 'SESSION_CHANGED' };
+    }
     authGenerationRef.current += 1;
     const prev = sessionRef.current;
     const s = prev ? { ...prev, user: { ...prev.user, role } } : { user: { role, id: 'u_' + Date.now() } };
     sessionRef.current = s;
     setSession(s);
     await storage.set(KEY, JSON.stringify(s));
+    return { ok: true };
   });
 
   const signOut = ({ expectedToken = null, expectedGeneration = null } = {}) => runAuthMutation(async () => {

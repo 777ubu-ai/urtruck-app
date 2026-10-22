@@ -211,6 +211,10 @@ def _migrate_ownership_columns():
         for name in ("onesignal_subscription_id", "onesignal_user_id"):
             if name not in device_columns:
                 c.execute(f"ALTER TABLE push_devices ADD COLUMN {name} TEXT")
+        # Версия регистрации защищает от запоздалого invalid-token после повторного входа.
+        revision_columns = {r["name"] for r in c.execute("PRAGMA table_info(push_devices)").fetchall()}
+        if "registration_version" not in revision_columns:
+            c.execute("ALTER TABLE push_devices ADD COLUMN registration_version INTEGER NOT NULL DEFAULT 1")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_user ON push_devices(user_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_device ON push_devices(device_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_devices_provider ON push_devices(push_provider, platform)")
@@ -627,6 +631,7 @@ def _upsert_push_device(c, data, user_id: Optional[str], device_id: Optional[str
           device_model = COALESCE(excluded.device_model, device_model),
           onesignal_subscription_id = excluded.onesignal_subscription_id,
           onesignal_user_id = excluded.onesignal_user_id,
+          registration_version = push_devices.registration_version + 1,
           enabled = 1,
           invalidated_at = NULL,
           invalidated_reason = NULL,

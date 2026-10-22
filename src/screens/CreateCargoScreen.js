@@ -1,3 +1,6 @@
+import { usePublicationDraft } from '../hooks/usePublicationDraft';
+import { sessionRole, confirmPublicationSession } from '../utils/publicationSession';
+import { regAPI } from '../utils/registration';
 import React, { useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -62,9 +65,16 @@ const normalizeDecimal = (v) => {
 };
 
 export default function CreateCargoScreen({ navigation, route }) {
+  const { session, refreshLevel } = useAuth();
+  const role = sessionRole(session);
+  const ownerRef = React.useRef(session?.user?.id);
+  const sessionRef = React.useRef(session);
+  sessionRef.current = session;
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const baseV1 = useV1Colors();
   const shipper = useShipperCeramicColors();
-  const v1 = (route?.params?.role || 'client') === 'client' ? shipper : baseV1;
+  const v1 = role === 'client' ? shipper : baseV1;
   const s = React.useMemo(() => StyleSheet.create({
 
   title: { ...v1Typography.h1, fontSize: 19, fontWeight: '700', letterSpacing: -0.2, marginTop: v1Spacing.sm },
@@ -103,11 +113,11 @@ export default function CreateCargoScreen({ navigation, route }) {
   draftText: { fontSize: 13, fontWeight: '700' },
 
   }), [v1]);
-  const role = route?.params?.role || 'client';
-  const accent = (route?.params?.role || 'client') === 'client' ? shipper : v1AccentFor('driver');
+
+  const accent = role === 'client' ? shipper : v1AccentFor('driver');
   const { t, lang } = useI18n();
   const { toast } = useToast();
-  const { session } = useAuth();
+
 
   const displayRoutePoint = (raw, point) => {
     const canonical = point?.name || cleanPlaceName(raw || '');
@@ -142,6 +152,7 @@ export default function CreateCargoScreen({ navigation, route }) {
   const [errors, setErrors] = useState({});
 
   // Picker overlays
+  const [publicationConflict, setPublicationConflict] = useState(null);
   const [showFromPicker, setShowFromPicker] = useState(false);
   const [showToPicker, setShowToPicker] = useState(false);
   // Stage 42: showDescPicker удалён — Описание груза теперь inline-input.
@@ -149,6 +160,8 @@ export default function CreateCargoScreen({ navigation, route }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [showPhotos, setShowPhotos] = useState(false);
+
+  const draft = usePublicationDraft('cargo', ownerRef.current, { from, fromPoint, to, toPoint, cargoDesc, truckType, pickupDate, tons, m3, price, currency, currencyTouched, paymentType, photos }, { from: setFrom, fromPoint: setFromPoint, to: setTo, toPoint: setToPoint, cargoDesc: setCargoDesc, truckType: setTruckType, pickupDate: setPickupDate, tons: setTons, m3: setM3, price: setPrice, currency: setCurrency, currencyTouched: setCurrencyTouched, paymentType: setPaymentType, photos: setPhotos });
 
   const submit = async () => {
     if (submitting || submissionInFlight.current) return;
@@ -187,7 +200,7 @@ export default function CreateCargoScreen({ navigation, route }) {
     // legacy from_city / to_city strings. Backend tolerates missing
     // fields (free-text fallback supplies country='XX' for orphans),
     // so the picker output can land directly without further shaping.
-    const payload = {
+    let payload = {
       from_city: fromPoint?.name || cleanPlaceName(from.trim()),
       to_city: toPoint?.name || cleanPlaceName(to.trim()),
       cargo_desc: cargoDesc.trim(),
@@ -207,21 +220,31 @@ export default function CreateCargoScreen({ navigation, route }) {
       to_point_name:   toPoint?.name      || null,
     };
     try {
+      await draft.save();
+      const operation = await draft.prepare();
+      const sessionGuard = await confirmPublicationSession({
+        expectedRole: 'client', expectedUserId: ownerRef.current,
+        getSession: () => mountedRef.current ? sessionRef.current : null, readToken: () => regAPI.getToken(),
+        readAccount: token => regAPI.publicationAccount(token),
+      });
       // 27.07: фото сперва грузим в storage → ключи, и только их шлём в
       // payload. Раньше сохранялся локальный uri устройства (blob:/file:) —
       // у другого пользователя фото не открывалось. Выбранное фото нельзя
       // молча потерять: сохраняем успешные keys для повторной попытки.
-      if (photos && photos.length) {
+      if (operation.replayPayload) {
+        payload = operation.replayPayload;
+      } else if (photos && photos.length) {
         const keys = [];
         for (const uri of photos) {
           let key = uploadedPhotos.current.get(uri);
           if (!key) {
             try {
-              const up = await marketAPI.uploadCargoPhoto(uri);
+              const up = await marketAPI.uploadCargoPhoto(uri, sessionGuard);
               if (!up?.photo_key) throw new Error('missing_photo_key');
               key = up.photo_key;
               uploadedPhotos.current.set(uri, key);
-            } catch {
+            } catch (error) {
+              if (error?.code === 'PUBLICATION_SESSION_CHANGED') throw error;
               const failure = new Error('cargo_photo_upload_failed');
               failure.code = 'CARGO_PHOTO_UPLOAD_FAILED';
               throw failure;
@@ -231,8 +254,11 @@ export default function CreateCargoScreen({ navigation, route }) {
         }
         payload.photos = keys;
       }
-      const r = await marketAPI.createCargo(payload);
+      payload = await draft.snapshot(operation.clientId, payload);
+      const r = await marketAPI.createCargo(payload, sessionGuard);
       if (r.ok || r.id) {
+        if (await draft.clear(operation.clientId) === false) return;
+        if (!sessionGuard.isCurrent() || await regAPI.getToken() !== sessionGuard.expectedToken || !sessionGuard.isCurrent()) return;
         toast('✓ ' + t('cargo_published'), 'success', 4000);
         // Замыкаем цикл: ведём в «Ищу машину» с только что размещённым
         // грузом (статус «ждём ставки»), а не goBack() в никуда.
@@ -254,18 +280,52 @@ export default function CreateCargoScreen({ navigation, route }) {
           }],
         });
       } else {
-        toast(r.detail || t('send_error'), 'error');
+        if (!sessionGuard.isCurrent() || await regAPI.getToken() !== sessionGuard.expectedToken || !sessionGuard.isCurrent()) return;
+        if (r.code === 'PUBLICATION_IDEMPOTENCY_CONFLICT' && r.originalResult?.id) {
+          setPublicationConflict({ clientId: operation.clientId, result: r.originalResult });
+          toast(t('publication_content_conflict'), 'error', 6000);
+        } else toast(r.detail || t('send_error'), 'error');
       }
     } catch (e) {
       // P1 UI-аудит 2026-09-13: не показывать сырой e.message (часто
       // непереведённая браузерная строка вроде "Failed to fetch") — только
       // локализованный текст, как во всех остальных catch-блоках рядом.
-      toast(t(e?.code === 'CARGO_PHOTO_UPLOAD_FAILED' ? 'photo_failed' : 'network_error'), 'error');
+      if (!mountedRef.current || sessionRef.current?.user?.id !== ownerRef.current) return;
+      if (e?.code === 'PUBLICATION_ROLE_NOT_ALLOWED') refreshLevel().catch(() => {});
+      toast(t(e?.code === 'PUBLICATION_DRAFT_FAILED' ? 'publication_draft_save_failed' : e?.code === 'PUBLICATION_SESSION_CHANGED' ? 'session_expired' : e?.code === 'PUBLICATION_ROLE_NOT_ALLOWED' ? 'publication_role_cargo' : e?.code === 'CARGO_PHOTO_UPLOAD_FAILED' ? 'photo_failed' : 'network_error'), 'error');
     } finally {
       submissionInFlight.current = false;
       setSubmitting(false);
     }
   };
+
+  const conflictActions = publicationConflict ? <View testID="publication-conflict">
+    <Text accessibilityRole="alert">{t('publication_content_conflict')}</Text>
+    <PrimaryButton testID="publication-open-original" disabled={submitting} label={t('publication_open_original')}
+      onPress={() => { if (!submissionInFlight.current && sessionRef.current?.user?.id === ownerRef.current) navigation.navigate('CargoDetail', { cargoId: publicationConflict.result.id, role }); }} />
+    <PrimaryButton testID="publication-new-operation" disabled={submitting} label={t('publication_new_operation')}
+      onPress={async () => {
+        if (submissionInFlight.current || sessionRef.current?.user?.id !== ownerRef.current || !mountedRef.current) return;
+        submissionInFlight.current = true;
+        setSubmitting(true);
+        try {
+          await draft.resetOperation(publicationConflict.clientId);
+          if (mountedRef.current && sessionRef.current?.user?.id === ownerRef.current) setPublicationConflict(null);
+        } catch { if (mountedRef.current && sessionRef.current?.user?.id === ownerRef.current) toast(t('publication_draft_save_failed'), 'error'); }
+        finally { submissionInFlight.current = false; if (mountedRef.current) setSubmitting(false); }
+      }} />
+  </View> : null;
+
+  if (role !== 'client') {
+    return <Screen><BrandHeader onBack={() => navigation.goBack()} />
+      <Text accessibilityRole="alert">{t('publication_role_cargo')}</Text>
+      <PrimaryButton testID="publication-open-correct-role" label={t(role === 'driver' ? 'publish_route' : 'place_cargo')}
+        onPress={() => navigation.navigate('Main', { role, screen: 'MyWork' })} />
+    </Screen>;
+  }
+
+  if (!draft.ready) return <Screen><BrandHeader onBack={() => navigation.goBack()} /><Text>{t(draft.loadError ? 'publication_draft_load_failed' : 'my_work_loading')}</Text>
+    {draft.loadError ? <PrimaryButton label={t('repeat_action')} testID="publication-draft-retry" onPress={draft.retry} /> : null}</Screen>;
 
   // Design v1 Commit 2: submit CTA lives in a sticky footer (Screen's
   // `footer` slot → KeyboardSafeLayout), directly above the IME — not
@@ -289,6 +349,7 @@ export default function CreateCargoScreen({ navigation, route }) {
     >
       <BrandHeader ceramic onBack={() => navigation.goBack()} accent={accent.main} />
 
+      {conflictActions}
       <Text style={s.title}>{t('postCargo')}</Text>
       <Text style={s.subtitle}>{t('create_cargo_subtitle')}</Text>
 

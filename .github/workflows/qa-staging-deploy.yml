@@ -7,12 +7,22 @@ on:
         description: Type DEPLOY_QA2 to deploy only the isolated QA backend
         required: true
         type: string
+      enable_external_freight_feed:
+        description: Enable the reviewed external feed only in QA2
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       confirmation:
         description: Explicit QA-only deploy confirmation
         required: true
         type: string
+      enable_external_freight_feed:
+        description: Enable the reviewed external feed only in QA2
+        required: false
+        type: boolean
+        default: false
     secrets:
       QA2_API_URL:
         required: true
@@ -93,6 +103,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
 
       - name: Verify existing QA2 secret and local NLLB policy before mutation
+        if: ${{ !inputs.enable_external_freight_feed }}
         shell: bash
         run: |
           set -euo pipefail
@@ -178,11 +189,99 @@ jobs:
             *) pre_source=unknown ;;
           esac
           pre_hash="$(cd "$qa_backend" && find . -type f ! -path './venv/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          # До изменения кода и .env сохраняем реального владельца listener.
+          pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          test -n "$pid"
+          test "$(ps -o user= -p "$pid" | xargs)" = "$(id -un)"
+          test "$(readlink -f "/proc/$pid/cwd")" = "$(readlink -f "$qa_backend")"
+          restart_mode=direct
+          if grep -q '/urtruck-qa2.service$' "/proc/$pid/cgroup"; then
+            if grep -q '/user.slice/' "/proc/$pid/cgroup"; then
+              restart_mode=user
+              export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+              test "$(systemctl --user show urtruck-qa2.service -p MainPID --value)" = "$pid"
+            else
+              restart_mode=system
+              test "$(systemctl show urtruck-qa2.service -p MainPID --value)" = "$pid"
+              for action in stop start; do sudo -n -l /usr/bin/systemctl "$action" urtruck-qa2.service >/dev/null; done
+            fi
+          else
+            # PM2/неизвестный supervisor не заменяется процессом nohup.
+            test "$(ps -o ppid= -p "$pid" | xargs)" = 1 || { echo '::error::QA2_RESTART_SUPERVISOR_UNSUPPORTED'; exit 1; }
+            ! grep -Eq '/[^/]+\.service$' "/proc/$pid/cgroup" || { echo '::error::QA2_RESTART_UNIT_UNSUPPORTED'; exit 1; }
+          fi
+          echo "QA2_RESTART_MODE=$restart_mode"
+          # QA2 snapshots contain user data; restrict the directory and file at creation.
+          umask 077
           backup_id="backend-code-$(date -u +%Y%m%dT%H%M%SZ)"
           backup_dir="$qa_root/backups/$backup_id"
           mkdir -p "$backup_dir"
           cp -- "$qa_root/.env" "$backup_dir/qa2.env"
           chmod 600 "$backup_dir/qa2.env"
+          db_backup="$backup_dir/qa2.sqlite3"
+          python3 - "$db_path" "$db_backup" "$qa_root/.env" <<'PY'
+          from pathlib import Path
+          import os, sqlite3, sys
+
+          source_path = Path(sys.argv[1]).resolve()
+          backup_path = Path(sys.argv[2]).resolve()
+          source = sqlite3.connect(source_path.as_uri() + '?mode=ro', uri=True, timeout=15)
+          target = sqlite3.connect(backup_path)
+          try:
+              source.backup(target)
+          finally:
+              target.close()
+              source.close()
+          os.chmod(backup_path, 0o600)
+          with sqlite3.connect(backup_path) as backup:
+              if backup.execute('PRAGMA integrity_check').fetchone() != ('ok',):
+                  raise SystemExit('QA_DB_BACKUP_INTEGRITY_FAILED')
+          restore_probe = backup_path.with_name('restore-probe.sqlite3')
+          origin = sqlite3.connect(backup_path.as_uri() + '?mode=ro', uri=True, timeout=15)
+          target = sqlite3.connect(restore_probe)
+          try:
+              origin.backup(target)
+              if target.execute('PRAGMA integrity_check').fetchone() != ('ok',):
+                  raise SystemExit('QA_DB_RESTORE_PROBE_FAILED')
+          finally:
+              target.close()
+              origin.close()
+          restore_probe.unlink()
+          print('QA_DB_BACKUP=online-snapshot-verified')
+          print('QA_DB_RESTORE_PROBE=pass')
+          # Отдельная БД ленты не включается в snapshot основного продукта.
+          values = {}
+          for line in Path(sys.argv[3]).read_text(encoding='utf-8').splitlines():
+              if '=' in line and not line.lstrip().startswith('#'):
+                  key, value = line.split('=', 1)
+                  values[key.strip()] = value.strip().strip('"').strip("'")
+          feed = Path(values.get('EXTERNAL_FREIGHT_DB_PATH') or source_path.with_name('external-freight.sqlite3')).resolve()
+          qa_root = Path('/home/ubuntu/urtruck-qa2').resolve()
+          if qa_root not in feed.parents or feed == source_path or (feed.exists() and feed.samefile(source_path)):
+              raise SystemExit('QA_EXTERNAL_FEED_DB_ISOLATION_FAILED')
+          if feed.exists():
+              feed_backup = backup_path.with_name('external-freight.sqlite3')
+              source = sqlite3.connect(feed.as_uri() + '?mode=ro', uri=True, timeout=15)
+              target = sqlite3.connect(feed_backup)
+              try:
+                  source.backup(target)
+                  if target.execute('PRAGMA integrity_check').fetchone() != ('ok',):
+                      raise SystemExit('QA_EXTERNAL_FEED_BACKUP_FAILED')
+              finally:
+                  source.close()
+                  target.close()
+              os.chmod(feed_backup, 0o600)
+              print('QA_EXTERNAL_FEED_DB_BACKUP=verified')
+          else:
+              # Не потерять данные, если старый кандидат когда-либо использовал общую БД.
+              with sqlite3.connect(source_path.as_uri() + '?mode=ro', uri=True) as primary:
+                  legacy = primary.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='external_freight_items'").fetchone()
+                  if legacy and primary.execute('SELECT 1 FROM external_freight_items LIMIT 1').fetchone():
+                      raise SystemExit('QA_EXTERNAL_FEED_LEGACY_MIGRATION_REQUIRED')
+              print('QA_EXTERNAL_FEED_DB_BACKUP=not-yet-created')
+          PY
+          test -s "$db_backup"
+          db_backup_hash="$(sha256sum "$db_backup" | awk '{print $1}')"
           rsync -a \
             --exclude='venv/' --exclude='storage/' --exclude='backups/' \
             --exclude='.env' --exclude='qa2.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
@@ -196,14 +295,58 @@ jobs:
           DB_PATH_HASH=$db_path_hash
           DB_INODE=$db_inode
           STORAGE_INODE=$storage_inode
+          RESTART_MODE=$restart_mode
           PRE_SOURCE=$pre_source
           PRE_CODE_HASH=$pre_hash
           ENV_BACKUP=$backup_dir/qa2.env
+          DB_BACKUP=$db_backup
+          DB_BACKUP_HASH=$db_backup_hash
           STATE
           echo "QA_PREDEPLOY_SOURCE_SHA=$pre_source"
           echo "QA_PREDEPLOY_CODE_SHA256=$pre_hash"
           echo "QA_BACKUP_ID=$backup_id"
           echo "QA_BACKUP=code-only-ready"
+          echo "QA_DB_BACKUP=online-snapshot-verified"
+          echo "QA_DB_BACKUP_SHA256=$db_backup_hash"
+          REMOTE
+
+      - name: Enable external freight feed in isolated QA2 environment
+        if: ${{ inputs.enable_external_freight_feed }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          qa_root=/home/ubuntu/urtruck-qa2
+          qa_env="$qa_root/.env"
+          test "$(readlink -f "$(dirname "$qa_env")")" = "$(readlink -f "$qa_root")"
+          test -f /tmp/urtruck-qa2-deploy.state
+          . /tmp/urtruck-qa2-deploy.state
+          test -f "$ENV_BACKUP"
+          python3 - "$qa_env" <<'PY'
+          from pathlib import Path
+          import os, sys
+          path = Path(sys.argv[1]).resolve()
+          if path != Path('/home/ubuntu/urtruck-qa2/.env'):
+              raise SystemExit('QA2_EXTERNAL_FEED_ENV_PATH_INVALID')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          result, seen = [], False
+          for line in lines:
+              if '=' in line and not line.lstrip().startswith('#') and line.split('=', 1)[0].strip() == 'EXTERNAL_FREIGHT_FEED_ENABLED':
+                  if not seen:
+                      result.append('EXTERNAL_FREIGHT_FEED_ENABLED=true')
+                      seen = True
+                  continue
+              result.append(line)
+          if not seen:
+              result.append('EXTERNAL_FREIGHT_FEED_ENABLED=true')
+          tmp = path.with_name('.env.external-feed.tmp')
+          tmp.write_text('\n'.join(result) + '\n', encoding='utf-8')
+          os.chmod(tmp, 0o600)
+          os.replace(tmp, path)
+          print('QA2_EXTERNAL_FEED_FLAG=enabled')
+          PY
           REMOTE
 
       - name: Mirror exact backend source into isolated QA2 backend
@@ -220,6 +363,7 @@ jobs:
             golden-source/backend/ "$SERVER_USER@$SERVER_HOST:/home/ubuntu/urtruck-qa2/backend/"
 
       - name: Configure the bounded QA2-only OpenAI STT route
+        if: ${{ !inputs.enable_external_freight_feed }}
         shell: bash
         run: |
           set -euo pipefail
@@ -268,89 +412,113 @@ jobs:
         run: |
           set -euo pipefail
           export SSHPASS="$SERVER_PASS"
-          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<REMOTE
+          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" bash -s -- "$QA_SOURCE_SHA" '${{ inputs.enable_external_freight_feed }}' <<'REMOTE'
           set -euo pipefail
           qa_root=/home/ubuntu/urtruck-qa2
-          qa_backend="\$qa_root/backend"
+          qa_backend="$qa_root/backend"
           state=/tmp/urtruck-qa2-deploy.state
-          source_sha='$QA_SOURCE_SHA'
-          test -f "\$state"
-          . "\$state"
-          PY="\$qa_backend/venv/bin/python"
-          test -x "\$PY"
-          cd "\$qa_backend"
+          source_sha="$1"
+          feed_only="$2"
+          test -f "$state"
+          . "$state"
+          PY="$qa_backend/venv/bin/python"
+          test -x "$PY"
+          cd "$qa_backend"
           test -f database/vehicles_dal.py || { echo '::error::QA_DEPLOY_DATABASE_CODE_MISSING'; exit 1; }
-          "\$PY" -m py_compile main.py
-          env -i HOME="\$HOME" PATH="\$PATH" DB_PATH="/tmp/urtruck-qa2-import-smoke.db" URTRUCK_ENV=test ENV=test \
-            "\$PY" -c 'from database import vehicles_dal'
+          "$PY" -m py_compile main.py
+          env -i HOME="$HOME" PATH="$PATH" DB_PATH="/tmp/urtruck-qa2-import-smoke.db" URTRUCK_ENV=test ENV=test \
+            "$PY" -c 'from database import vehicles_dal'
           rm -f /tmp/urtruck-qa2-import-smoke.db
-          "\$PY" -m pytest tests/test_qa_data_isolation.py -q
-          printf '%s\n' "\$source_sha" > .qa-source-sha
+          "$PY" -m pytest tests/test_qa_data_isolation.py -q
+          printf '%s\n' "$source_sha" > .qa-source-sha
           listener_pid() {
             local pid
-            pid="\$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
-            if test -z "\$pid" && command -v fuser >/dev/null; then pid="\$({ fuser -n tcp 8002 2>/dev/null || true; } | awk '{print \$1; exit}')"; fi
-            if test -z "\$pid" && command -v lsof >/dev/null; then pid="\$({ lsof -nP -iTCP:8002 -sTCP:LISTEN -t 2>/dev/null || true; } | head -1)"; fi
-            printf '%s' "\$pid"
+            pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+            if test -z "$pid" && command -v fuser >/dev/null; then pid="$({ fuser -n tcp 8002 2>/dev/null || true; } | awk '{print $1; exit}')"; fi
+            if test -z "$pid" && command -v lsof >/dev/null; then pid="$({ lsof -nP -iTCP:8002 -sTCP:LISTEN -t 2>/dev/null || true; } | head -1)"; fi
+            printf '%s' "$pid"
           }
           safe_deploy_log() {
             if test -f uvicorn.log; then
               echo 'QA_DEPLOY_UVICORN_LOG=present'
               tail -n 160 uvicorn.log 2>/dev/null \
                 | grep -E '^(Traceback|ERROR:|CRITICAL:|[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):|ModuleNotFoundError:|ImportError:|SyntaxError:)' \
-                | sed -E 's#https?://[^[:space:]]+#<url>#g; s#(token|key|password|secret)=[^[:space:]]+#\\1=<redacted>#Ig' \
+                | sed -E 's#https?://[^[:space:]]+#<url>#g; s#(token|key|password|secret)=[^[:space:]]+#\1=<redacted>#Ig' \
                 | tail -n 16 || true
             else
               echo 'QA_DEPLOY_UVICORN_LOG=missing'
             fi
           }
-          old_pid="\$(listener_pid)"
-          test -n "\$old_pid"
-          old_cmd="\$(tr '\0' ' ' < "/proc/\$old_pid/cmdline")"
-          printf '%s' "\$old_cmd" | grep -Eq 'uvicorn|gunicorn'
-          printf '%s' "\$old_cmd" | grep -Fq 'main:app'
-          test "\$(ps -o user= -p "\$old_pid" | xargs)" = "\$(id -un)"
-          kill -TERM "\$old_pid"
-          for _ in {1..20}; do kill -0 "\$old_pid" 2>/dev/null || break; sleep 0.5; done
-          if kill -0 "\$old_pid" 2>/dev/null; then kill -KILL "\$old_pid"; fi
+          old_pid="$(listener_pid)"
+          test -n "$old_pid"
+          old_cmd="$(tr '\0' ' ' < "/proc/$old_pid/cmdline")"
+          printf '%s' "$old_cmd" | grep -Eq 'uvicorn|gunicorn'
+          printf '%s' "$old_cmd" | grep -Fq 'main:app'
+          test "$(ps -o user= -p "$old_pid" | xargs)" = "$(id -un)"
+          case "$RESTART_MODE" in
+            system) sudo -n /usr/bin/systemctl stop urtruck-qa2.service ;;
+            user) export XDG_RUNTIME_DIR="/run/user/$(id -u)"; systemctl --user stop urtruck-qa2.service ;;
+            direct) kill -TERM "$old_pid"
+              for _ in {1..20}; do kill -0 "$old_pid" 2>/dev/null || break; sleep 0.5; done
+              if kill -0 "$old_pid" 2>/dev/null; then kill -KILL "$old_pid"; fi ;;
+            *) echo '::error::QA2_RESTART_MODE_INVALID'; exit 1 ;;
+          esac
           port_free=no
           for _ in {1..20}; do
-            if test -z "\$(listener_pid)"; then port_free=yes; break; fi
+            if test -z "$(listener_pid)"; then port_free=yes; break; fi
             sleep 0.5
           done
-          test "\$port_free" = yes || { echo '::error::QA_DEPLOY_PORT_8002_DID_NOT_RELEASE'; exit 1; }
-          nohup "\$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
+          test "$port_free" = yes || { echo '::error::QA_DEPLOY_PORT_8002_DID_NOT_RELEASE'; exit 1; }
+          case "$RESTART_MODE" in
+            system) sudo -n /usr/bin/systemctl start urtruck-qa2.service ;;
+            user) export XDG_RUNTIME_DIR="/run/user/$(id -u)"; systemctl --user start urtruck-qa2.service ;;
+            direct) nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null & wait_pid=$!; test -n "$wait_pid" ;;
+            *) echo '::error::QA2_RESTART_MODE_INVALID'; exit 1 ;;
+          esac
           healthy=no
           for _ in {1..40}; do
-            new_pid="\$(listener_pid)"
-            if test -n "\$new_pid" && curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1; then
+            new_pid="$(listener_pid)"
+            if test -n "$new_pid" && curl -fsS http://127.0.0.1:8002/health >/dev/null 2>&1; then
               healthy=yes
               break
             fi
             sleep 1
           done
-          if test "\$healthy" != yes; then
+          if test "$healthy" != yes; then
             echo '::error::QA_DEPLOY_LOCAL_HEALTH_TIMEOUT'
             safe_deploy_log
             exit 1
           fi
-          new_pid="\$(listener_pid)"
-          test -n "\$new_pid"
-          test "\$(ps -o user= -p "\$new_pid" | xargs)" = "\$(id -un)"
-          new_cmd="\$(tr '\0' ' ' < "/proc/\$new_pid/cmdline")"
-          printf '%s' "\$new_cmd" | grep -Fq 'main:app'
-          test "\$(readlink -f "/proc/\$new_pid/cwd")" = "\$(readlink -f "\$qa_backend")"
+          new_pid="$(listener_pid)"
+          test -n "$new_pid"
+          test "$(ps -o user= -p "$new_pid" | xargs)" = "$(id -un)"
+          if test "$RESTART_MODE" = system; then
+            test "$(systemctl show urtruck-qa2.service -p MainPID --value)" = "$new_pid"
+          elif test "$RESTART_MODE" = user; then
+            test "$(systemctl --user show urtruck-qa2.service -p MainPID --value)" = "$new_pid"
+          fi
+          new_cmd="$(tr '\0' ' ' < "/proc/$new_pid/cmdline")"
+          printf '%s' "$new_cmd" | grep -Fq 'main:app'
+          test "$(readlink -f "/proc/$new_pid/cwd")" = "$(readlink -f "$qa_backend")"
           curl -fsS http://127.0.0.1:8002/api/version >/dev/null
           curl -fsS http://127.0.0.1:8002/health >/dev/null
-          ai_info="\$(curl -fsS http://127.0.0.1:8002/api/v1/chat/translate/info)"
-          printf '%s' "\$ai_info" | python3 -c '
+          if test "$feed_only" = true; then
+            openapi="$(curl -fsS http://127.0.0.1:8002/openapi.json)"
+            printf '%s' "$openapi" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "/api/v1/external-freight" in d.get("paths", {}), "QA2_EXTERNAL_FEED_ROUTE_MISSING"'
+            code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8002/api/v1/external-freight/import -H 'Content-Type: application/json' -d '{"records":[]}')"
+            test "$code" = 401 || { echo '::error::QA2_EXTERNAL_FEED_FLAG_NOT_ENABLED'; exit 1; }
+            echo 'QA2_EXTERNAL_FEED_RUNTIME=enabled-import-auth-required'
+          fi
+          if test "$feed_only" != true; then
+          ai_info="$(curl -fsS http://127.0.0.1:8002/api/v1/chat/translate/info)"
+          printf '%s' "$ai_info" | python3 -c '
           import json, sys
           info = json.load(sys.stdin)
           if info.get("provider") != "local_ai":
               raise SystemExit("QA2_LOCAL_NLLB_PROVIDER_NOT_READY")
           '
-          stt_info="\$(curl -fsS http://127.0.0.1:8002/api/v1/chat/transcribe/info)"
-          printf '%s' "\$stt_info" | python3 -c '
+          stt_info="$(curl -fsS http://127.0.0.1:8002/api/v1/chat/transcribe/info)"
+          printf '%s' "$stt_info" | python3 -c '
           import json, sys
           info = json.load(sys.stdin)
           expected = {
@@ -360,7 +528,7 @@ jobs:
           if any(info.get(key) != value for key, value in expected.items()) or not info.get("model_allowed") or not info.get("key_configured"):
               raise SystemExit("QA2_OPENAI_STT_CONFIGURATION_NOT_READY")
           '
-          python3 - "\$qa_root/.env" <<'PY'
+          python3 - "$qa_root/.env" <<'PY'
           from pathlib import Path
           import sys
           values = {}
@@ -382,8 +550,25 @@ jobs:
           PY
           echo 'QA_STT_PROVIDER=openai-ready'
           echo 'QA_TRANSLATE_PROVIDER=local-nllb-ready'
-          test "\$(cat .qa-source-sha)" = "\$source_sha"
-          db_path="\$(python3 - "\$qa_root" "\$qa_root/.env" <<'PY'
+          else
+          python3 - "$ENV_BACKUP" "$qa_root/.env" <<'PYENV'
+          from pathlib import Path
+          import sys
+          def values(path):
+              result = {}
+              for line in Path(path).read_text().splitlines():
+                  if '=' in line and not line.lstrip().startswith('#'):
+                      key, value = line.split('=', 1)
+                      if key.strip() != 'EXTERNAL_FREIGHT_FEED_ENABLED':
+                          result[key.strip()] = value
+              return result
+          if values(sys.argv[1]) != values(sys.argv[2]):
+              raise SystemExit('QA2_PROTECTED_SETTINGS_CHANGED')
+          print('QA2_PROTECTED_SETTINGS=unchanged')
+          PYENV
+          fi
+          test "$(cat .qa-source-sha)" = "$source_sha"
+          db_path="$(python3 - "$qa_root" "$qa_root/.env" <<'PY'
           from pathlib import Path
           import sys
           root = Path(sys.argv[1]).resolve()
@@ -401,18 +586,19 @@ jobs:
           print(p)
           PY
           )"
-          test "\$(printf '%s' "\$db_path" | sha256sum | awk '{print \$1}')" = "\$DB_PATH_HASH"
-          test "\$(stat -c '%d:%i' "\$db_path")" = "\$DB_INODE"
-          test "\$(stat -c '%d:%i' "\$qa_root/storage")" = "\$STORAGE_INODE"
-          post_hash="\$(find . -type f ! -path './venv/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print \$1}')"
-          echo "QA_DEPLOYED_SOURCE_SHA=\$source_sha"
-          echo "QA_POSTDEPLOY_CODE_SHA256=\$post_hash"
+          test "$(printf '%s' "$db_path" | sha256sum | awk '{print $1}')" = "$DB_PATH_HASH"
+          test "$(stat -c '%d:%i' "$db_path")" = "$DB_INODE"
+          test "$(stat -c '%d:%i' "$qa_root/storage")" = "$STORAGE_INODE"
+          post_hash="$(find . -type f ! -path './venv/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          echo "QA_DEPLOYED_SOURCE_SHA=$source_sha"
+          echo "QA_POSTDEPLOY_CODE_SHA256=$post_hash"
           echo 'QA_DB=preserved-same-file'
           echo 'QA_STORAGE=preserved-same-directory'
           echo 'QA_API_8002=healthy-restarted'
           REMOTE
 
       - name: Runtime QA2P isolation check through QA and production APIs
+        if: ${{ !inputs.enable_external_freight_feed }}
         shell: bash
         run: |
           set -euo pipefail
@@ -587,15 +773,20 @@ jobs:
           backup_dir="$qa_root/backups/$BACKUP_ID"
           test -d "$backup_dir"
           pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
-          if test -n "$pid"; then
-            cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
-            printf '%s' "$cmd" | grep -Eq 'uvicorn|gunicorn'
-            printf '%s' "$cmd" | grep -Fq 'main:app'
-            test "$(ps -o user= -p "$pid" | xargs)" = "$(id -un)"
-            kill -TERM "$pid" || true
-            sleep 2
-            kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true
-          fi
+          case "$RESTART_MODE" in
+            system) sudo -n /usr/bin/systemctl stop urtruck-qa2.service ;;
+            user) export XDG_RUNTIME_DIR="/run/user/$(id -u)"; systemctl --user stop urtruck-qa2.service ;;
+            direct) if test -n "$pid"; then
+                cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+                printf '%s' "$cmd" | grep -Eq 'uvicorn|gunicorn'
+                printf '%s' "$cmd" | grep -Fq 'main:app'
+                test "$(ps -o user= -p "$pid" | xargs)" = "$(id -un)"
+                kill -TERM "$pid" || true
+                sleep 2
+                kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true
+              fi ;;
+            *) echo '::error::QA2_RESTART_MODE_INVALID'; exit 1 ;;
+          esac
           rsync -a --delete \
             --exclude='venv/' --exclude='storage/' --exclude='backups/' \
             --exclude='.env' --exclude='qa2.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
@@ -604,21 +795,16 @@ jobs:
             "$backup_dir/" "$qa_backend/"
           cp -- "$ENV_BACKUP" "$qa_root/.env"
           chmod 600 "$qa_root/.env"
-          python3 - "$qa_root/.env" <<'PY'
-          from pathlib import Path
-          import sys
-          values = {}
-          for raw in Path(sys.argv[1]).read_text(encoding='utf-8').splitlines():
-              if '=' in raw and not raw.lstrip().startswith('#'):
-                  key, value = raw.split('=', 1)
-                  values[key.strip()] = value.strip().strip('"').strip("'")
-          if values.get('TRANSCRIBE_PROVIDER') != 'local_ai' or values.get('TRANSLATE_PROVIDER') != 'local_ai':
-              raise SystemExit('QA_ROLLBACK_LOCAL_AI_SETTINGS_NOT_RESTORED')
-          PY
+          cmp -s -- "$ENV_BACKUP" "$qa_root/.env" || { echo '::error::QA_ROLLBACK_SETTINGS_NOT_RESTORED'; exit 1; }
           cd "$qa_backend"
           PY=venv/bin/python
           test -x "$PY"
-          nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
+          case "$RESTART_MODE" in
+            system) sudo -n /usr/bin/systemctl start urtruck-qa2.service ;;
+            user) export XDG_RUNTIME_DIR="/run/user/$(id -u)"; systemctl --user start urtruck-qa2.service ;;
+            direct) nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null & wait_pid=$!; test -n "$wait_pid" ;;
+            *) echo '::error::QA2_RESTART_MODE_INVALID'; exit 1 ;;
+          esac
           sleep 5
           curl -fsS http://127.0.0.1:8002/api/version >/dev/null
           db_path="$(python3 - "$qa_root" "$qa_root/.env" <<'PY'

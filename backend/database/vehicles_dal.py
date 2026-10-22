@@ -12,10 +12,60 @@ def normalize_plate_key(value: str) -> str:
     return "".join(ch for ch in str(value).strip().upper() if ch.isalnum())
 
 
+def _migrate_legacy_plate_identity(c):
+    """SQLite не удаляет табличный UNIQUE через ALTER: переносим таблицу атомарно."""
+    quote = lambda name: '"' + name.replace('"', '""') + '"'
+    legacy = False
+    for index in c.execute('PRAGMA index_list(vehicles)').fetchall():
+        columns = [row['name'] for row in c.execute(f'PRAGMA index_info({quote(index["name"])})')]
+        if index['unique'] and columns == ['owner_user_id', 'license_plate']:
+            legacy = True
+    if not legacy:
+        return
+    foreign_keys = c.execute('PRAGMA foreign_keys').fetchone()[0]
+    c.execute('PRAGMA foreign_keys=OFF')
+    try:
+        c.execute('BEGIN IMMEDIATE')
+        indexes = c.execute('PRAGMA index_list(vehicles)').fetchall()
+        if not any(index['unique'] and [row['name'] for row in c.execute(f'PRAGMA index_info({quote(index["name"])})')] == ['owner_user_id', 'license_plate'] for index in indexes):
+            c.commit()
+            return
+        original_sql = c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='vehicles'").fetchone()[0]
+        revised, count = re.subn(
+            r'UNIQUE\s*\(\s*owner_user_id\s*,\s*license_plate\s*\)',
+            'UNIQUE(owner_user_id, vehicle_registration_country_code, license_plate)',
+            original_sql, flags=re.IGNORECASE,
+        )
+        if count != 1:
+            raise RuntimeError('Неизвестная старая схема vehicles: миграция остановлена')
+        revised, renamed = re.subn(r'^(CREATE\s+TABLE\s+)(?:IF\s+NOT\s+EXISTS\s+)?(?:"vehicles"|`vehicles`|\[vehicles\]|vehicles)(?=\s|\()',
+                                  r'\1vehicles_identity_migration', revised, count=1, flags=re.IGNORECASE)
+        if renamed != 1:
+            raise RuntimeError('Не удалось подготовить копию vehicles')
+        extra_objects = c.execute("SELECT sql FROM sqlite_master WHERE tbl_name='vehicles' AND type IN ('index','trigger') AND sql IS NOT NULL").fetchall()
+        previous_violations = set(tuple(row) for row in c.execute('PRAGMA foreign_key_check'))
+        columns = ','.join(quote(row['name']) for row in c.execute('PRAGMA table_info(vehicles)'))
+        c.execute(revised)
+        c.execute(f'INSERT INTO vehicles_identity_migration ({columns}) SELECT {columns} FROM vehicles')
+        c.execute('DROP TABLE vehicles')
+        c.execute('ALTER TABLE vehicles_identity_migration RENAME TO vehicles')
+        for obj in extra_objects:
+            c.execute(obj['sql'])
+        if set(tuple(row) for row in c.execute('PRAGMA foreign_key_check')) - previous_violations:
+            raise RuntimeError('Миграция vehicles нарушила внешние связи')
+        c.commit()
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.execute(f'PRAGMA foreign_keys={int(bool(foreign_keys))}')
+
+
 def init_vehicles_schema():
     schema = Path(__file__).resolve().parent / "vehicles_schema.sql"
     with get_conn() as c:
         c.executescript(schema.read_text(encoding="utf-8"))
+        _migrate_legacy_plate_identity(c)
 
 
 def list_vehicles(owner_user_id: str):

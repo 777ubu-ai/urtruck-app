@@ -409,6 +409,9 @@ def email_verify(req: EmailVerifyRequest, request: Request = None):
         "email": email,
         "current_step": driver.get("current_step") or "done",
         "verification_level": driver.get("verification_level", 1) or 1,
+        "role": driver.get("role") or "guest",
+        "status": driver.get("status") or "pending",
+        "basic_onboarding_completed": bool(driver.get("basic_onboarding_completed")),
     }
 
 

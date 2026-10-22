@@ -1,3 +1,4 @@
+import { sessionRole } from '../utils/publicationSession';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +23,7 @@ import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
 import { useVerificationGate } from '../components/VerificationGate';
-import { LEVELS } from '../utils/AuthContext';
+import { LEVELS, useAuth } from '../utils/AuthContext';
 
 // Endpoint flag code for the v1 Flag component: backend from_country/
 // to_country are ISO codes; anything else (empty, emoji leftovers) renders
@@ -57,7 +58,8 @@ const withTimeout = (promise, timeoutMs = 12000) => new Promise((resolve, reject
 export default function MyTripsScreen({ navigation, route }) {
   const v1Base = useV1Colors();
   const ceramic = useDriverCeramicColors();
-  const { role } = route.params || {};
+  const { session } = useAuth();
+  const role = sessionRole(session, route.params?.role);
   const isDriver = role === 'driver';
   const v1 = isDriver ? ceramic : v1Base;
   const s = React.useMemo(() => StyleSheet.create({

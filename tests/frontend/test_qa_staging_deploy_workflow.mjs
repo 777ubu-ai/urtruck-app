@@ -65,6 +65,20 @@ test('QA2 backend deploy protects database, storage and production', () => {
   assert.match(workflow, /Production version fingerprint changed during QA-only deploy/);
 });
 
+test('QA2 deploy snapshots the live SQLite database and verifies a separate restore probe before mutation', () => {
+  const backupPosition = workflow.indexOf('QA_DB_BACKUP=online-snapshot-verified');
+  const mutationPosition = workflow.indexOf('Mirror exact backend source into isolated QA2 backend');
+  assert.ok(backupPosition >= 0 && mutationPosition > backupPosition);
+  assert.match(workflow, /db_backup="\$backup_dir\/qa2\.sqlite3"/);
+  assert.match(workflow, /source\.backup\(target\)/);
+  assert.match(workflow, /restore_probe = backup_path\.with_name\('restore-probe\.sqlite3'\)/);
+  assert.match(workflow, /PRAGMA integrity_check/);
+  assert.match(workflow, /QA_DB_RESTORE_PROBE=pass/);
+  assert.match(workflow, /DB_BACKUP_HASH=\$db_backup_hash/);
+  assert.match(workflow, /chmod 600/);
+  assert.ok(workflow.indexOf('umask 077\n          backup_id=') < backupPosition);
+});
+
 test('QA2 backend deploy has rollback and self-contained runtime QA2P isolation proof', () => {
   assert.match(workflow, /Roll back QA2 code and settings if deploy validation fails/);
   assert.match(workflow, /if: failure\(\)/);
@@ -79,6 +93,19 @@ test('QA2 backend deploy has rollback and self-contained runtime QA2P isolation 
   assert.match(workflow, /'from_city': marker/);
   assert.match(workflow, /trap 'qa_fixture cleanup \|\| true' EXIT/);
   assert.match(workflow, /pytest tests\/test_qa_data_isolation\.py -q/);
+});
+
+test('external feed flag is opt-in, QA2-only, backed up and checked against the deployed route', () => {
+  assert.match(workflow, /enable_external_freight_feed:[\s\S]*?type: boolean[\s\S]*?default: false/);
+  assert.match(workflow, /Enable external freight feed in isolated QA2 environment/);
+  assert.match(workflow, /if: \$\{\{ inputs\.enable_external_freight_feed \}\}/);
+  assert.match(workflow, /\/home\/ubuntu\/urtruck-qa2\/\.env/);
+  assert.match(workflow, /ENV_BACKUP/);
+  assert.match(workflow, /EXTERNAL_FREIGHT_FEED_ENABLED=true/);
+  assert.match(workflow, /\/api\/v1\/external-freight\/import/);
+  assert.match(workflow, /QA2_EXTERNAL_FEED_FLAG_NOT_ENABLED/);
+  assert.match(workflow, /QA_ROLLBACK=restored-/);
+  assert.doesNotMatch(workflow, /\/home\/ubuntu\/urtruck-pro|urtruck\.kz\/api\/v1\/external-freight/);
 });
 
 test('QA Center keeps deploy opt-in and waits for every existing gate', () => {
@@ -126,7 +153,7 @@ test('QA2 deploy keeps NLLB local and configures only the approved OpenAI STT ro
   assert.match(workflow, /QA_STT_PROVIDER=openai-ready/);
   assert.match(workflow, /QA_TRANSLATE_PROVIDER=local-nllb-ready/);
   assert.match(workflow, /ENV_BACKUP=.*qa2\.env/);
-  assert.match(workflow, /QA_ROLLBACK_LOCAL_AI_SETTINGS_NOT_RESTORED/);
+  assert.match(workflow, /QA_ROLLBACK_SETTINGS_NOT_RESTORED/);
   assert.doesNotMatch(workflow, /OPENAI_API_KEY.*print\(/);
   assert.doesNotMatch(workflow, /OPENAI_API_KEY.*echo/);
   assert.doesNotMatch(workflow, /urtruck-security.*\.env/);
