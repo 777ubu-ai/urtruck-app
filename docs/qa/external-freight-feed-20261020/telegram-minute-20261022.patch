@@ -1,0 +1,14 @@
+--- feed.py
++++ feed.py
+@@ -346,9 +346,9 @@
+         await sync_prior(reader,db,target)
+         last_scan = 0
+         while True:
+-            if time.monotonic()-last_scan >= 180:
++            if time.monotonic()-last_scan >= 60:
++                last_scan=time.monotonic()
+                 await collect(reader,db)
+-                last_scan=time.monotonic()
+             if cfg.get("PUBLISH_ENABLED","false").lower()=="true":
+                 await publish(reader,db,target)
+             with db:

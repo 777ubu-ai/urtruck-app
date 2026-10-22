@@ -133,7 +133,15 @@ def map_selected_message(raw: dict) -> dict:
         route = routes[0] if routes else _LABELLED_ROUTE.search(text)
     origin = _place(route.group(1)) if route else raw.get("origin")
     destination = _place(route.group(2)) if route else raw.get("destination")
-    if (not origin or not destination) and status == "active":
+    if not origin and not destination:
+        partial = re.search(r"(?im)^\s*(?:местонахождение|нахожусь|стою|откуда|из)\s*[:：]?\s+([^\n;]{2,80})$", text)
+        origin = _place(partial.group(1)) if partial else None
+        if not origin and kind=="vehicle":
+            location = re.search(
+                r"(?m)^\s*(?i:свободн(?:ая|ый|ые)\s+(?:машин\w*|тент\w*|реф\w*|фур\w*|транспорт|авто)\s+в)\s+"
+                r"([А-ЯЁA-Z][^\n,.;]{1,79})(?:[,.;\n]|$)",text)
+            origin = _place(location.group(1)) if location else None
+    if ((route and (not origin or not destination)) or (not origin and not destination)) and status == "active":
         status = "review"
     amount, currency, price_state = _amount(text)
     bodies = [name for name, pattern in _BODY if pattern.search(text)]
@@ -175,3 +183,84 @@ def map_selected_message(raw: dict) -> dict:
         "source_revision": str(raw.get("source_revision") or raw.get("fingerprint") or "")[:160],
         "origin_source": str(raw.get("origin_source") or raw.get("source") or "")[:120] or None,
     }
+
+
+_PHONE_BLOCK = re.compile(r"(?<!\d)(?:\+?\d[\d \t().-]{7,24}\d)(?!\d)")
+
+
+def block_contacts(text):
+    """Только явно написанные в блоке номера, без угадывания страны."""
+    result = []
+    for match in _PHONE_BLOCK.finditer(text):
+        raw = match.group().strip()
+        digits = re.sub(r"\D", "", raw)
+        if 10 <= len(digits) <= 15 and raw not in result:
+            result.append(raw)
+    return result[:20]
+
+
+def _only_country_headers(value):
+    # Разрешаем только известные заголовки стран/декор; общие контакты и условия
+    # перед первым маршрутом не могут быть безопасно распределены по заявкам.
+    allowed={"россия","казахстан","китай","европа","беларусь","узбекистан","киргизия",
+             "russia","kazakhstan","china","europe","中国","俄罗斯","哈萨克斯坦"}
+    for line in value.splitlines():
+        cleaned="".join(c for c in line if c.isalpha() or c.isspace()).strip().casefold()
+        if cleaned and cleaned not in allowed:
+            return False
+        if any(c.isdigit() for c in line) or "@" in line or "http" in line.casefold():
+            return False
+    return True
+
+
+def _country_header_offsets(value):
+    offset=0
+    result=[]
+    for line in value.splitlines(keepends=True):
+        if any(c.isalpha() for c in line) and _only_country_headers(line):
+            result.append(offset)
+        offset+=len(line)
+    return result
+
+
+def map_selected_messages(raw):
+    """Нумерованные или явно разделённые маршрутные блоки, без наследования."""
+    text = raw.get("original_text", raw.get("text", ""))
+    if not isinstance(text,str) or len(text)>20000:
+        raise ValueError("invalid_original_text")
+    numbered = list(re.finditer(r"(?m)^\s*\d+[.)]\s+",text))
+    blocks = []
+    if len(numbered)>1 and not text[:numbered[0].start()].strip():
+        for i,m in enumerate(numbered):
+            end = numbered[i+1].start() if i+1<len(numbered) else len(text)
+            blocks.append(text[m.end():end].strip())
+    else:
+        route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
+        # Безопасен список, где каждый блок начинается своим маршрутом.
+        if len(route_matches)>1 and _only_country_headers(text[:route_matches[0].start()]):
+            candidate_blocks=[]
+            safe=True
+            for i,m in enumerate(route_matches):
+                end=route_matches[i+1].start() if i+1<len(route_matches) else len(text)
+                headers=_country_header_offsets(text[m.end():end])
+                if headers:
+                    cut=m.end()+headers[0]
+                    # Поля перед следующим маршрутом могут быть общими для новой
+                    # секции. Нельзя присвоить их предыдущей или следующей заявке.
+                    if i+1==len(route_matches) or not _only_country_headers(text[cut:end]):
+                        safe=False
+                        break
+                    end=cut
+                candidate_blocks.append(text[m.start():end].strip())
+            if safe:
+                blocks=candidate_blocks
+    if not blocks:
+        return [map_selected_message(raw)]
+    result=[]
+    for i,block in enumerate(blocks):
+        item_raw = {k:v for k,v in raw.items() if k not in {
+            "text","original_text","phones","contacts","origin","destination","amount","currency","kind","status"}}
+        item_raw.update(text=block,contacts=block_contacts(block),segment_id=f"block-{i+1}")
+        item=map_selected_message(item_raw)
+        result.append(item)
+    return result

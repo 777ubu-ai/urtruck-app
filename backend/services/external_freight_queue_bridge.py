@@ -9,14 +9,17 @@ import json
 import os
 import sqlite3
 from contextlib import closing
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 from services.external_freight_import_adapter import ExternalFreightFeedAdapter
-from services.external_freight_parser import map_selected_message
+from services.external_freight_parser import map_selected_message, map_selected_messages
+from services.external_freight_classifier import classify_message
 
 ACTIVE_SECONDS = 120 * 3600
 MAX_SCAN = 50
+PARSER_REVISION = '20261022-free-location-bulk-v2'
 
 
 def validate_qa_target(api_url):
@@ -42,6 +45,13 @@ class PublishedQueueBridge:
                 state.execute("ALTER TABLE published_bridge_seen ADD COLUMN source_revision TEXT")
             state.execute("""CREATE TABLE IF NOT EXISTS published_bridge_rejections (
                 destination_message INTEGER PRIMARY KEY, reason TEXT NOT NULL)""")
+            # Номер Telegram-публикации не уникален для исходной очереди.
+            # Старые отметки неоднозначны: оставляем их для отката, а каждую
+            # исходную строку пересверяем один раз через идемпотентный outbox.
+            state.execute("""CREATE TABLE IF NOT EXISTS published_bridge_seen_v2 (
+                source_queue_id INTEGER PRIMARY KEY, source_revision TEXT NOT NULL)""")
+            state.execute("""CREATE TABLE IF NOT EXISTS published_bridge_rejections_v2 (
+                source_queue_id INTEGER PRIMARY KEY, reason TEXT NOT NULL)""")
 
     def run_once(self):
         if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "").lower() not in {"1", "true", "yes"}:
@@ -75,8 +85,8 @@ class PublishedQueueBridge:
             rows = source.execute(f"""SELECT q.*, {revision} AS bridge_source_revision FROM queue q
                 WHERE status='published' AND destination_message>0
                 AND source_date>=? AND source_date<=?
-                AND NOT EXISTS (SELECT 1 FROM bridge_state.published_bridge_seen s
-                                WHERE s.destination_message=q.destination_message
+                AND NOT EXISTS (SELECT 1 FROM bridge_state.published_bridge_seen_v2 s
+                                WHERE s.source_queue_id=q.id
                                 AND s.source_revision={revision})
                 ORDER BY destination_message,id LIMIT ?""",
                 (now - ACTIVE_SECONDS, now + 300, MAX_SCAN)).fetchall()
@@ -93,18 +103,110 @@ class PublishedQueueBridge:
             except (ValueError, TypeError, OverflowError):
                 rejected += 1
                 with self.adapter._connect() as state:
-                    state.execute("INSERT OR REPLACE INTO published_bridge_rejections VALUES(?,?)",
-                                  (row["destination_message"], "invalid_source_record"))
+                    state.execute("INSERT OR REPLACE INTO published_bridge_rejections_v2 VALUES(?,?)",
+                                  (row["id"], "invalid_source_record"))
             # Durable enqueue precedes acknowledgement: interrupted runs replay.
             with self.adapter._connect() as state:
-                state.execute("""INSERT INTO published_bridge_seen(destination_message,source_revision) VALUES(?,?)
-                              ON CONFLICT(destination_message) DO UPDATE SET source_revision=excluded.source_revision""",
-                              (row["destination_message"], row["bridge_source_revision"]))
+                state.execute("""INSERT INTO published_bridge_seen_v2(source_queue_id,source_revision) VALUES(?,?)
+                              ON CONFLICT(source_queue_id) DO UPDATE SET source_revision=excluded.source_revision""",
+                              (row["id"], row["bridge_source_revision"]))
         delivery = self.adapter.flush_once()
         return {"status": delivery["status"], "scanned": len(rows), "enqueued": enqueued,
                 "review": review, "rejected": rejected, "sent": delivery.get("sent", 0),
                 "pending": delivery.get("pending", self.adapter.pending_count()),
                 "quarantined": delivery.get("quarantined", self.adapter.quarantined_count())}
+
+
+class IncomingQueueBridge(PublishedQueueBridge):
+    """Читает независимый вход той же очереди, не ожидая Telegram publication."""
+    def __init__(self, source_path, adapter):
+        super().__init__(source_path,adapter)
+        with adapter._connect() as state:
+            state.execute("""CREATE TABLE IF NOT EXISTS incoming_bridge_seen (
+                source_queue_id INTEGER PRIMARY KEY, source_revision TEXT NOT NULL,
+                processed_at REAL NOT NULL, reason TEXT NOT NULL)""")
+            state.execute("""CREATE TABLE IF NOT EXISTS incoming_bridge_dedup (
+                fingerprint TEXT PRIMARY KEY, identity TEXT NOT NULL, published_at REAL NOT NULL)""")
+
+    def _run_locked(self):
+        now=self.adapter.clock()
+        # Учитываем durable outbox прежнего published-режима при переключении.
+        with self.adapter._connect() as state:
+            for previous in state.execute("SELECT payload FROM selected_outbox WHERE quarantined_at IS NULL").fetchall():
+                previous=json.loads(previous["payload"])
+                if previous.get("status")!="active":
+                    continue
+                try:
+                    published=datetime.fromisoformat(previous["source_published_at"].replace("Z","+00:00")).timestamp()
+                except (KeyError,TypeError,ValueError):
+                    continue
+                if published<=now-ACTIVE_SECONDS:
+                    continue
+                identity="/".join((previous["source_id"],previous["source_message_id"],previous["segment_id"]))
+                normalized=" ".join(previous["original_text"].casefold().split())
+                fingerprint=hashlib.sha256(normalized.encode()).hexdigest()
+                state.execute("INSERT OR IGNORE INTO incoming_bridge_dedup VALUES(?,?,?)",(fingerprint,identity,published))
+        with closing(sqlite3.connect(self.source_path.as_uri()+"?mode=ro",uri=True,timeout=2)) as source:
+            source.row_factory=sqlite3.Row
+            source.execute("ATTACH DATABASE ? AS bridge_state",(Path(self.adapter.db_path).resolve().as_uri()+"?mode=ro",))
+            query="""SELECT q.* FROM app_messages q
+                WHERE source_date>=? AND source_date<=?
+                AND NOT EXISTS(SELECT 1 FROM bridge_state.incoming_bridge_seen s
+                  WHERE s.source_queue_id=q.id AND s.source_revision=q.revision || ':' || ?)"""
+            # Свежий поток не ждёт первоначальную загрузку, старый хвост тоже продвигается.
+            newest=source.execute(query+" ORDER BY updated_at DESC,id DESC LIMIT 10",(now-ACTIVE_SECONDS,now+300,PARSER_REVISION)).fetchall()
+            oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(now-ACTIVE_SECONDS,now+300,PARSER_REVISION,MAX_SCAN)).fetchall()
+            unique={row["id"]:row for row in newest+oldest}
+            rows=list(unique.values())[:MAX_SCAN]
+        enqueued=review=rejected=duplicates=0
+        reasons={}
+        for row in rows:
+            raw=dict(row)
+            reason="accepted"
+            try:
+                records=map_selected_messages(raw)
+                identities={record["segment_id"] for record in records}
+                with self.adapter._connect() as state:
+                    old=state.execute("SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=?",
+                                      (str(row["source_id"]),str(row["source_message"]))).fetchall()
+                # При изменении списка устаревшие блоки закрываются; данные не удаляются.
+                for previous in old:
+                    previous=json.loads(previous["payload"])
+                    if previous["segment_id"] not in identities:
+                        previous["status"]="closed"
+                        enqueued+=bool(self.adapter.enqueue(previous))
+                for record in records:
+                    identity="/".join((record["source_id"],record["source_message_id"],record["segment_id"]))
+                    normalized=" ".join(record["original_text"].casefold().split())
+                    fingerprint=hashlib.sha256(normalized.encode()).hexdigest()
+                    with self.adapter._connect() as state:
+                        duplicate=state.execute("SELECT identity FROM incoming_bridge_dedup WHERE fingerprint=? AND published_at>?",
+                                                (fingerprint,now-ACTIVE_SECONDS)).fetchone()
+                    if duplicate and duplicate[0]!=identity and record["status"]=="active":
+                        # Редактирование в дубль не должно оставлять старую карточку active.
+                        for previous in old:
+                            previous=json.loads(previous["payload"])
+                            if previous["segment_id"]==record["segment_id"] and previous.get("status")=="active":
+                                previous["status"]="closed"
+                                enqueued+=bool(self.adapter.enqueue(previous))
+                        duplicates+=1;reason="exact_content_duplicate";continue
+                    if record["status"]=="review":
+                        review+=1
+                        classification=classify_message(record["original_text"])
+                        reason="ambiguous_kind" if classification.get("kind") is None else "unresolved_direction"
+                    if record["status"]=="active":
+                        with self.adapter._connect() as state:
+                            state.execute("INSERT OR REPLACE INTO incoming_bridge_dedup VALUES(?,?,?)",(fingerprint,identity,row["source_date"]))
+                    enqueued+=bool(self.adapter.enqueue(record))
+            except (ValueError,TypeError,OverflowError):
+                rejected+=1;reason="invalid_source_record"
+            # ACK разбора только после durable enqueue; HTTP ACK хранится отдельно.
+            with self.adapter._connect() as state:
+                state.execute("INSERT OR REPLACE INTO incoming_bridge_seen VALUES(?,?,?,?)",(row["id"],row["revision"]+":"+PARSER_REVISION,self.adapter.clock(),reason))
+            reasons[reason]=reasons.get(reason,0)+1
+        delivery=self.adapter.flush_once()
+        return {**delivery,"scanned":len(rows),"enqueued":enqueued,"review":review,
+                "rejected":rejected,"duplicates":duplicates,"reasons":reasons,"mode":"incoming"}
 
 
 def main():
@@ -117,7 +219,8 @@ def main():
         raise ValueError("explicit_source_and_state_required")
     os.umask(0o077)
     # Никаких ключей/контактов/текстов в аргументах процесса или stdout.
-    result = PublishedQueueBridge(source, ExternalFreightFeedAdapter()).run_once()
+    worker = IncomingQueueBridge if os.getenv("EXTERNAL_FREIGHT_SOURCE_MODE") == "incoming" else PublishedQueueBridge
+    result = worker(source, ExternalFreightFeedAdapter()).run_once()
     print(json.dumps(result, sort_keys=True))
     return 0 if result["status"] in {"delivered", "idle", "busy", "disabled"} else 1
 
