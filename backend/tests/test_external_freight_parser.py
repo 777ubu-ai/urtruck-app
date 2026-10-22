@@ -213,3 +213,11 @@ def test_compact_route_with_partial_label_stays_unattributed_for_review():
     assert item["kind"] == "vehicle"
     assert item["status"] == "review"
     assert item["origin"] is None and item["destination"] is None
+
+
+def test_compact_route_with_unpunctuated_partial_label_stays_unattributed_for_review():
+    text = "Есть машина\nХоргос-Алматы\nОткуда Астана"
+    item = map_selected_message(_queue(text))
+    assert item["kind"] == "vehicle"
+    assert item["status"] == "review"
+    assert item["origin"] is None and item["destination"] is None
