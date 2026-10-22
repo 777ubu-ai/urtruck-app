@@ -282,7 +282,6 @@ async def collect(reader, db):
             break
         except Exception as exc:
             with db:
-                db.execute("INSERT OR IGNORE INTO app_cursors VALUES(?,?)",(source,high))
                 db.execute("INSERT OR REPLACE INTO source_health VALUES(?,?,?)",(source,time.time(),type(exc).__name__))
             report[source] = {"blocked":type(exc).__name__}
         await asyncio.sleep(1)
@@ -382,6 +381,31 @@ def status(db):
             "last_tick":(db.execute("SELECT value FROM metadata WHERE key='last_tick'").fetchone() or [None])[0]}
 
 
+async def telegram_tick(reader, db, state):
+    """Ошибка destination не останавливает независимый приём в приложение."""
+    from telethon.errors import FloodWaitError
+    if time.time()<state.get("retry_after",0):
+        return
+    try:
+        if not state.get("target"):
+            target=await asyncio.wait_for(reader.get_input_entity(DESTINATION),30)
+            permission=await asyncio.wait_for(reader.get_permissions(target,"me"),30)
+            if not (permission.is_creator or permission.is_admin):
+                raise RuntimeError("DESTINATION_ADMIN_REQUIRED")
+            await asyncio.wait_for(sync_prior(reader,db,target),30)
+            state["target"]=target
+        if time.monotonic()-state.get("last_reconcile",0)>=60:
+            await asyncio.wait_for(reconcile(reader,db,state["target"]),30)
+            state["last_reconcile"]=time.monotonic()
+        await asyncio.wait_for(publish(reader,db,state["target"]),45)
+    except Exception as exc:
+        state.pop("target",None)
+        delay=exc.seconds+1 if isinstance(exc,FloodWaitError) else 60
+        state["retry_after"]=time.time()+delay
+        LOG.warning("telegram_destination_paused type=%s retry_after=%s; app_intake_continues",
+                    type(exc).__name__,delay)
+
+
 async def run(once=False, check=False):
     cfg = settings()
     db = database()
@@ -407,23 +431,21 @@ async def run(once=False, check=False):
     reader.add_event_handler(incoming, events.NewMessage())
     reader.add_event_handler(incoming, events.MessageEdited())
     try:
-        target = await reader.get_input_entity(DESTINATION)
-        permission = await reader.get_permissions(target,"me")
-        if not (permission.is_creator or permission.is_admin):
-            raise RuntimeError("DESTINATION_ADMIN_REQUIRED")
         if check:
+            target=await reader.get_input_entity(DESTINATION)
+            permission=await reader.get_permissions(target,"me")
+            if not (permission.is_creator or permission.is_admin):
+                raise RuntimeError("DESTINATION_ADMIN_REQUIRED")
             print(json.dumps({"authorized":True,"destination_admin":True,"destination":DESTINATION_NAME}))
             return
-        await reconcile(reader,db,target)
-        await sync_prior(reader,db,target)
         last_scan = 0
+        telegram_state = {}
         while True:
             if time.monotonic()-last_scan >= 60:
                 last_scan=time.monotonic()
                 await collect(reader,db)
-                await reconcile(reader,db,target)
             if cfg.get("PUBLISH_ENABLED","false").lower()=="true":
-                await publish(reader,db,target)
+                await telegram_tick(reader,db,telegram_state)
             with db:
                 db.execute("INSERT OR REPLACE INTO metadata VALUES('last_tick',?)",(utcnow().isoformat(),))
             if once:

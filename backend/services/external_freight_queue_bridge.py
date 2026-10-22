@@ -9,6 +9,7 @@ import json
 import os
 import sqlite3
 from contextlib import closing
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -128,6 +129,22 @@ class IncomingQueueBridge(PublishedQueueBridge):
 
     def _run_locked(self):
         now=self.adapter.clock()
+        # Учитываем durable outbox прежнего published-режима при переключении.
+        with self.adapter._connect() as state:
+            for previous in state.execute("SELECT payload FROM selected_outbox WHERE quarantined_at IS NULL").fetchall():
+                previous=json.loads(previous["payload"])
+                if previous.get("status")!="active":
+                    continue
+                try:
+                    published=datetime.fromisoformat(previous["source_published_at"].replace("Z","+00:00")).timestamp()
+                except (KeyError,TypeError,ValueError):
+                    continue
+                if published<=now-ACTIVE_SECONDS:
+                    continue
+                identity="/".join((previous["source_id"],previous["source_message_id"],previous["segment_id"]))
+                normalized=" ".join(previous["original_text"].casefold().split())
+                fingerprint=hashlib.sha256(normalized.encode()).hexdigest()
+                state.execute("INSERT OR IGNORE INTO incoming_bridge_dedup VALUES(?,?,?)",(fingerprint,identity,published))
         with closing(sqlite3.connect(self.source_path.as_uri()+"?mode=ro",uri=True,timeout=2)) as source:
             source.row_factory=sqlite3.Row
             source.execute("ATTACH DATABASE ? AS bridge_state",(Path(self.adapter.db_path).resolve().as_uri()+"?mode=ro",))
@@ -165,6 +182,12 @@ class IncomingQueueBridge(PublishedQueueBridge):
                         duplicate=state.execute("SELECT identity FROM incoming_bridge_dedup WHERE fingerprint=? AND published_at>?",
                                                 (fingerprint,now-ACTIVE_SECONDS)).fetchone()
                     if duplicate and duplicate[0]!=identity and record["status"]=="active":
+                        # Редактирование в дубль не должно оставлять старую карточку active.
+                        for previous in old:
+                            previous=json.loads(previous["payload"])
+                            if previous["segment_id"]==record["segment_id"] and previous.get("status")=="active":
+                                previous["status"]="closed"
+                                enqueued+=bool(self.adapter.enqueue(previous))
                         duplicates+=1;reason="exact_content_duplicate";continue
                     if record["status"]=="review":
                         review+=1

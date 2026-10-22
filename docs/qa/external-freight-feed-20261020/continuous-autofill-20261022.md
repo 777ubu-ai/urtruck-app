@@ -114,3 +114,16 @@ start worker; SQLite не откатывать. Это возвращает ст
 Остальные сообщения старого pipeline могли уйти вreview — это не успешное наполнение обеих лент.
 CI первогоSHA нашёл недокументированныйEXTERNAL_FREIGHT_SOURCE_MODE; добавлен безопасный
 default published вbackend/.env.example. Перепроверяется полным CI.
+
+## Независимое review и исправления перед QA2 activation
+Review первого SHA нашёл четыре P1: ошибочная запись cursor при unavailable source;
+отсутствие старого outbox в дедупликации при mode switch; stale active карточка при edit в дубль;
+зависимость app intake от прав destination Telegram. Исправлены отдельно, добавлены regression cases.
+Оригинальный CI984dc8a1 завершился3/3PASS; после правок требуется новый CI и approval нового SHA.
+
+Preflight runtime22.10 16:01UTC: QA2 API8002 работает orphanPID327778 с PPid1, systemd unit inactive.
+main.py загружает backend/.env; штатный unit ссылается на другой parent .env.
+Перед takeover сохранить unit/drop-ins, cmdline, envфайлы приватно; сравнить effective DBpaths;
+использовать reset EnvironmentFile→/home/ubuntu/urtruck-qa2/backend/.env и исходныйhost0.0.0.0:8002.
+Остановить только подтверждённый QA2PID, запустить существующий unit, проверить1 listener, health/API/coreDB.
+Это не запуск второгоAPI и не изменение production. Rollback конфигурации→backup; рабочиеDBнеоткатывать.
