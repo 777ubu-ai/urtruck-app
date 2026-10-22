@@ -4,12 +4,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import { useV1Colors } from '../theme/designV1';
 import * as Clipboard from 'expo-clipboard';
 import DatePicker from '../components/externalFreight/ExternalFeedDatePicker';
 import BookmarkButton from '../components/ui/v1/BookmarkButton';
 import PrimaryButton from '../components/ui/v1/PrimaryButton';
 import SecondaryButton from '../components/ui/actions/SecondaryButton';
 import ExternalFeedDescription from '../components/externalFreight/ExternalFeedDescription';
+import ShareModal from '../components/ShareModal';
+import { PUBLIC_WEB_ORIGIN } from '../config/env';
+import { buildExternalFreightShare } from '../utils/externalFreightShare';
 // Направления внешней ленты вводятся текстом; общий городской picker не подключаем.
 import { useToast } from '../components/Toast';
 import { useI18n } from '../utils/useI18n';
@@ -46,12 +51,14 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const role = sessionRole(session) || 'guest';
   const isDriver = role === 'driver';
   const kind = feedKindForRole(role);
-  const { lang, sp } = useI18n();
+  const { lang, sp, t } = useI18n();
   const { theme } = useTheme();
+  const bookmarkColors = useV1Colors();
   const { toast } = useToast();
   const l = COPY[lang] || COPY.EN;
   const sl = SAVED_COPY[lang] || SAVED_COPY.EN;
   const [savedOnly, setSavedOnly] = useState(false);
+  const [shareTarget, setShareTarget] = useState(null);
   const [saving, setSaving] = useState({});
   const bookmarkRequestsRef = useRef(new Map());
   const ownerKey = `${session?.user?.id || ''}:${role}`;
@@ -145,6 +152,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   useEffect(() => { setUnseenIds([]); followingRef.current = true; followUpdateRef.current = false; viewportRef.current.offset = 0; setRows([]); setCursor(null); load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters, savedOnly, ownerKey]);
   useEffect(() => {
     setSaving({});
+    setShareTarget(null);
     return () => {
       bookmarkRequestsRef.current.forEach(controller => controller.abort());
       bookmarkRequestsRef.current.clear();
@@ -153,6 +161,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   useEffect(() => { externalFreightAPI.event('feed_open'); }, []);
   useEffect(() => {
     const cancel = () => {
+      setShareTarget(null);
       sequenceRef.current += 1;
       anchorRef.current = null;
       requestRef.current?.abort?.();
@@ -249,6 +258,13 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const renderItem = ({ item }) => {
     const locations = item.kind === 'cargo' ? [item.origin, item.destination] : [item.origin, item.destination];
     const price = item.price_state === 'negotiable' ? l.negotiable : item.price_state === 'known' ? `${formatNumber(item.amount)} ${item.currency}` : l.unknown;
+    const summary = [
+      ...(item.body_types || []).map(x => bodyLabels[lang]?.[x] || x),
+      item.weight != null ? `${formatNumber(item.weight)} ${l.weightUnit}` : '',
+      item.volume != null ? `${formatNumber(item.volume)} ${l.volumeUnit}` : '',
+      item.vehicle_count != null ? vehicleCountLabel(item.vehicle_count, lang, isDriver) : '',
+    ].filter(Boolean).join(' · ');
+    const share = buildExternalFreightShare(item, { origin: PUBLIC_WEB_ORIGIN, lang, summary, price });
     return <View ref={node => { if (node) cardRefs.current.set(String(item.id), node); else cardRefs.current.delete(String(item.id)); }} style={styles.card} testID={`external-feed-card-${item.id}`}>
       <View style={styles.cardHeading}>
         <Text style={[styles.route, styles.routeFlex]}>{item.status === 'unavailable' ? sl.unavailable : locations.filter(Boolean).join(' → ') || l.direction}</Text>
@@ -259,23 +275,21 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       </View>
       {['expired', 'closed'].includes(item.status) ? <Text style={styles.meta}>{sl[item.status]}</Text> : null}
       {item.kind === 'cargo' && item.cargo_name ? <Text style={styles.strong}>{item.cargo_name}</Text> : null}
-      <Text style={styles.meta} testID={`external-feed-summary-${item.id}`}>{[
-        ...(item.body_types || []).map(x => bodyLabels[lang]?.[x] || x),
-        item.weight != null ? `${formatNumber(item.weight)} ${l.weightUnit}` : '',
-        item.volume != null ? `${formatNumber(item.volume)} ${l.volumeUnit}` : '',
-        item.vehicle_count != null ? vehicleCountLabel(item.vehicle_count, lang, isDriver) : '',
-      ].filter(Boolean).join(' · ')}</Text>
+      <Text style={styles.meta} testID={`external-feed-summary-${item.id}`}>{summary}</Text>
       {item.loading_date || item.ready_text ? <Text style={styles.meta}>{item.loading_date || item.ready_text}</Text> : null}
       {item.status !== 'unavailable' ? <Text style={styles.price}>{price}</Text> : null}
       {Array.isArray(item.contacts) && item.contacts.filter(Boolean).map((contact, index) => <TouchableOpacity key={`${item.id}-contact-${index}`} onPress={() => copyContact(contact)} style={styles.contact} accessibilityRole="button" testID={`external-feed-copy-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color={'#168759'} /></TouchableOpacity>)}
       {externalTelegramPost(item) ? <TouchableOpacity accessibilityRole="link" testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.contactText}>{l.telegram}</Text></TouchableOpacity> : null}
       <Text style={styles.date}>{l.published}: {formatDate(item.source_published_at, lang)}</Text>
-      {item.status !== 'unavailable' && item.original_text ? <ExternalFeedDescription
+      {item.status !== 'unavailable' && (item.original_text || (item.ready_text && item.loading_date) || share) ? <ExternalFeedDescription
         key={`${ownerKey}:${item.id}`} text={item.original_text} styles={styles}
         moreLabel={l.more} lessLabel={l.less} itemId={item.id}
         onExpand={() => { followingRef.current = false; externalFreightAPI.event('card_expand'); }}
-      /> : null}
-      {item.ready_text && item.loading_date ? <Text style={styles.meta}>{item.ready_text}</Text> : null}
+        actions={share ? <TouchableOpacity style={styles.textAction} accessibilityRole="button" accessibilityLabel={t('share')}
+          testID={`external-feed-share-${item.id}`} onPress={() => setShareTarget({ ...share, owner: ownerKey })}>
+          <Feather name="share-2" size={14} color="#168759" /><Text style={[styles.link, styles.actionLabel]}>{t('share')}</Text>
+        </TouchableOpacity> : null}
+      >{item.ready_text && item.loading_date ? <Text style={styles.meta}>{item.ready_text}</Text> : null}</ExternalFeedDescription> : null}
     </View>;
   };
 
@@ -285,7 +299,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.back} accessibilityRole="button" accessibilityLabel={l.cancel} testID="external-feed-back"><Feather name="arrow-left" size={23} color={theme.text} /></TouchableOpacity>
       <Text style={styles.title} testID="external-feed-title">{savedOnly ? `${title} · ${sl.saved}` : title}</Text>
       <TouchableOpacity style={styles.savedHeader} onPress={() => setSavedOnly(current => !current)} accessibilityRole="button" accessibilityLabel={sl.saved} accessibilityState={{ selected: savedOnly }} aria-pressed={savedOnly} testID="external-feed-saved-only">
-        <Feather name="bookmark" size={20} color={savedOnly ? '#168759' : theme.textMuted} />
+        {savedOnly ? <FontAwesome5 name="bookmark" size={18} color={bookmarkColors.driver} solid /> : <Feather name="bookmark" size={20} color={bookmarkColors.textMuted} />}
       </TouchableOpacity>
     </View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filterContent} keyboardShouldPersistTaps="handled">
@@ -317,6 +331,8 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       onPress={() => { followingRef.current = true; setUnseenIds([]); listRef.current?.scrollToOffset({ offset: 0, animated: true }); }}>
       <Feather name="arrow-down" size={16} color={theme.text} /><Text style={styles.newListingsText}>{l.newListings} · {unseenIds.length}</Text>
     </TouchableOpacity> : null}
+    {shareTarget?.owner === ownerKey ? <ShareModal visible onClose={() => setShareTarget(null)}
+      shareText={shareTarget.text} url={shareTarget.url} /> : null}
     {/* Текстовый поиск не монтирует общий справочник стран/городов. */}
     <Modal visible={!!modal} transparent animationType="fade" onRequestClose={() => setModal(null)}>
     <View style={styles.modalOverlay} testID="external-feed-filter-overlay">
@@ -379,10 +395,11 @@ function makeStyles(theme, sp) {
     contactText: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), flex: 1, minWidth: 0, flexShrink: 1 },
     date: { color: theme.textMuted, fontSize: sp(11), lineHeight: sp(16), minWidth: 0, flexShrink: 1 },
     details: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border, marginTop: 3, paddingTop: 6, minWidth: 0 },
-    descriptionMeasure: { position: 'absolute', top: 0, left: 0, right: 0, opacity: 0 },
     descriptionBox: { minWidth: 0 },
     original: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), minWidth: 0, flexShrink: 1 },
-    textAction: { alignSelf: 'flex-start', minHeight: 44, maxWidth: '100%', paddingVertical: 8, justifyContent: 'center' },
+    actionLabel: { fontSize: sp(12), lineHeight: sp(17) },
+    cardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, minWidth: 0 },
+    textAction: { alignSelf: 'flex-start', minHeight: 44, maxWidth: '100%', minWidth: 0, paddingVertical: 8, paddingHorizontal: 6, flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center', borderWidth: 1, borderColor: '#168759', borderRadius: 14 },
     link: { color: '#168759', fontSize: sp(13), lineHeight: sp(18), fontWeight: '600', flexShrink: 1, minWidth: 0 },
     newListings: { position: 'absolute', bottom: 24, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 22, borderWidth: 1, borderColor: '#168759', backgroundColor: theme.surface },
     newListingsText: { color: theme.text, fontSize: sp(13), fontWeight: '600' },

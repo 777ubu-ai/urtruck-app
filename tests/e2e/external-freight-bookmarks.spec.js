@@ -319,11 +319,15 @@ for (const role of ['driver', 'client']) {
   });
 }
 
-test('short original text needs no expand button and copying contact does not focus an input', async ({ page, context }) => {
+test('even short original text stays hidden until expanded and copying contact does not focus an input', async ({ page, context }) => {
   const box = await boot(page, 'driver', { text: 'Груз готов.' });
   const description = page.getByTestId('external-feed-description-external-fixture');
+  await expect(description).toHaveCount(0);
+  const toggle = page.getByTestId('external-feed-expand-external-fixture');
+  await toggle.click();
   await expect(description).toHaveText('Груз готов.');
-  await expect(page.getByTestId('external-feed-expand-external-fixture')).toHaveCount(0);
+  await toggle.click();
+  await expect(description).toHaveCount(0);
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.getByTestId('external-feed-copy-external-fixture-0').click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('+7 700 000 00 01');
@@ -412,5 +416,78 @@ for (const role of ['driver', 'client']) {
     await expect(page.getByTestId('external-feed-new-listings')).toHaveCount(0);
     expect(box.errors).toEqual([]);
     expect(box.businessWrites).toEqual([]);
+  });
+}
+
+for (const role of ['driver', 'client']) {
+  test(role + ': share uses existing channels, preserves text and supports cancellation at 320px', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    await page.addInitScript(() => {
+      window.__sharedExternal = [];
+      window.__cancelExternalShare = true;
+      Object.defineProperty(navigator, 'share', { configurable: true, value: async data => {
+        if (window.__cancelExternalShare) throw new DOMException('Cancelled', 'AbortError');
+        window.__sharedExternal.push(data);
+      }});
+    });
+    const box = await boot(page, role, { item: { amount: 4500, weight: 25, volume: 150 } });
+    const share = page.getByTestId('external-feed-share-external-fixture');
+    await expect(share).toBeVisible();
+    await share.scrollIntoViewIfNeeded();
+    const buttonBox = await share.boundingBox();
+    const cardBox = await page.getByTestId('external-feed-card-external-fixture').boundingBox();
+    expect(buttonBox.x).toBeGreaterThanOrEqual(cardBox.x);
+    expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width);
+    await share.click();
+    await expect(page.getByText('Telegram', { exact: true })).toBeVisible();
+    await expect(page.getByText('WhatsApp', { exact: true })).toBeVisible();
+    await expect(page.getByText('WeChat', { exact: true })).toBeVisible();
+    await expect(page.getByText('WhatsApp', { exact: true })).toBeInViewport();
+    await page.getByText('WeChat', { exact: true }).click();
+    await expect(page.getByText('Telegram', { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => window.__sharedExternal.length)).toBe(0);
+    await page.evaluate(() => { window.__cancelExternalShare = false; });
+    await page.getByText('WeChat', { exact: true }).click();
+    await expect(page.getByText('Telegram', { exact: true })).toHaveCount(0);
+    const data = await page.evaluate(() => window.__sharedExternal[0]);
+    expect(data.url).toBe('https://qa2.urtruck.kz/');
+    expect(data.text).toContain(role === 'driver' ? 'UrTruck · Груз' : 'UrTruck · Машина');
+    expect(data.text).toContain('Алматы → Ташкент');
+    expect(data.text.replace(/\u00a0|\u202f/g, ' ')).toContain('4 500 USD');
+    expect(data.text).toContain('Тент');
+    expect(data.text).not.toContain('https://');
+    expect(data.text).not.toContain('+7 700');
+    expect(data.text).not.toContain('Условие 1');
+    expect(box.businessWrites).toEqual([]);
+    expect(box.aiRequests).toEqual([]);
+    expect(box.errors).toEqual([]);
+  });
+}
+
+for (const role of ['driver', 'client']) {
+  test(role + ': first authenticated entry opens feed once and Back restores tabs', async ({ page }) => {
+    const box = await boot(page, role, { firstVisit: true });
+    await expect(page.getByTestId('external-feed-title')).toHaveText(role === 'driver' ? 'Лента грузов' : 'Лента машин');
+    await expect(page.getByTestId('bottom-nav')).not.toBeVisible();
+    await page.getByTestId('external-feed-back').click();
+    await expect(page.getByTestId('bottom-nav')).toBeVisible();
+    expect(await page.evaluate(id => localStorage.getItem(`ur_external_feed_first_visit_v1:${encodeURIComponent(id)}`), 'feed-fixture-' + role)).toBe('1');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('bottom-nav')).toBeVisible({ timeout: 25000 });
+    await expect(page.getByTestId('external-freight-feed-screen')).toHaveCount(0);
+    if (role === 'client') await page.getByTestId('bottom-nav-feed').click();
+    await page.getByTestId('external-freight-entry').click();
+    await expect(page.getByTestId('external-feed-title')).toHaveText(role === 'driver' ? 'Лента грузов' : 'Лента машин');
+    expect(box.errors).toEqual([]);
+    expect(box.businessWrites).toEqual([]);
+  });
+}
+
+for (const role of ['driver', 'client']) {
+  test(role + ': direct link keeps priority over first-visit feed', async ({ page }) => {
+    const box = await boot(page, role, { firstVisit: true, initialPath: '/notifications' });
+    await expect(page.getByTestId('notifications-menu-btn')).toBeVisible();
+    await expect(page.getByTestId('external-freight-feed-screen')).toHaveCount(0);
+    expect(box.errors).toEqual([]);
   });
 }

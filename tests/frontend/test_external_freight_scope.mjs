@@ -4,9 +4,12 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 const baseline = JSON.parse(readFileSync('tests/fixtures/external-freight-protected-baseline.json', 'utf8'));
 
-// Исключения — только явная кнопка, stack-маршрут и подключение отдельного API.
+// Исключения — явная кнопка, маршрут, отдельный API и одобренный первый показ Main.
 function withoutFeedHooks(path, source) {
   if (path === 'src/navigation/AppNavigator.js') return source
+    .replace("import withExternalFeedFirstVisit from '../components/externalFreight/withExternalFeedFirstVisit';\n", '')
+    .replace("const FirstVisitMainTabs = withExternalFeedFirstVisit(MainTabs);\n\n", '')
+    .replace('component={FirstVisitMainTabs}', 'component={MainTabs}')
     .replace("import ExternalFreightFeedScreen from '../screens/ExternalFreightFeedScreen';\n", '')
     .replace("import { EXTERNAL_FREIGHT_ENABLED } from '../utils/externalFreightFeed';\n", '')
     .replace(/^.*<Stack.Screen name="ExternalFreightFeed".*\n/m, '');
