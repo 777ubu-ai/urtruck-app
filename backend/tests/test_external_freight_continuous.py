@@ -53,6 +53,35 @@ def collector():
     return module
 
 
+def test_collector_restricts_existing_state_database_and_sidecars(tmp_path):
+    m=collector()
+    root=tmp_path/'collector'
+    state=root/'state'
+    state.mkdir(parents=True,mode=0o755)
+    path=state/'feed.sqlite3'
+    raw=sqlite3.connect(path)
+    try:
+        raw.execute('PRAGMA journal_mode=WAL')
+        raw.execute('CREATE TABLE sample (value TEXT)')
+        raw.execute("INSERT INTO sample VALUES ('private')")
+        raw.commit()
+        for candidate in (path,Path(f'{path}-wal'),Path(f'{path}-shm')):
+            assert candidate.exists()
+            candidate.chmod(0o644)
+        state.chmod(0o755)
+        m.ROOT=root
+        db=m.database()
+        try:
+            assert db.execute('SELECT value FROM sample').fetchone()[0]=='private'
+            assert state.stat().st_mode & 0o777 == 0o700
+            for candidate in (path,Path(f'{path}-wal'),Path(f'{path}-shm')):
+                assert candidate.stat().st_mode & 0o777 == 0o600
+        finally:
+            db.close()
+    finally:
+        raw.close()
+
+
 def test_capture_without_phone_legacy_queue_unchanged_and_edit_ttl(tmp_path):
     m=collector();db=m.database(tmp_path/'source.sqlite3')
     published=m.utcnow()

@@ -10,6 +10,7 @@ import os
 import re
 import secrets
 import sqlite3
+import stat
 import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
@@ -127,10 +128,37 @@ def settings():
     return cfg
 
 
+def _secure_database_files(path):
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+
+    def secure_file(file_path, create=False):
+        flags = os.O_RDWR | nofollow
+        if create:
+            flags |= os.O_CREAT
+        try:
+            fd = os.open(file_path, flags, 0o600)
+        except FileNotFoundError:
+            return
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise RuntimeError("feed_database_file_not_regular")
+            os.fchmod(fd, 0o600)
+        finally:
+            os.close(fd)
+
+    secure_file(path, create=True)
+    for suffix in ("-wal", "-shm", "-journal"):
+        secure_file(Path(f"{path}{suffix}"))
+
+
 def database(path=None):
-    path = path or ROOT / "state/feed.sqlite3"
-    Path(path).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    db = sqlite3.connect(path)
+    default_path = path is None
+    path = Path(path or ROOT / "state/feed.sqlite3")
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if default_path:
+        os.chmod(path.parent, 0o700)
+    _secure_database_files(path)
+    db = sqlite3.connect(str(path))
     db.row_factory = sqlite3.Row
     db.executescript("""
         PRAGMA journal_mode=WAL;
@@ -157,8 +185,6 @@ def database(path=None):
         CREATE TABLE IF NOT EXISTS prior (message_id INTEGER PRIMARY KEY,text TEXT NOT NULL,published_date TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     """)
-    with contextlib.suppress(OSError):
-        os.chmod(path, 0o600)
     return db
 
 
