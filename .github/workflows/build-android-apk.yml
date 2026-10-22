@@ -309,6 +309,8 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary \
+            --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1536m -XX:+UseG1GC -Dfile.encoding=UTF-8' \
             -PURTRUCK_VERSION_CODE="$URTRUCK_VERSION_CODE" \
             -PURTRUCK_QA2=true \
             -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true
