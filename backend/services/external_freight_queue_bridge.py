@@ -42,6 +42,13 @@ class PublishedQueueBridge:
                 state.execute("ALTER TABLE published_bridge_seen ADD COLUMN source_revision TEXT")
             state.execute("""CREATE TABLE IF NOT EXISTS published_bridge_rejections (
                 destination_message INTEGER PRIMARY KEY, reason TEXT NOT NULL)""")
+            # Номер Telegram-публикации не уникален для исходной очереди.
+            # Старые отметки неоднозначны: оставляем их для отката, а каждую
+            # исходную строку пересверяем один раз через идемпотентный outbox.
+            state.execute("""CREATE TABLE IF NOT EXISTS published_bridge_seen_v2 (
+                source_queue_id INTEGER PRIMARY KEY, source_revision TEXT NOT NULL)""")
+            state.execute("""CREATE TABLE IF NOT EXISTS published_bridge_rejections_v2 (
+                source_queue_id INTEGER PRIMARY KEY, reason TEXT NOT NULL)""")
 
     def run_once(self):
         if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "").lower() not in {"1", "true", "yes"}:
@@ -75,8 +82,8 @@ class PublishedQueueBridge:
             rows = source.execute(f"""SELECT q.*, {revision} AS bridge_source_revision FROM queue q
                 WHERE status='published' AND destination_message>0
                 AND source_date>=? AND source_date<=?
-                AND NOT EXISTS (SELECT 1 FROM bridge_state.published_bridge_seen s
-                                WHERE s.destination_message=q.destination_message
+                AND NOT EXISTS (SELECT 1 FROM bridge_state.published_bridge_seen_v2 s
+                                WHERE s.source_queue_id=q.id
                                 AND s.source_revision={revision})
                 ORDER BY destination_message,id LIMIT ?""",
                 (now - ACTIVE_SECONDS, now + 300, MAX_SCAN)).fetchall()
@@ -93,13 +100,13 @@ class PublishedQueueBridge:
             except (ValueError, TypeError, OverflowError):
                 rejected += 1
                 with self.adapter._connect() as state:
-                    state.execute("INSERT OR REPLACE INTO published_bridge_rejections VALUES(?,?)",
-                                  (row["destination_message"], "invalid_source_record"))
+                    state.execute("INSERT OR REPLACE INTO published_bridge_rejections_v2 VALUES(?,?)",
+                                  (row["id"], "invalid_source_record"))
             # Durable enqueue precedes acknowledgement: interrupted runs replay.
             with self.adapter._connect() as state:
-                state.execute("""INSERT INTO published_bridge_seen(destination_message,source_revision) VALUES(?,?)
-                              ON CONFLICT(destination_message) DO UPDATE SET source_revision=excluded.source_revision""",
-                              (row["destination_message"], row["bridge_source_revision"]))
+                state.execute("""INSERT INTO published_bridge_seen_v2(source_queue_id,source_revision) VALUES(?,?)
+                              ON CONFLICT(source_queue_id) DO UPDATE SET source_revision=excluded.source_revision""",
+                              (row["id"], row["bridge_source_revision"]))
         delivery = self.adapter.flush_once()
         return {"status": delivery["status"], "scanned": len(rows), "enqueued": enqueued,
                 "review": review, "rejected": rejected, "sent": delivery.get("sent", 0),
