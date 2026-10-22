@@ -217,6 +217,9 @@ jobs:
           backup_dir="$qa_root/backups/$backup_id"
           mkdir -p "$backup_dir"
           cp -- "$qa_root/.env" "$backup_dir/qa2.env"
+          test -f "$qa_backend/.env"
+          cp -- "$qa_backend/.env" "$backup_dir/backend-env.snapshot"
+          chmod 600 "$backup_dir/backend-env.snapshot"
           chmod 600 "$backup_dir/qa2.env"
           db_backup="$backup_dir/qa2.sqlite3"
           python3 - "$db_path" "$db_backup" "$qa_root/.env" <<'PY'
@@ -284,7 +287,7 @@ jobs:
           db_backup_hash="$(sha256sum "$db_backup" | awk '{print $1}')"
           rsync -a \
             --exclude='venv/' --exclude='storage/' --exclude='backups/' \
-            --exclude='.env' --exclude='qa2.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
+            --exclude='.env' --exclude='qa2.env' --exclude='backend-env.snapshot' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
             --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm' \
             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log' \
             "$qa_backend/" "$backup_dir/"
@@ -299,6 +302,7 @@ jobs:
           PRE_SOURCE=$pre_source
           PRE_CODE_HASH=$pre_hash
           ENV_BACKUP=$backup_dir/qa2.env
+          BACKEND_ENV_BACKUP=$backup_dir/backend-env.snapshot
           DB_BACKUP=$db_backup
           DB_BACKUP_HASH=$db_backup_hash
           STATE
@@ -324,29 +328,51 @@ jobs:
           test -f /tmp/urtruck-qa2-deploy.state
           . /tmp/urtruck-qa2-deploy.state
           test -f "$ENV_BACKUP"
-          python3 - "$qa_env" <<'PY'
+          python3 - "$qa_root" <<'PYFEED'
           from pathlib import Path
-          import os, sys
-          path = Path(sys.argv[1]).resolve()
-          if path != Path('/home/ubuntu/urtruck-qa2/.env'):
+          import os, secrets, sys
+          root = Path(sys.argv[1]).resolve()
+          if root != Path('/home/ubuntu/urtruck-qa2'):
               raise SystemExit('QA2_EXTERNAL_FEED_ENV_PATH_INVALID')
-          lines = path.read_text(encoding='utf-8').splitlines()
-          result, seen = [], False
-          for line in lines:
-              if '=' in line and not line.lstrip().startswith('#') and line.split('=', 1)[0].strip() == 'EXTERNAL_FREIGHT_FEED_ENABLED':
-                  if not seen:
-                      result.append('EXTERNAL_FREIGHT_FEED_ENABLED=true')
-                      seen = True
-                  continue
-              result.append(line)
-          if not seen:
-              result.append('EXTERNAL_FREIGHT_FEED_ENABLED=true')
-          tmp = path.with_name('.env.external-feed.tmp')
-          tmp.write_text('\n'.join(result) + '\n', encoding='utf-8')
-          os.chmod(tmp, 0o600)
-          os.replace(tmp, path)
+          paths = {p.resolve() for p in (root / '.env', root / 'backend/.env')}
+          plans, keys = [], set()
+          for path in paths:
+              if root not in path.parents or not path.is_file():
+                  raise SystemExit('QA2_EXTERNAL_FEED_ENV_PATH_INVALID')
+              lines = path.read_text(encoding='utf-8').splitlines()
+              for line in lines:
+                  if '=' in line and not line.lstrip().startswith('#'):
+                      key, value = line.split('=', 1)
+                      if key.strip() == 'EXTERNAL_FREIGHT_IMPORTER_KEY' and value.strip():
+                          keys.add(value.strip())
+              plans.append((path, lines))
+          if len(keys) > 1:
+              raise SystemExit('QA2_EXTERNAL_FEED_IMPORTER_KEYS_MISMATCH')
+          updates = {'EXTERNAL_FREIGHT_FEED_ENABLED': 'true',
+                     'EXTERNAL_FREIGHT_IMPORTER_KEY': next(iter(keys), None) or secrets.token_urlsafe(32)}
+          for path, lines in plans:
+              result, seen = [], set()
+              for line in lines:
+                  key = line.split('=', 1)[0].strip() if '=' in line and not line.lstrip().startswith('#') else None
+                  if key in updates:
+                      if key not in seen:
+                          result.append(key + '=' + updates[key])
+                          seen.add(key)
+                  else:
+                      result.append(line)
+              result.extend(key + '=' + value for key, value in updates.items() if key not in seen)
+              tmp = path.with_name(path.name + '.external-feed.tmp')
+              fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+              try:
+                  with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+                      stream.write('\n'.join(result) + '\n')
+                  os.replace(tmp, path)
+              finally:
+                  tmp.unlink(missing_ok=True)
           print('QA2_EXTERNAL_FEED_FLAG=enabled')
-          PY
+          print('QA2_EXTERNAL_FEED_ENV=root-and-runtime')
+          print('QA2_EXTERNAL_FEED_IMPORTER_KEY=configured-without-disclosure')
+          PYFEED
           REMOTE
 
       - name: Mirror exact backend source into isolated QA2 backend
@@ -551,7 +577,7 @@ jobs:
           echo 'QA_STT_PROVIDER=openai-ready'
           echo 'QA_TRANSLATE_PROVIDER=local-nllb-ready'
           else
-          python3 - "$ENV_BACKUP" "$qa_root/.env" <<'PYENV'
+          python3 - "$ENV_BACKUP" "$qa_root/.env" "$BACKEND_ENV_BACKUP" "$qa_backend/.env" <<'PYENV'
           from pathlib import Path
           import sys
           def values(path):
@@ -559,11 +585,21 @@ jobs:
               for line in Path(path).read_text().splitlines():
                   if '=' in line and not line.lstrip().startswith('#'):
                       key, value = line.split('=', 1)
-                      if key.strip() != 'EXTERNAL_FREIGHT_FEED_ENABLED':
-                          result[key.strip()] = value
+                      result[key.strip()] = value
               return result
-          if values(sys.argv[1]) != values(sys.argv[2]):
-              raise SystemExit('QA2_PROTECTED_SETTINGS_CHANGED')
+          allowed = {'EXTERNAL_FREIGHT_FEED_ENABLED', 'EXTERNAL_FREIGHT_IMPORTER_KEY'}
+          keys = set()
+          for before, after in ((sys.argv[1], sys.argv[2]), (sys.argv[3], sys.argv[4])):
+              old, new = values(before), values(after)
+              if {k: v for k, v in old.items() if k not in allowed} != {k: v for k, v in new.items() if k not in allowed}:
+                  raise SystemExit('QA2_PROTECTED_SETTINGS_CHANGED')
+              prior = old.get('EXTERNAL_FREIGHT_IMPORTER_KEY', '').strip()
+              current = new.get('EXTERNAL_FREIGHT_IMPORTER_KEY', '').strip()
+              if (prior and prior != current) or len(current) < 32 or new.get('EXTERNAL_FREIGHT_FEED_ENABLED') != 'true':
+                  raise SystemExit('QA2_EXTERNAL_FEED_SETTINGS_INVALID')
+              keys.add(current)
+          if len(keys) != 1:
+              raise SystemExit('QA2_EXTERNAL_FEED_IMPORTER_KEYS_MISMATCH')
           print('QA2_PROTECTED_SETTINGS=unchanged')
           PYENV
           fi
@@ -789,12 +825,15 @@ jobs:
           esac
           rsync -a --delete \
             --exclude='venv/' --exclude='storage/' --exclude='backups/' \
-            --exclude='.env' --exclude='qa2.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
+            --exclude='.env' --exclude='qa2.env' --exclude='backend-env.snapshot' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
             --exclude='*.db-journal' --exclude='*.db-wal' --exclude='*.db-shm' \
             --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.log' \
             "$backup_dir/" "$qa_backend/"
           cp -- "$ENV_BACKUP" "$qa_root/.env"
           chmod 600 "$qa_root/.env"
+          cp -- "$BACKEND_ENV_BACKUP" "$qa_backend/.env"
+          chmod 600 "$qa_backend/.env"
+          cmp -s -- "$BACKEND_ENV_BACKUP" "$qa_backend/.env" || { echo '::error::QA_ROLLBACK_RUNTIME_SETTINGS_NOT_RESTORED'; exit 1; }
           cmp -s -- "$ENV_BACKUP" "$qa_root/.env" || { echo '::error::QA_ROLLBACK_SETTINGS_NOT_RESTORED'; exit 1; }
           cd "$qa_backend"
           PY=venv/bin/python
@@ -805,8 +844,12 @@ jobs:
             direct) nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null & wait_pid=$!; test -n "$wait_pid" ;;
             *) echo '::error::QA2_RESTART_MODE_INVALID'; exit 1 ;;
           esac
-          sleep 5
-          curl -fsS http://127.0.0.1:8002/api/version >/dev/null
+          rollback_healthy=no
+          for _ in {1..40}; do
+            if curl -fsS --max-time 2 http://127.0.0.1:8002/api/version >/dev/null 2>&1; then rollback_healthy=yes; break; fi
+            sleep 1
+          done
+          test "$rollback_healthy" = yes || { echo '::error::QA_ROLLBACK_HEALTH_TIMEOUT'; exit 1; }
           db_path="$(python3 - "$qa_root" "$qa_root/.env" <<'PY'
           from pathlib import Path
           import sys

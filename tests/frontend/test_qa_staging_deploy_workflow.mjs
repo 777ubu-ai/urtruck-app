@@ -101,7 +101,7 @@ test('external feed flag is opt-in, QA2-only, backed up and checked against the 
   assert.match(workflow, /if: \$\{\{ inputs\.enable_external_freight_feed \}\}/);
   assert.match(workflow, /\/home\/ubuntu\/urtruck-qa2\/\.env/);
   assert.match(workflow, /ENV_BACKUP/);
-  assert.match(workflow, /EXTERNAL_FREIGHT_FEED_ENABLED=true/);
+  assert.match(workflow, /EXTERNAL_FREIGHT_FEED_ENABLED': 'true'/);
   assert.match(workflow, /\/api\/v1\/external-freight\/import/);
   assert.match(workflow, /QA2_EXTERNAL_FEED_FLAG_NOT_ENABLED/);
   assert.match(workflow, /QA_ROLLBACK=restored-/);
