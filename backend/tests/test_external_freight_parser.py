@@ -189,3 +189,11 @@ def test_explicit_machine_offer_does_not_split_hyphenated_city_names():
         assert item["kind"] == "vehicle"
         assert item["status"] == "review"
         assert item["origin"] is None and item["destination"] is None
+
+
+def test_compact_and_explicit_routes_in_same_message_stay_unattributed_for_review():
+    text = "Есть машина\nХоргос-Алматы\nАлматы → Москва\n88 куб"
+    item = map_selected_message(_queue(text))
+    assert item["kind"] == "vehicle"
+    assert item["status"] == "review"
+    assert item["origin"] is None and item["destination"] is None

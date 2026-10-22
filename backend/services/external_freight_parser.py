@@ -139,13 +139,16 @@ def map_selected_message(raw: dict) -> dict:
     routes = [match for match in _ROUTE.finditer(text)
               if not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip())]
     compact_routes = _compact_route_lines(text)
-    if len(routes) > 1 or len(compact_routes) > 1:
+    route_conflict = len(routes) > 1 or len(compact_routes) > 1 or bool(routes and compact_routes)
+    if route_conflict:
         status = "review"
         route = None
+        compact_route = None
     else:
         route = routes[0] if routes else _LABELLED_ROUTE.search(text)
-    origin = (_place(route.group(1)) if route else compact_routes[0][0] if compact_routes else raw.get("origin"))
-    destination = (_place(route.group(2)) if route else compact_routes[0][1] if compact_routes else raw.get("destination"))
+        compact_route = compact_routes[0] if compact_routes else None
+    origin = (_place(route.group(1)) if route else compact_route[0] if compact_route else raw.get("origin"))
+    destination = (_place(route.group(2)) if route else compact_route[1] if compact_route else raw.get("destination"))
     if not origin and not destination:
         partial = re.search(r"(?im)^\s*(?:местонахождение|нахожусь|стою|откуда|из)\s*[:：]?\s+([^\n;]{2,80})$", text)
         origin = _place(partial.group(1)) if partial else None
