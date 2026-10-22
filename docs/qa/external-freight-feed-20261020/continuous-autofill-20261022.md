@@ -96,4 +96,21 @@ perevozka_cargoinfouz, poputno_gruz, TvoiGruz, TIRtrans, roolz_ru_offers.
   web использовал изменение суммарной высоты виртуализованного списка вместо координаты видимой карточки.
 - Не проверены: новая схема на живой очереди/ночью, service crash recovery нового процесса,
   реальная автоматическая машина, native Android/iPhone, end-to-end SLA.
-- Новый код/конфиг НЕ установлен в runtime. Старые службы и данные не менялись.
+- Новый событийный код/конфиг НЕ установлен в runtime. Применён только отдельно проверенный night-gate патч, см. ниже.
+
+
+## Применённый минимальный ночной патч
+22.10.2026 15:44:29UTC (20:44Алматы): в рабочем feed.py удалён ТОЛЬКО09:00–21:00 gate.
+AST всех остальных определений совпал. Старыйhash35a3f7336322d74646452515ee39cc654ac9cf052bdf8696310a455becc97f1a;
+новый252bed51e7d0f058af483f10004bf63350b74bc3906cec8fce098563f142954d.
+Backup /home/ubuntu/urtruck-telegram-feed/backups/night-20261022T154429Z содержит
+feed.py, online SQLite (integrity_check=ok) и result.json. Перед заменой worker остановлен,
+sending/uncertain=0. После restart active/running/enabled,NRestarts0, scan15:44:53 успешен.
+Очередь не редактировалась. 120h/входящая схема/новые источники НЕ активированы.
+Rollback только ночного патча: в безопасной паузе stop worker, вернуть backup/feed.py,
+start worker; SQLite не откатывать. Это возвращает старое дневное ограничение.
+В15:45:59UTC вQA2 остаются121 cargoactive/1vehicleactive; с15:08:12 ни одного нового
+активного объявления с коррелированным ACK адаптера; SLA новой видимой записи не измерен.
+Остальные сообщения старого pipeline могли уйти вreview — это не успешное наполнение обеих лент.
+CI первогоSHA нашёл недокументированныйEXTERNAL_FREIGHT_SOURCE_MODE; добавлен безопасный
+default published вbackend/.env.example. Перепроверяется полным CI.
