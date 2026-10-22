@@ -27,6 +27,7 @@ test('QA2 bootstrap isolates runtime, database and persistent data', () => {
   assert.match(workflow, /QA_DATABASE_NOT_ISOLATED/);
   assert.match(workflow, /QA_RECOVERY_PROTECTED_PATHS=production-and-pro-untouched/);
   assert.match(workflow, /--exclude='\*\.db-wal'/);
+  assert.match(workflow, /--exclude='\*\.sqlite\*'/);
   assert.match(workflow, /--exclude='storage\/'/);
   assert.match(workflow, /--exclude='\.env'/);
 });

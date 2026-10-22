@@ -55,6 +55,7 @@ test('QA2 backend deploy protects database, storage and production', () => {
   assert.match(workflow, /--exclude='\*\.db-wal'/);
   assert.match(workflow, /--exclude='\*\.db-shm'/);
   assert.match(workflow, /--exclude='\*\.db-journal'/);
+  assert.match(workflow, /--exclude='\*\.sqlite\*'/);
   assert.match(workflow, /--exclude='storage\/'/);
   assert.match(workflow, /--exclude='\.env'/);
   assert.match(workflow, /database\/vehicles_dal\.py/);

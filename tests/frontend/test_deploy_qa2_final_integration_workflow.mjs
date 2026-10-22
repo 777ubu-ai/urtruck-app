@@ -45,6 +45,13 @@ test('final QA2 deployment uses pinned SSH and systemd', () => {
   assert.ok(finalDeploy.indexOf('old_cwd=') < finalDeploy.indexOf('kill -TERM'));
 });
 
+test('final QA2 deploy and code rollback preserve external SQLite databases and sidecars', () => {
+  const backendRsyncs = finalDeploy.split('\n').filter((line) => line.includes('rsync') && line.includes('--delete')
+    && (line.includes('backend/ qa2-final:') || line.includes('"$backup/backend/"')));
+  assert.equal(backendRsyncs.length, 2);
+  for (const command of backendRsyncs) assert.ok(command.includes("--exclude='*.sqlite*'"), command);
+});
+
 test('secure routing path is protected, reversible and systemd-based', () => {
   assertPresent(routing, [
     'CONFIGURE_QA2_ROUTING_SECURE', 'source_sha:', 'name: qa2',
