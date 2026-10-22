@@ -1,6 +1,9 @@
 """Контракт отдельной внешней ленты на отдельной изолированной тестовой БД."""
+import sqlite3
+import stat
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -497,6 +500,29 @@ def test_external_connection_rejects_primary_file_and_alias(tmp_path, monkeypatc
         patch.setenv("EXTERNAL_FREIGHT_DB_PATH", str(alias))
         with pytest.raises(RuntimeError, match="must_be_separate"):
             database_path()
+
+
+def test_external_database_and_existing_wal_files_are_private(tmp_path, monkeypatch):
+    path = tmp_path / "private-feed.sqlite3"
+    raw = sqlite3.connect(path)
+    try:
+        raw.execute("PRAGMA journal_mode=WAL")
+        raw.execute("CREATE TABLE sample (value TEXT)")
+        raw.execute("INSERT INTO sample VALUES ('private')")
+        raw.commit()
+        for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+            assert candidate.exists()
+            candidate.chmod(0o644)
+
+        with monkeypatch.context() as patch:
+            patch.setenv("EXTERNAL_FREIGHT_DB_PATH", str(path))
+            with get_conn() as conn:
+                assert conn.execute("SELECT value FROM sample").fetchone()[0] == "private"
+
+        for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+            assert stat.S_IMODE(candidate.stat().st_mode) == 0o600
+    finally:
+        raw.close()
 
 
 def test_review_approval_uses_only_external_database(monkeypatch):
