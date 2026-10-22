@@ -153,3 +153,17 @@ def test_explicit_yen_currency_is_preserved_and_ambiguous_symbol_is_not_guessed(
         assert item['original_text'] == prefix + suffix
     item = map_selected_message(_queue(prefix + '¥'))
     assert (item['amount'], item['currency'], item['price_state']) == (None, None, 'unknown')
+
+
+
+def test_closure_requires_request_context_not_conditions():
+    active = [
+        'Алматы → Москва\nНужен тент, груз готов\nГраница закрыта до 25.10, погрузка 26.10',
+        'London → Berlin\nNeed a truck\nClosed body required',
+        'Алматы → Москва\nНужен тент, груз готов\nЗаявка не закрыта',
+    ]
+    for text in active:
+        assert map_selected_message(_queue(text))['status'] == 'active'
+    for status in ['Заявка закрыта', 'Груз закрыт', 'Объявление снято', 'Закрыто', 'Уже нашли машину', 'Уже нашли груз', 'Listing is closed', 'Closed']:
+        text = 'Алматы → Москва\nНужен тент, груз готов\n' + status
+        assert map_selected_message(_queue(text))['status'] == 'closed', status

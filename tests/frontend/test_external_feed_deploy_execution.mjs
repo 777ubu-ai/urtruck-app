@@ -63,3 +63,24 @@ test('rollback восстанавливает точное окружение с
     }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('deploy и rollback сохраняют system/user supervisor без запуска nohup', () => {
+  const rollback = step('Roll back QA2 code and settings if deploy validation fails');
+  for (const source of [validation, rollback]) {
+    const cases = [...source.matchAll(/case "\$RESTART_MODE" in[\s\S]*?\n          esac/g)].map((match) => match[0]);
+    assert.equal(cases.length, 2);
+    for (const [index, body] of cases.entries()) {
+      for (const mode of ['system', 'user']) {
+        const result = spawnSync('bash', ['-eu', '-c', `systemctl() { echo SYSTEMCTL "$@"; }; sudo() { shift; shift; systemctl "$@"; }; nohup() { echo NOHUP_FORBIDDEN; return 90; }; ${body}`], { encoding: 'utf8', env: { ...process.env, RESTART_MODE: mode } });
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, new RegExp(`SYSTEMCTL .*${index === 0 ? 'stop' : 'start'} urtruck-qa2.service`));
+        assert.doesNotMatch(result.stdout, /NOHUP_FORBIDDEN/);
+      }
+      const invalid = spawnSync('bash', ['-eu', '-c', body], { encoding: 'utf8', env: { ...process.env, RESTART_MODE: 'unexpected' } });
+      assert.notEqual(invalid.status, 0);
+    }
+  }
+  const inspection = step('Record QA state and create code-only rollback backup');
+  assert.ok(inspection.includes('RESTART_MODE=$restart_mode'));
+  assert.ok(inspection.indexOf('QA2_RESTART_SUPERVISOR_UNSUPPORTED') < inspection.indexOf('cp -- "$qa_root/.env"'));
+});

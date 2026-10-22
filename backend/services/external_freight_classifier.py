@@ -19,7 +19,15 @@ _VEHICLE_CONTEXT = re.compile(
     r"бос көлік|жүк іздеймін|free truck|available truck|empty truck|looking for cargo|"
     r"有空车|空车|找货)", re.I,
 )
-_CLOSE_CONTEXT = re.compile(r"(?:\bзакрыт(?:а|о|ы)?\b|\bснято\b|уже нашли|не актуальн|\bclosed\b|found a truck|found cargo|已关闭)", re.I)
+# Закрытие относится к заявке: закрытый кузов/граница — лишь условия перевозки.
+_CLOSE_CONTEXT = re.compile(
+    r"(?:\b(?:заявка|объявление|заказ|груз|рейс|перевозка|маршрут)\s+"
+    r"(?:уже\s+)?(?:закрыт(?:а|о|ы)?|снят(?:а|о|ы)?|не\s*актуальн(?:а|о|ы|ен))\b|"
+    r"^\s*(?:закрыт(?:а|о|ы)?|снято|не\s*актуальн(?:а|о|ы|ен)|closed|已关闭)[.!。!\s]*$|"
+    r"\bуже\s+нашли\s+(?:машин\w*|транспорт|водител\w*|груз)\b|"
+    r"\b(?:request|listing|load|cargo|order)\s+(?:is\s+)?closed\b|"
+    r"\bfound (?:a truck|cargo)\b|(?:订单|货源)已关闭)", re.I | re.M,
+)
 
 
 def classify_message(text: str) -> dict:

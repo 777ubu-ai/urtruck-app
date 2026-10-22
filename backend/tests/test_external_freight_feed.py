@@ -774,3 +774,40 @@ def test_isolation_time_budget_preserves_unexamined_rows_for_retry(tmp_path, mon
     with adapter._connect() as c:
         row = c.execute("SELECT * FROM selected_outbox").fetchone()
         assert row["next_attempt_at"] == 1005 and row["attempts"] == 1
+
+
+def test_condition_edits_do_not_close_listing_but_explicit_closure_does():
+    global _actor
+    _actor = {"id": "driver-test", "role": "driver"}
+    from services.external_freight_parser import map_selected_message
+    raw = _record(source='closure-context', message='one', text='Нужен тент, груз готов\nАлматы → Москва')
+    def send(text):
+        mapped = map_selected_message({**raw, 'original_text': text})
+        response = _import(mapped)
+        assert response.status_code == 200
+        return response.json()['results'][0]
+    original = send(raw['original_text'])
+    for condition in ['Кузов закрытый, тент', 'Граница закрыта до 25.10, погрузка 26.10']:
+        updated = send(raw['original_text'] + '\n' + condition)
+        assert updated['id'] == original['id']
+        assert updated['status'] == 'active'
+        assert client.get('/api/v1/external-freight/count').json()['count'] == 1
+    closed = send(raw['original_text'] + '\nЗаявка закрыта')
+    assert closed['id'] == original['id']
+    assert closed['status'] == 'closed'
+    assert client.get('/api/v1/external-freight/count').json()['count'] == 0
+
+
+def test_import_and_read_preserve_explicit_jpy_without_currency_conversion():
+    global _actor
+    _actor = {"id": "driver-test", "role": "driver"}
+    from services.external_freight_parser import map_selected_message
+    text = 'Токио → Осака\nИщу машину для перевозки\nГруз: оборудование\nЦена 2000 ¥ (JPY)'
+    record = map_selected_message(_record(source='explicit-jpy', text=text))
+    response = _import(record)
+    assert response.status_code == 200
+    item_id = response.json()['results'][0]['id']
+    read = client.get(f'/api/v1/external-freight/{item_id}')
+    assert read.status_code == 200
+    item = read.json()['item']
+    assert (item['amount'], item['currency'], item['original_text']) == (2000, 'JPY', text)

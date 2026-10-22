@@ -189,6 +189,28 @@ jobs:
             *) pre_source=unknown ;;
           esac
           pre_hash="$(cd "$qa_backend" && find . -type f ! -path './venv/*' ! -path './storage/*' ! -path './backups/*' ! -path './__pycache__/*' ! -name '.env' ! -name '*.db' ! -name '*.sqlite*' ! -name '*.log' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          # До изменения кода и .env сохраняем реального владельца listener.
+          pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+          test -n "$pid"
+          test "$(ps -o user= -p "$pid" | xargs)" = "$(id -un)"
+          test "$(readlink -f "/proc/$pid/cwd")" = "$(readlink -f "$qa_backend")"
+          restart_mode=direct
+          if grep -q '/urtruck-qa2.service$' "/proc/$pid/cgroup"; then
+            if grep -q '/user.slice/' "/proc/$pid/cgroup"; then
+              restart_mode=user
+              export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+              test "$(systemctl --user show urtruck-qa2.service -p MainPID --value)" = "$pid"
+            else
+              restart_mode=system
+              test "$(systemctl show urtruck-qa2.service -p MainPID --value)" = "$pid"
+              for action in stop start; do sudo -n -l /usr/bin/systemctl "$action" urtruck-qa2.service >/dev/null; done
+            fi
+          else
+            # PM2/неизвестный supervisor не заменяется процессом nohup.
+            test "$(ps -o ppid= -p "$pid" | xargs)" = 1 || { echo '::error::QA2_RESTART_SUPERVISOR_UNSUPPORTED'; exit 1; }
+            ! grep -Eq '/[^/]+\.service$' "/proc/$pid/cgroup" || { echo '::error::QA2_RESTART_UNIT_UNSUPPORTED'; exit 1; }
+          fi
+          echo "QA2_RESTART_MODE=$restart_mode"
           # QA2 snapshots contain user data; restrict the directory and file at creation.
           umask 077
           backup_id="backend-code-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -273,6 +295,7 @@ jobs:
           DB_PATH_HASH=$db_path_hash
           DB_INODE=$db_inode
           STORAGE_INODE=$storage_inode
+          RESTART_MODE=$restart_mode
           PRE_SOURCE=$pre_source
           PRE_CODE_HASH=$pre_hash
           ENV_BACKUP=$backup_dir/qa2.env
@@ -432,16 +455,26 @@ jobs:
           printf '%s' "$old_cmd" | grep -Eq 'uvicorn|gunicorn'
           printf '%s' "$old_cmd" | grep -Fq 'main:app'
           test "$(ps -o user= -p "$old_pid" | xargs)" = "$(id -un)"
-          kill -TERM "$old_pid"
-          for _ in {1..20}; do kill -0 "$old_pid" 2>/dev/null || break; sleep 0.5; done
-          if kill -0 "$old_pid" 2>/dev/null; then kill -KILL "$old_pid"; fi
+          case "$RESTART_MODE" in
+            system) sudo -n /usr/bin/systemctl stop urtruck-qa2.service ;;
+            user) export XDG_RUNTIME_DIR="/run/user/$(id -u)"; systemctl --user stop urtruck-qa2.service ;;
+            direct) kill -TERM "$old_pid"
+              for _ in {1..20}; do kill -0 "$old_pid" 2>/dev/null || break; sleep 0.5; done
+              if kill -0 "$old_pid" 2>/dev/null; then kill -KILL "$old_pid"; fi ;;
+            *) echo '::error::QA2_RESTART_MODE_INVALID'; exit 1 ;;
+          esac
           port_free=no
           for _ in {1..20}; do
             if test -z "$(listener_pid)"; then port_free=yes; break; fi
             sleep 0.5
           done
           test "$port_free" = yes || { echo '::error::QA_DEPLOY_PORT_8002_DID_NOT_RELEASE'; exit 1; }
-          nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
+          case "$RESTART_MODE" in
+            system) sudo -n /usr/bin/systemctl start urtruck-qa2.service ;;
+            user) export XDG_RUNTIME_DIR="/run/user/$(id -u)"; systemctl --user start urtruck-qa2.service ;;
+            direct) nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null & wait_pid=$!; test -n "$wait_pid" ;;
+            *) echo '::error::QA2_RESTART_MODE_INVALID'; exit 1 ;;
+          esac
           healthy=no
           for _ in {1..40}; do
             new_pid="$(listener_pid)"
@@ -459,6 +492,11 @@ jobs:
           new_pid="$(listener_pid)"
           test -n "$new_pid"
           test "$(ps -o user= -p "$new_pid" | xargs)" = "$(id -un)"
+          if test "$RESTART_MODE" = system; then
+            test "$(systemctl show urtruck-qa2.service -p MainPID --value)" = "$new_pid"
+          elif test "$RESTART_MODE" = user; then
+            test "$(systemctl --user show urtruck-qa2.service -p MainPID --value)" = "$new_pid"
+          fi
           new_cmd="$(tr '\0' ' ' < "/proc/$new_pid/cmdline")"
           printf '%s' "$new_cmd" | grep -Fq 'main:app'
           test "$(readlink -f "/proc/$new_pid/cwd")" = "$(readlink -f "$qa_backend")"
@@ -735,15 +773,20 @@ jobs:
           backup_dir="$qa_root/backups/$BACKUP_ID"
           test -d "$backup_dir"
           pid="$(ss -ltnpH 'sport = :8002' 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
-          if test -n "$pid"; then
-            cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
-            printf '%s' "$cmd" | grep -Eq 'uvicorn|gunicorn'
-            printf '%s' "$cmd" | grep -Fq 'main:app'
-            test "$(ps -o user= -p "$pid" | xargs)" = "$(id -un)"
-            kill -TERM "$pid" || true
-            sleep 2
-            kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true
-          fi
+          case "$RESTART_MODE" in
+            system) sudo -n /usr/bin/systemctl stop urtruck-qa2.service ;;
+            user) export XDG_RUNTIME_DIR="/run/user/$(id -u)"; systemctl --user stop urtruck-qa2.service ;;
+            direct) if test -n "$pid"; then
+                cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+                printf '%s' "$cmd" | grep -Eq 'uvicorn|gunicorn'
+                printf '%s' "$cmd" | grep -Fq 'main:app'
+                test "$(ps -o user= -p "$pid" | xargs)" = "$(id -un)"
+                kill -TERM "$pid" || true
+                sleep 2
+                kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" || true
+              fi ;;
+            *) echo '::error::QA2_RESTART_MODE_INVALID'; exit 1 ;;
+          esac
           rsync -a --delete \
             --exclude='venv/' --exclude='storage/' --exclude='backups/' \
             --exclude='.env' --exclude='qa2.env' --exclude='*.db' --exclude='*.sqlite' --exclude='*.sqlite3' \
@@ -756,7 +799,12 @@ jobs:
           cd "$qa_backend"
           PY=venv/bin/python
           test -x "$PY"
-          nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null &
+          case "$RESTART_MODE" in
+            system) sudo -n /usr/bin/systemctl start urtruck-qa2.service ;;
+            user) export XDG_RUNTIME_DIR="/run/user/$(id -u)"; systemctl --user start urtruck-qa2.service ;;
+            direct) nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port 8002 > uvicorn.log 2>&1 </dev/null & wait_pid=$!; test -n "$wait_pid" ;;
+            *) echo '::error::QA2_RESTART_MODE_INVALID'; exit 1 ;;
+          esac
           sleep 5
           curl -fsS http://127.0.0.1:8002/api/version >/dev/null
           db_path="$(python3 - "$qa_root" "$qa_root/.env" <<'PY'
