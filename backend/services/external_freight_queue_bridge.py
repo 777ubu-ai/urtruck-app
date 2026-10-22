@@ -19,6 +19,7 @@ from services.external_freight_classifier import classify_message
 
 ACTIVE_SECONDS = 120 * 3600
 MAX_SCAN = 50
+PARSER_REVISION = '20261022-free-location-v1'
 
 
 def validate_qa_target(api_url):
@@ -151,10 +152,10 @@ class IncomingQueueBridge(PublishedQueueBridge):
             query="""SELECT q.* FROM app_messages q
                 WHERE source_date>=? AND source_date<=?
                 AND NOT EXISTS(SELECT 1 FROM bridge_state.incoming_bridge_seen s
-                  WHERE s.source_queue_id=q.id AND s.source_revision=q.revision)"""
+                  WHERE s.source_queue_id=q.id AND s.source_revision=q.revision || ':' || ?)"""
             # Свежий поток не ждёт первоначальную загрузку, старый хвост тоже продвигается.
-            newest=source.execute(query+" ORDER BY updated_at DESC,id DESC LIMIT 10",(now-ACTIVE_SECONDS,now+300)).fetchall()
-            oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(now-ACTIVE_SECONDS,now+300,MAX_SCAN)).fetchall()
+            newest=source.execute(query+" ORDER BY updated_at DESC,id DESC LIMIT 10",(now-ACTIVE_SECONDS,now+300,PARSER_REVISION)).fetchall()
+            oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(now-ACTIVE_SECONDS,now+300,PARSER_REVISION,MAX_SCAN)).fetchall()
             unique={row["id"]:row for row in newest+oldest}
             rows=list(unique.values())[:MAX_SCAN]
         enqueued=review=rejected=duplicates=0
@@ -201,7 +202,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 rejected+=1;reason="invalid_source_record"
             # ACK разбора только после durable enqueue; HTTP ACK хранится отдельно.
             with self.adapter._connect() as state:
-                state.execute("INSERT OR REPLACE INTO incoming_bridge_seen VALUES(?,?,?,?)",(row["id"],row["revision"],now,reason))
+                state.execute("INSERT OR REPLACE INTO incoming_bridge_seen VALUES(?,?,?,?)",(row["id"],row["revision"]+":"+PARSER_REVISION,self.adapter.clock(),reason))
             reasons[reason]=reasons.get(reason,0)+1
         delivery=self.adapter.flush_once()
         return {**delivery,"scanned":len(rows),"enqueued":enqueued,"review":review,

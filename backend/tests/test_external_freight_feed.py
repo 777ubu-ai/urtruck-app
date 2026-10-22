@@ -846,3 +846,23 @@ def test_continuous_source_to_api_both_roles_without_telegram_publication(tmp_pa
         assert rows[0]['price_state']=='unknown'
     assert IncomingQueueBridge(source,adapter).run_once()['sent']==0
     assert db.execute('select count(*) from queue').fetchone()[0]==0
+
+
+def test_explicit_partial_vehicle_location_is_visible_to_shipper_without_phone_or_price():
+    from services.external_freight_parser import map_selected_message
+    record=map_selected_message({'source_id':'tg-free-location','source_message':1,
+        'source_date':datetime.now(timezone.utc).timestamp(),
+        'text':'Свободный Реф в Маньчжурии , готов к погрузке. Рассмотрю варианты за Урал в сторону Запада.'})
+    response=_import(record)
+    assert response.status_code==200
+    result=response.json()['results'][0]
+    assert result['status']=='active'
+    global _actor
+    _actor={'id':'partial-shipper','role':'client'}
+    item=client.get('/api/v1/external-freight').json()['items'][0]
+    assert item['id']==result['id'] and item['kind']=='vehicle'
+    assert item['origin']=='Маньчжурии' and item['destination'] is None
+    assert item['price_state']=='unknown' and item['contacts']==[]
+    assert _import(record).json()['results'][0]['result']=='replayed'
+    _actor={'id':'partial-driver','role':'driver'}
+    assert client.get('/api/v1/external-freight').json()['items']==[]

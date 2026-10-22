@@ -136,6 +136,11 @@ def map_selected_message(raw: dict) -> dict:
     if not origin and not destination:
         partial = re.search(r"(?im)^\s*(?:местонахождение|нахожусь|стою|откуда|из)\s*[:：]?\s+([^\n;]{2,80})$", text)
         origin = _place(partial.group(1)) if partial else None
+        if not origin and kind=="vehicle":
+            location = re.search(
+                r"(?m)^\s*(?i:свободн(?:ая|ый|ые)\s+(?:машин\w*|тент\w*|реф\w*|фур\w*|транспорт|авто)\s+в)\s+"
+                r"([А-ЯЁA-Z][^\n,.;]{1,79})(?:[,.;\n]|$)",text)
+            origin = _place(location.group(1)) if location else None
     if ((route and (not origin or not destination)) or (not origin and not destination)) and status == "active":
         status = "review"
     amount, currency, price_state = _amount(text)

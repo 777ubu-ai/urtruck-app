@@ -145,3 +145,57 @@ def test_recent_head_is_captured_before_bounded_history_without_legacy_republish
     assert [r[0] for r in db.execute('select source_message from app_messages order by id')]==[1002,10,11]
     assert db.execute('select message_id from app_cursors').fetchone()[0]==11
     assert db.execute('select message_id from cursors').fetchone()[0]==1000
+
+
+def test_explicit_free_vehicle_location_preserves_source_spelling_and_unknowns():
+    from services.external_freight_parser import map_selected_message
+    record=map_selected_message({'source_id':'123','source_message':1,
+        'text':'Свободный Реф в Маньчжурии , готов к погрузке. Рассмотрю варианты за Урал в сторону Запада.'})
+    assert record['kind']=='vehicle' and record['status']=='active'
+    assert record['origin']=='Маньчжурии' and record['destination'] is None
+    assert record['amount'] is None and record['contacts']==[]
+    for text in ['Свободный реф в пути','Нужен свободный реф в Маньчжурии']:
+        ambiguous=map_selected_message({'source_id':'123','source_message':2,'text':text})
+        assert ambiguous['status']=='review' and ambiguous['origin'] is None
+
+def test_parser_upgrade_automatically_rechecks_previously_seen_review(tmp_path,monkeypatch):
+    from services.external_freight_parser import map_selected_message
+    from services.external_freight_queue_bridge import IncomingQueueBridge,PARSER_REVISION
+    monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
+    m=feed_module();p=tmp_path/'source.db';db=m.database(p);a=adapter_for(tmp_path)
+    text='Свободный Реф в Маньчжурии , готов к погрузке.'
+    m.capture_for_app(db,'test_channel',123,88,text,m.utcnow())
+    item=map_selected_message(dict(db.execute('select * from app_messages').fetchone()))
+    item.update(status='review',origin=None,classification_status='review')
+    a.enqueue(item)
+    worker=IncomingQueueBridge(p,a)
+    with a._connect() as state:
+        payload=json.loads(state.execute('select payload from selected_outbox').fetchone()[0])
+        payload.update(status='review',origin=None,classification_status='review')
+        state.execute('update selected_outbox set payload=?',(json.dumps(payload),))
+        row=db.execute('select id,revision from app_messages').fetchone()
+        state.execute('insert into incoming_bridge_seen values(?,?,?,?)',(row['id'],row['revision'],a.clock(),'unresolved_direction'))
+    assert a.flush_once()['sent']==1
+    date_before=payload['source_published_at']
+    assert worker.run_once()['sent']==1
+    with a._connect() as state:
+        result=json.loads(state.execute('select payload from selected_outbox').fetchone()[0])
+        assert state.execute('select source_revision from incoming_bridge_seen').fetchone()[0].endswith(':'+PARSER_REVISION)
+    assert result['status']=='active' and result['origin']=='Маньчжурии'
+    assert result['source_published_at']==date_before
+    assert worker.run_once()['scanned']==0
+
+def test_delivery_ack_timestamp_is_recorded_after_successful_response(tmp_path,monkeypatch):
+    from datetime import datetime
+    from services.external_freight_parser import map_selected_message
+    monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
+    a=adapter_for(tmp_path);clock=[1792680000.0];a.clock=lambda:clock[0]
+    a.enqueue(map_selected_message({'source_id':'123','source_message':1,'text':'Груз: шины\nАлматы → Москва'}))
+    good=a.opener
+    def delayed_response(*args,**kwargs):
+        clock[0]+=2.5
+        return good(*args,**kwargs)
+    a.opener=delayed_response
+    assert a.flush_once()['sent']==1
+    with a._connect() as state:stamp=state.execute('select delivered_at from selected_outbox').fetchone()[0]
+    assert datetime.fromisoformat(stamp).timestamp()==clock[0]
