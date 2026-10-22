@@ -120,3 +120,28 @@ def test_review_destination_permission_failure_does_not_stop_app_intake(tmp_path
     assert state.get('retry_after',0)>0 and not state.get('target')
     assert m.capture_for_app(db,'test_channel',123,88,'Алматы → Москва\nГруз: шины',m.utcnow())
     assert db.execute('SELECT count(*) FROM app_messages').fetchone()[0]==1
+
+
+def test_recent_head_is_captured_before_bounded_history_without_legacy_republish(tmp_path,monkeypatch):
+    m=feed_module();m.ROOT=tmp_path;m.SOURCES=('test_channel',)
+    fake_telethon(monkeypatch)
+    async def no_sleep(*args):pass
+    monkeypatch.setattr(m.asyncio,'sleep',no_sleep)
+    db=m.database(tmp_path/'source.db')
+    with db:db.execute("INSERT INTO cursors VALUES('test_channel',1000)")
+    calls=[]
+    class Reader:
+        async def get_entity(self,source):return types.SimpleNamespace(id=12345,noforwards=False)
+        async def iter_messages(self,entity,**kwargs):
+            calls.append(kwargs)
+            ids=[1002] if 'reverse' not in kwargs else [10,11]
+            for mid in ids:
+                yield types.SimpleNamespace(id=mid,date=m.utcnow(),raw_text='Алматы → Москва\nГруз: шины\n+77001234567',noforwards=False)
+    def no_legacy_republish(*args,**kwargs):raise AssertionError('already scanned Telegram history')
+    monkeypatch.setattr(m,'enqueue',no_legacy_republish)
+    asyncio.run(m.collect(Reader(),db))
+    assert calls[0]=={'limit':25}
+    assert calls[1]['limit']==200 and calls[1]['reverse'] is True
+    assert [r[0] for r in db.execute('select source_message from app_messages order by id')]==[1002,10,11]
+    assert db.execute('select message_id from app_cursors').fetchone()[0]==11
+    assert db.execute('select message_id from cursors').fetchone()[0]==1000

@@ -148,6 +148,7 @@ def test_scan_failure_keeps_first_durable_cursor_and_recovers_next_message(tmp_p
         async def get_entity(self,source):return types.SimpleNamespace(id=12345,noforwards=False)
         async def iter_messages(self,entity,**kwargs):
             self.queries.append(kwargs)
+            if not kwargs.get('reverse'):return  # Exercise failure in checkpointed history.
             for i in [1,2]:
                 if i<=kwargs.get('min_id',0):continue
                 if i==2 and self.fail:raise OSError('temporary')

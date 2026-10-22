@@ -257,15 +257,22 @@ async def collect(reader, db):
             high = (min(legacy[0] if legacy else 0, app[0] if app else 0)
                     if source in SOURCES else (app[0] if app else 0))
             added = seen = captured = 0
-            kwargs = {"min_id": high, "reverse": True} if high else {
-                "offset_date": utcnow()-timedelta(hours=24), "reverse": True}
+            legacy_high = legacy[0] if legacy else 0
+            # Свежая голова доступна приложению до исторического catch-up.
+            # Курсор здесь не двигаем: оставшийся диапазон не должен пропасть.
+            async for msg in reader.iter_messages(entity,limit=25):
+                if msg.date and msg.date>=utcnow()-timedelta(hours=24):
+                    captured += capture_for_app(db,source,entity.id,msg.id,msg.raw_text or "",msg.date,
+                                                bool(getattr(msg,"noforwards",False)))
+            kwargs = {"min_id": high, "reverse": True, "limit": 200} if high else {
+                "offset_date": utcnow()-timedelta(hours=24), "reverse": True, "limit": 200}
             async for msg in reader.iter_messages(entity, **kwargs):
                 seen += 1
                 high = max(high,msg.id)
                 text = msg.raw_text or ""
                 protected = bool(getattr(msg, "noforwards", False))
                 captured += capture_for_app(db,source,entity.id,msg.id,text,msg.date,protected)
-                if source in SOURCES and eligible(text,msg.date,protected):
+                if source in SOURCES and msg.id>legacy_high and eligible(text,msg.date,protected):
                     added += enqueue(db,source,entity.id,msg.id,text,msg.date)
                 # Обе записи durable до продвижения курсора; хронологические страницы.
                 with db:
