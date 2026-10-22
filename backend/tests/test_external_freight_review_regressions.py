@@ -214,3 +214,14 @@ def test_country_headers_allow_separate_routes_without_shared_contacts_or_prices
     for prefix in ['Общий контакт: +77001234567\n','Общая цена: 5000 USD\n','Общий груз: шины\n']:
         ambiguous=map_selected_messages({**raw,'text':prefix+raw['text']})
         assert len(ambiguous)==1 and ambiguous[0]['status']=='review'
+
+
+def test_intermediate_country_section_fields_never_bleed_into_previous_route():
+    from services.external_freight_parser import map_selected_messages
+    for shared in ['Контакт: +77001234567\nЦена: 5000 USD\n','Груз: оборудование\n']:
+        text='РОССИЯ\nАлматы → Москва\nГруз: шины\n\nКАЗАХСТАН\n'+shared+'Астана → Бишкек\nГруз: доски'
+        records=map_selected_messages({'source_id':'123','source_message':1,'text':text})
+        assert len(records)==1 and records[0]['status']=='review'
+    text='РОССИЯ\nАлматы → Москва\nГруз: шины\nКАЗАХСТАН\nАстана → Бишкек\nГруз: доски\nКИТАЙ\nКонтакт: +77001234567'
+    records=map_selected_messages({'source_id':'123','source_message':1,'text':text})
+    assert len(records)==1 and records[0]['status']=='review'
