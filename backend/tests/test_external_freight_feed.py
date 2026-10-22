@@ -191,7 +191,19 @@ def test_all_filters_are_combined_currency_sort_and_cursor_are_stable():
     page2 = client.get("/api/v1/external-freight", params={**params, "cursor": first["next_cursor"]}).json()
     assert [row["amount"] for row in page2["items"]] == [300.0]
     assert set(row["id"] for row in first["items"] + page2["items"]) == set(ids)
-    assert client.get("/api/v1/external-freight", params={"sort": "price_asc"}).status_code == 422
+    homogeneous = client.get("/api/v1/external-freight", params={"sort": "price_desc", "body_type": "tent", "limit": 10}).json()
+    assert homogeneous["price_currencies"] == ["USD"]
+    assert homogeneous["sort_applied"] == "price_desc"
+    assert homogeneous["sort_error"] is None
+    assert [row["amount"] for row in homogeneous["items"]] == [300.0, 200.0, 100.0]
+    mixed = client.get("/api/v1/external-freight", params={"sort": "price_asc", "limit": 1}).json()
+    assert mixed["sort_applied"] == "newest"
+    assert mixed["sort_error"] == "mixed_currency"
+    assert set(mixed["price_currencies"]) == {"USD", "KZT"}
+    assert mixed["has_more"] is True
+    page2 = client.get("/api/v1/external-freight", params={"sort": "price_asc", "limit": 1, "cursor": mixed["next_cursor"]}).json()
+    assert mixed["items"][0]["id"] != page2["items"][0]["id"]
+    assert page2["sort_applied"] == "newest"
 
 
 def test_cursor_snapshot_excludes_new_rows_but_keeps_replayed_rows():

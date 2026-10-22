@@ -51,10 +51,8 @@ export function feedKindForRole(role) {
   return null;
 }
 
-export function canSortPrice({ currency, min_price, max_price }) {
-  return Boolean(currency) && (min_price === '' || min_price == null || Number(min_price) >= 0)
-    && (max_price === '' || max_price == null || Number(max_price) >= 0)
-    && (min_price === '' || min_price == null || max_price === '' || max_price == null || Number(min_price) <= Number(max_price));
+export function canSortPrice({ price_currencies = [] } = {}) {
+  return new Set(price_currencies.map(value => String(value || '').trim().toUpperCase()).filter(Boolean)).size === 1;
 }
 
 export function isValidPublicationRange({ published_from, published_to }) {

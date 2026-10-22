@@ -304,19 +304,32 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, published
     if max_price is not None:
         clauses.append("amount<=?")
         params.append(max_price)
-    if sort.startswith("price_"):
+    sort_error = None
+    price_currencies = []
+    with get_conn() as c:
+        currency_rows = c.execute(
+            f"SELECT DISTINCT currency FROM external_freight_items WHERE {' AND '.join(clauses)} "
+            "AND price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL ORDER BY currency",
+            tuple(params),
+        ).fetchall()
+        price_currencies = [str(row[0]).upper() for row in currency_rows]
+        effective_sort = sort
+        if sort.startswith("price_") and not currency and len(price_currencies) != 1:
+            effective_sort = "newest"
+            sort_error = "mixed_currency" if len(price_currencies) > 1 else "price_unavailable"
+    if effective_sort.startswith("price_"):
         clauses.append("amount IS NOT NULL")
     if last_date is not None and last_id:
-        if sort == "price_asc":
+        if effective_sort == "price_asc":
             clauses.append("(amount>? OR (amount=? AND id>?))")
             params.extend([float(last_date), float(last_date), last_id])
-        elif sort == "price_desc":
+        elif effective_sort == "price_desc":
             clauses.append("(amount<? OR (amount=? AND id<?))")
             params.extend([float(last_date), float(last_date), last_id])
         else:
             clauses.append("(source_published_at<? OR (source_published_at=? AND id<?))")
             params.extend([last_date, last_date, last_id])
-    order = "amount ASC, id ASC" if sort == "price_asc" else "amount DESC, id DESC" if sort == "price_desc" else "source_published_at DESC, id DESC"
+    order = "amount ASC, id ASC" if effective_sort == "price_asc" else "amount DESC, id DESC" if effective_sort == "price_desc" else "source_published_at DESC, id DESC"
     with get_conn() as c:
         rows = c.execute(f"SELECT * FROM external_freight_items WHERE {' AND '.join(clauses)} ORDER BY {order} LIMIT ?", (*params, min(max(int(limit), 1), 100) + 1)).fetchall()
     has_more = len(rows) > min(max(int(limit), 1), 100)
@@ -325,7 +338,7 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, published
     if has_more and rows:
         import base64
         final = rows[-1]
-        cursor_value = final["amount"] if sort.startswith("price_") else final["source_published_at"]
+        cursor_value = final["amount"] if effective_sort.startswith("price_") else final["source_published_at"]
         raw = json.dumps({"kind": kind, "sort": sort, "filters": cursor_filters, "snapshot": snapshot_at, "date": cursor_value, "id": final["id"]}, separators=(",", ":")).encode()
         next_cursor = base64.urlsafe_b64encode(raw).decode().rstrip("=")
     saved_ids = set()
@@ -344,7 +357,9 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, published
             if item["status"] == "active" and item["expires_at"] and item["expires_at"] <= now:
                 item["status"] = "expired"
         items.append(item)
-    return {"items": items, "next_cursor": next_cursor, "has_more": has_more, "snapshot_at": snapshot_at}
+    return {"items": items, "next_cursor": next_cursor, "has_more": has_more, "snapshot_at": snapshot_at,
+            "sort_applied": effective_sort, "price_sort_available": len(price_currencies) == 1,
+            "price_currencies": price_currencies, "sort_error": sort_error}
 
 
 def set_bookmark(owner_id, item_id, kind, saved):

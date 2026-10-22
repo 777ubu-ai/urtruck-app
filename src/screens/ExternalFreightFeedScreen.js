@@ -24,13 +24,13 @@ import { sessionRole } from '../utils/externalFreightSession';
 import { BODY_TYPES } from '../utils/truckConstants';
 import { ALL_COUNTRIES, getCountryName } from '../utils/countries';
 import { externalFreightAPI } from '../utils/externalFreightFeed';
-import { externalTelegramPost, mergeLiveFeed, appendUnique, buildExternalFeedQuery, canSortPrice, externalLocationTextSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
+import { externalTelegramPost, mergeLiveFeed, appendUnique, buildExternalFeedQuery, externalLocationTextSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
 
 const COPY = {
-  RU: { newListings: 'Новые объявления', telegram: 'Объявление в Telegram', direction: 'Направление в тексте объявления', cargoTitle: 'Лента грузов', vehicleTitle: 'Лента машин', from: 'Откуда', to: 'Куда', body: 'Кузов', date: 'Дата', price: 'Цена', empty: 'Объявлений пока нет', none: 'По фильтрам ничего не найдено', network: 'Нет соединения. Уже загруженные объявления сохранены.', server: 'Сервис ленты временно недоступен.', retry: 'Повторить', more: 'Показать полностью', less: 'Свернуть', copied: 'Контакт скопирован', today: 'Сегодня', yesterday: 'Вчера', apply: 'Найти', choose: 'Выбрать из списка', reset: 'Сброс', cancel: 'Отмена', negotiable: 'Договорная', unknown: 'Цена не указана', loading: 'Загрузка…', published: 'Опубликовано', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'С', dateTo: 'По', currency: 'Валюта', min: 'От суммы', max: 'До суммы', newest: 'Последние внизу', asc: 'Дешевле', desc: 'Дороже', retryPage: 'Не удалось загрузить следующую страницу', invalidPrice: 'Укажите валюту и корректный диапазон цены.', invalidDate: 'Начало периода не может быть позже окончания.' },
-  KK: { newListings: 'Жаңа хабарландырулар', telegram: 'Telegram хабарландыруы', direction: 'Бағыт хабарландыру мәтінінде', cargoTitle: 'Жүк лентасы', vehicleTitle: 'Көлік лентасы', from: 'Қайдан', to: 'Қайда', body: 'Шанақ', date: 'Күні', price: 'Бағасы', empty: 'Әзірге хабарландыру жоқ', none: 'Сүзгі бойынша нәтиже жоқ', network: 'Желі жоқ. Жүктелген хабарландырулар сақталды.', server: 'Лента қызметі уақытша қолжетімсіз.', retry: 'Қайталау', more: 'Тағы', less: 'Жию', copied: 'Байланыс көшірілді', today: 'Бүгін', yesterday: 'Кеше', apply: 'Қолдану', choose: 'Тізімнен таңдау', reset: 'Тазарту', cancel: 'Бас тарту', negotiable: 'Келісімді', unknown: 'Бағасы көрсетілмеген', loading: 'Жүктелуде…', published: 'Жарияланған', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'Бастап', dateTo: 'Дейін', currency: 'Валюта', min: 'Ең азы', max: 'Ең көбі', newest: 'Соңғылары төменде', asc: 'Арзанырақ', desc: 'Қымбатырақ', retryPage: 'Келесі бетті жүктеу мүмкін болмады', invalidPrice: 'Валюта мен баға аралығын тексеріңіз.', invalidDate: 'Жарияланым күндерінің аралығын тексеріңіз.' },
-  ZH: { newListings: '新信息', telegram: 'Telegram原始信息', direction: '路线见原文', cargoTitle: '货源信息', vehicleTitle: '空车信息', from: '出发地', to: '目的地', body: '车厢类型', date: '日期', price: '价格', empty: '暂无公告', none: '没有符合筛选条件的结果', network: '网络不可用，已加载的信息已保留。', server: '信息服务暂时不可用。', retry: '重试', more: '更多', less: '收起', copied: '联系方式已复制', today: '今天', yesterday: '昨天', apply: '应用', choose: '从列表选择', reset: '重置', cancel: '取消', negotiable: '价格面议', unknown: '未提供价格', loading: '加载中…', published: '发布时间', weightUnit: '吨', volumeUnit: '立方米', dateFrom: '开始', dateTo: '结束', currency: '币种', min: '最低', max: '最高', newest: '最新信息在底部', asc: '价格升序', desc: '价格降序', retryPage: '无法加载下一页', invalidPrice: '请检查币种和价格范围。', invalidDate: '请检查发布日期范围。' },
-  EN: { newListings: 'New listings', telegram: 'Listing on Telegram', direction: 'See original text for direction', cargoTitle: 'Cargo feed', vehicleTitle: 'Available trucks', from: 'From', to: 'To', body: 'Body', date: 'Date', price: 'Price', empty: 'No listings yet', none: 'No results for these filters', network: 'No connection. Loaded listings are kept.', server: 'The feed service is temporarily unavailable.', retry: 'Retry', more: 'Show full text', less: 'Collapse', copied: 'Contact copied', today: 'Today', yesterday: 'Yesterday', apply: 'Apply', choose: 'Choose from list', reset: 'Reset', cancel: 'Cancel', negotiable: 'Negotiable', unknown: 'Price not provided', loading: 'Loading…', published: 'Published', weightUnit: 't', volumeUnit: 'm³', dateFrom: 'From', dateTo: 'To', currency: 'Currency', min: 'Minimum', max: 'Maximum', newest: 'Latest at bottom', asc: 'Lowest price', desc: 'Highest price', retryPage: 'Could not load the next page', invalidPrice: 'Check the currency and price range.', invalidDate: 'Check the publication date range.' },
+  RU: { newListings: 'Новые объявления', mixedCurrency: 'Сортировка по цене доступна, когда в выдаче одна валюта. Сейчас показаны новые объявления.', priceUnavailable: 'В отфильтрованных объявлениях нет цен для сортировки. Сейчас показаны новые объявления.', telegram: 'Объявление в Telegram', direction: 'Направление в тексте объявления', cargoTitle: 'Лента грузов', vehicleTitle: 'Лента машин', from: 'Откуда', to: 'Куда', body: 'Кузов', date: 'Дата', price: 'Цена', empty: 'Объявлений пока нет', none: 'По фильтрам ничего не найдено', network: 'Нет соединения. Уже загруженные объявления сохранены.', server: 'Сервис ленты временно недоступен.', retry: 'Повторить', more: 'Показать полностью', less: 'Свернуть', copied: 'Контакт скопирован', today: 'Сегодня', yesterday: 'Вчера', apply: 'Найти', choose: 'Выбрать из списка', reset: 'Сброс', cancel: 'Отмена', negotiable: 'Договорная', unknown: 'Цена не указана', loading: 'Загрузка…', published: 'Опубликовано', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'С', dateTo: 'По', newest: 'Новые', asc: '↓ Дешевле', desc: '↑ Дороже', retryPage: 'Не удалось загрузить следующую страницу', invalidDate: 'Начало периода не может быть позже окончания.' },
+  KK: { newListings: 'Жаңа хабарландырулар', mixedCurrency: 'Баға бойынша сұрыптау тек тізімде бір валюта болғанда қолжетімді. Қазір жаңалары көрсетілді.', priceUnavailable: 'Сүзілген хабарландыруларда сұрыптауға арналған баға жоқ. Қазір жаңалары көрсетілді.', telegram: 'Telegram хабарландыруы', direction: 'Бағыт хабарландыру мәтінінде', cargoTitle: 'Жүк лентасы', vehicleTitle: 'Көлік лентасы', from: 'Қайдан', to: 'Қайда', body: 'Шанақ', date: 'Күні', price: 'Бағасы', empty: 'Әзірге хабарландыру жоқ', none: 'Сүзгі бойынша нәтиже жоқ', network: 'Желі жоқ. Жүктелген хабарландырулар сақталды.', server: 'Лента қызметі уақытша қолжетімсіз.', retry: 'Қайталау', more: 'Тағы', less: 'Жию', copied: 'Байланыс көшірілді', today: 'Бүгін', yesterday: 'Кеше', apply: 'Қолдану', choose: 'Тізімнен таңдау', reset: 'Тазарту', cancel: 'Бас тарту', negotiable: 'Келісімді', unknown: 'Бағасы көрсетілмеген', loading: 'Жүктелуде…', published: 'Жарияланған', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'Бастап', dateTo: 'Дейін', newest: 'Жаңалары', asc: '↓ Арзанырақ', desc: '↑ Қымбатырақ', retryPage: 'Келесі бетті жүктеу мүмкін болмады', invalidDate: 'Жарияланым күндерінің аралығын тексеріңіз.' },
+  ZH: { newListings: '新信息', mixedCurrency: '仅当结果中只有一种货币时才能按价格排序。当前显示最新信息。', priceUnavailable: '筛选结果中没有可排序的价格。当前显示最新信息。', telegram: 'Telegram原始信息', direction: '路线见原文', cargoTitle: '货源信息', vehicleTitle: '空车信息', from: '出发地', to: '目的地', body: '车厢类型', date: '日期', price: '价格', empty: '暂无公告', none: '没有符合筛选条件的结果', network: '网络不可用，已加载的信息已保留。', server: '信息服务暂时不可用。', retry: '重试', more: '更多', less: '收起', copied: '联系方式已复制', today: '今天', yesterday: '昨天', apply: '应用', choose: '从列表选择', reset: '重置', cancel: '取消', negotiable: '价格面议', unknown: '未提供价格', loading: '加载中…', published: '发布时间', weightUnit: '吨', volumeUnit: '立方米', dateFrom: '开始', dateTo: '结束', newest: '最新', asc: '↓ 更便宜', desc: '↑ 更贵', retryPage: '无法加载下一页', invalidDate: '请检查发布日期范围。' },
+  EN: { newListings: 'New listings', mixedCurrency: 'Price sorting is available when results use one currency. Showing newest listings.', priceUnavailable: 'The filtered listings have no prices to sort. Showing newest listings.', telegram: 'Listing on Telegram', direction: 'See original text for direction', cargoTitle: 'Cargo feed', vehicleTitle: 'Available trucks', from: 'From', to: 'To', body: 'Body', date: 'Date', price: 'Price', empty: 'No listings yet', none: 'No results for these filters', network: 'No connection. Loaded listings are kept.', server: 'The feed service is temporarily unavailable.', retry: 'Retry', more: 'Show full text', less: 'Collapse', copied: 'Contact copied', today: 'Today', yesterday: 'Yesterday', apply: 'Apply', choose: 'Choose from list', reset: 'Reset', cancel: 'Cancel', negotiable: 'Negotiable', unknown: 'Price not provided', loading: 'Loading…', published: 'Published', weightUnit: 't', volumeUnit: 'm³', dateFrom: 'From', dateTo: 'To', newest: 'Newest', asc: '↓ Cheaper', desc: '↑ Higher', retryPage: 'Could not load the next page', invalidDate: 'Check the publication date range.' },
 };
 const bodyLabels = {
   RU: { tent: 'Тент', ref: 'Рефрижератор', izoterm: 'Изотерм', board: 'Борт', tipper: 'Самосвал', lowboy: 'Трал' },
@@ -44,8 +44,6 @@ const SAVED_COPY = {
   ZH: { saved: '已收藏', save: '收藏', unsave: '取消收藏', expired: '已过期', closed: '已关闭', unavailable: '信息不可用' },
   EN: { saved: 'Saved', save: 'Save', unsave: 'Remove from saved', expired: 'Expired', closed: 'Closed', unavailable: 'Listing unavailable' },
 };
-const currencies = ['KZT', 'USD', 'EUR', 'RUB', 'CNY'];
-
 export default function ExternalFreightFeedScreen({ navigation }) {
   const { session } = useAuth();
   const role = sessionRole(session) || 'guest';
@@ -64,10 +62,11 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const ownerKey = `${session?.user?.id || ''}:${role}`;
   const ownerRef = useRef(ownerKey);
   ownerRef.current = ownerKey;
-  const emptyFilters = { origin: '', destination: '', origin_country: '', destination_country: '', body_type: '', published_from: '', published_to: '', currency: '', min_price: '', max_price: '', sort: 'newest' };
+  const emptyFilters = { origin: '', destination: '', origin_country: '', destination_country: '', body_type: '', published_from: '', published_to: '', sort: 'newest' };
   const [filters, setFilters] = useState(emptyFilters);
   const [draft, setDraft] = useState(filters);
   const timeline = filters.sort === 'newest';
+  const webTimeline = Platform.OS === 'web' && timeline;
   const [unseenIds, setUnseenIds] = useState([]);
   const followingRef = useRef(true);
   const followUpdateRef = useRef(false);
@@ -83,7 +82,8 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const requestRef = useRef(null);
   const busyRef = useRef(false);
   const listRef = useRef(null);
-  const viewportRef = useRef({ offset: 0, height: 0 });
+  const viewportRef = useRef({ offset: 0, height: 0, contentHeight: 0 });
+  const scrollToLatestRef = useRef(false);
   const anchorRef = useRef(null);
   const cardRefs = useRef(new Map());
   const visibleAnchorRef = useRef(null);
@@ -117,6 +117,11 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       return;
     }
     const incoming = Array.isArray(result.items) ? result.items : [];
+    if (result.sort_error && filters.sort !== 'newest') {
+      setFilters(current => ({ ...current, sort: 'newest' }));
+      setDraft(current => ({ ...current, sort: 'newest' }));
+      toast(result.sort_error === 'mixed_currency' ? l.mixedCurrency : l.priceUnavailable, 'error');
+    }
     setRowsOwner(owner);
     anchorRef.current = null;
     if (background && Platform.OS === 'web' && (!timeline || !followingRef.current) && viewportRef.current.offset > 16) {
@@ -138,11 +143,13 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       const added = incoming.filter(item => !known.has(String(item.id)) && activeIds.has(String(item.id)));
       if (followingRef.current) {
         followUpdateRef.current = added.length > 0;
+        scrollToLatestRef.current = Platform.OS === 'web' && added.length > 0;
         setUnseenIds([]);
       } else {
         setUnseenIds(current => [...new Set([...current, ...added.map(item => String(item.id))])].filter(id => activeIds.has(id)));
       }
     }
+    if (reset && timeline && Platform.OS === 'web' && !savedOnly) scrollToLatestRef.current = true;
     setRows(current => background ? mergeLiveFeed(current, incoming, { sort: filters.sort, hasMore: !!result.next_cursor, savedOnly }) : reset ? incoming : appendUnique(current, incoming));
     if (!background || rows.length <= 30 || filters.sort !== 'newest') setCursor(result.next_cursor || null);
     busyRef.current = false; setBusy(false); setRefreshing(false);
@@ -199,15 +206,8 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     const next = isLocationModal
       ? { ...draft, ...externalLocationTextSelection(modal, draft[modal] || getCountryName(draft[`${modal}_country`], lang) || '', ALL_COUNTRIES) }
       : { ...draft };
-    // Числовая клавиатура может вводить запятую; валидатор и API получают одинаковое значение.
-    for (const key of ['min_price', 'max_price']) next[key] = String(next[key] || '').trim().replace(',', '.');
     if (!isValidPublicationRange(next)) {
       Alert.alert(l.date, l.invalidDate);
-      return;
-    }
-    const usesPrice = !!(next.currency || next.min_price || next.max_price || next.sort !== 'newest');
-    if (usesPrice && !canSortPrice(next)) {
-      Alert.alert(l.price, l.invalidPrice);
       return;
     }
     externalFreightAPI.event('filter_apply');
@@ -303,32 +303,41 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       </TouchableOpacity>
     </View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filterContent} keyboardShouldPersistTaps="handled">
-      {filterButton('origin', l.from, locationLabel('origin'))}{filterButton('destination', l.to, locationLabel('destination'))}{filterButton('body', l.body, filters.body_type ? bodyLabels[lang]?.[filters.body_type] || filters.body_type : '')}{filterButton('date', l.date, filters.published_from ? `${formatDate(filters.published_from, lang)}${filters.published_to ? ` – ${formatDate(filters.published_to, lang)}` : ''}` : '')}{filterButton('price', l.price, filters.currency || filters.min_price || filters.max_price ? [filters.min_price, filters.max_price].filter(Boolean).join('–') + (filters.currency ? ` ${filters.currency}` : '') : '')}
+      {filterButton('origin', l.from, locationLabel('origin'))}{filterButton('destination', l.to, locationLabel('destination'))}{filterButton('body', l.body, filters.body_type ? bodyLabels[lang]?.[filters.body_type] || filters.body_type : '')}{filterButton('date', l.date, filters.published_from ? `${formatDate(filters.published_from, lang)}${filters.published_to ? ` – ${formatDate(filters.published_to, lang)}` : ''}` : '')}{filterButton('price', l.price, filters.sort === 'newest' ? '' : (filters.sort === 'price_asc' ? l.asc : l.desc))}
     </ScrollView>
     {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: true })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}
     {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{error === 'network_error' ? l.network : l.server}</Text><PrimaryButton label={l.retry} onPress={() => load({ reset: true })} style={styles.retryButton} /></View> : null}
-    {!error || rows.length ? <FlatList key={`${ownerKey}:${savedOnly}:${JSON.stringify(filters)}`} ref={listRef} inverted={timeline} onViewableItemsChanged={viewabilityRef.current} maintainVisibleContentPosition={Platform.OS === 'web' ? undefined : { minIndexForVisible: 0 }}
+    {!error || rows.length ? <FlatList key={`${ownerKey}:${savedOnly}:${JSON.stringify(filters)}`} ref={listRef} inverted={timeline && Platform.OS !== 'web'} onViewableItemsChanged={viewabilityRef.current} maintainVisibleContentPosition={Platform.OS === 'web' ? undefined : { minIndexForVisible: 0 }}
       onScroll={event => {
         const offset = Math.max(0, event.nativeEvent.contentOffset.y);
+        const { contentSize, layoutMeasurement } = event.nativeEvent;
+        viewportRef.current.height = layoutMeasurement.height;
+        viewportRef.current.contentHeight = contentSize.height;
+        const atLatestEdge = webTimeline
+          ? Math.max(0, contentSize.height - layoutMeasurement.height - offset) < 48
+          : offset < 48;
         viewportRef.current.offset = offset;
-        followingRef.current = offset < 48;
-        if (timeline && offset < 48) setUnseenIds(current => current.length ? [] : current);
+        followingRef.current = atLatestEdge;
+        if (timeline && atLatestEdge) setUnseenIds(current => current.length ? [] : current);
+        if (webTimeline && offset < 48 && cursor && !busy) load();
       }} scrollEventThrottle={16}
       onContentSizeChange={(_width, height) => {
         const anchor = anchorRef.current;
-        viewportRef.current.height = height;
-        if (timeline && followUpdateRef.current) {
+        viewportRef.current.contentHeight = height;
+        if (timeline && followingRef.current && (followUpdateRef.current || scrollToLatestRef.current)) {
           followUpdateRef.current = false;
-          listRef.current?.scrollToOffset({ offset: 0, animated: true });
+          scrollToLatestRef.current = false;
+          if (webTimeline) listRef.current?.scrollToOffset({ offset: Math.max(0, height - viewportRef.current.height), animated: true });
+          else listRef.current?.scrollToOffset({ offset: 0, animated: true });
         }
         if (anchor) anchor.node.measureInWindow((_x, y) => {
           if (anchorRef.current !== anchor || !Number.isFinite(y)) return;
           const delta = y - anchor.y;
           if (Math.abs(delta) > 1) listRef.current?.scrollToOffset({ offset: Math.max(0, viewportRef.current.offset + (timeline ? -delta : delta)), animated: false });
         });
-      }} data={visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => { if (!busy && cursor) load(); }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.published_from || filters.min_price ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
+      }} data={webTimeline ? [...visibleRows].reverse() : visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => { if (!webTimeline && !busy && cursor) load(); }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.published_from ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
     {timeline && unseenIds.length > 0 ? <TouchableOpacity style={styles.newListings} accessibilityRole="button" testID="external-feed-new-listings"
-      onPress={() => { followingRef.current = true; setUnseenIds([]); listRef.current?.scrollToOffset({ offset: 0, animated: true }); }}>
+      onPress={() => { followingRef.current = true; setUnseenIds([]); if (webTimeline) listRef.current?.scrollToOffset({ offset: Math.max(0, viewportRef.current.contentHeight - viewportRef.current.height), animated: true }); else listRef.current?.scrollToOffset({ offset: 0, animated: true }); }}>
       <Feather name="arrow-down" size={16} color={theme.text} /><Text style={styles.newListingsText}>{l.newListings} · {unseenIds.length}</Text>
     </TouchableOpacity> : null}
     {shareTarget?.owner === ownerKey ? <ShareModal visible onClose={() => setShareTarget(null)}
@@ -349,7 +358,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         {isLocationModal ? <TextInput value={draft[modal] || (draft[`${modal}_country`] ? getCountryName(draft[`${modal}_country`], lang) : '')} onChangeText={text => setDraft(current => ({ ...current, [modal]: text, [`${modal}_country`]: '' }))} placeholder={modal === 'origin' ? l.from : l.to} placeholderTextColor={theme.textMuted} style={styles.input} maxLength={120} autoFocus autoCorrect={false} autoCapitalize="words" returnKeyType="search" onSubmitEditing={applyFilters} testID="external-feed-location-search" accessibilityLabel={modal === 'origin' ? l.from : l.to} /> : null}
         {modal === 'body' ? <ScrollView style={{ maxHeight: 310 }}>{BODY_TYPES.map(body => <TouchableOpacity key={body} style={styles.option} onPress={() => setDraft(current => ({ ...current, body_type: current.body_type === body ? '' : body }))}><Text style={styles.optionText}>{bodyLabels[lang]?.[body] || body}</Text><Text style={styles.optionText}>{draft.body_type === body ? '✓' : ''}</Text></TouchableOpacity>)}</ScrollView> : null}
         {modal === 'date' ? <View><View style={styles.quickRow}><TouchableOpacity onPress={() => choosePresetDate(0)}><Text style={styles.link}>{l.today}</Text></TouchableOpacity><TouchableOpacity onPress={() => choosePresetDate(1)}><Text style={styles.link}>{l.yesterday}</Text></TouchableOpacity></View><Text style={styles.hint}>{l.dateFrom}</Text><DatePicker value={draft.published_from} onChange={value => setDraft(current => ({ ...current, published_from: value }))} allowPast /><Text style={styles.hint}>{l.dateTo}</Text><DatePicker value={draft.published_to} onChange={value => setDraft(current => ({ ...current, published_to: value }))} allowPast /></View> : null}
-        {priceModal ? <View><View style={styles.quickRow}>{currencies.map(value => <TouchableOpacity key={value} testID={`external-feed-currency-${value}`} style={[styles.currencyChip, draft.currency === value && styles.currencySelected]} onPress={() => setDraft(current => ({ ...current, currency: value }))}><Text style={styles.optionText}>{value}</Text></TouchableOpacity>)}</View><View style={styles.quickRow}><TextInput testID="external-feed-price-min" keyboardType="decimal-pad" value={draft.min_price} onChangeText={text => setDraft(current => ({ ...current, min_price: text.replace(/[^0-9.,]/g, '') }))} placeholder={l.min} placeholderTextColor={theme.textMuted} style={[styles.input, { flex: 1 }]} /><TextInput testID="external-feed-price-max" keyboardType="decimal-pad" value={draft.max_price} onChangeText={text => setDraft(current => ({ ...current, max_price: text.replace(/[^0-9.,]/g, '') }))} placeholder={l.max} placeholderTextColor={theme.textMuted} style={[styles.input, { flex: 1 }]} /></View>{[['newest', l.newest], ['price_asc', l.asc], ['price_desc', l.desc]].map(([value, label]) => <TouchableOpacity key={value} disabled={value !== 'newest' && !draft.currency} style={styles.option} onPress={() => setDraft(current => ({ ...current, sort: value }))}><Text style={[styles.optionText, value !== 'newest' && !draft.currency && { opacity: 0.45 }]}>{label}</Text><Text style={styles.optionText}>{draft.sort === value ? '✓' : ''}</Text></TouchableOpacity>)}</View> : null}
+        {priceModal ? <View testID="external-feed-price-options">{[['newest', l.newest], ['price_asc', l.asc], ['price_desc', l.desc]].map(([value, label]) => <TouchableOpacity key={value} style={styles.option} onPress={() => setDraft(current => ({ ...current, sort: value }))}><Text style={styles.optionText}>{label}</Text><Text style={styles.optionText}>{draft.sort === value ? '✓' : ''}</Text></TouchableOpacity>)}</View> : null}
         </ScrollView>
       </Pressable>
       </KeyboardAvoidingView>
@@ -413,7 +422,6 @@ function makeStyles(theme, sp) {
     optionText: { color: theme.text, fontSize: sp(14), flexShrink: 1, minWidth: 0 },
     input: { minHeight: 46, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: theme.text, fontSize: sp(14), backgroundColor: theme.bg, minWidth: 0 },
     quickRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginVertical: 5 },
-    currencyChip: { borderWidth: 1, borderColor: theme.border, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 12 }, currencySelected: { borderColor: '#168759', backgroundColor: theme.bg },
     actions: { flexDirection: 'row', alignItems: 'stretch', gap: 6, flexShrink: 0 },
     filterAction: { flexGrow: 1, flexShrink: 1, flexBasis: 0, alignSelf: 'stretch', width: 'auto', minWidth: 0, maxWidth: '100%', height: 'auto', minHeight: 48, paddingHorizontal: 0, paddingVertical: 8 },
   });
