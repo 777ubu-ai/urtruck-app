@@ -148,7 +148,9 @@ def _secure_database_files(path):
 
     secure_file(path, create=True)
     for suffix in ("-wal", "-shm", "-journal"):
-        secure_file(Path(f"{path}{suffix}"))
+        # SQLite creates sidecars after connect(), under the service umask.
+        # Pre-create each file so a permissive umask cannot expose feed data.
+        secure_file(Path(f"{path}{suffix}"), create=True)
 
 
 def database(path=None):

@@ -1,4 +1,5 @@
 """Контракт отдельной внешней ленты на отдельной изолированной тестовой БД."""
+import os
 import sqlite3
 import stat
 import uuid
@@ -523,6 +524,23 @@ def test_external_database_and_existing_wal_files_are_private(tmp_path, monkeypa
             assert stat.S_IMODE(candidate.stat().st_mode) == 0o600
     finally:
         raw.close()
+
+
+def test_new_external_database_sidecars_are_private_with_permissive_umask(tmp_path, monkeypatch):
+    path = tmp_path / "new-private-feed.sqlite3"
+    previous_umask = os.umask(0o022)
+    try:
+        with monkeypatch.context() as patch:
+            patch.setenv("EXTERNAL_FREIGHT_DB_PATH", str(path))
+            with get_conn() as conn:
+                conn.execute("CREATE TABLE sample (value TEXT)")
+                conn.execute("INSERT INTO sample VALUES ('private')")
+                conn.commit()
+                for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+                    assert candidate.exists()
+                    assert stat.S_IMODE(candidate.stat().st_mode) == 0o600
+    finally:
+        os.umask(previous_umask)
 
 
 def test_review_approval_uses_only_external_database(monkeypatch):

@@ -30,7 +30,9 @@ def _secure_database_files(path: Path):
 
     secure_file(path, create=True)
     for suffix in ("-wal", "-shm", "-journal"):
-        secure_file(Path(str(path) + suffix), create=False)
+        # SQLite creates these after connect(), when the service umask may be
+        # 0022. Pre-create them securely so new sidecars inherit private modes.
+        secure_file(Path(str(path) + suffix), create=True)
 
 
 def database_path():

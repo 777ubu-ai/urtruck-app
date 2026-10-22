@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -80,6 +81,28 @@ def test_collector_restricts_existing_state_database_and_sidecars(tmp_path):
             db.close()
     finally:
         raw.close()
+
+
+def test_collector_creates_private_sidecars_with_permissive_umask(tmp_path):
+    m=collector()
+    root=tmp_path/'collector-new'
+    root.mkdir()
+    m.ROOT=root
+    path=root/'state/feed.sqlite3'
+    previous_umask=os.umask(0o022)
+    try:
+        db=m.database()
+        try:
+            db.execute('CREATE TABLE sample (value TEXT)')
+            db.execute("INSERT INTO sample VALUES ('private')")
+            db.commit()
+            for candidate in (path,Path(f'{path}-wal'),Path(f'{path}-shm')):
+                assert candidate.exists()
+                assert candidate.stat().st_mode & 0o777 == 0o600
+        finally:
+            db.close()
+    finally:
+        os.umask(previous_umask)
 
 
 def test_capture_without_phone_legacy_queue_unchanged_and_edit_ttl(tmp_path):
