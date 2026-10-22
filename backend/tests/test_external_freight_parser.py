@@ -164,6 +164,6 @@ def test_closure_requires_request_context_not_conditions():
     ]
     for text in active:
         assert map_selected_message(_queue(text))['status'] == 'active'
-    for status in ['Заявка закрыта', 'Груз закрыт', 'Объявление снято', 'Закрыто', 'Уже нашли машину', 'Уже нашли груз', 'Listing is closed', 'Closed']:
+    for status in ['Заявка закрыта', 'Груз закрыт', 'Объявление снято', 'Закрыто', 'Уже нашли машину', 'Уже нашли груз', 'Listing is closed', 'Closed', 'Статус: закрыто', 'Status: closed']:
         text = 'Алматы → Москва\nНужен тент, груз готов\n' + status
         assert map_selected_message(_queue(text))['status'] == 'closed', status

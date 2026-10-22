@@ -792,7 +792,7 @@ def test_condition_edits_do_not_close_listing_but_explicit_closure_does():
         assert updated['id'] == original['id']
         assert updated['status'] == 'active'
         assert client.get('/api/v1/external-freight/count').json()['count'] == 1
-    closed = send(raw['original_text'] + '\nЗаявка закрыта')
+    closed = send(raw['original_text'] + '\nСтатус: закрыто')
     assert closed['id'] == original['id']
     assert closed['status'] == 'closed'
     assert client.get('/api/v1/external-freight/count').json()['count'] == 0
