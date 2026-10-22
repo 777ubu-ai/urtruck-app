@@ -167,3 +167,23 @@ def test_closure_requires_request_context_not_conditions():
     for status in ['Заявка закрыта', 'Груз закрыт', 'Объявление снято', 'Закрыто', 'Уже нашли машину', 'Уже нашли груз', 'Listing is closed', 'Closed', 'Статус: закрыто', 'Status: closed']:
         text = 'Алматы → Москва\nНужен тент, груз готов\n' + status
         assert map_selected_message(_queue(text))['status'] == 'closed', status
+
+
+def test_explicit_machine_offer_with_compact_hyphen_is_active_vehicle():
+    text = "Есть машина\nХоргос-Алматы\n88 куб\n+77002668251\nТент"
+    item = map_selected_message(_queue(text, phones='["+77002668251"]'))
+    assert item["kind"] == "vehicle"
+    assert item["status"] == "active"
+    assert (item["origin"], item["destination"]) == ("Хоргос", "Алматы")
+    assert item["volume"] == 88
+    assert item["body_types"] == ["tent"]
+    assert item["price_state"] == "unknown"
+    assert item["contacts"] == ["+77002668251"]
+    assert item["original_text"] == text
+
+
+def test_compact_route_is_not_guessed_without_explicit_vehicle_offer():
+    item = map_selected_message(_queue("Хоргос-Алматы\nТент\n88 куб"))
+    assert item["origin"] is None
+    assert item["destination"] is None
+    assert item["status"] == "review"
