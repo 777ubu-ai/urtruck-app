@@ -20,7 +20,7 @@ _VOLUME = re.compile(r"(?i)(?<![\w.])(\d+(?:[.,]\d+)?)\s*(м\s*[³3]|куб(?:о
 _COUNT = re.compile(r"(?i)(?:нужно|требуется|требуются|нужны|количество)\s*[:：-]?\s*(\d{1,4})\s*(?:машин|авто|фур)")
 _CARGO = re.compile(r"(?im)^\s*(?:груз|наименование груза)\s*[:：-]\s*([^\n;]{2,120})")
 _READY = re.compile(r"(?im)^\s*(?:готовность|готов|дата погрузки|загрузка)\s*[:：-]\s*([^\n;]{2,120})")
-_PRICE = re.compile(r"(?i)(?<!\d)(\d[\d \t.,]{0,14})[ \t]*(USD|US\$|\$|EUR|€|RUB|₽|KZT|тг|CNY|¥)(?=$|[\W])")
+_PRICE = re.compile(r"(?i)(?<!\d)(\d[\d \t.,]{0,14})[ \t]*(USD|US\$|\$|EUR|€|RUB|₽|KZT|тг|CNY|JPY|¥)(?:[ \t]*\([ \t]*(CNY|JPY)[ \t]*\))?(?=$|[\W])")
 _NEGOTIABLE = re.compile(r"(?i)\b(?:договорная|цена договорная|торг уместен)\b")
 _DATE = re.compile(r"(?<!\d)(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})(?!\d)")
 _BODY = (
@@ -31,7 +31,7 @@ _BODY = (
     ("tipper", re.compile(r"(?i)\b(?:самосвал|tipper)\b")),
     ("lowboy", re.compile(r"(?i)\b(?:низкорамник|трал|lowboy)\b")),
 )
-_CURRENCY = {"USD": "USD", "US$": "USD", "$": "USD", "EUR": "EUR", "€": "EUR", "RUB": "RUB", "₽": "RUB", "KZT": "KZT", "тг": "KZT", "CNY": "CNY", "¥": "CNY"}
+_CURRENCY = {"USD": "USD", "US$": "USD", "$": "USD", "EUR": "EUR", "€": "EUR", "RUB": "RUB", "₽": "RUB", "KZT": "KZT", "тг": "KZT", "CNY": "CNY", "JPY": "JPY"}
 
 
 def _place(value):
@@ -56,7 +56,10 @@ def _amount(text):
     match = _PRICE.search(text)
     if not match:
         return None, None, "negotiable" if _NEGOTIABLE.search(text) else "unknown"
-    raw, currency_raw = match.groups()
+    raw, currency_raw, yen_code = match.groups()
+    # Символ ¥ используется и для CNY, и для JPY; без явного кода не угадываем.
+    if currency_raw == "¥":
+        currency_raw = yen_code or ""
     currency = _CURRENCY.get(currency_raw.upper(), _CURRENCY.get(currency_raw))
     if not currency:
         return None, None, "unknown"

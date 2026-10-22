@@ -19,7 +19,7 @@ _VEHICLE_CONTEXT = re.compile(
     r"бос көлік|жүк іздеймін|free truck|available truck|empty truck|looking for cargo|"
     r"有空车|空车|找货)", re.I,
 )
-_CLOSE_CONTEXT = re.compile(r"(?:закрыт|снято|уже нашли|не актуальн|closed|found a truck|found cargo|已关闭)", re.I)
+_CLOSE_CONTEXT = re.compile(r"(?:\bзакрыт(?:а|о|ы)?\b|\bснято\b|уже нашли|не актуальн|\bclosed\b|found a truck|found cargo|已关闭)", re.I)
 
 
 def classify_message(text: str) -> dict:

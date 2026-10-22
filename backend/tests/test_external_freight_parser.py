@@ -136,3 +136,20 @@ def test_kilograms_are_normalized_to_card_tonnes():
 def test_decimal_tonnes_are_preserved():
     item = map_selected_message(_queue("Хоргос - Алматы\nНужен тент\nГруз готов 21,5 т"))
     assert item["weight"] == 21.5
+
+
+def test_closed_body_word_does_not_close_an_active_request():
+    text = 'Хоргос → Алматы\nНужен тент, груз готов\nКузов закрытый, тент'
+    item = map_selected_message(_queue(text))
+    assert item['status'] == 'active'
+    assert item['original_text'] == text
+
+
+def test_explicit_yen_currency_is_preserved_and_ambiguous_symbol_is_not_guessed():
+    prefix = 'Токио → Осака\nИщу машину для перевозки\nГруз: оборудование\nЦена 2000 '
+    for suffix, expected in [('JPY', 'JPY'), ('¥ (JPY)', 'JPY'), ('¥ (CNY)', 'CNY'), ('CNY', 'CNY')]:
+        item = map_selected_message(_queue(prefix + suffix))
+        assert (item['amount'], item['currency']) == (2000, expected)
+        assert item['original_text'] == prefix + suffix
+    item = map_selected_message(_queue(prefix + '¥'))
+    assert (item['amount'], item['currency'], item['price_state']) == (None, None, 'unknown')
