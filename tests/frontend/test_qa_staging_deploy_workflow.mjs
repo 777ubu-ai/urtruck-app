@@ -153,7 +153,7 @@ test('QA2 deploy keeps NLLB local and configures only the approved OpenAI STT ro
   assert.match(workflow, /QA_STT_PROVIDER=openai-ready/);
   assert.match(workflow, /QA_TRANSLATE_PROVIDER=local-nllb-ready/);
   assert.match(workflow, /ENV_BACKUP=.*qa2\.env/);
-  assert.match(workflow, /QA_ROLLBACK_LOCAL_AI_SETTINGS_NOT_RESTORED/);
+  assert.match(workflow, /QA_ROLLBACK_SETTINGS_NOT_RESTORED/);
   assert.doesNotMatch(workflow, /OPENAI_API_KEY.*print\(/);
   assert.doesNotMatch(workflow, /OPENAI_API_KEY.*echo/);
   assert.doesNotMatch(workflow, /urtruck-security.*\.env/);
