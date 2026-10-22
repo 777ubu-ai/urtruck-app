@@ -37,6 +37,17 @@ test('reviewer auth CI diagnostic always uploads artifacts and runs the exact re
   assert.match(diagnosticShell, /sanitize_ui_dump\(\)/);
   assert.match(diagnosticShell, /end_tag = '<\/hierarchy>'/);
   assert.match(diagnosticShell, /sanitize_ui_dump "\$raw_dump" "\$dest"/);
+  assert.match(diagnosticShell, /PREFLIGHT_STABLE_PROBES="\$\{PREFLIGHT_STABLE_PROBES:-3\}"/);
+  assert.match(diagnosticShell, /PREFLIGHT_MAX_ATTEMPTS="\$\{PREFLIGHT_MAX_ATTEMPTS:-6\}"/);
+  assert.match(diagnosticShell, /PREFLIGHT_RECURRENCE_COUNT=0/);
+  assert.match(diagnosticShell, /current_focus_is_clean_app\(\)/);
+  assert.match(diagnosticShell, /current_focus_has_system_anr\(\)/);
+  assert.match(diagnosticShell, /wait_for_clean_preflight_window\(\)/);
+  assert.match(diagnosticShell, /preflight_recurrent_anr_attempt_/);
+  assert.match(diagnosticShell, /preflight_stable_attempt_\$\{attempt\}_probe_\$\{probe\}/);
+  assert.match(diagnosticShell, /"clean foreground before Maestro": "\$clean_foreground_before_maestro"/);
+  assert.match(diagnosticShell, /"ANR recurrence count": "\$anr_recurrence_count"/);
+  assert.match(diagnosticShell, /if ! ensure_preflight_ready; then/);
   assert.match(diagnosticShell, /Skipping global proxy because mitmproxy CA is not trusted by the emulator/);
   assert.match(diagnosticShell, /PREFLIGHT_TARGET_ID="\$\{PREFLIGHT_TARGET_ID:-onb-v2-cta-phone\}"/);
   assert.match(diagnosticShell, /Detected system ANR dialog before reviewer flow/);
