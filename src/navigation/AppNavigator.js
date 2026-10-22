@@ -15,6 +15,7 @@ import { storage } from '../utils/storage';
 import BottomNav from '../components/ui/v1/BottomNav';
 import ExternalFreightFeedScreen from '../screens/ExternalFreightFeedScreen';
 import { EXTERNAL_FREIGHT_ENABLED } from '../utils/externalFreightFeed';
+import withExternalFeedFirstVisit from '../components/externalFreight/withExternalFeedFirstVisit';
 
 import HowItWorksScreen from '../screens/HowItWorksScreen';
 import AboutScreen from '../screens/AboutScreen';
@@ -182,6 +183,8 @@ function MainTabs({ route }) {
   );
 }
 
+const FirstVisitMainTabs = withExternalFeedFirstVisit(MainTabs);
+
 // Реактивная навигация на основе auth state
 export default function AppNavigator() {
   const { session, hasToken, loading, verificationLevel } = useAuth();
@@ -308,7 +311,7 @@ export default function AppNavigator() {
       ) : (
         // Полностью в приложении
         <>
-          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen name="Main" component={FirstVisitMainTabs} />
           {/* Профиль теперь открывается из ☰ (top-right) как отдельный экран
               стека, а не как вкладка таб-бара (её занял «Дела»). */}
           <Stack.Screen name="Profile" component={ProfileScreen} />

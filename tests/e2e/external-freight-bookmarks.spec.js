@@ -26,11 +26,12 @@ async function boot(page, role = 'driver', options = {}) {
   const item = { id: 'external-fixture', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active', origin: 'Алматы', destination: 'Ташкент',
     original_text: options.text ?? Array.from({ length: 16 }, (_, i) => `Условие ${i + 1}: нужен тент, груз готов, документы на погрузке.`).join('\n'), source_revision: 'fixture-revision', source_published_at: '2026-10-21T05:00:00Z', body_types: ['tent'], amount: 1500, currency: 'USD', price_state: 'known', contacts: ['+7 700 000 00 01'], ...options.item };
   page.on('pageerror', error => box.errors.push(error.message));
-  await page.addInitScript(user => {
+  await page.addInitScript(({ user, firstVisit }) => {
+    if (!firstVisit) localStorage.setItem(`ur_external_feed_first_visit_v1:${encodeURIComponent(user.id)}`, '1');
     localStorage.setItem('ur_reg_token', 'synthetic-feed-token');
     localStorage.setItem('ur_session', JSON.stringify({ user }));
     localStorage.setItem('ur_verification_level', '3'); localStorage.setItem('ur_lang', 'RU');
-  }, user);
+  }, { user, firstVisit: !!options.firstVisit });
   await page.route('**/*', async route => {
     const u = new URL(route.request().url());
     if (u.origin !== base && u.origin !== "https://qa2.urtruck.kz") return route.abort();
@@ -59,7 +60,15 @@ async function boot(page, role = 'driver', options = {}) {
     else if (u.pathname.includes('/favorites')) data = { favorites: [] };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
   });
-  await page.goto(base, { waitUntil: 'domcontentloaded' });
+  await page.goto(base + (options.initialPath || ''), { waitUntil: 'domcontentloaded' });
+  if (options.initialPath) {
+    await expect(page.getByTestId('notifications-menu-btn')).toBeVisible({ timeout: 25000 });
+    return box;
+  }
+  if (options.firstVisit) {
+    await expect(page.getByTestId('external-freight-feed-screen')).toBeVisible({ timeout: 25000 });
+    return box;
+  }
   await expect(page.getByTestId('bottom-nav')).toBeVisible({ timeout: 25000 });
   if (role === 'client') await page.getByTestId('bottom-nav-feed').click();
   if (!options.countFail) await expect(page.getByTestId('external-freight-count')).toHaveText(String(options.count ?? 100001).replace(/\B(?=(\d{3})+(?!\d))/g, ' '));
@@ -381,6 +390,37 @@ for (const role of ['driver', 'client']) {
     expect(data.text).not.toContain('Условие 1');
     expect(box.businessWrites).toEqual([]);
     expect(box.aiRequests).toEqual([]);
+    expect(box.errors).toEqual([]);
+  });
+}
+
+
+for (const role of ['driver', 'client']) {
+  test(role + ': first authenticated entry opens feed once and Back restores tabs', async ({ page }) => {
+    const box = await boot(page, role, { firstVisit: true });
+    await expect(page.getByTestId('external-feed-title')).toHaveText(role === 'driver' ? 'Лента грузов' : 'Лента машин');
+    await expect(page.getByTestId('bottom-nav')).not.toBeVisible();
+    await page.screenshot({ path: `test-results/external-first-visit-${role}.png`, fullPage: true });
+    await page.getByTestId('external-feed-back').click();
+    await expect(page.getByTestId('bottom-nav')).toBeVisible();
+    expect(await page.evaluate(id => localStorage.getItem(`ur_external_feed_first_visit_v1:${encodeURIComponent(id)}`), 'feed-fixture-' + role)).toBe('1');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('bottom-nav')).toBeVisible({ timeout: 25000 });
+    await expect(page.getByTestId('external-freight-feed-screen')).toHaveCount(0);
+    if (role === 'client') await page.getByTestId('bottom-nav-feed').click();
+    await page.getByTestId('external-freight-entry').click();
+    await expect(page.getByTestId('external-feed-title')).toHaveText(role === 'driver' ? 'Лента грузов' : 'Лента машин');
+    expect(box.errors).toEqual([]);
+    expect(box.businessWrites).toEqual([]);
+  });
+}
+
+
+for (const role of ['driver', 'client']) {
+  test(role + ': direct link keeps priority over first-visit feed', async ({ page }) => {
+    const box = await boot(page, role, { firstVisit: true, initialPath: '/notifications' });
+    await expect(page.getByTestId('notifications-menu-btn')).toBeVisible();
+    await expect(page.getByTestId('external-freight-feed-screen')).toHaveCount(0);
     expect(box.errors).toEqual([]);
   });
 }
