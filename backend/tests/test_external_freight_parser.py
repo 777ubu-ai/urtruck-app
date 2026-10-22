@@ -169,12 +169,13 @@ def test_closure_requires_request_context_not_conditions():
         assert map_selected_message(_queue(text))['status'] == 'closed', status
 
 
-def test_explicit_machine_offer_with_compact_hyphen_is_active_vehicle():
+
+def test_explicit_machine_offer_with_compact_hyphen_stays_review():
     text = "Есть машина\nХоргос-Алматы\n88 куб\n+77002668251\nТент"
     item = map_selected_message(_queue(text, phones='["+77002668251"]'))
     assert item["kind"] == "vehicle"
-    assert item["status"] == "active"
-    assert (item["origin"], item["destination"]) == ("Хоргос", "Алматы")
+    assert item["status"] == "review"
+    assert item["origin"] is None and item["destination"] is None
     assert item["volume"] == 88
     assert item["body_types"] == ["tent"]
     assert item["price_state"] == "unknown"
@@ -182,8 +183,9 @@ def test_explicit_machine_offer_with_compact_hyphen_is_active_vehicle():
     assert item["original_text"] == text
 
 
-def test_compact_route_is_not_guessed_without_explicit_vehicle_offer():
-    item = map_selected_message(_queue("Хоргос-Алматы\nТент\n88 куб"))
-    assert item["origin"] is None
-    assert item["destination"] is None
-    assert item["status"] == "review"
+def test_explicit_machine_offer_does_not_split_hyphenated_city_names():
+    for place in ("Усть-Каменогорск", "Санкт-Петербург", "Петропавловск-Камчатский"):
+        item = map_selected_message(_queue("Есть машина\n" + place))
+        assert item["kind"] == "vehicle"
+        assert item["status"] == "review"
+        assert item["origin"] is None and item["destination"] is None

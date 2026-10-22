@@ -11,8 +11,6 @@ from datetime import datetime, timezone
 from services.external_freight_classifier import classify_message
 
 _ROUTE = re.compile(r"(?m)^[ \t]*([^\n→]{2,80}?)(?:[ \t]*(?:→|->|➜|➡)[ \t]*|[ \t]+[-–—][ \t]+)([^\n]{2,120}?)[ \t]*$")
-_COMPACT_ROUTE = re.compile(r"(?m)^[ \t]*([^\n–—→-]{2,80}?)[ \t]*[-–—][ \t]*([^\n–—→-]{2,120}?)[ \t]*$")
-_EXPLICIT_VEHICLE_OFFER = re.compile(r"(?im)^\s*(?:есть|имеется)\s+(?:свободная\s+)?(?:машина|авто|фура)\s*[.!]?\s*$")
 _NOT_ROUTE_LABEL = re.compile(r"(?i)^(?:груз|цена|фрахт|вес|объём|объем|оплата|контакт|телефон|нужен|нужны|требуется)\b")
 _LABELLED_ROUTE = re.compile(
     r"(?is)(?:откуда|загрузка|погрузка)\s*[:：-]\s*([^\n,;]{2,80})[\s,;]+(?:куда|выгрузка|доставка)\s*[:：-]\s*([^\n,;]{2,80})"
@@ -128,11 +126,6 @@ def map_selected_message(raw: dict) -> dict:
         kind = kind if kind in {"cargo", "vehicle"} else "cargo"
     routes = [match for match in _ROUTE.finditer(text)
               if not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip())]
-    # Compact hyphens can be part of place names. Parse them only when the same
-    # message explicitly says a vehicle is available; never infer from cargo text.
-    if not routes and classification.get("kind") == "vehicle" and _EXPLICIT_VEHICLE_OFFER.search(text):
-        routes = [match for match in _COMPACT_ROUTE.finditer(text)
-                  if _place(match.group(1)) and _place(match.group(2))]
     if len(routes) > 1:
         status = "review"
         route = None
