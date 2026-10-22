@@ -133,7 +133,10 @@ def map_selected_message(raw: dict) -> dict:
         route = routes[0] if routes else _LABELLED_ROUTE.search(text)
     origin = _place(route.group(1)) if route else raw.get("origin")
     destination = _place(route.group(2)) if route else raw.get("destination")
-    if (not origin or not destination) and status == "active":
+    if not origin and not destination:
+        partial = re.search(r"(?im)^\s*(?:местонахождение|нахожусь|стою|откуда|из)\s*[:：]?\s+([^\n;]{2,80})$", text)
+        origin = _place(partial.group(1)) if partial else None
+    if ((route and (not origin or not destination)) or (not origin and not destination)) and status == "active":
         status = "review"
     amount, currency, price_state = _amount(text)
     bodies = [name for name, pattern in _BODY if pattern.search(text)]
@@ -175,3 +178,46 @@ def map_selected_message(raw: dict) -> dict:
         "source_revision": str(raw.get("source_revision") or raw.get("fingerprint") or "")[:160],
         "origin_source": str(raw.get("origin_source") or raw.get("source") or "")[:120] or None,
     }
+
+
+_PHONE_BLOCK = re.compile(r"(?<!\d)(?:\+?\d[\d \t().-]{7,24}\d)(?!\d)")
+
+
+def block_contacts(text):
+    """Только явно написанные в блоке номера, без угадывания страны."""
+    result = []
+    for match in _PHONE_BLOCK.finditer(text):
+        raw = match.group().strip()
+        digits = re.sub(r"\D", "", raw)
+        if 10 <= len(digits) <= 15 and raw not in result:
+            result.append(raw)
+    return result[:20]
+
+
+def map_selected_messages(raw):
+    """Нумерованные или явно разделённые маршрутные блоки, без наследования."""
+    text = raw.get("original_text", raw.get("text", ""))
+    if not isinstance(text,str) or len(text)>20000:
+        raise ValueError("invalid_original_text")
+    numbered = list(re.finditer(r"(?m)^\s*\d+[.)]\s+",text))
+    blocks = []
+    if len(numbered)>1 and not text[:numbered[0].start()].strip():
+        for i,m in enumerate(numbered):
+            end = numbered[i+1].start() if i+1<len(numbered) else len(text)
+            blocks.append(text[m.end():end].strip())
+    else:
+        route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
+        # Безопасен список, где каждый блок начинается своим маршрутом.
+        if len(route_matches)>1 and not text[:route_matches[0].start()].strip():
+            blocks = [text[m.start():route_matches[i+1].start() if i+1<len(route_matches) else len(text)].strip()
+                      for i,m in enumerate(route_matches)]
+    if not blocks:
+        return [map_selected_message(raw)]
+    result=[]
+    for i,block in enumerate(blocks):
+        item_raw = {k:v for k,v in raw.items() if k not in {
+            "text","original_text","phones","contacts","origin","destination","amount","currency","kind","status"}}
+        item_raw.update(text=block,contacts=block_contacts(block),segment_id=f"block-{i+1}")
+        item=map_selected_message(item_raw)
+        result.append(item)
+    return result

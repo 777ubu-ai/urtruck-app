@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, AppState, FlatList, Modal, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Alert, AppState, FlatList, Linking, Modal, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -19,13 +19,13 @@ import { sessionRole } from '../utils/externalFreightSession';
 import { BODY_TYPES } from '../utils/truckConstants';
 import { ALL_COUNTRIES, getCountryName } from '../utils/countries';
 import { externalFreightAPI } from '../utils/externalFreightFeed';
-import { appendUnique, buildExternalFeedQuery, canSortPrice, externalLocationTextSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
+import { externalTelegramPost, mergeLiveFeed, appendUnique, buildExternalFeedQuery, canSortPrice, externalLocationTextSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
 
 const COPY = {
-  RU: { cargoTitle: 'Лента грузов', vehicleTitle: 'Лента машин', from: 'Откуда', to: 'Куда', body: 'Кузов', date: 'Дата', price: 'Цена', empty: 'Объявлений пока нет', none: 'По фильтрам ничего не найдено', network: 'Нет соединения. Уже загруженные объявления сохранены.', server: 'Сервис ленты временно недоступен.', retry: 'Повторить', more: 'Показать полностью', less: 'Свернуть', copied: 'Контакт скопирован', today: 'Сегодня', yesterday: 'Вчера', apply: 'Найти', choose: 'Выбрать из списка', reset: 'Сброс', cancel: 'Отмена', negotiable: 'Договорная', unknown: 'Цена не указана', loading: 'Загрузка…', published: 'Опубликовано', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'С', dateTo: 'По', currency: 'Валюта', min: 'От суммы', max: 'До суммы', newest: 'Сначала новые', asc: 'Дешевле', desc: 'Дороже', retryPage: 'Не удалось загрузить следующую страницу', invalidPrice: 'Укажите валюту и корректный диапазон цены.', invalidDate: 'Начало периода не может быть позже окончания.' },
-  KK: { cargoTitle: 'Жүк лентасы', vehicleTitle: 'Көлік лентасы', from: 'Қайдан', to: 'Қайда', body: 'Шанақ', date: 'Күні', price: 'Бағасы', empty: 'Әзірге хабарландыру жоқ', none: 'Сүзгі бойынша нәтиже жоқ', network: 'Желі жоқ. Жүктелген хабарландырулар сақталды.', server: 'Лента қызметі уақытша қолжетімсіз.', retry: 'Қайталау', more: 'Тағы', less: 'Жию', copied: 'Байланыс көшірілді', today: 'Бүгін', yesterday: 'Кеше', apply: 'Қолдану', choose: 'Тізімнен таңдау', reset: 'Тазарту', cancel: 'Бас тарту', negotiable: 'Келісімді', unknown: 'Бағасы көрсетілмеген', loading: 'Жүктелуде…', published: 'Жарияланған', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'Бастап', dateTo: 'Дейін', currency: 'Валюта', min: 'Ең азы', max: 'Ең көбі', newest: 'Алдымен жаңалары', asc: 'Арзанырақ', desc: 'Қымбатырақ', retryPage: 'Келесі бетті жүктеу мүмкін болмады', invalidPrice: 'Валюта мен баға аралығын тексеріңіз.', invalidDate: 'Жарияланым күндерінің аралығын тексеріңіз.' },
-  ZH: { cargoTitle: '货源信息', vehicleTitle: '空车信息', from: '出发地', to: '目的地', body: '车厢类型', date: '日期', price: '价格', empty: '暂无公告', none: '没有符合筛选条件的结果', network: '网络不可用，已加载的信息已保留。', server: '信息服务暂时不可用。', retry: '重试', more: '更多', less: '收起', copied: '联系方式已复制', today: '今天', yesterday: '昨天', apply: '应用', choose: '从列表选择', reset: '重置', cancel: '取消', negotiable: '价格面议', unknown: '未提供价格', loading: '加载中…', published: '发布时间', weightUnit: '吨', volumeUnit: '立方米', dateFrom: '开始', dateTo: '结束', currency: '币种', min: '最低', max: '最高', newest: '最新优先', asc: '价格升序', desc: '价格降序', retryPage: '无法加载下一页', invalidPrice: '请检查币种和价格范围。', invalidDate: '请检查发布日期范围。' },
-  EN: { cargoTitle: 'Cargo feed', vehicleTitle: 'Available trucks', from: 'From', to: 'To', body: 'Body', date: 'Date', price: 'Price', empty: 'No listings yet', none: 'No results for these filters', network: 'No connection. Loaded listings are kept.', server: 'The feed service is temporarily unavailable.', retry: 'Retry', more: 'Show full text', less: 'Collapse', copied: 'Contact copied', today: 'Today', yesterday: 'Yesterday', apply: 'Apply', choose: 'Choose from list', reset: 'Reset', cancel: 'Cancel', negotiable: 'Negotiable', unknown: 'Price not provided', loading: 'Loading…', published: 'Published', weightUnit: 't', volumeUnit: 'm³', dateFrom: 'From', dateTo: 'To', currency: 'Currency', min: 'Minimum', max: 'Maximum', newest: 'Newest first', asc: 'Lowest price', desc: 'Highest price', retryPage: 'Could not load the next page', invalidPrice: 'Check the currency and price range.', invalidDate: 'Check the publication date range.' },
+  RU: { telegram: 'Объявление в Telegram', direction: 'Направление в тексте объявления', cargoTitle: 'Лента грузов', vehicleTitle: 'Лента машин', from: 'Откуда', to: 'Куда', body: 'Кузов', date: 'Дата', price: 'Цена', empty: 'Объявлений пока нет', none: 'По фильтрам ничего не найдено', network: 'Нет соединения. Уже загруженные объявления сохранены.', server: 'Сервис ленты временно недоступен.', retry: 'Повторить', more: 'Показать полностью', less: 'Свернуть', copied: 'Контакт скопирован', today: 'Сегодня', yesterday: 'Вчера', apply: 'Найти', choose: 'Выбрать из списка', reset: 'Сброс', cancel: 'Отмена', negotiable: 'Договорная', unknown: 'Цена не указана', loading: 'Загрузка…', published: 'Опубликовано', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'С', dateTo: 'По', currency: 'Валюта', min: 'От суммы', max: 'До суммы', newest: 'Сначала новые', asc: 'Дешевле', desc: 'Дороже', retryPage: 'Не удалось загрузить следующую страницу', invalidPrice: 'Укажите валюту и корректный диапазон цены.', invalidDate: 'Начало периода не может быть позже окончания.' },
+  KK: { telegram: 'Telegram хабарландыруы', direction: 'Бағыт хабарландыру мәтінінде', cargoTitle: 'Жүк лентасы', vehicleTitle: 'Көлік лентасы', from: 'Қайдан', to: 'Қайда', body: 'Шанақ', date: 'Күні', price: 'Бағасы', empty: 'Әзірге хабарландыру жоқ', none: 'Сүзгі бойынша нәтиже жоқ', network: 'Желі жоқ. Жүктелген хабарландырулар сақталды.', server: 'Лента қызметі уақытша қолжетімсіз.', retry: 'Қайталау', more: 'Тағы', less: 'Жию', copied: 'Байланыс көшірілді', today: 'Бүгін', yesterday: 'Кеше', apply: 'Қолдану', choose: 'Тізімнен таңдау', reset: 'Тазарту', cancel: 'Бас тарту', negotiable: 'Келісімді', unknown: 'Бағасы көрсетілмеген', loading: 'Жүктелуде…', published: 'Жарияланған', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'Бастап', dateTo: 'Дейін', currency: 'Валюта', min: 'Ең азы', max: 'Ең көбі', newest: 'Алдымен жаңалары', asc: 'Арзанырақ', desc: 'Қымбатырақ', retryPage: 'Келесі бетті жүктеу мүмкін болмады', invalidPrice: 'Валюта мен баға аралығын тексеріңіз.', invalidDate: 'Жарияланым күндерінің аралығын тексеріңіз.' },
+  ZH: { telegram: 'Telegram原始信息', direction: '路线见原文', cargoTitle: '货源信息', vehicleTitle: '空车信息', from: '出发地', to: '目的地', body: '车厢类型', date: '日期', price: '价格', empty: '暂无公告', none: '没有符合筛选条件的结果', network: '网络不可用，已加载的信息已保留。', server: '信息服务暂时不可用。', retry: '重试', more: '更多', less: '收起', copied: '联系方式已复制', today: '今天', yesterday: '昨天', apply: '应用', choose: '从列表选择', reset: '重置', cancel: '取消', negotiable: '价格面议', unknown: '未提供价格', loading: '加载中…', published: '发布时间', weightUnit: '吨', volumeUnit: '立方米', dateFrom: '开始', dateTo: '结束', currency: '币种', min: '最低', max: '最高', newest: '最新优先', asc: '价格升序', desc: '价格降序', retryPage: '无法加载下一页', invalidPrice: '请检查币种和价格范围。', invalidDate: '请检查发布日期范围。' },
+  EN: { telegram: 'Listing on Telegram', direction: 'See original text for direction', cargoTitle: 'Cargo feed', vehicleTitle: 'Available trucks', from: 'From', to: 'To', body: 'Body', date: 'Date', price: 'Price', empty: 'No listings yet', none: 'No results for these filters', network: 'No connection. Loaded listings are kept.', server: 'The feed service is temporarily unavailable.', retry: 'Retry', more: 'Show full text', less: 'Collapse', copied: 'Contact copied', today: 'Today', yesterday: 'Yesterday', apply: 'Apply', choose: 'Choose from list', reset: 'Reset', cancel: 'Cancel', negotiable: 'Negotiable', unknown: 'Price not provided', loading: 'Loading…', published: 'Published', weightUnit: 't', volumeUnit: 'm³', dateFrom: 'From', dateTo: 'To', currency: 'Currency', min: 'Minimum', max: 'Maximum', newest: 'Newest first', asc: 'Lowest price', desc: 'Highest price', retryPage: 'Could not load the next page', invalidPrice: 'Check the currency and price range.', invalidDate: 'Check the publication date range.' },
 };
 const bodyLabels = {
   RU: { tent: 'Тент', ref: 'Рефрижератор', izoterm: 'Изотерм', board: 'Борт', tipper: 'Самосвал', lowboy: 'Трал' },
@@ -70,14 +70,21 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const requestRef = useRef(null);
+  const busyRef = useRef(false);
+  const listRef = useRef(null);
+  const viewportRef = useRef({ offset: 0, height: 0 });
+  const anchorRef = useRef(null);
+  const cardRefs = useRef(new Map());
+  const visibleAnchorRef = useRef(null);
+  const viewabilityRef = useRef(({ viewableItems }) => { visibleAnchorRef.current = viewableItems[0]?.key || null; });
   const sequenceRef = useRef(0);
   const blurredRef = useRef(false);
   const loadRef = useRef(null);
   const styles = useMemo(() => makeStyles(theme, sp), [theme, lang]);
   const title = isDriver ? l.cargoTitle : l.vehicleTitle;
 
-  const load = useCallback(async ({ reset = false, signal: suppliedSignal } = {}) => {
-    if (busy && !reset) return;
+  const load = useCallback(async ({ reset = false, background = false, signal: suppliedSignal } = {}) => {
+    if (busyRef.current && (background || !reset)) return;
     if (reset) {
       requestRef.current?.abort?.();
       sequenceRef.current += 1;
@@ -86,22 +93,37 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     const controller = suppliedSignal ? null : new AbortController();
     if (controller) requestRef.current = controller;
     const signal = suppliedSignal || controller?.signal;
-    setBusy(true); setError(null);
+    busyRef.current = true;
+    if (!background) setBusy(true);
+    setError(null);
     const owner = ownerKey;
     const raw = { ...buildExternalFeedQuery(filters, { cursor, limit: 30, reset }), saved_only: savedOnly };
     const result = await externalFreightAPI.list(raw, signal).catch(() => ({ ok: false, error: 'network_error' }));
     if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
     if (!result.ok) {
       setError(result.error || 'server_error');
-      setBusy(false); setRefreshing(false);
+      busyRef.current = false; setBusy(false); setRefreshing(false);
       return;
     }
     const incoming = Array.isArray(result.items) ? result.items : [];
     setRowsOwner(owner);
-    setRows(current => reset ? incoming : appendUnique(current, incoming));
-    setCursor(result.next_cursor || null);
-    setBusy(false); setRefreshing(false);
-  }, [busy, filters, cursor, savedOnly, ownerKey]);
+    anchorRef.current = null;
+    if (background && Platform.OS === 'web' && viewportRef.current.offset > 16) {
+      const node = cardRefs.current.get(visibleAnchorRef.current);
+      if (node?.measureInWindow) {
+        const measured = await new Promise(resolve => {
+          const timeout = setTimeout(() => resolve(null), 100);
+          node.measureInWindow((_x, y) => { clearTimeout(timeout); resolve({ node, y }); });
+        });
+        if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
+        anchorRef.current = measured;
+        if (measured) setTimeout(() => { if (anchorRef.current === measured) anchorRef.current = null; }, 250);
+      }
+    }
+    setRows(current => background ? mergeLiveFeed(current, incoming, { sort: filters.sort, hasMore: !!result.next_cursor, savedOnly }) : reset ? incoming : appendUnique(current, incoming));
+    if (!background || rows.length <= 30 || filters.sort !== 'newest') setCursor(result.next_cursor || null);
+    busyRef.current = false; setBusy(false); setRefreshing(false);
+  }, [filters, cursor, savedOnly, ownerKey, rows.length]);
   loadRef.current = load;
 
   useEffect(() => { setRows([]); setCursor(null); load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters, savedOnly, ownerKey]);
@@ -116,11 +138,13 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   useEffect(() => {
     const cancel = () => {
       sequenceRef.current += 1;
+      anchorRef.current = null;
       requestRef.current?.abort?.();
       requestRef.current = null;
       bookmarkRequestsRef.current.forEach(controller => controller.abort());
       bookmarkRequestsRef.current.clear();
       setSaving({});
+      busyRef.current = false;
       setBusy(false);
       setRefreshing(false);
     };
@@ -134,6 +158,17 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     });
     return () => { blur(); focus(); app?.remove?.(); cancel(); };
   }, [navigation]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active' && !blurredRef.current
+          && navigation.isFocused?.() && !busyRef.current && !modal
+          && bookmarkRequestsRef.current.size === 0) {
+        loadRef.current?.({ reset: true, background: true });
+      }
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [navigation, modal]);
 
   const applyFilters = () => {
     const next = isLocationModal
@@ -198,9 +233,9 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const renderItem = ({ item }) => {
     const locations = item.kind === 'cargo' ? [item.origin, item.destination] : [item.origin, item.destination];
     const price = item.price_state === 'negotiable' ? l.negotiable : item.price_state === 'known' ? `${formatNumber(item.amount)} ${item.currency}` : l.unknown;
-    return <View style={styles.card} testID={`external-feed-card-${item.id}`}>
+    return <View ref={node => { if (node) cardRefs.current.set(String(item.id), node); else cardRefs.current.delete(String(item.id)); }} style={styles.card} testID={`external-feed-card-${item.id}`}>
       <View style={styles.cardHeading}>
-        <Text style={[styles.route, styles.routeFlex]}>{item.status === 'unavailable' ? sl.unavailable : locations.filter(Boolean).join(' → ')}</Text>
+        <Text style={[styles.route, styles.routeFlex]}>{item.status === 'unavailable' ? sl.unavailable : locations.filter(Boolean).join(' → ') || l.direction}</Text>
         <View style={styles.saveSlot}>
           <BookmarkButton saved={item.saved} onPress={() => toggleBookmark(item)} accessibilityLabel={item.saved ? sl.unsave : sl.save} testID={`external-feed-bookmark-${item.id}`} />
           {saving[item.id] ? <ActivityIndicator size="small" color="#168759" /> : null}
@@ -217,6 +252,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       {item.loading_date || item.ready_text ? <Text style={styles.meta}>{item.loading_date || item.ready_text}</Text> : null}
       {item.status !== 'unavailable' ? <Text style={styles.price}>{price}</Text> : null}
       {Array.isArray(item.contacts) && item.contacts.filter(Boolean).map((contact, index) => <TouchableOpacity key={`${item.id}-contact-${index}`} onPress={() => copyContact(contact)} style={styles.contact} accessibilityRole="button" testID={`external-feed-copy-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color={'#168759'} /></TouchableOpacity>)}
+      {externalTelegramPost(item) ? <TouchableOpacity accessibilityRole="link" testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.contactText}>{l.telegram}</Text></TouchableOpacity> : null}
       <Text style={styles.date}>{l.published}: {formatDate(item.source_published_at, lang)}</Text>
       {item.status !== 'unavailable' && item.original_text ? <ExternalFeedDescription
         key={`${ownerKey}:${item.id}`} text={item.original_text} styles={styles}
@@ -241,7 +277,17 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     </ScrollView>
     {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: true })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}
     {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{error === 'network_error' ? l.network : l.server}</Text><PrimaryButton label={l.retry} onPress={() => load({ reset: true })} style={styles.retryButton} /></View> : null}
-    {!error || rows.length ? <FlatList data={visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => { if (!busy && cursor) load(); }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.published_from || filters.min_price ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
+    {!error || rows.length ? <FlatList ref={listRef} onViewableItemsChanged={viewabilityRef.current} maintainVisibleContentPosition={Platform.OS === 'web' ? undefined : { minIndexForVisible: 0 }}
+      onScroll={event => { viewportRef.current.offset = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={16}
+      onContentSizeChange={(_width, height) => {
+        const anchor = anchorRef.current;
+        viewportRef.current.height = height;
+        if (anchor) anchor.node.measureInWindow((_x, y) => {
+          if (anchorRef.current !== anchor || !Number.isFinite(y)) return;
+          const delta = y - anchor.y;
+          if (Math.abs(delta) > 1) listRef.current?.scrollToOffset({ offset: Math.max(0, viewportRef.current.offset + delta), animated: false });
+        });
+      }} data={visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => { if (!busy && cursor) load(); }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.published_from || filters.min_price ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
     {/* Текстовый поиск не монтирует общий справочник стран/городов. */}
     <Modal visible={!!modal} transparent animationType="fade" onRequestClose={() => setModal(null)}>
     <View style={styles.modalOverlay} testID="external-feed-filter-overlay">
