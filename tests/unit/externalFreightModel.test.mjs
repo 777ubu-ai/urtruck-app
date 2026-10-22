@@ -27,10 +27,10 @@ test('query preserves route direction, country, currency and local date bounds',
   assert.equal(buildExternalFeedQuery({}, { cursor: 'next', reset: true }).cursor, undefined);
 });
 
-test('price sort requires one currency and valid range', () => {
-  assert.equal(canSortPrice({ currency: '', min_price: '1', max_price: '2' }), false);
-  assert.equal(canSortPrice({ currency: 'USD', min_price: '10', max_price: '2' }), false);
-  assert.equal(canSortPrice({ currency: 'USD', min_price: '1', max_price: '2' }), true);
+test('price sort is available only when the matching result has one known currency', () => {
+  assert.equal(canSortPrice({ price_currencies: [] }), false);
+  assert.equal(canSortPrice({ price_currencies: ['USD', 'KZT'] }), false);
+  assert.equal(canSortPrice({ price_currencies: ['usd', 'USD'] }), true);
 });
 
 test('publication range accepts reversed calendar dates only when ordered', () => {

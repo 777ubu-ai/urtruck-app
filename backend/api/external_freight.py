@@ -63,10 +63,10 @@ def list_external_feed(
         raise HTTPException(status_code=422, detail={"error": "invalid_price_range"})
     if currency and not currency.isalpha():
         raise HTTPException(status_code=422, detail={"error": "invalid_currency"})
+    if (min_price is not None or max_price is not None) and not currency:
+        raise HTTPException(status_code=422, detail={"error": "currency_required_for_price_filter"})
     if body_type and body_type not in dal.KNOWN_BODY_TYPES:
         raise HTTPException(status_code=422, detail={"error": "invalid_body_type"})
-    if (min_price is not None or max_price is not None or sort.startswith("price_")) and not currency:
-        raise HTTPException(status_code=422, detail={"error": "currency_required_for_price_filter"})
     if published_from and published_to:
         try:
             if dal._utc(published_from) > dal._utc(published_to):
