@@ -199,6 +199,20 @@ def block_contacts(text):
     return result[:20]
 
 
+def _only_country_headers(value):
+    # Разрешаем только известные заголовки стран/декор; общие контакты и условия
+    # перед первым маршрутом не могут быть безопасно распределены по заявкам.
+    allowed={"россия","казахстан","китай","европа","беларусь","узбекистан","киргизия",
+             "russia","kazakhstan","china","europe","中国","俄罗斯","哈萨克斯坦"}
+    for line in value.splitlines():
+        cleaned="".join(c for c in line if c.isalpha() or c.isspace()).strip().casefold()
+        if cleaned and cleaned not in allowed:
+            return False
+        if any(c.isdigit() for c in line) or "@" in line or "http" in line.casefold():
+            return False
+    return True
+
+
 def map_selected_messages(raw):
     """Нумерованные или явно разделённые маршрутные блоки, без наследования."""
     text = raw.get("original_text", raw.get("text", ""))
@@ -213,7 +227,7 @@ def map_selected_messages(raw):
     else:
         route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
         # Безопасен список, где каждый блок начинается своим маршрутом.
-        if len(route_matches)>1 and not text[:route_matches[0].start()].strip():
+        if len(route_matches)>1 and _only_country_headers(text[:route_matches[0].start()]):
             blocks = [text[m.start():route_matches[i+1].start() if i+1<len(route_matches) else len(text)].strip()
                       for i,m in enumerate(route_matches)]
     if not blocks:

@@ -19,7 +19,7 @@ from services.external_freight_classifier import classify_message
 
 ACTIVE_SECONDS = 120 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261022-free-location-v1'
+PARSER_REVISION = '20261022-free-location-bulk-v2'
 
 
 def validate_qa_target(api_url):
