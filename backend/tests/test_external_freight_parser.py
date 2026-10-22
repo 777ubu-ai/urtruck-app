@@ -170,12 +170,12 @@ def test_closure_requires_request_context_not_conditions():
 
 
 
-def test_explicit_machine_offer_with_compact_hyphen_stays_review():
+def test_explicit_machine_offer_with_directory_verified_compact_route_is_active():
     text = "Есть машина\nХоргос-Алматы\n88 куб\n+77002668251\nТент"
     item = map_selected_message(_queue(text, phones='["+77002668251"]'))
     assert item["kind"] == "vehicle"
-    assert item["status"] == "review"
-    assert item["origin"] is None and item["destination"] is None
+    assert item["status"] == "active"
+    assert item["origin"] == "Хоргос" and item["destination"] == "Алматы"
     assert item["volume"] == 88
     assert item["body_types"] == ["tent"]
     assert item["price_state"] == "unknown"
@@ -184,7 +184,7 @@ def test_explicit_machine_offer_with_compact_hyphen_stays_review():
 
 
 def test_explicit_machine_offer_does_not_split_hyphenated_city_names():
-    for place in ("Усть-Каменогорск", "Санкт-Петербург", "Петропавловск-Камчатский"):
+    for place in ("Усть-Каменогорск", "Санкт-Петербург", "Петропавловск-Камчатский", "Санкт-Петербург-Москва"):
         item = map_selected_message(_queue("Есть машина\n" + place))
         assert item["kind"] == "vehicle"
         assert item["status"] == "review"

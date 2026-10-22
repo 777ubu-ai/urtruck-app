@@ -11,6 +11,18 @@ from datetime import datetime, timezone
 from services.external_freight_classifier import classify_message
 
 _ROUTE = re.compile(r"(?m)^[ \t]*([^\n→]{2,80}?)(?:[ \t]*(?:→|->|➜|➡)[ \t]*|[ \t]+[-–—][ \t]+)([^\n]{2,120}?)[ \t]*$")
+# Compact route spellings are enabled only for explicit pairs confirmed by the
+# application freight-city directory. Hyphenated city names remain indivisible.
+_KNOWN_COMPACT_ROUTES = {"хоргос-алматы": ("Хоргос", "Алматы")}
+
+def _compact_route_lines(text):
+    result = []
+    for line in text.splitlines():
+        key = unicodedata.normalize("NFKC", line).casefold().replace("ё", "е")
+        key = re.sub(r"\s+", "", key)
+        if key in _KNOWN_COMPACT_ROUTES:
+            result.append(_KNOWN_COMPACT_ROUTES[key])
+    return result
 _NOT_ROUTE_LABEL = re.compile(r"(?i)^(?:груз|цена|фрахт|вес|объём|объем|оплата|контакт|телефон|нужен|нужны|требуется)\b")
 _LABELLED_ROUTE = re.compile(
     r"(?is)(?:откуда|загрузка|погрузка)\s*[:：-]\s*([^\n,;]{2,80})[\s,;]+(?:куда|выгрузка|доставка)\s*[:：-]\s*([^\n,;]{2,80})"
@@ -126,13 +138,14 @@ def map_selected_message(raw: dict) -> dict:
         kind = kind if kind in {"cargo", "vehicle"} else "cargo"
     routes = [match for match in _ROUTE.finditer(text)
               if not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip())]
-    if len(routes) > 1:
+    compact_routes = _compact_route_lines(text)
+    if len(routes) > 1 or len(compact_routes) > 1:
         status = "review"
         route = None
     else:
         route = routes[0] if routes else _LABELLED_ROUTE.search(text)
-    origin = _place(route.group(1)) if route else raw.get("origin")
-    destination = _place(route.group(2)) if route else raw.get("destination")
+    origin = (_place(route.group(1)) if route else compact_routes[0][0] if compact_routes else raw.get("origin"))
+    destination = (_place(route.group(2)) if route else compact_routes[0][1] if compact_routes else raw.get("destination"))
     if not origin and not destination:
         partial = re.search(r"(?im)^\s*(?:местонахождение|нахожусь|стою|откуда|из)\s*[:：]?\s+([^\n;]{2,80})$", text)
         origin = _place(partial.group(1)) if partial else None
