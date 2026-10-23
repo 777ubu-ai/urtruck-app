@@ -26,6 +26,7 @@ import LocationPickerModal from '../components/LocationPickerModal';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import { COUNTRIES as GEO_COUNTRIES } from '../utils/geography';
 import RootHeader from '../components/ui/v1/RootHeader';
+import ExternalFreightEntry from '../components/externalFreight/ExternalFreightEntry';
 import HeaderMenuButton from '../components/ui/v1/HeaderMenuButton';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import CompactFilterChip from '../components/ui/v1/CompactFilterChip';
@@ -435,7 +436,9 @@ export default function FeedScreen({ navigation }) {
       edges={['top']}
       testID="trip-feed-screen"
     >
-      <RootHeader navigation={navigation} role={role} testID="trip-feed-minimal-header" menuTestID="feed-menu-btn" />
+      <ExternalFreightEntry navigation={navigation} role={role}>
+        <RootHeader navigation={navigation} role={role} testID="trip-feed-minimal-header" menuTestID="feed-menu-btn" />
+      </ExternalFreightEntry>
 
       <FlatList
         style={[styles.list, { backgroundColor: colors.pageBg }]}
