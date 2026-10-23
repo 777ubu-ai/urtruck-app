@@ -72,9 +72,12 @@ export function mergeLiveFeed(current, incoming, { sort = 'newest', now = Date.n
   const last = incoming[incoming.length - 1];
   const boundary = last ? Date.parse(last.source_published_at) : null;
   const tail = current.filter(item => visible(item) && !ids.has(item.id)
-    && hasMore && sort === 'newest' && boundary != null
-    && (Date.parse(item.source_published_at) < boundary
-      || (Date.parse(item.source_published_at) === boundary && String(item.id) < String(last.id))));
+    && hasMore && sort === 'newest'
+    && (item.kind === 'carrier_contact'
+      ? (last?.kind !== 'carrier_contact' || item.directory_sequence > last.directory_sequence)
+      : (last?.kind !== 'carrier_contact' && boundary != null
+        && (Date.parse(item.source_published_at) < boundary
+          || (Date.parse(item.source_published_at) === boundary && String(item.id) < String(last.id))))));
   return [...fresh, ...tail];
 }
 
