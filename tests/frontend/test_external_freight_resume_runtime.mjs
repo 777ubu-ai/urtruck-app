@@ -39,7 +39,7 @@ function harness() {
     '../theme/designV1': { useV1Colors: () => ({}) }, 'expo-clipboard': {},
     '../components/externalFreight/ExternalFeedDatePicker': 'DatePicker', '../components/ui/v1/BookmarkButton': 'BookmarkButton',
     '../components/ui/v1/PrimaryButton': 'PrimaryButton', '../components/ui/actions/SecondaryButton': 'SecondaryButton',
-    '../components/externalFreight/ExternalFeedDescription': 'Description', '../components/ShareModal': 'ShareModal',
+    '../components/externalFreight/CarrierDirectory': 'CarrierContactCard', '../components/externalFreight/ExternalFeedDescription': 'Description', '../components/ShareModal': 'ShareModal',
     '../config/env': { PUBLIC_WEB_ORIGIN: 'https://qa2.urtruck.kz' }, '../utils/externalFreightShare': { buildExternalFreightShare: () => null },
     '../components/Toast': { useToast: () => ({ toast() {} }) }, '../utils/useI18n': { useI18n: () => ({ lang: 'RU', sp: n => n, t: x => x }) },
     '../utils/ThemeContext': { useTheme: () => ({ theme: {} }) }, '../utils/AuthContext': { useAuth: () => ({ session: { user: { id: 'test-driver', role: 'driver' } } }) },
