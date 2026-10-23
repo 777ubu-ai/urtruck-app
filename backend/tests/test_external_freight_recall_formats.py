@@ -54,3 +54,15 @@ def test_shared_header_stays_review():
 
 def test_promotion_without_load_or_offer_is_not_published():
     assert map_selected_message(raw("Ростов Москва\nПоможем найти груз! Пишите нам"))["status"]=="review"
+
+
+@pytest.mark.parametrize("route", ["Москва-Алматы?", "Москва-Алматы❓", "Москва-Алматы/"])
+def test_question_or_alternative_is_not_a_confirmed_compact_route(route):
+    assert map_selected_message(raw(route+"\nГруз - шины"))["status"]=="review"
+
+def test_mixed_arrow_and_compact_routes_are_separate_requests():
+    text="Москва → Алматы\nГруз - шины\nАстана-Бишкек\nГруз📦 доски"
+    assert map_selected_message(raw(text))["status"]=="review"
+    items=map_selected_messages(raw(text))
+    assert len(items)==2 and all(x["status"]=="active" for x in items)
+    assert [(x["origin"],x["destination"]) for x in items]==[("Москва","Алматы"),("Астана","Бишкек")]

@@ -18,3 +18,5 @@
 
 - Same-window shadow: 12453 raw messages, 4025 unique normalized texts, 143 recovered unique messages (354 source copies); 213 candidate cargo segments +1 vehicle segment before global dedup; distinct candidate active texts 720→869. All1514 active outbox payloads unchanged. No lost active messages or parse errors detected in candidate set.
 - Parser revision v4 enables bounded normal reprocessing through the existing queue; no queue schema or delivery logic change.
+
+- Final guard update: 141 tests PASS. Mixed arrow/compact lists are split with existing per-block contact rules; question marks/alternative slashes do not confirm compact routes. Previous shadow metrics belong to prior candidate; refresh before apply.

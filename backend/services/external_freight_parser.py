@@ -101,7 +101,8 @@ _COMPACT_ROUTE = re.compile(
 
 def _compact_routes(text, *, allow_space=False):
     return [m for m in _COMPACT_ROUTE.finditer(text)
-            if allow_space or re.search(r"[-–—]", text[m.end(1):m.start(2)])]
+            if (allow_space or re.search(r"[-–—]", text[m.end(1):m.start(2)]))
+            and not re.search(r"[?？❓❔/]", m.group())]
 
 
 def _place(value):
@@ -196,18 +197,16 @@ def map_selected_message(raw: dict) -> dict:
         kind = kind if kind in {"cargo", "vehicle"} else "cargo"
     routes = [match for match in _ROUTE.finditer(text)
               if not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip())]
+    compact = _compact_routes(text, allow_space=kind == "vehicle")
+    # Count mixed arrow/compact formats together; never collapse two requests.
+    routes += [m for m in compact if not any(
+        m.start() < existing.end() and m.end() > existing.start() for existing in routes)]
+    routes.sort(key=lambda m: m.start())
     if len(routes) > 1:
         status = "review"
         route = None
     else:
         route = routes[0] if routes else _LABELLED_ROUTE.search(text)
-    # Fallback only when the established arrow/label parser found no route.
-    if not routes and route is None:
-        compact = _compact_routes(text, allow_space=kind == "vehicle")
-        if len(compact) == 1:
-            route = compact[0]
-        elif len(compact) > 1:
-            status = "review"
     origin = _place(route.group(1)) if route else raw.get("origin")
     destination = _place(route.group(2)) if route else raw.get("destination")
     if not route and kind == 'vehicle' and not origin and not destination:
@@ -338,8 +337,9 @@ def map_selected_messages(raw):
             blocks.append(text[m.end():end].strip())
     else:
         route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
-        if not route_matches:
-            route_matches = _compact_routes(text)
+        route_matches += [m for m in _compact_routes(text) if not any(
+            m.start() < existing.end() and m.end() > existing.start() for existing in route_matches)]
+        route_matches.sort(key=lambda m: m.start())
         # Безопасен список, где каждый блок начинается своим маршрутом.
         if len(route_matches)>1 and _only_country_headers(text[:route_matches[0].start()]):
             candidate_blocks=[]
