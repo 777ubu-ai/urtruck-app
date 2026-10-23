@@ -251,7 +251,7 @@ def test_break_glass_guard_job_enforces_confirmation_before_deploy():
     needs_list = needs if isinstance(needs, list) else [needs]
     assert "guard" in needs_list, "the deploy job must depend on the guard job, not run unconditionally"
     assert deploy_job.get("uses") == (
-        "777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main"
+        "777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@main"
     ), "break-glass must call the executor from protected main, never its UI-selected ref"
     assert deploy_job["with"]["break_glass"] is True
 
