@@ -38,11 +38,25 @@ def _ensure_enabled():
         raise HTTPException(status_code=404, detail={"error": "external_feed_disabled"})
 
 
+@router.get("/directory")
+def list_carrier_directory(
+    query: str = Query("", max_length=120), cursor: int = Query(0, ge=0),
+    limit: int = Query(30, ge=1, le=100), user: dict = Depends(require_level(1)),
+):
+    _ensure_enabled()
+    if _user_kind(user) != "vehicle":
+        raise HTTPException(status_code=403, detail={"error": "carrier_directory_client_required"})
+    from services.carrier_directory import list_contacts
+    return list_contacts(query=query, cursor=cursor, limit=limit)
+
+
 @router.get("/count")
-def count_external_feed(user: dict = Depends(require_level(1))):
+def count_external_feed(include_carriers: bool = Query(False), user: dict = Depends(require_level(1))):
     _ensure_enabled()
     kind = _user_kind(user)
-    return {"kind": kind, "count": dal.count_active_items(kind)}
+    from services.carrier_directory import list_contacts
+    extra = list_contacts(limit=1)["total"] if include_carriers and kind == "vehicle" else 0
+    return {"kind": kind, "count": dal.count_active_items(kind) + extra}
 
 
 @router.get("")
@@ -56,6 +70,7 @@ def list_external_feed(
     sort: str = Query("newest", pattern="^(newest|price_asc|price_desc)$"),
     limit: int = Query(30, ge=1, le=100), cursor: str | None = Query(None, max_length=1000),
     saved_only: bool = Query(False),
+    include_carriers: bool = Query(False),
     user: dict = Depends(require_level(1)),
 ):
     _ensure_enabled()
@@ -74,12 +89,25 @@ def list_external_feed(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail={"error": "invalid_date_range"}) from exc
     kind = _user_kind(user)
+    use_carriers = include_carriers and kind == "vehicle" and not saved_only and sort == "newest" and not any((
+        origin, destination, origin_country, destination_country, body_type, published_from, published_to, currency,
+        min_price is not None, max_price is not None))
     try:
-        return dal.list_items(kind=kind, origin=origin, destination=destination, body_type=body_type,
+        if cursor and cursor.startswith("carrier:"):
+            if not use_carriers or not cursor[8:].isdigit() or len(cursor) > 30:
+                raise ValueError("invalid_directory_cursor")
+            from services.carrier_directory import list_contacts
+            page = list_contacts(cursor=int(cursor[8:]), limit=limit)
+            return {"kind": kind, "items": page["items"], "next_cursor": "carrier:" + str(page["next_cursor"]) if page["next_cursor"] is not None else None}
+        result = dal.list_items(kind=kind, origin=origin, destination=destination, body_type=body_type,
                               origin_country=origin_country, destination_country=destination_country,
                               published_from=published_from, published_to=published_to, currency=currency,
                               min_price=min_price, max_price=max_price, sort=sort, limit=limit, cursor=cursor,
                               owner_id=user["id"], saved_only=saved_only)
+        if use_carriers:
+            from services.carrier_directory import append_contacts
+            return append_contacts(result, limit=limit)
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
 
