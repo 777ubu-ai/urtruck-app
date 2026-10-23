@@ -19,6 +19,16 @@ _VEHICLE_CONTEXT = re.compile(
     r"свобод(?:ен|на)\s+(?:тент|реф|машин|фур)|бос көлік|жүк іздеймін|yuk kerak|mashina bor|free truck|available truck|empty truck|looking for cargo|"
     r"有空车|空车|找货)", re.I,
 )
+# Дополнительные предложения принимаем только как утверждение в начале строки.
+# Вопросы и просьбы «нужна пустая машина» не являются свободным транспортом.
+_VEHICLE_OFFER = re.compile(
+    r"(?:^|\n)[ \t]*(?:(?:есть|у меня|у нас)\s+)?"
+    r"пуст(?:ая|ой|ые)\s+(?:машин\w*|фур\w*|тент\w*|реф\w*)\b"
+    r"|(?:^|\n)[ \t]*(?:(?:menda|bizda|менда|бизда)\s+)?"
+    r"(?:fura|фура|tent|тент|ref|реф)\s+(?:bor|бор)\b(?!\s*(?:mi|ми)\b)",
+    re.I,
+)
+
 # Закрытие относится к заявке: закрытый кузов/граница — лишь условия перевозки.
 _CLOSE_CONTEXT = re.compile(
     r"(?:\b(?:заявка|объявление|заказ|груз|рейс|перевозка|маршрут)\s+"
@@ -36,6 +46,11 @@ def classify_message(text: str) -> dict:
         return {"kind": None, "status": "closed", "segments": [value]}
     cargo = bool(_CARGO_CONTEXT.search(value))
     vehicle = bool(_VEHICLE_CONTEXT.search(value))
+    if not vehicle and "?" not in value and "？" not in value and not re.search(
+        r"(?i)нуж(?:ен|на|ны|но)|требу(?:ется|ются)|продаж|продам|куплю|занят|загружен|ремонт|сломал|\bне\b|\bнет\b|"
+        r"sotiladi|sotaman|сотилади|сотаман|\bemas\b|\bэмас\b|yo['’ʻ]?q|йўқ|йук", value
+    ):
+        vehicle = bool(_VEHICLE_OFFER.search(value))
     if cargo == vehicle:
         return {"kind": None, "status": "review", "segments": [value]}
     # Split only on explicit, separately numbered/bulleted blocks. A line break

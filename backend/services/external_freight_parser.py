@@ -34,6 +34,46 @@ _BODY = (
 _CURRENCY = {"USD": "USD", "US$": "USD", "$": "USD", "EUR": "EUR", "€": "EUR", "RUB": "RUB", "₽": "RUB", "KZT": "KZT", "тг": "KZT", "CNY": "CNY", "JPY": "JPY"}
 
 
+# Ограниченный словарь явно написанных мест: суффикс не делает любое слово
+# географией («mashinaga»). Сохраняем исходное написание, не геокодируем.
+_UZ_PLACES = (
+    "Toshkent", "Тошкент", "Tashkent", "Ташкент", "Samarqand", "Samarkand",
+    "Самарканд", "Namangan", "Наманган", "Andijon", "Андижон", "Fargona",
+    "Farg'ona", "Фаргона", "Фарғона", "Buxoro", "Бухоро", "Navoiy", "Навои",
+    "Nukus", "Нукус", "Urganch", "Урганч", "Qarshi", "Карши", "Termiz",
+    "Термез", "Jizzax", "Джизак", "Almaty", "Алматы", "Astana", "Астана",
+    "Moskva", "Москва", "Rossiya", "Россия", "O'zbekiston", "Ўзбекистон",
+    "Узбекистон", "Qozog'iston", "Казахстан", "Xitoy", "Китай",
+)
+_UZ_DIRECTION = re.compile(
+    r"(?<!\w)(" + "|".join(re.escape(place) for place in _UZ_PLACES)
+    + r")(dan|дан|ga|га)(?!\w)", re.I,
+)
+
+
+def _uz_vehicle_direction(text):
+    # Несколько разных пунктов без надёжной сегментации остаются на проверке.
+    origins, destinations = {}, {}
+    for line in text.splitlines():
+        matches = list(_UZ_DIRECTION.finditer(line))
+        if not matches:
+            continue
+        remainder = _UZ_DIRECTION.sub("", line)
+        remainder = re.sub(r"(?i)\b(?:yuk kerak|юк керак|(?:menda )?fura bor|фура бор)\b", "", remainder)
+        # Произвольная проза рядом с пунктом может отрицать или цитировать путь.
+        # Принимаем только явную строку направления, а не «Toshkentga bormayman».
+        remainder = "".join(c for c in remainder if unicodedata.category(c) not in {"So", "Sk"} and c != "\ufe0f")
+        if remainder.strip(" \t,.;:!#→➡➜>-–—"):
+            return None, None
+        for match in matches:
+            place, suffix = match.groups()
+            target = origins if suffix.casefold() in {"dan", "дан"} else destinations
+            target.setdefault(place.casefold(), place)
+    if len(origins) > 1 or len(destinations) > 1:
+        return None, None
+    return next(iter(origins.values()), None), next(iter(destinations.values()), None)
+
+
 def _place(value):
     # Strip decoration only. Keep the spelling supplied by the source;
     # never resolve a city, country or coordinates from an emoji.
@@ -141,6 +181,8 @@ def map_selected_message(raw: dict) -> dict:
                 r"(?m)^\s*(?i:свободн(?:ая|ый|ые)\s+(?:машин\w*|тент\w*|реф\w*|фур\w*|транспорт|авто)\s+в)\s+"
                 r"([А-ЯЁA-Z][^\n,.;]{1,79})(?:[,.;\n]|$)",text)
             origin = _place(location.group(1)) if location else None
+    if not route and not origin and not destination and kind == "vehicle" and status == "active":
+        origin, destination = _uz_vehicle_direction(text)
     if ((route and (not origin or not destination)) or (not origin and not destination)) and status == "active":
         status = "review"
     amount, currency, price_state = _amount(text)
