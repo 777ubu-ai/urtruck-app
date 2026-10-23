@@ -90,6 +90,11 @@ on:
         required: true
         default: false
         type: boolean
+      enable_external_freight_feed:
+        description: "Явно включить внешнюю ленту в кандидат; default выключен"
+        required: false
+        default: false
+        type: boolean
 
 # Play принимает только уникальные versionCode. Сериализация гарантирует, что
 # два push/manual запуска не дойдут до вычисления кода в одну секунду.
@@ -111,6 +116,8 @@ jobs:
     name: Build AAB and upload to Play
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: ${{ inputs.enable_external_freight_feed && 'true' || 'false' }}
 
     steps:
       - name: Checkout
