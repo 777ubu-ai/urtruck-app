@@ -138,8 +138,10 @@ def _place(value):
     # never resolve a city, country or coordinates from an emoji.
     value = "".join(c for c in value if unicodedata.category(c) not in {"So", "Sk"} and c != "\ufe0f")
     value = value.strip(" \t,.;:!#")
+    # Сокращения города допустимы, доменные имена географией не становятся.
+    domain_candidate = re.sub(r"(?i)^(?:г\.|st\.|ste\.|mt\.)(?=[^\W\d_])", "", value)
     if (not value or len(value) > 80 or _NOT_ROUTE_LABEL.search(value)
-            or re.search(r"(?i)(?:https?://|www\.|\b[\w-]+\.(?:com|net|org|ru|kz|uz|cn|io|рф)\b)", value)
+            or re.search(r"(?i)(?:https?://|www\.|(?<!\w)[\w-]+\.[^\W\d_]{2,63}(?!\w))", domain_candidate)
             or re.search(r"(?i)\b(?:срочно|готов|погрузка|выгрузка|тент|реф|тонн|фрахт|машин)\b", value)
             or any(c.isdigit() for c in value)
             or not all(c.isalpha() or c.isspace() or c in "-(),.'’" for c in value)):

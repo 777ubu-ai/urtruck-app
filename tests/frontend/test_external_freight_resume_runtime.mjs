@@ -14,7 +14,7 @@ const stamp = '2026-10-23T10:00:00Z';
 const cards = Array.from({ length: 60 }, (_, i) => ({ id: String(100 - i), status: 'active', source_published_at: stamp, original_text: 'Исходный текст', contacts: [], body_types: [] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness() {
-  const slots = [], pending = [], listeners = new Map(), intervals = new Set();
+  const slots = [], pending = [], listeners = new Map(), intervals = new Set(), queries = [];
   let cursor = 0, dirty = true, tree, appCallback, calls = 0, fail = false, suspended = false, resolvePending;
   const depsEqual = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   const React = {
@@ -44,6 +44,7 @@ function harness() {
     '../utils/countries': { ALL_COUNTRIES: [], getCountryName: x => x }, '../utils/externalFreightModel': model,
     '../utils/externalFreightFeed': { externalFreightAPI: { event() {}, async list(query) {
       calls++;
+      queries.push(query);
       if (suspended) await new Promise(resolve => { resolvePending = resolve; });
       if (fail) return { ok: false, error: 'network_error' };
       return { ok: true, items: query.cursor ? cards.slice(30) : cards.slice(0, 30), next_cursor: query.cursor ? 'older-page' : 'page2' };
@@ -59,6 +60,7 @@ function harness() {
     list: () => nodes().find(n => n.type === 'FlatList'), warning: () => nodes().find(n => n.type === 'TouchableOpacity' && n.props.children.some(c => c?.type === 'Text' && c.props.children.some(s => typeof s === 'string' && s.includes('Нет соединения')))),
     focus: () => listeners.get('focus')?.(), blur: () => listeners.get('blur')?.(), app: state => { native.AppState.currentState = state; appCallback(state); },
     poll: () => intervals.forEach(fn => fn()), fail: value => { fail = value; }, suspend: () => { suspended = true; }, release: () => { suspended = false; resolvePending?.(); }, calls: () => calls,
+    queries, saved: () => nodes().find(n => n.props.testID === 'external-feed-saved-only').props.onPress(),
   };
 }
 
@@ -83,6 +85,15 @@ for (const mode of ['focus', 'AppState']) test(`возврат ${mode}: наст
   assert.equal(h.list().props.data.length, 60);
   assert.equal(h.list().props.data[50].id, anchor);
   assert.equal(h.list().props.maintainVisibleContentPosition.minIndexForVisible, 0);
+});
+for (const mode of ['focus', 'AppState']) test(`сохранённые: ${mode} сохраняет60 и следующий запрос продолжает после них`, async () => {
+  const h = harness(); await h.flush(); h.saved(); await h.flush();
+  h.list().props.onEndReached(); await h.flush(); assert.equal(h.list().props.data.length, 60);
+  if (mode === 'focus') { h.blur(); h.focus(); } else { h.app('background'); h.app('active'); }
+  await h.flush(); assert.equal(h.list().props.data.length, 60);
+  assert.equal(h.list().props.data[50].id, cards[50].id);
+  h.list().props.onEndReached(); await h.flush();
+  assert.equal(h.queries.at(-1).cursor, 'older-page');
 });
 test('offline polling: warning остаётся во время повторного запроса и исчезает только после успеха', async () => {
   const h = harness(); await h.flush(); h.fail(true); h.poll(); await h.flush();

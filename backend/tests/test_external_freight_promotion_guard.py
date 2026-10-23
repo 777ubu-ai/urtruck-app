@@ -33,13 +33,22 @@ def test_empty_tow_truck_survives_unrelated_promotional_footer():
     assert (item['kind'],item['status'])==('vehicle','active')
 
 
-@pytest.mark.parametrize('route', ['Example.com → Алматы','Алматы → Example.ru','https://example.com → Алматы'])
+@pytest.mark.parametrize('route', ['Example.com → Алматы','Алматы → Example.ru','https://example.com → Алматы','Example.biz → Алматы','Example.app → Алматы','пример.рф → Алматы'])
 def test_web_domain_is_not_a_route_endpoint(route):
     assert map_selected_message(raw('Груз готов\n'+route))['status']=='review'
 
 
 def test_literal_city_abbreviation_is_not_treated_as_domain():
     assert map_selected_message(raw('Груз готов\nг.Москва → Алматы'))['status']=='active'
+
+
+def test_literal_st_city_is_not_treated_as_domain():
+    assert map_selected_message(raw('Груз готов\nSt.Louis → Алматы'))['status']=='active'
+
+
+def test_first_person_search_for_cargo_is_still_an_offer():
+    item=map_selected_message(raw('В поиске груза, есть машина\nАлматы → Москва'))
+    assert (item['kind'],item['status'])==('vehicle','active')
 
 
 @pytest.mark.parametrize('marker',['📲','☎️','📞️'])
