@@ -255,14 +255,22 @@ def _vehicle_count(text, kind):
 def block_contacts(text):
     """Только явно написанные в блоке номера, без угадывания страны."""
     result = []
+    # Числа цены/веса/объёма не становятся телефоном даже рядом со словом «телефон».
+    numeric_fields = [match.span() for pattern in (_PRICE, _WEIGHT, _VOLUME, _DATE)
+                      for match in pattern.finditer(text)]
     for match in _PHONE_BLOCK.finditer(text):
         raw = match.group().strip()
         digits = re.sub(r"\D", "", raw)
         start = text.rfind('\n', 0, match.start()) + 1
         end = text.find('\n', match.end())
         line = text[start:end if end >= 0 else len(text)]
+        prefix = text[start:match.start()]
+        if (any(match.start() < right and match.end() > left for left, right in numeric_fields)
+                or re.search(r'(?i)(?:цена|стоимость|ставка|оплата|price|вес|объ[её]м)\s*[:=—–-]?\s*$', prefix)):
+            continue
+        phone_context = re.search(r'(?i)(?:📞|☎|\bтел(?:ефон)?\.?|\btel)\s*[:=—–-]?\s*$', prefix)
         local_phone = (len(digits) == 9 and raw.replace(' ', '').replace('\t', '').isdigit()
-                       and (line.strip() == raw or re.search(r'(?i)(?:📞|☎|тел\.?|tel\b)', line)))
+                       and (line.strip() == raw or phone_context))
         if (10 <= len(digits) <= 15 or local_phone) and raw not in result:
             result.append(raw)
     return result[:20]

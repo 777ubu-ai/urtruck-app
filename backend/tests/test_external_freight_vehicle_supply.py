@@ -98,6 +98,31 @@ def test_exists_word_does_not_match_inside_quantity():
     assert classify_message(text)['kind']!='vehicle'
 
 
+@pytest.mark.parametrize('phrase', [
+    'У кого есть тент срочно звоните', 'У кого есть реф звоните',
+    'Если есть машина звоните', 'Есть транспортная компания',
+    'Есть машина в ремонте, ищем запчасти', 'Есть машина не свободна',
+])
+def test_conditional_and_unavailable_transport_is_not_vehicle_supply(phrase):
+    item=map_selected_message(message(phrase+'\nАлматы → Москва'))
+    assert item['status']=='review'
+
+
+@pytest.mark.parametrize('line', [
+    'Цена 1200000000 KZT', 'Цена 901234567 KZT телефон уточняйте',
+    'Стоимость 1200000000', 'Телефон уточняйте, цена 901234567',
+    'Цена 1200000000 USD; тел: +77000000001',
+])
+def test_price_never_becomes_contact(line):
+    item=map_selected_message(message('Есть машина\nАлматы → Москва\n'+line))
+    assert item['contacts']==(['+77000000001'] if '+77000000001' in line else [])
+
+
+def test_phone_context_belongs_to_number_not_whole_line():
+    item=map_selected_message(message('Есть машина\nАлматы → Москва\nтелефон уточняйте: 901234567'))
+    assert item['contacts']==[]
+
+
 def test_multiple_segments_never_borrow_contacts():
     items=map_selected_messages(message('1. Есть машина\nХоргос → Алматы\n📞901234567\n2. Есть машина\nМосква → Астана'))
     assert len(items)==2
