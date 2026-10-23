@@ -8,7 +8,7 @@ import re
 import unicodedata
 from datetime import datetime, timezone
 
-from services.external_freight_classifier import classify_message
+from services.external_freight_classifier import classify_message, uses_extended_intent
 from services.external_freight_route_places import COMPACT_ROUTE_PLACES
 
 _ROUTE = re.compile(r"(?m)^[ \t]*([^\n→]{2,80}?)(?:[ \t]*(?:→|->|➜|➡)[ \t]*|[ \t]+[-–—][ \t]+)([^\n]{2,120}?)[ \t]*$")
@@ -199,8 +199,9 @@ def map_selected_message(raw: dict) -> dict:
               if not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip())]
     compact = _compact_routes(text, allow_space=kind == "vehicle")
     # Count mixed arrow/compact formats together; never collapse two requests.
-    routes += [m for m in compact if not any(
-        m.start() < existing.end() and m.end() > existing.start() for existing in routes)]
+    if not routes or uses_extended_intent(text):
+        routes += [m for m in compact if not any(
+            m.start() < existing.end() and m.end() > existing.start() for existing in routes)]
     routes.sort(key=lambda m: m.start())
     if len(routes) > 1:
         status = "review"
@@ -337,8 +338,9 @@ def map_selected_messages(raw):
             blocks.append(text[m.end():end].strip())
     else:
         route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
-        route_matches += [m for m in _compact_routes(text) if not any(
-            m.start() < existing.end() and m.end() > existing.start() for existing in route_matches)]
+        if not route_matches or uses_extended_intent(text):
+            route_matches += [m for m in _compact_routes(text) if not any(
+                m.start() < existing.end() and m.end() > existing.start() for existing in route_matches)]
         route_matches.sort(key=lambda m: m.start())
         # Безопасен список, где каждый блок начинается своим маршрутом.
         if len(route_matches)>1 and _only_country_headers(text[:route_matches[0].start()]):

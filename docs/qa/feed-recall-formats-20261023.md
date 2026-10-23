@@ -20,3 +20,6 @@
 - Parser revision v4 enables bounded normal reprocessing through the existing queue; no queue schema or delivery logic change.
 
 - Final guard update: 141 tests PASS. Mixed arrow/compact lists are split with existing per-block contact rules; question marks/alternative slashes do not confirm compact routes. Previous shadow metrics belong to prior candidate; refresh before apply.
+
+- A broad mixed-route candidate was rejected by shadow (81 existing active outputs changed); it was never deployed. Final scope applies mixed-format handling only to newly recognized intents and preserves established routes.
+- Final shadow:12489 messages/4031 unique,144 recovered unique messages,365 source copies; distinct candidate active texts716→866. All1522 active outbox payloads unchanged; no lost active messages. 141 tests PASS. Exact-head CI and queue preview remain mandatory.

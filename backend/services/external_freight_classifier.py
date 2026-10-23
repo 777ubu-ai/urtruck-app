@@ -6,8 +6,10 @@
 import re
 
 
+_CARGO_FORMAT_CONTEXT = re.compile(
+    r"(?:^|\n)[^\w\n]*груз[ \t]*[-–—📦]|\bюк\s+(?:тай[её]р|таййор|бор)\b", re.I,
+)
 _CARGO_CONTEXT = re.compile(
-    r"(?:^|\n)[^\w\n]*груз[ \t]*[-–—📦]|\bюк\s+(?:тай[её]р|таййор|бор)\b|"
     r"(?:нуж(?:ен|на|ны|но)\s+(?:\d+\s*)?(?:тент|реф|машин|транспорт|авто|фур)|ищу (?:машин|транспорт)|"
     r"требуется\s+(?:\d+\s*)?(?:машин|транспорт|авто|реф|тент)|требуются\s+(?:\d+\s*)?машин(?:а|ы)?|"
     r"нужен\s+перевозчик|(?:ищу|ищем|предлагайте)\s+свободн\w*\s+(?:машин|реф|тент|фур)|"
@@ -34,8 +36,16 @@ _UNAVAILABLE_OFFER = re.compile(
     r"ремонт\w*|занят\w*|загруж\w*)\b|[?？❓❔]")
 
 
+def uses_extended_intent(value):
+    """Limit new route handling to newly recognized intent formats."""
+    return bool(
+        (_CARGO_FORMAT_CONTEXT.search(value) and not _CARGO_CONTEXT.search(value))
+        or (_EMPTY_VEHICLE_OFFER.search(value) and not _VEHICLE_CONTEXT.search(value))
+    )
+
+
 def _intents(value):
-    cargo = bool(_CARGO_CONTEXT.search(value))
+    cargo = bool(_CARGO_CONTEXT.search(value) or _CARGO_FORMAT_CONTEXT.search(value))
     # Вопрос грузоотправителя «Есть машина?» не является предложением машины.
     vehicle_text = re.sub(r"[^\n.!?]*\?", " ", value)
     vehicle_text = re.sub(
