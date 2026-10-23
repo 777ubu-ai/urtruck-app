@@ -51,10 +51,8 @@ export function feedKindForRole(role) {
   return null;
 }
 
-export function canSortPrice({ currency, min_price, max_price }) {
-  return Boolean(currency) && (min_price === '' || min_price == null || Number(min_price) >= 0)
-    && (max_price === '' || max_price == null || Number(max_price) >= 0)
-    && (min_price === '' || min_price == null || max_price === '' || max_price == null || Number(min_price) <= Number(max_price));
+export function canSortPrice({ price_currencies = [] } = {}) {
+  return new Set(price_currencies.map(value => String(value || '').trim().toUpperCase()).filter(Boolean)).size === 1;
 }
 
 export function isValidPublicationRange({ published_from, published_to }) {
@@ -62,4 +60,26 @@ export function isValidPublicationRange({ published_from, published_to }) {
   const from = dayStart(published_from);
   const to = dayStart(published_to, true);
   return Boolean(from && to && from <= to);
+}
+
+/** Новый снимок головы: обновляет карточки, сохраняет уже загруженный хвост. */
+export function mergeLiveFeed(current, incoming, { sort = 'newest', now = Date.now(), hasMore = true, savedOnly = false } = {}) {
+  if (savedOnly) return incoming;
+  const visible = item => item.status !== 'closed' && item.status !== 'hidden'
+    && item.status !== 'expired' && (!item.expires_at || Date.parse(item.expires_at) > now);
+  const fresh = incoming.filter(visible);
+  const ids = new Set(fresh.map(item => item.id));
+  const boundary = fresh.length ? Date.parse(fresh[fresh.length - 1].source_published_at) : null;
+  const tail = current.filter(item => visible(item) && !ids.has(item.id)
+    && hasMore && sort === 'newest' && boundary != null && Date.parse(item.source_published_at) < boundary);
+  return [...fresh, ...tail];
+}
+
+/** Только ссылка на исходный пост; не личный контакт автора. */
+export function externalTelegramPost(item) {
+  const message = String(item?.source_message_id || '');
+  const source = String(item?.origin_source || '').replace(/^@/, '');
+  if (!/^\d+$/.test(message)) return null;
+  if (/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(source)) return `https://t.me/${source}/${message}`;
+  return null;
 }

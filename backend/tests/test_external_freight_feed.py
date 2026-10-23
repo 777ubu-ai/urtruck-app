@@ -1,6 +1,10 @@
 """Контракт отдельной внешней ленты на отдельной изолированной тестовой БД."""
+import os
+import sqlite3
+import stat
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -191,7 +195,19 @@ def test_all_filters_are_combined_currency_sort_and_cursor_are_stable():
     page2 = client.get("/api/v1/external-freight", params={**params, "cursor": first["next_cursor"]}).json()
     assert [row["amount"] for row in page2["items"]] == [300.0]
     assert set(row["id"] for row in first["items"] + page2["items"]) == set(ids)
-    assert client.get("/api/v1/external-freight", params={"sort": "price_asc"}).status_code == 422
+    homogeneous = client.get("/api/v1/external-freight", params={"sort": "price_desc", "body_type": "tent", "limit": 10}).json()
+    assert homogeneous["price_currencies"] == ["USD"]
+    assert homogeneous["sort_applied"] == "price_desc"
+    assert homogeneous["sort_error"] is None
+    assert [row["amount"] for row in homogeneous["items"]] == [300.0, 200.0, 100.0]
+    mixed = client.get("/api/v1/external-freight", params={"sort": "price_asc", "limit": 1}).json()
+    assert mixed["sort_applied"] == "newest"
+    assert mixed["sort_error"] == "mixed_currency"
+    assert set(mixed["price_currencies"]) == {"USD", "KZT"}
+    assert mixed["has_more"] is True
+    page2 = client.get("/api/v1/external-freight", params={"sort": "price_asc", "limit": 1, "cursor": mixed["next_cursor"]}).json()
+    assert mixed["items"][0]["id"] != page2["items"][0]["id"]
+    assert page2["sort_applied"] == "newest"
 
 
 def test_cursor_snapshot_excludes_new_rows_but_keeps_replayed_rows():
@@ -485,6 +501,46 @@ def test_external_connection_rejects_primary_file_and_alias(tmp_path, monkeypatc
         patch.setenv("EXTERNAL_FREIGHT_DB_PATH", str(alias))
         with pytest.raises(RuntimeError, match="must_be_separate"):
             database_path()
+
+
+def test_external_database_and_existing_wal_files_are_private(tmp_path, monkeypatch):
+    path = tmp_path / "private-feed.sqlite3"
+    raw = sqlite3.connect(path)
+    try:
+        raw.execute("PRAGMA journal_mode=WAL")
+        raw.execute("CREATE TABLE sample (value TEXT)")
+        raw.execute("INSERT INTO sample VALUES ('private')")
+        raw.commit()
+        for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+            assert candidate.exists()
+            candidate.chmod(0o644)
+
+        with monkeypatch.context() as patch:
+            patch.setenv("EXTERNAL_FREIGHT_DB_PATH", str(path))
+            with get_conn() as conn:
+                assert conn.execute("SELECT value FROM sample").fetchone()[0] == "private"
+
+        for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+            assert stat.S_IMODE(candidate.stat().st_mode) == 0o600
+    finally:
+        raw.close()
+
+
+def test_new_external_database_sidecars_are_private_with_permissive_umask(tmp_path, monkeypatch):
+    path = tmp_path / "new-private-feed.sqlite3"
+    previous_umask = os.umask(0o022)
+    try:
+        with monkeypatch.context() as patch:
+            patch.setenv("EXTERNAL_FREIGHT_DB_PATH", str(path))
+            with get_conn() as conn:
+                conn.execute("CREATE TABLE sample (value TEXT)")
+                conn.execute("INSERT INTO sample VALUES ('private')")
+                conn.commit()
+                for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+                    assert candidate.exists()
+                    assert stat.S_IMODE(candidate.stat().st_mode) == 0o600
+    finally:
+        os.umask(previous_umask)
 
 
 def test_review_approval_uses_only_external_database(monkeypatch):
@@ -811,3 +867,58 @@ def test_import_and_read_preserve_explicit_jpy_without_currency_conversion():
     assert read.status_code == 200
     item = read.json()['item']
     assert (item['amount'], item['currency'], item['original_text']) == (2000, 'JPY', text)
+
+
+def test_continuous_source_to_api_both_roles_without_telegram_publication(tmp_path, monkeypatch):
+    """Полная цепочка на синтетической БД; не является живой приёмкой QA2."""
+    import importlib.util
+    import json
+    from pathlib import Path
+    from services.external_freight_queue_bridge import IncomingQueueBridge
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    script=next(parent/'ops/telegram-feed/feed.py' for parent in Path(__file__).parents if (parent/'ops/telegram-feed/feed.py').exists())
+    spec=importlib.util.spec_from_file_location('integration_collector',script)
+    collector=importlib.util.module_from_spec(spec);spec.loader.exec_module(collector)
+    source=tmp_path/'source.sqlite3';db=collector.database(source)
+    published=collector.utcnow()
+    collector.capture_for_app(db,'test_channel',98765,1,'Алматы → Москва\nНужна машина\nГруз: шины',published)
+    collector.capture_for_app(db,'test_channel',98765,2,'Астана → Бишкек\nЕсть свободная машина',published)
+    monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
+    def opener(request,timeout):
+        response=client.post('/api/v1/external-freight/import',headers={'X-External-Importer-Key':'test-importer-key-only'},json=json.loads(request.data))
+        class Response:
+            status=response.status_code
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read(self):return response.content
+        return Response()
+    adapter=ExternalFreightFeedAdapter(db_path=str(tmp_path/'adapter.sqlite3'),api_url='https://qa2.urtruck.kz',importer_key='test-importer-key-only',opener=opener)
+    assert IncomingQueueBridge(source,adapter).run_once()['sent']==2
+    global _actor
+    for role,kind in [('driver','cargo'),('client','vehicle')]:
+        _actor={'id':'actor-'+role,'role':role}
+        rows=client.get('/api/v1/external-freight').json()['items']
+        assert len(rows)==1 and rows[0]['kind']==kind and rows[0]['contacts']==[]
+        assert rows[0]['price_state']=='unknown'
+    assert IncomingQueueBridge(source,adapter).run_once()['sent']==0
+    assert db.execute('select count(*) from queue').fetchone()[0]==0
+
+
+def test_explicit_partial_vehicle_location_is_visible_to_shipper_without_phone_or_price():
+    from services.external_freight_parser import map_selected_message
+    record=map_selected_message({'source_id':'tg-free-location','source_message':1,
+        'source_date':datetime.now(timezone.utc).timestamp(),
+        'text':'Свободный Реф в Маньчжурии , готов к погрузке. Рассмотрю варианты за Урал в сторону Запада.'})
+    response=_import(record)
+    assert response.status_code==200
+    result=response.json()['results'][0]
+    assert result['status']=='active'
+    global _actor
+    _actor={'id':'partial-shipper','role':'client'}
+    item=client.get('/api/v1/external-freight').json()['items'][0]
+    assert item['id']==result['id'] and item['kind']=='vehicle'
+    assert item['origin']=='Маньчжурии' and item['destination'] is None
+    assert item['price_state']=='unknown' and item['contacts']==[]
+    assert _import(record).json()['results'][0]['result']=='replayed'
+    _actor={'id':'partial-driver','role':'driver'}
+    assert client.get('/api/v1/external-freight').json()['items']==[]

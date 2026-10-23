@@ -145,7 +145,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rsync -az --delete             --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='__pycache__/'             -e "ssh -F $HOME/.ssh/config" backend/ qa2-final:"$QA_ROOT/backend/"
+          rsync -az --delete             --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='*.sqlite*' --exclude='__pycache__/'             -e "ssh -F $HOME/.ssh/config" backend/ qa2-final:"$QA_ROOT/backend/"
           rsync -az --delete             --exclude='venv/' --exclude='models/' --exclude='__pycache__/'             -e "ssh -F $HOME/.ssh/config" backend/qa_ai_service/ qa2-final:"$QA_AI_ROOT/"
           release="$QA_WEB_ROOT/releases/$QA_SOURCE_SHA"
           ssh qa2-final "mkdir -p '$release'"
@@ -237,7 +237,7 @@ jobs:
           stamp="$(cat /tmp/urtruck-qa2-final-rollback-id)"
           backup="$QA_ROOT/backups/final-$stamp"
           test -d "$backup/backend" && test -f "$backup/qa2.env" && test -d "$backup/ai"
-          rsync -a --delete --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='__pycache__/' "$backup/backend/" "$QA_ROOT/backend/"
+          rsync -a --delete --exclude='venv/' --exclude='storage/' --exclude='backups/' --exclude='.env' --exclude='*.db*' --exclude='*.sqlite*' --exclude='__pycache__/' "$backup/backend/" "$QA_ROOT/backend/"
           rsync -a --delete --exclude='venv/' --exclude='models/' --exclude='__pycache__/' "$backup/ai/" "$QA_AI_ROOT/"
           cp -p "$backup/qa2.env" "$QA_ROOT/.env"
           previous_web="$(cat "$backup/previous-web-release")"
