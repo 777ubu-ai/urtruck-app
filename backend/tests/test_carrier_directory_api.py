@@ -36,6 +36,7 @@ client = TestClient(app)
 
 
 def test_contacts_share_counter_and_feed_only_for_capable_client(monkeypatch, tmp_path):
+    global _actor
     monkeypatch.setenv('EXTERNAL_FREIGHT_FEED_ENABLED', 'true')
     monkeypatch.setenv('EXTERNAL_FREIGHT_DB_PATH', str(tmp_path / 'external.sqlite3'))
     monkeypatch.setenv('EXTERNAL_CARRIER_DIRECTORY_DB', str(tmp_path / 'catalog.sqlite3'))
