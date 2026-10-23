@@ -85,6 +85,11 @@ on:
         required: true
         default: true
         type: boolean
+      enable_external_freight_feed:
+        description: "Включить принятую внешнюю ленту в магазинной сборке"
+        required: false
+        default: false
+        type: boolean
       build_installable_apk:
         description: "Produce a signed production APK encrypted for this local device-QA session"
         required: true
@@ -109,6 +114,8 @@ jobs:
     needs: quality-gate
     if: ${{ inputs.download_generated_version_code == '' }}
     name: Build AAB and upload to Play
+    env:
+      EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: ${{ inputs.enable_external_freight_feed && 'true' || 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
