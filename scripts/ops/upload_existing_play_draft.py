@@ -1,4 +1,4 @@
-"""Загрузка одного проверенного AAB только в Internal draft, без сборки и review."""
+"""Загрузка одного проверенного AAB в библиотеку; все releases остаются прежними."""
 import argparse
 import base64
 import hashlib
@@ -40,23 +40,6 @@ def verify(root):
     return data
 
 
-def draft_releases(track):
-    if track.get('track') != 'internal':
-        raise ValueError('unexpected_play_track')
-    releases = []
-    for release in track.get('releases', []):
-        codes = [str(code) for code in release.get('versionCodes', [])]
-        if release.get('status') == 'draft':
-            if codes != [VERSION]:
-                raise ValueError('existing_other_internal_draft')
-            continue
-        if VERSION in codes:
-            raise ValueError('candidate_already_active_do_not_modify')
-        releases.append(release)
-    return releases + [{'name': 'UrTruck 1.0.9 (' + VERSION + ')',
-                        'versionCodes': [VERSION], 'status': 'draft'}]
-
-
 def request_json(url, method='GET', data=None, headers=None):
     request = urllib.request.Request(url, data=data, method=method, headers=headers or {})
     try:
@@ -91,28 +74,53 @@ def access_token():
     return response['access_token']
 
 
+def confirm_saved_bundle(call, track):
+    """Новая транзакция только читает сохранённую библиотеку и прежний трек."""
+    readback_id = call(API + '/edits', 'POST', {})['id']
+    readback = API + '/edits/' + urllib.parse.quote(readback_id, safe='')
+    saved = [bundle for bundle in call(readback + '/bundles').get('bundles', [])
+             if str(bundle.get('versionCode')) == VERSION]
+    if len(saved) != 1 or saved[0].get('sha256', '').lower() != SHA256:
+        raise ValueError('committed_bundle_readback_mismatch')
+    if call(readback + '/tracks/internal') != track:
+        raise ValueError('committed_internal_track_changed')
+
+
 def upload(data, call):
     edit = call(API + '/edits', 'POST', {})['id']
     base = API + '/edits/' + urllib.parse.quote(edit, safe='')
     track = call(base + '/tracks/internal')
-    releases = draft_releases(track)
+    if track.get('track') != 'internal':
+        raise ValueError('unexpected_play_track')
     bundles = call(base + '/bundles').get('bundles', [])
     matching = [bundle for bundle in bundles if str(bundle.get('versionCode')) == VERSION]
     if matching:
         if len(matching) != 1 or matching[0].get('sha256', '').lower() != SHA256:
             raise ValueError('existing_version_checksum_mismatch')
+        # Совпадающий файл уже в сохранённой библиотеке: лишний commit не нужен.
+        confirm_saved_bundle(call, track)
+        commit_state = 'ALREADY_SAVED'
     else:
         bundle = call(UPLOAD + '/edits/' + urllib.parse.quote(edit, safe='') + '/bundles?uploadType=media',
                       'POST', data)
         if str(bundle.get('versionCode')) != VERSION or bundle.get('sha256', '').lower() != SHA256:
             raise ValueError('uploaded_bundle_identity_mismatch')
-    result = call(base + '/tracks/internal', 'PUT', {'track': 'internal', 'releases': releases})
-    if result.get('track') != 'internal' or result.get('releases') != releases:
-        raise ValueError('draft_readback_mismatch')
-    call(base + ':validate', 'POST')
-    call(base + ':commit?changesNotSentForReview=true&changesInReviewBehavior=ERROR_IF_IN_REVIEW', 'POST')
-    return {'status': 'INTERNAL_DRAFT_SAVED', 'package': PACKAGE, 'versionCode': VERSION,
+        if call(base + '/tracks/internal') != track:
+            raise ValueError('existing_internal_track_changed')
+        call(base + ':validate', 'POST')
+        try:
+            call(base + ':commit?changesNotSentForReview=true&changesInReviewBehavior=ERROR_IF_IN_REVIEW', 'POST')
+            commit_state = 'COMMIT_CONFIRMED'
+        except (urllib.error.URLError, TimeoutError):
+            # Потеря ответа не разрешает повторять upload/commit: сначала read-only сверка.
+            confirm_saved_bundle(call, track)
+            commit_state = 'RESPONSE_LOST_READBACK_CONFIRMED'
+        else:
+            confirm_saved_bundle(call, track)
+    return {'status': 'BUNDLE_LIBRARY_SAVED', 'package': PACKAGE, 'versionCode': VERSION,
             'source_sha': SOURCE, 'sha256': SHA256, 'edit_id': edit,
+            'commit_state': commit_state,
+            'internal_track_unchanged': True, 'assigned_to_track': False,
             'review_submitted': False, 'published': False}
 
 

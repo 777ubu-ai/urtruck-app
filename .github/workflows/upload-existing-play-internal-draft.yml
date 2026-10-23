@@ -1,10 +1,10 @@
-name: Upload verified existing AAB to Internal draft
+name: Upload verified existing AAB to Play library
 
 on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: "Введите UPLOAD_INTERNAL_DRAFT: только черновик, без review и публикации"
+        description: "Введите UPLOAD_BUNDLE_LIBRARY: только библиотека, releases не меняются"
         required: true
         type: string
 
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   upload-draft:
-    if: ${{ github.ref == 'refs/heads/main' && inputs.confirmation == 'UPLOAD_INTERNAL_DRAFT' }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirmation == 'UPLOAD_BUNDLE_LIBRARY' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
@@ -39,7 +39,7 @@ jobs:
           gh api repos/777ubu-ai/urtruck-app/actions/runs/39959276862 > "$RUNNER_TEMP/aab-run.json"
           gh api repos/777ubu-ai/urtruck-app/actions/artifacts/12504294811/zip > "$RUNNER_TEMP/aab.zip"
           python3 scripts/ops/upload_existing_play_draft.py verify --root "$RUNNER_TEMP"
-      - name: Save bundle only in Internal draft
+      - name: Save bundle in library without changing tracks
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: python3 scripts/ops/upload_existing_play_draft.py upload --root "$RUNNER_TEMP"
