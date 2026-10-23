@@ -266,7 +266,8 @@ def block_contacts(text):
         line = text[start:end if end >= 0 else len(text)]
         prefix = text[start:match.start()]
         if (any(match.start() < right and match.end() > left for left, right in numeric_fields)
-                or re.search(r'(?i)(?:цена|стоимость|ставка|оплата|price|вес|объ[её]м)\s*[:=—–-]?\s*$', prefix)):
+                or re.search(r'(?i)(?:\b(?:цена|стоимость|ставка|оплата|price|вес|объ[её]м)\s*[:=—–-]?\s*'
+                             r'(?:[a-z]{3}|тг|[$€₽¥])?|\b(?:USD|EUR|RUB|KZT|CNY|JPY|тг)|[$€₽¥])\s*$', prefix)):
             continue
         phone_context = re.search(r'(?i)(?:📞|☎|\bтел(?:ефон)?\.?|\btel)\s*[:=—–-]?\s*$', prefix)
         local_phone = (len(digits) == 9 and raw.replace(' ', '').replace('\t', '').isdigit()

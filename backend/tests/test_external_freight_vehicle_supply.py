@@ -112,6 +112,8 @@ def test_conditional_and_unavailable_transport_is_not_vehicle_supply(phrase):
     'Цена 1200000000 KZT', 'Цена 901234567 KZT телефон уточняйте',
     'Стоимость 1200000000', 'Телефон уточняйте, цена 901234567',
     'Цена 1200000000 USD; тел: +77000000001',
+    'Цена USD 1200000000', 'Цена: KZT 1200000000', 'USD 1200000000',
+    'Цена: UZS 1200000000', 'Цена $ 1200000000',
 ])
 def test_price_never_becomes_contact(line):
     item=map_selected_message(message('Есть машина\nАлматы → Москва\n'+line))
