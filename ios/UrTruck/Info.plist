@@ -60,6 +60,8 @@
 	<string>UrTruck использует камеру для селфи и фото документов</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>UrTruck определяет местоположение по вашему запросу или при открытии карты активного рейса</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Встроенная библиотека местоположения поддерживает определение движения. UrTruck не запрашивает и не собирает данные физической активности в этой версии.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>UrTruck использует микрофон для записи голосовых сообщений</string>
 	<key>NSPhotoLibraryUsageDescription</key>
