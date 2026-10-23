@@ -276,3 +276,15 @@ def test_successful_restart_requires_new_correct_listener(monkeypatch):
         module.wait_healthy(original, require_new_pid=True)
     monkeypatch.setattr(module, 'runtime_identity', lambda **kwargs: ({**original, '_pid': '2'}, None))
     module.wait_healthy(original, require_new_pid=True)
+
+
+def test_production_caller_uses_valid_github_reusable_refs():
+    root = SCRIPT.parents[2]
+    doc = yaml.safe_load((root / '.github/workflows/break-glass-production-deploy.yml').read_text())
+    for job_name in ['overlay-quality-gate', 'deploy']:
+        reference = doc['jobs'][job_name]['uses']
+        target, revision = reference.rsplit('@', 1)
+        assert revision == 'main'
+        assert target.startswith('777ubu-ai/urtruck-app/.github/workflows/')
+        assert (root / '.github/workflows' / target.rsplit('/', 1)[1]).is_file()
+    assert doc['jobs']['guard']['steps'][1]['with']['ref'] == 'refs/heads/main'
