@@ -105,6 +105,8 @@ def test_deploy_push_ignores_only_the_reviewed_push_mode_operations_files():
     ignored = set(push.get("paths-ignore", []))
     expected = {
         ".github/workflows/deploy.yml",
+        ".github/workflows/testflight-rc.yml",
+        ".github/workflows/submit-android-qa2-internal.yml",
         ".github/workflows/production-deploy-execute.yml",
         ".github/workflows/sync-production-push-mode.yml",
         "backend/tests/test_deploy_workflow_static_validation.py",
@@ -119,10 +121,13 @@ def test_deploy_push_ignores_only_the_reviewed_push_mode_operations_files():
         "package-lock.json",
         "docs/npm-audit-triage.md",
         "docs/qa/dependency-audit-remediation-20261014.md",
+        "docs/qa/qa2-native-patch-gate-20261018.md",
         "patches/node-forge+1.4.0.patch",
         "scripts/security-*.mjs",
         "security/sbom/braces-3.0.4-28d440b.spdx.json",
         "tests/security/*.mjs",
+        "tests/frontend/qa2_play_internal_workflow.test.mjs",
+        "tests/frontend/test_qa2_live_build_contract.mjs",
         "vendor/braces-3.0.4-28d440b/**",
         "backend/tests/test_production_push_mode_backup.py",
         "scripts/ops/production_push_mode_backup.py",
@@ -171,6 +176,15 @@ def test_deploy_push_ignores_only_the_reviewed_push_mode_operations_files():
     }
     import fnmatch
     assert all(any(fnmatch.fnmatchcase(path, pattern) for pattern in ignored) for path in pr533_paths)
+    pr563_paths = {
+        ".github/workflows/testflight-rc.yml",
+        ".github/workflows/submit-android-qa2-internal.yml",
+        ".github/workflows/deploy.yml",
+        "docs/qa/qa2-native-patch-gate-20261018.md",
+        "tests/frontend/qa2_play_internal_workflow.test.mjs",
+        "tests/frontend/test_qa2_live_build_contract.mjs",
+    }
+    assert all(any(fnmatch.fnmatchcase(path, pattern) for pattern in ignored) for path in pr563_paths)
     assert not any(fnmatch.fnmatchcase("backend/api/push.py", pattern) for pattern in ignored)
 
 
