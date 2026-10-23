@@ -35,9 +35,10 @@ def validate_qa_target(api_url, *, state_path=None):
             or parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
         raise ValueError("production_target_required" if target == "production" else "qa2_target_required")
     if target == "production":
-        root = Path("/home/ubuntu/urtruck/runtime/external-feed")
+        declared_root = Path("/home/ubuntu/urtruck/runtime/external-feed")
+        root = Path("/home").resolve() / "ubuntu/urtruck/runtime/external-feed"
         state = Path(state_path).expanduser() if state_path else None
-        if (root.resolve() != root or state is None or not state.is_absolute() or state.resolve() == root
+        if (declared_root.resolve() != root or state is None or not state.is_absolute() or state.resolve() == root
                 or not state.resolve().is_relative_to(root)):
             raise ValueError("separate_production_state_required")
 
