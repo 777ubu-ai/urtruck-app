@@ -211,6 +211,8 @@ def test_scan_failure_keeps_first_durable_cursor_and_recovers_next_message(tmp_p
     assert db.execute('select count(*) from app_messages').fetchone()[0]==1
     reader.fail=False
     asyncio.run(m.collect(reader,db))
-    assert reader.queries[-1]['reverse'] is True and reader.queries[-1]['min_id']==1
+    forward_queries=[query for query in reader.queries if query.get('reverse')]
+    assert forward_queries[-1]['reverse'] is True and forward_queries[-1]['min_id']==1
+    assert reader.queries[-1]=={'limit':m.APP_HISTORY_PAGE}
     assert db.execute('select message_id from app_cursors').fetchone()[0]==2
     assert db.execute('select count(*) from app_messages').fetchone()[0]==2

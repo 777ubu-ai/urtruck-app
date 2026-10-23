@@ -183,6 +183,10 @@ def database(path=None):
         CREATE INDEX IF NOT EXISTS app_messages_updated ON app_messages(updated_at,id);
         CREATE TABLE IF NOT EXISTS app_cursors (source TEXT PRIMARY KEY, message_id INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS source_health (source TEXT PRIMARY KEY, checked_at REAL, error TEXT);
+        CREATE TABLE IF NOT EXISTS app_history (
+          source TEXT PRIMARY KEY, oldest_id INTEGER NOT NULL DEFAULT 0,
+          started_at REAL NOT NULL, checked_at REAL NOT NULL,
+          completed_at REAL, last_error TEXT);
         CREATE TABLE IF NOT EXISTS cursors (source TEXT PRIMARY KEY, message_id INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS prior (message_id INTEGER PRIMARY KEY,text TEXT NOT NULL,published_date TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -268,12 +272,54 @@ async def sync_prior(reader, db, target):
         db.execute("INSERT OR REPLACE INTO metadata VALUES('destination_cursor',?)", (str(high),))
 
 
+APP_HISTORY_PAGE = 200
+APP_HISTORY_SOURCES_PER_SCAN = 2
+APP_HISTORY_RECONCILE_SECONDS = 6 * 3600
+
+
+async def collect_app_history(reader, db, source, entity):
+    """Ограниченный обход 120h той же сессией; очередь Telegram не затрагивается."""
+    now = time.time()
+    state = db.execute('SELECT * FROM app_history WHERE source=?', (source,)).fetchone()
+    if state and state['completed_at'] and now-state['completed_at'] < APP_HISTORY_RECONCILE_SECONDS:
+        return {'status': 'complete', 'seen': 0, 'app_received': 0}
+    oldest = state['oldest_id'] if state and not state['completed_at'] else 0
+    with db:
+        db.execute('''INSERT INTO app_history(source,oldest_id,started_at,checked_at)
+          VALUES(?,?,?,?) ON CONFLICT(source) DO UPDATE SET
+          oldest_id=excluded.oldest_id, checked_at=excluded.checked_at,
+          completed_at=NULL, last_error=NULL''', (source,oldest,now,now))
+    kwargs = {'limit': APP_HISTORY_PAGE}
+    if oldest:
+        kwargs['offset_id'] = oldest
+    seen = captured = 0
+    complete = False
+    cutoff = utcnow()-timedelta(hours=120)
+    async for msg in reader.iter_messages(entity, **kwargs):
+        seen += 1
+        if msg.date and msg.date < cutoff:
+            complete = True
+            break
+        captured += capture_for_app(db,source,entity.id,msg.id,msg.raw_text or '',msg.date,
+                                    bool(getattr(msg,'noforwards',False)))
+        # Только после durable capture; исключение не перескакивает запись.
+        with db:
+            db.execute('UPDATE app_history SET oldest_id=? WHERE source=?', (msg.id,source))
+    complete = complete or seen < APP_HISTORY_PAGE
+    if complete:
+        with db:
+            db.execute('UPDATE app_history SET completed_at=? WHERE source=?', (time.time(),source))
+    return {'status': 'complete' if complete else 'catching_up',
+            'seen': seen, 'app_received': captured}
+
+
 async def collect(reader, db):
     from telethon.errors import FloodWaitError
     report = {}
     pause = float((db.execute("SELECT value FROM metadata WHERE key='scan_after'").fetchone() or [0])[0])
     if time.time() < pause:
         return {"status": "flood_wait"}
+    history_candidates = []
     for source in app_sources():
         try:
             entity = await reader.get_entity(source)
@@ -309,6 +355,7 @@ async def collect(reader, db):
             with db:
                 db.execute("INSERT OR IGNORE INTO app_cursors VALUES(?,?)",(source,high))
                 db.execute("INSERT OR REPLACE INTO source_health VALUES(?,?,NULL)",(source,time.time()))
+            history_candidates.append((source,entity))
             report[source] = {"seen":seen,"accepted":added,"app_received":captured}
         except FloodWaitError as exc:
             with db:
@@ -320,6 +367,29 @@ async def collect(reader, db):
                 db.execute("INSERT OR REPLACE INTO source_health VALUES(?,?,?)",(source,time.time(),type(exc).__name__))
             report[source] = {"blocked":type(exc).__name__}
         await asyncio.sleep(1)
+    # Свежий обход и события имеют приоритет; история равномерно движется по
+    # двум источникам за цикл, не использует high-water cursors публикаций.
+    pause = float((db.execute("SELECT value FROM metadata WHERE key='scan_after'").fetchone() or [0])[0])
+    if time.time() >= pause:
+        history_state = {row['source']: row for row in db.execute('SELECT * FROM app_history')}
+        history_candidates = [(source,entity) for source,entity in history_candidates
+                              if source not in history_state or not history_state[source]['completed_at']
+                              or time.time()-history_state[source]['completed_at'] >= APP_HISTORY_RECONCILE_SECONDS]
+        history_checked = {source: row['checked_at'] for source,row in history_state.items()}
+        history_candidates.sort(key=lambda entry: history_checked.get(entry[0],0))
+        for source,entity in history_candidates[:APP_HISTORY_SOURCES_PER_SCAN]:
+            try:
+                report[source]['history'] = await collect_app_history(reader,db,source,entity)
+            except FloodWaitError as exc:
+                with db:
+                    db.execute("INSERT OR REPLACE INTO metadata VALUES('scan_after',?)",(str(time.time()+exc.seconds+1),))
+                    db.execute('UPDATE app_history SET last_error=? WHERE source=?', ('FloodWaitError',source))
+                report[source]['history'] = {'blocked':'flood_wait','retry_after':exc.seconds}
+                break
+            except Exception as exc:
+                with db:
+                    db.execute('UPDATE app_history SET last_error=? WHERE source=?',(type(exc).__name__,source))
+                report[source]['history'] = {'blocked':type(exc).__name__}
     LOG.info("source_scan %s",json.dumps(report,ensure_ascii=False))
     return report
 
