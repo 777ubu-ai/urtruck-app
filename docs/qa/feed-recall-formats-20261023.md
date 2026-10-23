@@ -15,3 +15,6 @@
 - 137 pure regression tests PASS, including vehicle supply/collector, bridge and existing review constraints. Unknown unlabelled cargo city-pairs remain review; compact hyphen pairs require two known literal names.
 - New negative tests cover single hyphenated cities, multi-city lines, unknown places, sale/repair/questions, promotional prose and shared contact headers.
 - No live runtime or queue mutations. Full same-window shadow and exact-head CI pending.
+
+- Same-window shadow: 12453 raw messages, 4025 unique normalized texts, 143 recovered unique messages (354 source copies); 213 candidate cargo segments +1 vehicle segment before global dedup; distinct candidate active texts 720→869. All1514 active outbox payloads unchanged. No lost active messages or parse errors detected in candidate set.
+- Parser revision v4 enables bounded normal reprocessing through the existing queue; no queue schema or delivery logic change.

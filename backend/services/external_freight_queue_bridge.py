@@ -19,7 +19,7 @@ from services.external_freight_classifier import classify_message
 
 ACTIVE_SECONDS = 120 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261023-vehicle-supply-v3'
+PARSER_REVISION = '20261023-recall-formats-v4'
 
 
 def validate_qa_target(api_url):
