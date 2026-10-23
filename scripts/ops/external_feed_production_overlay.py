@@ -21,6 +21,7 @@ ROOT = Path('/home/ubuntu/urtruck/backend')
 RUNTIME = Path('/home/ubuntu/urtruck/runtime/external-feed')
 SOURCE_DB = Path('/home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3')
 BACKUP_ROOT = Path('/home/ubuntu/urtruck-backups')
+UNIT_ROOT = Path('/etc/systemd/system')
 PM2_ENTRY = Path('/home/ubuntu/.nvm/versions/node/v22.15.0/bin/pm2')
 PM2_TARGET = Path('/home/ubuntu/.nvm/versions/node/v22.15.0/lib/node_modules/pm2/bin/pm2')
 FILES = frozenset({
@@ -206,22 +207,8 @@ def verify_feed_schema(path, primary):
         raise ValueError('feed_schema_not_initialized')
 
 
-def install_bridge(python, key, since):
-    """Отдельный мост читает только подтверждённые публикации; очередь не меняется."""
-    if SOURCE_DB.resolve(strict=True) != SOURCE_DB:
-        raise ValueError('redirected_source_queue')
-    unit = 'urtruck-production-feed-bridge'
-    unit_root = Path('/etc/systemd/system')
-    if any((unit_root / (unit + suffix)).exists() for suffix in ('.service', '.timer')):
-        raise ValueError('existing_production_bridge_requires_reconciliation')
-    write_atomic(RUNTIME / 'bridge.env', (
-        'EXTERNAL_FREIGHT_IMPORT_ENABLED=true\n'
-        'EXTERNAL_FREIGHT_DEPLOYMENT_TARGET=production\n'
-        'EXTERNAL_FREIGHT_API_URL=https://urtruck.kz\n'
-        f'EXTERNAL_FREIGHT_SOURCE_DB={SOURCE_DB}\n'
-        f'EXTERNAL_FREIGHT_ADAPTER_DB={RUNTIME}/adapter.sqlite3\n'
-        f'EXTERNAL_FREIGHT_IMPORTER_KEY={key}\n').encode())
-    service = f'''[Unit]
+def bridge_service(python):
+    return f'''[Unit]
 Description=UrTruck isolated production mirror of confirmed publications
 After=network-online.target
 [Service]
@@ -238,7 +225,11 @@ ProtectSystem=strict
 ReadOnlyPaths=/home/ubuntu/urtruck-telegram-feed
 ReadWritePaths={RUNTIME}
 '''
-    timer = f'''[Unit]
+
+
+def bridge_timer():
+    unit = 'urtruck-production-feed-bridge'
+    return f'''[Unit]
 Description=UrTruck isolated production feed mirror every minute
 [Timer]
 OnBootSec=30
@@ -248,6 +239,25 @@ Unit={unit}.service
 [Install]
 WantedBy=timers.target
 '''
+
+
+def install_bridge(python, key, since):
+    """Отдельный мост читает согласованный app_messages; очередь не меняется."""
+    verify_app_messages_source()
+    unit = 'urtruck-production-feed-bridge'
+    unit_root = UNIT_ROOT
+    if any((unit_root / (unit + suffix)).exists() for suffix in ('.service', '.timer')):
+        raise ValueError('existing_production_bridge_requires_reconciliation')
+    write_atomic(RUNTIME / 'bridge.env', (
+        'EXTERNAL_FREIGHT_IMPORT_ENABLED=true\n'
+        'EXTERNAL_FREIGHT_SOURCE_MODE=incoming\n'
+        'EXTERNAL_FREIGHT_DEPLOYMENT_TARGET=production\n'
+        'EXTERNAL_FREIGHT_API_URL=https://urtruck.kz\n'
+        f'EXTERNAL_FREIGHT_SOURCE_DB={SOURCE_DB}\n'
+        f'EXTERNAL_FREIGHT_ADAPTER_DB={RUNTIME}/adapter.sqlite3\n'
+        f'EXTERNAL_FREIGHT_IMPORTER_KEY={key}\n').encode())
+    service = bridge_service(python)
+    timer = bridge_timer()
     for suffix, body in (('.service', service), ('.timer', timer)):
         source = RUNTIME / (unit + suffix)
         write_atomic(source, body.encode())
@@ -256,6 +266,11 @@ WantedBy=timers.target
     subprocess.run(['sudo', '-n', 'systemctl', 'daemon-reload'], check=True, capture_output=True)
     subprocess.run(['sudo', '-n', 'systemctl', 'start', unit + '.service'], check=True, capture_output=True)
     subprocess.run(['sudo', '-n', 'systemctl', 'enable', '--now', unit + '.timer'], check=True, capture_output=True)
+    return observe_bridge_cycles(since)
+
+
+def observe_bridge_cycles(since):
+    unit = 'urtruck-production-feed-bridge'
     cycles = []
     for _ in range(100):
         result = subprocess.run(['journalctl', '-u', unit + '.service', '--since', since,
@@ -276,11 +291,124 @@ WantedBy=timers.target
     return cycles
 
 
+def installed_overlay_matches(manifest):
+    for name, expected in manifest['files'].items():
+        path = ROOT / name
+        if path.is_symlink() or not path.resolve().is_relative_to(ROOT.resolve()):
+            raise ValueError('overlay_target_outside_backend')
+        if not path.is_file() or digest(path) != expected:
+            return False
+    return True
+
+
+def verify_app_messages_source():
+    if SOURCE_DB.resolve(strict=True) != SOURCE_DB:
+        raise ValueError('redirected_source_queue')
+    with sqlite3.connect(SOURCE_DB.as_uri() + '?mode=ro', uri=True) as connection:
+        connection.execute('SELECT source_id,source_message,source_date,text,revision FROM app_messages LIMIT 1')
+
+
+def reconcile_bridge_source(env, manifest, source_sha):
+    """Меняет только источник отдельного моста; backend и Telegram не перезапускаются."""
+    unit = 'urtruck-production-feed-bridge'
+    for suffix, expected in [('.service', bridge_service(env['pm_exec_path'])),
+                             ('.timer', bridge_timer())]:
+        path = UNIT_ROOT / (unit + suffix)
+        if path.is_symlink() or path.read_text() != expected:
+            raise ValueError('existing_bridge_unit_requires_reconciliation')
+    verify_app_messages_source()
+    path = RUNTIME / 'bridge.env'
+    if path.is_symlink():
+        raise ValueError('redirected_bridge_environment')
+    original = path.read_bytes()
+    values = dict(line.split('=', 1) for line in original.decode().splitlines() if '=' in line)
+    expected = {'EXTERNAL_FREIGHT_IMPORT_ENABLED': 'true',
+                'EXTERNAL_FREIGHT_DEPLOYMENT_TARGET': 'production',
+                'EXTERNAL_FREIGHT_API_URL': 'https://urtruck.kz',
+                'EXTERNAL_FREIGHT_SOURCE_DB': str(SOURCE_DB),
+                'EXTERNAL_FREIGHT_ADAPTER_DB': str(RUNTIME / 'adapter.sqlite3')}
+    if (any(values.get(key) != value for key, value in expected.items())
+            or not values.get('EXTERNAL_FREIGHT_IMPORTER_KEY')
+            or values.get('EXTERNAL_FREIGHT_SOURCE_MODE', 'published') not in {'published', 'incoming'}
+            or set(values) - set(expected) - {'EXTERNAL_FREIGHT_IMPORTER_KEY', 'EXTERNAL_FREIGHT_SOURCE_MODE'}):
+        raise ValueError('unexpected_bridge_environment')
+    def control(*args):
+        return subprocess.run(['sudo', '-n', 'systemctl', *args], check=True, capture_output=True)
+    def state(suffix):
+        return subprocess.run(['systemctl', 'is-active', unit + suffix],
+                              text=True, capture_output=True).stdout.strip()
+    if state('.timer') != 'active':
+        raise ValueError('bridge_timer_not_active')
+    protected, backend_env = protected_hashes(ROOT), (ROOT / '.env').read_bytes()
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    backup = BACKUP_ROOT / ('external-feed-source-' + stamp)
+    backup.mkdir(mode=0o700)
+    write_atomic(backup / 'bridge.env', original)
+    try:
+        control('stop', unit + '.timer')
+        for _ in range(50):
+            if state('.service') == 'inactive':
+                break
+            time.sleep(1)
+        else:
+            raise ValueError('bridge_drain_timeout')
+        proofs = {}
+        for label, source in [('primary', Path(env['DB_PATH'])),
+                              ('feed', RUNTIME / 'feed.sqlite3'),
+                              ('adapter', RUNTIME / 'adapter.sqlite3')]:
+            folder = backup / label
+            folder.mkdir(mode=0o700)
+            proofs[label] = online_backup(source, folder / 'snapshot.sqlite3')
+        write_atomic(path, updated_env(original, {'EXTERNAL_FREIGHT_SOURCE_MODE': 'incoming'}))
+        since = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f UTC')
+        control('start', unit + '.service')
+        control('start', unit + '.timer')
+        cycles = observe_bridge_cycles(since)
+        if any(item.get('mode') != 'incoming' for item in cycles):
+            raise ValueError('bridge_source_mode_not_confirmed')
+        if (not installed_overlay_matches(manifest) or protected_hashes(ROOT) != protected
+                or (ROOT / '.env').read_bytes() != backend_env or status('/health') != 200):
+            raise ValueError('source_switch_protected_state_changed')
+        report = {'source_sha': source_sha, 'operation': 'bridge_source_incoming',
+                  'backups': proofs, 'bridge_cycles': cycles, 'protected_unchanged': True,
+                  'backend_restarted': False, 'telegram_queue_changed': False,
+                  'store_activation': False}
+        write_atomic(backup / 'result.json', json.dumps(report, ensure_ascii=False, indent=2).encode())
+        print(json.dumps(report, ensure_ascii=False))
+    except BaseException:
+        try:
+            control('stop', unit + '.timer')
+            for _ in range(50):
+                if state('.service') in {'inactive', 'failed'}:
+                    break
+                time.sleep(1)
+            else:
+                raise ValueError('source_switch_rollback_drain_timeout')
+            write_atomic(path, original)
+            control('start', unit + '.timer')
+            if (path.read_bytes() != original or state('.timer') != 'active'
+                    or protected_hashes(ROOT) != protected or (ROOT / '.env').read_bytes() != backend_env
+                    or status('/health') != 200):
+                raise ValueError('source_switch_rollback_unhealthy')
+            print(json.dumps({'status': 'SOURCE_ENV_ROLLED_BACK', 'backup': str(backup)}))
+        except BaseException:
+            print(json.dumps({'status': 'ROLLBACK_FAILED', 'backup': str(backup)}))
+            raise RuntimeError('production_source_rollback_failed') from None
+        raise
+
+
 def apply(bundle, bundle_sha, source_sha):
     if not re.fullmatch('[0-9a-f]{40}', source_sha) or digest(bundle) != bundle_sha:
         raise ValueError('release_identity_mismatch')
     if ROOT.resolve() != ROOT or RUNTIME.resolve() != RUNTIME:
         raise ValueError('redirected_production_path')
+    # Повтор разрешён только для уже установленного идентичного девятифайлового пакета.
+    with tempfile.TemporaryDirectory(prefix='external-feed-verify-') as name:
+        manifest = unpack_verified(bundle, Path(name))
+        if installed_overlay_matches(manifest):
+            env, _ = runtime_identity(allow_feed_env=True)
+            reconcile_bridge_source(env, manifest, source_sha)
+            return
     env, pm2 = runtime_identity()
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     backup = BACKUP_ROOT / ('external-feed-' + stamp)
