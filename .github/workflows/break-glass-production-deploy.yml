@@ -29,7 +29,7 @@ on:
         description: "Why does this need to bypass the normal release gate? (required, goes in the audit log)"
         required: true
       confirm:
-        description: 'Type exactly "DEPLOY" to confirm — this skips backend/frontend/E2E tests and the P0/P1 + Push/Bell subsets'
+        description: 'Введите DEPLOY: full — аварийный режим; external_feed_overlay — с полным quality-gate'
         required: true
 
 permissions:

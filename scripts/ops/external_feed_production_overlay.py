@@ -119,7 +119,7 @@ def updated_env(original, additions):
     return ('\n'.join(kept + [f'{key}={value}' for key, value in additions.items()]) + '\n').encode()
 
 
-def runtime_identity():
+def runtime_identity(*, allow_feed_env=False):
     result = subprocess.run(['ss', '-ltnpH', 'sport = :8001'], check=True,
                             text=True, capture_output=True)
     pids = set(re.findall(r'pid=(\d+)', result.stdout))
@@ -129,14 +129,22 @@ def runtime_identity():
     env = dict(x.split('=', 1) for x in Path(f'/proc/{pid}/environ').read_bytes().decode().split('\0') if '=' in x)
     if env.get('name') != 'urtruck-security-api' or Path(env.get('pm_cwd', '')).resolve() != ROOT:
         raise ValueError('unexpected_production_process')
-    if ENV_KEYS.intersection(env):
+    if not allow_feed_env and ENV_KEYS.intersection(env):
         raise ValueError('production_feed_environment_requires_reconciliation')
+    python = Path(env.get('pm_exec_path', ''))
+    if not python.is_file() or python.resolve() != Path(f'/proc/{pid}/exe').resolve(strict=True):
+        raise ValueError('production_python_interpreter_unverified')
+    probe = subprocess.run([str(python), '-I', '-c',
+                            'import sys;raise SystemExit(0 if sys.version_info >= (3,10) else 1)'],
+                           check=False, capture_output=True, timeout=10)
+    if probe.returncode:
+        raise ValueError('production_python_version_unsupported')
     daemon = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[1]
     node = Path(f'/proc/{daemon}/exe').resolve(strict=True)
     pm2 = node.parent / 'pm2'
     if not pm2.is_file() or not env.get('pm_id', '').isdigit():
         raise ValueError('pm2_identity_unavailable')
-    return env, pm2
+    return {**env, '_pid': pid}, pm2
 
 
 def protected_hashes(root):
@@ -151,6 +159,40 @@ def status(path):
             return response.status
     except urllib.error.HTTPError as exc:
         return exc.code
+
+
+def wait_healthy(expected, *, require_new_pid=False):
+    for _ in range(20):
+        try:
+            current, _ = runtime_identity(allow_feed_env=True)
+            if (current['pm_id'] == expected['pm_id']
+                    and current['pm_exec_path'] == expected['pm_exec_path']
+                    and (not require_new_pid or current['_pid'] != expected['_pid'])
+                    and status('/health') == 200):
+                return
+        except (ValueError, OSError, subprocess.SubprocessError):
+            pass
+        time.sleep(1)
+    raise ValueError('production_runtime_not_healthy')
+
+
+def empty_import_probe(key):
+    request = urllib.request.Request('http://127.0.0.1:8001/api/v1/external-freight/import',
+        data=b'{"records":[]}', method='POST', headers={
+            'Content-Type': 'application/json', 'X-External-Importer-Key': key})
+    with urllib.request.urlopen(request, timeout=8) as response:
+        if response.status != 200 or json.loads(response.read()) != {'results': []}:
+            raise ValueError('production_import_contract_failed')
+
+
+def verify_feed_schema(path, primary):
+    path = path.resolve(strict=True)
+    if path == Path(primary).resolve(strict=True) or path.samefile(primary):
+        raise ValueError('feed_database_not_separate')
+    with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True) as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not {'external_freight_items', 'external_freight_bookmarks', 'external_freight_delivery'} <= tables:
+        raise ValueError('feed_schema_not_initialized')
 
 
 def install_bridge(python, key, since):
@@ -269,15 +311,11 @@ def apply(bundle, bundle_sha, source_sha):
             if protected_hashes(ROOT) != protected:
                 raise ValueError('protected_code_changed')
             restart()
-            for _ in range(20):
-                try:
-                    if status('/health') == 200 and status('/api/v1/external-freight/count') == 401:
-                        break
-                except OSError:
-                    pass
-                time.sleep(1)
-            else:
-                raise ValueError('production_overlay_smoke_failed')
+            wait_healthy(env, require_new_pid=True)
+            empty_import_probe(key)
+            verify_feed_schema(RUNTIME / 'feed.sqlite3', env['DB_PATH'])
+            if status('/api/v1/external-freight/count') != 401:
+                raise ValueError('production_feed_auth_guard_changed')
             if status('/api/v1/driver/expenses') != 401:
                 raise ValueError('existing_expenses_auth_changed')
             if protected_hashes(ROOT) != protected:
@@ -288,22 +326,31 @@ def apply(bundle, bundle_sha, source_sha):
             cycles = install_bridge(env['pm_exec_path'], key,
                                     datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'))
             report = {'source_sha': source_sha, 'overlay_files': manifest['files'],
-                      'backup': proof, 'external_api': 401, 'existing_expenses': 401,
+                      'backup': proof, 'external_api': 401, 'empty_import': 200, 'feed_schema': 'PASS', 'existing_expenses': 401,
                       'protected_python_files': len(protected), 'protected_unchanged': True,
                       'bridge_cycles': cycles, 'store_activation': False}
             write_atomic(backup / 'result.json', json.dumps(report, ensure_ascii=False, indent=2).encode())
             print(json.dumps(report, ensure_ascii=False))
         except BaseException:
-            subprocess.run(['sudo', '-n', 'systemctl', 'disable', '--now', unit + '.timer'],
-                           capture_output=True)
-            subprocess.run(['sudo', '-n', 'systemctl', 'stop', unit + '.service'], capture_output=True)
-            # Новые модули могут остаться инертными; данные ленты никогда не удаляются.
-            for item, data in original_files.items():
-                if data is not None:
-                    write_atomic(ROOT / item, data, 0o644)
-            write_atomic(ROOT / '.env', original_env)
-            restart()
-            print(json.dumps({'status': 'ROLLED_BACK_CODE_AND_ENV', 'backup': str(backup)}))
+            try:
+                subprocess.run(['sudo', '-n', 'systemctl', 'disable', '--now', unit + '.timer'],
+                               capture_output=True)
+                subprocess.run(['sudo', '-n', 'systemctl', 'stop', unit + '.service'], capture_output=True)
+                # Новые модули остаются инертными; данные ленты никогда не удаляются.
+                for item, data in original_files.items():
+                    if data is not None:
+                        write_atomic(ROOT / item, data, 0o644)
+                write_atomic(ROOT / '.env', original_env)
+                restart()
+                wait_healthy(env)
+                if protected_hashes(ROOT) != protected or (ROOT / '.env').read_bytes() != original_env:
+                    raise ValueError('rollback_protected_state_mismatch')
+                if any((ROOT / item).read_bytes() != data for item, data in original_files.items() if data is not None):
+                    raise ValueError('rollback_code_mismatch')
+                print(json.dumps({'status': 'ROLLED_BACK_CODE_AND_ENV', 'health': 'PASS', 'backup': str(backup)}))
+            except BaseException:
+                print(json.dumps({'status': 'ROLLBACK_FAILED', 'backup': str(backup)}))
+                raise RuntimeError('production_rollback_failed') from None
             raise
 
 

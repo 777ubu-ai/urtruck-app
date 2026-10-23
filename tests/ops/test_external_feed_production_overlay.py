@@ -1,14 +1,18 @@
 """Регрессии узкого writer на временных файлах и синтетической SQLite."""
 import difflib
+import ast
 import hashlib
 import importlib.util
 import io
 import json
 from pathlib import Path
 import sqlite3
+import subprocess
 import tarfile
+import urllib.error
 
 import pytest
+import yaml
 
 SCRIPT = Path(__file__).resolve().parents[2] / 'scripts/ops/external_feed_production_overlay.py'
 spec = importlib.util.spec_from_file_location('feed_overlay', SCRIPT)
@@ -126,8 +130,8 @@ def test_atomic_write_does_not_follow_symlink(tmp_path):
     assert protected.read_bytes() == b'original'
 
 
-@pytest.mark.parametrize('bridge_failure', [False, True])
-def test_install_and_rollback_preserve_core_data_and_configuration(fixture, tmp_path, monkeypatch, bridge_failure):
+@pytest.mark.parametrize('bridge_failure,rollback_failure', [(False, False), (True, False), (True, True)])
+def test_install_and_rollback_preserve_core_data_and_configuration(fixture, tmp_path, monkeypatch, capsys, bridge_failure, rollback_failure):
     root, _, make = fixture
     runtime = tmp_path / 'runtime'
     backups = tmp_path / 'backups'
@@ -141,11 +145,13 @@ def test_install_and_rollback_preserve_core_data_and_configuration(fixture, tmp_
     (root / 'auth.py').write_text('PROTECTED = True\n')
     old_main = (root / 'main.py').read_bytes()
     pm2 = tmp_path / 'bin/pm2'
-    env = {'DB_PATH': str(primary), 'pm_id': '3', 'pm_exec_path': '/synthetic/python'}
+    env = {'DB_PATH': str(primary), 'pm_id': '3', 'pm_exec_path': '/synthetic/python', '_pid': '1'}
     monkeypatch.setattr(module, 'ROOT', root)
     monkeypatch.setattr(module, 'RUNTIME', runtime)
     monkeypatch.setattr(module, 'BACKUP_ROOT', backups)
-    monkeypatch.setattr(module, 'runtime_identity', lambda: (env, pm2))
+    monkeypatch.setattr(module, 'runtime_identity', lambda **kwargs: ({**env, '_pid': '2'} if kwargs else env, pm2))
+    monkeypatch.setattr(module, 'empty_import_probe', lambda key: None)
+    monkeypatch.setattr(module, 'verify_feed_schema', lambda *args: None)
     monkeypatch.setattr(module, 'status', lambda path: 200 if path == '/health' else 401)
     actual_run = module.subprocess.run
     calls = []
@@ -164,10 +170,22 @@ def test_install_and_rollback_preserve_core_data_and_configuration(fixture, tmp_
 
     monkeypatch.setattr(module.subprocess, 'run', run)
     monkeypatch.setattr(module, 'install_bridge', install)
+    if rollback_failure:
+        checks = []
+        def health(*args, **kwargs):
+            checks.append(1)
+            if len(checks) > 1:
+                raise ValueError('synthetic_rollback_health_failed')
+        monkeypatch.setattr(module, 'wait_healthy', health)
     bundle = make()
     if bridge_failure:
-        with pytest.raises(ValueError, match='synthetic_bridge_failure'):
+        exception, message = (RuntimeError, 'production_rollback_failed') if rollback_failure else (ValueError, 'synthetic_bridge_failure')
+        with pytest.raises(exception, match=message):
             module.apply(bundle, module.digest(bundle), 'a' * 40)
+        if rollback_failure:
+            output = capsys.readouterr().out
+            assert 'ROLLBACK_FAILED' in output
+            assert 'ROLLED_BACK_CODE_AND_ENV' not in output
         assert (root / '.env').read_bytes() == original
         assert (root / 'main.py').read_bytes() == old_main
         assert sum(x[:2] == [str(pm2), 'restart'] for x in calls) == 2
@@ -180,3 +198,81 @@ def test_install_and_rollback_preserve_core_data_and_configuration(fixture, tmp_
     assert (runtime / 'feed.sqlite3').read_bytes() == b'new-data-never-restore-over-it'
     with sqlite3.connect(primary) as conn:
         assert conn.execute('SELECT * FROM deals').fetchall() == [('existing-user-deal',)]
+
+
+@pytest.mark.parametrize('operation', ['deploy', 'sync_push_mode', 'invalid'])
+@pytest.mark.parametrize('scope', ['full', 'external_feed_overlay', 'invalid'])
+def test_workflow_selects_at_most_one_writer_and_rejects_invalid_scope(operation, scope):
+    root = SCRIPT.parents[2]
+    doc = yaml.safe_load((root / '.github/workflows/production-deploy-execute.yml').read_text())
+
+    def condition(text):
+        expression = text.removeprefix('${{').removesuffix('}}').strip()
+        expression = expression.replace('inputs.operation', repr(operation)).replace('inputs.deploy_scope', repr(scope))
+        expression = expression.replace('&&', 'and').replace('||', 'or')
+
+        def calculate(node):
+            if isinstance(node, ast.Constant):
+                return node.value
+            if isinstance(node, ast.Compare) and len(node.ops) == 1 and isinstance(node.ops[0], ast.Eq):
+                return calculate(node.left) == calculate(node.comparators[0])
+            if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And):
+                return all(calculate(x) for x in node.values)
+            raise AssertionError('Неожиданная конструкция writer guard')
+        return calculate(ast.parse(expression, mode='eval').body)
+
+    selected = [name for name in ('deploy', 'sync_push_mode', 'external-feed-overlay')
+                if condition(doc['jobs'][name]['if'])]
+    valid = (operation, scope) in {('deploy', 'full'), ('sync_push_mode', 'full'),
+                                  ('deploy', 'external_feed_overlay')}
+    assert len(selected) == int(valid)
+    script = doc['jobs']['validate-scope']['steps'][0]['run']
+    result = subprocess.run(['bash', '-c', script], env={
+        'OPERATION': operation, 'DEPLOY_SCOPE': scope, 'CALLER_REF': 'refs/heads/main',
+        'CALLER_SHA': 'a' * 40, 'DEPLOY_SHA': 'a' * 40}, capture_output=True, text=True)
+    assert (result.returncode == 0) == valid
+
+
+@pytest.mark.parametrize('reference,sha', [('refs/heads/qa2/integration-candidate', 'a' * 40),
+                                        ('refs/heads/main', 'b' * 40)])
+def test_overlay_rejects_non_main_or_different_source(reference, sha):
+    doc = yaml.safe_load((SCRIPT.parents[2] / '.github/workflows/production-deploy-execute.yml').read_text())
+    result = subprocess.run(['bash', '-c', doc['jobs']['validate-scope']['steps'][0]['run']], env={
+        'OPERATION': 'deploy', 'DEPLOY_SCOPE': 'external_feed_overlay', 'CALLER_REF': reference,
+        'CALLER_SHA': sha, 'DEPLOY_SHA': 'a' * 40}, capture_output=True)
+    assert result.returncode != 0
+
+
+def test_disabled_import_is_not_a_successful_smoke(monkeypatch):
+    def disabled(request, **kwargs):
+        assert request.data == b'{"records":[]}'
+        raise urllib.error.HTTPError(request.full_url, 404, 'disabled', {}, None)
+    monkeypatch.setattr(module.urllib.request, 'urlopen', disabled)
+    with pytest.raises(urllib.error.HTTPError):
+        module.empty_import_probe('synthetic-key')
+
+
+def test_feed_schema_must_be_initialized_and_separate(tmp_path):
+    primary, feed = tmp_path / 'primary.db', tmp_path / 'feed.db'
+    for path in (primary, feed):
+        with sqlite3.connect(path) as connection:
+            connection.execute('CREATE TABLE existing(id TEXT)')
+    with pytest.raises(ValueError, match='feed_database_not_separate'):
+        module.verify_feed_schema(primary, primary)
+    with pytest.raises(ValueError, match='feed_schema_not_initialized'):
+        module.verify_feed_schema(feed, primary)
+    with sqlite3.connect(feed) as connection:
+        for name in ['external_freight_items', 'external_freight_bookmarks', 'external_freight_delivery']:
+            connection.execute(f'CREATE TABLE {name}(id TEXT)')
+    module.verify_feed_schema(feed, primary)
+
+
+def test_successful_restart_requires_new_correct_listener(monkeypatch):
+    original = {'pm_id': '3', 'pm_exec_path': '/synthetic/python', '_pid': '1'}
+    monkeypatch.setattr(module, 'runtime_identity', lambda **kwargs: (original, None))
+    monkeypatch.setattr(module, 'status', lambda path: 200)
+    monkeypatch.setattr(module.time, 'sleep', lambda seconds: None)
+    with pytest.raises(ValueError, match='production_runtime_not_healthy'):
+        module.wait_healthy(original, require_new_pid=True)
+    monkeypatch.setattr(module, 'runtime_identity', lambda **kwargs: ({**original, '_pid': '2'}, None))
+    module.wait_healthy(original, require_new_pid=True)

@@ -290,8 +290,8 @@ def test_only_the_normal_caller_uses_local_executor_and_sync_is_pinned_to_main()
     assert mode_caller["jobs"]["sync"]["with"]["operation"] == "sync_push_mode"
     assert mode_caller["jobs"]["sync"]["with"]["deploy_sha"] == "${{ github.sha }}"
     executor = _load("production-deploy-execute.yml")
-    assert executor["jobs"]["sync_push_mode"]["if"] == "${{ inputs.operation == 'sync_push_mode' }}"
-    assert executor["jobs"]["deploy"]["if"] == "${{ inputs.operation == 'deploy' }}"
+    assert executor["jobs"]["sync_push_mode"]["if"] == "${{ inputs.operation == 'sync_push_mode' && inputs.deploy_scope == 'full' }}"
+    assert executor["jobs"]["deploy"]["if"] == "${{ inputs.operation == 'deploy' && inputs.deploy_scope == 'full' }}"
 
 
 def test_production_executor_is_key_only_and_pins_the_host_key():
