@@ -35,3 +35,17 @@ def test_production_root_symlink_cannot_redirect_into_qa2(monkeypatch):
     monkeypatch.setattr(Path,'resolve',lambda path,*a,**k: Path('/home/ubuntu/urtruck-qa2/external-feed') if path==root else original(path,*a,**k))
     with pytest.raises(ValueError,match='separate_production_state_required'):
         validate_qa_target('https://urtruck.kz',state_path=STATE)
+
+
+def test_invalid_production_cli_never_opens_adapter_state(monkeypatch,tmp_path):
+    from services import external_freight_queue_bridge as bridge
+    monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
+    monkeypatch.setenv('EXTERNAL_FREIGHT_DEPLOYMENT_TARGET','production')
+    monkeypatch.setenv('EXTERNAL_FREIGHT_API_URL','https://urtruck.kz')
+    monkeypatch.setenv('EXTERNAL_FREIGHT_SOURCE_DB',str(tmp_path/'source.sqlite3'))
+    state=tmp_path/'qa2.sqlite3'
+    monkeypatch.setenv('EXTERNAL_FREIGHT_ADAPTER_DB',str(state))
+    def unexpected_adapter():raise AssertionError('SQLite адаптера не должен открываться')
+    monkeypatch.setattr(bridge,'ExternalFreightFeedAdapter',unexpected_adapter)
+    with pytest.raises(ValueError,match='separate_production_state_required'):bridge.main()
+    assert not state.exists()

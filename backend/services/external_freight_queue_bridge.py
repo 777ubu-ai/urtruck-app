@@ -233,6 +233,8 @@ def main():
     state = os.getenv("EXTERNAL_FREIGHT_ADAPTER_DB", "")
     if not source or not state:
         raise ValueError("explicit_source_and_state_required")
+    # Отклоняем ошибочный target/state до открытия SQLite адаптером.
+    validate_qa_target(os.getenv("EXTERNAL_FREIGHT_API_URL", ""), state_path=state)
     os.umask(0o077)
     # Никаких ключей/контактов/текстов в аргументах процесса или stdout.
     worker = IncomingQueueBridge if os.getenv("EXTERNAL_FREIGHT_SOURCE_MODE") == "incoming" else PublishedQueueBridge
