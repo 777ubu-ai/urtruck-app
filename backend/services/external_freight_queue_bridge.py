@@ -22,12 +22,24 @@ MAX_SCAN = 50
 PARSER_REVISION = '20261023-promotion-contact-price-v7'
 
 
-def validate_qa_target(api_url):
+def validate_qa_target(api_url, *, state_path=None):
+    # Старые вызовы и окружения остаются строго QA2. Боевой адрес требует
+    # явного выбора и отдельного durable state; очередь QA2 не перенаправляется.
+    target = os.getenv("EXTERNAL_FREIGHT_DEPLOYMENT_TARGET", "qa2").strip().lower()
+    if target not in {"qa2", "production"}:
+        raise ValueError("external_feed_target_required")
     parsed = urlparse(api_url)
-    if (parsed.scheme != "https" or parsed.hostname != "qa2.urtruck.kz"
+    host = "urtruck.kz" if target == "production" else "qa2.urtruck.kz"
+    if (parsed.scheme != "https" or parsed.hostname != host
             or parsed.port is not None or parsed.username or parsed.password
             or parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
-        raise ValueError("qa2_target_required")
+        raise ValueError("production_target_required" if target == "production" else "qa2_target_required")
+    if target == "production":
+        root = Path("/home/ubuntu/urtruck/runtime/external-feed")
+        state = Path(state_path).expanduser() if state_path else None
+        if (root.resolve() != root or state is None or not state.is_absolute() or state.resolve() == root
+                or not state.resolve().is_relative_to(root)):
+            raise ValueError("separate_production_state_required")
 
 
 class PublishedQueueBridge:
@@ -36,7 +48,7 @@ class PublishedQueueBridge:
         self.adapter = adapter
         if self.source_path == Path(adapter.db_path).resolve():
             raise ValueError("separate_state_required")
-        validate_qa_target(adapter.api_url)
+        validate_qa_target(adapter.api_url, state_path=adapter.db_path)
         with adapter._connect() as state:
             state.execute("""CREATE TABLE IF NOT EXISTS published_bridge_seen (
                 destination_message INTEGER PRIMARY KEY)""")
