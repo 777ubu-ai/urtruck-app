@@ -39,7 +39,10 @@ _CURRENCY = {"USD": "USD", "US$": "USD", "$": "USD", "EUR": "EUR", "€": "EUR",
 _VEHICLE_PLACES = {
     'хоргос': 'khorgos', 'khorgos': 'khorgos', 'алматы': 'almaty',
     'москва': 'moscow', 'астана': 'astana', 'алашанькоу': 'alashankou',
-    'toshkent': 'tashkent', 'ташкент': 'tashkent', 'nukus': 'nukus', 'нукус': 'nukus',
+    'toshkent': 'tashkent', 'ташкент': 'tashkent', 'ташкента': 'tashkent',
+    'самарканд': 'samarkand', 'самарканда': 'samarkand',
+    'samarqand': 'samarkand', 'samarkand': 'samarkand',
+    'nukus': 'nukus', 'нукус': 'nukus',
     'qashqadaryo': 'qashqadaryo', 'кашкадарё': 'qashqadaryo',
     'қашқадарё': 'qashqadaryo', 'кашкадарья': 'qashqadaryo',
     'andijon': 'andijan', 'андижон': 'andijan', 'андижан': 'andijan',
@@ -51,6 +54,12 @@ _VEHICLE_PLACES = {
 _VEHICLE_PLACE_PATTERN = '|'.join(re.escape(p) for p in sorted(_VEHICLE_PLACES, key=len, reverse=True))
 _UZ_ORIGIN = re.compile(r'(?i)\b(' + _VEHICLE_PLACE_PATTERN + r')(?:dan|дан)\b')
 _UZ_DESTINATION = re.compile(r'(?i)\b(' + _VEHICLE_PLACE_PATTERN + r')(?:ga|га)\b')
+_RU_VEHICLE_PAIR_HINT = re.compile(
+    r'(?i)\b(?:ищу|ищем|нужен)\s+груз\s+(?:с|из)\s+[^\n]{1,80}?\s+(?:до|в|на)\s+')
+_RU_VEHICLE_PAIR = re.compile(
+    r'(?i)\b(?:ищу|ищем|нужен)\s+груз\s+(?:с|из)\s+('
+    + _VEHICLE_PLACE_PATTERN + r')\s+(?:до|в|на)\s+('
+    + _VEHICLE_PLACE_PATTERN + r')(?![\w-])')
 _VEHICLE_COUNT = re.compile(
     r'(?i)(?:\b(?:fura|m[ao]shina)\s+bor\s+(\d{1,4})\s*ta\b|'
     r'\b(\d{1,4})\s*ta\s+(?:katta\s+)?(?:isuzu(?:ga)?|fura|m[ao]shina)\b|'
@@ -71,6 +80,16 @@ def _vehicle_locations(text):
     for match in _UZ_DESTINATION.finditer(text):
         add(destinations, match.group(1))
     for line in text.splitlines():
+        pairs = list(_RU_VEHICLE_PAIR.finditer(line))
+        pair = pairs[0] if pairs else None
+        pair_hints = list(_RU_VEHICLE_PAIR_HINT.finditer(line))
+        if pair_hints:
+            # Не заменяем непонятную/альтернативную пару другой известной строкой.
+            if (len(pair_hints) != 1 or len(pairs) != 1 or re.search(r'[?？/→]|->', line)
+                    or re.search(r'(?i)^\s*[,;]?\s*(?:или|либо|до|в|на)\b', line[pair.end():])):
+                return None, None
+            add(origins, pair.group(1))
+            add(destinations, pair.group(2))
         cleaned = _place(line.strip('*_'))
         if cleaned and cleaned.casefold() in _VEHICLE_PLACES:
             add(origins, cleaned)
@@ -79,7 +98,7 @@ def _vehicle_locations(text):
             add(destinations, direction.group(1))
         search_origin = re.fullmatch(
             r'(?i)\s*(?:ищу|ищем)\s+груз\s+(?:с|из)\s+(.+?)\s*', line)
-        if search_origin:
+        if search_origin and not pair:
             place = _place(search_origin.group(1))
             # Только проверенное место; «с оплатой» и неизвестные слова не города.
             if (place or '').casefold() not in _VEHICLE_PLACES:
