@@ -29,6 +29,7 @@
         "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
         "NSPhotoLibraryUsageDescription": "UrTruck использует фото для аватара, груза и документов",
         "NSLocationWhenInUseUsageDescription": "UrTruck определяет местоположение по вашему запросу или при открытии карты активного рейса",
+        "NSMotionUsageDescription": "Встроенная библиотека местоположения поддерживает определение движения. UrTruck не запрашивает и не собирает данные физической активности в этой версии.",
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "remote-notification"
