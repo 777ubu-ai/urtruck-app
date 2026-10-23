@@ -276,3 +276,30 @@ def test_history_floodwait_pauses_same_reader_and_preserves_cursor(tmp_path,monk
     assert db.execute('SELECT last_error FROM app_history').fetchone()[0]=='FloodWaitError'
     assert asyncio.run(m.collect(reader,db))=={'status':'flood_wait'}
     assert reader.history_calls==1
+
+
+@pytest.mark.parametrize('phrase', [
+    'нужен груз с Самарканда до Ташкента машина готов тент +77000000001',
+    'Ищу груз из Самарканда в Ташкент, машина готова, тент +77000000001',
+])
+def test_explicit_ru_vehicle_pair_in_sentence_preserves_literal_route(phrase):
+    item=map_selected_message(message(phrase))
+    assert (item['kind'],item['status'])==('vehicle','active')
+    assert item['origin']=='Самарканда'
+    assert item['destination']==('Ташкента' if 'до Ташкента' in phrase else 'Ташкент')
+    assert item['contacts']==['+77000000001']
+    assert item['amount'] is None and item['currency'] is None
+    assert item['original_text']==phrase
+
+
+@pytest.mark.parametrize('phrase', [
+    'нужен груз с Самарканда до Неизвестногогорода машина готов тент',
+    'нужен груз с Неизвестногогорода до Ташкента машина готов тент',
+    'нужен груз с Самарканда до Ташкента-на-Дону машина готов тент',
+    'нужен груз с Самарканда до Ташкента или Москвы машина готов тент',
+    'нужен груз с Самарканда до Ташкента до Москвы машина готов тент',
+    'нужен груз с Самарканда до Ташкента машина готов, нужен груз с Москвы до Алматы',
+    'нужен груз с Самарканда до Ташкента\nToshkentdan Nukusga',
+])
+def test_ambiguous_ru_vehicle_pair_remains_review(phrase):
+    assert map_selected_message(message(phrase))['status']=='review'
