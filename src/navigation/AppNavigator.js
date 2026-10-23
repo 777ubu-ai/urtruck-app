@@ -29,6 +29,8 @@ import VehicleChooserScreen from '../screens/vehicle/VehicleChooserScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoFeedScreen from '../screens/CargoFeedScreen';
+import ExternalFreightFeedScreen from '../screens/ExternalFreightFeedScreen';
+import { EXTERNAL_FREIGHT_ENABLED } from '../utils/externalFreightFeed';
 import CargoDetailV2 from '../screens/CargoDetailV2';
 import DriverDetail from '../screens/DriverDetail';
 import ChatScreenV2 from '../screens/ChatScreenV2';
@@ -253,6 +255,7 @@ export default function AppNavigator() {
               ограниченный вид с приглашением зарегистрироваться. Без этой
               регистрации маршрута navigate('Profile') у гостя не срабатывал. */}
           <Stack.Screen name="Profile" component={ProfileScreen} />
+          {EXTERNAL_FREIGHT_ENABLED ? <Stack.Screen name="ExternalFreightFeed" component={ExternalFreightFeedScreen} /> : null}
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
