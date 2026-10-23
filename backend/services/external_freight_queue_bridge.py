@@ -19,7 +19,7 @@ from services.external_freight_classifier import classify_message
 
 ACTIVE_SECONDS = 120 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261023-recall-formats-v4'
+PARSER_REVISION = '20261023-recall-formats-v5'
 
 
 def validate_qa_target(api_url):
@@ -154,7 +154,9 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 AND NOT EXISTS(SELECT 1 FROM bridge_state.incoming_bridge_seen s
                   WHERE s.source_queue_id=q.id AND s.source_revision=q.revision || ':' || ?)"""
             # Свежий поток не ждёт первоначальную загрузку, старый хвост тоже продвигается.
-            newest=source.execute(query+" ORDER BY updated_at DESC,id DESC LIMIT 10",(now-ACTIVE_SECONDS,now+300,PARSER_REVISION)).fetchall()
+            # Историческая загрузка имеет новый updated_at, но не должна вытеснять
+            # свежие исходные публикации. Правки/старый хвост обслуживаются ниже.
+            newest=source.execute(query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",(now-ACTIVE_SECONDS,now+300,PARSER_REVISION)).fetchall()
             oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(now-ACTIVE_SECONDS,now+300,PARSER_REVISION,MAX_SCAN)).fetchall()
             unique={row["id"]:row for row in newest+oldest}
             rows=list(unique.values())[:MAX_SCAN]

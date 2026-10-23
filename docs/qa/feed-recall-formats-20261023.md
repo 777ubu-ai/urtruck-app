@@ -23,3 +23,6 @@
 
 - A broad mixed-route candidate was rejected by shadow (81 existing active outputs changed); it was never deployed. Final scope applies mixed-format handling only to newly recognized intents and preserves established routes.
 - Final shadow:12489 messages/4031 unique,144 recovered unique messages,365 source copies; distinct candidate active texts716→866. All1522 active outbox payloads unchanged; no lost active messages. 141 tests PASS. Exact-head CI and queue preview remain mandatory.
+
+- Concurrent QA2 update #579 (3efde675) integrated normally: retained source_date priority for fresh arrivals and explicit vehicle origin from cargo-search phrase. Revision advanced to distinct recall-v5. Only parser-revision conflict resolved; no force push. Revalidate merged candidate before activation.
+- Integrated candidate:146 pure tests PASS, including new #579 freshness/location regressions.

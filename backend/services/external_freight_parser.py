@@ -46,6 +46,7 @@ _VEHICLE_PLACES = {
     'qarshi koson': 'qarshi-koson', 'qarshi': 'qarshi', 'карши': 'qarshi',
     'buxoro': 'bukhara', 'бухоро': 'bukhara', 'бухара': 'bukhara',
     'uluĝchat': 'ulugchat', 'ulugchat': 'ulugchat', 'улучат': 'ulugchat',
+    'оренбург': 'orenburg', 'оренбурга': 'orenburg',
 }
 _VEHICLE_PLACE_PATTERN = '|'.join(re.escape(p) for p in sorted(_VEHICLE_PLACES, key=len, reverse=True))
 _UZ_ORIGIN = re.compile(r'(?i)\b(' + _VEHICLE_PLACE_PATTERN + r')(?:dan|дан)\b')
@@ -76,6 +77,14 @@ def _vehicle_locations(text):
         direction = re.search(r'(?i)\bнаправление\s*[:：]?\s+(.+)$', line)
         if direction:
             add(destinations, direction.group(1))
+        search_origin = re.fullmatch(
+            r'(?i)\s*(?:ищу|ищем)\s+груз\s+(?:с|из)\s+(.+?)\s*', line)
+        if search_origin:
+            place = _place(search_origin.group(1))
+            # Только проверенное место; «с оплатой» и неизвестные слова не города.
+            if (place or '').casefold() not in _VEHICLE_PLACES:
+                return None, None
+            add(origins, place)
         # Без пробелов дефис может быть частью города: нужны два известных конца.
         for match in re.finditer(r'[-–—]', line):
             left, right = _place(line[:match.start()]), _place(line[match.end():])
