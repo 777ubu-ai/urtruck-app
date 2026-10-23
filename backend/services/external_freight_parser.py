@@ -41,6 +41,7 @@ _VEHICLE_PLACES = {
     'москва': 'moscow', 'астана': 'astana', 'алашанькоу': 'alashankou',
     'toshkent': 'tashkent', 'ташкент': 'tashkent', 'ташкента': 'tashkent',
     'самарканд': 'samarkand', 'самарканда': 'samarkand',
+    'samarqand': 'samarkand', 'samarkand': 'samarkand',
     'nukus': 'nukus', 'нукус': 'nukus',
     'qashqadaryo': 'qashqadaryo', 'кашкадарё': 'qashqadaryo',
     'қашқадарё': 'qashqadaryo', 'кашкадарья': 'qashqadaryo',

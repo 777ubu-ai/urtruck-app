@@ -303,3 +303,18 @@ def test_explicit_ru_vehicle_pair_in_sentence_preserves_literal_route(phrase):
 ])
 def test_ambiguous_ru_vehicle_pair_remains_review(phrase):
     assert map_selected_message(message(phrase))['status']=='review'
+
+
+def test_verified_uzbek_samarqand_spelling_preserves_whole_vehicle_route():
+    phrase='Samarqanddan Toshkentga yuk kerak, tent mashina tayyor. Tel: 901234567'
+    item=map_selected_message(message(phrase))
+    assert (item['kind'],item['status'])==('vehicle','active')
+    assert (item['origin'],item['destination'])==('Samarqand','Toshkent')
+    assert item['contacts']==['901234567']
+    assert item.get('origin_country') is None and item['amount'] is None
+
+
+def test_bare_number_is_not_guessed_to_be_phone_in_ru_vehicle_pair():
+    item=map_selected_message(message('нужен груз с Самарканда до Ташкента машина готов тент 901234567'))
+    assert item['status']=='active' and item['origin']=='Самарканда'
+    assert item['contacts']==[]
