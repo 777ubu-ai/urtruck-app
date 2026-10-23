@@ -308,14 +308,27 @@ def verify_app_messages_source():
         connection.execute('SELECT source_id,source_message,source_date,text,revision FROM app_messages LIMIT 1')
 
 
-def reconcile_bridge_source(env, manifest, source_sha):
-    """Меняет только источник отдельного моста; backend и Telegram не перезапускаются."""
+def verify_bridge_units(python):
+    """Проверяет файлы и эффективные units до управляющих действий."""
     unit = 'urtruck-production-feed-bridge'
-    for suffix, expected in [('.service', bridge_service(env['pm_exec_path'])),
+    for suffix, expected in [('.service', bridge_service(python)),
                              ('.timer', bridge_timer())]:
         path = UNIT_ROOT / (unit + suffix)
         if path.is_symlink() or path.read_text() != expected:
             raise ValueError('existing_bridge_unit_requires_reconciliation')
+        result = subprocess.run(['systemctl', 'show', unit + suffix,
+                                 '-p', 'FragmentPath', '-p', 'DropInPaths', '-p', 'NeedDaemonReload'],
+                                check=True, text=True, capture_output=True)
+        effective = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+        if (effective.get('FragmentPath') != str(path) or effective.get('DropInPaths') != ''
+                or effective.get('NeedDaemonReload') != 'no'):
+            raise ValueError('effective_bridge_unit_requires_reconciliation')
+
+
+def reconcile_bridge_source(env, manifest, source_sha):
+    """Меняет только источник отдельного моста; backend и Telegram не перезапускаются."""
+    unit = 'urtruck-production-feed-bridge'
+    verify_bridge_units(env['pm_exec_path'])
     verify_app_messages_source()
     path = RUNTIME / 'bridge.env'
     if path.is_symlink():
@@ -332,6 +345,12 @@ def reconcile_bridge_source(env, manifest, source_sha):
             or values.get('EXTERNAL_FREIGHT_SOURCE_MODE', 'published') not in {'published', 'incoming'}
             or set(values) - set(expected) - {'EXTERNAL_FREIGHT_IMPORTER_KEY', 'EXTERNAL_FREIGHT_SOURCE_MODE'}):
         raise ValueError('unexpected_bridge_environment')
+    backend_env = (ROOT / '.env').read_bytes()
+    backend_values = dict(line.split('=', 1) for line in backend_env.decode().splitlines() if '=' in line)
+    if (backend_values.get('EXTERNAL_FREIGHT_FEED_ENABLED') != 'true'
+            or backend_values.get('EXTERNAL_FREIGHT_DB_PATH') != str(RUNTIME / 'feed.sqlite3')
+            or backend_values.get('EXTERNAL_FREIGHT_IMPORTER_KEY') != values['EXTERNAL_FREIGHT_IMPORTER_KEY']):
+        raise ValueError('backend_bridge_configuration_mismatch')
     def control(*args):
         return subprocess.run(['sudo', '-n', 'systemctl', *args], check=True, capture_output=True)
     def state(suffix):
@@ -339,7 +358,7 @@ def reconcile_bridge_source(env, manifest, source_sha):
                               text=True, capture_output=True).stdout.strip()
     if state('.timer') != 'active':
         raise ValueError('bridge_timer_not_active')
-    protected, backend_env = protected_hashes(ROOT), (ROOT / '.env').read_bytes()
+    protected = protected_hashes(ROOT)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     backup = BACKUP_ROOT / ('external-feed-source-' + stamp)
     backup.mkdir(mode=0o700)
