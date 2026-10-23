@@ -82,6 +82,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const requestRef = useRef(null);
   const busyRef = useRef(false);
   const listRef = useRef(null);
+  const filterScrollRef = useRef(null);
   const viewportRef = useRef({ offset: 0, height: 0, contentHeight: 0 });
   const scrollToLatestRef = useRef(false);
   const anchorRef = useRef(null);
@@ -230,6 +231,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   };
   const resetFilters = () => {
     const empty = { ...emptyFilters };
+    filterScrollRef.current?.scrollTo({ x: 0, animated: false });
     setDraft(empty); setFilters(empty); setCursor(null); setRows([]); setModal(null);
   };
   const choosePresetDate = (days) => {
@@ -317,7 +319,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         {savedOnly ? <FontAwesome5 name="bookmark" size={18} color={bookmarkColors.driver} solid /> : <Feather name="bookmark" size={20} color={bookmarkColors.textMuted} />}
       </TouchableOpacity>
     </View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filterContent} keyboardShouldPersistTaps="handled">
+    <ScrollView ref={filterScrollRef} horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filterContent} keyboardShouldPersistTaps="handled">
       {filterButton('origin', l.from, locationLabel('origin'))}{filterButton('destination', l.to, locationLabel('destination'))}{filterButton('body', l.body, filters.body_type ? bodyLabels[lang]?.[filters.body_type] || filters.body_type : '')}{filterButton('date', l.date, filters.published_from ? `${formatDate(filters.published_from, lang)}${filters.published_to ? ` – ${formatDate(filters.published_to, lang)}` : ''}` : '')}{filterButton('price', l.price, filters.sort === 'newest' ? '' : (filters.sort === 'price_asc' ? l.asc : l.desc))}
     </ScrollView>
     {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: true })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}

@@ -15,10 +15,13 @@ const cards = Array.from({ length: 60 }, (_, i) => ({ id: String(100 - i), statu
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness() {
   const slots = [], pending = [], listeners = new Map(), intervals = new Set(), queries = [];
-  let cursor = 0, dirty = true, tree, appCallback, calls = 0, fail = false, suspended = false, resolvePending;
+  let cursor = 0, dirty = true, tree, appCallback, calls = 0, fail = false, suspended = false, resolvePending, filterOffset = 0;
   const depsEqual = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   const React = {
-    createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+    createElement: (type, props, ...children) => {
+      if (type === 'ScrollView' && props?.horizontal && props.ref) props.ref.current = { scrollTo: ({ x }) => { filterOffset = x; } };
+      return { type, props: { ...props, children } };
+    },
     useState(initial) { const i = cursor++; if (!slots[i]) slots[i] = { value: typeof initial === 'function' ? initial() : initial }; return [slots[i].value, value => { const next = typeof value === 'function' ? value(slots[i].value) : value; if (!Object.is(next, slots[i].value)) { slots[i].value = next; dirty = true; } }]; },
     useRef(initial) { const i = cursor++; return slots[i] ||= { current: initial }; },
     useMemo(fn, deps) { const i = cursor++; if (!slots[i] || !depsEqual(slots[i].deps, deps)) slots[i] = { deps, value: fn() }; return slots[i].value; },
@@ -60,6 +63,7 @@ function harness() {
     list: () => nodes().find(n => n.type === 'FlatList'), warning: () => nodes().find(n => n.type === 'TouchableOpacity' && n.props.children.some(c => c?.type === 'Text' && c.props.children.some(s => typeof s === 'string' && s.includes('Нет соединения')))),
     focus: () => listeners.get('focus')?.(), blur: () => listeners.get('blur')?.(), app: state => { native.AppState.currentState = state; appCallback(state); },
     poll: () => intervals.forEach(fn => fn()), fail: value => { fail = value; }, suspend: () => { suspended = true; }, release: () => { suspended = false; resolvePending?.(); }, calls: () => calls,
+    node: id => nodes().find(n => n.props.testID === id), filterOffset: value => value === undefined ? filterOffset : (filterOffset = value), pressLabel: label => nodes().find(n => n.props.label === label).props.onPress(),
     queries, saved: () => nodes().find(n => n.props.testID === 'external-feed-saved-only').props.onPress(),
   };
 }
@@ -101,4 +105,16 @@ test('offline polling: warning остаётся во время повторно
   h.suspend(); h.poll(); await h.flush(); assert.ok(h.warning(), 'warning не должен исчезать до ответа');
   h.release(); await h.flush(); assert.ok(h.warning());
   h.fail(false); h.poll(); await h.flush(); assert.equal(h.warning(), undefined); assert.equal(h.list().props.data.length, 30);
+});
+
+test('Сброс возвращает полосу к началу после длинных фильтров и горизонтальной прокрутки', async () => {
+  const h = harness(); await h.flush();
+  h.node('external-feed-filter-origin').props.onPress(); await h.flush();
+  h.node('external-feed-location-search').props.onChangeText('Toshkent'); await h.flush();
+  h.node('external-feed-apply-filters').props.onPress(); await h.flush();
+  h.filterOffset(1000);
+  h.node('external-feed-filter-body').props.onPress(); await h.flush();
+  h.pressLabel('Сброс'); await h.flush();
+  assert.equal(h.filterOffset(), 0, 'полоса не должна оставаться за пределами уменьшенного содержимого');
+  assert.equal(h.queries.at(-1).origin, undefined);
 });
