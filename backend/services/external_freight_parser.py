@@ -8,7 +8,8 @@ import re
 import unicodedata
 from datetime import datetime, timezone
 
-from services.external_freight_classifier import classify_message
+from services.external_freight_classifier import classify_message, uses_extended_intent
+from services.external_freight_route_places import COMPACT_ROUTE_PLACES
 
 _ROUTE = re.compile(r"(?m)^[ \t]*([^\n→]{2,80}?)(?:[ \t]*(?:→|->|➜|➡)[ \t]*|[ \t]+[-–—][ \t]+)([^\n]{2,120}?)[ \t]*$")
 _NOT_ROUTE_LABEL = re.compile(r"(?i)^(?:груз|цена|фрахт|вес|объём|объем|оплата|контакт|телефон|нужен|нужны|требуется)\b")
@@ -94,6 +95,23 @@ def _vehicle_locations(text):
     if len(origins) > 1 or len(destinations) > 1:
         return None, None
     return next(iter(origins.values()), None), next(iter(destinations.values()), None)
+
+
+
+# Accept a whole line containing two explicit known names. A hyphen inside one
+# city (Санкт-Петербург) never creates a route. Preserve the literal spelling.
+_COMPACT_PLACES = "|".join(re.escape(name) for name in COMPACT_ROUTE_PLACES)
+_COMPACT_ROUTE = re.compile(
+    r"(?im)^[ \t]*[^\w\n]*?(" + _COMPACT_PLACES + r")"
+    r"(?:[ \t]*[-–—]{1,2}[ \t]*|[ \t]+)[^\w\n]*?("
+    + _COMPACT_PLACES + r")[^\w\n]*$"
+)
+
+
+def _compact_routes(text, *, allow_space=False):
+    return [m for m in _COMPACT_ROUTE.finditer(text)
+            if (allow_space or re.search(r"[-–—]", text[m.end(1):m.start(2)]))
+            and not re.search(r"[?？❓❔/]", m.group())]
 
 
 def _place(value):
@@ -188,6 +206,12 @@ def map_selected_message(raw: dict) -> dict:
         kind = kind if kind in {"cargo", "vehicle"} else "cargo"
     routes = [match for match in _ROUTE.finditer(text)
               if not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip())]
+    compact = _compact_routes(text, allow_space=kind == "vehicle")
+    # Count mixed arrow/compact formats together; never collapse two requests.
+    if not routes or uses_extended_intent(text):
+        routes += [m for m in compact if not any(
+            m.start() < existing.end() and m.end() > existing.start() for existing in routes)]
+    routes.sort(key=lambda m: m.start())
     if len(routes) > 1:
         status = "review"
         route = None
@@ -323,6 +347,10 @@ def map_selected_messages(raw):
             blocks.append(text[m.end():end].strip())
     else:
         route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
+        if not route_matches or uses_extended_intent(text):
+            route_matches += [m for m in _compact_routes(text) if not any(
+                m.start() < existing.end() and m.end() > existing.start() for existing in route_matches)]
+        route_matches.sort(key=lambda m: m.start())
         # Безопасен список, где каждый блок начинается своим маршрутом.
         if len(route_matches)>1 and _only_country_headers(text[:route_matches[0].start()]):
             candidate_blocks=[]

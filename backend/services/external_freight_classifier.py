@@ -6,6 +6,9 @@
 import re
 
 
+_CARGO_FORMAT_CONTEXT = re.compile(
+    r"(?:^|\n)[^\w\n]*груз[ \t]*[-–—📦]|\bюк\s+(?:тай[её]р|таййор|бор)\b", re.I,
+)
 _CARGO_CONTEXT = re.compile(
     r"(?:нуж(?:ен|на|ны|но)\s+(?:\d+\s*)?(?:тент|реф|машин|транспорт|авто|фур)|ищу (?:машин|транспорт)|"
     r"требуется\s+(?:\d+\s*)?(?:машин|транспорт|авто|реф|тент)|требуются\s+(?:\d+\s*)?машин(?:а|ы)?|"
@@ -24,8 +27,25 @@ _VEHICLE_CONTEXT = re.compile(
 )
 
 
+
+_EMPTY_VEHICLE_OFFER = re.compile(
+    r"(?im)^[ \t]*[^\w\n]*пуст(?:ой|ая|ые)\s+"
+    r"(?:эвакуатор\w*|машин\w*|фур\w*|тент\w*|реф\w*|тягач\w*)\b")
+_UNAVAILABLE_OFFER = re.compile(
+    r"(?i)\b(?:не|нет|если|нужен|нужна|нужны|куплю|продам|продаётся|продается|"
+    r"ремонт\w*|занят\w*|загруж\w*)\b|[?？❓❔]")
+
+
+def uses_extended_intent(value):
+    """Limit new route handling to newly recognized intent formats."""
+    return bool(
+        (_CARGO_FORMAT_CONTEXT.search(value) and not _CARGO_CONTEXT.search(value))
+        or (_EMPTY_VEHICLE_OFFER.search(value) and not _VEHICLE_CONTEXT.search(value))
+    )
+
+
 def _intents(value):
-    cargo = bool(_CARGO_CONTEXT.search(value))
+    cargo = bool(_CARGO_CONTEXT.search(value) or _CARGO_FORMAT_CONTEXT.search(value))
     # Вопрос грузоотправителя «Есть машина?» не является предложением машины.
     vehicle_text = re.sub(r"[^\n.!?]*\?", " ", value)
     vehicle_text = re.sub(
@@ -42,7 +62,8 @@ def _intents(value):
         vehicle_text = re.sub(
             r'(?i)\bесть\s+(?:свободн\w*\s+)?(?:машин\w*|фур\w*|транспорт)\s*[-–—]\s*'
             r'(?:пишите|звоните|забирайте|подключайтесь)[^\n.!?]*', ' ', vehicle_text)
-    return cargo, bool(_VEHICLE_CONTEXT.search(vehicle_text))
+    empty_offer = bool(_EMPTY_VEHICLE_OFFER.search(vehicle_text)) and not _UNAVAILABLE_OFFER.search(value)
+    return cargo, bool(_VEHICLE_CONTEXT.search(vehicle_text)) or empty_offer
 # Закрытие относится к заявке: закрытый кузов/граница — лишь условия перевозки.
 _CLOSE_CONTEXT = re.compile(
     r"(?:\b(?:заявка|объявление|заказ|груз|рейс|перевозка|маршрут)\s+"
