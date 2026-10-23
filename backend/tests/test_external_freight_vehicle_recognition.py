@@ -18,7 +18,7 @@ def test_explicit_vehicle_offer(phrase):
 
 @pytest.mark.parametrize("phrase", [
     "Нужна пустая машина", "Ищу пустую фуру", "У кого пустая машина?",
-    "Fura bor mi?", "Fura bor mi", "Fura kerak", "Fura bor?", "Пустая машина нужна",
+    "Fura bor mi?", "Fura bor mi", "Fura bor?", "Пустая машина нужна",
     "Пустая машина на продажу", "Fura bor sotiladi",
     "Пустая машина уже занята", "Пустая машина не свободна", "Fura bor emas", "Fura bor yo'q",
 ])
@@ -73,3 +73,34 @@ def test_separate_blocks_keep_their_contacts():
     assert len(items) == 2
     assert [x["status"] for x in items] == ["active", "active"]
     assert [x["contacts"] for x in items] == [["+77000000001"], ["+77000000002"]]
+
+
+@pytest.mark.parametrize("text,origin,destination", [
+    ("🇨🇳Uluĝchatdan\nFura bor 3ta\nYuk kerak", "Uluĝchat", None),
+    ("‼Qarshi Kosondan‼\n‼Buxoroga‼\nYuk kerak", "Qarshi Koson", "Buxoro"),
+    ("Toshkentdan Nukusga moshina bor tent fura yuk kerak temirmi ogʻir yuk kerak tel",
+     "Toshkent", "Nukus"),
+    ("Ташкент Масква\nРеф нужен груз", "Ташкент", "Масква"),
+    ("Samarqand Toshkent\nYuk kerak", "Samarqand", "Toshkent"),
+])
+def test_short_verified_formats(text, origin, destination):
+    item = map_selected_message(raw(text))
+    assert (item["kind"], item["status"]) == ("vehicle", "active")
+    assert (item["origin"], item["destination"]) == (origin, destination)
+
+
+@pytest.mark.parametrize("text", [
+    "Ташкент Масква\nАлматы Астана\nНужен груз",
+    "Yuk kerak\nToshkentdan bormayman\nАлматы Москва",
+    "Fura kerak\nYuk kerak\nToshkentdan Nukusga",
+    "Fura bor — yuk kerakmi?\nToshkentdan Nukusga",
+    ("Ташкент Масква\nРеф нужен груз\n" + "подборка разных объявлений\n" * 60),
+])
+def test_mixed_advertising_and_conflicting_routes_stay_review(text):
+    assert map_selected_message(raw(text))["status"] == "review"
+
+
+@pytest.mark.parametrize("text", ["Fura kerak", "Tent kerak", "Moshina kerak", "Mashina kerak"])
+def test_uz_vehicle_requests_are_cargo(text):
+    item = map_selected_message(raw(text + "\nАлматы → Москва"))
+    assert (item["kind"], item["status"]) == ("cargo", "active")

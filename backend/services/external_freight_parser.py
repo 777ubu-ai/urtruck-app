@@ -37,7 +37,7 @@ _CURRENCY = {"USD": "USD", "US$": "USD", "$": "USD", "EUR": "EUR", "€": "EUR",
 # Ограниченный словарь явно написанных мест: суффикс не делает любое слово
 # географией («mashinaga»). Сохраняем исходное написание, не геокодируем.
 _UZ_PLACES = (
-    "Toshkent", "Тошкент", "Tashkent", "Ташкент", "Samarqand", "Samarkand",
+    "Uluĝchat", "Ulugchat", "Qarshi Koson", "Koson", "Масква", "Toshkent", "Тошкент", "Tashkent", "Ташкент", "Samarqand", "Samarkand",
     "Самарканд", "Namangan", "Наманган", "Andijon", "Андижон", "Fargona",
     "Farg'ona", "Фаргона", "Фарғона", "Buxoro", "Бухоро", "Navoiy", "Навои",
     "Nukus", "Нукус", "Urganch", "Урганч", "Qarshi", "Карши", "Termiz",
@@ -51,18 +51,27 @@ _UZ_DIRECTION = re.compile(
 )
 
 
+def _plain_route_line(line):
+    return "".join(c for c in line if unicodedata.category(c) not in {"So", "Sk"} and c != "\ufe0f").strip(" \t,.;:!#‼❗")
+
+
 def _uz_vehicle_direction(text):
-    # Несколько разных пунктов без надёжной сегментации остаются на проверке.
+    # Рассматриваем короткое одиночное предложение, не подборку разных заявок.
+    if len(text) > 1200:
+        return None, None
     origins, destinations = {}, {}
     for line in text.splitlines():
         matches = list(_UZ_DIRECTION.finditer(line))
         if not matches:
             continue
         remainder = _UZ_DIRECTION.sub("", line)
-        remainder = re.sub(r"(?i)\b(?:yuk kerak|юк керак|(?:menda )?fura bor|фура бор)\b", "", remainder)
-        # Произвольная проза рядом с пунктом может отрицать или цитировать путь.
-        # Принимаем только явную строку направления, а не «Toshkentga bormayman».
-        remainder = "".join(c for c in remainder if unicodedata.category(c) not in {"So", "Sk"} and c != "\ufe0f")
+        # Только проверенная грамматика: неизвестная проза или отрицание
+        # рядом с пунктом назначения оставляет запись на проверке.
+        remainder = re.sub(
+            r"(?i)\b(?:yuk kerak|юк керак|(?:menda )?fura bor|фура бор|"
+            r"moshina bor|mashina bor|tent fura|temirmi|og[ʻ’']ir yuk kerak|tel)\b",
+            "", remainder)
+        remainder = _plain_route_line(remainder)
         if remainder.strip(" \t,.;:!#→➡➜>-–—"):
             return None, None
         for match in matches:
@@ -72,6 +81,29 @@ def _uz_vehicle_direction(text):
     if len(origins) > 1 or len(destinations) > 1:
         return None, None
     return next(iter(origins.values()), None), next(iter(destinations.values()), None)
+
+
+# Два явно написанных известных пункта на отдельной строке. Не разбиваем
+# произвольный текст по пробелам и не назначаем маршрут длинной подборке.
+_VEHICLE_CITY_PAIR = re.compile(
+    r"(" + "|".join(re.escape(place) for place in sorted(_UZ_PLACES, key=len, reverse=True))
+    + r")[ \t]+(" + "|".join(re.escape(place) for place in sorted(_UZ_PLACES, key=len, reverse=True))
+    + r")", re.I,
+)
+
+
+def _vehicle_city_pair(text):
+    if len(text) > 1200:
+        return None, None
+    pairs = {}
+    for line in text.splitlines():
+        match = _VEHICLE_CITY_PAIR.fullmatch(_plain_route_line(line))
+        if match:
+            pair = match.groups()
+            pairs.setdefault(tuple(p.casefold() for p in pair), pair)
+    if len(pairs) != 1:
+        return None, None
+    return next(iter(pairs.values()))
 
 
 def _place(value):
@@ -183,6 +215,8 @@ def map_selected_message(raw: dict) -> dict:
             origin = _place(location.group(1)) if location else None
     if not route and not origin and not destination and kind == "vehicle" and status == "active":
         origin, destination = _uz_vehicle_direction(text)
+        if not origin and not destination and not _UZ_DIRECTION.search(text):
+            origin, destination = _vehicle_city_pair(text)
     if ((route and (not origin or not destination)) or (not origin and not destination)) and status == "active":
         status = "review"
     amount, currency, price_state = _amount(text)
