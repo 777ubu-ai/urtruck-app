@@ -279,7 +279,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       {item.loading_date || item.ready_text ? <Text style={styles.meta}>{item.loading_date || item.ready_text}</Text> : null}
       {item.status !== 'unavailable' ? <Text style={styles.price}>{price}</Text> : null}
       {Array.isArray(item.contacts) && item.contacts.filter(Boolean).map((contact, index) => <TouchableOpacity key={`${item.id}-contact-${index}`} onPress={() => copyContact(contact)} style={styles.contact} accessibilityRole="button" testID={`external-feed-copy-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color={'#168759'} /></TouchableOpacity>)}
-      {externalTelegramPost(item) ? <TouchableOpacity accessibilityRole="link" testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.contactText}>{l.telegram}</Text></TouchableOpacity> : null}
+      {externalTelegramPost(item) ? <TouchableOpacity style={styles.sourceLink} accessibilityRole="link" testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.sourceText}>{l.telegram}</Text></TouchableOpacity> : null}
       <Text style={styles.date}>{l.published}: {formatDate(item.source_published_at, lang)}</Text>
       {item.status !== 'unavailable' && (item.original_text || (item.ready_text && item.loading_date) || share) ? <ExternalFeedDescription
         key={`${ownerKey}:${item.id}`} text={item.original_text} styles={styles}
@@ -402,6 +402,9 @@ function makeStyles(theme, sp) {
     price: { color: '#168759', fontSize: sp(16), lineHeight: sp(21), fontWeight: '700', minWidth: 0, flexShrink: 1 },
     contact: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0 },
     contactText: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), flex: 1, minWidth: 0, flexShrink: 1 },
+    // Ссылка находится в колонке: не наследуем flex контактной строки и защищаем высоту при перерасчёте.
+    sourceLink: { minHeight: sp(18), flexShrink: 0 },
+    sourceText: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), minWidth: 0, flexShrink: 0 },
     date: { color: theme.textMuted, fontSize: sp(11), lineHeight: sp(16), minWidth: 0, flexShrink: 1 },
     details: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border, marginTop: 3, paddingTop: 6, minWidth: 0 },
     descriptionBox: { minWidth: 0 },
