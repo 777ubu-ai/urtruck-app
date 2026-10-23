@@ -15,85 +15,112 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
-@pytest.mark.parametrize('existing', [False, True])
-def test_only_draft_saved_and_existing_active_release_preserved(existing):
-    active = {'status': 'completed', 'versionCodes': ['214552884'], 'name': 'existing'}
-    track = {'track': 'internal', 'releases': [active]}
-    calls = []
-    def call(url, method='GET', payload=None):
-        calls.append((url, method, copy.deepcopy(payload)))
-        if url == module.API + '/edits':
-            return {'id': 'synthetic-edit'}
-        if url.endswith('/tracks/internal'):
-            if method == 'PUT':
-                track.update(payload)
-            return copy.deepcopy(track)
-        if url.endswith('/bundles'):
-            return {'bundles': [{'versionCode': int(module.VERSION), 'sha256': module.SHA256}] if existing else []}
-        if 'uploadType=media' in url:
-            return {'versionCode': int(module.VERSION), 'sha256': module.SHA256}
-        return {}
-    result = module.upload(b'synthetic-not-a-real-bundle', call)
-    assert result['status'] == 'INTERNAL_DRAFT_SAVED'
-    assert track['releases'][0] == active
-    assert track['releases'][1]['status'] == 'draft'
-    assert track['releases'][1]['versionCodes'] == [module.VERSION]
-    assert sum('uploadType=media' in url for url, _, _ in calls) == int(not existing)
-    assert calls[-1][0].endswith(':commit?changesNotSentForReview=true&changesInReviewBehavior=ERROR_IF_IN_REVIEW')
-    assert not any('/tracks/production' in url for url, _, _ in calls)
-    assert not result['review_submitted'] and not result['published']
+class FakePlay:
+    def __init__(self, *, existing=False, failure=None, empty_draft=False):
+        self.failure, self.calls, self.edit, self.track_reads = failure, [], 0, 0
+        self.bundle = {'versionCode': int(module.VERSION), 'sha256': module.SHA256}
+        self.saved = copy.deepcopy(self.bundle) if existing else None
+        self.track = {'track': 'internal', 'releases': [
+            {'status': 'completed', 'versionCodes': ['214552884'], 'name': 'existing'},
+            {'status': 'draft', 'name': 'manager draft', 'releaseNotes': [{'language':'ru-RU','text':'existing'}],
+             **({} if empty_draft else {'versionCodes': ['123']})}]}
 
-
-@pytest.mark.parametrize('failure', ['other_draft', 'empty_draft', 'active', 'hash', 'upload', 'readback', 'validate'])
-def test_error_never_commits_or_replaces_other_draft(failure):
-    calls = []
-    def call(url, method='GET', payload=None):
-        calls.append((url, method))
+    def __call__(self, url, method='GET', payload=None):
+        self.calls.append((url, method))
+        if '/tracks/' in url:
+            assert method == 'GET', 'Ни один трек нельзя менять'
         if url == module.API + '/edits':
-            return {'id': 'synthetic-edit'}
+            self.edit += 1
+            return {'id': f'edit-{self.edit}'}
         if url.endswith('/tracks/internal'):
-            if method == 'PUT':
-                return {'track': 'internal', 'releases': []} if failure == 'readback' else payload
-            releases = []
-            if failure == 'other_draft':
-                releases = [{'status': 'draft', 'versionCodes': ['123']}]
-            elif failure == 'empty_draft':
-                releases = [{'status': 'draft'}]
-            elif failure == 'active':
-                releases = [{'status': 'completed', 'versionCodes': [module.VERSION]}]
-            return {'track': 'internal', 'releases': releases}
+            self.track_reads += 1
+            value = copy.deepcopy(self.track)
+            if (self.failure == 'prechange' and self.track_reads == 2
+                    or self.failure == 'postchange' and self.edit == 2):
+                value['releases'][0]['name'] = 'concurrent change'
+            return value
         if url.endswith('/bundles'):
-            return {'bundles': [{'versionCode': int(module.VERSION), 'sha256': 'wrong'}] if failure == 'hash' else []}
+            bundle = copy.deepcopy(self.saved)
+            if self.failure == 'hash' and bundle:
+                bundle['sha256'] = 'wrong'
+            return {'bundles': [bundle] if bundle else []}
         if 'uploadType=media' in url:
-            return {'versionCode': 123 if failure == 'upload' else int(module.VERSION), 'sha256': module.SHA256}
+            return {**self.bundle, 'versionCode': 123} if self.failure == 'upload' else self.bundle
         if url.endswith(':validate'):
-            raise ValueError('synthetic_validation_failed')
-        raise AssertionError('Недопустимый commit после ошибки')
+            if self.failure == 'validate':
+                raise ValueError('synthetic_validation_failed')
+            return {}
+        if ':commit?' in url:
+            if self.failure == 'review':
+                raise RuntimeError('play_http_400')
+            if self.failure != 'lost_before':
+                self.saved = copy.deepcopy(self.bundle)
+            if self.failure in {'lost_before', 'lost_after'}:
+                raise module.urllib.error.URLError('synthetic_response_lost')
+            return {}
+        raise AssertionError('Неожиданный запрос')
+
+
+@pytest.mark.parametrize('existing', [False, True])
+@pytest.mark.parametrize('empty_draft', [False, True])
+def test_library_upload_preserves_other_draft_and_active_release(existing, empty_draft):
+    call = FakePlay(existing=existing, empty_draft=empty_draft)
+    original = copy.deepcopy(call.track)
+    result = module.upload(b'synthetic-not-a-real-bundle', call)
+    assert result['status'] == 'BUNDLE_LIBRARY_SAVED'
+    assert result['internal_track_unchanged'] and not result['assigned_by_this_operation']
+    assert result['existing_internal_statuses'] == []
+    assert call.track == original
+    assert sum('uploadType=media' in url for url, _ in call.calls) == int(not existing)
+    commits = [url for url, _ in call.calls if ':commit' in url]
+    assert len(commits) == int(not existing)
+    assert all('changesNotSentForReview=true&changesInReviewBehavior=ERROR_IF_IN_REVIEW' in url for url in commits)
+    assert call.edit == 2
+    assert not any('/tracks/production' in url or method in {'PUT','PATCH','DELETE'} for url, method in call.calls)
+    assert not result['review_submitted_by_this_operation'] and not result['published_by_this_operation']
+
+
+@pytest.mark.parametrize('failure', ['hash', 'upload', 'prechange', 'validate'])
+def test_error_before_commit_does_not_change_track_or_commit(failure):
+    call = FakePlay(existing=failure == 'hash', failure=failure)
+    original = copy.deepcopy(call.track)
     with pytest.raises(ValueError):
         module.upload(b'synthetic', call)
-    assert not any(':commit' in url for url, _ in calls)
-    if failure in {'other_draft', 'empty_draft'}:
-        assert not any('uploadType=media' in url or method == 'PUT' for url, method in calls)
+    assert call.track == original
+    assert not any(':commit' in url for url, _ in call.calls)
 
 
 def test_review_in_progress_refusal_has_no_fallback_commit():
-    calls = []
-    def call(url, method='GET', payload=None):
-        calls.append(url)
-        if url == module.API + '/edits':
-            return {'id': 'synthetic-edit'}
-        if url.endswith('/tracks/internal'):
-            return payload if method == 'PUT' else {'track': 'internal', 'releases': []}
-        if url.endswith('/bundles'):
-            return {'bundles': [{'versionCode': int(module.VERSION), 'sha256': module.SHA256}]}
-        if ':commit?' in url:
-            raise RuntimeError('play_http_400')
-        return {}
+    call = FakePlay(failure='review')
     with pytest.raises(RuntimeError, match='play_http_400'):
         module.upload(b'synthetic', call)
-    commit_calls = [url for url in calls if ':commit' in url]
-    assert len(commit_calls) == 1
-    assert 'changesInReviewBehavior=ERROR_IF_IN_REVIEW' in commit_calls[0]
+    commits = [url for url, _ in call.calls if ':commit' in url]
+    assert len(commits) == 1
+    assert 'changesInReviewBehavior=ERROR_IF_IN_REVIEW' in commits[0]
+
+
+def test_already_assigned_candidate_reports_existing_status_without_writes():
+    call = FakePlay(existing=True)
+    call.track['releases'][0]['versionCodes'] = [module.VERSION]
+    result = module.upload(b'synthetic', call)
+    assert result['commit_state'] == 'ALREADY_SAVED'
+    assert result['existing_internal_statuses'] == ['completed']
+    assert not result['assigned_by_this_operation']
+    assert not any(':commit' in url or 'uploadType=media' in url for url, _ in call.calls)
+
+
+@pytest.mark.parametrize('failure', ['lost_before', 'lost_after', 'postchange'])
+def test_commit_loss_uses_readback_without_reupload_or_second_commit(failure):
+    call = FakePlay(failure=failure)
+    if failure == 'lost_after':
+        result = module.upload(b'synthetic', call)
+        assert result['commit_state'] == 'RESPONSE_LOST_READBACK_CONFIRMED'
+    else:
+        with pytest.raises(ValueError, match='committed_'):
+            module.upload(b'synthetic', call)
+    assert sum('uploadType=media' in url for url, _ in call.calls) == 1
+    assert sum(':commit' in url for url, _ in call.calls) == 1
+    assert call.edit == 2
 
 
 @pytest.mark.parametrize('field,value', [('id', 1), ('head_sha', 'bad'), ('event', 'pull_request'),
@@ -113,12 +140,15 @@ def test_workflow_secrets_only_upload_step_and_no_build_or_dependency_execution(
     workflow = yaml.safe_load((ROOT / '.github/workflows/upload-existing-play-internal-draft.yml').read_text())
     job = workflow['jobs']['upload-draft']
     assert "github.ref == 'refs/heads/main'" in job['if']
-    assert 'UPLOAD_INTERNAL_DRAFT' in job['if']
+    assert 'UPLOAD_BUNDLE_LIBRARY' in job['if']
     assert 'env' not in job
     assert workflow['permissions'] == {'contents': 'read', 'actions': 'read'}
     secret_steps = [step for step in job['steps'] if 'PLAY_SERVICE_ACCOUNT_JSON' in str(step)]
     assert len(secret_steps) == 1 and secret_steps[0] is job['steps'][-1]
     assert not any(word in str(job['steps']) for word in ['npm ', 'gradlew', 'pip install', 'eas '])
+    gate = yaml.safe_load((ROOT / '.github/workflows/quality-gate-reusable.yml').read_text())
+    assert any(step.get('run') == 'python -m pytest tests/ops/test_upload_existing_play_draft.py -q'
+               for step in gate['jobs']['backend-tests']['steps'])
 
 
 @pytest.mark.parametrize('failure', [None, 'checksum', 'extra', 'size', 'filename'])

@@ -51,6 +51,9 @@ jobs:
       - name: Регрессии проверки исходника TestFlight до исполнения кода
         if: ${{ hashFiles('tests/ops/test_testflight_intent_gate.py') != '' }}
         run: python -m pytest tests/ops/test_testflight_intent_gate.py -q
+      - name: Регрессии загрузки готового AAB без изменения треков
+        if: ${{ hashFiles('tests/ops/test_upload_existing_play_draft.py') != '' }}
+        run: python -m pytest tests/ops/test_upload_existing_play_draft.py -q
       - name: Run canonical backend suite
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
