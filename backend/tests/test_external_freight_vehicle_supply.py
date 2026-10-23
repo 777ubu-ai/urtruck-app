@@ -73,6 +73,22 @@ def test_bilingual_same_direction_is_one_vehicle_listing():
     assert items[0]['kind']=='vehicle' and items[0]['contacts']==['901234567']
 
 
+def test_explicit_cargo_search_from_verified_city_keeps_partial_vehicle_location():
+    item=map_selected_message(message('ГАЗель-next 6.25/2.45/2.55\nТент\nИщу груз с Оренбурга'))
+    assert (item['kind'],item['status'])==('vehicle','active')
+    assert item['origin']=='Оренбурга' and item['destination'] is None
+    assert item['contacts']==[] and item['amount'] is None and item['weight'] is None
+
+
+@pytest.mark.parametrize('text',[
+    'Есть машина\nИщу груз с оплатой наличными',
+    'Есть машина\nИщу груз с Неизвестногогорода',
+    'Есть машина\nИщу груз с Оренбурга\nИщу груз с Москвы',
+])
+def test_unknown_or_conflicting_cargo_search_locations_remain_review(text):
+    assert map_selected_message(message(text))['status']=='review'
+
+
 @pytest.mark.parametrize('text', [
     'Есть машина\nУсть-Каменогорск',
     'Есть машина\nСанкт-Петербург',
