@@ -13,6 +13,11 @@ name: UrTruck Production Deploy (execute)
 on:
   workflow_call:
     inputs:
+      deploy_scope:
+        description: "Область проверенного deploy; существующий full по умолчанию"
+        required: false
+        type: string
+        default: full
       deploy_sha:
         description: "Exact commit SHA to deploy"
         required: true
@@ -401,3 +406,52 @@ jobs:
             "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh"
           bash scripts/deploy-ssh.sh ssh \
             "set -euo pipefail; trap 'rm -f /tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py /tmp/urtruck-push-mode-backup-${GITHUB_RUN_ID}.py /tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh' EXIT; python3 '/tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py' --root '/home/ubuntu/urtruck/backend' --api '$PM2_PROC' --scheduler '$PM2_SCHEDULER_PROC'; python3 '/tmp/urtruck-push-mode-backup-${GITHUB_RUN_ID}.py' create --root '/home/ubuntu/urtruck/backend' --run-id '$GITHUB_RUN_ID'; chmod 700 '/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh'; bash '/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh' '$PM2_PROC' '$PM2_SCHEDULER_PROC' '$GITHUB_RUN_ID' '/tmp/urtruck-push-mode-backup-${GITHUB_RUN_ID}.py'"
+
+  external-feed-overlay:
+    if: ${{ inputs.deploy_scope == 'external_feed_overlay' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    env:
+      DEPLOY_SHA: ${{ inputs.deploy_sha }}
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      URTRUCK_REQUIRE_KEY: "1"
+    steps:
+      - name: Получить точный защищённый источник
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
+      - name: Проверить режим и собрать адресный пакет
+        run: |
+          set -euo pipefail
+          test "$(cat .production-deploy-mode)" = manual_external_feed_overlay
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,tarfile
+          root=pathlib.Path('ops/external-feed-production')
+          manifest=json.loads((root/'manifest.json').read_text())
+          with tarfile.open(pathlib.Path(os.environ['RUNNER_TEMP'])/'external-feed.tar.gz','w:gz') as archive:
+              for name, expected in manifest['files'].items():
+                  if name=='main.py': continue
+                  path=pathlib.Path('backend')/name
+                  assert hashlib.sha256(path.read_bytes()).hexdigest()==expected, name
+                  archive.add(path,arcname=name,recursive=False)
+              for name in ('main.patch','manifest.json'):
+                  archive.add(root/name,arcname=name,recursive=False)
+          PY
+      - name: Выполнить единственный узкий writer с backup и откатом
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST"
+          test -n "$SERVER_USER"
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+          remote="/tmp/urtruck-external-feed-${GITHUB_RUN_ID}"
+          bundle="$RUNNER_TEMP/external-feed.tar.gz"
+          checksum=$(sha256sum "$bundle" | cut -d' ' -f1)
+          bash scripts/deploy-ssh.sh scp "$bundle" "$SERVER_USER@$SERVER_HOST:${remote}.tar.gz"
+          bash scripts/deploy-ssh.sh scp scripts/ops/external_feed_production_overlay.py "$SERVER_USER@$SERVER_HOST:${remote}.py"
+          bash scripts/deploy-ssh.sh ssh "python3 '${remote}.py' --bundle '${remote}.tar.gz' --bundle-sha256 '$checksum' --source-sha '$DEPLOY_SHA'"

@@ -21,8 +21,31 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  resolve-mode:
     if: ${{ github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      automatic: ${{ steps.mode.outputs.automatic }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - id: mode
+        name: Не запускать полный deploy подготовительного overlay commit
+        run: |
+          set -euo pipefail
+          if [ -f .production-deploy-mode ]; then
+            test "$(cat .production-deploy-mode)" = manual_external_feed_overlay
+            echo 'automatic=false' >> "$GITHUB_OUTPUT"
+            echo 'Production ожидает явного запуска узкого режима через существующий caller.'
+          else
+            echo 'automatic=true' >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: [resolve-mode]
+    if: ${{ github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success' && needs.resolve-mode.outputs.automatic == 'true' }}
     uses: ./.github/workflows/production-deploy-execute.yml
     with:
       deploy_sha: ${{ github.event.workflow_run.head_sha }}

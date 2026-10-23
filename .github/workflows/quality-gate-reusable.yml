@@ -13,6 +13,12 @@ name: UrTruck Quality Gate (reusable)
 # "what a deploy must pass".
 on:
   workflow_call:
+    inputs:
+      source_ref:
+        description: "Точный исходник обязательных проверок; по умолчанию исходник caller"
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -24,6 +30,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -37,6 +45,9 @@ jobs:
       - name: Compile backend and tests
         run: |
           python -m compileall -q backend
+      - name: Регрессии узкого production writer
+        if: ${{ hashFiles('tests/ops/test_external_feed_production_overlay.py') != '' }}
+        run: python -m pytest tests/ops/test_external_feed_production_overlay.py -q
       - name: Run canonical backend suite
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
@@ -91,6 +102,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -152,6 +165,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
