@@ -131,6 +131,39 @@ def test_multiple_segments_never_borrow_contacts():
     assert items[0]['contacts']==['901234567'] and items[1]['contacts']==[]
 
 
+def test_history_capture_does_not_displace_fresh_publication(tmp_path,monkeypatch):
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    from services.external_freight_queue_bridge import IncomingQueueBridge
+    import json
+    monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
+    m=collector();path=tmp_path/'source.sqlite3';db=m.database(path);now=m.utcnow()
+    for i in range(120):
+        m.capture_for_app(db,'approved_source',1001,i+1,
+                          f'Груз: доски\nАлматы → Москва\nНомер заявки: {i+1}',
+                          now-timedelta(hours=30 if i<60 else 80))
+    m.capture_for_app(db,'approved_source',1001,999,'Есть машина\nАлматы → Астана',now)
+    # Старый хвост + массовый backfill, принятый позже свежей публикации.
+    db.execute('UPDATE app_messages SET updated_at=? WHERE source_message<=60',(now.timestamp()-3600,))
+    db.execute('UPDATE app_messages SET updated_at=? WHERE source_message>60 AND source_message<999',(now.timestamp()+1,))
+    db.commit();received=[]
+    def opener(request,timeout):
+        records=json.loads(request.data)['records'];received.extend(records)
+        class Response:
+            status=200
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read(self):return json.dumps({'results':[{'id':str(i),'result':'created'} for i,_ in enumerate(records)]}).encode()
+        return Response()
+    adapter=ExternalFreightFeedAdapter(db_path=str(tmp_path/'adapter.sqlite3'),api_url='https://qa2.urtruck.kz',importer_key='test',opener=opener)
+    result=IncomingQueueBridge(path,adapter).run_once()
+    assert result['scanned']==50
+    assert any(r['source_message_id']=='999' for r in received)
+    # Продвижение старого хвоста также сохраняется, а Telegram queue не меняется.
+    with adapter._connect() as state:
+        assert state.execute('select count(*) from incoming_bridge_seen where source_queue_id<=60').fetchone()[0]>0
+    assert db.execute('select count(*) from queue').fetchone()[0]==0
+
+
 def collector():
     path=Path(__file__).resolve().parents[2]/'ops/telegram-feed/feed.py'
     spec=importlib.util.spec_from_file_location('supply_collector',path)
