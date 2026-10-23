@@ -318,3 +318,136 @@ def test_pm2_cli_missing_or_not_executable_is_rejected(tmp_path, monkeypatch):
     path.chmod(0o600)
     with pytest.raises(ValueError, match='pm2_identity_unavailable'):
         module.verified_pm2_entry()
+
+
+@pytest.mark.parametrize('failure', [False, True, 'backend_drift'])
+def test_existing_overlay_source_switch_preserves_data_and_rolls_back_only_env(tmp_path, monkeypatch, capsys, failure):
+    root, runtime, units, backups = [tmp_path / name for name in ['backend', 'runtime', 'units', 'backups']]
+    for path in [root, runtime, units, backups]:
+        path.mkdir()
+    source = tmp_path / 'collector.sqlite3'
+    with sqlite3.connect(source) as connection:
+        connection.execute('CREATE TABLE app_messages(source_id TEXT,source_message TEXT,source_date REAL,text TEXT,revision TEXT)')
+    source_hash = module.digest(source)
+    primary = tmp_path / 'primary.sqlite3'
+    for path in [primary, runtime / 'feed.sqlite3', runtime / 'adapter.sqlite3']:
+        with sqlite3.connect(path) as connection:
+            connection.execute('CREATE TABLE preserved(id TEXT)')
+            connection.execute("INSERT INTO preserved VALUES('existing')")
+    backend_env = (f'PUSH_TRANSPORT=legacy\nEXTERNAL_FREIGHT_FEED_ENABLED=true\n'
+                   f'EXTERNAL_FREIGHT_DB_PATH={runtime}/feed.sqlite3\n'
+                   'EXTERNAL_FREIGHT_IMPORTER_KEY=synthetic-private-key\n').encode()
+    if failure == 'backend_drift':
+        backend_env = backend_env.replace(b'=synthetic-private-key', b'=other-private-key')
+    (root / '.env').write_bytes(backend_env)
+    (root / 'auth.py').write_text('PROTECTED=True\n')
+    for key, value in [('ROOT', root), ('RUNTIME', runtime), ('UNIT_ROOT', units),
+                       ('BACKUP_ROOT', backups), ('SOURCE_DB', source)]:
+        monkeypatch.setattr(module, key, value)
+    unit = 'urtruck-production-feed-bridge'
+    (units / (unit + '.service')).write_text(module.bridge_service('/synthetic/python'))
+    (units / (unit + '.timer')).write_text(module.bridge_timer())
+    original = (f'EXTERNAL_FREIGHT_IMPORT_ENABLED=true\nEXTERNAL_FREIGHT_DEPLOYMENT_TARGET=production\n'
+                f'EXTERNAL_FREIGHT_API_URL=https://urtruck.kz\nEXTERNAL_FREIGHT_SOURCE_DB={source}\n'
+                f'EXTERNAL_FREIGHT_ADAPTER_DB={runtime}/adapter.sqlite3\n'
+                'EXTERNAL_FREIGHT_IMPORTER_KEY=synthetic-private-key\n').encode()
+    env_path = runtime / 'bridge.env'
+    env_path.write_bytes(original)
+    timer_active, commands = [True], []
+    def run(args, **kwargs):
+        commands.append(args)
+        if args[:2] == ['systemctl', 'show']:
+            return subprocess.CompletedProcess(args, 0,
+                f'FragmentPath={units / args[2]}\nDropInPaths=\nNeedDaemonReload=no\n', '')
+        if args[:2] == ['systemctl', 'is-active']:
+            text = ('active' if timer_active[0] else 'inactive') if args[-1].endswith('.timer') else 'inactive'
+            return subprocess.CompletedProcess(args, 0, text, '')
+        assert args[:3] == ['sudo', '-n', 'systemctl']
+        if args[-1].endswith('.timer'):
+            timer_active[0] = args[3] == 'start'
+        return subprocess.CompletedProcess(args, 0, '', '')
+    monkeypatch.setattr(module.subprocess, 'run', run)
+    monkeypatch.setattr(module, 'installed_overlay_matches', lambda manifest: True)
+    monkeypatch.setattr(module, 'status', lambda path: 200)
+    def observe(since):
+        assert env_path.read_bytes().count(b'EXTERNAL_FREIGHT_SOURCE_MODE=incoming') == 1
+        with sqlite3.connect(runtime / 'feed.sqlite3') as connection:
+            connection.execute("INSERT INTO preserved VALUES('new-after-switch')")
+        if failure:
+            raise ValueError('synthetic_delivery_failure')
+        return [{'mode': 'incoming', 'status': 'delivered'}, {'mode': 'incoming', 'status': 'idle'}]
+    monkeypatch.setattr(module, 'observe_bridge_cycles', observe)
+    env = {'DB_PATH': str(primary), 'pm_exec_path': '/synthetic/python'}
+    if failure == 'backend_drift':
+        with pytest.raises(ValueError, match='backend_bridge_configuration_mismatch'):
+            module.reconcile_bridge_source(env, {}, 'a' * 40)
+        assert not any(command[0] == 'sudo' for command in commands)
+        assert not list(backups.iterdir())
+        assert env_path.read_bytes() == original
+        assert (root / '.env').read_bytes() == backend_env
+        return
+    if failure:
+        with pytest.raises(ValueError, match='synthetic_delivery_failure'):
+            module.reconcile_bridge_source(env, {}, 'a' * 40)
+        assert env_path.read_bytes() == original
+    else:
+        module.reconcile_bridge_source(env, {}, 'a' * 40)
+        assert env_path.read_bytes() == original + b'EXTERNAL_FREIGHT_SOURCE_MODE=incoming\n'
+    assert timer_active[0]
+    assert module.digest(source) == source_hash
+    assert (root / '.env').read_bytes() == backend_env
+    with sqlite3.connect(runtime / 'feed.sqlite3') as connection:
+        assert connection.execute('SELECT id FROM preserved').fetchall() == [('existing',), ('new-after-switch',)]
+    assert len(list(backups.glob('*/primary/snapshot.sqlite3'))) == 1
+    assert len(list(backups.glob('*/adapter/snapshot.sqlite3'))) == 1
+    assert len(list(backups.glob('*/feed/snapshot.sqlite3'))) == 1
+    assert not any('restart' in command for command in commands)
+    assert 'synthetic-private-key' not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('suffix', ['.service', '.timer'])
+@pytest.mark.parametrize('drift', ['dropin', 'fragment', 'reload', 'missing'])
+def test_effective_unit_drift_rejected_before_control_or_write(tmp_path, monkeypatch, suffix, drift):
+    unit = 'urtruck-production-feed-bridge'
+    monkeypatch.setattr(module, 'UNIT_ROOT', tmp_path)
+    (tmp_path / (unit + '.service')).write_text(module.bridge_service('/synthetic/python'))
+    (tmp_path / (unit + '.timer')).write_text(module.bridge_timer())
+    commands = []
+    def run(args, **kwargs):
+        commands.append(args)
+        assert args[:2] == ['systemctl', 'show']
+        values = {'FragmentPath': str(tmp_path / args[2]), 'DropInPaths': '', 'NeedDaemonReload': 'no'}
+        if args[2].endswith(suffix):
+            if drift == 'dropin':
+                values['DropInPaths'] = '/etc/systemd/system/override.conf'
+            elif drift == 'fragment':
+                values['FragmentPath'] = '/run/systemd/system/other.service'
+            elif drift == 'reload':
+                values['NeedDaemonReload'] = 'yes'
+            else:
+                values.pop('DropInPaths')
+        return subprocess.CompletedProcess(args, 0, '\n'.join(f'{key}={value}' for key, value in values.items()), '')
+    monkeypatch.setattr(module.subprocess, 'run', run)
+    def forbidden(*args, **kwargs):
+        pytest.fail('Отказ должен произойти до чтения источника или записи backup/env')
+    monkeypatch.setattr(module, 'verify_app_messages_source', forbidden)
+    monkeypatch.setattr(module, 'write_atomic', forbidden)
+    with pytest.raises(ValueError, match='effective_bridge_unit_requires_reconciliation'):
+        module.reconcile_bridge_source({'pm_exec_path': '/synthetic/python'}, {}, 'a' * 40)
+    assert commands and all(command[:2] == ['systemctl', 'show'] for command in commands)
+
+
+def test_existing_overlay_requires_all_nine_hashes_and_safe_paths(fixture, tmp_path, monkeypatch):
+    root, manifest, make = fixture
+    staged = tmp_path / 'verification'
+    staged.mkdir()
+    manifest = module.unpack_verified(make(), staged)
+    module.prepare(root, staged, manifest)
+    monkeypatch.setattr(module, 'ROOT', root)
+    assert not module.installed_overlay_matches(manifest)
+    for name in manifest['files']:
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_bytes((staged / name).read_bytes())
+    assert module.installed_overlay_matches(manifest)
+    (root / 'main.py').write_text('changed')
+    assert not module.installed_overlay_matches(manifest)
