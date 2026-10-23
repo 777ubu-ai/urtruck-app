@@ -146,6 +146,9 @@ def test_workflow_secrets_only_upload_step_and_no_build_or_dependency_execution(
     secret_steps = [step for step in job['steps'] if 'PLAY_SERVICE_ACCOUNT_JSON' in str(step)]
     assert len(secret_steps) == 1 and secret_steps[0] is job['steps'][-1]
     assert not any(word in str(job['steps']) for word in ['npm ', 'gradlew', 'pip install', 'eas '])
+    gate = yaml.safe_load((ROOT / '.github/workflows/quality-gate-reusable.yml').read_text())
+    assert any(step.get('run') == 'python -m pytest tests/ops/test_upload_existing_play_draft.py -q'
+               for step in gate['jobs']['backend']['steps'])
 
 
 @pytest.mark.parametrize('failure', [None, 'checksum', 'extra', 'size', 'filename'])
